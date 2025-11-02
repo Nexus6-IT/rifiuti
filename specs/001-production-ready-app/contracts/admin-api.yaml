@@ -1,0 +1,763 @@
+openapi: 3.0.3
+info:
+  title: WasteFlow Admin & Monitoring API
+  description: |
+    Administrative and monitoring endpoints for system health, metrics, and operations.
+
+    **Audience**: System administrators and DevOps teams
+
+    **Features**:
+    - Health checks for dependencies (PostgreSQL, Redis, Keycloak, RENTRI)
+    - System metrics (response times, queue depths, error rates)
+    - Error log querying
+    - Background job monitoring
+    - Tenant management
+
+    **Security**: ADMIN role required for all endpoints
+  version: 1.0.0
+
+servers:
+  - url: https://api.wasteflow.it/v1
+    description: Production
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: Health
+    description: System health checks
+  - name: Metrics
+    description: Performance and operational metrics
+  - name: Logs
+    description: Error log querying
+  - name: Jobs
+    description: Background job monitoring
+  - name: Tenants
+    description: Tenant administration
+
+paths:
+  /admin/health:
+    get:
+      operationId: getHealthStatus
+      summary: Get system health status
+      description: |
+        Returns health status of all system dependencies.
+
+        **Dependencies Checked**:
+        - PostgreSQL database
+        - Redis cache/queue
+        - Keycloak authentication service
+        - RENTRI API (demo endpoint ping)
+
+        **Status Codes**:
+        - 200: All systems healthy
+        - 503: One or more systems unhealthy
+      tags:
+        - Health
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: All systems healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: healthy
+                timestamp: '2025-10-18T14:30:00Z'
+                uptime: 3600000
+                dependencies:
+                  database:
+                    status: healthy
+                    responseTimeMs: 5
+                  redis:
+                    status: healthy
+                    responseTimeMs: 2
+                  keycloak:
+                    status: healthy
+                    responseTimeMs: 45
+                  rentri:
+                    status: healthy
+                    responseTimeMs: 120
+        '503':
+          description: One or more systems unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: unhealthy
+                timestamp: '2025-10-18T14:30:00Z'
+                uptime: 3600000
+                dependencies:
+                  database:
+                    status: healthy
+                    responseTimeMs: 5
+                  redis:
+                    status: unhealthy
+                    responseTimeMs: null
+                    error: Connection timeout
+                  keycloak:
+                    status: healthy
+                    responseTimeMs: 45
+                  rentri:
+                    status: degraded
+                    responseTimeMs: 3500
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/metrics:
+    get:
+      operationId: getSystemMetrics
+      summary: Get system metrics
+      description: |
+        Returns operational metrics for monitoring dashboards (Grafana, CloudWatch).
+
+        **Metrics Include**:
+        - API response times (p50, p95, p99)
+        - Request rates
+        - Error rates
+        - Queue depths (BullMQ)
+        - Database connection pool status
+        - Cache hit rates
+      tags:
+        - Metrics
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          description: Time period for metrics
+          schema:
+            type: string
+            enum: [5m, 15m, 1h, 24h]
+            default: 15m
+      responses:
+        '200':
+          description: System metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemMetrics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/metrics/prometheus:
+    get:
+      operationId: getPrometheusMetrics
+      summary: Get metrics in Prometheus format
+      description: |
+        Returns metrics in Prometheus text format for scraping.
+
+        **Metrics Exposed**:
+        - wasteflow_fir_created_total
+        - wasteflow_rentri_sync_total
+        - wasteflow_api_response_time_seconds
+        - wasteflow_queue_depth
+        - wasteflow_db_connections_active
+      tags:
+        - Metrics
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP wasteflow_fir_created_total Total FIRs created
+                # TYPE wasteflow_fir_created_total counter
+                wasteflow_fir_created_total{tenant_id="tenant-1",waste_type="15 01 02"} 247
+
+                # HELP wasteflow_api_response_time_seconds API response time in seconds
+                # TYPE wasteflow_api_response_time_seconds histogram
+                wasteflow_api_response_time_seconds_bucket{method="GET",route="/fir",status_code="200",le="0.1"} 523
+                wasteflow_api_response_time_seconds_bucket{method="GET",route="/fir",status_code="200",le="0.3"} 842
+
+  /admin/errors:
+    get:
+      operationId: queryErrorLogs
+      summary: Query error logs
+      description: |
+        Returns filtered error logs for debugging and monitoring.
+
+        **Filters**:
+        - Severity level
+        - Date range
+        - Correlation ID
+        - Tenant ID
+        - Error code
+      tags:
+        - Logs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: level
+          in: query
+          description: Minimum log level
+          schema:
+            type: string
+            enum: [error, warn, info]
+            default: error
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: correlationId
+          in: query
+          description: Filter by correlation ID
+          schema:
+            type: string
+        - name: tenantId
+          in: query
+          description: Filter by tenant
+          schema:
+            type: string
+            format: uuid
+        - name: errorCode
+          in: query
+          description: Filter by error code
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Error log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ErrorLogEntry'
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/jobs:
+    get:
+      operationId: listBackgroundJobs
+      summary: List background jobs
+      description: |
+        Returns list of BullMQ background jobs.
+
+        **Job Types**:
+        - RENTRI sync (individual and batch)
+        - Email notifications
+        - MUD report generation
+        - Backup operations
+      tags:
+        - Jobs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filter by job status
+          schema:
+            type: string
+            enum: [waiting, active, completed, failed, delayed]
+        - name: type
+          in: query
+          description: Filter by job type
+          schema:
+            type: string
+            enum: [rentri-sync, email, mud-generation, backup]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BackgroundJob'
+                  queueMetrics:
+                    type: object
+                    properties:
+                      waiting:
+                        type: integer
+                      active:
+                        type: integer
+                      completed:
+                        type: integer
+                      failed:
+                        type: integer
+                      delayed:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/jobs/{jobId}/retry:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    post:
+      operationId: retryFailedJob
+      summary: Retry failed background job
+      description: Manually retries a failed background job
+      tags:
+        - Jobs
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Job retry queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [waiting]
+                  message:
+                    type: string
+                    example: Job retry queued
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/tenants:
+    get:
+      operationId: listTenants
+      summary: List all tenants
+      description: Returns list of all tenants with subscription status
+      tags:
+        - Tenants
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filter by subscription status
+          schema:
+            type: string
+            enum: [TRIAL, ACTIVE, EXPIRED, SUSPENDED]
+      responses:
+        '200':
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TenantSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/tenants/{tenantId}:
+    parameters:
+      - name: tenantId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getTenantDetails
+      summary: Get tenant details
+      description: Returns detailed information about specific tenant
+      tags:
+        - Tenants
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      operationId: updateTenantSubscription
+      summary: Update tenant subscription
+      description: |
+        Updates tenant subscription tier or status.
+
+        **Use Cases**:
+        - Upgrade/downgrade subscription tier
+        - Suspend tenant for non-payment
+        - Extend trial period
+      tags:
+        - Tenants
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscriptionTier:
+                  type: string
+                  enum: [TRIAL, PROFESSIONAL, ENTERPRISE]
+                subscriptionStatus:
+                  type: string
+                  enum: [TRIAL, ACTIVE, EXPIRED, SUSPENDED]
+                endDate:
+                  type: string
+                  format: date
+                  description: New subscription end date
+      responses:
+        '200':
+          description: Subscription updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthStatus:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime
+        - dependencies
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: integer
+          description: Uptime in milliseconds
+        dependencies:
+          type: object
+          properties:
+            database:
+              $ref: '#/components/schemas/DependencyHealth'
+            redis:
+              $ref: '#/components/schemas/DependencyHealth'
+            keycloak:
+              $ref: '#/components/schemas/DependencyHealth'
+            rentri:
+              $ref: '#/components/schemas/DependencyHealth'
+
+    DependencyHealth:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        responseTimeMs:
+          type: integer
+        error:
+          type: string
+
+    SystemMetrics:
+      type: object
+      properties:
+        period:
+          type: string
+          description: Time period for metrics
+        api:
+          type: object
+          properties:
+            requestCount:
+              type: integer
+            requestRate:
+              type: number
+              description: Requests per second
+            responseTime:
+              type: object
+              properties:
+                p50:
+                  type: number
+                  description: Median response time (ms)
+                p95:
+                  type: number
+                p99:
+                  type: number
+            errorRate:
+              type: number
+              description: Percentage of requests with errors
+        queue:
+          type: object
+          properties:
+            waitingJobs:
+              type: integer
+            activeJobs:
+              type: integer
+            completedJobs:
+              type: integer
+            failedJobs:
+              type: integer
+        database:
+          type: object
+          properties:
+            activeConnections:
+              type: integer
+            idleConnections:
+              type: integer
+            maxConnections:
+              type: integer
+            queryTime:
+              type: object
+              properties:
+                avg:
+                  type: number
+                max:
+                  type: number
+        cache:
+          type: object
+          properties:
+            hitRate:
+              type: number
+              description: Cache hit rate percentage
+            memoryUsageMB:
+              type: number
+
+    ErrorLogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        level:
+          type: string
+          enum: [error, warn, info]
+        message:
+          type: string
+        correlationId:
+          type: string
+        tenantId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        errorCode:
+          type: string
+        stack:
+          type: string
+          description: Error stack trace
+        context:
+          type: object
+          description: Additional error context
+          additionalProperties: true
+
+    BackgroundJob:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [rentri-sync, email, mud-generation, backup]
+        status:
+          type: string
+          enum: [waiting, active, completed, failed, delayed]
+        data:
+          type: object
+          description: Job payload
+        progress:
+          type: integer
+          description: Progress percentage (0-100)
+        attempts:
+          type: integer
+          description: Number of attempts made
+        createdAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        failedReason:
+          type: string
+
+    TenantSummary:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        partitaIva:
+          type: string
+        ragioneSociale:
+          type: string
+        subscription:
+          type: object
+          properties:
+            tier:
+              type: string
+              enum: [TRIAL, PROFESSIONAL, ENTERPRISE]
+            status:
+              type: string
+              enum: [TRIAL, ACTIVE, EXPIRED, SUSPENDED]
+            endDate:
+              type: string
+              format: date
+        userCount:
+          type: integer
+        firCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    TenantDetail:
+      allOf:
+        - $ref: '#/components/schemas/TenantSummary'
+        - type: object
+          properties:
+            users:
+              type: array
+              items:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                    format: uuid
+                  fiscalCode:
+                    type: string
+                  fullName:
+                    type: string
+                  role:
+                    type: string
+                    enum: [ADMIN, OPERATOR, VIEWER]
+            usage:
+              type: object
+              properties:
+                firsThisMonth:
+                  type: integer
+                firsLimit:
+                  type: integer
+                storageUsedMB:
+                  type: number
+                lastActivityAt:
+                  type: string
+                  format: date-time
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Insufficient permissions (ADMIN role required)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: FORBIDDEN
+            message: Admin role required for this operation
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

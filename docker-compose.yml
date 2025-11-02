@@ -1,0 +1,141 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wasteflow-postgres
+    environment:
+      POSTGRES_USER: wasteflow
+      POSTGRES_PASSWORD: wasteflow123
+      POSTGRES_DB: wasteflow_dev
+      POSTGRES_MULTIPLE_DATABASES: keycloak
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wasteflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wasteflow-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: wasteflow-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wasteflow-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: wasteflow-keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: wasteflow
+      KC_DB_PASSWORD: wasteflow123
+      KC_HOSTNAME_STRICT: false
+      KC_HTTP_ENABLED: true
+      KC_HEALTH_ENABLED: true
+    command:
+      - start-dev
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - wasteflow-network
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: wasteflow-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8025"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - wasteflow-network
+
+  # LocalStack (S3 Mock) - Disabilitato temporaneamente per problemi volume
+  # Abilitare quando necessario per test storage
+  # localstack:
+  #   image: localstack/localstack:latest
+  #   container_name: wasteflow-localstack
+  #   environment:
+  #     SERVICES: s3
+  #     DATA_DIR: /tmp/localstack/data
+  #     AWS_DEFAULT_REGION: eu-south-1
+  #   ports:
+  #     - "4566:4566"
+  #   volumes:
+  #     - localstack_data:/tmp/localstack
+  #   networks:
+  #     - wasteflow-network
+
+  rentri-mock:
+    build:
+      context: ./tools/rentri-mock
+      dockerfile: Dockerfile
+    container_name: wasteflow-rentri-mock
+    ports:
+      - "3001:3000"
+    environment:
+      PORT: 3000
+      LOG_LEVEL: info
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - wasteflow-network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: wasteflow-pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@wasteflow.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - wasteflow-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  # localstack_data:  # Disabilitato con LocalStack
+  pgadmin_data:
+
+networks:
+  wasteflow-network:
+    driver: bridge

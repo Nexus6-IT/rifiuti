@@ -1,0 +1,115 @@
+/**
+ * Destinatario Prisma Repository Implementation
+ * Maps between Destinatario domain entity and Tenant Prisma model
+ */
+
+import { Injectable } from '@nestjs/common'
+import { PrismaService } from './prisma.service'
+import { DestinatarioRepository } from '../../domain/registry/repositories/destinatario.repository'
+import { Destinatario } from '../../domain/registry/entities/destinatario'
+import { PartitaIVA } from '../../domain/registry/value-objects/partita-iva'
+import { Indirizzo } from '../../domain/registry/value-objects/indirizzo'
+
+@Injectable()
+export class DestinatarioPrismaRepository implements DestinatarioRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async save(destinatario: Destinatario): Promise<void> {
+    const data = {
+      ragioneSociale: destinatario.ragioneSociale,
+      partitaIva: destinatario.partitaIVA.getValue(),
+      pec: destinatario.pec,
+      address: destinatario.sede.getFormatted(),
+      city: destinatario.sede.getCitta(),
+      province: destinatario.sede.getProvincia(),
+      postalCode: destinatario.sede.getCAP(),
+      updatedAt: new Date(),
+      // TODO: These fields don't exist in Tenant model - need to add them or use separate table
+      // numeroAutorizzazione: destinatario.numeroAutorizzazione,
+      // isTreatmentFacility: true,
+    }
+
+    await this.prisma.tenant.upsert({
+      where: { id: destinatario.id },
+      create: {
+        id: destinatario.id,
+        ...data,
+        createdAt: destinatario.createdAt,
+      },
+      update: data,
+    })
+  }
+
+  async findById(id: string): Promise<Destinatario | null> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id },
+      // TODO: Filter by isTreatmentFacility when that field is added to schema
+    })
+
+    if (!tenant) {
+      return null
+    }
+
+    return this.toDomain(tenant)
+  }
+
+  async findByTenantId(tenantId: string): Promise<Destinatario[]> {
+    const tenants = await this.prisma.tenant.findMany({
+      // TODO: Filter by isTreatmentFacility when that field is added to schema
+      // where: { isTreatmentFacility: true },
+    })
+
+    return tenants.map((t: any) => this.toDomain(t))
+  }
+
+  async findByPartitaIVA(partitaIVA: string): Promise<Destinatario | null> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { partitaIva: partitaIVA },
+      // TODO: Filter by isTreatmentFacility when that field is added to schema
+    })
+
+    if (!tenant) {
+      return null
+    }
+
+    return this.toDomain(tenant)
+  }
+
+  async findByNumeroAutorizzazione(numeroAutorizzazione: string): Promise<Destinatario | null> {
+    // TODO: numeroAutorizzazione field doesn't exist in Tenant model
+    // This method needs the field added to schema or a separate treatment_facilities table
+    return null
+  }
+
+  async delete(id: string): Promise<void> {
+    // TODO: deletedAt field doesn't exist in Tenant model - use soft delete or hard delete?
+    // For now, use hard delete
+    await this.prisma.tenant.delete({
+      where: { id },
+    })
+  }
+
+  private toDomain(tenant: any): Destinatario {
+    // Parse address - stored as formatted string in Tenant.address
+    const addressParts = tenant.address.split(',').map((s: string) => s.trim())
+
+    return Destinatario.reconstitute({
+      id: tenant.id,
+      ragioneSociale: tenant.ragioneSociale,
+      partitaIVA: PartitaIVA.create(tenant.partitaIva),
+      sede: Indirizzo.create({
+        via: addressParts[0] || 'N/A',
+        civico: addressParts[1] || 'N/A',
+        cap: tenant.postalCode || '00000',
+        citta: tenant.city || 'N/A',
+        provincia: tenant.province || 'XX',
+      }),
+      numeroAutorizzazione: 'N/A', // TODO: field doesn't exist in Tenant model
+      email: tenant.pec || '', // Using PEC as primary email
+      telefono: undefined, // TODO: phone field mapping
+      pec: tenant.pec || undefined,
+      createdAt: tenant.createdAt,
+      updatedAt: tenant.updatedAt,
+    })
+  }
+}

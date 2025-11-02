@@ -1,0 +1,3161 @@
+openapi: 3.0.3
+info:
+  title: WasteFlow Roles & Permissions API
+  description: |
+    Comprehensive roles and permissions management system for WasteFlow application.
+
+    This API supports:
+    - Multi-tenant role-based access control (RBAC)
+    - Attribute-based access control (ABAC) policies
+    - Consultant multi-tenant context switching
+    - Temporary permission grants with auto-expiration
+    - Comprehensive audit logging for regulatory compliance
+    - Custom role creation for enterprise clients
+    - Permission request workflows
+
+    ## Authentication
+    All endpoints require JWT Bearer authentication obtained via SPID/CIE login.
+    The JWT contains user identity, tenant context, and SPID fiscal code for audit traceability.
+
+    ## Multi-Tenancy
+    - Schema-per-tenant architecture with Row-Level Security (RLS)
+    - Tenant context extracted from JWT claims
+    - Consultants can switch tenant context via dedicated endpoints
+    - All operations scoped to current tenant unless explicitly cross-tenant (consultants only)
+
+    ## Rate Limiting
+    - Standard endpoints: 100 requests/minute per user
+    - Permission check endpoints: 1000 requests/minute per user (high-frequency caching)
+    - Audit log queries: 20 requests/minute per user (expensive operations)
+    - Bulk operations: 10 requests/minute per user
+
+    ## Compliance
+    - All audit logs retained for 10+ years per D.Lgs. 152/2006
+    - Immutable audit trail with cryptographic integrity
+    - SPID fiscal code correlation for regulatory traceability
+    - WCAG 2.1 Level AA compliant responses
+
+  version: 1.0.0
+  contact:
+    name: WasteFlow API Support
+    email: api-support@wasteflow.it
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.wasteflow.it/v1
+    description: Production server
+  - url: https://staging-api.wasteflow.it/v1
+    description: Staging server
+  - url: http://localhost:3000/v1
+    description: Local development server
+
+tags:
+  - name: Roles
+    description: Role management operations (CRUD, assignment)
+  - name: Permissions
+    description: Permission query and validation operations
+  - name: Custom Roles
+    description: Enterprise custom role creation and management
+  - name: Temporary Grants
+    description: Temporary permission elevation workflow
+  - name: Audit Logs
+    description: Compliance audit trail queries
+  - name: Consultant Context
+    description: Multi-tenant context switching for consultants
+  - name: Permission Requests
+    description: Self-service permission request workflow
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ===========================
+  # ROLE MANAGEMENT
+  # ===========================
+
+  /roles:
+    get:
+      tags: [Roles]
+      summary: List all roles for current tenant
+      description: |
+        Returns all available roles including system-defined and custom roles.
+        System roles (Admin, Operator, Viewer, etc.) cannot be modified.
+        Custom roles are tenant-specific and can be edited/deleted if not assigned.
+      operationId: listRoles
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortByParam'
+        - $ref: '#/components/parameters/SortOrderParam'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [system, custom, all]
+            default: all
+          description: Filter by role type
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search role name or description (case-insensitive)
+      responses:
+        '200':
+          description: Roles retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRolesResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+      x-rate-limit: 100/minute
+
+    post:
+      tags: [Custom Roles]
+      summary: Create custom role
+      description: |
+        Creates a new custom role with granular permission matrix.
+        Only available to Super Admin users.
+        Enterprise tier feature - requires appropriate subscription.
+      operationId: createCustomRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+      responses:
+        '201':
+          description: Custom role created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Forbidden - requires Super Admin role or Enterprise tier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: FORBIDDEN
+                message: Custom role creation requires Super Admin role and Enterprise tier subscription
+                statusCode: 403
+                details:
+                  requiredRole: SUPER_ADMIN
+                  requiredTier: ENTERPRISE
+                  currentTier: STANDARD
+        '409':
+          description: Conflict - role name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+      x-rate-limit: 10/minute
+
+  /roles/{roleId}:
+    get:
+      tags: [Roles]
+      summary: Get role details
+      description: |
+        Returns complete role information including:
+        - Permission matrix
+        - Number of assigned users
+        - Creation/modification history
+        - Preview of capabilities
+      operationId: getRoleById
+      parameters:
+        - $ref: '#/components/parameters/RoleIdParam'
+      responses:
+        '200':
+          description: Role details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleDetailResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 100/minute
+
+    patch:
+      tags: [Custom Roles]
+      summary: Update custom role
+      description: |
+        Updates custom role permissions or metadata.
+        System roles cannot be modified.
+        Permission changes affect all users with this role immediately.
+        Audit log entry created with before/after snapshots.
+      operationId: updateCustomRole
+      parameters:
+        - $ref: '#/components/parameters/RoleIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+      responses:
+        '200':
+          description: Role updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Forbidden - cannot modify system roles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 10/minute
+
+    delete:
+      tags: [Custom Roles]
+      summary: Delete custom role
+      description: |
+        Deletes custom role if no users are currently assigned.
+        System roles cannot be deleted.
+        If users are assigned, returns error with reassignment guidance.
+      operationId: deleteCustomRole
+      parameters:
+        - $ref: '#/components/parameters/RoleIdParam'
+      responses:
+        '204':
+          description: Role deleted successfully
+        '400':
+          description: Cannot delete - users still assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: ROLE_IN_USE
+                message: This role is assigned to 12 users. Reassign them first before deleting.
+                statusCode: 400
+                details:
+                  assignedUserCount: 12
+                  assignedUserIds: ["user-1", "user-2", "..."]
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 10/minute
+
+  /roles/{roleId}/permissions:
+    get:
+      tags: [Roles]
+      summary: Get role permissions matrix
+      description: |
+        Returns detailed permission matrix for role organized by module.
+        Useful for permission preview before role assignment.
+      operationId: getRolePermissions
+      parameters:
+        - $ref: '#/components/parameters/RoleIdParam'
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [module, action, scope]
+            default: module
+          description: How to group permissions in response
+      responses:
+        '200':
+          description: Permission matrix retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionMatrixResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 100/minute
+
+  /roles/{roleId}/users:
+    get:
+      tags: [Roles]
+      summary: List users with specific role
+      description: Returns paginated list of users currently assigned to this role
+      operationId: listUsersWithRole
+      parameters:
+        - $ref: '#/components/parameters/RoleIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUserRolesResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 100/minute
+
+  # ===========================
+  # USER ROLE ASSIGNMENT
+  # ===========================
+
+  /users/{userId}/roles:
+    get:
+      tags: [Roles]
+      summary: Get user's assigned roles
+      description: |
+        Returns all roles assigned to user including:
+        - Active roles
+        - Temporary role elevations
+        - Facility-scoped roles
+        - Expiration timestamps
+      operationId: getUserRoles
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+        - name: includeExpired
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include expired role assignments in results
+      responses:
+        '200':
+          description: User roles retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRolesResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 100/minute
+
+    post:
+      tags: [Roles]
+      summary: Assign role to user
+      description: |
+        Assigns one or more roles to user within current tenant.
+        Supports facility-scoped roles for large enterprises.
+        Creates audit log entry with assignment justification.
+        Invalidates user's permission cache immediately.
+      operationId: assignRoleToUser
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignRoleRequest'
+      responses:
+        '201':
+          description: Role assigned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRoleAssignmentResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Conflict - role already assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-rate-limit: 10/minute
+
+  /users/{userId}/roles/{roleId}:
+    delete:
+      tags: [Roles]
+      summary: Revoke role from user
+      description: |
+        Removes role assignment from user.
+        Prevents removal if this would leave tenant with no administrators.
+        Creates audit log entry with revocation reason.
+        Invalidates user's permission cache immediately.
+      operationId: revokeRoleFromUser
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+        - $ref: '#/components/parameters/RoleIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  minLength: 10
+                  maxLength: 500
+                  description: Reason for revocation (mandatory for audit)
+              required: [reason]
+      responses:
+        '204':
+          description: Role revoked successfully
+        '400':
+          description: Cannot revoke - would leave tenant without admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: LAST_ADMIN_PROTECTION
+                message: At least one administrator is required per organization
+                statusCode: 400
+                details:
+                  currentAdminCount: 1
+                  requiredMinimum: 1
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 10/minute
+
+  /users/bulk-assign-roles:
+    post:
+      tags: [Roles]
+      summary: Bulk assign roles to multiple users
+      description: |
+        Assigns roles to up to 1000 users in single operation.
+        Processes assignments asynchronously via BullMQ.
+        Returns job ID for tracking progress.
+        Admin receives notification on completion.
+      operationId: bulkAssignRoles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkRoleAssignmentRequest'
+      responses:
+        '202':
+          description: Bulk assignment job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncJobResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-rate-limit: 10/minute
+
+  /jobs/{jobId}/status:
+    get:
+      tags: [Roles]
+      summary: Get bulk operation job status
+      description: Returns status of asynchronous bulk role assignment job
+      operationId: getJobStatus
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatusResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 100/minute
+
+  # ===========================
+  # PERMISSION QUERIES
+  # ===========================
+
+  /permissions/my-permissions:
+    get:
+      tags: [Permissions]
+      summary: Get current user's effective permissions
+      description: |
+        Returns union of all permissions granted to current user via their role(s).
+        Includes temporary elevations and facility-scoped restrictions.
+        Grouped by module for clear UI display.
+        Cached aggressively for performance (5 minute TTL).
+      operationId: getMyPermissions
+      parameters:
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [module, action, scope]
+            default: module
+        - name: includeInherited
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: Include permissions inherited from roles
+      responses:
+        '200':
+          description: Permissions retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyPermissionsResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      x-rate-limit: 1000/minute
+
+  /permissions/check:
+    post:
+      tags: [Permissions]
+      summary: Check if user has specific permission
+      description: |
+        Validates whether current user can perform action on resource.
+        Used by frontend to show/hide UI elements.
+        Extremely high-frequency endpoint - optimized caching (Redis).
+        Response time: <10ms at 99th percentile.
+      operationId: checkPermission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionCheckRequest'
+      responses:
+        '200':
+          description: Permission check completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionCheckResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      x-rate-limit: 1000/minute
+
+  /permissions/batch-check:
+    post:
+      tags: [Permissions]
+      summary: Batch check multiple permissions
+      description: |
+        Checks up to 50 permissions in single request.
+        More efficient than multiple individual checks.
+        Returns map of permission -> allowed boolean.
+      operationId: batchCheckPermissions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchPermissionCheckRequest'
+      responses:
+        '200':
+          description: Batch permission check completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchPermissionCheckResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      x-rate-limit: 1000/minute
+
+  /permissions/preview-role:
+    post:
+      tags: [Permissions]
+      summary: Preview permissions before role assignment
+      description: |
+        Returns what permissions user would have if assigned specific role(s).
+        Used by admin UI to show preview before confirming assignment.
+        Does not actually assign roles or modify permissions.
+      operationId: previewRolePermissions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                roleIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  minItems: 1
+                  maxItems: 10
+                facilityIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: Optional facility scope restriction
+              required: [userId, roleIds]
+      responses:
+        '200':
+          description: Permission preview generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionPreviewResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-rate-limit: 100/minute
+
+  # ===========================
+  # TEMPORARY PERMISSION GRANTS
+  # ===========================
+
+  /temporary-grants/request:
+    post:
+      tags: [Temporary Grants]
+      summary: Request temporary permission elevation
+      description: |
+        User requests temporary access to restricted permission.
+        Requires business justification (min 10 characters).
+        Creates pending request that admin must approve.
+        Notification sent to all administrators for approval.
+      operationId: requestTemporaryPermission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemporaryGrantRequest'
+      responses:
+        '201':
+          description: Permission request created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryGrantResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      x-rate-limit: 10/minute
+
+  /temporary-grants:
+    get:
+      tags: [Temporary Grants]
+      summary: List temporary permission grants
+      description: |
+        Lists temporary permission elevation requests and grants.
+        Regular users see only their own requests.
+        Admins see all pending requests requiring approval.
+      operationId: listTemporaryGrants
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, denied, expired, revoked, all]
+            default: all
+        - name: userId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by specific user (admin only)
+      responses:
+        '200':
+          description: Grants retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTemporaryGrantsResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      x-rate-limit: 100/minute
+
+  /temporary-grants/{grantId}/approve:
+    post:
+      tags: [Temporary Grants]
+      summary: Approve temporary permission request
+      description: |
+        Admin approves pending temporary permission elevation.
+        Grants permission immediately with specified duration.
+        User receives notification with expiration timestamp.
+        Background job auto-revokes on expiration.
+      operationId: approveTemporaryGrant
+      parameters:
+        - $ref: '#/components/parameters/GrantIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                durationHours:
+                  type: integer
+                  minimum: 1
+                  maximum: 168
+                  default: 8
+                  description: Duration in hours (max 7 days)
+                adminNotes:
+                  type: string
+                  maxLength: 500
+                  description: Optional notes from approving admin
+      responses:
+        '200':
+          description: Grant approved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryGrantResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Grant already processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-rate-limit: 10/minute
+
+  /temporary-grants/{grantId}/deny:
+    post:
+      tags: [Temporary Grants]
+      summary: Deny temporary permission request
+      description: Admin denies pending temporary permission elevation request
+      operationId: denyTemporaryGrant
+      parameters:
+        - $ref: '#/components/parameters/GrantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  minLength: 10
+                  maxLength: 500
+                  description: Reason for denial (shown to requesting user)
+              required: [reason]
+      responses:
+        '200':
+          description: Grant denied successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryGrantResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 10/minute
+
+  /temporary-grants/{grantId}/revoke:
+    post:
+      tags: [Temporary Grants]
+      summary: Revoke active temporary permission
+      description: |
+        Immediately revokes active temporary permission grant.
+        User receives notification of early revocation.
+        Requires justification for audit trail.
+      operationId: revokeTemporaryGrant
+      parameters:
+        - $ref: '#/components/parameters/GrantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  minLength: 10
+                  maxLength: 500
+                  description: Reason for early revocation
+              required: [reason]
+      responses:
+        '200':
+          description: Grant revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryGrantResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 10/minute
+
+  # ===========================
+  # AUDIT LOGS
+  # ===========================
+
+  /audit/permissions:
+    get:
+      tags: [Audit Logs]
+      summary: Query permission audit logs
+      description: |
+        Returns immutable audit trail of permission checks and changes.
+        Supports complex filtering for compliance reporting.
+        Expensive operation - rate limited to 20 requests/minute.
+        Results can be exported to CSV for regulatory submissions.
+      operationId: queryPermissionAuditLog
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: userId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by specific user
+        - name: action
+          in: query
+          schema:
+            type: string
+          description: Filter by action attempted (e.g., fir:create)
+        - name: decision
+          in: query
+          schema:
+            type: string
+            enum: [ALLOW, DENY, all]
+            default: all
+          description: Filter by authorization decision
+        - name: resourceType
+          in: query
+          schema:
+            type: string
+          description: Filter by resource type (fir, facility, report, etc.)
+        - name: resourceId
+          in: query
+          schema:
+            type: string
+          description: Filter by specific resource ID
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start of time range (ISO 8601)
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End of time range (ISO 8601)
+        - name: fiscalCode
+          in: query
+          schema:
+            type: string
+          description: Filter by SPID fiscal code
+      responses:
+        '200':
+          description: Audit logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAuditLogResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-rate-limit: 20/minute
+
+  /audit/permissions/export:
+    post:
+      tags: [Audit Logs]
+      summary: Export audit logs to CSV
+      description: |
+        Generates CSV export of audit logs matching query criteria.
+        Maximum 50,000 records per export.
+        Async job - returns job ID for download link retrieval.
+        Export retained for 7 days then auto-deleted.
+      operationId: exportAuditLog
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditExportRequest'
+      responses:
+        '202':
+          description: Export job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncJobResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-rate-limit: 5/minute
+
+  /audit/role-changes:
+    get:
+      tags: [Audit Logs]
+      summary: Query role/permission change history
+      description: |
+        Returns audit trail of all role and permission modifications.
+        Includes before/after snapshots for compliance reconstruction.
+        Enables historical query: "Who could access X at time Y?"
+      operationId: queryRoleChangeHistory
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: entityType
+          in: query
+          schema:
+            type: string
+            enum: [Role, UserRole, RolePermission, all]
+            default: all
+        - name: changeType
+          in: query
+          schema:
+            type: string
+            enum: [CREATE, UPDATE, DELETE, ASSIGN, REVOKE, all]
+            default: all
+        - name: changedBy
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: User who made the change
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Role change history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRoleChangeHistoryResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-rate-limit: 20/minute
+
+  /audit/permissions/reconstruct:
+    post:
+      tags: [Audit Logs]
+      summary: Reconstruct historical permissions
+      description: |
+        Answers: "Who could access resource X at timestamp Y?"
+        Reconstructs permission state from versioned role assignment history.
+        Critical for compliance investigations and forensic analysis.
+      operationId: reconstructHistoricalPermissions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resourceType:
+                  type: string
+                  description: Type of resource (fir, facility, etc.)
+                resourceId:
+                  type: string
+                  description: Specific resource ID
+                timestamp:
+                  type: string
+                  format: date-time
+                  description: Point in time to reconstruct (ISO 8601)
+                action:
+                  type: string
+                  description: Action to check (create, read, update, delete, etc.)
+              required: [resourceType, resourceId, timestamp, action]
+      responses:
+        '200':
+          description: Historical permissions reconstructed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoricalPermissionsResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-rate-limit: 10/minute
+
+  # ===========================
+  # CONSULTANT MULTI-TENANT CONTEXT
+  # ===========================
+
+  /consultant/tenants:
+    get:
+      tags: [Consultant Context]
+      summary: List all tenant contexts for consultant
+      description: |
+        Returns all tenant associations for current consultant user.
+        Each tenant shows consultant's role within that tenant.
+        Regular (non-consultant) users receive empty array.
+      operationId: listConsultantTenants
+      responses:
+        '200':
+          description: Consultant tenants retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultantTenantsResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      x-rate-limit: 100/minute
+
+  /consultant/switch-tenant:
+    post:
+      tags: [Consultant Context]
+      summary: Switch active tenant context
+      description: |
+        Switches consultant's active tenant context.
+        Issues new JWT with updated tenant claim.
+        Frontend must reload to reflect new context.
+        All subsequent API calls scoped to new tenant.
+        Response time: <2 seconds at 95th percentile.
+      operationId: switchTenantContext
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenantId:
+                  type: string
+                  format: uuid
+                  description: Target tenant ID to switch to
+              required: [tenantId]
+      responses:
+        '200':
+          description: Tenant context switched successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    description: New JWT with updated tenant context
+                  refreshToken:
+                    type: string
+                    description: New refresh token
+                  expiresIn:
+                    type: integer
+                    description: Token expiration in seconds
+                  tenant:
+                    $ref: '#/components/schemas/TenantContextInfo'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: User not associated with target tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-rate-limit: 100/minute
+
+  /consultant/dashboard:
+    get:
+      tags: [Consultant Context]
+      summary: Get aggregated cross-tenant dashboard
+      description: |
+        Returns aggregated KPIs across all consultant's managed tenants:
+        - Total pending FIRs by client
+        - Upcoming MUD deadlines sorted by urgency
+        - RENTRI sync failures color-coded by severity
+        - Critical alerts requiring immediate attention
+
+        Consultant-only endpoint - returns 403 for regular users.
+      operationId: getConsultantAggregatedDashboard
+      parameters:
+        - name: includeClients
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+          description: Filter to specific tenant IDs (default all)
+        - name: urgencyLevel
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low, all]
+            default: all
+          description: Filter alerts by urgency
+      responses:
+        '200':
+          description: Aggregated dashboard retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultantDashboardResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Endpoint only available to consultant users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-rate-limit: 100/minute
+
+  # ===========================
+  # PERMISSION REQUESTS WORKFLOW
+  # ===========================
+
+  /permission-requests:
+    get:
+      tags: [Permission Requests]
+      summary: List permission change requests
+      description: |
+        Lists pending and historical permission change requests.
+        Users see only their own requests.
+        Admins see all requests requiring review.
+      operationId: listPermissionRequests
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, denied, cancelled, all]
+            default: pending
+        - name: requestType
+          in: query
+          schema:
+            type: string
+            enum: [role_assignment, temporary_elevation, role_change, all]
+            default: all
+      responses:
+        '200':
+          description: Permission requests retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPermissionRequestsResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      x-rate-limit: 100/minute
+
+    post:
+      tags: [Permission Requests]
+      summary: Create permission change request
+      description: |
+        User creates request for role assignment or permission change.
+        Requires business justification.
+        Admins notified for approval.
+      operationId: createPermissionRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePermissionRequest'
+      responses:
+        '201':
+          description: Permission request created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionRequestResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      x-rate-limit: 10/minute
+
+  /permission-requests/{requestId}/approve:
+    post:
+      tags: [Permission Requests]
+      summary: Approve permission request
+      description: Admin approves pending permission change request
+      operationId: approvePermissionRequest
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                adminNotes:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Request approved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionRequestResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 10/minute
+
+  /permission-requests/{requestId}/deny:
+    post:
+      tags: [Permission Requests]
+      summary: Deny permission request
+      description: Admin denies pending permission change request
+      operationId: denyPermissionRequest
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  minLength: 10
+                  maxLength: 500
+              required: [reason]
+      responses:
+        '200':
+          description: Request denied successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionRequestResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 10/minute
+
+  # ===========================
+  # ADMIN VIEW-AS-USER
+  # ===========================
+
+  /admin/view-as-user:
+    post:
+      tags: [Roles]
+      summary: Preview interface as another user
+      description: |
+        Admin can preview how interface appears to specific user.
+        Returns user's effective permissions without actually switching identity.
+        Audit log records admin using view-as-user feature.
+      operationId: viewAsUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                  description: User to preview as
+              required: [userId]
+      responses:
+        '200':
+          description: User preview context generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreviewResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-rate-limit: 100/minute
+
+# ===========================
+# COMPONENTS
+# ===========================
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained via SPID/CIE authentication.
+        Include in Authorization header: `Bearer <token>`
+
+        JWT contains claims:
+        - userId: User unique identifier
+        - tenantId: Current tenant context
+        - fiscalCode: SPID fiscal code for audit
+        - roles: User's role IDs
+        - permissions: Cached permission set
+        - exp: Token expiration timestamp
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number for pagination
+
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+      description: Items per page
+
+    SortByParam:
+      name: sortBy
+      in: query
+      schema:
+        type: string
+        default: createdAt
+      description: Field to sort by
+
+    SortOrderParam:
+      name: sortOrder
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+      description: Sort order
+
+    RoleIdParam:
+      name: roleId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Role unique identifier
+
+    UserIdParam:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: User unique identifier
+
+    GrantIdParam:
+      name: grantId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Temporary grant unique identifier
+
+  schemas:
+    # ===========================
+    # ROLE SCHEMAS
+    # ===========================
+
+    RoleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Role unique identifier
+        name:
+          type: string
+          description: Role name (unique per tenant)
+          example: Site Manager Milano
+        description:
+          type: string
+          description: Human-readable role description
+          example: Manages waste operations for Milano facility
+        isSystemRole:
+          type: boolean
+          description: System role (cannot be modified/deleted)
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Array of permission strings (format resource:action:scope)
+          example: ["fir:create:facility", "fir:read:all", "registry:write:facility"]
+        assignedUserCount:
+          type: integer
+          description: Number of users currently with this role
+        facilityScoped:
+          type: boolean
+          description: Whether role can be facility-scoped
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+          description: User who created this custom role
+      required: [id, name, description, isSystemRole, permissions, assignedUserCount, createdAt]
+
+    RoleDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/RoleResponse'
+        - type: object
+          properties:
+            permissionsByModule:
+              type: object
+              description: Permissions organized by module for clear display
+              additionalProperties:
+                type: object
+                properties:
+                  module:
+                    type: string
+                  permissions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PermissionDetail'
+              example:
+                fir:
+                  module: Formulari Rifiuti (FIR)
+                  permissions:
+                    - resource: fir
+                      action: create
+                      scope: facility
+                      description: Create new FIR for assigned facilities
+                registry:
+                  module: Registry Management
+                  permissions:
+                    - resource: registry
+                      action: read
+                      scope: all
+                      description: View all registry entries
+            assignedUsers:
+              type: array
+              items:
+                $ref: '#/components/schemas/UserRoleSummary'
+              description: Summary of users with this role (first 10)
+            changeHistory:
+              type: array
+              items:
+                $ref: '#/components/schemas/RoleChangeRecord'
+              description: Recent modification history (last 10 changes)
+
+    PermissionDetail:
+      type: object
+      properties:
+        resource:
+          type: string
+          description: Resource type
+          example: fir
+        action:
+          type: string
+          description: Action on resource
+          enum: [create, read, update, delete, approve, sign, export]
+        scope:
+          type: string
+          description: Permission scope
+          enum: [own, facility, all]
+        description:
+          type: string
+          description: Human-readable permission description (Italian)
+        sensitive:
+          type: boolean
+          description: High-risk permission requiring extra scrutiny
+      required: [resource, action, scope, description]
+
+    UserRoleSummary:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        facilityIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Facility scope (if applicable)
+        assignedAt:
+          type: string
+          format: date-time
+        assignedBy:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    RoleChangeRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        changeType:
+          type: string
+          enum: [CREATE, UPDATE, DELETE, ASSIGN, REVOKE]
+        changedBy:
+          type: string
+          format: uuid
+        changedByName:
+          type: string
+        reason:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        beforeSnapshot:
+          type: object
+          description: State before change (JSON)
+        afterSnapshot:
+          type: object
+          description: State after change (JSON)
+
+    CreateRoleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+          description: Unique role name within tenant
+          example: Site Manager Milano
+        description:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Clear description of role purpose
+          example: Manages waste operations for Milano facility with full FIR and registry access
+        permissions:
+          type: array
+          items:
+            type: string
+            pattern: '^[a-z_]+:(create|read|update|delete|approve|sign|export):(own|facility|all)$'
+          minItems: 1
+          maxItems: 100
+          description: Array of permission strings
+          example: ["fir:create:facility", "fir:read:all", "registry:write:facility"]
+        facilityScoped:
+          type: boolean
+          default: false
+          description: Whether this role can be facility-scoped
+      required: [name, description, permissions]
+
+    UpdateRoleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 10
+          maxLength: 500
+        permissions:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Reason for modification (mandatory for audit)
+      required: [reason]
+
+    PaginatedRolesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+      required: [items, total, page, limit, totalPages]
+
+    # ===========================
+    # USER ROLE ASSIGNMENT SCHEMAS
+    # ===========================
+
+    UserRolesResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserRoleAssignment'
+        effectivePermissions:
+          type: array
+          items:
+            type: string
+          description: Union of all permissions from assigned roles
+        temporaryElevations:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemporaryGrantSummary'
+          description: Active temporary permission grants
+      required: [userId, roles, effectivePermissions]
+
+    UserRoleAssignment:
+      type: object
+      properties:
+        roleId:
+          type: string
+          format: uuid
+        roleName:
+          type: string
+        roleDescription:
+          type: string
+        facilityIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Facility scope (empty array = all facilities)
+        assignedAt:
+          type: string
+          format: date-time
+        assignedBy:
+          type: string
+          format: uuid
+        assignedByName:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Role expiration (null = permanent)
+        isDelegated:
+          type: boolean
+          description: Whether this is delegated role from another user
+        delegationReason:
+          type: string
+          nullable: true
+      required: [roleId, roleName, roleDescription, assignedAt, assignedBy]
+
+    AssignRoleRequest:
+      type: object
+      properties:
+        roleId:
+          type: string
+          format: uuid
+          description: Role to assign
+        facilityIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Optional facility scope restriction
+        expiresAt:
+          type: string
+          format: date-time
+          description: Optional expiration timestamp
+        reason:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Reason for assignment (mandatory for audit)
+      required: [roleId, reason]
+
+    UserRoleAssignmentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Assignment unique identifier
+        userId:
+          type: string
+          format: uuid
+        roleId:
+          type: string
+          format: uuid
+        roleName:
+          type: string
+        facilityIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        assignedAt:
+          type: string
+          format: date-time
+        assignedBy:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        permissionsInvalidated:
+          type: boolean
+          description: Whether user's permission cache was invalidated
+      required: [id, userId, roleId, roleName, assignedAt, assignedBy]
+
+    BulkRoleAssignmentRequest:
+      type: object
+      properties:
+        userIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          maxItems: 1000
+          description: Users to assign role (max 1000)
+        roleId:
+          type: string
+          format: uuid
+        facilityIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Optional facility scope
+        reason:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Reason for bulk assignment
+      required: [userIds, roleId, reason]
+
+    PaginatedUserRolesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserRoleAssignment'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+      required: [items, total, page, limit, totalPages]
+
+    # ===========================
+    # PERMISSION SCHEMAS
+    # ===========================
+
+    MyPermissionsResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        roles:
+          type: array
+          items:
+            type: string
+          description: Names of assigned roles
+        permissionsByModule:
+          type: object
+          description: Permissions organized by module
+          additionalProperties:
+            type: object
+            properties:
+              module:
+                type: string
+              permissions:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PermissionDetail'
+        allPermissions:
+          type: array
+          items:
+            type: string
+          description: Flat array of all permission strings
+        facilityScope:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Facility IDs user has access to (empty = all)
+        temporaryElevations:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemporaryGrantSummary'
+        lastSynced:
+          type: string
+          format: date-time
+          description: When permissions were last synced from server
+      required: [userId, tenantId, roles, permissionsByModule, allPermissions]
+
+    PermissionCheckRequest:
+      type: object
+      properties:
+        permission:
+          type: string
+          pattern: '^[a-z_]+:(create|read|update|delete|approve|sign|export):(own|facility|all)$'
+          description: Permission string to check
+          example: fir:delete:own
+        resourceId:
+          type: string
+          format: uuid
+          description: Specific resource ID (for resource-level checks)
+        context:
+          type: object
+          description: Additional context for ABAC policy evaluation
+          additionalProperties: true
+          example:
+            facilityId: facility-uuid-123
+            firStatus: DRAFT
+            ownerUserId: user-uuid-456
+      required: [permission]
+
+    PermissionCheckResponse:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+          description: Whether permission is granted
+        permission:
+          type: string
+          description: Permission that was checked
+        reason:
+          type: string
+          description: Human-readable explanation of decision
+          example: User has OPERATOR role which grants fir:create:facility permission
+        denialDetails:
+          type: object
+          nullable: true
+          description: Details if permission denied
+          properties:
+            currentRole:
+              type: string
+            requiredPermission:
+              type: string
+            requiredRole:
+              type: string
+            contactAdministrators:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  email:
+                    type: string
+                    format: email
+            alternativeActions:
+              type: array
+              items:
+                type: string
+              description: Suggested alternative actions user can take
+        evaluatedPolicies:
+          type: array
+          items:
+            type: string
+          description: ABAC policies evaluated (if applicable)
+        cachedResult:
+          type: boolean
+          description: Whether result came from cache
+        evaluationTime:
+          type: number
+          format: float
+          description: Evaluation time in milliseconds
+      required: [allowed, permission, reason]
+
+    BatchPermissionCheckRequest:
+      type: object
+      properties:
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Client-provided ID to match request to response
+              permission:
+                type: string
+              resourceId:
+                type: string
+                format: uuid
+              context:
+                type: object
+          minItems: 1
+          maxItems: 50
+          description: Permissions to check (max 50)
+      required: [checks]
+
+    BatchPermissionCheckResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Client-provided ID from request
+              allowed:
+                type: boolean
+              permission:
+                type: string
+              reason:
+                type: string
+        evaluationTime:
+          type: number
+          format: float
+          description: Total evaluation time in milliseconds
+      required: [results]
+
+    PermissionMatrixResponse:
+      type: object
+      properties:
+        roleId:
+          type: string
+          format: uuid
+        roleName:
+          type: string
+        permissionsByModule:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              module:
+                type: string
+              permissions:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PermissionDetail'
+        totalPermissions:
+          type: integer
+        sensitivePermissions:
+          type: array
+          items:
+            type: string
+          description: High-risk permissions in this role
+      required: [roleId, roleName, permissionsByModule, totalPermissions]
+
+    PermissionPreviewResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        userName:
+          type: string
+        currentRoles:
+          type: array
+          items:
+            type: string
+          description: User's current roles
+        previewRoles:
+          type: array
+          items:
+            type: string
+          description: Roles being previewed
+        currentPermissions:
+          type: array
+          items:
+            type: string
+          description: User's current permissions
+        previewPermissions:
+          type: array
+          items:
+            type: string
+          description: Permissions user would have with preview roles
+        addedPermissions:
+          type: array
+          items:
+            type: string
+          description: New permissions gained
+        removedPermissions:
+          type: array
+          items:
+            type: string
+          description: Permissions lost
+        sensitiveChanges:
+          type: array
+          items:
+            type: string
+          description: High-risk permission changes
+      required: [userId, userName, currentRoles, previewRoles, currentPermissions, previewPermissions]
+
+    # ===========================
+    # TEMPORARY GRANT SCHEMAS
+    # ===========================
+
+    TemporaryGrantRequest:
+      type: object
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+            pattern: '^[a-z_]+:(create|read|update|delete|approve|sign|export):(own|facility|all)$'
+          minItems: 1
+          maxItems: 10
+          description: Permissions requested (max 10)
+        justification:
+          type: string
+          minLength: 10
+          maxLength: 1000
+          description: Business justification for temporary access
+        durationHours:
+          type: integer
+          minimum: 1
+          maximum: 168
+          default: 8
+          description: Requested duration in hours (max 7 days)
+        context:
+          type: object
+          description: Context that triggered request
+          properties:
+            attemptedAction:
+              type: string
+            resourceType:
+              type: string
+            resourceId:
+              type: string
+              format: uuid
+      required: [permissions, justification]
+
+    TemporaryGrantResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        userName:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        justification:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, denied, expired, revoked]
+        requestedAt:
+          type: string
+          format: date-time
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        reviewedBy:
+          type: string
+          format: uuid
+          nullable: true
+        reviewedByName:
+          type: string
+          nullable: true
+        startTime:
+          type: string
+          format: date-time
+          nullable: true
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        adminNotes:
+          type: string
+          nullable: true
+        denialReason:
+          type: string
+          nullable: true
+        revocationReason:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+          description: Whether grant is currently in effect
+      required: [id, userId, userName, permissions, justification, status, requestedAt]
+
+    TemporaryGrantSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        permissions:
+          type: array
+          items:
+            type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        remainingMinutes:
+          type: integer
+          description: Minutes until expiration
+        justification:
+          type: string
+      required: [id, permissions, startTime, endTime]
+
+    PaginatedTemporaryGrantsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemporaryGrantResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+        pendingCount:
+          type: integer
+          description: Count of grants pending admin approval
+      required: [items, total, page, limit, totalPages]
+
+    # ===========================
+    # AUDIT LOG SCHEMAS
+    # ===========================
+
+    PermissionAuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        userName:
+          type: string
+        fiscalCode:
+          type: string
+          description: SPID fiscal code for regulatory traceability
+        action:
+          type: string
+          description: Action attempted
+          example: fir:delete
+        resourceType:
+          type: string
+          description: Type of resource
+          example: fir
+        resourceId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Specific resource ID
+        decision:
+          type: string
+          enum: [ALLOW, DENY]
+        reason:
+          type: string
+          description: Reason for decision
+        evaluatedPolicies:
+          type: array
+          items:
+            type: string
+          description: ABAC policies evaluated
+        contextAttributes:
+          type: object
+          description: Context at time of check
+          properties:
+            ipAddress:
+              type: string
+            userAgent:
+              type: string
+            deviceType:
+              type: string
+            sessionId:
+              type: string
+              format: uuid
+            facilityId:
+              type: string
+              format: uuid
+        consultantContext:
+          type: object
+          nullable: true
+          description: Consultant context if applicable
+          properties:
+            isConsultant:
+              type: boolean
+            consultantFirm:
+              type: string
+            actingForTenant:
+              type: string
+              format: uuid
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp with millisecond precision
+        evaluationTimeMs:
+          type: number
+          format: float
+          description: Decision evaluation time in milliseconds
+      required: [id, tenantId, userId, userName, fiscalCode, action, decision, reason, timestamp]
+
+    PaginatedAuditLogResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PermissionAuditLogEntry'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+        filterSummary:
+          type: object
+          description: Summary of applied filters
+          properties:
+            allowCount:
+              type: integer
+            denyCount:
+              type: integer
+            uniqueUsers:
+              type: integer
+            dateRange:
+              type: object
+              properties:
+                from:
+                  type: string
+                  format: date-time
+                to:
+                  type: string
+                  format: date-time
+      required: [items, total, page, limit, totalPages]
+
+    AuditExportRequest:
+      type: object
+      properties:
+        filters:
+          type: object
+          description: Same filter parameters as query endpoint
+          properties:
+            userId:
+              type: string
+              format: uuid
+            action:
+              type: string
+            decision:
+              type: string
+              enum: [ALLOW, DENY]
+            resourceType:
+              type: string
+            resourceId:
+              type: string
+            dateFrom:
+              type: string
+              format: date-time
+            dateTo:
+              type: string
+              format: date-time
+            fiscalCode:
+              type: string
+        format:
+          type: string
+          enum: [csv, json]
+          default: csv
+        includeHeaders:
+          type: boolean
+          default: true
+        maxRecords:
+          type: integer
+          minimum: 1
+          maximum: 50000
+          default: 10000
+          description: Maximum records to export (max 50k)
+      required: [filters]
+
+    RoleChangeHistoryEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        entityType:
+          type: string
+          enum: [Role, UserRole, RolePermission]
+        entityId:
+          type: string
+          format: uuid
+        changeType:
+          type: string
+          enum: [CREATE, UPDATE, DELETE, ASSIGN, REVOKE]
+        changedBy:
+          type: string
+          format: uuid
+        changedByName:
+          type: string
+        changedByFiscalCode:
+          type: string
+        reason:
+          type: string
+        beforeSnapshot:
+          type: object
+          description: Entity state before change (JSON)
+        afterSnapshot:
+          type: object
+          description: Entity state after change (JSON)
+        timestamp:
+          type: string
+          format: date-time
+        affectedUsers:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Users affected by this change
+      required: [id, entityType, entityId, changeType, changedBy, timestamp]
+
+    PaginatedRoleChangeHistoryResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleChangeHistoryEntry'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+      required: [items, total, page, limit, totalPages]
+
+    HistoricalPermissionsResponse:
+      type: object
+      properties:
+        resourceType:
+          type: string
+        resourceId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        action:
+          type: string
+        usersWithAccess:
+          type: array
+          items:
+            type: object
+            properties:
+              userId:
+                type: string
+                format: uuid
+              userName:
+                type: string
+              fiscalCode:
+                type: string
+              roles:
+                type: array
+                items:
+                  type: string
+              grantingPermissions:
+                type: array
+                items:
+                  type: string
+                description: Which specific permissions granted access
+        reconstructionMethod:
+          type: string
+          description: How permissions were reconstructed
+          example: Analyzed role assignments and permission changes from 2024-01-15 to query timestamp
+        confidence:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+          description: Confidence level of reconstruction
+      required: [resourceType, resourceId, timestamp, action, usersWithAccess]
+
+    # ===========================
+    # CONSULTANT SCHEMAS
+    # ===========================
+
+    ConsultantTenantsResponse:
+      type: object
+      properties:
+        consultantId:
+          type: string
+          format: uuid
+        consultantFirm:
+          type: string
+          description: Consultant firm name
+        tenants:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantContextInfo'
+        currentTenantId:
+          type: string
+          format: uuid
+          description: Currently active tenant context
+        totalClients:
+          type: integer
+      required: [consultantId, tenants, currentTenantId, totalClients]
+
+    TenantContextInfo:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        tenantName:
+          type: string
+        tenantType:
+          type: string
+          enum: [PRODUCER, TRANSPORTER, TREATMENT_FACILITY]
+        role:
+          type: string
+          description: Consultant's role within this tenant
+        roleId:
+          type: string
+          format: uuid
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Effective permissions in this tenant
+        isActive:
+          type: boolean
+          description: Whether this is currently active context
+        lastAccessedAt:
+          type: string
+          format: date-time
+      required: [tenantId, tenantName, tenantType, role, roleId, isActive]
+
+    ConsultantDashboardResponse:
+      type: object
+      properties:
+        consultantId:
+          type: string
+          format: uuid
+        totalClients:
+          type: integer
+        summary:
+          type: object
+          properties:
+            totalPendingFirs:
+              type: integer
+            totalUpcomingDeadlines:
+              type: integer
+            criticalAlerts:
+              type: integer
+            syncFailures:
+              type: integer
+        clientAlerts:
+          type: array
+          items:
+            type: object
+            properties:
+              tenantId:
+                type: string
+                format: uuid
+              tenantName:
+                type: string
+              alertType:
+                type: string
+                enum: [PENDING_FIRS, MUD_DEADLINE, RENTRI_SYNC_FAILURE, COMPLIANCE_ISSUE]
+              urgency:
+                type: string
+                enum: [CRITICAL, HIGH, MEDIUM, LOW]
+              count:
+                type: integer
+              description:
+                type: string
+              actionUrl:
+                type: string
+                description: Deep link to resolve alert
+              dueDate:
+                type: string
+                format: date-time
+                nullable: true
+          description: Alerts requiring attention sorted by urgency
+        firsByClient:
+          type: array
+          items:
+            type: object
+            properties:
+              tenantId:
+                type: string
+                format: uuid
+              tenantName:
+                type: string
+              pendingCount:
+                type: integer
+              inProgressCount:
+                type: integer
+              completedThisMonth:
+                type: integer
+          description: FIR statistics per client
+        upcomingDeadlines:
+          type: array
+          items:
+            type: object
+            properties:
+              tenantId:
+                type: string
+                format: uuid
+              tenantName:
+                type: string
+              deadlineType:
+                type: string
+              description:
+                type: string
+              dueDate:
+                type: string
+                format: date-time
+              daysRemaining:
+                type: integer
+              urgency:
+                type: string
+                enum: [CRITICAL, HIGH, MEDIUM, LOW]
+          description: Upcoming regulatory deadlines sorted by due date
+        generatedAt:
+          type: string
+          format: date-time
+      required: [consultantId, totalClients, summary, clientAlerts]
+
+    # ===========================
+    # PERMISSION REQUEST SCHEMAS
+    # ===========================
+
+    CreatePermissionRequest:
+      type: object
+      properties:
+        requestType:
+          type: string
+          enum: [role_assignment, temporary_elevation, role_change]
+        roleId:
+          type: string
+          format: uuid
+          description: Role being requested (for role_assignment/role_change)
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Specific permissions (for temporary_elevation)
+        justification:
+          type: string
+          minLength: 10
+          maxLength: 1000
+        durationHours:
+          type: integer
+          minimum: 1
+          maximum: 168
+          description: For temporary elevations only
+      required: [requestType, justification]
+
+    PermissionRequestResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        userName:
+          type: string
+        requestType:
+          type: string
+          enum: [role_assignment, temporary_elevation, role_change]
+        status:
+          type: string
+          enum: [pending, approved, denied, cancelled]
+        roleId:
+          type: string
+          format: uuid
+          nullable: true
+        roleName:
+          type: string
+          nullable: true
+        permissions:
+          type: array
+          items:
+            type: string
+        justification:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        reviewedBy:
+          type: string
+          format: uuid
+          nullable: true
+        reviewedByName:
+          type: string
+          nullable: true
+        adminNotes:
+          type: string
+          nullable: true
+        denialReason:
+          type: string
+          nullable: true
+      required: [id, userId, userName, requestType, status, justification, requestedAt]
+
+    PaginatedPermissionRequestsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PermissionRequestResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+        pendingCount:
+          type: integer
+      required: [items, total, page, limit, totalPages]
+
+    # ===========================
+    # MISC SCHEMAS
+    # ===========================
+
+    UserPreviewResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        userName:
+          type: string
+        email:
+          type: string
+          format: email
+        roles:
+          type: array
+          items:
+            type: string
+        effectivePermissions:
+          type: array
+          items:
+            type: string
+        facilityScope:
+          type: array
+          items:
+            type: string
+            format: uuid
+        temporaryElevations:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemporaryGrantSummary'
+        previewToken:
+          type: string
+          description: Temporary token for view-as-user session (15 min expiry)
+      required: [userId, userName, email, roles, effectivePermissions]
+
+    AsyncJobResponse:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        jobType:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED, PROCESSING, COMPLETED, FAILED]
+        createdAt:
+          type: string
+          format: date-time
+        estimatedCompletionTime:
+          type: string
+          format: date-time
+        statusUrl:
+          type: string
+          description: URL to poll for job status
+      required: [jobId, jobType, status, createdAt, statusUrl]
+
+    JobStatusResponse:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        jobType:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED, PROCESSING, COMPLETED, FAILED]
+        progress:
+          type: object
+          properties:
+            completed:
+              type: integer
+            total:
+              type: integer
+            percentage:
+              type: number
+              format: float
+        result:
+          type: object
+          nullable: true
+          description: Job result if completed
+        error:
+          type: string
+          nullable: true
+          description: Error message if failed
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [jobId, jobType, status, createdAt]
+
+    # ===========================
+    # ERROR SCHEMAS
+    # ===========================
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          example: PERMISSION_DENIED
+        message:
+          type: string
+          description: Human-readable error message (Italian)
+          example: Non hai il permesso necessario per eseguire questa azione
+        statusCode:
+          type: integer
+          description: HTTP status code
+        details:
+          type: object
+          description: Additional error context
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+          description: API endpoint that generated error
+      required: [error, message, statusCode, timestamp]
+
+    ValidationErrorDetail:
+      type: object
+      properties:
+        field:
+          type: string
+          description: Field that failed validation
+        message:
+          type: string
+          description: Validation error message
+        value:
+          description: Invalid value provided
+        constraint:
+          type: string
+          description: Validation constraint violated
+      required: [field, message]
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: UNAUTHORIZED
+            message: Authentication required. Please login with SPID/CIE.
+            statusCode: 401
+            timestamp: 2025-10-31T14:30:00.000Z
+            path: /v1/roles
+
+    ForbiddenError:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: FORBIDDEN
+            message: Non hai il permesso necessario per eseguire questa azione
+            statusCode: 403
+            details:
+              requiredPermission: roles:create
+              currentRole: OPERATOR
+              contactAdministrator: admin@example.com
+            timestamp: 2025-10-31T14:30:00.000Z
+            path: /v1/roles
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: NOT_FOUND
+            message: Role non trovato
+            statusCode: 404
+            timestamp: 2025-10-31T14:30:00.000Z
+            path: /v1/roles/123e4567-e89b-12d3-a456-426614174000
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorResponse'
+              - type: object
+                properties:
+                  validationErrors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ValidationErrorDetail'
+          example:
+            error: VALIDATION_ERROR
+            message: Request validation failed
+            statusCode: 400
+            timestamp: 2025-10-31T14:30:00.000Z
+            path: /v1/roles
+            validationErrors:
+              - field: name
+                message: Role name must be at least 3 characters
+                value: ab
+                constraint: minLength
+              - field: permissions
+                message: At least one permission is required
+                constraint: minItems
+
+    RateLimitError:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: RATE_LIMIT_EXCEEDED
+            message: Too many requests. Please try again later.
+            statusCode: 429
+            details:
+              limit: 100
+              window: 60 seconds
+              retryAfter: 45
+            timestamp: 2025-10-31T14:30:00.000Z
+      headers:
+        X-RateLimit-Limit:
+          description: Request limit per window
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          description: Requests remaining in current window
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          description: Unix timestamp when limit resets
+          schema:
+            type: integer
+        Retry-After:
+          description: Seconds until retry is allowed
+          schema:
+            type: integer
+
+# ===========================
+# WEBHOOKS
+# ===========================
+
+webhooks:
+  permissionChanged:
+    post:
+      summary: Permission changed webhook
+      description: |
+        Triggered when user's permissions change due to:
+        - Role assignment/revocation
+        - Custom role modification
+        - Temporary grant approval/expiration
+        - Permission policy update
+
+        Configure webhook URL in tenant settings.
+        Webhook includes HMAC signature for verification.
+      operationId: permissionChangedWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                eventId:
+                  type: string
+                  format: uuid
+                eventType:
+                  type: string
+                  enum: [PERMISSION_CHANGED, ROLE_ASSIGNED, ROLE_REVOKED, TEMPORARY_GRANT_APPROVED, TEMPORARY_GRANT_EXPIRED]
+                timestamp:
+                  type: string
+                  format: date-time
+                tenantId:
+                  type: string
+                  format: uuid
+                userId:
+                  type: string
+                  format: uuid
+                  description: User whose permissions changed
+                changedBy:
+                  type: string
+                  format: uuid
+                  description: User who made the change
+                details:
+                  type: object
+                  properties:
+                    roleId:
+                      type: string
+                      format: uuid
+                    roleName:
+                      type: string
+                    addedPermissions:
+                      type: array
+                      items:
+                        type: string
+                    removedPermissions:
+                      type: array
+                      items:
+                        type: string
+                    reason:
+                      type: string
+              required: [eventId, eventType, timestamp, tenantId, userId]
+      responses:
+        '200':
+          description: Webhook received and processed
+        '401':
+          description: Invalid HMAC signature
+
+  temporaryGrantExpiring:
+    post:
+      summary: Temporary grant expiring soon webhook
+      description: |
+        Triggered 30 minutes before temporary permission grant expires.
+        Allows user to request extension if needed.
+      operationId: temporaryGrantExpiringWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                eventId:
+                  type: string
+                  format: uuid
+                eventType:
+                  type: string
+                  enum: [TEMPORARY_GRANT_EXPIRING]
+                timestamp:
+                  type: string
+                  format: date-time
+                tenantId:
+                  type: string
+                  format: uuid
+                userId:
+                  type: string
+                  format: uuid
+                grantId:
+                  type: string
+                  format: uuid
+                permissions:
+                  type: array
+                  items:
+                    type: string
+                expiresAt:
+                  type: string
+                  format: date-time
+                minutesRemaining:
+                  type: integer
+              required: [eventId, eventType, timestamp, tenantId, userId, grantId, expiresAt]
+      responses:
+        '200':
+          description: Webhook received
+
+  permissionRequestCreated:
+    post:
+      summary: Permission request created webhook
+      description: |
+        Triggered when user submits permission elevation request.
+        Notifies administrators for approval.
+      operationId: permissionRequestCreatedWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                eventId:
+                  type: string
+                  format: uuid
+                eventType:
+                  type: string
+                  enum: [PERMISSION_REQUEST_CREATED]
+                timestamp:
+                  type: string
+                  format: date-time
+                tenantId:
+                  type: string
+                  format: uuid
+                requestId:
+                  type: string
+                  format: uuid
+                userId:
+                  type: string
+                  format: uuid
+                userName:
+                  type: string
+                requestType:
+                  type: string
+                permissions:
+                  type: array
+                  items:
+                    type: string
+                justification:
+                  type: string
+                approvalUrl:
+                  type: string
+                  description: Direct link for admin to approve/deny
+              required: [eventId, eventType, timestamp, tenantId, requestId, userId, justification]
+      responses:
+        '200':
+          description: Webhook received

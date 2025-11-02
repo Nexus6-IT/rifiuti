@@ -1,0 +1,111 @@
+/**
+ * Trasportatore Prisma Repository Implementation
+ * Maps between Trasportatore domain entity and Tenant Prisma model
+ */
+
+import { Injectable } from '@nestjs/common'
+import { PrismaService } from './prisma.service'
+import { TrasportatoreRepository } from '../../domain/registry/repositories/trasportatore.repository'
+import { Trasportatore } from '../../domain/registry/entities/trasportatore'
+import { PartitaIVA } from '../../domain/registry/value-objects/partita-iva'
+import { Indirizzo } from '../../domain/registry/value-objects/indirizzo'
+
+@Injectable()
+export class TrasportatorePrismaRepository implements TrasportatoreRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async save(trasportatore: Trasportatore): Promise<void> {
+    const data = {
+      ragioneSociale: trasportatore.ragioneSociale,
+      partitaIva: trasportatore.partitaIVA.getValue(),
+      pec: trasportatore.pec,
+      address: trasportatore.sedeLegale.getFormatted(),
+      city: trasportatore.sedeLegale.getCitta(),
+      province: trasportatore.sedeLegale.getProvincia(),
+      postalCode: trasportatore.sedeLegale.getCAP(),
+      // TODO: numeroIscrizione field doesn't exist in Tenant model
+      updatedAt: new Date(),
+    }
+
+    await this.prisma.tenant.upsert({
+      where: { id: trasportatore.id },
+      create: {
+        id: trasportatore.id,
+        ...data,
+        createdAt: trasportatore.createdAt,
+      },
+      update: data,
+    })
+  }
+
+  async findById(id: string): Promise<Trasportatore | null> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id },
+    })
+
+    if (!tenant) {
+      return null
+    }
+
+    return this.toDomain(tenant)
+  }
+
+  async findByTenantId(tenantId: string): Promise<Trasportatore[]> {
+    // TODO: Filter by actual transporter criteria or tenant relationship
+    const tenants = await this.prisma.tenant.findMany({
+      where: {},
+    })
+
+    return tenants.map((t: any) => this.toDomain(t))
+  }
+
+  async findByPartitaIVA(partitaIVA: string): Promise<Trasportatore | null> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { partitaIva: partitaIVA },
+    })
+
+    if (!tenant) {
+      return null
+    }
+
+    return this.toDomain(tenant)
+  }
+
+  async findByNumeroIscrizione(numeroIscrizione: string): Promise<Trasportatore | null> {
+    // TODO: numeroIscrizione field doesn't exist in Tenant model
+    // This method cannot be implemented without schema changes
+    return null
+  }
+
+  async delete(id: string): Promise<void> {
+    // TODO: Implement soft delete or hard delete
+    // Note: deletedAt field doesn't exist in Tenant model
+    await this.prisma.tenant.delete({
+      where: { id },
+    })
+  }
+
+  private toDomain(tenant: any): Trasportatore {
+    // Parse address from formatted string (stored in address field)
+    const addressParts = tenant.address?.split(',') || []
+
+    return Trasportatore.reconstitute({
+      id: tenant.id,
+      ragioneSociale: tenant.ragioneSociale,
+      partitaIVA: PartitaIVA.create(tenant.partitaIva),
+      sedeLegale: Indirizzo.create({
+        via: addressParts[0]?.trim() || 'N/A',
+        civico: addressParts[1]?.trim() || 'N/A',
+        cap: tenant.postalCode || '00000',
+        citta: tenant.city || 'N/A',
+        provincia: tenant.province || 'XX',
+      }),
+      numeroIscrizione: 'N/A', // TODO: numeroIscrizione field doesn't exist in Tenant model
+      email: tenant.pec || undefined, // Using pec as email since email doesn't exist
+      telefono: undefined, // phone field doesn't exist in Tenant model
+      pec: tenant.pec || undefined,
+      createdAt: tenant.createdAt,
+      updatedAt: tenant.updatedAt,
+    })
+  }
+}

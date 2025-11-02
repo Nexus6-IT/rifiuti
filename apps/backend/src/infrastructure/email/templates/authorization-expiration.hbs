@@ -1,0 +1,92 @@
+<div class="alert alert-danger">
+  <strong>🔔 Scadenza Autorizzazione</strong>
+</div>
+
+<p>Gentile {{recipientName}},</p>
+
+<p>Ti informiamo che l'autorizzazione <strong>{{authorizationType}}</strong> della tua azienda è {{#if isExpired}}scaduta{{else}}in scadenza{{/if}}.</p>
+
+<div class="details">
+  <div class="details-item">
+    <span class="details-label">Autorizzazione:</span> {{authorizationType}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Numero:</span> {{authorizationNumber}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Data scadenza:</span> {{expirationDate}}
+  </div>
+  {{#unless isExpired}}
+  <div class="details-item">
+    <span class="details-label">Giorni rimanenti:</span> {{daysRemaining}}
+  </div>
+  {{/unless}}
+  <div class="details-item">
+    <span class="details-label">Azienda:</span> {{companyName}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Ente rilascio:</span> {{issuingAuthority}}
+  </div>
+</div>
+
+{{#if isExpired}}
+<div class="alert alert-danger">
+  <strong>⚠️ ATTENZIONE: Autorizzazione scaduta</strong><br>
+  L'autorizzazione è scaduta il {{expirationDate}}. È necessario procedere immediatamente al rinnovo per evitare interruzioni dell'attività.
+</div>
+{{else}}
+<div class="alert alert-warning">
+  <strong>⚠️ Rinnovo richiesto</strong><br>
+  Consigliamo di avviare la pratica di rinnovo con anticipo per evitare ritardi nell'iter autorizzativo.
+</div>
+{{/if}}
+
+<p><strong>Attività coperte dall'autorizzazione:</strong></p>
+<ul>
+  {{#each activities}}
+  <li>{{this}}</li>
+  {{/each}}
+</ul>
+
+<p>
+  <a href="{{authorizationUrl}}" class="button">Visualizza Autorizzazione</a>
+</p>
+
+<p><strong>Azioni da intraprendere:</strong></p>
+<ol>
+  <li>Verificare i requisiti per il rinnovo sul sito dell'ente competente</li>
+  <li>Preparare la documentazione necessaria</li>
+  <li>Presentare istanza di rinnovo almeno 180 giorni prima della scadenza</li>
+  <li>Conservare copia della ricevuta di presentazione</li>
+  {{#if isProroga}}
+  <li>In caso di necessità, richiedere proroga temporanea</li>
+  {{/if}}
+</ol>
+
+{{#if contactInfo}}
+<div class="details">
+  <strong>Contatti ente autorizzativo:</strong>
+  <div class="details-item">
+    <span class="details-label">Ente:</span> {{contactInfo.name}}
+  </div>
+  {{#if contactInfo.phone}}
+  <div class="details-item">
+    <span class="details-label">Telefono:</span> {{contactInfo.phone}}
+  </div>
+  {{/if}}
+  {{#if contactInfo.email}}
+  <div class="details-item">
+    <span class="details-label">Email:</span> {{contactInfo.email}}
+  </div>
+  {{/if}}
+  {{#if contactInfo.website}}
+  <div class="details-item">
+    <span class="details-label">Sito web:</span> <a href="{{contactInfo.website}}">{{contactInfo.website}}</a>
+  </div>
+  {{/if}}
+</div>
+{{/if}}
+
+<p><strong>Nota importante:</strong> L'esercizio dell'attività senza autorizzazione valida costituisce reato ai sensi del D.Lgs. 152/2006 e può comportare sanzioni penali e amministrative.</p>
+
+<p>Per assistenza nella gestione delle autorizzazioni, contatta il tuo consulente ambientale o il supporto tecnico WasteFlow.</p>

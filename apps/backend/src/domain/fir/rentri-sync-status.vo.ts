@@ -1,0 +1,186 @@
+import { DomainException } from '../shared/domain-exception';
+
+/**
+ * RENTRI Sync Status Value Object
+ *
+ * Manages sync status, retry logic, and exponential backoff for RENTRI synchronization.
+ *
+ * States:
+ * - PENDING: Not yet synced, ready to sync
+ * - SYNCING: Sync in progress
+ * - SYNCED: Successfully synced to RENTRI
+ * - FAILED: Sync failed, will retry
+ * - PERMANENTLY_FAILED: Max retries exceeded, manual intervention required
+ *
+ * Retry Strategy:
+ * - Max attempts: 5
+ * - Exponential backoff: 2^attempt * 60 seconds
+ * - Backoff cap: 60 minutes
+ */
+export class RENTRISyncStatus {
+  private static readonly MAX_ATTEMPTS = 5;
+  private static readonly BASE_BACKOFF_SECONDS = 60;
+  private static readonly MAX_BACKOFF_SECONDS = 3600; // 60 minutes
+
+  private constructor(
+    private readonly status: 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED' | 'PERMANENTLY_FAILED',
+    private readonly attempts: number = 0,
+    private readonly lastError?: string,
+    private readonly protocolNumber?: string,
+    private readonly syncedAt?: Date,
+  ) {
+    this.validate();
+  }
+
+  /**
+   * Create pending status
+   */
+  static pending(): RENTRISyncStatus {
+    return new RENTRISyncStatus('PENDING', 0);
+  }
+
+  /**
+   * Create syncing status
+   */
+  static syncing(): RENTRISyncStatus {
+    return new RENTRISyncStatus('SYNCING', 0);
+  }
+
+  /**
+   * Create synced status with protocol number
+   */
+  static synced(protocolNumber: string, syncedAt?: Date): RENTRISyncStatus {
+    if (!protocolNumber || protocolNumber.trim() === '') {
+      throw new DomainException('Protocol number is required for synced status');
+    }
+    return new RENTRISyncStatus('SYNCED', 0, undefined, protocolNumber, syncedAt || new Date());
+  }
+
+  /**
+   * Create failed status with error
+   */
+  static failed(attempts: number, error: string): RENTRISyncStatus {
+    if (attempts < 0) {
+      throw new DomainException('Attempts must be non-negative');
+    }
+    if (!error || error.trim() === '') {
+      throw new DomainException('Error message is required for failed status');
+    }
+
+    const status = attempts >= RENTRISyncStatus.MAX_ATTEMPTS ? 'PERMANENTLY_FAILED' : 'FAILED';
+    return new RENTRISyncStatus(status, attempts, error);
+  }
+
+  /**
+   * Transition to syncing state
+   */
+  markAsSyncing(): RENTRISyncStatus {
+    if (this.status === 'SYNCED') {
+      throw new DomainException('Cannot sync already synced FIR');
+    }
+    return new RENTRISyncStatus('SYNCING', this.attempts);
+  }
+
+  /**
+   * Transition to synced state
+   */
+  markAsSynced(protocolNumber: string): RENTRISyncStatus {
+    if (this.status === 'SYNCED') {
+      throw new DomainException('FIR already synced');
+    }
+    return RENTRISyncStatus.synced(protocolNumber);
+  }
+
+  /**
+   * Transition to failed state (increments attempts)
+   */
+  markAsFailed(error: string): RENTRISyncStatus {
+    if (this.status === 'SYNCED') {
+      throw new DomainException('Cannot mark synced FIR as failed');
+    }
+    return RENTRISyncStatus.failed(this.attempts + 1, error);
+  }
+
+  /**
+   * Check if retry is allowed
+   */
+  canRetry(): boolean {
+    return (
+      this.status === 'PENDING' ||
+      (this.status === 'FAILED' && this.attempts < RENTRISyncStatus.MAX_ATTEMPTS)
+    );
+  }
+
+  /**
+   * Calculate next retry delay in seconds using exponential backoff
+   */
+  getNextRetryDelay(): number {
+    if (!this.canRetry()) {
+      return 0;
+    }
+
+    // Exponential backoff: 2^attempt * base
+    const delay = Math.pow(2, this.attempts) * RENTRISyncStatus.BASE_BACKOFF_SECONDS;
+
+    // Cap at maximum
+    return Math.min(delay, RENTRISyncStatus.MAX_BACKOFF_SECONDS);
+  }
+
+  /**
+   * Calculate next retry timestamp
+   */
+  getNextRetryAt(): Date {
+    const delaySeconds = this.getNextRetryDelay();
+    return new Date(Date.now() + delaySeconds * 1000);
+  }
+
+  // Getters
+  getStatus(): string {
+    return this.status;
+  }
+
+  getAttempts(): number {
+    return this.attempts;
+  }
+
+  getLastError(): string | undefined {
+    return this.lastError;
+  }
+
+  getProtocolNumber(): string | undefined {
+    return this.protocolNumber;
+  }
+
+  getSyncedAt(): Date | undefined {
+    return this.syncedAt;
+  }
+
+  /**
+   * Value object equality
+   */
+  equals(other: RENTRISyncStatus): boolean {
+    return (
+      this.status === other.status &&
+      this.attempts === other.attempts &&
+      this.protocolNumber === other.protocolNumber
+    );
+  }
+
+  /**
+   * Validate invariants
+   */
+  private validate(): void {
+    if (this.status === 'SYNCED' && !this.protocolNumber) {
+      throw new DomainException('Synced status requires protocol number');
+    }
+
+    if (this.status === 'FAILED' || this.status === 'PERMANENTLY_FAILED') {
+      if (!this.lastError) {
+        throw new DomainException('Failed status requires error message');
+      }
+      if (this.attempts <= 0) {
+        throw new DomainException('Failed status requires at least 1 attempt');
+      }
+    }
+  }
+}

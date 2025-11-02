@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+coverage/
+*.min.js
+.next/
+.nuxt/
+.cache/
+apps/backend/prisma/migrations/
+apps/frontend/src/environments/
+**/*.d.ts

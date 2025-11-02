@@ -1,0 +1,548 @@
+openapi: 3.0.3
+info:
+  title: WasteFlow RENTRI Integration API
+  description: |
+    RENTRI (Registro Elettronico Nazionale per la Tracciabilità dei Rifiuti)
+    synchronization endpoints for submitting FIR documents to the national registry.
+
+    **Synchronization Strategy**:
+    - **Monthly Batch**: Automatic sync on 1st of each month at 02:00
+    - **Manual Sync**: Urgent submissions via manual trigger
+    - **Rate Limit**: 90 requests/minute (buffer below 100 req/min RENTRI limit)
+    - **Retry Policy**: 3 attempts with exponential backoff (5s, 25s, 125s)
+
+    **Authentication**:
+    - SPID-authenticated electronic seal certificate required
+    - Mutual TLS for API communication
+
+    **Compliance**:
+    - FIR must be submitted within 30 days of emission per D.M. 59/2023
+    - xFIR format (JSON or XML) per RENTRI specifications
+  version: 1.0.0
+
+servers:
+  - url: https://api.wasteflow.it/v1
+    description: Production
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: Synchronization
+    description: Manual and batch sync operations
+  - name: Status
+    description: Sync status and logs
+
+paths:
+  /rentri/sync/fir/{firId}:
+    parameters:
+      - name: firId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: syncFIRToRENTRI
+      summary: Manually sync FIR to RENTRI
+      description: |
+        Triggers immediate synchronization of single FIR to RENTRI registry.
+
+        **Requirements**:
+        - FIR must be in CONSEGNATO state (all signatures applied)
+        - FIR must not be already synced
+        - FIR emission date within 30 days
+
+        **Process**:
+        1. Validate FIR completeness and signatures
+        2. Format FIR data to xFIR JSON format
+        3. Submit to RENTRI API with electronic seal
+        4. Update sync status based on response
+        5. Retry up to 3 times on failure
+      tags:
+        - Synchronization
+      security:
+        - BearerAuth: []
+      responses:
+        '202':
+          description: Sync job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                    description: BullMQ job identifier
+                  firId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [QUEUED]
+                  message:
+                    type: string
+                    example: FIR sync job queued, check /rentri/sync/status/{jobId} for progress
+        '400':
+          description: FIR not ready for sync
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notDelivered:
+                  value:
+                    code: FIR_NOT_DELIVERED
+                    message: FIR must be in CONSEGNATO state to sync to RENTRI
+                    details:
+                      currentState: IN_TRANSITO
+                      missingSignatures: [DESTINATARIO]
+                alreadySynced:
+                  value:
+                    code: FIR_ALREADY_SYNCED
+                    message: FIR already successfully synced to RENTRI
+                    details:
+                      syncedAt: '2025-10-15T10:30:00Z'
+                deadlineExpired:
+                  value:
+                    code: SYNC_DEADLINE_EXPIRED
+                    message: FIR emission date exceeds 30-day RENTRI submission deadline
+                    details:
+                      dataEmissione: '2025-08-10'
+                      daysOverdue: 15
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rentri/sync/batch:
+    post:
+      operationId: triggerBatchSync
+      summary: Trigger batch synchronization
+      description: |
+        Manually triggers batch synchronization of all unsynced FIRs.
+        Normally runs automatically on 1st of month at 02:00.
+
+        **Restrictions**:
+        - ADMIN role required
+        - Rate limited to 1 request per hour
+
+        **Process**:
+        1. Query all FIRs with status CONSEGNATO and syncStatus NOT_SYNCED
+        2. Validate each FIR (signatures complete, within deadline)
+        3. Queue FIRs in batches of 50 (to respect rate limits)
+        4. Process batches with 60-second intervals
+        5. Send completion notification
+      tags:
+        - Synchronization
+      security:
+        - BearerAuth: []
+      responses:
+        '202':
+          description: Batch sync initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batchId:
+                    type: string
+                    description: Batch job identifier
+                  firCount:
+                    type: integer
+                    description: Number of FIRs queued for sync
+                  estimatedDurationMinutes:
+                    type: integer
+                    description: Estimated completion time
+                  message:
+                    type: string
+                example:
+                  batchId: batch-2025-10-18-142030
+                  firCount: 247
+                  estimatedDurationMinutes: 5
+                  message: Batch sync of 247 FIRs initiated. Check /rentri/sync/batch/{batchId} for progress
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: ADMIN_REQUIRED
+                message: Batch sync requires ADMIN role
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: RATE_LIMIT_EXCEEDED
+                message: Batch sync can only be triggered once per hour
+                details:
+                  retryAfter: 1800
+
+  /rentri/sync/status/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      operationId: getSyncJobStatus
+      summary: Get sync job status
+      description: Returns status of individual FIR sync job
+      tags:
+        - Status
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Sync job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncJobStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /rentri/sync/batch/{batchId}:
+    parameters:
+      - name: batchId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      operationId: getBatchSyncStatus
+      summary: Get batch sync status
+      description: Returns aggregated status of batch sync job
+      tags:
+        - Status
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Batch sync status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchSyncStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rentri/sync/logs:
+    get:
+      operationId: getSyncLogs
+      summary: Get RENTRI sync history
+      description: |
+        Returns paginated list of RENTRI sync attempts with filters.
+        Used for auditing and debugging sync issues.
+      tags:
+        - Status
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: status
+          in: query
+          description: Filter by sync status
+          schema:
+            type: string
+            enum: [PENDING, SYNCED, FAILED]
+        - name: firId
+          in: query
+          description: Filter by specific FIR
+          schema:
+            type: string
+            format: uuid
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Sync log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SyncLogEntry'
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /rentri/validation/{firId}:
+    parameters:
+      - name: firId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: validateFIRForRENTRI
+      summary: Validate FIR for RENTRI submission
+      description: |
+        Pre-submission validation using RENTRI demo API.
+        Checks FIR format and completeness without actually submitting.
+
+        **Returns**:
+        - Validation errors (if any)
+        - Formatted xFIR preview
+        - Estimated sync success probability
+      tags:
+        - Synchronization
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Validation results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  firId:
+                    type: string
+                    format: uuid
+                  valid:
+                    type: boolean
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                          description: RENTRI error code
+                        field:
+                          type: string
+                          description: Field path
+                        message:
+                          type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                  xfirPreview:
+                    type: object
+                    description: Formatted xFIR JSON
+                example:
+                  firId: 123e4567-e89b-12d3-a456-426614174000
+                  valid: false
+                  errors:
+                    - code: E002
+                      field: destinatario.codiceFiscale
+                      message: Codice fiscale destinatario non corrisponde a quello in anagrafe RENTRI
+                  warnings: []
+                  xfirPreview: {...}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SyncJobStatus:
+      type: object
+      required:
+        - jobId
+        - firId
+        - status
+        - createdAt
+      properties:
+        jobId:
+          type: string
+        firId:
+          type: string
+          format: uuid
+        numeroFormulario:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED, IN_PROGRESS, COMPLETED, FAILED]
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        retryCount:
+          type: integer
+          description: Number of retry attempts
+        nextRetryAt:
+          type: string
+          format: date-time
+          description: Scheduled retry time (if FAILED with retries remaining)
+        rentriResponse:
+          type: object
+          description: Response from RENTRI API
+          properties:
+            statusCode:
+              type: integer
+            message:
+              type: string
+            rentriId:
+              type: string
+              description: RENTRI-assigned FIR identifier
+        errorMessage:
+          type: string
+          description: Error details if sync failed
+        errorCode:
+          type: string
+          description: RENTRI error code
+
+    BatchSyncStatus:
+      type: object
+      properties:
+        batchId:
+          type: string
+        status:
+          type: string
+          enum: [IN_PROGRESS, COMPLETED, PARTIAL_FAILURE]
+        totalFIRs:
+          type: integer
+        successCount:
+          type: integer
+        failedCount:
+          type: integer
+        pendingCount:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        progressPercentage:
+          type: number
+          description: Completion percentage (0-100)
+        failedFIRs:
+          type: array
+          description: List of FIRs that failed to sync
+          items:
+            type: object
+            properties:
+              firId:
+                type: string
+                format: uuid
+              numeroFormulario:
+                type: string
+              errorMessage:
+                type: string
+
+    SyncLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        firId:
+          type: string
+          format: uuid
+        numeroFormulario:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, SYNCED, FAILED]
+        attemptedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        retryCount:
+          type: integer
+        errorMessage:
+          type: string
+        errorCode:
+          type: string
+        rentriId:
+          type: string
+          description: RENTRI-assigned identifier (if synced)
+        durationMs:
+          type: integer
+          description: Sync operation duration in milliseconds
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

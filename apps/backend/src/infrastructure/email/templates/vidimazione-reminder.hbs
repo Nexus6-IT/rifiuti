@@ -1,0 +1,56 @@
+<div class="alert alert-warning">
+  <strong>📋 Promemoria Vidimazione Registri</strong>
+</div>
+
+<p>Gentile {{recipientName}},</p>
+
+<p>Ti ricordiamo che è necessario procedere alla <strong>vidimazione dei registri di carico/scarico</strong> per l'anno {{year}}.</p>
+
+<div class="details">
+  <div class="details-item">
+    <span class="details-label">Scadenza vidimazione:</span> {{deadline}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Giorni rimanenti:</span> {{daysRemaining}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Azienda:</span> {{companyName}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Tipologia registri:</span> {{registerTypes}}
+  </div>
+</div>
+
+<p><strong>Registri da vidimare:</strong></p>
+<ul>
+  {{#each registers}}
+  <li>
+    <strong>{{name}}</strong>
+    {{#if pages}}
+    - {{pages}} pagine
+    {{/if}}
+    {{#if lastEntry}}
+    - Ultima movimentazione: {{lastEntry}}
+    {{/if}}
+  </li>
+  {{/each}}
+</ul>
+
+<p>
+  <a href="{{registersUrl}}" class="button">Visualizza Registri</a>
+</p>
+
+<p><strong>Procedura di vidimazione:</strong></p>
+<ol>
+  <li>Verifica che tutti i movimenti siano stati registrati</li>
+  <li>Genera i PDF dei registri tramite il sistema</li>
+  <li>Stampa e numera progressivamente le pagine</li>
+  <li>Presenta i registri alla Camera di Commercio per la vidimazione</li>
+  <li>Conserva la ricevuta di vidimazione per 5 anni</li>
+</ol>
+
+<div class="alert alert-info">
+  <strong>💡 Suggerimento:</strong> Puoi utilizzare la funzione di esportazione massiva per generare tutti i registri con un solo click.
+</div>
+
+<p><strong>Nota bene:</strong> I registri di carico/scarico devono essere vidimati entro 60 giorni dalla messa in uso, e comunque prima di effettuare qualsiasi annotazione.</p>

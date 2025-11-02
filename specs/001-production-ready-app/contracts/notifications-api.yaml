@@ -1,0 +1,437 @@
+openapi: 3.0.3
+info:
+  title: WasteFlow Notifications API
+  description: |
+    Notification and alert management endpoints.
+
+    **Notification Types**:
+    - FIR deadline approaching (30-day RENTRI limit)
+    - RENTRI sync success/failure
+    - Signature required
+    - MUD report deadline approaching
+    - Subscription expiring
+    - System errors
+
+    **Channels**:
+    - In-app notifications (real-time via WebSocket)
+    - Email (configurable per notification type)
+    - Push notifications (future)
+
+    **Lifecycle**:
+    - Notifications auto-expire after 30 days
+    - Marked as read but not deleted (audit trail)
+  version: 1.0.0
+
+servers:
+  - url: https://api.wasteflow.it/v1
+    description: Production
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: Notifications
+    description: Notification CRUD operations
+  - name: Preferences
+    description: User notification preferences
+
+paths:
+  /notifications:
+    get:
+      operationId: listNotifications
+      summary: List user notifications
+      description: |
+        Returns paginated list of notifications for authenticated user.
+
+        **Filters**:
+        - Read/unread status
+        - Notification type
+        - Severity level
+        - Date range
+
+        **Ordering**: Most recent first
+      tags:
+        - Notifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: isRead
+          in: query
+          description: Filter by read status
+          schema:
+            type: boolean
+        - name: type
+          in: query
+          description: Filter by notification type
+          schema:
+            $ref: '#/components/schemas/NotificationType'
+        - name: severity
+          in: query
+          description: Filter by severity level
+          schema:
+            type: string
+            enum: [INFO, WARNING, ERROR]
+      responses:
+        '200':
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  unreadCount:
+                    type: integer
+                    description: Total unread notifications
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/{notificationId}:
+    parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getNotification
+      summary: Get notification details
+      tags:
+        - Notifications
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Notification details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      operationId: updateNotification
+      summary: Update notification (mark as read)
+      tags:
+        - Notifications
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isRead:
+                  type: boolean
+      responses:
+        '200':
+          description: Notification updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications/mark-all-read:
+    post:
+      operationId: markAllNotificationsRead
+      summary: Mark all notifications as read
+      description: Marks all user notifications as read
+      tags:
+        - Notifications
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updatedCount:
+                    type: integer
+                    description: Number of notifications marked as read
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/preferences:
+    get:
+      operationId: getNotificationPreferences
+      summary: Get user notification preferences
+      description: Returns user's notification channel and type preferences
+      tags:
+        - Preferences
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      operationId: updateNotificationPreferences
+      summary: Update notification preferences
+      description: |
+        Updates user's notification preferences.
+
+        **Configurable**:
+        - Enabled channels (in-app, email, push)
+        - Enabled notification types
+        - Quiet hours (no notifications during specified time)
+      tags:
+        - Preferences
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferences'
+      responses:
+        '200':
+          description: Preferences updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferences'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/test:
+    post:
+      operationId: sendTestNotification
+      summary: Send test notification
+      description: |
+        Sends test notification to verify channel configuration.
+
+        **Use Cases**:
+        - Test email delivery
+        - Verify notification formatting
+        - Check quiet hours configuration
+      tags:
+        - Notifications
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - channel
+              properties:
+                channel:
+                  type: string
+                  enum: [IN_APP, EMAIL, PUSH]
+                type:
+                  $ref: '#/components/schemas/NotificationType'
+      responses:
+        '200':
+          description: Test notification sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  channel:
+                    type: string
+                  message:
+                    type: string
+                    example: Test notification sent to your email
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    NotificationType:
+      type: string
+      enum:
+        - FIR_DEADLINE_APPROACHING
+        - RENTRI_SYNC_FAILED
+        - RENTRI_SYNC_SUCCESS
+        - MUD_DEADLINE_APPROACHING
+        - SUBSCRIPTION_EXPIRING
+        - SIGNATURE_REQUIRED
+        - SYSTEM_ERROR
+      description: |
+        - FIR_DEADLINE_APPROACHING: FIR approaching 30-day RENTRI deadline
+        - RENTRI_SYNC_FAILED: RENTRI synchronization error
+        - RENTRI_SYNC_SUCCESS: RENTRI sync completed successfully
+        - MUD_DEADLINE_APPROACHING: MUD filing deadline (April 30) approaching
+        - SUBSCRIPTION_EXPIRING: Subscription expires in 7 days
+        - SIGNATURE_REQUIRED: FIR awaiting user's signature
+        - SYSTEM_ERROR: Critical system error
+
+    Notification:
+      type: object
+      required:
+        - id
+        - type
+        - title
+        - message
+        - severity
+        - createdAt
+        - isRead
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        title:
+          type: string
+          example: FIR Deadline Approaching
+        message:
+          type: string
+          example: FIR-2025-00042 must be synced to RENTRI within 7 days
+        severity:
+          type: string
+          enum: [INFO, WARNING, ERROR]
+        relatedEntityId:
+          type: string
+          format: uuid
+          description: Related FIR, MUD, or other entity ID
+        relatedEntityType:
+          type: string
+          enum: [FIR, MUD, SUBSCRIPTION]
+        actionUrl:
+          type: string
+          description: Deep link to related entity
+          example: /fir/123e4567-e89b-12d3-a456-426614174000
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: Notification auto-expires after 30 days
+        isRead:
+          type: boolean
+        readAt:
+          type: string
+          format: date-time
+
+    NotificationPreferences:
+      type: object
+      required:
+        - channels
+        - enabledTypes
+      properties:
+        channels:
+          type: array
+          items:
+            type: string
+            enum: [IN_APP, EMAIL, PUSH]
+          description: Enabled notification channels
+          example: [IN_APP, EMAIL]
+        enabledTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationType'
+          description: Enabled notification types
+        quietHoursStart:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Quiet hours start (hour in 24h format)
+          example: 22
+        quietHoursEnd:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Quiet hours end (hour in 24h format)
+          example: 7
+        emailAddress:
+          type: string
+          format: email
+          description: Email address for email notifications (defaults to user email)
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

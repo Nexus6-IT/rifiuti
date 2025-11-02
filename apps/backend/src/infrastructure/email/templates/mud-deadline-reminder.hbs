@@ -1,0 +1,58 @@
+<div class="alert alert-warning">
+  <strong>⚠️ Promemoria Scadenza MUD</strong>
+</div>
+
+<p>Gentile {{recipientName}},</p>
+
+<p>Ti ricordiamo che la scadenza per la presentazione del <strong>Modello Unico di Dichiarazione ambientale (MUD)</strong> per l'anno {{year}} si avvicina.</p>
+
+<div class="details">
+  <div class="details-item">
+    <span class="details-label">Scadenza:</span> {{deadline}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Giorni rimanenti:</span> {{daysRemaining}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Azienda:</span> {{companyName}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Anno di riferimento:</span> {{referenceYear}}
+  </div>
+</div>
+
+{{#if isComplete}}
+<div class="alert alert-info">
+  <strong>✓ Il tuo MUD è pronto</strong><br>
+  La dichiarazione è stata completata e può essere inviata. Assicurati di verificare tutti i dati prima dell'invio definitivo.
+</div>
+{{else}}
+<div class="alert alert-danger">
+  <strong>⚠️ MUD incompleto</strong><br>
+  La dichiarazione non è ancora completa. Percentuale di completamento: <strong>{{completionPercentage}}%</strong>
+  <br><br>
+  <strong>Dati mancanti:</strong>
+  <ul>
+    {{#each missingData}}
+    <li>{{this}}</li>
+    {{/each}}
+  </ul>
+</div>
+{{/if}}
+
+<p>
+  <a href="{{mudUrl}}" class="button">Accedi al MUD</a>
+</p>
+
+<p><strong>Cosa fare:</strong></p>
+<ol>
+  <li>Verifica che tutti i dati siano corretti e aggiornati</li>
+  <li>Completa le sezioni mancanti</li>
+  <li>Genera l'anteprima PDF per revisione</li>
+  <li>Esporta il file XML per l'invio telematico</li>
+  <li>Invia entro la scadenza del {{deadline}}</li>
+</ol>
+
+<p><strong>Ricorda:</strong> La mancata o tardiva presentazione del MUD comporta l'applicazione di sanzioni amministrative.</p>
+
+<p>Per assistenza nella compilazione del MUD, contatta il supporto tecnico.</p>

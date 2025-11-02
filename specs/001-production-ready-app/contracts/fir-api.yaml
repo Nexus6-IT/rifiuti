@@ -1,0 +1,871 @@
+openapi: 3.0.3
+info:
+  title: WasteFlow FIR API
+  description: |
+    FIR (Formulario Identificazione Rifiuti) management endpoints for creating,
+    signing, and tracking waste identification documents.
+
+    **FIR Lifecycle**:
+    1. **BOZZA** (Draft) - Initial creation, editable
+    2. **EMESSO** (Emitted) - Published, awaiting signatures
+    3. **IN_TRANSITO** (In Transit) - Transport signature applied
+    4. **CONSEGNATO** (Delivered) - All signatures complete
+    5. **ANNULLATO** (Cancelled) - Cancelled before delivery
+
+    **Digital Signature Workflow**:
+    1. Producer signs at emission (transition BOZZA → EMESSO)
+    2. Transporter signs at pickup (transition EMESSO → IN_TRANSITO)
+    3. Recipient signs at delivery (transition IN_TRANSITO → CONSEGNATO)
+
+    **Signature Requirements**:
+    - Recent SPID authentication (within 5 minutes)
+    - SPID Level 2+ required
+    - Signatures must be applied in order (Producer → Transporter → Recipient)
+    - FIR becomes immutable after first signature
+
+    **RENTRI Synchronization**:
+    - Required within 30 days of emission
+    - Automatic monthly batch sync (1st of month)
+    - Manual sync available for urgent submissions
+  version: 1.0.0
+
+servers:
+  - url: https://api.wasteflow.it/v1
+    description: Production
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: FIR Management
+    description: CRUD operations for FIR documents
+  - name: Digital Signatures
+    description: Signature application and verification
+  - name: Export
+    description: PDF and Excel export
+
+paths:
+  /fir:
+    get:
+      operationId: listFIRs
+      summary: List FIRs for tenant
+      description: Returns paginated list of FIRs with optional filters
+      tags:
+        - FIR Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageOffset'
+        - name: stato
+          in: query
+          description: Filter by FIR state
+          schema:
+            $ref: '#/components/schemas/FIRStato'
+        - name: dataEmissioneFrom
+          in: query
+          description: Filter by emission date (from)
+          schema:
+            type: string
+            format: date
+        - name: dataEmissioneTo
+          in: query
+          description: Filter by emission date (to)
+          schema:
+            type: string
+            format: date
+        - name: cerCode
+          in: query
+          description: Filter by CER waste code
+          schema:
+            type: string
+            pattern: '^\d{2}\s?\d{2}\s?\d{2}\s?\*?$'
+      responses:
+        '200':
+          description: List of FIRs
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FIRListItem'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      operationId: createFIR
+      summary: Create new FIR draft
+      description: Creates a new FIR in BOZZA (draft) state
+      tags:
+        - FIR Management
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFIRRequest'
+      responses:
+        '201':
+          description: FIR created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FIRDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /fir/{firId}:
+    parameters:
+      - $ref: '#/components/parameters/FIRId'
+
+    get:
+      operationId: getFIR
+      summary: Get FIR details
+      tags:
+        - FIR Management
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: FIR details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FIRDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateFIR
+      summary: Update FIR draft
+      description: |
+        Updates FIR document. Only allowed in BOZZA state or before any signatures.
+        Returns 409 Conflict if FIR has signatures (immutable).
+      tags:
+        - FIR Management
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFIRRequest'
+      responses:
+        '200':
+          description: FIR updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FIRDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: FIR is immutable (has signatures)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FIR_IMMUTABLE
+                message: Cannot modify FIR after signatures have been applied
+
+    delete:
+      operationId: deleteFIR
+      summary: Delete FIR draft
+      description: Deletes FIR. Only allowed in BOZZA state with no signatures.
+      tags:
+        - FIR Management
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: FIR deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: FIR cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /fir/{firId}/emetti:
+    parameters:
+      - $ref: '#/components/parameters/FIRId'
+
+    post:
+      operationId: emettiFIR
+      summary: Emit FIR (publish draft)
+      description: |
+        Transitions FIR from BOZZA to EMESSO state.
+        Validates all required fields are complete.
+        After emission, FIR can receive digital signatures.
+      tags:
+        - FIR Management
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: FIR emitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FIRDetail'
+        '400':
+          description: Validation error (incomplete FIR)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INCOMPLETE_FIR
+                message: FIR must have all required fields before emission
+                details:
+                  missingFields: ['destinatario.partitaIva', 'rifiuto.quantita']
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /fir/{firId}/sign:
+    parameters:
+      - $ref: '#/components/parameters/FIRId'
+
+    post:
+      operationId: signFIR
+      summary: Apply digital signature to FIR
+      description: |
+        Applies digital signature to FIR document.
+
+        **Requirements**:
+        - User must have recent SPID authentication (within 5 minutes)
+        - SPID Level 2+ required
+        - FIR must be in EMESSO or IN_TRANSITO state
+        - Signatures must follow order: Produttore → Trasportatore → Destinatario
+
+        **Re-authentication**:
+        If SPID authentication is stale (>5 minutes), endpoint returns 401 with
+        reauthentication URL in error details.
+      tags:
+        - Digital Signatures
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - role
+              properties:
+                role:
+                  type: string
+                  enum: [PRODUTTORE, TRASPORTATORE, DESTINATARIO]
+                  description: Signer role
+      responses:
+        '200':
+          description: Signature applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FIRDetail'
+        '400':
+          description: Signature validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                wrongOrder:
+                  value:
+                    code: INVALID_SIGNATURE_ORDER
+                    message: Producer must sign before transporter
+                alreadySigned:
+                  value:
+                    code: ALREADY_SIGNED
+                    message: Producer signature already applied
+        '401':
+          description: Re-authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: SPID_REAUTH_REQUIRED
+                message: Digital signature requires SPID re-authentication with OTP
+                details:
+                  redirectUrl: /auth/login?forceAuthn=true&returnUrl=/fir/123
+                  lastAuthAt: '2025-10-18T14:20:00Z'
+                  minutesSinceAuth: 12
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /fir/{firId}/verify:
+    parameters:
+      - $ref: '#/components/parameters/FIRId'
+
+    get:
+      operationId: verifyFIRSignatures
+      summary: Verify FIR digital signatures
+      description: |
+        Verifies all digital signatures on FIR document.
+        **Public endpoint** - no authentication required for transparency.
+
+        Verification includes:
+        - SHA-256 hash recalculation
+        - ECDSA signature validation
+        - Timestamp verification (not expired)
+        - SPID level check
+      tags:
+        - Digital Signatures
+      responses:
+        '200':
+          description: Verification results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  firId:
+                    type: string
+                    format: uuid
+                  numeroFormulario:
+                    type: string
+                  allSignaturesValid:
+                    type: boolean
+                    description: True if all signatures valid
+                  signatures:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        role:
+                          type: string
+                          enum: [PRODUTTORE, TRASPORTATORE, DESTINATARIO]
+                        fiscalCode:
+                          type: string
+                        timestamp:
+                          type: string
+                          format: date-time
+                        spidLevel:
+                          type: integer
+                          enum: [2, 3]
+                        valid:
+                          type: boolean
+                        errorReason:
+                          type: string
+                          description: Reason if signature invalid
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /fir/{firId}/annulla:
+    parameters:
+      - $ref: '#/components/parameters/FIRId'
+
+    post:
+      operationId: annullaFIR
+      summary: Annul FIR
+      description: |
+        Cancels FIR with audit trail.
+
+        **Restrictions**:
+        - Cannot annul FIR in CONSEGNATO state (contact RENTRI for corrections)
+        - Cannot annul FIR already synced to RENTRI
+      tags:
+        - FIR Management
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  minLength: 10
+                  description: Cancellation reason (minimum 10 characters)
+                  example: Errore nei dati del destinatario
+      responses:
+        '200':
+          description: FIR annulled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FIRDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot annul FIR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                delivered:
+                  value:
+                    code: CANNOT_ANNUL_DELIVERED
+                    message: Cannot annul delivered FIR - contact RENTRI for corrections
+                synced:
+                  value:
+                    code: CANNOT_ANNUL_SYNCED
+                    message: Cannot annul FIR already synced to RENTRI
+
+  /fir/{firId}/export-pdf:
+    parameters:
+      - $ref: '#/components/parameters/FIRId'
+
+    post:
+      operationId: exportFIRPDF
+      summary: Export FIR as PDF
+      description: |
+        Generates PDF document with:
+        - FIR details formatted per D.M. 59/2023
+        - Digital signatures with cryptographic hashes
+        - QR code linking to public verification endpoint
+        - Legal headers and footers
+      tags:
+        - Export
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: PDF document
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="FIR-2025-00001.pdf"
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /fir/export-excel:
+    post:
+      operationId: exportFIRsExcel
+      summary: Export multiple FIRs as Excel
+      description: Exports filtered FIR list as Excel spreadsheet
+      tags:
+        - Export
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: Specific FIR IDs to export (if not provided, uses filters)
+                filters:
+                  type: object
+                  properties:
+                    stato:
+                      $ref: '#/components/schemas/FIRStato'
+                    dataEmissioneFrom:
+                      type: string
+                      format: date
+                    dataEmissioneTo:
+                      type: string
+                      format: date
+      responses:
+        '200':
+          description: Excel file
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="firs-export-2025-10-18.xlsx"
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    FIRId:
+      name: firId
+      in: path
+      required: true
+      description: FIR identifier
+      schema:
+        type: string
+        format: uuid
+
+    PageLimit:
+      name: limit
+      in: query
+      description: Number of items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    PageOffset:
+      name: offset
+      in: query
+      description: Number of items to skip
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  schemas:
+    FIRStato:
+      type: string
+      enum: [BOZZA, EMESSO, IN_TRANSITO, CONSEGNATO, ANNULLATO]
+      description: |
+        - BOZZA: Draft (editable)
+        - EMESSO: Emitted (awaiting signatures)
+        - IN_TRANSITO: In transit (transporter signature applied)
+        - CONSEGNATO: Delivered (all signatures complete)
+        - ANNULLATO: Cancelled
+
+    FIRListItem:
+      type: object
+      required:
+        - id
+        - numeroFormulario
+        - dataEmissione
+        - stato
+        - rifiuto
+      properties:
+        id:
+          type: string
+          format: uuid
+        numeroFormulario:
+          type: string
+          example: FIR-2025-00001
+        dataEmissione:
+          type: string
+          format: date-time
+        stato:
+          $ref: '#/components/schemas/FIRStato'
+        rifiuto:
+          type: object
+          properties:
+            codiceEER:
+              type: string
+              example: 15 01 02
+            descrizione:
+              type: string
+              example: Imballaggi in plastica
+            quantita:
+              type: number
+              example: 250.5
+            unitaMisura:
+              type: string
+              enum: [kg, t]
+        produttore:
+          type: object
+          properties:
+            ragioneSociale:
+              type: string
+        destinatario:
+          type: object
+          properties:
+            ragioneSociale:
+              type: string
+        firmeDigitali:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum: [PRODUTTORE, TRASPORTATORE, DESTINATARIO]
+              timestamp:
+                type: string
+                format: date-time
+        rentriSyncStatus:
+          type: string
+          enum: [NOT_SYNCED, PENDING, SYNCED, FAILED]
+
+    FIRDetail:
+      allOf:
+        - $ref: '#/components/schemas/FIRListItem'
+        - type: object
+          properties:
+            produttore:
+              $ref: '#/components/schemas/Soggetto'
+            trasportatore:
+              $ref: '#/components/schemas/Trasportatore'
+            destinatario:
+              $ref: '#/components/schemas/Soggetto'
+            rifiuto:
+              $ref: '#/components/schemas/Rifiuto'
+            firmeDigitali:
+              type: array
+              items:
+                $ref: '#/components/schemas/DigitalSignature'
+            rentriSync:
+              $ref: '#/components/schemas/RENTRISyncStatus'
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
+    CreateFIRRequest:
+      type: object
+      required:
+        - numeroFormulario
+        - produttore
+        - rifiuto
+        - trasportatore
+        - destinatario
+      properties:
+        numeroFormulario:
+          type: string
+          description: Unique FIR number
+        dataEmissione:
+          type: string
+          format: date
+          description: Emission date (defaults to today)
+        produttore:
+          $ref: '#/components/schemas/Soggetto'
+        trasportatore:
+          $ref: '#/components/schemas/Trasportatore'
+        destinatario:
+          $ref: '#/components/schemas/Soggetto'
+        rifiuto:
+          $ref: '#/components/schemas/Rifiuto'
+
+    UpdateFIRRequest:
+      type: object
+      properties:
+        produttore:
+          $ref: '#/components/schemas/Soggetto'
+        trasportatore:
+          $ref: '#/components/schemas/Trasportatore'
+        destinatario:
+          $ref: '#/components/schemas/Soggetto'
+        rifiuto:
+          $ref: '#/components/schemas/Rifiuto'
+
+    Soggetto:
+      type: object
+      required:
+        - partitaIva
+        - ragioneSociale
+        - indirizzo
+      properties:
+        partitaIva:
+          type: string
+          pattern: '^\d{11}$'
+          description: Italian VAT number
+        ragioneSociale:
+          type: string
+        indirizzo:
+          type: object
+          required:
+            - via
+            - comune
+            - provincia
+            - cap
+          properties:
+            via:
+              type: string
+            comune:
+              type: string
+            provincia:
+              type: string
+              minLength: 2
+              maxLength: 2
+            cap:
+              type: string
+              pattern: '^\d{5}$'
+
+    Trasportatore:
+      allOf:
+        - $ref: '#/components/schemas/Soggetto'
+        - type: object
+          required:
+            - numeroIscrizione
+            - targaVeicolo
+          properties:
+            numeroIscrizione:
+              type: string
+              description: Transport registry number
+            targaVeicolo:
+              type: string
+              description: Vehicle license plate
+
+    Rifiuto:
+      type: object
+      required:
+        - codiceEER
+        - descrizione
+        - statoFisico
+        - quantita
+        - unitaMisura
+      properties:
+        codiceEER:
+          type: string
+          pattern: '^\d{2}\s?\d{2}\s?\d{2}\s?\*?$'
+          description: CER waste code (asterisk indicates hazardous)
+        descrizione:
+          type: string
+          minLength: 10
+        statoFisico:
+          type: string
+          enum: [SOLIDO_PULVERULENTO, SOLIDO_NON_PULVERULENTO, FANGOSO_PALABILE, LIQUIDO]
+        quantita:
+          type: number
+          minimum: 0.001
+          description: Waste quantity
+        unitaMisura:
+          type: string
+          enum: [kg, t]
+        caratteristichePericolo:
+          type: array
+          items:
+            type: string
+            pattern: '^HP\d{1,2}$'
+          description: Hazard characteristics (HP codes) - required for hazardous waste
+
+    DigitalSignature:
+      type: object
+      properties:
+        hash:
+          type: string
+          description: SHA-256 document hash
+        algorithm:
+          type: string
+          enum: [ECDSA-SHA256]
+        fiscalCode:
+          type: string
+          description: Signer fiscal code
+        timestamp:
+          type: string
+          format: date-time
+        nonce:
+          type: string
+          description: Anti-replay nonce
+        spidLevel:
+          type: integer
+          enum: [2, 3]
+        signature:
+          type: string
+          description: ECDSA signature (hex-encoded)
+        role:
+          type: string
+          enum: [PRODUTTORE, TRASPORTATORE, DESTINATARIO]
+
+    RENTRISyncStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [NOT_SYNCED, PENDING, SYNCED, FAILED]
+        lastSyncAttempt:
+          type: string
+          format: date-time
+        errorMessage:
+          type: string
+        retryCount:
+          type: integer
+
+    Pagination:
+      type: object
+      required:
+        - total
+        - limit
+        - offset
+      properties:
+        total:
+          type: integer
+          description: Total number of items
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: FIR_NOT_FOUND
+            message: FIR with id 123e4567-e89b-12d3-a456-426614174000 not found

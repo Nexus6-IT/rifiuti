@@ -1,0 +1,456 @@
+openapi: 3.0.3
+info:
+  title: WasteFlow Authentication API
+  description: |
+    Authentication and authorization endpoints using Keycloak as SPID/CIE identity broker.
+
+    **Authentication Flow**:
+    1. Client initiates login via `/auth/login` (redirects to Keycloak)
+    2. Keycloak presents SPID provider selection
+    3. User authenticates with SPID (Level 2+ for signatures)
+    4. Keycloak redirects to `/auth/callback` with SAML assertion
+    5. Backend validates assertion and issues JWT tokens
+    6. Client stores access token and refresh token
+
+    **Token Lifecycle**:
+    - Access token: 15 minutes
+    - Refresh token: 8 hours
+    - SPID session: 8 hours absolute, 15 minutes idle
+
+    **Digital Signatures**:
+    - Require re-authentication within 5 minutes (`forceAuthn=true`)
+    - SPID Level 2+ required
+  version: 1.0.0
+  contact:
+    name: WasteFlow API Support
+    email: api-support@wasteflow.it
+
+servers:
+  - url: https://api.wasteflow.it/v1
+    description: Production
+  - url: https://staging-api.wasteflow.it/v1
+    description: Staging
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: Authentication
+    description: Login, logout, token management
+  - name: Session
+    description: Session validation and management
+
+paths:
+  /auth/login:
+    get:
+      operationId: initiateLogin
+      summary: Initiate SPID login
+      description: |
+        Redirects user to Keycloak for SPID authentication.
+
+        **Flow**:
+        1. Generate PKCE challenge for security
+        2. Redirect to Keycloak with SPID broker selected
+        3. User selects SPID provider (Poste, Infocert, Aruba, etc.)
+        4. User authenticates with SPID credentials
+        5. Keycloak redirects to callback URL
+      tags:
+        - Authentication
+      parameters:
+        - name: returnUrl
+          in: query
+          description: URL to redirect after successful login
+          schema:
+            type: string
+            format: uri
+            example: /dashboard
+        - name: forceAuthn
+          in: query
+          description: Force re-authentication (required for digital signatures)
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '302':
+          description: Redirect to Keycloak SPID login
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+                example: https://keycloak.wasteflow.it/realms/wasteflow/protocol/saml
+
+  /auth/callback:
+    post:
+      operationId: handleCallback
+      summary: Handle SPID SAML callback
+      description: |
+        Receives SAML assertion from Keycloak after SPID authentication.
+        Validates assertion, creates/updates user, and issues JWT tokens.
+
+        **Validation**:
+        - SAML signature verification
+        - Fiscal code format validation
+        - SPID level check (Level 2+ for signatures)
+        - Tenant association lookup
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - SAMLResponse
+              properties:
+                SAMLResponse:
+                  type: string
+                  description: Base64-encoded SAML assertion
+                RelayState:
+                  type: string
+                  description: Return URL from login initiation
+      responses:
+        '302':
+          description: Redirect to application with tokens in URL fragment
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /dashboard#access_token=eyJ...&refresh_token=eyJ...
+        '400':
+          description: Invalid SAML assertion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidSAML:
+                  value:
+                    code: INVALID_SAML_ASSERTION
+                    message: SAML signature verification failed
+        '403':
+          description: User not authorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                noTenant:
+                  value:
+                    code: NO_TENANT_ASSOCIATION
+                    message: Fiscal code not associated with any tenant
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      summary: Refresh access token
+      description: |
+        Exchange refresh token for new access token.
+        Refresh token remains valid until expiration (8 hours).
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  description: JWT refresh token
+                  example: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                expired:
+                  value:
+                    code: REFRESH_TOKEN_EXPIRED
+                    message: Refresh token has expired, please re-authenticate
+
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Logout and invalidate tokens
+      description: |
+        Invalidates both access and refresh tokens.
+        Also terminates SPID session in Keycloak.
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Logout successful
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/session:
+    get:
+      operationId: getSessionInfo
+      summary: Get current session information
+      description: |
+        Returns authenticated user information and session metadata.
+        Used to verify token validity and retrieve user details.
+      tags:
+        - Session
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Session information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/spid-status:
+    get:
+      operationId: getSpidAuthStatus
+      summary: Check SPID authentication recency
+      description: |
+        Checks if user has recent SPID authentication (within 5 minutes).
+        Used before digital signature operations to enforce re-authentication.
+      tags:
+        - Session
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: SPID authentication status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hasRecentAuth:
+                    type: boolean
+                    description: True if SPID auth within last 5 minutes
+                  lastAuthAt:
+                    type: string
+                    format: date-time
+                    description: Timestamp of last SPID authentication
+                  spidLevel:
+                    type: integer
+                    enum: [2, 3]
+                    description: SPID authentication level
+                  minutesSinceAuth:
+                    type: number
+                    description: Minutes since last SPID authentication
+                  canSignDocuments:
+                    type: boolean
+                    description: True if user can sign documents (recent auth + Level 2+)
+                  reauthUrl:
+                    type: string
+                    format: uri
+                    description: URL to re-authenticate if needed
+                    example: /auth/login?forceAuthn=true&returnUrl=/fir/123
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /auth/callback or /auth/refresh
+
+  schemas:
+    TokenResponse:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - expiresIn
+        - tokenType
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token (15 minutes validity)
+          example: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+        refreshToken:
+          type: string
+          description: JWT refresh token (8 hours validity)
+          example: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+        expiresIn:
+          type: integer
+          description: Access token expiration in seconds
+          example: 900
+        tokenType:
+          type: string
+          enum: [Bearer]
+          description: Token type (always Bearer)
+          example: Bearer
+        user:
+          $ref: '#/components/schemas/UserInfo'
+
+    SessionInfo:
+      type: object
+      required:
+        - userId
+        - tenantId
+        - fiscalCode
+        - role
+        - spidLevel
+        - sessionExpiresAt
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: User identifier
+          example: 123e4567-e89b-12d3-a456-426614174000
+        tenantId:
+          type: string
+          format: uuid
+          description: Tenant identifier
+          example: 987fcdeb-51a2-43f7-9d8e-123456789abc
+        fiscalCode:
+          type: string
+          pattern: '^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$'
+          description: Italian fiscal code from SPID
+          example: RSSMRA80A01H501U
+        email:
+          type: string
+          format: email
+          description: User email
+          example: mario.rossi@example.com
+        fullName:
+          type: string
+          description: User full name from SPID
+          example: Mario Rossi
+        role:
+          type: string
+          enum: [ADMIN, OPERATOR, VIEWER]
+          description: User role within tenant
+          example: OPERATOR
+        spidLevel:
+          type: integer
+          enum: [2, 3]
+          description: SPID authentication level
+          example: 2
+        lastSpidAuth:
+          type: string
+          format: date-time
+          description: Timestamp of last SPID authentication
+          example: '2025-10-18T14:30:00Z'
+        sessionExpiresAt:
+          type: string
+          format: date-time
+          description: Session expiration timestamp
+          example: '2025-10-18T22:30:00Z'
+        tenant:
+          $ref: '#/components/schemas/TenantInfo'
+
+    UserInfo:
+      type: object
+      required:
+        - userId
+        - fiscalCode
+        - fullName
+        - role
+      properties:
+        userId:
+          type: string
+          format: uuid
+        fiscalCode:
+          type: string
+          pattern: '^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$'
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [ADMIN, OPERATOR, VIEWER]
+        spidLevel:
+          type: integer
+          enum: [2, 3]
+
+    TenantInfo:
+      type: object
+      required:
+        - tenantId
+        - partitaIva
+        - ragioneSociale
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        partitaIva:
+          type: string
+          pattern: '^\d{11}$'
+          description: Italian VAT number
+          example: '12345678901'
+        ragioneSociale:
+          type: string
+          description: Company name
+          example: Acme Waste Management S.r.l.
+        subscription:
+          type: object
+          properties:
+            tier:
+              type: string
+              enum: [TRIAL, PROFESSIONAL, ENTERPRISE]
+            status:
+              type: string
+              enum: [TRIAL, ACTIVE, EXPIRED, SUSPENDED]
+            expiresAt:
+              type: string
+              format: date-time
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          example: INVALID_SAML_ASSERTION
+        message:
+          type: string
+          description: Human-readable error message
+          example: SAML signature verification failed
+        details:
+          type: object
+          description: Additional error context
+          additionalProperties: true
+
+  responses:
+    Unauthorized:
+      description: Authentication required or token invalid/expired
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            tokenExpired:
+              value:
+                code: TOKEN_EXPIRED
+                message: Access token has expired
+            tokenInvalid:
+              value:
+                code: TOKEN_INVALID
+                message: Invalid JWT signature
+            noToken:
+              value:
+                code: NO_AUTHORIZATION_HEADER
+                message: Authorization header missing

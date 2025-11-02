@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Development files
+.git/
+.gitignore
+.dockerignore
+README.md
+*.md
+
+# Environment files
+.env*
+!.env.example
+
+# Testing
+coverage/
+.nyc_output
+*.test.ts
+*.spec.ts
+*.test.js
+*.spec.js
+
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+
+# Prisma
+prisma/migrations/*_migration_manual_*
+
+# Certificates (development only)
+certs/*.pem
+certs/*.key
+!certs/.gitkeep
+
+# Temporary files
+tmp/
+temp/
+*.tmp

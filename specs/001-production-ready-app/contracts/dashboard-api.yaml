@@ -1,0 +1,552 @@
+openapi: 3.0.3
+info:
+  title: WasteFlow Dashboard & Analytics API
+  description: |
+    Analytics and KPI endpoints for dashboard visualizations.
+
+    **Features**:
+    - Real-time KPIs (total waste, costs, transport count)
+    - Waste distribution by CER category
+    - Monthly/yearly trends
+    - Cost analysis
+    - Environmental impact metrics
+
+    **Performance**:
+    - Cached results (Redis, 5-minute TTL)
+    - Dashboard load target: <2 seconds
+  version: 1.0.0
+
+servers:
+  - url: https://api.wasteflow.it/v1
+    description: Production
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: KPIs
+    description: Key performance indicators
+  - name: Charts
+    description: Chart data for visualizations
+  - name: Trends
+    description: Time-series trend data
+
+paths:
+  /dashboard/kpis:
+    get:
+      operationId: getDashboardKPIs
+      summary: Get dashboard KPIs
+      description: |
+        Returns aggregated KPIs for dashboard overview.
+
+        **Metrics**:
+        - Total waste (kg) for selected period
+        - Total hazardous waste (kg)
+        - Total cost (€)
+        - Active FIRs count
+        - Pending signatures count
+        - RENTRI sync compliance rate
+
+        **Caching**: Results cached for 5 minutes
+      tags:
+        - KPIs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          description: Time period for KPIs
+          required: true
+          schema:
+            type: string
+            enum: [week, month, quarter, year]
+            default: month
+        - name: compareWithPrevious
+          in: query
+          description: Include comparison with previous period
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Dashboard KPIs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardKPIs'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /dashboard/waste-by-category:
+    get:
+      operationId: getWasteByCategory
+      summary: Get waste distribution by CER category
+      description: |
+        Returns waste quantity grouped by CER category (first 2 digits).
+        Used for pie chart visualization.
+
+        **Example Categories**:
+        - 15: Packaging waste
+        - 17: Construction waste
+        - 20: Municipal waste
+      tags:
+        - Charts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [week, month, quarter, year]
+        - name: unit
+          in: query
+          description: Unit of measurement for quantities
+          schema:
+            type: string
+            enum: [kg, t]
+            default: kg
+      responses:
+        '200':
+          description: Waste distribution data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        categoryCode:
+                          type: string
+                          description: CER category (first 2 digits)
+                          example: '15'
+                        categoryName:
+                          type: string
+                          description: Category description
+                          example: Waste packaging
+                        totalQuantity:
+                          type: number
+                          description: Total quantity in selected unit
+                        percentage:
+                          type: number
+                          description: Percentage of total waste
+                        hazardousQuantity:
+                          type: number
+                          description: Hazardous waste quantity
+                        firCount:
+                          type: integer
+                          description: Number of FIRs in category
+                  totalQuantity:
+                    type: number
+                    description: Total quantity across all categories
+                  unit:
+                    type: string
+                    enum: [kg, t]
+                example:
+                  categories:
+                    - categoryCode: '15'
+                      categoryName: Waste packaging
+                      totalQuantity: 12500.5
+                      percentage: 45.2
+                      hazardousQuantity: 0
+                      firCount: 58
+                    - categoryCode: '17'
+                      categoryName: Construction and demolition wastes
+                      totalQuantity: 8200.0
+                      percentage: 29.6
+                      hazardousQuantity: 1500.0
+                      firCount: 23
+                  totalQuantity: 27650.5
+                  unit: kg
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /dashboard/cost-trends:
+    get:
+      operationId: getCostTrends
+      summary: Get cost trend over time
+      description: |
+        Returns monthly waste management costs for line chart visualization.
+
+        **Costs Include**:
+        - Transport fees
+        - Disposal fees
+        - Administrative costs
+      tags:
+        - Trends
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: months
+          in: query
+          description: Number of months to include
+          schema:
+            type: integer
+            minimum: 3
+            maximum: 24
+            default: 12
+      responses:
+        '200':
+          description: Cost trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dataPoints:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month:
+                          type: string
+                          description: Month in YYYY-MM format
+                          example: '2025-10'
+                        totalCost:
+                          type: number
+                          description: Total cost in EUR
+                        transportCost:
+                          type: number
+                        disposalCost:
+                          type: number
+                        adminCost:
+                          type: number
+                        firCount:
+                          type: integer
+                          description: Number of FIRs in month
+                  totalCost:
+                    type: number
+                    description: Sum of all months
+                  averageMonthlyCost:
+                    type: number
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /dashboard/waste-trends:
+    get:
+      operationId: getWasteTrends
+      summary: Get waste quantity trend over time
+      description: Monthly waste quantities for line chart
+      tags:
+        - Trends
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: months
+          in: query
+          schema:
+            type: integer
+            minimum: 3
+            maximum: 24
+            default: 12
+        - name: unit
+          in: query
+          schema:
+            type: string
+            enum: [kg, t]
+            default: kg
+        - name: splitHazardous
+          in: query
+          description: Include separate series for hazardous waste
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Waste trend data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dataPoints:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month:
+                          type: string
+                          example: '2025-10'
+                        totalWaste:
+                          type: number
+                        hazardousWaste:
+                          type: number
+                        nonHazardousWaste:
+                          type: number
+                        firCount:
+                          type: integer
+                  unit:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /dashboard/compliance-status:
+    get:
+      operationId: getComplianceStatus
+      summary: Get compliance metrics
+      description: |
+        Returns compliance KPIs for monitoring legal requirements.
+
+        **Metrics**:
+        - RENTRI sync compliance rate
+        - FIRs approaching 30-day deadline
+        - Overdue signatures
+        - MUD report status
+      tags:
+        - KPIs
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Compliance metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rentriSyncRate:
+                    type: number
+                    description: Percentage of FIRs synced to RENTRI (target 100%)
+                    example: 98.5
+                  firsApproachingDeadline:
+                    type: integer
+                    description: FIRs within 7 days of 30-day RENTRI deadline
+                  firsOverdue:
+                    type: integer
+                    description: FIRs exceeding 30-day deadline
+                  pendingSignatures:
+                    type: integer
+                    description: FIRs awaiting signatures
+                  pendingSignaturesDetail:
+                    type: object
+                    properties:
+                      awaitingProducer:
+                        type: integer
+                      awaitingTransporter:
+                        type: integer
+                      awaitingRecipient:
+                        type: integer
+                  mudReportStatus:
+                    type: object
+                    properties:
+                      year:
+                        type: integer
+                        example: 2025
+                      status:
+                        type: string
+                        enum: [DRAFT, GENERATED, SUBMITTED, OVERDUE]
+                      deadline:
+                        type: string
+                        format: date
+                        example: '2026-04-30'
+                      daysUntilDeadline:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /dashboard/top-destinations:
+    get:
+      operationId: getTopDestinations
+      summary: Get top waste destinations
+      description: |
+        Returns top 10 destination facilities by waste quantity.
+        Used for horizontal bar chart.
+      tags:
+        - Charts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [week, month, quarter, year]
+        - name: limit
+          in: query
+          description: Number of destinations to return
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 20
+            default: 10
+      responses:
+        '200':
+          description: Top destinations data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  destinations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        partitaIva:
+                          type: string
+                        ragioneSociale:
+                          type: string
+                        totalQuantityKg:
+                          type: number
+                        firCount:
+                          type: integer
+                        percentage:
+                          type: number
+                          description: Percentage of total waste
+                example:
+                  destinations:
+                    - partitaIva: '12345678901'
+                      ragioneSociale: Eco-Disposal S.p.A.
+                      totalQuantityKg: 15000.5
+                      firCount: 42
+                      percentage: 35.2
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /dashboard/environmental-impact:
+    get:
+      operationId: getEnvironmentalImpact
+      summary: Get environmental impact metrics
+      description: |
+        Returns calculated environmental impact metrics.
+
+        **Metrics**:
+        - CO2 emissions saved through recycling
+        - Waste diverted from landfill
+        - Recycling rate
+      tags:
+        - KPIs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [month, quarter, year]
+      responses:
+        '200':
+          description: Environmental impact data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalWasteKg:
+                    type: number
+                  recycledWasteKg:
+                    type: number
+                  disposedWasteKg:
+                    type: number
+                  recyclingRate:
+                    type: number
+                    description: Percentage of waste recycled
+                  co2SavedKg:
+                    type: number
+                    description: Estimated CO2 emissions saved (kg)
+                  landfillDivertedKg:
+                    type: number
+                    description: Waste diverted from landfill
+                example:
+                  totalWasteKg: 25000
+                  recycledWasteKg: 18500
+                  disposedWasteKg: 6500
+                  recyclingRate: 74.0
+                  co2SavedKg: 1200.5
+                  landfillDivertedKg: 18500
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    DashboardKPIs:
+      type: object
+      required:
+        - period
+        - totalWasteKg
+        - totalCost
+        - activeFIRs
+      properties:
+        period:
+          type: string
+          description: Period for KPIs
+          example: month
+        periodLabel:
+          type: string
+          description: Human-readable period label
+          example: October 2025
+        totalWasteKg:
+          type: number
+          description: Total waste quantity in kg
+          example: 12500.5
+        totalWasteTonnes:
+          type: number
+          description: Total waste quantity in tonnes
+          example: 12.5
+        totalHazardousWasteKg:
+          type: number
+          example: 2300.0
+        totalCost:
+          type: number
+          description: Total cost in EUR
+          example: 8750.50
+        activeFIRs:
+          type: integer
+          description: Number of active FIRs (EMESSO, IN_TRANSITO, CONSEGNATO)
+          example: 47
+        completedFIRs:
+          type: integer
+          description: Number of FIRs delivered in period
+          example: 42
+        pendingSignatures:
+          type: integer
+          description: FIRs awaiting signatures
+          example: 5
+        rentriSyncRate:
+          type: number
+          description: Percentage of FIRs synced to RENTRI
+          example: 98.5
+        comparison:
+          type: object
+          description: Comparison with previous period (if requested)
+          properties:
+            totalWasteChange:
+              type: number
+              description: Percentage change in total waste
+              example: 12.5
+            totalCostChange:
+              type: number
+              example: -5.3
+            firCountChange:
+              type: number
+              example: 8.0
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

@@ -1,0 +1,40 @@
+{
+  "name": "wasteflow",
+  "version": "0.1.0",
+  "description": "Piattaforma SaaS gestione rifiuti digitale - MVP TDD-driven",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "scripts": {
+    "backend:dev": "cd apps/backend && npm run start:dev",
+    "backend:test": "cd apps/backend && npm run test",
+    "backend:test:watch": "cd apps/backend && npm run test:watch",
+    "backend:test:cov": "cd apps/backend && npm run test:cov",
+    "backend:test:e2e": "cd apps/backend && npm run test:e2e",
+    "lint": "eslint \"{apps,libs}/**/*.ts\" --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "prepare": "husky install"
+  },
+  "dependencies": {
+    "rxjs": "~7.8.0"
+  },
+  "overrides": {
+    "rxjs": "$rxjs"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.42.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "husky": "^8.0.3",
+    "prettier": "^3.0.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

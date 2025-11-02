@@ -1,0 +1,185 @@
+# CloudWatch Alarms Configuration
+# T231: Phase 10 - Monitoring Alarms
+# Deploy with: aws cloudformation deploy --template-file cloudwatch-alarms.yaml
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'WasteFlow Permissions System - CloudWatch Alarms'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [development, staging, production]
+
+  SNSTopicArn:
+    Type: String
+    Description: 'SNS Topic ARN for alarm notifications'
+
+Resources:
+  # Alarm: P99 Latency > 10ms
+  PermissionCheckLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${Environment}-permission-check-p99-latency-high'
+      AlarmDescription: 'Alert when permission check P99 latency exceeds 10ms'
+      MetricName: permission_check_duration_seconds
+      Namespace: WasteFlow/Permissions
+      Statistic: Average
+      Period: 300 # 5 minutes
+      EvaluationPeriods: 2
+      Threshold: 0.01 # 10ms in seconds
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SNSTopicArn
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: Permissions
+
+  # Alarm: Cache Hit Rate < 95%
+  CacheHitRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${Environment}-permission-cache-hit-rate-low'
+      AlarmDescription: 'Alert when permission cache hit rate drops below 95%'
+      MetricName: permission_cache_hit_ratio
+      Namespace: WasteFlow/Permissions
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 0.95
+      ComparisonOperator: LessThanThreshold
+      AlarmActions:
+        - !Ref SNSTopicArn
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: Permissions
+
+  # Alarm: Error Rate > 1%
+  PermissionErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${Environment}-permission-error-rate-high'
+      AlarmDescription: 'Alert when permission denial rate exceeds 1%'
+      MetricName: permission_check_duration_seconds
+      Namespace: WasteFlow/Permissions
+      Dimensions:
+        - Name: decision
+          Value: DENY
+      Statistic: SampleCount
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 100 # Adjust based on expected traffic
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SNSTopicArn
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: Permissions
+
+  # Alarm: Audit Log Processing Lag > 1 minute
+  AuditLogLagAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${Environment}-audit-log-processing-lag-high'
+      AlarmDescription: 'Alert when audit log processing lag exceeds 1 minute'
+      MetricName: audit_log_processing_lag_seconds
+      Namespace: WasteFlow/Permissions
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 60 # 1 minute
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SNSTopicArn
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: AuditLogs
+
+  # Alarm: ABAC Evaluation Latency > 5ms
+  AbacEvaluationLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${Environment}-abac-evaluation-latency-high'
+      AlarmDescription: 'Alert when ABAC evaluation P99 latency exceeds 5ms'
+      MetricName: abac_evaluation_duration_seconds
+      Namespace: WasteFlow/Permissions
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 0.005 # 5ms in seconds
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SNSTopicArn
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: ABAC
+
+  # Dashboard
+  PermissionsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${Environment}-permissions-dashboard'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["WasteFlow/Permissions", "permission_check_duration_seconds", { "stat": "p99" }]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "Permission Check P99 Latency",
+                "yAxis": {
+                  "left": { "min": 0 }
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["WasteFlow/Permissions", "permission_cache_hit_ratio"]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "Cache Hit Ratio"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  PermissionCheckLatencyAlarmArn:
+    Description: 'ARN of Permission Check Latency Alarm'
+    Value: !GetAtt PermissionCheckLatencyAlarm.Arn
+    Export:
+      Name: !Sub '${Environment}-permission-latency-alarm-arn'
+
+  CacheHitRateAlarmArn:
+    Description: 'ARN of Cache Hit Rate Alarm'
+    Value: !GetAtt CacheHitRateAlarm.Arn
+    Export:
+      Name: !Sub '${Environment}-cache-hit-rate-alarm-arn'
+
+  DashboardURL:
+    Description: 'CloudWatch Dashboard URL'
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${PermissionsDashboard}'
