@@ -433,7 +433,7 @@ export class CustomRoleBuilderComponent implements OnInit {
           description: response.description,
         });
 
-        this.selectedPermissions.set(response.permissions || []);
+        this.selectedPermissions.set((response.permissions || []).map(p => p.permission));
         this.isLoading.set(false);
       },
       error: (error) => {

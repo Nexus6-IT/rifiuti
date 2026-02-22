@@ -245,7 +245,7 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
                   icon="pi pi-arrow-right"
                   class="p-button-primary p-button-sm action-button"
                   (click)="viewAssignmentDetails(assignment)"
-                  [attr.data-testid]="'view-details-' + assignment.firId'"></button>
+                  [attr.data-testid]="'view-details-' + assignment.firId"></button>
                 <button
                   pButton
                   label="Start Pickup"
@@ -253,7 +253,7 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
                   class="p-button-success p-button-sm action-button"
                   (click)="startPickup(assignment)"
                   [disabled]="assignment.status !== 'AWAITING_CARRIER'"
-                  [attr.data-testid]="'start-pickup-' + assignment.firId'"></button>
+                  [attr.data-testid]="'start-pickup-' + assignment.firId"></button>
               </div>
             </p-card>
           </div>
@@ -767,6 +767,7 @@ export class MyAssignmentsComponent implements OnInit {
 
         return () => refreshSubscription.unsubscribe();
       }
+      return () => {}; // No-op cleanup when offline
     });
   }
 

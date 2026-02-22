@@ -717,22 +717,22 @@ model ResourceOwnership {
   createdAt DateTime @default(now()) @map("created_at")
 
   // Core fields
-  userId       String  @map("user_id") @db.Uuid // User who owns/is assigned the resource
-  tenantId     String  @map("tenant_id") @db.Uuid
-  resourceType String  @db.VarChar(50) // "vehicle", "facility", "zone", "route"
-  resourceId   String  @map("resource_id") @db.Uuid
+  userId       String @map("user_id") @db.Uuid // User who owns/is assigned the resource
+  tenantId     String @map("tenant_id") @db.Uuid
+  resourceType String @db.VarChar(50) // "vehicle", "facility", "zone", "route"
+  resourceId   String @map("resource_id") @db.Uuid
 
   // Assignment tracking
   assignedBy String   @map("assigned_by") @db.Uuid // User ID who made the assignment
   assignedAt DateTime @default(now()) @map("assigned_at")
 
   // Expiration and deactivation
-  expiresAt         DateTime? @map("expires_at")
-  isActive          Boolean   @default(true) @map("is_active")
-  revokedBy         String?   @map("revoked_by") @db.Uuid
-  revokedAt         DateTime? @map("revoked_at")
-  revocationReason  String?   @map("revocation_reason") @db.Text
-  reason            String?   @db.Text // Assignment reason/notes
+  expiresAt        DateTime? @map("expires_at")
+  isActive         Boolean   @default(true) @map("is_active")
+  revokedBy        String?   @map("revoked_by") @db.Uuid
+  revokedAt        DateTime? @map("revoked_at")
+  revocationReason String?   @map("revocation_reason") @db.Text
+  reason           String?   @db.Text // Assignment reason/notes
 
   // Metadata (JSON) - stores certifications, capacity, zone info
   // Example: { "certifications": ["ADR", "Hazmat"], "capacity": 1500, "zone": "North" }
@@ -843,14 +843,14 @@ model AbacPolicy {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  name         String              @unique @db.VarChar(100)
-  resourceType String              @map("resource_type") @db.VarChar(50) // "fir", "facility", "report"
-  effect       AbacPolicyEffect    @default(ALLOW)
+  name         String           @unique @db.VarChar(100)
+  resourceType String           @map("resource_type") @db.VarChar(50) // "fir", "facility", "report"
+  effect       AbacPolicyEffect @default(ALLOW)
   conditions   Json // JSON structure: { operator: "AND", rules: [...] }
-  priority     Int                 @default(100)
-  isActive     Boolean             @default(true) @map("is_active")
-  description  String?             @db.Text
-  createdBy    String              @map("created_by") @db.Uuid
+  priority     Int              @default(100)
+  isActive     Boolean          @default(true) @map("is_active")
+  description  String?          @db.Text
+  createdBy    String           @map("created_by") @db.Uuid
 
   @@index([resourceType, isActive, priority])
   @@index([isActive, priority])

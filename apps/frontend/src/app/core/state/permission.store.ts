@@ -107,8 +107,8 @@ export const PermissionStore = signalStore(
     hasAnyPermission: computed(
       () =>
         (requiredPermissions: string[]): boolean => {
-          const checkPermission = store.hasPermission();
-          return requiredPermissions.some((perm) => checkPermission(perm));
+          const userPermissions = store.permissions();
+          return requiredPermissions.some((perm) => userPermissions.includes(perm));
         },
     ),
 
@@ -118,18 +118,14 @@ export const PermissionStore = signalStore(
     hasAllPermissions: computed(
       () =>
         (requiredPermissions: string[]): boolean => {
-          const checkPermission = store.hasPermission();
-          return requiredPermissions.every((perm) => checkPermission(perm));
+          const userPermissions = store.permissions();
+          return requiredPermissions.every((perm) => userPermissions.includes(perm));
         },
     ),
   })),
-  withMethods((store, permissionApi = inject(PermissionApiService)) => ({
-    /**
-     * Load permissions from backend API
-     * Caches result for TTL duration
-     * T091: Uses PermissionApiService for backend integration
-     */
-    loadPermissions: rxMethod<void>(
+  withMethods((store, permissionApi = inject(PermissionApiService)) => {
+    // Internal rxMethod (not exposed publicly)
+    const _loadPermissionsEffect = rxMethod<void>(
       pipe(
         tap(() => patchState(store, { isLoading: true, error: null })),
         switchMap(() =>
@@ -154,67 +150,79 @@ export const PermissionStore = signalStore(
           ),
         ),
       ),
-    ),
+    );
 
-    /**
-     * Reload permissions from server (bypasses cache)
-     */
-    refreshPermissions(): void {
-      patchState(store, { lastFetchedAt: null });
-      store.loadPermissions(undefined);
-    },
+    // Public synchronous methods
+    return {
+      /**
+       * Load permissions from backend API
+       * Caches result for TTL duration
+       * T091: Uses PermissionApiService for backend integration
+       */
+      loadPermissions(): void {
+        _loadPermissionsEffect();
+      },
 
-    /**
-     * Clear permissions (e.g., on logout)
-     */
-    clearPermissions(): void {
-      patchState(store, initialState);
-    },
+      /**
+       * Reload permissions from server (bypasses cache)
+       */
+      refreshPermissions(): void {
+        patchState(store, { lastFetchedAt: null });
+        _loadPermissionsEffect();
+      },
 
-    /**
-     * Handle tenant context switch
-     * Clears current permissions and reloads for new tenant
-     * T118: Support consultant multi-tenant context switching
-     */
-    onTenantContextSwitch(): void {
-      // Clear existing permissions
-      patchState(store, {
-        permissions: [],
-        lastFetchedAt: null,
-        error: null,
-      });
+      /**
+       * Clear permissions (e.g., on logout)
+       */
+      clearPermissions(): void {
+        patchState(store, initialState);
+      },
 
-      // Reload permissions for new tenant context
-      store.loadPermissions(undefined);
-    },
+      /**
+       * Handle tenant context switch
+       * Clears current permissions and reloads for new tenant
+       * T118: Support consultant multi-tenant context switching
+       */
+      onTenantContextSwitch(): void {
+        // Clear existing permissions
+        patchState(store, {
+          permissions: [],
+          lastFetchedAt: null,
+          error: null,
+        });
 
-    /**
-     * Optimistically add permissions to cache
-     * Used after role assignment operations
-     */
-    addPermissions(newPermissions: string[]): void {
-      const current = store.permissions();
-      const updated = [...new Set([...current, ...newPermissions])];
-      patchState(store, { permissions: updated });
-    },
+        // Reload permissions for new tenant context
+        _loadPermissionsEffect();
+      },
 
-    /**
-     * Optimistically remove permissions from cache
-     * Used after role revocation operations
-     */
-    removePermissions(permissionsToRemove: string[]): void {
-      const current = store.permissions();
-      const updated = current.filter((p) => !permissionsToRemove.includes(p));
-      patchState(store, { permissions: updated });
-    },
+      /**
+       * Optimistically add permissions to cache
+       * Used after role assignment operations
+       */
+      addPermissions(newPermissions: string[]): void {
+        const current = store.permissions();
+        const updated = [...new Set([...current, ...newPermissions])];
+        patchState(store, { permissions: updated });
+      },
 
-    /**
-     * Auto-fetch permissions if cache is stale
-     */
-    ensurePermissionsLoaded(): void {
-      if (store.isCacheStale()) {
-        store.loadPermissions(undefined);
-      }
-    },
-  })),
+      /**
+       * Optimistically remove permissions from cache
+       * Used after role revocation operations
+       */
+      removePermissions(permissionsToRemove: string[]): void {
+        const current = store.permissions();
+        const updated = current.filter((p) => !permissionsToRemove.includes(p));
+        patchState(store, { permissions: updated });
+      },
+
+      /**
+       * Auto-fetch permissions if cache is stale
+       */
+      ensurePermissionsLoaded(): void {
+        if (store.isCacheStale()) {
+          _loadPermissionsEffect();
+        }
+      },
+    };
+  }),
 );

@@ -12,6 +12,7 @@ import { InputNumberModule } from 'primeng/inputnumber';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { ConfirmationService } from 'primeng/api';
 import { SplitButtonModule } from 'primeng/splitbutton';
+import { CardModule } from 'primeng/card';
 import { MenuItem } from 'primeng/api';
 import { FirService, CreateFIRDto } from './fir.service';
 import { FIR, FIRStato } from '../../shared/models/fir.model';
@@ -31,7 +32,8 @@ import { ExportService } from '../../core/services/export.service';
     DialogModule,
     InputNumberModule,
     ConfirmDialogModule,
-    SplitButtonModule
+    SplitButtonModule,
+    CardModule
   ],
   providers: [ConfirmationService],
   template: `

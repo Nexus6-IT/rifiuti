@@ -132,28 +132,28 @@ DECLARE
     v_compliance_officer_role_id UUID;
 BEGIN
     -- Create ADMIN role
-    INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by)
-    VALUES (gen_random_uuid(), p_tenant_id, 'ADMIN', 'Full administrative access to tenant', true, p_created_by_user_id)
+    INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by, created_at, updated_at)
+    VALUES (gen_random_uuid(), p_tenant_id, 'ADMIN', 'Full administrative access to tenant', true, p_created_by_user_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     RETURNING id INTO v_admin_role_id;
 
     -- Create OPERATOR role
-    INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by)
-    VALUES (gen_random_uuid(), p_tenant_id, 'OPERATOR', 'Standard operational access for facility-scoped FIR management', true, p_created_by_user_id)
+    INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by, created_at, updated_at)
+    VALUES (gen_random_uuid(), p_tenant_id, 'OPERATOR', 'Standard operational access for facility-scoped FIR management', true, p_created_by_user_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     RETURNING id INTO v_operator_role_id;
 
     -- Create VIEWER role
-    INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by)
-    VALUES (gen_random_uuid(), p_tenant_id, 'VIEWER', 'Read-only access to facility data', true, p_created_by_user_id)
+    INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by, created_at, updated_at)
+    VALUES (gen_random_uuid(), p_tenant_id, 'VIEWER', 'Read-only access to facility data', true, p_created_by_user_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     RETURNING id INTO v_viewer_role_id;
 
     -- Create CONSULTANT role
-    INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by)
-    VALUES (gen_random_uuid(), p_tenant_id, 'CONSULTANT', 'Environmental consultant managing multiple client tenants', true, p_created_by_user_id)
+    INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by, created_at, updated_at)
+    VALUES (gen_random_uuid(), p_tenant_id, 'CONSULTANT', 'Environmental consultant managing multiple client tenants', true, p_created_by_user_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     RETURNING id INTO v_consultant_role_id;
 
     -- Create COMPLIANCE_OFFICER role
-    INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by)
-    VALUES (gen_random_uuid(), p_tenant_id, 'COMPLIANCE_OFFICER', 'Audit and compliance specialist with full read access and report generation', true, p_created_by_user_id)
+    INSERT INTO roles (id, tenant_id, name, description, is_system_role, created_by, created_at, updated_at)
+    VALUES (gen_random_uuid(), p_tenant_id, 'COMPLIANCE_OFFICER', 'Audit and compliance specialist with full read access and report generation', true, p_created_by_user_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     RETURNING id INTO v_compliance_officer_role_id;
 
     -- Assign permissions to ADMIN role (all permissions with 'all' scope)

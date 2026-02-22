@@ -164,12 +164,9 @@ export const RoleStore = signalStore(
       return Array.from(permissionSet);
     }),
   })),
-  withMethods((store, roleApi = inject(RoleApiService)) => ({
-    /**
-     * Load all available roles for current tenant
-     * T092: Uses RoleApiService for backend integration
-     */
-    loadRoles: rxMethod<void>(
+  withMethods((store, roleApi = inject(RoleApiService)) => {
+    // Internal rxMethods (not exposed publicly)
+    const _loadRolesEffect = rxMethod<void>(
       pipe(
         tap(() => patchState(store, { isLoading: true, error: null })),
         switchMap(() =>
@@ -200,14 +197,9 @@ export const RoleStore = signalStore(
           ),
         ),
       ),
-    ),
+    );
 
-    /**
-     * Load current user's role assignments
-     * T092: Uses RoleApiService for backend integration
-     * Note: This requires userId - should be called with current user's ID
-     */
-    loadUserRoles: rxMethod<string>(
+    const _loadUserRolesEffect = rxMethod<string>(
       pipe(
         tap(() => patchState(store, { isLoading: true, error: null })),
         switchMap((userId: string) =>
@@ -241,54 +233,74 @@ export const RoleStore = signalStore(
           ),
         ),
       ),
-    ),
+    );
 
-    /**
-     * Refresh both roles and user role assignments
-     * Note: Requires userId parameter for loadUserRoles
-     */
-    refreshAll(userId: string): void {
-      patchState(store, { lastFetchedAt: null });
-      store.loadRoles(undefined);
-      store.loadUserRoles(userId);
-    },
+    // Public synchronous methods
+    return {
+      /**
+       * Load all available roles for current tenant
+       * T092: Uses RoleApiService for backend integration
+       */
+      loadRoles(): void {
+        _loadRolesEffect();
+      },
 
-    /**
-     * Clear role data (e.g., on logout)
-     */
-    clearRoles(): void {
-      patchState(store, initialState);
-    },
+      /**
+       * Load current user's role assignments
+       * T092: Uses RoleApiService for backend integration
+       * Note: This requires userId - should be called with current user's ID
+       */
+      loadUserRoles(userId: string): void {
+        _loadUserRolesEffect(userId);
+      },
 
-    /**
-     * Auto-fetch roles if cache is stale
-     * Note: Requires userId parameter for loadUserRoles
-     */
-    ensureRolesLoaded(userId: string): void {
-      if (store.isCacheStale()) {
-        store.loadRoles(undefined);
-        store.loadUserRoles(userId);
-      }
-    },
+      /**
+       * Refresh both roles and user role assignments
+       * Note: Requires userId parameter for loadUserRoles
+       */
+      refreshAll(userId: string): void {
+        patchState(store, { lastFetchedAt: null });
+        _loadRolesEffect();
+        _loadUserRolesEffect(userId);
+      },
 
-    /**
-     * Optimistically add user role assignment after successful API call
-     */
-    addUserRole(assignment: UserRoleAssignment): void {
-      const current = store.userRoles();
-      patchState(store, {
-        userRoles: [...current, assignment],
-      });
-    },
+      /**
+       * Clear role data (e.g., on logout)
+       */
+      clearRoles(): void {
+        patchState(store, initialState);
+      },
 
-    /**
-     * Optimistically remove user role assignment after successful API call
-     */
-    removeUserRole(assignmentId: string): void {
-      const current = store.userRoles();
-      patchState(store, {
-        userRoles: current.filter((ur) => ur.id !== assignmentId),
-      });
-    },
-  })),
+      /**
+       * Auto-fetch roles if cache is stale
+       * Note: Requires userId parameter for loadUserRoles
+       */
+      ensureRolesLoaded(userId: string): void {
+        if (store.isCacheStale()) {
+          _loadRolesEffect();
+          _loadUserRolesEffect(userId);
+        }
+      },
+
+      /**
+       * Optimistically add user role assignment after successful API call
+       */
+      addUserRole(assignment: UserRoleAssignment): void {
+        const current = store.userRoles();
+        patchState(store, {
+          userRoles: [...current, assignment],
+        });
+      },
+
+      /**
+       * Optimistically remove user role assignment after successful API call
+       */
+      removeUserRole(assignmentId: string): void {
+        const current = store.userRoles();
+        patchState(store, {
+          userRoles: current.filter((ur) => ur.id !== assignmentId),
+        });
+      },
+    };
+  }),
 );
