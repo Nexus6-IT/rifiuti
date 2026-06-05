@@ -5,6 +5,7 @@
 
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { TrasportatoreRepository } from '../../domain/registry/repositories/trasportatore.repository'
 import { Trasportatore } from '../../domain/registry/entities/trasportatore'
 import { PartitaIVA } from '../../domain/registry/value-objects/partita-iva'
@@ -30,7 +31,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
       updatedAt: new Date(),
     }
 
-    const tenantId = await this.getContextTenantId()
+    const tenantId = this.getContextTenantId()
 
     await this.prisma.trasportatore.upsert({
       where: { id: trasportatore.id },
@@ -66,7 +67,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
   }
 
   async findByPartitaIVA(partitaIVA: string): Promise<Trasportatore | null> {
-    const tenantId = await this.getContextTenantId()
+    const tenantId = this.getContextTenantId()
 
     const trasportatore = await this.prisma.trasportatore.findFirst({
       where: {
@@ -83,7 +84,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
   }
 
   async findByNumeroIscrizione(numeroIscrizione: string): Promise<Trasportatore | null> {
-    const tenantId = await this.getContextTenantId()
+    const tenantId = this.getContextTenantId()
 
     const trasportatore = await this.prisma.trasportatore.findFirst({
       where: {
@@ -126,8 +127,12 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
     })
   }
 
-  private async getContextTenantId(): Promise<string> {
-    const tenant = await this.prisma.tenant.findFirst()
-    return tenant?.id || 'default-tenant-id'
+  /**
+   * Tenant corrente risolto dal contesto di richiesta (TenantContext / JWT).
+   * Fail-closed: lancia se il contesto non è impostato, invece di ricadere sul
+   * "primo tenant" del DB (causa del cross-tenant data leak).
+   */
+  private getContextTenantId(): string {
+    return TenantContext.requireTenantId()
   }
 }

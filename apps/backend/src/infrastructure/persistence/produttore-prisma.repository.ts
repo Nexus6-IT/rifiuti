@@ -5,6 +5,7 @@
 
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { ProduttoreRepository } from '../../domain/registry/repositories/produttore.repository'
 import { Produttore } from '../../domain/registry/entities/produttore'
 import { PartitaIVA } from '../../domain/registry/value-objects/partita-iva'
@@ -29,9 +30,7 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
       updatedAt: new Date(),
     }
 
-    // Get tenantId from request context (for now use a default)
-    // TODO: Extract tenantId from request context
-    const tenantId = await this.getContextTenantId()
+    const tenantId = this.getContextTenantId()
 
     await this.prisma.produttore.upsert({
       where: { id: produttore.id },
@@ -67,8 +66,7 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
   }
 
   async findByPartitaIVA(partitaIVA: string): Promise<Produttore | null> {
-    // TODO: Filter by tenantId from context
-    const tenantId = await this.getContextTenantId()
+    const tenantId = this.getContextTenantId()
 
     const produttore = await this.prisma.produttore.findFirst({
       where: {
@@ -111,13 +109,11 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
   }
 
   /**
-   * Get tenantId from request context
-   * TODO: Implement proper tenant context extraction from JWT
+   * Tenant corrente risolto dal contesto di richiesta (TenantContext / JWT).
+   * Fail-closed: lancia se il contesto non è impostato, invece di ricadere sul
+   * "primo tenant" del DB (causa del cross-tenant data leak).
    */
-  private async getContextTenantId(): Promise<string> {
-    // For now, get the first tenant
-    // In production, extract this from JWT token in request context
-    const tenant = await this.prisma.tenant.findFirst()
-    return tenant?.id || 'default-tenant-id'
+  private getContextTenantId(): string {
+    return TenantContext.requireTenantId()
   }
 }

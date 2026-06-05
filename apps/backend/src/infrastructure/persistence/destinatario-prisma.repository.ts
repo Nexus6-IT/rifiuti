@@ -5,6 +5,7 @@
 
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { DestinatarioRepository } from '../../domain/registry/repositories/destinatario.repository'
 import { Destinatario } from '../../domain/registry/entities/destinatario'
 import { PartitaIVA } from '../../domain/registry/value-objects/partita-iva'
@@ -30,7 +31,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
       updatedAt: new Date(),
     }
 
-    const tenantId = await this.getContextTenantId()
+    const tenantId = this.getContextTenantId()
 
     await this.prisma.destinatario.upsert({
       where: { id: destinatario.id },
@@ -66,7 +67,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
   }
 
   async findByPartitaIVA(partitaIVA: string): Promise<Destinatario | null> {
-    const tenantId = await this.getContextTenantId()
+    const tenantId = this.getContextTenantId()
 
     const destinatario = await this.prisma.destinatario.findFirst({
       where: {
@@ -83,7 +84,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
   }
 
   async findByNumeroAutorizzazione(numeroAutorizzazione: string): Promise<Destinatario | null> {
-    const tenantId = await this.getContextTenantId()
+    const tenantId = this.getContextTenantId()
 
     const destinatario = await this.prisma.destinatario.findFirst({
       where: {
@@ -126,8 +127,12 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
     })
   }
 
-  private async getContextTenantId(): Promise<string> {
-    const tenant = await this.prisma.tenant.findFirst()
-    return tenant?.id || 'default-tenant-id'
+  /**
+   * Tenant corrente risolto dal contesto di richiesta (TenantContext / JWT).
+   * Fail-closed: lancia se il contesto non è impostato, invece di ricadere sul
+   * "primo tenant" del DB (causa del cross-tenant data leak).
+   */
+  private getContextTenantId(): string {
+    return TenantContext.requireTenantId()
   }
 }

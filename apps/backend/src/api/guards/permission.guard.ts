@@ -15,6 +15,8 @@ import { PermissionAuditLogRepository } from '../../domain/identity-access/permi
 import { AuditMetadata } from '../../domain/identity-access/value-objects/audit-metadata.vo';
 import { AbacPolicyEvaluator, EvaluationContext } from '../../domain/identity-access/abac/abac-policy-evaluator.service';
 import { AbacPolicyRepository } from '../../domain/identity-access/abac/abac-policy.repository.interface';
+import { UserRoleRepository } from '../../domain/identity-access/user-role.repository.interface';
+import { PermissionRepository } from '../../domain/identity-access/permission.repository.interface';
 
 /**
  * PermissionGuard
@@ -36,6 +38,10 @@ export class PermissionGuard implements CanActivate {
     private abacEvaluator: AbacPolicyEvaluator,
     @Inject('AbacPolicyRepository')
     private abacPolicyRepository: AbacPolicyRepository,
+    @Inject('UserRoleRepository')
+    private userRoleRepository: UserRoleRepository,
+    @Inject('PermissionRepository')
+    private permissionRepository: PermissionRepository,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -68,14 +74,25 @@ export class PermissionGuard implements CanActivate {
         userId,
       );
 
-      // Step 2: If cache miss, fetch from database (TODO: implement in Phase 3)
+      // Step 2: On cache miss, load the user's effective permissions from the
+      // database (RBAC source of truth), then populate the cache. A cache miss
+      // must NEVER blindly deny a legitimate user.
       if (!userPermissions) {
         this.logger.debug(
           `Cache miss for user ${userId} - fetching from database`,
         );
-        // TODO Phase 3: Query UserRoleRepository + PermissionRepository
-        // For now, deny access
-        userPermissions = [];
+        userPermissions = await this.loadPermissionsFromDb(userId, tenantId);
+
+        // Populate the cache so subsequent requests hit the fast path.
+        // Cache write failures must not break the authorization decision.
+        await this.permissionCache
+          .setPermissions(tenantId, userId, userPermissions)
+          .catch((error) => {
+            this.logger.error(
+              `Failed to populate permission cache for user ${userId}: ${error.message}`,
+              error.stack,
+            );
+          });
       }
 
       // Step 3: Check if user has required permission (RBAC)
@@ -102,12 +119,14 @@ export class PermissionGuard implements CanActivate {
               tenantId,
               ...user, // Include all user attributes
             },
-            resource: {
-              type: resourceType,
-              // TODO: Extract resource attributes from request body/params
-              ...request.body,
-              ...request.params,
-            },
+            // SECURITY: never spread the raw request body into the resource
+            // attributes — it is fully attacker-controlled and would let a
+            // client spoof ABAC decisions (e.g. forge ownerId/isApproved).
+            // Only derive trusted identifiers from the route params. Real
+            // resource attributes must be loaded server-side from a trusted
+            // store before they can be used for authorization; until such a
+            // loader exists, expose only the resource id from the route.
+            resource: this.extractResourceAttributes(resourceType, request),
             action,
             environment: {
               timestamp: new Date(),
@@ -191,6 +210,70 @@ export class PermissionGuard implements CanActivate {
       );
       throw new ForbiddenException('Permission check failed');
     }
+  }
+
+  /**
+   * Load the user's effective permission strings from the database.
+   *
+   * Resolves all active (non-expired, non-revoked) role assignments for the
+   * user within the tenant, then expands each role into its permission strings
+   * in `resource:action:scope` format. Used as the authoritative fallback on a
+   * permission cache miss so legitimate users are never blindly denied.
+   */
+  private async loadPermissionsFromDb(
+    userId: string,
+    tenantId: string,
+  ): Promise<string[]> {
+    const activeUserRoles = await this.userRoleRepository.findActiveByUserId(
+      userId,
+      tenantId,
+    );
+
+    if (!activeUserRoles || activeUserRoles.length === 0) {
+      return [];
+    }
+
+    // De-duplicate role ids (a user could hold the same role via multiple
+    // assignments, e.g. facility-scoped duplicates).
+    const roleIds = Array.from(
+      new Set(activeUserRoles.map((userRole) => userRole.roleId)),
+    );
+
+    const permissionSet = new Set<string>();
+
+    await Promise.all(
+      roleIds.map(async (roleId) => {
+        const permissions = await this.permissionRepository.findByRole(roleId);
+        for (const permission of permissions) {
+          permissionSet.add(permission.toString());
+        }
+      }),
+    );
+
+    return Array.from(permissionSet);
+  }
+
+  /**
+   * Build the ABAC resource attribute set from TRUSTED inputs only.
+   *
+   * SECURITY: the request body is fully attacker-controlled and must never feed
+   * an authorization decision. Only the resource id derived from the route
+   * params is exposed here. Any additional resource attribute (ownerId,
+   * approval state, etc.) must be loaded server-side from a trusted store
+   * before being used; this method intentionally returns the minimal safe set.
+   */
+  private extractResourceAttributes(
+    resourceType: string,
+    request: any,
+  ): Record<string, unknown> {
+    const resource: Record<string, unknown> = { type: resourceType };
+
+    const routeId = request?.params?.id;
+    if (typeof routeId === 'string' && routeId.length > 0) {
+      resource.id = routeId;
+    }
+
+    return resource;
   }
 
   /**

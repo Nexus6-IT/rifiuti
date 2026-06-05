@@ -1,5 +1,6 @@
 import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { TenantContext } from '../context/tenant-context';
 
 /**
  * Tenant Context Middleware
@@ -45,7 +46,10 @@ export class TenantContextMiddleware implements NestMiddleware {
     // Attach tenant ID to request for downstream use
     (req as any).tenantId = user.tenantId;
 
-    next();
+    // Esegue il resto della richiesta DENTRO il TenantContext (AsyncLocalStorage):
+    // così i repository risolvono il tenant corrente dal contesto, senza il
+    // fallback al "primo tenant" che causava il cross-tenant data leak.
+    TenantContext.run({ tenantId: user.tenantId, userId: user.userId }, () => next());
   }
 }
 
