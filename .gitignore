@@ -60,3 +60,8 @@ temp/
 /apps/backend/node_modules/*
 /apps/frontend/node_modules/*
 /apps/frontend/.angular/*
+
+# Ruflo / claude-flow local runtime state (do not commit)
+.swarm/
+.claude-flow/
+ruvector.db

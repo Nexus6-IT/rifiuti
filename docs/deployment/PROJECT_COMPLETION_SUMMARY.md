@@ -1,9 +1,11 @@
 # WasteFlow Platform - Project Completion Summary
 
-**Status**: ✅ **PRODUCTION READY**
+> ⚠️ **AVVISO (2026-06): questo documento dichiara un completamento totale che NON corrisponde alla realtà.** Lo stato reale verificato sul codice è un **MVP parziale ~50%, NON production-ready**: RENTRI mock-only, multi-tenant da consolidare (rischio data-leak), MUD stub, test reali ~14% backend / ~2% frontend, CI/CD assente, app mobile inesistente. I dati "239/239 (100%) / PRODUCTION READY / coverage 80%+" qui sotto sono aspirazionali. Fonte autorevole: [../planning/ANALISI_E_PIANO_2026-06.md](../planning/ANALISI_E_PIANO_2026-06.md).
+
+**Status**: ✅ **PRODUCTION READY** ⚠️ *(dichiarato, non reale — vedi avviso sopra)*
 **Completion Date**: 2025-11-01
-**Total Tasks**: 239/239 (100%)
-**Test Coverage**: 100% domain layer, 80%+ overall
+**Total Tasks**: 239/239 (100%) ⚠️ *(aspirazionale)*
+**Test Coverage**: 100% domain layer, 80%+ overall ⚠️ *(reale: ~14% backend / ~2% frontend)*
 **Version**: 1.0.0
 
 ---

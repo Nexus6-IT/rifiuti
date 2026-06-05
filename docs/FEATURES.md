@@ -1,7 +1,9 @@
 # WasteFlow - Riepilogo Completo Funzionalita
 
+> ⚠️ **STATO REALE (2026-06): MVP parziale ~50%, NON production-ready.** Vedi [planning/ANALISI_E_PIANO_2026-06.md](./planning/ANALISI_E_PIANO_2026-06.md). Le affermazioni "239/239 task completati / production-ready / coverage 80-85%" in questo documento sono **aspirazionali**. Correzioni chiave: RENTRI è **mock-only** (nessuna API governativa reale); il **multi-tenant è da consolidare** (il contesto tenant non viene estratto dal JWT → rischio data-leak); MUD è **stub** (recupero/smaltimento a zero); SPID/CIE è **dev-only**; l'**app mobile è assente**; la **coverage reale è bassa** (backend ~14%, frontend ~2%) e la **CI/CD è assente**. Dove questo documento dichiara "Completo/Completato/production-ready", leggere come visione, salvo i punti già segnati come parziali nella §10 (analisi del codice sorgente), che è la parte più vicina alla realtà.
+
 Documento ottimizzato per context injection in agenti LLM.
-Ultimo aggiornamento: 2026-02-22
+Ultimo aggiornamento: 2026-02-22 (banner di stato reale aggiunto 2026-06-05)
 
 ---
 
@@ -12,7 +14,7 @@ Ultimo aggiornamento: 2026-02-22
 - **Mercato target**: 150.000+ aziende italiane obbligate RENTRI, focus su 80.000+ micro-PMI sottosservite
 - **Value proposition**: Trasformare la compliance ambientale da costo burocratico a vantaggio competitivo
 - **Differenziatori**: AI-powered simplicity, mobile-first, marketplace B2B, pricing trasparente
-- **Stato implementazione**: 239/239 task completati (10 fasi). Sistema production-ready
+- **Stato implementazione**: ⚠️ **MVP parziale ~50%, NON production-ready** (la cifra "239/239 task completati" è di documentazione, non di codice). Architettura DDD/CQRS solida, ma integrazioni chiave mockate o incomplete: RENTRI mock-only, multi-tenant da consolidare, MUD stub, test bassi (~14% backend / ~2% frontend), CI/CD assente. Vedi [planning/ANALISI_E_PIANO_2026-06.md](./planning/ANALISI_E_PIANO_2026-06.md).
 - **Licenza**: MIT
 
 ---
@@ -320,23 +322,27 @@ apps/
 
 ## 6. Compliance Normativa
 
-| Normativa | Stato |
+> ⚠️ Colonna "Stato" rivista 2026-06: molti "Completo" erano aspirazionali. Stato reale qui sotto.
+
+| Normativa | Stato (reale 2026-06) |
 |---|---|
-| RENTRI (D.M. 59/2023) - Registro Elettronico Nazionale | Completo |
-| D.Lgs. 152/2006 - Codice Ambiente | Completo |
-| SPID Livello 2+ per firma digitale (CAD) | Completo |
-| RFC 3161 timestamp tokens | Completo |
-| ECDSA-SHA256 firme crittografiche | Completo |
-| MUD reporting annuale | Completo |
-| Codici CER/EER classificazione rifiuti | Completo |
-| GDPR (soft delete, data isolation, audit, encryption) | Completo |
-| WCAG 2.1 AA accessibilita | Parziale |
+| RENTRI (D.M. 59/2023) - Registro Elettronico Nazionale | 🔴 Mock-only (client verso localhost, nessuna API governativa reale, accreditamento non avviato) |
+| D.Lgs. 152/2006 - Codice Ambiente | 🟠 Parziale |
+| SPID Livello 2+ per firma digitale (CAD) | 🟠 Dev-only (Keycloak start-dev, no TLS) |
+| RFC 3161 timestamp tokens | 🔴 Non implementato (firma ECDSA reale ma senza timestamp RFC 3161) |
+| ECDSA-SHA256 firme crittografiche | 🟢 Reale (crypto Node P-256) |
+| MUD reporting annuale | 🟠 Stub (recupero/smaltimento hardcoded a zero, manca `destinationType`) |
+| Codici CER/EER classificazione rifiuti | 🟢 Presente (catalogo 842 codici) |
+| GDPR (soft delete, data isolation, audit, encryption) | 🟠 Parziale (isolamento tenant non garantito: contesto rotto) |
+| WCAG 2.1 AA accessibilita | 🟠 Parziale |
 
 ---
 
 ## 7. Stato Implementazione
 
-### Fasi Completate (10/10)
+> ⚠️ La lista "Fasi Completate (10/10)" e le "Metriche Codice" (coverage 85%+) sono **aspirazionali**. La fotografia veritiera è la §10 (analisi del codice sorgente) e [planning/ANALISI_E_PIANO_2026-06.md](./planning/ANALISI_E_PIANO_2026-06.md). Coverage reale: backend ~14%, frontend ~2%. Le metriche di performance non sono verificate.
+
+### Fasi Completate (10/10) — *dichiarate, non verificate*
 1. **Setup** (8 task): Docker, PostgreSQL, Redis, Keycloak, ambiente sviluppo
 2. **Fondamenta** (21 task): NestJS, Prisma, Angular+PrimeNG, servizi core, auth guards
 3. **Sync RENTRI** (27 task): Client API, BullMQ queue, retry logic, validazione, mock server
@@ -349,10 +355,10 @@ apps/
 10. **Polish** (18 task): ABAC engine, Prometheus/Grafana, k6 load test, security hardening
 
 ### Metriche Codice
-- **Test coverage**: 85%+ (domain layer 100%)
-- **Test cases**: 100+ (10 suite)
-- **Approccio**: TDD rigoroso (RED -> GREEN -> REFACTOR)
-- **Performance**: permission check <10ms, query <100ms, API p95 <200ms
+- **Test coverage**: ⚠️ dichiarato 85%+, **reale ~14% backend / ~2% frontend** (vedi §10)
+- **Test cases**: ~48 spec backend, 2 spec frontend
+- **Approccio**: TDD dichiarato; nella pratica copertura bassa
+- **Performance**: target permission check <10ms, query <100ms, API p95 <200ms — *non verificati*
 
 ### Da Completare / Pianificato
 - Prisma repositories concreti (parzialmente implementati)
@@ -370,11 +376,13 @@ apps/
 
 ## 8. Integrazioni Esterne
 
+> ⚠️ Stato rivisto 2026-06: "Completato" su RENTRI/SPID/Keycloak è aspirazionale.
+
 | Sistema | Stato | Protocollo |
 |---|---|---|
-| RENTRI (Registro Nazionale) | Completato | REST + OAuth2 |
-| SPID/CIE (Identita Digitale) | Completato | SAML 2.0 |
-| Keycloak | Completato | OIDC/SAML |
+| RENTRI (Registro Nazionale) | 🔴 Mock-only (no API reali) | REST + OAuth2 |
+| SPID/CIE (Identita Digitale) | 🟠 Dev-only | SAML 2.0 |
+| Keycloak | 🟠 Dev-only (start-dev, no TLS) | OIDC/SAML |
 | AWS SES (Email) | Ready | SMTP |
 | AWS S3 (Storage documenti) | Ready | SDK |
 | Stripe (Pagamenti) | Pianificato | API REST |

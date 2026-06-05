@@ -1,5 +1,7 @@
 # WasteFlow - Implementation Summary
 
+> ⚠️ **AVVISO (2026-06): documento storico, NON allineato allo stato reale.** I conteggi di task "completati" qui sotto sono aspirazionali. Lo stato reale è un **MVP parziale ~50%, NON production-ready** (RENTRI mock-only, multi-tenant da consolidare, test reali ~14% backend / ~2% frontend, CI/CD assente). Fonte autorevole: [../planning/ANALISI_E_PIANO_2026-06.md](../planning/ANALISI_E_PIANO_2026-06.md).
+
 ## Completed Phases (1-7): 142/261 tasks ✅
 
 ### Phase 1: Setup (8 tasks) ✅

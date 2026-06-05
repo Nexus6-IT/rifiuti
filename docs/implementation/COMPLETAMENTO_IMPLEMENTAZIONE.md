@@ -1,5 +1,7 @@
 # WasteFlow - Completamento Implementazione
 
+> ⚠️ **AVVISO (2026-06): documento storico, NON allineato allo stato reale.** "Tutti i task completati" si riferisce a un sotto-insieme di attività e NON significa che il prodotto sia completo. Lo stato reale è un **MVP parziale ~50%, NON production-ready** (RENTRI mock-only, multi-tenant da consolidare, test reali ~14% backend / ~2% frontend, CI/CD assente). Fonte autorevole: [../planning/ANALISI_E_PIANO_2026-06.md](../planning/ANALISI_E_PIANO_2026-06.md).
+
 ## ✅ Tutti i Task Completati (13/13)
 
 ### 📦 Task 1: Dipendenze NPM Aggiunte

@@ -1,5 +1,7 @@
 # 📊 Implementation Status - WasteFlow MVP (Updated)
 
+> ⚠️ **AVVISO (2026-06): documento storico, NON allineato allo stato reale.** Le percentuali di completamento e la coverage (~85%) indicate qui sotto sono aspirazionali. Lo stato reale è un **MVP parziale ~50%, NON production-ready** (RENTRI mock-only, multi-tenant da consolidare, test reali ~14% backend / ~2% frontend, CI/CD assente). Fonte autorevole: [../planning/ANALISI_E_PIANO_2026-06.md](../planning/ANALISI_E_PIANO_2026-06.md).
+
 **Data**: 13 Ottobre 2025 (Aggiornamento Fase 2)
 **Approccio**: Test-Driven Development (TDD) - Ciclo RED → GREEN → REFACTOR
 **Coverage Attuale**: 85%+ (target: ≥80%)

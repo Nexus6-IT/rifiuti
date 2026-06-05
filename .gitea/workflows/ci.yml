@@ -1,0 +1,172 @@
+# ============================================================================
+# WasteFlow - Pipeline CI (Fase 0: Quality Gate)
+# ----------------------------------------------------------------------------
+# Esegue lint, test e build su backend (NestJS) e frontend (Angular 17),
+# piu' una scansione di sicurezza delle dipendenze.
+#
+# Gira su push e pull request verso i branch develop e master.
+# Runner: self-hosted Gitea con label `ubuntu-latest`.
+# Solo CI (nessun deploy).
+#
+# Nota su Gitea Actions: Gitea legge sia .gitea/workflows/ che
+# .github/workflows/. Questo file vive in .gitea/workflows/ ed e' la
+# pipeline canonica del progetto.
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [develop, master]
+  pull_request:
+    branches: [develop, master]
+
+# Annulla run precedenti ancora in corso sullo stesso ref (risparmia tempo runner).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Permessi minimi: la CI legge soltanto il codice.
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # ==========================================================================
+  # BACKEND - NestJS + Prisma
+  # ==========================================================================
+  backend:
+    name: Backend (lint, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20 + cache npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          # Il lockfile e' alla root del monorepo (workspaces npm).
+          cache-dependency-path: package-lock.json
+
+      # Installa TUTTE le dipendenze del monorepo (root + apps) in un colpo solo:
+      # essendo workspaces npm, `npm ci` alla root popola anche apps/backend.
+      - name: Install dipendenze (monorepo)
+        working-directory: ${{ github.workspace }}
+        run: npm ci
+
+      # Prisma genera il client TypeScript a partire da schema.prisma:
+      # serve PRIMA di lint/test/build perche' il codice importa @prisma/client.
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      # Lint in sola verifica (no --fix): in CI vogliamo FALLIRE sugli errori,
+      # non auto-correggerli. Lo script npm "lint" del repo usa --fix, quindi
+      # qui invochiamo eslint direttamente in modalita' check.
+      #
+      # IMPORTANTE: la config ESLint e' UNICA e condivisa alla ROOT
+      # (.eslintrc.json, root:true) con parserOptions.project relativo alla root
+      # ("./apps/*/tsconfig.json"). Quindi eslint DEVE girare dalla root del
+      # monorepo, altrimenti i path del "project" type-aware non risolvono.
+      - name: Lint backend (check-only, config ESLint root)
+        working-directory: ${{ github.workspace }}
+        run: npx eslint "apps/backend/{src,test}/**/*.ts" --max-warnings=0
+
+      # Test unitari Jest con coverage (lo script test:cov esiste nel package.json).
+      - name: Test (Jest + coverage)
+        run: npm run test:cov
+
+      # Build di produzione NestJS.
+      - name: Build (nest build)
+        run: npm run build
+
+  # ==========================================================================
+  # FRONTEND - Angular 17
+  # ==========================================================================
+  frontend:
+    name: Frontend (lint, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20 + cache npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dipendenze (monorepo)
+        working-directory: ${{ github.workspace }}
+        run: npm ci
+
+      # Google Chrome serve per eseguire i test Angular con ChromeHeadless.
+      # I runner self-hosted potrebbero non averlo preinstallato.
+      - name: Setup Google Chrome (per ChromeHeadless)
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      # GAP NOTO: il frontend NON ha uno script "lint" nel suo package.json e non
+      # ha @angular-eslint configurato. Lo script "lint" alla ROOT del monorepo
+      # (eslint "{apps,libs}/**/*.ts" --fix) copre comunque i .ts del frontend
+      # tramite la config ESLint condivisa. Qui lo eseguiamo in sola verifica.
+      # TODO (Fase 1): aggiungere @angular-eslint + script "lint" dedicato al frontend.
+      - name: Lint (check-only, config ESLint root)
+        working-directory: ${{ github.workspace }}
+        run: npx eslint "apps/frontend/**/*.ts" --max-warnings=0
+
+      # Test Angular in modalita' CI/headless.
+      # `ng test` (builder Karma) di default apre Chrome e resta in watch:
+      # passiamo --watch=false e --browsers=ChromeHeadless per la CI.
+      # NB: i CHROME_BIN viene esposto dallo step setup-chrome.
+      #
+      # GAP NOTO: il frontend ha pochissimi test (solo 2 file .spec.ts ad oggi:
+      # auth.service.spec.ts e fir.service.spec.ts). NON imponiamo alcuna soglia
+      # di coverage frontend per non far fallire la pipeline; eseguiamo cio' che c'e'.
+      - name: Test (Karma + ChromeHeadless)
+        env:
+          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: npm run test -- --watch=false --browsers=ChromeHeadless
+
+      # Build di produzione Angular (configuration "production" e' il default).
+      - name: Build (ng build)
+        run: npm run build
+
+  # ==========================================================================
+  # SECURITY - npm audit (non bloccante)
+  # ==========================================================================
+  security:
+    name: Security (npm audit)
+    runs-on: ubuntu-latest
+    # Indipendente da backend/frontend: gira in parallelo, non e' un gate hard.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20 + cache npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dipendenze (monorepo)
+        run: npm ci
+
+      # Audit a livello "high" sull'intero monorepo (workspaces inclusi).
+      # NON bloccante (|| true): segnaliamo le vulnerabilita' senza far fallire
+      # il merge in Fase 0. Inasprire in Fase 1 (rimuovere `|| true`).
+      - name: npm audit (level=high, non bloccante)
+        run: npm audit --audit-level=high || true

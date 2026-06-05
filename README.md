@@ -1,35 +1,47 @@
 # WasteFlow - Piattaforma Gestione Digitale Rifiuti
 
-[![Test Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](/)
+> ⚠️ **STATO REALE (2026-06): MVP parziale ~50%, NON production-ready.** Vedi [docs/planning/ANALISI_E_PIANO_2026-06.md](./docs/planning/ANALISI_E_PIANO_2026-06.md). Le sezioni che dichiarano "239 task completati / production-ready / 80% coverage" sono **aspirazionali** (documentazione, non codice). In particolare: RENTRI è **mock-only** (nessuna chiamata alle API governative reali), il multi-tenant è **da consolidare** (il contesto tenant non viene estratto dal JWT), l'app mobile **non esiste**, e la coverage di test reale è bassa (backend ~14%, frontend ~2%). I badge e le spunte ✅ qui sotto riflettono la visione, non lo stato attuale.
+
+[![Test Coverage](https://img.shields.io/badge/coverage-~14%25%20backend%20/%20~2%25%20frontend-orange.svg)](/) <!-- "80%" dichiarato altrove è aspirazionale -->
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](/)
 [![NestJS](https://img.shields.io/badge/NestJS-10.3-red.svg)](/)
 [![Angular](https://img.shields.io/badge/Angular-17-red.svg)](/)
-[![Status](https://img.shields.io/badge/status-Production%20Ready-green.svg)](/)
+[![Status](https://img.shields.io/badge/status-MVP%20parziale%20~50%25-orange.svg)](/) <!-- NON Production Ready: vedi banner sopra -->
 
-Piattaforma SaaS completa per la gestione digitale dei rifiuti con integrazione RENTRI, sviluppata con approccio **Test-Driven Development (TDD)** rigoroso.
+Piattaforma SaaS B2B per la gestione digitale dei rifiuti con integrazione RENTRI (oggi **mock-only**), sviluppata con architettura DDD/CQRS solida. Lo stato reale è un **MVP parziale (~50%)**: vedi il documento di analisi linkato nel banner.
 
-## 🎉 IMPLEMENTAZIONE COMPLETA (239/239 tasks)
+## ⚙️ STATO IMPLEMENTAZIONE (la sezione "239/239" qui sotto è ASPIRAZIONALE)
 
-**Tutte le 10 fasi completate!** Sistema production-ready con:
-- ✅ Full RENTRI compliance
-- ✅ SPID/CIE authentication
-- ✅ Digital signatures (ECDSA-SHA256)
-- ✅ Analytics dashboard
-- ✅ Notification system
-- ✅ PDF export
-- ✅ MUD reporting
-- ✅ Multi-tenant architecture
-- ✅ Health monitoring
-- ✅ Automated backups
-- ✅ **Performance optimization** (<10ms permission checks, <100ms queries)
-- ✅ **Security hardening** (Rate limiting, CSRF, input sanitization, security headers)
-- ✅ **Error aggregation** (Pattern detection, alerting)
-- ✅ **API documentation** (OpenAPI/Swagger)
-- ✅ **Test suites** (Integration + Performance tests)
+> Le 10 fasi e i "239 task completati" descritti sono obiettivi di documentazione, **non** verificati nel codice. La lista qui sotto va letta come **visione/roadmap**, con le seguenti correzioni reali (fonte: [docs/planning/ANALISI_E_PIANO_2026-06.md](./docs/planning/ANALISI_E_PIANO_2026-06.md)):
+> - 🔴 **RENTRI compliance**: NON completo — client **mock-only** verso `localhost`, nessuna integrazione con le API RENTRI reali, accreditamento non avviato.
+> - 🔴 **Multi-tenant architecture**: da consolidare — `getContextTenantId()` fa fallback al primo tenant invece di estrarre il tenant dal JWT (rischio data-leak cross-tenant).
+> - 🟠 **MUD reporting**: stub — recupero/smaltimento hardcoded a zero (manca `destinationType` nello schema).
+> - 🟠 **SPID/CIE auth**: solo dev (Keycloak `start-dev`, `admin:admin`, no TLS).
+> - 🟢 **Digital signatures (ECDSA-P256)**: reali, ma **senza** timestamp RFC 3161 reale.
+> - 🔴 **App mobile**: assente (`apps/mobile` non esiste).
+> - 🔴 **Test suites / coverage 80%**: falso — backend ~14%, frontend ~2%.
+> - 🔴 **CI/CD**: assente (nessun workflow `.github`/`.gitea`).
 
-📖 **Documentazione Deployment**: [PRODUCTION_DEPLOYMENT.md](./PRODUCTION_DEPLOYMENT.md)
-📊 **Implementation Summary**: [IMPLEMENTATION_SUMMARY.md](./IMPLEMENTATION_SUMMARY.md)
+**Visione "tutte le 10 fasi" (NON ancora reale)** — sistema che dovrebbe offrire:
+- RENTRI compliance (oggi mock-only)
+- SPID/CIE authentication (oggi dev-only)
+- Digital signatures (ECDSA, reali; manca RFC 3161)
+- Analytics dashboard
+- Notification system
+- PDF export
+- MUD reporting (oggi stub)
+- Multi-tenant architecture (da consolidare)
+- Health monitoring
+- Automated backups
+- Performance optimization (<10ms permission checks, <100ms queries) — non verificata
+- Security hardening (Rate limiting, CSRF, input sanitization, security headers)
+- Error aggregation (Pattern detection, alerting)
+- API documentation (OpenAPI/Swagger)
+- Test suites (Integration + Performance tests) — coverage reale bassa
+
+📖 **Documentazione Deployment**: [PRODUCTION_DEPLOYMENT.md](./PRODUCTION_DEPLOYMENT.md) (target, non stato attuale)
+📊 **Analisi reale & piano**: [docs/planning/ANALISI_E_PIANO_2026-06.md](./docs/planning/ANALISI_E_PIANO_2026-06.md)
 
 ## 📋 Indice
 
@@ -59,12 +71,14 @@ Piattaforma SaaS completa per la gestione digitale dei rifiuti con integrazione 
 
 ### Soluzione
 
+> ⚠️ Le spunte ✅ qui sotto sono la **visione** del prodotto. Stato reale: FIR digitale e firme presenti; sincronizzazione RENTRI **mock-only**; multi-tenancy **da consolidare**; SPID/CIE **dev-only**; **app mobile assente**.
+
 - ✅ **FIR digitale** conforme D.M. 59/2023
 - ✅ **Registri carico/scarico** elettronici con validazioni automatiche
-- ✅ **Sincronizzazione RENTRI** automatica con retry logic
-- ✅ **Multi-tenancy** per consulenti ambientali (gestione N clienti)
-- ✅ **Autenticazione SPID/CIE** per firma digitale valida
-- ✅ **App mobile** per operatori sul campo
+- 🔴 **Sincronizzazione RENTRI** automatica con retry logic — *attualmente mock-only (localhost), nessuna API RENTRI reale*
+- 🟠 **Multi-tenancy** per consulenti ambientali (gestione N clienti) — *entità presenti ma contesto tenant rotto (fallback al primo tenant)*
+- 🟠 **Autenticazione SPID/CIE** per firma digitale valida — *configurata solo in dev (Keycloak start-dev)*
+- 🔴 **App mobile** per operatori sul campo — *assente: `apps/mobile` non esiste*
 
 ---
 
@@ -281,6 +295,8 @@ npm run test:ci
 ```
 
 ### Esempio Output Coverage
+
+> ⚠️ I numeri seguenti sono un **esempio target aspirazionale**, NON la coverage reale. Coverage reale (audit 2026-06): backend ~14% (48 spec / 335 file), frontend ~2% (2 spec / 96 file).
 
 ```
 --------------------------|---------|----------|---------|---------|
@@ -534,7 +550,7 @@ git push origin feature/fir-create-use-case
 ### Code Quality
 
 - **Linting**: ESLint + Prettier (pre-commit hook con Husky)
-- **Test Coverage**: ≥80% obbligatorio (CI fail se sotto soglia)
+- **Test Coverage**: ≥80% obbligatorio (CI fail se sotto soglia) — ⚠️ *obiettivo non rispettato: coverage reale ~14% backend / ~2% frontend, e la CI/CD è attualmente assente*
 - **Code Review**: 2 approvazioni richieste
 - **TDD Mandatory**: Ogni feature DEVE avere test scritti prima del codice
 
