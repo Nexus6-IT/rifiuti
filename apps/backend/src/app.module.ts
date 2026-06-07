@@ -24,6 +24,7 @@ import { PDFModule } from './infrastructure/pdf/pdf.module'
 import { MonitoringModule } from './infrastructure/monitoring/monitoring.module'
 import { DashboardModule } from './api/dashboard/dashboard.module'
 import { NotificationsApiModule } from './api/notifications/notifications-api.module'
+import { PermissionsModule } from './api/permissions/permissions.module'
 
 @Module({
   imports: [
@@ -83,6 +84,9 @@ import { NotificationsApiModule } from './api/notifications/notifications-api.mo
     // API Modules
     DashboardModule,
     NotificationsApiModule,
+
+    // IAM / RBAC + ABAC (PermissionGuard opt-in via @RequirePermission)
+    PermissionsModule,
   ],
   controllers: [HealthController],
   providers: [

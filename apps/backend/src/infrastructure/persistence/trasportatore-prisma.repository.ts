@@ -33,7 +33,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
 
     const tenantId = this.getContextTenantId()
 
-    await this.prisma.trasportatore.upsert({
+    await this.prisma.db.trasportatore.upsert({
       where: { id: trasportatore.id },
       create: {
         id: trasportatore.id,
@@ -46,7 +46,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
   }
 
   async findById(id: string): Promise<Trasportatore | null> {
-    const trasportatore = await this.prisma.trasportatore.findUnique({
+    const trasportatore = await this.prisma.db.trasportatore.findUnique({
       where: { id },
     })
 
@@ -58,7 +58,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
   }
 
   async findByTenantId(tenantId: string): Promise<Trasportatore[]> {
-    const trasportatori = await this.prisma.trasportatore.findMany({
+    const trasportatori = await this.prisma.db.trasportatore.findMany({
       where: { tenantId },
       orderBy: { ragioneSociale: 'asc' },
     })
@@ -69,7 +69,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
   async findByPartitaIVA(partitaIVA: string): Promise<Trasportatore | null> {
     const tenantId = this.getContextTenantId()
 
-    const trasportatore = await this.prisma.trasportatore.findFirst({
+    const trasportatore = await this.prisma.db.trasportatore.findFirst({
       where: {
         tenantId,
         partitaIVA
@@ -86,7 +86,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
   async findByNumeroIscrizione(numeroIscrizione: string): Promise<Trasportatore | null> {
     const tenantId = this.getContextTenantId()
 
-    const trasportatore = await this.prisma.trasportatore.findFirst({
+    const trasportatore = await this.prisma.db.trasportatore.findFirst({
       where: {
         tenantId,
         numeroIscrizione
@@ -101,7 +101,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.prisma.trasportatore.delete({
+    await this.prisma.db.trasportatore.delete({
       where: { id },
     })
   }

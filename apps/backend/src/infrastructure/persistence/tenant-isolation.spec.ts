@@ -55,18 +55,26 @@ describe('Multi-Tenant Isolation (RED — riproduce il cross-tenant leak)', () =
   let repository: ProduttorePrismaRepository
 
   beforeEach(() => {
+    const produttoreMock = {
+      // Per default non trova nulla (verifichiamo solo il `where` usato).
+      findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+      upsert: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn().mockResolvedValue(undefined),
+    }
+
     prismaMock = {
       // Il DB contiene A come primo tenant. findFirst() => sempre A.
       tenant: {
         findFirst: jest.fn().mockResolvedValue({ id: TENANT_A, name: 'Societa Alfa' }),
       },
-      produttore: {
-        // Per default non trova nulla (verifichiamo solo il `where` usato).
-        findFirst: jest.fn().mockResolvedValue(null),
-        findUnique: jest.fn().mockResolvedValue(null),
-        findMany: jest.fn().mockResolvedValue([]),
-        upsert: jest.fn().mockResolvedValue(undefined),
-        delete: jest.fn().mockResolvedValue(undefined),
+      // Client base (retro-compatibilità).
+      produttore: produttoreMock,
+      // Client esteso RLS-aware: il repository ora usa `this.prisma.db.produttore`.
+      // Punta agli stessi mock così le asserzioni su `where`/`create` restano valide.
+      db: {
+        produttore: produttoreMock,
       },
     }
 

@@ -32,7 +32,7 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
 
     const tenantId = this.getContextTenantId()
 
-    await this.prisma.produttore.upsert({
+    await this.prisma.db.produttore.upsert({
       where: { id: produttore.id },
       create: {
         id: produttore.id,
@@ -45,7 +45,7 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
   }
 
   async findById(id: string): Promise<Produttore | null> {
-    const produttore = await this.prisma.produttore.findUnique({
+    const produttore = await this.prisma.db.produttore.findUnique({
       where: { id },
     })
 
@@ -57,7 +57,7 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
   }
 
   async findByTenantId(tenantId: string): Promise<Produttore[]> {
-    const produttori = await this.prisma.produttore.findMany({
+    const produttori = await this.prisma.db.produttore.findMany({
       where: { tenantId },
       orderBy: { ragioneSociale: 'asc' },
     })
@@ -68,7 +68,7 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
   async findByPartitaIVA(partitaIVA: string): Promise<Produttore | null> {
     const tenantId = this.getContextTenantId()
 
-    const produttore = await this.prisma.produttore.findFirst({
+    const produttore = await this.prisma.db.produttore.findFirst({
       where: {
         tenantId,
         partitaIVA
@@ -83,7 +83,7 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.prisma.produttore.delete({
+    await this.prisma.db.produttore.delete({
       where: { id },
     })
   }

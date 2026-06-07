@@ -33,7 +33,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
 
     const tenantId = this.getContextTenantId()
 
-    await this.prisma.destinatario.upsert({
+    await this.prisma.db.destinatario.upsert({
       where: { id: destinatario.id },
       create: {
         id: destinatario.id,
@@ -46,7 +46,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
   }
 
   async findById(id: string): Promise<Destinatario | null> {
-    const destinatario = await this.prisma.destinatario.findUnique({
+    const destinatario = await this.prisma.db.destinatario.findUnique({
       where: { id },
     })
 
@@ -58,7 +58,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
   }
 
   async findByTenantId(tenantId: string): Promise<Destinatario[]> {
-    const destinatari = await this.prisma.destinatario.findMany({
+    const destinatari = await this.prisma.db.destinatario.findMany({
       where: { tenantId },
       orderBy: { ragioneSociale: 'asc' },
     })
@@ -69,7 +69,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
   async findByPartitaIVA(partitaIVA: string): Promise<Destinatario | null> {
     const tenantId = this.getContextTenantId()
 
-    const destinatario = await this.prisma.destinatario.findFirst({
+    const destinatario = await this.prisma.db.destinatario.findFirst({
       where: {
         tenantId,
         partitaIVA
@@ -86,7 +86,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
   async findByNumeroAutorizzazione(numeroAutorizzazione: string): Promise<Destinatario | null> {
     const tenantId = this.getContextTenantId()
 
-    const destinatario = await this.prisma.destinatario.findFirst({
+    const destinatario = await this.prisma.db.destinatario.findFirst({
       where: {
         tenantId,
         numeroAutorizzazione
@@ -101,7 +101,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.prisma.destinatario.delete({
+    await this.prisma.db.destinatario.delete({
       where: { id },
     })
   }

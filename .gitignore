@@ -65,3 +65,9 @@ temp/
 .swarm/
 .claude-flow/
 ruvector.db
+
+# CI / ESLint boundaries analysis artifacts (local working output, do not commit)
+.ci-lint-out.txt
+.eslint-boundaries-out.json
+.eslintrc.boundaries-test.json
+.extract-boundaries.cjs
