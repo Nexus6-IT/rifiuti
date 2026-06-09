@@ -20,6 +20,10 @@ describe('JwtStrategy', () => {
     configService = createConfigServiceMock()
     prismaService = createPrismaMock()
 
+    // Default: no role assignments → empty permissions. Individual tests
+    // override this to exercise permission resolution.
+    prismaService.userRoleAssignment.findMany.mockResolvedValue([] as any)
+
     strategy = new JwtStrategy(configService, prismaService as any)
   })
 
@@ -50,8 +54,59 @@ describe('JwtStrategy', () => {
         fiscalCode: 'RSSMRA80A01H501U',
         tenantId: 'tenant-123',
         role: 'ADMIN',
-        permissions: [], // TODO: implement permissions
+        permissions: [],
       })
+    })
+
+    it('should resolve RBAC permissions from active role assignments', async () => {
+      const mockPayload = createMockJwtPayload({ sub: 'user-123', tenantId: 'tenant-123' })
+      const mockUser = createMockUser({ id: 'user-123', tenantId: 'tenant-123' })
+
+      prismaService.user.findUnique.mockResolvedValue(mockUser as any)
+      prismaService.userRoleAssignment.findMany.mockResolvedValue([
+        {
+          role: {
+            permissions: [
+              { permission: { resource: 'fir', action: 'read', scope: 'all' } },
+              { permission: { resource: 'fir', action: 'create', scope: 'own' } },
+            ],
+          },
+        },
+        {
+          role: {
+            permissions: [
+              // duplicate across roles must be de-duplicated
+              { permission: { resource: 'fir', action: 'read', scope: 'all' } },
+              { permission: { resource: 'report', action: 'read', scope: 'all' } },
+            ],
+          },
+        },
+      ] as any)
+
+      const result = await strategy.validate(mockPayload)
+
+      expect(result.permissions).toEqual(
+        expect.arrayContaining(['fir:read:all', 'fir:create:own', 'report:read:all']),
+      )
+      expect(result.permissions).toHaveLength(3)
+      // only active (non-expired) assignments for the tenant are considered
+      expect(prismaService.userRoleAssignment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ userId: 'user-123', tenantId: 'tenant-123' }),
+        }),
+      )
+    })
+
+    it('should not query permissions when user has no tenant', async () => {
+      const mockPayload = createMockJwtPayload()
+      const mockUser = createMockUser({ tenantId: null })
+
+      prismaService.user.findUnique.mockResolvedValue(mockUser as any)
+
+      const result = await strategy.validate(mockPayload)
+
+      expect(result.permissions).toEqual([])
+      expect(prismaService.userRoleAssignment.findMany).not.toHaveBeenCalled()
     })
 
     it('should query user from database', async () => {
