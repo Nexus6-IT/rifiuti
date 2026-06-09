@@ -16,11 +16,31 @@ export enum FIRStato {
   ANNULLATO = 'ANNULLATO',
 }
 
+export type TipoOperazioneRifiuto = 'RECOVERY' | 'DISPOSAL'
+
 export interface FIRRifiuto {
   cerCode: string
   quantita: Quantita
   statoFisico?: string
   caratteristichePericolo?: string
+  descrizione?: string
+  categoria?: string
+  tipoOperazione?: TipoOperazioneRifiuto
+}
+
+/**
+ * Snapshot anagrafico immutabile di una parte del FIR (produttore/
+ * trasportatore/destinatario), "congelato" al momento della creazione a
+ * partire dal registro. Il FIR è un documento legale: conserva i dati così
+ * com'erano, non un riferimento vivo che potrebbe cambiare nel tempo.
+ */
+export interface ParteFIR {
+  registroId?: string
+  ragioneSociale: string
+  partitaIva: string
+  indirizzo?: string
+  targaVeicolo?: string
+  contatto?: string
 }
 
 export interface FirmaDigitale {
@@ -43,9 +63,18 @@ export interface CreateFIRProps {
     unitaMisura?: UnitaMisura
     statoFisico?: string
     caratteristichePericolo?: string
+    descrizione?: string
+    categoria?: string
+    tipoOperazione?: TipoOperazioneRifiuto
   }
   trasportatoreId: string
   destinatarioId: string
+  /** Utente (operatore) che crea il FIR — FK obbligatoria a User in persistenza. */
+  creatoDaUserId?: string
+  /** Snapshot anagrafici delle parti, presi dal registro al momento della creazione. */
+  produttore?: ParteFIR
+  trasportatore?: ParteFIR
+  destinatario?: ParteFIR
 }
 
 // Domain Events
@@ -86,7 +115,11 @@ export class FIR extends AggregateRoot {
     private _dataConsegna: Date | null,
     private _pesoEffettivo: number | null,
     private _firme: FirmeDigitali,
-    private readonly _createdAt: Date
+    private readonly _createdAt: Date,
+    private readonly _creatoDaUserId: string | null = null,
+    private readonly _produttore: ParteFIR | null = null,
+    private readonly _trasportatore: ParteFIR | null = null,
+    private readonly _destinatario: ParteFIR | null = null
   ) {
     super()
   }
@@ -100,6 +133,9 @@ export class FIR extends AggregateRoot {
       ),
       statoFisico: props.rifiuto.statoFisico,
       caratteristichePericolo: props.rifiuto.caratteristichePericolo,
+      descrizione: props.rifiuto.descrizione,
+      categoria: props.rifiuto.categoria,
+      tipoOperazione: props.rifiuto.tipoOperazione,
     }
 
     return new FIR(
@@ -114,7 +150,11 @@ export class FIR extends AggregateRoot {
       null,
       null,
       {},
-      new Date()
+      new Date(),
+      props.creatoDaUserId ?? null,
+      props.produttore ?? null,
+      props.trasportatore ?? null,
+      props.destinatario ?? null
     )
   }
 
@@ -224,6 +264,26 @@ export class FIR extends AggregateRoot {
 
   get createdAt(): Date {
     return this._createdAt
+  }
+
+  /** Utente (operatore) che ha creato il FIR. */
+  get creatoDaUserId(): string | null {
+    return this._creatoDaUserId
+  }
+
+  /** Snapshot anagrafico del produttore al momento della creazione. */
+  get produttore(): ParteFIR | null {
+    return this._produttore
+  }
+
+  /** Snapshot anagrafico del trasportatore al momento della creazione. */
+  get trasportatore(): ParteFIR | null {
+    return this._trasportatore
+  }
+
+  /** Snapshot anagrafico del destinatario al momento della creazione. */
+  get destinatario(): ParteFIR | null {
+    return this._destinatario
   }
 
   private static generateId(): string {

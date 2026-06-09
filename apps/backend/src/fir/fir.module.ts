@@ -13,6 +13,9 @@ import { ListFIRsQueryHandler } from '../application/fir/queries/list-firs.handl
 import { GetFIRByIdQueryHandler } from '../application/fir/queries/get-fir-by-id.handler'
 import { FIRPrismaRepository } from '../infrastructure/persistence/fir-prisma.repository'
 import { CERPrismaRepository } from '../infrastructure/persistence/cer-prisma.repository'
+import { ProduttorePrismaRepository } from '../infrastructure/persistence/produttore-prisma.repository'
+import { TrasportatorePrismaRepository } from '../infrastructure/persistence/trasportatore-prisma.repository'
+import { DestinatarioPrismaRepository } from '../infrastructure/persistence/destinatario-prisma.repository'
 import { PrismaModule } from '../infrastructure/persistence/prisma.module'
 
 @Module({
@@ -22,14 +25,35 @@ import { PrismaModule } from '../infrastructure/persistence/prisma.module'
     // Repositories (provide as concrete classes)
     FIRPrismaRepository,
     CERPrismaRepository,
+    ProduttorePrismaRepository,
+    TrasportatorePrismaRepository,
+    DestinatarioPrismaRepository,
 
     // Use Cases
     {
       provide: CreateFIRUseCase,
-      useFactory: (firRepo: FIRPrismaRepository, cerRepo: CERPrismaRepository) => {
-        return new CreateFIRUseCase(firRepo, cerRepo)
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        cerRepo: CERPrismaRepository,
+        produttoreRepo: ProduttorePrismaRepository,
+        trasportatoreRepo: TrasportatorePrismaRepository,
+        destinatarioRepo: DestinatarioPrismaRepository,
+      ) => {
+        return new CreateFIRUseCase(
+          firRepo,
+          cerRepo,
+          produttoreRepo,
+          trasportatoreRepo,
+          destinatarioRepo,
+        )
       },
-      inject: [FIRPrismaRepository, CERPrismaRepository],
+      inject: [
+        FIRPrismaRepository,
+        CERPrismaRepository,
+        ProduttorePrismaRepository,
+        TrasportatorePrismaRepository,
+        DestinatarioPrismaRepository,
+      ],
     },
     {
       provide: EmettiFIRUseCase,

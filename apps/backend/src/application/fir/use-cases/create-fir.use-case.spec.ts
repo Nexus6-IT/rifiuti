@@ -6,6 +6,14 @@ import { CreateFIRUseCase } from './create-fir.use-case'
 import { CreateFIRCommand } from '../commands/create-fir.command'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { ICERRepository } from '../../../domain/cer/repositories/cer-repository.interface'
+import { ProduttoreRepository } from '../../../domain/registry/repositories/produttore.repository'
+import { TrasportatoreRepository } from '../../../domain/registry/repositories/trasportatore.repository'
+import { DestinatarioRepository } from '../../../domain/registry/repositories/destinatario.repository'
+import { Produttore } from '../../../domain/registry/entities/produttore'
+import { Trasportatore } from '../../../domain/registry/entities/trasportatore'
+import { Destinatario } from '../../../domain/registry/entities/destinatario'
+import { PartitaIVA } from '../../../domain/registry/value-objects/partita-iva'
+import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 
@@ -98,15 +106,91 @@ class MockCERRepository implements ICERRepository {
   }
 }
 
+// Registry mocks: restituiscono un'anagrafica per ogni id non vuoto, salvo
+// quelli aggiunti a `missing` (per simulare anagrafica inesistente).
+class MockProduttoreRepository implements ProduttoreRepository {
+  missing = new Set<string>()
+  async save(): Promise<void> {}
+  async findById(id: string): Promise<Produttore | null> {
+    if (!id || this.missing.has(id)) return null
+    return Produttore.reconstitute({
+      id,
+      ragioneSociale: 'Produttore SpA',
+      partitaIVA: PartitaIVA.create('12345678901'),
+      sedeLegale: Indirizzo.create({ via: 'Via Roma', civico: '1', cap: '00100', citta: 'Roma', provincia: 'RM' }),
+      pec: 'prod@pec.it',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+  }
+  async findByTenantId(): Promise<Produttore[]> { return [] }
+  async findByPartitaIVA(): Promise<Produttore | null> { return null }
+  async delete(): Promise<void> {}
+}
+
+class MockTrasportatoreRepository implements TrasportatoreRepository {
+  missing = new Set<string>()
+  async save(): Promise<void> {}
+  async findById(id: string): Promise<Trasportatore | null> {
+    if (!id || this.missing.has(id)) return null
+    return Trasportatore.reconstitute({
+      id,
+      ragioneSociale: 'Trasporti Srl',
+      partitaIVA: PartitaIVA.create('22345678901'),
+      sedeLegale: Indirizzo.create({ via: 'Via Po', civico: '2', cap: '10100', citta: 'Torino', provincia: 'TO' }),
+      numeroIscrizione: 'ALBO-123',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+  }
+  async findByTenantId(): Promise<Trasportatore[]> { return [] }
+  async findByPartitaIVA(): Promise<Trasportatore | null> { return null }
+  async findByNumeroIscrizione(): Promise<Trasportatore | null> { return null }
+  async delete(): Promise<void> {}
+}
+
+class MockDestinatarioRepository implements DestinatarioRepository {
+  missing = new Set<string>()
+  async save(): Promise<void> {}
+  async findById(id: string): Promise<Destinatario | null> {
+    if (!id || this.missing.has(id)) return null
+    return Destinatario.reconstitute({
+      id,
+      ragioneSociale: 'Impianto Recupero Srl',
+      partitaIVA: PartitaIVA.create('32345678901'),
+      sede: Indirizzo.create({ via: 'Via Etna', civico: '3', cap: '95100', citta: 'Catania', provincia: 'CT' }),
+      numeroAutorizzazione: 'AUT-999',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+  }
+  async findByTenantId(): Promise<Destinatario[]> { return [] }
+  async findByPartitaIVA(): Promise<Destinatario | null> { return null }
+  async findByNumeroAutorizzazione(): Promise<Destinatario | null> { return null }
+  async delete(): Promise<void> {}
+}
+
 describe('CreateFIRUseCase', () => {
   let useCase: CreateFIRUseCase
   let firRepository: MockFIRRepository
   let cerRepository: MockCERRepository
+  let produttoreRepository: MockProduttoreRepository
+  let trasportatoreRepository: MockTrasportatoreRepository
+  let destinatarioRepository: MockDestinatarioRepository
 
   beforeEach(() => {
     firRepository = new MockFIRRepository()
     cerRepository = new MockCERRepository()
-    useCase = new CreateFIRUseCase(firRepository, cerRepository)
+    produttoreRepository = new MockProduttoreRepository()
+    trasportatoreRepository = new MockTrasportatoreRepository()
+    destinatarioRepository = new MockDestinatarioRepository()
+    useCase = new CreateFIRUseCase(
+      firRepository,
+      cerRepository,
+      produttoreRepository,
+      trasportatoreRepository,
+      destinatarioRepository,
+    )
   })
 
   const createValidCommand = (): CreateFIRCommand => {
@@ -136,6 +220,31 @@ describe('CreateFIRUseCase', () => {
       expect(result.value.stato).toBe(FIRStato.BOZZA)
       expect(result.value.produttoreId).toBe('tenant-producer-123')
       expect(result.value.rifiuto.cerCode).toBe('13 02 05*')
+    })
+
+    it('should snapshot the parties anagrafica from the registries', async () => {
+      cerRepository.addCode('13 02 05*')
+      const result = await useCase.execute(createValidCommand())
+
+      expect(result.isSuccess).toBe(true)
+      // snapshot immutabile: ragione sociale e P.IVA reali, non stringhe vuote
+      expect(result.value.produttore?.ragioneSociale).toBe('Produttore SpA')
+      expect(result.value.produttore?.partitaIva).toBe('12345678901')
+      expect(result.value.produttore?.indirizzo).toContain('Roma')
+      expect(result.value.trasportatore?.ragioneSociale).toBe('Trasporti Srl')
+      expect(result.value.destinatario?.ragioneSociale).toBe('Impianto Recupero Srl')
+      // l'operatore creatore è tracciato per la FK producerUserId
+      expect(result.value.creatoDaUserId).toBe('user-123')
+    })
+
+    it('should fail if produttore is not in the registry', async () => {
+      cerRepository.addCode('13 02 05*')
+      produttoreRepository.missing.add('tenant-producer-123')
+
+      const result = await useCase.execute(createValidCommand())
+
+      expect(result.isFailure).toBe(true)
+      expect(result.error).toContain('Produttore not found')
     })
 
     it('should persist FIR to repository', async () => {

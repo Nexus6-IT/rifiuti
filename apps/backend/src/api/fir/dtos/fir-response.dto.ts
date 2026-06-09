@@ -3,7 +3,7 @@
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
+import { FIR, FIRStato, ParteFIR } from '../../../domain/fir/aggregates/fir.aggregate'
 
 export class FIRResponseDto {
   @ApiProperty({ example: 'uuid-123', description: 'ID univoco FIR' })
@@ -31,6 +31,9 @@ export class FIRResponseDto {
     unitaMisura: string
     statoFisico?: string
     caratteristichePericolo?: string
+    descrizione?: string
+    categoria?: string
+    tipoOperazione?: string
   }
 
   @ApiProperty({ example: 'tenant-uuid-transporter', description: 'ID trasportatore' })
@@ -38,6 +41,15 @@ export class FIRResponseDto {
 
   @ApiProperty({ example: 'tenant-uuid-destination', description: 'ID destinatario' })
   destinatarioId: string
+
+  @ApiPropertyOptional({ description: 'Snapshot anagrafico produttore (congelato alla creazione)' })
+  produttore?: ParteFIR | null
+
+  @ApiPropertyOptional({ description: 'Snapshot anagrafico trasportatore (congelato alla creazione)' })
+  trasportatore?: ParteFIR | null
+
+  @ApiPropertyOptional({ description: 'Snapshot anagrafico destinatario (congelato alla creazione)' })
+  destinatario?: ParteFIR | null
 
   @ApiPropertyOptional({ description: 'Data presa in carico trasportatore' })
   dataPresaCarico: Date | null
@@ -63,9 +75,15 @@ export class FIRResponseDto {
         unitaMisura: fir.rifiuto.quantita.unitaMisura,
         statoFisico: fir.rifiuto.statoFisico,
         caratteristichePericolo: fir.rifiuto.caratteristichePericolo,
+        descrizione: fir.rifiuto.descrizione,
+        categoria: fir.rifiuto.categoria,
+        tipoOperazione: fir.rifiuto.tipoOperazione,
       },
       trasportatoreId: fir.trasportatoreId,
       destinatarioId: fir.destinatarioId,
+      produttore: fir.produttore,
+      trasportatore: fir.trasportatore,
+      destinatario: fir.destinatario,
       dataPresaCarico: fir.dataPresaCarico,
       dataConsegna: fir.dataConsegna,
       pesoEffettivo: fir.pesoEffettivo,

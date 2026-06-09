@@ -158,21 +158,46 @@ export class FIRPrismaRepository implements IFIRRepository {
   }
 
   private toDomain(record: any): FIR {
-    // TODO: Domain model structure doesn't match Prisma schema
-    // This is a placeholder implementation until models are aligned
-
-    // Reconstitute FIR aggregate with available data
+    // Reconstitute the FIR aggregate from the persisted columns, including the
+    // frozen anagrafica snapshots. produttoreId/trasportatoreId/destinatarioId
+    // are the registry references (fallback to legacy columns for old rows).
     const fir = FIR.create({
-      produttoreId: record.producerUserId || record.tenantId,
+      produttoreId: record.producerId || record.producerUserId || record.tenantId,
       rifiuto: {
-        cerCode: record.cerCode, // String in schema
+        cerCode: record.cerCode,
         quantita: Number(record.quantity),
         unitaMisura: record.unit as UnitaMisura,
-        statoFisico: undefined, // Not in schema
-        caratteristichePericolo: undefined, // Not in schema
+        statoFisico: undefined, // Not persisted yet
+        caratteristichePericolo: undefined, // Not persisted yet
+        descrizione: record.wasteDescription || undefined,
+        categoria: record.wasteCategory || undefined,
+        tipoOperazione: record.wasteOperationType || undefined,
       },
-      trasportatoreId: record.carrierUserId || '',
-      destinatarioId: record.receiverUserId || '',
+      trasportatoreId: record.carrierId || record.carrierUserId || '',
+      destinatarioId: record.receiverId || record.receiverUserId || '',
+      creatoDaUserId: record.producerUserId || undefined,
+      produttore: this.partyFromRecord(
+        record.producerId,
+        record.producerName,
+        record.producerPartitaIva,
+        record.producerAddress,
+        record.producerContact,
+      ),
+      trasportatore: this.partyFromRecord(
+        record.carrierId,
+        record.carrierName,
+        record.carrierPartitaIva,
+        undefined,
+        record.carrierContact,
+        record.carrierVehiclePlate,
+      ),
+      destinatario: this.partyFromRecord(
+        record.receiverId,
+        record.receiverName,
+        record.receiverPartitaIva,
+        record.receiverAddress,
+        record.receiverContact,
+      ),
     })
 
     // Restore state (using reflection - in production use proper reconstitution)
@@ -190,29 +215,62 @@ export class FIRPrismaRepository implements IFIRRepository {
     return fir
   }
 
+  /** Ricostruisce uno snapshot di parte FIR dai campi persistiti, o null se vuoto. */
+  private partyFromRecord(
+    registroId?: string | null,
+    ragioneSociale?: string | null,
+    partitaIva?: string | null,
+    indirizzo?: string | null,
+    contatto?: string | null,
+    targaVeicolo?: string | null,
+  ) {
+    if (!ragioneSociale && !partitaIva && !registroId) return undefined
+    return {
+      registroId: registroId || undefined,
+      ragioneSociale: ragioneSociale || '',
+      partitaIva: partitaIva || '',
+      indirizzo: indirizzo || undefined,
+      contatto: contatto || undefined,
+      targaVeicolo: targaVeicolo || undefined,
+    }
+  }
+
   private toPersistence(fir: FIR): any {
-    // TODO: Domain model structure doesn't match Prisma schema
-    // This is a placeholder implementation until models are aligned
+    // Mappa l'aggregate FIR sui campi Prisma. I dati anagrafici vengono presi
+    // dagli snapshot congelati (parte del documento legale), non più stringhe
+    // vuote. producerUserId = utente creatore (FK a User); producer/carrier/
+    // receiverId = riferimento al registro di provenienza dello snapshot.
+    const produttore = fir.produttore
+    const trasportatore = fir.trasportatore
+    const destinatario = fir.destinatario
+
     return {
       id: fir.id,
       status: fir.stato as any, // Map FIRStato to FIRStatus
       firNumber: fir.numeroProgressivo,
       tenantId: fir.produttoreId, // Using produttoreId as tenantId
-      producerUserId: fir.produttoreId,
-      producerPartitaIva: '', // TODO: need to get from tenant
-      producerName: '', // TODO: need to get from tenant
-      producerAddress: '', // TODO: need to get from tenant
-      carrierUserId: fir.trasportatoreId || undefined,
-      carrierPartitaIva: '', // TODO: need to get from tenant
-      carrierName: '', // TODO: need to get from tenant
-      carrierVehiclePlate: '', // TODO: not in domain model
-      receiverUserId: fir.destinatarioId || undefined,
-      receiverPartitaIva: '', // TODO: need to get from tenant
-      receiverName: '', // TODO: need to get from tenant
-      receiverAddress: '', // TODO: need to get from tenant
+      producerUserId: fir.creatoDaUserId || fir.produttoreId,
+      producerId: produttore?.registroId || fir.produttoreId || undefined,
+      producerPartitaIva: produttore?.partitaIva || '',
+      producerName: produttore?.ragioneSociale || '',
+      producerAddress: produttore?.indirizzo || '',
+      producerContact: produttore?.contatto || undefined,
+      carrierId: trasportatore?.registroId || fir.trasportatoreId || undefined,
+      carrierUserId: undefined, // il trasportatore è un'anagrafica, non uno User
+      carrierPartitaIva: trasportatore?.partitaIva || '',
+      carrierName: trasportatore?.ragioneSociale || '',
+      carrierVehiclePlate: trasportatore?.targaVeicolo || '', // dato di trasporto, compilato alla presa in carico
+      carrierContact: trasportatore?.contatto || undefined,
+      receiverId: destinatario?.registroId || fir.destinatarioId || undefined,
+      receiverUserId: undefined, // il destinatario è un'anagrafica, non uno User
+      receiverPartitaIva: destinatario?.partitaIva || '',
+      receiverName: destinatario?.ragioneSociale || '',
+      receiverAddress: destinatario?.indirizzo || '',
+      receiverContact: destinatario?.contatto || undefined,
       cerCode: fir.rifiuto.cerCode,
-      wasteDescription: '', // TODO: not in domain model
-      wasteCategory: '', // TODO: not in domain model
+      wasteDescription: fir.rifiuto.descrizione || '',
+      wasteCategory: fir.rifiuto.categoria || '',
+      wasteOperationType: fir.rifiuto.tipoOperazione || undefined,
       quantity: fir.rifiuto.quantita.valore,
       unit: fir.rifiuto.quantita.unitaMisura,
       transportDate: fir.dataPresaCarico || new Date(),

@@ -148,19 +148,26 @@ model FIR {
   cancelledAt        DateTime? @map("cancelled_at")
   cancellationReason String?   @map("cancellation_reason") @db.Text
 
+  // producerUserId = utente (operatore) che ha creato il FIR (FK obbligatoria a
+  // User). producerId = riferimento al registro Produttore da cui è stato preso
+  // lo "snapshot" anagrafico immutabile (campi *Name/*PartitaIva/*Address). Il
+  // FIR è un documento legale: conserva lo snapshot, non un join live.
   producerUserId     String  @map("producer_user_id") @db.Uuid
+  producerId         String? @map("producer_id") @db.Uuid
   producerPartitaIva String  @map("producer_partita_iva") @db.VarChar(11)
   producerName       String  @map("producer_name") @db.VarChar(255)
   producerAddress    String  @map("producer_address") @db.VarChar(500)
   producerContact    String? @map("producer_contact") @db.VarChar(255)
 
   carrierUserId       String? @map("carrier_user_id") @db.Uuid
+  carrierId           String? @map("carrier_id") @db.Uuid
   carrierPartitaIva   String  @map("carrier_partita_iva") @db.VarChar(11)
   carrierName         String  @map("carrier_name") @db.VarChar(255)
   carrierVehiclePlate String  @map("carrier_vehicle_plate") @db.VarChar(20)
   carrierContact      String? @map("carrier_contact") @db.VarChar(255)
 
   receiverUserId     String? @map("receiver_user_id") @db.Uuid
+  receiverId         String? @map("receiver_id") @db.Uuid
   receiverPartitaIva String  @map("receiver_partita_iva") @db.VarChar(11)
   receiverName       String  @map("receiver_name") @db.VarChar(255)
   receiverAddress    String  @map("receiver_address") @db.VarChar(500)
