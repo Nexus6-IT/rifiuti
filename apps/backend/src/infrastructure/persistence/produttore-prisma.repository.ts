@@ -45,8 +45,11 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
   }
 
   async findById(id: string): Promise<Produttore | null> {
-    const produttore = await this.prisma.db.produttore.findUnique({
-      where: { id },
+    // Scoping per tenant: una findUnique per sola PK restituirebbe anche
+    // anagrafiche di altri tenant (la RLS-extension è no-op su findUnique).
+    const tenantId = this.getContextTenantId()
+    const produttore = await this.prisma.db.produttore.findFirst({
+      where: { id, tenantId },
     })
 
     if (!produttore) {
@@ -83,8 +86,11 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.prisma.db.produttore.delete({
-      where: { id },
+    // deleteMany scoped per tenant: impedisce la cancellazione di anagrafiche
+    // di un altro tenant passando un id noto.
+    const tenantId = this.getContextTenantId()
+    await this.prisma.db.produttore.deleteMany({
+      where: { id, tenantId },
     })
   }
 

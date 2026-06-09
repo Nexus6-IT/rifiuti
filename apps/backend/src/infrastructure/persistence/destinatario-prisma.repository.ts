@@ -46,8 +46,11 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
   }
 
   async findById(id: string): Promise<Destinatario | null> {
-    const destinatario = await this.prisma.db.destinatario.findUnique({
-      where: { id },
+    // Scoping per tenant: la RLS-extension è no-op su findUnique, quindi una
+    // findUnique per sola PK esporrebbe anagrafiche di altri tenant.
+    const tenantId = this.getContextTenantId()
+    const destinatario = await this.prisma.db.destinatario.findFirst({
+      where: { id, tenantId },
     })
 
     if (!destinatario) {
@@ -101,8 +104,10 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.prisma.db.destinatario.delete({
-      where: { id },
+    // deleteMany scoped per tenant: impedisce la cancellazione cross-tenant.
+    const tenantId = this.getContextTenantId()
+    await this.prisma.db.destinatario.deleteMany({
+      where: { id, tenantId },
     })
   }
 

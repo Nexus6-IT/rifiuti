@@ -17,7 +17,6 @@ export class FIRPrismaRepository implements IFIRRepository {
   async findById(id: string): Promise<FIR | null> {
     const record = await this.prisma.fIR.findUnique({
       where: { id },
-      // TODO: cerCode is a string field, not a relation
     })
 
     if (!record) return null
@@ -29,7 +28,6 @@ export class FIRPrismaRepository implements IFIRRepository {
     // Public access without tenant filter - used for signature verification
     const record = await this.prisma.fIR.findUnique({
       where: { id },
-      // TODO: cerCode is a string field, not a relation
     })
 
     if (!record) return null
@@ -38,8 +36,9 @@ export class FIRPrismaRepository implements IFIRRepository {
   }
 
   async findByNumeroProgressivo(numeroProgressivo: string): Promise<FIR | null> {
-    // TODO: Schema uses 'firNumber' not 'numeroProgressivo'
-    // Also firNumber is not unique by itself, only with tenantId
+    // firNumber è unico solo con tenantId: la ricerca per solo numero resta
+    // best-effort finché l'aggregate FIR non porta un tenantId reale (vedi nota
+    // in fondo al file).
     const record = await this.prisma.fIR.findFirst({
       where: { firNumber: numeroProgressivo },
     })
@@ -52,12 +51,9 @@ export class FIRPrismaRepository implements IFIRRepository {
   async findByTenant(tenantId: string, filters?: FIRSearchFilters): Promise<FIR[]> {
     const where: any = {
       tenantId: tenantId,
-      // TODO: Domain model uses produttoreId/trasportatoreId/destinatarioId
-      // Schema uses producerUserId/carrierUserId/receiverUserId
     }
 
     if (filters?.stato) {
-      // TODO: Map domain FIRStato to Prisma FIRStatus
       where.status = filters.stato
     }
 
@@ -81,7 +77,6 @@ export class FIRPrismaRepository implements IFIRRepository {
 
   async findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]> {
     const where: any = {
-      // TODO: Map domain FIRStato to Prisma FIRStatus
       status: stato as any
     }
 
@@ -117,7 +112,6 @@ export class FIRPrismaRepository implements IFIRRepository {
   }
 
   async existsNumeroProgressivo(numeroProgressivo: string): Promise<boolean> {
-    // TODO: Schema uses 'firNumber' not 'numeroProgressivo'
     const count = await this.prisma.fIR.count({
       where: { firNumber: numeroProgressivo },
     })
@@ -125,8 +119,8 @@ export class FIRPrismaRepository implements IFIRRepository {
   }
 
   async generateNumeroProgressivo(tenantId: string, anno: number): Promise<string> {
-    // Get count of FIRs for this tenant in this year
-    // TODO: Schema doesn't have 'anno' field, need to filter by date range
+    // Conta i FIR del tenant nell'anno (lo schema non ha un campo 'anno':
+    // si filtra per intervallo di date su createdAt).
     const count = await this.prisma.fIR.count({
       where: {
         tenantId: tenantId,
@@ -145,13 +139,14 @@ export class FIRPrismaRepository implements IFIRRepository {
     const where: any = {}
 
     if (filters?.stato) {
-      // TODO: Map domain FIRStato to Prisma FIRStatus
       where.status = filters.stato
     }
 
     if (filters?.produttoreId) {
-      // TODO: Schema uses tenantId or producerUserId
-      where.tenantId = filters.produttoreId
+      // BUGFIX: prima filtrava la colonna `tenantId` con l'id del produttore
+      // (filtro errato). Il produttore è ora referenziato da `producerId`
+      // (riferimento al registro, vedi snapshot anagrafico FIR).
+      where.producerId = filters.produttoreId
     }
 
     return this.prisma.fIR.count({ where })
@@ -278,3 +273,24 @@ export class FIRPrismaRepository implements IFIRRepository {
     }
   }
 }
+
+/*
+ * NOTA ISOLAMENTO TENANT DEL FIR (debito noto, follow-up di #7):
+ *
+ * L'aggregate `FIR` non porta ancora un `tenantId` proprio: qui si usa
+ * `fir.produttoreId` come `tenantId` (vedi toPersistence). Finché questa
+ * conflazione esiste, il repository FIR NON viene migrato al client RLS-aware
+ * (`this.prisma.db.fIR`): una query tenant-scoped sul `tenantId` reale (dal
+ * TenantContext) non corrisponderebbe al valore memorizzato e nasconderebbe i
+ * FIR legittimi.
+ *
+ * Fix corretto (task separato): aggiungere un `tenantId` reale all'aggregate
+ * FIR (valorizzato dal tenant dell'utente creatore in CreateFIRUseCase),
+ * persisterlo in `firs.tenant_id`, e SOLO ALLORA migrare le letture FIR a
+ * `this.prisma.db.fIR` per ottenere lo scoping automatico (difesa in profondità)
+ * coerente con i registry repository.
+ *
+ * Nel frattempo l'isolamento dei FIR è garantito a livello applicativo: i flussi
+ * passano `tenantId` esplicito (findByTenant) o ricontrollano `fir.tenantId`
+ * (es. SyncFIRToRENTRIUseCase).
+ */

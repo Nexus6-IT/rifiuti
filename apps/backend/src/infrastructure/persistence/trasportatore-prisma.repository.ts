@@ -46,8 +46,11 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
   }
 
   async findById(id: string): Promise<Trasportatore | null> {
-    const trasportatore = await this.prisma.db.trasportatore.findUnique({
-      where: { id },
+    // Scoping per tenant: la RLS-extension è no-op su findUnique, quindi una
+    // findUnique per sola PK esporrebbe anagrafiche di altri tenant.
+    const tenantId = this.getContextTenantId()
+    const trasportatore = await this.prisma.db.trasportatore.findFirst({
+      where: { id, tenantId },
     })
 
     if (!trasportatore) {
@@ -101,8 +104,10 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.prisma.db.trasportatore.delete({
-      where: { id },
+    // deleteMany scoped per tenant: impedisce la cancellazione cross-tenant.
+    const tenantId = this.getContextTenantId()
+    await this.prisma.db.trasportatore.deleteMany({
+      where: { id, tenantId },
     })
   }
 
