@@ -4,6 +4,8 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { RevokeRoleCommand } from '../revoke-role.command';
 import { RoleRepository } from '../../../domain/identity-access/role.repository.interface';
 import { UserRoleRepository } from '../../../domain/identity-access/user-role.repository.interface';
@@ -32,6 +34,7 @@ export class RevokeRoleCommandHandler {
     private readonly userRoleRepository: UserRoleRepository,
     private readonly permissionCache: PermissionCacheService,
     private readonly redisPubSub: RedisPubSubService,
+    @InjectQueue('audit-logging') private readonly auditQueue: Queue,
   ) {}
 
   async execute(command: RevokeRoleCommand): Promise<void> {
@@ -84,14 +87,21 @@ export class RevokeRoleCommandHandler {
         userRole.userId,
       );
 
-      // TODO: Publish domain event for audit
-
       this.logger.log(
         `✓ Revoked role ${role.name} from user ${userRole.userId} in tenant ${command.tenantId}`,
       );
 
-      // Step 8: Log successful audit
-      this.logAuditSuccess(command, userRole.userId, role.name);
+      // Step 8: Persist the revocation to the audit trail (async, non-blocking).
+      // A revocation is a role change with newRoleId = null. Failures here must
+      // not break the revocation itself.
+      this.logAuditSuccess(command, userRole.userId, userRole.roleId, role.name).catch(
+        (error) => {
+          this.logger.error(
+            `Failed to log role revocation history: ${error.message}`,
+            error.stack,
+          );
+        },
+      );
     } catch (error) {
       if (
         error instanceof NotFoundException ||
@@ -131,24 +141,49 @@ export class RevokeRoleCommandHandler {
   }
 
   /**
-   * Log successful audit
+   * Persist a successful revocation to RoleChangeHistory via the audit queue.
+   * Mirrors AssignRoleCommandHandler: queue a 'role-change' event consumed by
+   * AuditLoggingProcessor. A revocation has oldRoleId = the revoked role and
+   * newRoleId = null. <1ms overhead; retried up to 3 times by BullMQ.
    */
-  private logAuditSuccess(
+  private async logAuditSuccess(
     command: RevokeRoleCommand,
     userId: string,
+    revokedRoleId: string,
     roleName: string,
-  ): void {
-    // TODO: Use AuditLogService to persist audit entry
+  ): Promise<void> {
+    await this.auditQueue.add(
+      'role-change',
+      {
+        type: 'role-change',
+        data: {
+          userId,
+          tenantId: command.tenantId,
+          oldRoleId: revokedRoleId,
+          newRoleId: null,
+          changedBy: command.revokedBy,
+          reason: command.reason || 'Role revocation',
+          timestamp: new Date().toISOString(),
+          effectiveDate: new Date().toISOString(),
+          metadata: { userRoleId: command.userRoleId, roleName },
+        },
+      },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+      },
+    );
+
     this.logger.debug(
-      `[AUDIT] ALLOW revoke_role: userRole=${command.userRoleId}, user=${userId}, role=${roleName}, tenant=${command.tenantId}, reason=${command.reason || 'N/A'}`,
+      `[AUDIT] Queued role revocation: userRole=${command.userRoleId}, user=${userId}, role=${roleName}, tenant=${command.tenantId}`,
     );
   }
 
   /**
-   * Log failed audit
+   * Log a denied revocation attempt. Denials are NOT persisted to
+   * RoleChangeHistory (no role actually changed); they are operational events.
    */
   private logAuditFailure(command: RevokeRoleCommand, reason: string): void {
-    // TODO: Use AuditLogService to persist audit entry
     this.logger.debug(
       `[AUDIT] DENY revoke_role: userRole=${command.userRoleId}, tenant=${command.tenantId}, reason=${reason}`,
     );
