@@ -10,6 +10,7 @@ import {
   HttpStatus,
   Logger,
   Res,
+  Inject,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { QueryBus } from '@nestjs/cqrs';
@@ -19,6 +20,7 @@ import { RequirePermission } from '../decorators/require-permission.decorator';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.query';
 import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query';
+import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface';
 
 /**
  * AuditController
@@ -45,7 +47,11 @@ import { ReconstructHistoricalPermissionsQuery } from '../../application/queries
 export class AuditController {
   private readonly logger = new Logger(AuditController.name);
 
-  constructor(private readonly queryBus: QueryBus) {}
+  constructor(
+    private readonly queryBus: QueryBus,
+    @Inject('PermissionAuditLogRepository')
+    private readonly auditLogRepository: PermissionAuditLogRepository,
+  ) {}
 
   /**
    * T150: GET /api/v1/audit/permissions
@@ -144,9 +150,12 @@ export class AuditController {
     try {
       this.logger.log(`Exporting audit trail for tenant ${user.tenantId}`);
 
-      // Use repository directly for CSV export
-      // TODO: Inject PermissionAuditLogRepository
-      const csv = 'id,timestamp,userId,decision\n'; // Placeholder
+      const csv = await this.auditLogRepository.exportToCsv({
+        tenantId: user.tenantId,
+        userId,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+      });
 
       const filename = `audit-trail-${user.tenantId}-${new Date().toISOString()}.csv`;
 
@@ -178,9 +187,10 @@ export class AuditController {
     @Query('pageSize') pageSize?: string,
   ): Promise<any> {
     try {
-      // TODO: Create GetRoleChangesQuery and handler
-      // For now, return placeholder
-
+      // NB: lo storico cambi-ruolo è già persistito in RoleChangeHistory (vedi
+      // assign-role/revoke-role + AuditLoggingProcessor). Questo endpoint
+      // richiede una GetRoleChangesQuery dedicata + handler sul
+      // RoleChangeHistoryRepository: follow-up tracciato, non ancora collegato.
       this.logger.log(`Get role changes for tenant ${user.tenantId}`);
 
       return {
@@ -262,19 +272,12 @@ export class AuditController {
     try {
       this.logger.log(`Get audit statistics for tenant ${user.tenantId}`);
 
-      // TODO: Inject repository and call getStatistics
-      // For now, return placeholder
+      const stats = await this.auditLogRepository.getStatistics(user.tenantId, {
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+      });
 
-      return {
-        success: true,
-        data: {
-          totalLogs: 0,
-          allowedCount: 0,
-          deniedCount: 0,
-          uniqueUsers: 0,
-          topDeniedActions: [],
-        },
-      };
+      return { success: true, data: stats };
     } catch (error) {
       this.logger.error(`Failed to get audit statistics: ${error.message}`, error.stack);
       throw error;
@@ -297,16 +300,21 @@ export class AuditController {
         `Validating chain integrity for tenant ${user.tenantId}`,
       );
 
-      // TODO: Inject repository and call validateChainIntegrity
-      // For now, return placeholder
+      const result = await this.auditLogRepository.validateChainIntegrity(
+        user.tenantId,
+        {
+          startDate: body.startDate ? new Date(body.startDate) : undefined,
+          endDate: body.endDate ? new Date(body.endDate) : undefined,
+        },
+      );
 
       return {
         success: true,
         data: {
-          isValid: true,
-          totalLogs: 0,
-          firstInvalidLogId: null,
-          error: null,
+          isValid: result.isValid,
+          totalLogs: result.totalLogs,
+          firstInvalidLogId: result.firstInvalidLogId ?? null,
+          error: result.error ?? null,
         },
       };
     } catch (error) {
