@@ -15,6 +15,7 @@ import { UserRole } from '../../../domain/identity-access/user-role.entity';
 import { PermissionCacheService } from '../../../infrastructure/cache/permission-cache.service';
 import { RedisPubSubService } from '../../../infrastructure/cache/redis-pub-sub.service';
 import { UserRoleAssignedEvent } from '../../../domain/events/user-role-assigned.event';
+import { PrismaService } from '../../../infrastructure/persistence/prisma.service';
 
 /**
  * AssignRoleCommandHandler
@@ -38,6 +39,7 @@ export class AssignRoleCommandHandler {
     private readonly userRoleRepository: UserRoleRepository,
     private readonly permissionCache: PermissionCacheService,
     private readonly redisPubSub: RedisPubSubService,
+    private readonly prisma: PrismaService,
     @InjectQueue('audit-logging') private readonly auditQueue: Queue,
   ) {}
 
@@ -59,9 +61,26 @@ export class AssignRoleCommandHandler {
         throw new ForbiddenException('Cross-tenant role assignment denied');
       }
 
-      // Step 2: Validate user exists (assuming we have UserRepository)
-      // TODO: Inject UserRepository and validate user exists and belongs to tenant
-      // For now, we skip this validation
+      // Step 2: Validate the target user exists AND belongs to the same tenant.
+      // Without this check a role could be assigned to a non-existent user or,
+      // worse, to a user of ANOTHER tenant → cross-tenant privilege escalation.
+      const targetUser = await this.prisma.user.findUnique({
+        where: { id: command.userId },
+        select: { id: true, tenantId: true },
+      });
+
+      if (!targetUser) {
+        this.logAuditFailure(command, 'Target user not found');
+        throw new NotFoundException('User not found');
+      }
+
+      if (targetUser.tenantId !== command.tenantId) {
+        this.logAuditFailure(
+          command,
+          'Cross-tenant role assignment denied (user belongs to another tenant)',
+        );
+        throw new ForbiddenException('Cross-tenant role assignment denied');
+      }
 
       // Step 3: Check for existing assignment
       const existingAssignment =
