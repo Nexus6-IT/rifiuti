@@ -18,12 +18,16 @@ Blocchi risolti rispetto alla baseline del 2026-06-05:
 | 9 | MUD generator dati mock | ✅ risolto | aggregazione reale recupero/smaltimento |
 | 10 | FIR mapping campi anagrafici vuoti | ✅ risolto | snapshot anagrafico immutabile dai registri |
 | 15 | assign/revoke ruolo non auditati | ✅ risolto | revoke accoda `role-change`; assign già accodava |
+| 6 | filtro tenant nei repository registri | ✅ risolto | findById/delete scoped per tenant (fail-closed) su Produttore/Trasportatore/Destinatario |
+| 7 | FIR repo: filtro tenant ambiguo | 🟡 parziale | bug `count()` corretto (producerId), TODO ripuliti; scoping RLS completo dei FIR richiede `tenantId` reale sull'aggregate (follow-up documentato nel repo) |
+| 13 | API audit non collegate al repo | 🟡 parziale | export CSV + stats + validate-chain collegati al repository reale; `role-changes` resta da collegare (query dedicata) |
+| RENTRI | client mock-inventato | 🟢 "pronto a connettersi" | client reale ModI AgID (OAuth2 client_assertion + Agid-JWT-Signature), feature flag mock/live; manca certificato + conferma path OpenAPI formulari |
 
-Ancora aperti (bloccanti residui): #3 (facilityIds/temp permission lookup),
-#6/#7 (filtro tenant nei repository produttore/FIR — verificare dopo il lavoro
-RLS), #11-#14 (audit firma/retention S3/decennale, integrità catena audit API),
-e su tutti il #1 della gap-analysis: **RENTRI reale** (richiede credenziali
-ambiente di test ufficiale + accreditamento, non completabile offline).
+Ancora aperti: #3 (facilityIds/temp permission lookup), #7 (tenantId reale
+sull'aggregate FIR), #11/#12 (audit firma: modelli `auditLog`/`alert`/coda
+RENTRI post-firma), #14 (retention/archiviazione S3 decennale — richiede infra
+S3), `role-changes` API, e il go-live **RENTRI** (certificato + accreditamento
++ conferma path OpenAPI `formulari`).
 
 ## 1. Tabella riassuntiva conteggi
 
