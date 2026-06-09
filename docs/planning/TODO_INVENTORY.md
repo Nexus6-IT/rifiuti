@@ -4,6 +4,27 @@
 > (esclusi `node_modules`, `dist`, `coverage`). Marker cercati: `TODO`, `FIXME`,
 > `HACK`, `XXX`, `not implemented`, `throw new Error('TODO'|'not implemented')`.
 
+## 0. Stato avanzamento (aggiornato 2026-06-09)
+
+Blocchi risolti rispetto alla baseline del 2026-06-05:
+
+| # | Blocco | Stato | Commit/Nota |
+|---|--------|-------|-------------|
+| 1 | permission.guard cache-miss → DB | ✅ risolto | guard interroga il DB su cache miss (`loadPermissionsFromDb`) |
+| 2 | jwt.strategy permessi RBAC vuoti | ✅ risolto | `resolvePermissions` da assegnazioni ruolo attive |
+| 4 | assign-role: utente/tenant non validati | ✅ risolto | validazione esistenza + appartenenza tenant |
+| 5 | RLS disabilitata | ✅ risolto | commit P0 sicurezza (multi-tenant/RLS) |
+| 8 | analytics dati mock (destinationType) | ✅ risolto | `wasteOperationType` reale + groupBy |
+| 9 | MUD generator dati mock | ✅ risolto | aggregazione reale recupero/smaltimento |
+| 10 | FIR mapping campi anagrafici vuoti | ✅ risolto | snapshot anagrafico immutabile dai registri |
+| 15 | assign/revoke ruolo non auditati | ✅ risolto | revoke accoda `role-change`; assign già accodava |
+
+Ancora aperti (bloccanti residui): #3 (facilityIds/temp permission lookup),
+#6/#7 (filtro tenant nei repository produttore/FIR — verificare dopo il lavoro
+RLS), #11-#14 (audit firma/retention S3/decennale, integrità catena audit API),
+e su tutti il #1 della gap-analysis: **RENTRI reale** (richiede credenziali
+ambiente di test ufficiale + accreditamento, non completabile offline).
+
 ## 1. Tabella riassuntiva conteggi
 
 | Categoria | Conteggio occorrenze | Note |
