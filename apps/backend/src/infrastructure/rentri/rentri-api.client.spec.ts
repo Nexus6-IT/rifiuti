@@ -13,7 +13,9 @@ import { AxiosResponse } from 'axios';
 describe('RENTRIApiClient', () => {
   let client: RENTRIApiClient;
   let mockHttpService: any;
-  let mockConfigService: any;
+  let mockConfig: any;
+  let mockAuth: any;
+  let mockSignature: any;
   let mockLogger: any;
   let mockMetrics: any;
 
@@ -23,13 +25,20 @@ describe('RENTRIApiClient', () => {
       get: jest.fn(),
     };
 
-    mockConfigService = {
-      get: jest.fn((key: string) => {
-        if (key === 'RENTRI_API_URL') return 'http://localhost:3001';
-        if (key === 'RENTRI_API_KEY') return 'demo-key';
-        if (key === 'RENTRI_ENABLE_MOCK') return 'true';
-        return null;
-      }),
+    // Modalità mock: autenticazione X-API-Key verso il mock locale.
+    mockConfig = {
+      mode: 'mock',
+      baseUrl: 'http://localhost:3001',
+      mockApiKey: 'demo-key',
+    };
+
+    mockAuth = {
+      getAccessToken: jest.fn().mockResolvedValue('test-token'),
+      invalidate: jest.fn(),
+    };
+
+    mockSignature = {
+      buildIntegrityHeaders: jest.fn().mockReturnValue({}),
     };
 
     mockLogger = {
@@ -37,6 +46,7 @@ describe('RENTRIApiClient', () => {
       info: jest.fn(),
       error: jest.fn(),
       warn: jest.fn(),
+      debug: jest.fn(),
     };
 
     mockMetrics = {
@@ -48,12 +58,14 @@ describe('RENTRIApiClient', () => {
       },
     };
 
-    // Directly instantiate the client with mocks
+    // Directly instantiate the client with mocks (new constructor order)
     client = new RENTRIApiClient(
       mockHttpService,
-      mockConfigService,
       mockLogger,
       mockMetrics,
+      mockConfig,
+      mockAuth,
+      mockSignature,
     );
   });
 
