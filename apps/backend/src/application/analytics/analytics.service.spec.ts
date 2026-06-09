@@ -129,20 +129,21 @@ describe('AnalyticsService', () => {
       expect(total).toBe(125000);
     });
 
-    it('should calculate waste by destination type', async () => {
-      // Note: destinationType field does not exist in schema yet
-      // Service returns mock zeros until schema is updated (see TODO in service)
+    it('should calculate waste by destination type (recovery vs disposal)', async () => {
       (prisma.fIR.groupBy as jest.Mock).mockResolvedValue([
-        { destinationType: 'RECOVERY', _count: 80, _sum: { quantity: 8000 } },
-        { destinationType: 'DISPOSAL', _count: 20, _sum: { quantity: 2000 } },
+        { wasteOperationType: 'RECOVERY', _count: 80, _sum: { quantity: 8000 } },
+        { wasteOperationType: 'DISPOSAL', _count: 20, _sum: { quantity: 2000 } },
       ]);
 
       const byDestination = await service.getWasteByDestination('tenant-1');
 
-      // Temporarily expecting zeros until destinationType is added to schema
-      expect(byDestination.recovery.count).toBe(0);
-      expect(byDestination.disposal.count).toBe(0);
-      expect(byDestination.recyclingRate).toBe(0);
+      expect(byDestination.recovery).toEqual({ count: 80, quantity: 8000 });
+      expect(byDestination.disposal).toEqual({ count: 20, quantity: 2000 });
+      // 80 recupero su 100 totali = 0.8
+      expect(byDestination.recyclingRate).toBeCloseTo(0.8, 5);
+      expect(prisma.fIR.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({ by: ['wasteOperationType'], where: { tenantId: 'tenant-1' } }),
+      );
     });
   });
 

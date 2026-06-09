@@ -114,26 +114,17 @@ export class AnalyticsService {
   }
 
   /**
-   * Get waste by destination type (recovery vs disposal)
-   * TODO: Field 'destinationType' does not exist in Prisma schema - needs to be added
+   * Ripartizione dei rifiuti per tipo di operazione di destinazione:
+   * recupero (R) vs smaltimento (D), con tasso di riciclo.
+   * Basato sul campo reale `wasteOperationType` dei FIR.
    */
   async getWasteByDestination(tenantId: string): Promise<{
     recovery: { count: number; quantity: number };
     disposal: { count: number; quantity: number };
     recyclingRate: number;
   }> {
-    // TODO: Temporarily returning mock data until destinationType field is added to schema
-    this.logger.warn('getWasteByDestination called but destinationType field does not exist in schema');
-
-    return {
-      recovery: { count: 0, quantity: 0 },
-      disposal: { count: 0, quantity: 0 },
-      recyclingRate: 0,
-    };
-
-    /* Original implementation - restore after schema is updated with destinationType field:
     const groups = await this.prisma.fIR.groupBy({
-      by: ['destinationType'],
+      by: ['wasteOperationType'],
       where: { tenantId },
       _count: true,
       _sum: {
@@ -145,16 +136,14 @@ export class AnalyticsService {
     let disposal = { count: 0, quantity: 0 };
 
     for (const group of groups) {
-      if (group.destinationType === 'RECOVERY') {
-        recovery = {
-          count: group._count,
-          quantity: Number(group._sum.quantity) || 0,
-        };
-      } else if (group.destinationType === 'DISPOSAL') {
-        disposal = {
-          count: group._count,
-          quantity: Number(group._sum.quantity) || 0,
-        };
+      const entry = {
+        count: group._count,
+        quantity: Number(group._sum.quantity) || 0,
+      };
+      if (group.wasteOperationType === 'RECOVERY') {
+        recovery = entry;
+      } else if (group.wasteOperationType === 'DISPOSAL') {
+        disposal = entry;
       }
     }
 
@@ -162,7 +151,6 @@ export class AnalyticsService {
     const recyclingRate = total > 0 ? recovery.count / total : 0;
 
     return { recovery, disposal, recyclingRate };
-    */
   }
 
   /**

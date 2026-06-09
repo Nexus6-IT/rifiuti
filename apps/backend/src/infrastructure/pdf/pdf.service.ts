@@ -162,8 +162,16 @@ export class PDFService {
         {
           width: '50%',
           stack: [
-            { text: 'Tipo Destinazione', style: 'label' },
-            { text: fir.destinationType, style: 'value' },
+            { text: 'Tipo Operazione', style: 'label' },
+            {
+              text:
+                fir.wasteOperationType === 'RECOVERY'
+                  ? 'Recupero (R)'
+                  : fir.wasteOperationType === 'DISPOSAL'
+                    ? 'Smaltimento (D)'
+                    : 'N/A',
+              style: 'value',
+            },
             { text: 'Descrizione', style: 'label' },
             { text: fir.wasteDescription || 'N/A', style: 'value' },
           ],

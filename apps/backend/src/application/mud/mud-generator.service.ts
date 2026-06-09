@@ -38,32 +38,29 @@ export class MUDGeneratorService {
     const totalProduced = wasteProduced.reduce((sum: number, w: { _sum: { quantity: any } }) =>
       sum + (w._sum.quantity ? Number(w._sum.quantity) : 0), 0);
 
-    // TODO: Field 'destinationType' does not exist in Prisma schema - needs to be added
-    // Temporarily returning mock recovery/disposal data
-    this.logger.warn('generateMUDReport: destinationType field does not exist in schema, using mock data');
-
-    const recovery = { _sum: { quantity: 0 } };
-    const disposal = { _sum: { quantity: 0 } };
-
-    /* Original implementation - restore after schema is updated with destinationType field:
-    const recovery = await this.prisma.fIR.aggregate({
+    // Ripartizione recupero (R) / smaltimento (D) basata sul campo reale
+    // `wasteOperationType` dei FIR del periodo. Una sola groupBy invece di due
+    // aggregate separate.
+    const byOperation = await this.prisma.fIR.groupBy({
+      by: ['wasteOperationType'],
       where: {
         tenantId,
         createdAt: { gte: startDate, lte: endDate },
-        destinationType: 'RECOVERY',
       },
       _sum: { quantity: true },
+      _count: true,
     });
 
-    const disposal = await this.prisma.fIR.aggregate({
-      where: {
-        tenantId,
-        createdAt: { gte: startDate, lte: endDate },
-        destinationType: 'DISPOSAL',
-      },
-      _sum: { quantity: true },
-    });
-    */
+    let recovery = 0;
+    let disposal = 0;
+    for (const group of byOperation) {
+      const quantity = group._sum.quantity ? Number(group._sum.quantity) : 0;
+      if (group.wasteOperationType === 'RECOVERY') {
+        recovery = quantity;
+      } else if (group.wasteOperationType === 'DISPOSAL') {
+        disposal = quantity;
+      }
+    }
 
     return {
       year,
@@ -76,9 +73,9 @@ export class MUDGeneratorService {
       })),
       totals: {
         produced: totalProduced,
-        recovery: recovery._sum.quantity ? Number(recovery._sum.quantity) : 0,
-        disposal: disposal._sum.quantity ? Number(disposal._sum.quantity) : 0,
-        recyclingRate: totalProduced > 0 ? (recovery._sum.quantity ? Number(recovery._sum.quantity) : 0) / totalProduced : 0,
+        recovery,
+        disposal,
+        recyclingRate: totalProduced > 0 ? recovery / totalProduced : 0,
       },
     };
   }

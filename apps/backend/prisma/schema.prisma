@@ -3,7 +3,11 @@
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["multiSchema", "postgresqlExtensions"]
+  // NB: `multiSchema` rimosso — era abilitato ma non usato (nessun @@schema /
+  // datasource.schemas). Con un singolo schema `public` faceva generare a
+  // `prisma migrate dev` un drop/recreate totale invece di ALTER incrementali,
+  // rompendo ogni migrazione successiva alla baseline.
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
@@ -168,6 +172,12 @@ model FIR {
   quantity         Decimal @db.Decimal(10, 2)
   unit             String  @default("KG") @db.VarChar(10)
 
+  // Tipo di operazione sul rifiuto presso il destinatario: recupero (R) o
+  // smaltimento (D). Necessario per l'aggregazione MUD (recyclingRate) e per
+  // il rendering del FIR. Default DISPOSAL (conservativo) finche' il dominio
+  // non cattura il valore in fase di creazione FIR.
+  wasteOperationType WasteOperationType @default(DISPOSAL) @map("waste_operation_type")
+
   transportDate        DateTime  @map("transport_date")
   estimatedArrivalDate DateTime? @map("estimated_arrival_date")
   actualArrivalDate    DateTime? @map("actual_arrival_date")
@@ -195,6 +205,7 @@ model FIR {
   @@index([rentriSyncStatus])
   @@index([transportDate])
   @@index([cerCode])
+  @@index([tenantId, wasteOperationType])
   @@map("firs")
 }
 
@@ -218,6 +229,15 @@ enum RENTRISyncStatus {
   PERMANENTLY_FAILED
 
   @@map("rentri_sync_status")
+}
+
+/// Tipo di operazione di destinazione del rifiuto (D.Lgs 152/2006):
+/// RECOVERY = operazioni R (recupero), DISPOSAL = operazioni D (smaltimento).
+enum WasteOperationType {
+  RECOVERY
+  DISPOSAL
+
+  @@map("waste_operation_type")
 }
 
 model FIRSignature {
