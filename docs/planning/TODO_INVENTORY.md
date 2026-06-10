@@ -19,15 +19,14 @@ Blocchi risolti rispetto alla baseline del 2026-06-05:
 | 10 | FIR mapping campi anagrafici vuoti | ✅ risolto | snapshot anagrafico immutabile dai registri |
 | 15 | assign/revoke ruolo non auditati | ✅ risolto | revoke accoda `role-change`; assign già accodava |
 | 6 | filtro tenant nei repository registri | ✅ risolto | findById/delete scoped per tenant (fail-closed) su Produttore/Trasportatore/Destinatario |
-| 7 | FIR repo: filtro tenant ambiguo | 🟡 parziale | bug `count()` corretto (producerId), TODO ripuliti; scoping RLS completo dei FIR richiede `tenantId` reale sull'aggregate (follow-up documentato nel repo) |
-| 13 | API audit non collegate al repo | 🟡 parziale | export CSV + stats + validate-chain collegati al repository reale; `role-changes` resta da collegare (query dedicata) |
+| 7 | FIR repo: filtro tenant ambiguo | ✅ risolto | tenantId reale sull'aggregate FIR + scoping RLS su findById; bug `count()` corretto |
+| 13 | API audit non collegate al repo | ✅ risolto | export CSV + stats + validate-chain + role-changes collegati ai repository reali |
 | RENTRI | client mock-inventato | 🟢 "pronto a connettersi" | client reale ModI AgID (OAuth2 client_assertion + Agid-JWT-Signature), feature flag mock/live; manca certificato + conferma path OpenAPI formulari |
 
-Ancora aperti: #3 (facilityIds/temp permission lookup), #7 (tenantId reale
-sull'aggregate FIR), #11/#12 (audit firma: modelli `auditLog`/`alert`/coda
-RENTRI post-firma), #14 (retention/archiviazione S3 decennale — richiede infra
-S3), `role-changes` API, e il go-live **RENTRI** (certificato + accreditamento
-+ conferma path OpenAPI `formulari`).
+Ancora aperti: #3 (facilityIds/temp permission lookup), #11/#12 (audit firma:
+modelli `auditLog`/`alert`/coda RENTRI post-firma), #14 (retention/archiviazione
+S3 decennale — richiede infra S3), e il go-live **RENTRI** (certificato +
+accreditamento + conferma path OpenAPI `formulari`).
 
 ## 1. Tabella riassuntiva conteggi
 
