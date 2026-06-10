@@ -204,7 +204,8 @@ describe('CreateFIRUseCase', () => {
       },
       'tenant-transporter-456',
       'tenant-destination-789',
-      'user-123'
+      'user-123',
+      'tenant-1'
     )
   }
 
@@ -235,6 +236,8 @@ describe('CreateFIRUseCase', () => {
       expect(result.value.destinatario?.ragioneSociale).toBe('Impianto Recupero Srl')
       // l'operatore creatore è tracciato per la FK producerUserId
       expect(result.value.creatoDaUserId).toBe('user-123')
+      // il FIR porta il tenant reale (isolamento multi-tenant, #7)
+      expect(result.value.tenantId).toBe('tenant-1')
     })
 
     it('should fail if produttore is not in the registry', async () => {
@@ -276,7 +279,8 @@ describe('CreateFIRUseCase', () => {
         { cerCode: '13 02 05*', quantita: 120 },
         'tenant-transporter-456',
         'tenant-destination-789',
-        'user-123'
+        'user-123',
+        'tenant-1'
       )
 
       const result = await useCase.execute(command)
@@ -292,7 +296,8 @@ describe('CreateFIRUseCase', () => {
         { cerCode: '13 02 05*', quantita: 120 },
         '', // Empty trasportatoreId
         'tenant-destination-789',
-        'user-123'
+        'user-123',
+        'tenant-1'
       )
 
       const result = await useCase.execute(command)
@@ -308,7 +313,8 @@ describe('CreateFIRUseCase', () => {
         { cerCode: '13 02 05*', quantita: 120 },
         'tenant-transporter-456',
         '', // Empty destinatarioId
-        'user-123'
+        'user-123',
+        'tenant-1'
       )
 
       const result = await useCase.execute(command)
@@ -324,7 +330,8 @@ describe('CreateFIRUseCase', () => {
         { cerCode: '13 02 05*', quantita: -100 }, // Invalid quantity
         'tenant-transporter-456',
         'tenant-destination-789',
-        'user-123'
+        'user-123',
+        'tenant-1'
       )
 
       const result = await useCase.execute(command)
@@ -340,7 +347,8 @@ describe('CreateFIRUseCase', () => {
         { cerCode: '15 01 01', quantita: 50 }, // No unitaMisura specified
         'tenant-transporter-456',
         'tenant-destination-789',
-        'user-123'
+        'user-123',
+        'tenant-1'
       )
 
       const result = await useCase.execute(command)

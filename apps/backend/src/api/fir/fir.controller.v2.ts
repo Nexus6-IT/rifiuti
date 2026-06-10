@@ -89,7 +89,8 @@ export class FIRControllerV2 {
       dto.rifiuto,
       dto.trasportatoreId,
       dto.destinatarioId,
-      user.id
+      user.id,
+      user.tenantId
     )
 
     const result = await this.createFIRUseCase.execute(command)

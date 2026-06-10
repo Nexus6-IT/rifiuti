@@ -16,6 +16,7 @@ export class CreateFIRCommand {
     },
     public readonly trasportatoreId: string,
     public readonly destinatarioId: string,
-    public readonly userId: string // User who creates the FIR
+    public readonly userId: string, // User who creates the FIR
+    public readonly tenantId: string // Tenant proprietario del FIR
   ) {}
 }

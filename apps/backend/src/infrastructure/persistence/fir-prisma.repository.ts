@@ -15,7 +15,10 @@ export class FIRPrismaRepository implements IFIRRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findById(id: string): Promise<FIR | null> {
-    const record = await this.prisma.fIR.findUnique({
+    // Usa il client RLS-aware: con TenantContext attivo l'estensione inietta il
+    // `tenantId` reale (findFirst), evitando di restituire FIR di altri tenant
+    // tramite un id noto. Senza contesto (job di sistema) è un no-op = by-id.
+    const record = await this.prisma.db.fIR.findFirst({
       where: { id },
     })
 
@@ -158,6 +161,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     // are the registry references (fallback to legacy columns for old rows).
     const fir = FIR.create({
       produttoreId: record.producerId || record.producerUserId || record.tenantId,
+      tenantId: record.tenantId,
       rifiuto: {
         cerCode: record.cerCode,
         quantita: Number(record.quantity),
@@ -243,7 +247,9 @@ export class FIRPrismaRepository implements IFIRRepository {
       id: fir.id,
       status: fir.stato as any, // Map FIRStato to FIRStatus
       firNumber: fir.numeroProgressivo,
-      tenantId: fir.produttoreId, // Using produttoreId as tenantId
+      // tenantId reale del FIR; fallback a produttoreId per i FIR legacy creati
+      // prima dell'introduzione del tenantId sull'aggregate.
+      tenantId: fir.tenantId || fir.produttoreId,
       producerUserId: fir.creatoDaUserId || fir.produttoreId,
       producerId: produttore?.registroId || fir.produttoreId || undefined,
       producerPartitaIva: produttore?.partitaIva || '',
@@ -275,22 +281,15 @@ export class FIRPrismaRepository implements IFIRRepository {
 }
 
 /*
- * NOTA ISOLAMENTO TENANT DEL FIR (debito noto, follow-up di #7):
+ * ISOLAMENTO TENANT DEL FIR (#7):
  *
- * L'aggregate `FIR` non porta ancora un `tenantId` proprio: qui si usa
- * `fir.produttoreId` come `tenantId` (vedi toPersistence). Finché questa
- * conflazione esiste, il repository FIR NON viene migrato al client RLS-aware
- * (`this.prisma.db.fIR`): una query tenant-scoped sul `tenantId` reale (dal
- * TenantContext) non corrisponderebbe al valore memorizzato e nasconderebbe i
- * FIR legittimi.
+ * L'aggregate `FIR` porta ora un `tenantId` reale (valorizzato dal tenant
+ * dell'utente creatore in CreateFIRUseCase) persistito in `firs.tenant_id`.
+ * `findById` usa il client RLS-aware (`this.prisma.db.fIR`): con TenantContext
+ * attivo l'estensione inietta il tenant reale, impedendo l'accesso cross-tenant
+ * per id noto; senza contesto (job di sistema) resta un lookup by-id.
  *
- * Fix corretto (task separato): aggiungere un `tenantId` reale all'aggregate
- * FIR (valorizzato dal tenant dell'utente creatore in CreateFIRUseCase),
- * persisterlo in `firs.tenant_id`, e SOLO ALLORA migrare le letture FIR a
- * `this.prisma.db.fIR` per ottenere lo scoping automatico (difesa in profondità)
- * coerente con i registry repository.
- *
- * Nel frattempo l'isolamento dei FIR è garantito a livello applicativo: i flussi
- * passano `tenantId` esplicito (findByTenant) o ricontrollano `fir.tenantId`
- * (es. SyncFIRToRENTRIUseCase).
+ * `findByIdPublic` resta volutamente NON filtrato (verifica firma pubblica).
+ * I FIR legacy senza tenantId reale ricadono su `produttoreId` (vedi
+ * toPersistence) per retro-compatibilità.
  */

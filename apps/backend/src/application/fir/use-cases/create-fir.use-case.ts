@@ -62,6 +62,7 @@ export class CreateFIRUseCase {
         rifiuto: command.rifiuto,
         trasportatoreId: command.trasportatoreId,
         destinatarioId: command.destinatarioId,
+        tenantId: command.tenantId,
         creatoDaUserId: command.userId,
         produttore: this.snapshotProduttore(produttore),
         trasportatore: this.snapshotTrasportatore(trasportatore),

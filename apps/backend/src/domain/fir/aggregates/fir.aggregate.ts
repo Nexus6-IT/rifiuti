@@ -69,6 +69,8 @@ export interface CreateFIRProps {
   }
   trasportatoreId: string
   destinatarioId: string
+  /** Tenant proprietario del FIR (isolamento multi-tenant). */
+  tenantId?: string
   /** Utente (operatore) che crea il FIR — FK obbligatoria a User in persistenza. */
   creatoDaUserId?: string
   /** Snapshot anagrafici delle parti, presi dal registro al momento della creazione. */
@@ -119,7 +121,8 @@ export class FIR extends AggregateRoot {
     private readonly _creatoDaUserId: string | null = null,
     private readonly _produttore: ParteFIR | null = null,
     private readonly _trasportatore: ParteFIR | null = null,
-    private readonly _destinatario: ParteFIR | null = null
+    private readonly _destinatario: ParteFIR | null = null,
+    private readonly _tenantId: string | null = null
   ) {
     super()
   }
@@ -154,7 +157,8 @@ export class FIR extends AggregateRoot {
       props.creatoDaUserId ?? null,
       props.produttore ?? null,
       props.trasportatore ?? null,
-      props.destinatario ?? null
+      props.destinatario ?? null,
+      props.tenantId ?? null
     )
   }
 
@@ -264,6 +268,11 @@ export class FIR extends AggregateRoot {
 
   get createdAt(): Date {
     return this._createdAt
+  }
+
+  /** Tenant proprietario del FIR (isolamento multi-tenant). */
+  get tenantId(): string | null {
+    return this._tenantId
   }
 
   /** Utente (operatore) che ha creato il FIR. */
