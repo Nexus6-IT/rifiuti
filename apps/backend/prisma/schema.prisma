@@ -890,3 +890,28 @@ enum AbacPolicyEffect {
 
   @@map("abac_policy_effect")
 }
+
+/// Credenziale RENTRI per-tenant (Modello di Interoperabilità AgID).
+/// Ogni operatore (tenant) ha il PROPRIO certificato di interoperabilità: le
+/// chiamate API RENTRI vengono firmate per conto di quel tenant. La chiave
+/// privata è cifrata a riposo (AES-256-GCM, vedi rentri-crypto.util.ts) — mai
+/// in chiaro nel DB. Un solo set di credenziali per tenant.
+model RentriCredential {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @unique @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Identificativo operatore/client (iss/sub della client_assertion).
+  clientId       String @map("client_id") @db.VarChar(255)
+  /// Certificato X.509 in PEM (per x5c). Non sensibile come la chiave.
+  certificatePem String @map("certificate_pem") @db.Text
+  /// Chiave privata PEM CIFRATA (formato iv:tag:ciphertext base64).
+  privateKeyEnc  String @map("private_key_enc") @db.Text
+  /// Algoritmo di firma JOSE: RS256 (cert RSA) | ES256 (cert EC).
+  algorithm    String @default("RS256") @db.VarChar(10)
+  /// Ambiente RENTRI dichiarato per la credenziale: demo | live.
+  environment  String @default("demo") @db.VarChar(10)
+
+  @@map("rentri_credentials")
+}

@@ -1,6 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common'
 import { createHash, randomUUID } from 'crypto'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { signJws } from './rentri-jws.util'
 
 /**
@@ -11,10 +12,16 @@ import { signJws } from './rentri-jws.util'
  * e si produce un JWS nell'header HTTP `Agid-JWT-Signature` i cui claim
  * includono `signed_headers` con il digest, legando così la firma al contenuto
  * effettivamente trasmesso (anti-tampering).
+ *
+ * La firma usa il certificato del TENANT corrente (risolto dal resolver), così
+ * ogni messaggio è firmato per conto dell'operatore giusto.
  */
 @Injectable()
 export class RentriSignatureService {
-  constructor(@Inject(RENTRI_CONFIG) private readonly config: RentriConfig) {}
+  constructor(
+    @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
+    private readonly credentialResolver: RentriCredentialResolver,
+  ) {}
 
   /** Nome dell'header HTTP che trasporta la firma di integrità. */
   static readonly SIGNATURE_HEADER = 'Agid-JWT-Signature'
@@ -32,13 +39,19 @@ export class RentriSignatureService {
    * Costruisce gli header di integrità per una richiesta con body JSON:
    * - `Digest`: digest RFC 3230 del body
    * - `Agid-JWT-Signature`: JWS che firma `signed_headers` (digest + content-type)
+   *
+   * Async perché risolve la credenziale del tenant corrente.
    */
-  buildIntegrityHeaders(rawBody: string, contentType = 'application/json'): Record<string, string> {
+  async buildIntegrityHeaders(
+    rawBody: string,
+    contentType = 'application/json',
+  ): Promise<Record<string, string>> {
+    const cred = await this.credentialResolver.resolve()
     const digest = this.computeDigest(rawBody)
     const now = Math.floor(Date.now() / 1000)
 
     const payload = {
-      iss: this.config.clientId,
+      iss: cred.clientId,
       aud: this.config.signatureAudience,
       iat: now,
       nbf: now,
@@ -50,9 +63,9 @@ export class RentriSignatureService {
 
     const signature = signJws({
       payload,
-      privateKeyPem: this.config.privateKeyPem,
-      certificatePem: this.config.certificatePem,
-      algorithm: this.config.algorithm,
+      privateKeyPem: cred.privateKeyPem,
+      certificatePem: cred.certificatePem,
+      algorithm: cred.algorithm,
     })
 
     return {

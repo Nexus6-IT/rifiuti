@@ -30,12 +30,25 @@ describe('RentriAuthService', () => {
     algorithm: 'RS256',
     mockApiKey: 'demo-key',
     jwtTtlSeconds: 300,
+    credentialEncKey: 'test-enc-key',
   })
+
+  let resolver: any
 
   beforeEach(() => {
     http = { post: jest.fn() }
     logger = { setContext: jest.fn(), debug: jest.fn(), info: jest.fn(), error: jest.fn() }
-    service = new RentriAuthService(http as any, baseConfig(), logger)
+    // Il resolver fornisce la credenziale del tenant corrente (qui: cert di test).
+    resolver = {
+      resolve: jest.fn().mockResolvedValue({
+        clientId: 'operator-123',
+        certificatePem: cert.certificatePem,
+        privateKeyPem: cert.privateKeyPem,
+        algorithm: 'RS256',
+        source: 'env',
+      }),
+    }
+    service = new RentriAuthService(http as any, baseConfig(), resolver, logger)
   })
 
   it('ottiene un access token inviando una client_assertion valida', async () => {

@@ -3,7 +3,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { HttpModule } from '@nestjs/axios'
 import { LoggerModule } from '../../core/logger/logger.module'
 import { MetricsModule } from '../../core/metrics/metrics.module'
+import { PrismaModule } from '../persistence/prisma.module'
 import { RENTRI_CONFIG, loadRentriConfig } from './rentri-config'
+import { RentriCredentialService } from './rentri-credential.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
 import { RENTRIApiClient } from './rentri-api.client'
@@ -17,17 +20,26 @@ import { RENTRIApiClient } from './rentri-api.client'
  * richiede certificato + chiave privata negli env (vedi `.env.example`).
  */
 @Module({
-  imports: [ConfigModule, HttpModule, LoggerModule, MetricsModule],
+  imports: [ConfigModule, HttpModule, LoggerModule, MetricsModule, PrismaModule],
   providers: [
     {
       provide: RENTRI_CONFIG,
       useFactory: (config: ConfigService) => loadRentriConfig(config),
       inject: [ConfigService],
     },
+    RentriCredentialService,
+    RentriCredentialResolver,
     RentriAuthService,
     RentriSignatureService,
     RENTRIApiClient,
   ],
-  exports: [RENTRIApiClient, RentriAuthService, RentriSignatureService, RENTRI_CONFIG],
+  exports: [
+    RENTRIApiClient,
+    RentriAuthService,
+    RentriSignatureService,
+    RentriCredentialService,
+    RentriCredentialResolver,
+    RENTRI_CONFIG,
+  ],
 })
 export class RentriModule {}

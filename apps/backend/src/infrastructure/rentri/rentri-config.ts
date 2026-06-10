@@ -47,6 +47,8 @@ export interface RentriConfig {
   mockApiKey: string
   /** Validità (secondi) dei JWT generati (client_assertion / signature). */
   jwtTtlSeconds: number
+  /** Secret per cifrare a riposo le chiavi private RENTRI per-tenant (AES-256-GCM). */
+  credentialEncKey: string
 }
 
 /**
@@ -77,6 +79,7 @@ export function loadRentriConfig(config: ConfigService): RentriConfig {
     algorithm: (config.get<string>('RENTRI_JWT_ALG') as 'RS256' | 'ES256') || 'RS256',
     mockApiKey: config.get<string>('RENTRI_API_KEY') || 'demo-key',
     jwtTtlSeconds: Number(config.get<string>('RENTRI_JWT_TTL_SECONDS')) || 300,
+    credentialEncKey: config.get<string>('RENTRI_CREDENTIAL_ENC_KEY') || '',
   }
 }
 

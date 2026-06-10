@@ -30,8 +30,18 @@ describe('RentriSignatureService', () => {
       algorithm: 'RS256',
       mockApiKey: 'demo-key',
       jwtTtlSeconds: 300,
+      credentialEncKey: 'test-enc-key',
     }
-    service = new RentriSignatureService(config)
+    const resolver: any = {
+      resolve: jest.fn().mockResolvedValue({
+        clientId: 'operator-123',
+        certificatePem: cert.certificatePem,
+        privateKeyPem: cert.privateKeyPem,
+        algorithm: 'RS256',
+        source: 'tenant',
+      }),
+    }
+    service = new RentriSignatureService(config, resolver)
   })
 
   it('calcola il digest SHA-256 del body in formato RFC 3230', () => {
@@ -40,9 +50,9 @@ describe('RentriSignatureService', () => {
     expect(service.computeDigest(body)).toBe(expected)
   })
 
-  it('produce header Digest + Agid-JWT-Signature firmati e verificabili', () => {
+  it('produce header Digest + Agid-JWT-Signature firmati e verificabili', async () => {
     const body = JSON.stringify({ firId: 'fir-1', quantita: 100 })
-    const headers = service.buildIntegrityHeaders(body)
+    const headers = await service.buildIntegrityHeaders(body)
 
     expect(headers['Digest']).toBe(service.computeDigest(body))
     const token = headers[RentriSignatureService.SIGNATURE_HEADER]
@@ -58,8 +68,8 @@ describe('RentriSignatureService', () => {
     expect(digestEntry.digest).toBe(headers['Digest'])
   })
 
-  it('include la catena x5c negli header JOSE', () => {
-    const headers = service.buildIntegrityHeaders('{"x":1}')
+  it('include la catena x5c negli header JOSE', async () => {
+    const headers = await service.buildIntegrityHeaders('{"x":1}')
     const token = headers[RentriSignatureService.SIGNATURE_HEADER]
     const decodedComplete: any = jwt.decode(token, { complete: true })
 

@@ -217,10 +217,11 @@ export class RENTRIApiClient {
 
     if (this.isLive) {
       const token = await this.auth.getAccessToken();
+      const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody);
       headers = {
         ...headers,
         Authorization: `Bearer ${token}`,
-        ...this.signature.buildIntegrityHeaders(rawBody),
+        ...integrityHeaders,
       };
     } else {
       headers['X-API-Key'] = this.config.mockApiKey;

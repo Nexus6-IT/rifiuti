@@ -62,6 +62,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'TemporaryPermissionGrant',
   'ConsultantTenantAssociation',
   'PermissionRequest',
+  'RentriCredential',
 ])
 
 /** Operazioni il cui filtro avviene tramite `where`. */
