@@ -14,6 +14,7 @@
 3. **Dove quasi nessuno è arrivato (white space):** **AI** (suggeritore EER, OCR, anomaly detection, assistente normativo RAG) — quasi assente nel mercato italiano; **ESG/CO₂ derivata dal dato RENTRI** — gap netto e miglior rapporto impatto/sforzo; **pricing trasparente self-service** — solo QuiRifiutiPro pubblica i prezzi.
 4. **Da NON inseguire:** marketplace di simbiosi (Sfridoo già posizionata, network effect) e IoT/hardware proprietario (capitale + certificazioni) → semmai **integrare via API**, non costruire.
 5. **App autista offline + firma xFIR in campo:** dal 13/02/2026 è **requisito**, non differenziatore (ECOS X-FIR, TeamSystem, Sielco la offrono già). WasteFlow ha solo task-assignment web → **gap table-stakes, costoso → fast-follow di qualità**.
+6. **Gestione contratti:** **NON è nell'app** (solo spec `CONTRACT_MANAGEMENT_MODULE.md`, nessun codice). I competitor diretti per lo più non ce l'hanno → **differenziatore potenziale da costruire** (G8 nel piano, Fase D), con alto switching cost e ARPU.
 
 ---
 
@@ -48,7 +49,7 @@ Legenda: ✅ presente/maturo · 🟡 parziale/da completare · ❌ assente · ? 
 | **App autista offline + firma xFIR in campo** | ❌ (solo task-assignment web) | ? (linea trasp. "coming soon") | ✅ (app tablet) | ✅ (app FIR + QR) | ❌ (web responsive) | ✅ (X-FIR matura, offline) | 🟡 (solo Sielco=X-FIR) |
 | Firme digitali conformi (xFIR / RFC 3161 / qualificata) | 🟡 ECDSA reale, manca RFC3161 + conformità xFIR | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Dashboard / analytics | ✅ | ✅ | 🟡 (statistiche+export) | 🟡 | 🟡 | ✅ | 🟡 |
-| **Gestione contratti + pricing servizi (8 modelli)** | ✅ (differenziatore) | ❌ | 🟡 (fatturazione) | 🟡 | ❌ | ? | ❌ |
+| **Gestione contratti + pricing servizi (8 modelli)** | ❌ **solo doc di pianificazione, NON implementato** (`CONTRACT_MANAGEMENT_MODULE.md`) | ❌ | 🟡 (fatturazione) | 🟡 | ❌ | ? | ❌ |
 | Integrazioni ERP/contabilità/fatturazione | ❌ (pianificato) | 🟡 (Magia/Zucchetti) | ✅ (Digital HUB Zucchetti) | ✅ (suite TeamSystem) | ❌ | ? | ❌ |
 | **AI** (suggeritore EER, OCR, anomaly, RAG normativo) | ❌ (pianificato) | ❌ | ❌ | ❌ | ❌ | 🟡 (AI route opt. su utility) | ❌ |
 | **ESG / carbon / circolarità** (da dato RENTRI) | ❌ (pianificato) | ❌ | ❌ | ❌ | ❌ | 🟡 (ESG utility) | ❌ |
@@ -88,11 +89,13 @@ Funzionalità che **(quasi) tutti i competitor hanno** e WasteFlow no / parziale
 | D2 | **AI suite**: anomaly detection movimenti → suggeritore EER (human-in-the-loop) → OCR formulari/analisi → assistente normativo RAG | quasi assente in Italia | **ALTO / MEDIO** |
 | D3 | **Pricing trasparente + onboarding self-service** | raro nel settore | **ALTO / BASSO** ⭐ |
 | D4 | **Integrazioni "neutrali" leggere** (Fatture in Cloud, SdI, export contabilità, connettori bilance via API) | spazio non-captive scoperto | MEDIO / MEDIO |
+| **G8** | **Gestione contratti** (anagrafica contratti produttore↔trasportatore↔smaltitore, 8 modelli di pricing, template, workflow approvazione, **auto-compilazione FIR da contratto**, alert scadenze, billing) | competitor diretti per lo più sprovvisti; AMCS/GRIF lo hanno | **MEDIO-ALTO / ALTO** — spec pronta in `CONTRACT_MANAGEMENT_MODULE.md` |
 
 ### 3.D — Vantaggi attuali di WasteFlow da valorizzare (non li hanno i competitor)
-- **IAM avanzato**: RBAC + ABAC policy engine + permessi temporanei con workflow + tenant switching tracciato → perfetto per consulenti con ruoli diversi su clienti diversi (nessun competitor lo documenta).
-- **Modulo contratti** con 8 modelli di pricing + auto-compilazione FIR da contratto → assente nei competitor diretti.
+- **IAM avanzato**: RBAC + ABAC policy engine + permessi temporanei con workflow + tenant switching tracciato → perfetto per consulenti con ruoli diversi su clienti diversi (nessun competitor lo documenta). *(Implementato.)*
 - **Architettura cloud-native moderna** (NestJS/Angular, DDD/CQRS) vs WinWaste legacy on-prem → time-to-value, zero-IT, UX.
+
+> **Nota correttiva (2026-06-10):** la **gestione contratti** NON è un vantaggio attuale — è **solo pianificata** (spec dettagliata in `CONTRACT_MANAGEMENT_MODULE.md`, nessun codice/modello DB). I competitor diretti (Rifiutoo, QuiRifiutiPro, long-tail) ne sono per lo più **sprovvisti** → resta un **differenziatore potenziale forte, ma da costruire** (vedi G8 nel piano).
 
 ### 3.E — Da NON costruire (deciso)
 - **Marketplace simbiosi** (Sfridoo presidia, è problema di network effect non di codice).
@@ -131,13 +134,20 @@ Obiettivo: essere la scelta migliore per il consulente multi-società.
   4. **Assistente normativo RAG** (D.Lgs 152/2006 + decreti RENTRI), con citazione fonti.
 - **Deliverable**: 2-3 motivi concreti per scegliere WasteFlow invece di Rifiutoo/QuiRifiutiPro.
 
-### FASE D — Fast-follow & integrazioni
+### FASE D — Moduli avanzati, fast-follow & integrazioni
+- [ ] **G8 Gestione contratti** (NON presente nell'app — solo pianificato): implementare il modulo dalla spec esistente `CONTRACT_MANAGEMENT_MODULE.md`. Scope minimo (MVP del modulo):
+  1. **Modello dati + migration**: `Contract` (parti, tipo, CER coperti, `pricing_model` enum a 8 valori, `pricing_config` JSONB, termini/scadenze/rinnovo, stato/workflow) — tenant-scoped.
+  2. **Anagrafica contratti** CRUD + **workflow approvazione** (draft → pending_approval → active → expired/terminated).
+  3. **Auto-compilazione FIR da contratto attivo** (riduce time-to-FIR; integra col FIR esistente).
+  4. **Alert scadenze** (60/30/7 gg) sul sistema notifiche esistente.
+  5. *(Fase 2 del modulo)* billing da volume/peso, firma digitale, analytics costo/kg, AI suggerimento clausole, link a marketplace.
+  - *Differenziatore: i competitor diretti non lo offrono; alto switching cost + ARPU. Sforzo alto → pianificare come modulo a sé.*
 - [ ] **App autista offline-first** (PWA o nativa): firma xFIR in campo, QR, GPS, foto carico, offline + sync. *Table-stakes dal 2026 ma costoso/rischioso → qualità offline come discriminante.* Riusa il modulo task-assignment esistente.
 - [ ] **D4 Integrazioni leggere**: Fatture in Cloud / SdI / export contabilità; connettori bilance via API (no hardware proprietario).
-- **Deliverable**: copertura logistica trasporti + integrazione amministrativa PMI.
+- **Deliverable**: modulo contratti (switching cost + ARPU), copertura logistica trasporti, integrazione amministrativa PMI.
 
 ### Sequenza consigliata
-`A (vendibilità) → B (beachhead+pricing) → C1 ESG + C2 anomaly/EER (quick win differenzianti) → D app autista → D4 integrazioni`. ESG e pricing trasparente possono partire **in parallelo** alla Fase A perché a basso rischio e alto impatto di posizionamento.
+`A (vendibilità) → B (beachhead+pricing) → C1 ESG + C2 anomaly/EER (quick win differenzianti) → D8 contratti / app autista / integrazioni`. ESG e pricing trasparente possono partire **in parallelo** alla Fase A (basso rischio, alto posizionamento). La **gestione contratti** è un modulo grande: schedularla quando il core (A+B) è stabile, valutando un anticipo se serve come leva commerciale enterprise/ARPU.
 
 ---
 
