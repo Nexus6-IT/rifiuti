@@ -21,6 +21,7 @@ import { CurrentUser } from '../decorators/current-user.decorator';
 import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.query';
 import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query';
 import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface';
+import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-change-history.repository.interface';
 
 /**
  * AuditController
@@ -51,6 +52,8 @@ export class AuditController {
     private readonly queryBus: QueryBus,
     @Inject('PermissionAuditLogRepository')
     private readonly auditLogRepository: PermissionAuditLogRepository,
+    @Inject('RoleChangeHistoryRepository')
+    private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository,
   ) {}
 
   /**
@@ -187,21 +190,43 @@ export class AuditController {
     @Query('pageSize') pageSize?: string,
   ): Promise<any> {
     try {
-      // NB: lo storico cambi-ruolo è già persistito in RoleChangeHistory (vedi
-      // assign-role/revoke-role + AuditLoggingProcessor). Questo endpoint
-      // richiede una GetRoleChangesQuery dedicata + handler sul
-      // RoleChangeHistoryRepository: follow-up tracciato, non ancora collegato.
       this.logger.log(`Get role changes for tenant ${user.tenantId}`);
+
+      const pageNum = page ? parseInt(page, 10) : 1;
+      const size = pageSize ? parseInt(pageSize, 10) : 50;
+
+      const result = await this.roleChangeHistoryRepository.findWithFilters({
+        tenantId: user.tenantId,
+        userId,
+        roleId,
+        changedBy,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        changeType,
+        page: pageNum,
+        pageSize: size,
+      });
 
       return {
         success: true,
         data: {
-          changes: [],
+          changes: result.changes.map((c: any) => ({
+            id: c.id,
+            userId: c.userId,
+            tenantId: c.tenantId,
+            oldRoleId: c.oldRoleId,
+            newRoleId: c.newRoleId,
+            changedBy: c.changedBy,
+            reason: c.reason,
+            timestamp: c.timestamp,
+            effectiveDate: c.effectiveDate,
+            metadata: c.metadata,
+          })),
           pagination: {
-            total: 0,
-            page: page ? parseInt(page, 10) : 1,
-            pageSize: pageSize ? parseInt(pageSize, 10) : 50,
-            totalPages: 0,
+            total: result.total,
+            page: result.page ?? pageNum,
+            pageSize: result.pageSize ?? size,
+            totalPages: size ? Math.ceil(result.total / size) : 1,
           },
         },
       };

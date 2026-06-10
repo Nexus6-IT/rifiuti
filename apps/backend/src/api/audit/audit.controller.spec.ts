@@ -9,6 +9,7 @@ describe('AuditController — endpoint collegati al repository', () => {
   let controller: AuditController
   let queryBus: any
   let repo: any
+  let roleChangeRepo: any
   const user = { tenantId: 'tenant-1', id: 'user-1' }
 
   beforeEach(() => {
@@ -18,7 +19,10 @@ describe('AuditController — endpoint collegati al repository', () => {
       getStatistics: jest.fn(),
       validateChainIntegrity: jest.fn(),
     }
-    controller = new AuditController(queryBus, repo)
+    roleChangeRepo = {
+      findWithFilters: jest.fn(),
+    }
+    controller = new AuditController(queryBus, repo, roleChangeRepo)
   })
 
   it('exportAuditTrail invia il CSV prodotto dal repository', async () => {
@@ -76,5 +80,36 @@ describe('AuditController — endpoint collegati al repository', () => {
       firstInvalidLogId: 'log-3',
       error: 'Chain broken at log 3',
     })
+  })
+
+  it('getRoleChanges restituisce lo storico cambi-ruolo dal repository', async () => {
+    roleChangeRepo.findWithFilters.mockResolvedValue({
+      changes: [
+        {
+          id: 'rc-1',
+          userId: 'u9',
+          tenantId: 'tenant-1',
+          oldRoleId: 'role-a',
+          newRoleId: null,
+          changedBy: 'admin-1',
+          reason: 'Offboarding',
+          timestamp: new Date('2026-01-01'),
+          effectiveDate: new Date('2026-01-01'),
+          metadata: { roleName: 'OPERATOR' },
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+    })
+
+    const result = await controller.getRoleChanges(user, 'u9')
+
+    expect(roleChangeRepo.findWithFilters).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'tenant-1', userId: 'u9', page: 1, pageSize: 50 }),
+    )
+    expect(result.data.changes).toHaveLength(1)
+    expect(result.data.changes[0]).toMatchObject({ id: 'rc-1', newRoleId: null })
+    expect(result.data.pagination.total).toBe(1)
   })
 })
