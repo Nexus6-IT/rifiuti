@@ -25,6 +25,8 @@ import { MonitoringModule } from './infrastructure/monitoring/monitoring.module'
 import { DashboardModule } from './api/dashboard/dashboard.module'
 import { NotificationsApiModule } from './api/notifications/notifications-api.module'
 import { PermissionsModule } from './api/permissions/permissions.module'
+import { EsgModule } from './application/esg/esg.module'
+import { RentriModule } from './infrastructure/rentri/rentri.module'
 
 @Module({
   imports: [
@@ -70,6 +72,10 @@ import { PermissionsModule } from './api/permissions/permissions.module'
     // Analytics & Reporting
     AnalyticsModule,
     MUDModule,
+    EsgModule,
+
+    // RENTRI interoperability (client + gestione certificato per-tenant)
+    RentriModule,
 
     // Communication
     NotificationsModule,

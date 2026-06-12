@@ -10,6 +10,7 @@ import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
 import { RENTRIApiClient } from './rentri-api.client'
+import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 
 /**
  * RentriModule — sottosistema di interoperabilità RENTRI (client + auth + firma).
@@ -21,6 +22,7 @@ import { RENTRIApiClient } from './rentri-api.client'
  */
 @Module({
   imports: [ConfigModule, HttpModule, LoggerModule, MetricsModule, PrismaModule],
+  controllers: [RentriCredentialController],
   providers: [
     {
       provide: RENTRI_CONFIG,
