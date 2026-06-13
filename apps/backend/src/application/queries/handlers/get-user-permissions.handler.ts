@@ -3,6 +3,7 @@ import { GetUserPermissionsQuery } from '../get-user-permissions.query';
 import { UserRoleRepository } from '../../../domain/identity-access/user-role.repository.interface';
 import { RoleRepository } from '../../../domain/identity-access/role.repository.interface';
 import { PermissionRepository } from '../../../domain/identity-access/permission.repository.interface';
+import { TemporaryPermissionGrantRepository } from '../../../domain/identity-access/temporary-permission-grant.repository.interface';
 import { PermissionCacheService } from '../../../infrastructure/cache/permission-cache.service';
 
 /**
@@ -22,6 +23,7 @@ export class GetUserPermissionsQueryHandler {
     private readonly roleRepository: RoleRepository,
     private readonly permissionRepository: PermissionRepository,
     private readonly permissionCache: PermissionCacheService,
+    private readonly temporaryPermissionGrantRepository: TemporaryPermissionGrantRepository,
   ) {}
 
   async execute(
@@ -47,7 +49,12 @@ export class GetUserPermissionsQueryHandler {
 
       return {
         permissions: cachedPermissions,
-        facilityIds: [], // TODO: Cache facility IDs too
+        // NB: la cache permessi memorizza solo le stringhe permesso, non gli
+        // scope per-facility. Su cache hit i facilityIds non sono disponibili
+        // (estendere il valore di cache richiederebbe una modifica di schema in
+        // PermissionCacheService). Chi necessita lo scoping per facility deve
+        // richiedere il path DB (cache miss) o interrogare le assegnazioni.
+        facilityIds: [],
         source: 'cache',
       };
     }
@@ -99,12 +106,25 @@ export class GetUserPermissionsQueryHandler {
     }
 
     // Step 5: Include temporary permissions if requested
-    // TODO: Implement temp permission lookup
     if (query.includeTempPermissions) {
-      // Query TempPermissionRepository
-      this.logger.debug(
-        'Temporary permissions requested but not yet implemented',
-      );
+      const activeGrants =
+        await this.temporaryPermissionGrantRepository.findActiveByUser(
+          query.userId,
+          query.tenantId,
+        );
+      for (const grant of activeGrants) {
+        // Sicurezza: aggiungi solo i grant effettivamente attivi (non scaduti/
+        // non revocati), così i permessi temporanei vengono concessi solo nella
+        // loro finestra di validità.
+        if (grant.isActive()) {
+          grant.permissions.forEach((perm) => permissionSet.add(perm));
+        }
+      }
+      if (activeGrants.length > 0) {
+        this.logger.debug(
+          `Added ${activeGrants.length} temporary grant(s) for user ${query.userId}`,
+        );
+      }
     }
 
     // Step 6: Convert to array and cache

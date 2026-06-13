@@ -36,6 +36,7 @@ import { PrismaRoleRepository } from '../../infrastructure/persistence/role.repo
 import { PrismaPermissionRepository } from '../../infrastructure/persistence/permission.repository';
 import { PrismaAbacPolicyRepository } from '../../infrastructure/persistence/abac-policy.repository';
 import { PrismaPermissionAuditLogRepository } from '../../infrastructure/persistence/permission-audit-log.repository';
+import { PrismaTemporaryPermissionGrantRepository } from '../../infrastructure/persistence/temporary-permission-grant.repository';
 
 // Cache + Redis
 import { RedisConfig } from '../../infrastructure/cache/redis.config';
@@ -105,6 +106,7 @@ import { GetUserPermissionsQueryHandler } from '../../application/queries/handle
     PrismaPermissionRepository,
     PrismaAbacPolicyRepository,
     PrismaPermissionAuditLogRepository,
+    PrismaTemporaryPermissionGrantRepository,
 
     // --- Token DI stringa richiesti dal PermissionGuard ---
     { provide: 'UserRoleRepository', useExisting: PrismaUserRoleRepository },
@@ -130,18 +132,21 @@ import { GetUserPermissionsQueryHandler } from '../../application/queries/handle
         roleRepo: PrismaRoleRepository,
         permissionRepo: PrismaPermissionRepository,
         permissionCache: PermissionCacheService,
+        tempGrantRepo: PrismaTemporaryPermissionGrantRepository,
       ) =>
         new GetUserPermissionsQueryHandler(
           userRoleRepo,
           roleRepo,
           permissionRepo,
           permissionCache,
+          tempGrantRepo,
         ),
       inject: [
         PrismaUserRoleRepository,
         PrismaRoleRepository,
         PrismaPermissionRepository,
         PermissionCacheService,
+        PrismaTemporaryPermissionGrantRepository,
       ],
     },
   ],
