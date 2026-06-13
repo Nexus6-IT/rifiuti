@@ -18,6 +18,26 @@
 
 ---
 
+## 0.1 Stato implementazione WasteFlow (aggiornato 2026-06-13)
+
+Implementati in questo ciclo (backend, con test; moduli cablati in AppModule):
+- ✅ **ESG / CO₂ dal dato RENTRI** (D1) — `EsgService`, fattori CO₂ configurabili.
+- ✅ **Giacenze + deposito temporaneo** (G4) — nuovo registro `WasteMovement`,
+  giacenze per CER + alert limiti (soglie configurabili).
+- ✅ **Anomaly detection** (D2, parte AI) — controlli a regole su FIR/movimenti.
+- ✅ **Gestione contratti MVP** (G8) — modello, 8 pricing model, workflow stati,
+  auto-compilazione FIR; billing/firma/AI/marketplace = Fase 2.
+- ✅ **RENTRI certificato per-tenant** + endpoint admin (PKCS#12), cache token
+  per-tenant; client ModI "pronto a connettersi".
+- ✅ Isolamento tenant (FIR tenantId reale, registri), API audit complete,
+  permessi temporanei (#3), audit firma userId reale (#12).
+
+Restano (dipendenze esterne / infra / spec / frontend): RENTRI **live**
+(certificato), **conservazione AgID** (conservatore accreditato), **download IV
+copia**, **MUD export telematico ufficiale** (serve spec Unioncamere), AI
+avanzata (EER suggester/OCR/RAG — serve LLM), **app autista offline**, **console
+consulente** e pricing page (frontend), contratti Fase 2, hardening/CI-CD/deploy.
+
 ## 1. Panel competitor analizzato
 
 | Competitor | Posizionamento | Deployment | Note ownership |

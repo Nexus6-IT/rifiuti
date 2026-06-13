@@ -23,10 +23,19 @@ Blocchi risolti rispetto alla baseline del 2026-06-05:
 | 13 | API audit non collegate al repo | ✅ risolto | export CSV + stats + validate-chain + role-changes collegati ai repository reali |
 | RENTRI | client mock-inventato | 🟢 "pronto a connettersi" | client reale ModI AgID (OAuth2 client_assertion + Agid-JWT-Signature), feature flag mock/live; manca certificato + conferma path OpenAPI formulari |
 
-Ancora aperti: #3 (facilityIds/temp permission lookup), #11/#12 (audit firma:
-modelli `auditLog`/`alert`/coda RENTRI post-firma), #14 (retention/archiviazione
-S3 decennale — richiede infra S3), e il go-live **RENTRI** (certificato +
-accreditamento + conferma path OpenAPI `formulari`).
+Aggiornamento 2026-06-13:
+| #3 | facilityIds / lookup permessi temporanei | ✅ risolto (parte temp permessi); facilityIds su cache hit documentato come limite noto |
+| #11/#12 | audit firma | ✅ #12 (userId reale) risolto; #11: audit su ActivityLog (store scelto), coda sync RENTRI via BullMQ come follow-up quando il flusso firma→sync sarà cablato |
+
+Nuove funzionalità consegnate (oltre ai blocker): ESG/CO₂, giacenze+deposito
+temporaneo (nuovo registro `WasteMovement`), anomaly detection, gestione
+contratti MVP, certificato RENTRI per-tenant + endpoint admin.
+
+Ancora aperti (dipendenze esterne/infra/spec/frontend): #14 (retention S3 —
+infra), **RENTRI live** (certificato + accreditamento + path OpenAPI),
+conservazione AgID, download IV copia, MUD telematico ufficiale (spec
+Unioncamere), AI avanzata (LLM), app autista offline + console consulente
+(frontend), contratti Fase 2, hardening/CI-CD/deploy.
 
 ## 1. Tabella riassuntiva conteggi
 
