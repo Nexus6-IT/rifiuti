@@ -28,6 +28,7 @@ import { PermissionsModule } from './api/permissions/permissions.module'
 import { EsgModule } from './application/esg/esg.module'
 import { GiacenzeModule } from './application/giacenze/giacenze.module'
 import { AnomalyModule } from './application/anomaly/anomaly.module'
+import { ContractModule } from './application/contracts/contract.module'
 import { RentriModule } from './infrastructure/rentri/rentri.module'
 
 @Module({
@@ -77,6 +78,7 @@ import { RentriModule } from './infrastructure/rentri/rentri.module'
     EsgModule,
     GiacenzeModule,
     AnomalyModule,
+    ContractModule,
 
     // RENTRI interoperability (client + gestione certificato per-tenant)
     RentriModule,

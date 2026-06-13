@@ -891,6 +891,93 @@ enum AbacPolicyEffect {
   @@map("abac_policy_effect")
 }
 
+/// Contratto di gestione rifiuti tra produttore e controparte
+/// (trasportatore/smaltitore/intermediario). Supporta più modelli di pricing e
+/// un workflow di stato; abilita l'auto-compilazione dei FIR da contratto
+/// attivo. Tenant-scoped. (MVP: billing/firma/AI/marketplace sono follow-up.)
+model Contract {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  contractNumber String @map("contract_number") @db.VarChar(50)
+
+  // Parti (riferimenti al registro anagrafiche)
+  producerId       String           @map("producer_id") @db.Uuid
+  counterpartyId   String           @map("counterparty_id") @db.Uuid
+  counterpartyType CounterpartyType @map("counterparty_type")
+
+  contractType ContractType @map("contract_type")
+  description  String?      @db.Text
+  cerCodes     String[]     @map("cer_codes") // CER coperti dal contratto
+
+  // Pricing
+  pricingModel  PricingModel @map("pricing_model")
+  basePrice     Decimal?     @map("base_price") @db.Decimal(10, 2)
+  unitOfMeasure String       @default("kg") @map("unit_of_measure") @db.VarChar(10)
+  pricingConfig Json?        @map("pricing_config") // tier/zone/ecc.
+
+  // Termini
+  startDate         DateTime  @map("start_date")
+  endDate           DateTime? @map("end_date")
+  durationMonths    Int?      @map("duration_months")
+  autoRenew         Boolean   @default(false) @map("auto_renew")
+  renewalNoticeDays Int       @default(60) @map("renewal_notice_days")
+
+  // Pagamento
+  paymentTerms     String @default("net_30") @map("payment_terms") @db.VarChar(20)
+  billingFrequency String @default("monthly") @map("billing_frequency") @db.VarChar(20)
+
+  status ContractStatus @default(DRAFT)
+
+  @@unique([tenantId, contractNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, producerId])
+  @@map("contracts")
+}
+
+enum CounterpartyType {
+  TRANSPORTER
+  DISPOSER
+  BROKER
+
+  @@map("counterparty_type")
+}
+
+enum ContractType {
+  WASTE_DISPOSAL
+  WASTE_TRANSPORT
+  FULL_SERVICE
+  FRAMEWORK
+
+  @@map("contract_type")
+}
+
+enum PricingModel {
+  FLAT_RATE
+  PAY_PER_LIFT
+  PAY_BY_WEIGHT
+  PAY_BY_VOLUME
+  ZONE_BASED
+  TIERED_VOLUME
+  MINIMUM_GUARANTEE
+  HYBRID
+
+  @@map("pricing_model")
+}
+
+enum ContractStatus {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  TERMINATED
+
+  @@map("contract_status")
+}
+
 /// Movimento del registro cronologico di carico/scarico rifiuti
 /// (D.Lgs 152/2006). I CARICO incrementano la giacenza in deposito temporaneo,
 /// gli SCARICO la decrementano (tipicamente collegati a un FIR). Base per il
