@@ -23,6 +23,8 @@ import {
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { parsePkcs12 } from '../../infrastructure/rentri/rentri-pkcs12.util'
@@ -43,7 +45,10 @@ interface CredentialStatusResponse {
 @ApiTags('rentri')
 @ApiBearerAuth()
 @Controller('v1/rentri/credential')
-@UseGuards(JwtAuthGuard)
+// Gestione di un segreto sensibile (certificato/chiave del tenant): riservata
+// agli amministratori del tenant.
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN')
 export class RentriCredentialController {
   constructor(private readonly credentialService: RentriCredentialService) {}
 
