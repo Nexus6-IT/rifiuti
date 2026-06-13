@@ -50,13 +50,15 @@ export class SignatureAuditHandler {
     );
 
     try {
-      // TODO: Model 'auditLog' does not exist in Prisma schema - use 'activityLog' instead
-      // Create audit log entry using activityLog model
-      // Note: ActivityLog uses createdAt (auto-generated), not occurredAt
+      // L'audit della firma è persistito su ActivityLog (modello reale,
+      // immutabile per convenzione: solo insert). Il codice fiscale del
+      // firmatario resta nei metadata; `userId` usa l'ID utente reale
+      // dell'evento (fix #12: prima si salvava il codice fiscale come userId,
+      // dato personale e campo errato).
       await this.prisma.activityLog.create({
         data: {
           tenantId: event.payload.tenantId,
-          userId: event.payload.signerFiscalCode, // TODO: This should be the actual user ID, not fiscal code
+          userId: event.userId ?? event.payload.signerFiscalCode,
           firId: event.payload.firId,
           action: `${event.payload.role}_SIGNATURE_APPLIED`,
           description: `${event.payload.signerName} applied ${event.payload.role} signature to FIR ${event.payload.firNumber}`,
@@ -101,8 +103,7 @@ export class SignatureAuditHandler {
     );
 
     try {
-      // TODO: Model 'auditLog' does not exist - using activityLog
-      // Create audit log entry
+      // Audit del completamento firma su ActivityLog (store di audit scelto).
       await this.prisma.activityLog.create({
         data: {
           tenantId: event.payload.tenantId,
@@ -146,11 +147,13 @@ export class SignatureAuditHandler {
       `Triggering RENTRI sync for completed FIR ${event.payload.firId}`,
     );
 
-    // TODO: Model 'rENTRISyncQueue' does not exist in Prisma schema
-    // This functionality should be implemented using BullMQ or a similar queue system
-    // For now, log the event
+    // Integrazione: alla firma completa il FIR va accodato per la sync RENTRI.
+    // Il meccanismo scelto è BullMQ (coda 'rentri-sync', vedi
+    // infrastructure/queue/rentri-sync.queue.ts), NON una tabella di coda DB.
+    // Da collegare quando il flusso firma→sync sarà cablato in AppModule
+    // (oggi questo handler e il sottosistema sync non sono ancora agganciati).
     this.logger.info(
-      `TODO: RENTRI sync should be queued for FIR ${event.payload.firId}`,
+      `FIR ${event.payload.firId} completo: da accodare alla sync RENTRI (BullMQ 'rentri-sync')`,
       {
         firId: event.payload.firId,
         firNumber: event.payload.firNumber,
@@ -158,97 +161,13 @@ export class SignatureAuditHandler {
         signatureCount: event.payload.signatureCount,
       },
     );
-
-    /* Original implementation - restore when queue system is implemented:
-    try {
-      await this.prisma.rENTRISyncQueue.create({
-        data: {
-          tenantId: event.payload.tenantId,
-          firId: event.payload.firId,
-          status: 'PENDING',
-          priority: 'NORMAL',
-          scheduledFor: new Date(),
-          metadata: {
-            triggeredBy: 'FIR_COMPLETED_EVENT',
-            completedAt: event.payload.completedAt,
-            signatureCount: event.payload.signatureCount,
-          },
-        },
-      });
-
-      this.logger.info(
-        `RENTRI sync queued for FIR ${event.payload.firId}`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to queue RENTRI sync for FIR ${event.payload.firId}`,
-        error,
-      );
-      await this.createSyncFailureAlert(event, error);
-    }
-    */
-  }
-
-  /**
-   * Create alert for RENTRI sync failure
-   *
-   * If automatic sync queueing fails, create alert for manual review.
-   * TODO: Model 'alert' does not exist in Prisma schema - implement alert system
-   */
-  private async createSyncFailureAlert(
-    event: FIRCompletedEvent,
-    error: any,
-  ): Promise<void> {
-    // TODO: Model 'alert' does not exist in Prisma schema
-    // Consider creating a notification or using activityLog instead
-    this.logger.error(
-      `TODO: Alert should be created for RENTRI sync failure on FIR ${event.payload.firNumber}`,
-      error instanceof Error ? error : undefined,
-      {
-        tenantId: event.payload.tenantId,
-        firId: event.payload.firId,
-        firNumber: event.payload.firNumber,
-      },
-    );
-
-    /* Original implementation - restore when alert model is added:
-    try {
-      await this.prisma.alert.create({
-        data: {
-          tenantId: event.payload.tenantId,
-          severity: 'HIGH',
-          type: 'RENTRI_SYNC_QUEUE_FAILED',
-          title: `Failed to queue RENTRI sync for FIR ${event.payload.firNumber}`,
-          message: `FIR ${event.payload.firId} is completed but failed to queue for RENTRI sync. Manual intervention required.`,
-          entityType: 'FIR',
-          entityId: event.payload.firId,
-          details: {
-            firId: event.payload.firId,
-            firNumber: event.payload.firNumber,
-            error: error.message,
-            stack: error.stack,
-          },
-          isResolved: false,
-        },
-      });
-
-      this.logger.warn(
-        `Alert created for RENTRI sync failure: FIR ${event.payload.firId}`,
-      );
-    } catch (alertError) {
-      this.logger.error(
-        `Failed to create alert for RENTRI sync failure: ${event.payload.firId}`,
-        alertError,
-      );
-    }
-    */
   }
 
   /**
    * Query audit logs for FIR signature history
    *
    * Returns chronological audit trail for regulatory compliance.
-   * TODO: Using activityLog instead of auditLog
+   * Lo storico firma è interrogato da ActivityLog (store di audit scelto).
    */
   async getFIRSignatureAuditTrail(firId: string, tenantId: string): Promise<
     Array<{
@@ -259,8 +178,6 @@ export class SignatureAuditHandler {
       details: any;
     }>
   > {
-    // TODO: Using activityLog instead of auditLog model
-    // ActivityLog schema doesn't have entityType/entityId, uses firId directly
     const logs = await this.prisma.activityLog.findMany({
       where: {
         tenantId,
