@@ -27,6 +27,7 @@ import { NotificationsApiModule } from './api/notifications/notifications-api.mo
 import { PermissionsModule } from './api/permissions/permissions.module'
 import { EsgModule } from './application/esg/esg.module'
 import { GiacenzeModule } from './application/giacenze/giacenze.module'
+import { AnomalyModule } from './application/anomaly/anomaly.module'
 import { RentriModule } from './infrastructure/rentri/rentri.module'
 
 @Module({
@@ -75,6 +76,7 @@ import { RentriModule } from './infrastructure/rentri/rentri.module'
     MUDModule,
     EsgModule,
     GiacenzeModule,
+    AnomalyModule,
 
     // RENTRI interoperability (client + gestione certificato per-tenant)
     RentriModule,
