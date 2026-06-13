@@ -26,6 +26,7 @@ import { DashboardModule } from './api/dashboard/dashboard.module'
 import { NotificationsApiModule } from './api/notifications/notifications-api.module'
 import { PermissionsModule } from './api/permissions/permissions.module'
 import { EsgModule } from './application/esg/esg.module'
+import { GiacenzeModule } from './application/giacenze/giacenze.module'
 import { RentriModule } from './infrastructure/rentri/rentri.module'
 
 @Module({
@@ -73,6 +74,7 @@ import { RentriModule } from './infrastructure/rentri/rentri.module'
     AnalyticsModule,
     MUDModule,
     EsgModule,
+    GiacenzeModule,
 
     // RENTRI interoperability (client + gestione certificato per-tenant)
     RentriModule,

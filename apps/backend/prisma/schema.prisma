@@ -891,6 +891,37 @@ enum AbacPolicyEffect {
   @@map("abac_policy_effect")
 }
 
+/// Movimento del registro cronologico di carico/scarico rifiuti
+/// (D.Lgs 152/2006). I CARICO incrementano la giacenza in deposito temporaneo,
+/// gli SCARICO la decrementano (tipicamente collegati a un FIR). Base per il
+/// calcolo giacenze e per il monitoraggio dei limiti di deposito temporaneo.
+model WasteMovement {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  type         WasteMovementType
+  cerCode      String   @map("cer_code") @db.VarChar(6)
+  quantity     Decimal  @db.Decimal(10, 2)
+  unit         String   @default("KG") @db.VarChar(10)
+  movementDate DateTime @map("movement_date")
+  /// SCARICO: FIR collegato (uscita verso trasportatore/destinatario).
+  firId        String?  @map("fir_id") @db.Uuid
+  notes        String?  @db.Text
+
+  @@index([tenantId, cerCode])
+  @@index([tenantId, movementDate])
+  @@map("waste_movements")
+}
+
+enum WasteMovementType {
+  CARICO
+  SCARICO
+
+  @@map("waste_movement_type")
+}
+
 /// Credenziale RENTRI per-tenant (Modello di Interoperabilità AgID).
 /// Ogni operatore (tenant) ha il PROPRIO certificato di interoperabilità: le
 /// chiamate API RENTRI vengono firmate per conto di quel tenant. La chiave
