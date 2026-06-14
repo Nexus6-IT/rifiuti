@@ -55,9 +55,9 @@ describe('MudExportService', () => {
     expect(result.content).toContain('0000100,000') // prodotto = 100
     expect(result.content).toContain('0000080,000') // recupero
     expect(result.content).toContain('0000020,000') // smaltimento
-    // ATECO + ISTAT comune dichiarante nel record AA
+    // ATECO + ISTAT provincia(3)+comune(3) dichiarante nel record AA
     expect(result.content).toContain('381100')
-    expect(result.content).toContain('058091')
+    expect(result.content).toContain(';058;091;')
 
     const lines = result.content.trim().split('\r\n')
     // modulo BB DR (destinatario) e TE (trasportatore)

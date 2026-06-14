@@ -18,6 +18,8 @@ export function toMudAscii(input: string | null | undefined): string {
   s = s.toUpperCase()
   // Rimuove eventuali caratteri residui fuori dall'ASCII stampabile.
   s = s.replace(/[^\x20-\x7E]/g, '')
+  // Il `;` è il separatore di campo: non può comparire dentro un valore.
+  s = s.replace(/;/g, ' ')
   return s
 }
 
@@ -67,3 +69,19 @@ export function mudCodiceFiscale(cf: string): string {
 
 /** Unità di misura MUD: kg=1, t=2 (default kg). */
 export const MUD_UM_KG = 1
+
+/** Data in formato MUD "AAAAMMGG". */
+export function mudDate(d: Date): string {
+  const y = d.getFullYear().toString().padStart(4, '0')
+  const m = (d.getMonth() + 1).toString().padStart(2, '0')
+  const day = d.getDate().toString().padStart(2, '0')
+  return `${y}${m}${day}`
+}
+
+/** Ora in formato MUD "HHMMSS". */
+export function mudTime(d: Date): string {
+  const h = d.getHours().toString().padStart(2, '0')
+  const mi = d.getMinutes().toString().padStart(2, '0')
+  const s = d.getSeconds().toString().padStart(2, '0')
+  return `${h}${mi}${s}`
+}

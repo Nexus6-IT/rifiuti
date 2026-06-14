@@ -71,6 +71,8 @@ export interface MudExportData {
   year: number
   azienda: MudAzienda
   rifiuti: MudRifiutoLine[]
+  /** Istante di creazione del file (testata XX); default: ora corrente. */
+  generatedAt?: Date
 }
 
 /** Risultato dell'export: contenuto del file + metadati. */

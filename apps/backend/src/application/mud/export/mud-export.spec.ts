@@ -95,6 +95,29 @@ describe('MudTracciatoV604_2024.generate', () => {
     expect(lines.every((l) => l.endsWith(';'))).toBe(true)
   })
 
+  it('i record hanno la lunghezza fissa esatta del tracciato V6.04/24', () => {
+    const out = new MudTracciatoV604_2024().generate(data)
+    const lines = out.trim().split('\r\n')
+    const len = (prefix: string) => lines.find((l) => l.startsWith(prefix))!.length
+
+    expect(len('XX;')).toBe(488)
+    expect(len('AA;')).toBe(338)
+    expect(len('AB;')).toBe(257)
+    expect(len('BA;')).toBe(217)
+    expect(len('BB;')).toBe(310)
+  })
+
+  it('XX riepiloga i conteggi record (AA=1, AB=1, BA=2) e nr totale', () => {
+    const out = new MudTracciatoV604_2024().generate(data)
+    const lines = out.trim().split('\r\n')
+    const xx = lines[0].split(';')
+    // xx[0]=XX, [1]=release, [2]=tipo file, [3]=data, [4]=ora, [5]=nr totale, [6]=AA, [7]=AB, [8]=BA, [9]=BB
+    expect(xx[6]).toBe('00001') // AA
+    expect(xx[7]).toBe('00001') // AB
+    expect(xx[8]).toBe('00002') // BA (2 CER)
+    expect(Number(xx[5])).toBe(lines.length - 1) // record totali escluso XX
+  })
+
   it('record BA (rifiuto speciale metallo) ha 35 campi e quantità formattate', () => {
     const out = new MudTracciatoV604_2024().generate(data)
     const ba = out.trim().split('\r\n').find((l) => l.startsWith('BA;'))!
