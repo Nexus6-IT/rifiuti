@@ -68,7 +68,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET richiesta}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET richiesta}
       # Cifratura a riposo dei certificati RENTRI per-tenant
-      RENTRI_ENCRYPTION_KEY: ${RENTRI_ENCRYPTION_KEY:?RENTRI_ENCRYPTION_KEY richiesta}
+      RENTRI_CREDENTIAL_ENC_KEY: ${RENTRI_CREDENTIAL_ENC_KEY:?RENTRI_CREDENTIAL_ENC_KEY richiesta}
     depends_on:
       postgres:
         condition: service_healthy
