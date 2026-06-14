@@ -1,20 +1,37 @@
-version: '3.9'
+# ============================================================================
+# WasteFlow — stack di PRODUZIONE (Contabo, /opt/rifiuti/)
+# ----------------------------------------------------------------------------
+# Immagini buildate dalla CI Gitea e pushate sul registry Gitea CR. Qui si fa
+# solo `pull` + `up`. L'HTTPS e il dominio pubblico (rifiuti.ignicraft.com) sono
+# gestiti dall'nginx DI SISTEMA del VPS: il frontend espone solo 127.0.0.1:3017.
+#
+# SSO: l'app usa la propria auth JWT; l'integrazione come client OIDC del realm
+# condiviso `ignicraft` (auth.ignicraft.com) e' un follow-up — qui NON si avvia
+# un Keycloak proprio. Idem monitoring: si aggancia l'osservabilita' condivisa
+# (/opt/observability/) tramite la rete esterna `monitoring`, niente
+# Prometheus/Grafana propri.
+#
+# Lanciare SEMPRE con nome progetto esplicito per evitare collisioni con altri
+# stack che vivono in sottocartella `site/`:
+#   docker compose -p rifiuti --env-file /opt/rifiuti/.env \
+#     -f docker-compose.prod.yml <cmd>
+# ============================================================================
 
 services:
   postgres:
     image: postgres:16-alpine
     restart: always
     environment:
-      POSTGRES_DB: wasteflow_prod
-      POSTGRES_USER: wasteflow
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-wasteflow_prod}
+      POSTGRES_USER: ${DB_USER:-wasteflow}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD richiesta}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backups:/backups
     networks:
       - wasteflow
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U wasteflow"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wasteflow}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,7 +39,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD richiesta}
     volumes:
       - redis_data:/data
     networks:
@@ -33,49 +50,25 @@ services:
       timeout: 3s
       retries: 5
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:23.0
-    restart: always
-    environment:
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
-      KC_DB_USERNAME: wasteflow
-      KC_DB_PASSWORD: ${DB_PASSWORD}
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-      KC_HOSTNAME: auth.wasteflow.it
-      KC_HOSTNAME_STRICT: false
-      KC_PROXY: edge
-    command: start --optimized
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - wasteflow
-    ports:
-      - "8080:8080"
-
   backend:
-    build:
-      context: ./apps/backend
-      dockerfile: Dockerfile.prod
+    image: ${REGISTRY:-gitea.tail8be933.ts.net/graziano}/rifiuti-backend:${TAG:-latest}
     restart: always
     environment:
       NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://${DB_USER:-wasteflow}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-wasteflow_prod}
       DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: wasteflow_prod
-      DB_USER: wasteflow
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-wasteflow_prod}
+      DB_USER: ${DB_USER:-wasteflow}
       DB_PASSWORD: ${DB_PASSWORD}
       REDIS_HOST: redis
-      REDIS_PORT: 6379
+      REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_REALM: wasteflow
-      KEYCLOAK_CLIENT_ID: wasteflow-backend
-      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET richiesta}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET richiesta}
+      # Cifratura a riposo dei certificati RENTRI per-tenant
+      RENTRI_ENCRYPTION_KEY: ${RENTRI_ENCRYPTION_KEY:?RENTRI_ENCRYPTION_KEY richiesta}
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,69 +76,30 @@ services:
         condition: service_healthy
     networks:
       - wasteflow
-    ports:
-      - "3000:3000"
+      - monitoring
     volumes:
       - ./backups:/backups
 
-  nginx:
-    image: nginx:alpine
+  frontend:
+    image: ${REGISTRY:-gitea.tail8be933.ts.net/graziano}/rifiuti-frontend:${TAG:-latest}
     restart: always
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./apps/frontend/dist:/usr/share/nginx/html:ro
-      - ./certs:/etc/nginx/certs:ro
-    ports:
-      - "80:80"
-      - "443:443"
     depends_on:
       - backend
     networks:
       - wasteflow
-
-  prometheus:
-    image: prom/prometheus:latest
-    restart: always
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
-    networks:
-      - wasteflow
     ports:
-      - "9090:9090"
-
-  grafana:
-    image: grafana/grafana:latest
-    restart: always
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
-      GF_INSTALL_PLUGINS: grafana-piechart-panel
-      GF_SERVER_ROOT_URL: https://monitoring.wasteflow.it
-    networks:
-      - wasteflow
-    ports:
-      - "3001:3000"
-    depends_on:
-      - prometheus
+      # Solo loopback: l'nginx di sistema fa da reverse proxy + TLS
+      - "127.0.0.1:3017:80"
 
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
-  prometheus_data:
-    driver: local
-  grafana_data:
-    driver: local
 
 networks:
   wasteflow:
     driver: bridge
+  # Rete dell'osservabilita' condivisa (/opt/observability/), creata altrove.
+  monitoring:
+    external: true

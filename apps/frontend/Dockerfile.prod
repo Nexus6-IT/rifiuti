@@ -1,0 +1,38 @@
+# ============================================================================
+# Frontend Angular 17 — immagine di produzione (multi-stage, lean)
+# ----------------------------------------------------------------------------
+# Il frontend e' un workspace npm SENZA lockfile proprio: le dipendenze sono
+# gestite alla ROOT del monorepo. Per questo il contesto di build e' la root
+# del repo (non apps/frontend). Lo stage builder compila la SPA; lo stage
+# runtime e' un nginx:alpine che serve i file statici e fa da proxy /api.
+# ============================================================================
+
+# --- Stage 1: build ---------------------------------------------------------
+FROM node:20-alpine AS builder
+WORKDIR /repo
+
+# Manifest prima dei sorgenti per massimizzare la cache di layer su `npm ci`.
+# Servono i package.json di TUTTI i workspace referenziati dal lockfile,
+# altrimenti `npm ci` fallisce ("workspace not found").
+COPY package.json package-lock.json ./
+COPY apps/frontend/package.json apps/frontend/package.json
+COPY apps/backend/package.json apps/backend/package.json
+
+RUN npm ci
+
+# Sorgenti frontend + build di produzione (configuration "production" di default)
+COPY apps/frontend apps/frontend
+RUN npm run build --workspace @wasteflow/frontend
+
+# --- Stage 2: runtime -------------------------------------------------------
+FROM nginx:alpine
+
+# Rimuove la pagina di default e copia la SPA compilata
+RUN rm -rf /usr/share/nginx/html/*
+COPY --from=builder /repo/apps/frontend/dist/frontend /usr/share/nginx/html
+COPY apps/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost/ >/dev/null 2>&1 || exit 1

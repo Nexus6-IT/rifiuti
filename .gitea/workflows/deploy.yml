@@ -1,0 +1,123 @@
+# ============================================================================
+# WasteFlow — Build immagini + Deploy (Gitea Actions, runner self-hosted)
+# ----------------------------------------------------------------------------
+# - push su `develop`/`master`: builda e pusha backend+frontend sul Gitea CR.
+# - push su `master`: dopo la build, deploya in PRODUZIONE su Contabo
+#   (/opt/rifiuti/, frontend su 127.0.0.1:3017, nginx di sistema fa TLS).
+#
+# Adattamenti Gitea (vedi note infra): provenance:false, cache su registry
+# (no type=gha), login al Gitea CR con secret CR_TOKEN. Niente chaining
+# workflow_run: build e deploy sono job dello stesso workflow legati da needs.
+# ============================================================================
+
+name: Deploy
+
+on:
+  push:
+    branches: [develop, master]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: gitea.tail8be933.ts.net/graziano
+  BACKEND_IMAGE: gitea.tail8be933.ts.net/graziano/rifiuti-backend
+  FRONTEND_IMAGE: gitea.tail8be933.ts.net/graziano/rifiuti-frontend
+
+jobs:
+  # ==========================================================================
+  # BUILD & PUSH immagini sul Gitea Container Registry
+  # ==========================================================================
+  build:
+    name: Build & push immagini
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Tag immagine (sha breve)
+        id: meta
+        run: echo "tag=sha-$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login Gitea Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: gitea.tail8be933.ts.net
+          username: Graziano
+          password: ${{ secrets.CR_TOKEN }}
+
+      - name: Build & push BACKEND
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/backend
+          file: ./apps/backend/Dockerfile.prod
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}-cache:buildcache
+          cache-to: type=registry,ref=${{ env.BACKEND_IMAGE }}-cache:buildcache,mode=max
+
+      - name: Build & push FRONTEND
+        uses: docker/build-push-action@v6
+        with:
+          # Contesto = root del monorepo (il frontend non ha lockfile proprio)
+          context: .
+          file: ./apps/frontend/Dockerfile.prod
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:latest
+            ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}-cache:buildcache
+          cache-to: type=registry,ref=${{ env.FRONTEND_IMAGE }}-cache:buildcache,mode=max
+
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+
+  # ==========================================================================
+  # DEPLOY in produzione (solo master) su Contabo
+  # ==========================================================================
+  deploy:
+    name: Deploy produzione (Contabo)
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/master'
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: DEPLOY_TAG,CR_TOKEN
+          script_stop: true
+          script: |
+            set -e
+            export DEPLOY_TAG="${{ needs.build.outputs.tag }}"
+            cd /opt/rifiuti/site
+            git fetch --all --prune
+            git checkout master
+            git reset --hard origin/master
+            echo "$CR_TOKEN" | docker login gitea.tail8be933.ts.net -u Graziano --password-stdin
+            export TAG="$DEPLOY_TAG"
+            COMPOSE="docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml"
+            $COMPOSE pull
+            # Migrazioni Prisma (forward-only) prima di avviare la nuova versione
+            $COMPOSE run --rm backend npx prisma migrate deploy
+            $COMPOSE up -d
+            # Smoke test: il frontend risponde sul loopback
+            sleep 12
+            curl -fsS http://127.0.0.1:3017/ >/dev/null && echo "Deploy OK (tag $DEPLOY_TAG)"
+        env:
+          DEPLOY_TAG: ${{ needs.build.outputs.tag }}
+          CR_TOKEN: ${{ secrets.CR_TOKEN }}
+
+      - name: Smoke test pubblico (se PRODUCTION_URL impostata)
+        if: vars.PRODUCTION_URL != ''
+        run: curl -fsS "${{ vars.PRODUCTION_URL }}" >/dev/null && echo "URL pubblico OK"
