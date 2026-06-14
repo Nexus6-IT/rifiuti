@@ -172,6 +172,23 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
                 <span class="nav-label">Destinatari</span>
               </a>
             </div>
+
+            <div class="nav-divider" role="separator"></div>
+
+            <div class="nav-section">
+              <div class="nav-section-title">Impostazioni</div>
+
+              <!-- Certificato RENTRI (admin) -->
+              <a
+                routerLink="/rentri/certificato"
+                routerLinkActive="nav-link-active"
+                class="nav-link"
+                [attr.aria-current]="isActiveRoute('/rentri/certificato') ? 'page' : null"
+              >
+                <i class="pi pi-key nav-icon" aria-hidden="true"></i>
+                <span class="nav-label">Certificato RENTRI</span>
+              </a>
+            </div>
           </nav>
         </aside>
 
