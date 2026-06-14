@@ -60,8 +60,6 @@ jobs:
           tags: |
             ${{ env.BACKEND_IMAGE }}:latest
             ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tag }}
-          cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}-cache:buildcache
-          cache-to: type=registry,ref=${{ env.BACKEND_IMAGE }}-cache:buildcache,mode=max
 
       - name: Build & push FRONTEND
         uses: docker/build-push-action@v6
@@ -74,8 +72,6 @@ jobs:
           tags: |
             ${{ env.FRONTEND_IMAGE }}:latest
             ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.tag }}
-          cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}-cache:buildcache
-          cache-to: type=registry,ref=${{ env.FRONTEND_IMAGE }}-cache:buildcache,mode=max
 
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
