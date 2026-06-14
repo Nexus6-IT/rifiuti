@@ -492,6 +492,59 @@ model CERCode {
 }
 
 // ============================================================================
+// DATI DI RIFERIMENTO CONDIVISI (globali, non tenant-scoped)
+// Tabelle di decodifica comuni a tutto l'applicativo (anagrafiche, MUD, ...).
+// Popolate automaticamente via cron da sorgenti ufficiali ISTAT/ATECO.
+// ============================================================================
+
+/// Codici attività economica ISTAT (ATECO 2007 - agg. 2022), 6 cifre senza punti.
+model AtecoCode {
+  code        String   @id @db.VarChar(10)
+  description String   @db.Text
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("ateco_codes")
+}
+
+/// Stati esteri (codifica ISTAT nazioni).
+model IstatNazione {
+  code      String   @id @db.VarChar(10)
+  name      String   @db.VarChar(255)
+  iso3      String?  @db.VarChar(3)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([name])
+  @@map("istat_nazioni")
+}
+
+/// Province italiane (codifica ISTAT + sigla automobilistica).
+model IstatProvincia {
+  sigla     String   @id @db.VarChar(2)
+  code      String   @unique @db.VarChar(3)
+  name      String   @db.VarChar(255)
+  regione   String   @db.VarChar(255)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([name])
+  @@map("istat_province")
+}
+
+/// Comuni italiani (codice ISTAT 6 cifre + codice catastale Belfiore).
+model IstatComune {
+  code            String   @id @db.VarChar(6)
+  name            String   @db.VarChar(255)
+  provinciaSigla  String   @map("provincia_sigla") @db.VarChar(2)
+  codiceCatastale String?  @map("codice_catastale") @db.VarChar(4)
+  cap             String?  @db.VarChar(5)
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([name])
+  @@index([provinciaSigla])
+  @@index([name, provinciaSigla])
+  @@map("istat_comuni")
+}
+
+// ============================================================================
 // REGISTRY (Anagrafiche: Produttori, Trasportatori, Destinatari)
 // ============================================================================
 
