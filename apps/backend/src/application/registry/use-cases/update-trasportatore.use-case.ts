@@ -3,7 +3,7 @@
  * Updates an existing Trasportatore entity
  */
 
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { Result } from '../../../core/application/result'
 import {
   TrasportatoreRepository,
@@ -11,6 +11,7 @@ import {
 } from '../../../domain/registry/repositories/trasportatore.repository'
 import { Trasportatore } from '../../../domain/registry/entities/trasportatore'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
+import { ReferenceDataService } from '../../reference-data/reference-data.service'
 
 export interface UpdateTrasportatoreCommand {
   id: string
@@ -34,6 +35,7 @@ export class UpdateTrasportatoreUseCase {
   constructor(
     @Inject(TRASPORTATORE_REPOSITORY)
     private readonly trasportatoreRepository: TrasportatoreRepository,
+    @Optional() private readonly referenceData?: ReferenceDataService,
   ) {}
 
   async execute(command: UpdateTrasportatoreCommand): Promise<Result<Trasportatore>> {
@@ -62,6 +64,13 @@ export class UpdateTrasportatoreUseCase {
       }
 
       if (command.sedeLegale) {
+        if (this.referenceData) {
+          const v = await this.referenceData.validateLocalita(
+            command.sedeLegale.citta,
+            command.sedeLegale.provincia,
+          )
+          if (!v.ok) return Result.fail(v.error!)
+        }
         trasportatore.updateSedeLegale(Indirizzo.create(command.sedeLegale))
       }
 

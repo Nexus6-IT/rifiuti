@@ -3,7 +3,7 @@
  * Creates a new Trasportatore entity
  */
 
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { Result } from '../../../core/application/result'
 import {
   TrasportatoreRepository,
@@ -12,6 +12,7 @@ import {
 import { Trasportatore } from '../../../domain/registry/entities/trasportatore'
 import { PartitaIVA } from '../../../domain/registry/value-objects/partita-iva'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
+import { ReferenceDataService } from '../../reference-data/reference-data.service'
 
 export interface CreateTrasportatoreCommand {
   ragioneSociale: string
@@ -35,6 +36,7 @@ export class CreateTrasportatoreUseCase {
   constructor(
     @Inject(TRASPORTATORE_REPOSITORY)
     private readonly trasportatoreRepository: TrasportatoreRepository,
+    @Optional() private readonly referenceData?: ReferenceDataService,
   ) {}
 
   async execute(command: CreateTrasportatoreCommand): Promise<Result<Trasportatore>> {
@@ -55,6 +57,15 @@ export class CreateTrasportatoreUseCase {
 
       if (existingByNumero) {
         return Result.fail('Trasportatore with this Numero Iscrizione already exists')
+      }
+
+      // Valida comune/provincia contro le tabelle ISTAT condivise (se popolate).
+      if (this.referenceData) {
+        const v = await this.referenceData.validateLocalita(
+          command.sedeLegale.citta,
+          command.sedeLegale.provincia,
+        )
+        if (!v.ok) return Result.fail(v.error!)
       }
 
       // Create value objects

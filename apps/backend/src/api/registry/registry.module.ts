@@ -6,6 +6,7 @@
 import { Module } from '@nestjs/common'
 import { RegistryController } from './registry.controller'
 import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
+import { ReferenceDataModule } from '../../application/reference-data/reference-data.module'
 
 // Produttori Use Cases
 import { CreateProduttoreUseCase } from '../../application/registry/use-cases/create-produttore.use-case'
@@ -37,7 +38,7 @@ import { TRASPORTATORE_REPOSITORY } from '../../domain/registry/repositories/tra
 import { DESTINATARIO_REPOSITORY } from '../../domain/registry/repositories/destinatario.repository'
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, ReferenceDataModule],
   controllers: [RegistryController],
   providers: [
     // Produttori Use Cases

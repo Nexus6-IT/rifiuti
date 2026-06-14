@@ -3,7 +3,7 @@
  * Creates a new Destinatario entity
  */
 
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { Result } from '../../../core/application/result'
 import {
   DestinatarioRepository,
@@ -12,6 +12,7 @@ import {
 import { Destinatario } from '../../../domain/registry/entities/destinatario'
 import { PartitaIVA } from '../../../domain/registry/value-objects/partita-iva'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
+import { ReferenceDataService } from '../../reference-data/reference-data.service'
 
 export interface CreateDestinatarioCommand {
   ragioneSociale: string
@@ -35,6 +36,7 @@ export class CreateDestinatarioUseCase {
   constructor(
     @Inject(DESTINATARIO_REPOSITORY)
     private readonly destinatarioRepository: DestinatarioRepository,
+    @Optional() private readonly referenceData?: ReferenceDataService,
   ) {}
 
   async execute(command: CreateDestinatarioCommand): Promise<Result<Destinatario>> {
@@ -55,6 +57,15 @@ export class CreateDestinatarioUseCase {
 
       if (existingByNumero) {
         return Result.fail('Destinatario with this Numero Autorizzazione already exists')
+      }
+
+      // Valida comune/provincia contro le tabelle ISTAT condivise (se popolate).
+      if (this.referenceData) {
+        const v = await this.referenceData.validateLocalita(
+          command.sede.citta,
+          command.sede.provincia,
+        )
+        if (!v.ok) return Result.fail(v.error!)
       }
 
       // Create value objects

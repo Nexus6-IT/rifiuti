@@ -63,6 +63,39 @@ export class ReferenceDataService {
     })
   }
 
+  /**
+   * Valida località (comune + provincia) contro le tabelle ISTAT condivise.
+   *
+   * Comportamento "graceful": se le tabelle di riferimento non sono ancora
+   * popolate, la validazione viene saltata (ok=true) per non bloccare l'uso
+   * quando i dati non sono caricati. Quando i dati sono presenti, provincia e
+   * comune devono essere validi; ritorna anche il codice ISTAT del comune.
+   */
+  async validateLocalita(
+    comune: string,
+    provinciaSigla: string,
+  ): Promise<{ ok: boolean; error?: string; comuneCode?: string }> {
+    const provinceCount = await this.prisma.istatProvincia.count()
+    if (provinceCount === 0) return { ok: true } // tabelle non popolate → skip
+
+    const provincia = await this.findProvinciaBySigla(provinciaSigla)
+    if (!provincia) {
+      return { ok: false, error: `Provincia non valida: ${provinciaSigla}` }
+    }
+
+    const comuneCount = await this.prisma.istatComune.count()
+    if (comuneCount === 0) return { ok: true }
+
+    const found = await this.findComuneByName(comune, provinciaSigla)
+    if (!found) {
+      return {
+        ok: false,
+        error: `Comune non valido per la provincia ${provinciaSigla.toUpperCase()}: ${comune}`,
+      }
+    }
+    return { ok: true, comuneCode: found.code }
+  }
+
   /** Conteggi per dataset (stato popolamento). */
   async counts() {
     const [ateco, nazioni, province, comuni] = await Promise.all([

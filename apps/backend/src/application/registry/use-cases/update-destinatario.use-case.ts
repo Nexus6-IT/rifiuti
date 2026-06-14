@@ -3,7 +3,7 @@
  * Updates an existing Destinatario entity
  */
 
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { Result } from '../../../core/application/result'
 import {
   DestinatarioRepository,
@@ -11,6 +11,7 @@ import {
 } from '../../../domain/registry/repositories/destinatario.repository'
 import { Destinatario } from '../../../domain/registry/entities/destinatario'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
+import { ReferenceDataService } from '../../reference-data/reference-data.service'
 
 export interface UpdateDestinatarioCommand {
   id: string
@@ -34,6 +35,7 @@ export class UpdateDestinatarioUseCase {
   constructor(
     @Inject(DESTINATARIO_REPOSITORY)
     private readonly destinatarioRepository: DestinatarioRepository,
+    @Optional() private readonly referenceData?: ReferenceDataService,
   ) {}
 
   async execute(command: UpdateDestinatarioCommand): Promise<Result<Destinatario>> {
@@ -62,6 +64,13 @@ export class UpdateDestinatarioUseCase {
       }
 
       if (command.sede) {
+        if (this.referenceData) {
+          const v = await this.referenceData.validateLocalita(
+            command.sede.citta,
+            command.sede.provincia,
+          )
+          if (!v.ok) return Result.fail(v.error!)
+        }
         destinatario.updateSede(Indirizzo.create(command.sede))
       }
 

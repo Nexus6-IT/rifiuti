@@ -3,7 +3,7 @@
  * Updates an existing Produttore entity
  */
 
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { Result } from '../../../core/application/result'
 import {
   ProduttoreRepository,
@@ -11,6 +11,7 @@ import {
 } from '../../../domain/registry/repositories/produttore.repository'
 import { Produttore } from '../../../domain/registry/entities/produttore'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
+import { ReferenceDataService } from '../../reference-data/reference-data.service'
 
 export interface UpdateProduttoreCommand {
   id: string
@@ -33,6 +34,7 @@ export class UpdateProduttoreUseCase {
   constructor(
     @Inject(PRODUTTORE_REPOSITORY)
     private readonly produttoreRepository: ProduttoreRepository,
+    @Optional() private readonly referenceData?: ReferenceDataService,
   ) {}
 
   async execute(command: UpdateProduttoreCommand): Promise<Result<Produttore>> {
@@ -50,6 +52,13 @@ export class UpdateProduttoreUseCase {
       }
 
       if (command.sedeLegale) {
+        if (this.referenceData) {
+          const v = await this.referenceData.validateLocalita(
+            command.sedeLegale.citta,
+            command.sedeLegale.provincia,
+          )
+          if (!v.ok) return Result.fail(v.error!)
+        }
         produttore.updateSedeLegale(Indirizzo.create(command.sedeLegale))
       }
 
