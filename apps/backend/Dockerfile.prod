@@ -12,6 +12,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# OpenSSL serve a Prisma per generare/usare il query engine corretto (musl).
+RUN apk add --no-cache openssl libc6-compat
+
 COPY package*.json ./
 COPY prisma ./prisma
 
@@ -26,7 +29,8 @@ RUN npx prisma generate \
 # --- Stage 2: runtime -------------------------------------------------------
 FROM node:20-alpine
 ENV NODE_ENV=production
-RUN apk add --no-cache dumb-init
+# dumb-init per i segnali; openssl/libc6-compat per il query engine di Prisma.
+RUN apk add --no-cache dumb-init openssl libc6-compat
 WORKDIR /app
 
 COPY package*.json ./
