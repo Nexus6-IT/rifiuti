@@ -1,4 +1,11 @@
-import { MudExportData, MudRifiutoLine, MudTracciatoVersion, StatoFisico } from '../mud-export.types'
+import {
+  MudExportData,
+  MudRifiutoLine,
+  MudTracciatoVersion,
+  StatoFisico,
+  MudAllegatoDR,
+  MudAllegatoTE,
+} from '../mud-export.types'
 import {
   mudRecord,
   mudNum,
@@ -51,10 +58,20 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
     // AB — Scheda SA-2: anagrafica riassuntiva.
     lines.push(this.recordAB(data))
 
-    // BA — Scheda RIF (comunicazione rifiuti, Sezione Rifiuti Speciali):
-    // una scheda per codice CER, con numero d'ordine progressivo.
+    // BA — Scheda RIF (Sezione Rifiuti Speciali): una scheda per CER, seguita
+    // dai suoi moduli allegati BB (DR conferiti a terzi, TE trasportatori).
     data.rifiuti.forEach((r, idx) => {
-      lines.push(this.recordBA(data, r, idx + 1))
+      const progr = idx + 1
+      lines.push(this.recordBA(data, r, progr))
+
+      let drNum = 0
+      for (const dr of r.dr ?? []) {
+        lines.push(this.recordBB_DR(data, r, progr, ++drNum, dr))
+      }
+      let teNum = 0
+      for (const te of r.te ?? []) {
+        lines.push(this.recordBB_TE(data, r, progr, ++teNum, te))
+      }
     })
 
     // Terminatore di riga CRLF su ogni record.
@@ -123,10 +140,10 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
       mudNum(0, 5), // nr moduli RE
       mudQty(0), // trasportato dal dichiarante
       MUD_UM_KG, // UM
-      mudNum(0, 5), // nr moduli TE
-      mudQty(0), // consegnato a terzi per recupero/smaltimento
+      mudNum(r.te?.length ?? 0, 5), // nr moduli TE
+      mudQty(this.sommaDR(r)), // consegnato a terzi per recupero/smaltimento
       MUD_UM_KG, // UM
-      mudNum(0, 5), // nr moduli DR
+      mudNum(r.dr?.length ?? 0, 5), // nr moduli DR
       mudQty(0), // giacenza al 31/12 da avviare a recupero
       MUD_UM_KG, // UM
       mudQty(0), // giacenza al 31/12 da avviare a smaltimento
@@ -142,5 +159,103 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
   private statoFisicoFlags(stato?: StatoFisico): string[] {
     const selected = stato ?? 'SOLIDO_NON_POLVERULENTO'
     return STATO_FISICO_ORDER.map((s) => (s === selected ? '1' : '0'))
+  }
+
+  /** Totale conferito a terzi (somma quantità dei moduli DR). */
+  private sommaDR(r: MudRifiutoLine): number {
+    return (r.dr ?? []).reduce((sum, d) => sum + (d.quantitaKg || 0), 0)
+  }
+
+  /**
+   * BB — Modulo DR (rifiuto conferito a terzi): 32 campi a lunghezza fissa
+   * (lunghezza record 310). Valorizza anagrafica destinatario + quantità.
+   */
+  private recordBB_DR(
+    data: MudExportData,
+    r: MudRifiutoLine,
+    schedaProgr: number,
+    allegatoProgr: number,
+    dr: MudAllegatoDR,
+  ): string {
+    return this.recordBB(data, r, schedaProgr, 'DR', allegatoProgr, {
+      cf: dr.codiceFiscale,
+      ragioneSociale: dr.ragioneSociale,
+      istatProvincia: dr.istatProvincia,
+      istatComune: dr.istatComune,
+      indirizzo: dr.indirizzo,
+      civico: dr.civico,
+      cap: dr.cap,
+      quantitaKg: dr.quantitaKg,
+    })
+  }
+
+  /**
+   * BB — Modulo TE (trasportatore): valorizza solo CF + ragione sociale
+   * (gli altri campi restano azzerati, come da specifica).
+   */
+  private recordBB_TE(
+    data: MudExportData,
+    r: MudRifiutoLine,
+    schedaProgr: number,
+    allegatoProgr: number,
+    te: MudAllegatoTE,
+  ): string {
+    return this.recordBB(data, r, schedaProgr, 'TE', allegatoProgr, {
+      cf: te.codiceFiscale,
+      ragioneSociale: te.ragioneSociale,
+    })
+  }
+
+  /** Costruisce un record BB generico per tipo allegato (DR/TE/RT). */
+  private recordBB(
+    data: MudExportData,
+    r: MudRifiutoLine,
+    schedaProgr: number,
+    tipo: 'RT' | 'DR' | 'TE',
+    allegatoProgr: number,
+    f: {
+      cf: string
+      ragioneSociale: string
+      istatProvincia?: string
+      istatComune?: string
+      indirizzo?: string
+      civico?: string
+      cap?: string
+      quantitaKg?: number
+    },
+  ): string {
+    return mudRecord('BB', [
+      mudNum(data.year, 4),
+      mudCodiceFiscale(data.azienda.codiceFiscale || data.azienda.partitaIva),
+      mudNum(1, 15), // unità locale
+      mudNum(schedaProgr, 4), // nr scheda RIF
+      mudAlfa(normalizeCer(r.cerCode), 6),
+      mudAlfa(tipo, 2), // tipo allegato
+      mudNum(allegatoProgr, 5), // nr progressivo allegato
+      mudCodiceFiscale(f.cf), // CF soggetto
+      mudAlfa(f.ragioneSociale, 60),
+      mudAlfa(f.istatProvincia ?? '', 3), // ISTAT provincia (DR/RT)
+      mudAlfa(f.istatComune ?? '', 3), // ISTAT comune (DR/RT)
+      mudAlfa(f.indirizzo ?? '', 30),
+      mudAlfa(f.civico ?? '', 6),
+      mudAlfa(f.cap ?? '', 5),
+      mudQty(f.quantitaKg ?? 0), // quantità dichiarata
+      MUD_UM_KG, // UM
+      mudAlfa('', 20), // nome nazione (estero)
+      mudAlfa('', 6), // codice reg. CEE 1013/2006
+      mudNum(0, 1), // ricevuto da privati (solo RT)
+      mudQty(0), // altre op. smaltimento (estero)
+      MUD_UM_KG,
+      mudQty(0), // recupero di materia (estero)
+      MUD_UM_KG,
+      mudQty(0), // recupero di energia (estero)
+      MUD_UM_KG,
+      mudQty(0), // incenerimento (estero)
+      MUD_UM_KG,
+      mudQty(0), // discarica (estero)
+      MUD_UM_KG,
+      mudNum(0, 1), // origine urbana (solo RT)
+      mudNum(0, 1), // pile e accumulatori portatili (solo RT)
+    ])
   }
 }

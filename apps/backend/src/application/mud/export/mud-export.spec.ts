@@ -68,7 +68,17 @@ describe('MudTracciatoV604_2024.generate', () => {
     },
     rifiuti: [
       // metallo ferroso (rifiuto speciale): 100 kg, 80 a recupero, 20 a smaltimento
-      { cerCode: '170405', prodottoKg: 100, recuperoKg: 80, smaltimentoKg: 20 },
+      {
+        cerCode: '170405', prodottoKg: 100, recuperoKg: 80, smaltimentoKg: 20,
+        dr: [
+          {
+            codiceFiscale: '33333333333', ragioneSociale: 'Recupero Metalli Srl',
+            istatProvincia: '015', istatComune: '146', indirizzo: 'Via Industria',
+            civico: '5', cap: '20100', quantitaKg: 100,
+          },
+        ],
+        te: [{ codiceFiscale: '22222222222', ragioneSociale: 'Trasporti Srl' }],
+      },
       { cerCode: '191203', prodottoKg: 50, recuperoKg: 50, smaltimentoKg: 0 },
     ],
   }
@@ -105,5 +115,30 @@ describe('MudTracciatoV604_2024.generate', () => {
     const idxCer = segments.indexOf('170405')
     const stati = segments.slice(idxCer + 1, idxCer + 8)
     expect(stati).toEqual(['0', '1', '0', '0', '0', '0', '0'])
+  })
+
+  it('emette i moduli BB DR (destinatario) e TE (trasportatore) dopo la scheda BA', () => {
+    const out = new MudTracciatoV604_2024().generate(data)
+    const lines = out.trim().split('\r\n')
+
+    const dr = lines.find((l) => l.startsWith('BB;') && l.includes(';DR;'))!
+    const te = lines.find((l) => l.startsWith('BB;') && l.includes(';TE;'))!
+    expect(dr).toBeDefined()
+    expect(te).toBeDefined()
+
+    // BB ha 32 campi → 33 segmenti (32 + '' dopo l'ultimo ;)
+    expect(dr.split(';')).toHaveLength(33)
+    // DR: CER, CF destinatario, ragione sociale, ISTAT prov/comune, quantità
+    expect(dr).toContain(';170405;')
+    expect(dr).toContain('33333333333')
+    expect(dr).toContain('RECUPERO METALLI SRL')
+    expect(dr).toContain('0000100,000')
+    // TE: solo CF + ragione sociale del trasportatore
+    expect(te).toContain('22222222222')
+    expect(te).toContain('TRASPORTI SRL')
+
+    // BA del CER 170405 riporta i conteggi moduli: 1 TE e 1 DR
+    const ba = lines.find((l) => l.startsWith('BA;') && l.includes(';170405;'))!
+    expect(ba).toContain('00001') // conteggio moduli (TE e DR = 1)
   })
 })

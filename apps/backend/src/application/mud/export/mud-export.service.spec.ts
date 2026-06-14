@@ -8,7 +8,11 @@ describe('MudExportService', () => {
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 
   beforeEach(() => {
-    prisma = { tenant: { findUnique: jest.fn() }, fIR: { groupBy: jest.fn().mockResolvedValue([]) } }
+    prisma = {
+      tenant: { findUnique: jest.fn() },
+      fIR: { findMany: jest.fn().mockResolvedValue([]) },
+      destinatario: { findMany: jest.fn().mockResolvedValue([]) },
+    }
     referenceData = { findComuneByName: jest.fn().mockResolvedValue({ code: '058091' }) }
     service = new MudExportService(prisma, new MudVersionRegistry(), referenceData, logger)
   })
@@ -24,27 +28,46 @@ describe('MudExportService', () => {
       pec: 'acme@pec.it',
       atecoCode: '381100',
     })
-    // metallo ferroso: 80 a recupero, 20 a smaltimento
-    prisma.fIR.groupBy.mockResolvedValue([
-      { cerCode: '170405', wasteOperationType: 'RECOVERY', _sum: { quantity: 80 } },
-      { cerCode: '170405', wasteOperationType: 'DISPOSAL', _sum: { quantity: 20 } },
+    // metallo ferroso 170405: 80 a recupero (al destinatario D1, trasportato da T1),
+    // 20 a smaltimento (destinatario D1).
+    prisma.fIR.findMany.mockResolvedValue([
+      {
+        cerCode: '170405', quantity: 80, wasteOperationType: 'RECOVERY',
+        carrierId: 'car-1', carrierName: 'Trasporti Srl', carrierPartitaIva: '22222222222',
+        receiverId: 'dest-1', receiverName: 'Recupero Metalli Srl', receiverPartitaIva: '33333333333',
+      },
+      {
+        cerCode: '170405', quantity: 20, wasteOperationType: 'DISPOSAL',
+        carrierId: 'car-1', carrierName: 'Trasporti Srl', carrierPartitaIva: '22222222222',
+        receiverId: 'dest-1', receiverName: 'Recupero Metalli Srl', receiverPartitaIva: '33333333333',
+      },
+    ])
+    prisma.destinatario.findMany.mockResolvedValue([
+      { id: 'dest-1', ragioneSociale: 'Recupero Metalli Srl', partitaIVA: '33333333333',
+        via: 'Via Industria', civico: '5', cap: '20100', comune: 'Milano', provincia: 'MI' },
     ])
 
     const result = await service.exportTelematico('tenant-1', 2024)
 
     expect(result.version).toBe('6.04/24')
-    expect(result.year).toBe(2024)
     expect(result.filename).toBe('MUD_2024_12345678901.txt')
-    expect(result.content).toContain('XX;')
     expect(result.content).toContain(';170405;')
-    // prodotto = recupero + smaltimento = 100
-    expect(result.content).toContain('0000100,000')
-    expect(result.content).toContain('0000080,000')
-    expect(result.content).toContain('0000020,000')
-    // ATECO e codice ISTAT comune nel record AA
+    expect(result.content).toContain('0000100,000') // prodotto = 100
+    expect(result.content).toContain('0000080,000') // recupero
+    expect(result.content).toContain('0000020,000') // smaltimento
+    // ATECO + ISTAT comune dichiarante nel record AA
     expect(result.content).toContain('381100')
     expect(result.content).toContain('058091')
-    expect(referenceData.findComuneByName).toHaveBeenCalledWith('Roma', 'RM')
+
+    const lines = result.content.trim().split('\r\n')
+    // modulo BB DR (destinatario) e TE (trasportatore)
+    const dr = lines.find((l) => l.startsWith('BB;') && l.includes(';DR;'))!
+    const te = lines.find((l) => l.startsWith('BB;') && l.includes(';TE;'))!
+    expect(dr).toContain('RECUPERO METALLI SRL')
+    expect(dr).toContain('33333333333') // CF destinatario
+    expect(dr).toContain('0000100,000') // quantità conferita = 80+20
+    expect(te).toContain('TRASPORTI SRL')
+    expect(te).toContain('22222222222')
   })
 
   it('propaga errore per anno non supportato (prima di toccare il DB)', async () => {

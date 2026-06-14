@@ -29,6 +29,26 @@ export type StatoFisico =
   | 'VISCHIOSO_SCIROPPOSO'
   | 'ALTRO'
 
+/** Modulo DR (BB) — rifiuto conferito a terzi (destinatario). */
+export interface MudAllegatoDR {
+  codiceFiscale: string
+  ragioneSociale: string
+  /** Codice ISTAT provincia (3 cifre) — dalla parte iniziale del codice comune. */
+  istatProvincia?: string
+  /** Codice ISTAT comune (3 cifre) — dalla parte finale del codice comune. */
+  istatComune?: string
+  indirizzo?: string
+  civico?: string
+  cap?: string
+  quantitaKg: number
+}
+
+/** Modulo TE (BB) — rifiuto trasportato da terzi (trasportatore): solo CF + R.S. */
+export interface MudAllegatoTE {
+  codiceFiscale: string
+  ragioneSociale: string
+}
+
 /** Riga rifiuto (Scheda RIF) — quantità per codice CER/EER. */
 export interface MudRifiutoLine {
   cerCode: string
@@ -40,6 +60,10 @@ export interface MudRifiutoLine {
   smaltimentoKg: number
   /** Stato fisico; default SOLIDO_NON_POLVERULENTO (tipico dei metalli/solidi). */
   statoFisico?: StatoFisico
+  /** Moduli BB DR (conferiti a terzi/destinatari). */
+  dr?: MudAllegatoDR[]
+  /** Moduli BB TE (trasportatori). */
+  te?: MudAllegatoTE[]
 }
 
 /** Dati aggregati per la generazione del file MUD di un anno. */

@@ -3,7 +3,13 @@ import { PrismaService } from '../../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { ReferenceDataService } from '../../reference-data/reference-data.service'
 import { MudVersionRegistry } from './mud-version.registry'
-import { MudExportData, MudExportResult, MudRifiutoLine } from './mud-export.types'
+import {
+  MudExportData,
+  MudExportResult,
+  MudRifiutoLine,
+  MudAllegatoDR,
+  MudAllegatoTE,
+} from './mud-export.types'
 
 /**
  * Orchestratore dell'export telematico MUD, **versionato e diviso per anno**.
@@ -71,27 +77,81 @@ export class MudExportService {
   }
 
   /**
-   * Aggrega i rifiuti del tenant per l'anno: per ogni CER calcola la quantità
-   * prodotta (= recupero + smaltimento) e le quote avviate a recupero/
-   * smaltimento, dai FIR del periodo (campo wasteOperationType).
+   * Aggrega i rifiuti del tenant per l'anno dai FIR del periodo: per ogni CER
+   * calcola prodotto/recupero/smaltimento e costruisce i moduli BB allegati:
+   *  - DR (conferiti a terzi): per destinatario, con anagrafica + codice ISTAT;
+   *  - TE (trasportatori): per trasportatore (solo CF + ragione sociale).
    */
   private async aggregaRifiuti(tenantId: string, year: number): Promise<MudRifiutoLine[]> {
     const start = new Date(year, 0, 1)
     const end = new Date(year, 11, 31, 23, 59, 59)
 
-    const groups = await this.prisma.fIR.groupBy({
-      by: ['cerCode', 'wasteOperationType'],
+    const firs = await this.prisma.fIR.findMany({
       where: { tenantId, createdAt: { gte: start, lte: end } },
-      _sum: { quantity: true },
+      select: {
+        cerCode: true,
+        quantity: true,
+        wasteOperationType: true,
+        carrierId: true,
+        carrierName: true,
+        carrierPartitaIva: true,
+        receiverId: true,
+        receiverName: true,
+        receiverPartitaIva: true,
+      },
     })
 
-    const perCer = new Map<string, { recuperoKg: number; smaltimentoKg: number }>()
-    for (const g of groups) {
-      const qty = g._sum.quantity ? Number(g._sum.quantity) : 0
-      const e = perCer.get(g.cerCode) ?? { recuperoKg: 0, smaltimentoKg: 0 }
-      if (g.wasteOperationType === 'RECOVERY') e.recuperoKg += qty
-      else if (g.wasteOperationType === 'DISPOSAL') e.smaltimentoKg += qty
-      perCer.set(g.cerCode, e)
+    // Anagrafica + codici ISTAT dei destinatari (per i moduli DR).
+    const destInfo = await this.loadDestinatariInfo(firs.map((f) => f.receiverId))
+
+    interface Acc {
+      recuperoKg: number
+      smaltimentoKg: number
+      dr: Map<string, MudAllegatoDR>
+      te: Map<string, MudAllegatoTE>
+    }
+    const perCer = new Map<string, Acc>()
+
+    for (const f of firs) {
+      const qty = f.quantity ? Number(f.quantity) : 0
+      const acc =
+        perCer.get(f.cerCode) ??
+        ({ recuperoKg: 0, smaltimentoKg: 0, dr: new Map(), te: new Map() } as Acc)
+
+      if (f.wasteOperationType === 'RECOVERY') acc.recuperoKg += qty
+      else if (f.wasteOperationType === 'DISPOSAL') acc.smaltimentoKg += qty
+
+      // DR — per destinatario (merge quantità).
+      const drKey = f.receiverId || f.receiverPartitaIva
+      if (drKey) {
+        const info = f.receiverId ? destInfo.get(f.receiverId) : undefined
+        const existing = acc.dr.get(drKey)
+        if (existing) {
+          existing.quantitaKg += qty
+        } else {
+          acc.dr.set(drKey, {
+            codiceFiscale: info?.partitaIVA || f.receiverPartitaIva || '',
+            ragioneSociale: info?.ragioneSociale || f.receiverName || '',
+            istatProvincia: info?.istatProvincia,
+            istatComune: info?.istatComune,
+            indirizzo: info?.via,
+            civico: info?.civico,
+            cap: info?.cap,
+            quantitaKg: qty,
+          })
+        }
+      }
+
+      // TE — per trasportatore (distinti, solo identità).
+      const teKey = f.carrierId || f.carrierPartitaIva
+      if (teKey && !acc.te.has(teKey)) {
+        acc.te.set(teKey, {
+          codiceFiscale: f.carrierPartitaIva || '',
+          ragioneSociale: f.carrierName || '',
+        })
+      }
+
+      perCer.set(f.cerCode, acc)
     }
 
     return Array.from(perCer.entries()).map(([cerCode, v]) => ({
@@ -99,6 +159,45 @@ export class MudExportService {
       prodottoKg: v.recuperoKg + v.smaltimentoKg,
       recuperoKg: v.recuperoKg,
       smaltimentoKg: v.smaltimentoKg,
+      dr: Array.from(v.dr.values()),
+      te: Array.from(v.te.values()),
     }))
+  }
+
+  /**
+   * Carica anagrafica + codice ISTAT (provincia 3 + comune 3) dei destinatari
+   * indicati, risolvendo il comune dalle tabelle di riferimento condivise.
+   */
+  private async loadDestinatariInfo(receiverIds: Array<string | null>) {
+    const ids = Array.from(new Set(receiverIds.filter((id): id is string => !!id)))
+    const info = new Map<
+      string,
+      {
+        ragioneSociale: string
+        partitaIVA: string
+        via: string
+        civico: string
+        cap: string
+        istatProvincia?: string
+        istatComune?: string
+      }
+    >()
+    if (ids.length === 0) return info
+
+    const destinatari = await this.prisma.destinatario.findMany({ where: { id: { in: ids } } })
+    for (const d of destinatari) {
+      const comune = await this.referenceData.findComuneByName(d.comune, d.provincia)
+      info.set(d.id, {
+        ragioneSociale: d.ragioneSociale,
+        partitaIVA: d.partitaIVA,
+        via: d.via,
+        civico: d.civico,
+        cap: d.cap,
+        // Codice ISTAT 6 cifre = provincia(3) + comune(3).
+        istatProvincia: comune?.code?.slice(0, 3),
+        istatComune: comune?.code?.slice(3, 6),
+      })
+    }
+    return info
   }
 }
