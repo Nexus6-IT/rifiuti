@@ -37,10 +37,17 @@ Implementati in questo ciclo (backend, con test; moduli cablati in AppModule):
   + codice ISTAT comune; **anagrafiche** che validano comune/provincia contro le
   tabelle ISTAT condivise.
 
-Residuo MUD (non completabile come codice puro): copertura field-by-field di
-TUTTO il tracciato (record BB/VC/VD/VF, posizioni, codici procedura,
-autorizzazioni), **popolamento reale** delle tabelle ISTAT/ATECO dalle sorgenti
-ufficiali e **validazione sull'app ufficiale mudtelematico.it** prima dell'invio.
+- ✅ **MUD rifiuti speciali (produttore) strutturalmente completo**: record
+  XX/AA/AB/BA/BB a **lunghezza fissa esatta** (488/338/257/217/310), inclusi i
+  moduli **DR** (destinatari) e **TE** (trasportatori). Funziona per i metalli e
+  tutti i rifiuti speciali.
+
+Residuo MUD: **popolamento reale** tabelle ISTAT/ATECO (sorgenti ufficiali da
+configurare); campi non nel dominio (REA, addetti, legale rappr., telefoni,
+civico separato) oggi azzerati — vanno aggiunti all'anagrafica Tenant se servono;
+sezioni non applicabili al produttore base (veicoli/RAEE/imballaggi/
+intermediazione/gestori RT-RE); **validazione sull'app ufficiale
+mudtelematico.it** prima dell'invio reale.
 
 Restano (dipendenze esterne / infra / spec / frontend): RENTRI **live**
 (certificato), **conservazione AgID** (conservatore accreditato), **download IV
