@@ -1,23 +1,21 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
-import { MUDGeneratorService } from '../mud-generator.service'
 import { ReferenceDataService } from '../../reference-data/reference-data.service'
 import { MudVersionRegistry } from './mud-version.registry'
-import { MudExportData, MudExportResult } from './mud-export.types'
+import { MudExportData, MudExportResult, MudRifiutoLine } from './mud-export.types'
 
 /**
  * Orchestratore dell'export telematico MUD, **versionato e diviso per anno**.
  *
  * Dato (tenant, anno): seleziona il tracciato della versione corretta (per
  * anno), recupera l'anagrafica del dichiarante e aggrega i dati rifiuti
- * (riusando MUDGeneratorService), poi genera il file conforme.
+ * (prodotto + recupero/smaltimento per CER), poi genera il file conforme.
  */
 @Injectable()
 export class MudExportService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly mudGenerator: MUDGeneratorService,
     private readonly registry: MudVersionRegistry,
     private readonly referenceData: ReferenceDataService,
     private readonly logger: LoggerService,
@@ -40,8 +38,6 @@ export class MudExportService {
       throw new NotFoundException('Tenant non trovato')
     }
 
-    const report = await this.mudGenerator.generateMUDReport(tenantId, year)
-
     // Risolve il codice ISTAT del comune dalle tabelle di riferimento condivise.
     const comune = await this.referenceData.findComuneByName(tenant.city, tenant.province)
 
@@ -58,10 +54,7 @@ export class MudExportService {
         pec: tenant.pec ?? undefined,
         atecoCode: tenant.atecoCode ?? undefined,
       },
-      rifiuti: report.wasteProduced.map((w: any) => ({
-        cerCode: w.cerCode,
-        quantitaKg: w.totalQuantity,
-      })),
+      rifiuti: await this.aggregaRifiuti(tenantId, year),
     }
 
     const content = tracciato.generate(data)
@@ -75,5 +68,37 @@ export class MudExportService {
       version: tracciato.version,
       year,
     }
+  }
+
+  /**
+   * Aggrega i rifiuti del tenant per l'anno: per ogni CER calcola la quantità
+   * prodotta (= recupero + smaltimento) e le quote avviate a recupero/
+   * smaltimento, dai FIR del periodo (campo wasteOperationType).
+   */
+  private async aggregaRifiuti(tenantId: string, year: number): Promise<MudRifiutoLine[]> {
+    const start = new Date(year, 0, 1)
+    const end = new Date(year, 11, 31, 23, 59, 59)
+
+    const groups = await this.prisma.fIR.groupBy({
+      by: ['cerCode', 'wasteOperationType'],
+      where: { tenantId, createdAt: { gte: start, lte: end } },
+      _sum: { quantity: true },
+    })
+
+    const perCer = new Map<string, { recuperoKg: number; smaltimentoKg: number }>()
+    for (const g of groups) {
+      const qty = g._sum.quantity ? Number(g._sum.quantity) : 0
+      const e = perCer.get(g.cerCode) ?? { recuperoKg: 0, smaltimentoKg: 0 }
+      if (g.wasteOperationType === 'RECOVERY') e.recuperoKg += qty
+      else if (g.wasteOperationType === 'DISPOSAL') e.smaltimentoKg += qty
+      perCer.set(g.cerCode, e)
+    }
+
+    return Array.from(perCer.entries()).map(([cerCode, v]) => ({
+      cerCode,
+      prodottoKg: v.recuperoKg + v.smaltimentoKg,
+      recuperoKg: v.recuperoKg,
+      smaltimentoKg: v.smaltimentoKg,
+    }))
   }
 }

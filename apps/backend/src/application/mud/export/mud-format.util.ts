@@ -34,3 +34,36 @@ export function mudRecord(type: string, fields: Array<string | number>): string 
   const parts = fields.map((f) => (typeof f === 'number' ? String(f) : toMudAscii(f)))
   return `${type};${parts.join(';')};`
 }
+
+/** Intero zero-paddato a `width` cifre (campi "num" a lunghezza fissa). */
+export function mudNum(value: number, width: number): string {
+  return String(Math.max(0, Math.round(value || 0))).padStart(width, '0')
+}
+
+/**
+ * Quantità nel formato "7 int 3 dec" → `0000000,000` (11 caratteri):
+ * 7 cifre intere zero-paddate, virgola decimale, 3 decimali.
+ */
+export function mudQty(value: number): string {
+  const v = Math.max(0, value || 0)
+  let intPart = Math.floor(v)
+  let dec = Math.round((v - intPart) * 1000)
+  if (dec >= 1000) {
+    intPart += 1
+    dec -= 1000
+  }
+  return `${String(intPart).padStart(7, '0')},${String(dec).padStart(3, '0')}`
+}
+
+/** Campo alfanumerico left-aligned, spazio-paddato/troncato a `width`. */
+export function mudAlfa(value: string | null | undefined, width: number): string {
+  return toMudAscii(value).slice(0, width).padEnd(width, ' ')
+}
+
+/** Codice fiscale (16): P.IVA 11 cifre left-aligned + 5 spazi (regola tracciato). */
+export function mudCodiceFiscale(cf: string): string {
+  return mudAlfa(cf, 16)
+}
+
+/** Unità di misura MUD: kg=1, t=2 (default kg). */
+export const MUD_UM_KG = 1

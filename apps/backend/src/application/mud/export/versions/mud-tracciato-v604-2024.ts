@@ -1,5 +1,24 @@
-import { MudExportData, MudTracciatoVersion } from '../mud-export.types'
-import { mudRecord, mudKg } from '../mud-format.util'
+import { MudExportData, MudRifiutoLine, MudTracciatoVersion, StatoFisico } from '../mud-export.types'
+import {
+  mudRecord,
+  mudNum,
+  mudQty,
+  mudAlfa,
+  mudCodiceFiscale,
+  MUD_UM_KG,
+} from '../mud-format.util'
+import { normalizeCer } from '../../../esg/emission-factors'
+
+/** Ordine dei 7 flag di stato fisico nel record BA. */
+const STATO_FISICO_ORDER: StatoFisico[] = [
+  'SOLIDO_POLVERULENTO',
+  'SOLIDO_NON_POLVERULENTO',
+  'FANGOSO_PALABILE',
+  'LIQUIDO',
+  'AERIFORME',
+  'VISCHIOSO_SCIROPPOSO',
+  'ALTRO',
+]
 
 /**
  * Tracciato MUD **versione 6.04/24 — dichiarazione MUD 2024**
@@ -32,10 +51,11 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
     // AB — Scheda SA-2: anagrafica riassuntiva.
     lines.push(this.recordAB(data))
 
-    // BA — Scheda RIF (comunicazione rifiuti): una per codice CER.
-    for (const r of data.rifiuti) {
-      lines.push(this.recordBA(data, r))
-    }
+    // BA — Scheda RIF (comunicazione rifiuti, Sezione Rifiuti Speciali):
+    // una scheda per codice CER, con numero d'ordine progressivo.
+    data.rifiuti.forEach((r, idx) => {
+      lines.push(this.recordBA(data, r, idx + 1))
+    })
 
     // Terminatore di riga CRLF su ogni record.
     return lines.join('\r\n') + '\r\n'
@@ -73,13 +93,54 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
     return mudRecord('AB', [a.partitaIva, a.ragioneSociale, a.provincia])
   }
 
-  /** BA — Scheda RIF: riga rifiuto (CER + quantità in kg). */
-  private recordBA(data: MudExportData, r: { cerCode: string; quantitaKg: number }): string {
+  /**
+   * BA — Scheda RIF (Sezione Rifiuti Speciali): 35 campi a lunghezza fissa,
+   * lunghezza totale record 217 (tracciato V6.04/24). Mappa i nostri dati:
+   * rifiuto prodotto nell'unità locale, quantità avviate a recupero/smaltimento;
+   * i campi non disponibili (ricevuto da terzi, prodotto fuori UL, trasportato,
+   * consegnato a terzi, giacenze, moduli RT/RE/TE/DR) sono a 0 finché non
+   * implementati i moduli BB. Unità di misura: kg.
+   */
+  private recordBA(data: MudExportData, r: MudRifiutoLine, progressivo: number): string {
+    const cf = mudCodiceFiscale(data.azienda.codiceFiscale || data.azienda.partitaIva)
+    const unitaLocale = mudNum(1, 15) // unità locale unica (codice progressivo 1)
+    const stati = this.statoFisicoFlags(r.statoFisico)
+
     return mudRecord('BA', [
-      data.azienda.partitaIva,
-      r.cerCode,
-      mudKg(r.quantitaKg),
-      '1', // unità di misura: 1 = kg (tabella codici di procedura)
+      mudNum(data.year, 4), // anno
+      cf, // codice fiscale (16)
+      unitaLocale, // codice identificazione univoca unità locale (15)
+      mudNum(progressivo, 4), // nr ordine progressivo scheda RIF
+      mudAlfa(normalizeCer(r.cerCode), 6), // CER (solo catalogo europeo)
+      ...stati, // 7 flag stato fisico
+      mudQty(r.prodottoKg), // rifiuto prodotto nell'unità locale
+      MUD_UM_KG, // UM
+      mudQty(0), // ricevuto da terzi
+      MUD_UM_KG, // UM
+      mudNum(0, 5), // nr moduli RT
+      mudQty(0), // prodotto fuori unità locale
+      MUD_UM_KG, // UM
+      mudNum(0, 5), // nr moduli RE
+      mudQty(0), // trasportato dal dichiarante
+      MUD_UM_KG, // UM
+      mudNum(0, 5), // nr moduli TE
+      mudQty(0), // consegnato a terzi per recupero/smaltimento
+      MUD_UM_KG, // UM
+      mudNum(0, 5), // nr moduli DR
+      mudQty(0), // giacenza al 31/12 da avviare a recupero
+      MUD_UM_KG, // UM
+      mudQty(0), // giacenza al 31/12 da avviare a smaltimento
+      MUD_UM_KG, // UM
+      mudQty(r.recuperoKg), // quantità complessiva avviata a recupero
+      MUD_UM_KG, // UM
+      mudQty(r.smaltimentoKg), // quantità complessiva avviata a smaltimento
+      MUD_UM_KG, // UM
     ])
+  }
+
+  /** 7 flag (0/1) di stato fisico nell'ordine del tracciato; default solido NON polverulento. */
+  private statoFisicoFlags(stato?: StatoFisico): string[] {
+    const selected = stato ?? 'SOLIDO_NON_POLVERULENTO'
+    return STATO_FISICO_ORDER.map((s) => (s === selected ? '1' : '0'))
   }
 }

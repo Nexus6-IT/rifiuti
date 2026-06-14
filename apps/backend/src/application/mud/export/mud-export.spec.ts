@@ -1,4 +1,4 @@
-import { toMudAscii, mudRecord, mudKg } from './mud-format.util'
+import { toMudAscii, mudRecord, mudNum, mudQty, mudAlfa, mudCodiceFiscale } from './mud-format.util'
 import { MudVersionRegistry } from './mud-version.registry'
 import { MudTracciatoV604_2024 } from './versions/mud-tracciato-v604-2024'
 import { MudExportData } from './mud-export.types'
@@ -16,8 +16,20 @@ describe('mud-format.util', () => {
     expect(mudRecord('AA', ['x', 'y'])).toBe('AA;X;Y;')
   })
 
-  it('mudKg arrotonda a intero', () => {
-    expect(mudKg(120.7)).toBe('121')
+  it('mudNum zero-padda a larghezza fissa', () => {
+    expect(mudNum(1, 4)).toBe('0001')
+    expect(mudNum(2024, 4)).toBe('2024')
+  })
+
+  it('mudQty formatta 7 interi + 3 decimali con virgola', () => {
+    expect(mudQty(100)).toBe('0000100,000')
+    expect(mudQty(100.5)).toBe('0000100,500')
+    expect(mudQty(0)).toBe('0000000,000')
+  })
+
+  it('mudCodiceFiscale left-align P.IVA 11 a 16 con spazi', () => {
+    expect(mudCodiceFiscale('12345678901')).toBe('12345678901     ')
+    expect(mudAlfa('150101', 6)).toBe('150101')
   })
 })
 
@@ -55,8 +67,9 @@ describe('MudTracciatoV604_2024.generate', () => {
       pec: 'acme@pec.it',
     },
     rifiuti: [
-      { cerCode: '150101', quantitaKg: 100 },
-      { cerCode: '170504', quantitaKg: 50 },
+      // metallo ferroso (rifiuto speciale): 100 kg, 80 a recupero, 20 a smaltimento
+      { cerCode: '170405', prodottoKg: 100, recuperoKg: 80, smaltimentoKg: 20 },
+      { cerCode: '191203', prodottoKg: 50, recuperoKg: 50, smaltimentoKg: 0 },
     ],
   }
 
@@ -68,12 +81,29 @@ describe('MudTracciatoV604_2024.generate', () => {
     expect(lines[0]).toContain('6.04/24')
     expect(lines.some((l) => l.startsWith('AA;'))).toBe(true)
     expect(lines.some((l) => l.startsWith('AB;'))).toBe(true)
-    // una riga BA per ogni rifiuto
     expect(lines.filter((l) => l.startsWith('BA;'))).toHaveLength(2)
-    // separatore ; e terminatore
     expect(lines.every((l) => l.endsWith(';'))).toBe(true)
-    // CER e quantità presenti
-    expect(out).toContain('150101')
-    expect(out).toContain('100')
+  })
+
+  it('record BA (rifiuto speciale metallo) ha 35 campi e quantità formattate', () => {
+    const out = new MudTracciatoV604_2024().generate(data)
+    const ba = out.trim().split('\r\n').find((l) => l.startsWith('BA;'))!
+
+    // "BA" + 34 campi, ognuno seguito da ; → 35 segmenti + stringa vuota finale
+    const segments = ba.split(';')
+    expect(segments[0]).toBe('BA')
+    expect(segments).toHaveLength(36) // 35 campi + '' dopo l'ultimo ;
+
+    // anno, CER metallo, quantità prodotta e avviata a recupero/smaltimento
+    expect(ba).toContain(';2024;')
+    expect(ba).toContain(';170405;')
+    expect(ba).toContain('0000100,000') // prodotto
+    expect(ba).toContain('0000080,000') // recupero
+    expect(ba).toContain('0000020,000') // smaltimento
+    // stato fisico default: solido NON polverulento → secondo flag = 1
+    // (i 7 flag stanno dopo il CER)
+    const idxCer = segments.indexOf('170405')
+    const stati = segments.slice(idxCer + 1, idxCer + 8)
+    expect(stati).toEqual(['0', '1', '0', '0', '0', '0', '0'])
   })
 })

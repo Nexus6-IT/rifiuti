@@ -19,10 +19,27 @@ export interface MudAzienda {
   comuneCode?: string
 }
 
+/** Stato fisico del rifiuto (Scheda RIF). Default: solido non polverulento. */
+export type StatoFisico =
+  | 'SOLIDO_POLVERULENTO'
+  | 'SOLIDO_NON_POLVERULENTO'
+  | 'FANGOSO_PALABILE'
+  | 'LIQUIDO'
+  | 'AERIFORME'
+  | 'VISCHIOSO_SCIROPPOSO'
+  | 'ALTRO'
+
 /** Riga rifiuto (Scheda RIF) — quantità per codice CER/EER. */
 export interface MudRifiutoLine {
   cerCode: string
-  quantitaKg: number
+  /** Rifiuto prodotto nell'unità locale (kg). */
+  prodottoKg: number
+  /** Quantità complessiva avviata a recupero (kg). */
+  recuperoKg: number
+  /** Quantità complessiva avviata a smaltimento (kg). */
+  smaltimentoKg: number
+  /** Stato fisico; default SOLIDO_NON_POLVERULENTO (tipico dei metalli/solidi). */
+  statoFisico?: StatoFisico
 }
 
 /** Dati aggregati per la generazione del file MUD di un anno. */
