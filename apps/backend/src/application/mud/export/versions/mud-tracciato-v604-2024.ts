@@ -57,7 +57,9 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
       a.partitaIva,
       a.codiceFiscale || a.partitaIva,
       a.ragioneSociale,
+      a.atecoCode || '', // codice attività economica ISTAT (ATECO)
       a.via,
+      a.comuneCode || '', // codice ISTAT comune (dalle tabelle di riferimento)
       a.comune,
       a.provincia,
       a.cap,

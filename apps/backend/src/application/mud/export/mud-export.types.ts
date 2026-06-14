@@ -13,6 +13,10 @@ export interface MudAzienda {
   provincia: string
   cap: string
   pec?: string
+  /** Codice attività economica ISTAT (ATECO 2007, 6 cifre). */
+  atecoCode?: string
+  /** Codice ISTAT del comune (6 cifre), risolto dalle tabelle di riferimento. */
+  comuneCode?: string
 }
 
 /** Riga rifiuto (Scheda RIF) — quantità per codice CER/EER. */

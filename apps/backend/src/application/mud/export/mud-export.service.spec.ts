@@ -5,12 +5,14 @@ describe('MudExportService', () => {
   let service: MudExportService
   let prisma: any
   let mudGenerator: any
+  let referenceData: any
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 
   beforeEach(() => {
     prisma = { tenant: { findUnique: jest.fn() } }
     mudGenerator = { generateMUDReport: jest.fn() }
-    service = new MudExportService(prisma, mudGenerator, new MudVersionRegistry(), logger)
+    referenceData = { findComuneByName: jest.fn().mockResolvedValue({ code: '058091' }) }
+    service = new MudExportService(prisma, mudGenerator, new MudVersionRegistry(), referenceData, logger)
   })
 
   it('genera il file MUD della versione corretta per anno', async () => {
@@ -22,6 +24,7 @@ describe('MudExportService', () => {
       province: 'RM',
       postalCode: '00100',
       pec: 'acme@pec.it',
+      atecoCode: '381100',
     })
     mudGenerator.generateMUDReport.mockResolvedValue({
       wasteProduced: [{ cerCode: '150101', totalQuantity: 100, count: 2 }],
@@ -34,6 +37,10 @@ describe('MudExportService', () => {
     expect(result.filename).toBe('MUD_2024_12345678901.txt')
     expect(result.content).toContain('XX;')
     expect(result.content).toContain('150101')
+    // ATECO e codice ISTAT comune (risolto dalle reference table) nel record AA
+    expect(result.content).toContain('381100')
+    expect(result.content).toContain('058091')
+    expect(referenceData.findComuneByName).toHaveBeenCalledWith('Roma', 'RM')
     expect(mudGenerator.generateMUDReport).toHaveBeenCalledWith('tenant-1', 2024)
   })
 

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { MUDGeneratorService } from '../mud-generator.service'
+import { ReferenceDataService } from '../../reference-data/reference-data.service'
 import { MudVersionRegistry } from './mud-version.registry'
 import { MudExportData, MudExportResult } from './mud-export.types'
 
@@ -18,6 +19,7 @@ export class MudExportService {
     private readonly prisma: PrismaService,
     private readonly mudGenerator: MUDGeneratorService,
     private readonly registry: MudVersionRegistry,
+    private readonly referenceData: ReferenceDataService,
     private readonly logger: LoggerService,
   ) {
     this.logger.setContext(MudExportService.name)
@@ -40,6 +42,9 @@ export class MudExportService {
 
     const report = await this.mudGenerator.generateMUDReport(tenantId, year)
 
+    // Risolve il codice ISTAT del comune dalle tabelle di riferimento condivise.
+    const comune = await this.referenceData.findComuneByName(tenant.city, tenant.province)
+
     const data: MudExportData = {
       year,
       azienda: {
@@ -47,9 +52,11 @@ export class MudExportService {
         partitaIva: tenant.partitaIva,
         via: tenant.address,
         comune: tenant.city,
+        comuneCode: comune?.code,
         provincia: tenant.province,
         cap: tenant.postalCode,
         pec: tenant.pec ?? undefined,
+        atecoCode: tenant.atecoCode ?? undefined,
       },
       rifiuti: report.wasteProduced.map((w: any) => ({
         cerCode: w.cerCode,

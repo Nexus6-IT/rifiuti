@@ -31,6 +31,8 @@ model Tenant {
   partitaIva     String  @unique @map("partita_iva") @db.VarChar(11)
   ragioneSociale String  @map("ragione_sociale") @db.VarChar(255)
   pec            String? @db.VarChar(255)
+  // Codice attività economica ISTAT (ATECO 2007), per il MUD. 6 cifre senza punti.
+  atecoCode      String? @map("ateco_code") @db.VarChar(10)
 
   // Address
   address    String @db.VarChar(255)
