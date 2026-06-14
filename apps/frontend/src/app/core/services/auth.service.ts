@@ -59,6 +59,21 @@ export class AuthService {
     );
   }
 
+  /**
+   * Completa il login SAML/Keycloak: salva i token ricevuti dal callback
+   * (via fragment) e carica la sessione utente.
+   */
+  completeSpidLogin(accessToken: string, refreshToken: string): Observable<{ user: User }> {
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', refreshToken);
+    return this.getSession().pipe(
+      tap((session) => {
+        this.currentUser.set(session.user);
+        this.isAuthenticated.set(true);
+      })
+    );
+  }
+
   loginWithSPID(returnUrl?: string): void {
     const params = new URLSearchParams({ provider: 'spid' });
     if (returnUrl) params.set('returnUrl', returnUrl);

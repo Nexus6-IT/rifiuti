@@ -65,6 +65,13 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # I cache service (RoleCache/PermissionCache) leggono REDIS_CLUSTER_NODES,
+      # non REDIS_HOST: va puntato al servizio redis anche in standalone.
+      REDIS_CLUSTER_NODES: ${REDIS_CLUSTER_NODES:-redis:6379}
+      # CORS: il callback SAML e' un POST cross-origin da Keycloak
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://rifiuti.ignicraft.com,https://auth.ignicraft.com}
+      # Base URL della SPA per il redirect post-login dal callback SAML
+      FRONTEND_URL: ${FRONTEND_URL:-https://rifiuti.ignicraft.com}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET richiesta}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET richiesta}
       # Cifratura a riposo dei certificati RENTRI per-tenant

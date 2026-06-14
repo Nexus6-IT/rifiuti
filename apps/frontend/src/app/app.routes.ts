@@ -7,6 +7,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/login.component').then(m => m.LoginComponent)
   },
   {
+    // Riceve i token dopo il login SAML/Keycloak (rotta pubblica)
+    path: 'auth/callback',
+    loadComponent: () => import('./features/auth/auth-callback.component').then(m => m.AuthCallbackComponent)
+  },
+  {
     path: '',
     loadComponent: () => import('./shared/components/layout.component').then(m => m.LayoutComponent),
     canActivate: [authGuard],

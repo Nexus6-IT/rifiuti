@@ -9,9 +9,11 @@ import {
   Post,
   UseGuards,
   Request,
+  Res,
   Body,
   UnauthorizedException,
 } from '@nestjs/common'
+import { Response } from 'express'
 import { AuthGuard } from '@nestjs/passport'
 import { JwtAuthGuard } from '../guards/jwt-auth.guard'
 import { Public } from '../decorators/public.decorator'
@@ -51,7 +53,7 @@ export class AuthController {
   @Post('spid/callback')
   @Public()
   @UseGuards(AuthGuard('spid'))
-  async spidCallback(@Request() req: any) {
+  async spidCallback(@Request() req: any, @Res() res: Response) {
     const spidUser = req.user
 
     // Fetch user with tenant information
@@ -86,19 +88,16 @@ export class AuthController {
       7 * 24 * 60 * 60 // 7 days in seconds
     )
 
-    return {
+    // Il callback SAML e' una navigazione del browser: si reindirizza alla SPA
+    // passando i token nel fragment (#) per non finire in log/referer lato server.
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') || 'https://rifiuti.ignicraft.com'
+    const fragment = new URLSearchParams({
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
-      expiresIn: tokens.expiresIn,
-      user: {
-        id: spidUser.id,
-        email: spidUser.email,
-        fiscalCode: spidUser.fiscalCode,
-        firstName: spidUser.firstName,
-        lastName: spidUser.lastName,
-      },
-      isNewUser: spidUser.isNewUser,
-    }
+      expiresIn: String(tokens.expiresIn),
+    }).toString()
+    return res.redirect(302, `${frontendUrl}/auth/callback#${fragment}`)
   }
 
   /**
