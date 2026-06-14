@@ -31,6 +31,16 @@ Implementati in questo ciclo (backend, con test; moduli cablati in AppModule):
   per-tenant; client ModI "pronto a connettersi".
 - ✅ Isolamento tenant (FIR tenantId reale, registri), API audit complete,
   permessi temporanei (#3), audit firma userId reale (#12).
+- ✅ **Dati di riferimento condivisi** (ATECO, ISTAT nazioni/province/comuni)
+  globali + popolamento via cron (sorgenti configurabili).
+- ✅ **MUD export versionato per anno** (V6.04/24) con anagrafica che usa ATECO
+  + codice ISTAT comune; **anagrafiche** che validano comune/provincia contro le
+  tabelle ISTAT condivise.
+
+Residuo MUD (non completabile come codice puro): copertura field-by-field di
+TUTTO il tracciato (record BB/VC/VD/VF, posizioni, codici procedura,
+autorizzazioni), **popolamento reale** delle tabelle ISTAT/ATECO dalle sorgenti
+ufficiali e **validazione sull'app ufficiale mudtelematico.it** prima dell'invio.
 
 Restano (dipendenze esterne / infra / spec / frontend): RENTRI **live**
 (certificato), **conservazione AgID** (conservatore accreditato), **download IV
