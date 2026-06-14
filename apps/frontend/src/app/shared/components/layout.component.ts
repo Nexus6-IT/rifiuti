@@ -131,6 +131,17 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
                 <i class="pi pi-tags nav-icon" aria-hidden="true"></i>
                 <span class="nav-label">Catalogo CER</span>
               </a>
+
+              <!-- MUD -->
+              <a
+                routerLink="/mud"
+                routerLinkActive="nav-link-active"
+                class="nav-link"
+                [attr.aria-current]="isActiveRoute('/mud') ? 'page' : null"
+              >
+                <i class="pi pi-file-export nav-icon" aria-hidden="true"></i>
+                <span class="nav-label">MUD</span>
+              </a>
             </div>
 
             <!-- Divider -->

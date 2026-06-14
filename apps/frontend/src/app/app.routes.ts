@@ -45,6 +45,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/notifications/notifications-page/notifications-page.component').then(m => m.NotificationsPageComponent)
       },
       {
+        path: 'mud',
+        loadComponent: () => import('./features/mud/mud.component').then(m => m.MudComponent)
+      },
+      {
         // Gestione certificato RENTRI (solo admin — enforcement lato componente + backend)
         path: 'rentri/certificato',
         loadComponent: () => import('./features/rentri/rentri-credential.component').then(m => m.RentriCredentialComponent)
