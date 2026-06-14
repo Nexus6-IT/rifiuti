@@ -49,6 +49,26 @@ export const routes: Routes = [
         loadComponent: () => import('./features/mud/mud.component').then(m => m.MudComponent)
       },
       {
+        path: 'esg',
+        loadComponent: () => import('./features/esg/esg.component').then(m => m.EsgComponent)
+      },
+      {
+        path: 'giacenze',
+        loadComponent: () => import('./features/giacenze/giacenze.component').then(m => m.GiacenzeComponent)
+      },
+      {
+        path: 'anomalie',
+        loadComponent: () => import('./features/anomaly/anomaly.component').then(m => m.AnomalyComponent)
+      },
+      {
+        path: 'contratti',
+        loadComponent: () => import('./features/contracts/contracts-list.component').then(m => m.ContractsListComponent)
+      },
+      {
+        path: 'reference-data',
+        loadComponent: () => import('./features/reference-data/reference-data.component').then(m => m.ReferenceDataComponent)
+      },
+      {
         // Gestione certificato RENTRI (solo admin — enforcement lato componente + backend)
         path: 'rentri/certificato',
         loadComponent: () => import('./features/rentri/rentri-credential.component').then(m => m.RentriCredentialComponent)

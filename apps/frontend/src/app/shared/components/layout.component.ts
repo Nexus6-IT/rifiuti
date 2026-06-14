@@ -142,6 +142,50 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
                 <i class="pi pi-file-export nav-icon" aria-hidden="true"></i>
                 <span class="nav-label">MUD</span>
               </a>
+
+              <!-- Giacenze e deposito temporaneo -->
+              <a
+                routerLink="/giacenze"
+                routerLinkActive="nav-link-active"
+                class="nav-link"
+                [attr.aria-current]="isActiveRoute('/giacenze') ? 'page' : null"
+              >
+                <i class="pi pi-box nav-icon" aria-hidden="true"></i>
+                <span class="nav-label">Giacenze</span>
+              </a>
+
+              <!-- Contratti -->
+              <a
+                routerLink="/contratti"
+                routerLinkActive="nav-link-active"
+                class="nav-link"
+                [attr.aria-current]="isActiveRoute('/contratti') ? 'page' : null"
+              >
+                <i class="pi pi-briefcase nav-icon" aria-hidden="true"></i>
+                <span class="nav-label">Contratti</span>
+              </a>
+
+              <!-- ESG / CO2 -->
+              <a
+                routerLink="/esg"
+                routerLinkActive="nav-link-active"
+                class="nav-link"
+                [attr.aria-current]="isActiveRoute('/esg') ? 'page' : null"
+              >
+                <i class="pi pi-chart-line nav-icon" aria-hidden="true"></i>
+                <span class="nav-label">ESG / CO2</span>
+              </a>
+
+              <!-- Anomalie -->
+              <a
+                routerLink="/anomalie"
+                routerLinkActive="nav-link-active"
+                class="nav-link"
+                [attr.aria-current]="isActiveRoute('/anomalie') ? 'page' : null"
+              >
+                <i class="pi pi-exclamation-triangle nav-icon" aria-hidden="true"></i>
+                <span class="nav-label">Anomalie</span>
+              </a>
             </div>
 
             <!-- Divider -->
@@ -199,6 +243,17 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
                 <i class="pi pi-key nav-icon" aria-hidden="true"></i>
                 <span class="nav-label">Certificato RENTRI</span>
               </a>
+
+              <!-- Dati di riferimento ISTAT/ATECO (admin) -->
+              <a
+                routerLink="/reference-data"
+                routerLinkActive="nav-link-active"
+                class="nav-link"
+                [attr.aria-current]="isActiveRoute('/reference-data') ? 'page' : null"
+              >
+                <i class="pi pi-database nav-icon" aria-hidden="true"></i>
+                <span class="nav-label">Dati di riferimento</span>
+              </a>
             </div>
           </nav>
         </aside>
@@ -247,6 +302,56 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
             >
               <i class="pi pi-tags" aria-hidden="true"></i>
               <span>Catalogo CER</span>
+            </a>
+
+            <a
+              routerLink="/mud"
+              routerLinkActive="nav-link-active"
+              class="mobile-nav-link"
+              (click)="closeMobileSidebar()"
+            >
+              <i class="pi pi-file-export" aria-hidden="true"></i>
+              <span>MUD</span>
+            </a>
+
+            <a
+              routerLink="/giacenze"
+              routerLinkActive="nav-link-active"
+              class="mobile-nav-link"
+              (click)="closeMobileSidebar()"
+            >
+              <i class="pi pi-box" aria-hidden="true"></i>
+              <span>Giacenze</span>
+            </a>
+
+            <a
+              routerLink="/contratti"
+              routerLinkActive="nav-link-active"
+              class="mobile-nav-link"
+              (click)="closeMobileSidebar()"
+            >
+              <i class="pi pi-briefcase" aria-hidden="true"></i>
+              <span>Contratti</span>
+            </a>
+
+            <a
+              routerLink="/esg"
+              routerLinkActive="nav-link-active"
+              class="mobile-nav-link"
+              (click)="closeMobileSidebar()"
+            >
+              <i class="pi pi-chart-line" aria-hidden="true"></i>
+              <span>ESG / CO2</span>
+            </a>
+
+            <a
+              routerLink="/anomalie"
+              routerLinkActive="nav-link-active"
+              class="mobile-nav-link"
+              (click)="closeMobileSidebar()"
+            >
+              <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+              <span>Anomalie</span>
             </a>
 
             <div class="mobile-nav-divider"></div>
