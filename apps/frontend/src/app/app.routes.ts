@@ -44,6 +44,11 @@ export const routes: Routes = [
         path: 'notifications',
         loadComponent: () => import('./features/notifications/notifications-page/notifications-page.component').then(m => m.NotificationsPageComponent)
       },
+      {
+        // Gestione certificato RENTRI (solo admin — enforcement lato componente + backend)
+        path: 'rentri/certificato',
+        loadComponent: () => import('./features/rentri/rentri-credential.component').then(m => m.RentriCredentialComponent)
+      },
       // T179: Custom Role Management Routes
       {
         path: 'permissions',

@@ -44,7 +44,9 @@ interface CredentialStatusResponse {
 
 @ApiTags('rentri')
 @ApiBearerAuth()
-@Controller('v1/rentri/credential')
+// Global prefix is `api/v1` (vedi main.ts), quindi il path completo è
+// `api/v1/rentri/credential`.
+@Controller('rentri/credential')
 // Gestione di un segreto sensibile (certificato/chiave del tenant): riservata
 // agli amministratori del tenant.
 @UseGuards(JwtAuthGuard, RolesGuard)
