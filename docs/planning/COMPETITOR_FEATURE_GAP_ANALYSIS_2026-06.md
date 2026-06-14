@@ -42,12 +42,14 @@ Implementati in questo ciclo (backend, con test; moduli cablati in AppModule):
   moduli **DR** (destinatari) e **TE** (trasportatori). Funziona per i metalli e
   tutti i rifiuti speciali.
 
-Residuo MUD: **popolamento reale** tabelle ISTAT/ATECO (sorgenti ufficiali da
-configurare); campi non nel dominio (REA, addetti, legale rappr., telefoni,
-civico separato) oggi azzerati — vanno aggiunti all'anagrafica Tenant se servono;
-sezioni non applicabili al produttore base (veicoli/RAEE/imballaggi/
-intermediazione/gestori RT-RE); **validazione sull'app ufficiale
-mudtelematico.it** prima dell'invio reale.
+- ✅ **Anagrafica dichiarante MUD completa**: aggiunti a Tenant codiceFiscale,
+  REA, n° addetti, legale rappresentante, civico, telefono → valorizzati in XX/AA.
+
+**Feature MUD chiusa a livello codice.** Residuo solo NON-codice: **popolamento
+reale** tabelle ISTAT/ATECO dalle sorgenti ufficiali (meccanismo cron pronto) e
+**validazione sull'app ufficiale mudtelematico.it** prima dell'invio (+ firma
+digitale per la trasmissione). Sezioni non applicabili al produttore base
+(veicoli/RAEE/imballaggi/intermediazione/gestori RT-RE) escluse per scelta.
 
 Restano (dipendenze esterne / infra / spec / frontend): RENTRI **live**
 (certificato), **conservazione AgID** (conservatore accreditato), **download IV
