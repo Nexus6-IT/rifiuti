@@ -66,7 +66,9 @@ export class SpidStrategy extends PassportStrategy(Strategy, 'spid') {
       // Attribute mapping
       attributeConsumingServiceIndex: '0',
       acceptedClockSkewMs: -1,
-      disableRequestedAuthnContext: false,
+      // Keycloak (IdP) non e' un IdP SPID: non inviare l'AuthnContext SPID
+      // (L1/L2/L3), altrimenti la richiesta verrebbe rifiutata/ignorata.
+      disableRequestedAuthnContext: true,
 
       // Security
       signatureAlgorithm: 'sha256',

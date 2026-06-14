@@ -62,13 +62,13 @@ export class AuthService {
   loginWithSPID(returnUrl?: string): void {
     const params = new URLSearchParams({ provider: 'spid' });
     if (returnUrl) params.set('returnUrl', returnUrl);
-    window.location.href = `${this.apiUrl}/auth/login?${params}`;
+    window.location.href = `${this.apiUrl}/auth/spid/login?${params}`;
   }
 
   loginWithCIE(returnUrl?: string): void {
     const params = new URLSearchParams({ provider: 'cie' });
     if (returnUrl) params.set('returnUrl', returnUrl);
-    window.location.href = `${this.apiUrl}/auth/login?${params}`;
+    window.location.href = `${this.apiUrl}/auth/spid/login?${params}`;
   }
 
   handleCallback(samlResponse: string): Observable<AuthResponse> {

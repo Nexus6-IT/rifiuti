@@ -47,7 +47,8 @@ export class AuthController {
    * SPID callback endpoint
    * Receives SAML response and generates JWT tokens
    */
-  @Get('spid/callback')
+  // Keycloak invia la SAMLResponse via binding HTTP-POST all'ACS.
+  @Post('spid/callback')
   @Public()
   @UseGuards(AuthGuard('spid'))
   async spidCallback(@Request() req: any) {

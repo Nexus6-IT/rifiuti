@@ -69,12 +69,14 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET richiesta}
       # Cifratura a riposo dei certificati RENTRI per-tenant
       RENTRI_CREDENTIAL_ENC_KEY: ${RENTRI_CREDENTIAL_ENC_KEY:?RENTRI_CREDENTIAL_ENC_KEY richiesta}
-      # Autenticazione: Keycloak SAML (IdP condiviso realm ignicraft)
+      # Autenticazione: Keycloak come IdP SAML (realm condiviso ignicraft).
+      # La SpidStrategy (passport-saml) legge le variabili SPID_*.
       KEYCLOAK_URL: ${KEYCLOAK_URL:-https://auth.ignicraft.com}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-ignicraft}
-      SAML_CALLBACK_URL: ${SAML_CALLBACK_URL:-https://rifiuti.ignicraft.com/api/v1/auth/callback}
-      SAML_ISSUER: ${SAML_ISSUER:-rifiuti}
-      SAML_CERT: ${SAML_CERT}
+      SPID_IDP_ENTRY_POINT: ${SPID_IDP_ENTRY_POINT:-https://auth.ignicraft.com/realms/ignicraft/protocol/saml}
+      SPID_ENTITY_ID: ${SPID_ENTITY_ID:-rifiuti}
+      SPID_CALLBACK_URL: ${SPID_CALLBACK_URL:-https://rifiuti.ignicraft.com/api/v1/auth/spid/callback}
+      SPID_IDP_CERT: ${SPID_IDP_CERT}
       DEFAULT_TENANT_ID: ${DEFAULT_TENANT_ID}
     depends_on:
       postgres:
