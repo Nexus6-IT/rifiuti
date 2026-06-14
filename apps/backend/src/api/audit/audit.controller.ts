@@ -43,7 +43,7 @@ import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-c
  * - Require ADMIN or COMPLIANCE_OFFICER role
  * - Support pagination
  */
-@Controller('api/v1/audit')
+@Controller('audit')
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class AuditController {
   private readonly logger = new Logger(AuditController.name);

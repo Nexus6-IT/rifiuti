@@ -36,7 +36,7 @@ import { TemporaryPermissionGrantRepository } from '../../domain/identity-access
  * - POST /api/v1/permissions/:id/revoke - Revoke active grant
  * - GET /api/v1/permissions/my-grants - List user's grants
  */
-@Controller('api/v1/permissions')
+@Controller('permissions')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class TemporaryPermissionController {
   private readonly logger = new Logger(TemporaryPermissionController.name);

@@ -34,7 +34,7 @@ import { TaskAssignmentService } from '../../application/services/task-assignmen
  *
  * All endpoints require JWT authentication, tenant isolation, and fleet manager permissions
  */
-@Controller('api/v1/tasks')
+@Controller('tasks')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class TaskAssignmentController {
   private readonly logger = new Logger(TaskAssignmentController.name);

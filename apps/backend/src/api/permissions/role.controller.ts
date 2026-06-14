@@ -33,7 +33,7 @@ import { DeleteCustomRoleCommand } from '../../application/commands/delete-custo
  *
  * All endpoints require JWT authentication and tenant isolation
  */
-@Controller('api/v1/roles')
+@Controller('roles')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class RoleController {
   private readonly logger = new Logger(RoleController.name);

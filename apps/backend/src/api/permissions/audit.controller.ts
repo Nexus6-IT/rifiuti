@@ -35,7 +35,7 @@ import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-c
  * - GET /api/v1/audit/role-changes - Get role change history
  * - POST /api/v1/audit/reconstruct-permissions - Reconstruct permissions at timestamp
  */
-@Controller('api/v1/audit')
+@Controller('audit')
 @UseGuards(JwtAuthGuard)
 export class AuditController {
   constructor(

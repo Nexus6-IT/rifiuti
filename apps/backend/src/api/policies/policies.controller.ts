@@ -31,7 +31,7 @@ import { Inject } from '@nestjs/common';
 
 @ApiTags('Policies (ABAC)')
 @ApiBearerAuth()
-@Controller('api/v1/policies')
+@Controller('policies')
 @UseGuards(JwtAuthGuard)
 export class PoliciesController {
   private readonly logger = new Logger(PoliciesController.name);

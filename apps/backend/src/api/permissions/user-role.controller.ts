@@ -33,7 +33,7 @@ import { UserRoleRepository } from '../../domain/identity-access/user-role.repos
  * - Tenant isolation validation
  * - Permission checks
  */
-@Controller('api/v1/user-roles')
+@Controller('user-roles')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class UserRoleController {
   private readonly logger = new Logger(UserRoleController.name);

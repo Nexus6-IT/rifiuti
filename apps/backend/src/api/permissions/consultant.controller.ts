@@ -43,7 +43,7 @@ import { ConsultantTenantAssociation } from '../../domain/identity-access/consul
  * - Admin endpoints require 'consultant:manage' permission
  * - All operations logged for audit trail
  */
-@Controller('api/v1/consultant')
+@Controller('consultant')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard)
 export class ConsultantController {
   private readonly logger = new Logger(ConsultantController.name);

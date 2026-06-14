@@ -19,7 +19,7 @@ import { GetUserPermissionsQuery } from '../../application/queries/get-user-perm
  *
  * All endpoints require JWT authentication
  */
-@Controller('api/v1/permissions')
+@Controller('permissions')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard)
 export class PermissionController {
   private readonly logger = new Logger(PermissionController.name);
