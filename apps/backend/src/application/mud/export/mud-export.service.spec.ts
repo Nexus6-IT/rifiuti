@@ -21,12 +21,19 @@ describe('MudExportService', () => {
     prisma.tenant.findUnique.mockResolvedValue({
       ragioneSociale: 'Acme Spa',
       partitaIva: '12345678901',
+      codiceFiscale: '12345678901',
       address: 'Via Roma 1',
+      civico: '10',
       city: 'Roma',
       province: 'RM',
       postalCode: '00100',
       pec: 'acme@pec.it',
+      telefono: '0612345678',
       atecoCode: '381100',
+      reaNumber: '123456',
+      numeroAddetti: 42,
+      legaleRappresentanteNome: 'Mario',
+      legaleRappresentanteCognome: 'Rossi',
     })
     // metallo ferroso 170405: 80 a recupero (al destinatario D1, trasportato da T1),
     // 20 a smaltimento (destinatario D1).
@@ -60,6 +67,13 @@ describe('MudExportService', () => {
     expect(result.content).toContain(';058;091;')
 
     const lines = result.content.trim().split('\r\n')
+    // AA contiene REA, addetti, legale rappresentante e mantiene la lunghezza 338
+    const aa = lines.find((l) => l.startsWith('AA;'))!
+    expect(aa.length).toBe(338)
+    expect(aa).toContain('000123456') // REA (9)
+    expect(aa).toContain('00042') // addetti (5)
+    expect(aa).toContain('ROSSI')
+    expect(aa).toContain('MARIO')
     // modulo BB DR (destinatario) e TE (trasportatore)
     const dr = lines.find((l) => l.startsWith('BB;') && l.includes(';DR;'))!
     const te = lines.find((l) => l.startsWith('BB;') && l.includes(';TE;'))!

@@ -29,17 +29,25 @@ model Tenant {
 
   // Company identification
   partitaIva     String  @unique @map("partita_iva") @db.VarChar(11)
+  codiceFiscale  String? @map("codice_fiscale") @db.VarChar(16)
   ragioneSociale String  @map("ragione_sociale") @db.VarChar(255)
   pec            String? @db.VarChar(255)
+  telefono       String? @db.VarChar(20)
   // Codice attività economica ISTAT (ATECO 2007), per il MUD. 6 cifre senza punti.
   atecoCode      String? @map("ateco_code") @db.VarChar(10)
+  // Dati per il MUD (dichiarante)
+  reaNumber      String? @map("rea_number") @db.VarChar(9)
+  numeroAddetti  Int?    @map("numero_addetti")
+  legaleRappresentanteNome    String? @map("legale_rappresentante_nome") @db.VarChar(25)
+  legaleRappresentanteCognome String? @map("legale_rappresentante_cognome") @db.VarChar(25)
 
   // Address
-  address    String @db.VarChar(255)
-  city       String @db.VarChar(100)
-  province   String @db.VarChar(2)
-  postalCode String @map("postal_code") @db.VarChar(5)
-  country    String @default("IT") @db.VarChar(2)
+  address    String  @db.VarChar(255)
+  civico     String? @db.VarChar(10)
+  city       String  @db.VarChar(100)
+  province   String  @db.VarChar(2)
+  postalCode String  @map("postal_code") @db.VarChar(5)
+  country    String  @default("IT") @db.VarChar(2)
 
   // Subscription management
   subscriptionTier   SubscriptionTier   @default(TRIAL) @map("subscription_tier")

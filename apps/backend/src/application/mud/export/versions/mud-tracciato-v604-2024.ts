@@ -100,12 +100,12 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
       mudCodiceFiscale(a.codiceFiscale || a.partitaIva), // CF dichiarante
       mudAlfa(a.ragioneSociale, 60),
       mudAlfa(a.via, 30), // indirizzo
-      mudAlfa('', 10), // civico (non disponibile separatamente)
+      mudAlfa(a.civico ?? '', 10), // civico
       mudAlfa(a.cap, 5),
       mudAlfa(a.comune, 30), // città
       mudAlfa(a.provincia, 2), // sigla provincia
       mudAlfa('', 5), // prefisso telefonico
-      mudAlfa('', 10), // numero telefonico
+      mudAlfa(a.telefono ?? '', 10), // numero telefonico
       mudAlfa(a.pec ?? '', 60), // indirizzo e-mail
       mudAlfa('WASTEFLOW', 30), // riservato: identificativo SW produttore file
     ])
@@ -122,25 +122,25 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
       mudCodiceFiscale(a.codiceFiscale || a.partitaIva),
       mudNum(1, 15), // codice identificazione univoca unità locale
       mudAlfa(a.atecoCode ?? '', 6), // codice ISTAT attività (ATECO)
-      mudNum(0, 9), // N° iscrizione REA (non disponibile)
-      mudNum(0, 5), // totale addetti (non disponibile)
+      mudNum(Number(a.reaNumber) || 0, 9), // N° iscrizione REA
+      mudNum(a.numeroAddetti ?? 0, 5), // totale addetti
       mudAlfa(a.ragioneSociale, 60),
       mudAlfa(istatProv, 3), // ISTAT provincia unità locale
       mudAlfa(istatCom, 3), // ISTAT comune unità locale
       mudAlfa(a.via, 30), // indirizzo unità locale
-      mudAlfa('', 6), // civico unità locale
+      mudAlfa(a.civico ?? '', 6), // civico unità locale
       mudAlfa(a.cap, 5), // CAP unità locale
       mudAlfa('', 5), // prefisso tel UL
-      mudAlfa('', 10), // num tel UL
+      mudAlfa(a.telefono ?? '', 10), // num tel UL
       mudAlfa(istatProv, 3), // ISTAT provincia sede legale (= UL)
       mudAlfa(istatCom, 3), // ISTAT comune sede legale
       mudAlfa(a.via, 30), // indirizzo sede legale
-      mudAlfa('', 6), // civico sede legale
+      mudAlfa(a.civico ?? '', 6), // civico sede legale
       mudAlfa(a.cap, 5), // CAP sede legale
       mudAlfa('', 5), // prefisso tel SL
-      mudAlfa('', 10), // num tel SL
-      mudAlfa('', 25), // cognome legale rappresentante
-      mudAlfa('', 25), // nome legale rappresentante
+      mudAlfa(a.telefono ?? '', 10), // num tel SL
+      mudAlfa(a.legaleRappresentanteCognome ?? '', 25), // cognome legale rappresentante
+      mudAlfa(a.legaleRappresentanteNome ?? '', 25), // nome legale rappresentante
       mudDate(data.generatedAt ?? new Date()), // data compilazione AAAAMMGG
       mudNum(12, 2), // mesi di attività nell'anno (default 12)
       mudNum(0, 1), // annulla e sostituisce

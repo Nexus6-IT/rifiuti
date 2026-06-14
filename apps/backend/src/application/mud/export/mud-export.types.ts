@@ -9,14 +9,22 @@ export interface MudAzienda {
   partitaIva: string
   codiceFiscale?: string
   via: string
+  civico?: string
   comune: string
   provincia: string
   cap: string
   pec?: string
+  telefono?: string
   /** Codice attività economica ISTAT (ATECO 2007, 6 cifre). */
   atecoCode?: string
   /** Codice ISTAT del comune (6 cifre), risolto dalle tabelle di riferimento. */
   comuneCode?: string
+  /** N° iscrizione REA. */
+  reaNumber?: string
+  /** Totale addetti nell'unità locale. */
+  numeroAddetti?: number
+  legaleRappresentanteNome?: string
+  legaleRappresentanteCognome?: string
 }
 
 /** Stato fisico del rifiuto (Scheda RIF). Default: solido non polverulento. */
