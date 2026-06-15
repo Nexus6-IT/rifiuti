@@ -49,7 +49,12 @@ async function bootstrap() {
       if (allowedOrigins.includes(origin)) {
         callback(null, true)
       } else {
-        callback(new Error('Not allowed by CORS'))
+        // NON lanciare: un throw qui diventa un 500 e rompe le navigazioni
+        // cross-site legittime (es. il POST del callback SAML da Keycloak, che
+        // puo' arrivare con Origin: null). Per origini non in allowlist si
+        // risponde senza header CORS: le XHR cross-origin restano bloccate dal
+        // browser (sicurezza preservata), ma le navigazioni proseguono.
+        callback(null, false)
       }
     },
     credentials: true,
