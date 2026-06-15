@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WasteFlow — Direzione B: Operativo Compatto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   WasteFlow — Direzione B "Operativo Compatto"
+   Sistema condiviso: griglia 8pt, altezze controlli uniche,
+   form senza scroll, WCAG 2.1 AA, responsive.
+   ============================================================ */
+
+:root{
+  /* --- Spacing scale (griglia 8pt) --- */
+  --s-4:4px; --s-8:8px; --s-12:12px; --s-16:16px; --s-24:24px;
+  --s-32:32px; --s-40:40px; --s-48:48px; --s-64:64px;
+
+  /* --- Altezze controlli UNICHE (condivise da tutte le direzioni) --- */
+  --control-sm:32px;
+  --control-md:40px;   /* default */
+  --control-lg:48px;
+  --radius:6px;
+  --radius-sm:4px;
+
+  /* --- Palette: contenuto chiaro, sidebar scura, accento verde-ambiente --- */
+  --bg:#f1f5f9;            /* slate-100 area lavoro */
+  --surface:#ffffff;
+  --surface-2:#f8fafc;
+  --border:#e2e8f0;        /* slate-200 */
+  --border-strong:#cbd5e1; /* slate-300 */
+
+  --ink:#0f172a;           /* slate-900 testo principale (contrasto ~16:1) */
+  --ink-2:#475569;         /* slate-600 testo secondario (contrasto ~7:1) */
+  --ink-3:#64748b;         /* slate-500 muted (AA su bianco 4.6:1) */
+
+  --sidebar:#0f172a;       /* slate-900 */
+  --sidebar-2:#1e293b;     /* slate-800 hover */
+  --sidebar-ink:#cbd5e1;
+  --sidebar-ink-muted:#94a3b8;
+  --sidebar-active:#0d9488;/* teal-600 */
+
+  /* Accento verde-ambiente */
+  --accent:#0d9488;        /* teal-600  AA su bianco 4.5:1 */
+  --accent-strong:#0f766e; /* teal-700 per testo/hover su bianco */
+  --accent-soft:#ccfbf1;   /* teal-100 */
+  --accent-ink:#115e59;    /* teal-800 testo su soft */
+
+  /* Stati FIR (sempre colore+icona+testo) */
+  --ok:#15803d;     --ok-soft:#dcfce7;   --ok-ink:#14532d;
+  --warn:#b45309;   --warn-soft:#fef3c7; --warn-ink:#78350f;
+  --info:#1d4ed8;   --info-soft:#dbeafe; --info-ink:#1e3a8a;
+  --danger:#b91c1c; --danger-soft:#fee2e2; --danger-ink:#7f1d1d;
+  --neutral:#475569;--neutral-soft:#e2e8f0;--neutral-ink:#334155;
+
+  --focus:#0d9488;
+  --shadow-sm:0 1px 2px rgba(15,23,42,.06);
+  --shadow:0 4px 12px rgba(15,23,42,.08);
+}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:'IBM Plex Sans',system-ui,sans-serif;
+  font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;}
+h1,h2,h3{margin:0;line-height:1.3;font-weight:600;}
+a{color:var(--accent-strong);}
+
+/* --- Focus ring globale (WCAG) --- */
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--radius-sm);}
+
+/* ===================== INTESTAZIONE DIREZIONE ===================== */
+.dir-banner{
+  background:linear-gradient(100deg,#0f172a 0%,#134e4a 100%);
+  color:#fff; padding:var(--s-24) var(--s-32);
+  display:flex;align-items:center;gap:var(--s-24);flex-wrap:wrap;
+}
+.dir-banner .tag{
+  font-family:'IBM Plex Mono';font-size:12px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:#5eead4;
+  border:1px solid rgba(94,234,212,.4);padding:var(--s-4) var(--s-8);border-radius:var(--radius-sm);
+}
+.dir-banner h1{font-size:22px;font-weight:700;}
+.dir-banner p{margin:0;color:#cbd5e1;font-size:14px;max-width:560px;}
+
+/* ===================== SHELL ===================== */
+.app{display:grid;grid-template-columns:240px 1fr;min-height:100vh;}
+
+/* --- Sidebar scura --- */
+.sidebar{
+  background:var(--sidebar);color:var(--sidebar-ink);
+  display:flex;flex-direction:column;padding:var(--s-16) var(--s-12);gap:var(--s-16);
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:var(--s-8);padding:var(--s-4) var(--s-8);}
+.brand .glyph{
+  width:28px;height:28px;border-radius:var(--radius-sm);
+  background:var(--accent);display:grid;place-items:center;color:#fff;font-weight:700;flex:none;
+}
+.brand .name{font-weight:700;color:#fff;font-size:15px;letter-spacing:.01em;}
+.brand .name span{color:var(--accent);}
+
+/* Selettore Azienda / Unità locale */
+.org-switch{
+  background:var(--sidebar-2);border:1px solid #334155;border-radius:var(--radius);
+  padding:var(--s-8);display:flex;flex-direction:column;gap:2px;cursor:pointer;
+}
+.org-switch label{font-size:11px;color:var(--sidebar-ink-muted);text-transform:uppercase;letter-spacing:.05em;}
+.org-switch .org-row{display:flex;align-items:center;justify-content:space-between;gap:var(--s-8);}
+.org-switch .org-name{color:#fff;font-weight:600;font-size:13px;}
+.org-switch .org-sub{color:var(--sidebar-ink-muted);font-size:12px;}
+.org-switch .chev{color:var(--sidebar-ink-muted);}
+
+nav.menu{display:flex;flex-direction:column;gap:2px;}
+nav.menu .grp{font-size:11px;color:var(--sidebar-ink-muted);text-transform:uppercase;
+  letter-spacing:.06em;padding:var(--s-12) var(--s-8) var(--s-4);}
+nav.menu a{
+  display:flex;align-items:center;gap:var(--s-12);
+  padding:0 var(--s-12);height:var(--control-md);
+  color:var(--sidebar-ink);text-decoration:none;border-radius:var(--radius);font-size:13.5px;font-weight:500;
+}
+nav.menu a .ico{width:18px;height:18px;flex:none;opacity:.85;}
+nav.menu a:hover{background:var(--sidebar-2);color:#fff;}
+nav.menu a.active{background:var(--sidebar-2);color:#fff;box-shadow:inset 3px 0 0 var(--accent);}
+nav.menu a .badge{margin-left:auto;background:var(--accent);color:#fff;font-size:11px;
+  font-weight:600;border-radius:10px;padding:1px 7px;font-family:'IBM Plex Mono';}
+
+.sidebar-foot{margin-top:auto;border-top:1px solid #1e293b;padding-top:var(--s-12);
+  font-size:12px;color:var(--sidebar-ink-muted);display:flex;flex-direction:column;gap:var(--s-8);}
+.kbd-hint{display:flex;align-items:center;gap:var(--s-8);flex-wrap:wrap;}
+kbd{
+  font-family:'IBM Plex Mono';font-size:11px;background:#1e293b;color:#cbd5e1;
+  border:1px solid #334155;border-bottom-width:2px;border-radius:var(--radius-sm);
+  padding:2px 6px;line-height:1;
+}
+
+/* --- Main --- */
+.main{display:flex;flex-direction:column;min-width:0;}
+
+/* Topbar */
+.topbar{
+  position:sticky;top:0;z-index:20;background:var(--surface);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:var(--s-12);padding:var(--s-12) var(--s-24);
+}
+.search{position:relative;flex:1;max-width:440px;}
+.search .ico{position:absolute;left:var(--s-12);top:50%;transform:translateY(-50%);color:var(--ink-3);}
+.search input{
+  width:100%;height:var(--control-md);padding:0 var(--s-12) 0 36px;
+  border:1px solid var(--border-strong);border-radius:var(--radius);
+  font-family:inherit;font-size:13.5px;color:var(--ink);background:var(--surface-2);
+}
+.search .kbd-inline{position:absolute;right:var(--s-8);top:50%;transform:translateY(-50%);}
+.search .kbd-inline kbd{background:#fff;color:var(--ink-2);border-color:var(--border-strong);}
+.topbar .spacer{flex:1;}
+.icon-btn{
+  height:var(--control-md);width:var(--control-md);border:1px solid var(--border-strong);
+  background:var(--surface);border-radius:var(--radius);display:grid;place-items:center;
+  color:var(--ink-2);cursor:pointer;position:relative;
+}
+.icon-btn:hover{background:var(--surface-2);color:var(--ink);}
+.icon-btn .dot{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;
+  background:var(--danger);border:1.5px solid #fff;}
+.user{display:flex;align-items:center;gap:var(--s-8);height:var(--control-md);
+  padding:0 var(--s-8) 0 var(--s-4);border:1px solid var(--border-strong);border-radius:var(--radius);
+  background:var(--surface);cursor:pointer;}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;
+  display:grid;place-items:center;font-weight:600;font-size:12px;flex:none;}
+.user .u-name{font-size:13px;font-weight:600;color:var(--ink);}
+.user .u-role{font-size:11px;color:var(--ink-3);}
+
+/* Content */
+.content{padding:var(--s-24);display:flex;flex-direction:column;gap:var(--s-48);max-width:1280px;width:100%;}
+.screen-label{
+  display:inline-flex;align-items:center;gap:var(--s-8);font-family:'IBM Plex Mono';
+  font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-strong);
+  background:var(--accent-soft);padding:var(--s-4) var(--s-8);border-radius:var(--radius-sm);margin-bottom:var(--s-12);
+}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s-16);
+  flex-wrap:wrap;margin-bottom:var(--s-16);}
+.page-head h2{font-size:20px;}
+.page-head .sub{color:var(--ink-2);font-size:13px;margin-top:2px;}
+
+/* ===== Bottoni (altezza control-md di default) ===== */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--s-8);
+  height:var(--control-md);padding:0 var(--s-16);border-radius:var(--radius);
+  font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;border:1px solid transparent;
+  white-space:nowrap;
+}
+.btn .ico{width:16px;height:16px;}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+.btn-primary:hover{background:var(--accent-strong);border-color:var(--accent-strong);}
+.btn-ghost{background:var(--surface);color:var(--ink-2);border-color:var(--border-strong);}
+.btn-ghost:hover{background:var(--surface-2);color:var(--ink);}
+.btn-sm{height:var(--control-sm);padding:0 var(--s-12);font-size:12.5px;}
+.btn kbd{margin-left:var(--s-4);}
+
+/* ===== Card ===== */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);}
+.card-pad{padding:var(--s-16);}
+
+/* ===== KPI ===== */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s-16);margin-bottom:var(--s-24);}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:var(--s-16);box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:var(--s-8);}
+.kpi .k-top{display:flex;align-items:center;justify-content:space-between;}
+.kpi .k-label{font-size:12px;color:var(--ink-2);font-weight:500;}
+.kpi .k-ico{width:30px;height:30px;border-radius:var(--radius-sm);display:grid;place-items:center;}
+.kpi .k-val{font-family:'IBM Plex Mono';font-size:26px;font-weight:600;color:var(--ink);line-height:1;}
+.kpi .k-delta{font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px;}
+.k-delta.up{color:var(--ok);} .k-delta.down{color:var(--danger);} .k-delta.flat{color:var(--ink-3);}
+
+/* ===== Layout dashboard ===== */
+.dash-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:var(--s-16);}
+.chart-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s-16);}
+.chart-head h3{font-size:14px;}
+.chart-ph{
+  height:240px;border-radius:var(--radius);background:
+    linear-gradient(180deg,rgba(13,148,136,.10),rgba(13,148,136,0) 70%);
+  border:1px dashed var(--border-strong);position:relative;overflow:hidden;
+  display:flex;align-items:flex-end;gap:var(--s-8);padding:var(--s-16);
+}
+.chart-ph .bar{flex:1;background:linear-gradient(180deg,var(--accent),#5eead4);border-radius:4px 4px 0 0;opacity:.85;}
+.chart-ph .cap{position:absolute;top:var(--s-12);left:var(--s-16);font-size:11px;color:var(--ink-3);
+  font-family:'IBM Plex Mono';background:#fff;padding:2px 6px;border-radius:var(--radius-sm);border:1px solid var(--border);}
+
+.mini-list{display:flex;flex-direction:column;}
+.mini-list h3{font-size:14px;margin-bottom:var(--s-12);}
+.mini-row{display:flex;align-items:center;gap:var(--s-12);padding:var(--s-8) 0;border-top:1px solid var(--border);}
+.mini-row:first-of-type{border-top:none;}
+.mini-row .m-main{flex:1;min-width:0;}
+.mini-row .m-fir{font-family:'IBM Plex Mono';font-size:12.5px;color:var(--ink);font-weight:500;}
+.mini-row .m-sub{font-size:12px;color:var(--ink-3);}
+.mini-row .m-q{font-family:'IBM Plex Mono';font-size:12.5px;color:var(--ink-2);}
+
+/* ===== Chip stato (colore + icona + testo) ===== */
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;
+  padding:2px 8px;border-radius:20px;white-space:nowrap;line-height:1.4;}
+.chip .ci{width:13px;height:13px;flex:none;}
+.chip.ok{background:var(--ok-soft);color:var(--ok-ink);}
+.chip.warn{background:var(--warn-soft);color:var(--warn-ink);}
+.chip.info{background:var(--info-soft);color:var(--info-ink);}
+.chip.danger{background:var(--danger-soft);color:var(--danger-ink);}
+.chip.neutral{background:var(--neutral-soft);color:var(--neutral-ink);}
+
+/* ===== Toolbar filtri (control-sm) — allineamento perfetto ===== */
+.toolbar{display:flex;align-items:center;gap:var(--s-8);flex-wrap:wrap;margin-bottom:var(--s-12);}
+.toolbar .field, .toolbar .search-c, .toolbar .btn-sm, .toolbar select, .toolbar input{
+  height:var(--control-sm);
+}
+.toolbar .search-c{position:relative;min-width:220px;}
+.toolbar .search-c .ico{position:absolute;left:var(--s-8);top:50%;transform:translateY(-50%);color:var(--ink-3);}
+.toolbar .search-c input{width:100%;padding:0 var(--s-8) 0 30px;border:1px solid var(--border-strong);
+  border-radius:var(--radius);font-family:inherit;font-size:12.5px;background:var(--surface);}
+.toolbar select{
+  appearance:none;border:1px solid var(--border-strong);border-radius:var(--radius);
+  padding:0 28px 0 var(--s-12);font-family:inherit;font-size:12.5px;background:var(--surface);color:var(--ink);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;cursor:pointer;
+}
+.toolbar .sep{width:1px;height:20px;background:var(--border);margin:0 var(--s-4);}
+.toolbar .spacer{flex:1;}
+
+/* Toggle densità */
+.density{display:inline-flex;border:1px solid var(--border-strong);border-radius:var(--radius);overflow:hidden;height:var(--control-sm);}
+.density button{height:100%;border:none;background:var(--surface);color:var(--ink-2);
+  font-family:inherit;font-size:12px;font-weight:600;padding:0 var(--s-12);cursor:pointer;display:flex;align-items:center;gap:5px;}
+.density button.active{background:var(--accent-soft);color:var(--accent-ink);}
+.density button+button{border-left:1px solid var(--border-strong);}
+
+/* ===== Tabella densa ===== */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);}
+table.data{width:100%;border-collapse:collapse;font-size:13px;min-width:880px;}
+table.data thead th{
+  position:sticky;top:0;background:var(--surface-2);z-index:2;
+  text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--ink-2);padding:var(--s-8) var(--s-12);border-bottom:1px solid var(--border-strong);white-space:nowrap;
+}
+table.data tbody td{padding:var(--s-12);border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap;}
+table.data tbody tr:hover{background:var(--accent-soft);}
+table.data tbody tr:hover td{background:transparent;}
+.col-fir{font-family:'IBM Plex Mono';font-weight:600;color:var(--ink);}
+.col-eer{font-family:'IBM Plex Mono';color:var(--ink-2);}
+.col-num{font-family:'IBM Plex Mono';text-align:right;color:var(--ink-2);}
+.cell-2{display:flex;flex-direction:column;line-height:1.25;}
+.cell-2 .sub{font-size:11.5px;color:var(--ink-3);}
+.row-act{display:flex;gap:var(--s-4);justify-content:flex-end;}
+.ra{width:28px;height:28px;border-radius:var(--radius-sm);border:1px solid transparent;background:transparent;
+  display:grid;place-items:center;color:var(--ink-3);cursor:pointer;}
+.ra:hover{background:var(--surface-2);border-color:var(--border-strong);color:var(--ink);}
+
+/* Densità compatta */
+.data.compact tbody td{padding:var(--s-4) var(--s-12);}
+.data.compact thead th{padding:var(--s-4) var(--s-12);}
+
+.table-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--s-12);
+  padding:var(--s-12);border-top:1px solid var(--border);color:var(--ink-2);font-size:12.5px;flex-wrap:wrap;}
+.pager{display:flex;gap:var(--s-4);}
+.pager button{height:var(--control-sm);min-width:var(--control-sm);padding:0 var(--s-8);
+  border:1px solid var(--border-strong);background:var(--surface);border-radius:var(--radius-sm);
+  font-family:'IBM Plex Mono';font-size:12px;cursor:pointer;color:var(--ink-2);}
+.pager button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+/* ===== FORM senza scroll ===== */
+.form-shell{display:grid;grid-template-columns:1fr;justify-items:center;}
+.form-col{width:100%;max-width:680px;display:flex;flex-direction:column;gap:var(--s-24);}
+fieldset.section{border:1px solid var(--border);border-radius:var(--radius);padding:var(--s-16);margin:0;background:var(--surface);box-shadow:var(--shadow-sm);}
+fieldset.section legend{
+  font-size:13px;font-weight:600;color:var(--ink);padding:0 var(--s-8);
+  display:inline-flex;align-items:center;gap:var(--s-8);
+}
+fieldset.section legend .num{font-family:'IBM Plex Mono';font-size:11px;background:var(--accent-soft);
+  color:var(--accent-ink);border-radius:var(--radius-sm);padding:1px 6px;}
+.f-grid{display:grid;grid-template-columns:1fr;gap:var(--s-16);margin-top:var(--s-8);}
+.f-grid.pair{grid-template-columns:1fr 1fr;}
+.f-grid.trio{grid-template-columns:1fr 1fr 1fr;}
+.field{display:flex;flex-direction:column;gap:var(--s-4);}
+.field label{font-size:12.5px;font-weight:600;color:var(--ink-2);}
+.field label .req{color:var(--danger);}
+.field .hint{font-size:11.5px;color:var(--ink-3);}
+.input, select.input{
+  height:var(--control-md);padding:0 var(--s-12);border:1px solid var(--border-strong);
+  border-radius:var(--radius);font-family:inherit;font-size:13.5px;color:var(--ink);background:var(--surface);width:100%;
+}
+.input.mono{font-family:'IBM Plex Mono';}
+select.input{
+  appearance:none;cursor:pointer;padding-right:32px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;
+}
+/* Campo con errore (esempio validazione inline) */
+.field.error .input{border-color:var(--danger);background:#fff7f7;}
+.field .err-msg{display:none;font-size:12px;color:var(--danger-ink);font-weight:600;align-items:center;gap:5px;}
+.field.error .err-msg{display:flex;}
+
+/* gruppo input + addon (UM) stessa altezza */
+.input-group{display:flex;gap:var(--s-8);}
+.input-group .input{flex:1;}
+.input-group select.input{width:120px;flex:none;}
+
+/* Sticky action bar */
+.save-bar{
+  position:sticky;bottom:0;z-index:15;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);
+  border-top:1px solid var(--border-strong);
+  display:flex;align-items:center;gap:var(--s-12);padding:var(--s-12) var(--s-16);
+  border-radius:0 0 var(--radius) var(--radius);margin-top:var(--s-8);box-shadow:0 -4px 12px rgba(15,23,42,.05);
+}
+.save-bar .status{font-size:12.5px;color:var(--ink-2);display:flex;align-items:center;gap:var(--s-8);}
+.save-bar .spacer{flex:1;}
+
+/* divider tra screens */
+.screen-divider{border:none;border-top:2px dashed var(--border-strong);margin:0;}
+
+/* ===================== RESPONSIVE ===================== */
+@media (max-width:1100px){
+  .kpi-grid{grid-template-columns:repeat(2,1fr);}
+  .dash-grid{grid-template-columns:1fr;}
+}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr;}
+  .sidebar{position:fixed;left:-260px;transition:left .2s;z-index:50;width:240px;}
+  .sidebar.open{left:0;}
+  .menu-toggle{display:grid !important;}
+  /* tabella: prima colonna sticky su mobile */
+  table.data tbody td:first-child, table.data thead th:first-child{
+    position:sticky;left:0;background:var(--surface);z-index:1;box-shadow:1px 0 0 var(--border);
+  }
+  table.data thead th:first-child{background:var(--surface-2);z-index:3;}
+}
+@media (max-width:560px){
+  .kpi-grid{grid-template-columns:1fr;}
+  .f-grid.pair,.f-grid.trio{grid-template-columns:1fr;}
+  .content{padding:var(--s-16);}
+  .user .u-meta{display:none;}
+}
+.menu-toggle{display:none;}
+</style>
+</head>
+<body>
+
+<!-- ===== FASCIA DIREZIONE ===== -->
+<header class="dir-banner">
+  <span class="tag">Direzione B</span>
+  <div>
+    <h1>Operativo Compatto</h1>
+    <p>Power-tool ad alta densità per l'operatore che vive nell'app tutto il giorno: sidebar scura, accento verde-ambiente, scorciatoie da tastiera e tabelle fitte ma leggibili.</p>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="glyph">W</div>
+      <div class="name">Waste<span>Flow</span></div>
+    </div>
+
+    <!-- Selettore Azienda / Unità locale -->
+    <div class="org-switch" tabindex="0" role="button" aria-label="Cambia azienda o unità locale">
+      <label>Azienda / Unità locale</label>
+      <div class="org-row">
+        <div>
+          <div class="org-name">Ecotecnica S.r.l.</div>
+          <div class="org-sub">UL Sesto · MI</div>
+        </div>
+        <svg class="chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+      </div>
+    </div>
+
+    <nav class="menu" aria-label="Navigazione principale">
+      <a href="#dashboard" class="active">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a href="#fir">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v4a1 1 0 001 1h4"/><path d="M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z"/></svg>
+        Formulari / FIR
+        <span class="badge">12</span>
+      </a>
+      <a href="#">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+        Registro C/S
+      </a>
+      <a href="#">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 4-5"/></svg>
+        MUD
+      </a>
+      <a href="#">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6m0 8v6M2 12h6m8 0h6"/><circle cx="12" cy="12" r="3"/></svg>
+        RENTRI
+      </a>
+      <div class="grp">Dati</div>
+      <a href="#">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>
+        Anagrafiche
+      </a>
+      <a href="#">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+        Analitiche
+      </a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="kbd-hint"><kbd>⌘K</kbd> Ricerca rapida</div>
+      <div class="kbd-hint"><kbd>N</kbd> Nuovo formulario · <kbd>G</kbd> <kbd>D</kbd> Dashboard</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <!-- ===================== TOPBAR ===================== -->
+    <div class="topbar">
+      <button class="icon-btn menu-toggle" aria-label="Apri menu" onclick="document.getElementById('sidebar').classList.toggle('open')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+      <div class="search">
+        <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <input type="search" placeholder="Cerca formulari, EER, produttori, P.IVA…" aria-label="Ricerca globale">
+        <span class="kbd-inline"><kbd>⌘K</kbd></span>
+      </div>
+      <div class="spacer"></div>
+      <button class="icon-btn" aria-label="Notifiche">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+        <span class="dot"></span>
+      </button>
+      <button class="user" aria-label="Profilo utente">
+        <span class="avatar">GM</span>
+        <span class="u-meta">
+          <span class="u-name" style="display:block">G. Manzo</span>
+          <span class="u-role" style="display:block">Operatore</span>
+        </span>
+      </button>
+    </div>
+
+    <main class="content">
+
+      <!-- =============================================================
+           SCHERMATA 1 — DASHBOARD
+           ============================================================= -->
+      <section id="dashboard" aria-labelledby="h-dash">
+        <span class="screen-label">01 · Dashboard</span>
+        <div class="page-head">
+          <div>
+            <h2 id="h-dash">Panoramica operativa</h2>
+            <div class="sub">Ecotecnica S.r.l. — UL Sesto · ultimo aggiornamento 14:32</div>
+          </div>
+          <div style="display:flex;gap:var(--s-8)">
+            <button class="btn btn-ghost">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+              Esporta
+            </button>
+            <button class="btn btn-primary">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              Nuovo formulario <kbd>N</kbd>
+            </button>
+          </div>
+        </div>
+
+        <!-- KPI -->
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="k-top">
+              <span class="k-label">FIR emessi (mese)</span>
+              <span class="k-ico" style="background:var(--accent-soft);color:var(--accent-ink)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v4a1 1 0 001 1h4"/><path d="M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z"/></svg>
+              </span>
+            </div>
+            <div class="k-val">248</div>
+            <div class="k-delta up">▲ +12% vs mese prec.</div>
+          </div>
+          <div class="kpi">
+            <div class="k-top">
+              <span class="k-label">In attesa 4ª copia</span>
+              <span class="k-ico" style="background:var(--warn-soft);color:var(--warn-ink)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+              </span>
+            </div>
+            <div class="k-val">17</div>
+            <div class="k-delta down">▲ 5 oltre 90 gg</div>
+          </div>
+          <div class="kpi">
+            <div class="k-top">
+              <span class="k-label">Quantità tot. (t)</span>
+              <span class="k-ico" style="background:var(--info-soft);color:var(--info-ink)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+              </span>
+            </div>
+            <div class="k-val">1.842</div>
+            <div class="k-delta flat">▬ stabile</div>
+          </div>
+          <div class="kpi">
+            <div class="k-top">
+              <span class="k-label">Sync RENTRI</span>
+              <span class="k-ico" style="background:var(--ok-soft);color:var(--ok-ink)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+              </span>
+            </div>
+            <div class="k-val">99,2%</div>
+            <div class="k-delta up">▲ 2 in coda</div>
+          </div>
+        </div>
+
+        <!-- Grafico + lista -->
+        <div class="dash-grid">
+          <div class="card card-pad">
+            <div class="chart-head">
+              <h3>Andamento conferimenti (12 mesi)</h3>
+              <div class="density" role="group" aria-label="Periodo">
+                <button class="active">Mese</button>
+                <button>Trim.</button>
+              </div>
+            </div>
+            <div class="chart-ph" aria-hidden="true">
+              <span class="cap">tonnellate / mese</span>
+              <div class="bar" style="height:42%"></div><div class="bar" style="height:55%"></div>
+              <div class="bar" style="height:48%"></div><div class="bar" style="height:67%"></div>
+              <div class="bar" style="height:60%"></div><div class="bar" style="height:78%"></div>
+              <div class="bar" style="height:71%"></div><div class="bar" style="height:85%"></div>
+              <div class="bar" style="height:64%"></div><div class="bar" style="height:90%"></div>
+              <div class="bar" style="height:77%"></div><div class="bar" style="height:96%"></div>
+            </div>
+          </div>
+
+          <div class="card card-pad mini-list">
+            <h3>Ultimi formulari</h3>
+            <div class="mini-row">
+              <div class="m-main">
+                <div class="m-fir">FIR-2026-004812</div>
+                <div class="m-sub">EER 17 04 05 · Alfa Costruzioni</div>
+              </div>
+              <span class="m-q">12,40 t</span>
+              <span class="chip ok"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Completo</span>
+            </div>
+            <div class="mini-row">
+              <div class="m-main">
+                <div class="m-fir">FIR-2026-004811</div>
+                <div class="m-sub">EER 15 01 06 · Beta Logistica</div>
+              </div>
+              <span class="m-q">3,10 t</span>
+              <span class="chip warn"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>4ª copia</span>
+            </div>
+            <div class="mini-row">
+              <div class="m-main">
+                <div class="m-fir">FIR-2026-004810</div>
+                <div class="m-sub">EER 20 01 21 · Gamma Servizi</div>
+              </div>
+              <span class="m-q">0,85 t</span>
+              <span class="chip info"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v6m0 8v6M2 12h6m8 0h6"/></svg>In trasporto</span>
+            </div>
+            <div class="mini-row">
+              <div class="m-main">
+                <div class="m-fir">FIR-2026-004809</div>
+                <div class="m-sub">EER 13 02 05 · Delta Auto</div>
+              </div>
+              <span class="m-q">1,90 t</span>
+              <span class="chip danger"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>Respinto</span>
+            </div>
+            <div class="mini-row">
+              <div class="m-main">
+                <div class="m-fir">FIR-2026-004808</div>
+                <div class="m-sub">EER 16 06 01 · Epsilon Energy</div>
+              </div>
+              <span class="m-q">0,42 t</span>
+              <span class="chip neutral"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>Bozza</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="screen-divider">
+
+      <!-- =============================================================
+           SCHERMATA 2 — LISTA FIR
+           ============================================================= -->
+      <section id="fir" aria-labelledby="h-fir">
+        <span class="screen-label">02 · Formulari / FIR</span>
+        <div class="page-head">
+          <div>
+            <h2 id="h-fir">Formulari di Identificazione Rifiuti</h2>
+            <div class="sub">1.284 formulari · filtro attivo: 2026</div>
+          </div>
+          <button class="btn btn-primary">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            Nuovo formulario <kbd>N</kbd>
+          </button>
+        </div>
+
+        <!-- Toolbar: tutti i controlli a control-sm, stesso gap -> allineamento perfetto -->
+        <div class="toolbar" role="search">
+          <div class="search-c">
+            <svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+            <input type="search" placeholder="N. FIR, EER, P.IVA…" aria-label="Cerca nei formulari">
+          </div>
+          <select aria-label="Stato"><option>Stato: tutti</option><option>Completo</option><option>In trasporto</option><option>4ª copia</option><option>Respinto</option><option>Bozza</option></select>
+          <select aria-label="Periodo"><option>Periodo: 2026</option><option>Ultimi 30 gg</option><option>2025</option></select>
+          <select aria-label="Codice EER"><option>EER: tutti</option><option>17 04 05</option><option>15 01 06</option><option>13 02 05</option></select>
+          <div class="sep"></div>
+          <button class="btn btn-ghost btn-sm">
+            <svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 3H2l8 9.5V19l4 2v-8.5L22 3z"/></svg>
+            Filtri avanzati
+          </button>
+          <div class="spacer"></div>
+          <!-- Toggle densità Comoda / Compatta -->
+          <div class="density" role="group" aria-label="Densità tabella">
+            <button id="d-comoda" onclick="setDensity('comoda')" aria-pressed="true">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+              Comoda
+            </button>
+            <button id="d-compatta" class="active" onclick="setDensity('compatta')" aria-pressed="false">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18M3 9h18M3 13h18M3 17h18M3 21h18"/></svg>
+              Compatta
+            </button>
+          </div>
+          <button class="btn btn-ghost btn-sm">
+            <svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Esporta
+          </button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data compact" id="firTable">
+            <thead>
+              <tr>
+                <th>N. FIR</th>
+                <th>Data</th>
+                <th>EER</th>
+                <th>Produttore</th>
+                <th>Destinatario</th>
+                <th class="col-num">Quantità</th>
+                <th>Stato</th>
+                <th style="text-align:right">Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="col-fir">FIR-2026-004812</td>
+                <td class="mono">12/06/2026</td>
+                <td class="col-eer">17 04 05</td>
+                <td><div class="cell-2">Alfa Costruzioni S.p.A.<span class="sub mono">IT04412780964</span></div></td>
+                <td><div class="cell-2">Recuperi Lombardi S.r.l.<span class="sub">Sesto S.G. · MI</span></div></td>
+                <td class="col-num">12,40 t</td>
+                <td><span class="chip ok"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Completo</span></td>
+                <td><div class="row-act">
+                  <button class="ra" aria-label="Visualizza"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                  <button class="ra" aria-label="Scarica PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+                  <button class="ra" aria-label="Altre azioni"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+                </div></td>
+              </tr>
+              <tr>
+                <td class="col-fir">FIR-2026-004811</td>
+                <td class="mono">12/06/2026</td>
+                <td class="col-eer">15 01 06</td>
+                <td><div class="cell-2">Beta Logistica S.r.l.<span class="sub mono">IT09938120155</span></div></td>
+                <td><div class="cell-2">Imballaggi Green S.c.<span class="sub">Monza · MB</span></div></td>
+                <td class="col-num">3,10 t</td>
+                <td><span class="chip warn"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Attesa 4ª copia</span></td>
+                <td><div class="row-act">
+                  <button class="ra" aria-label="Visualizza"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                  <button class="ra" aria-label="Scarica PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+                  <button class="ra" aria-label="Altre azioni"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+                </div></td>
+              </tr>
+              <tr>
+                <td class="col-fir">FIR-2026-004810</td>
+                <td class="mono">11/06/2026</td>
+                <td class="col-eer">20 01 21*</td>
+                <td><div class="cell-2">Gamma Servizi S.r.l.<span class="sub mono">IT07712340968</span></div></td>
+                <td><div class="cell-2">Termo Smaltimenti S.p.A.<span class="sub">Brescia · BS</span></div></td>
+                <td class="col-num">0,85 t</td>
+                <td><span class="chip info"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="18.5" r="2"/></svg>In trasporto</span></td>
+                <td><div class="row-act">
+                  <button class="ra" aria-label="Visualizza"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                  <button class="ra" aria-label="Scarica PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+                  <button class="ra" aria-label="Altre azioni"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+                </div></td>
+              </tr>
+              <tr>
+                <td class="col-fir">FIR-2026-004809</td>
+                <td class="mono">11/06/2026</td>
+                <td class="col-eer">13 02 05*</td>
+                <td><div class="cell-2">Delta Auto S.n.c.<span class="sub mono">IT05521980018</span></div></td>
+                <td><div class="cell-2">Oil Recovery S.r.l.<span class="sub">Lodi · LO</span></div></td>
+                <td class="col-num">1,90 t</td>
+                <td><span class="chip danger"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>Respinto</span></td>
+                <td><div class="row-act">
+                  <button class="ra" aria-label="Visualizza"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                  <button class="ra" aria-label="Scarica PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+                  <button class="ra" aria-label="Altre azioni"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+                </div></td>
+              </tr>
+              <tr>
+                <td class="col-fir">FIR-2026-004808</td>
+                <td class="mono">10/06/2026</td>
+                <td class="col-eer">16 06 01*</td>
+                <td><div class="cell-2">Epsilon Energy S.p.A.<span class="sub mono">IT11203440969</span></div></td>
+                <td><div class="cell-2">Batterie Riciclo S.c.<span class="sub">Pavia · PV</span></div></td>
+                <td class="col-num">0,42 t</td>
+                <td><span class="chip neutral"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>Bozza</span></td>
+                <td><div class="row-act">
+                  <button class="ra" aria-label="Visualizza"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                  <button class="ra" aria-label="Scarica PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+                  <button class="ra" aria-label="Altre azioni"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+                </div></td>
+              </tr>
+              <tr>
+                <td class="col-fir">FIR-2026-004807</td>
+                <td class="mono">10/06/2026</td>
+                <td class="col-eer">17 09 04</td>
+                <td><div class="cell-2">Zeta Demolizioni S.r.l.<span class="sub mono">IT08890120153</span></div></td>
+                <td><div class="cell-2">Inerti Riciclo S.p.A.<span class="sub">Cremona · CR</span></div></td>
+                <td class="col-num">24,80 t</td>
+                <td><span class="chip ok"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Completo</span></td>
+                <td><div class="row-act">
+                  <button class="ra" aria-label="Visualizza"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                  <button class="ra" aria-label="Scarica PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+                  <button class="ra" aria-label="Altre azioni"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+                </div></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="table-foot">
+            <span>Mostrati <strong class="mono">1–6</strong> di <strong class="mono">1.284</strong> · densità <strong>Compatta</strong></span>
+            <div class="pager">
+              <button aria-label="Pagina precedente">‹</button>
+              <button class="active">1</button>
+              <button>2</button>
+              <button>3</button>
+              <button>…</button>
+              <button>214</button>
+              <button aria-label="Pagina successiva">›</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="screen-divider">
+
+      <!-- =============================================================
+           SCHERMATA 3 — FORM NUOVO FORMULARIO (no scroll, sezioni, sticky bar)
+           ============================================================= -->
+      <section id="nuovo" aria-labelledby="h-form">
+        <span class="screen-label">03 · Nuovo formulario</span>
+        <div class="page-head">
+          <div>
+            <h2 id="h-form">Nuovo Formulario di Identificazione Rifiuti</h2>
+            <div class="sub">Compila le sezioni — i campi obbligatori sono contrassegnati con <span style="color:var(--danger)">*</span></div>
+          </div>
+        </div>
+
+        <div class="form-shell">
+          <form class="form-col" onsubmit="return false">
+
+            <!-- 1. Produttore -->
+            <fieldset class="section">
+              <legend><span class="num">1</span> Produttore / Detentore</legend>
+              <div class="f-grid">
+                <div class="field">
+                  <label for="p-nome">Ragione sociale <span class="req">*</span></label>
+                  <input id="p-nome" class="input" value="Alfa Costruzioni S.p.A.">
+                </div>
+              </div>
+              <div class="f-grid pair">
+                <div class="field">
+                  <label for="p-piva">Partita IVA <span class="req">*</span></label>
+                  <input id="p-piva" class="input mono" value="IT04412780964">
+                </div>
+                <div class="field">
+                  <label for="p-unita">Unità locale</label>
+                  <select id="p-unita" class="input"><option>Cantiere Via Marconi 12</option><option>Sede legale</option></select>
+                </div>
+              </div>
+              <div class="f-grid pair">
+                <div class="field">
+                  <label for="p-cap">CAP</label>
+                  <input id="p-cap" class="input mono" value="20099">
+                </div>
+                <div class="field">
+                  <label for="p-comune">Comune</label>
+                  <input id="p-comune" class="input" value="Sesto San Giovanni">
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- 2. Trasportatore -->
+            <fieldset class="section">
+              <legend><span class="num">2</span> Trasportatore</legend>
+              <div class="f-grid pair">
+                <div class="field">
+                  <label for="t-nome">Ragione sociale <span class="req">*</span></label>
+                  <input id="t-nome" class="input" value="TransWaste S.r.l.">
+                </div>
+                <div class="field">
+                  <label for="t-albo">N. iscrizione Albo Gestori <span class="req">*</span></label>
+                  <input id="t-albo" class="input mono" placeholder="MI/0012345">
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- 3. Destinatario -->
+            <fieldset class="section">
+              <legend><span class="num">3</span> Destinatario</legend>
+              <div class="f-grid">
+                <div class="field">
+                  <label for="d-nome">Impianto destinatario <span class="req">*</span></label>
+                  <input id="d-nome" class="input" value="Recuperi Lombardi S.r.l.">
+                </div>
+              </div>
+              <div class="f-grid pair">
+                <div class="field">
+                  <label for="d-auth">Autorizzazione</label>
+                  <input id="d-auth" class="input mono" value="R5 — n. 4471/2024">
+                </div>
+                <div class="field">
+                  <label for="d-op">Operazione</label>
+                  <select id="d-op" class="input"><option>R5 — Riciclo materiali inorg.</option><option>R13 — Messa in riserva</option><option>D15 — Deposito prelim.</option></select>
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- 4. Rifiuto EER (con esempio di errore inline) -->
+            <fieldset class="section">
+              <legend><span class="num">4</span> Rifiuto (codice EER)</legend>
+              <div class="f-grid pair">
+                <div class="field">
+                  <label for="r-eer">Codice EER <span class="req">*</span></label>
+                  <input id="r-eer" class="input mono" value="17 04 05">
+                  <span class="hint">Ferro e acciaio — non pericoloso</span>
+                </div>
+                <div class="field">
+                  <label for="r-stato">Stato fisico <span class="req">*</span></label>
+                  <select id="r-stato" class="input"><option>Solido non polverulento</option><option>Fangoso palabile</option><option>Liquido</option></select>
+                </div>
+              </div>
+              <!-- Campo con errore di esempio -->
+              <div class="f-grid pair">
+                <div class="field error">
+                  <label for="r-qta">Quantità <span class="req">*</span></label>
+                  <div class="input-group">
+                    <input id="r-qta" class="input mono" value="" placeholder="0,00" aria-invalid="true" aria-describedby="err-qta">
+                    <select class="input" aria-label="Unità di misura"><option>t</option><option>kg</option><option>m³</option></select>
+                  </div>
+                  <span class="err-msg" id="err-qta">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg>
+                    Inserisci la quantità (campo obbligatorio).
+                  </span>
+                </div>
+                <div class="field">
+                  <label for="r-caratt">Caratteristiche di pericolo</label>
+                  <select id="r-caratt" class="input"><option>Nessuna (non pericoloso)</option><option>HP 14 — Ecotossico</option><option>HP 7 — Cancerogeno</option></select>
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- 5. Trasporto -->
+            <fieldset class="section">
+              <legend><span class="num">5</span> Trasporto</legend>
+              <div class="f-grid pair">
+                <div class="field">
+                  <label for="tr-data">Data inizio <span class="req">*</span></label>
+                  <input id="tr-data" class="input mono" type="text" value="15/06/2026">
+                </div>
+                <div class="field">
+                  <label for="tr-ora">Ora</label>
+                  <input id="tr-ora" class="input mono" type="text" value="08:30">
+                </div>
+              </div>
+              <div class="f-grid pair">
+                <div class="field">
+                  <label for="tr-targa">Targa automezzo</label>
+                  <input id="tr-targa" class="input mono" value="GD 482 KP">
+                </div>
+                <div class="field">
+                  <label for="tr-conducente">Conducente</label>
+                  <input id="tr-conducente" class="input" value="M. Ferrari">
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- Sticky action bar -->
+            <div class="save-bar">
+              <span class="status">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                Bozza salvata automaticamente · 14:31
+              </span>
+              <div class="spacer"></div>
+              <button class="btn btn-ghost" type="button">Annulla</button>
+              <button class="btn btn-ghost" type="button">Salva bozza <kbd>⌘S</kbd></button>
+              <button class="btn btn-primary" type="submit">
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+                Emetti formulario
+              </button>
+            </div>
+
+          </form>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+// Toggle densità tabella FIR (Comoda / Compatta)
+function setDensity(mode){
+  var t=document.getElementById('firTable');
+  var comoda=document.getElementById('d-comoda');
+  var compatta=document.getElementById('d-compatta');
+  if(mode==='compatta'){
+    t.classList.add('compact');
+    compatta.classList.add('active'); compatta.setAttribute('aria-pressed','true');
+    comoda.classList.remove('active'); comoda.setAttribute('aria-pressed','false');
+  }else{
+    t.classList.remove('compact');
+    comoda.classList.add('active'); comoda.setAttribute('aria-pressed','true');
+    compatta.classList.remove('active'); compatta.setAttribute('aria-pressed','false');
+  }
+}
+// Scorciatoie da tastiera dimostrative
+document.addEventListener('keydown',function(e){
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();document.querySelector('.topbar .search input').focus();}
+  if(e.key==='n'&&!/input|select|textarea/i.test(document.activeElement.tagName)){
+    e.preventDefault();document.getElementById('nuovo').scrollIntoView({behavior:'smooth'});
+  }
+});
+</script>
+</body>
+</html>

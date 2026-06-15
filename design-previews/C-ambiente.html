@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WasteFlow — Direzione "Ambiente Sereno"</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:ital,wght@0,400..800;1,400..600&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Spacing scale (8pt grid) */
+  --s-4:4px; --s-8:8px; --s-12:12px; --s-16:16px; --s-24:24px;
+  --s-32:32px; --s-40:40px; --s-48:48px; --s-64:64px;
+
+  /* Control heights (unified) */
+  --control-sm:32px; --control-md:40px; --control-lg:48px;
+
+  /* Radii */
+  --r-sm:8px; --r-md:10px; --r-lg:14px; --r-pill:999px;
+
+  /* Palette — warm neutral + natural green */
+  --cream:#FBFAF7;
+  --paper:#FFFFFF;
+  --surface:#F4F2EC;
+  --line:#E4E0D6;
+  --line-strong:#D2CCBE;
+
+  --ink:#1E2A22;       /* warm near-black */
+  --ink-soft:#4A564E;
+  --ink-mute:#6B7669;
+
+  --forest:#2F7A4D;    /* primary accent — AA on cream */
+  --forest-700:#256340;
+  --forest-800:#1C4D32;
+  --forest-50:#E9F3ED;
+  --forest-100:#D6E9DD;
+
+  --teal:#1F8A8A;
+  --teal-50:#E2F2F2;
+
+  /* Status */
+  --ok:#2F7A4D; --ok-bg:#E4F1E9;
+  --warn:#9A6A12; --warn-bg:#FBF0D8;
+  --info:#1F6FA8; --info-bg:#E1EFF8;
+  --danger:#B23A2E; --danger-bg:#FBE6E2;
+  --neutral:#5C6660; --neutral-bg:#ECEAE3;
+
+  /* Shadows — soft */
+  --sh-1:0 1px 2px rgba(30,42,34,.05), 0 1px 3px rgba(30,42,34,.06);
+  --sh-2:0 4px 12px rgba(30,42,34,.07), 0 2px 4px rgba(30,42,34,.05);
+  --sh-3:0 12px 32px rgba(30,42,34,.10);
+
+  --focus:0 0 0 3px rgba(47,122,77,.35);
+
+  --sidebar-w:248px;
+}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  margin:0;
+  background:var(--cream);
+  color:var(--ink);
+  font-family:"Hanken Grotesk",system-ui,sans-serif;
+  font-size:15px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:"Bricolage Grotesque",system-ui,sans-serif;margin:0;letter-spacing:-.01em;line-height:1.15;}
+code,.mono{font-family:"Roboto Mono",monospace;font-variant-ligatures:none;}
+
+a{color:var(--forest-700);}
+:focus-visible{outline:none;box-shadow:var(--focus);border-radius:var(--r-sm);}
+
+/* ===== Direction banner ===== */
+.banner{
+  background:linear-gradient(110deg,var(--forest-800),var(--forest));
+  color:#fff;padding:var(--s-24) var(--s-32);
+}
+.banner .wrap{max-width:1320px;margin:0 auto;display:flex;align-items:center;gap:var(--s-24);flex-wrap:wrap;}
+.banner .leaf{font-size:34px;line-height:1;}
+.banner h1{font-size:26px;color:#fff;}
+.banner p{margin:var(--s-4) 0 0;color:#DCEEE3;font-size:15px;max-width:780px;}
+.banner .tag{margin-left:auto;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);
+  padding:6px 14px;border-radius:var(--r-pill);font-size:12.5px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;}
+
+/* ===== App shell ===== */
+.app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh;}
+
+.sidebar{
+  background:var(--ink);color:#D7DDD8;padding:var(--s-24) var(--s-16);
+  display:flex;flex-direction:column;gap:var(--s-24);position:sticky;top:0;height:100vh;
+}
+.brand{display:flex;align-items:center;gap:var(--s-12);padding:0 var(--s-8);}
+.brand .mark{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--forest),var(--teal));
+  display:grid;place-items:center;font-size:20px;box-shadow:var(--sh-2);}
+.brand .name{font-family:"Bricolage Grotesque";font-weight:700;font-size:19px;color:#fff;letter-spacing:-.02em;}
+.brand .name small{display:block;font-family:"Hanken Grotesk";font-weight:500;font-size:11px;color:#8FA096;letter-spacing:.04em;text-transform:uppercase;}
+
+.org{
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:var(--r-md);
+  padding:var(--s-12);display:flex;flex-direction:column;gap:6px;
+}
+.org label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#8FA096;font-weight:600;}
+.org select{
+  height:var(--control-sm);width:100%;background:rgba(255,255,255,.06);color:#fff;border:1px solid rgba(255,255,255,.16);
+  border-radius:var(--r-sm);padding:0 var(--s-8);font-family:inherit;font-size:13px;
+}
+.org .sub{font-size:11.5px;color:#A9B5AD;}
+
+nav{display:flex;flex-direction:column;gap:2px;}
+nav .group{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#7C8B81;font-weight:700;padding:var(--s-12) var(--s-8) var(--s-4);}
+nav a{
+  display:flex;align-items:center;gap:var(--s-12);height:var(--control-md);padding:0 var(--s-12);
+  border-radius:var(--r-sm);color:#CDD5CF;text-decoration:none;font-weight:500;font-size:14.5px;
+}
+nav a .ic{width:20px;text-align:center;font-size:16px;}
+nav a:hover{background:rgba(255,255,255,.06);color:#fff;}
+nav a.active{background:var(--forest);color:#fff;box-shadow:var(--sh-1);}
+nav a .badge{margin-left:auto;background:var(--teal);color:#fff;font-size:11px;font-weight:700;padding:1px 8px;border-radius:var(--r-pill);}
+
+.side-foot{margin-top:auto;font-size:11.5px;color:#7C8B81;padding:0 var(--s-8);}
+
+.main{display:flex;flex-direction:column;min-width:0;}
+
+/* ===== Topbar ===== */
+.topbar{
+  position:sticky;top:0;z-index:20;background:rgba(251,250,247,.88);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);padding:var(--s-12) var(--s-32);
+  display:flex;align-items:center;gap:var(--s-16);
+}
+.search{position:relative;flex:1;max-width:460px;}
+.search .ic{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--ink-mute);font-size:15px;}
+.search input{
+  height:var(--control-md);width:100%;border:1px solid var(--line-strong);border-radius:var(--r-md);
+  background:var(--paper);padding:0 var(--s-16) 0 40px;font-family:inherit;font-size:14.5px;color:var(--ink);
+}
+.search input::placeholder{color:var(--ink-mute);}
+.topbar .spacer{flex:1;}
+.icon-btn{
+  height:var(--control-md);width:var(--control-md);border:1px solid var(--line-strong);background:var(--paper);
+  border-radius:var(--r-md);display:grid;place-items:center;font-size:17px;cursor:pointer;color:var(--ink-soft);position:relative;
+}
+.icon-btn:hover{border-color:var(--forest);color:var(--forest);}
+.icon-btn .dot{position:absolute;top:8px;right:9px;width:8px;height:8px;background:var(--danger);border-radius:50%;border:2px solid var(--paper);}
+.user{display:flex;align-items:center;gap:var(--s-12);height:var(--control-md);padding:0 var(--s-12) 0 6px;
+  border:1px solid var(--line-strong);background:var(--paper);border-radius:var(--r-pill);cursor:pointer;}
+.user .av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--forest));
+  color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;}
+.user .who{font-size:13px;line-height:1.2;}
+.user .who b{font-weight:600;}
+.user .who small{display:block;color:var(--ink-mute);font-size:11.5px;}
+
+/* ===== Content scaffold ===== */
+.content{padding:var(--s-32);max-width:1320px;width:100%;margin:0 auto;}
+.screen{margin-bottom:var(--s-64);}
+.screen-tag{display:inline-flex;align-items:center;gap:8px;background:var(--forest-50);color:var(--forest-800);
+  border:1px solid var(--forest-100);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  padding:5px 12px;border-radius:var(--r-pill);margin-bottom:var(--s-16);}
+
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s-16);margin-bottom:var(--s-24);flex-wrap:wrap;}
+.page-head h2{font-size:28px;}
+.page-head p{margin:6px 0 0;color:var(--ink-mute);font-size:14.5px;}
+
+/* Buttons (unified heights) */
+.btn{
+  height:var(--control-md);display:inline-flex;align-items:center;gap:8px;padding:0 var(--s-16);
+  border-radius:var(--r-md);font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer;border:1px solid transparent;
+  white-space:nowrap;
+}
+.btn .ic{font-size:16px;}
+.btn-primary{background:var(--forest);color:#fff;box-shadow:var(--sh-1);}
+.btn-primary:hover{background:var(--forest-700);}
+.btn-ghost{background:var(--paper);color:var(--ink-soft);border-color:var(--line-strong);}
+.btn-ghost:hover{border-color:var(--forest);color:var(--forest);}
+.btn-sm{height:var(--control-sm);padding:0 var(--s-12);font-size:13px;border-radius:var(--r-sm);}
+.btn-lg{height:var(--control-lg);padding:0 var(--s-24);font-size:15.5px;}
+
+/* ===== KPI cards ===== */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s-16);margin-bottom:var(--s-24);}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s-24);box-shadow:var(--sh-1);}
+.kpi .top{display:flex;align-items:center;justify-content:space-between;}
+.kpi .ico{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:20px;}
+.kpi .ico.g{background:var(--forest-50);color:var(--forest-700);}
+.kpi .ico.t{background:var(--teal-50);color:var(--teal);}
+.kpi .ico.w{background:var(--warn-bg);color:var(--warn);}
+.kpi .ico.i{background:var(--info-bg);color:var(--info);}
+.kpi .val{font-family:"Bricolage Grotesque";font-weight:700;font-size:32px;margin-top:var(--s-16);letter-spacing:-.02em;}
+.kpi .lbl{color:var(--ink-mute);font-size:13.5px;margin-top:2px;}
+.kpi .trend{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;margin-top:var(--s-12);
+  padding:3px 9px;border-radius:var(--r-pill);}
+.trend.up{background:var(--ok-bg);color:var(--ok);}
+.trend.down{background:var(--danger-bg);color:var(--danger);}
+
+/* ===== Cards / panels ===== */
+.grid-2{display:grid;grid-template-columns:1.6fr 1fr;gap:var(--s-16);margin-bottom:var(--s-24);}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-1);overflow:hidden;}
+.panel .ph{display:flex;align-items:center;justify-content:space-between;padding:var(--s-16) var(--s-24);border-bottom:1px solid var(--line);}
+.panel .ph h3{font-size:17px;}
+.panel .ph .sub{font-size:12.5px;color:var(--ink-mute);}
+.panel .pb{padding:var(--s-24);}
+
+/* chart placeholder */
+.chart{height:240px;border-radius:var(--r-md);background:
+  linear-gradient(180deg,var(--forest-50),transparent 70%);position:relative;overflow:hidden;border:1px dashed var(--line-strong);}
+.chart svg{position:absolute;inset:0;width:100%;height:100%;}
+.chart .legend{position:absolute;top:12px;left:16px;display:flex;gap:16px;font-size:12px;color:var(--ink-soft);}
+.chart .legend span{display:inline-flex;align-items:center;gap:6px;}
+.dotc{width:10px;height:10px;border-radius:3px;display:inline-block;}
+
+/* donut-ish breakdown */
+.brk{display:flex;flex-direction:column;gap:var(--s-16);}
+.brk .row{display:flex;align-items:center;gap:var(--s-12);}
+.brk .bar{flex:1;height:10px;background:var(--surface);border-radius:var(--r-pill);overflow:hidden;}
+.brk .bar i{display:block;height:100%;border-radius:var(--r-pill);}
+.brk .nm{font-size:13.5px;min-width:150px;display:flex;align-items:center;gap:8px;}
+.brk .pc{font-family:"Roboto Mono";font-size:13px;font-weight:600;min-width:42px;text-align:right;}
+
+/* ===== Tables ===== */
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:760px;}
+thead th{
+  position:sticky;top:0;background:var(--surface);text-align:left;font-weight:600;font-size:12px;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);padding:var(--s-12) var(--s-16);
+  border-bottom:1px solid var(--line);white-space:nowrap;
+}
+tbody td{padding:var(--s-12) var(--s-16);border-bottom:1px solid var(--line);vertical-align:middle;}
+tbody tr:hover{background:var(--forest-50);}
+tbody tr:last-child td{border-bottom:none;}
+.fir-no{font-family:"Roboto Mono";font-weight:600;color:var(--forest-800);font-size:13.5px;}
+.eer{font-family:"Roboto Mono";font-size:12.5px;background:var(--surface);border:1px solid var(--line);
+  border-radius:6px;padding:2px 7px;color:var(--ink-soft);}
+.muted{color:var(--ink-mute);}
+.num{font-family:"Roboto Mono";font-variant-numeric:tabular-nums;}
+
+/* status chip (color + icon + text) */
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;
+  padding:4px 10px;border-radius:var(--r-pill);white-space:nowrap;border:1px solid transparent;}
+.chip .ic{font-size:13px;}
+.chip.ok{background:var(--ok-bg);color:var(--ok);border-color:#BFE0CC;}
+.chip.warn{background:var(--warn-bg);color:var(--warn);border-color:#EBD49A;}
+.chip.info{background:var(--info-bg);color:var(--info);border-color:#BFDDF0;}
+.chip.danger{background:var(--danger-bg);color:var(--danger);border-color:#EFC4BD;}
+.chip.neutral{background:var(--neutral-bg);color:var(--neutral);border-color:#D8D5CC;}
+
+.row-actions{display:flex;gap:6px;}
+.act{width:var(--control-sm);height:var(--control-sm);border:1px solid var(--line-strong);background:var(--paper);
+  border-radius:var(--r-sm);display:grid;place-items:center;cursor:pointer;font-size:14px;color:var(--ink-soft);}
+.act:hover{border-color:var(--forest);color:var(--forest);background:var(--forest-50);}
+
+/* ===== Toolbar (filters same height) ===== */
+.toolbar{display:flex;align-items:center;gap:var(--s-12);flex-wrap:wrap;margin-bottom:var(--s-16);
+  background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s-12) var(--s-16);box-shadow:var(--sh-1);}
+.field{display:flex;flex-direction:column;gap:5px;}
+.field>label{font-size:11.5px;font-weight:600;color:var(--ink-soft);}
+.ctl{
+  height:var(--control-md);border:1px solid var(--line-strong);background:var(--paper);border-radius:var(--r-md);
+  padding:0 var(--s-12);font-family:inherit;font-size:14px;color:var(--ink);min-width:150px;
+}
+select.ctl{padding-right:30px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%234A564E' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
+  background-repeat:no-repeat;background-position:right 10px center;appearance:none;}
+.search-inline{position:relative;flex:1;min-width:200px;}
+.search-inline .ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink-mute);}
+.search-inline .ctl{width:100%;padding-left:36px;}
+.toolbar .grow{flex:1;}
+
+/* demonstrate equal heights */
+.align-demo{display:flex;align-items:flex-end;gap:var(--s-12);background:var(--forest-50);border:1px dashed var(--forest-100);
+  border-radius:var(--r-md);padding:var(--s-12) var(--s-16);margin-bottom:var(--s-16);flex-wrap:wrap;}
+.align-demo .note{font-size:12px;color:var(--forest-800);font-weight:600;width:100%;margin-bottom:4px;}
+
+/* ===== Form ===== */
+.form-shell{max-width:680px;}
+.form-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-1);overflow:hidden;}
+.fsec{padding:var(--s-24);border-bottom:1px solid var(--line);}
+.fsec:last-of-type{border-bottom:none;}
+.fsec h3{font-size:16px;display:flex;align-items:center;gap:10px;margin-bottom:4px;}
+.fsec h3 .n{width:26px;height:26px;border-radius:8px;background:var(--forest-50);color:var(--forest-700);
+  display:grid;place-items:center;font-size:13px;font-weight:700;font-family:"Hanken Grotesk";}
+.fsec .sd{font-size:12.5px;color:var(--ink-mute);margin:0 0 var(--s-16) 36px;}
+.fgrid{display:grid;grid-template-columns:1fr;gap:var(--s-16);}
+.fgrid.pair{grid-template-columns:1fr 1fr;}
+.fgrid.triple{grid-template-columns:1fr 1fr 1fr;}
+.fitem{display:flex;flex-direction:column;gap:6px;}
+.fitem label{font-size:13px;font-weight:600;color:var(--ink-soft);}
+.fitem label .req{color:var(--danger);}
+.fitem .hint{font-size:12px;color:var(--ink-mute);}
+.fitem .ctl{width:100%;}
+.fitem.err .ctl{border-color:var(--danger);box-shadow:0 0 0 3px rgba(178,58,46,.14);}
+.fitem .errmsg{display:flex;align-items:center;gap:6px;color:var(--danger);font-size:12.5px;font-weight:600;}
+
+.sticky-bar{position:sticky;bottom:0;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);
+  border-top:1px solid var(--line);padding:var(--s-16) var(--s-24);display:flex;align-items:center;gap:var(--s-12);}
+.sticky-bar .left{font-size:12.5px;color:var(--ink-mute);display:flex;align-items:center;gap:8px;}
+.sticky-bar .right{margin-left:auto;display:flex;gap:var(--s-12);}
+
+/* empty state */
+.empty{text-align:center;padding:var(--s-48) var(--s-24);}
+.empty .ill{font-size:54px;margin-bottom:var(--s-12);}
+.empty h3{font-size:18px;margin-bottom:6px;}
+.empty p{color:var(--ink-mute);max-width:380px;margin:0 auto var(--s-16);font-size:14px;}
+
+/* section spacer note */
+.demo-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-mute);font-weight:700;margin-bottom:8px;}
+
+/* ===== Summary footer ===== */
+.summary{background:var(--ink);color:#D7DDD8;padding:var(--s-40) var(--s-32);}
+.summary .wrap{max-width:1320px;margin:0 auto;}
+.summary h3{color:#fff;font-size:20px;margin-bottom:var(--s-16);}
+.summary .path{font-family:"Roboto Mono";font-size:13px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);
+  padding:10px 14px;border-radius:var(--r-md);color:#CFE6D8;display:inline-block;margin-bottom:var(--s-24);}
+.summary .cols{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s-24);}
+.summary .col h4{color:#9DD3B2;font-family:"Hanken Grotesk";font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+.summary .col p{font-size:13.5px;color:#C7CFC9;margin:0;}
+.summary .col .mono{color:#fff;}
+
+/* ===== Responsive ===== */
+@media (max-width:1040px){
+  .kpis{grid-template-columns:repeat(2,1fr);}
+  .grid-2{grid-template-columns:1fr;}
+  .summary .cols{grid-template-columns:repeat(2,1fr);}
+}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr;}
+  .sidebar{position:fixed;left:-100%;}
+  .content{padding:var(--s-16);}
+  .topbar{padding:var(--s-12) var(--s-16);}
+  /* mobile table: sticky first column */
+  table{min-width:640px;}
+  thead th:first-child, tbody td:first-child{position:sticky;left:0;background:var(--paper);z-index:1;}
+  thead th:first-child{background:var(--surface);}
+  tbody tr:hover td:first-child{background:var(--forest-50);}
+  .fgrid.pair,.fgrid.triple{grid-template-columns:1fr;}
+}
+@media (max-width:560px){
+  .kpis{grid-template-columns:1fr;}
+  .banner .tag{margin-left:0;}
+  .summary .cols{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== Direction banner ===== -->
+<header class="banner">
+  <div class="wrap">
+    <span class="leaf" aria-hidden="true">🌿</span>
+    <div>
+      <h1>Ambiente Sereno</h1>
+      <p>Direzione clean-green per WasteFlow: neutro caldo, verde naturale e spazi generosi — moderna e accogliente per la PA quanto per il B2B privato, senza rinunciare alla densità dei registri.</p>
+    </div>
+    <span class="tag">Direzione C · Prototipo</span>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- ===== Sidebar ===== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">♻️</div>
+      <div class="name">WasteFlow<small>Rifiuti speciali</small></div>
+    </div>
+
+    <div class="org">
+      <label for="org-sel">Azienda / Unità locale</label>
+      <select id="org-sel" aria-label="Seleziona azienda e unità locale">
+        <option>EcoServizi Srl — Sede Bologna</option>
+        <option>EcoServizi Srl — UL Modena</option>
+        <option>Comune di Faenza — Cantiere comunale</option>
+      </select>
+      <span class="sub">P.IVA 02938471209 · 3 unità locali</span>
+    </div>
+
+    <nav aria-label="Navigazione principale">
+      <span class="group">Operatività</span>
+      <a href="#dashboard" class="active"><span class="ic" aria-hidden="true">▦</span> Dashboard</a>
+      <a href="#lista-fir"><span class="ic" aria-hidden="true">📄</span> Formulari / FIR <span class="badge">7</span></a>
+      <a href="#"><span class="ic" aria-hidden="true">📒</span> Registro C/S</a>
+      <a href="#"><span class="ic" aria-hidden="true">📊</span> MUD</a>
+      <span class="group">Integrazioni</span>
+      <a href="#"><span class="ic" aria-hidden="true">🔗</span> RENTRI</a>
+      <a href="#"><span class="ic" aria-hidden="true">🏷️</span> Anagrafiche</a>
+      <a href="#"><span class="ic" aria-hidden="true">📈</span> Analitiche</a>
+    </nav>
+
+    <div class="side-foot">v2.4 · Ambiente di prova</div>
+  </aside>
+
+  <!-- ===== Main ===== -->
+  <div class="main">
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="search">
+        <span class="ic" aria-hidden="true">🔍</span>
+        <input type="search" placeholder="Cerca formulari, EER, produttori…" aria-label="Ricerca globale">
+      </div>
+      <div class="spacer"></div>
+      <button class="icon-btn" aria-label="Notifiche"><span aria-hidden="true">🔔</span><span class="dot"></span></button>
+      <button class="icon-btn" aria-label="Guida"><span aria-hidden="true">？</span></button>
+      <button class="user" aria-label="Menu utente">
+        <span class="av" aria-hidden="true">GM</span>
+        <span class="who"><b>Giulia Manzi</b><small>Responsabile ambientale</small></span>
+      </button>
+    </div>
+
+    <main class="content">
+
+      <!-- ============ SCREEN 1 — DASHBOARD ============ -->
+      <section class="screen" id="dashboard" aria-labelledby="h-dash">
+        <span class="screen-tag">① Dashboard</span>
+        <div class="page-head">
+          <div>
+            <h2 id="h-dash">Panoramica</h2>
+            <p>EcoServizi Srl — Sede Bologna · periodo: ultimo trimestre</p>
+          </div>
+          <div style="display:flex;gap:12px;">
+            <button class="btn btn-ghost"><span class="ic" aria-hidden="true">⤓</span> Esporta</button>
+            <button class="btn btn-primary"><span class="ic" aria-hidden="true">＋</span> Nuovo formulario</button>
+          </div>
+        </div>
+
+        <!-- KPI -->
+        <div class="kpis">
+          <div class="kpi">
+            <div class="top"><div class="ico g" aria-hidden="true">📄</div></div>
+            <div class="val">1.284</div>
+            <div class="lbl">Formulari emessi (trimestre)</div>
+            <span class="trend up"><span aria-hidden="true">▲</span> +12,4% vs prec.</span>
+          </div>
+          <div class="kpi">
+            <div class="top"><div class="ico t" aria-hidden="true">⚖️</div></div>
+            <div class="val">348,7 <small style="font-size:16px;font-weight:600;color:var(--ink-mute)">t</small></div>
+            <div class="lbl">Rifiuti tracciati</div>
+            <span class="trend up"><span aria-hidden="true">▲</span> +5,1%</span>
+          </div>
+          <div class="kpi">
+            <div class="top"><div class="ico w" aria-hidden="true">⏳</div></div>
+            <div class="val">7</div>
+            <div class="lbl">FIR in attesa di 4ª copia</div>
+            <span class="trend down"><span aria-hidden="true">▼</span> 3 oltre 90 gg</span>
+          </div>
+          <div class="kpi">
+            <div class="top"><div class="ico i" aria-hidden="true">🔗</div></div>
+            <div class="val">98,6%</div>
+            <div class="lbl">Sincronizzazione RENTRI</div>
+            <span class="trend up"><span aria-hidden="true">▲</span> 2 da reinviare</span>
+          </div>
+        </div>
+
+        <!-- Chart + breakdown -->
+        <div class="grid-2">
+          <div class="panel">
+            <div class="ph">
+              <div><h3>Andamento conferimenti</h3><div class="sub">tonnellate / mese</div></div>
+              <button class="btn btn-ghost btn-sm">12 mesi ▾</button>
+            </div>
+            <div class="pb">
+              <div class="chart" role="img" aria-label="Grafico andamento conferimenti negli ultimi mesi, trend in crescita">
+                <div class="legend">
+                  <span><i class="dotc" style="background:var(--forest)"></i> Pericolosi</span>
+                  <span><i class="dotc" style="background:var(--teal)"></i> Non pericolosi</span>
+                </div>
+                <svg viewBox="0 0 600 240" preserveAspectRatio="none" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stop-color="#2f7a4d" stop-opacity=".28"/>
+                      <stop offset="1" stop-color="#2f7a4d" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M0,180 C60,160 90,150 150,140 C210,130 240,110 300,120 C360,130 400,90 460,80 C520,70 560,60 600,55 L600,240 L0,240 Z" fill="url(#ga)"/>
+                  <path d="M0,180 C60,160 90,150 150,140 C210,130 240,110 300,120 C360,130 400,90 460,80 C520,70 560,60 600,55" fill="none" stroke="#2f7a4d" stroke-width="3"/>
+                  <path d="M0,205 C60,200 90,195 150,198 C210,201 240,185 300,188 C360,191 400,170 460,168 C520,166 560,158 600,150" fill="none" stroke="#1f8a8a" stroke-width="2.5" stroke-dasharray="2 0"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="ph"><div><h3>Ripartizione per stato</h3><div class="sub">formulari attivi</div></div></div>
+            <div class="pb">
+              <div class="brk">
+                <div class="row"><span class="nm"><span class="chip ok" style="padding:2px 8px"><span class="ic" aria-hidden="true">✓</span>Completati</span></span><span class="bar"><i style="width:62%;background:var(--forest)"></i></span><span class="pc">62%</span></div>
+                <div class="row"><span class="nm"><span class="chip info" style="padding:2px 8px"><span class="ic" aria-hidden="true">↻</span>In transito</span></span><span class="bar"><i style="width:21%;background:var(--info)"></i></span><span class="pc">21%</span></div>
+                <div class="row"><span class="nm"><span class="chip warn" style="padding:2px 8px"><span class="ic" aria-hidden="true">⏳</span>Attesa 4ª</span></span><span class="bar"><i style="width:11%;background:var(--warn)"></i></span><span class="pc">11%</span></div>
+                <div class="row"><span class="nm"><span class="chip danger" style="padding:2px 8px"><span class="ic" aria-hidden="true">!</span>Respinti</span></span><span class="bar"><i style="width:6%;background:var(--danger)"></i></span><span class="pc">6%</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ultimi formulari -->
+        <div class="panel">
+          <div class="ph">
+            <h3>Ultimi formulari</h3>
+            <a href="#lista-fir" class="btn btn-ghost btn-sm">Vedi tutti</a>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>N. FIR</th><th>Produttore</th><th>EER</th><th>Quantità</th><th>Data</th><th>Stato</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><span class="fir-no">FIR/2026/000842</span></td><td>EcoServizi Srl</td><td><span class="eer">17 04 05</span></td><td class="num">12,40 t</td><td class="num muted">09/06/2026</td><td><span class="chip info"><span class="ic" aria-hidden="true">↻</span>In transito</span></td></tr>
+                <tr><td><span class="fir-no">FIR/2026/000841</span></td><td>Carrozzeria Belli</td><td><span class="eer">16 01 03</span></td><td class="num">0,85 t</td><td class="num muted">09/06/2026</td><td><span class="chip ok"><span class="ic" aria-hidden="true">✓</span>Completato</span></td></tr>
+                <tr><td><span class="fir-no">FIR/2026/000840</span></td><td>Officina Verdi</td><td><span class="eer">13 02 08*</span></td><td class="num">1,20 t</td><td class="num muted">08/06/2026</td><td><span class="chip warn"><span class="ic" aria-hidden="true">⏳</span>Attesa 4ª</span></td></tr>
+                <tr><td><span class="fir-no">FIR/2026/000839</span></td><td>Comune di Faenza</td><td><span class="eer">20 03 01</span></td><td class="num">6,00 t</td><td class="num muted">08/06/2026</td><td><span class="chip ok"><span class="ic" aria-hidden="true">✓</span>Completato</span></td></tr>
+                <tr><td><span class="fir-no">FIR/2026/000838</span></td><td>Edil Romagna SpA</td><td><span class="eer">17 09 04</span></td><td class="num">22,10 t</td><td class="num muted">07/06/2026</td><td><span class="chip danger"><span class="ic" aria-hidden="true">!</span>Respinto</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 2 — LISTA FIR ============ -->
+      <section class="screen" id="lista-fir" aria-labelledby="h-fir">
+        <span class="screen-tag">② Lista Formulari / FIR</span>
+        <div class="page-head">
+          <div>
+            <h2 id="h-fir">Formulari di identificazione rifiuto</h2>
+            <p>1.284 formulari · filtra per stato, periodo o codice EER</p>
+          </div>
+          <button class="btn btn-primary"><span class="ic" aria-hidden="true">＋</span> Nuovo formulario</button>
+        </div>
+
+        <!-- Equal-height demonstration -->
+        <div class="align-demo">
+          <span class="note">↕ Altezze controlli unificate — input, select e bottoni affiancati condividono altezza (40px) e gap (12px)</span>
+          <div class="search-inline" style="max-width:260px">
+            <span class="ic" aria-hidden="true">🔍</span>
+            <input class="ctl" type="search" placeholder="Cerca per N. FIR…" aria-label="Cerca formulario">
+          </div>
+          <select class="ctl" aria-label="Stato"><option>Tutti gli stati</option></select>
+          <input class="ctl" type="date" aria-label="Data" value="2026-06-01" style="min-width:140px">
+          <button class="btn btn-ghost"><span class="ic" aria-hidden="true">⚙</span> Filtri</button>
+          <button class="btn btn-primary">Applica</button>
+        </div>
+
+        <!-- Real toolbar -->
+        <div class="toolbar" role="search">
+          <div class="search-inline grow">
+            <span class="ic" aria-hidden="true">🔍</span>
+            <input class="ctl" type="search" placeholder="Cerca formulario, produttore o EER…" aria-label="Cerca">
+          </div>
+          <select class="ctl" aria-label="Filtra per stato">
+            <option>Tutti gli stati</option>
+            <option>Completato</option>
+            <option>In transito</option>
+            <option>Attesa 4ª copia</option>
+            <option>Respinto</option>
+          </select>
+          <select class="ctl" aria-label="Filtra per tipo rifiuto">
+            <option>Tutti i rifiuti</option>
+            <option>Pericolosi</option>
+            <option>Non pericolosi</option>
+          </select>
+          <input class="ctl" type="month" aria-label="Periodo" value="2026-06" style="min-width:150px">
+          <button class="btn btn-ghost"><span class="ic" aria-hidden="true">⤓</span> Esporta</button>
+        </div>
+
+        <div class="panel">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>N. FIR</th><th>Produttore / Destinatario</th><th>EER</th><th>Quantità</th>
+                  <th>Trasportatore</th><th>Data</th><th>Stato</th><th style="text-align:right">Azioni</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="fir-no">FIR/2026/000842</span></td>
+                  <td>EcoServizi Srl <span class="muted">→ Recuperi Sud</span></td>
+                  <td><span class="eer">17 04 05</span></td>
+                  <td class="num">12,40 t</td>
+                  <td>Trasporti Aurora</td>
+                  <td class="num muted">09/06/26</td>
+                  <td><span class="chip info"><span class="ic" aria-hidden="true">↻</span>In transito</span></td>
+                  <td><div class="row-actions" style="justify-content:flex-end">
+                    <button class="act" aria-label="Visualizza"><span aria-hidden="true">👁</span></button>
+                    <button class="act" aria-label="Modifica"><span aria-hidden="true">✎</span></button>
+                    <button class="act" aria-label="Stampa PDF"><span aria-hidden="true">⤓</span></button>
+                  </div></td>
+                </tr>
+                <tr>
+                  <td><span class="fir-no">FIR/2026/000841</span></td>
+                  <td>Carrozzeria Belli <span class="muted">→ EcoServizi Srl</span></td>
+                  <td><span class="eer">16 01 03</span></td>
+                  <td class="num">0,85 t</td>
+                  <td>Logistica Verde</td>
+                  <td class="num muted">09/06/26</td>
+                  <td><span class="chip ok"><span class="ic" aria-hidden="true">✓</span>Completato</span></td>
+                  <td><div class="row-actions" style="justify-content:flex-end">
+                    <button class="act" aria-label="Visualizza"><span aria-hidden="true">👁</span></button>
+                    <button class="act" aria-label="Modifica"><span aria-hidden="true">✎</span></button>
+                    <button class="act" aria-label="Stampa PDF"><span aria-hidden="true">⤓</span></button>
+                  </div></td>
+                </tr>
+                <tr>
+                  <td><span class="fir-no">FIR/2026/000840</span></td>
+                  <td>Officina Verdi <span class="muted">→ Oli Riciclati Spa</span></td>
+                  <td><span class="eer">13 02 08*</span></td>
+                  <td class="num">1,20 t</td>
+                  <td>Trasporti Aurora</td>
+                  <td class="num muted">08/06/26</td>
+                  <td><span class="chip warn"><span class="ic" aria-hidden="true">⏳</span>Attesa 4ª</span></td>
+                  <td><div class="row-actions" style="justify-content:flex-end">
+                    <button class="act" aria-label="Visualizza"><span aria-hidden="true">👁</span></button>
+                    <button class="act" aria-label="Modifica"><span aria-hidden="true">✎</span></button>
+                    <button class="act" aria-label="Stampa PDF"><span aria-hidden="true">⤓</span></button>
+                  </div></td>
+                </tr>
+                <tr>
+                  <td><span class="fir-no">FIR/2026/000839</span></td>
+                  <td>Comune di Faenza <span class="muted">→ Discarica Nord</span></td>
+                  <td><span class="eer">20 03 01</span></td>
+                  <td class="num">6,00 t</td>
+                  <td>Servizi Ecologici</td>
+                  <td class="num muted">08/06/26</td>
+                  <td><span class="chip ok"><span class="ic" aria-hidden="true">✓</span>Completato</span></td>
+                  <td><div class="row-actions" style="justify-content:flex-end">
+                    <button class="act" aria-label="Visualizza"><span aria-hidden="true">👁</span></button>
+                    <button class="act" aria-label="Modifica"><span aria-hidden="true">✎</span></button>
+                    <button class="act" aria-label="Stampa PDF"><span aria-hidden="true">⤓</span></button>
+                  </div></td>
+                </tr>
+                <tr>
+                  <td><span class="fir-no">FIR/2026/000838</span></td>
+                  <td>Edil Romagna SpA <span class="muted">→ Inerti Recupero</span></td>
+                  <td><span class="eer">17 09 04</span></td>
+                  <td class="num">22,10 t</td>
+                  <td>Trasporti Aurora</td>
+                  <td class="num muted">07/06/26</td>
+                  <td><span class="chip danger"><span class="ic" aria-hidden="true">!</span>Respinto</span></td>
+                  <td><div class="row-actions" style="justify-content:flex-end">
+                    <button class="act" aria-label="Visualizza"><span aria-hidden="true">👁</span></button>
+                    <button class="act" aria-label="Modifica"><span aria-hidden="true">✎</span></button>
+                    <button class="act" aria-label="Stampa PDF"><span aria-hidden="true">⤓</span></button>
+                  </div></td>
+                </tr>
+                <tr>
+                  <td><span class="fir-no">FIR/2026/000837</span></td>
+                  <td>Tipografia Moderna <span class="muted">→ EcoServizi Srl</span></td>
+                  <td><span class="eer">08 03 18</span></td>
+                  <td class="num">0,32 t</td>
+                  <td>Logistica Verde</td>
+                  <td class="num muted">07/06/26</td>
+                  <td><span class="chip neutral"><span class="ic" aria-hidden="true">✎</span>Bozza</span></td>
+                  <td><div class="row-actions" style="justify-content:flex-end">
+                    <button class="act" aria-label="Visualizza"><span aria-hidden="true">👁</span></button>
+                    <button class="act" aria-label="Modifica"><span aria-hidden="true">✎</span></button>
+                    <button class="act" aria-label="Stampa PDF"><span aria-hidden="true">⤓</span></button>
+                  </div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Empty state demo -->
+        <p class="demo-label" style="margin-top:32px">Esempio empty state (filtro senza risultati)</p>
+        <div class="panel">
+          <div class="empty">
+            <div class="ill" aria-hidden="true">🍃</div>
+            <h3>Nessun formulario per questi filtri</h3>
+            <p>Non ci sono FIR che corrispondono a stato “Respinto” nel periodo selezionato. Prova ad ampliare l’intervallo o azzerare i filtri.</p>
+            <button class="btn btn-ghost">Azzera filtri</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 3 — FORM ============ -->
+      <section class="screen" id="nuovo-fir" aria-labelledby="h-form">
+        <span class="screen-tag">③ Nuovo formulario</span>
+        <div class="page-head">
+          <div>
+            <h2 id="h-form">Nuovo formulario</h2>
+            <p>Colonna singola a sezioni · compilazione senza scroll infinito · salvataggio sempre raggiungibile</p>
+          </div>
+        </div>
+
+        <div class="form-shell">
+          <form class="form-card" novalidate>
+
+            <!-- Produttore -->
+            <section class="fsec" aria-labelledby="s1">
+              <h3 id="s1"><span class="n" aria-hidden="true">1</span> Produttore</h3>
+              <p class="sd">Soggetto che produce il rifiuto. Snapshot anagrafico al momento dell’emissione.</p>
+              <div class="fgrid">
+                <div class="fitem">
+                  <label for="p-rs">Ragione sociale <span class="req">*</span></label>
+                  <input class="ctl" id="p-rs" value="EcoServizi Srl">
+                </div>
+                <div class="fgrid pair">
+                  <div class="fitem">
+                    <label for="p-piva">Partita IVA <span class="req">*</span></label>
+                    <input class="ctl mono" id="p-piva" value="02938471209">
+                  </div>
+                  <div class="fitem">
+                    <label for="p-ul">Unità locale</label>
+                    <select class="ctl" id="p-ul"><option>Sede Bologna</option><option>UL Modena</option></select>
+                  </div>
+                </div>
+                <div class="fgrid pair">
+                  <div class="fitem">
+                    <label for="p-cap">CAP <span class="req">*</span></label>
+                    <input class="ctl mono" id="p-cap" value="40121" style="max-width:120px">
+                  </div>
+                  <div class="fitem">
+                    <label for="p-com">Comune <span class="req">*</span></label>
+                    <input class="ctl" id="p-com" value="Bologna (BO)">
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Trasportatore -->
+            <section class="fsec" aria-labelledby="s2">
+              <h3 id="s2"><span class="n" aria-hidden="true">2</span> Trasportatore</h3>
+              <p class="sd">Vettore iscritto all’Albo Gestori Ambientali.</p>
+              <div class="fgrid">
+                <div class="fitem">
+                  <label for="t-rs">Ragione sociale <span class="req">*</span></label>
+                  <input class="ctl" id="t-rs" value="Trasporti Aurora Srl">
+                </div>
+                <div class="fgrid pair">
+                  <div class="fitem">
+                    <label for="t-albo">N. iscrizione Albo <span class="req">*</span></label>
+                    <input class="ctl mono" id="t-albo" value="BO/004821">
+                  </div>
+                  <div class="fitem">
+                    <label for="t-targa">Targa automezzo</label>
+                    <input class="ctl mono" id="t-targa" value="GA 482 LP">
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Destinatario -->
+            <section class="fsec" aria-labelledby="s3">
+              <h3 id="s3"><span class="n" aria-hidden="true">3</span> Destinatario</h3>
+              <p class="sd">Impianto di recupero (R) o smaltimento (D).</p>
+              <div class="fgrid">
+                <div class="fitem">
+                  <label for="d-rs">Ragione sociale <span class="req">*</span></label>
+                  <input class="ctl" id="d-rs" value="Recuperi Sud Spa">
+                </div>
+                <div class="fgrid pair">
+                  <div class="fitem">
+                    <label for="d-op">Operazione</label>
+                    <select class="ctl" id="d-op"><option>R13 — Messa in riserva</option><option>R4 — Riciclo metalli</option><option>D15 — Deposito preliminare</option></select>
+                  </div>
+                  <div class="fitem">
+                    <label for="d-aut">N. autorizzazione</label>
+                    <input class="ctl mono" id="d-aut" value="AUA-2024-1187">
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Rifiuto EER -->
+            <section class="fsec" aria-labelledby="s4">
+              <h3 id="s4"><span class="n" aria-hidden="true">4</span> Rifiuto (EER)</h3>
+              <p class="sd">Codice dell’Elenco Europeo dei Rifiuti e caratteristiche.</p>
+              <div class="fgrid">
+                <div class="fgrid pair">
+                  <div class="fitem">
+                    <label for="r-eer">Codice EER <span class="req">*</span></label>
+                    <input class="ctl mono" id="r-eer" value="17 04 05">
+                    <span class="hint">Ferro e acciaio — non pericoloso</span>
+                  </div>
+                  <div class="fitem">
+                    <label for="r-stato">Stato fisico</label>
+                    <select class="ctl" id="r-stato"><option>Solido non polverulento</option><option>Fangoso palabile</option><option>Liquido</option></select>
+                  </div>
+                </div>
+                <!-- inline validation error example -->
+                <div class="fgrid triple">
+                  <div class="fitem err">
+                    <label for="r-qta">Quantità <span class="req">*</span></label>
+                    <input class="ctl mono" id="r-qta" value="" placeholder="0,00" aria-invalid="true" aria-describedby="r-qta-err">
+                    <span class="errmsg" id="r-qta-err"><span aria-hidden="true">⚠</span> Inserisci la quantità</span>
+                  </div>
+                  <div class="fitem">
+                    <label for="r-um">U.M.</label>
+                    <select class="ctl" id="r-um"><option>t</option><option>kg</option><option>m³</option></select>
+                  </div>
+                  <div class="fitem">
+                    <label for="r-peso">Peso verificato</label>
+                    <select class="ctl" id="r-peso"><option>Sì, a destino</option><option>No</option></select>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Trasporto -->
+            <section class="fsec" aria-labelledby="s5">
+              <h3 id="s5"><span class="n" aria-hidden="true">5</span> Trasporto</h3>
+              <p class="sd">Data e ora inizio trasporto, percorso e annotazioni.</p>
+              <div class="fgrid">
+                <div class="fgrid pair">
+                  <div class="fitem">
+                    <label for="x-data">Data inizio <span class="req">*</span></label>
+                    <input class="ctl" id="x-data" type="date" value="2026-06-10">
+                  </div>
+                  <div class="fitem">
+                    <label for="x-ora">Ora inizio</label>
+                    <input class="ctl" id="x-ora" type="time" value="08:30">
+                  </div>
+                </div>
+                <div class="fitem">
+                  <label for="x-note">Annotazioni</label>
+                  <input class="ctl" id="x-note" placeholder="Percorso, note al conducente…">
+                </div>
+              </div>
+            </section>
+
+            <!-- Sticky action bar -->
+            <div class="sticky-bar">
+              <div class="left"><span aria-hidden="true">💾</span> Bozza salvata automaticamente alle 11:42</div>
+              <div class="right">
+                <button type="button" class="btn btn-ghost">Annulla</button>
+                <button type="button" class="btn btn-ghost">Salva bozza</button>
+                <button type="submit" class="btn btn-primary"><span class="ic" aria-hidden="true">✓</span> Salva ed emetti</button>
+              </div>
+            </div>
+
+          </form>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ===== Summary footer ===== -->
+<footer class="summary">
+  <div class="wrap">
+    <h3>Sintesi direzione — “Ambiente Sereno”</h3>
+    <span class="path">C:\Progetti\rifiuti\design-previews\C-ambiente.html</span>
+    <div class="cols">
+      <div class="col">
+        <h4>Tipografia</h4>
+        <p>Display <span class="mono">Bricolage Grotesque</span> (titoli), body <span class="mono">Hanken Grotesk</span>, codici in <span class="mono">Roboto Mono</span> (N. FIR, EER, P.IVA). Gerarchia marcata: H2 28px, KPI 32px.</p>
+      </div>
+      <div class="col">
+        <h4>Palette</h4>
+        <p>Neutro caldo crema <span class="mono">#FBFAF7</span>, accento verde foresta <span class="mono">#2F7A4D</span> (AA) con tocchi teal <span class="mono">#1F8A8A</span>. Raggi morbidi 8–14px, ombre soffuse, spazi generosi senza perdere densità nei registri.</p>
+      </div>
+      <div class="col">
+        <h4>Altezze & no-scroll</h4>
+        <p>Controlli unificati <span class="mono">32/40/48px</span>, gap 12px — input/select/bottoni perfettamente allineati (banda dimostrativa nella lista). Form a colonna singola (max 680px) per sezioni, multi-colonna solo per coppie brevi, sticky save bar.</p>
+      </div>
+      <div class="col">
+        <h4>WCAG 2.1 AA</h4>
+        <p>Contrasto ≥4.5:1, focus ring visibile (3px verde), label associate, nav/main/section + H1 unico, stati FIR sempre colore + icona + testo, errore inline d’esempio sulla quantità. Tabelle scroll orizzontale con 1ª colonna sticky su mobile.</p>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

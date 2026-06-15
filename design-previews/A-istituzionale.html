@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WasteFlow — Direzione A: Istituzionale Chiaro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   WASTEFLOW — DIREZIONE A "ISTITUZIONALE CHIARO" (PA-trust)
+   Sistema condiviso: griglia 8pt, altezze controlli unificate,
+   form senza scroll, WCAG 2.1 AA.
+   ============================================================ */
+
+/* ---- TOKEN: spacing scala 4/8/12/16/24/32/40/48/64 ---- */
+:root{
+  --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-6:24px;
+  --s-8:32px; --s-10:40px; --s-12:48px; --s-16:64px;
+
+  /* ---- ALTEZZE CONTROLLI UNICHE ---- */
+  --control-sm:32px;
+  --control-md:40px;   /* default */
+  --control-lg:48px;
+  --control-gap:8px;   /* gap orizzontale unico per controlli affiancati */
+
+  /* ---- PALETTE: bianco dominante + blu istituzionale + neutri freddi ---- */
+  --bg:#f4f6f9;            /* grigio freddo di fondo */
+  --surface:#ffffff;
+  --surface-alt:#f8fafc;
+  --accent:#0a5fb3;        /* blu istituzionale AA su bianco (contrasto 5.6:1) */
+  --accent-strong:#084d91;
+  --accent-soft:#e7f0f9;
+  --accent-soft-border:#bcd6ee;
+
+  --ink:#11212e;           /* testo principale ~16:1 */
+  --ink-2:#3a4b59;         /* testo secondario ~8:1 */
+  --ink-3:#5b6b78;         /* muted ~5:1 (AA) */
+  --border:#d4dce4;
+  --border-strong:#b6c2cd;
+
+  /* stati semantici (sempre colore + icona + testo) */
+  --ok:#1c6b3c;   --ok-bg:#e6f3ec;   --ok-bd:#a9d6bb;
+  --warn:#8a5a00; --warn-bg:#fcf2dc;  --warn-bd:#e6c98a;
+  --err:#b3261e;  --err-bg:#fbe9e8;   --err-bd:#e6b3b0;
+  --info:#0a5fb3; --info-bg:#e7f0f9;  --info-bd:#bcd6ee;
+  --draft:#4a5a67;--draft-bg:#eef1f4; --draft-bd:#cdd6de;
+
+  --radius:6px;
+  --radius-sm:4px;
+  --shadow-1:0 1px 2px rgba(17,33,46,.06);
+  --shadow-2:0 2px 8px rgba(17,33,46,.08);
+
+  --mono:'Roboto Mono', ui-monospace, monospace;
+  --sans:'Titillium Web', system-ui, sans-serif;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:var(--sans);
+  background:var(--bg);
+  color:var(--ink);
+  font-size:15px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{margin:0;font-weight:600;line-height:1.25;color:var(--ink);}
+p{margin:0;}
+a{color:var(--accent);}
+.mono{font-family:var(--mono);font-feature-settings:"tnum";letter-spacing:-.01em;}
+
+/* ---- FOCUS RING VISIBILE (WCAG) ---- */
+:focus-visible{
+  outline:3px solid var(--accent);
+  outline-offset:2px;
+  border-radius:var(--radius-sm);
+}
+button:focus-visible,a:focus-visible,input:focus-visible,
+select:focus-visible,.row-action:focus-visible{
+  outline:3px solid var(--accent);
+  outline-offset:2px;
+}
+
+/* skip link */
+.skip-link{
+  position:absolute;left:var(--s-2);top:-60px;z-index:100;
+  background:var(--accent);color:#fff;padding:var(--s-2) var(--s-4);
+  border-radius:var(--radius);transition:top .15s;
+}
+.skip-link:focus{top:var(--s-2);}
+
+/* ============================================================
+   BANNER DIREZIONE
+   ============================================================ */
+.design-banner{
+  background:linear-gradient(90deg,#084d91,#0a5fb3);
+  color:#fff;padding:var(--s-4) var(--s-8);
+  display:flex;align-items:baseline;gap:var(--s-4);flex-wrap:wrap;
+  border-bottom:3px solid #06376b;
+}
+.design-banner .tag{
+  font-family:var(--mono);font-size:12px;font-weight:600;
+  background:rgba(255,255,255,.18);padding:2px 8px;border-radius:4px;
+  letter-spacing:.04em;
+}
+.design-banner h1{color:#fff;font-size:20px;font-weight:700;}
+.design-banner p{color:#dbe9f7;font-size:14px;}
+
+/* ============================================================
+   SHELL
+   ============================================================ */
+.app{
+  display:grid;
+  grid-template-columns:248px 1fr;
+  grid-template-rows:auto 1fr;
+  grid-template-areas:"sidebar topbar" "sidebar main";
+  min-height:100vh;
+}
+
+/* ---- SIDEBAR ---- */
+.sidebar{
+  grid-area:sidebar;
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+}
+.brand{
+  display:flex;align-items:center;gap:var(--s-3);
+  padding:var(--s-4) var(--s-4);
+  border-bottom:1px solid var(--border);
+  height:auto;
+}
+.brand .logo{
+  width:36px;height:36px;flex:none;border-radius:8px;
+  background:var(--accent);display:grid;place-items:center;
+  color:#fff;
+}
+.brand .logo svg{width:22px;height:22px;}
+.brand .name{font-weight:700;font-size:17px;letter-spacing:-.01em;}
+.brand .name span{color:var(--accent);}
+.brand .sub{font-size:11px;color:var(--ink-3);font-weight:400;}
+
+/* selettore azienda / unità locale */
+.tenant{
+  padding:var(--s-3) var(--s-4);
+  border-bottom:1px solid var(--border);
+  background:var(--surface-alt);
+}
+.tenant label{
+  display:block;font-size:11px;font-weight:600;color:var(--ink-3);
+  text-transform:uppercase;letter-spacing:.05em;margin-bottom:var(--s-1);
+}
+
+.nav{padding:var(--s-3) var(--s-2);flex:1;overflow:auto;}
+.nav .group-label{
+  font-size:11px;font-weight:600;color:var(--ink-3);
+  text-transform:uppercase;letter-spacing:.06em;
+  padding:var(--s-3) var(--s-3) var(--s-2);
+}
+.nav a{
+  display:flex;align-items:center;gap:var(--s-3);
+  padding:0 var(--s-3);height:var(--control-md);
+  border-radius:var(--radius);color:var(--ink-2);
+  text-decoration:none;font-size:14px;font-weight:400;
+  margin-bottom:2px;
+}
+.nav a svg{width:18px;height:18px;flex:none;opacity:.8;}
+.nav a:hover{background:var(--surface-alt);color:var(--ink);}
+.nav a.active{
+  background:var(--accent-soft);color:var(--accent-strong);font-weight:600;
+  box-shadow:inset 3px 0 0 var(--accent);
+}
+.nav a.active svg{opacity:1;}
+.nav .badge-count{
+  margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:600;
+  background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;
+}
+
+.sidebar-foot{
+  padding:var(--s-3) var(--s-4);border-top:1px solid var(--border);
+  font-size:11px;color:var(--ink-3);
+}
+
+/* ---- TOPBAR ---- */
+.topbar{
+  grid-area:topbar;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:var(--s-4);
+  padding:var(--s-3) var(--s-8);
+}
+.search{flex:1;max-width:520px;position:relative;}
+.search svg{
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);
+  width:18px;height:18px;color:var(--ink-3);pointer-events:none;
+}
+.search input{padding-left:38px;width:100%;}
+
+.topbar-actions{display:flex;align-items:center;gap:var(--control-gap);margin-left:auto;}
+.icon-btn{
+  height:var(--control-md);width:var(--control-md);flex:none;
+  border:1px solid var(--border);background:var(--surface);
+  border-radius:var(--radius);display:grid;place-items:center;
+  cursor:pointer;color:var(--ink-2);position:relative;
+}
+.icon-btn:hover{background:var(--surface-alt);border-color:var(--border-strong);}
+.icon-btn svg{width:19px;height:19px;}
+.icon-btn .dot{
+  position:absolute;top:6px;right:7px;width:8px;height:8px;border-radius:50%;
+  background:var(--err);border:1.5px solid #fff;
+}
+.user{
+  display:flex;align-items:center;gap:var(--s-3);
+  height:var(--control-md);padding:0 var(--s-3) 0 var(--s-2);
+  border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--surface);cursor:pointer;
+}
+.user:hover{background:var(--surface-alt);}
+.avatar{
+  width:28px;height:28px;border-radius:50%;flex:none;
+  background:var(--accent-soft);color:var(--accent-strong);
+  display:grid;place-items:center;font-weight:700;font-size:13px;
+}
+.user .uname{font-size:13px;font-weight:600;line-height:1.1;}
+.user .urole{font-size:11px;color:var(--ink-3);}
+
+/* ---- MAIN ---- */
+.main{grid-area:main;padding:var(--s-8);overflow:auto;}
+.screen{margin-bottom:var(--s-16);max-width:1240px;}
+.screen-tag{
+  display:inline-flex;align-items:center;gap:var(--s-2);
+  font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent-strong);
+  background:var(--accent-soft);border:1px solid var(--accent-soft-border);
+  padding:3px 10px;border-radius:20px;margin-bottom:var(--s-3);
+}
+.page-head{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  gap:var(--s-4);margin-bottom:var(--s-6);flex-wrap:wrap;
+}
+.page-head .h-title{font-size:24px;font-weight:700;letter-spacing:-.01em;}
+.page-head .h-sub{font-size:14px;color:var(--ink-3);margin-top:2px;}
+
+/* ============================================================
+   CONTROLLI UNIFICATI — stessa altezza, stesso gap
+   ============================================================ */
+.btn{
+  height:var(--control-md);
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--s-2);
+  padding:0 var(--s-4);border-radius:var(--radius);
+  font-family:var(--sans);font-size:14px;font-weight:600;
+  border:1px solid transparent;cursor:pointer;white-space:nowrap;
+  line-height:1;
+}
+.btn svg{width:17px;height:17px;}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+.btn-primary:hover{background:var(--accent-strong);border-color:var(--accent-strong);}
+.btn-ghost{background:var(--surface);color:var(--ink-2);border-color:var(--border);}
+.btn-ghost:hover{background:var(--surface-alt);border-color:var(--border-strong);}
+.btn-sm{height:var(--control-sm);padding:0 var(--s-3);font-size:13px;}
+.btn-lg{height:var(--control-lg);padding:0 var(--s-6);font-size:15px;}
+
+input,select{
+  height:var(--control-md);
+  width:100%;
+  padding:0 var(--s-3);
+  border:1px solid var(--border-strong);
+  border-radius:var(--radius);
+  background:var(--surface);
+  font-family:var(--sans);font-size:14px;color:var(--ink);
+  line-height:1;
+}
+input.mono{font-family:var(--mono);}
+select{
+  appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235b6b78' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+  padding-right:34px;cursor:pointer;
+}
+input::placeholder{color:var(--ink-3);}
+input:hover,select:hover{border-color:var(--accent);}
+label{font-size:13px;font-weight:600;color:var(--ink-2);}
+
+/* card */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:var(--shadow-1);
+}
+
+/* ============================================================
+   SCREEN 1 — DASHBOARD
+   ============================================================ */
+.kpi-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s-4);
+  margin-bottom:var(--s-6);
+}
+.kpi{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:var(--s-4) var(--s-4);
+  box-shadow:var(--shadow-1);position:relative;overflow:hidden;
+}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent);}
+.kpi .kpi-top{display:flex;align-items:center;justify-content:space-between;}
+.kpi .kpi-label{font-size:13px;color:var(--ink-3);font-weight:600;}
+.kpi .kpi-ic{
+  width:34px;height:34px;border-radius:8px;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent-strong);
+}
+.kpi .kpi-ic svg{width:19px;height:19px;}
+.kpi .kpi-val{font-family:var(--mono);font-size:30px;font-weight:600;margin-top:var(--s-3);letter-spacing:-.02em;}
+.kpi .kpi-val small{font-size:15px;color:var(--ink-3);font-weight:500;}
+.kpi .kpi-delta{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;margin-top:var(--s-2);}
+.kpi .kpi-delta.up{color:var(--ok);}
+.kpi .kpi-delta.down{color:var(--err);}
+.kpi.warn::before{background:var(--warn);}
+.kpi.warn .kpi-ic{background:var(--warn-bg);color:var(--warn);}
+
+.dash-cols{display:grid;grid-template-columns:1.6fr 1fr;gap:var(--s-4);margin-bottom:var(--s-6);}
+.panel-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:var(--s-4) var(--s-4);border-bottom:1px solid var(--border);
+}
+.panel-head h3{font-size:16px;}
+.panel-body{padding:var(--s-4);}
+
+/* chart placeholder */
+.chart{height:240px;display:flex;align-items:flex-end;gap:var(--s-3);padding:var(--s-4) var(--s-2) 0;}
+.chart .bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:var(--s-2);}
+.chart .bar .col{
+  width:100%;max-width:38px;border-radius:4px 4px 0 0;
+  background:linear-gradient(180deg,var(--accent),#3d83c7);
+}
+.chart .bar .col.alt{background:linear-gradient(180deg,#a9d6bb,#1c6b3c);opacity:.85;}
+.chart .bar .lab{font-family:var(--mono);font-size:11px;color:var(--ink-3);}
+.chart-legend{display:flex;gap:var(--s-4);font-size:12px;color:var(--ink-2);padding:var(--s-3) var(--s-4) 0;}
+.chart-legend .key{display:inline-flex;align-items:center;gap:6px;}
+.chart-legend .sw{width:12px;height:12px;border-radius:3px;}
+
+/* scadenze list */
+.dl-item{display:flex;align-items:center;gap:var(--s-3);padding:var(--s-3) 0;border-bottom:1px solid var(--border);}
+.dl-item:last-child{border-bottom:0;}
+.dl-item .dl-ic{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;flex:none;}
+.dl-item .dl-main{flex:1;min-width:0;}
+.dl-item .dl-t{font-size:14px;font-weight:600;}
+.dl-item .dl-s{font-size:12px;color:var(--ink-3);}
+.dl-item .dl-when{font-family:var(--mono);font-size:12px;font-weight:600;white-space:nowrap;}
+
+/* ============================================================
+   TABELLA densa con header sticky + scroll
+   ============================================================ */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);}
+table{width:100%;border-collapse:collapse;min-width:880px;}
+thead th{
+  position:sticky;top:0;z-index:2;
+  background:var(--surface-alt);
+  text-align:left;font-size:11px;font-weight:600;color:var(--ink-3);
+  text-transform:uppercase;letter-spacing:.05em;
+  padding:var(--s-3) var(--s-4);border-bottom:1px solid var(--border-strong);
+  white-space:nowrap;
+}
+tbody td{
+  padding:var(--s-3) var(--s-4);border-bottom:1px solid var(--border);
+  font-size:14px;vertical-align:middle;
+}
+tbody tr:hover{background:var(--accent-soft);}
+tbody tr:last-child td{border-bottom:0;}
+td .sub{font-size:12px;color:var(--ink-3);}
+
+/* chip stato: colore + icona + testo */
+.chip{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;font-weight:600;padding:3px 9px;border-radius:20px;
+  border:1px solid transparent;white-space:nowrap;
+}
+.chip svg{width:13px;height:13px;}
+.chip.draft{color:var(--draft);background:var(--draft-bg);border-color:var(--draft-bd);}
+.chip.signed{color:var(--info);background:var(--info-bg);border-color:var(--info-bd);}
+.chip.sent{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-bd);}
+.chip.expired{color:var(--err);background:var(--err-bg);border-color:var(--err-bd);}
+
+/* azioni riga */
+.row-actions{display:flex;gap:6px;}
+.row-action{
+  height:30px;width:30px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);display:grid;place-items:center;cursor:pointer;color:var(--ink-2);
+}
+.row-action:hover{background:var(--accent-soft);border-color:var(--accent-soft-border);color:var(--accent-strong);}
+.row-action svg{width:16px;height:16px;}
+
+/* ============================================================
+   SCREEN 2 — TOOLBAR FILTRI (allineamento perfetto)
+   ============================================================ */
+.toolbar{
+  display:flex;align-items:flex-end;gap:var(--control-gap);
+  flex-wrap:wrap;margin-bottom:var(--s-4);
+}
+.toolbar .field{display:flex;flex-direction:column;gap:var(--s-1);}
+.toolbar .field label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3);}
+.toolbar .field.grow{flex:1;min-width:220px;}
+.toolbar .field.grow .search{max-width:none;}
+.toolbar .spacer{flex:1;}
+.toolbar .align-note{
+  width:100%;font-size:12px;color:var(--ink-3);margin-top:var(--s-2);
+  display:flex;align-items:center;gap:6px;
+}
+
+/* fascia che dimostra allineamento controlli */
+.align-demo{
+  display:flex;align-items:center;gap:var(--control-gap);
+  padding:var(--s-4);background:var(--surface);border:1px dashed var(--border-strong);
+  border-radius:var(--radius);margin-bottom:var(--s-4);flex-wrap:wrap;
+}
+.align-demo .tag-min{
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);
+  background:var(--surface-alt);border:1px solid var(--border);padding:2px 6px;border-radius:4px;
+}
+
+/* ============================================================
+   SCREEN 3 — FORM senza scroll (colonna singola a sezioni)
+   ============================================================ */
+.form-shell{max-width:680px;}
+.form-section{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:var(--shadow-1);
+  margin-bottom:var(--s-4);
+}
+.form-section > legend, .fs-head{
+  display:flex;align-items:center;gap:var(--s-3);
+  padding:var(--s-3) var(--s-4);border-bottom:1px solid var(--border);
+  width:100%;background:var(--surface-alt);
+  border-radius:var(--radius) var(--radius) 0 0;
+}
+.fs-head .fs-num{
+  width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;
+  display:grid;place-items:center;font-family:var(--mono);font-size:12px;font-weight:600;flex:none;
+}
+.fs-head h3{font-size:15px;}
+.fs-body{padding:var(--s-4);display:grid;gap:var(--s-4);}
+
+/* coppie brevi multi-colonna */
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--s-4);}
+.pair-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--s-4);}
+.field-v{display:flex;flex-direction:column;gap:var(--s-2);}
+.field-v .hint{font-size:12px;color:var(--ink-3);}
+.req{color:var(--err);}
+
+/* validazione inline */
+.field-v.error input,.field-v.error select{
+  border-color:var(--err);
+  box-shadow:0 0 0 3px var(--err-bg);
+}
+.err-msg{
+  display:flex;align-items:center;gap:6px;
+  font-size:12px;font-weight:600;color:var(--err);
+}
+.err-msg svg{width:14px;height:14px;flex:none;}
+.ok-msg{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ok);font-weight:600;}
+.ok-msg svg{width:14px;height:14px;}
+
+/* sticky action bar */
+.action-bar{
+  position:sticky;bottom:0;
+  display:flex;align-items:center;gap:var(--control-gap);
+  padding:var(--s-3) var(--s-4);
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:0 -2px 10px rgba(17,33,46,.08);
+  margin-top:var(--s-2);
+}
+.action-bar .ab-info{font-size:13px;color:var(--ink-3);display:flex;align-items:center;gap:6px;}
+.action-bar .spacer{flex:1;}
+
+/* ---- TABS demo (vanilla JS) ---- */
+.tabs{display:flex;gap:var(--s-1);border-bottom:1px solid var(--border);margin-bottom:var(--s-4);}
+.tab{
+  height:var(--control-md);padding:0 var(--s-4);background:none;border:0;
+  border-bottom:2px solid transparent;cursor:pointer;
+  font-family:var(--sans);font-size:14px;font-weight:600;color:var(--ink-3);
+}
+.tab:hover{color:var(--ink);}
+.tab[aria-selected="true"]{color:var(--accent-strong);border-bottom-color:var(--accent);}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width:1100px){
+  .kpi-grid{grid-template-columns:repeat(2,1fr);}
+  .dash-cols{grid-template-columns:1fr;}
+}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr;grid-template-areas:"topbar" "main";}
+  .sidebar{display:none;}
+  .main{padding:var(--s-4);}
+  .topbar{padding:var(--s-3) var(--s-4);}
+  .pair,.pair-3{grid-template-columns:1fr;}
+  /* tabella: prima colonna sticky su mobile */
+  thead th:first-child,tbody td:first-child{
+    position:sticky;left:0;z-index:1;background:var(--surface);
+    box-shadow:1px 0 0 var(--border);
+  }
+  thead th:first-child{z-index:3;background:var(--surface-alt);}
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Salta al contenuto principale</a>
+
+<!-- ===== FASCIA DIREZIONE ===== -->
+<div class="design-banner">
+  <span class="tag">DIREZIONE A</span>
+  <h1>Istituzionale Chiaro</h1>
+  <p>Estetica gov.uk / Designers Italia: bianco dominante, blu istituzionale, monospazio per i codici — massima conformità e affidabilità PA.</p>
+</div>
+
+<div class="app">
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>
+      </span>
+      <div>
+        <div class="name">Waste<span>Flow</span></div>
+        <div class="sub">Gestione rifiuti speciali</div>
+      </div>
+    </div>
+
+    <!-- selettore azienda / unità locale -->
+    <div class="tenant">
+      <label for="tenant-sel">Azienda / Unità locale</label>
+      <select id="tenant-sel" aria-label="Seleziona azienda e unità locale">
+        <option>EcoServizi Srl — Sede Torino</option>
+        <option>EcoServizi Srl — Deposito Settimo T.</option>
+        <option>EcoServizi Srl — Unità Asti</option>
+      </select>
+    </div>
+
+    <nav class="nav" aria-label="Moduli">
+      <div class="group-label">Operatività</div>
+      <a href="#" class="active" aria-current="page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        Dashboard
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+        Formulari / FIR
+        <span class="badge-count">12</span>
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>
+        Registro C/S
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 4-5"/></svg>
+        MUD
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0 1 8-8V2"/><path d="M20 12a8 8 0 0 1-8 8v2"/><circle cx="12" cy="12" r="3"/></svg>
+        RENTRI
+      </a>
+      <div class="group-label">Configurazione</div>
+      <a href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Anagrafiche
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/></svg>
+        Analitiche
+      </a>
+    </nav>
+
+    <div class="sidebar-foot">
+      v1.4.0 · Ambiente <strong>Produzione</strong><br>RENTRI: connesso
+    </div>
+  </aside>
+
+  <!-- ===== TOPBAR ===== -->
+  <header class="topbar">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="search" id="globalsearch" placeholder="Cerca FIR, codice EER, produttore, P.IVA…" aria-label="Ricerca globale">
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn" aria-label="Aiuto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+      </button>
+      <button class="icon-btn" aria-label="Notifiche (3 non lette)">
+        <span class="dot" aria-hidden="true"></span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      </button>
+      <button class="user" aria-label="Menu utente: Marco Rossi, Responsabile ambientale">
+        <span class="avatar" aria-hidden="true">MR</span>
+        <span>
+          <span class="uname">Marco Rossi</span><br>
+          <span class="urole">Responsabile ambientale</span>
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== MAIN ===== -->
+  <main class="main" id="main">
+
+    <!-- =========================================================
+         SCHERMATA 1 — DASHBOARD
+         ========================================================= -->
+    <section class="screen" aria-labelledby="s1-title">
+      <span class="screen-tag">SCHERMATA 1 · DASHBOARD</span>
+      <div class="page-head">
+        <div>
+          <h2 class="h-title" id="s1-title">Panoramica operativa</h2>
+          <p class="h-sub">EcoServizi Srl — Sede Torino · Periodo: Giugno 2026</p>
+        </div>
+        <div style="display:flex;gap:var(--control-gap);">
+          <select aria-label="Periodo" style="width:160px;">
+            <option>Mese corrente</option>
+            <option>Trimestre</option>
+            <option>Anno 2026</option>
+          </select>
+          <button class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nuovo formulario
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">FIR del mese</span>
+            <span class="kpi-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+          </div>
+          <div class="kpi-val mono">148</div>
+          <div class="kpi-delta up"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M7 14l5-5 5 5"/></svg> +12% vs mese prec.</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">Kg gestiti</span>
+            <span class="kpi-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span>
+          </div>
+          <div class="kpi-val mono">312.480 <small>kg</small></div>
+          <div class="kpi-delta up"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M7 14l5-5 5 5"/></svg> +4,1%</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-top">
+            <span class="kpi-label">Tasso di recupero</span>
+            <span class="kpi-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 3v6h6"/></svg></span>
+          </div>
+          <div class="kpi-val mono">81,6 <small>%</small></div>
+          <div class="kpi-delta down"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M7 10l5 5 5-5"/></svg> -1,2 pt</div>
+        </div>
+        <div class="kpi warn">
+          <div class="kpi-top">
+            <span class="kpi-label">Scadenze imminenti</span>
+            <span class="kpi-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
+          </div>
+          <div class="kpi-val mono">5</div>
+          <div class="kpi-delta down" style="color:var(--warn)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg> 2 entro 48h</div>
+        </div>
+      </div>
+
+      <!-- grafico + scadenze -->
+      <div class="dash-cols">
+        <div class="card">
+          <div class="panel-head">
+            <h3>Quantità gestite per EER (ultimi 6 mesi)</h3>
+            <select class="btn-ghost" style="width:auto;border:1px solid var(--border);" aria-label="Raggruppa per">
+              <option>per mese</option><option>per EER</option>
+            </select>
+          </div>
+          <div class="panel-body">
+            <div class="chart" role="img" aria-label="Grafico a barre placeholder: quantità gestite e quantità recuperate negli ultimi sei mesi">
+              <div class="bar"><div class="col" style="height:120px"></div><span class="lab">GEN</span></div>
+              <div class="bar"><div class="col" style="height:150px"></div><span class="lab">FEB</span></div>
+              <div class="bar"><div class="col" style="height:100px"></div><span class="lab">MAR</span></div>
+              <div class="bar"><div class="col" style="height:185px"></div><span class="lab">APR</span></div>
+              <div class="bar"><div class="col" style="height:140px"></div><span class="lab">MAG</span></div>
+              <div class="bar"><div class="col alt" style="height:210px"></div><span class="lab">GIU</span></div>
+            </div>
+            <div class="chart-legend">
+              <span class="key"><span class="sw" style="background:var(--accent)"></span> Gestiti</span>
+              <span class="key"><span class="sw" style="background:#1c6b3c"></span> Recuperati (mese corrente)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="panel-head"><h3>Prossime scadenze</h3><a href="#" style="font-size:13px;font-weight:600;">Vedi tutte</a></div>
+          <div class="panel-body" style="padding-top:var(--s-2);padding-bottom:var(--s-2);">
+            <div class="dl-item">
+              <span class="dl-ic" style="background:var(--err-bg);color:var(--err)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="17" height="17"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
+              <div class="dl-main"><div class="dl-t">FIR <span class="mono">2026/000482</span></div><div class="dl-s">Trasporto non confermato</div></div>
+              <span class="dl-when" style="color:var(--err)">tra 18h</span>
+            </div>
+            <div class="dl-item">
+              <span class="dl-ic" style="background:var(--warn-bg);color:var(--warn)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="17" height="17"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg></span>
+              <div class="dl-main"><div class="dl-t">Vidimazione registro C/S</div><div class="dl-s">Unità Asti</div></div>
+              <span class="dl-when" style="color:var(--warn)">tra 2 gg</span>
+            </div>
+            <div class="dl-item">
+              <span class="dl-ic" style="background:var(--info-bg);color:var(--info)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="17" height="17"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 4-5"/></svg></span>
+              <div class="dl-main"><div class="dl-t">Invio MUD 2025</div><div class="dl-s">Dichiarazione annuale</div></div>
+              <span class="dl-when">tra 9 gg</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- tabella ultimi formulari -->
+      <div class="card">
+        <div class="panel-head"><h3>Ultimi formulari</h3><a href="#" style="font-size:13px;font-weight:600;">Apri elenco completo</a></div>
+        <div class="table-wrap" style="border:0;border-radius:0;">
+          <table>
+            <thead><tr>
+              <th scope="col">N. FIR</th><th scope="col">Data</th><th scope="col">Produttore</th>
+              <th scope="col">EER</th><th scope="col">Quantità</th><th scope="col">Stato</th><th scope="col">Azioni</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td class="mono">2026/000487</td><td class="mono">08/06/2026</td>
+                <td>Carrozzeria Bianchi <span class="sub">P.IVA 02114870019</span></td>
+                <td class="mono">17 04 05</td><td class="mono">1.250 kg</td>
+                <td><span class="chip draft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg> Bozza</span></td>
+                <td><div class="row-actions"><button class="row-action" aria-label="Apri FIR 2026/000487"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="row-action" aria-label="Modifica"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div></td>
+              </tr>
+              <tr>
+                <td class="mono">2026/000486</td><td class="mono">07/06/2026</td>
+                <td>Officina Verdi SpA <span class="sub">P.IVA 09887760013</span></td>
+                <td class="mono">13 02 05*</td><td class="mono">480 kg</td>
+                <td><span class="chip signed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Firmato</span></td>
+                <td><div class="row-actions"><button class="row-action" aria-label="Apri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="row-action" aria-label="Scarica PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></button></div></td>
+              </tr>
+              <tr>
+                <td class="mono">2026/000485</td><td class="mono">07/06/2026</td>
+                <td>Metalli Po Srl <span class="sub">P.IVA 03442190017</span></td>
+                <td class="mono">12 01 01</td><td class="mono">7.900 kg</td>
+                <td><span class="chip sent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Inviato RENTRI</span></td>
+                <td><div class="row-actions"><button class="row-action" aria-label="Apri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="row-action" aria-label="Scarica PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></button></div></td>
+              </tr>
+              <tr>
+                <td class="mono">2026/000482</td><td class="mono">05/06/2026</td>
+                <td>Tipografia Mole <span class="sub">P.IVA 07765540012</span></td>
+                <td class="mono">08 03 17*</td><td class="mono">95 kg</td>
+                <td><span class="chip expired"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h0"/></svg> Scaduto</span></td>
+                <td><div class="row-actions"><button class="row-action" aria-label="Apri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="row-action" aria-label="Modifica"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SCHERMATA 2 — LISTA FIR
+         ========================================================= -->
+    <section class="screen" aria-labelledby="s2-title">
+      <span class="screen-tag">SCHERMATA 2 · LISTA FORMULARI (FIR)</span>
+      <div class="page-head">
+        <div>
+          <h2 class="h-title" id="s2-title">Formulari di identificazione rifiuto</h2>
+          <p class="h-sub">847 formulari · 12 in bozza · 5 in scadenza</p>
+        </div>
+        <button class="btn btn-primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nuovo formulario
+        </button>
+      </div>
+
+      <!-- TOOLBAR: tutti i controlli alla stessa altezza (40px) e stesso gap (8px) -->
+      <div class="toolbar">
+        <div class="field grow">
+          <label for="fir-search">Ricerca</label>
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="search" id="fir-search" placeholder="N. FIR, produttore, EER…">
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-stato">Stato</label>
+          <select id="f-stato" style="width:160px;"><option>Tutti</option><option>Bozza</option><option>Firmato</option><option>Inviato</option><option>Scaduto</option></select>
+        </div>
+        <div class="field">
+          <label for="f-eer">Codice EER</label>
+          <input type="text" id="f-eer" class="mono" placeholder="17 04 05" style="width:140px;">
+        </div>
+        <div class="field">
+          <label for="f-da">Periodo dal</label>
+          <input type="date" id="f-da" style="width:160px;">
+        </div>
+        <button class="btn btn-ghost">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg>
+          Filtra
+        </button>
+        <button class="btn btn-ghost">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
+          Esporta
+        </button>
+      </div>
+
+      <!-- dimostrazione altezze identiche -->
+      <div class="align-demo" aria-label="Dimostrazione: tutti i controlli condividono altezza 40px e gap 8px">
+        <span class="tag-min">--control-md = 40px</span>
+        <input type="text" placeholder="input 40px" style="width:150px;">
+        <select style="width:130px;"><option>select 40px</option></select>
+        <button class="btn btn-ghost">bottone 40px</button>
+        <button class="btn btn-primary">primario 40px</button>
+        <span class="tag-min">gap = 8px</span>
+      </div>
+
+      <!-- TABELLA densa header sticky -->
+      <div class="table-wrap" style="max-height:420px;overflow-y:auto;">
+        <table>
+          <thead><tr>
+            <th scope="col">N. FIR</th><th scope="col">Data</th><th scope="col">Produttore</th>
+            <th scope="col">Destinatario</th><th scope="col">EER</th><th scope="col">Quantità</th>
+            <th scope="col">Trasporto</th><th scope="col">Stato</th><th scope="col">Azioni</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono">2026/000487</td><td class="mono">08/06/26</td>
+              <td>Carrozzeria Bianchi</td><td>Recupero Metalli Nord</td>
+              <td class="mono">17 04 05</td><td class="mono">1.250 kg</td>
+              <td class="mono">TO-AT 4521</td>
+              <td><span class="chip draft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg> Bozza</span></td>
+              <td><div class="row-actions"><button class="row-action" aria-label="Apri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="row-action" aria-label="Modifica"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div></td>
+            </tr>
+            <tr>
+              <td class="mono">2026/000486</td><td class="mono">07/06/26</td>
+              <td>Officina Verdi SpA</td><td>Smaltimenti Sicuri Srl</td>
+              <td class="mono">13 02 05*</td><td class="mono">480 kg</td>
+              <td class="mono">TO-AT 7710</td>
+              <td><span class="chip signed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Firmato</span></td>
+              <td><div class="row-actions"><button class="row-action" aria-label="Apri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="row-action" aria-label="Scarica PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></button></div></td>
+            </tr>
+            <tr>
+              <td class="mono">2026/000485</td><td class="mono">07/06/26</td>
+              <td>Metalli Po Srl</td><td>Recupero Metalli Nord</td>
+              <td class="mono">12 01 01</td><td class="mono">7.900 kg</td>
+              <td class="mono">TO-CN 1180</td>
+              <td><span class="chip sent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Inviato</span></td>
+              <td><div class="row-actions"><button class="row-action" aria-label="Apri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="row-action" aria-label="Scarica PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></button></div></td>
+            </tr>
+            <tr>
+              <td class="mono">2026/000482</td><td class="mono">05/06/26</td>
+              <td>Tipografia Mole</td><td>Smaltimenti Sicuri Srl</td>
+              <td class="mono">08 03 17*</td><td class="mono">95 kg</td>
+              <td class="mono" style="color:var(--err)">non assegnato</td>
+              <td><span class="chip expired"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h0"/></svg> Scaduto</span></td>
+              <td><div class="row-actions"><button class="row-action" aria-label="Apri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="row-action" aria-label="Modifica"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div></td>
+            </tr>
+            <tr>
+              <td class="mono">2026/000479</td><td class="mono">04/06/26</td>
+              <td>Edilizia Sabauda</td><td>Cava Inerti Stura</td>
+              <td class="mono">17 09 04</td><td class="mono">12.300 kg</td>
+              <td class="mono">TO-VC 9032</td>
+              <td><span class="chip sent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Inviato</span></td>
+              <td><div class="row-actions"><button class="row-action" aria-label="Apri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="row-action" aria-label="Scarica PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></button></div></td>
+            </tr>
+            <tr>
+              <td class="mono">2026/000475</td><td class="mono">03/06/26</td>
+              <td>Lab Chimico Alpi</td><td>Smaltimenti Sicuri Srl</td>
+              <td class="mono">16 05 06*</td><td class="mono">38 kg</td>
+              <td class="mono">TO-AT 7710</td>
+              <td><span class="chip signed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg> Firmato</span></td>
+              <td><div class="row-actions"><button class="row-action" aria-label="Apri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="row-action" aria-label="Scarica PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></button></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SCHERMATA 3 — FORM NUOVO FORMULARIO
+         ========================================================= -->
+    <section class="screen" aria-labelledby="s3-title">
+      <span class="screen-tag">SCHERMATA 3 · NUOVO FORMULARIO</span>
+      <div class="page-head">
+        <div>
+          <h2 class="h-title" id="s3-title">Nuovo formulario (FIR)</h2>
+          <p class="h-sub">Colonna singola a sezioni · nessuno scroll lungo · salvataggio sempre visibile</p>
+        </div>
+      </div>
+
+      <!-- tabs (vanilla JS) -->
+      <div class="tabs" role="tablist" aria-label="Sezioni formulario">
+        <button class="tab" role="tab" aria-selected="true" id="tab-dati" onclick="selTab(event)">Dati formulario</button>
+        <button class="tab" role="tab" aria-selected="false" id="tab-alleg" onclick="selTab(event)">Allegati</button>
+        <button class="tab" role="tab" aria-selected="false" id="tab-stor" onclick="selTab(event)">Storico</button>
+      </div>
+
+      <form class="form-shell" onsubmit="return false;">
+        <!-- SEZIONE 1 — Produttore -->
+        <fieldset class="form-section" style="border:1px solid var(--border);margin:0 0 var(--s-4);padding:0;">
+          <div class="fs-head"><span class="fs-num">1</span><h3>Produttore / Detentore</h3></div>
+          <div class="fs-body">
+            <div class="field-v">
+              <label for="p-rag">Ragione sociale <span class="req">*</span></label>
+              <input type="text" id="p-rag" value="Carrozzeria Bianchi di Mario Bianchi">
+            </div>
+            <div class="pair">
+              <div class="field-v">
+                <label for="p-piva">Partita IVA <span class="req">*</span></label>
+                <input type="text" id="p-piva" class="mono" value="02114870019">
+              </div>
+              <div class="field-v error">
+                <label for="p-cf">Codice fiscale <span class="req">*</span></label>
+                <input type="text" id="p-cf" class="mono" value="BNCMRA70" aria-invalid="true" aria-describedby="p-cf-err">
+                <span class="err-msg" id="p-cf-err"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h0"/></svg> Codice fiscale incompleto (16 caratteri).</span>
+              </div>
+            </div>
+            <div class="pair-3">
+              <div class="field-v">
+                <label for="p-cap">CAP</label>
+                <input type="text" id="p-cap" class="mono" value="10128">
+              </div>
+              <div class="field-v" style="grid-column:span 2;">
+                <label for="p-com">Comune</label>
+                <input type="text" id="p-com" value="Torino (TO)">
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- SEZIONE 2 — Trasportatore -->
+        <fieldset class="form-section" style="border:1px solid var(--border);margin:0 0 var(--s-4);padding:0;">
+          <div class="fs-head"><span class="fs-num">2</span><h3>Trasportatore</h3></div>
+          <div class="fs-body">
+            <div class="field-v">
+              <label for="t-rag">Ragione sociale</label>
+              <select id="t-rag"><option>Trasporti Eco Piemonte Srl — Albo n. PI-001234</option><option>Autotrasporti Mole SpA</option></select>
+            </div>
+            <div class="pair">
+              <div class="field-v">
+                <label for="t-targa">Targa automezzo</label>
+                <input type="text" id="t-targa" class="mono" value="GA 421 KP">
+              </div>
+              <div class="field-v">
+                <label for="t-albo">N. iscrizione Albo</label>
+                <input type="text" id="t-albo" class="mono" value="PI-001234">
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- SEZIONE 3 — Destinatario -->
+        <fieldset class="form-section" style="border:1px solid var(--border);margin:0 0 var(--s-4);padding:0;">
+          <div class="fs-head"><span class="fs-num">3</span><h3>Destinatario</h3></div>
+          <div class="fs-body">
+            <div class="field-v">
+              <label for="d-rag">Impianto destinatario <span class="req">*</span></label>
+              <select id="d-rag"><option>Recupero Metalli Nord Srl — Settimo T.se</option><option>Smaltimenti Sicuri Srl — Beinasco</option></select>
+            </div>
+            <div class="pair">
+              <div class="field-v">
+                <label for="d-aut">N. autorizzazione</label>
+                <input type="text" id="d-aut" class="mono" value="AU/2024/1187">
+              </div>
+              <div class="field-v">
+                <label for="d-op">Operazione (R/D)</label>
+                <select id="d-op"><option>R4 — Riciclo metalli</option><option>R13 — Messa in riserva</option><option>D15 — Deposito preliminare</option></select>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- SEZIONE 4 — Rifiuto EER -->
+        <fieldset class="form-section" style="border:1px solid var(--border);margin:0 0 var(--s-4);padding:0;">
+          <div class="fs-head"><span class="fs-num">4</span><h3>Rifiuto (codice EER)</h3></div>
+          <div class="fs-body">
+            <div class="pair">
+              <div class="field-v">
+                <label for="r-eer">Codice EER <span class="req">*</span></label>
+                <input type="text" id="r-eer" class="mono" value="17 04 05" aria-describedby="r-eer-ok">
+                <span class="ok-msg" id="r-eer-ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Ferro e acciaio — non pericoloso</span>
+              </div>
+              <div class="field-v">
+                <label for="r-stato">Stato fisico</label>
+                <select id="r-stato"><option>Solido non pulverulento</option><option>Fangoso palabile</option><option>Liquido</option></select>
+              </div>
+            </div>
+            <div class="pair-3">
+              <div class="field-v" style="grid-column:span 2;">
+                <label for="r-qta">Quantità <span class="req">*</span></label>
+                <input type="text" id="r-qta" class="mono" value="1.250">
+              </div>
+              <div class="field-v">
+                <label for="r-um">U.M.</label>
+                <select id="r-um"><option>kg</option><option>t</option><option>litri</option></select>
+              </div>
+            </div>
+            <div class="field-v">
+              <label for="r-car">Caratteristiche di pericolo (HP)</label>
+              <input type="text" id="r-car" placeholder="Nessuna (rifiuto non pericoloso)">
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- SEZIONE 5 — Trasporto -->
+        <fieldset class="form-section" style="border:1px solid var(--border);margin:0 0 var(--s-4);padding:0;">
+          <div class="fs-head"><span class="fs-num">5</span><h3>Trasporto</h3></div>
+          <div class="fs-body">
+            <div class="pair">
+              <div class="field-v">
+                <label for="tr-data">Data inizio trasporto <span class="req">*</span></label>
+                <input type="date" id="tr-data" value="2026-06-08">
+              </div>
+              <div class="field-v">
+                <label for="tr-ora">Ora</label>
+                <input type="time" id="tr-ora" value="09:30">
+              </div>
+            </div>
+            <div class="field-v">
+              <label for="tr-perc">Percorso (se diverso dal più breve)</label>
+              <input type="text" id="tr-perc" placeholder="Indicare deviazioni o note di percorso">
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- STICKY ACTION BAR -->
+        <div class="action-bar">
+          <span class="ab-info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 16v-4M12 8h0"/></svg> Bozza salvata automaticamente alle 11:42</span>
+          <span class="spacer"></span>
+          <button type="button" class="btn btn-ghost">Annulla</button>
+          <button type="button" class="btn btn-ghost">Salva bozza</button>
+          <button type="submit" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+            Salva e firma
+          </button>
+        </div>
+      </form>
+    </section>
+
+  </main>
+</div>
+
+<script>
+function selTab(e){
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected','false'));
+  e.currentTarget.setAttribute('aria-selected','true');
+}
+</script>
+</body>
+</html>
