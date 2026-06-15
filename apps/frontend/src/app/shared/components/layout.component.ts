@@ -40,6 +40,9 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
           </span>
         </a>
 
+        <!-- Selettore Azienda / Unità locale -->
+        <ng-container *ngTemplateOutlet="orgSwitcher"></ng-container>
+
         <!-- Navigazione -->
         <nav class="sidebar__nav" aria-label="Navigazione principale">
           <ng-container *ngTemplateOutlet="navContent; context: { mobile: false }"></ng-container>
@@ -125,6 +128,8 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
             </a>
           </ng-template>
 
+          <ng-container *ngTemplateOutlet="orgSwitcher"></ng-container>
+
           <nav class="sidebar__nav" id="mobile-drawer" aria-label="Navigazione mobile">
             <ng-container *ngTemplateOutlet="navContent; context: { mobile: true }"></ng-container>
           </nav>
@@ -195,6 +200,23 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
         </li>
       </ul>
     </ng-template>
+
+    <!-- ===== Selettore Azienda / Unità locale (placeholder) ===== -->
+    <ng-template #orgSwitcher>
+      <button
+        type="button"
+        class="org-switcher"
+        aria-label="Cambia azienda o unità locale"
+        aria-haspopup="menu"
+      >
+        <span class="org-switcher__avatar" aria-hidden="true">EC</span>
+        <span class="org-switcher__text">
+          <span class="org-switcher__company">Ecotecnica S.r.l.</span>
+          <span class="org-switcher__unit">UL Sesto &middot; MI</span>
+        </span>
+        <i class="org-switcher__chevron pi pi-chevron-down" aria-hidden="true"></i>
+      </button>
+    </ng-template>
   `,
   styles: [`
     :host { display: block; }
@@ -223,8 +245,8 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
         position: sticky;
         top: 0;
         height: 100vh;
-        background: var(--surface-card);
-        border-right: 1px solid var(--surface-border);
+        background: var(--sidebar-bg);
+        border-right: 1px solid var(--sidebar-border);
       }
     }
 
@@ -235,10 +257,10 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
       gap: var(--spacing-md);
       padding: var(--spacing-lg) var(--spacing-base);
       text-decoration: none;
-      border-bottom: 1px solid var(--surface-border);
+      border-bottom: 1px solid var(--sidebar-border);
       transition: background var(--transition-fast);
     }
-    .sidebar__brand:hover { background: var(--surface-hover); text-decoration: none; }
+    .sidebar__brand:hover { background: var(--sidebar-bg-2); text-decoration: none; }
     .sidebar__brand--drawer { border-bottom: none; padding: 0; }
 
     .sidebar__brand-mark {
@@ -259,14 +281,57 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
       font-family: var(--font-display);
       font-size: var(--font-size-xl);
       font-weight: var(--font-weight-bold);
-      color: var(--text-primary);
+      color: #f8fafc;
       letter-spacing: -0.01em;
     }
     .sidebar__brand-tagline {
       font-size: var(--font-size-xs);
-      color: var(--text-tertiary);
+      color: var(--sidebar-ink-muted);
       margin-top: 2px;
     }
+
+    /* ===== Selettore Azienda / Unità locale ===== */
+    .org-switcher {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      width: calc(100% - (var(--spacing-md) * 2));
+      margin: var(--spacing-md) var(--spacing-md) 0;
+      padding: var(--spacing-sm) var(--spacing-md);
+      border: 1px solid var(--sidebar-border);
+      border-radius: var(--radius-md);
+      background: var(--sidebar-bg-2);
+      color: var(--sidebar-ink);
+      text-align: left;
+      cursor: pointer;
+      transition: background var(--transition-fast), border-color var(--transition-fast);
+    }
+    .org-switcher:hover { background: #273449; border-color: #334155; }
+    .org-switcher__avatar {
+      display: grid; place-items: center;
+      width: 2rem; height: 2rem;
+      flex-shrink: 0;
+      border-radius: var(--radius-md);
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-active);
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-bold);
+      font-family: var(--font-display);
+      letter-spacing: 0.02em;
+    }
+    .org-switcher__text { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.2; }
+    .org-switcher__company {
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      color: #f8fafc;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .org-switcher__unit {
+      font-size: var(--font-size-xs);
+      color: var(--sidebar-ink-muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .org-switcher__chevron { font-size: 0.75rem; color: var(--sidebar-ink-muted); flex-shrink: 0; }
 
     /* ===== Navigazione ===== */
     .sidebar__nav {
@@ -282,7 +347,7 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
       font-weight: var(--font-weight-bold);
       text-transform: uppercase;
       letter-spacing: 0.07em;
-      color: var(--text-tertiary);
+      color: var(--sidebar-ink-muted);
       margin: var(--spacing-lg) var(--spacing-md) var(--spacing-xs);
     }
 
@@ -294,26 +359,27 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
       padding: 0.625rem var(--spacing-md);
       min-height: var(--touch-target-min);
       border-radius: var(--radius-md);
-      color: var(--text-secondary);
+      color: var(--sidebar-ink);
       text-decoration: none;
       font-weight: var(--font-weight-medium);
       font-size: var(--font-size-sm);
       transition: background var(--transition-fast), color var(--transition-fast);
     }
-    .nav-item:hover { background: var(--surface-hover); color: var(--text-primary); text-decoration: none; }
+    .nav-item:hover { background: var(--sidebar-bg-2); color: #f8fafc; text-decoration: none; }
 
-    .nav-item__icon { font-size: 1.15rem; width: 1.35rem; text-align: center; flex-shrink: 0; color: var(--text-tertiary); transition: color var(--transition-fast); }
-    .nav-item:hover .nav-item__icon { color: var(--brand-primary); }
+    .nav-item__icon { font-size: 1.15rem; width: 1.35rem; text-align: center; flex-shrink: 0; color: var(--sidebar-ink-muted); transition: color var(--transition-fast); }
+    .nav-item:hover .nav-item__icon { color: var(--sidebar-active); }
     .nav-item__label { flex: 1; min-width: 0; }
 
-    /* Stato attivo: superficie tenue + barra brand + testo brand */
+    /* Stato attivo: superficie teal tenue + barra teal + testo/icona teal */
     .nav-item--active {
-      background: var(--brand-primary-50);
-      color: var(--brand-primary-dark);
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-active);
       font-weight: var(--font-weight-semibold);
     }
-    .nav-item--active:hover { background: var(--brand-primary-50); color: var(--brand-primary-dark); }
-    .nav-item--active .nav-item__icon { color: var(--brand-primary-dark); }
+    .nav-item--active:hover { background: var(--sidebar-active-bg); color: var(--sidebar-active); }
+    .nav-item--active .nav-item__icon,
+    .nav-item--active:hover .nav-item__icon { color: var(--sidebar-active); }
     .nav-item--active::before {
       content: '';
       position: absolute;
@@ -323,13 +389,13 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
       width: 4px;
       height: 1.4rem;
       border-radius: var(--radius-full);
-      background: var(--brand-primary);
+      background: var(--sidebar-active);
     }
 
     /* ===== Footer sidebar: utente + logout ===== */
     .sidebar__footer {
       padding: var(--spacing-md);
-      border-top: 1px solid var(--surface-border);
+      border-top: 1px solid var(--sidebar-border);
     }
     .user-card {
       display: flex;
@@ -337,18 +403,18 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
       gap: var(--spacing-sm);
       padding: var(--spacing-sm);
       border-radius: var(--radius-md);
-      background: var(--surface-hover);
+      background: var(--sidebar-bg-2);
     }
     .user-card__info { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.2; }
     .user-card__name {
       font-size: var(--font-size-sm);
       font-weight: var(--font-weight-semibold);
-      color: var(--text-primary);
+      color: #f8fafc;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .user-card__email {
       font-size: var(--font-size-xs);
-      color: var(--text-tertiary);
+      color: var(--sidebar-ink-muted);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .user-card__logout {
@@ -357,11 +423,11 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
       flex-shrink: 0;
       border: none; background: transparent; cursor: pointer;
       border-radius: var(--radius-md);
-      color: var(--text-tertiary);
+      color: var(--sidebar-ink-muted);
       transition: background var(--transition-fast), color var(--transition-fast);
     }
     .user-card__logout i { font-size: 1.15rem; }
-    .user-card__logout:hover { background: var(--color-danger-bg); color: var(--color-danger); }
+    .user-card__logout:hover { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
 
     /* L'avatar usa il brand (override styleClass PrimeNG) */
     :host ::ng-deep .user-card__avatar {
@@ -445,27 +511,33 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
       padding: clamp(1rem, 2.5vw, var(--spacing-xl));
     }
 
-    /* ===== Drawer mobile (p-sidebar) ===== */
+    /* ===== Drawer mobile (p-sidebar) — scuro ===== */
+    :host ::ng-deep .mobile-drawer { background: var(--sidebar-bg); color: var(--sidebar-ink); }
     :host ::ng-deep .mobile-drawer .p-sidebar-header { padding: var(--spacing-base) var(--spacing-base) var(--spacing-sm); }
     :host ::ng-deep .mobile-drawer .p-sidebar-content { padding: 0 var(--spacing-sm) var(--spacing-base); }
-    :host ::ng-deep .mobile-drawer .p-sidebar-footer { padding: var(--spacing-sm) var(--spacing-base) var(--spacing-base); border-top: 1px solid var(--surface-border); }
+    :host ::ng-deep .mobile-drawer .p-sidebar-footer { padding: var(--spacing-sm) var(--spacing-base) var(--spacing-base); border-top: 1px solid var(--sidebar-border); }
     :host ::ng-deep .mobile-drawer .sidebar__nav { padding: var(--spacing-sm) var(--spacing-xs); overflow: visible; }
+    /* Pulsante di chiusura del drawer leggibile su sfondo scuro */
+    :host ::ng-deep .mobile-drawer .p-sidebar-close { color: var(--sidebar-ink); }
+    :host ::ng-deep .mobile-drawer .p-sidebar-close:hover { background: var(--sidebar-bg-2); color: #f8fafc; }
+    /* Il selettore org nel drawer non ha margini laterali doppi */
+    :host ::ng-deep .mobile-drawer .org-switcher { width: calc(100% - (var(--spacing-md) * 2)); margin-top: 0; }
 
     .drawer__logout {
       display: flex; align-items: center; justify-content: center;
       gap: var(--spacing-sm);
       width: 100%;
       min-height: var(--touch-target-min);
-      border: 1px solid var(--surface-border-strong);
+      border: 1px solid var(--sidebar-border);
       background: transparent;
       border-radius: var(--radius-md);
-      color: var(--color-danger);
+      color: #fca5a5;
       font-weight: var(--font-weight-semibold);
       font-size: var(--font-size-sm);
       cursor: pointer;
-      transition: background var(--transition-fast);
+      transition: background var(--transition-fast), color var(--transition-fast);
     }
-    .drawer__logout:hover { background: var(--color-danger-bg); }
+    .drawer__logout:hover { background: rgba(239, 68, 68, 0.18); color: #fecaca; }
   `]
 })
 export class LayoutComponent implements OnInit {
