@@ -1,7 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { CardModule } from 'primeng/card';
 import { ButtonModule } from 'primeng/button';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
@@ -42,7 +41,6 @@ interface DatasetRow {
   imports: [
     CommonModule,
     FormsModule,
-    CardModule,
     ButtonModule,
     TableModule,
     TagModule,
@@ -54,128 +52,113 @@ interface DatasetRow {
   ],
   providers: [ConfirmationService],
   template: `
-    <div class="reference-data" style="max-width: 1100px; margin: 0 auto;">
+    <div class="page">
       <p-confirmDialog></p-confirmDialog>
 
-      <p-card>
-        <ng-template pTemplate="header">
-          <div class="p-3">
-            <h2>Dati di riferimento</h2>
-            <p class="text-muted">Stato delle tabelle condivise ISTAT/ATECO, ricerca e aggiornamento</p>
-          </div>
-        </ng-template>
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Dati di riferimento</h1>
+          <p class="page-subtitle">Stato delle tabelle condivise ISTAT/ATECO, ricerca e aggiornamento</p>
+        </div>
+        <div class="page-actions">
+          <p-button
+            icon="pi pi-refresh"
+            [outlined]="true"
+            label="Aggiorna stato"
+            [loading]="loadingStatus()"
+            (onClick)="loadStatus()"
+            ariaLabel="Aggiorna lo stato dei dataset"
+          ></p-button>
+        </div>
+      </header>
 
-        <!-- === Stato popolamento === -->
-        <section class="mb-4">
-          <div class="flex justify-content-between align-items-center mb-2">
-            <h3 style="margin: 0;">Stato popolamento</h3>
+      <!-- KPI conteggi dataset -->
+      <div *ngIf="status() && !statusError()" class="stat-grid mb-4">
+        <div *ngFor="let row of datasetRows()" class="stat-card">
+          <span class="stat-card__label">{{ row.label }}</span>
+          <span class="stat-card__value">{{ row.count | number }}</span>
+          <span class="stat-card__hint">
+            <p-tag
+              [severity]="row.count > 0 ? 'success' : 'warning'"
+              [value]="row.count > 0 ? 'Popolato' : 'Vuoto'"
+              [icon]="row.count > 0 ? 'pi pi-check' : 'pi pi-exclamation-triangle'"
+            ></p-tag>
+          </span>
+        </div>
+      </div>
+
+      <!-- Stato popolamento: loading/error -->
+      <section *ngIf="loadingStatus() && !status()" class="surface-card mb-4">
+        <div class="flex justify-content-center p-4">
+          <p-progressSpinner styleClass="w-3rem h-3rem" ariaLabel="Caricamento stato dataset"></p-progressSpinner>
+        </div>
+      </section>
+
+      <section *ngIf="statusError() && !loadingStatus()" class="surface-card mb-4">
+        <div class="empty-state">
+          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true" style="color: var(--color-danger);"></i>
+          <span class="empty-state__title">Errore di caricamento</span>
+          <p>Impossibile caricare lo stato dei dati di riferimento.</p>
+          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadStatus()"></p-button>
+        </div>
+      </section>
+
+      <!-- === Ricerca === -->
+      <section class="surface-card mb-4" aria-label="Ricerca dati di riferimento">
+        <h2 class="ref-section-title mb-3">Ricerca</h2>
+        <div class="grid formgrid mb-3" style="align-items: end;">
+          <div class="field col-12 md:col-4">
+            <label id="ref-tipo-label" class="block mb-2">Tipo</label>
+            <p-selectButton
+              [options]="tipoOptions"
+              [(ngModel)]="searchTipo"
+              optionLabel="label"
+              optionValue="value"
+              ariaLabelledBy="ref-tipo-label"
+              (onChange)="onTipoChange()"
+            ></p-selectButton>
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="ref-query" class="block mb-2">Cerca</label>
+            <input
+              id="ref-query"
+              pInputText
+              class="w-full"
+              [(ngModel)]="query"
+              (keyup.enter)="search()"
+              [placeholder]="searchTipo === 'comuni' ? 'es. Milano' : 'es. 38 o raccolta rifiuti'"
+              [attr.aria-label]="searchTipo === 'comuni' ? 'Cerca un comune' : 'Cerca un codice ATECO'"
+            />
+          </div>
+          <div class="field col-12 md:col-2">
             <p-button
-              icon="pi pi-refresh"
-              [text]="true"
-              label="Aggiorna stato"
-              [loading]="loadingStatus()"
-              (onClick)="loadStatus()"
+              label="Cerca"
+              icon="pi pi-search"
+              styleClass="w-full"
+              [loading]="searching()"
+              [disabled]="!query.trim()"
+              (onClick)="search()"
+              ariaLabel="Avvia la ricerca"
             ></p-button>
           </div>
+        </div>
 
-          <!-- Loading -->
-          <div *ngIf="loadingStatus() && !status()" class="text-center p-4">
-            <p-progressSpinner styleClass="w-3rem h-3rem"></p-progressSpinner>
-          </div>
-
-          <!-- Error -->
-          <div *ngIf="statusError() && !loadingStatus()" class="p-3">
-            <p-tag severity="danger" value="Errore di caricamento"></p-tag>
-            <p class="mt-2">Impossibile caricare lo stato dei dati di riferimento.</p>
-            <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadStatus()"></p-button>
-          </div>
-
-          <!-- Tabella conteggi -->
-          <p-table
-            *ngIf="status() && !statusError()"
-            [value]="datasetRows()"
-            styleClass="p-datatable-sm"
-          >
+        <!-- Risultati comuni -->
+        <div class="table-responsive" *ngIf="searchTipo === 'comuni'">
+          <p-table [value]="comuni()" [loading]="searching()" styleClass="p-datatable-sm">
             <ng-template pTemplate="header">
               <tr>
-                <th>Dataset</th>
-                <th class="text-right">Record</th>
-                <th class="text-center" style="width: 140px">Stato</th>
-              </tr>
-            </ng-template>
-            <ng-template pTemplate="body" let-row>
-              <tr>
-                <td>{{ row.label }}</td>
-                <td class="text-right">{{ row.count | number }}</td>
-                <td class="text-center">
-                  <p-tag
-                    [severity]="row.count > 0 ? 'success' : 'warning'"
-                    [value]="row.count > 0 ? 'Popolato' : 'Vuoto'"
-                  ></p-tag>
-                </td>
-              </tr>
-            </ng-template>
-          </p-table>
-        </section>
-
-        <hr />
-
-        <!-- === Ricerca === -->
-        <section class="mb-4">
-          <h3>Ricerca</h3>
-          <div class="grid mb-3" style="align-items: end;">
-            <div class="col-12 md:col-4">
-              <label class="block mb-2">Tipo</label>
-              <p-selectButton
-                [options]="tipoOptions"
-                [(ngModel)]="searchTipo"
-                optionLabel="label"
-                optionValue="value"
-                (onChange)="onTipoChange()"
-              ></p-selectButton>
-            </div>
-            <div class="col-12 md:col-6">
-              <label class="block mb-2">Cerca</label>
-              <input
-                pInputText
-                class="w-full"
-                [(ngModel)]="query"
-                (keyup.enter)="search()"
-                [placeholder]="searchTipo === 'comuni' ? 'es. Milano' : 'es. 38 o raccolta rifiuti'"
-              />
-            </div>
-            <div class="col-12 md:col-2">
-              <p-button
-                label="Cerca"
-                icon="pi pi-search"
-                styleClass="w-full"
-                [loading]="searching()"
-                [disabled]="!query.trim()"
-                (onClick)="search()"
-              ></p-button>
-            </div>
-          </div>
-
-          <!-- Risultati comuni -->
-          <p-table
-            *ngIf="searchTipo === 'comuni'"
-            [value]="comuni()"
-            [loading]="searching()"
-            styleClass="p-datatable-sm"
-          >
-            <ng-template pTemplate="header">
-              <tr>
-                <th style="width: 110px">Cod. ISTAT</th>
-                <th>Comune</th>
-                <th style="width: 90px" class="text-center">Prov.</th>
-                <th style="width: 90px" class="text-center">CAP</th>
-                <th style="width: 110px" class="text-center">Catastale</th>
+                <th scope="col" style="width: 110px">Cod. ISTAT</th>
+                <th scope="col">Comune</th>
+                <th scope="col" style="width: 90px" class="text-center">Prov.</th>
+                <th scope="col" style="width: 90px" class="text-center">CAP</th>
+                <th scope="col" style="width: 110px" class="text-center">Catastale</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-c>
               <tr>
                 <td>{{ c.code }}</td>
-                <td>{{ c.name }}</td>
+                <td><strong>{{ c.name }}</strong></td>
                 <td class="text-center">{{ c.provinciaSigla }}</td>
                 <td class="text-center">{{ c.cap || '-' }}</td>
                 <td class="text-center">{{ c.codiceCatastale || '-' }}</td>
@@ -183,22 +166,24 @@ interface DatasetRow {
             </ng-template>
             <ng-template pTemplate="emptymessage">
               <tr>
-                <td colspan="5" class="text-center">{{ emptyMessage() }}</td>
+                <td colspan="5">
+                  <div class="empty-state">
+                    <i class="pi pi-search empty-state__icon" aria-hidden="true"></i>
+                    <span class="empty-state__title">{{ emptyMessage() }}</span>
+                  </div>
+                </td>
               </tr>
             </ng-template>
           </p-table>
+        </div>
 
-          <!-- Risultati ATECO -->
-          <p-table
-            *ngIf="searchTipo === 'ateco'"
-            [value]="ateco()"
-            [loading]="searching()"
-            styleClass="p-datatable-sm"
-          >
+        <!-- Risultati ATECO -->
+        <div class="table-responsive" *ngIf="searchTipo === 'ateco'">
+          <p-table [value]="ateco()" [loading]="searching()" styleClass="p-datatable-sm">
             <ng-template pTemplate="header">
               <tr>
-                <th style="width: 140px">Codice</th>
-                <th>Descrizione</th>
+                <th scope="col" style="width: 140px">Codice</th>
+                <th scope="col">Descrizione</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-a>
@@ -209,52 +194,74 @@ interface DatasetRow {
             </ng-template>
             <ng-template pTemplate="emptymessage">
               <tr>
-                <td colspan="2" class="text-center">{{ emptyMessage() }}</td>
+                <td colspan="2">
+                  <div class="empty-state">
+                    <i class="pi pi-search empty-state__icon" aria-hidden="true"></i>
+                    <span class="empty-state__title">{{ emptyMessage() }}</span>
+                  </div>
+                </td>
               </tr>
             </ng-template>
           </p-table>
-        </section>
+        </div>
+      </section>
 
-        <hr />
+      <!-- === Aggiornamento (reseed) === -->
+      <section class="surface-card" aria-label="Aggiornamento dati">
+        <h2 class="ref-section-title mb-3">Aggiorna dati</h2>
+        <div *ngIf="!isAdmin()" class="empty-state" style="padding: var(--spacing-lg);">
+          <i class="pi pi-lock empty-state__icon" aria-hidden="true"></i>
+          <span class="empty-state__title">Accesso riservato agli amministratori</span>
+          <p>Solo gli amministratori possono ripopolare i dati di riferimento.</p>
+        </div>
 
-        <!-- === Aggiornamento (reseed) === -->
-        <section>
-          <h3>Aggiorna dati</h3>
-          <div *ngIf="!isAdmin()" class="p-2">
-            <p-tag severity="warning" value="Accesso riservato agli amministratori"></p-tag>
-            <p class="mt-2">Solo gli amministratori possono ripopolare i dati di riferimento.</p>
-          </div>
-
-          <ng-container *ngIf="isAdmin()">
-            <p class="text-muted">
-              Ripopola i dati dalle sorgenti ufficiali. L'operazione viene eseguita in background
-              e può richiedere alcuni minuti; aggiorna lo stato per verificare i nuovi conteggi.
-            </p>
-            <div class="grid" style="align-items: end;">
-              <div class="col-12 md:col-5">
-                <label class="block mb-2">Dataset</label>
-                <p-dropdown
-                  [options]="datasetOptions"
-                  [(ngModel)]="reseedDataset"
-                  optionLabel="label"
-                  optionValue="value"
-                  styleClass="w-full"
-                ></p-dropdown>
-              </div>
-              <div class="col-12 md:col-4">
-                <p-button
-                  label="Aggiorna dati"
-                  icon="pi pi-cloud-download"
-                  [loading]="reseeding()"
-                  (onClick)="confirmReseed()"
-                ></p-button>
-              </div>
+        <ng-container *ngIf="isAdmin()">
+          <p class="text-secondary">
+            Ripopola i dati dalle sorgenti ufficiali. L'operazione viene eseguita in background
+            e può richiedere alcuni minuti; aggiorna lo stato per verificare i nuovi conteggi.
+          </p>
+          <div class="grid formgrid" style="align-items: end;">
+            <div class="field col-12 md:col-5">
+              <label for="ref-dataset" class="block mb-2">Dataset</label>
+              <p-dropdown
+                inputId="ref-dataset"
+                [options]="datasetOptions"
+                [(ngModel)]="reseedDataset"
+                optionLabel="label"
+                optionValue="value"
+                styleClass="w-full"
+                ariaLabel="Dataset da ripopolare"
+              ></p-dropdown>
             </div>
-          </ng-container>
-        </section>
-      </p-card>
+            <div class="field col-12 md:col-4 flex align-items-end">
+              <p-button
+                label="Aggiorna dati"
+                icon="pi pi-cloud-download"
+                [loading]="reseeding()"
+                (onClick)="confirmReseed()"
+                ariaLabel="Avvia l'aggiornamento del dataset selezionato"
+              ></p-button>
+            </div>
+          </div>
+        </ng-container>
+      </section>
     </div>
   `,
+  styles: [
+    `
+      .ref-section-title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-lg);
+        margin: 0;
+      }
+      .text-right { text-align: right; }
+      .text-center { text-align: center; }
+      .text-secondary { color: var(--text-secondary); }
+      .mb-4 { margin-bottom: var(--spacing-xl); }
+      .mb-3 { margin-bottom: var(--spacing-base); }
+      .mb-2 { margin-bottom: var(--spacing-sm); }
+    `,
+  ],
 })
 export class ReferenceDataComponent implements OnInit {
   private readonly referenceData = inject(ReferenceDataService);

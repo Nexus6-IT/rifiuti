@@ -15,11 +15,88 @@ import { AuthService } from '../../core/services/auth.service';
   standalone: true,
   imports: [CommonModule, ProgressSpinnerModule],
   template: `
-    <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;">
-      <p-progressSpinner strokeWidth="4" ariaLabel="Accesso in corso"></p-progressSpinner>
-      <p>{{ message }}</p>
-    </div>
+    <main class="callback" role="status" aria-live="polite">
+      <div class="callback__card">
+        <div class="callback__brand">
+          <span class="callback__glyph"><i class="pi pi-sync" aria-hidden="true"></i></span>
+          <span class="callback__name">WasteFlow</span>
+        </div>
+
+        <p-progressSpinner
+          strokeWidth="4"
+          [style]="{ width: '56px', height: '56px' }"
+          ariaLabel="Accesso in corso"
+        ></p-progressSpinner>
+
+        <h1 class="callback__title">{{ message }}</h1>
+        <p class="callback__hint">Stiamo verificando la tua identità digitale, attendi qualche istante.</p>
+      </div>
+    </main>
   `,
+  styles: [`
+    :host { display: block; }
+    .callback {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--spacing-lg);
+      background:
+        radial-gradient(120% 90% at 50% 0%, var(--brand-primary-50) 0%, transparent 60%),
+        var(--surface-ground);
+    }
+    .callback__card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: var(--spacing-base);
+      width: 100%;
+      max-width: 400px;
+      padding: clamp(2rem, 5vw, 3rem);
+      background: var(--surface-card);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-md);
+      animation: fadeInUp var(--transition-base);
+    }
+    .callback__brand {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      margin-bottom: var(--spacing-sm);
+    }
+    .callback__glyph {
+      width: 38px; height: 38px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--brand-primary-50);
+      border: 1px solid var(--brand-primary-100);
+      border-radius: var(--radius-md);
+    }
+    .callback__glyph i { font-size: 1.15rem; color: var(--brand-primary-dark); }
+    .callback__name {
+      font-family: var(--font-display);
+      font-weight: var(--font-weight-bold);
+      font-size: var(--font-size-lg);
+      color: var(--text-primary);
+    }
+    .callback__title {
+      font-family: var(--font-display);
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      margin: var(--spacing-sm) 0 0;
+      color: var(--text-primary);
+    }
+    .callback__hint {
+      margin: 0;
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: var(--line-height-normal);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .callback__card { animation: none; }
+    }
+  `],
 })
 export class AuthCallbackComponent implements OnInit {
   private readonly authService = inject(AuthService);

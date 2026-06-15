@@ -101,103 +101,132 @@ const PRICING_LABELS: Record<PricingModel, string> = {
     ProgressSpinnerModule,
   ],
   template: `
-    <div class="contracts-list" style="max-width: 1400px; margin: 0 auto;">
-      <div class="flex justify-content-between align-items-center mb-4">
-        <h1>Contratti</h1>
-        <p-button label="Nuovo contratto" icon="pi pi-plus" (onClick)="openCreateDialog()" />
-      </div>
+    <div class="page">
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Contratti</h1>
+          <p class="page-subtitle">Contratti produttore ↔ controparte: trasporto, smaltimento e servizi</p>
+        </div>
+        <div class="page-actions">
+          <p-button label="Nuovo contratto" icon="pi pi-plus" (onClick)="openCreateDialog()" ariaLabel="Crea un nuovo contratto" />
+        </div>
+      </header>
 
       <!-- Filtro per stato -->
-      <div class="flex align-items-center gap-2 mb-3">
-        <label class="font-medium">Stato:</label>
-        <p-dropdown
-          [options]="statusFilterOptions"
-          [(ngModel)]="statusFilter"
-          optionLabel="label"
-          optionValue="value"
-          [showClear]="true"
-          placeholder="Tutti"
-          styleClass="w-15rem"
-          (onChange)="loadContracts()"
-          (onClear)="loadContracts()"
-        ></p-dropdown>
-        <p-button icon="pi pi-refresh" [text]="true" (onClick)="loadContracts()" pTooltip="Aggiorna" />
-      </div>
+      <section class="surface-card mb-4" aria-label="Filtro contratti">
+        <div class="grid formgrid" style="align-items: end;">
+          <div class="field col-12 md:col-5">
+            <label for="contract-status-filter" class="block mb-2">Stato</label>
+            <p-dropdown
+              inputId="contract-status-filter"
+              [options]="statusFilterOptions"
+              [(ngModel)]="statusFilter"
+              optionLabel="label"
+              optionValue="value"
+              [showClear]="true"
+              placeholder="Tutti"
+              styleClass="w-full"
+              ariaLabel="Filtra contratti per stato"
+              (onChange)="loadContracts()"
+              (onClear)="loadContracts()"
+            ></p-dropdown>
+          </div>
+          <div class="field col-12 md:col-3 flex align-items-end">
+            <p-button
+              label="Aggiorna"
+              icon="pi pi-refresh"
+              [outlined]="true"
+              (onClick)="loadContracts()"
+              ariaLabel="Aggiorna l'elenco dei contratti"
+            />
+          </div>
+        </div>
+      </section>
 
       <!-- Stato error -->
-      <div *ngIf="error()" class="p-4 text-center">
-        <i class="pi pi-exclamation-triangle text-2xl" style="color: var(--red-500)"></i>
-        <p class="mt-2">Impossibile caricare i contratti.</p>
-        <p-button label="Riprova" icon="pi pi-refresh" (onClick)="loadContracts()" />
-      </div>
+      <section *ngIf="error()" class="surface-card">
+        <div class="empty-state">
+          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true" style="color: var(--color-danger);"></i>
+          <span class="empty-state__title">Impossibile caricare i contratti</span>
+          <p>Si è verificato un errore. Riprova.</p>
+          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadContracts()" />
+        </div>
+      </section>
 
       <!-- Tabella -->
-      <p-table
-        *ngIf="!error()"
-        [value]="contracts()"
-        [loading]="loading()"
-        [paginator]="contracts().length > 10"
-        [rows]="10"
-        responsiveLayout="scroll"
-        styleClass="p-datatable-sm"
-      >
-        <ng-template pTemplate="header">
-          <tr>
-            <th>Numero</th>
-            <th>Controparte</th>
-            <th>Tipo</th>
-            <th>Stato</th>
-            <th>Periodo</th>
-            <th style="width: 120px">Azioni</th>
-          </tr>
-        </ng-template>
-        <ng-template pTemplate="body" let-c>
-          <tr>
-            <td>{{ c.contractNumber }}</td>
-            <td>{{ counterpartyLabel(c.counterpartyType) }}</td>
-            <td>{{ typeLabel(c.contractType) }}</td>
-            <td>
-              <p-tag [value]="statusLabel(c.status)" [severity]="statusSeverity(c.status)"></p-tag>
-            </td>
-            <td>{{ periodLabel(c) }}</td>
-            <td>
-              <div class="flex gap-2">
-                <p-button
-                  icon="pi pi-sync"
-                  [rounded]="true"
-                  [text]="true"
-                  (onClick)="openStatusDialog(c)"
-                  [disabled]="!nextStatuses(c.status).length"
-                  pTooltip="Cambia stato"
-                />
-              </div>
-            </td>
-          </tr>
-        </ng-template>
-        <ng-template pTemplate="emptymessage">
-          <tr>
-            <td colspan="6" class="text-center p-4">
-              Nessun contratto trovato.
-            </td>
-          </tr>
-        </ng-template>
-      </p-table>
+      <section *ngIf="!error()" class="surface-card">
+        <div class="table-responsive">
+          <p-table
+            [value]="contracts()"
+            [loading]="loading()"
+            [paginator]="contracts().length > 10"
+            [rows]="10"
+            styleClass="p-datatable-sm"
+          >
+            <ng-template pTemplate="header">
+              <tr>
+                <th scope="col">Numero</th>
+                <th scope="col">Controparte</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Stato</th>
+                <th scope="col">Periodo</th>
+                <th scope="col" style="width: 120px">Azioni</th>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="body" let-c>
+              <tr>
+                <td><strong>{{ c.contractNumber }}</strong></td>
+                <td>{{ counterpartyLabel(c.counterpartyType) }}</td>
+                <td>{{ typeLabel(c.contractType) }}</td>
+                <td>
+                  <p-tag [value]="statusLabel(c.status)" [severity]="statusSeverity(c.status)"></p-tag>
+                </td>
+                <td>{{ periodLabel(c) }}</td>
+                <td>
+                  <p-button
+                    icon="pi pi-sync"
+                    [rounded]="true"
+                    [text]="true"
+                    (onClick)="openStatusDialog(c)"
+                    [disabled]="!nextStatuses(c.status).length"
+                    pTooltip="Cambia stato"
+                    [ariaLabel]="'Cambia stato del contratto ' + c.contractNumber"
+                  />
+                </td>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="emptymessage">
+              <tr>
+                <td colspan="6">
+                  <div class="empty-state">
+                    <i class="pi pi-file empty-state__icon" aria-hidden="true"></i>
+                    <span class="empty-state__title">Nessun contratto</span>
+                    <p>Non risultano contratti per il filtro selezionato.</p>
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      </section>
 
       <!-- Dialog: nuovo contratto -->
       <p-dialog
         [(visible)]="displayCreate"
         [modal]="true"
         [style]="{ width: '760px' }"
+        [breakpoints]="{ '768px': '95vw' }"
         header="Nuovo contratto"
       >
-        <div class="grid">
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Numero contratto *</label>
-            <input pInputText [(ngModel)]="form.contractNumber" placeholder="CTR-2026-001" class="w-full" />
+        <div class="grid formgrid">
+          <div class="field col-12 md:col-6">
+            <label for="c-number" class="block mb-2">Numero contratto *</label>
+            <input id="c-number" pInputText [(ngModel)]="form.contractNumber" placeholder="CTR-2026-001" class="w-full" />
           </div>
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Tipo contratto *</label>
+          <div class="field col-12 md:col-6">
+            <label for="c-type" class="block mb-2">Tipo contratto *</label>
             <p-dropdown
+              inputId="c-type"
               [options]="contractTypeOptions"
               [(ngModel)]="form.contractType"
               optionLabel="label"
@@ -207,17 +236,18 @@ const PRICING_LABELS: Record<PricingModel, string> = {
             ></p-dropdown>
           </div>
 
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">ID produttore *</label>
-            <input pInputText [(ngModel)]="form.producerId" placeholder="UUID registro produttore" class="w-full" />
+          <div class="field col-12 md:col-6">
+            <label for="c-producer" class="block mb-2">ID produttore *</label>
+            <input id="c-producer" pInputText [(ngModel)]="form.producerId" placeholder="UUID registro produttore" class="w-full" />
           </div>
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">ID controparte *</label>
-            <input pInputText [(ngModel)]="form.counterpartyId" placeholder="UUID registro controparte" class="w-full" />
+          <div class="field col-12 md:col-6">
+            <label for="c-counterparty" class="block mb-2">ID controparte *</label>
+            <input id="c-counterparty" pInputText [(ngModel)]="form.counterpartyId" placeholder="UUID registro controparte" class="w-full" />
           </div>
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Tipo controparte *</label>
+          <div class="field col-12 md:col-6">
+            <label for="c-counterparty-type" class="block mb-2">Tipo controparte *</label>
             <p-dropdown
+              inputId="c-counterparty-type"
               [options]="counterpartyTypeOptions"
               [(ngModel)]="form.counterpartyType"
               optionLabel="label"
@@ -226,9 +256,10 @@ const PRICING_LABELS: Record<PricingModel, string> = {
               styleClass="w-full"
             ></p-dropdown>
           </div>
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Modello di pricing *</label>
+          <div class="field col-12 md:col-6">
+            <label for="c-pricing" class="block mb-2">Modello di pricing *</label>
             <p-dropdown
+              inputId="c-pricing"
               [options]="pricingModelOptions"
               [(ngModel)]="form.pricingModel"
               optionLabel="label"
@@ -238,55 +269,55 @@ const PRICING_LABELS: Record<PricingModel, string> = {
             ></p-dropdown>
           </div>
 
-          <div class="col-12">
-            <label class="block mb-2">Codici CER *</label>
-            <p-chips [(ngModel)]="form.cerCodes" placeholder="Aggiungi CER e premi Invio" styleClass="w-full"></p-chips>
-            <small class="block mt-1 text-color-secondary">Es. 150101, 150102</small>
+          <div class="field col-12">
+            <label for="c-cer" class="block mb-2">Codici CER *</label>
+            <p-chips inputId="c-cer" [(ngModel)]="form.cerCodes" placeholder="Aggiungi CER e premi Invio" styleClass="w-full"></p-chips>
+            <small class="block mt-1 text-tertiary">Es. 150101, 150102</small>
           </div>
 
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Prezzo base</label>
-            <p-inputNumber [(ngModel)]="form.basePrice" mode="decimal" [minFractionDigits]="0" [maxFractionDigits]="2" [min]="0" styleClass="w-full" inputStyleClass="w-full"></p-inputNumber>
+          <div class="field col-12 md:col-4">
+            <label for="c-price" class="block mb-2">Prezzo base</label>
+            <p-inputNumber inputId="c-price" [(ngModel)]="form.basePrice" mode="decimal" [minFractionDigits]="0" [maxFractionDigits]="2" [min]="0" styleClass="w-full" inputStyleClass="w-full"></p-inputNumber>
           </div>
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Unità di misura</label>
-            <input pInputText [(ngModel)]="form.unitOfMeasure" placeholder="kg" class="w-full" />
+          <div class="field col-12 md:col-4">
+            <label for="c-uom" class="block mb-2">Unità di misura</label>
+            <input id="c-uom" pInputText [(ngModel)]="form.unitOfMeasure" placeholder="kg" class="w-full" />
           </div>
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Durata (mesi)</label>
-            <p-inputNumber [(ngModel)]="form.durationMonths" [min]="1" styleClass="w-full" inputStyleClass="w-full"></p-inputNumber>
-          </div>
-
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Data inizio *</label>
-            <p-calendar [(ngModel)]="startDate" dateFormat="dd/mm/yy" [showIcon]="true" styleClass="w-full" appendTo="body"></p-calendar>
-          </div>
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Data fine</label>
-            <p-calendar [(ngModel)]="endDate" dateFormat="dd/mm/yy" [showIcon]="true" styleClass="w-full" appendTo="body"></p-calendar>
+          <div class="field col-12 md:col-4">
+            <label for="c-duration" class="block mb-2">Durata (mesi)</label>
+            <p-inputNumber inputId="c-duration" [(ngModel)]="form.durationMonths" [min]="1" styleClass="w-full" inputStyleClass="w-full"></p-inputNumber>
           </div>
 
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Termini di pagamento</label>
-            <input pInputText [(ngModel)]="form.paymentTerms" placeholder="net_30" class="w-full" />
+          <div class="field col-12 md:col-6">
+            <label for="c-start" class="block mb-2">Data inizio *</label>
+            <p-calendar inputId="c-start" [(ngModel)]="startDate" dateFormat="dd/mm/yy" [showIcon]="true" styleClass="w-full" inputStyleClass="w-full" appendTo="body"></p-calendar>
           </div>
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Frequenza fatturazione</label>
-            <input pInputText [(ngModel)]="form.billingFrequency" placeholder="monthly" class="w-full" />
+          <div class="field col-12 md:col-6">
+            <label for="c-end" class="block mb-2">Data fine</label>
+            <p-calendar inputId="c-end" [(ngModel)]="endDate" dateFormat="dd/mm/yy" [showIcon]="true" styleClass="w-full" inputStyleClass="w-full" appendTo="body"></p-calendar>
           </div>
 
-          <div class="col-12 flex align-items-center gap-2">
+          <div class="field col-12 md:col-6">
+            <label for="c-payment" class="block mb-2">Termini di pagamento</label>
+            <input id="c-payment" pInputText [(ngModel)]="form.paymentTerms" placeholder="net_30" class="w-full" />
+          </div>
+          <div class="field col-12 md:col-6">
+            <label for="c-billing" class="block mb-2">Frequenza fatturazione</label>
+            <input id="c-billing" pInputText [(ngModel)]="form.billingFrequency" placeholder="monthly" class="w-full" />
+          </div>
+
+          <div class="field col-12 flex align-items-center gap-2">
             <p-checkbox [(ngModel)]="form.autoRenew" [binary]="true" inputId="autoRenew"></p-checkbox>
-            <label for="autoRenew">Rinnovo automatico</label>
+            <label for="autoRenew" class="mb-0">Rinnovo automatico</label>
           </div>
-          <div class="col-12 md:col-6" *ngIf="form.autoRenew">
-            <label class="block mb-2">Preavviso rinnovo (giorni)</label>
-            <p-inputNumber [(ngModel)]="form.renewalNoticeDays" [min]="0" styleClass="w-full" inputStyleClass="w-full"></p-inputNumber>
+          <div class="field col-12 md:col-6" *ngIf="form.autoRenew">
+            <label for="c-notice" class="block mb-2">Preavviso rinnovo (giorni)</label>
+            <p-inputNumber inputId="c-notice" [(ngModel)]="form.renewalNoticeDays" [min]="0" styleClass="w-full" inputStyleClass="w-full"></p-inputNumber>
           </div>
 
-          <div class="col-12">
-            <label class="block mb-2">Descrizione</label>
-            <textarea pInputTextarea [(ngModel)]="form.description" rows="2" class="w-full"></textarea>
+          <div class="field col-12">
+            <label for="c-desc" class="block mb-2">Descrizione</label>
+            <textarea id="c-desc" pInputTextarea [(ngModel)]="form.description" rows="2" class="w-full"></textarea>
           </div>
         </div>
         <ng-template pTemplate="footer">
@@ -300,6 +331,7 @@ const PRICING_LABELS: Record<PricingModel, string> = {
         [(visible)]="displayStatus"
         [modal]="true"
         [style]="{ width: '420px' }"
+        [breakpoints]="{ '576px': '95vw' }"
         header="Cambia stato contratto"
       >
         <div *ngIf="selectedContract() as sc">
@@ -307,8 +339,9 @@ const PRICING_LABELS: Record<PricingModel, string> = {
             Contratto <strong>{{ sc.contractNumber }}</strong> — stato attuale:
             <p-tag [value]="statusLabel(sc.status)" [severity]="statusSeverity(sc.status)"></p-tag>
           </p>
-          <label class="block mb-2">Nuovo stato</label>
+          <label for="c-target-status" class="block mb-2">Nuovo stato</label>
           <p-dropdown
+            inputId="c-target-status"
             [options]="targetStatusOptions()"
             [(ngModel)]="targetStatus"
             optionLabel="label"
@@ -333,18 +366,13 @@ const PRICING_LABELS: Record<PricingModel, string> = {
   `,
   styles: [
     `
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(12, 1fr);
-        gap: 1rem;
-      }
-      .col-12 { grid-column: span 12; }
-      .col-6 { grid-column: span 6; }
-      .col-4 { grid-column: span 4; }
-      @media (min-width: 768px) {
-        .md\\:col-6 { grid-column: span 6; }
-        .md\\:col-4 { grid-column: span 4; }
-      }
+      .text-tertiary { color: var(--text-tertiary); }
+      .mb-4 { margin-bottom: var(--spacing-xl); }
+      .mb-3 { margin-bottom: var(--spacing-base); }
+      .mb-2 { margin-bottom: var(--spacing-sm); }
+      .mb-0 { margin-bottom: 0; }
+      .mt-1 { margin-top: var(--spacing-xs); }
+      .field { margin-bottom: 0; }
     `,
   ],
 })

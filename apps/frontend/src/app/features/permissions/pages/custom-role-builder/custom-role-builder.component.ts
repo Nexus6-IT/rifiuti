@@ -10,6 +10,7 @@ import { MessageModule } from 'primeng/message';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { DialogModule } from 'primeng/dialog';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
+import { ToastModule } from 'primeng/toast';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { PermissionMatrixComponent } from '../../components/permission-matrix/permission-matrix.component';
 import { RoleApiService } from '../../services/role-api.service';
@@ -47,102 +48,116 @@ import { RoleApiService } from '../../services/role-api.service';
     ProgressSpinnerModule,
     DialogModule,
     ConfirmDialogModule,
+    ToastModule,
     PermissionMatrixComponent,
   ],
   providers: [ConfirmationService, MessageService],
   template: `
-    <div class="custom-role-builder">
-      <!-- Header -->
-      <div class="page-header">
-        <button
-          pButton
-          type="button"
-          icon="pi pi-arrow-left"
-          class="p-button-text"
-          (click)="goBack()"
-        ></button>
-
-        <div class="header-content">
-          <h1>{{ isEditMode() ? 'Edit Custom Role' : 'Create Custom Role' }}</h1>
-          <p class="header-subtitle">
-            {{ isEditMode() ? 'Modify role properties and permissions' : 'Design a custom role with specific permissions for your organization' }}
-          </p>
+    <div class="page custom-role-builder">
+      <!-- Intestazione -->
+      <header class="page-header">
+        <div class="page-header__titles header-with-back">
+          <button
+            pButton
+            type="button"
+            icon="pi pi-arrow-left"
+            class="p-button-text p-button-rounded"
+            (click)="goBack()"
+            aria-label="Torna indietro"
+          ></button>
+          <div>
+            <h1 class="page-title">{{ isEditMode() ? 'Modifica ruolo personalizzato' : 'Crea ruolo personalizzato' }}</h1>
+            <p class="page-subtitle">
+              {{ isEditMode() ? 'Modifica le proprietà e i permessi del ruolo' : 'Definisci un ruolo personalizzato con permessi specifici per la tua organizzazione' }}
+            </p>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <!-- Loading State -->
+      <!-- Stato di caricamento -->
       @if (isLoading()) {
-        <div class="loading-container">
-          <p-progressSpinner></p-progressSpinner>
-          <p>Loading role...</p>
+        <div class="surface-card">
+          <div class="loading-container" role="status" aria-live="polite">
+            <p-progressSpinner ariaLabel="Caricamento"></p-progressSpinner>
+            <p>Caricamento del ruolo...</p>
+          </div>
         </div>
       }
 
-      <!-- Error State -->
+      <!-- Stato di errore -->
       @if (error()) {
-        <p-message severity="error" [text]="error()!"></p-message>
+        <p-message severity="error" [text]="error()!" styleClass="w-full"></p-message>
       }
 
       <!-- Form -->
       @if (!isLoading()) {
-        <form [formGroup]="roleForm" (ngSubmit)="onSubmit()">
-          <!-- Basic Information -->
-          <p-card header="Basic Information" styleClass="form-section">
+        <form [formGroup]="roleForm" (ngSubmit)="onSubmit()" class="builder-form">
+          <!-- Informazioni di base -->
+          <section class="surface-card form-section" aria-label="Informazioni di base">
+            <h2 class="section-title">Informazioni di base</h2>
             <div class="form-grid">
               <div class="form-field">
-                <label for="name">Role Name *</label>
+                <label for="name">Nome ruolo *</label>
                 <input
                   pInputText
                   id="name"
                   formControlName="name"
-                  placeholder="e.g., Regional Manager"
+                  placeholder="es. Responsabile regionale"
                   [class.ng-invalid]="roleForm.get('name')?.invalid && roleForm.get('name')?.touched"
+                  [attr.aria-invalid]="roleForm.get('name')?.invalid && roleForm.get('name')?.touched"
+                  aria-describedby="name-error"
                 />
-                @if (roleForm.get('name')?.hasError('required') && roleForm.get('name')?.touched) {
-                  <small class="p-error">Role name is required</small>
-                }
-                @if (roleForm.get('name')?.hasError('maxlength')) {
-                  <small class="p-error">Role name must be 100 characters or less</small>
-                }
-                @if (roleForm.get('name')?.hasError('systemRole')) {
-                  <small class="p-error">Cannot use system role names (ADMIN, OPERATOR, etc.)</small>
-                }
+                <div id="name-error" role="alert">
+                  @if (roleForm.get('name')?.hasError('required') && roleForm.get('name')?.touched) {
+                    <small class="p-error">Il nome del ruolo è obbligatorio</small>
+                  }
+                  @if (roleForm.get('name')?.hasError('maxlength')) {
+                    <small class="p-error">Il nome del ruolo deve avere al massimo 100 caratteri</small>
+                  }
+                  @if (roleForm.get('name')?.hasError('systemRole')) {
+                    <small class="p-error">Non puoi usare i nomi dei ruoli di sistema (ADMIN, OPERATOR, ecc.)</small>
+                  }
+                </div>
               </div>
 
               <div class="form-field full-width">
-                <label for="description">Description</label>
+                <label for="description">Descrizione</label>
                 <textarea
                   pInputTextarea
                   id="description"
                   formControlName="description"
                   rows="3"
-                  placeholder="Describe the purpose and responsibilities of this role..."
+                  placeholder="Descrivi lo scopo e le responsabilità di questo ruolo..."
                   [class.ng-invalid]="roleForm.get('description')?.invalid && roleForm.get('description')?.touched"
+                  aria-describedby="description-error"
                 ></textarea>
-                @if (roleForm.get('description')?.hasError('maxlength')) {
-                  <small class="p-error">Description must be 500 characters or less</small>
-                }
+                <div id="description-error" role="alert">
+                  @if (roleForm.get('description')?.hasError('maxlength')) {
+                    <small class="p-error">La descrizione deve avere al massimo 500 caratteri</small>
+                  }
+                </div>
               </div>
             </div>
-          </p-card>
+          </section>
 
-          <!-- Permission Selection -->
-          <p-card header="Permissions" styleClass="form-section">
+          <!-- Selezione permessi -->
+          <section class="surface-card form-section" aria-label="Permessi">
+            <h2 class="section-title">Permessi</h2>
             <div class="permissions-header">
-              <p>Select the permissions for this role. At least 1 permission is required, maximum 100.</p>
+              <p>Seleziona i permessi per questo ruolo. È richiesto almeno 1 permesso, massimo 100.</p>
               <div class="permission-count">
                 <span [class.error]="selectedPermissions().length === 0 || selectedPermissions().length > 100">
-                  {{ selectedPermissions().length }} / 100 selected
+                  {{ selectedPermissions().length }} / 100 selezionati
                 </span>
               </div>
             </div>
 
             @if (selectedPermissions().length === 0) {
-              <p-message severity="warn" text="At least 1 permission is required"></p-message>
+              <p-message severity="warn" text="È richiesto almeno 1 permesso"></p-message>
             }
 
             @if (selectedPermissions().length > 100) {
-              <p-message severity="error" text="Maximum 100 permissions allowed"></p-message>
+              <p-message severity="error" text="Sono consentiti al massimo 100 permessi"></p-message>
             }
 
             <app-permission-matrix
@@ -150,25 +165,26 @@ import { RoleApiService } from '../../services/role-api.service';
               [selectedPermissions]="selectedPermissions()"
               (permissionsChanged)="onPermissionsChanged($event)"
             ></app-permission-matrix>
-          </p-card>
+          </section>
 
-          <!-- Preview -->
+          <!-- Anteprima -->
           @if (showPreview()) {
-            <p-card header="Preview" styleClass="form-section">
+            <section class="surface-card form-section" aria-label="Anteprima">
+              <h2 class="section-title">Anteprima</h2>
               <div class="preview-content">
                 <div class="preview-row">
-                  <strong>Role Name:</strong>
-                  <span>{{ roleForm.get('name')?.value || '(not set)' }}</span>
+                  <strong>Nome ruolo:</strong>
+                  <span>{{ roleForm.get('name')?.value || '(non impostato)' }}</span>
                 </div>
 
                 <div class="preview-row">
-                  <strong>Description:</strong>
-                  <span>{{ roleForm.get('description')?.value || '(not set)' }}</span>
+                  <strong>Descrizione:</strong>
+                  <span>{{ roleForm.get('description')?.value || '(non impostata)' }}</span>
                 </div>
 
                 <div class="preview-row">
-                  <strong>Permissions:</strong>
-                  <span>{{ selectedPermissions().length }} selected</span>
+                  <strong>Permessi:</strong>
+                  <span>{{ selectedPermissions().length }} selezionati</span>
                 </div>
 
                 <div class="preview-permissions">
@@ -177,15 +193,15 @@ import { RoleApiService } from '../../services/role-api.service';
                   }
                 </div>
               </div>
-            </p-card>
+            </section>
           }
 
-          <!-- Actions -->
+          <!-- Azioni -->
           <div class="form-actions">
             <button
               pButton
               type="button"
-              label="Cancel"
+              label="Annulla"
               icon="pi pi-times"
               class="p-button-outlined"
               (click)="onCancel()"
@@ -194,7 +210,7 @@ import { RoleApiService } from '../../services/role-api.service';
             <button
               pButton
               type="button"
-              label="{{ showPreview() ? 'Hide Preview' : 'Preview' }}"
+              label="{{ showPreview() ? 'Nascondi anteprima' : 'Anteprima' }}"
               icon="pi pi-eye"
               class="p-button-outlined"
               (click)="togglePreview()"
@@ -204,7 +220,7 @@ import { RoleApiService } from '../../services/role-api.service';
             <button
               pButton
               type="submit"
-              [label]="isEditMode() ? 'Update Role' : 'Create Role'"
+              [label]="isEditMode() ? 'Aggiorna ruolo' : 'Crea ruolo'"
               icon="pi pi-check"
               [loading]="isSaving()"
               [disabled]="!isFormValid() || isSaving()"
@@ -214,32 +230,21 @@ import { RoleApiService } from '../../services/role-api.service';
       }
     </div>
 
-    <!-- Confirmation Dialog -->
+    <!-- Dialog di conferma -->
     <p-confirmDialog></p-confirmDialog>
+    <p-toast></p-toast>
   `,
   styles: [`
-    .custom-role-builder {
-      padding: 2rem;
-      max-width: 1400px;
-      margin: 0 auto;
+    .section-title {
+      font-family: var(--font-display);
+      font-size: var(--font-size-xl);
+      margin: 0 0 var(--spacing-base);
     }
 
-    .page-header {
+    .header-with-back {
       display: flex;
-      align-items: center;
-      gap: 1rem;
-      margin-bottom: 2rem;
-    }
-
-    .header-content h1 {
-      margin: 0 0 0.5rem 0;
-      font-size: 2rem;
-      font-weight: 700;
-    }
-
-    .header-subtitle {
-      margin: 0;
-      color: var(--text-color-secondary);
+      align-items: flex-start;
+      gap: var(--spacing-sm);
     }
 
     .loading-container {
@@ -247,111 +252,79 @@ import { RoleApiService } from '../../services/role-api.service';
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 4rem;
-      gap: 1rem;
+      padding: var(--spacing-2xl);
+      gap: var(--spacing-base);
+      color: var(--text-secondary);
     }
 
-    .form-section {
-      margin-bottom: 1.5rem;
-    }
+    .builder-form { display: flex; flex-direction: column; gap: var(--spacing-lg); }
 
     .form-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 1.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--spacing-lg);
     }
 
     .form-field {
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: var(--spacing-sm);
     }
-
-    .form-field.full-width {
-      grid-column: 1 / -1;
-    }
-
-    .form-field label {
-      font-weight: 600;
-      color: var(--text-color);
-    }
+    .form-field.full-width { grid-column: 1 / -1; }
+    .form-field label { font-weight: var(--font-weight-medium); color: var(--text-secondary); }
+    .p-error { color: var(--color-danger); font-size: var(--font-size-sm); }
 
     .permissions-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 1rem;
+      margin-bottom: var(--spacing-base);
       flex-wrap: wrap;
-      gap: 1rem;
+      gap: var(--spacing-base);
     }
+    .permissions-header p { margin: 0; }
 
     .permission-count {
-      font-weight: 600;
-      font-size: 1.125rem;
+      font-weight: var(--font-weight-semibold);
+      font-size: var(--font-size-lg);
+      white-space: nowrap;
     }
+    .permission-count .error { color: var(--color-danger); }
 
-    .permission-count .error {
-      color: var(--red-500);
-    }
-
-    .preview-content {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-
+    .preview-content { display: flex; flex-direction: column; gap: var(--spacing-base); }
     .preview-row {
       display: grid;
       grid-template-columns: 200px 1fr;
-      gap: 1rem;
+      gap: var(--spacing-base);
     }
-
     .preview-permissions {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-top: 0.5rem;
+      gap: var(--spacing-sm);
+      margin-top: var(--spacing-sm);
     }
-
     .permission-tag {
       display: inline-block;
-      padding: 0.25rem 0.75rem;
-      background: var(--primary-50);
-      color: var(--primary-700);
-      border-radius: 12px;
-      font-size: 0.875rem;
-      font-family: 'Courier New', monospace;
+      padding: 0.2rem 0.65rem;
+      background: var(--brand-primary-50);
+      color: var(--brand-primary-dark);
+      border-radius: var(--radius-full);
+      font-size: var(--font-size-xs);
+      font-family: var(--font-family-mono);
     }
 
     .form-actions {
       display: flex;
       justify-content: flex-end;
-      gap: 1rem;
-      padding-top: 1.5rem;
-      border-top: 1px solid var(--surface-border);
+      flex-wrap: wrap;
+      gap: var(--spacing-base);
     }
 
-    /* Mobile responsive */
     @media (max-width: 768px) {
-      .custom-role-builder {
-        padding: 1rem;
-      }
-
-      .form-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .preview-row {
-        grid-template-columns: 1fr;
-      }
-
-      .form-actions {
-        flex-direction: column;
-      }
-
-      .form-actions button {
-        width: 100%;
-      }
+      .form-grid { grid-template-columns: 1fr; }
+      .preview-row { grid-template-columns: 1fr; gap: var(--spacing-xs); }
+      .form-actions { flex-direction: column; }
+      .form-actions button { width: 100%; }
     }
   `],
 })
@@ -437,7 +410,7 @@ export class CustomRoleBuilderComponent implements OnInit {
         this.isLoading.set(false);
       },
       error: (error) => {
-        this.error.set(`Failed to load role: ${error.message}`);
+        this.error.set(`Impossibile caricare il ruolo: ${error.message}`);
         this.isLoading.set(false);
       },
     });
@@ -487,8 +460,8 @@ export class CustomRoleBuilderComponent implements OnInit {
       next: (response) => {
         this.messageService.add({
           severity: 'success',
-          summary: 'Success',
-          detail: `Role ${this.isEditMode() ? 'updated' : 'created'} successfully`,
+          summary: 'Fatto',
+          detail: `Ruolo ${this.isEditMode() ? 'aggiornato' : 'creato'} con successo`,
         });
 
         this.isSaving.set(false);
@@ -497,8 +470,8 @@ export class CustomRoleBuilderComponent implements OnInit {
       error: (error) => {
         this.messageService.add({
           severity: 'error',
-          summary: 'Error',
-          detail: `Failed to ${this.isEditMode() ? 'update' : 'create'} role: ${error.message}`,
+          summary: 'Errore',
+          detail: `Impossibile ${this.isEditMode() ? 'aggiornare' : 'creare'} il ruolo: ${error.message}`,
         });
 
         this.isSaving.set(false);
@@ -509,9 +482,11 @@ export class CustomRoleBuilderComponent implements OnInit {
   onCancel(): void {
     if (this.roleForm.dirty || this.selectedPermissions().length > 0) {
       this.confirmationService.confirm({
-        message: 'You have unsaved changes. Are you sure you want to cancel?',
-        header: 'Confirm Cancel',
+        message: 'Ci sono modifiche non salvate. Vuoi davvero annullare?',
+        header: 'Conferma annullamento',
         icon: 'pi pi-exclamation-triangle',
+        acceptLabel: 'Sì, annulla',
+        rejectLabel: 'Continua a modificare',
         accept: () => {
           this.goBack();
         },

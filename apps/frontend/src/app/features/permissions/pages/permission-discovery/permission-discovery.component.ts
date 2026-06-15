@@ -2,8 +2,7 @@ import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { AccordionModule } from 'primeng/accordion';
-import { CardModule } from 'primeng/card';
-import { BadgeModule } from 'primeng/badge';
+import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { ButtonModule } from 'primeng/button';
 import { PermissionStore } from '../../../../core/state/permission.store';
@@ -33,41 +32,55 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe';
   imports: [
     CommonModule,
     AccordionModule,
-    CardModule,
-    BadgeModule,
+    TagModule,
     TooltipModule,
     ButtonModule,
     PermissionFormatPipe,
     RoleDescriptionPipe,
   ],
   template: `
-    <div class="permission-discovery-page">
-      <!-- Header with role badge -->
-      <div class="page-header">
-        <h1>My Permissions</h1>
-        <p class="subtitle">{{ currentRole() | roleDescription:'short' }}</p>
+    <div class="page permission-discovery-page">
+      <!-- Intestazione con badge ruolo -->
+      <header class="page-header discovery-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">I miei permessi</h1>
+          <p class="page-subtitle">{{ currentRole() | roleDescription:'short' }}</p>
+        </div>
+        <div class="page-actions">
+          <p-tag
+            [value]="currentRole() | roleDescription:'name'"
+            severity="info"
+            styleClass="role-badge"
+            data-testid="role-badge"></p-tag>
+        </div>
+      </header>
 
-        <div class="role-badge-container">
-          <span class="role-badge" data-testid="role-badge">
-            {{ currentRole() | roleDescription:'name' }}
-          </span>
+      <!-- Legenda accessibile -->
+      <div
+        *ngIf="!permissionStore.isLoading() && !permissionStore.error()"
+        class="legend"
+        aria-label="Legenda degli stati dei permessi">
+        <span class="legend-item"><span class="permission-icon allowed" aria-hidden="true">✓</span> Consentito</span>
+        <span class="legend-item"><span class="permission-icon view-only" aria-hidden="true">○</span> Sola lettura</span>
+        <span class="legend-item"><span class="permission-icon denied" aria-hidden="true">✗</span> Negato</span>
+      </div>
+
+      <!-- Stato di caricamento -->
+      <div *ngIf="permissionStore.isLoading()" class="surface-card">
+        <div class="empty-state" role="status" aria-live="polite">
+          <i class="pi pi-spin pi-spinner empty-state__icon" aria-hidden="true"></i>
+          <p class="empty-state__title">Caricamento dei permessi...</p>
         </div>
       </div>
 
-      <!-- Loading State -->
-      <div *ngIf="permissionStore.isLoading()" class="loading-state">
-        <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
-        <p>Loading your permissions...</p>
-      </div>
-
-      <!-- Error State -->
-      <div *ngIf="permissionStore.error()" class="error-state">
-        <i class="pi pi-exclamation-triangle"></i>
+      <!-- Stato di errore -->
+      <div *ngIf="permissionStore.error()" class="surface-card error-state" role="alert">
+        <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
         <p>{{ permissionStore.error() }}</p>
-        <button pButton label="Retry" (click)="retryLoad()"></button>
+        <button pButton label="Riprova" icon="pi pi-refresh" (click)="retryLoad()"></button>
       </div>
 
-      <!-- Mobile Layout: Accordion -->
+      <!-- Layout mobile: accordion -->
       <div
         *ngIf="isMobile() && !permissionStore.isLoading() && !permissionStore.error()"
         class="mobile-layout"
@@ -82,12 +95,13 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe';
                 *ngFor="let permission of category.permissions"
                 class="permission-row"
                 [attr.data-testid]="'permission-item-' + permission.raw">
-                <div class="permission-icon" [class]="getPermissionState(permission.raw)" data-testid="permission-icon">
+                <div class="permission-icon" [class]="getPermissionState(permission.raw)" data-testid="permission-icon" aria-hidden="true">
                   {{ getPermissionIcon(permission.raw) }}
                 </div>
                 <div class="permission-details">
                   <span class="permission-name" data-testid="permission-status">
                     {{ permission.raw | permissionFormat }}
+                    <span class="sr-only">— {{ getPermissionStateLabel(permission.raw) }}</span>
                   </span>
                   <span class="permission-scope">{{ permission.scope }}</span>
                 </div>
@@ -97,263 +111,179 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe';
                   class="p-button-text p-button-rounded help-button"
                   [pTooltip]="getPermissionHelp(permission.raw)"
                   tooltipPosition="left"
-                  data-testid="help-icon"></button>
+                  data-testid="help-icon"
+                  [attr.aria-label]="'Aiuto su ' + (permission.raw | permissionFormat)"></button>
               </div>
             </div>
           </p-accordionTab>
         </p-accordion>
       </div>
 
-      <!-- Desktop Layout: Grid -->
+      <!-- Layout desktop: griglia -->
       <div
         *ngIf="!isMobile() && !permissionStore.isLoading() && !permissionStore.error()"
         class="desktop-layout"
         data-testid="permission-grid">
-        <p-card
+        <section
           *ngFor="let category of permissionCategories()"
-          [header]="category.name"
-          styleClass="category-card">
+          class="surface-card category-card"
+          [attr.aria-label]="category.name">
+          <h2 class="category-title">{{ category.name }}</h2>
           <div class="permissions-grid">
             <div
               *ngFor="let permission of category.permissions"
               class="permission-card"
               [attr.data-testid]="'permission-item-' + permission.raw">
-              <div class="permission-icon" [class]="getPermissionState(permission.raw)">
+              <div class="permission-icon" [class]="getPermissionState(permission.raw)" aria-hidden="true">
                 {{ getPermissionIcon(permission.raw) }}
               </div>
               <div class="permission-info">
                 <span class="permission-name">
                   {{ permission.raw | permissionFormat }}
+                  <span class="sr-only">— {{ getPermissionStateLabel(permission.raw) }}</span>
                 </span>
                 <span class="permission-scope">{{ permission.scope }}</span>
               </div>
               <i
                 class="pi pi-question-circle help-icon"
                 [pTooltip]="getPermissionHelp(permission.raw)"
-                tooltipPosition="top"></i>
+                tooltipPosition="top"
+                role="img"
+                [attr.aria-label]="'Aiuto su ' + (permission.raw | permissionFormat)"></i>
             </div>
           </div>
-        </p-card>
+        </section>
       </div>
     </div>
   `,
   styles: [`
-    .permission-discovery-page {
-      padding: 1rem;
-      min-height: 100vh;
-    }
+    .discovery-header { align-items: center; }
 
-    .page-header {
-      margin-bottom: 2rem;
-      text-align: center;
-    }
-
-    .page-header h1 {
-      margin: 0;
-      color: #2c3e50;
-      font-size: 1.75rem;
-    }
-
-    .subtitle {
-      color: #6c757d;
-      margin: 0.5rem 0 1rem;
-    }
-
-    .role-badge-container {
-      display: flex;
-      justify-content: center;
-      margin-top: 1rem;
-    }
-
-    .role-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 56px;
-      padding: 0.75rem 1.5rem;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border-radius: 28px;
-      font-weight: 600;
-      font-size: 1rem;
+    :host ::ng-deep .role-badge {
+      font-size: var(--font-size-sm);
+      padding: 0.4rem 0.9rem;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      letter-spacing: 0.04em;
     }
 
-    .loading-state,
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-lg);
+      margin-bottom: var(--spacing-lg);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+    }
+    .legend-item { display: inline-flex; align-items: center; gap: var(--spacing-sm); }
+    .legend-item .permission-icon { width: 24px; height: 24px; font-size: 0.95rem; }
+
     .error-state {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 3rem;
+      padding: var(--spacing-2xl);
       text-align: center;
-      gap: 1rem;
+      gap: var(--spacing-base);
+      color: var(--text-secondary);
+      border-left: 4px solid var(--color-danger);
+      background: var(--color-danger-bg);
     }
+    .error-state i { font-size: 2.5rem; color: var(--color-danger); }
 
-    .error-state {
-      color: #d32f2f;
-    }
-
-    /* Mobile Layout: Accordion */
-    .mobile-layout {
-      margin-top: 1rem;
-    }
+    .mobile-layout { margin-top: var(--spacing-sm); }
 
     :host ::ng-deep .p-accordion .p-accordion-header .p-accordion-header-link {
-      min-height: 56px;
-      padding: 1rem;
-      font-weight: 600;
-      font-size: 1rem;
-      transition: all 0.3s ease;
+      min-height: var(--touch-target-min);
+      padding: var(--spacing-base);
+      font-weight: var(--font-weight-semibold);
     }
+    :host ::ng-deep .p-accordion .p-accordion-content { padding: 0; }
 
-    :host ::ng-deep .p-accordion .p-accordion-header .p-accordion-header-link:hover {
-      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-    }
-
-    :host ::ng-deep .p-accordion .p-accordion-content {
-      padding: 0;
-    }
-
-    .category-content {
-      display: flex;
-      flex-direction: column;
-    }
+    .category-content { display: flex; flex-direction: column; }
 
     .permission-row {
       display: flex;
       align-items: center;
-      gap: 1rem;
-      padding: 1rem;
-      min-height: 56px;
-      border-bottom: 1px solid #e9ecef;
-      transition: background 0.2s ease;
+      gap: var(--spacing-base);
+      padding: var(--spacing-base);
+      min-height: var(--touch-target-min);
+      border-bottom: 1px solid var(--surface-border);
+      transition: background var(--transition-fast);
     }
-
-    .permission-row:hover {
-      background: #f8f9fa;
-    }
-
-    .permission-row:last-child {
-      border-bottom: none;
-    }
+    .permission-row:hover { background: var(--surface-hover); }
+    .permission-row:last-child { border-bottom: none; }
 
     .permission-icon {
       width: 32px;
       height: 32px;
-      border-radius: 50%;
+      border-radius: var(--radius-full);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.25rem;
-      font-weight: bold;
+      font-size: 1.1rem;
+      font-weight: var(--font-weight-bold);
       flex-shrink: 0;
     }
+    .permission-icon.allowed { background: var(--color-success-bg); color: var(--color-success); }
+    .permission-icon.view-only { background: var(--color-info-bg); color: var(--color-info); }
+    .permission-icon.denied { background: var(--color-gray-200); color: var(--text-tertiary); }
 
-    .permission-icon.allowed {
-      background: #c8e6c9;
-      color: #2e7d32;
-    }
-
-    .permission-icon.view-only {
-      background: #bbdefb;
-      color: #1565c0;
-    }
-
-    .permission-icon.denied {
-      background: #e0e0e0;
-      color: #757575;
-    }
-
-    .permission-details {
+    .permission-details, .permission-info {
       flex: 1;
+      min-width: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.25rem;
+      gap: var(--spacing-xs);
     }
 
     .permission-name {
-      font-weight: 500;
-      color: #2c3e50;
-      font-size: 0.9375rem;
+      font-weight: var(--font-weight-medium);
+      color: var(--text-primary);
+      font-size: var(--font-size-sm);
     }
-
     .permission-scope {
-      font-size: 0.75rem;
-      color: #6c757d;
+      font-size: var(--font-size-xs);
+      color: var(--text-tertiary);
       text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
 
-    .help-button {
-      flex-shrink: 0;
-    }
+    .help-button { flex-shrink: 0; }
 
-    /* Desktop Layout: Grid */
     .desktop-layout {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-      gap: 1.5rem;
-      margin-top: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: var(--spacing-lg);
     }
 
-    .category-card {
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      transition: box-shadow 0.3s ease;
+    .category-card { transition: box-shadow var(--transition-base); }
+    .category-card:hover { box-shadow: var(--shadow-md); }
+    .category-title {
+      font-family: var(--font-display);
+      font-size: var(--font-size-lg);
+      margin: 0 0 var(--spacing-base);
     }
 
-    .category-card:hover {
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-    }
-
-    .permissions-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
+    .permissions-grid { display: flex; flex-direction: column; gap: var(--spacing-sm); }
 
     .permission-card {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem;
-      background: #f8f9fa;
-      border-radius: 4px;
-      transition: background 0.2s ease;
+      gap: var(--spacing-md);
+      padding: var(--spacing-md);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-base);
+      transition: background var(--transition-fast);
     }
-
-    .permission-card:hover {
-      background: #e9ecef;
-    }
-
-    .permission-info {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-    }
+    .permission-card:hover { background: var(--surface-hover); }
 
     .help-icon {
-      color: #6c757d;
+      color: var(--text-tertiary);
       cursor: pointer;
-      font-size: 1.125rem;
+      font-size: 1.1rem;
     }
-
-    .help-icon:hover {
-      color: #1976d2;
-    }
-
-    /* Responsive adjustments */
-    @media (min-width: 768px) {
-      .permission-discovery-page {
-        padding: 2rem;
-      }
-
-      .page-header h1 {
-        font-size: 2.5rem;
-      }
-    }
+    .help-icon:hover { color: var(--brand-primary-dark); }
   `]
 })
 export class PermissionDiscoveryComponent implements OnInit {
@@ -405,20 +335,6 @@ export class PermissionDiscoveryComponent implements OnInit {
 
       const [resource, , scope] = parts;
 
-      // Category names
-      const categoryNames: Record<string, string> = {
-        fir: 'FIR Management',
-        user: 'User Management',
-        role: 'Role Management',
-        permission: 'Permission Management',
-        tenant: 'Tenant Management',
-        analytics: 'Analytics & Reports',
-        mud: 'MUD Reporting',
-        backup: 'System Backups',
-      };
-
-      const categoryName = categoryNames[resource] || `${resource} Management`;
-
       if (!categoryMap.has(resource)) {
         categoryMap.set(resource, []);
       }
@@ -444,17 +360,17 @@ export class PermissionDiscoveryComponent implements OnInit {
    */
   private getCategoryName(resource: string): string {
     const categoryNames: Record<string, string> = {
-      fir: 'FIR Management',
-      user: 'User Management',
-      role: 'Role Management',
-      permission: 'Permission Management',
-      tenant: 'Tenant Management',
-      analytics: 'Analytics & Reports',
-      mud: 'MUD Reporting',
-      backup: 'System Backups',
+      fir: 'Gestione FIR',
+      user: 'Gestione utenti',
+      role: 'Gestione ruoli',
+      permission: 'Gestione permessi',
+      tenant: 'Gestione tenant',
+      analytics: 'Analisi e report',
+      mud: 'Dichiarazione MUD',
+      backup: 'Backup di sistema',
     };
 
-    return categoryNames[resource] || `${resource} Management`;
+    return categoryNames[resource] || `Gestione ${resource}`;
   }
 
   /**
@@ -492,16 +408,30 @@ export class PermissionDiscoveryComponent implements OnInit {
   }
 
   /**
+   * Etichetta testuale dello stato (per screen reader / WCAG: non solo colore)
+   */
+  getPermissionStateLabel(permission: string): string {
+    switch (this.getPermissionState(permission)) {
+      case 'allowed':
+        return 'Consentito';
+      case 'view-only':
+        return 'Sola lettura';
+      case 'denied':
+        return 'Negato';
+    }
+  }
+
+  /**
    * Get contextual help for permission
    */
   getPermissionHelp(permission: string): string {
     const hasPermission = this.permissionStore.hasPermission()(permission);
 
     if (hasPermission) {
-      return `You have this permission. ${this.getPermissionDescription(permission)}`;
+      return `Hai questo permesso. ${this.getPermissionDescription(permission)}`;
     }
 
-    return `You don't have this permission. Contact your administrator to request access.`;
+    return `Non hai questo permesso. Contatta l'amministratore per richiedere l'accesso.`;
   }
 
   /**
@@ -515,16 +445,16 @@ export class PermissionDiscoveryComponent implements OnInit {
 
     const descriptions: Record<string, Record<string, string>> = {
       fir: {
-        create: 'You can create new FIRs for waste management.',
-        read: 'You can view existing FIRs.',
-        update: 'You can edit existing FIRs.',
-        delete: 'You can delete FIRs.',
+        create: 'Puoi creare nuovi FIR per la gestione dei rifiuti.',
+        read: 'Puoi visualizzare i FIR esistenti.',
+        update: 'Puoi modificare i FIR esistenti.',
+        delete: 'Puoi eliminare i FIR.',
       },
       user: {
-        create: 'You can create new user accounts.',
-        read: 'You can view user information.',
-        update: 'You can edit user profiles.',
-        delete: 'You can deactivate user accounts.',
+        create: 'Puoi creare nuovi account utente.',
+        read: 'Puoi visualizzare le informazioni degli utenti.',
+        update: 'Puoi modificare i profili utente.',
+        delete: 'Puoi disattivare gli account utente.',
       },
     };
 

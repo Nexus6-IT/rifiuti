@@ -2,8 +2,8 @@ import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
-import { CardModule } from 'primeng/card';
 import { MessageModule } from 'primeng/message';
+import { TagModule } from 'primeng/tag';
 import { PermissionStore } from '../../../../core/state/permission.store';
 
 /**
@@ -27,470 +27,333 @@ import { PermissionStore } from '../../../../core/state/permission.store';
   imports: [
     CommonModule,
     ButtonModule,
-    CardModule,
     MessageModule,
+    TagModule,
   ],
   template: `
-    <div class="permission-denied-page">
-      <div class="error-container">
-        <!-- Error Icon and Title -->
-        <div class="error-header">
-          <div class="error-icon-wrapper">
-            <i class="pi pi-lock error-icon"></i>
+    <div class="denied-page">
+      <main class="denied-container" role="main">
+        <!-- Intestazione -->
+        <div class="denied-header">
+          <div class="denied-icon-wrapper" aria-hidden="true">
+            <i class="pi pi-lock denied-icon"></i>
           </div>
-          <h1 class="error-title">Access Denied</h1>
-          <p class="error-subtitle">
-            You don't have permission to access this resource
+          <h1 class="denied-title">Accesso non consentito</h1>
+          <p class="denied-subtitle">
+            Non hai i permessi necessari per visualizzare questa pagina. Nessun problema: qui sotto trovi cosa puoi fare.
           </p>
         </div>
 
-        <!-- Error Details Card -->
-        <p-card styleClass="error-details-card">
-          <div class="error-details">
-            <p-message
-              severity="warn"
-              [text]="getErrorMessage()"
-              styleClass="w-full">
-            </p-message>
+        <!-- Dettaglio in card -->
+        <section class="surface-card denied-card" aria-label="Dettagli del permesso richiesto">
+          <p-message
+            severity="warn"
+            [text]="getErrorMessage()"
+            styleClass="denied-message"
+            role="status">
+          </p-message>
 
-            <!-- Required Permission -->
-            <div class="info-section" *ngIf="requiredPermission">
-              <h3 class="section-title">
-                <i class="pi pi-shield"></i>
-                Required Permission
-              </h3>
-              <div class="permission-code">
-                <code>{{ requiredPermission }}</code>
-              </div>
-              <div class="permission-breakdown">
-                <div class="breakdown-item">
-                  <span class="label">Resource:</span>
-                  <span class="value">{{ getResource() }}</span>
-                </div>
-                <div class="breakdown-item">
-                  <span class="label">Action:</span>
-                  <span class="value">{{ getAction() }}</span>
-                </div>
-                <div class="breakdown-item">
-                  <span class="label">Scope:</span>
-                  <span class="value">{{ getScope() }}</span>
-                </div>
-              </div>
+          <!-- Permesso richiesto -->
+          <div class="info-section" *ngIf="requiredPermission">
+            <h2 class="section-title">
+              <i class="pi pi-shield" aria-hidden="true"></i>
+              Permesso richiesto
+            </h2>
+            <div class="permission-code">
+              <code>{{ requiredPermission }}</code>
             </div>
-
-            <!-- Current Role -->
-            <div class="info-section" *ngIf="currentRole">
-              <h3 class="section-title">
-                <i class="pi pi-user"></i>
-                Your Current Role
-              </h3>
-              <div class="role-badge">
-                {{ currentRole }}
+            <div class="permission-breakdown">
+              <div class="breakdown-item">
+                <span class="label">Risorsa</span>
+                <span class="value">{{ getResource() }}</span>
               </div>
-            </div>
-
-            <!-- User's Permissions -->
-            <div class="info-section" *ngIf="showUserPermissions">
-              <h3 class="section-title">
-                <i class="pi pi-list"></i>
-                Your Current Permissions
-              </h3>
-              <div class="permissions-list">
-                <div
-                  *ngFor="let permission of getUserPermissions()"
-                  class="permission-item">
-                  <i class="pi pi-check-circle"></i>
-                  <code>{{ permission }}</code>
-                </div>
-                <div
-                  *ngIf="getUserPermissions().length === 0"
-                  class="no-permissions">
-                  <i class="pi pi-info-circle"></i>
-                  <span>No permissions assigned</span>
-                </div>
+              <div class="breakdown-item">
+                <span class="label">Azione</span>
+                <span class="value">{{ getAction() }}</span>
               </div>
-            </div>
-
-            <!-- Next Steps -->
-            <div class="info-section next-steps">
-              <h3 class="section-title">
-                <i class="pi pi-compass"></i>
-                What can I do?
-              </h3>
-              <ul class="steps-list">
-                <li>
-                  <i class="pi pi-envelope"></i>
-                  Contact your administrator at
-                  <a [href]="'mailto:' + supportEmail">{{ supportEmail }}</a>
-                  to request access
-                </li>
-                <li>
-                  <i class="pi pi-book"></i>
-                  Review the
-                  <a href="/docs/permissions" target="_blank">
-                    permissions documentation
-                  </a>
-                  to understand access requirements
-                </li>
-                <li>
-                  <i class="pi pi-arrow-left"></i>
-                  Navigate back to a page you have access to
-                </li>
-              </ul>
+              <div class="breakdown-item">
+                <span class="label">Ambito</span>
+                <span class="value">{{ getScope() }}</span>
+              </div>
             </div>
           </div>
-        </p-card>
 
-        <!-- Action Buttons -->
-        <div class="action-buttons">
+          <!-- Ruolo attuale -->
+          <div class="info-section" *ngIf="currentRole">
+            <h2 class="section-title">
+              <i class="pi pi-user" aria-hidden="true"></i>
+              Il tuo ruolo attuale
+            </h2>
+            <p-tag [value]="currentRole" severity="info"></p-tag>
+          </div>
+
+          <!-- Permessi dell'utente -->
+          <div class="info-section" *ngIf="showUserPermissions">
+            <h2 class="section-title">
+              <i class="pi pi-list" aria-hidden="true"></i>
+              I tuoi permessi attuali
+            </h2>
+            <div class="permissions-list">
+              <div
+                *ngFor="let permission of getUserPermissions()"
+                class="permission-item">
+                <i class="pi pi-check-circle" aria-hidden="true"></i>
+                <code>{{ permission }}</code>
+              </div>
+              <div
+                *ngIf="getUserPermissions().length === 0"
+                class="no-permissions">
+                <i class="pi pi-info-circle" aria-hidden="true"></i>
+                <span>Nessun permesso assegnato</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cosa posso fare -->
+          <div class="info-section next-steps">
+            <h2 class="section-title">
+              <i class="pi pi-compass" aria-hidden="true"></i>
+              Cosa puoi fare
+            </h2>
+            <ul class="steps-list">
+              <li>
+                <i class="pi pi-envelope" aria-hidden="true"></i>
+                <span>
+                  Contatta l'amministratore all'indirizzo
+                  <a [href]="'mailto:' + supportEmail">{{ supportEmail }}</a>
+                  per richiedere l'accesso.
+                </span>
+              </li>
+              <li>
+                <i class="pi pi-book" aria-hidden="true"></i>
+                <span>
+                  Consulta la
+                  <a href="/docs/permissions" target="_blank" rel="noopener">
+                    documentazione sui permessi</a>
+                  per capire i requisiti di accesso.
+                </span>
+              </li>
+              <li>
+                <i class="pi pi-arrow-left" aria-hidden="true"></i>
+                <span>Torna a una pagina a cui hai accesso.</span>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- Azioni -->
+        <div class="denied-actions">
           <button
             pButton
-            label="Go Back"
+            label="Torna indietro"
             icon="pi pi-arrow-left"
-            class="p-button-lg touch-target"
             (click)="goBack()"
             data-testid="go-back-button">
           </button>
           <button
             pButton
-            label="Request Access"
+            label="Richiedi accesso"
             icon="pi pi-user-plus"
-            class="p-button-lg p-button-success touch-target"
+            class="p-button-success"
             (click)="requestAccess()"
             data-testid="request-access-button">
           </button>
           <button
             pButton
-            label="Go to Dashboard"
+            label="Vai alla dashboard"
             icon="pi pi-home"
-            class="p-button-lg p-button-outlined touch-target"
+            class="p-button-outlined"
             (click)="goToDashboard()">
           </button>
         </div>
 
-        <!-- Additional Help -->
-        <div class="additional-help">
+        <!-- Aiuto aggiuntivo -->
+        <div class="surface-card additional-help">
           <p class="help-text">
-            <i class="pi pi-question-circle"></i>
-            Need immediate assistance? Call support at
+            <i class="pi pi-question-circle" aria-hidden="true"></i>
+            Hai bisogno di assistenza immediata? Chiama il supporto al
             <strong>{{ supportPhone }}</strong>
           </p>
         </div>
-      </div>
+      </main>
     </div>
   `,
   styles: [`
-    .permission-denied-page {
+    .denied-page {
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      padding: 2rem;
+      background: var(--surface-ground);
+      padding: clamp(1rem, 3vw, var(--spacing-xl));
     }
 
-    .error-container {
-      max-width: 800px;
+    .denied-container {
+      max-width: 760px;
       width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-lg);
     }
 
-    .error-header {
-      text-align: center;
-      margin-bottom: 2rem;
-      color: white;
-    }
+    .denied-header { text-align: center; }
 
-    .error-icon-wrapper {
+    .denied-icon-wrapper {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 120px;
-      height: 120px;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 50%;
-      margin-bottom: 1.5rem;
-      backdrop-filter: blur(10px);
-      animation: pulse 2s ease-in-out infinite;
+      width: 96px;
+      height: 96px;
+      background: var(--brand-primary-50);
+      border: 1px solid var(--brand-primary-100);
+      border-radius: var(--radius-full);
+      margin-bottom: var(--spacing-base);
     }
 
-    @keyframes pulse {
-      0%, 100% {
-        transform: scale(1);
-        opacity: 1;
-      }
-      50% {
-        transform: scale(1.05);
-        opacity: 0.9;
-      }
+    .denied-icon { font-size: 2.75rem; color: var(--brand-primary-dark); }
+
+    .denied-title {
+      font-family: var(--font-display);
+      font-size: var(--font-size-3xl);
+      margin: 0 0 var(--spacing-sm);
     }
 
-    .error-icon {
-      font-size: 4rem;
-      color: white;
+    .denied-subtitle {
+      font-size: var(--font-size-base);
+      color: var(--text-secondary);
+      margin: 0 auto;
+      max-width: 52ch;
     }
 
-    .error-title {
-      font-size: 2.5rem;
-      font-weight: 700;
-      margin: 0 0 0.5rem;
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    }
+    .denied-card { display: flex; flex-direction: column; gap: var(--spacing-lg); }
 
-    .error-subtitle {
-      font-size: 1.25rem;
-      opacity: 0.9;
-      margin: 0;
-    }
-
-    .error-details-card {
-      margin-bottom: 2rem;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    }
-
-    .error-details {
-      padding: 1rem;
-    }
+    :host ::ng-deep .denied-message { width: 100%; }
 
     .info-section {
-      margin: 2rem 0;
-      padding: 1.5rem;
-      background: #f8f9fa;
-      border-radius: 8px;
-      border-left: 4px solid #667eea;
+      padding: var(--spacing-lg);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
+      border-left: 4px solid var(--brand-primary);
     }
-
-    .info-section.next-steps {
-      border-left-color: #4caf50;
-    }
+    .info-section.next-steps { border-left-color: var(--color-success); }
 
     .section-title {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      font-size: 1.125rem;
-      font-weight: 600;
-      color: #2c3e50;
-      margin: 0 0 1rem;
+      gap: var(--spacing-sm);
+      font-size: var(--font-size-lg);
+      font-family: var(--font-display);
+      color: var(--text-primary);
+      margin: 0 0 var(--spacing-base);
     }
-
-    .section-title i {
-      color: #667eea;
-    }
+    .section-title i { color: var(--brand-primary-dark); }
 
     .permission-code {
-      background: #2c3e50;
-      color: #00ff00;
-      padding: 1rem;
-      border-radius: 4px;
-      margin-bottom: 1rem;
-      font-family: 'Courier New', monospace;
+      background: var(--color-gray-900);
+      color: var(--brand-primary-light);
+      padding: var(--spacing-base);
+      border-radius: var(--radius-base);
+      margin-bottom: var(--spacing-base);
+      font-family: var(--font-family-mono);
+      overflow-x: auto;
     }
-
-    .permission-code code {
-      font-size: 1.125rem;
-      font-weight: 600;
-    }
+    .permission-code code { font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); }
 
     .permission-breakdown {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: var(--spacing-base);
     }
-
-    .breakdown-item {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-    }
-
+    .breakdown-item { display: flex; flex-direction: column; gap: var(--spacing-xs); }
     .breakdown-item .label {
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       text-transform: uppercase;
-      color: #6c757d;
-      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: var(--text-tertiary);
+      font-weight: var(--font-weight-semibold);
     }
-
     .breakdown-item .value {
-      font-size: 1rem;
-      color: #2c3e50;
-      font-weight: 600;
-      background: white;
-      padding: 0.5rem;
-      border-radius: 4px;
-    }
-
-    .role-badge {
-      display: inline-block;
-      background: #667eea;
-      color: white;
-      padding: 0.75rem 1.5rem;
-      border-radius: 4px;
-      font-size: 1.125rem;
-      font-weight: 600;
+      font-size: var(--font-size-sm);
+      color: var(--text-primary);
+      font-weight: var(--font-weight-semibold);
+      background: var(--surface-card);
+      padding: var(--spacing-sm);
+      border-radius: var(--radius-base);
+      border: 1px solid var(--surface-border);
     }
 
     .permissions-list {
-      max-height: 300px;
+      max-height: 280px;
       overflow-y: auto;
-      background: white;
-      padding: 1rem;
-      border-radius: 4px;
+      background: var(--surface-card);
+      padding: var(--spacing-sm);
+      border-radius: var(--radius-base);
+      border: 1px solid var(--surface-border);
     }
-
     .permission-item {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem;
-      border-bottom: 1px solid #e9ecef;
-      font-family: 'Courier New', monospace;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-sm);
+      border-bottom: 1px solid var(--surface-border);
+      font-family: var(--font-family-mono);
+      font-size: var(--font-size-sm);
     }
-
-    .permission-item:last-child {
-      border-bottom: none;
-    }
-
-    .permission-item i {
-      color: #4caf50;
-    }
+    .permission-item:last-child { border-bottom: none; }
+    .permission-item i { color: var(--color-success); }
 
     .no-permissions {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      color: #6c757d;
-      font-style: italic;
-      padding: 1rem;
+      gap: var(--spacing-sm);
+      color: var(--text-tertiary);
+      padding: var(--spacing-base);
     }
 
-    .steps-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
+    .steps-list { list-style: none; padding: 0; margin: 0; }
     .steps-list li {
       display: flex;
       align-items: flex-start;
-      gap: 0.75rem;
-      padding: 1rem;
-      background: white;
-      margin-bottom: 0.75rem;
-      border-radius: 4px;
-      line-height: 1.6;
+      gap: var(--spacing-md);
+      padding: var(--spacing-base);
+      background: var(--surface-card);
+      margin-bottom: var(--spacing-md);
+      border-radius: var(--radius-base);
+      border: 1px solid var(--surface-border);
+      line-height: var(--line-height-normal);
+      color: var(--text-secondary);
     }
-
-    .steps-list li:last-child {
-      margin-bottom: 0;
-    }
-
+    .steps-list li:last-child { margin-bottom: 0; }
     .steps-list i {
-      color: #667eea;
-      font-size: 1.25rem;
-      margin-top: 0.125rem;
+      color: var(--brand-primary-dark);
+      font-size: var(--font-size-xl);
+      margin-top: 0.1rem;
       flex-shrink: 0;
     }
 
-    .steps-list a {
-      color: #667eea;
-      font-weight: 600;
-      text-decoration: none;
-    }
-
-    .steps-list a:hover {
-      text-decoration: underline;
-    }
-
-    .action-buttons {
+    .denied-actions {
       display: flex;
       justify-content: center;
-      gap: 1rem;
       flex-wrap: wrap;
-      margin-bottom: 1.5rem;
+      gap: var(--spacing-base);
     }
 
-    /* Touch targets - T130: 56px minimum per plan.md */
-    .touch-target {
-      min-height: 56px;
-      min-width: 56px;
-      padding: 0.75rem 1.5rem;
-      font-size: 1rem;
-    }
-
-    @media (max-width: 768px) {
-      .touch-target {
-        width: 100%;
-        min-height: 64px; /* Larger on mobile for easier tapping */
-        padding: 1rem 1.5rem;
-        font-size: 1.125rem;
-      }
-    }
-
-    .additional-help {
-      text-align: center;
-      padding: 1.5rem;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
-      backdrop-filter: blur(10px);
-    }
-
+    .additional-help { text-align: center; }
     .help-text {
-      color: white;
       margin: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 0.5rem;
-      font-size: 1rem;
+      flex-wrap: wrap;
+      gap: var(--spacing-sm);
+      color: var(--text-secondary);
     }
+    .help-text i { color: var(--brand-primary-dark); }
 
-    .help-text i {
-      font-size: 1.25rem;
-    }
-
-    /* Responsive design */
-    @media (max-width: 768px) {
-      .permission-denied-page {
-        padding: 1rem;
-      }
-
-      .error-title {
-        font-size: 2rem;
-      }
-
-      .error-subtitle {
-        font-size: 1rem;
-      }
-
-      .error-icon-wrapper {
-        width: 80px;
-        height: 80px;
-      }
-
-      .error-icon {
-        font-size: 2.5rem;
-      }
-
-      .action-buttons {
-        flex-direction: column;
-      }
-
-      .action-buttons button {
-        width: 100%;
-      }
-
-      .permission-breakdown {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    /* PrimeNG overrides */
-    :host ::ng-deep .error-details-card .p-card-body {
-      padding: 0;
-    }
-
-    :host ::ng-deep .p-message {
-      margin-bottom: 1rem;
+    @media (max-width: 576px) {
+      .denied-actions { flex-direction: column; }
+      .denied-actions button { width: 100%; }
+      .permission-breakdown { grid-template-columns: 1fr; }
     }
   `]
 })
@@ -513,8 +376,8 @@ export class PermissionDeniedComponent implements OnInit {
     // Read error details from route query params
     this.route.queryParams.subscribe((params) => {
       this.requiredPermission = params['permission'] || '';
-      this.currentRole = params['role'] || 'Unknown';
-      this.resourceName = params['resource'] || 'this resource';
+      this.currentRole = params['role'] || 'Sconosciuto';
+      this.resourceName = params['resource'] || 'questa risorsa';
       this.showUserPermissions = params['showPermissions'] !== 'false';
     });
 
@@ -540,9 +403,9 @@ export class PermissionDeniedComponent implements OnInit {
    */
   getErrorMessage(): string {
     if (this.requiredPermission) {
-      return `To access ${this.resourceName}, you need the "${this.requiredPermission}" permission. Your current role "${this.currentRole}" does not include this permission.`;
+      return `Per accedere a ${this.resourceName} ti serve il permesso "${this.requiredPermission}". Il tuo ruolo attuale "${this.currentRole}" non lo include.`;
     }
-    return 'You do not have sufficient permissions to access this resource.';
+    return 'Non disponi dei permessi sufficienti per accedere a questa risorsa.';
   }
 
   /**

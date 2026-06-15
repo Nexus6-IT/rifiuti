@@ -1,10 +1,8 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CardModule } from 'primeng/card';
 import { ButtonModule } from 'primeng/button';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
-import { MessageModule } from 'primeng/message';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { ToastService } from '../../core/services/toast.service';
 import {
@@ -24,130 +22,159 @@ import {
   standalone: true,
   imports: [
     CommonModule,
-    CardModule,
     ButtonModule,
     TableModule,
     TagModule,
-    MessageModule,
     ProgressSpinnerModule,
   ],
   template: `
-    <div class="giacenze-page" style="max-width: 1200px; margin: 0 auto;">
-      <p-card>
-        <ng-template pTemplate="header">
-          <div class="p-3 flex justify-content-between align-items-center">
-            <div>
-              <h2>Giacenze e deposito temporaneo</h2>
-              <p class="text-muted">Riepilogo delle giacenze per codice CER e controllo dei limiti di deposito temporaneo</p>
-            </div>
-            <p-button
-              label="Aggiorna"
-              icon="pi pi-refresh"
-              [text]="true"
-              [loading]="loading()"
-              (onClick)="reload()"
-            ></p-button>
+    <div class="page">
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Giacenze e deposito temporaneo</h1>
+          <p class="page-subtitle">Riepilogo delle giacenze per codice CER e controllo dei limiti di deposito temporaneo</p>
+        </div>
+        <div class="page-actions">
+          <p-button
+            label="Aggiorna"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            [loading]="loading()"
+            (onClick)="reload()"
+            ariaLabel="Aggiorna giacenze e alert"
+          ></p-button>
+        </div>
+      </header>
+
+      <!-- Stato di errore -->
+      <section *ngIf="error()" class="surface-card mb-4">
+        <div class="empty-state">
+          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true" style="color: var(--color-danger);"></i>
+          <span class="empty-state__title">{{ error() }}</span>
+          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="reload()"></p-button>
+        </div>
+      </section>
+
+      <!-- Stato di caricamento -->
+      <section *ngIf="loading()" class="surface-card">
+        <div class="flex justify-content-center p-5">
+          <p-progressSpinner strokeWidth="4" [style]="{ width: '48px', height: '48px' }" ariaLabel="Caricamento giacenze"></p-progressSpinner>
+        </div>
+      </section>
+
+      <ng-container *ngIf="!loading() && !error()">
+        <!-- KPI giacenze totali -->
+        <div class="stat-grid mb-4">
+          <div class="stat-card">
+            <span class="stat-card__label">Codici CER in giacenza</span>
+            <span class="stat-card__value">{{ giacenze().length | number }}</span>
+            <span class="stat-card__hint">codici con movimenti registrati</span>
           </div>
-        </ng-template>
-
-        <!-- Stato di errore -->
-        <p-message
-          *ngIf="error()"
-          severity="error"
-          [text]="error()!"
-          styleClass="w-full mb-3"
-        ></p-message>
-
-        <!-- Stato di caricamento -->
-        <div *ngIf="loading()" class="flex justify-content-center p-5">
-          <p-progressSpinner strokeWidth="4" [style]="{ width: '48px', height: '48px' }"></p-progressSpinner>
+          <div class="stat-card">
+            <span class="stat-card__label">Giacenza totale</span>
+            <span class="stat-card__value">{{ totalGiacenzaKg() | number: '1.0-0' }}</span>
+            <span class="stat-card__hint">kg attualmente in deposito</span>
+          </div>
+          <div class="stat-card" [class.stat-card--alert]="alerts().length">
+            <span class="stat-card__label">Alert deposito temporaneo</span>
+            <span class="stat-card__value">{{ alerts().length | number }}</span>
+            <span class="stat-card__hint">codici oltre le soglie</span>
+          </div>
         </div>
 
-        <ng-container *ngIf="!loading() && !error()">
-          <!-- Alert deposito temporaneo -->
-          <div class="mt-2 mb-4">
-            <h3 class="mb-2">Alert deposito temporaneo</h3>
+        <!-- Alert deposito temporaneo -->
+        <section class="surface-card mb-4" aria-label="Alert deposito temporaneo">
+          <h2 class="giacenze-section-title mb-3">Alert deposito temporaneo</h2>
 
-            <p-message
-              *ngIf="!alerts().length"
-              severity="success"
-              text="Nessun codice CER supera le soglie di deposito temporaneo."
-              styleClass="w-full"
-            ></p-message>
-
-            <div *ngFor="let alert of alerts()" class="alert-banner mb-2">
-              <div class="alert-header">
-                <span class="alert-cer"><strong>CER {{ alert.cerCode }}</strong></span>
-                <span class="alert-qty">{{ alert.giacenzaKg | number: '1.0-2' }} kg in giacenza</span>
-              </div>
-              <div class="alert-tags">
-                <p-tag
-                  *ngFor="let reason of alert.reasons"
-                  [value]="reasonLabel(reason)"
-                  [severity]="reasonSeverity(reason)"
-                  [icon]="reasonIcon(reason)"
-                ></p-tag>
-                <span *ngIf="alert.durationDays != null" class="alert-days">
-                  Giacenza da {{ alert.durationDays }} giorni
-                  <ng-container *ngIf="alert.oldestCaricoDate">
-                    (dal {{ alert.oldestCaricoDate | date: 'dd/MM/yyyy' }})
-                  </ng-container>
-                </span>
-              </div>
-            </div>
+          <div *ngIf="!alerts().length" class="empty-state" style="padding: var(--spacing-lg);">
+            <i class="pi pi-check-circle empty-state__icon" aria-hidden="true" style="color: var(--color-success);"></i>
+            <span class="empty-state__title">Nessun superamento soglie</span>
+            <p>Nessun codice CER supera le soglie di deposito temporaneo.</p>
           </div>
 
-          <!-- Tabella giacenze -->
-          <h3 class="mb-2">Giacenze per codice CER</h3>
-          <p-table
-            [value]="giacenze()"
-            styleClass="p-datatable-sm"
-            responsiveLayout="scroll"
-            [rowHover]="true"
-          >
-            <ng-template pTemplate="header">
-              <tr>
-                <th style="width: 140px">CER</th>
-                <th class="text-right">Carico (kg)</th>
-                <th class="text-right">Scarico (kg)</th>
-                <th class="text-right">Giacenza (kg)</th>
-                <th style="width: 180px">Carico più vecchio</th>
-              </tr>
-            </ng-template>
-            <ng-template pTemplate="body" let-g>
-              <tr>
-                <td><strong>{{ g.cerCode }}</strong></td>
-                <td class="text-right">{{ g.caricoKg | number: '1.0-2' }}</td>
-                <td class="text-right">{{ g.scaricoKg | number: '1.0-2' }}</td>
-                <td class="text-right">
-                  <strong>{{ g.giacenzaKg | number: '1.0-2' }}</strong>
-                </td>
-                <td>{{ g.oldestCaricoDate ? (g.oldestCaricoDate | date: 'dd/MM/yyyy') : '-' }}</td>
-              </tr>
-            </ng-template>
-            <ng-template pTemplate="emptymessage">
-              <tr>
-                <td colspan="5" class="text-center">Nessuna giacenza registrata.</td>
-              </tr>
-            </ng-template>
-          </p-table>
-        </ng-container>
-      </p-card>
+          <div *ngFor="let alert of alerts()" class="alert-banner mb-2">
+            <div class="alert-header">
+              <span class="alert-cer"><strong>CER {{ alert.cerCode }}</strong></span>
+              <span class="alert-qty">{{ alert.giacenzaKg | number: '1.0-2' }} kg in giacenza</span>
+            </div>
+            <div class="alert-tags">
+              <p-tag
+                *ngFor="let reason of alert.reasons"
+                [value]="reasonLabel(reason)"
+                [severity]="reasonSeverity(reason)"
+                [icon]="reasonIcon(reason)"
+              ></p-tag>
+              <span *ngIf="alert.durationDays != null" class="alert-days">
+                Giacenza da {{ alert.durationDays }} giorni
+                <ng-container *ngIf="alert.oldestCaricoDate">
+                  (dal {{ alert.oldestCaricoDate | date: 'dd/MM/yyyy' }})
+                </ng-container>
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tabella giacenze -->
+        <section class="surface-card">
+          <h2 class="giacenze-section-title mb-3">Giacenze per codice CER</h2>
+          <div class="table-responsive">
+            <p-table [value]="giacenze()" styleClass="p-datatable-sm" [rowHover]="true">
+              <ng-template pTemplate="header">
+                <tr>
+                  <th scope="col" style="width: 140px">CER</th>
+                  <th scope="col" class="text-right">Carico (kg)</th>
+                  <th scope="col" class="text-right">Scarico (kg)</th>
+                  <th scope="col" class="text-right">Giacenza (kg)</th>
+                  <th scope="col" style="width: 180px">Carico più vecchio</th>
+                </tr>
+              </ng-template>
+              <ng-template pTemplate="body" let-g>
+                <tr>
+                  <td><strong>{{ g.cerCode }}</strong></td>
+                  <td class="text-right">{{ g.caricoKg | number: '1.0-2' }}</td>
+                  <td class="text-right">{{ g.scaricoKg | number: '1.0-2' }}</td>
+                  <td class="text-right">
+                    <strong>{{ g.giacenzaKg | number: '1.0-2' }}</strong>
+                  </td>
+                  <td>{{ g.oldestCaricoDate ? (g.oldestCaricoDate | date: 'dd/MM/yyyy') : '-' }}</td>
+                </tr>
+              </ng-template>
+              <ng-template pTemplate="emptymessage">
+                <tr>
+                  <td colspan="5">
+                    <div class="empty-state">
+                      <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
+                      <span class="empty-state__title">Nessuna giacenza</span>
+                      <p>Non risultano movimenti di carico/scarico registrati.</p>
+                    </div>
+                  </td>
+                </tr>
+              </ng-template>
+            </p-table>
+          </div>
+        </section>
+      </ng-container>
     </div>
   `,
   styles: [
     `
-      .text-muted {
-        color: #6c757d;
+      .giacenze-section-title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-lg);
         margin: 0;
       }
 
+      .stat-card--alert {
+        border-color: var(--color-warning);
+        background: var(--color-warning-bg);
+      }
+
       .alert-banner {
-        border: 1px solid var(--surface-border, #dee2e6);
-        border-left: 4px solid var(--yellow-500, #f59e0b);
-        border-radius: 6px;
-        padding: 0.75rem 1rem;
-        background: var(--surface-50, #fafafa);
+        border: 1px solid var(--surface-border);
+        border-left: 4px solid var(--color-warning);
+        border-radius: var(--radius-md);
+        padding: var(--spacing-md) var(--spacing-base);
+        background: var(--color-gray-50);
       }
 
       .alert-header {
@@ -155,37 +182,29 @@ import {
         justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-bottom: 0.5rem;
+        gap: var(--spacing-sm);
+        margin-bottom: var(--spacing-sm);
       }
 
-      .alert-cer {
-        font-size: 1rem;
-      }
-
-      .alert-qty {
-        color: #6c757d;
-      }
+      .alert-cer { font-size: var(--font-size-base); }
+      .alert-qty { color: var(--text-secondary); }
 
       .alert-tags {
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: var(--spacing-sm);
       }
 
       .alert-days {
-        color: #6c757d;
-        font-size: 0.875rem;
+        color: var(--text-tertiary);
+        font-size: var(--font-size-sm);
       }
 
-      .text-right {
-        text-align: right;
-      }
-
-      .text-center {
-        text-align: center;
-      }
+      .text-right { text-align: right; }
+      .mb-4 { margin-bottom: var(--spacing-xl); }
+      .mb-3 { margin-bottom: var(--spacing-base); }
+      .mb-2 { margin-bottom: var(--spacing-sm); }
     `,
   ],
 })
@@ -200,6 +219,11 @@ export class GiacenzeComponent implements OnInit {
 
   /** True quando non ci sono né giacenze né alert (stato vuoto complessivo). */
   readonly isEmpty = computed(() => !this.giacenze().length && !this.alerts().length);
+
+  /** Somma delle giacenze (kg) su tutti i codici CER. */
+  readonly totalGiacenzaKg = computed(() =>
+    this.giacenze().reduce((sum, g) => sum + (g.giacenzaKg ?? 0), 0),
+  );
 
   ngOnInit(): void {
     this.reload();

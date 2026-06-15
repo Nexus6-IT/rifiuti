@@ -6,6 +6,7 @@ import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { MessageModule } from 'primeng/message';
+import { ToastModule } from 'primeng/toast';
 import { DialogService } from 'primeng/dynamicdialog';
 import { MessageService } from 'primeng/api';
 import { TemporaryPermissionApiService, PermissionGrant } from '../../services/temporary-permission-api.service';
@@ -25,183 +26,162 @@ import { TemporaryPermissionApiService, PermissionGrant } from '../../services/t
     TagModule,
     ProgressSpinnerModule,
     MessageModule,
+    ToastModule,
   ],
   providers: [DialogService, MessageService],
   template: `
-    <div class="pending-grants-page">
-      <div class="page-header">
-        <div>
-          <h1>Pending Permission Requests</h1>
-          <p>Review and approve temporary permission requests</p>
+    <div class="page">
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Richieste di permesso in attesa</h1>
+          <p class="page-subtitle">Esamina e approva le richieste di permessi temporanei</p>
         </div>
-
-        <button
-          pButton
-          type="button"
-          label="Refresh"
-          icon="pi pi-refresh"
-          class="p-button-outlined"
-          (click)="loadPendingGrants()"
-          [loading]="isLoading()"
-        ></button>
-      </div>
+        <div class="page-actions">
+          <button
+            pButton
+            type="button"
+            label="Aggiorna"
+            icon="pi pi-refresh"
+            class="p-button-outlined"
+            (click)="loadPendingGrants()"
+            [loading]="isLoading()"
+          ></button>
+        </div>
+      </header>
 
       @if (isLoading()) {
-        <div class="loading-container">
-          <p-progressSpinner></p-progressSpinner>
+        <div class="surface-card">
+          <div class="loading-container" role="status" aria-live="polite">
+            <p-progressSpinner ariaLabel="Caricamento"></p-progressSpinner>
+            <p>Caricamento delle richieste...</p>
+          </div>
         </div>
       }
 
       @if (error()) {
-        <p-message severity="error" [text]="error()!"></p-message>
+        <p-message severity="error" [text]="error()!" styleClass="w-full"></p-message>
       }
 
       @if (!isLoading() && pendingGrants().length === 0) {
-        <p-card>
+        <div class="surface-card">
           <div class="empty-state">
-            <i class="pi pi-check-circle" style="font-size: 3rem; color: var(--green-500);"></i>
-            <h3>No Pending Requests</h3>
-            <p>All permission requests have been reviewed.</p>
+            <i class="pi pi-check-circle empty-state__icon" style="color: var(--color-success);" aria-hidden="true"></i>
+            <p class="empty-state__title">Nessuna richiesta in attesa</p>
+            <p>Tutte le richieste di permesso sono state esaminate.</p>
           </div>
-        </p-card>
+        </div>
       }
 
       @if (!isLoading() && pendingGrants().length > 0) {
-        <p-card>
-          <p-table [value]="pendingGrants()">
-            <ng-template pTemplate="header">
-              <tr>
-                <th>User</th>
-                <th>Requested Permissions</th>
-                <th>Time Period</th>
-                <th>Justification</th>
-                <th>Requested At</th>
-                <th style="width: 200px">Actions</th>
-              </tr>
-            </ng-template>
+        <div class="surface-card">
+          <div class="table-responsive">
+            <p-table [value]="pendingGrants()">
+              <ng-template pTemplate="header">
+                <tr>
+                  <th>Utente</th>
+                  <th>Permessi richiesti</th>
+                  <th>Periodo</th>
+                  <th>Motivazione</th>
+                  <th>Richiesto il</th>
+                  <th style="width: 200px">Azioni</th>
+                </tr>
+              </ng-template>
 
-            <ng-template pTemplate="body" let-grant>
-              <tr>
-                <td>
-                  <strong>{{ grant.userId }}</strong>
-                </td>
+              <ng-template pTemplate="body" let-grant>
+                <tr>
+                  <td>
+                    <strong>{{ grant.userId }}</strong>
+                  </td>
 
-                <td>
-                  <div class="permissions-cell">
-                    @for (permission of grant.permissions; track permission) {
-                      <p-tag [value]="permission" severity="info"></p-tag>
-                    }
-                  </div>
-                </td>
+                  <td>
+                    <div class="permissions-cell">
+                      @for (permission of grant.permissions; track permission) {
+                        <p-tag [value]="permission" severity="info"></p-tag>
+                      }
+                    </div>
+                  </td>
 
-                <td>
-                  <div class="time-cell">
-                    <div><strong>Start:</strong> {{ formatDate(grant.startTime) }}</div>
-                    <div><strong>End:</strong> {{ formatDate(grant.endTime) }}</div>
-                    <div class="duration">Duration: {{ calculateDuration(grant) }}</div>
-                  </div>
-                </td>
+                  <td>
+                    <div class="time-cell">
+                      <div><strong>Inizio:</strong> {{ formatDate(grant.startTime) }}</div>
+                      <div><strong>Fine:</strong> {{ formatDate(grant.endTime) }}</div>
+                      <div class="duration">Durata: {{ calculateDuration(grant) }}</div>
+                    </div>
+                  </td>
 
-                <td>
-                  <div class="justification-cell">
-                    {{ grant.justification }}
-                  </div>
-                </td>
+                  <td>
+                    <div class="justification-cell">
+                      {{ grant.justification }}
+                    </div>
+                  </td>
 
-                <td>{{ formatDate(grant.requestedAt) }}</td>
+                  <td>{{ formatDate(grant.requestedAt) }}</td>
 
-                <td>
-                  <div class="action-buttons">
-                    <button
-                      pButton
-                      type="button"
-                      label="Approve"
-                      icon="pi pi-check"
-                      class="p-button-sm p-button-success"
-                      (click)="approveGrant(grant)"
-                    ></button>
+                  <td>
+                    <div class="action-buttons">
+                      <button
+                        pButton
+                        type="button"
+                        label="Approva"
+                        icon="pi pi-check"
+                        class="p-button-sm p-button-success"
+                        (click)="approveGrant(grant)"
+                        [attr.aria-label]="'Approva la richiesta di ' + grant.userId"
+                      ></button>
 
-                    <button
-                      pButton
-                      type="button"
-                      label="Reject"
-                      icon="pi pi-times"
-                      class="p-button-sm p-button-danger"
-                      (click)="rejectGrant(grant)"
-                    ></button>
-                  </div>
-                </td>
-              </tr>
-            </ng-template>
-          </p-table>
-        </p-card>
+                      <button
+                        pButton
+                        type="button"
+                        label="Rifiuta"
+                        icon="pi pi-times"
+                        class="p-button-sm p-button-danger"
+                        (click)="rejectGrant(grant)"
+                        [attr.aria-label]="'Rifiuta la richiesta di ' + grant.userId"
+                      ></button>
+                    </div>
+                  </td>
+                </tr>
+              </ng-template>
+            </p-table>
+          </div>
+        </div>
       }
+
+      <p-toast></p-toast>
     </div>
   `,
   styles: [`
-    .pending-grants-page {
-      padding: 2rem;
-      max-width: 1600px;
-      margin: 0 auto;
-    }
-
-    .page-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 2rem;
-    }
-
-    .page-header h1 {
-      margin: 0 0 0.5rem 0;
-      font-size: 2rem;
-    }
-
-    .page-header p {
-      margin: 0;
-      color: var(--text-color-secondary);
-    }
-
     .loading-container {
       display: flex;
-      justify-content: center;
-      padding: 4rem;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 4rem 2rem;
-    }
-
-    .empty-state h3 {
-      margin: 1rem 0 0.5rem 0;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--spacing-base);
+      padding: var(--spacing-2xl);
+      color: var(--text-secondary);
     }
 
     .permissions-cell {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.25rem;
+      gap: var(--spacing-xs);
     }
 
-    .time-cell {
-      font-size: 0.875rem;
-    }
+    .time-cell { font-size: var(--font-size-sm); }
 
     .duration {
-      margin-top: 0.5rem;
-      color: var(--text-color-secondary);
-      font-style: italic;
+      margin-top: var(--spacing-sm);
+      color: var(--text-tertiary);
     }
 
     .justification-cell {
-      max-width: 300px;
-      font-size: 0.875rem;
-      line-height: 1.4;
+      max-width: 320px;
+      font-size: var(--font-size-sm);
+      line-height: var(--line-height-normal);
     }
 
     .action-buttons {
       display: flex;
-      gap: 0.5rem;
+      gap: var(--spacing-sm);
       flex-direction: column;
     }
   `],
@@ -230,21 +210,21 @@ export class PendingGrantsComponent implements OnInit {
         this.isLoading.set(false);
       },
       error: (error) => {
-        this.error.set(`Failed to load pending grants: ${error.message}`);
+        this.error.set(`Impossibile caricare le richieste in attesa: ${error.message}`);
         this.isLoading.set(false);
       },
     });
   }
 
   approveGrant(grant: PermissionGrant): void {
-    const reason = prompt('Enter approval reason:');
+    const reason = prompt("Inserisci la motivazione dell'approvazione:");
     if (!reason) return;
 
     this.apiService.approve(grant.id, reason).subscribe({
       next: (response) => {
         this.messageService.add({
           severity: 'success',
-          summary: 'Approved',
+          summary: 'Approvata',
           detail: response.message,
         });
         this.loadPendingGrants(); // Refresh
@@ -252,7 +232,7 @@ export class PendingGrantsComponent implements OnInit {
       error: (error) => {
         this.messageService.add({
           severity: 'error',
-          summary: 'Approval Failed',
+          summary: 'Approvazione non riuscita',
           detail: error.error?.message || error.message,
         });
       },
@@ -260,14 +240,14 @@ export class PendingGrantsComponent implements OnInit {
   }
 
   rejectGrant(grant: PermissionGrant): void {
-    const reason = prompt('Enter rejection reason:');
+    const reason = prompt('Inserisci la motivazione del rifiuto:');
     if (!reason) return;
 
     this.apiService.reject(grant.id, reason).subscribe({
       next: (response) => {
         this.messageService.add({
           severity: 'info',
-          summary: 'Rejected',
+          summary: 'Rifiutata',
           detail: response.message,
         });
         this.loadPendingGrants(); // Refresh
@@ -275,7 +255,7 @@ export class PendingGrantsComponent implements OnInit {
       error: (error) => {
         this.messageService.add({
           severity: 'error',
-          summary: 'Rejection Failed',
+          summary: 'Rifiuto non riuscito',
           detail: error.error?.message || error.message,
         });
       },
@@ -283,7 +263,7 @@ export class PendingGrantsComponent implements OnInit {
   }
 
   formatDate(dateStr: string): string {
-    return new Date(dateStr).toLocaleString();
+    return new Date(dateStr).toLocaleString('it-IT');
   }
 
   calculateDuration(grant: PermissionGrant): string {
@@ -292,10 +272,10 @@ export class PendingGrantsComponent implements OnInit {
     const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
     if (durationHours < 24) {
-      return `${Math.round(durationHours)} hours`;
+      return `${Math.round(durationHours)} ore`;
     }
 
     const durationDays = durationHours / 24;
-    return `${durationDays.toFixed(1)} days`;
+    return `${durationDays.toFixed(1)} giorni`;
   }
 }

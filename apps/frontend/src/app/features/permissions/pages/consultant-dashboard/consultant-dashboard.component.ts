@@ -1,11 +1,11 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { ButtonModule } from 'primeng/button';
 import { ChartModule } from 'primeng/chart';
+import { TooltipModule } from 'primeng/tooltip';
 
 /**
  * ConsultantDashboardComponent
@@ -27,157 +27,155 @@ import { ChartModule } from 'primeng/chart';
   standalone: true,
   imports: [
     CommonModule,
-    CardModule,
     TableModule,
     TagModule,
     ButtonModule,
     ChartModule,
+    TooltipModule,
   ],
   template: `
-    <div class="consultant-dashboard">
-      <div class="dashboard-header">
-        <h1>Consultant Dashboard</h1>
-        <p class="subtitle">Managing {{ dashboardData().totalTenants }} client tenants</p>
+    <div class="page consultant-dashboard">
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Dashboard consulente</h1>
+          <p class="page-subtitle">Gestione di {{ dashboardData().totalTenants }} clienti</p>
+        </div>
+      </header>
+
+      <!-- KPI -->
+      <div class="stat-grid kpi-grid">
+        <div class="stat-card">
+          <span class="stat-card__label"><i class="pi pi-building" aria-hidden="true"></i> Clienti attivi</span>
+          <span class="stat-card__value">{{ dashboardData().totalTenants }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__label"><i class="pi pi-file" aria-hidden="true"></i> FIR in attesa</span>
+          <span class="stat-card__value">{{ dashboardData().totalPendingFirs }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__label"><i class="pi pi-calendar" aria-hidden="true"></i> Scadenze imminenti</span>
+          <span class="stat-card__value">{{ dashboardData().totalMudDeadlines }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__label"><i class="pi pi-exclamation-triangle" aria-hidden="true"></i> Errori di sincronizzazione</span>
+          <span class="stat-card__value" [class.stat-danger]="dashboardData().totalRentriSyncFailures > 0">{{ dashboardData().totalRentriSyncFailures }}</span>
+        </div>
       </div>
 
-      <!-- KPI Summary Cards -->
-      <div class="kpi-grid">
-        <p-card styleClass="kpi-card">
-          <div class="kpi-content">
-            <i class="pi pi-building kpi-icon"></i>
-            <div class="kpi-details">
-              <span class="kpi-value">{{ dashboardData().totalTenants }}</span>
-              <span class="kpi-label">Active Clients</span>
-            </div>
-          </div>
-        </p-card>
+      <!-- FIR in attesa per cliente -->
+      <section class="surface-card mb-section" aria-label="FIR in attesa per cliente">
+        <h2 class="card-title">FIR in attesa per cliente</h2>
+        <div class="table-responsive">
+          <p-table
+            [value]="dashboardData().pendingFirsByClient"
+            [paginator]="true"
+            [rows]="10"
+            styleClass="p-datatable-sm">
 
-        <p-card styleClass="kpi-card">
-          <div class="kpi-content">
-            <i class="pi pi-file kpi-icon warning"></i>
-            <div class="kpi-details">
-              <span class="kpi-value">{{ dashboardData().totalPendingFirs }}</span>
-              <span class="kpi-label">Pending FIRs</span>
-            </div>
-          </div>
-        </p-card>
+            <ng-template pTemplate="header">
+              <tr>
+                <th>Cliente</th>
+                <th>ID tenant</th>
+                <th style="width: 8rem">In attesa</th>
+                <th style="width: 10rem">Azioni</th>
+              </tr>
+            </ng-template>
 
-        <p-card styleClass="kpi-card">
-          <div class="kpi-content">
-            <i class="pi pi-calendar kpi-icon info"></i>
-            <div class="kpi-details">
-              <span class="kpi-value">{{ dashboardData().totalMudDeadlines }}</span>
-              <span class="kpi-label">Upcoming Deadlines</span>
-            </div>
-          </div>
-        </p-card>
+            <ng-template pTemplate="body" let-client>
+              <tr>
+                <td>{{ client.tenantName }}</td>
+                <td><code>{{ client.tenantId }}</code></td>
+                <td>
+                  <p-tag
+                    [value]="client.pendingCount"
+                    [severity]="client.pendingCount > 10 ? 'danger' : 'warning'"></p-tag>
+                </td>
+                <td>
+                  <button
+                    pButton
+                    icon="pi pi-arrow-right"
+                    label="Passa"
+                    class="p-button-sm"
+                    (click)="switchToTenant(client.tenantId)"
+                    pTooltip="Passa a questo tenant"
+                    [attr.aria-label]="'Passa al tenant ' + client.tenantName"></button>
+                </td>
+              </tr>
+            </ng-template>
 
-        <p-card styleClass="kpi-card">
-          <div class="kpi-content">
-            <i class="pi pi-exclamation-triangle kpi-icon danger"></i>
-            <div class="kpi-details">
-              <span class="kpi-value">{{ dashboardData().totalRentriSyncFailures }}</span>
-              <span class="kpi-label">Sync Failures</span>
-            </div>
-          </div>
-        </p-card>
-      </div>
+            <ng-template pTemplate="emptymessage">
+              <tr>
+                <td colspan="4">
+                  <div class="empty-state">
+                    <i class="pi pi-check-circle empty-state__icon" aria-hidden="true"></i>
+                    <p class="empty-state__title">Nessun FIR in attesa tra tutti i clienti</p>
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      </section>
 
-      <!-- Pending FIRs by Client -->
-      <p-card header="Pending FIRs by Client" styleClass="mb-4">
-        <p-table
-          [value]="dashboardData().pendingFirsByClient"
-          [paginator]="true"
-          [rows]="10"
-          styleClass="p-datatable-sm">
+      <!-- Scadenze imminenti -->
+      <section class="surface-card mb-section" aria-label="Scadenze MUD imminenti">
+        <h2 class="card-title">Scadenze MUD imminenti</h2>
+        <div class="table-responsive">
+          <p-table
+            [value]="dashboardData().upcomingDeadlines"
+            [paginator]="true"
+            [rows]="10"
+            styleClass="p-datatable-sm">
 
-          <ng-template pTemplate="header">
-            <tr>
-              <th>Client</th>
-              <th>Tenant ID</th>
-              <th style="width: 8rem">Pending Count</th>
-              <th style="width: 10rem">Actions</th>
-            </tr>
-          </ng-template>
+            <ng-template pTemplate="header">
+              <tr>
+                <th>Cliente</th>
+                <th>Tipo scadenza</th>
+                <th>Data</th>
+                <th>Giorni rimanenti</th>
+                <th style="width: 10rem">Azioni</th>
+              </tr>
+            </ng-template>
 
-          <ng-template pTemplate="body" let-client>
-            <tr>
-              <td>{{ client.tenantName }}</td>
-              <td><code>{{ client.tenantId }}</code></td>
-              <td>
-                <p-tag
-                  [value]="client.pendingCount"
-                  [severity]="client.pendingCount > 10 ? 'danger' : 'warning'"></p-tag>
-              </td>
-              <td>
-                <button
-                  pButton
-                  icon="pi pi-arrow-right"
-                  label="Switch"
-                  class="p-button-sm"
-                  (click)="switchToTenant(client.tenantId)"
-                  pTooltip="Switch to this tenant"></button>
-              </td>
-            </tr>
-          </ng-template>
+            <ng-template pTemplate="body" let-deadline>
+              <tr>
+                <td>{{ deadline.tenantName }}</td>
+                <td>{{ deadline.deadlineType }}</td>
+                <td>{{ deadline.deadlineDate | date: 'short' }}</td>
+                <td>
+                  <p-tag
+                    [value]="getDaysRemaining(deadline.deadlineDate) + ' giorni'"
+                    [severity]="getSeverityForDeadline(deadline.deadlineDate)"></p-tag>
+                </td>
+                <td>
+                  <button
+                    pButton
+                    icon="pi pi-arrow-right"
+                    label="Vedi"
+                    class="p-button-sm p-button-outlined"
+                    (click)="switchToTenant(deadline.tenantId)"
+                    [attr.aria-label]="'Vedi il tenant ' + deadline.tenantName"></button>
+                </td>
+              </tr>
+            </ng-template>
 
-          <ng-template pTemplate="emptymessage">
-            <tr>
-              <td colspan="4">No pending FIRs across all clients</td>
-            </tr>
-          </ng-template>
-        </p-table>
-      </p-card>
+            <ng-template pTemplate="emptymessage">
+              <tr>
+                <td colspan="5">
+                  <div class="empty-state">
+                    <i class="pi pi-check-circle empty-state__icon" aria-hidden="true"></i>
+                    <p class="empty-state__title">Nessuna scadenza imminente</p>
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      </section>
 
-      <!-- Upcoming Deadlines -->
-      <p-card header="Upcoming MUD Deadlines" styleClass="mb-4">
-        <p-table
-          [value]="dashboardData().upcomingDeadlines"
-          [paginator]="true"
-          [rows]="10"
-          styleClass="p-datatable-sm">
-
-          <ng-template pTemplate="header">
-            <tr>
-              <th>Client</th>
-              <th>Deadline Type</th>
-              <th>Due Date</th>
-              <th>Days Remaining</th>
-              <th style="width: 10rem">Actions</th>
-            </tr>
-          </ng-template>
-
-          <ng-template pTemplate="body" let-deadline>
-            <tr>
-              <td>{{ deadline.tenantName }}</td>
-              <td>{{ deadline.deadlineType }}</td>
-              <td>{{ deadline.deadlineDate | date: 'short' }}</td>
-              <td>
-                <p-tag
-                  [value]="getDaysRemaining(deadline.deadlineDate) + ' days'"
-                  [severity]="getSeverityForDeadline(deadline.deadlineDate)"></p-tag>
-              </td>
-              <td>
-                <button
-                  pButton
-                  icon="pi pi-arrow-right"
-                  label="View"
-                  class="p-button-sm p-button-outlined"
-                  (click)="switchToTenant(deadline.tenantId)"></button>
-              </td>
-            </tr>
-          </ng-template>
-
-          <ng-template pTemplate="emptymessage">
-            <tr>
-              <td colspan="5">No upcoming deadlines</td>
-            </tr>
-          </ng-template>
-        </p-table>
-      </p-card>
-
-      <!-- RENTRI Sync Failures Widget -->
-      <p-card header="RENTRI Sync Failures" styleClass="mb-4" *ngIf="dashboardData().totalRentriSyncFailures > 0">
+      <!-- Errori di sincronizzazione RENTRI -->
+      <section class="surface-card mb-section" *ngIf="dashboardData().totalRentriSyncFailures > 0" aria-label="Errori di sincronizzazione RENTRI">
+        <h2 class="card-title">Errori di sincronizzazione RENTRI</h2>
         <div class="sync-failures-grid">
           <div
             *ngFor="let failure of dashboardData().rentriSyncFailures"
@@ -185,12 +183,12 @@ import { ChartModule } from 'primeng/chart';
             <div class="failure-header">
               <span class="failure-tenant">{{ failure.tenantName }}</span>
               <p-tag
-                [value]="failure.failureCount + ' failures'"
+                [value]="failure.failureCount + ' errori'"
                 severity="danger"></p-tag>
             </div>
             <div class="failure-details">
               <span class="failure-last-attempt">
-                Last attempt: {{ failure.lastAttemptAt | date: 'short' }}
+                Ultimo tentativo: {{ failure.lastAttemptAt | date: 'short' }}
               </span>
               <span class="failure-error">{{ failure.errorMessage }}</span>
             </div>
@@ -198,38 +196,40 @@ import { ChartModule } from 'primeng/chart';
               <button
                 pButton
                 icon="pi pi-refresh"
-                label="Retry"
+                label="Riprova"
                 class="p-button-sm p-button-danger"
                 (click)="retryRentriSync(failure.tenantId)"></button>
               <button
                 pButton
                 icon="pi pi-arrow-right"
-                label="Switch"
+                label="Passa"
                 class="p-button-sm p-button-outlined"
                 (click)="switchToTenant(failure.tenantId)"></button>
             </div>
           </div>
         </div>
-      </p-card>
+      </section>
 
-      <!-- Pending FIRs Trend Chart -->
-      <p-card header="Pending FIRs Trend (Last 7 Days)" styleClass="mb-4">
+      <!-- Andamento FIR in attesa -->
+      <section class="surface-card mb-section" aria-label="Andamento FIR in attesa (ultimi 7 giorni)">
+        <h2 class="card-title">Andamento FIR in attesa (ultimi 7 giorni)</h2>
         <p-chart
           type="line"
           [data]="pendingFirsTrendData()"
           [options]="chartOptions()"
           [style]="{ width: '100%', height: '300px' }"></p-chart>
-      </p-card>
+      </section>
 
-      <!-- Deadline Timeline Visualization -->
-      <p-card header="Deadline Timeline" styleClass="mb-4">
+      <!-- Timeline scadenze -->
+      <section class="surface-card mb-section" aria-label="Timeline delle scadenze">
+        <h2 class="card-title">Timeline delle scadenze</h2>
         <div class="deadline-timeline">
           <div
             *ngFor="let deadline of dashboardData().upcomingDeadlines.slice(0, 5)"
             class="timeline-item"
             [class.urgent]="getDaysRemaining(deadline.deadlineDate) <= 7"
             [class.warning]="getDaysRemaining(deadline.deadlineDate) > 7 && getDaysRemaining(deadline.deadlineDate) <= 14">
-            <div class="timeline-marker"></div>
+            <div class="timeline-marker" aria-hidden="true"></div>
             <div class="timeline-content">
               <div class="timeline-header">
                 <strong>{{ deadline.tenantName }}</strong>
@@ -238,26 +238,27 @@ import { ChartModule } from 'primeng/chart';
               <p class="timeline-description">{{ deadline.deadlineType }}</p>
               <div class="timeline-footer">
                 <p-tag
-                  [value]="getDaysRemaining(deadline.deadlineDate) + ' days remaining'"
+                  [value]="getDaysRemaining(deadline.deadlineDate) + ' giorni rimanenti'"
                   [severity]="getSeverityForDeadline(deadline.deadlineDate)"></p-tag>
               </div>
             </div>
           </div>
 
-          <div *ngIf="dashboardData().upcomingDeadlines.length === 0" class="no-deadlines">
-            <i class="pi pi-check-circle"></i>
-            <span>No upcoming deadlines</span>
+          <div *ngIf="dashboardData().upcomingDeadlines.length === 0" class="empty-state">
+            <i class="pi pi-check-circle empty-state__icon" aria-hidden="true"></i>
+            <p class="empty-state__title">Nessuna scadenza imminente</p>
           </div>
         </div>
-      </p-card>
+      </section>
 
-      <!-- Recent Activity -->
-      <p-card header="Recent Activity Across All Clients" styleClass="mb-4">
+      <!-- Attività recenti -->
+      <section class="surface-card mb-section" aria-label="Attività recenti tra tutti i clienti">
+        <h2 class="card-title">Attività recenti tra tutti i clienti</h2>
         <div class="activity-feed">
           <div
             *ngFor="let activity of dashboardData().recentActivity"
             class="activity-item">
-            <div class="activity-icon">
+            <div class="activity-icon" aria-hidden="true">
               <i class="pi pi-file"></i>
             </div>
             <div class="activity-details">
@@ -269,103 +270,45 @@ import { ChartModule } from 'primeng/chart';
             </div>
           </div>
 
-          <div *ngIf="dashboardData().recentActivity.length === 0" class="no-activity">
-            <i class="pi pi-info-circle"></i>
-            <span>No recent activity</span>
+          <div *ngIf="dashboardData().recentActivity.length === 0" class="empty-state">
+            <i class="pi pi-info-circle empty-state__icon" aria-hidden="true"></i>
+            <p class="empty-state__title">Nessuna attività recente</p>
           </div>
         </div>
-      </p-card>
+      </section>
 
-      <!-- Loading State -->
-      <div *ngIf="isLoading()" class="loading-overlay">
-        <i class="pi pi-spin pi-spinner" style="font-size: 3rem"></i>
-        <p>Loading dashboard...</p>
+      <!-- Stato di caricamento -->
+      <div *ngIf="isLoading()" class="loading-overlay" role="status" aria-live="polite">
+        <i class="pi pi-spin pi-spinner" style="font-size: 3rem" aria-hidden="true"></i>
+        <p>Caricamento della dashboard...</p>
       </div>
     </div>
   `,
   styles: [`
-    .consultant-dashboard {
-      padding: 2rem;
-      position: relative;
+    .consultant-dashboard { position: relative; }
+
+    .card-title {
+      font-family: var(--font-display);
+      font-size: var(--font-size-xl);
+      margin: 0 0 var(--spacing-base);
     }
 
-    .dashboard-header {
-      margin-bottom: 2rem;
-    }
+    .mb-section { margin-bottom: var(--spacing-lg); }
 
-    .subtitle {
-      color: #6c757d;
-      font-size: 1.125rem;
-      margin-top: 0.5rem;
-    }
+    .kpi-grid { margin-bottom: var(--spacing-lg); }
+    .stat-card__label { display: inline-flex; align-items: center; gap: var(--spacing-sm); }
+    .stat-card__label i { color: var(--brand-primary); }
+    .stat-danger { color: var(--color-danger); }
 
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 1.5rem;
-      margin-bottom: 2rem;
-    }
-
-    .kpi-card {
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }
-
-    .kpi-content {
-      display: flex;
-      align-items: center;
-      gap: 1.5rem;
-    }
-
-    .kpi-icon {
-      font-size: 3rem;
-      color: #1976d2;
-    }
-
-    .kpi-icon.warning {
-      color: #f57c00;
-    }
-
-    .kpi-icon.info {
-      color: #0288d1;
-    }
-
-    .kpi-icon.danger {
-      color: #d32f2f;
-    }
-
-    .kpi-details {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .kpi-value {
-      font-size: 2.5rem;
-      font-weight: 700;
-      line-height: 1;
-      color: #2c3e50;
-    }
-
-    .kpi-label {
-      font-size: 0.875rem;
-      color: #6c757d;
-      margin-top: 0.5rem;
-    }
-
-    .activity-feed {
-      max-height: 500px;
-      overflow-y: auto;
-    }
+    .activity-feed { max-height: 500px; overflow-y: auto; }
 
     .activity-item {
       display: flex;
-      gap: 1rem;
-      padding: 1rem;
-      border-bottom: 1px solid #e9ecef;
+      gap: var(--spacing-base);
+      padding: var(--spacing-base);
+      border-bottom: 1px solid var(--surface-border);
     }
-
-    .activity-item:last-child {
-      border-bottom: none;
-    }
+    .activity-item:last-child { border-bottom: none; }
 
     .activity-icon {
       width: 40px;
@@ -373,207 +316,109 @@ import { ChartModule } from 'primeng/chart';
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #e3f2fd;
-      color: #1976d2;
-      border-radius: 50%;
+      background: var(--brand-primary-50);
+      color: var(--brand-primary-dark);
+      border-radius: var(--radius-full);
       flex-shrink: 0;
     }
 
-    .activity-details {
-      flex: 1;
-    }
-
+    .activity-details { flex: 1; min-width: 0; }
     .activity-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+      gap: var(--spacing-sm);
+      margin-bottom: var(--spacing-sm);
     }
-
-    .activity-time {
-      color: #6c757d;
-      font-size: 0.875rem;
-    }
-
-    .activity-description {
-      margin: 0;
-      color: #495057;
-    }
-
-    .no-activity {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1rem;
-      padding: 3rem;
-      color: #6c757d;
-      font-style: italic;
-    }
-
-    .no-activity i {
-      font-size: 3rem;
-    }
+    .activity-time { color: var(--text-tertiary); font-size: var(--font-size-sm); }
+    .activity-description { margin: 0; color: var(--text-secondary); }
 
     .loading-overlay {
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      inset: 0;
       background: rgba(255, 255, 255, 0.9);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 1rem;
-      z-index: 1000;
+      gap: var(--spacing-base);
+      color: var(--text-secondary);
+      z-index: var(--z-modal);
     }
+    .loading-overlay i { color: var(--brand-primary); }
 
-    :host ::ng-deep .p-card {
-      margin-bottom: 1.5rem;
-    }
-
-    :host ::ng-deep .p-card-header {
-      font-size: 1.25rem;
-      font-weight: 600;
-    }
-
-    /* RENTRI Sync Failures Widget */
-    .sync-failures-grid {
-      display: grid;
-      gap: 1rem;
-    }
-
+    /* Errori RENTRI */
+    .sync-failures-grid { display: grid; gap: var(--spacing-base); }
     .sync-failure-item {
-      padding: 1rem;
-      border: 1px solid #ef5350;
-      border-radius: 4px;
-      background: #ffebee;
+      padding: var(--spacing-base);
+      border: 1px solid var(--color-danger);
+      border-radius: var(--radius-md);
+      background: var(--color-danger-bg);
     }
-
     .failure-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+      gap: var(--spacing-sm);
+      margin-bottom: var(--spacing-md);
     }
-
-    .failure-tenant {
-      font-weight: 600;
-      font-size: 1rem;
-      color: #2c3e50;
-    }
-
+    .failure-tenant { font-weight: var(--font-weight-semibold); color: var(--text-primary); }
     .failure-details {
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
+      gap: var(--spacing-sm);
+      margin-bottom: var(--spacing-base);
     }
-
-    .failure-last-attempt {
-      font-size: 0.875rem;
-      color: #6c757d;
-    }
-
+    .failure-last-attempt { font-size: var(--font-size-sm); color: var(--text-tertiary); }
     .failure-error {
-      font-size: 0.875rem;
-      color: #d32f2f;
-      font-family: 'Courier New', monospace;
+      font-size: var(--font-size-sm);
+      color: var(--color-danger);
+      font-family: var(--font-family-mono);
+      word-break: break-word;
     }
+    .failure-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-sm); }
 
-    .failure-actions {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    /* Deadline Timeline */
-    .deadline-timeline {
-      padding: 1rem 0;
-    }
-
+    /* Timeline scadenze */
+    .deadline-timeline { padding: var(--spacing-sm) 0; }
     .timeline-item {
       display: flex;
-      gap: 1rem;
-      padding: 1rem;
-      border-left: 3px solid #1976d2;
-      margin-bottom: 1rem;
-      background: #f5f5f5;
-      border-radius: 0 4px 4px 0;
-      transition: all 0.3s ease;
+      gap: var(--spacing-base);
+      padding: var(--spacing-base);
+      border-left: 3px solid var(--brand-primary);
+      margin-bottom: var(--spacing-base);
+      background: var(--color-gray-50);
+      border-radius: 0 var(--radius-base) var(--radius-base) 0;
+      transition: background var(--transition-base), box-shadow var(--transition-base);
     }
-
-    .timeline-item:hover {
-      background: #e3f2fd;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }
-
-    .timeline-item.warning {
-      border-left-color: #ff9800;
-      background: #fff3e0;
-    }
-
-    .timeline-item.urgent {
-      border-left-color: #d32f2f;
-      background: #ffebee;
-      animation: pulse-urgent 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse-urgent {
-      0%, 100% {
-        opacity: 1;
-      }
-      50% {
-        opacity: 0.8;
-      }
-    }
+    .timeline-item:hover { background: var(--surface-hover); box-shadow: var(--shadow-sm); }
+    .timeline-item.warning { border-left-color: var(--color-warning); background: var(--color-warning-bg); }
+    .timeline-item.urgent { border-left-color: var(--color-danger); background: var(--color-danger-bg); }
 
     .timeline-marker {
       width: 12px;
       height: 12px;
-      border-radius: 50%;
+      border-radius: var(--radius-full);
       background: currentColor;
-      margin-top: 0.5rem;
+      margin-top: 0.4rem;
       flex-shrink: 0;
     }
-
-    .timeline-content {
-      flex: 1;
-    }
-
+    .timeline-content { flex: 1; min-width: 0; }
     .timeline-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+      gap: var(--spacing-sm);
+      margin-bottom: var(--spacing-sm);
     }
+    .timeline-date { color: var(--text-tertiary); font-size: var(--font-size-sm); }
+    .timeline-description { margin: var(--spacing-sm) 0; color: var(--text-secondary); }
+    .timeline-footer { margin-top: var(--spacing-md); }
 
-    .timeline-date {
-      color: #6c757d;
-      font-size: 0.875rem;
-    }
-
-    .timeline-description {
-      margin: 0.5rem 0;
-      color: #495057;
-    }
-
-    .timeline-footer {
-      margin-top: 0.75rem;
-    }
-
-    .no-deadlines {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1rem;
-      padding: 3rem;
-      color: #4caf50;
-      font-style: italic;
-    }
-
-    .no-deadlines i {
-      font-size: 3rem;
+    @media (max-width: 576px) {
+      .failure-actions button, .timeline-item { width: 100%; }
     }
   `]
 })
@@ -599,12 +444,12 @@ export class ConsultantDashboardComponent implements OnInit {
     labels: [],
     datasets: [
       {
-        label: 'Pending FIRs',
+        label: 'FIR in attesa',
         data: [],
         fill: false,
-        borderColor: '#1976d2',
+        borderColor: '#0e7c66',
         tension: 0.4,
-        pointBackgroundColor: '#1976d2',
+        pointBackgroundColor: '#0e7c66',
         pointBorderColor: '#fff',
         pointBorderWidth: 2,
         pointRadius: 5,
@@ -630,14 +475,14 @@ export class ConsultantDashboardComponent implements OnInit {
         display: true,
         title: {
           display: true,
-          text: 'Date',
+          text: 'Data',
         },
       },
       y: {
         display: true,
         title: {
           display: true,
-          text: 'Count',
+          text: 'Conteggio',
         },
         beginAtZero: true,
       },
@@ -672,12 +517,12 @@ export class ConsultantDashboardComponent implements OnInit {
       labels,
       datasets: [
         {
-          label: 'Pending FIRs',
+          label: 'FIR in attesa',
           data,
           fill: false,
-          borderColor: '#1976d2',
+          borderColor: '#0e7c66',
           tension: 0.4,
-          pointBackgroundColor: '#1976d2',
+          pointBackgroundColor: '#0e7c66',
           pointBorderColor: '#fff',
           pointBorderWidth: 2,
           pointRadius: 5,

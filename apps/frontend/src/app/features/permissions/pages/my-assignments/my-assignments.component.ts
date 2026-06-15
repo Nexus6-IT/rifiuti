@@ -63,24 +63,25 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
     ToastModule,
   ],
   template: `
-    <div class="my-assignments-page">
-      <!-- Page Header -->
-      <div class="page-header">
-        <h1>My Task Assignments</h1>
-        <p class="subtitle">{{ assignments()?.totalAssignments || 0 }} task(s) assigned</p>
+    <div class="page my-assignments-page">
+      <!-- Intestazione -->
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Le mie attività assegnate</h1>
+          <p class="page-subtitle">{{ assignments()?.totalAssignments || 0 }} attività assegnate</p>
+        </div>
 
-        <!-- GPS Status & Refresh Controls -->
-        <div class="controls">
-          <div class="gps-status">
-            <span
-              class="status-indicator"
-              [class.online]="isOnline()"
-              [class.offline]="!isOnline()"
-              [pTooltip]="isOnline() ? 'GPS Location Active' : 'Offline Mode - Last synced: ' + (lastSyncTime() | date: 'short')">
-              <i class="pi" [ngClass]="isOnline() ? 'pi-circle-fill' : 'pi-exclamation-circle'"></i>
-              {{ isOnline() ? 'Live GPS' : 'Offline' }}
-            </span>
-          </div>
+        <!-- Stato GPS e aggiornamento -->
+        <div class="page-actions controls">
+          <span
+            class="status-indicator"
+            role="status"
+            [class.online]="isOnline()"
+            [class.offline]="!isOnline()"
+            [pTooltip]="isOnline() ? 'Posizione GPS attiva' : 'Modalità offline - Ultima sincronizzazione: ' + (lastSyncTime() | date: 'short')">
+            <i class="pi" [ngClass]="isOnline() ? 'pi-circle-fill' : 'pi-exclamation-circle'" aria-hidden="true"></i>
+            {{ isOnline() ? 'GPS attivo' : 'Offline' }}
+          </span>
 
           <button
             pButton
@@ -88,80 +89,88 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
             [loading]="isLoading()"
             (click)="refreshAssignments()"
             class="p-button-rounded p-button-text"
-            pTooltip="Refresh assignments"
-            tooltipPosition="top"></button>
+            pTooltip="Aggiorna le attività"
+            tooltipPosition="top"
+            aria-label="Aggiorna le attività"></button>
+        </div>
+      </header>
+
+      <!-- Stato di caricamento -->
+      <div *ngIf="isLoading() && !assignments()" class="surface-card">
+        <div class="empty-state" role="status" aria-live="polite">
+          <i class="pi pi-spin pi-spinner empty-state__icon" aria-hidden="true"></i>
+          <p class="empty-state__title">Caricamento delle attività...</p>
         </div>
       </div>
 
-      <!-- Loading State -->
-      <div *ngIf="isLoading() && !assignments()" class="loading-state">
-        <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
-        <p>Loading your assignments...</p>
-      </div>
-
-      <!-- Error State -->
-      <div *ngIf="error()" class="error-state">
-        <i class="pi pi-exclamation-triangle"></i>
+      <!-- Stato di errore -->
+      <div *ngIf="error()" class="surface-card error-state" role="alert">
+        <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
         <p>{{ error() }}</p>
-        <button pButton label="Retry" (click)="refreshAssignments()"></button>
+        <button pButton label="Riprova" icon="pi pi-refresh" (click)="refreshAssignments()"></button>
       </div>
 
-      <!-- Vehicle Info Card -->
+      <!-- Riepilogo veicolo -->
       <div *ngIf="assignments() && !isLoading()" class="vehicle-info">
-        <p-card>
-          <div class="vehicle-stats">
-            <div class="stat">
-              <span class="label">Vehicle Capacity</span>
-              <span class="value">{{ assignments()?.vehicleInfo?.capacity || 0 }} kg</span>
-            </div>
-            <div class="stat">
-              <span class="label">Current Load</span>
-              <span class="value">{{ assignments()?.vehicleInfo?.currentLoad || 0 }} kg</span>
-            </div>
-            <div class="stat">
-              <span class="label">Available</span>
-              <span class="value">{{ assignments()?.vehicleInfo?.availableCapacity || 0 }} kg</span>
-            </div>
-            <div class="stat progress">
-              <span class="label">Capacity Used</span>
-              <div class="progress-bar">
-                <div
-                  class="progress-fill"
-                  [style.width.%]="getCapacityPercentage()"></div>
-              </div>
-              <span class="percentage">{{ getCapacityPercentage() }}%</span>
-            </div>
+        <div class="stat-grid">
+          <div class="stat-card">
+            <span class="stat-card__label">Capacità veicolo</span>
+            <span class="stat-card__value">{{ assignments()?.vehicleInfo?.capacity || 0 }} <small>kg</small></span>
           </div>
-        </p-card>
+          <div class="stat-card">
+            <span class="stat-card__label">Carico attuale</span>
+            <span class="stat-card__value">{{ assignments()?.vehicleInfo?.currentLoad || 0 }} <small>kg</small></span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Disponibile</span>
+            <span class="stat-card__value">{{ assignments()?.vehicleInfo?.availableCapacity || 0 }} <small>kg</small></span>
+          </div>
+          <div class="stat-card capacity-card">
+            <span class="stat-card__label">Capacità utilizzata</span>
+            <div
+              class="progress-bar"
+              role="progressbar"
+              [attr.aria-valuenow]="getCapacityPercentage()"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              [attr.aria-label]="'Capacità utilizzata: ' + getCapacityPercentage() + '%'">
+              <div class="progress-fill" [style.width.%]="getCapacityPercentage()"></div>
+            </div>
+            <span class="stat-card__hint">{{ getCapacityPercentage() }}%</span>
+          </div>
+        </div>
       </div>
 
-      <!-- Empty State -->
-      <div *ngIf="assignments() && sortedAssignments().length === 0 && !isLoading()" class="empty-state">
-        <i class="pi pi-inbox" style="font-size: 3rem"></i>
-        <h3>No Assignments</h3>
-        <p>No FIR tasks assigned to you at the moment</p>
+      <!-- Stato vuoto -->
+      <div *ngIf="assignments() && sortedAssignments().length === 0 && !isLoading()" class="surface-card">
+        <div class="empty-state">
+          <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
+          <p class="empty-state__title">Nessuna attività</p>
+          <p>Al momento non hai attività FIR assegnate.</p>
+        </div>
       </div>
 
-      <!-- Assignments List using DataView -->
+      <!-- Elenco attività con DataView -->
       <p-dataView
         *ngIf="assignments() && sortedAssignments().length > 0 && !isLoading()"
         [value]="sortedAssignments()"
         [rows]="10"
         [paginator]="true"
         class="assignments-dataview">
-        <!-- DataView Header with Sort/Filter Options -->
+        <!-- Intestazione DataView con opzioni di ordinamento -->
         <ng-template pTemplate="header">
           <div class="dataview-header">
             <div class="sort-options">
-              <label>Sort by:</label>
+              <label for="sort-select">Ordina per:</label>
               <select
+                id="sort-select"
                 class="sort-select"
                 [(ngModel)]="sortBy"
                 (change)="onSortChange()"
                 data-testid="sort-select">
-                <option value="proximity">Proximity (Closest First)</option>
-                <option value="transportDate">Transport Date</option>
-                <option value="priority">Priority</option>
+                <option value="proximity">Vicinanza (più vicine prima)</option>
+                <option value="transportDate">Data di trasporto</option>
+                <option value="priority">Priorità</option>
               </select>
             </div>
           </div>
@@ -183,7 +192,7 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
                     [severity]="getStatusSeverity(assignment.status)"
                     [attr.data-testid]="'status-' + assignment.status"></p-tag>
                   <p-tag
-                    [value]="assignment.priority.toUpperCase()"
+                    [value]="getPriorityLabel(assignment.priority)"
                     [severity]="getPrioritySeverity(assignment.priority)"
                     class="priority-tag"></p-tag>
                 </div>
@@ -200,60 +209,62 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
                 </div>
               </div>
 
-              <!-- Location Info with Distance -->
+              <!-- Posizioni con distanza -->
               <div class="location-section">
                 <div class="location">
                   <div class="location-header">
-                    <i class="pi pi-map-marker"></i>
-                    <span class="location-label">Pickup</span>
+                    <i class="pi pi-map-marker" aria-hidden="true"></i>
+                    <span class="location-label">Ritiro</span>
                   </div>
                   <p class="location-address">{{ assignment.pickupLocation.address }}</p>
                   <div *ngIf="assignment.pickupLocation.distance" class="distance-info">
-                    <i class="pi pi-arrow-right"></i>
+                    <i class="pi pi-arrow-right" aria-hidden="true"></i>
                     <span class="distance">{{ getFormattedDistance(assignment.pickupLocation.distance) }}</span>
                   </div>
                 </div>
 
                 <div class="location">
                   <div class="location-header">
-                    <i class="pi pi-flag"></i>
-                    <span class="location-label">Delivery</span>
+                    <i class="pi pi-flag" aria-hidden="true"></i>
+                    <span class="location-label">Consegna</span>
                   </div>
                   <p class="location-address">{{ assignment.deliveryLocation.address }}</p>
                 </div>
               </div>
 
-              <!-- Transport Date & Estimated Duration -->
+              <!-- Data di trasporto e durata stimata -->
               <div class="timing-section">
                 <div class="timing-item">
-                  <i class="pi pi-calendar"></i>
-                  <span class="label">Transport Date:</span>
+                  <i class="pi pi-calendar" aria-hidden="true"></i>
+                  <span class="label">Data trasporto:</span>
                   <span class="value">{{ assignment.transportDate | date: 'short' }}</span>
                 </div>
                 <div *ngIf="assignment.estimatedDuration" class="timing-item">
-                  <i class="pi pi-clock"></i>
-                  <span class="label">Est. Duration:</span>
+                  <i class="pi pi-clock" aria-hidden="true"></i>
+                  <span class="label">Durata stimata:</span>
                   <span class="value">{{ assignment.estimatedDuration }} min</span>
                 </div>
               </div>
 
-              <!-- Actions -->
+              <!-- Azioni -->
               <div class="card-actions">
                 <button
                   pButton
-                  label="View Details"
+                  label="Dettagli"
                   icon="pi pi-arrow-right"
                   class="p-button-primary p-button-sm action-button"
                   (click)="viewAssignmentDetails(assignment)"
-                  [attr.data-testid]="'view-details-' + assignment.firId"></button>
+                  [attr.data-testid]="'view-details-' + assignment.firId"
+                  [attr.aria-label]="'Dettagli del FIR ' + assignment.firNumber"></button>
                 <button
                   pButton
-                  label="Start Pickup"
+                  label="Avvia ritiro"
                   icon="pi pi-play"
                   class="p-button-success p-button-sm action-button"
                   (click)="startPickup(assignment)"
                   [disabled]="assignment.status !== 'AWAITING_CARRIER'"
-                  [attr.data-testid]="'start-pickup-' + assignment.firId"></button>
+                  [attr.data-testid]="'start-pickup-' + assignment.firId"
+                  [attr.aria-label]="'Avvia ritiro per il FIR ' + assignment.firNumber"></button>
               </div>
             </p-card>
           </div>
@@ -269,155 +280,73 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
   `,
   styles: `
     .my-assignments-page {
-      padding: 1rem;
       max-width: 100%;
     }
 
-    .page-header {
-      margin-bottom: 1.5rem;
-
-      h1 {
-        margin: 0 0 0.5rem 0;
-        font-size: 1.5rem;
-        font-weight: 600;
-      }
-
-      .subtitle {
-        margin: 0 0 1rem 0;
-        color: var(--text-color-secondary);
-        font-size: 0.9rem;
-      }
-
-      .controls {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1rem;
-        flex-wrap: wrap;
-
-        .gps-status {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.5rem 1rem;
-          background: var(--surface-card);
-          border-radius: 0.5rem;
-          font-size: 0.9rem;
-
-          .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-weight: 500;
-
-            i {
-              font-size: 0.8rem;
-              animation: none;
-
-              &.pi-circle-fill {
-                color: var(--green-500);
-              }
-
-              &.pi-exclamation-circle {
-                color: var(--orange-500);
-              }
-            }
-
-            &.online {
-              color: var(--green-600);
-            }
-
-            &.offline {
-              color: var(--orange-600);
-            }
-          }
-        }
-      }
-    }
-
-    .loading-state,
-    .error-state,
-    .empty-state {
-      display: flex;
-      flex-direction: column;
+    .controls {
       align-items: center;
-      justify-content: center;
-      padding: 3rem 1rem;
-      text-align: center;
-      color: var(--text-color-secondary);
 
-      i {
-        margin-bottom: 1rem;
-        color: var(--text-color-secondary);
-      }
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: 0.4rem 0.85rem;
+        background: var(--surface-card);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
 
-      p {
-        margin: 0.5rem 0;
-        font-size: 1rem;
-      }
-
-      button {
-        margin-top: 1rem;
+        i {
+          font-size: 0.8rem;
+          &.pi-circle-fill { color: var(--color-success); }
+          &.pi-exclamation-circle { color: var(--color-warning); }
+        }
+        &.online { color: var(--color-success); }
+        &.offline { color: var(--color-warning); }
       }
     }
 
     .error-state {
-      background-color: rgba(var(--red-500), 0.1);
-      border-radius: 0.5rem;
-      border-left: 4px solid var(--red-500);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: var(--spacing-2xl) var(--spacing-base);
+      text-align: center;
+      color: var(--text-secondary);
+      border-left: 4px solid var(--color-danger);
+      background: var(--color-danger-bg);
 
-      i {
-        color: var(--red-500);
-      }
+      i { margin-bottom: var(--spacing-base); color: var(--color-danger); font-size: 2.5rem; }
+      p { margin: var(--spacing-sm) 0; }
+      button { margin-top: var(--spacing-base); }
     }
 
     .vehicle-info {
-      margin-bottom: 1.5rem;
+      margin-bottom: var(--spacing-lg);
 
-      .vehicle-stats {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 1rem;
+      .stat-card__value small {
+        font-size: var(--font-size-base);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-tertiary);
+      }
 
-        .stat {
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
+      .capacity-card {
+        grid-column: 1 / -1;
 
-          .label {
-            font-size: 0.85rem;
-            color: var(--text-color-secondary);
-            font-weight: 500;
-          }
+        .progress-bar {
+          width: 100%;
+          height: 20px;
+          background: var(--color-gray-200);
+          border-radius: var(--radius-full);
+          overflow: hidden;
+          margin: var(--spacing-sm) 0;
 
-          .value {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--primary-color);
-          }
-
-          &.progress {
-            grid-column: 1 / -1;
-
-            .progress-bar {
-              width: 100%;
-              height: 24px;
-              background: var(--surface-border);
-              border-radius: 0.25rem;
-              overflow: hidden;
-              margin: 0.5rem 0;
-
-              .progress-fill {
-                height: 100%;
-                background: linear-gradient(90deg, var(--green-500), var(--blue-500));
-                transition: width 0.3s ease;
-              }
-            }
-
-            .percentage {
-              font-size: 0.9rem;
-              color: var(--text-color-secondary);
-            }
+          .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--brand-primary), var(--brand-primary-light));
+            transition: width var(--transition-base);
           }
         }
       }
@@ -449,16 +378,21 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
           }
 
           .sort-select {
-            padding: 0.5rem;
-            border: 1px solid var(--surface-border);
-            border-radius: 0.25rem;
-            font-size: 0.9rem;
-            min-width: 180px;
+            padding: 0.55rem 0.75rem;
+            border: 1px solid var(--surface-border-strong);
+            border-radius: var(--radius-md);
+            font-size: var(--font-size-sm);
+            font-family: var(--font-family);
+            min-width: 200px;
+            min-height: var(--touch-target-min);
+            background: var(--surface-section);
+            color: var(--text-primary);
             cursor: pointer;
 
-            &:focus {
-              outline: none;
-              border-color: var(--primary-color);
+            &:focus-visible {
+              outline: var(--focus-ring-width) solid var(--focus-ring-color);
+              outline-offset: var(--focus-ring-offset);
+              border-color: var(--brand-primary);
             }
           }
         }
@@ -497,8 +431,8 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
         }
 
         .cer-code {
-          font-size: 0.85rem;
-          color: var(--text-color-secondary);
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
         }
       }
 
@@ -533,8 +467,8 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          font-size: 0.9rem;
-          color: var(--text-color-secondary);
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
 
           i {
             font-size: 1.1rem;
@@ -560,14 +494,15 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
 
           i {
             font-size: 1.1rem;
-            color: var(--primary-color);
+            color: var(--brand-primary);
           }
 
           .location-label {
-            font-size: 0.85rem;
-            font-weight: 600;
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
             text-transform: uppercase;
-            color: var(--text-color-secondary);
+            letter-spacing: 0.04em;
+            color: var(--text-tertiary);
           }
         }
 
@@ -581,18 +516,18 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          font-size: 0.9rem;
-          color: var(--primary-color);
-          font-weight: 500;
+          font-size: var(--font-size-sm);
+          color: var(--brand-primary-dark);
+          font-weight: var(--font-weight-semibold);
 
           i {
             font-size: 0.8rem;
           }
 
           .distance {
-            background: rgba(var(--primary-500), 0.1);
-            padding: 0.25rem 0.75rem;
-            border-radius: 0.25rem;
+            background: var(--brand-primary-50);
+            padding: 0.2rem 0.65rem;
+            border-radius: var(--radius-full);
           }
         }
       }
@@ -613,17 +548,17 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
         font-size: 0.9rem;
 
         i {
-          color: var(--primary-color);
+          color: var(--brand-primary);
         }
 
         .label {
-          color: var(--text-color-secondary);
-          font-weight: 500;
+          color: var(--text-tertiary);
+          font-weight: var(--font-weight-medium);
         }
 
         .value {
-          font-weight: 600;
-          color: var(--text-color);
+          font-weight: var(--font-weight-semibold);
+          color: var(--text-primary);
         }
       }
     }
@@ -644,22 +579,12 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
     }
 
     @media (max-width: 640px) {
-      .my-assignments-page {
-        padding: 0.75rem;
-      }
+      .controls {
+        width: 100%;
 
-      .page-header {
-        h1 {
-          font-size: 1.25rem;
-        }
-
-        .controls {
-          flex-direction: column;
-          align-items: stretch;
-
-          .gps-status {
-            justify-content: center;
-          }
+        .status-indicator {
+          flex: 1;
+          justify-content: center;
         }
       }
 
@@ -826,8 +751,8 @@ export class MyAssignmentsComponent implements OnInit {
 
             this.messageService.add({
               severity: 'success',
-              summary: 'Success',
-              detail: 'Assignments updated',
+              summary: 'Fatto',
+              detail: 'Attività aggiornate',
               life: 2000,
             });
           }
@@ -835,7 +760,7 @@ export class MyAssignmentsComponent implements OnInit {
         },
         error: (err) => {
           console.error('Failed to load assignments:', err);
-          this.error.set('Failed to load assignments. Check your connection.');
+          this.error.set('Impossibile caricare le attività. Controlla la connessione.');
           this.isLoading.set(false);
 
           // Try to load from cache on error
@@ -932,10 +857,10 @@ export class MyAssignmentsComponent implements OnInit {
    */
   getStatusLabel(status: string): string {
     const statusMap: Record<string, string> = {
-      AWAITING_CARRIER: 'Awaiting Pickup',
-      IN_TRANSIT: 'In Transit',
-      COMPLETED: 'Completed',
-      FAILED: 'Failed',
+      AWAITING_CARRIER: 'In attesa di ritiro',
+      IN_TRANSIT: 'In transito',
+      COMPLETED: 'Completata',
+      FAILED: 'Fallita',
     };
     return statusMap[status] || status;
   }
@@ -951,6 +876,19 @@ export class MyAssignmentsComponent implements OnInit {
       FAILED: 'danger',
     };
     return severityMap[status] || 'info';
+  }
+
+  /**
+   * Get localized priority label
+   */
+  getPriorityLabel(priority: string): string {
+    const labelMap: Record<string, string> = {
+      low: 'Bassa',
+      normal: 'Normale',
+      high: 'Alta',
+      urgent: 'Urgente',
+    };
+    return labelMap[priority] || priority.toUpperCase();
   }
 
   /**
@@ -983,8 +921,8 @@ export class MyAssignmentsComponent implements OnInit {
     console.log('View details for:', assignment.firId);
     this.messageService.add({
       severity: 'info',
-      summary: 'View Details',
-      detail: `Loading details for FIR ${assignment.firNumber}...`,
+      summary: 'Dettagli',
+      detail: `Caricamento dei dettagli per il FIR ${assignment.firNumber}...`,
     });
   }
 
@@ -993,13 +931,16 @@ export class MyAssignmentsComponent implements OnInit {
    */
   startPickup(assignment: MyAssignment): void {
     this.confirmationService.confirm({
-      message: `Start pickup for FIR ${assignment.firNumber}?`,
+      message: `Avviare il ritiro per il FIR ${assignment.firNumber}?`,
+      header: 'Conferma ritiro',
+      acceptLabel: 'Avvia',
+      rejectLabel: 'Annulla',
       accept: () => {
         // TODO: Call API to start pickup
         this.messageService.add({
           severity: 'success',
-          summary: 'Pickup Started',
-          detail: `FIR ${assignment.firNumber} pickup initiated`,
+          summary: 'Ritiro avviato',
+          detail: `Ritiro del FIR ${assignment.firNumber} avviato`,
         });
       },
     });

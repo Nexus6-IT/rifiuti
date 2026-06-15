@@ -23,474 +23,394 @@ import { AuthService } from '../../core/services/auth.service';
     DividerModule
   ],
   template: `
-    <div class="login-container">
-      <div class="login-content">
-        <!-- Brand Section -->
-        <div class="brand-section">
-          <div class="brand-logo">
-            <div class="logo-icon">
-              <i class="pi pi-trash" aria-hidden="true"></i>
-            </div>
-            <div class="logo-text">
-              <h1 class="brand-name">WasteFlow</h1>
-              <p class="brand-tagline">Sistema di Gestione Digitale Rifiuti</p>
-            </div>
+    <div class="auth">
+      <!-- ===== Pannello brand (sinistra) ===== -->
+      <aside class="auth__brand" aria-hidden="true">
+        <div class="auth__brand-inner">
+          <div class="brand-mark">
+            <span class="brand-mark__glyph"><i class="pi pi-sync"></i></span>
+            <span class="brand-mark__name">WasteFlow</span>
           </div>
 
-          <!-- Feature List -->
-          <div class="features-list">
-            <div class="feature-item">
-              <i class="pi pi-check-circle" aria-hidden="true"></i>
+          <div class="brand-hero">
+            <p class="brand-hero__eyebrow">Gestione digitale dei rifiuti</p>
+            <h2 class="brand-hero__title">La tracciabilità dei rifiuti, semplice e conforme.</h2>
+            <p class="brand-hero__lede">
+              Piattaforma per la Pubblica Amministrazione: formulari, registri e
+              comunicazioni ambientali in un unico flusso digitale.
+            </p>
+          </div>
+
+          <ul class="brand-list">
+            <li class="brand-list__item">
+              <i class="pi pi-file-edit" aria-hidden="true"></i>
               <span>Gestione completa dei FIR</span>
-            </div>
-            <div class="feature-item">
-              <i class="pi pi-check-circle" aria-hidden="true"></i>
+            </li>
+            <li class="brand-list__item">
+              <i class="pi pi-sync" aria-hidden="true"></i>
               <span>Integrazione RENTRI</span>
-            </div>
-            <div class="feature-item">
-              <i class="pi pi-check-circle" aria-hidden="true"></i>
+            </li>
+            <li class="brand-list__item">
+              <i class="pi pi-chart-line" aria-hidden="true"></i>
               <span>Tracciabilità in tempo reale</span>
-            </div>
-            <div class="feature-item">
-              <i class="pi pi-check-circle" aria-hidden="true"></i>
+            </li>
+            <li class="brand-list__item">
+              <i class="pi pi-verified" aria-hidden="true"></i>
               <span>Conformità normativa garantita</span>
-            </div>
-          </div>
+            </li>
+          </ul>
+
+          <p class="brand-foot">Piattaforma modulare per la Pubblica Amministrazione</p>
         </div>
+      </aside>
 
-        <!-- Login Form Section -->
-        <div class="form-section">
-          <div class="form-container">
-            <!-- Form Header -->
-            <div class="form-header">
-              <h2 class="form-title">Benvenuto</h2>
-              <p class="form-subtitle">Accedi al tuo account WasteFlow</p>
-            </div>
+      <!-- ===== Pannello form (destra) ===== -->
+      <main class="auth__main" id="contenuto-login">
+        <div class="auth__panel">
+          <!-- Logo mobile (visibile solo dove il pannello brand è nascosto) -->
+          <div class="auth__logo-mobile">
+            <span class="brand-mark__glyph"><i class="pi pi-sync" aria-hidden="true"></i></span>
+            <span class="brand-mark__name">WasteFlow</span>
+          </div>
 
-            <!-- Login Card -->
-            <p-card styleClass="login-card">
-              <form class="login-form" (ngSubmit)="onLogin()">
-                <!-- Email Input -->
-                <div class="form-field">
-                  <label for="email" class="field-label">
-                    Email <span class="required">*</span>
-                  </label>
-                  <input
-                    pInputText
-                    id="email"
-                    [(ngModel)]="email"
-                    name="email"
-                    type="email"
-                    placeholder="tua-email@esempio.com"
-                    class="w-full"
-                    (keyup.enter)="onLogin()"
-                    [attr.aria-required]="true"
-                    [attr.aria-invalid]="!email && !loading ? 'true' : 'false'"
-                    autofocus
-                  />
-                </div>
+          <header class="auth__head">
+            <h1 class="auth__title">Accedi</h1>
+            <p class="auth__subtitle">
+              Entra con la tua identità digitale o con l'email del tuo ente.
+            </p>
+          </header>
 
-                <!-- Dev Mode Info -->
-                <div class="dev-notice" role="note">
-                  <i class="pi pi-info-circle" aria-hidden="true"></i>
-                  <span>Modalità sviluppo: inserisci qualsiasi indirizzo email valido</span>
-                </div>
+          <!-- Accesso con identità digitale (azione primaria) -->
+          <div class="auth__idp" role="group" aria-label="Accesso con identità digitale">
+            <p-button
+              label="Accedi con SPID"
+              icon="pi pi-id-card"
+              styleClass="w-full idp-button idp-button--spid"
+              (onClick)="onSPIDLogin()"
+              ariaLabel="Accedi con identità digitale SPID"
+            />
+            <p-button
+              label="Accedi con CIE"
+              icon="pi pi-id-card"
+              [outlined]="true"
+              styleClass="w-full idp-button idp-button--cie"
+              (onClick)="onCIELogin()"
+              ariaLabel="Accedi con Carta d'Identità Elettronica"
+            />
+          </div>
 
-                <!-- Action Buttons -->
-                <div class="form-actions">
-                  <p-button
-                    label="Avanti"
-                    [loading]="loading"
-                    type="submit"
-                    styleClass="w-full login-button"
-                    [disabled]="!email"
-                    aria-label="Effettua il login"
-                  />
+          <div class="auth__sep" role="separator" aria-hidden="true">
+            <span>oppure con email</span>
+          </div>
 
-                  <div class="divider">
-                    <span>oppure</span>
-                  </div>
-
-                  <p-button
-                    label="Accedi con SPID"
-                    icon="pi pi-shield"
-                    [outlined]="true"
-                    severity="secondary"
-                    (onClick)="onSPIDLogin()"
-                    styleClass="w-full spid-button"
-                    aria-label="Accedi tramite SPID"
-                  />
-                </div>
-              </form>
-            </p-card>
-
-            <!-- Footer Links -->
-            <div class="form-footer">
-              <p class="help-text">
-                Hai bisogno di aiuto? <a href="#" class="help-link">Contatta il supporto</a>
+          <!-- Accesso con email -->
+          <form class="auth__form" (ngSubmit)="onLogin()" novalidate>
+            <div class="field">
+              <label for="email" class="field__label">
+                Email istituzionale <span class="field__req" aria-hidden="true">*</span>
+              </label>
+              <input
+                pInputText
+                id="email"
+                name="email"
+                type="email"
+                inputmode="email"
+                autocomplete="email"
+                [(ngModel)]="email"
+                placeholder="nome.cognome@comune.it"
+                class="w-full"
+                (keyup.enter)="onLogin()"
+                aria-required="true"
+                [attr.aria-invalid]="emailTouched && !email ? 'true' : null"
+                [attr.aria-describedby]="'email-hint'"
+              />
+              <p id="email-hint" class="field__hint">
+                <i class="pi pi-info-circle" aria-hidden="true"></i>
+                Modalità sviluppo: inserisci un indirizzo email valido qualsiasi.
               </p>
             </div>
-          </div>
-        </div>
-      </div>
 
-      <!-- Page Footer -->
-      <footer class="page-footer">
-        <p class="footer-text">
-          &copy; 2025 WasteFlow. Tutti i diritti riservati. |
-          <a href="#" class="footer-link">Privacy Policy</a> |
-          <a href="#" class="footer-link">Termini di Servizio</a>
-        </p>
-      </footer>
+            <p-button
+              label="Continua"
+              icon="pi pi-arrow-right"
+              iconPos="right"
+              [loading]="loading"
+              type="submit"
+              styleClass="w-full submit-button"
+              [disabled]="!email || loading"
+              ariaLabel="Continua e accedi con email"
+            />
+          </form>
+
+          <p class="auth__help">
+            Hai bisogno di assistenza?
+            <a href="mailto:supporto@wasteflow.it" class="auth__help-link">Contatta il supporto</a>
+          </p>
+        </div>
+
+        <footer class="auth__footer">
+          <span>&copy; {{ currentYear }} WasteFlow</span>
+          <span class="auth__footer-sep" aria-hidden="true">·</span>
+          <a href="#" class="auth__footer-link">Privacy</a>
+          <span class="auth__footer-sep" aria-hidden="true">·</span>
+          <a href="#" class="auth__footer-link">Termini di servizio</a>
+        </footer>
+      </main>
     </div>
   `,
   styles: [`
-    .login-container {
+    :host { display: block; }
+
+    .auth {
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      background: linear-gradient(135deg, var(--brand-primary, #2e7d32) 0%, var(--brand-accent, #0277bd) 100%);
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      background: var(--surface-ground);
+    }
+
+    /* ============ Pannello brand ============ */
+    .auth__brand {
       position: relative;
       overflow: hidden;
+      color: var(--text-inverse);
+      background:
+        radial-gradient(120% 90% at 12% 8%, rgba(255,255,255,0.16) 0%, transparent 46%),
+        radial-gradient(130% 120% at 92% 100%, rgba(0,0,0,0.22) 0%, transparent 55%),
+        linear-gradient(150deg, var(--brand-primary) 0%, var(--brand-primary-dark) 62%, var(--brand-accent-dark) 100%);
     }
-
-    .login-container::before {
+    .auth__brand::after {
       content: '';
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      inset: 0;
       background-image:
-        radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+        radial-gradient(circle at 78% 22%, rgba(255,255,255,0.10) 0, transparent 42%);
       pointer-events: none;
     }
-
-    .login-content {
-      flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      max-width: 1200px;
-      width: 100%;
-      margin: 0 auto;
-      padding: var(--spacing-2xl, 2rem);
-      gap: var(--spacing-3xl, 3rem);
-      align-items: center;
+    .auth__brand-inner {
       position: relative;
       z-index: 1;
-    }
-
-    /* Brand Section */
-    .brand-section {
-      color: white;
-      padding: var(--spacing-2xl, 2rem);
-    }
-
-    .brand-logo {
-      margin-bottom: var(--spacing-3xl, 3rem);
-    }
-
-    .logo-icon {
-      width: 80px;
-      height: 80px;
-      background: rgba(255, 255, 255, 0.2);
-      backdrop-filter: blur(10px);
-      border-radius: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: var(--spacing-lg, 1.5rem);
-      animation: float 3s ease-in-out infinite;
-    }
-
-    .logo-icon i {
-      font-size: 2.5rem;
-      color: white;
-    }
-
-    .brand-name {
-      margin: 0 0 var(--spacing-xs, 0.5rem) 0;
-      font-size: var(--font-size-3xl, 2.25rem);
-      font-weight: var(--font-weight-bold, 700);
-      color: white;
-      letter-spacing: -0.5px;
-    }
-
-    .brand-tagline {
-      margin: 0;
-      font-size: var(--font-size-lg, 1.125rem);
-      color: rgba(255, 255, 255, 0.9);
-      font-weight: var(--font-weight-normal, 400);
-    }
-
-    .features-list {
+      height: 100%;
       display: flex;
       flex-direction: column;
-      gap: var(--spacing-lg, 1.5rem);
+      gap: var(--spacing-2xl);
+      padding: clamp(2rem, 4vw, 4rem);
+      max-width: 560px;
+      margin-left: auto;
     }
 
-    .feature-item {
+    .brand-mark { display: flex; align-items: center; gap: 0.7rem; }
+    .brand-mark__glyph {
+      width: 44px; height: 44px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.16);
+      border: 1px solid rgba(255,255,255,0.28);
+      border-radius: var(--radius-md);
+      backdrop-filter: blur(8px);
+    }
+    .brand-mark__glyph i { font-size: 1.35rem; color: #fff; }
+    .brand-mark__name {
+      font-family: var(--font-display);
+      font-weight: var(--font-weight-bold);
+      font-size: var(--font-size-xl);
+      letter-spacing: -0.01em;
+      color: #fff;
+    }
+
+    .brand-hero { margin-top: auto; }
+    .brand-hero__eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
+      color: rgba(255,255,255,0.82);
+      margin: 0 0 var(--spacing-sm);
+    }
+    .brand-hero__title {
+      font-family: var(--font-display);
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      line-height: 1.15;
+      font-weight: var(--font-weight-bold);
+      color: #fff;
+      margin: 0 0 var(--spacing-base);
+      letter-spacing: -0.02em;
+    }
+    .brand-hero__lede {
+      font-size: var(--font-size-lg);
+      line-height: var(--line-height-relaxed);
+      color: rgba(255,255,255,0.90);
+      margin: 0;
+      max-width: 46ch;
+    }
+
+    .brand-list {
+      list-style: none;
+      display: grid;
+      gap: var(--spacing-md);
+    }
+    .brand-list__item {
       display: flex;
       align-items: center;
-      gap: var(--spacing-md, 1rem);
-      padding: var(--spacing-md, 1rem);
-      background: rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(10px);
-      border-radius: var(--border-radius-md, 8px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      transition: all 0.3s ease;
+      gap: var(--spacing-md);
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-medium);
+      color: rgba(255,255,255,0.95);
     }
-
-    .feature-item:hover {
-      background: rgba(255, 255, 255, 0.15);
-      transform: translateX(5px);
-    }
-
-    .feature-item i {
-      font-size: 1.5rem;
-      color: rgba(255, 255, 255, 0.9);
+    .brand-list__item i {
+      width: 34px; height: 34px;
       flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: var(--radius-base);
+      font-size: 1rem;
+      color: #fff;
     }
 
-    .feature-item span {
-      font-size: var(--font-size-base, 1rem);
-      color: white;
-      font-weight: var(--font-weight-medium, 500);
+    .brand-foot {
+      margin: 0;
+      font-size: var(--font-size-sm);
+      color: rgba(255,255,255,0.75);
     }
 
-    /* Form Section */
-    .form-section {
+    /* ============ Pannello form ============ */
+    .auth__main {
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: var(--spacing-xl);
+      padding: clamp(1.5rem, 4vw, 3rem);
     }
-
-    .form-container {
+    .auth__panel {
       width: 100%;
-      max-width: 440px;
+      max-width: 420px;
+      animation: fadeInUp var(--transition-base);
     }
 
-    .form-header {
-      margin-bottom: var(--spacing-xl, 1.75rem);
-      text-align: center;
+    .auth__logo-mobile {
+      display: none;
+      align-items: center;
+      gap: 0.6rem;
+      justify-content: center;
+      margin-bottom: var(--spacing-xl);
     }
-
-    .form-title {
-      margin: 0 0 var(--spacing-xs, 0.5rem) 0;
-      font-size: var(--font-size-2xl, 1.875rem);
-      font-weight: var(--font-weight-bold, 700);
-      color: white;
+    .auth__logo-mobile .brand-mark__glyph {
+      background: var(--brand-primary-50);
+      border-color: var(--brand-primary-100);
     }
+    .auth__logo-mobile .brand-mark__glyph i { color: var(--brand-primary-dark); }
+    .auth__logo-mobile .brand-mark__name { color: var(--text-primary); }
 
-    .form-subtitle {
+    .auth__head { margin-bottom: var(--spacing-xl); }
+    .auth__title {
+      font-family: var(--font-display);
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-bold);
+      letter-spacing: -0.02em;
+      margin: 0 0 var(--spacing-sm);
+      color: var(--text-primary);
+    }
+    .auth__subtitle {
       margin: 0;
-      font-size: var(--font-size-base, 1rem);
-      color: rgba(255, 255, 255, 0.9);
+      color: var(--text-secondary);
+      font-size: var(--font-size-base);
+      line-height: var(--line-height-normal);
     }
 
-    :host ::ng-deep .login-card {
-      background: white;
-      border: none;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      border-radius: var(--border-radius-lg, 12px);
-    }
-
-    .login-form {
+    .auth__idp {
       display: flex;
       flex-direction: column;
-      gap: var(--spacing-lg, 1.5rem);
+      gap: var(--spacing-md);
     }
 
-    .form-field {
+    .auth__sep {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-base);
+      margin: var(--spacing-xl) 0;
+      color: var(--text-tertiary);
+      font-size: var(--font-size-sm);
+    }
+    .auth__sep::before,
+    .auth__sep::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--surface-border);
+    }
+
+    .auth__form {
       display: flex;
       flex-direction: column;
-      gap: var(--spacing-xs, 0.5rem);
+      gap: var(--spacing-lg);
     }
 
-    .field-label {
-      font-size: var(--font-size-sm, 0.875rem);
-      font-weight: var(--font-weight-semibold, 600);
-      color: var(--text-primary, #1f2937);
+    .field { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+    .field__label {
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-secondary);
     }
-
-    .required {
-      color: var(--error-color, #dc2626);
-    }
-
-    .dev-notice {
+    .field__req { color: var(--color-danger); }
+    .field__hint {
       display: flex;
       align-items: flex-start;
-      gap: var(--spacing-sm, 0.75rem);
-      padding: var(--spacing-sm, 0.75rem);
-      background: var(--info-bg, #eff6ff);
-      border-radius: var(--border-radius-sm, 4px);
-      border-left: 3px solid var(--info-color, #3b82f6);
+      gap: 0.4rem;
+      margin: 0;
+      font-size: var(--font-size-xs);
+      color: var(--text-tertiary);
+      line-height: 1.45;
     }
+    .field__hint i { margin-top: 1px; color: var(--color-info); }
 
-    .dev-notice i {
-      color: var(--info-color, #3b82f6);
-      font-size: 1.25rem;
-      flex-shrink: 0;
-      margin-top: 2px;
+    .auth__help {
+      margin: var(--spacing-xl) 0 0;
+      text-align: center;
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
     }
+    .auth__help-link { font-weight: var(--font-weight-semibold); }
 
-    .dev-notice span {
-      font-size: var(--font-size-sm, 0.875rem);
-      color: var(--text-secondary, #6b7280);
-      line-height: 1.5;
-    }
-
-    .form-actions {
+    .auth__footer {
       display: flex;
-      flex-direction: column;
-      gap: var(--spacing-md, 1rem);
-      margin-top: var(--spacing-sm, 0.75rem);
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: var(--font-size-xs);
+      color: var(--text-tertiary);
+    }
+    .auth__footer-sep { color: var(--surface-border-strong); }
+    .auth__footer-link { color: var(--text-tertiary); font-weight: var(--font-weight-medium); }
+    .auth__footer-link:hover { color: var(--brand-primary-dark); }
+
+    /* ============ Bottoni IdP / submit ============ */
+    :host ::ng-deep .idp-button .p-button,
+    :host ::ng-deep .submit-button .p-button {
+      min-height: 50px;
+      justify-content: center;
+      font-size: var(--font-size-base) !important;
+    }
+    /* CIE in stile outlined ma con bordo più marcato */
+    :host ::ng-deep .idp-button--cie .p-button {
+      border-width: 1.5px;
     }
 
-    :host ::ng-deep .login-button {
-      height: 48px;
-      font-weight: var(--font-weight-semibold, 600);
+    /* ============ Responsive ============ */
+    @media (max-width: 960px) {
+      .auth { grid-template-columns: 1fr; }
+      .auth__brand { display: none; }
+      .auth__logo-mobile { display: flex; }
+      .auth__main { min-height: 100vh; justify-content: center; }
     }
 
-    :host ::ng-deep .spid-button {
-      height: 44px;
+    @media (max-width: 420px) {
+      .auth__main { padding: var(--spacing-lg) var(--spacing-base); }
+      .auth__title { font-size: var(--font-size-2xl); }
     }
 
-    .divider {
-      position: relative;
-      text-align: center;
-      margin: var(--spacing-xs, 0.5rem) 0;
-    }
-
-    .divider::before,
-    .divider::after {
-      content: '';
-      position: absolute;
-      top: 50%;
-      width: 45%;
-      height: 1px;
-      background: var(--gray-300, #d1d5db);
-    }
-
-    .divider::before {
-      left: 0;
-    }
-
-    .divider::after {
-      right: 0;
-    }
-
-    .divider span {
-      display: inline-block;
-      padding: 0 var(--spacing-sm, 0.75rem);
-      font-size: var(--font-size-sm, 0.875rem);
-      color: var(--text-secondary, #6b7280);
-      background: white;
-      position: relative;
-    }
-
-    .form-footer {
-      margin-top: var(--spacing-lg, 1.5rem);
-      text-align: center;
-    }
-
-    .help-text {
-      margin: 0;
-      font-size: var(--font-size-sm, 0.875rem);
-      color: rgba(255, 255, 255, 0.9);
-    }
-
-    .help-link {
-      color: white;
-      font-weight: var(--font-weight-semibold, 600);
-      text-decoration: none;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.5);
-      transition: border-color 0.2s ease;
-    }
-
-    .help-link:hover {
-      border-bottom-color: white;
-    }
-
-    /* Page Footer */
-    .page-footer {
-      padding: var(--spacing-lg, 1.5rem);
-      text-align: center;
-      position: relative;
-      z-index: 1;
-    }
-
-    .footer-text {
-      margin: 0;
-      font-size: var(--font-size-xs, 0.75rem);
-      color: rgba(255, 255, 255, 0.8);
-    }
-
-    .footer-link {
-      color: rgba(255, 255, 255, 0.9);
-      text-decoration: none;
-      margin: 0 var(--spacing-xs, 0.5rem);
-      transition: color 0.2s ease;
-    }
-
-    .footer-link:hover {
-      color: white;
-      text-decoration: underline;
-    }
-
-    /* Animations */
-    @keyframes float {
-      0%, 100% {
-        transform: translateY(0);
-      }
-      50% {
-        transform: translateY(-10px);
-      }
-    }
-
-    /* Responsive Design */
-    @media (max-width: 1024px) {
-      .login-content {
-        grid-template-columns: 1fr;
-        gap: var(--spacing-2xl, 2rem);
-        padding: var(--spacing-xl, 1.75rem);
-      }
-
-      .brand-section {
-        display: none;
-      }
-
-      .form-section {
-        order: 1;
-      }
-    }
-
-    @media (max-width: 576px) {
-      .login-content {
-        padding: var(--spacing-lg, 1.5rem);
-      }
-
-      .form-container {
-        max-width: 100%;
-      }
-
-      .form-title {
-        font-size: var(--font-size-xl, 1.25rem);
-      }
-
-      .brand-name {
-        font-size: var(--font-size-2xl, 1.875rem);
-      }
-    }
-
-    /* Accessibility */
     @media (prefers-reduced-motion: reduce) {
-      .logo-icon,
-      .feature-item {
-        animation: none;
-        transition: none;
-      }
+      .auth__panel { animation: none; }
     }
   `]
 })
@@ -498,7 +418,9 @@ export class LoginComponent {
   email = '';
   password = '';
   loading = false;
+  emailTouched = false;
   returnUrl = '/dashboard';
+  readonly currentYear = new Date().getFullYear();
 
   constructor(
     private authService: AuthService,
@@ -510,6 +432,7 @@ export class LoginComponent {
   }
 
   onLogin(): void {
+    this.emailTouched = true;
     if (!this.email) {
       this.messageService.add({
         severity: 'warn',
@@ -542,5 +465,9 @@ export class LoginComponent {
 
   onSPIDLogin(): void {
     this.authService.loginWithSPID();
+  }
+
+  onCIELogin(): void {
+    this.authService.loginWithCIE();
   }
 }

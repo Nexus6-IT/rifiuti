@@ -35,84 +35,66 @@ interface DashboardStats {
     ErrorStateComponent
   ],
   template: `
-    <div class="dashboard">
-      <!-- Page Header -->
-      <div class="dashboard-header">
-        <div>
-          <h1 class="dashboard-title">Dashboard</h1>
-          <p class="dashboard-subtitle">Panoramica generale del sistema di gestione rifiuti</p>
+    <div class="page">
+      <!-- Intestazione pagina -->
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Dashboard</h1>
+          <p class="page-subtitle">Panoramica generale del sistema di gestione rifiuti</p>
         </div>
-      </div>
+        <div class="page-actions">
+          <p-button
+            label="Nuovo FIR"
+            icon="pi pi-plus"
+            routerLink="/fir"
+            ariaLabel="Crea un nuovo FIR"
+          />
+        </div>
+      </header>
 
-      <!-- Loading State for Stats -->
+      <!-- Stato di caricamento KPI -->
       <ng-container *ngIf="loading && recentFIR.length === 0">
-        <div class="grid mb-4">
-          <div class="col-12 md:col-6 lg:col-3" *ngFor="let _ of [1,2,3,4]">
-            <app-skeleton-loader variant="stats" [repeat]="1" />
-          </div>
+        <div class="stat-grid" aria-busy="true">
+          <span class="sr-only">Caricamento statistiche in corso</span>
+          <app-skeleton-loader *ngFor="let _ of [1,2,3,4]" variant="stats" [repeat]="1" />
         </div>
       </ng-container>
 
-      <!-- Statistics Cards -->
-      <div class="grid mb-4" *ngIf="!loading || recentFIR.length > 0">
-        <div class="col-12 md:col-6 lg:col-3">
-          <p-card styleClass="dashboard-card dashboard-card--primary">
-            <div class="flex justify-content-between align-items-center">
-              <div>
-                <div class="card-label">Totale FIR</div>
-                <div class="card-value">{{ stats.totalFIR }}</div>
-              </div>
-              <div class="card-icon card-icon--primary">
-                <i class="pi pi-file" aria-hidden="true"></i>
-              </div>
-            </div>
-          </p-card>
-        </div>
+      <!-- KPI -->
+      <section *ngIf="!loading || recentFIR.length > 0" aria-labelledby="kpi-heading">
+        <h2 id="kpi-heading" class="sr-only">Indicatori principali</h2>
+        <div class="stat-grid">
+          <article class="stat-card">
+            <span class="stat-card__label">
+              <i class="pi pi-file" aria-hidden="true"></i> Totale FIR
+            </span>
+            <span class="stat-card__value">{{ stats.totalFIR }}</span>
+          </article>
 
-        <div class="col-12 md:col-6 lg:col-3">
-          <p-card styleClass="dashboard-card dashboard-card--warning">
-            <div class="flex justify-content-between align-items-center">
-              <div>
-                <div class="card-label">In Transito</div>
-                <div class="card-value card-value--warning">{{ stats.firInTransito }}</div>
-              </div>
-              <div class="card-icon card-icon--warning">
-                <i class="pi pi-truck" aria-hidden="true"></i>
-              </div>
-            </div>
-          </p-card>
-        </div>
+          <article class="stat-card">
+            <span class="stat-card__label">
+              <i class="pi pi-truck" aria-hidden="true"></i> In transito
+            </span>
+            <span class="stat-card__value stat-card__value--warning">{{ stats.firInTransito }}</span>
+          </article>
 
-        <div class="col-12 md:col-6 lg:col-3">
-          <p-card styleClass="dashboard-card dashboard-card--success">
-            <div class="flex justify-content-between align-items-center">
-              <div>
-                <div class="card-label">Consegnati</div>
-                <div class="card-value card-value--success">{{ stats.firConsegnati }}</div>
-              </div>
-              <div class="card-icon card-icon--success">
-                <i class="pi pi-check-circle" aria-hidden="true"></i>
-              </div>
-            </div>
-          </p-card>
-        </div>
+          <article class="stat-card">
+            <span class="stat-card__label">
+              <i class="pi pi-check-circle" aria-hidden="true"></i> Consegnati
+            </span>
+            <span class="stat-card__value stat-card__value--success">{{ stats.firConsegnati }}</span>
+          </article>
 
-        <div class="col-12 md:col-6 lg:col-3">
-          <p-card styleClass="dashboard-card dashboard-card--secondary">
-            <div class="flex justify-content-between align-items-center">
-              <div>
-                <div class="card-label">Bozze</div>
-                <div class="card-value">{{ stats.firBozza }}</div>
-              </div>
-              <div class="card-icon card-icon--secondary">
-                <i class="pi pi-pencil" aria-hidden="true"></i>
-              </div>
-            </div>
-          </p-card>
+          <article class="stat-card">
+            <span class="stat-card__label">
+              <i class="pi pi-pencil" aria-hidden="true"></i> Bozze
+            </span>
+            <span class="stat-card__value">{{ stats.firBozza }}</span>
+          </article>
         </div>
-      </div>
+      </section>
 
-      <!-- Error State -->
+      <!-- Stato di errore -->
       <app-error-state
         *ngIf="error && !loading"
         title="Errore nel caricamento della dashboard"
@@ -120,35 +102,28 @@ interface DashboardStats {
         (retry)="loadDashboardData()"
       />
 
-      <!-- Content Area (only show if no error) -->
-      <div class="grid" *ngIf="!error">
-        <!-- Recent FIR Table -->
-        <div class="col-12 lg:col-8">
-          <p-card>
-            <ng-template pTemplate="header">
-              <div class="flex justify-content-between align-items-center p-3">
-                <h3 class="section-title">FIR Recenti</h3>
-                <p-button
-                  label="Vedi tutti"
-                  [text]="true"
-                  routerLink="/fir"
-                  icon="pi pi-arrow-right"
-                  iconPos="right"
-                  aria-label="Visualizza tutti i FIR"
-                />
-              </div>
-            </ng-template>
+      <!-- Contenuto -->
+      <div class="dashboard-grid mt-4" *ngIf="!error">
+        <!-- Tabella FIR recenti -->
+        <div class="surface-card dashboard-grid__main">
+          <div class="card-header">
+            <h2 class="card-title">FIR recenti</h2>
+            <p-button
+              label="Vedi tutti"
+              [text]="true"
+              routerLink="/fir"
+              icon="pi pi-arrow-right"
+              iconPos="right"
+              ariaLabel="Visualizza tutti i FIR"
+            />
+          </div>
 
-            <!-- Loading State -->
-            <app-skeleton-loader *ngIf="loading" variant="table" [rows]="5" />
+          <!-- Loading -->
+          <app-skeleton-loader *ngIf="loading" variant="table" [rows]="5" />
 
-            <!-- Table Content -->
-            <p-table
-              *ngIf="!loading"
-              [value]="recentFIR"
-              responsiveLayout="scroll"
-              styleClass="dashboard-table"
-            >
+          <!-- Tabella -->
+          <div class="table-responsive" *ngIf="!loading">
+            <p-table [value]="recentFIR" responsiveLayout="scroll" styleClass="dashboard-table">
               <ng-template pTemplate="header">
                 <tr>
                   <th scope="col">Numero</th>
@@ -159,9 +134,7 @@ interface DashboardStats {
               </ng-template>
               <ng-template pTemplate="body" let-fir>
                 <tr>
-                  <td>
-                    <span class="font-semibold">{{ fir.numeroProgressivo || 'N/A' }}</span>
-                  </td>
+                  <td><span class="font-semibold">{{ fir.numeroProgressivo || 'N/A' }}</span></td>
                   <td>{{ fir.rifiuto.cerCode }}</td>
                   <td>
                     <p-tag
@@ -192,170 +165,76 @@ interface DashboardStats {
                 </tr>
               </ng-template>
             </p-table>
-          </p-card>
+          </div>
         </div>
 
-        <!-- Chart Section -->
-        <div class="col-12 lg:col-4">
-          <p-card>
-            <ng-template pTemplate="header">
-              <div class="p-3">
-                <h3 class="section-title">FIR per Stato</h3>
-              </div>
-            </ng-template>
+        <!-- Grafico FIR per stato -->
+        <div class="surface-card dashboard-grid__aside">
+          <h2 class="card-title">FIR per stato</h2>
 
-            <!-- Loading State -->
-            <div *ngIf="loading" class="chart-skeleton">
-              <app-skeleton-loader variant="circle" width="200px" [repeat]="1" />
-            </div>
+          <div *ngIf="loading" class="chart-skeleton">
+            <app-skeleton-loader variant="circle" width="200px" [repeat]="1" />
+          </div>
 
-            <!-- Chart -->
-            <p-chart
-              *ngIf="!loading"
-              type="doughnut"
-              [data]="chartData"
-              [options]="chartOptions"
-              aria-label="Grafico a ciambella che mostra la distribuzione dei FIR per stato"
-            />
-          </p-card>
+          <p-chart
+            *ngIf="!loading"
+            type="doughnut"
+            [data]="chartData"
+            [options]="chartOptions"
+            role="img"
+            aria-label="Grafico a ciambella che mostra la distribuzione dei FIR per stato"
+          />
         </div>
       </div>
     </div>
   `,
   styles: [`
-    .dashboard {
-      animation: fadeIn 0.3s ease-in;
+    .dashboard-grid {
+      display: grid;
+      gap: var(--spacing-lg);
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 992px) {
+      .dashboard-grid {
+        grid-template-columns: 2fr 1fr;
+        align-items: start;
+      }
     }
 
-    .dashboard-header {
-      margin-bottom: var(--spacing-xl, 1.75rem);
-    }
-
-    .dashboard-title {
-      margin: 0 0 var(--spacing-xs, 0.5rem) 0;
-      font-size: var(--font-size-2xl, 1.875rem);
-      font-weight: var(--font-weight-bold, 700);
-      color: var(--text-primary, #1f2937);
-    }
-
-    .dashboard-subtitle {
-      margin: 0;
-      font-size: var(--font-size-base, 1rem);
-      color: var(--text-secondary, #6b7280);
-    }
-
-    :host ::ng-deep .dashboard-card {
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-      border: 1px solid var(--gray-200, #e5e7eb);
-    }
-
-    :host ::ng-deep .dashboard-card:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-lg);
-    }
-
-    :host ::ng-deep .dashboard-card--primary {
-      border-top: 3px solid var(--brand-accent, #0277bd);
-    }
-
-    :host ::ng-deep .dashboard-card--warning {
-      border-top: 3px solid var(--brand-secondary, #ff6f00);
-    }
-
-    :host ::ng-deep .dashboard-card--success {
-      border-top: 3px solid var(--brand-primary, #2e7d32);
-    }
-
-    :host ::ng-deep .dashboard-card--secondary {
-      border-top: 3px solid var(--gray-400, #9ca3af);
-    }
-
-    .card-label {
-      font-size: var(--font-size-sm, 0.875rem);
-      font-weight: var(--font-weight-medium, 500);
-      color: var(--text-secondary, #6b7280);
-      margin-bottom: var(--spacing-xs, 0.5rem);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .card-value {
-      font-size: var(--font-size-3xl, 2.25rem);
-      font-weight: var(--font-weight-bold, 700);
-      color: var(--text-primary, #1f2937);
-      line-height: 1;
-    }
-
-    .card-value--warning {
-      color: var(--brand-secondary, #ff6f00);
-    }
-
-    .card-value--success {
-      color: var(--brand-primary, #2e7d32);
-    }
-
-    .card-icon {
+    .card-header {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      justify-content: center;
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      font-size: 1.75rem;
+      justify-content: space-between;
+      gap: var(--spacing-sm);
+      margin-bottom: var(--spacing-base);
     }
 
-    .card-icon--primary {
-      background: rgba(2, 119, 189, 0.1);
-      color: var(--brand-accent, #0277bd);
-    }
-
-    .card-icon--warning {
-      background: rgba(255, 111, 0, 0.1);
-      color: var(--brand-secondary, #ff6f00);
-    }
-
-    .card-icon--success {
-      background: rgba(46, 125, 50, 0.1);
-      color: var(--brand-primary, #2e7d32);
-    }
-
-    .card-icon--secondary {
-      background: var(--gray-100, #f3f4f6);
-      color: var(--gray-600, #4b5563);
-    }
-
-    .section-title {
+    .card-title {
       margin: 0;
-      font-size: var(--font-size-lg, 1.125rem);
-      font-weight: var(--font-weight-semibold, 600);
-      color: var(--text-primary, #1f2937);
+      font-family: var(--font-display);
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
     }
+
+    .stat-card__label {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+    }
+    .stat-card__label .pi { color: var(--brand-primary); }
+    .stat-card__value--warning { color: var(--brand-secondary); }
+    .stat-card__value--success { color: var(--brand-primary); }
 
     .chart-skeleton {
       display: flex;
       justify-content: center;
       align-items: center;
-      padding: var(--spacing-2xl, 2rem);
+      padding: var(--spacing-2xl);
     }
 
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .dashboard,
-      :host ::ng-deep .dashboard-card {
-        animation: none;
-        transition: none;
-      }
-    }
+    .mt-4 { margin-top: var(--spacing-lg); }
   `]
 })
 export class DashboardComponent implements OnInit {
@@ -426,7 +305,7 @@ export class DashboardComponent implements OnInit {
             this.stats.firConsegnati,
             0  // Count annullato separately if needed
           ],
-          backgroundColor: ['#6c757d', '#0dcaf0', '#ffc107', '#198754', '#dc3545']
+          backgroundColor: ['#6b7770', '#0e7490', '#b45309', '#15803d', '#b91c1c']
         }
       ]
     };

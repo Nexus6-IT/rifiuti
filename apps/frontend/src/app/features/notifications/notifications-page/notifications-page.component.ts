@@ -1,9 +1,9 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { CardModule } from 'primeng/card';
 import { ButtonModule } from 'primeng/button';
-import { BadgeModule } from 'primeng/badge';
+import { TagModule } from 'primeng/tag';
+import { TooltipModule } from 'primeng/tooltip';
 import { environment } from '../../../../environments/environment';
 
 interface Notification {
@@ -24,135 +24,125 @@ interface Notification {
 @Component({
   selector: 'app-notifications-page',
   standalone: true,
-  imports: [CommonModule, CardModule, ButtonModule, BadgeModule],
+  imports: [CommonModule, ButtonModule, TagModule, TooltipModule],
   template: `
-    <div class="notifications-page">
-      <div class="header">
-        <h1>Notifiche</h1>
-        <p-button
-          label="Segna tutte come lette"
-          icon="pi pi-check"
-          (onClick)="markAllAsRead()"
-          [disabled]="hasNoUnreadNotifications()"
-        ></p-button>
-      </div>
-
-      <div class="notifications-list">
-        <p-card *ngFor="let notification of notifications()"
-                [ngClass]="{'unread': !notification.read}">
-          <div class="notification-item">
-            <div class="notification-icon">
-              <i [class]="getNotificationIcon(notification.type)"></i>
-            </div>
-            <div class="notification-content">
-              <h3>
-                {{ notification.title }}
-                <p-badge *ngIf="!notification.read" value="Nuovo" severity="info"></p-badge>
-              </h3>
-              <p>{{ notification.message }}</p>
-              <small>{{ formatDate(notification.createdAt) }}</small>
-            </div>
-            <div class="notification-actions">
-              <p-button
-                *ngIf="!notification.read"
-                icon="pi pi-check"
-                [rounded]="true"
-                [text]="true"
-                severity="success"
-                (onClick)="markAsRead(notification.id)"
-                pTooltip="Segna come letta"
-              ></p-button>
-            </div>
-          </div>
-        </p-card>
-
-        <div *ngIf="hasNoNotifications()" class="empty-state">
-          <i class="pi pi-inbox" style="font-size: 4rem; color: #ccc;"></i>
-          <p>Nessuna notifica</p>
+    <div class="page">
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Notifiche</h1>
+          <p class="page-subtitle">
+            {{ unreadCount() > 0 ? unreadCount() + ' non lette' : 'Tutte le notifiche sono state lette' }}
+          </p>
         </div>
-      </div>
+        <div class="page-actions">
+          <p-button
+            label="Segna tutte come lette"
+            icon="pi pi-check"
+            (onClick)="markAllAsRead()"
+            [disabled]="hasNoUnreadNotifications()"
+          ></p-button>
+        </div>
+      </header>
+
+      <section class="notifications-list" aria-label="Elenco notifiche">
+        <article
+          *ngFor="let notification of notifications()"
+          class="surface-card notification-item"
+          [class.notification-item--unread]="!notification.read"
+        >
+          <div class="notification-icon" aria-hidden="true">
+            <i [class]="getNotificationIcon(notification.type)"></i>
+          </div>
+          <div class="notification-content">
+            <h2 class="notification-title">
+              {{ notification.title }}
+              <p-tag *ngIf="!notification.read" value="Nuovo" severity="info"></p-tag>
+            </h2>
+            <p class="notification-message">{{ notification.message }}</p>
+            <small class="notification-time">{{ formatDate(notification.createdAt) }}</small>
+          </div>
+          <div class="notification-actions">
+            <p-button
+              *ngIf="!notification.read"
+              icon="pi pi-check"
+              [rounded]="true"
+              [text]="true"
+              severity="success"
+              (onClick)="markAsRead(notification.id)"
+              pTooltip="Segna come letta"
+              [attr.aria-label]="'Segna come letta la notifica: ' + notification.title"
+            ></p-button>
+          </div>
+        </article>
+
+        <div *ngIf="hasNoNotifications()" class="surface-card">
+          <div class="empty-state">
+            <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
+            <p class="empty-state__title">Nessuna notifica</p>
+            <p>Quando riceverai aggiornamenti, compariranno qui.</p>
+          </div>
+        </div>
+      </section>
     </div>
   `,
   styles: [`
-    .notifications-page {
-      padding: 1.5rem;
-    }
-
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 2rem;
-    }
-
-    .header h1 {
-      margin: 0;
-      font-size: 2rem;
-      color: #2c3e50;
-    }
-
     .notifications-list {
       display: flex;
       flex-direction: column;
-      gap: 1rem;
+      gap: var(--spacing-base);
     }
 
     .notification-item {
       display: flex;
-      gap: 1rem;
+      gap: var(--spacing-base);
       align-items: flex-start;
+      padding: var(--spacing-lg);
+      transition: box-shadow var(--transition-base), transform var(--transition-base);
+    }
+
+    .notification-item:hover { box-shadow: var(--shadow-md); }
+
+    .notification-item--unread {
+      border-left: 4px solid var(--brand-primary);
+      background-color: var(--brand-primary-50);
     }
 
     .notification-icon {
-      font-size: 2rem;
-      color: #3b82f6;
+      font-size: 1.75rem;
+      color: var(--brand-primary);
       flex-shrink: 0;
+      line-height: 1;
     }
 
-    .notification-content {
-      flex: 1;
-    }
+    .notification-content { flex: 1; min-width: 0; }
 
-    .notification-content h3 {
-      margin: 0 0 0.5rem 0;
-      font-size: 1.1rem;
+    .notification-title {
+      margin: 0 0 var(--spacing-sm) 0;
+      font-size: var(--font-size-lg);
+      font-family: var(--font-display);
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      flex-wrap: wrap;
+      gap: var(--spacing-sm);
     }
 
-    .notification-content p {
-      margin: 0 0 0.5rem 0;
-      color: #555;
+    .notification-message {
+      margin: 0 0 var(--spacing-sm) 0;
+      color: var(--text-secondary);
     }
 
-    .notification-content small {
-      color: #999;
-    }
+    .notification-time { color: var(--text-tertiary); }
 
-    .notification-actions {
-      flex-shrink: 0;
-    }
+    .notification-actions { flex-shrink: 0; }
 
-    ::ng-deep .unread {
-      border-left: 4px solid #3b82f6;
-      background-color: #f0f9ff;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 4rem 0;
-      color: #999;
-    }
-
-    .empty-state p {
-      font-size: 1.2rem;
-      margin-top: 1rem;
+    @media (max-width: 576px) {
+      .notification-item { padding: var(--spacing-base); }
     }
   `]
 })
 export class NotificationsPageComponent implements OnInit {
   protected readonly notifications = signal<Notification[]>([]);
+  protected readonly unreadCount = computed(() => this.notifications().filter(n => !n.read).length);
   private readonly apiUrl = `${environment.apiUrl}/notifications`;
 
   constructor(private readonly http: HttpClient) {}

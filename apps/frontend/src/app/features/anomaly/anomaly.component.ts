@@ -1,13 +1,11 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { CardModule } from 'primeng/card';
 import { ButtonModule } from 'primeng/button';
 import { DropdownModule } from 'primeng/dropdown';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { MessageModule } from 'primeng/message';
 import { ToastService } from '../../core/services/toast.service';
 import { Anomaly, AnomalySeverity, AnomalyService, AnomalyType } from './anomaly.service';
 
@@ -24,37 +22,57 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined;
   imports: [
     CommonModule,
     FormsModule,
-    CardModule,
     ButtonModule,
     DropdownModule,
     TableModule,
     TagModule,
     ProgressSpinnerModule,
-    MessageModule,
   ],
   template: `
-    <div class="anomaly-page" style="max-width: 1100px; margin: 0 auto;">
-      <p-card>
-        <ng-template pTemplate="header">
-          <div class="p-3 flex justify-content-between align-items-start" style="gap: 1rem;">
-            <div>
-              <h2 style="margin: 0;">Anomalie</h2>
-              <p class="text-muted">Rilevamento automatico di incongruenze su FIR e movimenti</p>
-            </div>
-            <p-button
-              label="Aggiorna"
-              icon="pi pi-refresh"
-              [loading]="loading()"
-              (onClick)="load()"
-            ></p-button>
-          </div>
-        </ng-template>
+    <div class="page">
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Anomalie</h1>
+          <p class="page-subtitle">Rilevamento automatico di incongruenze su FIR e movimenti</p>
+        </div>
+        <div class="page-actions">
+          <p-button
+            label="Aggiorna"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            [loading]="loading()"
+            (onClick)="load()"
+            ariaLabel="Ricalcola le anomalie"
+          ></p-button>
+        </div>
+      </header>
 
-        <!-- Filtri -->
-        <div class="grid mb-3" *ngIf="!loading() && !error()">
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Gravità</label>
+      <!-- KPI per gravità -->
+      <div *ngIf="!loading() && !error() && loaded()" class="stat-grid mb-4">
+        <div class="stat-card stat-card--danger">
+          <span class="stat-card__label">Gravità alta</span>
+          <span class="stat-card__value">{{ countBySeverity('HIGH') | number }}</span>
+          <span class="stat-card__hint">richiedono intervento</span>
+        </div>
+        <div class="stat-card stat-card--warning">
+          <span class="stat-card__label">Gravità media</span>
+          <span class="stat-card__value">{{ countBySeverity('MEDIUM') | number }}</span>
+          <span class="stat-card__hint">da verificare</span>
+        </div>
+        <div class="stat-card stat-card--info">
+          <span class="stat-card__label">Gravità bassa</span>
+          <span class="stat-card__value">{{ countBySeverity('LOW') | number }}</span>
+          <span class="stat-card__hint">segnalazioni minori</span>
+        </div>
+      </div>
+
+      <!-- Filtri -->
+      <section class="surface-card mb-4" *ngIf="!loading() && !error()" aria-label="Filtri anomalie">
+        <div class="grid formgrid" style="align-items: end;">
+          <div class="field col-12 md:col-4">
+            <label for="anomaly-severity" class="block mb-2">Gravità</label>
             <p-dropdown
+              inputId="anomaly-severity"
               [options]="severityOptions"
               [(ngModel)]="selectedSeverity"
               optionLabel="label"
@@ -62,12 +80,14 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined;
               [showClear]="true"
               placeholder="Tutte"
               styleClass="w-full"
+              ariaLabel="Filtra per gravità"
               (onChange)="applyFilters()"
             ></p-dropdown>
           </div>
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Tipo</label>
+          <div class="field col-12 md:col-4">
+            <label for="anomaly-type" class="block mb-2">Tipo</label>
             <p-dropdown
+              inputId="anomaly-type"
               [options]="typeOptions"
               [(ngModel)]="selectedType"
               optionLabel="label"
@@ -75,99 +95,92 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined;
               [showClear]="true"
               placeholder="Tutti"
               styleClass="w-full"
+              ariaLabel="Filtra per tipo di anomalia"
               (onChange)="applyFilters()"
             ></p-dropdown>
           </div>
-          <div class="col-12 md:col-4 flex align-items-end">
-            <span class="text-muted">{{ filtered().length }} anomalie</span>
+          <div class="field col-12 md:col-4 flex align-items-end">
+            <span class="text-tertiary" role="status">{{ filtered().length }} anomalie</span>
           </div>
         </div>
+      </section>
 
-        <!-- Loading -->
-        <div *ngIf="loading()" class="flex justify-content-center p-5">
-          <p-progressSpinner styleClass="w-4rem h-4rem" strokeWidth="4"></p-progressSpinner>
+      <!-- Loading -->
+      <section *ngIf="loading()" class="surface-card">
+        <div class="flex justify-content-center p-5">
+          <p-progressSpinner styleClass="w-4rem h-4rem" strokeWidth="4" ariaLabel="Caricamento anomalie"></p-progressSpinner>
         </div>
+      </section>
 
-        <!-- Error -->
-        <div *ngIf="error() && !loading()" class="mt-3">
-          <p-message
-            severity="error"
-            text="Impossibile caricare le anomalie. Riprova."
-            styleClass="w-full"
-          ></p-message>
+      <!-- Error -->
+      <section *ngIf="error() && !loading()" class="surface-card">
+        <div class="empty-state">
+          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true" style="color: var(--color-danger);"></i>
+          <span class="empty-state__title">Impossibile caricare le anomalie</span>
+          <p>Si è verificato un errore. Riprova.</p>
+          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="load()"></p-button>
         </div>
+      </section>
 
-        <!-- Empty -->
-        <div *ngIf="!loading() && !error() && loaded() && filtered().length === 0" class="mt-3">
-          <p-message
-            severity="success"
-            text="Nessuna anomalia rilevata per i criteri selezionati."
-            styleClass="w-full"
-          ></p-message>
+      <!-- Empty -->
+      <section *ngIf="!loading() && !error() && loaded() && filtered().length === 0" class="surface-card">
+        <div class="empty-state">
+          <i class="pi pi-check-circle empty-state__icon" aria-hidden="true" style="color: var(--color-success);"></i>
+          <span class="empty-state__title">Nessuna anomalia rilevata</span>
+          <p>Nessuna anomalia per i criteri selezionati.</p>
         </div>
+      </section>
 
-        <!-- Tabella -->
-        <p-table
-          *ngIf="!loading() && !error() && filtered().length > 0"
-          [value]="filtered()"
-          styleClass="p-datatable-sm mt-2"
-          [paginator]="filtered().length > 10"
-          [rows]="10"
-          responsiveLayout="scroll"
-          [rowHover]="true"
-        >
-          <ng-template pTemplate="header">
-            <tr>
-              <th style="width: 120px">Gravità</th>
-              <th style="width: 200px">Tipo</th>
-              <th>Messaggio</th>
-              <th style="width: 160px">FIR</th>
-              <th style="width: 120px">CER</th>
-            </tr>
-          </ng-template>
-          <ng-template pTemplate="body" let-a>
-            <tr>
-              <td>
-                <p-tag
-                  [value]="severityLabel(a.severity)"
-                  [severity]="severityTag(a.severity)"
-                  [rounded]="true"
-                ></p-tag>
-              </td>
-              <td>{{ typeLabel(a.type) }}</td>
-              <td>{{ a.message }}</td>
-              <td>{{ a.firNumber || '-' }}</td>
-              <td>{{ a.cerCode || '-' }}</td>
-            </tr>
-          </ng-template>
-          <ng-template pTemplate="emptymessage">
-            <tr>
-              <td colspan="5" class="text-center">Nessuna anomalia.</td>
-            </tr>
-          </ng-template>
-        </p-table>
-      </p-card>
+      <!-- Tabella -->
+      <section *ngIf="!loading() && !error() && filtered().length > 0" class="surface-card">
+        <div class="table-responsive">
+          <p-table
+            [value]="filtered()"
+            styleClass="p-datatable-sm"
+            [paginator]="filtered().length > 10"
+            [rows]="10"
+            [rowHover]="true"
+          >
+            <ng-template pTemplate="header">
+              <tr>
+                <th scope="col" style="width: 120px">Gravità</th>
+                <th scope="col" style="width: 200px">Tipo</th>
+                <th scope="col">Messaggio</th>
+                <th scope="col" style="width: 160px">FIR</th>
+                <th scope="col" style="width: 120px">CER</th>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="body" let-a>
+              <tr>
+                <td>
+                  <p-tag
+                    [value]="severityLabel(a.severity)"
+                    [severity]="severityTag(a.severity)"
+                    [rounded]="true"
+                  ></p-tag>
+                </td>
+                <td>{{ typeLabel(a.type) }}</td>
+                <td>{{ a.message }}</td>
+                <td>{{ a.firNumber || '-' }}</td>
+                <td>{{ a.cerCode || '-' }}</td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      </section>
     </div>
   `,
   styles: [
     `
-      .text-muted {
-        color: #6c757d;
-        margin: 0;
-      }
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(12, 1fr);
-        gap: 1rem;
-      }
-      .col-12 {
-        grid-column: span 12;
-      }
-      @media (min-width: 768px) {
-        .md\\:col-4 {
-          grid-column: span 4;
-        }
-      }
+      .text-tertiary { color: var(--text-tertiary); }
+      .stat-card--danger { border-color: var(--color-danger); }
+      .stat-card--danger .stat-card__value { color: var(--color-danger); }
+      .stat-card--warning { border-color: var(--color-warning); }
+      .stat-card--warning .stat-card__value { color: var(--color-warning); }
+      .stat-card--info { border-color: var(--color-info); }
+      .stat-card--info .stat-card__value { color: var(--color-info); }
+      .mb-4 { margin-bottom: var(--spacing-xl); }
+      .mb-2 { margin-bottom: var(--spacing-sm); }
     `,
   ],
 })
@@ -232,6 +245,11 @@ export class AnomalyComponent implements OnInit {
 
   applyFilters(): void {
     this.filterTick.update((v) => v + 1);
+  }
+
+  /** Conta le anomalie (su tutto il set, non filtrato) per livello di gravità. */
+  countBySeverity(severity: AnomalySeverity): number {
+    return this.anomalies().filter((a) => a.severity === severity).length;
   }
 
   severityTag(severity: AnomalySeverity): TagSeverity {

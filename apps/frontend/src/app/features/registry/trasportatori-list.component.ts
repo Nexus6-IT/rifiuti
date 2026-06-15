@@ -8,6 +8,12 @@ import { InputTextModule } from 'primeng/inputtext';
 import { DialogModule } from 'primeng/dialog';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { ConfirmationService } from 'primeng/api';
+import { TooltipModule } from 'primeng/tooltip';
+import { ProgressSpinnerModule } from 'primeng/progressspinner';
+import { MessageModule } from 'primeng/message';
+import { TagModule } from 'primeng/tag';
+import { IconFieldModule } from 'primeng/iconfield';
+import { InputIconModule } from 'primeng/inputicon';
 import { RegistryService, CreateTrasportatoreDto } from './registry.service';
 import { Trasportatore, Indirizzo } from '../../shared/models/registry.model';
 
@@ -21,177 +27,237 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model';
     ButtonModule,
     InputTextModule,
     DialogModule,
-    ConfirmDialogModule
+    ConfirmDialogModule,
+    TooltipModule,
+    ProgressSpinnerModule,
+    MessageModule,
+    TagModule,
+    IconFieldModule,
+    InputIconModule
   ],
   providers: [ConfirmationService],
   template: `
-    <div class="registry-list">
-      <div class="flex justify-content-between align-items-center mb-4">
-        <h1>Trasportatori</h1>
-        <p-button
-          label="Nuovo Trasportatore"
-          icon="pi pi-plus"
-          (onClick)="showCreateDialog()"
+    <div class="page">
+      <!-- Intestazione pagina -->
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Trasportatori</h1>
+          <p class="page-subtitle">Anagrafica dei trasportatori iscritti all'Albo Gestori Ambientali</p>
+        </div>
+        <div class="page-actions">
+          <p-button
+            label="Nuovo trasportatore"
+            icon="pi pi-plus"
+            (onClick)="showCreateDialog()"
+            ariaLabel="Crea nuovo trasportatore"
+          />
+        </div>
+      </header>
+
+      <section class="surface-card registry-panel" aria-label="Elenco trasportatori">
+        <!-- Toolbar di ricerca -->
+        <div class="registry-toolbar">
+          <p-iconField iconPosition="left" class="registry-search">
+            <p-inputIcon><i class="pi pi-search" aria-hidden="true"></i></p-inputIcon>
+            <input
+              pInputText
+              type="text"
+              [(ngModel)]="searchTerm"
+              placeholder="Cerca per ragione sociale, P.IVA, iscrizione…"
+              aria-label="Cerca tra i trasportatori (filtra la pagina corrente)"
+              class="w-full"
+            />
+          </p-iconField>
+          <span class="registry-count" aria-live="polite">
+            {{ totalRecords }} {{ totalRecords === 1 ? 'trasportatore' : 'trasportatori' }}
+          </span>
+        </div>
+
+        <!-- Stato errore -->
+        <p-message
+          *ngIf="error && !loading"
+          severity="error"
+          [text]="error"
+          styleClass="w-full mb-3"
         />
-      </div>
 
-      <!-- Trasportatori Table -->
-      <p-table
-        [value]="trasportatori"
-        [loading]="loading"
-        [paginator]="true"
-        [rows]="pageSize"
-        [totalRecords]="totalRecords"
-        [lazy]="true"
-        (onLazyLoad)="loadTrasportatori($event)"
-        responsiveLayout="scroll"
-      >
-        <ng-template pTemplate="header">
-          <tr>
-            <th>Ragione Sociale</th>
-            <th>Partita IVA</th>
-            <th>N. Iscrizione Albo</th>
-            <th>Sede Legale</th>
-            <th>PEC</th>
-            <th style="width: 120px">Azioni</th>
-          </tr>
-        </ng-template>
-        <ng-template pTemplate="body" let-trasportatore>
-          <tr>
-            <td>{{ trasportatore.ragioneSociale }}</td>
-            <td>{{ trasportatore.partitaIVA }}</td>
-            <td>{{ trasportatore.numeroIscrizione }}</td>
-            <td>{{ formatIndirizzo(trasportatore.sedeLegale) }}</td>
-            <td>{{ trasportatore.pec || 'N/A' }}</td>
-            <td>
-              <div class="flex gap-2">
-                <p-button
-                  icon="pi pi-pencil"
-                  [rounded]="true"
-                  [text]="true"
-                  (onClick)="editTrasportatore(trasportatore)"
-                  pTooltip="Modifica"
-                />
-                <p-button
-                  icon="pi pi-trash"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="danger"
-                  (onClick)="deleteTrasportatore(trasportatore)"
-                  pTooltip="Elimina"
-                />
-              </div>
-            </td>
-          </tr>
-        </ng-template>
-        <ng-template pTemplate="emptymessage">
-          <tr>
-            <td colspan="6" class="text-center">Nessun trasportatore trovato</td>
-          </tr>
-        </ng-template>
-      </p-table>
+        <!-- Tabella -->
+        <div class="table-responsive">
+          <p-table
+            #dt
+            [value]="filteredTrasportatori"
+            [loading]="loading"
+            [paginator]="true"
+            [rows]="pageSize"
+            [totalRecords]="totalRecords"
+            [lazy]="true"
+            (onLazyLoad)="loadTrasportatori($event)"
+            [rowsPerPageOptions]="[10, 25, 50]"
+            currentPageReportTemplate="{first}-{last} di {totalRecords}"
+            [showCurrentPageReport]="true"
+            responsiveLayout="scroll"
+          >
+            <ng-template pTemplate="header">
+              <tr>
+                <th scope="col">Ragione sociale</th>
+                <th scope="col">Partita IVA</th>
+                <th scope="col">N. iscrizione Albo</th>
+                <th scope="col">Sede legale</th>
+                <th scope="col">PEC</th>
+                <th scope="col" style="width: 7.5rem">Azioni</th>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="body" let-trasportatore>
+              <tr>
+                <td>
+                  <span class="cell-label">Ragione sociale</span>
+                  <span class="font-semibold">{{ trasportatore.ragioneSociale }}</span>
+                </td>
+                <td>
+                  <span class="cell-label">Partita IVA</span>
+                  <span class="mono">{{ trasportatore.partitaIVA }}</span>
+                </td>
+                <td>
+                  <span class="cell-label">N. iscrizione Albo</span>
+                  <p-tag [value]="trasportatore.numeroIscrizione" severity="info" />
+                </td>
+                <td>
+                  <span class="cell-label">Sede legale</span>
+                  {{ formatIndirizzo(trasportatore.sedeLegale) }}
+                </td>
+                <td>
+                  <span class="cell-label">PEC</span>
+                  <span [class.text-tertiary]="!trasportatore.pec">{{ trasportatore.pec || 'Non indicata' }}</span>
+                </td>
+                <td>
+                  <span class="cell-label">Azioni</span>
+                  <div class="row-actions">
+                    <p-button
+                      icon="pi pi-pencil"
+                      [rounded]="true"
+                      [text]="true"
+                      (onClick)="editTrasportatore(trasportatore)"
+                      pTooltip="Modifica"
+                      tooltipPosition="top"
+                      [ariaLabel]="'Modifica ' + trasportatore.ragioneSociale"
+                    />
+                    <p-button
+                      icon="pi pi-trash"
+                      [rounded]="true"
+                      [text]="true"
+                      severity="danger"
+                      (onClick)="deleteTrasportatore(trasportatore)"
+                      pTooltip="Elimina"
+                      tooltipPosition="top"
+                      [ariaLabel]="'Elimina ' + trasportatore.ragioneSociale"
+                    />
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="emptymessage">
+              <tr>
+                <td colspan="6">
+                  <div class="empty-state">
+                    <i class="pi pi-truck empty-state__icon" aria-hidden="true"></i>
+                    <p class="empty-state__title">Nessun trasportatore trovato</p>
+                    <p>Crea il primo trasportatore per associarlo ai formulari.</p>
+                    <p-button
+                      label="Nuovo trasportatore"
+                      icon="pi pi-plus"
+                      (onClick)="showCreateDialog()"
+                      ariaLabel="Crea nuovo trasportatore"
+                    />
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="loadingbody">
+              <tr>
+                <td colspan="6">
+                  <div class="loading-row">
+                    <p-progressSpinner styleClass="loading-spinner" strokeWidth="4" aria-label="Caricamento in corso" />
+                    <span>Caricamento trasportatori…</span>
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      </section>
 
-      <!-- Create/Edit Dialog -->
+      <!-- Dialog crea/modifica -->
       <p-dialog
         [(visible)]="displayDialog"
         [modal]="true"
-        [style]="{ width: '700px' }"
-        [header]="editMode ? 'Modifica Trasportatore' : 'Nuovo Trasportatore'"
+        [draggable]="false"
+        [style]="{ width: '46rem' }"
+        [breakpoints]="{ '768px': '95vw' }"
+        [header]="editMode ? 'Modifica trasportatore' : 'Nuovo trasportatore'"
+        [dismissableMask]="true"
       >
-        <div class="grid">
-          <div class="col-12">
-            <label class="block mb-2">Ragione Sociale *</label>
-            <input
-              pInputText
-              [(ngModel)]="formData.ragioneSociale"
-              class="w-full"
-            />
-          </div>
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Partita IVA *</label>
-            <input
-              pInputText
-              [(ngModel)]="formData.partitaIVA"
-              placeholder="11 cifre"
-              class="w-full"
-            />
-          </div>
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Numero Iscrizione Albo Gestori *</label>
-            <input
-              pInputText
-              [(ngModel)]="formData.numeroIscrizione"
-              class="w-full"
-            />
-          </div>
-          <div class="col-12">
-            <label class="block mb-2">PEC</label>
-            <input
-              pInputText
-              [(ngModel)]="formData.pec"
-              type="email"
-              class="w-full"
-            />
-          </div>
+        <form class="dialog-form" (ngSubmit)="saveTrasportatore()">
+          <fieldset class="form-fieldset">
+            <legend class="form-legend">Dati aziendali</legend>
+            <div class="grid formgrid p-fluid">
+              <div class="field col-12">
+                <label for="tra-ragione">Ragione sociale <span class="req" aria-hidden="true">*</span></label>
+                <input pInputText id="tra-ragione" name="ragioneSociale" [(ngModel)]="formData.ragioneSociale"
+                       placeholder="es. Trasporti S.r.l." required autocomplete="organization" />
+              </div>
+              <div class="field col-12 md:col-6">
+                <label for="tra-piva">Partita IVA <span class="req" aria-hidden="true">*</span></label>
+                <input pInputText id="tra-piva" name="partitaIVA" [(ngModel)]="formData.partitaIVA"
+                       placeholder="11 cifre" maxlength="11" inputmode="numeric" required />
+              </div>
+              <div class="field col-12 md:col-6">
+                <label for="tra-iscrizione">N. iscrizione Albo Gestori <span class="req" aria-hidden="true">*</span></label>
+                <input pInputText id="tra-iscrizione" name="numeroIscrizione" [(ngModel)]="formData.numeroIscrizione"
+                       placeholder="es. MI/000123" required />
+              </div>
+              <div class="field col-12">
+                <label for="tra-pec">PEC</label>
+                <input pInputText id="tra-pec" name="pec" type="email" [(ngModel)]="formData.pec"
+                       placeholder="pec@esempio.it" autocomplete="email" />
+              </div>
+            </div>
+          </fieldset>
 
-          <div class="col-12">
-            <h4>Sede Legale</h4>
-          </div>
-          <div class="col-12 md:col-8">
-            <label class="block mb-2">Via *</label>
-            <input
-              pInputText
-              [(ngModel)]="formData.sedeLegale.via"
-              class="w-full"
-            />
-          </div>
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Civico *</label>
-            <input
-              pInputText
-              [(ngModel)]="formData.sedeLegale.civico"
-              class="w-full"
-            />
-          </div>
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">CAP *</label>
-            <input
-              pInputText
-              [(ngModel)]="formData.sedeLegale.cap"
-              placeholder="5 cifre"
-              class="w-full"
-            />
-          </div>
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Comune *</label>
-            <input
-              pInputText
-              [(ngModel)]="formData.sedeLegale.comune"
-              class="w-full"
-            />
-          </div>
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Provincia *</label>
-            <input
-              pInputText
-              [(ngModel)]="formData.sedeLegale.provincia"
-              placeholder="2 lettere"
-              maxlength="2"
-              class="w-full"
-            />
-          </div>
-        </div>
+          <fieldset class="form-fieldset">
+            <legend class="form-legend">Sede legale</legend>
+            <div class="grid formgrid p-fluid">
+              <div class="field col-12 md:col-8">
+                <label for="tra-via">Via <span class="req" aria-hidden="true">*</span></label>
+                <input pInputText id="tra-via" name="via" [(ngModel)]="formData.sedeLegale.via"
+                       placeholder="es. Via Roma" required autocomplete="address-line1" />
+              </div>
+              <div class="field col-12 md:col-4">
+                <label for="tra-civico">Civico <span class="req" aria-hidden="true">*</span></label>
+                <input pInputText id="tra-civico" name="civico" [(ngModel)]="formData.sedeLegale.civico"
+                       placeholder="es. 12" required />
+              </div>
+              <div class="field col-12 md:col-4">
+                <label for="tra-cap">CAP <span class="req" aria-hidden="true">*</span></label>
+                <input pInputText id="tra-cap" name="cap" [(ngModel)]="formData.sedeLegale.cap"
+                       placeholder="5 cifre" maxlength="5" inputmode="numeric" required autocomplete="postal-code" />
+              </div>
+              <div class="field col-12 md:col-4">
+                <label for="tra-comune">Comune <span class="req" aria-hidden="true">*</span></label>
+                <input pInputText id="tra-comune" name="comune" [(ngModel)]="formData.sedeLegale.comune"
+                       placeholder="es. Milano" required autocomplete="address-level2" />
+              </div>
+              <div class="field col-12 md:col-4">
+                <label for="tra-prov">Provincia <span class="req" aria-hidden="true">*</span></label>
+                <input pInputText id="tra-prov" name="provincia" [(ngModel)]="formData.sedeLegale.provincia"
+                       placeholder="es. MI" maxlength="2" style="text-transform: uppercase" required />
+              </div>
+            </div>
+          </fieldset>
+        </form>
+
         <ng-template pTemplate="footer">
-          <p-button
-            label="Annulla"
-            [text]="true"
-            (onClick)="displayDialog = false"
-          />
-          <p-button
-            label="Salva"
-            (onClick)="saveTrasportatore()"
-            [loading]="saving"
-          />
+          <p-button label="Annulla" [text]="true" icon="pi pi-times" (onClick)="displayDialog = false" />
+          <p-button label="Salva" icon="pi pi-check" (onClick)="saveTrasportatore()" [loading]="saving" />
         </ng-template>
       </p-dialog>
 
@@ -199,25 +265,58 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model';
     </div>
   `,
   styles: [`
-    .registry-list {
-      max-width: 1400px;
+    .registry-panel { padding: 0; overflow: hidden; }
+
+    .registry-toolbar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-base);
+      padding: var(--spacing-base) var(--spacing-lg);
+      border-bottom: 1px solid var(--surface-border);
+    }
+    .registry-search { flex: 1 1 18rem; min-width: 0; display: block; }
+    .registry-search .w-full { width: 100%; }
+    .registry-count {
+      font-size: var(--font-size-sm); color: var(--text-tertiary);
+      font-weight: var(--font-weight-medium); white-space: nowrap;
     }
 
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 1rem;
+    .table-responsive { border-radius: 0; }
+    :host ::ng-deep .p-datatable { border: none; border-radius: 0; }
+
+    .mono { font-family: var(--font-family-mono); font-size: var(--font-size-sm); }
+    .row-actions { display: flex; gap: var(--spacing-xs); justify-content: flex-end; }
+
+    .cell-label { display: none; font-weight: var(--font-weight-semibold); color: var(--text-tertiary);
+      font-size: var(--font-size-xs); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.15rem; }
+
+    .loading-row { display: flex; align-items: center; justify-content: center; gap: var(--spacing-md);
+      padding: var(--spacing-2xl); color: var(--text-tertiary); }
+    :host ::ng-deep .loading-spinner { width: 2.25rem; height: 2.25rem; }
+
+    .empty-state__icon { font-size: 2.75rem; }
+
+    .dialog-form { display: flex; flex-direction: column; gap: var(--spacing-lg); }
+    .form-fieldset { border: none; padding: 0; margin: 0; }
+    .form-legend {
+      font-family: var(--font-display); font-weight: var(--font-weight-semibold);
+      font-size: var(--font-size-base); color: var(--text-primary);
+      padding: 0 0 var(--spacing-sm); margin-bottom: var(--spacing-sm);
+      border-bottom: 1px solid var(--surface-border); width: 100%;
     }
+    .field { margin-bottom: var(--spacing-base); }
+    .field label { display: block; margin-bottom: var(--spacing-xs); }
+    .req { color: var(--color-danger); margin-left: 0.15rem; }
 
-    .col-12 { grid-column: span 12; }
-    .col-8 { grid-column: span 8; }
-    .col-6 { grid-column: span 6; }
-    .col-4 { grid-column: span 4; }
-
-    @media (min-width: 768px) {
-      .md\\:col-8 { grid-column: span 8; }
-      .md\\:col-6 { grid-column: span 6; }
-      .md\\:col-4 { grid-column: span 4; }
+    @media (max-width: 768px) {
+      :host ::ng-deep .p-datatable .p-datatable-thead { display: none; }
+      :host ::ng-deep .p-datatable .p-datatable-tbody > tr {
+        display: block; padding: var(--spacing-sm) 0; border-bottom: 1px solid var(--surface-border);
+      }
+      :host ::ng-deep .p-datatable .p-datatable-tbody > tr > td {
+        display: block; border: none; padding: 0.35rem var(--spacing-base);
+      }
+      .cell-label { display: block; }
+      .row-actions { justify-content: flex-start; padding-top: var(--spacing-xs); }
+      .registry-toolbar { padding: var(--spacing-base); }
     }
   `]
 })
@@ -225,9 +324,11 @@ export class TrasportatoriListComponent implements OnInit {
   trasportatori: Trasportatore[] = [];
   loading = false;
   saving = false;
+  error = '';
   totalRecords = 0;
   pageSize = 10;
   currentPage = 1;
+  searchTerm = '';
 
   displayDialog = false;
   editMode = false;
@@ -245,8 +346,26 @@ export class TrasportatoriListComponent implements OnInit {
     this.loadTrasportatori({ first: 0, rows: this.pageSize });
   }
 
+  /** Filtra la pagina corrente in base al testo di ricerca (case-insensitive). */
+  get filteredTrasportatori(): Trasportatore[] {
+    const term = this.searchTerm?.trim().toLowerCase();
+    if (!term) return this.trasportatori;
+    return this.trasportatori.filter((t) =>
+      [
+        t.ragioneSociale,
+        t.partitaIVA,
+        t.numeroIscrizione,
+        t.pec,
+        t.sedeLegale ? this.formatIndirizzo(t.sedeLegale) : ''
+      ]
+        .filter(Boolean)
+        .some((v) => (v as string).toLowerCase().includes(term))
+    );
+  }
+
   loadTrasportatori(event: any): void {
     this.loading = true;
+    this.error = '';
     const page = Math.floor(event.first / event.rows) + 1;
     this.currentPage = page;
 
@@ -256,12 +375,13 @@ export class TrasportatoriListComponent implements OnInit {
         this.totalRecords = response.total;
         this.loading = false;
       },
-      error: () => {
+      error: (err) => {
         this.loading = false;
+        this.error = err?.error?.message || 'Errore nel caricamento dei trasportatori';
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: 'Errore nel caricamento dei trasportatori'
+          detail: this.error
         });
       }
     });
@@ -365,6 +485,7 @@ export class TrasportatoriListComponent implements OnInit {
   }
 
   formatIndirizzo(indirizzo: Indirizzo): string {
+    if (!indirizzo) return 'N/D';
     return `${indirizzo.via} ${indirizzo.civico}, ${indirizzo.cap} ${indirizzo.comune} (${indirizzo.provincia})`;
   }
 

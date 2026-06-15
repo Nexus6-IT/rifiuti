@@ -1,13 +1,11 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { CardModule } from 'primeng/card';
 import { ButtonModule } from 'primeng/button';
 import { CalendarModule } from 'primeng/calendar';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { MessageModule } from 'primeng/message';
 import { ToastService } from '../../core/services/toast.service';
 import { EsgReport, EsgService } from './esg.service';
 
@@ -23,31 +21,40 @@ import { EsgReport, EsgService } from './esg.service';
   imports: [
     CommonModule,
     FormsModule,
-    CardModule,
     ButtonModule,
     CalendarModule,
     TableModule,
     TagModule,
     ProgressSpinnerModule,
-    MessageModule,
   ],
   template: `
-    <div class="esg-page" style="max-width: 1100px; margin: 0 auto;">
-      <p-card>
-        <ng-template pTemplate="header">
-          <div class="p-3">
-            <h2>ESG / CO2 — Indicatori ambientali</h2>
-            <p class="text-muted">
-              Tasso di recupero, rifiuti deviati da discarica e CO2 evitata, con dettaglio per CER
-            </p>
-          </div>
-        </ng-template>
+    <div class="page">
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">ESG / CO2 — Indicatori ambientali</h1>
+          <p class="page-subtitle">
+            Tasso di recupero, rifiuti deviati da discarica e CO2 evitata, con dettaglio per codice CER
+          </p>
+        </div>
+        <div class="page-actions">
+          <p-tag
+            *ngIf="report() as r"
+            severity="info"
+            [value]="r.period
+              ? ('Periodo: ' + (r.period.from | date: 'dd/MM/yyyy') + ' — ' + (r.period.to | date: 'dd/MM/yyyy'))
+              : 'Periodo: tutto lo storico'"
+            icon="pi pi-calendar"
+          ></p-tag>
+        </div>
+      </header>
 
-        <!-- Filtro periodo -->
-        <div class="grid mb-3" style="align-items: end;">
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Data inizio</label>
+      <!-- Filtro periodo -->
+      <section class="surface-card mb-4" aria-label="Filtro per periodo">
+        <div class="grid formgrid" style="align-items: end;">
+          <div class="field col-12 md:col-4">
+            <label for="esg-start" class="block mb-2">Data inizio</label>
             <p-calendar
+              inputId="esg-start"
               [(ngModel)]="startDate"
               dateFormat="yy-mm-dd"
               [showIcon]="true"
@@ -56,11 +63,13 @@ import { EsgReport, EsgService } from './esg.service';
               placeholder="Tutto il periodo"
               styleClass="w-full"
               inputStyleClass="w-full"
+              ariaLabel="Data inizio del periodo"
             ></p-calendar>
           </div>
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Data fine</label>
+          <div class="field col-12 md:col-4">
+            <label for="esg-end" class="block mb-2">Data fine</label>
             <p-calendar
+              inputId="esg-end"
               [(ngModel)]="endDate"
               dateFormat="yy-mm-dd"
               [showIcon]="true"
@@ -69,14 +78,16 @@ import { EsgReport, EsgService } from './esg.service';
               placeholder="Tutto il periodo"
               styleClass="w-full"
               inputStyleClass="w-full"
+              ariaLabel="Data fine del periodo"
             ></p-calendar>
           </div>
-          <div class="col-12 md:col-4 flex gap-2">
+          <div class="field col-12 md:col-4 flex flex-wrap gap-2">
             <p-button
               label="Aggiorna"
               icon="pi pi-refresh"
               [loading]="loading()"
               (onClick)="loadReport()"
+              ariaLabel="Aggiorna il report con il periodo selezionato"
             ></p-button>
             <p-button
               label="Azzera filtro"
@@ -84,162 +95,125 @@ import { EsgReport, EsgService } from './esg.service';
               [text]="true"
               [disabled]="loading()"
               (onClick)="clearFilter()"
+              ariaLabel="Azzera il filtro per periodo"
             ></p-button>
           </div>
         </div>
+      </section>
 
-        <!-- Loading -->
-        <div *ngIf="loading()" class="flex justify-content-center p-5">
-          <p-progressSpinner strokeWidth="4" [style]="{ width: '50px', height: '50px' }"></p-progressSpinner>
+      <!-- Loading -->
+      <section *ngIf="loading()" class="surface-card">
+        <div class="flex justify-content-center p-5">
+          <p-progressSpinner strokeWidth="4" [style]="{ width: '50px', height: '50px' }" ariaLabel="Caricamento report ESG"></p-progressSpinner>
+        </div>
+      </section>
+
+      <!-- Error -->
+      <section *ngIf="!loading() && error()" class="surface-card">
+        <div class="empty-state">
+          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true" style="color: var(--color-danger);"></i>
+          <span class="empty-state__title">Impossibile caricare il report ESG</span>
+          <p>Si è verificato un errore. Riprova.</p>
+          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadReport()"></p-button>
+        </div>
+      </section>
+
+      <!-- Report -->
+      <ng-container *ngIf="!loading() && !error() && report() as r">
+        <!-- KPI principali -->
+        <div class="stat-grid mb-3">
+          <div class="stat-card">
+            <span class="stat-card__label">Tasso di recupero</span>
+            <span class="stat-card__value">{{ r.totals.recyclingRate * 100 | number: '1.0-1' }}%</span>
+            <span class="stat-card__hint">quota avviata a recupero</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Deviati da discarica</span>
+            <span class="stat-card__value">{{ r.landfillDivertedKg | number: '1.0-0' }}</span>
+            <span class="stat-card__hint">kg non conferiti in discarica</span>
+          </div>
+          <div class="stat-card stat-card--accent">
+            <span class="stat-card__label">CO2 evitata</span>
+            <span class="stat-card__value">{{ r.co2AvoidedKg | number: '1.0-0' }}</span>
+            <span class="stat-card__hint">kg di CO2 equivalente</span>
+          </div>
         </div>
 
-        <!-- Error -->
-        <div *ngIf="!loading() && error()" class="mt-3">
-          <p-message
-            severity="error"
-            text="Impossibile caricare il report ESG. Riprova."
-            styleClass="w-full"
-          ></p-message>
+        <!-- KPI secondari: totali -->
+        <div class="stat-grid mb-4">
+          <div class="stat-card stat-card--sub">
+            <span class="stat-card__label">Prodotto</span>
+            <span class="stat-card__value">{{ r.totals.producedKg | number: '1.0-0' }}</span>
+            <span class="stat-card__hint">kg totali prodotti</span>
+          </div>
+          <div class="stat-card stat-card--sub">
+            <span class="stat-card__label">Recupero</span>
+            <span class="stat-card__value">{{ r.totals.recoveryKg | number: '1.0-0' }}</span>
+            <span class="stat-card__hint">kg avviati a recupero</span>
+          </div>
+          <div class="stat-card stat-card--sub">
+            <span class="stat-card__label">Smaltimento</span>
+            <span class="stat-card__value">{{ r.totals.disposalKg | number: '1.0-0' }}</span>
+            <span class="stat-card__hint">kg avviati a smaltimento</span>
+          </div>
         </div>
 
-        <!-- Report -->
-        <ng-container *ngIf="!loading() && !error() && report() as r">
-          <div class="mb-3">
-            <p-tag
-              *ngIf="r.period"
-              severity="info"
-              [value]="'Periodo: ' + (r.period.from | date: 'dd/MM/yyyy') + ' — ' + (r.period.to | date: 'dd/MM/yyyy')"
-            ></p-tag>
-            <p-tag *ngIf="!r.period" severity="info" value="Periodo: tutto lo storico"></p-tag>
+        <!-- Dettaglio per CER -->
+        <section class="surface-card">
+          <h2 class="esg-section-title mb-3">Dettaglio per codice CER</h2>
+          <div class="table-responsive">
+            <p-table [value]="r.byCer" styleClass="p-datatable-sm" [rowHover]="true">
+              <ng-template pTemplate="header">
+                <tr>
+                  <th scope="col">CER</th>
+                  <th scope="col" class="text-right">Recupero (kg)</th>
+                  <th scope="col" class="text-right">Smaltimento (kg)</th>
+                  <th scope="col" class="text-right">CO2 evitata (kg)</th>
+                </tr>
+              </ng-template>
+              <ng-template pTemplate="body" let-row>
+                <tr>
+                  <td><strong>{{ row.cerCode }}</strong></td>
+                  <td class="text-right">{{ row.recoveryKg | number: '1.0-0' }}</td>
+                  <td class="text-right">{{ row.disposalKg | number: '1.0-0' }}</td>
+                  <td class="text-right">{{ row.co2AvoidedKg | number: '1.0-0' }}</td>
+                </tr>
+              </ng-template>
+              <ng-template pTemplate="emptymessage">
+                <tr>
+                  <td colspan="4">
+                    <div class="empty-state">
+                      <i class="pi pi-chart-line empty-state__icon" aria-hidden="true"></i>
+                      <span class="empty-state__title">Nessun dato disponibile</span>
+                      <p>Non risultano dati per il periodo selezionato.</p>
+                    </div>
+                  </td>
+                </tr>
+              </ng-template>
+            </p-table>
           </div>
-
-          <!-- KPI principali -->
-          <div class="grid mb-2">
-            <div class="col-12 md:col-4">
-              <div class="kpi-card">
-                <span class="kpi-label">Tasso di recupero</span>
-                <span class="kpi-value">{{ r.totals.recyclingRate * 100 | number: '1.0-1' }}%</span>
-              </div>
-            </div>
-            <div class="col-12 md:col-4">
-              <div class="kpi-card">
-                <span class="kpi-label">Deviati da discarica</span>
-                <span class="kpi-value">{{ r.landfillDivertedKg | number: '1.0-0' }} <small>kg</small></span>
-              </div>
-            </div>
-            <div class="col-12 md:col-4">
-              <div class="kpi-card kpi-card--accent">
-                <span class="kpi-label">CO2 evitata</span>
-                <span class="kpi-value">{{ r.co2AvoidedKg | number: '1.0-0' }} <small>kg</small></span>
-              </div>
-            </div>
-          </div>
-
-          <!-- KPI secondari: totali -->
-          <div class="grid mb-4">
-            <div class="col-12 md:col-4">
-              <div class="kpi-card kpi-card--sub">
-                <span class="kpi-label">Prodotto</span>
-                <span class="kpi-value-sm">{{ r.totals.producedKg | number: '1.0-0' }} <small>kg</small></span>
-              </div>
-            </div>
-            <div class="col-12 md:col-4">
-              <div class="kpi-card kpi-card--sub">
-                <span class="kpi-label">Recupero</span>
-                <span class="kpi-value-sm">{{ r.totals.recoveryKg | number: '1.0-0' }} <small>kg</small></span>
-              </div>
-            </div>
-            <div class="col-12 md:col-4">
-              <div class="kpi-card kpi-card--sub">
-                <span class="kpi-label">Smaltimento</span>
-                <span class="kpi-value-sm">{{ r.totals.disposalKg | number: '1.0-0' }} <small>kg</small></span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Dettaglio per CER -->
-          <h3>Dettaglio per codice CER</h3>
-          <p-table [value]="r.byCer" styleClass="p-datatable-sm" [rowHover]="true" responsiveLayout="scroll">
-            <ng-template pTemplate="header">
-              <tr>
-                <th>CER</th>
-                <th class="text-right">Recupero (kg)</th>
-                <th class="text-right">Smaltimento (kg)</th>
-                <th class="text-right">CO2 evitata (kg)</th>
-              </tr>
-            </ng-template>
-            <ng-template pTemplate="body" let-row>
-              <tr>
-                <td><strong>{{ row.cerCode }}</strong></td>
-                <td class="text-right">{{ row.recoveryKg | number: '1.0-0' }}</td>
-                <td class="text-right">{{ row.disposalKg | number: '1.0-0' }}</td>
-                <td class="text-right">{{ row.co2AvoidedKg | number: '1.0-0' }}</td>
-              </tr>
-            </ng-template>
-            <ng-template pTemplate="emptymessage">
-              <tr>
-                <td colspan="4" class="text-center">
-                  Nessun dato disponibile per il periodo selezionato.
-                </td>
-              </tr>
-            </ng-template>
-          </p-table>
-        </ng-container>
-      </p-card>
+        </section>
+      </ng-container>
     </div>
   `,
   styles: [
     `
-      .text-muted {
-        color: #6c757d;
+      .esg-section-title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-lg);
         margin: 0;
       }
-
-      .kpi-card {
-        display: flex;
-        flex-direction: column;
-        gap: 0.35rem;
-        padding: 1.25rem;
-        height: 100%;
-        border: 1px solid var(--surface-border, #dee2e6);
-        border-radius: 8px;
-        background: var(--surface-card, #ffffff);
+      .stat-card--accent {
+        border-color: var(--brand-primary);
+        background: var(--brand-primary-50);
       }
-
-      .kpi-card--accent {
-        border-color: var(--primary-color, #22c55e);
-        background: var(--primary-50, #f0fdf4);
+      .stat-card--sub .stat-card__value {
+        font-size: var(--font-size-2xl);
       }
-
-      .kpi-card--sub {
-        padding: 1rem 1.25rem;
-      }
-
-      .kpi-label {
-        font-size: 0.85rem;
-        color: #6c757d;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-      }
-
-      .kpi-value {
-        font-size: 1.85rem;
-        font-weight: 700;
-        line-height: 1.1;
-      }
-
-      .kpi-value-sm {
-        font-size: 1.35rem;
-        font-weight: 600;
-        line-height: 1.1;
-      }
-
-      .kpi-value small,
-      .kpi-value-sm small {
-        font-size: 0.9rem;
-        font-weight: 500;
-        color: #6c757d;
-      }
+      .text-right { text-align: right; }
+      .mb-4 { margin-bottom: var(--spacing-xl); }
+      .mb-3 { margin-bottom: var(--spacing-base); }
+      .mb-2 { margin-bottom: var(--spacing-sm); }
     `,
   ],
 })

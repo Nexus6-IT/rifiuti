@@ -14,6 +14,7 @@ import { ConfirmationService } from 'primeng/api';
 import { SplitButtonModule } from 'primeng/splitbutton';
 import { CardModule } from 'primeng/card';
 import { MenuItem } from 'primeng/api';
+import { TooltipModule } from 'primeng/tooltip';
 import { FirService, CreateFIRDto } from './fir.service';
 import { FIR, FIRStato } from '../../shared/models/fir.model';
 import { ExportService } from '../../core/services/export.service';
@@ -33,19 +34,25 @@ import { ExportService } from '../../core/services/export.service';
     InputNumberModule,
     ConfirmDialogModule,
     SplitButtonModule,
-    CardModule
+    CardModule,
+    TooltipModule
   ],
   providers: [ConfirmationService],
   template: `
-    <div class="fir-list">
-      <div class="flex justify-content-between align-items-center mb-4">
-        <h1>Gestione FIR</h1>
-        <div class="flex gap-2">
+    <div class="page fir-list">
+      <!-- Intestazione pagina -->
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Gestione FIR</h1>
+          <p class="page-subtitle">Formulari di Identificazione dei Rifiuti: creazione, emissione e tracciamento</p>
+        </div>
+        <div class="page-actions">
           <p-splitButton
             label="Esporta"
             icon="pi pi-download"
             [model]="exportMenuItems"
             [outlined]="true"
+            [disabled]="loading || firList.length === 0"
           />
           <p-button
             label="Nuovo FIR"
@@ -53,118 +60,151 @@ import { ExportService } from '../../core/services/export.service';
             (onClick)="showCreateDialog()"
           />
         </div>
-      </div>
+      </header>
 
-      <!-- Filters -->
-      <div class="card mb-4">
-        <div class="grid p-3">
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Cerca</label>
+      <!-- Barra filtri / ricerca -->
+      <section class="surface-card filters" aria-label="Filtri di ricerca FIR">
+        <div class="filters__field">
+          <label for="fir-search" class="filters__label">Cerca</label>
+          <span class="p-input-icon-left filters__search">
+            <i class="pi pi-search" aria-hidden="true"></i>
             <input
+              id="fir-search"
               pInputText
+              type="search"
               [(ngModel)]="searchText"
-              placeholder="Cerca per numero..."
-              class="w-full"
+              placeholder="Cerca per numero progressivo..."
+              aria-label="Cerca FIR per numero progressivo"
               (input)="onSearch()"
             />
-          </div>
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Filtra per Stato</label>
-            <p-dropdown
-              [options]="statoOptions"
-              [(ngModel)]="selectedStato"
-              placeholder="Tutti gli stati"
-              [showClear]="true"
-              (onChange)="onFilterChange()"
-              styleClass="w-full"
-            />
-          </div>
+          </span>
+        </div>
+        <div class="filters__field">
+          <label for="fir-stato" class="filters__label">Filtra per stato</label>
+          <p-dropdown
+            inputId="fir-stato"
+            [options]="statoOptions"
+            [(ngModel)]="selectedStato"
+            placeholder="Tutti gli stati"
+            [showClear]="true"
+            (onChange)="onFilterChange()"
+            ariaLabel="Filtra i FIR per stato"
+            styleClass="w-full"
+          />
+        </div>
+      </section>
+
+      <!-- Stato di errore -->
+      <div *ngIf="error && !loading" class="surface-card" role="alert">
+        <div class="empty-state">
+          <i class="pi pi-exclamation-triangle empty-state__icon" style="color: var(--color-danger);" aria-hidden="true"></i>
+          <p class="empty-state__title">Impossibile caricare i FIR</p>
+          <p>Si è verificato un errore durante il recupero dei dati. Riprova.</p>
+          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="reload()" />
         </div>
       </div>
 
-      <!-- FIR Table -->
-      <p-table
-        [value]="firList"
-        [loading]="loading"
-        [paginator]="true"
-        [rows]="pageSize"
-        [totalRecords]="totalRecords"
-        [lazy]="true"
-        (onLazyLoad)="loadFIRList($event)"
-        responsiveLayout="scroll"
-        styleClass="p-datatable-sm"
-      >
-        <ng-template pTemplate="header">
-          <tr>
-            <th>Numero</th>
-            <th>Anno</th>
-            <th>CER</th>
-            <th>Quantità</th>
-            <th>Stato</th>
-            <th>Data Creazione</th>
-            <th class="w-12rem">Azioni</th>
-          </tr>
-        </ng-template>
-        <ng-template pTemplate="body" let-fir>
-          <tr>
-            <td>{{ fir.numeroProgressivo || 'N/A' }}</td>
-            <td>{{ fir.anno }}</td>
-            <td>{{ fir.rifiuto.cerCode }}</td>
-            <td>{{ fir.rifiuto.quantitaDichiarata }} {{ fir.rifiuto.unitaMisura }}</td>
-            <td>
-              <p-tag
-                [value]="fir.stato"
-                [severity]="getStatoSeverity(fir.stato)"
-              />
-            </td>
-            <td>{{ fir.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
-            <td>
-              <div class="flex gap-2">
-                <p-button
-                  *ngIf="fir.stato === 'BOZZA'"
-                  icon="pi pi-send"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="info"
-                  (onClick)="emettiFIR(fir)"
-                  pTooltip="Emetti"
-                />
-                <p-button
-                  *ngIf="fir.stato === 'EMESSO'"
-                  icon="pi pi-truck"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="warning"
-                  (onClick)="presaInCarico(fir)"
-                  pTooltip="Presa in Carico"
-                />
-                <p-button
-                  *ngIf="fir.stato === 'IN_TRANSITO'"
-                  icon="pi pi-check"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="success"
-                  (onClick)="showConsegnaDialog(fir)"
-                  pTooltip="Consegna"
-                />
-                <p-button
-                  icon="pi pi-trash"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="danger"
-                  (onClick)="deleteFIR(fir)"
-                  pTooltip="Elimina"
-                />
-              </div>
-            </td>
-          </tr>
-        </ng-template>
-        <ng-template pTemplate="emptymessage">
-          <tr>
-            <td colspan="7" class="text-center">Nessun FIR trovato</td>
-          </tr>
-        </ng-template>
-      </p-table>
+      <!-- Tabella FIR -->
+      <div *ngIf="!error" class="surface-card table-card">
+        <div class="table-responsive">
+          <p-table
+            [value]="firList"
+            [loading]="loading"
+            [paginator]="true"
+            [rows]="pageSize"
+            [totalRecords]="totalRecords"
+            [lazy]="true"
+            (onLazyLoad)="loadFIRList($event)"
+            responsiveLayout="scroll"
+            styleClass="p-datatable-sm"
+            [tableStyle]="{ 'min-width': '60rem' }"
+          >
+            <ng-template pTemplate="caption">
+              <span class="sr-only">Elenco dei Formulari di Identificazione dei Rifiuti</span>
+            </ng-template>
+            <ng-template pTemplate="header">
+              <tr>
+                <th scope="col">Numero</th>
+                <th scope="col">Anno</th>
+                <th scope="col">CER</th>
+                <th scope="col">Quantità</th>
+                <th scope="col">Stato</th>
+                <th scope="col">Data creazione</th>
+                <th scope="col" class="col-actions">Azioni</th>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="body" let-fir>
+              <tr>
+                <td><span class="cell-mono">{{ fir.numeroProgressivo || 'N/D' }}</span></td>
+                <td>{{ fir.anno }}</td>
+                <td><span class="cell-mono">{{ fir.rifiuto.cerCode }}</span></td>
+                <td>{{ fir.rifiuto.quantitaDichiarata }} {{ fir.rifiuto.unitaMisura }}</td>
+                <td>
+                  <p-tag
+                    [value]="getStatoLabel(fir.stato)"
+                    [severity]="getStatoSeverity(fir.stato)"
+                  />
+                </td>
+                <td>{{ fir.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+                <td>
+                  <div class="row-actions">
+                    <p-button
+                      *ngIf="fir.stato === 'BOZZA'"
+                      icon="pi pi-send"
+                      [rounded]="true"
+                      [text]="true"
+                      severity="info"
+                      (onClick)="emettiFIR(fir)"
+                      pTooltip="Emetti"
+                      [attr.aria-label]="'Emetti FIR ' + (fir.numeroProgressivo || fir.anno)"
+                    />
+                    <p-button
+                      *ngIf="fir.stato === 'EMESSO'"
+                      icon="pi pi-truck"
+                      [rounded]="true"
+                      [text]="true"
+                      severity="warning"
+                      (onClick)="presaInCarico(fir)"
+                      pTooltip="Presa in carico"
+                      [attr.aria-label]="'Presa in carico FIR ' + (fir.numeroProgressivo || fir.anno)"
+                    />
+                    <p-button
+                      *ngIf="fir.stato === 'IN_TRANSITO'"
+                      icon="pi pi-check"
+                      [rounded]="true"
+                      [text]="true"
+                      severity="success"
+                      (onClick)="showConsegnaDialog(fir)"
+                      pTooltip="Consegna"
+                      [attr.aria-label]="'Conferma consegna FIR ' + (fir.numeroProgressivo || fir.anno)"
+                    />
+                    <p-button
+                      icon="pi pi-trash"
+                      [rounded]="true"
+                      [text]="true"
+                      severity="danger"
+                      (onClick)="deleteFIR(fir)"
+                      pTooltip="Elimina"
+                      [attr.aria-label]="'Elimina FIR ' + (fir.numeroProgressivo || fir.anno)"
+                    />
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="emptymessage">
+              <tr>
+                <td colspan="7">
+                  <div class="empty-state">
+                    <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
+                    <p class="empty-state__title">Nessun FIR trovato</p>
+                    <p>Non ci sono formulari corrispondenti ai filtri selezionati.</p>
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      </div>
 
       <!-- Create FIR Dialog -->
       <p-dialog
@@ -173,10 +213,11 @@ import { ExportService } from '../../core/services/export.service';
         styleClass="w-full max-w-30rem"
         header="Nuovo FIR"
       >
-        <div class="grid">
-          <div class="col-12">
-            <label class="block mb-2">Anno</label>
+        <div class="dialog-form">
+          <div class="dialog-form__field">
+            <label for="new-anno">Anno</label>
             <p-inputNumber
+              inputId="new-anno"
               [(ngModel)]="newFIR.anno"
               [useGrouping]="false"
               [min]="2020"
@@ -184,51 +225,59 @@ import { ExportService } from '../../core/services/export.service';
               styleClass="w-full"
             />
           </div>
-          <div class="col-12">
-            <label class="block mb-2">Codice CER</label>
+          <div class="dialog-form__field">
+            <label for="new-cer">Codice CER</label>
             <input
+              id="new-cer"
               pInputText
               [(ngModel)]="newFIR.rifiuto.cerCode"
               placeholder="es. 150101"
               class="w-full"
             />
           </div>
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Quantità Dichiarata</label>
-            <p-inputNumber
-              [(ngModel)]="newFIR.rifiuto.quantitaDichiarata"
-              [minFractionDigits]="2"
-              styleClass="w-full"
-            />
+          <div class="dialog-form__row">
+            <div class="dialog-form__field">
+              <label for="new-qta">Quantità dichiarata</label>
+              <p-inputNumber
+                inputId="new-qta"
+                [(ngModel)]="newFIR.rifiuto.quantitaDichiarata"
+                [minFractionDigits]="2"
+                styleClass="w-full"
+              />
+            </div>
+            <div class="dialog-form__field">
+              <label for="new-um">Unità di misura</label>
+              <p-dropdown
+                inputId="new-um"
+                [options]="unitaMisuraOptions"
+                [(ngModel)]="newFIR.rifiuto.unitaMisura"
+                placeholder="Seleziona"
+                styleClass="w-full"
+              />
+            </div>
           </div>
-          <div class="col-12 md:col-6">
-            <label class="block mb-2">Unità di Misura</label>
-            <p-dropdown
-              [options]="unitaMisuraOptions"
-              [(ngModel)]="newFIR.rifiuto.unitaMisura"
-              placeholder="Seleziona"
-              styleClass="w-full"
-            />
-          </div>
-          <div class="col-12">
-            <label class="block mb-2">Produttore ID</label>
+          <div class="dialog-form__field">
+            <label for="new-produttore">Produttore ID</label>
             <input
+              id="new-produttore"
               pInputText
               [(ngModel)]="newFIR.produttoreId"
               class="w-full"
             />
           </div>
-          <div class="col-12">
-            <label class="block mb-2">Trasportatore ID</label>
+          <div class="dialog-form__field">
+            <label for="new-trasportatore">Trasportatore ID</label>
             <input
+              id="new-trasportatore"
               pInputText
               [(ngModel)]="newFIR.trasportatoreId"
               class="w-full"
             />
           </div>
-          <div class="col-12">
-            <label class="block mb-2">Destinatario ID</label>
+          <div class="dialog-form__field">
+            <label for="new-destinatario">Destinatario ID</label>
             <input
+              id="new-destinatario"
               pInputText
               [(ngModel)]="newFIR.destinatarioId"
               class="w-full"
@@ -256,9 +305,10 @@ import { ExportService } from '../../core/services/export.service';
         styleClass="w-full max-w-20rem"
         header="Conferma Consegna"
       >
-        <div class="field">
-          <label class="block mb-2">Peso Effettivo (kg)</label>
+        <div class="dialog-form__field">
+          <label for="peso-effettivo">Peso effettivo (kg)</label>
           <p-inputNumber
+            inputId="peso-effettivo"
             [(ngModel)]="pesoEffettivo"
             [minFractionDigits]="2"
             styleClass="w-full"
@@ -281,11 +331,55 @@ import { ExportService } from '../../core/services/export.service';
       <p-confirmDialog />
     </div>
   `,
-  styles: []
+  styles: [`
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-base);
+      align-items: flex-end;
+      margin-bottom: var(--spacing-lg);
+    }
+    .filters__field {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-xs);
+      flex: 1 1 240px;
+      min-width: 0;
+    }
+    .filters__label {
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-medium);
+      color: var(--text-secondary);
+    }
+    .filters__search { display: block; width: 100%; }
+    .filters__search input { width: 100%; }
+
+    .table-card { padding: 0; overflow: hidden; }
+
+    .col-actions { width: 12rem; }
+    .row-actions { display: flex; gap: var(--spacing-xs); flex-wrap: wrap; }
+
+    .cell-mono {
+      font-family: var(--font-family-mono);
+      font-weight: var(--font-weight-medium);
+      color: var(--text-primary);
+    }
+
+    .dialog-form { display: flex; flex-direction: column; gap: var(--spacing-base); }
+    .dialog-form__field { display: flex; flex-direction: column; gap: var(--spacing-xs); }
+    .dialog-form__field label { font-size: var(--font-size-sm); }
+    .dialog-form__row { display: flex; flex-wrap: wrap; gap: var(--spacing-base); }
+    .dialog-form__row .dialog-form__field { flex: 1 1 160px; }
+
+    @media (max-width: 576px) {
+      .filters__field { flex: 1 1 100%; }
+    }
+  `]
 })
 export class FirListComponent implements OnInit {
   firList: FIR[] = [];
   loading = false;
+  error = false;
   saving = false;
   totalRecords = 0;
   pageSize = 10;
@@ -326,6 +420,7 @@ export class FirListComponent implements OnInit {
   ];
 
   exportMenuItems: MenuItem[] = [];
+  private lastLoadEvent: any = { first: 0, rows: this.pageSize };
 
   constructor(
     private firService: FirService,
@@ -392,6 +487,8 @@ export class FirListComponent implements OnInit {
 
   loadFIRList(event: any): void {
     this.loading = true;
+    this.error = false;
+    this.lastLoadEvent = event;
     const page = Math.floor(event.first / event.rows) + 1;
     this.currentPage = page;
 
@@ -403,6 +500,7 @@ export class FirListComponent implements OnInit {
       },
       error: () => {
         this.loading = false;
+        this.error = true;
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
@@ -567,6 +665,14 @@ export class FirListComponent implements OnInit {
         });
       }
     });
+  }
+
+  reload(): void {
+    this.loadFIRList(this.lastLoadEvent);
+  }
+
+  getStatoLabel(stato: FIRStato): string {
+    return this.statoOptions.find((o) => o.value === stato)?.label ?? stato;
   }
 
   getStatoSeverity(stato: FIRStato): "success" | "info" | "warning" | "danger" | "secondary" | "contrast" | undefined {

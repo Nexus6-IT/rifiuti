@@ -1,7 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { CardModule } from 'primeng/card';
 import { ButtonModule } from 'primeng/button';
 import { DropdownModule } from 'primeng/dropdown';
 import { TableModule } from 'primeng/table';
@@ -16,65 +15,148 @@ import { MudService, MudVersion } from './mud.service';
 @Component({
   selector: 'app-mud',
   standalone: true,
-  imports: [CommonModule, FormsModule, CardModule, ButtonModule, DropdownModule, TableModule, TagModule],
+  imports: [CommonModule, FormsModule, ButtonModule, DropdownModule, TableModule, TagModule],
   template: `
-    <div class="mud-page" style="max-width: 900px; margin: 0 auto;">
-      <p-card>
-        <ng-template pTemplate="header">
-          <div class="p-3">
-            <h2>MUD — Modello Unico di Dichiarazione Ambientale</h2>
-            <p class="text-muted">Report annuale ed export telematico (versionato per anno)</p>
-          </div>
-        </ng-template>
+    <div class="page">
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">MUD — Dichiarazione Ambientale</h1>
+          <p class="page-subtitle">Report annuale ed export telematico, versionato per anno (tracciato Unioncamere)</p>
+        </div>
+      </header>
 
-        <div class="grid mb-3" style="align-items: end;">
-          <div class="col-12 md:col-4">
-            <label class="block mb-2">Anno di dichiarazione</label>
+      <!-- Pannello selezione anno + azioni -->
+      <section class="surface-card mb-4">
+        <div class="grid formgrid" style="align-items: end;">
+          <div class="field col-12 md:col-4">
+            <label for="mud-year" class="block mb-2">Anno di dichiarazione</label>
             <p-dropdown
+              inputId="mud-year"
               [options]="years()"
               [(ngModel)]="selectedYear"
               optionLabel="label"
               optionValue="value"
               styleClass="w-full"
               placeholder="Seleziona anno"
+              ariaLabel="Anno di dichiarazione"
+              [disabled]="!supportedYears().length"
             ></p-dropdown>
-            <small *ngIf="versionForSelected() as v" class="block mt-1">Tracciato: {{ v }}</small>
+            <small *ngIf="versionForSelected() as v" class="block mt-1 text-tertiary">Tracciato: {{ v }}</small>
           </div>
-          <div class="col-12 md:col-8 flex gap-2">
-            <p-button label="Genera report" icon="pi pi-chart-bar" [loading]="loadingReport()" (onClick)="loadReport()"></p-button>
-            <p-button label="Scarica file MUD" icon="pi pi-download" severity="success" [loading]="downloading()" (onClick)="download()"></p-button>
+          <div class="field col-12 md:col-8 flex flex-wrap gap-2">
+            <p-button
+              label="Genera report"
+              icon="pi pi-chart-bar"
+              [loading]="loadingReport()"
+              [disabled]="!selectedYear"
+              (onClick)="loadReport()"
+              ariaLabel="Genera il report MUD per l'anno selezionato"
+            ></p-button>
+            <p-button
+              label="Scarica file MUD"
+              icon="pi pi-download"
+              severity="success"
+              [outlined]="true"
+              [loading]="downloading()"
+              [disabled]="!selectedYear"
+              (onClick)="download()"
+              ariaLabel="Scarica il file telematico MUD per l'anno selezionato"
+            ></p-button>
           </div>
         </div>
 
-        <div *ngIf="!supportedYears().length" class="mt-2">
-          <p-tag severity="warning" value="Nessun tracciato disponibile"></p-tag>
+        <div *ngIf="!supportedYears().length" class="mt-3">
+          <p-tag severity="warning" value="Nessun tracciato disponibile" icon="pi pi-exclamation-triangle"></p-tag>
         </div>
+      </section>
 
-        <!-- Report -->
-        <div *ngIf="report() as r" class="mt-4">
-          <h3>Riepilogo {{ r.year }}</h3>
-          <div class="grid">
-            <div class="col-6 md:col-3"><strong>Prodotto:</strong> {{ r.totals?.produced | number }} kg</div>
-            <div class="col-6 md:col-3"><strong>Recupero:</strong> {{ r.totals?.recovery | number }} kg</div>
-            <div class="col-6 md:col-3"><strong>Smaltimento:</strong> {{ r.totals?.disposal | number }} kg</div>
-            <div class="col-6 md:col-3"><strong>Tasso recupero:</strong> {{ (r.totals?.recyclingRate * 100) | number: '1.0-1' }}%</div>
+      <!-- Report -->
+      <ng-container *ngIf="report() as r">
+        <h2 class="mud-section-title">Riepilogo {{ r.year }}</h2>
+
+        <div class="stat-grid mb-4">
+          <div class="stat-card">
+            <span class="stat-card__label">Prodotto</span>
+            <span class="stat-card__value">{{ r.totals?.produced | number: '1.0-0' }}</span>
+            <span class="stat-card__hint">kg di rifiuto prodotto</span>
           </div>
-
-          <p-table [value]="r.wasteProduced || []" styleClass="p-datatable-sm mt-3">
-            <ng-template pTemplate="header">
-              <tr><th>CER</th><th class="text-right">Quantità (kg)</th><th class="text-right">N. FIR</th></tr>
-            </ng-template>
-            <ng-template pTemplate="body" let-w>
-              <tr><td>{{ w.cerCode }}</td><td class="text-right">{{ w.totalQuantity | number }}</td><td class="text-right">{{ w.count }}</td></tr>
-            </ng-template>
-            <ng-template pTemplate="emptymessage">
-              <tr><td colspan="3">Nessun rifiuto registrato per l'anno selezionato.</td></tr>
-            </ng-template>
-          </p-table>
+          <div class="stat-card">
+            <span class="stat-card__label">Recupero</span>
+            <span class="stat-card__value">{{ r.totals?.recovery | number: '1.0-0' }}</span>
+            <span class="stat-card__hint">kg avviati a recupero</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Smaltimento</span>
+            <span class="stat-card__value">{{ r.totals?.disposal | number: '1.0-0' }}</span>
+            <span class="stat-card__hint">kg avviati a smaltimento</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Tasso di recupero</span>
+            <span class="stat-card__value">{{ (r.totals?.recyclingRate * 100) | number: '1.0-1' }}%</span>
+            <span class="stat-card__hint">quota avviata a recupero</span>
+          </div>
         </div>
-      </p-card>
+
+        <section class="surface-card">
+          <h3 class="mud-section-title mb-3">Rifiuti prodotti per codice CER</h3>
+          <div class="table-responsive">
+            <p-table [value]="r.wasteProduced || []" styleClass="p-datatable-sm" [rowHover]="true">
+              <ng-template pTemplate="header">
+                <tr>
+                  <th scope="col">CER</th>
+                  <th scope="col" class="text-right">Quantità (kg)</th>
+                  <th scope="col" class="text-right">N. FIR</th>
+                </tr>
+              </ng-template>
+              <ng-template pTemplate="body" let-w>
+                <tr>
+                  <td><strong>{{ w.cerCode }}</strong></td>
+                  <td class="text-right">{{ w.totalQuantity | number: '1.0-0' }}</td>
+                  <td class="text-right">{{ w.count }}</td>
+                </tr>
+              </ng-template>
+              <ng-template pTemplate="emptymessage">
+                <tr>
+                  <td colspan="3">
+                    <div class="empty-state">
+                      <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
+                      <span class="empty-state__title">Nessun rifiuto registrato</span>
+                      <p>Non risultano rifiuti per l'anno selezionato.</p>
+                    </div>
+                  </td>
+                </tr>
+              </ng-template>
+            </p-table>
+          </div>
+        </section>
+      </ng-container>
+
+      <!-- Stato iniziale: nessun report ancora generato -->
+      <section *ngIf="!report() && supportedYears().length" class="surface-card">
+        <div class="empty-state">
+          <i class="pi pi-file-export empty-state__icon" aria-hidden="true"></i>
+          <span class="empty-state__title">Nessun report generato</span>
+          <p>Seleziona un anno e premi "Genera report" per visualizzare il riepilogo MUD.</p>
+        </div>
+      </section>
     </div>
   `,
+  styles: [
+    `
+      .mud-section-title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-lg);
+        margin: 0;
+      }
+      .text-right { text-align: right; }
+      .text-tertiary { color: var(--text-tertiary); }
+      .mb-4 { margin-bottom: var(--spacing-xl); }
+      .mb-3 { margin-bottom: var(--spacing-base); }
+      .mb-2 { margin-bottom: var(--spacing-sm); }
+      .mt-3 { margin-top: var(--spacing-base); }
+      .mt-1 { margin-top: var(--spacing-xs); }
+    `,
+  ],
 })
 export class MudComponent implements OnInit {
   private readonly mudService = inject(MudService);

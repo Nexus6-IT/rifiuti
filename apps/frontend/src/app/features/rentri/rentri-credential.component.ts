@@ -1,7 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { CardModule } from 'primeng/card';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputTextareaModule } from 'primeng/inputtextarea';
@@ -30,7 +29,6 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN'];
   imports: [
     CommonModule,
     FormsModule,
-    CardModule,
     ButtonModule,
     InputTextModule,
     InputTextareaModule,
@@ -41,97 +39,134 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN'];
   ],
   providers: [ConfirmationService],
   template: `
-    <div class="rentri-credential" style="max-width: 760px; margin: 0 auto;">
+    <div class="page" style="max-width: 820px;">
       <p-confirmDialog></p-confirmDialog>
 
-      <p-card>
-        <ng-template pTemplate="header">
-          <div class="p-3">
-            <h2>Certificato RENTRI</h2>
-            <p class="text-muted">Certificato di interoperabilità per la trasmissione RENTRI del tenant</p>
-          </div>
-        </ng-template>
-
-        <!-- Non-admin -->
-        <div *ngIf="!isAdmin()" class="p-3">
-          <p-tag severity="warning" value="Accesso riservato agli amministratori"></p-tag>
-          <p class="mt-2">Solo gli amministratori del tenant possono gestire il certificato RENTRI.</p>
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Certificato RENTRI</h1>
+          <p class="page-subtitle">Certificato di interoperabilità per la trasmissione RENTRI del tenant</p>
         </div>
+      </header>
 
-        <ng-container *ngIf="isAdmin()">
-          <!-- Stato attuale -->
-          <div class="mb-4">
-            <h3>Stato</h3>
-            <div *ngIf="loading()">Caricamento…</div>
-            <div *ngIf="!loading() && status() as s">
-              <p-tag
-                [severity]="s.configured ? 'success' : 'danger'"
-                [value]="s.configured ? 'Configurato' : 'Non configurato'"
-              ></p-tag>
-              <div *ngIf="s.configured" class="mt-2">
-                <div><strong>Client ID:</strong> {{ s.clientId }}</div>
-                <div><strong>Ambiente:</strong> {{ s.environment }}</div>
-                <p-button
-                  label="Rimuovi certificato"
-                  severity="danger"
-                  [outlined]="true"
-                  styleClass="mt-2"
-                  (onClick)="confirmRemove()"
-                ></p-button>
+      <!-- Non-admin -->
+      <section *ngIf="!isAdmin()" class="surface-card">
+        <div class="empty-state">
+          <i class="pi pi-lock empty-state__icon" aria-hidden="true"></i>
+          <span class="empty-state__title">Accesso riservato agli amministratori</span>
+          <p>Solo gli amministratori del tenant possono gestire il certificato RENTRI.</p>
+        </div>
+      </section>
+
+      <ng-container *ngIf="isAdmin()">
+        <!-- Stato attuale -->
+        <section class="surface-card mb-4" aria-label="Stato del certificato">
+          <h2 class="rentri-section-title mb-3">Stato</h2>
+
+          <div *ngIf="loading()" class="flex align-items-center gap-2 text-secondary">
+            <i class="pi pi-spin pi-spinner" aria-hidden="true"></i>
+            <span>Caricamento…</span>
+          </div>
+
+          <div *ngIf="!loading() && status() as s">
+            <p-tag
+              [severity]="s.configured ? 'success' : 'danger'"
+              [value]="s.configured ? 'Configurato' : 'Non configurato'"
+              [icon]="s.configured ? 'pi pi-check-circle' : 'pi pi-times-circle'"
+            ></p-tag>
+
+            <dl *ngIf="s.configured" class="rentri-meta mt-3">
+              <div class="rentri-meta__row">
+                <dt>Client ID</dt>
+                <dd>{{ s.clientId }}</dd>
               </div>
+              <div class="rentri-meta__row">
+                <dt>Ambiente</dt>
+                <dd>{{ s.environment }}</dd>
+              </div>
+            </dl>
+
+            <p-button
+              *ngIf="s.configured"
+              label="Rimuovi certificato"
+              icon="pi pi-trash"
+              severity="danger"
+              [outlined]="true"
+              styleClass="mt-3"
+              (onClick)="confirmRemove()"
+              ariaLabel="Rimuovi il certificato RENTRI del tenant"
+            ></p-button>
+          </div>
+        </section>
+
+        <!-- Caricamento -->
+        <section class="surface-card" aria-label="Caricamento certificato">
+          <h2 class="rentri-section-title mb-2">{{ status()?.configured ? 'Sostituisci' : 'Carica' }} certificato</h2>
+          <p class="rentri-security-note mb-4">
+            <i class="pi pi-shield" aria-hidden="true"></i>
+            La chiave privata è cifrata e conservata in modo sicuro: non viene mai mostrata né restituita dal sistema.
+          </p>
+
+          <div class="field mb-3">
+            <label for="r-client-id" class="block mb-2">Client ID (identificativo operatore) *</label>
+            <input id="r-client-id" pInputText [(ngModel)]="clientId" class="w-full" placeholder="es. codice operatore RENTRI" autocomplete="off" />
+          </div>
+
+          <div class="grid formgrid mb-3">
+            <div class="field col-12 md:col-6">
+              <label for="r-env" class="block mb-2">Ambiente</label>
+              <p-dropdown inputId="r-env" [options]="envOptions" [(ngModel)]="environment" styleClass="w-full" ariaLabel="Ambiente RENTRI"></p-dropdown>
+            </div>
+            <div class="field col-12 md:col-6">
+              <label for="r-algo" class="block mb-2">Algoritmo</label>
+              <p-dropdown inputId="r-algo" [options]="algoOptions" [(ngModel)]="algorithm" styleClass="w-full" ariaLabel="Algoritmo di firma"></p-dropdown>
             </div>
           </div>
 
-          <hr />
-
-          <!-- Caricamento -->
-          <h3>{{ status()?.configured ? 'Sostituisci' : 'Carica' }} certificato</h3>
-
-          <div class="mb-3">
-            <label class="block mb-2">Client ID (identificativo operatore)</label>
-            <input pInputText [(ngModel)]="clientId" class="w-full" placeholder="es. codice operatore RENTRI" />
-          </div>
-
-          <div class="grid mb-3">
-            <div class="col-12 md:col-6">
-              <label class="block mb-2">Ambiente</label>
-              <p-dropdown [options]="envOptions" [(ngModel)]="environment" styleClass="w-full"></p-dropdown>
-            </div>
-            <div class="col-12 md:col-6">
-              <label class="block mb-2">Algoritmo</label>
-              <p-dropdown [options]="algoOptions" [(ngModel)]="algorithm" styleClass="w-full"></p-dropdown>
-            </div>
-          </div>
-
-          <div class="mb-3">
-            <label class="block mb-2">Modalità</label>
-            <p-selectButton [options]="modeOptions" [(ngModel)]="mode" optionLabel="label" optionValue="value"></p-selectButton>
+          <div class="field mb-4">
+            <label id="r-mode-label" class="block mb-2">Modalità</label>
+            <p-selectButton
+              [options]="modeOptions"
+              [(ngModel)]="mode"
+              optionLabel="label"
+              optionValue="value"
+              ariaLabelledBy="r-mode-label"
+            ></p-selectButton>
           </div>
 
           <!-- PKCS#12 -->
           <div *ngIf="mode === 'pkcs12'">
-            <div class="mb-3">
-              <label class="block mb-2">File certificato (.p12 / .pfx)</label>
-              <input type="file" accept=".p12,.pfx" (change)="onFileSelected($event)" />
-              <small *ngIf="pkcs12FileName()" class="block mt-1">Selezionato: {{ pkcs12FileName() }}</small>
+            <div class="field mb-3">
+              <label for="r-p12-file" class="block mb-2">File certificato (.p12 / .pfx) *</label>
+              <input
+                id="r-p12-file"
+                type="file"
+                accept=".p12,.pfx"
+                (change)="onFileSelected($event)"
+                class="rentri-file"
+                aria-describedby="r-p12-hint"
+              />
+              <small id="r-p12-hint" class="block mt-1 text-tertiary">
+                {{ pkcs12FileName() ? 'Selezionato: ' + pkcs12FileName() : 'Seleziona il file PKCS#12 che contiene certificato e chiave privata.' }}
+              </small>
             </div>
-            <div class="mb-3">
-              <label class="block mb-2">Passphrase</label>
-              <input pInputText type="password" [(ngModel)]="pkcs12Passphrase" class="w-full" />
+            <div class="field mb-3">
+              <label for="r-p12-pass" class="block mb-2">Passphrase *</label>
+              <input id="r-p12-pass" pInputText type="password" [(ngModel)]="pkcs12Passphrase" class="w-full" autocomplete="new-password" />
             </div>
           </div>
 
           <!-- PEM -->
           <div *ngIf="mode === 'pem'">
-            <div class="mb-3">
-              <label class="block mb-2">Certificato (PEM)</label>
-              <textarea pInputTextarea [(ngModel)]="certificatePem" class="w-full" rows="4"
+            <div class="field mb-3">
+              <label for="r-pem-cert" class="block mb-2">Certificato (PEM) *</label>
+              <textarea id="r-pem-cert" pInputTextarea [(ngModel)]="certificatePem" class="w-full" rows="4"
                 placeholder="-----BEGIN CERTIFICATE-----"></textarea>
             </div>
-            <div class="mb-3">
-              <label class="block mb-2">Chiave privata (PEM)</label>
-              <textarea pInputTextarea [(ngModel)]="privateKeyPem" class="w-full" rows="4"
-                placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+            <div class="field mb-3">
+              <label for="r-pem-key" class="block mb-2">Chiave privata (PEM) *</label>
+              <textarea id="r-pem-key" pInputTextarea [(ngModel)]="privateKeyPem" class="w-full" rows="4"
+                placeholder="-----BEGIN PRIVATE KEY-----" autocomplete="off"></textarea>
             </div>
           </div>
 
@@ -141,11 +176,69 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN'];
             [loading]="saving()"
             [disabled]="!canSubmit()"
             (onClick)="save()"
+            ariaLabel="Salva il certificato RENTRI"
           ></p-button>
-        </ng-container>
-      </p-card>
+        </section>
+      </ng-container>
     </div>
   `,
+  styles: [
+    `
+      .rentri-section-title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-lg);
+        margin: 0;
+      }
+      .rentri-security-note {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+        font-size: var(--font-size-sm);
+        color: var(--color-info);
+        background: var(--color-info-bg);
+        border-radius: var(--radius-md);
+        padding: var(--spacing-md);
+        margin: 0;
+      }
+      .rentri-security-note .pi { margin-top: 2px; }
+      .rentri-meta {
+        margin: 0;
+        display: grid;
+        gap: var(--spacing-xs);
+      }
+      .rentri-meta__row {
+        display: flex;
+        gap: var(--spacing-sm);
+      }
+      .rentri-meta dt {
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-secondary);
+        min-width: 96px;
+      }
+      .rentri-meta dd { margin: 0; color: var(--text-primary); }
+      .rentri-file {
+        display: block;
+        width: 100%;
+        padding: var(--spacing-sm);
+        border: 1px dashed var(--surface-border-strong);
+        border-radius: var(--radius-md);
+        background: var(--surface-section);
+        font-size: var(--font-size-sm);
+      }
+      .rentri-file:focus-visible {
+        outline: var(--focus-ring-width) solid var(--focus-ring-color);
+        outline-offset: var(--focus-ring-offset);
+      }
+      .text-secondary { color: var(--text-secondary); }
+      .text-tertiary { color: var(--text-tertiary); }
+      .mb-4 { margin-bottom: var(--spacing-xl); }
+      .mb-3 { margin-bottom: var(--spacing-base); }
+      .mb-2 { margin-bottom: var(--spacing-sm); }
+      .mt-3 { margin-top: var(--spacing-base); }
+      .mt-1 { margin-top: var(--spacing-xs); }
+      .field { margin-bottom: 0; }
+    `,
+  ],
 })
 export class RentriCredentialComponent implements OnInit {
   private readonly credentialService = inject(RentriCredentialService);

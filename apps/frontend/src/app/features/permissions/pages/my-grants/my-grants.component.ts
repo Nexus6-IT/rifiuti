@@ -29,203 +29,156 @@ import { PermissionRequestDialogComponent } from '../../components/permission-re
   ],
   providers: [DialogService, MessageService],
   template: `
-    <div class="my-grants-page">
-      <div class="page-header">
-        <div>
-          <h1>My Temporary Permissions</h1>
-          <p>View and manage your temporary permission grants</p>
+    <div class="page">
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">I miei permessi temporanei</h1>
+          <p class="page-subtitle">Visualizza e gestisci le tue concessioni di permessi temporanei</p>
         </div>
-
-        <button
-          pButton
-          type="button"
-          label="Request Permissions"
-          icon="pi pi-plus"
-          (click)="openRequestDialog()"
-        ></button>
-      </div>
+        <div class="page-actions">
+          <button
+            pButton
+            type="button"
+            label="Richiedi permessi"
+            icon="pi pi-plus"
+            (click)="openRequestDialog()"
+          ></button>
+        </div>
+      </header>
 
       @if (isLoading()) {
-        <div class="loading-container">
-          <p-progressSpinner></p-progressSpinner>
+        <div class="surface-card">
+          <div class="loading-container" role="status" aria-live="polite">
+            <p-progressSpinner ariaLabel="Caricamento"></p-progressSpinner>
+            <p>Caricamento delle concessioni...</p>
+          </div>
         </div>
       }
 
       @if (error()) {
-        <p-message severity="error" [text]="error()!"></p-message>
+        <p-message severity="error" [text]="error()!" styleClass="w-full"></p-message>
       }
 
       @if (!isLoading() && grants().length === 0) {
-        <p-card>
+        <div class="surface-card">
           <div class="empty-state">
-            <i class="pi pi-shield" style="font-size: 3rem;"></i>
-            <h3>No Permission Grants</h3>
-            <p>You don't have any temporary permission grants yet.</p>
+            <i class="pi pi-shield empty-state__icon" aria-hidden="true"></i>
+            <p class="empty-state__title">Nessuna concessione di permessi</p>
+            <p>Non hai ancora concessioni di permessi temporanei.</p>
             <button
               pButton
-              label="Request Your First Grant"
+              label="Richiedi la prima concessione"
               icon="pi pi-plus"
               (click)="openRequestDialog()"
             ></button>
           </div>
-        </p-card>
+        </div>
       }
 
       @if (!isLoading() && grants().length > 0) {
-        <p-card>
-          <p-table [value]="grants()" [paginator]="true" [rows]="10">
-            <ng-template pTemplate="header">
-              <tr>
-                <th>Status</th>
-                <th>Permissions</th>
-                <th>Time Period</th>
-                <th>Requested</th>
-                <th>Approval Status</th>
-              </tr>
-            </ng-template>
+        <div class="surface-card">
+          <div class="table-responsive">
+            <p-table [value]="grants()" [paginator]="true" [rows]="10">
+              <ng-template pTemplate="header">
+                <tr>
+                  <th>Stato</th>
+                  <th>Permessi</th>
+                  <th>Periodo</th>
+                  <th>Richiesto il</th>
+                  <th>Esito approvazione</th>
+                </tr>
+              </ng-template>
 
-            <ng-template pTemplate="body" let-grant>
-              <tr>
-                <td>
-                  <p-tag
-                    [value]="getStatusLabel(grant)"
-                    [severity]="getStatusSeverity(grant)"
-                  ></p-tag>
-                </td>
+              <ng-template pTemplate="body" let-grant>
+                <tr>
+                  <td>
+                    <p-tag
+                      [value]="getStatusLabel(grant)"
+                      [severity]="getStatusSeverity(grant)"
+                    ></p-tag>
+                  </td>
 
-                <td>
-                  <div class="permissions-cell">
-                    @for (permission of grant.permissions.slice(0, 2); track permission) {
-                      <code>{{ permission }}</code>
+                  <td>
+                    <div class="permissions-cell">
+                      @for (permission of grant.permissions.slice(0, 2); track permission) {
+                        <code>{{ permission }}</code>
+                      }
+                      @if (grant.permissions.length > 2) {
+                        <span class="more-count">+{{ grant.permissions.length - 2 }} altri</span>
+                      }
+                    </div>
+                  </td>
+
+                  <td>
+                    <div class="time-cell">
+                      <div><strong>Inizio:</strong> {{ formatDate(grant.startTime) }}</div>
+                      <div><strong>Fine:</strong> {{ formatDate(grant.endTime) }}</div>
+                    </div>
+                  </td>
+
+                  <td>{{ formatDate(grant.requestedAt) }}</td>
+
+                  <td>
+                    @if (grant.status === 'pending') {
+                      <span class="status-text">In attesa di approvazione</span>
                     }
-                    @if (grant.permissions.length > 2) {
-                      <span class="more-count">+{{ grant.permissions.length - 2 }} more</span>
+                    @if (grant.status === 'approved') {
+                      <div class="approval-info">
+                        <div><strong>Approvato da:</strong> {{ grant.approvedBy }}</div>
+                        <div><small>{{ formatDate(grant.approvedAt!) }}</small></div>
+                      </div>
                     }
-                  </div>
-                </td>
-
-                <td>
-                  <div class="time-cell">
-                    <div>
-                      <strong>Start:</strong> {{ formatDate(grant.startTime) }}
-                    </div>
-                    <div>
-                      <strong>End:</strong> {{ formatDate(grant.endTime) }}
-                    </div>
-                  </div>
-                </td>
-
-                <td>{{ formatDate(grant.requestedAt) }}</td>
-
-                <td>
-                  @if (grant.status === 'pending') {
-                    <span class="status-text">Awaiting approval</span>
-                  }
-                  @if (grant.status === 'approved') {
-                    <div class="approval-info">
-                      <div><strong>Approved by:</strong> {{ grant.approvedBy }}</div>
-                      <div><small>{{ formatDate(grant.approvedAt!) }}</small></div>
-                    </div>
-                  }
-                  @if (grant.status === 'rejected') {
-                    <div class="approval-info">
-                      <div><strong>Rejected:</strong> {{ grant.approvalReason }}</div>
-                    </div>
-                  }
-                  @if (grant.status === 'revoked') {
-                    <div class="approval-info">
-                      <div><strong>Revoked</strong></div>
-                    </div>
-                  }
-                </td>
-              </tr>
-            </ng-template>
-          </p-table>
-        </p-card>
+                    @if (grant.status === 'rejected') {
+                      <div class="approval-info">
+                        <div><strong>Rifiutato:</strong> {{ grant.approvalReason }}</div>
+                      </div>
+                    }
+                    @if (grant.status === 'revoked') {
+                      <div class="approval-info">
+                        <div><strong>Revocato</strong></div>
+                      </div>
+                    }
+                  </td>
+                </tr>
+              </ng-template>
+            </p-table>
+          </div>
+        </div>
       }
     </div>
   `,
   styles: [`
-    .my-grants-page {
-      padding: 2rem;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-
-    .page-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 2rem;
-    }
-
-    .page-header h1 {
-      margin: 0 0 0.5rem 0;
-      font-size: 2rem;
-    }
-
-    .page-header p {
-      margin: 0;
-      color: var(--text-color-secondary);
-    }
-
     .loading-container {
       display: flex;
-      justify-content: center;
-      padding: 4rem;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 4rem 2rem;
-    }
-
-    .empty-state i {
-      color: var(--text-color-secondary);
-      opacity: 0.5;
-      margin-bottom: 1rem;
-    }
-
-    .empty-state h3 {
-      margin: 1rem 0 0.5rem 0;
-    }
-
-    .empty-state p {
-      color: var(--text-color-secondary);
-      margin-bottom: 1.5rem;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--spacing-base);
+      padding: var(--spacing-2xl);
+      color: var(--text-secondary);
     }
 
     .permissions-cell {
       display: flex;
       flex-direction: column;
-      gap: 0.25rem;
+      gap: var(--spacing-xs);
     }
 
     .permissions-cell code {
-      font-size: 0.75rem;
-      background: var(--surface-100);
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
+      font-size: var(--font-size-xs);
+      background: var(--color-gray-100);
+      padding: var(--spacing-xs) var(--spacing-sm);
+      border-radius: var(--radius-base);
+      font-family: var(--font-family-mono);
     }
 
     .more-count {
-      font-size: 0.75rem;
-      color: var(--text-color-secondary);
-      font-style: italic;
+      font-size: var(--font-size-xs);
+      color: var(--text-tertiary);
     }
 
-    .time-cell {
-      font-size: 0.875rem;
-    }
-
-    .approval-info {
-      font-size: 0.875rem;
-    }
-
-    .status-text {
-      color: var(--text-color-secondary);
-      font-style: italic;
-    }
+    .time-cell { font-size: var(--font-size-sm); }
+    .approval-info { font-size: var(--font-size-sm); }
+    .status-text { color: var(--text-tertiary); }
   `],
 })
 export class MyGrantsComponent implements OnInit {
@@ -253,7 +206,7 @@ export class MyGrantsComponent implements OnInit {
         this.isLoading.set(false);
       },
       error: (error) => {
-        this.error.set(`Failed to load grants: ${error.message}`);
+        this.error.set(`Impossibile caricare le concessioni: ${error.message}`);
         this.isLoading.set(false);
       },
     });
@@ -261,7 +214,7 @@ export class MyGrantsComponent implements OnInit {
 
   openRequestDialog(): void {
     const ref = this.dialogService.open(PermissionRequestDialogComponent, {
-      header: 'Request Temporary Permissions',
+      header: 'Richiedi permessi temporanei',
       width: '600px',
       modal: true,
     });
@@ -274,11 +227,11 @@ export class MyGrantsComponent implements OnInit {
   }
 
   getStatusLabel(grant: PermissionGrant): string {
-    if (grant.status === 'approved' && grant.isActive) return 'Active';
-    if (grant.status === 'approved' && grant.isExpired) return 'Expired';
-    if (grant.status === 'pending') return 'Pending';
-    if (grant.status === 'rejected') return 'Rejected';
-    if (grant.status === 'revoked') return 'Revoked';
+    if (grant.status === 'approved' && grant.isActive) return 'Attivo';
+    if (grant.status === 'approved' && grant.isExpired) return 'Scaduto';
+    if (grant.status === 'pending') return 'In attesa';
+    if (grant.status === 'rejected') return 'Rifiutato';
+    if (grant.status === 'revoked') return 'Revocato';
     return grant.status;
   }
 
@@ -290,6 +243,6 @@ export class MyGrantsComponent implements OnInit {
   }
 
   formatDate(dateStr: string): string {
-    return new Date(dateStr).toLocaleString();
+    return new Date(dateStr).toLocaleString('it-IT');
   }
 }

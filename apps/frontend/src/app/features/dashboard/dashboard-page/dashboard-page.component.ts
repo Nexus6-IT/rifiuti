@@ -5,7 +5,6 @@ import { ChartModule } from 'primeng/chart';
 import { ButtonModule } from 'primeng/button';
 import { TagModule } from 'primeng/tag';
 import { ProgressBarModule } from 'primeng/progressbar';
-import { DividerModule } from 'primeng/divider';
 import { SkeletonModule } from 'primeng/skeleton';
 import { DashboardService, DashboardData } from '../../../core/services/dashboard.service';
 import { MessageService } from 'primeng/api';
@@ -13,19 +12,16 @@ import { MessageService } from 'primeng/api';
 /**
  * Dashboard Page Component
  *
- * Main analytics dashboard for Italian waste management:
- * - Overview stats (FIRs, waste, compliance)
- * - Status breakdown charts
- * - Waste type analysis
- * - RENTRI sync status
- * - Signature metrics
- * - Trends and predictions
+ * Cruscotto analitico per la gestione dei rifiuti (FIR, conformità, RENTRI,
+ * firme, andamenti). Allineato al design system v2 (token, .page, .stat-grid,
+ * .surface-card, .empty-state, .table-responsive).
  *
- * Features:
- * - Real-time data refresh
- * - Interactive charts (PrimeNG Chart.js)
- * - CSV export
- * - Responsive grid layout
+ * Caratteristiche:
+ * - KPI in `.stat-grid` / `.stat-card` (leggibili, non solo colore)
+ * - Grafici e tabelle dentro card con spaziatura generosa
+ * - Stati loading / empty / error coerenti
+ * - Responsive mobile-first, WCAG 2.1 AA (un solo h1, heading ordinati,
+ *   aria-label su icone/azioni, focus visibile via design system)
  */
 @Component({
   selector: 'app-dashboard-page',
@@ -37,398 +33,458 @@ import { MessageService } from 'primeng/api';
     ButtonModule,
     TagModule,
     ProgressBarModule,
-    DividerModule,
     SkeletonModule,
   ],
   template: `
-    <div class="dashboard-page">
-      <!-- Header -->
-      <div class="dashboard-header flex justify-content-between align-items-center mb-4">
-        <div>
-          <h1 class="text-3xl font-bold m-0">Dashboard Analitiche</h1>
-          <p class="text-gray-600 mt-2">
-            Monitoraggio FIR e gestione rifiuti in tempo reale
-          </p>
+    <div class="page">
+      <!-- Intestazione pagina -->
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title">Dashboard analitiche</h1>
+          <p class="page-subtitle">Monitoraggio FIR e gestione rifiuti in tempo reale</p>
         </div>
-        <div class="flex gap-2">
+        <div class="page-actions">
           <p-button
             label="Aggiorna"
             icon="pi pi-refresh"
             [outlined]="true"
             (onClick)="loadDashboard()"
             [loading]="isLoading()"
+            ariaLabel="Aggiorna i dati della dashboard"
           />
           <p-button
             label="Esporta CSV"
             icon="pi pi-download"
             (onClick)="exportCSV()"
+            [disabled]="!dashboard()"
+            ariaLabel="Esporta i dati della dashboard in formato CSV"
+          />
+        </div>
+      </header>
+
+      <!-- Stato di caricamento iniziale -->
+      <div *ngIf="isLoading() && !dashboard()" aria-busy="true" aria-live="polite">
+        <span class="sr-only">Caricamento dati della dashboard in corso</span>
+        <div class="stat-grid">
+          <div class="stat-card" *ngFor="let i of [1, 2, 3, 4]">
+            <p-skeleton width="6rem" height="1rem" styleClass="mb-2" />
+            <p-skeleton width="4rem" height="2.25rem" />
+          </div>
+        </div>
+        <div class="dashboard-grid dashboard-grid--two mt-4">
+          <div class="surface-card" *ngFor="let i of [1, 2]">
+            <p-skeleton width="10rem" height="1.25rem" styleClass="mb-3" />
+            <p-skeleton width="100%" height="16rem" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Stato di errore -->
+      <div *ngIf="error() && !isLoading()" class="surface-card" role="alert">
+        <div class="empty-state">
+          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true"></i>
+          <p class="empty-state__title">Impossibile caricare la dashboard</p>
+          <p>{{ error() }}</p>
+          <p-button
+            label="Riprova"
+            icon="pi pi-refresh"
+            (onClick)="loadDashboard()"
+            ariaLabel="Riprova a caricare la dashboard"
           />
         </div>
       </div>
 
-      <!-- Loading State -->
-      <div *ngIf="isLoading() && !dashboard()" class="grid">
-        <div class="col-12 md:col-3" *ngFor="let i of [1,2,3,4]">
-          <p-card>
-            <p-skeleton height="80px" />
-          </p-card>
-        </div>
-      </div>
-
-      <!-- Dashboard Content -->
+      <!-- Contenuto -->
       <div *ngIf="dashboard() as data" class="dashboard-content">
-        <!-- Overview Stats -->
-        <div class="grid mb-4">
-          <div class="col-12 md:col-3">
-            <p-card styleClass="stat-card">
-              <div class="stat-content">
-                <div class="stat-icon bg-blue-100">
-                  <i class="pi pi-file text-blue-600 text-3xl"></i>
-                </div>
-                <div class="stat-details">
-                  <span class="stat-label">FIR Totali</span>
-                  <h2 class="stat-value">{{ data.overview.totalFIRs }}</h2>
-                  <span class="stat-change text-green-600" *ngIf="growthPercentage() > 0">
-                    <i class="pi pi-arrow-up"></i> +{{ (growthPercentage() * 100).toFixed(1) }}%
-                  </span>
-                </div>
-              </div>
-            </p-card>
-          </div>
+        <!-- KPI principali -->
+        <section aria-labelledby="kpi-heading">
+          <h2 id="kpi-heading" class="sr-only">Indicatori principali</h2>
+          <div class="stat-grid">
+            <article class="stat-card">
+              <span class="stat-card__label">
+                <i class="pi pi-file" aria-hidden="true"></i> FIR totali
+              </span>
+              <span class="stat-card__value">{{ data.overview.totalFIRs }}</span>
+              <span class="stat-card__hint" *ngIf="growthPercentage() !== 0">
+                <i
+                  class="pi"
+                  [class.pi-arrow-up]="growthPercentage() > 0"
+                  [class.pi-arrow-down]="growthPercentage() < 0"
+                  aria-hidden="true"
+                ></i>
+                {{ growthPercentage() > 0 ? '+' : '' }}{{ (growthPercentage() * 100).toFixed(1) }}%
+                rispetto al mese precedente
+              </span>
+            </article>
 
-          <div class="col-12 md:col-3">
-            <p-card styleClass="stat-card">
-              <div class="stat-content">
-                <div class="stat-icon bg-green-100">
-                  <i class="pi pi-check-circle text-green-600 text-3xl"></i>
-                </div>
-                <div class="stat-details">
-                  <span class="stat-label">FIR Completati</span>
-                  <h2 class="stat-value">{{ data.overview.completedFIRs }}</h2>
-                  <span class="stat-subtitle">
-                    {{ (completionRate() * 100).toFixed(0) }}% del totale
-                  </span>
-                </div>
-              </div>
-            </p-card>
-          </div>
+            <article class="stat-card">
+              <span class="stat-card__label">
+                <i class="pi pi-check-circle" aria-hidden="true"></i> FIR completati
+              </span>
+              <span class="stat-card__value">{{ data.overview.completedFIRs }}</span>
+              <span class="stat-card__hint">{{ (completionRate() * 100).toFixed(0) }}% del totale</span>
+            </article>
 
-          <div class="col-12 md:col-3">
-            <p-card styleClass="stat-card">
-              <div class="stat-content">
-                <div class="stat-icon bg-purple-100">
-                  <i class="pi pi-shopping-cart text-purple-600 text-3xl"></i>
-                </div>
-                <div class="stat-details">
-                  <span class="stat-label">Rifiuti Totali</span>
-                  <h2 class="stat-value">{{ formatWeight(data.overview.totalWasteKg) }}</h2>
-                  <span class="stat-subtitle">tonnellate</span>
-                </div>
-              </div>
-            </p-card>
-          </div>
+            <article class="stat-card">
+              <span class="stat-card__label">
+                <i class="pi pi-box" aria-hidden="true"></i> Rifiuti totali
+              </span>
+              <span class="stat-card__value">{{ formatWeight(data.overview.totalWasteKg) }}</span>
+              <span class="stat-card__hint">tonnellate gestite</span>
+            </article>
 
-          <div class="col-12 md:col-3">
-            <p-card styleClass="stat-card">
-              <div class="stat-content">
-                <div class="stat-icon" [class]="complianceBgClass()">
-                  <i class="pi pi-shield text-3xl" [class]="complianceIconClass()"></i>
-                </div>
-                <div class="stat-details">
-                  <span class="stat-label">Conformità</span>
-                  <h2 class="stat-value">{{ (data.compliance.score * 100).toFixed(0) }}%</h2>
-                  <p-tag
-                    [value]="data.compliance.level"
-                    [severity]="getComplianceSeverity(data.compliance.level)"
-                  />
-                </div>
-              </div>
-            </p-card>
-          </div>
-        </div>
-
-        <!-- Charts Row 1 -->
-        <div class="grid mb-4">
-          <!-- Status Breakdown -->
-          <div class="col-12 md:col-6">
-            <p-card header="Stato FIR">
-              <p-chart
-                type="pie"
-                [data]="statusChartData()"
-                [options]="chartOptions"
-                height="300px"
-              />
-            </p-card>
-          </div>
-
-          <!-- Waste by Destination -->
-          <div class="col-12 md:col-6">
-            <p-card header="Destinazione Rifiuti">
-              <p-chart
-                type="doughnut"
-                [data]="destinationChartData()"
-                [options]="chartOptions"
-                height="300px"
-              />
-              <p-divider />
-              <div class="text-center">
-                <p class="text-lg font-semibold">
-                  Tasso di Riciclo: {{ (data.waste.recyclingRate * 100).toFixed(1) }}%
-                </p>
-                <p-progressBar
-                  [value]="data.waste.recyclingRate * 100"
-                  [showValue]="false"
-                  styleClass="mt-2"
+            <article class="stat-card">
+              <span class="stat-card__label">
+                <i class="pi pi-shield" aria-hidden="true"></i> Conformità
+              </span>
+              <span class="stat-card__value">{{ (data.compliance.score * 100).toFixed(0) }}%</span>
+              <span class="stat-card__hint">
+                <p-tag
+                  [value]="complianceLabel(data.compliance.level)"
+                  [severity]="getComplianceSeverity(data.compliance.level)"
                 />
-              </div>
-            </p-card>
+              </span>
+            </article>
           </div>
-        </div>
+        </section>
 
-        <!-- Charts Row 2 -->
-        <div class="grid mb-4">
-          <!-- Top CER Codes -->
-          <div class="col-12 md:col-6">
-            <p-card header="Top 10 Codici CER">
-              <p-chart
-                type="bar"
-                [data]="cerChartData()"
-                [options]="barChartOptions"
-                height="300px"
+        <!-- Grafici: stato FIR + destinazione rifiuti -->
+        <section class="dashboard-grid dashboard-grid--two mt-4" aria-labelledby="charts-heading-1">
+          <h2 id="charts-heading-1" class="sr-only">Distribuzione FIR e rifiuti</h2>
+
+          <div class="surface-card">
+            <h3 class="card-title">Stato dei FIR</h3>
+            <p-chart
+              type="pie"
+              [data]="statusChartData()"
+              [options]="chartOptions"
+              height="300px"
+              role="img"
+              aria-label="Grafico a torta della distribuzione dei FIR per stato"
+            />
+          </div>
+
+          <div class="surface-card">
+            <h3 class="card-title">Destinazione rifiuti</h3>
+            <p-chart
+              type="doughnut"
+              [data]="destinationChartData()"
+              [options]="chartOptions"
+              height="300px"
+              role="img"
+              aria-label="Grafico a ciambella della destinazione dei rifiuti tra recupero e smaltimento"
+            />
+            <div class="recycling">
+              <p class="recycling__label">
+                Tasso di riciclo: <strong>{{ (data.waste.recyclingRate * 100).toFixed(1) }}%</strong>
+              </p>
+              <p-progressBar
+                [value]="data.waste.recyclingRate * 100"
+                [showValue]="false"
+                [attr.aria-label]="'Tasso di riciclo ' + (data.waste.recyclingRate * 100).toFixed(0) + ' percento'"
               />
-            </p-card>
+            </div>
+          </div>
+        </section>
+
+        <!-- Grafici: codici CER + andamento mensile -->
+        <section class="dashboard-grid dashboard-grid--two mt-4" aria-labelledby="charts-heading-2">
+          <h2 id="charts-heading-2" class="sr-only">Codici CER e andamento</h2>
+
+          <div class="surface-card">
+            <h3 class="card-title">Top 10 codici CER</h3>
+            <p-chart
+              type="bar"
+              [data]="cerChartData()"
+              [options]="barChartOptions"
+              height="300px"
+              role="img"
+              aria-label="Grafico a barre dei dieci codici CER con maggiore quantità di rifiuti"
+            />
           </div>
 
-          <!-- Trends -->
-          <div class="col-12 md:col-6">
-            <p-card header="Andamento Mensile">
-              <div class="trend-stats mb-4">
-                <div class="trend-item">
-                  <span class="trend-label">Mese Corrente</span>
-                  <span class="trend-value">{{ data.trends.monthOverMonth.current }}</span>
-                </div>
-                <div class="trend-item">
-                  <span class="trend-label">Mese Precedente</span>
-                  <span class="trend-value">{{ data.trends.monthOverMonth.previous }}</span>
-                </div>
-                <div class="trend-item">
-                  <span class="trend-label">Crescita</span>
-                  <span class="trend-value" [class.text-green-600]="data.trends.monthOverMonth.percentage > 0">
-                    {{ (data.trends.monthOverMonth.percentage * 100).toFixed(1) }}%
-                  </span>
-                </div>
-                <div class="trend-item">
-                  <span class="trend-label">Previsione Prossimo Mese</span>
-                  <span class="trend-value text-blue-600">{{ data.trends.prediction.nextMonth }}</span>
-                </div>
+          <div class="surface-card">
+            <h3 class="card-title">Andamento mensile</h3>
+            <dl class="trend-grid">
+              <div class="trend-item">
+                <dt class="trend-item__label">Mese corrente</dt>
+                <dd class="trend-item__value">{{ data.trends.monthOverMonth.current }}</dd>
               </div>
-            </p-card>
+              <div class="trend-item">
+                <dt class="trend-item__label">Mese precedente</dt>
+                <dd class="trend-item__value">{{ data.trends.monthOverMonth.previous }}</dd>
+              </div>
+              <div class="trend-item">
+                <dt class="trend-item__label">Crescita</dt>
+                <dd
+                  class="trend-item__value"
+                  [class.trend-item__value--up]="data.trends.monthOverMonth.percentage > 0"
+                  [class.trend-item__value--down]="data.trends.monthOverMonth.percentage < 0"
+                >
+                  <i
+                    class="pi"
+                    [class.pi-arrow-up]="data.trends.monthOverMonth.percentage > 0"
+                    [class.pi-arrow-down]="data.trends.monthOverMonth.percentage < 0"
+                    aria-hidden="true"
+                  ></i>
+                  {{ (data.trends.monthOverMonth.percentage * 100).toFixed(1) }}%
+                </dd>
+              </div>
+              <div class="trend-item">
+                <dt class="trend-item__label">Previsione prossimo mese</dt>
+                <dd class="trend-item__value trend-item__value--accent">
+                  {{ data.trends.prediction.nextMonth }}
+                </dd>
+              </div>
+            </dl>
           </div>
-        </div>
+        </section>
 
-        <!-- Metrics Row -->
-        <div class="grid mb-4">
-          <!-- RENTRI Sync -->
-          <div class="col-12 md:col-6">
-            <p-card header="Stato Sincronizzazione RENTRI">
-              <div class="metric-grid">
-                <div class="metric-item">
-                  <span class="metric-label">Tasso Sincronizzazione</span>
-                  <p-progressBar
-                    [value]="data.rentri.syncRate * 100"
-                    [showValue]="true"
-                    valueTemplate="{value}%"
-                  />
-                </div>
-                <div class="metric-row">
-                  <div>
-                    <p class="text-sm text-gray-600 mb-1">FIR Sincronizzati</p>
-                    <p class="text-2xl font-bold text-green-600">{{ data.rentri.synced }}</p>
-                  </div>
-                  <div>
-                    <p class="text-sm text-gray-600 mb-1">In Attesa</p>
-                    <p class="text-2xl font-bold text-orange-600">{{ data.rentri.pending }}</p>
-                  </div>
-                </div>
-              </div>
-            </p-card>
-          </div>
+        <!-- Metriche: RENTRI + firme -->
+        <section class="dashboard-grid dashboard-grid--two mt-4" aria-labelledby="metrics-heading">
+          <h2 id="metrics-heading" class="sr-only">Sincronizzazione RENTRI e firme digitali</h2>
 
-          <!-- Signatures -->
-          <div class="col-12 md:col-6">
-            <p-card header="Firme Digitali">
-              <div class="metric-grid">
-                <div class="metric-item">
-                  <span class="metric-label">Tasso Completamento</span>
-                  <p-progressBar
-                    [value]="data.signatures.completionRate * 100"
-                    [showValue]="true"
-                    valueTemplate="{value}%"
-                  />
-                </div>
-                <div class="metric-row">
-                  <div>
-                    <p class="text-sm text-gray-600 mb-1">Firme Complete</p>
-                    <p class="text-2xl font-bold text-green-600">{{ data.signatures.completed }}</p>
-                  </div>
-                  <div>
-                    <p class="text-sm text-gray-600 mb-1">Tempo Medio</p>
-                    <p class="text-2xl font-bold text-blue-600">{{ data.signatures.averageTimeHours }}h</p>
-                  </div>
-                </div>
+          <div class="surface-card">
+            <h3 class="card-title">Sincronizzazione RENTRI</h3>
+            <div class="metric-block">
+              <label class="metric-block__label" id="rentri-rate">Tasso di sincronizzazione</label>
+              <p-progressBar
+                [value]="data.rentri.syncRate * 100"
+                [showValue]="true"
+                valueTemplate="{value}%"
+                aria-labelledby="rentri-rate"
+              />
+            </div>
+            <div class="metric-pair">
+              <div class="metric-pair__item">
+                <span class="metric-pair__label">FIR sincronizzati</span>
+                <span class="metric-pair__value metric-pair__value--success">{{ data.rentri.synced }}</span>
               </div>
-            </p-card>
-          </div>
-        </div>
-
-        <!-- Top Lists -->
-        <div class="grid">
-          <div class="col-12 md:col-6">
-            <p-card header="Top 5 Produttori">
-              <div class="top-list">
-                <div *ngFor="let producer of data.top.producers; let i = index"
-                     class="top-list-item">
-                  <span class="top-rank">{{ i + 1 }}</span>
-                  <span class="top-label">{{ producer.partitaIva }}</span>
-                  <p-tag [value]="producer.count + ' FIR'" severity="info" />
-                </div>
+              <div class="metric-pair__item">
+                <span class="metric-pair__label">In attesa</span>
+                <span class="metric-pair__value metric-pair__value--warning">{{ data.rentri.pending }}</span>
               </div>
-            </p-card>
+            </div>
           </div>
 
-          <div class="col-12 md:col-6">
-            <p-card header="Top 5 Trasportatori">
-              <div class="top-list">
-                <div *ngFor="let carrier of data.top.carriers; let i = index"
-                     class="top-list-item">
-                  <span class="top-rank">{{ i + 1 }}</span>
-                  <span class="top-label">{{ carrier.partitaIva }}</span>
-                  <p-tag [value]="carrier.count + ' FIR'" severity="warning" />
-                </div>
+          <div class="surface-card">
+            <h3 class="card-title">Firme digitali</h3>
+            <div class="metric-block">
+              <label class="metric-block__label" id="sign-rate">Tasso di completamento</label>
+              <p-progressBar
+                [value]="data.signatures.completionRate * 100"
+                [showValue]="true"
+                valueTemplate="{value}%"
+                aria-labelledby="sign-rate"
+              />
+            </div>
+            <div class="metric-pair">
+              <div class="metric-pair__item">
+                <span class="metric-pair__label">Firme complete</span>
+                <span class="metric-pair__value metric-pair__value--success">{{ data.signatures.completed }}</span>
               </div>
-            </p-card>
+              <div class="metric-pair__item">
+                <span class="metric-pair__label">Tempo medio</span>
+                <span class="metric-pair__value metric-pair__value--accent">{{ data.signatures.averageTimeHours }}h</span>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
+
+        <!-- Top liste -->
+        <section class="dashboard-grid dashboard-grid--two mt-4" aria-labelledby="top-heading">
+          <h2 id="top-heading" class="sr-only">Principali produttori e trasportatori</h2>
+
+          <div class="surface-card">
+            <h3 class="card-title">Top 5 produttori</h3>
+            <ol class="rank-list" *ngIf="data.top.producers.length; else noProducers">
+              <li class="rank-list__item" *ngFor="let producer of data.top.producers; let i = index">
+                <span class="rank-list__rank" aria-hidden="true">{{ i + 1 }}</span>
+                <span class="rank-list__label">{{ producer.partitaIva }}</span>
+                <p-tag [value]="producer.count + ' FIR'" severity="info" />
+              </li>
+            </ol>
+            <ng-template #noProducers>
+              <div class="empty-state">
+                <i class="pi pi-users empty-state__icon" aria-hidden="true"></i>
+                <p class="empty-state__title">Nessun produttore</p>
+                <p>Non ci sono ancora dati sui produttori.</p>
+              </div>
+            </ng-template>
+          </div>
+
+          <div class="surface-card">
+            <h3 class="card-title">Top 5 trasportatori</h3>
+            <ol class="rank-list" *ngIf="data.top.carriers.length; else noCarriers">
+              <li class="rank-list__item" *ngFor="let carrier of data.top.carriers; let i = index">
+                <span class="rank-list__rank" aria-hidden="true">{{ i + 1 }}</span>
+                <span class="rank-list__label">{{ carrier.partitaIva }}</span>
+                <p-tag [value]="carrier.count + ' FIR'" severity="warning" />
+              </li>
+            </ol>
+            <ng-template #noCarriers>
+              <div class="empty-state">
+                <i class="pi pi-truck empty-state__icon" aria-hidden="true"></i>
+                <p class="empty-state__title">Nessun trasportatore</p>
+                <p>Non ci sono ancora dati sui trasportatori.</p>
+              </div>
+            </ng-template>
+          </div>
+        </section>
       </div>
     </div>
   `,
   styles: [`
-    .dashboard-page {
-      padding: 2rem;
-    }
-
-    .stat-card {
-      height: 100%;
-    }
-
-    .stat-content {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
-
-    .stat-icon {
-      width: 60px;
-      height: 60px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .stat-details {
-      flex: 1;
-    }
-
-    .stat-label {
-      font-size: 0.875rem;
-      color: #6b7280;
-      text-transform: uppercase;
-      font-weight: 500;
-    }
-
-    .stat-value {
-      font-size: 2rem;
-      font-weight: 700;
-      margin: 0.25rem 0;
-    }
-
-    .stat-subtitle, .stat-change {
-      font-size: 0.875rem;
-      color: #6b7280;
-    }
-
-    .trend-stats {
+    .dashboard-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
+      gap: var(--spacing-lg);
+    }
+    .dashboard-grid--two {
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     }
 
+    .card-title {
+      font-family: var(--font-display);
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+      margin: 0 0 var(--spacing-base);
+    }
+
+    .stat-card__label {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+    }
+    .stat-card__label .pi { color: var(--brand-primary); }
+
+    /* Riciclo */
+    .recycling {
+      margin-top: var(--spacing-lg);
+      padding-top: var(--spacing-base);
+      border-top: 1px solid var(--surface-border);
+    }
+    .recycling__label {
+      margin: 0 0 var(--spacing-sm);
+      color: var(--text-secondary);
+      font-size: var(--font-size-sm);
+    }
+    .recycling__label strong { color: var(--text-primary); }
+
+    /* Andamento */
+    .trend-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--spacing-base);
+      margin: 0;
+    }
     .trend-item {
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: var(--spacing-xs);
+      padding: var(--spacing-base);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
     }
-
-    .trend-label {
-      font-size: 0.875rem;
-      color: #6b7280;
+    .trend-item__label {
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+      font-weight: var(--font-weight-medium);
     }
-
-    .trend-value {
-      font-size: 1.5rem;
-      font-weight: 700;
+    .trend-item__value {
+      font-family: var(--font-display);
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--text-primary);
+      margin: 0;
+      line-height: 1.1;
     }
+    .trend-item__value--up { color: var(--color-success); }
+    .trend-item__value--down { color: var(--color-danger); }
+    .trend-item__value--accent { color: var(--brand-accent); }
 
-    .metric-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
-    }
-
-    .metric-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-    }
-
-    .metric-label {
+    /* Metriche */
+    .metric-block { margin-bottom: var(--spacing-lg); }
+    .metric-block__label {
       display: block;
-      margin-bottom: 0.5rem;
-      font-size: 0.875rem;
-      color: #6b7280;
+      margin-bottom: var(--spacing-sm);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      font-weight: var(--font-weight-medium);
     }
-
-    .top-list {
+    .metric-pair {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--spacing-base);
+    }
+    .metric-pair__item {
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
+      gap: var(--spacing-xs);
     }
+    .metric-pair__label {
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+    }
+    .metric-pair__value {
+      font-family: var(--font-display);
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--text-primary);
+      line-height: 1.1;
+    }
+    .metric-pair__value--success { color: var(--color-success); }
+    .metric-pair__value--warning { color: var(--color-warning); }
+    .metric-pair__value--accent { color: var(--brand-accent); }
 
-    .top-list-item {
+    /* Liste classifica */
+    .rank-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-sm);
+    }
+    .rank-list__item {
       display: flex;
       align-items: center;
-      gap: 1rem;
-      padding: 0.75rem;
-      background: #f9fafb;
-      border-radius: 8px;
+      gap: var(--spacing-base);
+      padding: var(--spacing-md);
+      background: var(--color-gray-50);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-md);
     }
-
-    .top-rank {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      background: #3b82f6;
-      color: white;
+    .rank-list__rank {
+      flex: 0 0 auto;
+      width: 2rem;
+      height: 2rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 700;
+      border-radius: var(--radius-full);
+      background: var(--brand-primary);
+      color: var(--text-inverse);
+      font-family: var(--font-display);
+      font-weight: var(--font-weight-bold);
+      font-size: var(--font-size-sm);
+    }
+    .rank-list__label {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-family: var(--font-family-mono);
+      font-size: var(--font-size-sm);
+      color: var(--text-primary);
+      overflow-wrap: anywhere;
     }
 
-    .top-label {
-      flex: 1;
-      font-family: monospace;
+    .mt-4 { margin-top: var(--spacing-lg); }
+    .mb-2 { margin-bottom: var(--spacing-sm); }
+    .mb-3 { margin-bottom: var(--spacing-md); }
+
+    @media (max-width: 576px) {
+      .trend-grid { grid-template-columns: 1fr; }
+      .metric-pair { grid-template-columns: 1fr; }
     }
   `]
 })
@@ -438,6 +494,7 @@ export class DashboardPageComponent implements OnInit {
 
   protected readonly isLoading = signal(false);
   protected readonly dashboard = signal<DashboardData | null>(null);
+  protected readonly error = signal<string | null>(null);
 
   protected readonly chartOptions = {
     plugins: {
@@ -472,7 +529,7 @@ export class DashboardPageComponent implements OnInit {
       labels: Object.keys(data.status.breakdown),
       datasets: [{
         data: Object.values(data.status.breakdown),
-        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'],
+        backgroundColor: ['#0e7490', '#15803d', '#b45309', '#b91c1c'],
       }],
     };
   });
@@ -488,7 +545,7 @@ export class DashboardPageComponent implements OnInit {
           data.waste.byDestination.recovery.count,
           data.waste.byDestination.disposal.count,
         ],
-        backgroundColor: ['#10b981', '#ef4444'],
+        backgroundColor: ['#15803d', '#b45309'],
       }],
     };
   });
@@ -504,7 +561,7 @@ export class DashboardPageComponent implements OnInit {
       datasets: [{
         label: 'Quantità (kg)',
         data: top10.map(w => w.totalQuantity),
-        backgroundColor: '#3b82f6',
+        backgroundColor: '#0e7c66',
       }],
     };
   });
@@ -515,12 +572,14 @@ export class DashboardPageComponent implements OnInit {
 
   protected async loadDashboard(): Promise<void> {
     this.isLoading.set(true);
+    this.error.set(null);
 
     try {
       const data = await this.dashboardService.getDashboard().toPromise();
       this.dashboard.set(data || null);
     } catch (error) {
       console.error('Failed to load dashboard', error);
+      this.error.set('Impossibile caricare i dati del dashboard. Riprova più tardi.');
       this.messageService.add({
         severity: 'error',
         summary: 'Errore',
@@ -544,26 +603,14 @@ export class DashboardPageComponent implements OnInit {
     return (kg / 1000).toFixed(1);
   }
 
-  protected complianceBgClass(): string {
-    const data = this.dashboard();
-    if (!data) return 'bg-gray-100';
-
-    const score = data.compliance.score;
-    if (score >= 0.9) return 'bg-green-100';
-    if (score >= 0.7) return 'bg-blue-100';
-    if (score >= 0.5) return 'bg-orange-100';
-    return 'bg-red-100';
-  }
-
-  protected complianceIconClass(): string {
-    const data = this.dashboard();
-    if (!data) return 'text-gray-600';
-
-    const score = data.compliance.score;
-    if (score >= 0.9) return 'text-green-600';
-    if (score >= 0.7) return 'text-blue-600';
-    if (score >= 0.5) return 'text-orange-600';
-    return 'text-red-600';
+  protected complianceLabel(level: string): string {
+    const labels: Record<string, string> = {
+      EXCELLENT: 'Eccellente',
+      GOOD: 'Buona',
+      NEEDS_IMPROVEMENT: 'Da migliorare',
+      CRITICAL: 'Critica',
+    };
+    return labels[level] || level;
   }
 
   protected getComplianceSeverity(level: string): 'success' | 'info' | 'warning' | 'danger' {
