@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, tap, catchError, of } from 'rxjs';
+import { Observable, tap, catchError, of, map } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 export interface User {
@@ -116,7 +116,10 @@ export class AuthService {
   }
 
   getSession(): Observable<{ user: User }> {
-    return this.http.get<{ user: User }>(`${this.apiUrl}/auth/session`);
+    // Il backend espone /auth/profile (ritorna l'utente "grezzo"); lo avvolgo in { user }.
+    return this.http
+      .get<User>(`${this.apiUrl}/auth/profile`)
+      .pipe(map((u) => ({ user: u })));
   }
 
   getSpidStatus(): Observable<any> {
