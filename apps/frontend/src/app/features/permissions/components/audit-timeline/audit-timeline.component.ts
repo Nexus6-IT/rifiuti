@@ -111,25 +111,25 @@ import { AuditTimestampPipe } from '../../pipes/audit-timestamp.pipe';
   styles: [`
     .audit-timeline {
       position: relative;
-      padding: 1rem;
+      padding: var(--spacing-base);
     }
 
     .empty-state {
       text-align: center;
-      padding: 3rem;
-      color: var(--text-color-secondary);
+      padding: var(--spacing-3xl);
+      color: var(--text-secondary);
     }
 
     .empty-state i {
       font-size: 3rem;
-      margin-bottom: 1rem;
+      margin-bottom: var(--spacing-base);
       opacity: 0.5;
     }
 
     .timeline-item {
       position: relative;
       padding-left: 2.5rem;
-      padding-bottom: 2rem;
+      padding-bottom: var(--spacing-xl);
       border-left: 2px solid var(--surface-border);
     }
 
@@ -143,87 +143,87 @@ import { AuditTimestampPipe } from '../../pipes/audit-timestamp.pipe';
       top: 0;
       width: 1.5rem;
       height: 1.5rem;
-      border-radius: 50%;
-      background: var(--green-500);
-      color: white;
+      border-radius: var(--radius-full);
+      background: var(--color-success);
+      color: var(--text-inverse);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.75rem;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      font-size: var(--font-size-xs);
+      box-shadow: var(--shadow-sm);
     }
 
     .timeline-marker.denied {
-      background: var(--red-500);
+      background: var(--color-danger);
     }
 
     .timeline-content {
       background: var(--surface-card);
       border: 1px solid var(--surface-border);
-      border-radius: 8px;
-      padding: 1rem;
+      border-radius: var(--radius-lg);
+      padding: var(--spacing-base);
       margin-left: 0.5rem;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-      transition: all 0.2s ease;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow var(--transition-fast);
     }
 
     .timeline-content:hover {
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      box-shadow: var(--shadow-base);
     }
 
     .timeline-item.denied .timeline-content {
-      border-left: 3px solid var(--red-500);
+      border-left: 3px solid var(--color-danger);
     }
 
     .timeline-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 0.75rem;
+      margin-bottom: var(--spacing-md);
     }
 
     .decision-badge {
       display: inline-flex;
       align-items: center;
       padding: 0.25rem 0.75rem;
-      background: var(--green-100);
-      color: var(--green-700);
-      border-radius: 12px;
-      font-size: 0.75rem;
-      font-weight: 600;
+      background: var(--color-success-bg);
+      color: var(--color-success);
+      border-radius: var(--radius-xl);
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
 
     .decision-badge.denied {
-      background: var(--red-100);
-      color: var(--red-700);
+      background: var(--color-danger-bg);
+      color: var(--color-danger);
     }
 
     .timestamp {
-      font-size: 0.875rem;
-      color: var(--text-color-secondary);
-      font-family: 'Courier New', monospace;
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      font-family: var(--font-family-mono);
     }
 
     .timeline-body {
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: var(--spacing-sm);
     }
 
     .action-info {
-      font-size: 1rem;
-      color: var(--text-color);
+      font-size: var(--font-size-base);
+      color: var(--text-primary);
     }
 
     .action-info strong {
-      font-weight: 600;
+      font-weight: var(--font-weight-semibold);
     }
 
     .resource-type {
-      color: var(--text-color-secondary);
-      font-size: 0.875rem;
+      color: var(--text-secondary);
+      font-size: var(--font-size-sm);
       margin-left: 0.5rem;
     }
 
@@ -231,22 +231,22 @@ import { AuditTimestampPipe } from '../../pipes/audit-timestamp.pipe';
     .reason-info {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      font-size: 0.875rem;
-      color: var(--text-color-secondary);
+      gap: var(--spacing-sm);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
     }
 
     .reason-info {
-      color: var(--orange-600);
+      color: var(--brand-secondary);
       font-style: italic;
     }
 
     .details-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 0.75rem;
-      margin-top: 1rem;
-      padding-top: 1rem;
+      gap: var(--spacing-md);
+      margin-top: var(--spacing-base);
+      padding-top: var(--spacing-base);
       border-top: 1px solid var(--surface-border);
     }
 
@@ -257,15 +257,15 @@ import { AuditTimestampPipe } from '../../pipes/audit-timestamp.pipe';
     }
 
     .detail-label {
-      font-size: 0.75rem;
-      color: var(--text-color-secondary);
+      font-size: var(--font-size-xs);
+      color: var(--text-secondary);
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
 
     .detail-value {
-      font-size: 0.875rem;
-      color: var(--text-color);
+      font-size: var(--font-size-sm);
+      color: var(--text-primary);
       word-break: break-all;
     }
 

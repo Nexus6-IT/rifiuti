@@ -115,7 +115,7 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined;
       <!-- Error -->
       <section *ngIf="error() && !loading()" class="surface-card">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true" style="color: var(--color-danger);"></i>
+          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
           <span class="empty-state__title">Impossibile caricare le anomalie</span>
           <p>Si è verificato un errore. Riprova.</p>
           <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="load()"></p-button>
@@ -125,7 +125,7 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined;
       <!-- Empty -->
       <section *ngIf="!loading() && !error() && loaded() && filtered().length === 0" class="surface-card">
         <div class="empty-state">
-          <i class="pi pi-check-circle empty-state__icon" aria-hidden="true" style="color: var(--color-success);"></i>
+          <i class="pi pi-check-circle empty-state__icon empty-state__icon--success" aria-hidden="true"></i>
           <span class="empty-state__title">Nessuna anomalia rilevata</span>
           <p>Nessuna anomalia per i criteri selezionati.</p>
         </div>
@@ -173,6 +173,8 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined;
   styles: [
     `
       .text-tertiary { color: var(--text-tertiary); }
+      .empty-state__icon--danger { color: var(--color-danger); }
+      .empty-state__icon--success { color: var(--color-success); }
       .stat-card--danger { border-color: var(--color-danger); }
       .stat-card--danger .stat-card__value { color: var(--color-danger); }
       .stat-card--warning { border-color: var(--color-warning); }

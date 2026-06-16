@@ -96,7 +96,7 @@ interface DatasetRow {
 
       <section *ngIf="statusError() && !loadingStatus()" class="surface-card mb-4">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true" style="color: var(--color-danger);"></i>
+          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
           <span class="empty-state__title">Errore di caricamento</span>
           <p>Impossibile caricare lo stato dei dati di riferimento.</p>
           <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadStatus()"></p-button>
@@ -209,7 +209,7 @@ interface DatasetRow {
       <!-- === Aggiornamento (reseed) === -->
       <section class="surface-card" aria-label="Aggiornamento dati">
         <h2 class="ref-section-title mb-3">Aggiorna dati</h2>
-        <div *ngIf="!isAdmin()" class="empty-state" style="padding: var(--spacing-lg);">
+        <div *ngIf="!isAdmin()" class="empty-state empty-state--compact">
           <i class="pi pi-lock empty-state__icon" aria-hidden="true"></i>
           <span class="empty-state__title">Accesso riservato agli amministratori</span>
           <p>Solo gli amministratori possono ripopolare i dati di riferimento.</p>
@@ -257,6 +257,8 @@ interface DatasetRow {
       .text-right { text-align: right; }
       .text-center { text-align: center; }
       .text-secondary { color: var(--text-secondary); }
+      .empty-state--compact { padding: var(--spacing-lg); }
+      .empty-state__icon--danger { color: var(--color-danger); }
       .mb-4 { margin-bottom: var(--spacing-xl); }
       .mb-3 { margin-bottom: var(--spacing-base); }
       .mb-2 { margin-bottom: var(--spacing-sm); }

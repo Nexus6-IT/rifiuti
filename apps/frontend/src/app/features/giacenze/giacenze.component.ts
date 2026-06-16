@@ -49,7 +49,7 @@ import {
       <!-- Stato di errore -->
       <section *ngIf="error()" class="surface-card mb-4">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true" style="color: var(--color-danger);"></i>
+          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
           <span class="empty-state__title">{{ error() }}</span>
           <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="reload()"></p-button>
         </div>
@@ -86,8 +86,8 @@ import {
         <section class="surface-card mb-4" aria-label="Alert deposito temporaneo">
           <h2 class="giacenze-section-title mb-3">Alert deposito temporaneo</h2>
 
-          <div *ngIf="!alerts().length" class="empty-state" style="padding: var(--spacing-lg);">
-            <i class="pi pi-check-circle empty-state__icon" aria-hidden="true" style="color: var(--color-success);"></i>
+          <div *ngIf="!alerts().length" class="empty-state empty-state--compact">
+            <i class="pi pi-check-circle empty-state__icon empty-state__icon--success" aria-hidden="true"></i>
             <span class="empty-state__title">Nessun superamento soglie</span>
             <p>Nessun codice CER supera le soglie di deposito temporaneo.</p>
           </div>
@@ -168,6 +168,10 @@ import {
         border-color: var(--color-warning);
         background: var(--color-warning-bg);
       }
+
+      .empty-state--compact { padding: var(--spacing-lg); }
+      .empty-state__icon--danger { color: var(--color-danger); }
+      .empty-state__icon--success { color: var(--color-success); }
 
       .alert-banner {
         border: 1px solid var(--surface-border);

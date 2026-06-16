@@ -96,7 +96,7 @@ import { ButtonModule } from 'primeng/button';
       align-items: center;
       justify-content: center;
       min-height: 300px;
-      padding: var(--spacing-2xl, 2rem);
+      padding: var(--spacing-2xl);
       text-align: center;
     }
 
@@ -111,10 +111,10 @@ import { ButtonModule } from 'primeng/button';
       justify-content: center;
       width: 80px;
       height: 80px;
-      margin: 0 auto var(--spacing-lg, 1.5rem);
-      border-radius: 50%;
-      background: var(--error-bg, #fef2f2);
-      color: var(--error-color, #dc2626);
+      margin: 0 auto var(--spacing-lg);
+      border-radius: var(--radius-full);
+      background: var(--color-danger-bg);
+      color: var(--color-danger);
     }
 
     .error-state__icon i {
@@ -123,75 +123,75 @@ import { ButtonModule } from 'primeng/button';
 
     /* Variant-specific icon styles */
     .error-state--network .error-state__icon {
-      background: var(--warning-bg, #fffbeb);
-      color: var(--warning-color, #f59e0b);
+      background: var(--color-warning-bg);
+      color: var(--color-warning);
     }
 
     .error-state--permission .error-state__icon {
-      background: var(--info-bg, #eff6ff);
-      color: var(--info-color, #3b82f6);
+      background: var(--color-info-bg);
+      color: var(--color-info);
     }
 
     .error-state--404 .error-state__icon {
-      background: var(--gray-100, #f3f4f6);
-      color: var(--gray-500, #6b7280);
+      background: var(--color-gray-100);
+      color: var(--color-gray-500);
     }
 
     .error-state--500 .error-state__icon {
-      background: var(--error-bg, #fef2f2);
-      color: var(--error-color, #dc2626);
+      background: var(--color-danger-bg);
+      color: var(--color-danger);
     }
 
     .error-state__title {
-      margin: 0 0 var(--spacing-sm, 0.75rem) 0;
-      font-size: var(--font-size-xl, 1.25rem);
-      font-weight: var(--font-weight-semibold, 600);
-      color: var(--text-primary, #1f2937);
-      line-height: 1.4;
+      margin: 0 0 var(--spacing-sm) 0;
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+      line-height: var(--line-height-tight);
     }
 
     .error-state__message {
-      margin: 0 0 var(--spacing-lg, 1.5rem) 0;
-      font-size: var(--font-size-base, 1rem);
-      color: var(--text-secondary, #6b7280);
-      line-height: 1.6;
+      margin: 0 0 var(--spacing-lg) 0;
+      font-size: var(--font-size-base);
+      color: var(--text-secondary);
+      line-height: var(--line-height-relaxed);
     }
 
     .error-state__details {
-      margin: 0 0 var(--spacing-lg, 1.5rem) 0;
+      margin: 0 0 var(--spacing-lg) 0;
       text-align: left;
     }
 
     .error-state__details-toggle {
-      font-size: var(--font-size-sm, 0.875rem);
-      color: var(--text-secondary, #6b7280);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
       cursor: pointer;
-      padding: var(--spacing-sm, 0.75rem);
-      background: var(--gray-50, #f9fafb);
-      border-radius: var(--border-radius-sm, 4px);
-      border: 1px solid var(--gray-200, #e5e7eb);
+      padding: var(--spacing-sm);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--surface-border);
       user-select: none;
-      transition: background 0.2s ease;
+      transition: background var(--transition-fast);
     }
 
     .error-state__details-toggle:hover {
-      background: var(--gray-100, #f3f4f6);
+      background: var(--color-gray-100);
     }
 
-    .error-state__details-toggle:focus {
-      outline: 2px solid var(--focus-ring-color, #3b82f6);
-      outline-offset: 2px;
+    .error-state__details-toggle:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: var(--focus-ring-offset);
     }
 
     .error-state__details-content {
-      margin: var(--spacing-sm, 0.75rem) 0 0 0;
-      padding: var(--spacing-md, 1rem);
-      background: var(--gray-50, #f9fafb);
-      border-radius: var(--border-radius-sm, 4px);
-      border: 1px solid var(--gray-200, #e5e7eb);
-      font-size: var(--font-size-xs, 0.75rem);
-      font-family: monospace;
-      color: var(--error-color, #dc2626);
+      margin: var(--spacing-sm) 0 0 0;
+      padding: var(--spacing-md);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--surface-border);
+      font-size: var(--font-size-xs);
+      font-family: var(--font-family-mono);
+      color: var(--color-danger);
       overflow-x: auto;
       white-space: pre-wrap;
       word-break: break-word;
@@ -199,27 +199,27 @@ import { ButtonModule } from 'primeng/button';
 
     .error-state__actions {
       display: flex;
-      gap: var(--spacing-md, 1rem);
+      gap: var(--spacing-md);
       justify-content: center;
       align-items: center;
       flex-wrap: wrap;
     }
 
     .error-state__custom {
-      margin-top: var(--spacing-lg, 1.5rem);
+      margin-top: var(--spacing-lg);
     }
 
     /* Responsive Design */
     @media (max-width: 576px) {
       .error-state {
         min-height: 250px;
-        padding: var(--spacing-xl, 1.75rem) var(--spacing-md, 1rem);
+        padding: var(--spacing-xl) var(--spacing-md);
       }
 
       .error-state__icon {
         width: 64px;
         height: 64px;
-        margin-bottom: var(--spacing-md, 1rem);
+        margin-bottom: var(--spacing-md);
       }
 
       .error-state__icon i {
@@ -227,11 +227,11 @@ import { ButtonModule } from 'primeng/button';
       }
 
       .error-state__title {
-        font-size: var(--font-size-lg, 1.125rem);
+        font-size: var(--font-size-lg);
       }
 
       .error-state__message {
-        font-size: var(--font-size-sm, 0.875rem);
+        font-size: var(--font-size-sm);
       }
 
       .error-state__actions {

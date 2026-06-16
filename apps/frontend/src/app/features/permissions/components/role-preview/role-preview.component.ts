@@ -84,9 +84,9 @@ import { AccordionModule } from 'primeng/accordion';
                     <div class="permission-item" [class.sensitive]="perm.isSensitive">
                       <div class="permission-icon">
                         @if (perm.isSensitive) {
-                          <i class="pi pi-exclamation-triangle" style="color: var(--orange-500)"></i>
+                          <i class="pi pi-exclamation-triangle" style="color: var(--color-warning)"></i>
                         } @else {
-                          <i class="pi pi-check" style="color: var(--green-500)"></i>
+                          <i class="pi pi-check" style="color: var(--color-success)"></i>
                         }
                       </div>
 
@@ -133,23 +133,23 @@ import { AccordionModule } from 'primeng/accordion';
     .preview-summary {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1rem;
+      gap: var(--spacing-base);
+      margin-bottom: var(--spacing-base);
     }
 
     .summary-item {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      padding: 1rem;
-      background: var(--surface-50);
-      border-radius: 8px;
-      border: 1px solid var(--surface-200);
+      gap: var(--spacing-md);
+      padding: var(--spacing-base);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--surface-border);
     }
 
     .summary-item i {
-      font-size: 1.5rem;
-      color: var(--primary-500);
+      font-size: var(--font-size-2xl);
+      color: var(--brand-primary);
     }
 
     .summary-content {
@@ -159,53 +159,53 @@ import { AccordionModule } from 'primeng/accordion';
     }
 
     .summary-label {
-      font-size: 0.875rem;
-      color: var(--text-color-secondary);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
     }
 
     .summary-value {
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: var(--text-color);
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
     }
 
     .empty-state {
       text-align: center;
-      padding: 3rem 1rem;
-      color: var(--text-color-secondary);
+      padding: var(--spacing-3xl) var(--spacing-base);
+      color: var(--text-secondary);
     }
 
     .empty-state i {
       font-size: 3rem;
-      margin-bottom: 1rem;
+      margin-bottom: var(--spacing-base);
       display: block;
-      color: var(--surface-400);
+      color: var(--color-gray-400);
     }
 
     .permission-list {
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
+      gap: var(--spacing-md);
     }
 
     .permission-item {
       display: flex;
-      gap: 0.75rem;
-      padding: 0.75rem;
-      border: 1px solid var(--surface-200);
-      border-radius: 6px;
-      background: var(--surface-0);
-      transition: all 0.2s ease;
+      gap: var(--spacing-md);
+      padding: var(--spacing-md);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-base);
+      background: var(--surface-card);
+      transition: background var(--transition-fast), border-color var(--transition-fast);
     }
 
     .permission-item:hover {
-      background: var(--surface-50);
-      border-color: var(--primary-200);
+      background: var(--surface-hover);
+      border-color: var(--brand-primary-light);
     }
 
     .permission-item.sensitive {
-      border-color: var(--orange-200);
-      background: var(--orange-50);
+      border-color: var(--color-warning);
+      background: var(--color-warning-bg);
     }
 
     .permission-icon {
@@ -225,15 +225,15 @@ import { AccordionModule } from 'primeng/accordion';
     }
 
     .permission-action {
-      font-weight: 600;
-      color: var(--text-color);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
       display: flex;
       align-items: center;
     }
 
     .permission-description {
-      font-size: 0.875rem;
-      color: var(--text-color-secondary);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
     }
 
     .permission-code {
@@ -241,29 +241,29 @@ import { AccordionModule } from 'primeng/accordion';
     }
 
     .permission-code code {
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       padding: 0.25rem 0.5rem;
-      background: var(--surface-100);
-      border-radius: 4px;
-      color: var(--primary-700);
-      font-family: 'Courier New', monospace;
+      background: var(--color-gray-100);
+      border-radius: var(--radius-sm);
+      color: var(--brand-primary-dark);
+      font-family: var(--font-family-mono);
     }
 
     .sensitive-warning {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      padding: 1rem;
-      margin-top: 1rem;
-      background: var(--orange-50);
-      border: 1px solid var(--orange-200);
-      border-radius: 6px;
-      color: var(--orange-900);
+      gap: var(--spacing-md);
+      padding: var(--spacing-base);
+      margin-top: var(--spacing-base);
+      background: var(--color-warning-bg);
+      border: 1px solid var(--color-warning);
+      border-radius: var(--radius-base);
+      color: var(--brand-secondary-dark);
     }
 
     .sensitive-warning i {
-      font-size: 1.25rem;
-      color: var(--orange-500);
+      font-size: var(--font-size-xl);
+      color: var(--color-warning);
     }
 
     /* Mobile responsive */

@@ -77,7 +77,7 @@ import { ButtonModule } from 'primeng/button';
       align-items: center;
       justify-content: center;
       min-height: 300px;
-      padding: var(--spacing-2xl, 2rem);
+      padding: var(--spacing-2xl);
       text-align: center;
     }
 
@@ -92,10 +92,10 @@ import { ButtonModule } from 'primeng/button';
       justify-content: center;
       width: 80px;
       height: 80px;
-      margin: 0 auto var(--spacing-lg, 1.5rem);
-      border-radius: 50%;
-      background: var(--gray-100, #f3f4f6);
-      color: var(--gray-500, #6b7280);
+      margin: 0 auto var(--spacing-lg);
+      border-radius: var(--radius-full);
+      background: var(--color-gray-100);
+      color: var(--color-gray-500);
     }
 
     .empty-state__icon i {
@@ -104,68 +104,68 @@ import { ButtonModule } from 'primeng/button';
 
     /* Variant-specific icon styles */
     .empty-state--error .empty-state__icon {
-      background: var(--error-bg, #fef2f2);
-      color: var(--error-color, #dc2626);
+      background: var(--color-danger-bg);
+      color: var(--color-danger);
     }
 
     .empty-state--success .empty-state__icon {
-      background: var(--success-bg, #f0fdf4);
-      color: var(--success-color, #16a34a);
+      background: var(--color-success-bg);
+      color: var(--color-success);
     }
 
     .empty-state--warning .empty-state__icon {
-      background: var(--warning-bg, #fffbeb);
-      color: var(--warning-color, #f59e0b);
+      background: var(--color-warning-bg);
+      color: var(--color-warning);
     }
 
     .empty-state--info .empty-state__icon {
-      background: var(--info-bg, #eff6ff);
-      color: var(--info-color, #3b82f6);
+      background: var(--color-info-bg);
+      color: var(--color-info);
     }
 
     .empty-state--search .empty-state__icon {
-      background: var(--brand-primary-light, #e8f5e9);
-      color: var(--brand-primary, #2e7d32);
+      background: var(--brand-primary-50);
+      color: var(--brand-primary-dark);
     }
 
     .empty-state__title {
-      margin: 0 0 var(--spacing-sm, 0.75rem) 0;
-      font-size: var(--font-size-xl, 1.25rem);
-      font-weight: var(--font-weight-semibold, 600);
-      color: var(--text-primary, #1f2937);
-      line-height: 1.4;
+      margin: 0 0 var(--spacing-sm) 0;
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+      line-height: var(--line-height-tight);
     }
 
     .empty-state__message {
-      margin: 0 0 var(--spacing-xl, 1.75rem) 0;
-      font-size: var(--font-size-base, 1rem);
-      color: var(--text-secondary, #6b7280);
-      line-height: 1.6;
+      margin: 0 0 var(--spacing-xl) 0;
+      font-size: var(--font-size-base);
+      color: var(--text-secondary);
+      line-height: var(--line-height-relaxed);
     }
 
     .empty-state__actions {
       display: flex;
-      gap: var(--spacing-md, 1rem);
+      gap: var(--spacing-md);
       justify-content: center;
       align-items: center;
       flex-wrap: wrap;
     }
 
     .empty-state__custom {
-      margin-top: var(--spacing-lg, 1.5rem);
+      margin-top: var(--spacing-lg);
     }
 
     /* Responsive Design */
     @media (max-width: 576px) {
       .empty-state {
         min-height: 250px;
-        padding: var(--spacing-xl, 1.75rem) var(--spacing-md, 1rem);
+        padding: var(--spacing-xl) var(--spacing-md);
       }
 
       .empty-state__icon {
         width: 64px;
         height: 64px;
-        margin-bottom: var(--spacing-md, 1rem);
+        margin-bottom: var(--spacing-md);
       }
 
       .empty-state__icon i {
@@ -173,11 +173,11 @@ import { ButtonModule } from 'primeng/button';
       }
 
       .empty-state__title {
-        font-size: var(--font-size-lg, 1.125rem);
+        font-size: var(--font-size-lg);
       }
 
       .empty-state__message {
-        font-size: var(--font-size-sm, 0.875rem);
+        font-size: var(--font-size-sm);
       }
 
       .empty-state__actions {

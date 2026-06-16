@@ -39,7 +39,7 @@ import { MessageService } from 'primeng/api';
       <!-- Header -->
       <div class="dialog-header">
         <h2>Firma Digitale FIR</h2>
-        <p class="text-sm text-gray-600">
+        <p class="text-sm text-tertiary">
           {{ firNumber }}
         </p>
       </div>
@@ -104,18 +104,18 @@ import { MessageService } from 'primeng/api';
           [icon]="getRoleIcon(role)"
           styleClass="text-lg px-4 py-2"
         />
-        <p class="text-sm text-gray-600 mt-2">
+        <p class="text-sm text-tertiary mt-2">
           {{ getRoleDescription(role) }}
         </p>
       </div>
 
       <!-- Signature Method Info -->
       <div class="signature-method mb-4" *ngIf="!requiresReAuth()">
-        <p class="text-sm text-gray-600">
+        <p class="text-sm text-tertiary">
           <i class="pi pi-shield mr-2"></i>
           Metodo di firma: <strong>ECDSA-SHA256</strong> (conformità D.M. 59/2023)
         </p>
-        <p class="text-sm text-gray-600 mt-1">
+        <p class="text-sm text-tertiary mt-1">
           <i class="pi pi-clock mr-2"></i>
           Timestamp token: <strong>RFC 3161</strong> (non ripudio)
         </p>
@@ -160,19 +160,23 @@ import { MessageService } from 'primeng/api';
   styles: [
     `
       .signature-dialog {
-        padding: 1rem;
-        min-width: 500px;
+        padding: var(--spacing-base);
+        width: 100%;
+        max-width: 540px;
       }
 
       .dialog-header h2 {
-        margin: 0 0 0.5rem 0;
-        color: #333;
+        margin: 0 0 var(--spacing-sm) 0;
+        font-family: var(--font-display);
+        font-size: var(--font-size-xl);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
       }
 
       .dialog-actions {
-        margin-top: 1.5rem;
-        padding-top: 1rem;
-        border-top: 1px solid #e0e0e0;
+        margin-top: var(--spacing-lg);
+        padding-top: var(--spacing-base);
+        border-top: 1px solid var(--surface-border);
       }
     `,
   ],
@@ -313,7 +317,7 @@ export class SignatureDialogComponent implements OnInit {
     const icons = {
       PRODUCER: 'pi pi-building',
       CARRIER: 'pi pi-truck',
-      RECEIVER: 'pi pi-warehouse',
+      RECEIVER: 'pi pi-inbox',
     };
     return icons[role as keyof typeof icons] || 'pi pi-user';
   }

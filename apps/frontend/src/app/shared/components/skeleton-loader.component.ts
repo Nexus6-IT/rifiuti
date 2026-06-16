@@ -108,19 +108,19 @@ import { CommonModule } from '@angular/common';
     .skeleton-container {
       display: flex;
       flex-direction: column;
-      gap: var(--spacing-md, 1rem);
+      gap: var(--spacing-md);
     }
 
     .skeleton {
       background: linear-gradient(
         90deg,
-        var(--gray-200, #e5e7eb) 25%,
-        var(--gray-100, #f3f4f6) 50%,
-        var(--gray-200, #e5e7eb) 75%
+        var(--color-gray-200) 25%,
+        var(--color-gray-100) 50%,
+        var(--color-gray-200) 75%
       );
       background-size: 200% 100%;
       animation: loading 1.5s ease-in-out infinite;
-      border-radius: var(--border-radius-sm, 4px);
+      border-radius: var(--radius-sm);
     }
 
     .skeleton-text {
@@ -129,7 +129,7 @@ import { CommonModule } from '@angular/common';
     }
 
     .skeleton-circle {
-      border-radius: 50%;
+      border-radius: var(--radius-full);
     }
 
     .skeleton-rectangle {
@@ -137,32 +137,32 @@ import { CommonModule } from '@angular/common';
     }
 
     .skeleton-card {
-      background: var(--surface-card, white);
-      padding: var(--spacing-lg, 1.5rem);
-      border-radius: var(--border-radius-md, 8px);
-      border: 1px solid var(--gray-200, #e5e7eb);
+      background: var(--surface-card);
+      padding: var(--spacing-lg);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--surface-border);
     }
 
     .skeleton-table {
-      background: var(--surface-card, white);
-      border-radius: var(--border-radius-md, 8px);
-      border: 1px solid var(--gray-200, #e5e7eb);
+      background: var(--surface-card);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--surface-border);
       overflow: hidden;
     }
 
     .skeleton-table-header {
       display: flex;
-      gap: var(--spacing-md, 1rem);
-      padding: var(--spacing-md, 1rem);
-      background: var(--gray-50, #f9fafb);
-      border-bottom: 1px solid var(--gray-200, #e5e7eb);
+      gap: var(--spacing-md);
+      padding: var(--spacing-md);
+      background: var(--color-gray-50);
+      border-bottom: 1px solid var(--surface-border);
     }
 
     .skeleton-table-row {
       display: flex;
-      gap: var(--spacing-md, 1rem);
-      padding: var(--spacing-md, 1rem);
-      border-bottom: 1px solid var(--gray-100, #f3f4f6);
+      gap: var(--spacing-md);
+      padding: var(--spacing-md);
+      border-bottom: 1px solid var(--color-gray-100);
     }
 
     .skeleton-table-row:last-child {
@@ -171,22 +171,22 @@ import { CommonModule } from '@angular/common';
 
     .skeleton-list-item {
       display: flex;
-      gap: var(--spacing-md, 1rem);
-      padding: var(--spacing-md, 1rem);
-      background: var(--surface-card, white);
-      border-radius: var(--border-radius-md, 8px);
-      border: 1px solid var(--gray-200, #e5e7eb);
+      gap: var(--spacing-md);
+      padding: var(--spacing-md);
+      background: var(--surface-card);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--surface-border);
     }
 
     .skeleton-stats-card {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: var(--spacing-md, 1rem);
-      padding: var(--spacing-lg, 1.5rem);
-      background: var(--surface-card, white);
-      border-radius: var(--border-radius-md, 8px);
-      border: 1px solid var(--gray-200, #e5e7eb);
+      gap: var(--spacing-md);
+      padding: var(--spacing-lg);
+      background: var(--surface-card);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--surface-border);
     }
 
     @keyframes loading {
@@ -201,7 +201,7 @@ import { CommonModule } from '@angular/common';
     @media (prefers-reduced-motion: reduce) {
       .skeleton {
         animation: none;
-        background: var(--gray-200, #e5e7eb);
+        background: var(--color-gray-200);
       }
     }
 

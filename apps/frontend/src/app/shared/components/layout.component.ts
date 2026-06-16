@@ -568,7 +568,7 @@ export class LayoutComponent implements OnInit {
   readonly navAnagrafiche = [
     { label: 'Produttori', route: '/produttori', icon: 'pi pi-building' },
     { label: 'Trasportatori', route: '/trasportatori', icon: 'pi pi-truck' },
-    { label: 'Destinatari', route: '/destinatari', icon: 'pi pi-warehouse' }
+    { label: 'Destinatari', route: '/destinatari', icon: 'pi pi-inbox' }
   ];
   readonly navImpostazioni = [
     { label: 'Certificato RENTRI', route: '/rentri/certificato', icon: 'pi pi-key' },

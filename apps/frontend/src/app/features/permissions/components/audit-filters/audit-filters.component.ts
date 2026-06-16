@@ -231,9 +231,9 @@ import { DropdownModule } from 'primeng/dropdown';
     }
 
     .filter-field label {
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--text-color);
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
     }
 
     .filter-actions {
@@ -254,9 +254,9 @@ import { DropdownModule } from 'primeng/dropdown';
     }
 
     .active-filters-label {
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--text-color-secondary);
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-secondary);
     }
 
     .filter-chip {
@@ -264,11 +264,11 @@ import { DropdownModule } from 'primeng/dropdown';
       align-items: center;
       gap: 0.5rem;
       padding: 0.25rem 0.75rem;
-      background: var(--primary-100);
-      color: var(--primary-700);
-      border-radius: 16px;
-      font-size: 0.875rem;
-      font-weight: 500;
+      background: var(--brand-primary-50);
+      color: var(--brand-primary-dark);
+      border-radius: var(--radius-xl);
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-medium);
     }
 
     .filter-chip i {

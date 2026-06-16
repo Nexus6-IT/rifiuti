@@ -27,8 +27,8 @@ import { MudService, MudVersion } from './mud.service';
 
       <!-- Pannello selezione anno + azioni -->
       <section class="surface-card mb-4">
-        <div class="grid formgrid" style="align-items: end;">
-          <div class="field col-12 md:col-4">
+        <div class="mud-toolbar">
+          <div class="mud-toolbar__field">
             <label for="mud-year" class="block mb-2">Anno di dichiarazione</label>
             <p-dropdown
               inputId="mud-year"
@@ -41,9 +41,8 @@ import { MudService, MudVersion } from './mud.service';
               ariaLabel="Anno di dichiarazione"
               [disabled]="!supportedYears().length"
             ></p-dropdown>
-            <small *ngIf="versionForSelected() as v" class="block mt-1 text-tertiary">Tracciato: {{ v }}</small>
           </div>
-          <div class="field col-12 md:col-8 flex flex-wrap gap-2">
+          <div class="mud-toolbar__actions">
             <p-button
               label="Genera report"
               icon="pi pi-chart-bar"
@@ -64,6 +63,7 @@ import { MudService, MudVersion } from './mud.service';
             ></p-button>
           </div>
         </div>
+        <small *ngIf="versionForSelected() as v" class="block mt-1 text-tertiary">Tracciato: {{ v }}</small>
 
         <div *ngIf="!supportedYears().length" class="mt-3">
           <p-tag severity="warning" value="Nessun tracciato disponibile" icon="pi pi-exclamation-triangle"></p-tag>
@@ -147,6 +147,29 @@ import { MudService, MudVersion } from './mud.service';
         font-family: var(--font-display);
         font-size: var(--font-size-lg);
         margin: 0;
+      }
+      /* Toolbar: dropdown anno + azioni allineati sulla linea del controllo (40px) */
+      .mud-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: var(--control-gap);
+      }
+      .mud-toolbar__field {
+        flex: 1 1 220px;
+        min-width: 200px;
+        max-width: 320px;
+      }
+      .mud-toolbar__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--control-gap);
+      }
+      .mud-toolbar__field label { font-weight: var(--font-weight-medium); }
+      @media (max-width: 576px) {
+        .mud-toolbar__field { max-width: none; flex-basis: 100%; }
+        .mud-toolbar__actions { width: 100%; }
+        .mud-toolbar__actions .p-button { flex: 1 1 auto; }
       }
       .text-right { text-align: right; }
       .text-tertiary { color: var(--text-tertiary); }

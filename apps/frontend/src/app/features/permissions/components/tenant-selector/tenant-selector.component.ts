@@ -94,6 +94,7 @@ import { FormsModule } from '@angular/forms';
         class="p-button-text p-button-rounded"
         (click)="refreshTenants()"
         pTooltip="Refresh tenant list"
+        aria-label="Aggiorna elenco clienti"
         [loading]="isLoading()"></button>
     </div>
 
@@ -109,130 +110,134 @@ import { FormsModule } from '@angular/forms';
     .tenant-selector {
       display: flex;
       align-items: center;
-      gap: 1rem;
-      padding: 0.5rem;
+      gap: var(--spacing-base);
+      padding: var(--spacing-sm);
+      flex-wrap: wrap;
     }
 
     .current-tenant-badge {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1.25rem;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      border-radius: 8px;
-      font-size: 0.875rem;
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
-      color: white;
-      transition: all 0.3s ease;
+      gap: var(--spacing-md);
+      padding: var(--spacing-md) var(--spacing-lg);
+      background: var(--brand-primary);
+      border-radius: var(--radius-lg);
+      font-size: var(--font-size-sm);
+      box-shadow: var(--shadow-sm);
+      color: var(--text-inverse);
+      transition: box-shadow var(--transition-base);
     }
 
     .current-tenant-badge:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 16px rgba(102, 126, 234, 0.35);
+      box-shadow: var(--shadow-base);
     }
 
     .current-tenant-badge i {
-      color: white;
-      font-size: 1.125rem;
+      color: var(--text-inverse);
+      font-size: var(--font-size-lg);
     }
 
     .tenant-label {
-      color: rgba(255, 255, 255, 0.9);
-      font-weight: 500;
-      font-size: 0.75rem;
+      color: var(--text-inverse);
+      opacity: 0.9;
+      font-weight: var(--font-weight-medium);
+      font-size: var(--font-size-xs);
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
 
     .tenant-name {
-      font-weight: 700;
-      color: white;
-      font-size: 1rem;
+      font-weight: var(--font-weight-bold);
+      color: var(--text-inverse);
+      font-size: var(--font-size-base);
     }
 
     .selected-tenant {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: var(--spacing-sm);
     }
 
     .tenant-option {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0.5rem 0;
+      padding: var(--spacing-sm) 0;
       width: 100%;
+      gap: var(--spacing-sm);
     }
 
     .tenant-info {
       display: flex;
       flex-direction: column;
       gap: 0.25rem;
+      min-width: 0;
     }
 
     .tenant-info .tenant-name {
-      font-weight: 600;
-      color: #2c3e50;
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+      font-size: var(--font-size-sm);
     }
 
     .tenant-info .tenant-id {
-      font-size: 0.75rem;
-      color: #6c757d;
-      font-family: 'Courier New', monospace;
+      font-size: var(--font-size-xs);
+      color: var(--text-tertiary);
+      font-family: var(--font-family-mono);
     }
 
     .tenant-badges {
       display: flex;
-      gap: 0.5rem;
+      gap: var(--spacing-sm);
       align-items: center;
+      flex-shrink: 0;
     }
 
     .role-badge {
-      padding: 0.25rem 0.75rem;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border-radius: 12px;
-      font-size: 0.75rem;
-      font-weight: 600;
+      padding: 0.25rem 0.625rem;
+      background: var(--color-gray-100);
+      color: var(--color-gray-700);
+      border: 1px solid var(--surface-border-strong);
+      border-radius: var(--radius-full);
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
       text-transform: uppercase;
-      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
       letter-spacing: 0.5px;
-      transition: all 0.3s ease;
     }
 
-    .role-badge:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
-    }
-
-    /* Role badge variants by role type */
+    /* Role badge variants by role type (semantic, AA-contrast) */
     .role-badge.admin {
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      box-shadow: 0 2px 4px rgba(245, 87, 108, 0.3);
+      background: var(--color-danger-bg);
+      color: var(--color-danger);
+      border-color: var(--color-danger);
     }
 
     .role-badge.consultant {
-      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-      box-shadow: 0 2px 4px rgba(79, 172, 254, 0.3);
+      background: var(--brand-primary-50);
+      color: var(--brand-primary-dark);
+      border-color: var(--brand-primary);
     }
 
     .role-badge.operator {
-      background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-      box-shadow: 0 2px 4px rgba(67, 233, 123, 0.3);
+      background: var(--color-success-bg);
+      color: var(--color-success);
+      border-color: var(--color-success);
     }
 
     .role-badge.viewer {
-      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-      box-shadow: 0 2px 4px rgba(250, 112, 154, 0.3);
+      background: var(--color-info-bg);
+      color: var(--color-info);
+      border-color: var(--color-info);
     }
 
     .expiry-badge {
       padding: 0.25rem 0.5rem;
-      background: #ff9800;
-      color: white;
-      border-radius: 3px;
-      font-size: 0.75rem;
-      font-weight: 600;
+      background: var(--color-warning-bg);
+      color: var(--color-warning);
+      border: 1px solid var(--color-warning);
+      border-radius: var(--radius-sm);
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
       display: flex;
       align-items: center;
       gap: 0.25rem;
@@ -251,67 +256,73 @@ import { FormsModule } from '@angular/forms';
       }
     }
 
+    @media (prefers-reduced-motion: reduce) {
+      .expiry-badge.warning {
+        animation: none;
+      }
+    }
+
     .not-consultant {
-      padding: 0.5rem;
+      padding: var(--spacing-sm);
     }
 
     .single-tenant-badge {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1rem;
-      background: #f5f5f5;
-      border-radius: 4px;
-      font-weight: 600;
-      color: #2c3e50;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-sm) var(--spacing-base);
+      background: var(--color-gray-100);
+      border-radius: var(--radius-sm);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
     }
 
     .single-tenant-badge i {
-      color: #6c757d;
+      color: var(--text-tertiary);
     }
 
     :host ::ng-deep .p-dropdown {
       min-width: 300px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      transition: all 0.3s ease;
-    }
-
-    :host ::ng-deep .p-dropdown:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      border-radius: var(--radius-base);
     }
 
     :host ::ng-deep .p-dropdown-panel {
-      border-radius: 8px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      border-radius: var(--radius-base);
+      box-shadow: var(--shadow-md);
       margin-top: 0.5rem;
     }
 
     :host ::ng-deep .p-dropdown-panel .p-dropdown-items .p-dropdown-item {
-      padding: 0.75rem 1rem;
-      transition: all 0.2s ease;
+      padding: var(--spacing-md) var(--spacing-base);
+      transition: background var(--transition-fast);
     }
 
     :host ::ng-deep .p-dropdown-panel .p-dropdown-items .p-dropdown-item:hover {
-      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-      transform: translateX(4px);
+      background: var(--surface-hover);
     }
 
     :host ::ng-deep .p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight {
-      background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%);
-      color: #667eea;
-      font-weight: 600;
+      background: var(--brand-primary-50);
+      color: var(--brand-primary-dark);
+      font-weight: var(--font-weight-semibold);
     }
 
     /* Accessibility: Focus styles */
-    :host ::ng-deep .p-dropdown:focus {
-      outline: 2px solid #667eea;
-      outline-offset: 2px;
+    :host ::ng-deep .p-dropdown:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: var(--focus-ring-offset);
     }
 
-    :host ::ng-deep .p-dropdown-panel .p-dropdown-items .p-dropdown-item:focus {
-      outline: 2px solid #667eea;
+    :host ::ng-deep .p-dropdown-panel .p-dropdown-items .p-dropdown-item:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
       outline-offset: -2px;
+    }
+
+    @media (max-width: 768px) {
+      :host ::ng-deep .p-dropdown {
+        min-width: 0;
+        width: 100%;
+      }
     }
   `]
 })

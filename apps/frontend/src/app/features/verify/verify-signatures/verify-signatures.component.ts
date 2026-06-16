@@ -44,8 +44,8 @@ import { SignatureService, VerifySignaturesResponse } from '../../../core/servic
     <div class="verify-signatures-container">
       <!-- Header -->
       <div class="header text-center mb-5">
-        <h1 class="text-4xl font-bold mb-2">Verifica Firme Digitali FIR</h1>
-        <p class="text-gray-600">
+        <h1 class="verify-title mb-2">Verifica Firme Digitali FIR</h1>
+        <p class="verify-subtitle">
           Sistema pubblico di verifica per conformità D.M. 59/2023
         </p>
       </div>
@@ -53,7 +53,7 @@ import { SignatureService, VerifySignaturesResponse } from '../../../core/servic
       <!-- Loading State -->
       <div *ngIf="isLoading()" class="text-center py-6">
         <p-progressSpinner />
-        <p class="mt-4 text-gray-600">Verifica firme in corso...</p>
+        <p class="mt-4 verify-subtitle">Verifica firme in corso...</p>
       </div>
 
       <!-- Error State -->
@@ -74,7 +74,7 @@ import { SignatureService, VerifySignaturesResponse } from '../../../core/servic
               <h2 class="text-2xl font-semibold mb-2">
                 {{ verificationResult()!.firNumber }}
               </h2>
-              <p class="text-gray-600">FIR ID: {{ verificationResult()!.firId }}</p>
+              <p class="text-tertiary">FIR ID: {{ verificationResult()!.firId }}</p>
             </div>
             <p-tag
               [value]="verificationResult()!.allValid ? 'Firme Valide' : 'Firme Non Valide'"
@@ -88,13 +88,13 @@ import { SignatureService, VerifySignaturesResponse } from '../../../core/servic
 
           <div class="grid">
             <div class="col-12 md:col-6">
-              <p class="text-sm text-gray-600 mb-1">Firme presenti</p>
+              <p class="text-sm text-tertiary mb-1">Firme presenti</p>
               <p class="text-xl font-semibold">
                 {{ verificationResult()!.signatureCount }} / 3
               </p>
             </div>
             <div class="col-12 md:col-6">
-              <p class="text-sm text-gray-600 mb-1">Stato completamento</p>
+              <p class="text-sm text-tertiary mb-1">Stato completamento</p>
               <p-tag
                 [value]="verificationResult()!.isCompleted ? 'Completato' : 'Parziale'"
                 [severity]="verificationResult()!.isCompleted ? 'success' : 'warning'"
@@ -102,13 +102,13 @@ import { SignatureService, VerifySignaturesResponse } from '../../../core/servic
               />
             </div>
             <div class="col-12 mt-3">
-              <p class="text-sm text-gray-600 mb-1">Document Hash (SHA-256)</p>
-              <code class="text-xs bg-gray-100 p-2 rounded block">
+              <p class="text-sm text-tertiary mb-1">Document Hash (SHA-256)</p>
+              <code class="hash-block">
                 {{ verificationResult()!.documentHash }}
               </code>
             </div>
             <div class="col-12 mt-3">
-              <p class="text-sm text-gray-600">
+              <p class="text-sm text-tertiary">
                 <i class="pi pi-clock mr-2"></i>
                 Verificato il: {{ verificationResult()!.verifiedAt | date : 'dd/MM/yyyy HH:mm:ss' }}
               </p>
@@ -157,32 +157,32 @@ import { SignatureService, VerifySignaturesResponse } from '../../../core/servic
                 <div *ngIf="event.signature" class="signature-details">
                   <div class="grid">
                     <div class="col-12 md:col-6 mb-2">
-                      <p class="text-sm text-gray-600 mb-1">Firmatario</p>
+                      <p class="text-sm text-tertiary mb-1">Firmatario</p>
                       <p class="font-semibold">{{ event.signature.signerName }}</p>
                     </div>
                     <div class="col-12 md:col-6 mb-2">
-                      <p class="text-sm text-gray-600 mb-1">Codice Fiscale</p>
+                      <p class="text-sm text-tertiary mb-1">Codice Fiscale</p>
                       <p class="font-semibold">{{ event.signature.signerFiscalCode }}</p>
                     </div>
                     <div class="col-12 md:col-6 mb-2">
-                      <p class="text-sm text-gray-600 mb-1">Data e ora firma</p>
+                      <p class="text-sm text-tertiary mb-1">Data e ora firma</p>
                       <p class="font-semibold">
                         {{ event.signature.signedAt | date : 'dd/MM/yyyy HH:mm:ss' }}
                       </p>
                     </div>
                     <div class="col-12 md:col-6 mb-2">
-                      <p class="text-sm text-gray-600 mb-1">Metodo firma</p>
+                      <p class="text-sm text-tertiary mb-1">Metodo firma</p>
                       <p class="font-semibold">{{ event.signature.signatureMethod }}</p>
                     </div>
                     <div class="col-12 mb-2">
-                      <p class="text-sm text-gray-600 mb-1">Certificate Hash (SHA-256)</p>
-                      <code class="text-xs bg-gray-100 p-2 rounded block">
+                      <p class="text-sm text-tertiary mb-1">Certificate Hash (SHA-256)</p>
+                      <code class="hash-block">
                         {{ event.signature.certificateHash }}
                       </code>
                     </div>
                     <div class="col-12 mb-2">
-                      <p class="text-sm text-gray-600 mb-1">Document Hash (SHA-256)</p>
-                      <code class="text-xs bg-gray-100 p-2 rounded block">
+                      <p class="text-sm text-tertiary mb-1">Document Hash (SHA-256)</p>
+                      <code class="hash-block">
                         {{ event.signature.documentHash }}
                       </code>
                     </div>
@@ -229,19 +229,43 @@ import { SignatureService, VerifySignaturesResponse } from '../../../core/servic
   styles: [
     `
       .verify-signatures-container {
-        padding: 2rem;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: clamp(1.5rem, 4vw, 3rem) var(--spacing-lg);
+        background:
+          radial-gradient(120% 90% at 50% 0%, var(--brand-primary-50) 0%, transparent 55%),
+          var(--surface-ground);
         min-height: 100vh;
       }
 
-      .header {
-        color: white;
+      .verify-title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-3xl);
+        font-weight: var(--font-weight-bold);
+        letter-spacing: -0.02em;
+        color: var(--text-primary);
+        margin: 0;
+      }
+      .verify-subtitle {
+        color: var(--text-secondary);
+        font-size: var(--font-size-base);
+        margin: 0;
+      }
+
+      .hash-block {
+        display: block;
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-xs);
+        color: var(--text-secondary);
+        background: var(--color-gray-100);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-base);
+        padding: var(--spacing-sm);
+        overflow-wrap: anywhere;
       }
 
       .timeline-marker {
         width: 3rem;
         height: 3rem;
-        border-radius: 50%;
+        border-radius: var(--radius-full);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -250,35 +274,36 @@ import { SignatureService, VerifySignaturesResponse } from '../../../core/servic
       }
 
       .timeline-marker.valid {
-        background-color: #22c55e;
-        border-color: #22c55e;
-        color: white;
+        background-color: var(--color-success);
+        border-color: var(--color-success);
+        color: var(--text-inverse);
       }
 
       .timeline-marker.invalid {
-        background-color: #ef4444;
-        border-color: #ef4444;
-        color: white;
+        background-color: var(--color-danger);
+        border-color: var(--color-danger);
+        color: var(--text-inverse);
       }
 
       .timeline-marker.pending {
-        background-color: #f3f4f6;
-        border-color: #d1d5db;
-        color: #9ca3af;
+        background-color: var(--color-gray-100);
+        border-color: var(--surface-border-strong);
+        color: var(--text-tertiary);
       }
 
       .timeline-content {
-        padding: 1.5rem;
-        background-color: white;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        padding: var(--spacing-lg);
+        background-color: var(--surface-card);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
       }
 
       .signature-details {
-        background-color: #f9fafb;
-        padding: 1rem;
-        border-radius: 6px;
-        margin-top: 1rem;
+        background-color: var(--color-gray-50);
+        padding: var(--spacing-base);
+        border-radius: var(--radius-md);
+        margin-top: var(--spacing-base);
       }
     `,
   ],
@@ -377,7 +402,7 @@ export class VerifySignaturesComponent implements OnInit {
     const icons = {
       PRODUCER: 'pi pi-building',
       CARRIER: 'pi pi-truck',
-      RECEIVER: 'pi pi-warehouse',
+      RECEIVER: 'pi pi-inbox',
     };
     return icons[role as keyof typeof icons] || 'pi pi-user';
   }

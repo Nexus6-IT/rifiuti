@@ -146,7 +146,7 @@ const PRICING_LABELS: Record<PricingModel, string> = {
       <!-- Stato error -->
       <section *ngIf="error()" class="surface-card">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true" style="color: var(--color-danger);"></i>
+          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
           <span class="empty-state__title">Impossibile caricare i contratti</span>
           <p>Si è verificato un errore. Riprova.</p>
           <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadContracts()" />
@@ -367,6 +367,7 @@ const PRICING_LABELS: Record<PricingModel, string> = {
   styles: [
     `
       .text-tertiary { color: var(--text-tertiary); }
+      .empty-state__icon--danger { color: var(--color-danger); }
       .mb-4 { margin-bottom: var(--spacing-xl); }
       .mb-3 { margin-bottom: var(--spacing-base); }
       .mb-2 { margin-bottom: var(--spacing-sm); }

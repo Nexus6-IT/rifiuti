@@ -55,107 +55,110 @@ export type PermissionState = 'allowed' | 'view-only' | 'denied' | 'unknown';
       align-items: center;
       gap: 0.375rem;
       padding: 0.375rem 0.75rem;
-      border-radius: 4px;
-      font-size: 0.875rem;
-      font-weight: 500;
-      transition: all 0.2s ease;
+      border-radius: var(--radius-sm);
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-medium);
+      transition: background var(--transition-fast);
       cursor: default;
     }
 
     /* Size variations */
     .permission-badge.small {
       padding: 0.25rem 0.5rem;
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       gap: 0.25rem;
     }
 
     .permission-badge.small i {
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
     }
 
     .permission-badge.large {
       padding: 0.5rem 1rem;
-      font-size: 1rem;
+      font-size: var(--font-size-base);
       gap: 0.5rem;
     }
 
     .permission-badge.large i {
-      font-size: 1.125rem;
+      font-size: var(--font-size-lg);
     }
 
     /* State: Allowed (green) */
     .permission-badge.allowed {
-      background-color: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
+      background-color: var(--color-success-bg);
+      color: var(--color-success);
+      border: 1px solid var(--color-success);
     }
 
     .permission-badge.allowed:hover {
-      background-color: #c3e6cb;
+      background-color: var(--color-success-bg);
+      filter: brightness(0.97);
     }
 
     .permission-badge.allowed i {
-      color: #28a745;
+      color: var(--color-success);
     }
 
-    /* State: View-Only (blue) */
+    /* State: View-Only (blue/info) */
     .permission-badge.view-only {
-      background-color: #d1ecf1;
-      color: #0c5460;
-      border: 1px solid #bee5eb;
+      background-color: var(--color-info-bg);
+      color: var(--color-info);
+      border: 1px solid var(--color-info);
     }
 
     .permission-badge.view-only:hover {
-      background-color: #bee5eb;
+      background-color: var(--color-info-bg);
+      filter: brightness(0.97);
     }
 
     .permission-badge.view-only i {
-      color: #17a2b8;
+      color: var(--color-info);
     }
 
     /* State: Denied (red) */
     .permission-badge.denied {
-      background-color: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
+      background-color: var(--color-danger-bg);
+      color: var(--color-danger);
+      border: 1px solid var(--color-danger);
     }
 
     .permission-badge.denied:hover {
-      background-color: #f5c6cb;
+      background-color: var(--color-danger-bg);
+      filter: brightness(0.97);
     }
 
     .permission-badge.denied i {
-      color: #dc3545;
+      color: var(--color-danger);
     }
 
     /* State: Unknown (gray) */
     .permission-badge.unknown {
-      background-color: #e9ecef;
-      color: #6c757d;
-      border: 1px solid #dee2e6;
+      background-color: var(--color-gray-100);
+      color: var(--color-gray-700);
+      border: 1px solid var(--surface-border-strong);
     }
 
     .permission-badge.unknown:hover {
-      background-color: #dee2e6;
+      background-color: var(--color-gray-200);
     }
 
     .permission-badge.unknown i {
-      color: #6c757d;
+      color: var(--color-gray-600);
     }
 
     /* Icon styles */
     .permission-badge i {
-      font-size: 0.875rem;
-      font-weight: 700;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-bold);
       line-height: 1;
     }
 
     /* Symbol icon styles (T128: ✓, ○, ✗) */
     .permission-badge .symbol-icon {
-      font-size: 1.125rem;
-      font-weight: 700;
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-bold);
       line-height: 1;
-      font-family: Arial, sans-serif;
+      font-family: var(--font-family);
     }
 
     .permission-badge.small .symbol-icon {

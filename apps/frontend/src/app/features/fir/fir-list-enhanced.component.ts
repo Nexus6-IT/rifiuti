@@ -503,13 +503,13 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
       margin: 0 0 var(--spacing-xs, 0.5rem) 0;
       font-size: var(--font-size-2xl, 1.875rem);
       font-weight: var(--font-weight-bold, 700);
-      color: var(--text-primary, #1f2937);
+      color: var(--text-primary);
     }
 
     .page-subtitle {
       margin: 0;
       font-size: var(--font-size-base, 1rem);
-      color: var(--text-secondary, #6b7280);
+      color: var(--text-secondary);
     }
 
     .page-actions {
@@ -524,12 +524,12 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
       margin-bottom: var(--spacing-xs, 0.5rem);
       font-size: var(--font-size-sm, 0.875rem);
       font-weight: var(--font-weight-medium, 500);
-      color: var(--text-primary, #1f2937);
+      color: var(--text-primary);
     }
 
     /* Filters Card */
     :host ::ng-deep .filters-card {
-      border: 1px solid var(--gray-200, #e5e7eb);
+      border: 1px solid var(--surface-border);
     }
 
     /* Desktop View */
@@ -543,14 +543,14 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
 
     /* Table Enhancements */
     :host ::ng-deep .fir-table {
-      border: 1px solid var(--gray-200, #e5e7eb);
-      border-radius: var(--border-radius-md, 8px);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-lg);
       overflow: hidden;
     }
 
     :host ::ng-deep .fir-table .p-datatable-thead > tr > th {
-      background: var(--gray-50, #f9fafb);
-      color: var(--text-primary, #1f2937);
+      background: var(--color-gray-50);
+      color: var(--text-primary);
       font-weight: var(--font-weight-semibold, 600);
       font-size: var(--font-size-sm, 0.875rem);
       text-transform: uppercase;
@@ -558,8 +558,8 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
     }
 
     .cer-code {
-      font-family: monospace;
-      background: var(--gray-100, #f3f4f6);
+      font-family: var(--font-family-mono);
+      background: var(--color-gray-100);
       padding: 2px 6px;
       border-radius: 4px;
       font-size: var(--font-size-sm, 0.875rem);
@@ -587,7 +587,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
     }
 
     :host ::ng-deep .fir-card {
-      border: 1px solid var(--gray-200, #e5e7eb);
+      border: 1px solid var(--surface-border);
       transition: box-shadow 0.2s ease;
     }
 
@@ -601,7 +601,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
       align-items: center;
       margin-bottom: var(--spacing-md, 1rem);
       padding-bottom: var(--spacing-md, 1rem);
-      border-bottom: 1px solid var(--gray-200, #e5e7eb);
+      border-bottom: 1px solid var(--surface-border);
     }
 
     .fir-card-number {
@@ -611,7 +611,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
 
     .fir-card-number .label {
       font-size: var(--font-size-xs, 0.75rem);
-      color: var(--text-secondary, #6b7280);
+      color: var(--text-secondary);
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
@@ -619,7 +619,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
     .fir-card-number .value {
       font-size: var(--font-size-xl, 1.25rem);
       font-weight: var(--font-weight-bold, 700);
-      color: var(--text-primary, #1f2937);
+      color: var(--text-primary);
     }
 
     .fir-card-content {
@@ -637,13 +637,13 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
 
     .fir-card-row .label {
       font-size: var(--font-size-sm, 0.875rem);
-      color: var(--text-secondary, #6b7280);
+      color: var(--text-secondary);
     }
 
     .fir-card-row .value {
       font-size: var(--font-size-sm, 0.875rem);
       font-weight: var(--font-weight-medium, 500);
-      color: var(--text-primary, #1f2937);
+      color: var(--text-primary);
     }
 
     .fir-card-actions {
@@ -663,7 +663,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
 
     .page-info {
       font-size: var(--font-size-sm, 0.875rem);
-      color: var(--text-secondary, #6b7280);
+      color: var(--text-secondary);
     }
 
     /* Responsive Design */

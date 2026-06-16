@@ -107,47 +107,51 @@ import { RequirePermissionDirective } from '../permissions/directives/require-pe
   `,
   styles: [`
     .fir-list-page {
-      padding: 2rem;
+      padding: var(--spacing-xl);
     }
 
     .btn-primary {
-      background: #1976d2;
-      color: white;
-      padding: 0.75rem 1.5rem;
+      background: var(--brand-primary);
+      color: var(--text-inverse);
+      padding: 0 1rem;
+      height: var(--control-md);
       border: none;
-      border-radius: 4px;
+      border-radius: var(--radius-md);
       cursor: pointer;
-      margin-bottom: 1rem;
+      margin-bottom: var(--spacing-base);
+      font-weight: var(--font-weight-semibold);
     }
 
     .fir-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 1rem;
+      margin-top: var(--spacing-base);
     }
 
     .fir-table th,
     .fir-table td {
-      padding: 0.75rem;
+      padding: var(--spacing-md);
       text-align: left;
-      border-bottom: 1px solid #ddd;
+      border-bottom: 1px solid var(--surface-border);
     }
 
     .btn-view,
     .btn-edit,
     .btn-delete,
     .btn-approve {
-      margin-right: 0.5rem;
-      padding: 0.5rem 1rem;
+      margin-right: var(--spacing-sm);
+      padding: 0 0.75rem;
+      height: var(--control-sm);
       border: none;
-      border-radius: 3px;
+      border-radius: var(--radius-sm);
       cursor: pointer;
+      font-weight: var(--font-weight-medium);
     }
 
-    .btn-view { background: #e3f2fd; color: #1976d2; }
-    .btn-edit { background: #fff3e0; color: #f57c00; }
-    .btn-delete { background: #ffebee; color: #c62828; }
-    .btn-approve { background: #e8f5e9; color: #388e3c; }
+    .btn-view { background: var(--color-info-bg); color: var(--color-info); }
+    .btn-edit { background: var(--color-warning-bg); color: var(--color-warning); }
+    .btn-delete { background: var(--color-danger-bg); color: var(--color-danger); }
+    .btn-approve { background: var(--color-success-bg); color: var(--color-success); }
 
     .btn-view:disabled,
     .btn-edit:disabled,
@@ -158,10 +162,12 @@ import { RequirePermissionDirective } from '../permissions/directives/require-pe
     }
 
     .temp-permission-notice {
-      background: #fff9c4;
-      padding: 0.5rem 1rem;
-      border-left: 3px solid #fbc02d;
-      margin-top: 1rem;
+      background: var(--color-warning-bg);
+      color: var(--color-warning);
+      padding: var(--spacing-sm) var(--spacing-base);
+      border-left: 3px solid var(--color-warning);
+      margin-top: var(--spacing-base);
+      border-radius: var(--radius-sm);
     }
   `]
 })

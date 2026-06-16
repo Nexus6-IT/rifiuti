@@ -362,29 +362,29 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
       margin: 0 0 var(--spacing-xs, 0.5rem) 0;
       font-size: var(--font-size-2xl, 1.875rem);
       font-weight: var(--font-weight-bold, 700);
-      color: var(--text-primary, #1f2937);
+      color: var(--text-primary);
     }
 
     .page-subtitle {
       margin: 0;
       font-size: var(--font-size-base, 1rem);
-      color: var(--text-secondary, #6b7280);
+      color: var(--text-secondary);
     }
 
     /* Modern Table */
     :host ::ng-deep .modern-table {
-      border: 1px solid var(--gray-200, #e5e7eb);
-      border-radius: var(--border-radius-lg, 12px);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-lg);
       overflow: hidden;
     }
 
     :host ::ng-deep .modern-table .p-datatable-thead > tr > th {
-      background: var(--gray-50, #f9fafb);
-      color: var(--text-primary, #1f2937);
+      background: var(--color-gray-50);
+      color: var(--text-primary);
       font-weight: var(--font-weight-semibold, 600);
       font-size: var(--font-size-sm, 0.875rem);
       padding: var(--spacing-md, 1rem);
-      border-bottom: 2px solid var(--gray-200, #e5e7eb);
+      border-bottom: 2px solid var(--surface-border);
     }
 
     :host ::ng-deep .modern-table .p-datatable-tbody > tr > td {
@@ -393,16 +393,16 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
     }
 
     .piva-code {
-      font-family: 'Courier New', monospace;
-      background: var(--gray-100, #f3f4f6);
+      font-family: var(--font-family-mono);
+      background: var(--color-gray-100);
       padding: 4px 8px;
-      border-radius: var(--border-radius-sm, 4px);
+      border-radius: var(--radius-sm);
       font-size: var(--font-size-sm, 0.875rem);
       font-weight: var(--font-weight-medium, 500);
     }
 
     .email {
-      color: var(--brand-accent, #0277bd);
+      color: var(--brand-accent);
     }
 
     .action-buttons {
@@ -431,9 +431,9 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
     }
 
     :host ::ng-deep .registry-card {
-      border: 1px solid var(--gray-200, #e5e7eb);
-      border-radius: var(--border-radius-lg, 12px);
-      transition: box-shadow 0.2s ease;
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-lg);
+      transition: box-shadow var(--transition-base);
     }
 
     :host ::ng-deep .registry-card:hover {
@@ -446,21 +446,21 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
       align-items: flex-start;
       margin-bottom: var(--spacing-md, 1rem);
       padding-bottom: var(--spacing-md, 1rem);
-      border-bottom: 1px solid var(--gray-200, #e5e7eb);
+      border-bottom: 1px solid var(--surface-border);
     }
 
     .card-title {
       margin: 0;
       font-size: var(--font-size-lg, 1.125rem);
       font-weight: var(--font-weight-semibold, 600);
-      color: var(--text-primary, #1f2937);
+      color: var(--text-primary);
     }
 
     .piva-badge {
-      background: var(--brand-primary, #2e7d32);
-      color: white;
+      background: var(--brand-primary);
+      color: var(--text-inverse);
       padding: 4px 12px;
-      border-radius: var(--border-radius-full, 9999px);
+      border-radius: var(--radius-full);
       font-size: var(--font-size-xs, 0.75rem);
       font-weight: var(--font-weight-semibold, 600);
     }
@@ -477,11 +477,11 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
       align-items: flex-start;
       gap: var(--spacing-sm, 0.75rem);
       font-size: var(--font-size-sm, 0.875rem);
-      color: var(--text-secondary, #6b7280);
+      color: var(--text-secondary);
     }
 
     .card-row i {
-      color: var(--brand-primary, #2e7d32);
+      color: var(--brand-primary);
       margin-top: 2px;
     }
 
@@ -508,9 +508,9 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
       margin: 0;
       font-size: var(--font-size-base, 1rem);
       font-weight: var(--font-weight-semibold, 600);
-      color: var(--text-primary, #1f2937);
+      color: var(--text-primary);
       padding-bottom: var(--spacing-sm, 0.75rem);
-      border-bottom: 1px solid var(--gray-200, #e5e7eb);
+      border-bottom: 1px solid var(--surface-border);
     }
 
     .form-grid {
@@ -532,24 +532,11 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
     .field-label {
       font-size: var(--font-size-sm, 0.875rem);
       font-weight: var(--font-weight-medium, 500);
-      color: var(--text-primary, #1f2937);
+      color: var(--text-primary);
     }
 
     .required {
-      color: var(--error-color, #dc2626);
-    }
-
-    :host ::ng-deep .p-inputtext {
-      padding: 10px 12px;
-      font-size: var(--font-size-sm, 0.875rem);
-      border-radius: var(--border-radius-md, 8px);
-      border: 1px solid var(--gray-300, #d1d5db);
-      transition: all 0.2s ease;
-    }
-
-    :host ::ng-deep .p-inputtext:focus {
-      border-color: var(--brand-primary, #2e7d32);
-      box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.1);
+      color: var(--color-danger);
     }
 
     .dialog-footer {

@@ -33,7 +33,7 @@ import { SignatureDialogComponent } from '../signature-dialog/signature-dialog.c
             [severity]="statusBadge().severity"
             [icon]="statusBadge().icon"
           />
-          <span class="text-sm text-gray-600" *ngIf="verificationResult()">
+          <span class="text-sm text-tertiary" *ngIf="verificationResult()">
             {{ verificationResult()?.allValid ? 'Firme valide' : 'Verifica firme fallita' }}
           </span>
         </div>
@@ -131,8 +131,8 @@ import { SignatureDialogComponent } from '../signature-dialog/signature-dialog.c
       </p-timeline>
 
       <!-- Verification Link -->
-      <div class="verification-link mt-4 pt-3 border-top-1 border-gray-300">
-        <p class="text-sm text-gray-600 mb-2">
+      <div class="verification-link mt-4 pt-3">
+        <p class="text-sm text-tertiary mb-2">
           <i class="pi pi-qrcode mr-2"></i>
           Verifica firme pubblicamente (QR code disponibile nel PDF)
         </p>
@@ -148,17 +148,21 @@ import { SignatureDialogComponent } from '../signature-dialog/signature-dialog.c
   styles: [
     `
       .signature-status-card {
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--spacing-lg);
       }
 
       .signature-timeline {
-        margin-top: 1rem;
+        margin-top: var(--spacing-base);
+      }
+
+      .verification-link {
+        border-top: 1px solid var(--surface-border);
       }
 
       .timeline-marker {
         width: 3rem;
         height: 3rem;
-        border-radius: 50%;
+        border-radius: var(--radius-full);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -167,29 +171,30 @@ import { SignatureDialogComponent } from '../signature-dialog/signature-dialog.c
       }
 
       .timeline-marker.completed {
-        background-color: #22c55e;
-        border-color: #22c55e;
-        color: white;
+        background-color: var(--color-success);
+        border-color: var(--color-success);
+        color: var(--text-inverse);
       }
 
       .timeline-marker.pending {
-        background-color: #f3f4f6;
-        border-color: #d1d5db;
-        color: #9ca3af;
+        background-color: var(--color-gray-100);
+        border-color: var(--surface-border-strong);
+        color: var(--text-tertiary);
       }
 
       .timeline-content {
-        padding: 1rem;
-        background-color: #f9fafb;
-        border-radius: 8px;
-        border-left: 4px solid #e5e7eb;
+        padding: var(--spacing-base);
+        background-color: var(--color-gray-50);
+        border-radius: var(--radius-lg);
+        border-left: 4px solid var(--surface-border);
       }
 
       .signature-details {
-        margin-top: 0.5rem;
-        padding: 0.75rem;
-        background-color: white;
-        border-radius: 6px;
+        margin-top: var(--spacing-sm);
+        padding: var(--spacing-md);
+        background-color: var(--surface-card);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-md);
       }
     `,
   ],
@@ -276,7 +281,7 @@ export class SignatureStatusComponent implements OnInit {
     const icons = {
       PRODUCER: 'pi pi-building',
       CARRIER: 'pi pi-truck',
-      RECEIVER: 'pi pi-warehouse',
+      RECEIVER: 'pi pi-inbox',
     };
     return icons[role as keyof typeof icons] || 'pi pi-user';
   }

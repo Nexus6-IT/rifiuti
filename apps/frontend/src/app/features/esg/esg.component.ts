@@ -111,7 +111,7 @@ import { EsgReport, EsgService } from './esg.service';
       <!-- Error -->
       <section *ngIf="!loading() && error()" class="surface-card">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true" style="color: var(--color-danger);"></i>
+          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
           <span class="empty-state__title">Impossibile caricare il report ESG</span>
           <p>Si è verificato un errore. Riprova.</p>
           <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadReport()"></p-button>
@@ -210,6 +210,7 @@ import { EsgReport, EsgService } from './esg.service';
       .stat-card--sub .stat-card__value {
         font-size: var(--font-size-2xl);
       }
+      .empty-state__icon--danger { color: var(--color-danger); }
       .text-right { text-align: right; }
       .mb-4 { margin-bottom: var(--spacing-xl); }
       .mb-3 { margin-bottom: var(--spacing-base); }

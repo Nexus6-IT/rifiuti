@@ -221,24 +221,25 @@ import { TooltipModule } from 'primeng/tooltip';
 
     .header-info h3 {
       margin: 0 0 0.25rem 0;
-      font-size: 1.25rem;
-      font-weight: 600;
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
     }
 
     .selected-count {
       margin: 0;
-      font-size: 0.875rem;
-      color: var(--text-color-secondary);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
     }
 
     .header-actions {
       display: flex;
-      gap: 0.75rem;
+      gap: var(--spacing-md);
       align-items: center;
     }
 
     .selected-row {
-      background: var(--primary-50) !important;
+      background: var(--brand-primary-50) !important;
     }
 
     .permission-cell {
@@ -248,63 +249,64 @@ import { TooltipModule } from 'primeng/tooltip';
     }
 
     .permission-code {
-      font-family: 'Courier New', monospace;
-      font-size: 0.875rem;
-      background: var(--surface-50);
+      font-family: var(--font-family-mono);
+      font-size: var(--font-size-sm);
+      background: var(--color-gray-50);
       padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-      color: var(--primary-700);
+      border-radius: var(--radius-sm);
+      color: var(--brand-primary-dark);
     }
 
     .permission-description {
-      color: var(--text-color-secondary);
-      font-size: 0.75rem;
+      color: var(--text-secondary);
+      font-size: var(--font-size-xs);
     }
 
     .matrix-footer {
-      padding-top: 1rem;
+      padding-top: var(--spacing-base);
       border-top: 1px solid var(--surface-border);
     }
 
     .footer-stats {
       display: flex;
-      gap: 2rem;
+      gap: var(--spacing-xl);
       align-items: center;
+      flex-wrap: wrap;
     }
 
     .stat {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      font-size: 0.875rem;
-      color: var(--text-color-secondary);
+      gap: var(--spacing-sm);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
     }
 
     .stat i {
-      color: var(--primary-500);
+      color: var(--brand-primary);
     }
 
     .empty-message {
       text-align: center;
-      padding: 3rem;
+      padding: var(--spacing-3xl);
     }
 
     .empty-state {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 1rem;
+      gap: var(--spacing-base);
     }
 
     .empty-state i {
       font-size: 3rem;
-      color: var(--text-color-secondary);
+      color: var(--text-tertiary);
       opacity: 0.5;
     }
 
     .empty-state p {
       margin: 0;
-      color: var(--text-color-secondary);
+      color: var(--text-secondary);
     }
 
     /* Mobile responsive */

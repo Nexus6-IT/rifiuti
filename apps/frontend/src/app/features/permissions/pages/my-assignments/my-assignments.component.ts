@@ -203,7 +203,7 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
                 <p class="waste-description">{{ assignment.wasteDescription }}</p>
                 <div class="waste-details">
                   <span class="detail-item">
-                    <i class="pi pi-weight"></i>
+                    <i class="pi pi-box"></i>
                     {{ assignment.quantity }} {{ assignment.unit }}
                   </span>
                 </div>

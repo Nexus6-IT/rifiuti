@@ -64,8 +64,8 @@ import { PermissionSyncQueueService } from '../../services/permission-sync-queue
       top: 60px;
       left: 0;
       right: 0;
-      z-index: 1000;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      z-index: var(--z-sticky);
+      box-shadow: var(--shadow-base);
     }
 
     .offline-content, .sync-content {
@@ -73,7 +73,7 @@ import { PermissionSyncQueueService } from '../../services/permission-sync-queue
       align-items: center;
       justify-content: space-between;
       width: 100%;
-      gap: 1rem;
+      gap: var(--spacing-base);
     }
 
     .offline-text {

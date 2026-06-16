@@ -61,12 +61,12 @@ import { RENTRISyncService, SyncJobStatus } from '../../services/rentri-sync.ser
     }
 
     :host ::ng-deep .sync-status-badge {
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       padding: 0.25rem 0.5rem;
     }
 
     :host ::ng-deep .sync-status-badge i {
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
     }
   `],
 })

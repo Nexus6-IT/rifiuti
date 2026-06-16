@@ -19,6 +19,7 @@ import { interval } from 'rxjs';
       [text]="true"
       [badge]="getBadgeValue()"
       badgeSeverity="danger"
+      ariaLabel="Notifiche"
       (onClick)="op.toggle($event); loadNotifications()"
     />
 
@@ -74,18 +75,18 @@ import { interval } from 'rxjs';
     }
 
     .notification-item {
-      padding: 0.75rem;
-      border-bottom: 1px solid #e5e7eb;
+      padding: var(--spacing-md);
+      border-bottom: 1px solid var(--surface-border);
       cursor: pointer;
-      transition: background 0.2s;
+      transition: background var(--transition-fast);
     }
 
     .notification-item:hover {
-      background: #f9fafb;
+      background: var(--surface-hover);
     }
 
     .notification-item.unread {
-      background: #eff6ff;
+      background: var(--color-info-bg);
     }
   `]
 })
@@ -141,12 +142,12 @@ export class NotificationBellComponent implements OnInit {
 
   protected getColor(severity: string): string {
     const colors: Record<string, string> = {
-      INFO: '#3b82f6',
-      WARNING: '#f59e0b',
-      ERROR: '#ef4444',
-      SUCCESS: '#10b981',
+      INFO: 'var(--color-info)',
+      WARNING: 'var(--color-warning)',
+      ERROR: 'var(--color-danger)',
+      SUCCESS: 'var(--color-success)',
     };
-    return colors[severity] || '#6b7280';
+    return colors[severity] || 'var(--text-tertiary)';
   }
 
   protected formatDate(date: string | Date): string {

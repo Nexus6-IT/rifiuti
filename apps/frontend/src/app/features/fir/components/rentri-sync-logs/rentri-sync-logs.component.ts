@@ -169,26 +169,26 @@ import { RENTRISyncService, SyncLogEntry, SyncLogsResponse } from '../../service
               @if (log.protocolNumber) {
                 <span class="font-mono text-sm">{{ log.protocolNumber }}</span>
               } @else {
-                <span class="text-400">-</span>
+                <span class="text-tertiary">-</span>
               }
             </td>
             <td>
               @if (log.durationMs) {
                 {{ formatDuration(log.durationMs) }}
               } @else {
-                <span class="text-400">-</span>
+                <span class="text-tertiary">-</span>
               }
             </td>
             <td>
               @if (log.errorMessage) {
                 <span
-                  class="text-sm text-red-500"
+                  class="text-sm sync-error"
                   [pTooltip]="log.errorMessage"
                   tooltipPosition="left">
                   {{ truncateError(log.errorMessage) }}
                 </span>
               } @else {
-                <span class="text-400">-</span>
+                <span class="text-tertiary">-</span>
               }
             </td>
           </tr>
@@ -197,8 +197,8 @@ import { RENTRISyncService, SyncLogEntry, SyncLogsResponse } from '../../service
         <ng-template pTemplate="emptymessage">
           <tr>
             <td [attr.colspan]="firId ? 6 : 7" class="text-center py-4">
-              <i class="pi pi-info-circle text-2xl text-400 mb-2"></i>
-              <p class="text-400 m-0">No sync logs found</p>
+              <i class="pi pi-info-circle text-2xl text-tertiary mb-2"></i>
+              <p class="text-tertiary m-0">No sync logs found</p>
             </td>
           </tr>
         </ng-template>
@@ -207,13 +207,15 @@ import { RENTRISyncService, SyncLogEntry, SyncLogsResponse } from '../../service
   `,
   styles: [`
     :host ::ng-deep .p-datatable .p-datatable-thead > tr > th {
-      font-weight: 600;
-      background-color: var(--surface-50);
+      font-weight: var(--font-weight-semibold);
+      background-color: var(--color-gray-50);
     }
 
     .font-mono {
-      font-family: 'Courier New', monospace;
+      font-family: var(--font-family-mono);
     }
+
+    .sync-error { color: var(--color-danger); }
   `],
 })
 export class RENTRISyncLogsComponent implements OnInit {

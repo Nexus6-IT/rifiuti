@@ -45,7 +45,7 @@ export interface SpidReauthRequiredError {
     >
       <ng-template pTemplate="header">
         <div class="dialog-header">
-          <i class="pi pi-shield" style="font-size: 1.5rem; color: var(--primary-color); margin-right: 0.5rem;"></i>
+          <i class="pi pi-shield" style="font-size: 1.5rem; color: var(--brand-primary); margin-right: 0.5rem;" aria-hidden="true"></i>
           <span>Richiesta Nuova Autenticazione</span>
         </div>
       </ng-template>
@@ -99,7 +99,6 @@ export interface SpidReauthRequiredError {
             type="button"
             label="Riautentica con SPID"
             icon="pi pi-shield"
-            class="p-button-primary"
             (click)="onReauthenticate()"
             [loading]="isReauthenticating"
             [disabled]="isReauthenticating"
@@ -113,74 +112,79 @@ export interface SpidReauthRequiredError {
       .dialog-header {
         display: flex;
         align-items: center;
-        font-size: 1.25rem;
-        font-weight: 600;
+        font-family: var(--font-display);
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
       }
 
       .reauth-content {
-        padding: 1rem 0;
+        padding: var(--spacing-base) 0;
 
         .operation-details {
-          margin: 1.5rem 0;
-          padding: 1rem;
-          background-color: var(--surface-50);
-          border-radius: 4px;
-          border-left: 4px solid var(--primary-color);
+          margin: var(--spacing-lg) 0;
+          padding: var(--spacing-base);
+          background-color: var(--surface-hover);
+          border-radius: var(--radius-md);
+          border-left: 4px solid var(--brand-primary);
 
           h4 {
-            margin: 0 0 0.75rem 0;
-            font-size: 1rem;
-            color: var(--text-color);
+            margin: 0 0 var(--spacing-sm) 0;
+            font-size: var(--font-size-base);
+            color: var(--text-primary);
           }
 
           p {
-            margin: 0.5rem 0;
-            font-size: 0.9rem;
+            margin: var(--spacing-sm) 0;
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
 
             strong {
-              color: var(--text-color);
+              color: var(--text-primary);
             }
           }
         }
 
         .security-notice {
-          margin: 1rem 0;
-          padding: 0.75rem;
-          background-color: var(--yellow-50);
-          border: 1px solid var(--yellow-300);
-          border-radius: 4px;
+          margin: var(--spacing-base) 0;
+          padding: var(--spacing-md);
+          background-color: var(--color-warning-bg);
+          border: 1px solid var(--color-warning);
+          border-radius: var(--radius-md);
           display: flex;
           align-items: flex-start;
 
           i {
-            color: var(--yellow-700);
+            color: var(--color-warning);
             margin-right: 0.5rem;
             margin-top: 0.2rem;
           }
 
           p {
             margin: 0;
-            font-size: 0.9rem;
-            color: var(--yellow-900);
+            font-size: var(--font-size-sm);
+            color: var(--color-warning);
           }
         }
 
         .action-explanation {
-          margin: 1.5rem 0;
+          margin: var(--spacing-lg) 0;
 
           h4 {
-            margin: 0 0 0.75rem 0;
-            font-size: 1rem;
+            margin: 0 0 var(--spacing-sm) 0;
+            font-size: var(--font-size-base);
+            color: var(--text-primary);
           }
 
           ol {
-            margin: 0.5rem 0;
+            margin: var(--spacing-sm) 0;
             padding-left: 1.5rem;
+            color: var(--text-secondary);
 
             li {
-              margin: 0.5rem 0;
-              font-size: 0.9rem;
-              line-height: 1.5;
+              margin: var(--spacing-sm) 0;
+              font-size: var(--font-size-sm);
+              line-height: var(--line-height-normal);
             }
           }
         }
@@ -189,22 +193,16 @@ export interface SpidReauthRequiredError {
       .dialog-footer {
         display: flex;
         justify-content: flex-end;
-        gap: 0.5rem;
+        gap: var(--spacing-sm);
       }
     }
 
-    /* Mobile optimizations (56px touch targets per plan.md) */
+    /* Su mobile i bottoni del footer vanno a piena larghezza, mantenendo l'altezza DS */
     @media (max-width: 768px) {
       :host ::ng-deep .spid-reauth-dialog {
-        .p-button {
-          min-height: 56px;
-          padding: 0.75rem 1.5rem;
-          font-size: 1rem;
-        }
-
         .dialog-footer {
           flex-direction: column-reverse;
-          gap: 0.75rem;
+          gap: var(--spacing-md);
 
           button {
             width: 100%;

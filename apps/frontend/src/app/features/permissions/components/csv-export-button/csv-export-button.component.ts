@@ -39,13 +39,13 @@ import { AuditApiService } from '../../services/audit-api.service';
   `,
   styles: [`
     .export-button {
-      background: var(--green-500);
-      border-color: var(--green-500);
+      background: var(--color-success);
+      border-color: var(--color-success);
     }
 
     .export-button:hover:not(:disabled) {
-      background: var(--green-600);
-      border-color: var(--green-600);
+      background: var(--brand-primary-dark);
+      border-color: var(--brand-primary-dark);
     }
   `],
 })

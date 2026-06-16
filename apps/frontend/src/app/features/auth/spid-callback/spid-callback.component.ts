@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { MessageModule } from 'primeng/message';
+import { ButtonModule } from 'primeng/button';
 import { AuthService } from '../../../core/services/auth.service';
 
 /**
@@ -14,44 +15,47 @@ import { AuthService } from '../../../core/services/auth.service';
 @Component({
   selector: 'app-spid-callback',
   standalone: true,
-  imports: [CommonModule, ProgressSpinnerModule, MessageModule],
+  imports: [CommonModule, ProgressSpinnerModule, MessageModule, ButtonModule],
   template: `
     <div class="callback-container">
-      @if (processing) {
-        <div class="text-center">
-          <p-progressSpinner
-            styleClass="w-4rem h-4rem"
-            strokeWidth="4"
-            animationDuration="1s">
-          </p-progressSpinner>
-          <h2 class="mt-4 text-2xl font-semibold">Autenticazione in corso...</h2>
-          <p class="mt-2 text-color-secondary">
-            Stiamo completando l'accesso con SPID
-          </p>
-        </div>
-      }
+      <div class="callback-card">
+        @if (processing) {
+          <div class="text-center">
+            <p-progressSpinner
+              styleClass="w-4rem h-4rem"
+              strokeWidth="4"
+              animationDuration="1s">
+            </p-progressSpinner>
+            <h2 class="callback-title mt-4">Autenticazione in corso...</h2>
+            <p class="callback-hint mt-2">
+              Stiamo completando l'accesso con SPID
+            </p>
+          </div>
+        }
 
-      @if (error) {
-        <div class="text-center max-w-md">
-          <p-message
-            severity="error"
-            [text]="errorMessage"
-            styleClass="w-full mb-4">
-          </p-message>
+        @if (error) {
+          <div class="text-center">
+            <p-message
+              severity="error"
+              [text]="errorMessage"
+              styleClass="w-full mb-4">
+            </p-message>
 
-          <h2 class="text-2xl font-semibold mb-2">Autenticazione fallita</h2>
-          <p class="text-color-secondary mb-4">
-            Si è verificato un errore durante l'autenticazione SPID.
-          </p>
+            <h2 class="callback-title mb-2">Autenticazione fallita</h2>
+            <p class="callback-hint mb-4">
+              Si è verificato un errore durante l'autenticazione SPID.
+            </p>
 
-          <button
-            class="p-button p-component"
-            (click)="returnToLogin()">
-            <span class="pi pi-arrow-left mr-2"></span>
-            Torna al login
-          </button>
-        </div>
-      }
+            <p-button
+              label="Torna al login"
+              icon="pi pi-arrow-left"
+              [outlined]="true"
+              (onClick)="returnToLogin()"
+              ariaLabel="Torna alla pagina di login">
+            </p-button>
+          </div>
+        }
+      </div>
     </div>
   `,
   styles: [
@@ -61,33 +65,32 @@ import { AuthService } from '../../../core/services/auth.service';
         display: flex;
         justify-content: center;
         align-items: center;
-        padding: 2rem;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: var(--spacing-lg);
+        background:
+          radial-gradient(120% 90% at 50% 0%, var(--brand-primary-50) 0%, transparent 60%),
+          var(--surface-ground);
       }
-
-      :host ::ng-deep .p-progress-spinner-circle {
-        stroke: white;
+      .callback-card {
+        width: 100%;
+        max-width: 420px;
+        padding: clamp(2rem, 5vw, 3rem);
+        background: var(--surface-card);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-md);
       }
-
-      h2,
-      p {
-        color: white;
+      .callback-title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-xl);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+        margin: 0;
       }
-
-      button {
-        background: white;
-        color: #667eea;
-        border: none;
-        padding: 0.75rem 1.5rem;
-        border-radius: 4px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s;
-      }
-
-      button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      .callback-hint {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        margin: 0;
+        line-height: var(--line-height-normal);
       }
     `,
   ],
