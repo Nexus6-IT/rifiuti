@@ -132,6 +132,7 @@ model User {
 }
 
 enum UserRole {
+  SUPER_ADMIN
   ADMIN
   OPERATOR
   VIEWER

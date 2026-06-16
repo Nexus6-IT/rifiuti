@@ -19,7 +19,20 @@ export class TenantIsolationGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    if (!user || !user.tenantId) {
+    if (!user) {
+      throw new ForbiddenException('Tenant context required');
+    }
+
+    // Il SUPER_ADMIN è un amministratore di piattaforma cross-tenant: può
+    // operare senza un tenant associato e su qualsiasi tenant (eventualmente
+    // selezionato via header `X-Tenant-ID`). Determinato SOLO dal ruolo
+    // verificato nel token, mai dall'header → nessun bypass per utenti normali.
+    if (user.role === 'SUPER_ADMIN') {
+      return true;
+    }
+
+    // Utente normale: deve avere un tenant associato.
+    if (!user.tenantId) {
       throw new ForbiddenException('Tenant context required');
     }
 

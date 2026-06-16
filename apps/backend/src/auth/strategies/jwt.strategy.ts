@@ -46,6 +46,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     }
 
     // 2. Get tenant and role (User has direct tenantId and role)
+    // Un SUPER_ADMIN (amministratore di piattaforma) può non avere un tenant
+    // proprio: in tal caso `tenantId` resta vuoto e il TenantContextMiddleware
+    // lo gestisce come operatività cross-tenant (o sul tenant scelto via
+    // header `X-Tenant-ID`).
     const tenantId = user.tenantId || ''
     const role = user.role || 'VIEWER'
 
@@ -54,6 +58,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // point (cache-first + DB fallback); resolving here keeps `user.permissions`
     // accurate for any consumer that reads it off the request (e.g. the rate
     // limiter's admin bypass) instead of an empty placeholder.
+    // Senza un tenant (es. SUPER_ADMIN cross-tenant) non si risolvono permessi
+    // tenant-scoped: il flusso prosegue con un array vuoto, senza rompersi.
     const permissions = tenantId
       ? await this.resolvePermissions(user.id, tenantId)
       : []

@@ -31,6 +31,9 @@ import { AnomalyModule } from './application/anomaly/anomaly.module'
 import { ContractModule } from './application/contracts/contract.module'
 import { ReferenceDataModule } from './application/reference-data/reference-data.module'
 import { RentriModule } from './infrastructure/rentri/rentri.module'
+// Amministrazione piattaforma (SUPER_ADMIN): tenant + utenti (provisioning Keycloak)
+import { AdminTenantModule } from './application/admin/admin-tenant.module'
+import { AdminUserModule } from './application/admin/admin-user.module'
 
 @Module({
   imports: [
@@ -101,6 +104,10 @@ import { RentriModule } from './infrastructure/rentri/rentri.module'
 
     // IAM / RBAC + ABAC (PermissionGuard opt-in via @RequirePermission)
     PermissionsModule,
+
+    // Amministrazione piattaforma (SUPER_ADMIN)
+    AdminTenantModule,
+    AdminUserModule,
   ],
   controllers: [HealthController],
   providers: [

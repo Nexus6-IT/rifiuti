@@ -80,6 +80,10 @@ services:
       # La SpidStrategy (passport-saml) legge le variabili SPID_*.
       KEYCLOAK_URL: ${KEYCLOAK_URL:-https://auth.ignicraft.com}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-ignicraft}
+      # Service account 'rifiuti-admin' (client_credentials) per il provisioning
+      # utenti su Keycloak (KeycloakUserAdapter).
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-rifiuti-admin}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
       SPID_IDP_ENTRY_POINT: ${SPID_IDP_ENTRY_POINT:-https://auth.ignicraft.com/realms/ignicraft/protocol/saml}
       SPID_ENTITY_ID: ${SPID_ENTITY_ID:-rifiuti}
       SPID_CALLBACK_URL: ${SPID_CALLBACK_URL:-https://rifiuti.ignicraft.com/api/v1/auth/spid/callback}

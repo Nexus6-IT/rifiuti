@@ -4,10 +4,24 @@ import { AsyncLocalStorage } from 'async_hooks';
  * Dati legati al contesto della richiesta corrente.
  */
 export interface TenantStore {
-  /** Tenant (società) su cui la richiesta sta operando. */
-  tenantId: string;
+  /**
+   * Tenant (società) su cui la richiesta sta operando.
+   *
+   * Per un utente normale è il tenant del suo JWT (sempre valorizzato).
+   * Per un SUPER_ADMIN può essere:
+   *   · una stringa vuota / undefined → opera cross-tenant (nessun vincolo);
+   *   · il tenant indicato da `X-Tenant-ID` → opera "impersonando" quel tenant.
+   */
+  tenantId?: string;
   /** Utente autenticato (opzionale: assente nei job di sistema). */
   userId?: string;
+  /**
+   * `true` quando l'utente autenticato ha ruolo SUPER_ADMIN (amministratore di
+   * piattaforma cross-tenant). Determinato SOLO dal ruolo verificato nel JWT,
+   * mai inferito da header. Quando `true`, l'estensione RLS NON applica il
+   * filtro per tenant — a meno che `tenantId` (da `X-Tenant-ID`) sia presente.
+   */
+  isSuperAdmin?: boolean;
 }
 
 /**
@@ -63,6 +77,16 @@ export class TenantContext {
       );
     }
     return tenantId;
+  }
+
+  /**
+   * `true` se la richiesta corrente è eseguita da un SUPER_ADMIN (amministratore
+   * di piattaforma). Letto SOLO dallo store popolato dal middleware a partire dal
+   * ruolo verificato nel JWT — mai da un header. Fuori da un contesto di richiesta
+   * (job/seed) ritorna `false` (fail-closed: nessun bypass implicito).
+   */
+  static isSuperAdmin(): boolean {
+    return TenantContext.als.getStore()?.isSuperAdmin === true;
   }
 
   /** Utente corrente, oppure `null`. */

@@ -74,6 +74,16 @@ export const routes: Routes = [
         loadComponent: () => import('./features/reference-data/reference-data.component').then(m => m.ReferenceDataComponent)
       },
       {
+        // Amministrazione piattaforma — gestione tenant (SUPER_ADMIN; enforcement lato backend)
+        path: 'admin/tenants',
+        loadComponent: () => import('./features/admin/tenants/tenant-admin.component').then(m => m.TenantAdminComponent)
+      },
+      {
+        // Amministrazione — gestione utenti (SUPER_ADMIN / ADMIN; enforcement lato backend)
+        path: 'admin/utenti',
+        loadComponent: () => import('./features/admin/users/user-admin.component').then(m => m.UserAdminComponent)
+      },
+      {
         // Gestione certificato RENTRI (solo admin — enforcement lato componente + backend)
         path: 'rentri/certificato',
         loadComponent: () => import('./features/rentri/rentri-credential.component').then(m => m.RentriCredentialComponent)

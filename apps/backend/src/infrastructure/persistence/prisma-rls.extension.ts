@@ -156,6 +156,18 @@ interface AllOperationsArgs {
  */
 export function applyTenantScope({ model, operation, args, query }: AllOperationsArgs): unknown {
   const tenantId = TenantContext.getTenantId()
+
+  // SUPER_ADMIN cross-tenant: se è un super admin e NON ha indicato un tenant
+  // target (`X-Tenant-ID` assente → nessun tenantId nel contesto), bypassa la
+  // RLS row-level e lascia la query invariata (accesso a tutti i tenant).
+  // Se invece il super admin ha indicato un tenant target, `tenantId` è quel
+  // valore e si applica la normale iniezione qui sotto (opera "dentro" quel
+  // tenant). Questo bypass si attiva SOLO per super admin verificati dal token,
+  // mai per utenti normali (che hanno sempre un tenantId nel contesto).
+  if (TenantContext.isSuperAdmin() && !tenantId) {
+    return query(args)
+  }
+
   if (!tenantId) {
     return query(args)
   }

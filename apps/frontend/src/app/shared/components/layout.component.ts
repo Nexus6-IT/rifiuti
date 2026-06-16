@@ -1,13 +1,23 @@
-import { Component, OnInit, computed, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs/operators';
 import { AvatarModule } from 'primeng/avatar';
 import { TooltipModule } from 'primeng/tooltip';
 import { SidebarModule } from 'primeng/sidebar';
+import { DropdownModule } from 'primeng/dropdown';
 import { MenuItem } from 'primeng/api';
 import { AuthService } from '../../core/services/auth.service';
+import { AdminTenantContextService } from '../../core/services/admin-tenant-context.service';
 import { NotificationBellComponent } from '../../core/layout/notification-bell/notification-bell.component';
+import { environment } from '../../../environments/environment';
+
+interface AdminTenant {
+  id: string;
+  ragioneSociale: string;
+}
 
 @Component({
   selector: 'app-layout',
@@ -17,9 +27,11 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
+    FormsModule,
     AvatarModule,
     TooltipModule,
     SidebarModule,
+    DropdownModule,
     NotificationBellComponent
   ],
   template: `
@@ -199,23 +211,80 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
           </a>
         </li>
       </ul>
+
+      <!-- ===== Amministrazione (gated per ruolo) ===== -->
+      @if (canSeeAdminSection()) {
+        <p class="nav-group__title" id="nav-amministrazione">Amministrazione</p>
+        <ul class="nav-group" role="list" aria-labelledby="nav-amministrazione">
+          @if (isSuperAdmin()) {
+            <li>
+              <a
+                routerLink="/admin/tenants"
+                routerLinkActive="nav-item--active"
+                class="nav-item"
+                [attr.aria-current]="isActiveRoute('/admin/tenants') ? 'page' : null"
+                (click)="mobile ? closeMobileSidebar() : null"
+              >
+                <i class="nav-item__icon pi pi-building" aria-hidden="true"></i>
+                <span class="nav-item__label">Tenant</span>
+              </a>
+            </li>
+          }
+          <li>
+            <a
+              routerLink="/admin/utenti"
+              routerLinkActive="nav-item--active"
+              class="nav-item"
+              [attr.aria-current]="isActiveRoute('/admin/utenti') ? 'page' : null"
+              (click)="mobile ? closeMobileSidebar() : null"
+            >
+              <i class="nav-item__icon pi pi-users" aria-hidden="true"></i>
+              <span class="nav-item__label">Utenti</span>
+            </a>
+          </li>
+        </ul>
+      }
     </ng-template>
 
-    <!-- ===== Selettore Azienda / Unità locale (placeholder) ===== -->
+    <!-- ===== Selettore Azienda / Unità locale ===== -->
     <ng-template #orgSwitcher>
-      <button
-        type="button"
-        class="org-switcher"
-        aria-label="Cambia azienda o unità locale"
-        aria-haspopup="menu"
-      >
-        <span class="org-switcher__avatar" aria-hidden="true">EC</span>
-        <span class="org-switcher__text">
-          <span class="org-switcher__company">Ecotecnica S.r.l.</span>
-          <span class="org-switcher__unit">UL Sesto &middot; MI</span>
-        </span>
-        <i class="org-switcher__chevron pi pi-chevron-down" aria-hidden="true"></i>
-      </button>
+      @if (isSuperAdmin()) {
+        <!-- Tenant switcher reale per SUPER_ADMIN -->
+        <div class="tenant-switcher" role="group" aria-label="Selettore tenant (super amministratore)">
+          <label class="tenant-switcher__label" for="tenant-switcher-dropdown">Tenant attivo</label>
+          <p-dropdown
+            inputId="tenant-switcher-dropdown"
+            [options]="adminTenants()"
+            [ngModel]="selectedTenantId()"
+            (onChange)="onTenantChange($event.value)"
+            optionLabel="ragioneSociale"
+            optionValue="id"
+            [filter]="true"
+            filterBy="ragioneSociale"
+            placeholder="Seleziona tenant…"
+            [showClear]="hasTenantSelection()"
+            appendTo="body"
+            styleClass="tenant-switcher__dropdown"
+            [ariaLabel]="'Cambia tenant corrente'"
+            (onClear)="onTenantClear()"
+          ></p-dropdown>
+        </div>
+      } @else {
+        <!-- Placeholder azienda / unità locale per utenti standard -->
+        <button
+          type="button"
+          class="org-switcher"
+          aria-label="Cambia azienda o unità locale"
+          aria-haspopup="menu"
+        >
+          <span class="org-switcher__avatar" aria-hidden="true">EC</span>
+          <span class="org-switcher__text">
+            <span class="org-switcher__company">Ecotecnica S.r.l.</span>
+            <span class="org-switcher__unit">UL Sesto &middot; MI</span>
+          </span>
+          <i class="org-switcher__chevron pi pi-chevron-down" aria-hidden="true"></i>
+        </button>
+      }
     </ng-template>
   `,
   styles: [`
@@ -332,6 +401,49 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .org-switcher__chevron { font-size: 0.75rem; color: var(--sidebar-ink-muted); flex-shrink: 0; }
+
+    /* ===== Tenant switcher (SUPER_ADMIN) — coerente con sidebar scura ===== */
+    .tenant-switcher {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-xs);
+      margin: var(--spacing-md) var(--spacing-md) 0;
+    }
+    .tenant-switcher__label {
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-bold);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--sidebar-ink-muted);
+    }
+    /* Override PrimeNG dropdown per renderlo leggibile sul fondo scuro */
+    :host ::ng-deep .tenant-switcher__dropdown.p-dropdown {
+      width: 100%;
+      background: var(--sidebar-bg-2);
+      border: 1px solid var(--sidebar-border);
+      border-radius: var(--radius-md);
+    }
+    :host ::ng-deep .tenant-switcher__dropdown.p-dropdown:not(.p-disabled):hover {
+      border-color: #334155;
+      background: #273449;
+    }
+    :host ::ng-deep .tenant-switcher__dropdown.p-dropdown:not(.p-disabled).p-focus {
+      border-color: var(--sidebar-active);
+      box-shadow: none;
+    }
+    :host ::ng-deep .tenant-switcher__dropdown .p-dropdown-label {
+      color: #f8fafc;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+    }
+    :host ::ng-deep .tenant-switcher__dropdown .p-dropdown-label.p-placeholder {
+      color: var(--sidebar-ink-muted);
+      font-weight: var(--font-weight-medium);
+    }
+    :host ::ng-deep .tenant-switcher__dropdown .p-dropdown-trigger,
+    :host ::ng-deep .tenant-switcher__dropdown .p-dropdown-clear-icon {
+      color: var(--sidebar-ink-muted);
+    }
 
     /* ===== Navigazione ===== */
     .sidebar__nav {
@@ -522,6 +634,7 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
     :host ::ng-deep .mobile-drawer .p-sidebar-close:hover { background: var(--sidebar-bg-2); color: #f8fafc; }
     /* Il selettore org nel drawer non ha margini laterali doppi */
     :host ::ng-deep .mobile-drawer .org-switcher { width: calc(100% - (var(--spacing-md) * 2)); margin-top: 0; }
+    :host ::ng-deep .mobile-drawer .tenant-switcher { margin-top: 0; }
 
     .drawer__logout {
       display: flex; align-items: center; justify-content: center;
@@ -541,10 +654,29 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
   `]
 })
 export class LayoutComponent implements OnInit {
+  private readonly http = inject(HttpClient);
+  private readonly tenantContext = inject(AdminTenantContextService);
+
   menuItems: MenuItem[] = [];
 
   // Mobile sidebar visibility signal
   mobileSidebarVisible = signal(false);
+
+  /** Tenant disponibili (caricati da GET /admin/tenants per il super admin). */
+  readonly adminTenants = signal<AdminTenant[]>([]);
+
+  /** Tenant attualmente selezionato dal super admin. */
+  readonly selectedTenantId = this.tenantContext.selectedTenantId;
+  readonly hasTenantSelection = this.tenantContext.hasSelection;
+
+  /** True se l'utente loggato è SUPER_ADMIN. */
+  readonly isSuperAdmin = computed(() => this.authService.currentUser()?.role === 'SUPER_ADMIN');
+
+  /** La sezione Amministrazione è visibile a SUPER_ADMIN e ADMIN (voce Utenti). */
+  readonly canSeeAdminSection = computed(() => {
+    const role = this.authService.currentUser()?.role;
+    return role === 'SUPER_ADMIN' || role === 'ADMIN';
+  });
 
   /** Proxy per il two-way binding di p-sidebar (che richiede una proprietà, non una signal). */
   get mobileSidebarVisibleProxy(): boolean {
@@ -618,11 +750,49 @@ export class LayoutComponent implements OnInit {
     this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
       .subscribe(() => this.updateTitle());
+
+    // Solo il super admin può vedere/scegliere i tenant: carico la lista.
+    if (this.isSuperAdmin()) {
+      this.loadAdminTenants();
+    }
+  }
+
+  /** Carica l'elenco dei tenant (endpoint riservato al SUPER_ADMIN). */
+  private loadAdminTenants(): void {
+    this.http.get<AdminTenant[]>(`${environment.apiUrl}/admin/tenants`).subscribe({
+      next: (tenants) => this.adminTenants.set(tenants ?? []),
+      error: () => this.adminTenants.set([]),
+    });
+  }
+
+  /**
+   * Selezione di un tenant da parte del super admin: persiste il contesto e
+   * ricarica l'app così che tutte le richieste partano con il nuovo
+   * `X-Tenant-ID`. Il reload è una scelta volutamente semplice.
+   */
+  onTenantChange(tenantId: string | null): void {
+    if (!tenantId) {
+      this.onTenantClear();
+      return;
+    }
+    const tenant = this.adminTenants().find((t) => t.id === tenantId);
+    this.tenantContext.set(tenantId, tenant?.ragioneSociale ?? tenantId);
+    window.location.reload();
+  }
+
+  /** Azzeramento del contesto tenant (ritorno al contesto globale). */
+  onTenantClear(): void {
+    this.tenantContext.clear();
+    window.location.reload();
   }
 
   /** Aggiorna il titolo di contesto in base alla voce di menu corrispondente alla rotta. */
   private updateTitle(): void {
-    const all = [...this.navMain, ...this.navAnagrafiche, ...this.navImpostazioni];
+    const navAmministrazione = [
+      { label: 'Tenant', route: '/admin/tenants' },
+      { label: 'Utenti', route: '/admin/utenti' },
+    ];
+    const all = [...this.navMain, ...this.navAnagrafiche, ...this.navImpostazioni, ...navAmministrazione];
     const match = all.find(item => this.isActiveRoute(item.route));
     this.currentTitle.set(match?.label ?? 'WasteFlow');
   }

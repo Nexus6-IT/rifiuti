@@ -349,6 +349,53 @@ export class KeycloakUserAdapter {
   }
 
   /**
+   * Set (reset) a user's password in Keycloak.
+   *
+   * Calls `PUT /admin/realms/{realm}/users/{id}/reset-password`. When
+   * `temporary` is true (default) Keycloak forces the user to change the
+   * password on first login (UPDATE_PASSWORD required action).
+   */
+  async setPassword(
+    keycloakUserId: string,
+    password: string,
+    temporary = true,
+  ): Promise<void> {
+    this.logger.info('Setting user password in Keycloak', {
+      keycloakUserId,
+      temporary,
+    });
+
+    try {
+      const token = await this.getAccessToken();
+
+      await firstValueFrom(
+        this.httpService.put(
+          `${this.keycloakUrl}/admin/realms/${this.realm}/users/${keycloakUserId}/reset-password`,
+          {
+            type: 'password',
+            value: password,
+            temporary,
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        )
+      );
+
+      this.logger.info('User password set in Keycloak', { keycloakUserId });
+    } catch (error: any) {
+      this.logger.error('Failed to set user password in Keycloak', error, {
+        keycloakUserId,
+      });
+
+      throw error;
+    }
+  }
+
+  /**
    * Disable user in Keycloak
    */
   async disableUser(keycloakUserId: string): Promise<void> {

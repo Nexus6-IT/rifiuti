@@ -39,17 +39,60 @@ export class TenantContextMiddleware implements NestMiddleware {
       throw new UnauthorizedException('User not authenticated');
     }
 
-    if (!user.tenantId) {
-      throw new UnauthorizedException('Tenant ID not found in user token');
+    // Il SUPER_ADMIN è un amministratore di piattaforma: lo ricaviamo SOLO dal
+    // ruolo verificato nel token, mai da un header (security: il bypass tenant
+    // non deve essere inferibile da utenti normali).
+    const isSuperAdmin = user.role === 'SUPER_ADMIN';
+
+    // Un SUPER_ADMIN può scegliere di operare su uno specifico tenant passando
+    // l'header `X-Tenant-ID`. Per gli utenti normali l'header viene IGNORATO:
+    // il tenant è sempre e solo quello del loro JWT (fail-closed).
+    const headerTenantId = this.readTenantHeader(req);
+
+    let tenantId: string | undefined;
+
+    if (isSuperAdmin) {
+      // Super admin: usa il tenant target se indicato, altrimenti opera
+      // cross-tenant (nessun vincolo di tenant → RLS bypassata a valle).
+      tenantId = headerTenantId ?? user.tenantId ?? undefined;
+      // Un tenantId vuoto ('') va normalizzato a undefined per evitare di
+      // attivare il filtro RLS con un valore non valido.
+      if (!tenantId) {
+        tenantId = undefined;
+      }
+    } else {
+      // Utente normale: deve avere un tenant nel token (invariato).
+      if (!user.tenantId) {
+        throw new UnauthorizedException('Tenant ID not found in user token');
+      }
+      tenantId = user.tenantId;
     }
 
-    // Attach tenant ID to request for downstream use
-    (req as any).tenantId = user.tenantId;
+    // Attach tenant ID to request for downstream use (undefined per super admin
+    // cross-tenant).
+    (req as any).tenantId = tenantId;
+    (req as any).isSuperAdmin = isSuperAdmin;
 
     // Esegue il resto della richiesta DENTRO il TenantContext (AsyncLocalStorage):
     // così i repository risolvono il tenant corrente dal contesto, senza il
     // fallback al "primo tenant" che causava il cross-tenant data leak.
-    TenantContext.run({ tenantId: user.tenantId, userId: user.userId }, () => next());
+    TenantContext.run(
+      { tenantId, userId: user.id ?? user.userId, isSuperAdmin },
+      () => next(),
+    );
+  }
+
+  /**
+   * Legge l'header `X-Tenant-ID` (case-insensitive) come scelta del tenant
+   * target per un SUPER_ADMIN. Ritorna `undefined` se assente o vuoto.
+   * Express normalizza i nomi degli header in minuscolo; gestiamo anche il caso
+   * in cui arrivi come array (header ripetuto) prendendo il primo valore.
+   */
+  private readTenantHeader(req: Request): string | undefined {
+    const raw = req.headers['x-tenant-id'];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    return trimmed.length > 0 ? trimmed : undefined;
   }
 }
 
