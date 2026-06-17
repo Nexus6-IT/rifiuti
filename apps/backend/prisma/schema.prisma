@@ -63,6 +63,10 @@ model Tenant {
   // derivano dal piano (subscriptionTier); se valorizzato e' un override admin.
   featureFlags Json? @map("feature_flags")
 
+  // Admin proprietario (chi ha creato l'azienda in self-service); null se creata
+  // dal super admin. Usato per la quota aziende per-admin e per la lista "le mie aziende".
+  ownerUserId String? @map("owner_user_id") @db.Uuid
+
   // Relationships
   users            User[]
   firs             FIR[]
@@ -112,6 +116,9 @@ model User {
   phone      String? @db.VarChar(20)
 
   role UserRole @default(OPERATOR)
+
+  // Quota aziende creabili in autonomia da questo admin (decisa dal super admin).
+  companyLimit Int @default(1) @map("company_limit")
 
   notificationPreferences Json? @map("notification_preferences")
 

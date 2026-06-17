@@ -240,7 +240,7 @@ interface UserTenant {
       @if (canSeeAdminSection()) {
         <p class="nav-group__title" id="nav-amministrazione">Amministrazione</p>
         <ul class="nav-group" role="list" aria-labelledby="nav-amministrazione">
-          @if (isSuperAdmin()) {
+          @if (canSeeTenants()) {
             <li>
               <a
                 routerLink="/admin/tenants"
@@ -250,7 +250,7 @@ interface UserTenant {
                 (click)="mobile ? closeMobileSidebar() : null"
               >
                 <i class="nav-item__icon pi pi-building" aria-hidden="true"></i>
-                <span class="nav-item__label">Tenant</span>
+                <span class="nav-item__label">{{ tenantsMenuLabel() }}</span>
               </a>
             </li>
           }
@@ -723,6 +723,21 @@ export class LayoutComponent implements OnInit {
     return role === 'SUPER_ADMIN' || role === 'ADMIN';
   });
 
+  /**
+   * La voce "aziende/tenant" è visibile sia al SUPER_ADMIN (gestione tenant
+   * della piattaforma) sia all'ADMIN (gestione self-service delle proprie
+   * aziende entro la quota assegnata).
+   */
+  readonly canSeeTenants = computed(() => {
+    const role = this.authService.currentUser()?.role;
+    return role === 'SUPER_ADMIN' || role === 'ADMIN';
+  });
+
+  /** Etichetta dinamica della voce: "Tenant" per il super admin, "Le mie aziende" per l'admin. */
+  readonly tenantsMenuLabel = computed(() =>
+    this.isSuperAdmin() ? 'Tenant' : 'Le mie aziende',
+  );
+
   /** Proxy per il two-way binding di p-sidebar (che richiede una proprietà, non una signal). */
   get mobileSidebarVisibleProxy(): boolean {
     return this.mobileSidebarVisible();
@@ -907,7 +922,7 @@ export class LayoutComponent implements OnInit {
   /** Aggiorna il titolo di contesto in base alla voce di menu corrispondente alla rotta. */
   private updateTitle(): void {
     const navAmministrazione = [
-      { label: 'Tenant', route: '/admin/tenants' },
+      { label: this.tenantsMenuLabel(), route: '/admin/tenants' },
       { label: 'Utenti', route: '/admin/utenti' },
     ];
     const all = [...this.navMain, ...this.navAnagrafiche, ...this.navImpostazioni, ...navAmministrazione];

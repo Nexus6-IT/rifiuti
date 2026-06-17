@@ -10,6 +10,7 @@ import {
   IsEnum,
   IsArray,
   IsIn,
+  IsUUID,
 } from 'class-validator';
 import { SubscriptionTier, SubscriptionStatus } from '@prisma/client';
 import { FEATURE_KEYS } from '../../../application/admin/feature-catalog';
@@ -134,4 +135,13 @@ export class CreateTenantDto {
     message: `featureFlags ammette solo: ${FEATURE_KEYS.join(', ')}`,
   })
   featureFlags?: string[];
+
+  /**
+   * Admin proprietario dell'azienda (chi potrà gestirla/switchare).
+   * Usato SOLO dal SUPER_ADMIN per creare un'azienda per conto di un admin.
+   * Per gli ADMIN in self-service viene ignorato (forzato a se stessi).
+   */
+  @IsOptional()
+  @IsUUID()
+  ownerUserId?: string;
 }

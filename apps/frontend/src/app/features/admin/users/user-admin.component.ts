@@ -7,6 +7,7 @@ import { TagModule } from 'primeng/tag';
 import { DialogModule } from 'primeng/dialog';
 import { DropdownModule } from 'primeng/dropdown';
 import { InputTextModule } from 'primeng/inputtext';
+import { InputNumberModule } from 'primeng/inputnumber';
 import { PasswordModule } from 'primeng/password';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { TooltipModule } from 'primeng/tooltip';
@@ -56,6 +57,7 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
     DialogModule,
     DropdownModule,
     InputTextModule,
+    InputNumberModule,
     PasswordModule,
     ConfirmDialogModule,
     TooltipModule,
@@ -137,8 +139,11 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
                 <th scope="col">Email</th>
                 <th scope="col">Codice fiscale</th>
                 <th scope="col">Ruolo</th>
+                @if (isSuperAdmin()) {
+                  <th scope="col">Quota aziende</th>
+                }
                 <th scope="col">Stato</th>
-                <th scope="col" style="width: 140px">Azioni</th>
+                <th scope="col" style="width: 190px">Azioni</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-u>
@@ -149,6 +154,15 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
                 <td>
                   <p-tag [value]="roleLabel(u.role)" [severity]="roleSeverity(u.role)"></p-tag>
                 </td>
+                @if (isSuperAdmin()) {
+                  <td>
+                    <!-- Quota significativa solo per gli ADMIN -->
+                    <span *ngIf="u.role === 'ADMIN'; else noQuota">
+                      {{ u.companyLimit ?? 1 }}
+                    </span>
+                    <ng-template #noQuota><span class="text-tertiary" aria-hidden="true">—</span></ng-template>
+                  </td>
+                }
                 <td>
                   <p-tag
                     [value]="u.enabled === false ? 'Disabilitato' : 'Abilitato'"
@@ -164,6 +178,17 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
                     pTooltip="Cambia ruolo"
                     [ariaLabel]="'Cambia ruolo di ' + u.firstName + ' ' + u.lastName"
                   />
+                  <!-- Imposta quota aziende: solo SUPER_ADMIN, solo per gli ADMIN -->
+                  @if (isSuperAdmin() && u.role === 'ADMIN') {
+                    <p-button
+                      icon="pi pi-building"
+                      [rounded]="true"
+                      [text]="true"
+                      (onClick)="openCompanyLimitDialog(u)"
+                      pTooltip="Imposta quota aziende"
+                      [ariaLabel]="'Imposta quota aziende di ' + u.firstName + ' ' + u.lastName"
+                    />
+                  }
                   <p-button
                     [icon]="u.enabled === false ? 'pi pi-lock-open' : 'pi pi-lock'"
                     [rounded]="true"
@@ -178,7 +203,7 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
             </ng-template>
             <ng-template pTemplate="emptymessage">
               <tr>
-                <td colspan="6">
+                <td [attr.colspan]="isSuperAdmin() ? 7 : 6">
                   <div class="empty-state">
                     <i class="pi pi-users empty-state__icon" aria-hidden="true"></i>
                     <span class="empty-state__title">Nessun utente</span>
@@ -263,6 +288,24 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
             <small *ngIf="showError('tenantId')" class="block mt-1 field-error">Seleziona un tenant.</small>
           </div>
 
+          <!-- Quota aziende: solo SUPER_ADMIN + ruolo ADMIN selezionato -->
+          <div class="field col-12 md:col-6" *ngIf="isSuperAdmin() && selectedRoleIsAdmin()">
+            <label for="u-company-limit" class="block mb-2">Quota aziende *</label>
+            <p-inputNumber
+              inputId="u-company-limit"
+              formControlName="companyLimit"
+              [min]="1"
+              [showButtons]="true"
+              styleClass="w-full"
+              inputStyleClass="w-full"
+              ariaLabel="Numero massimo di aziende creabili dall'amministratore"
+              aria-describedby="u-company-limit-hint"
+            ></p-inputNumber>
+            <small id="u-company-limit-hint" class="block mt-1 text-tertiary">
+              Numero massimo di aziende che questo amministratore potrà creare in autonomia.
+            </small>
+          </div>
+
           <div class="field col-12">
             <label for="u-password" class="block mb-2">Password temporanea</label>
             <p-password
@@ -325,6 +368,42 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
         </ng-template>
       </p-dialog>
 
+      <!-- Dialog: imposta quota aziende (SUPER_ADMIN) -->
+      <p-dialog
+        [(visible)]="displayCompanyLimit"
+        [modal]="true"
+        [style]="{ width: '420px' }"
+        [breakpoints]="{ '576px': '95vw' }"
+        header="Quota aziende"
+      >
+        <div *ngIf="selectedUser() as su">
+          <p class="mb-3">
+            Amministratore <strong>{{ su.firstName }} {{ su.lastName }}</strong>.
+            Imposta il numero massimo di aziende che può creare.
+          </p>
+          <label for="u-company-limit-edit" class="block mb-2">Quota aziende</label>
+          <p-inputNumber
+            inputId="u-company-limit-edit"
+            [(ngModel)]="targetCompanyLimit"
+            [min]="1"
+            [showButtons]="true"
+            styleClass="w-full"
+            inputStyleClass="w-full"
+            ariaLabel="Nuova quota aziende"
+          ></p-inputNumber>
+        </div>
+        <ng-template pTemplate="footer">
+          <p-button label="Annulla" [text]="true" (onClick)="displayCompanyLimit = false" />
+          <p-button
+            label="Salva quota"
+            icon="pi pi-check"
+            [loading]="savingLimit()"
+            [disabled]="targetCompanyLimit === null || targetCompanyLimit < 1"
+            (onClick)="confirmCompanyLimit()"
+          />
+        </ng-template>
+      </p-dialog>
+
       <p-confirmDialog />
     </div>
   `,
@@ -377,13 +456,49 @@ export class UserAdminComponent implements OnInit {
     role: ['OPERATOR' as UserRole, [Validators.required]],
     tenantId: [null as string | null],
     tempPassword: ['', [Validators.minLength(8)]],
+    /** Quota aziende: valorizzata solo dal SUPER_ADMIN per i nuovi ADMIN. */
+    companyLimit: [1 as number | null],
   });
+
+  /** Valore corrente del controllo "role" come signal (per il template). */
+  private readonly roleValue = signal<UserRole | null>(
+    this.createForm.controls.role.value,
+  );
+
+  /** True se il ruolo selezionato nel form di creazione è ADMIN. */
+  readonly selectedRoleIsAdmin = computed(() => this.roleValue() === 'ADMIN');
+
+  // Dialog quota aziende
+  displayCompanyLimit = false;
+  targetCompanyLimit: number | null = 1;
+  readonly savingLimit = signal(false);
 
   ngOnInit(): void {
     if (this.isSuperAdmin()) {
       this.loadTenants();
     }
     this.loadUsers();
+
+    // Tiene allineato il signal del ruolo (guida la visibilità del campo quota)
+    // e gestisce i validatori della quota quando il ruolo passa da/ad ADMIN.
+    this.createForm.controls.role.valueChanges.subscribe((role) => {
+      this.roleValue.set(role);
+      this.syncCompanyLimitValidators();
+    });
+  }
+
+  /**
+   * La quota aziende è obbligatoria (>=1) solo quando il chiamante è SUPER_ADMIN
+   * e il ruolo scelto è ADMIN; altrimenti il campo non è validato.
+   */
+  private syncCompanyLimitValidators(): void {
+    const ctrl = this.createForm.controls.companyLimit;
+    if (this.isSuperAdmin() && this.selectedRoleIsAdmin()) {
+      ctrl.setValidators([Validators.required, Validators.min(1)]);
+    } else {
+      ctrl.clearValidators();
+    }
+    ctrl.updateValueAndValidity({ emitEvent: false });
   }
 
   loadTenants(): void {
@@ -434,7 +549,9 @@ export class UserAdminComponent implements OnInit {
       role: 'OPERATOR',
       tenantId: null,
       tempPassword: '',
+      companyLimit: 1,
     });
+    this.roleValue.set('OPERATOR');
     // Per SUPER_ADMIN il tenant è obbligatorio; per ADMIN lo gestisce il backend.
     const tenantCtrl = this.createForm.get('tenantId');
     if (this.isSuperAdmin()) {
@@ -443,6 +560,7 @@ export class UserAdminComponent implements OnInit {
       tenantCtrl?.clearValidators();
     }
     tenantCtrl?.updateValueAndValidity();
+    this.syncCompanyLimitValidators();
     this.displayCreate = true;
   }
 
@@ -465,6 +583,10 @@ export class UserAdminComponent implements OnInit {
     }
     if (v.tempPassword) {
       dto.tempPassword = v.tempPassword;
+    }
+    // Quota aziende: inviata solo dal SUPER_ADMIN per i nuovi ADMIN.
+    if (this.isSuperAdmin() && dto.role === 'ADMIN' && v.companyLimit != null) {
+      dto.companyLimit = v.companyLimit;
     }
 
     this.saving.set(true);
@@ -504,6 +626,32 @@ export class UserAdminComponent implements OnInit {
       error: () => {
         this.changingRole.set(false);
         this.toast.error('Errore nell\'aggiornamento del ruolo');
+      },
+    });
+  }
+
+  // --- Quota aziende ---
+  openCompanyLimitDialog(u: AdminUser): void {
+    this.selectedUser.set(u);
+    this.targetCompanyLimit = u.companyLimit ?? 1;
+    this.displayCompanyLimit = true;
+  }
+
+  confirmCompanyLimit(): void {
+    const u = this.selectedUser();
+    const limit = this.targetCompanyLimit;
+    if (!u || limit === null || limit < 1) return;
+    this.savingLimit.set(true);
+    this.userService.setCompanyLimit(u.id, limit).subscribe({
+      next: () => {
+        this.savingLimit.set(false);
+        this.displayCompanyLimit = false;
+        this.toast.success('Quota aziende aggiornata');
+        this.loadUsers();
+      },
+      error: () => {
+        this.savingLimit.set(false);
+        this.toast.error('Errore nell\'aggiornamento della quota aziende');
       },
     });
   }

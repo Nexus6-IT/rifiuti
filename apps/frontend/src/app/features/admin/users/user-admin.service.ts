@@ -18,6 +18,12 @@ export interface AdminUser {
   role: UserRole;
   /** Stato abilitazione su Keycloak; può non essere sempre presente. */
   enabled?: boolean;
+  /**
+   * Quota massima di aziende che un ADMIN può creare in self-service.
+   * Significativa solo per gli utenti con ruolo ADMIN; impostabile dal
+   * SUPER_ADMIN. Può non essere presente per ruoli diversi da ADMIN.
+   */
+  companyLimit?: number;
   createdAt: string;
 }
 
@@ -32,6 +38,11 @@ export interface CreateUserDto {
   tenantId?: string;
   /** Password temporanea (min 8); l'utente la cambia al primo accesso. */
   tempPassword?: string;
+  /**
+   * Quota aziende per i nuovi ADMIN (impostabile solo dal SUPER_ADMIN).
+   * Ignorata per ruoli diversi da ADMIN.
+   */
+  companyLimit?: number;
 }
 
 /** Tenant minimale per il selettore (`GET /admin/tenants`). */
@@ -75,6 +86,17 @@ export class UserAdminService {
   /** Abilita/disabilita l'utente (su Keycloak). */
   setStatus(id: string, enabled: boolean): Observable<AdminUser> {
     return this.http.patch<AdminUser>(`${this.API_URL}/users/${id}/status`, { enabled });
+  }
+
+  /**
+   * Imposta la quota aziende di un utente ADMIN (solo SUPER_ADMIN).
+   * `PATCH /admin/users/:id/company-limit` body `{ companyLimit }`.
+   */
+  setCompanyLimit(id: string, companyLimit: number): Observable<AdminUser> {
+    return this.http.patch<AdminUser>(
+      `${this.API_URL}/users/${id}/company-limit`,
+      { companyLimit },
+    );
   }
 
   /** Lista tenant per i selettori (solo SUPER_ADMIN). */

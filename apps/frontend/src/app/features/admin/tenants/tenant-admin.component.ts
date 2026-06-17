@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TableModule } from 'primeng/table';
@@ -14,6 +14,8 @@ import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { ConfirmationService } from 'primeng/api';
 import { ToastService } from '../../../core/services/toast.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { UserAdminService } from '../users/user-admin.service';
 import {
   TenantAdminService,
   Tenant,
@@ -119,31 +121,56 @@ interface TenantFormData {
     <div class="page">
       <header class="page-header">
         <div class="page-header__titles">
-          <h1 class="page-title">Gestione Tenant</h1>
-          <p class="page-subtitle">Amministrazione delle organizzazioni clienti della piattaforma</p>
+          <h1 class="page-title">{{ isSuperAdmin() ? 'Gestione Tenant' : 'Le mie aziende' }}</h1>
+          <p class="page-subtitle">
+            {{ isSuperAdmin()
+              ? 'Amministrazione delle organizzazioni clienti della piattaforma'
+              : 'Crea e gestisci le aziende a te assegnate, entro la quota disponibile' }}
+          </p>
         </div>
         <div class="page-actions">
+          <!-- Badge quota: solo per l'ADMIN, quando la quota è nota -->
+          @if (!isSuperAdmin() && companyLimit() !== null) {
+            <p-tag
+              [value]="'Aziende: ' + ownedCount() + '/' + companyLimit()"
+              [severity]="quotaReached() ? 'danger' : 'info'"
+              [attr.aria-label]="'Aziende utilizzate ' + ownedCount() + ' su ' + companyLimit() + ' disponibili'"
+              styleClass="quota-badge"
+            ></p-tag>
+          }
           <p-button
-            label="Nuovo tenant"
+            [label]="isSuperAdmin() ? 'Nuovo tenant' : 'Nuova azienda'"
             icon="pi pi-plus"
-            (onClick)="openCreateDialog()"
-            ariaLabel="Crea un nuovo tenant"
+            [disabled]="!isSuperAdmin() && quotaReached()"
+            (onClick)="onNewClick()"
+            [pTooltip]="(!isSuperAdmin() && quotaReached()) ? 'Quota aziende raggiunta: contatta l\\'amministratore per aumentarla.' : ''"
+            tooltipPosition="bottom"
+            [ariaLabel]="isSuperAdmin() ? 'Crea un nuovo tenant' : 'Crea una nuova azienda'"
           />
         </div>
       </header>
+
+      <!-- Messaggio quota raggiunta (ADMIN) -->
+      @if (!isSuperAdmin() && quotaReached()) {
+        <p class="quota-hint" role="status">
+          <i class="pi pi-info-circle" aria-hidden="true"></i>
+          Hai raggiunto la quota di aziende disponibili ({{ companyLimit() }}). Per crearne altre,
+          richiedi un aumento della quota all'amministratore della piattaforma.
+        </p>
+      }
 
       <!-- Stato errore -->
       <section *ngIf="error()" class="surface-card" aria-live="polite">
         <div class="empty-state">
           <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
-          <span class="empty-state__title">Impossibile caricare i tenant</span>
+          <span class="empty-state__title">{{ isSuperAdmin() ? 'Impossibile caricare i tenant' : 'Impossibile caricare le aziende' }}</span>
           <p>Si è verificato un errore. Riprova.</p>
           <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadTenants()" />
         </div>
       </section>
 
       <!-- Tabella -->
-      <section *ngIf="!error()" class="surface-card tenant-panel" aria-label="Elenco tenant">
+      <section *ngIf="!error()" class="surface-card tenant-panel" [attr.aria-label]="isSuperAdmin() ? 'Elenco tenant' : 'Elenco aziende'">
         <div class="table-responsive">
           <p-table
             [value]="tenants()"
@@ -160,8 +187,10 @@ interface TenantFormData {
                 <th scope="col">Ragione sociale</th>
                 <th scope="col">Partita IVA</th>
                 <th scope="col">Città / Prov.</th>
-                <th scope="col">Piano</th>
-                <th scope="col">Stato</th>
+                @if (isSuperAdmin()) {
+                  <th scope="col">Piano</th>
+                  <th scope="col">Stato</th>
+                }
                 <th scope="col" style="width: 9rem">Utenti</th>
                 <th scope="col" style="width: 8rem">Azioni</th>
               </tr>
@@ -180,14 +209,16 @@ interface TenantFormData {
                   <span class="cell-label">Città / Prov.</span>
                   {{ t.city }} ({{ t.province }})
                 </td>
-                <td>
-                  <span class="cell-label">Piano</span>
-                  {{ tierLabel(t.subscriptionTier) }}
-                </td>
-                <td>
-                  <span class="cell-label">Stato</span>
-                  <p-tag [value]="statusLabel(t.subscriptionStatus)" [severity]="statusSeverity(t.subscriptionStatus)"></p-tag>
-                </td>
+                @if (isSuperAdmin()) {
+                  <td>
+                    <span class="cell-label">Piano</span>
+                    {{ tierLabel(t.subscriptionTier) }}
+                  </td>
+                  <td>
+                    <span class="cell-label">Stato</span>
+                    <p-tag [value]="statusLabel(t.subscriptionStatus)" [severity]="statusSeverity(t.subscriptionStatus)"></p-tag>
+                  </td>
+                }
                 <td>
                   <span class="cell-label">Utenti</span>
                   {{ t._count?.users ?? 0 }}<span class="text-tertiary"> / {{ t.userLimitTotal ?? '—' }} max</span>
@@ -204,50 +235,63 @@ interface TenantFormData {
                       tooltipPosition="top"
                       [ariaLabel]="'Modifica ' + t.ragioneSociale"
                     />
-                    <p-button
-                      *ngIf="t.subscriptionStatus !== 'SUSPENDED'"
-                      icon="pi pi-ban"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="danger"
-                      (onClick)="confirmSetStatus(t, 'SUSPENDED')"
-                      pTooltip="Sospendi"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Sospendi ' + t.ragioneSociale"
-                    />
-                    <p-button
-                      *ngIf="t.subscriptionStatus === 'SUSPENDED'"
-                      icon="pi pi-check-circle"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="success"
-                      (onClick)="confirmSetStatus(t, 'ACTIVE')"
-                      pTooltip="Riattiva"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Riattiva ' + t.ragioneSociale"
-                    />
+                    <!-- Sospendi/riattiva: azione riservata al SUPER_ADMIN -->
+                    @if (isSuperAdmin()) {
+                      <p-button
+                        *ngIf="t.subscriptionStatus !== 'SUSPENDED'"
+                        icon="pi pi-ban"
+                        [rounded]="true"
+                        [text]="true"
+                        severity="danger"
+                        (onClick)="confirmSetStatus(t, 'SUSPENDED')"
+                        pTooltip="Sospendi"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Sospendi ' + t.ragioneSociale"
+                      />
+                      <p-button
+                        *ngIf="t.subscriptionStatus === 'SUSPENDED'"
+                        icon="pi pi-check-circle"
+                        [rounded]="true"
+                        [text]="true"
+                        severity="success"
+                        (onClick)="confirmSetStatus(t, 'ACTIVE')"
+                        pTooltip="Riattiva"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Riattiva ' + t.ragioneSociale"
+                      />
+                    }
                   </div>
                 </td>
               </tr>
             </ng-template>
             <ng-template pTemplate="emptymessage">
               <tr>
-                <td colspan="7">
+                <td [attr.colspan]="colCount()">
                   <div class="empty-state">
                     <i class="pi pi-building empty-state__icon" aria-hidden="true"></i>
-                    <span class="empty-state__title">Nessun tenant</span>
-                    <p>Crea il primo tenant per iniziare a gestire le organizzazioni clienti.</p>
-                    <p-button label="Nuovo tenant" icon="pi pi-plus" (onClick)="openCreateDialog()" ariaLabel="Crea un nuovo tenant" />
+                    <span class="empty-state__title">{{ isSuperAdmin() ? 'Nessun tenant' : 'Nessuna azienda' }}</span>
+                    <p>
+                      {{ isSuperAdmin()
+                        ? 'Crea il primo tenant per iniziare a gestire le organizzazioni clienti.'
+                        : 'Crea la tua prima azienda per iniziare.' }}
+                    </p>
+                    <p-button
+                      [label]="isSuperAdmin() ? 'Nuovo tenant' : 'Nuova azienda'"
+                      icon="pi pi-plus"
+                      [disabled]="!isSuperAdmin() && quotaReached()"
+                      (onClick)="onNewClick()"
+                      [ariaLabel]="isSuperAdmin() ? 'Crea un nuovo tenant' : 'Crea una nuova azienda'"
+                    />
                   </div>
                 </td>
               </tr>
             </ng-template>
             <ng-template pTemplate="loadingbody">
               <tr>
-                <td colspan="7">
+                <td [attr.colspan]="colCount()">
                   <div class="loading-row">
                     <p-progressSpinner styleClass="loading-spinner" strokeWidth="4" aria-label="Caricamento in corso" />
-                    <span>Caricamento tenant…</span>
+                    <span>{{ isSuperAdmin() ? 'Caricamento tenant…' : 'Caricamento aziende…' }}</span>
                   </div>
                 </td>
               </tr>
@@ -263,7 +307,7 @@ interface TenantFormData {
         [draggable]="false"
         [style]="{ width: '56rem' }"
         [breakpoints]="{ '768px': '95vw' }"
-        [header]="editMode() ? 'Modifica tenant' : 'Nuovo tenant'"
+        [header]="dialogHeader()"
         [dismissableMask]="true"
       >
         <form class="dialog-form" (ngSubmit)="save()">
@@ -344,6 +388,9 @@ interface TenantFormData {
             </div>
           </fieldset>
 
+          <!-- Piano, utenze, stato e feature: configurabili solo dal SUPER_ADMIN.
+               Per l'ADMIN il backend forza piano TRIAL + feature di default. -->
+          @if (isSuperAdmin()) {
           <fieldset class="form-fieldset">
             <legend class="form-legend">Abbonamento</legend>
             <div class="grid formgrid p-fluid">
@@ -418,12 +465,13 @@ interface TenantFormData {
               </div>
             </div>
           </fieldset>
+          }
         </form>
 
         <ng-template pTemplate="footer">
           <p-button label="Annulla" [text]="true" icon="pi pi-times" (onClick)="displayDialog = false" />
           <p-button
-            [label]="editMode() ? 'Salva modifiche' : 'Crea tenant'"
+            [label]="submitLabel()"
             icon="pi pi-check"
             [loading]="saving()"
             (onClick)="save()"
@@ -444,6 +492,22 @@ interface TenantFormData {
 
     .empty-state__icon { font-size: 2.75rem; }
     .empty-state__icon--danger { color: var(--color-danger); }
+
+    /* Allinea badge quota e bottone nella testata */
+    .page-actions { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; }
+    :host ::ng-deep .quota-badge { font-weight: var(--font-weight-semibold); }
+
+    /* Messaggio di quota raggiunta */
+    .quota-hint {
+      display: flex; align-items: center; gap: var(--spacing-sm);
+      margin: 0 0 var(--spacing-base);
+      padding: var(--spacing-sm) var(--spacing-base);
+      border-radius: var(--radius-md);
+      background: var(--surface-hover, rgba(0,0,0,0.03));
+      color: var(--text-secondary);
+      font-size: var(--font-size-sm);
+    }
+    .quota-hint i { color: var(--color-warning, var(--brand-primary)); flex-shrink: 0; }
 
     /* Etichette riga per la vista impilata su mobile (nascoste su desktop) */
     .cell-label {
@@ -495,6 +559,8 @@ interface TenantFormData {
 })
 export class TenantAdminComponent implements OnInit {
   private readonly tenantService = inject(TenantAdminService);
+  private readonly userService = inject(UserAdminService);
+  private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
   private readonly confirmationService = inject(ConfirmationService);
 
@@ -503,6 +569,54 @@ export class TenantAdminComponent implements OnInit {
   readonly error = signal(false);
   readonly saving = signal(false);
   readonly editMode = signal(false);
+
+  /** True se l'utente corrente è SUPER_ADMIN (vista completa). */
+  readonly isSuperAdmin = computed(() => this.auth.currentUser()?.role === 'SUPER_ADMIN');
+
+  /**
+   * Quota aziende dell'ADMIN corrente (max aziende creabili).
+   * `null` = non ancora nota / non disponibile dal backend → in tal caso il
+   * badge non viene mostrato e la creazione non viene bloccata lato client.
+   */
+  readonly companyLimit = signal<number | null>(null);
+
+  /**
+   * Numero di aziende create in self-service dall'admin corrente. Conta solo i
+   * tenant con `ownerUserId` = id dell'utente corrente (esclude il tenant di
+   * appartenenza che il backend include comunque nella lista). Se `ownerUserId`
+   * non è esposto dal backend, ricade sul totale della lista.
+   */
+  readonly ownedCount = computed(() => {
+    const meId = this.auth.currentUser()?.id;
+    const rows = this.tenants();
+    const withOwner = rows.filter((t) => t.ownerUserId != null);
+    if (meId && withOwner.length > 0) {
+      return rows.filter((t) => t.ownerUserId === meId).length;
+    }
+    return rows.length;
+  });
+
+  /** True se l'admin ha raggiunto la quota (count >= limite noto). */
+  readonly quotaReached = computed(() => {
+    const limit = this.companyLimit();
+    if (limit === null) return false;
+    return this.ownedCount() >= limit;
+  });
+
+  /** Numero di colonne della tabella (per i colspan di empty/loading). */
+  readonly colCount = computed(() => (this.isSuperAdmin() ? 7 : 5));
+
+  /** Intestazione del dialog adattata a ruolo e modalità. */
+  readonly dialogHeader = computed(() => {
+    if (this.isSuperAdmin()) return this.editMode() ? 'Modifica tenant' : 'Nuovo tenant';
+    return this.editMode() ? 'Modifica azienda' : 'Nuova azienda';
+  });
+
+  /** Etichetta del bottone di conferma del dialog. */
+  readonly submitLabel = computed(() => {
+    if (this.editMode()) return 'Salva modifiche';
+    return this.isSuperAdmin() ? 'Crea tenant' : 'Crea azienda';
+  });
 
   displayDialog = false;
   selectedTenant: Tenant | null = null;
@@ -521,6 +635,41 @@ export class TenantAdminComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadTenants();
+    // Per l'ADMIN recupero la quota aziende dal proprio record utente.
+    if (!this.isSuperAdmin()) {
+      this.loadCompanyLimit();
+    }
+  }
+
+  /**
+   * Carica la quota aziende dell'admin corrente leggendo il proprio record dalla
+   * lista utenti (`GET /admin/users`, scoping al proprio tenant). Best-effort:
+   * se non determinabile, la quota resta `null` (badge nascosto, nessun blocco).
+   */
+  private loadCompanyLimit(): void {
+    const meId = this.auth.currentUser()?.id;
+    this.userService.list().subscribe({
+      next: (users) => {
+        const me = users?.find((u) => u.id === meId);
+        const limit = me?.companyLimit;
+        this.companyLimit.set(typeof limit === 'number' ? limit : null);
+      },
+      error: () => this.companyLimit.set(null),
+    });
+  }
+
+  /**
+   * Click sul bottone "Nuova azienda/tenant". Per l'ADMIN blocca l'apertura se
+   * la quota è raggiunta (oltre al `disabled`, per sicurezza).
+   */
+  onNewClick(): void {
+    if (!this.isSuperAdmin() && this.quotaReached()) {
+      this.toast.warn(
+        `Quota aziende raggiunta (${this.companyLimit()}). Richiedi un aumento all'amministratore.`,
+      );
+      return;
+    }
+    this.openCreateDialog();
   }
 
   loadTenants(): void {
@@ -618,31 +767,58 @@ export class TenantAdminComponent implements OnInit {
         next: () => {
           this.saving.set(false);
           this.displayDialog = false;
-          this.toast.success('Tenant aggiornato');
+          this.toast.success(this.isSuperAdmin() ? 'Tenant aggiornato' : 'Azienda aggiornata');
           this.loadTenants();
         },
         error: (err) => {
           this.saving.set(false);
-          this.toast.error(err?.error?.message || 'Errore nell\'aggiornamento del tenant');
+          this.toast.error(
+            err?.error?.message ||
+              (this.isSuperAdmin()
+                ? 'Errore nell\'aggiornamento del tenant'
+                : 'Errore nell\'aggiornamento dell\'azienda'),
+          );
         },
       });
       return;
     }
 
     const dto: CreateTenantDto = this.buildCreateDto();
+    const successMsg = this.isSuperAdmin() ? 'Tenant creato' : 'Azienda creata';
+    const dupMsg = this.isSuperAdmin()
+      ? 'Esiste già un tenant con questa partita IVA'
+      : 'Esiste già un\'azienda con questa partita IVA';
     this.tenantService.create(dto).subscribe({
       next: () => {
         this.saving.set(false);
         this.displayDialog = false;
-        this.toast.success('Tenant creato');
+        this.toast.success(successMsg);
         this.loadTenants();
+        if (!this.isSuperAdmin()) {
+          // Aggiorno il conteggio quota dopo la creazione.
+          this.loadCompanyLimit();
+        }
       },
       error: (err) => {
         this.saving.set(false);
         if (err?.status === 409) {
-          this.toast.error('Esiste già un tenant con questa partita IVA');
+          this.toast.error(dupMsg);
+        } else if (err?.status === 403) {
+          // Limite aziende raggiunto lato backend (race o quota client non nota).
+          this.toast.error(
+            err?.error?.message || 'Limite aziende raggiunto: contatta l\'amministratore.',
+          );
+          // Riallineo il conteggio quota.
+          if (!this.isSuperAdmin()) {
+            this.loadCompanyLimit();
+          }
         } else {
-          this.toast.error(err?.error?.message || 'Errore nella creazione del tenant');
+          this.toast.error(
+            err?.error?.message ||
+              (this.isSuperAdmin()
+                ? 'Errore nella creazione del tenant'
+                : 'Errore nella creazione dell\'azienda'),
+          );
         }
       },
     });
@@ -713,13 +889,24 @@ export class TenantAdminComponent implements OnInit {
       const t = v?.trim();
       return t ? t : undefined;
     };
-    return {
+    // Campi anagrafici comuni a entrambi i ruoli.
+    const anagrafica: Partial<CreateTenantDto> = {
       codiceFiscale: trim(this.form.codiceFiscale),
       pec: trim(this.form.pec),
       telefono: trim(this.form.telefono),
       atecoCode: trim(this.form.atecoCode),
       civico: trim(this.form.civico),
       country: trim(this.form.country),
+    };
+
+    // Piano/feature/limiti/stato: solo il SUPER_ADMIN li invia. Per l'ADMIN il
+    // backend forza piano TRIAL + feature di default (form senza questi campi).
+    if (!this.isSuperAdmin()) {
+      return anagrafica;
+    }
+
+    return {
+      ...anagrafica,
       subscriptionTier: this.form.subscriptionTier || undefined,
       subscriptionStatus: this.form.subscriptionStatus || undefined,
       firLimitPerMonth: this.form.firLimitPerMonth ?? undefined,

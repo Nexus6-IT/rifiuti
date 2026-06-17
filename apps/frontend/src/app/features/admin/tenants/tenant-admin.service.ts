@@ -49,6 +49,13 @@ export interface Tenant {
   userLimitTotal: number;
   /** Feature abilitate; `null` = derivate dal piano. */
   featureFlags?: FeatureFlag[] | string[] | null;
+  /**
+   * Id dell'utente ADMIN che ha creato l'azienda in self-service.
+   * Valorizzato per le aziende create da un tenant admin; assente per i tenant
+   * "di appartenenza". Usato lato client per contare le aziende create
+   * dall'admin corrente ai fini della quota.
+   */
+  ownerUserId?: string | null;
   createdAt: string;
   _count?: {
     users: number;

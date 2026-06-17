@@ -32,6 +32,7 @@ import { UserAdminService } from '../../application/admin/user-admin.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { SetCompanyLimitDto } from './dto/set-company-limit.dto';
 
 @Controller('admin/users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -109,6 +110,26 @@ export class UserAdminController {
   }
 
   /**
+   * PATCH /api/v1/admin/users/:id/company-limit
+   * Imposta la quota di aziende creabili in autonomia dall'utente.
+   * Riservato al SUPER_ADMIN.
+   */
+  @Patch(':id/company-limit')
+  @Roles('SUPER_ADMIN')
+  async setCompanyLimit(
+    @CurrentUser() currentUser: CurrentUserPayload,
+    @Param('id') id: string,
+    @Body() dto: SetCompanyLimitDto,
+  ) {
+    const user = await this.userAdminService.setCompanyLimit(
+      currentUser,
+      id,
+      dto.companyLimit,
+    );
+    return this.toResponse(user);
+  }
+
+  /**
    * Proiezione di risposta: espone solo i campi sicuri/utili al client.
    */
   private toResponse(user: {
@@ -120,6 +141,7 @@ export class UserAdminController {
     lastName: string;
     email: string;
     role: UserRole;
+    companyLimit: number;
     createdAt: Date;
     updatedAt: Date;
   }) {
@@ -132,6 +154,7 @@ export class UserAdminController {
       lastName: user.lastName,
       email: user.email,
       role: user.role,
+      companyLimit: user.companyLimit,
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString(),
     };

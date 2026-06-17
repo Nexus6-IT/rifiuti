@@ -12,6 +12,8 @@ import {
   IsEmail,
   IsEnum,
   IsUUID,
+  IsInt,
+  Min,
   Length,
   MinLength,
 } from 'class-validator';
@@ -60,4 +62,14 @@ export class CreateUserDto {
   @IsOptional()
   @MinLength(8, { message: 'tempPassword deve avere almeno 8 caratteri' })
   tempPassword?: string;
+
+  /**
+   * Quota di aziende creabili in autonomia dall'utente (self-service).
+   * Applicata SOLO se chi crea è SUPER_ADMIN; per gli ADMIN viene ignorata e
+   * resta il default di schema (1).
+   */
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  companyLimit?: number;
 }

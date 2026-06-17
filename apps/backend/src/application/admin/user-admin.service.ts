@@ -168,6 +168,11 @@ export class UserAdminService {
           firstName: dto.firstName,
           lastName: dto.lastName,
           role: dto.role as UserRole,
+          // La quota aziende è impostabile SOLO dal SUPER_ADMIN; altrimenti
+          // resta il default di schema (1).
+          ...(this.isSuperAdmin(currentUser) && dto.companyLimit !== undefined
+            ? { companyLimit: dto.companyLimit }
+            : {}),
         },
       });
     } catch (error: any) {
@@ -217,6 +222,35 @@ export class UserAdminService {
     return this.prisma.user.update({
       where: { id: user.id },
       data: { role },
+    });
+  }
+
+  /**
+   * Imposta la quota di aziende creabili in autonomia da un utente.
+   * Riservato al SUPER_ADMIN (controllo a livello di endpoint + qui difensivo).
+   *
+   * @throws ForbiddenException se il chiamante non è SUPER_ADMIN.
+   * @throws NotFoundException se l'utente non esiste.
+   */
+  async setCompanyLimit(
+    currentUser: CurrentUser,
+    userId: string,
+    companyLimit: number,
+  ): Promise<User> {
+    if (!this.isSuperAdmin(currentUser)) {
+      throw new ForbiddenException(
+        'Solo il super admin può impostare la quota aziende',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Utente non trovato');
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { companyLimit },
     });
   }
 
