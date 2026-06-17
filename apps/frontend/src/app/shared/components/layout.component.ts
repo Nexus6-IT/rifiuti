@@ -780,8 +780,8 @@ export class LayoutComponent implements OnInit {
   /** Tenant accessibili dall'utente standard (GET /consultant/tenants). */
   readonly userTenants = signal<UserTenant[]>([]);
 
-  /** Id del tenant attivo per l'utente standard (dal JWT, via TenantSwitchService). */
-  readonly currentUserTenantId = this.tenantSwitchService.currentTenantId;
+  /** Id del tenant attivo per l'utente standard (da GET /me/tenants). */
+  readonly currentUserTenantId = signal<string | null>(null);
 
   /** Nome del tenant quando l'utente ne ha uno solo (placeholder org-switcher). */
   readonly singleTenantName = computed(() => this.userTenants()[0]?.name ?? 'Azienda');
@@ -867,35 +867,43 @@ export class LayoutComponent implements OnInit {
    */
   private loadUserTenants(): void {
     this.http
-      .get<{ tenants?: any[] }>(`${environment.apiUrl}/consultant/tenants`)
+      .get<{ tenants?: any[]; currentTenantId?: string | null }>(`${environment.apiUrl}/me/tenants`)
       .subscribe({
         next: (res) => {
           const list = Array.isArray(res?.tenants) ? res.tenants : [];
           const mapped: UserTenant[] = list.map((t) => {
             const id = t.id ?? t.tenantId;
-            return {
-              id,
-              name: t.name ?? t.ragioneSociale ?? t.tenantName ?? id,
-              role: t.role ?? t.roleId,
-            };
+            return { id, name: t.ragioneSociale ?? t.name ?? t.tenantName ?? id };
           });
           this.userTenants.set(mapped);
+          this.currentUserTenantId.set(res?.currentTenantId ?? null);
         },
         error: () => this.userTenants.set([]),
       });
   }
 
   /**
-   * Cambio azienda per l'utente standard multi-tenant: riusa
-   * `switchTenantWithReload`, che ri-emette il JWT col nuovo tenant e ricarica
-   * l'app (così le feature-flag e tutti i dati vengono ricaricati nel nuovo
-   * contesto).
+   * Cambio azienda per l'utente multi-azienda: chiama /me/switch-tenant che
+   * ri-emette il JWT col nuovo tenant; salva i token e ricarica l'app (così
+   * feature-flag e dati ripartono nel nuovo contesto).
    */
   onUserTenantChange(tenantId: string | null): void {
     if (!tenantId || tenantId === this.currentUserTenantId()) {
       return;
     }
-    this.tenantSwitchService.switchTenantWithReload(tenantId);
+    this.http
+      .post<{ accessToken: string; refreshToken?: string }>(
+        `${environment.apiUrl}/me/switch-tenant`,
+        { tenantId },
+      )
+      .subscribe({
+        next: (res) => {
+          if (res?.accessToken) localStorage.setItem('accessToken', res.accessToken);
+          if (res?.refreshToken) localStorage.setItem('refreshToken', res.refreshToken);
+          window.location.reload();
+        },
+        error: () => console.error('Cambio azienda non riuscito'),
+      });
   }
 
   /**
