@@ -59,6 +59,10 @@ model Tenant {
   firLimitPerMonth Int @default(100) @map("fir_limit_per_month")
   userLimitTotal   Int @default(5) @map("user_limit_total")
 
+  // Feature flag effettivi (array di chiavi feature abilitate). Se null si
+  // derivano dal piano (subscriptionTier); se valorizzato e' un override admin.
+  featureFlags Json? @map("feature_flags")
+
   // Relationships
   users            User[]
   firs             FIR[]

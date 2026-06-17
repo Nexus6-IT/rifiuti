@@ -8,6 +8,7 @@ import { DialogModule } from 'primeng/dialog';
 import { DropdownModule } from 'primeng/dropdown';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputNumberModule } from 'primeng/inputnumber';
+import { CheckboxModule } from 'primeng/checkbox';
 import { TooltipModule } from 'primeng/tooltip';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
@@ -20,12 +21,34 @@ import {
   UpdateTenantDto,
   SubscriptionStatus,
   SubscriptionTier,
+  FeatureFlag,
 } from './tenant-admin.service';
 
 interface SelectOption<T> {
   label: string;
   value: T;
 }
+
+/** Catalogo feature (chiave → etichetta IT) attivabili per tenant. */
+const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
+  { key: 'fir', label: 'Formulari FIR' },
+  { key: 'cer', label: 'Catalogo CER' },
+  { key: 'anagrafiche', label: 'Anagrafiche' },
+  { key: 'mud', label: 'MUD' },
+  { key: 'giacenze', label: 'Giacenze' },
+  { key: 'contratti', label: 'Contratti' },
+  { key: 'esg', label: 'ESG/CO2' },
+  { key: 'anomalie', label: 'Anomalie' },
+  { key: 'rentri', label: 'RENTRI' },
+  { key: 'reference_data', label: 'Dati di riferimento' },
+];
+
+/** Feature predefinite per piano: l'admin puo' poi sovrascriverle. */
+const TIER_DEFAULT_FEATURES: Record<string, FeatureFlag[]> = {
+  TRIAL: ['fir', 'cer', 'anagrafiche'],
+  PROFESSIONAL: ['fir', 'cer', 'anagrafiche', 'mud', 'giacenze', 'contratti', 'esg', 'anomalie'],
+  ENTERPRISE: FEATURE_CATALOG.map((f) => f.key),
+};
 
 /** Etichette in italiano per gli stati abbonamento noti. */
 const STATUS_LABELS: Record<string, string> = {
@@ -47,8 +70,7 @@ const STATUS_SEVERITY: Record<string, 'success' | 'info' | 'warning' | 'danger' 
 
 /** Etichette in italiano per i piani di abbonamento noti. */
 const TIER_LABELS: Record<string, string> = {
-  FREE: 'Free',
-  STARTER: 'Starter',
+  TRIAL: 'Trial',
   PROFESSIONAL: 'Professional',
   ENTERPRISE: 'Enterprise',
 };
@@ -71,6 +93,7 @@ interface TenantFormData {
   subscriptionStatus: SubscriptionStatus;
   firLimitPerMonth: number | null;
   userLimitTotal: number | null;
+  featureFlags: FeatureFlag[];
 }
 
 @Component({
@@ -86,6 +109,7 @@ interface TenantFormData {
     DropdownModule,
     InputTextModule,
     InputNumberModule,
+    CheckboxModule,
     TooltipModule,
     ProgressSpinnerModule,
     ConfirmDialogModule,
@@ -138,7 +162,7 @@ interface TenantFormData {
                 <th scope="col">Città / Prov.</th>
                 <th scope="col">Piano</th>
                 <th scope="col">Stato</th>
-                <th scope="col" style="width: 7rem">Utenti</th>
+                <th scope="col" style="width: 9rem">Utenti</th>
                 <th scope="col" style="width: 8rem">Azioni</th>
               </tr>
             </ng-template>
@@ -166,7 +190,7 @@ interface TenantFormData {
                 </td>
                 <td>
                   <span class="cell-label">Utenti</span>
-                  {{ t._count?.users ?? 0 }}
+                  {{ t._count?.users ?? 0 }}<span class="text-tertiary"> / {{ t.userLimitTotal ?? '—' }} max</span>
                 </td>
                 <td>
                   <span class="cell-label">Azioni</span>
@@ -335,7 +359,12 @@ interface TenantFormData {
                   placeholder="Seleziona"
                   styleClass="w-full"
                   appendTo="body"
+                  (onChange)="onTierChange($event.value)"
+                  aria-describedby="t-tier-help"
                 ></p-dropdown>
+                <small id="t-tier-help" class="block mt-1 text-tertiary">
+                  Selezionando un piano si precompilano le feature predefinite.
+                </small>
               </div>
               <div class="field col-12 md:col-6">
                 <label for="t-status">Stato</label>
@@ -352,14 +381,40 @@ interface TenantFormData {
                 ></p-dropdown>
               </div>
               <div class="field col-12 md:col-6">
-                <label for="t-fir-limit">Limite FIR / mese</label>
-                <p-inputNumber inputId="t-fir-limit" [(ngModel)]="form.firLimitPerMonth" name="firLimitPerMonth"
-                               [min]="0" styleClass="w-full" inputStyleClass="w-full"></p-inputNumber>
+                <label for="t-user-limit">Numero massimo utenze</label>
+                <p-inputNumber inputId="t-user-limit" [(ngModel)]="form.userLimitTotal" name="userLimitTotal"
+                               [min]="0" styleClass="w-full" inputStyleClass="w-full"
+                               aria-describedby="t-user-limit-help"></p-inputNumber>
+                <small id="t-user-limit-help" class="block mt-1 text-tertiary">
+                  Esclusi gli amministratori.
+                </small>
               </div>
               <div class="field col-12 md:col-6">
-                <label for="t-user-limit">Limite utenti totale</label>
-                <p-inputNumber inputId="t-user-limit" [(ngModel)]="form.userLimitTotal" name="userLimitTotal"
-                               [min]="0" styleClass="w-full" inputStyleClass="w-full"></p-inputNumber>
+                <label for="t-fir-limit">Limite FIR / mese</label>
+                <p-inputNumber inputId="t-fir-limit" [(ngModel)]="form.firLimitPerMonth" name="firLimitPerMonth"
+                               [min]="0" styleClass="w-full" inputStyleClass="w-full"
+                               aria-describedby="t-fir-limit-help"></p-inputNumber>
+                <small id="t-fir-limit-help" class="block mt-1 text-tertiary">
+                  Opzionale: lasciare vuoto per nessun limite.
+                </small>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="form-fieldset">
+            <legend class="form-legend">Feature abilitate</legend>
+            <p class="feature-hint text-tertiary">
+              Precompilate dal piano selezionato. Puoi modificarle (override) per questo tenant.
+            </p>
+            <div class="grid formgrid feature-grid" role="group" aria-label="Feature abilitate per il tenant">
+              <div class="field col-12 md:col-6 feature-item" *ngFor="let f of featureCatalog">
+                <p-checkbox
+                  [inputId]="'feat-' + f.key"
+                  [name]="'feat-' + f.key"
+                  [value]="f.key"
+                  [(ngModel)]="form.featureFlags"
+                  [label]="f.label"
+                ></p-checkbox>
               </div>
             </div>
           </fieldset>
@@ -418,6 +473,12 @@ interface TenantFormData {
     .field label { display: block; margin-bottom: var(--spacing-xs); }
     .req { color: var(--color-danger); margin-left: 0.15rem; }
 
+    /* Feature: lista checkbox */
+    .feature-hint { font-size: var(--font-size-sm); margin: 0 0 var(--spacing-sm); }
+    .feature-grid { margin-top: 0; }
+    .feature-item { margin-bottom: var(--spacing-sm); display: flex; align-items: center; }
+    :host ::ng-deep .feature-item .p-checkbox-label { margin-bottom: 0; margin-left: var(--spacing-sm); }
+
     /* Vista a card impilata su mobile */
     @media (max-width: 768px) {
       :host ::ng-deep .p-datatable .p-datatable-thead { display: none; }
@@ -446,6 +507,9 @@ export class TenantAdminComponent implements OnInit {
   displayDialog = false;
   selectedTenant: Tenant | null = null;
   form: TenantFormData = this.emptyForm();
+
+  /** Catalogo feature mostrato come lista di checkbox. */
+  readonly featureCatalog = FEATURE_CATALOG;
 
   readonly statusOptions: SelectOption<SubscriptionStatus>[] = (
     Object.keys(STATUS_LABELS) as SubscriptionStatus[]
@@ -486,6 +550,14 @@ export class TenantAdminComponent implements OnInit {
     return TIER_LABELS[t] ?? t;
   }
 
+  /**
+   * Al cambio del piano precompila le feature con i default del piano.
+   * L'admin puo' poi modificarle liberamente (override).
+   */
+  onTierChange(tier: SubscriptionTier): void {
+    this.form.featureFlags = [...(TIER_DEFAULT_FEATURES[tier] ?? [])];
+  }
+
   // --- Creazione / modifica ---
   openCreateDialog(): void {
     this.editMode.set(false);
@@ -514,8 +586,22 @@ export class TenantAdminComponent implements OnInit {
       subscriptionStatus: t.subscriptionStatus,
       firLimitPerMonth: t.firLimitPerMonth ?? null,
       userLimitTotal: t.userLimitTotal ?? null,
+      // featureFlags null = derivate dal piano: precompila coi default del piano.
+      featureFlags: this.resolveFeatures(t.featureFlags, t.subscriptionTier),
     };
     this.displayDialog = true;
+  }
+
+  /** Normalizza le feature del tenant; se null/assenti usa i default del piano. */
+  private resolveFeatures(
+    flags: FeatureFlag[] | string[] | null | undefined,
+    tier: SubscriptionTier,
+  ): FeatureFlag[] {
+    const known = new Set(FEATURE_CATALOG.map((f) => f.key));
+    if (flags && flags.length > 0) {
+      return (flags as string[]).filter((k): k is FeatureFlag => known.has(k as FeatureFlag));
+    }
+    return [...(TIER_DEFAULT_FEATURES[tier] ?? [])];
   }
 
   save(): void {
@@ -638,6 +724,7 @@ export class TenantAdminComponent implements OnInit {
       subscriptionStatus: this.form.subscriptionStatus || undefined,
       firLimitPerMonth: this.form.firLimitPerMonth ?? undefined,
       userLimitTotal: this.form.userLimitTotal ?? undefined,
+      featureFlags: this.form.featureFlags ?? [],
     };
   }
 
@@ -655,10 +742,11 @@ export class TenantAdminComponent implements OnInit {
       province: '',
       postalCode: '',
       country: 'IT',
-      subscriptionTier: 'FREE',
+      subscriptionTier: 'TRIAL',
       subscriptionStatus: 'TRIAL',
       firLimitPerMonth: null,
       userLimitTotal: null,
+      featureFlags: [...TIER_DEFAULT_FEATURES['TRIAL']],
     };
   }
 }

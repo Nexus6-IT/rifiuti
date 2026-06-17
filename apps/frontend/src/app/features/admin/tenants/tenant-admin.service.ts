@@ -4,7 +4,20 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 
 /** Livello di abbonamento del tenant. Allineato al backend. */
-export type SubscriptionTier = 'FREE' | 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE' | string;
+export type SubscriptionTier = 'TRIAL' | 'PROFESSIONAL' | 'ENTERPRISE' | string;
+
+/** Chiavi delle feature attivabili per tenant. Allineate al catalogo backend. */
+export type FeatureFlag =
+  | 'fir'
+  | 'cer'
+  | 'anagrafiche'
+  | 'mud'
+  | 'giacenze'
+  | 'contratti'
+  | 'esg'
+  | 'anomalie'
+  | 'rentri'
+  | 'reference_data';
 
 /** Stato dell'abbonamento del tenant. */
 export type SubscriptionStatus =
@@ -34,6 +47,8 @@ export interface Tenant {
   subscriptionStatus: SubscriptionStatus;
   firLimitPerMonth: number;
   userLimitTotal: number;
+  /** Feature abilitate; `null` = derivate dal piano. */
+  featureFlags?: FeatureFlag[] | string[] | null;
   createdAt: string;
   _count?: {
     users: number;
@@ -58,6 +73,8 @@ export interface CreateTenantDto {
   subscriptionStatus?: SubscriptionStatus;
   firLimitPerMonth?: number;
   userLimitTotal?: number;
+  /** Feature abilitate; ometterlo = il backend deriva dal piano. */
+  featureFlags?: FeatureFlag[] | string[];
 }
 
 /** Payload di aggiornamento parziale (partitaIva non modificabile). */

@@ -3,11 +3,14 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { SubscriptionStatus, Prisma } from '@prisma/client';
+import { SubscriptionStatus, SubscriptionTier, Prisma } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/persistence/prisma.service';
 import { LoggerService } from '../../core/logger/logger.service';
 import { CreateTenantDto } from '../../api/admin/dto/create-tenant.dto';
 import { UpdateTenantDto } from '../../api/admin/dto/update-tenant.dto';
+import { PLAN_FEATURES } from './feature-catalog';
+import { seedRolesForTenant } from './system-roles';
+import { TenantContext } from '../../core/context/tenant-context';
 
 /**
  * TenantService (admin)
@@ -84,6 +87,14 @@ export class TenantService {
       );
     }
 
+    // Piano effettivo: quello indicato dal SUPER_ADMIN o il default di schema (TRIAL).
+    const effectiveTier =
+      dto.subscriptionTier ?? SubscriptionTier.TRIAL;
+
+    // Feature flags: override esplicito dal DTO, altrimenti default dal piano.
+    const featureFlags =
+      dto.featureFlags ?? PLAN_FEATURES[effectiveTier];
+
     const data: Prisma.TenantCreateInput = {
       partitaIva: dto.partitaIva,
       ragioneSociale: dto.ragioneSociale,
@@ -110,6 +121,8 @@ export class TenantService {
       ...(dto.userLimitTotal !== undefined
         ? { userLimitTotal: dto.userLimitTotal }
         : {}),
+      // Feature flag iniziali derivati dal piano (o override esplicito).
+      featureFlags: featureFlags as unknown as Prisma.InputJsonValue,
     };
 
     const tenant = await this.prisma.tenant.create({ data });
@@ -119,7 +132,49 @@ export class TenantService {
       partitaIva: tenant.partitaIva,
     });
 
+    // Seed dei 5 ruoli di sistema per il nuovo tenant. Senza questo i tenant
+    // creati via API resterebbero privi di ruoli (e quindi non assegnabili
+    // agli utenti). Best-effort: un fallimento del seeding non deve annullare
+    // la creazione del tenant (i ruoli sono ricreabili via `prisma:seed`).
+    await this.seedRoles(tenant.id);
+
     return tenant;
+  }
+
+  /**
+   * Crea i ruoli di sistema per il tenant appena creato.
+   *
+   * `createdBy` richiede un utente esistente (FK): si usa il SUPER_ADMIN che ha
+   * effettuato la richiesta (TenantContext) e, in mancanza, il primo utente in
+   * DB. Se nessun utente esiste (es. bootstrap iniziale) il seeding è rimandato
+   * al seed globale e si registra solo un warning.
+   */
+  private async seedRoles(tenantId: string): Promise<void> {
+    try {
+      const createdBy =
+        TenantContext.getUserId() ??
+        (await this.prisma.user.findFirst({ select: { id: true } }))?.id;
+
+      if (!createdBy) {
+        this.logger.warn(
+          'Nessun utente disponibile come createdBy: seeding ruoli rimandato al seed globale',
+          { tenantId },
+        );
+        return;
+      }
+
+      const count = await seedRolesForTenant(this.prisma, tenantId, createdBy);
+      this.logger.info('Ruoli di sistema creati per il nuovo tenant', {
+        tenantId,
+        rolesCreated: count,
+      });
+    } catch (error) {
+      this.logger.error(
+        'Seeding ruoli per il nuovo tenant fallito (tenant comunque creato)',
+        error as Error,
+        { tenantId },
+      );
+    }
   }
 
   /**
@@ -167,6 +222,14 @@ export class TenantService {
         : {}),
       ...(dto.userLimitTotal !== undefined
         ? { userLimitTotal: dto.userLimitTotal }
+        : {}),
+      // featureFlags: array di override (validato in DTO contro FEATURE_KEYS).
+      // Per tornare a derivare dal piano si può inviare un array vuoto o `null`.
+      ...(dto.featureFlags !== undefined
+        ? {
+            featureFlags:
+              dto.featureFlags as unknown as Prisma.InputJsonValue,
+          }
         : {}),
     };
 

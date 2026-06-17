@@ -99,6 +99,12 @@ export class UserAdminService {
       );
     }
 
+    // 1-bis. Enforcement del limite utenze del piano.
+    // I tenant admin (ruolo ADMIN) NON contano nel limite ("a parte il tenant
+    // admin"); il SUPER_ADMIN (amministratore di piattaforma) bypassa il
+    // controllo del tutto.
+    await this.enforceUserLimit(currentUser, targetTenantId, dto.role);
+
     // 2. Valida il codice fiscale (riusa la VO di dominio).
     if (!FiscalCode.isValid(dto.fiscalCode)) {
       throw new BadRequestException(
@@ -212,6 +218,54 @@ export class UserAdminService {
       where: { id: user.id },
       data: { role },
     });
+  }
+
+  /**
+   * Verifica che la creazione di un nuovo utente non superi il limite di utenze
+   * del piano del tenant (`Tenant.userLimitTotal`).
+   *
+   * Regole:
+   *  - SUPER_ADMIN bypassa sempre il controllo.
+   *  - Il nuovo utente con ruolo ADMIN non incide sul limite → consentito.
+   *  - Per gli altri ruoli si contano gli utenti esistenti con ruolo DIVERSO da
+   *    ADMIN (i tenant admin sono esclusi dal conteggio); se il conteggio ha già
+   *    raggiunto il limite, la creazione è rifiutata.
+   *
+   * @throws ForbiddenException se il limite è raggiunto.
+   */
+  private async enforceUserLimit(
+    currentUser: CurrentUser,
+    targetTenantId: string,
+    newRole: string,
+  ): Promise<void> {
+    if (this.isSuperAdmin(currentUser)) {
+      return;
+    }
+
+    // Gli ADMIN (tenant admin) non rientrano nel limite.
+    if (newRole === UserRole.ADMIN) {
+      return;
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: targetTenantId },
+      select: { userLimitTotal: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant non trovato');
+    }
+
+    const nonAdminCount = await this.prisma.user.count({
+      where: {
+        tenantId: targetTenantId,
+        role: { not: UserRole.ADMIN },
+      },
+    });
+
+    if (nonAdminCount >= tenant.userLimitTotal) {
+      throw new ForbiddenException('Limite utenze del piano raggiunto');
+    }
   }
 
   /**

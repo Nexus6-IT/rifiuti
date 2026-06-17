@@ -8,8 +8,11 @@ import {
   Length,
   Matches,
   IsEnum,
+  IsArray,
+  IsIn,
 } from 'class-validator';
 import { SubscriptionTier, SubscriptionStatus } from '@prisma/client';
+import { FEATURE_KEYS } from '../../../application/admin/feature-catalog';
 
 /**
  * CreateTenantDto
@@ -118,4 +121,17 @@ export class CreateTenantDto {
   @IsInt()
   @Min(0)
   userLimitTotal?: number;
+
+  /**
+   * Override esplicito delle feature abilitate (array di chiavi del catalogo).
+   * Se omesso, il service applica i default del piano (PLAN_FEATURES[tier]).
+   */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @IsIn(FEATURE_KEYS as unknown as string[], {
+    each: true,
+    message: `featureFlags ammette solo: ${FEATURE_KEYS.join(', ')}`,
+  })
+  featureFlags?: string[];
 }

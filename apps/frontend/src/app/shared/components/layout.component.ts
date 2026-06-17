@@ -11,12 +11,21 @@ import { DropdownModule } from 'primeng/dropdown';
 import { MenuItem } from 'primeng/api';
 import { AuthService } from '../../core/services/auth.service';
 import { AdminTenantContextService } from '../../core/services/admin-tenant-context.service';
+import { FeatureFlagsService } from '../../core/services/feature-flags.service';
+import { TenantSwitchService } from '../../features/permissions/services/tenant-switch.service';
 import { NotificationBellComponent } from '../../core/layout/notification-bell/notification-bell.component';
 import { environment } from '../../../environments/environment';
 
 interface AdminTenant {
   id: string;
   ragioneSociale: string;
+}
+
+/** Tenant accessibile da un utente standard multi-azienda (da GET /consultant/tenants). */
+interface UserTenant {
+  id: string;
+  name: string;
+  role?: string;
 }
 
 @Component({
@@ -166,51 +175,66 @@ interface AdminTenant {
     <!-- ===== Template condiviso voci di navigazione ===== -->
     <ng-template #navContent let-mobile="mobile">
       <ul class="nav-group" role="list">
-        <li *ngFor="let item of navMain">
-          <a
-            [routerLink]="item.route"
-            routerLinkActive="nav-item--active"
-            class="nav-item"
-            [attr.aria-current]="isActiveRoute(item.route) ? 'page' : null"
-            (click)="mobile ? closeMobileSidebar() : null"
-          >
-            <i class="nav-item__icon" [ngClass]="item.icon" aria-hidden="true"></i>
-            <span class="nav-item__label">{{ item.label }}</span>
-          </a>
-        </li>
+        @for (item of navMain; track item.route) {
+          <!-- La Dashboard è sempre visibile; le altre voci dipendono dalla feature. -->
+          @if (!item.feature || ff.has(item.feature)) {
+            <li>
+              <a
+                [routerLink]="item.route"
+                routerLinkActive="nav-item--active"
+                class="nav-item"
+                [attr.aria-current]="isActiveRoute(item.route) ? 'page' : null"
+                (click)="mobile ? closeMobileSidebar() : null"
+              >
+                <i class="nav-item__icon" [ngClass]="item.icon" aria-hidden="true"></i>
+                <span class="nav-item__label">{{ item.label }}</span>
+              </a>
+            </li>
+          }
+        }
       </ul>
 
-      <p class="nav-group__title" id="nav-anagrafiche">Anagrafiche</p>
-      <ul class="nav-group" role="list" aria-labelledby="nav-anagrafiche">
-        <li *ngFor="let item of navAnagrafiche">
-          <a
-            [routerLink]="item.route"
-            routerLinkActive="nav-item--active"
-            class="nav-item"
-            [attr.aria-current]="isActiveRoute(item.route) ? 'page' : null"
-            (click)="mobile ? closeMobileSidebar() : null"
-          >
-            <i class="nav-item__icon" [ngClass]="item.icon" aria-hidden="true"></i>
-            <span class="nav-item__label">{{ item.label }}</span>
-          </a>
-        </li>
-      </ul>
+      <!-- L'intera sezione Anagrafiche è gated dalla feature 'anagrafiche'. -->
+      @if (ff.has('anagrafiche')) {
+        <p class="nav-group__title" id="nav-anagrafiche">Anagrafiche</p>
+        <ul class="nav-group" role="list" aria-labelledby="nav-anagrafiche">
+          @for (item of navAnagrafiche; track item.route) {
+            <li>
+              <a
+                [routerLink]="item.route"
+                routerLinkActive="nav-item--active"
+                class="nav-item"
+                [attr.aria-current]="isActiveRoute(item.route) ? 'page' : null"
+                (click)="mobile ? closeMobileSidebar() : null"
+              >
+                <i class="nav-item__icon" [ngClass]="item.icon" aria-hidden="true"></i>
+                <span class="nav-item__label">{{ item.label }}</span>
+              </a>
+            </li>
+          }
+        </ul>
+      }
 
-      <p class="nav-group__title" id="nav-impostazioni">Impostazioni</p>
-      <ul class="nav-group" role="list" aria-labelledby="nav-impostazioni">
-        <li *ngFor="let item of navImpostazioni">
-          <a
-            [routerLink]="item.route"
-            routerLinkActive="nav-item--active"
-            class="nav-item"
-            [attr.aria-current]="isActiveRoute(item.route) ? 'page' : null"
-            (click)="mobile ? closeMobileSidebar() : null"
-          >
-            <i class="nav-item__icon" [ngClass]="item.icon" aria-hidden="true"></i>
-            <span class="nav-item__label">{{ item.label }}</span>
-          </a>
-        </li>
-      </ul>
+      <!-- La sezione Impostazioni appare solo se almeno una voce è abilitata. -->
+      @if (visibleImpostazioni().length > 0) {
+        <p class="nav-group__title" id="nav-impostazioni">Impostazioni</p>
+        <ul class="nav-group" role="list" aria-labelledby="nav-impostazioni">
+          @for (item of visibleImpostazioni(); track item.route) {
+            <li>
+              <a
+                [routerLink]="item.route"
+                routerLinkActive="nav-item--active"
+                class="nav-item"
+                [attr.aria-current]="isActiveRoute(item.route) ? 'page' : null"
+                (click)="mobile ? closeMobileSidebar() : null"
+              >
+                <i class="nav-item__icon" [ngClass]="item.icon" aria-hidden="true"></i>
+                <span class="nav-item__label">{{ item.label }}</span>
+              </a>
+            </li>
+          }
+        </ul>
+      }
 
       <!-- ===== Amministrazione (gated per ruolo) ===== -->
       @if (canSeeAdminSection()) {
@@ -269,20 +293,37 @@ interface AdminTenant {
             (onClear)="onTenantClear()"
           ></p-dropdown>
         </div>
+      } @else if (userTenants().length >= 2) {
+        <!-- Tenant switcher generico per utenti standard multi-azienda -->
+        <div class="tenant-switcher" role="group" aria-label="Selettore azienda">
+          <label class="tenant-switcher__label" for="user-tenant-switcher">Azienda attiva</label>
+          <p-dropdown
+            inputId="user-tenant-switcher"
+            [options]="userTenants()"
+            [ngModel]="currentUserTenantId()"
+            (onChange)="onUserTenantChange($event.value)"
+            optionLabel="name"
+            optionValue="id"
+            [filter]="userTenants().length > 6"
+            filterBy="name"
+            placeholder="Seleziona azienda…"
+            appendTo="body"
+            styleClass="tenant-switcher__dropdown"
+            [ariaLabel]="'Cambia azienda corrente'"
+          ></p-dropdown>
+        </div>
       } @else {
-        <!-- Placeholder azienda / unità locale per utenti standard -->
+        <!-- Utente con una sola azienda: mostro il nome (nessuno switch). -->
         <button
           type="button"
           class="org-switcher"
-          aria-label="Cambia azienda o unità locale"
-          aria-haspopup="menu"
+          aria-label="Azienda corrente"
+          [disabled]="true"
         >
-          <span class="org-switcher__avatar" aria-hidden="true">EC</span>
+          <span class="org-switcher__avatar" aria-hidden="true">{{ singleTenantInitials() }}</span>
           <span class="org-switcher__text">
-            <span class="org-switcher__company">Ecotecnica S.r.l.</span>
-            <span class="org-switcher__unit">UL Sesto &middot; MI</span>
+            <span class="org-switcher__company">{{ singleTenantName() }}</span>
           </span>
-          <i class="org-switcher__chevron pi pi-chevron-down" aria-hidden="true"></i>
         </button>
       }
     </ng-template>
@@ -656,6 +697,10 @@ interface AdminTenant {
 export class LayoutComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly tenantContext = inject(AdminTenantContextService);
+  private readonly tenantSwitchService = inject(TenantSwitchService);
+
+  /** Servizio feature-flag: pubblico così il template può usare `ff.has(...)`. */
+  readonly ff = inject(FeatureFlagsService);
 
   menuItems: MenuItem[] = [];
 
@@ -686,26 +731,51 @@ export class LayoutComponent implements OnInit {
     this.mobileSidebarVisible.set(value);
   }
 
-  /** Voci di navigazione (un'unica fonte per sidebar desktop e drawer mobile). */
-  readonly navMain = [
+  /**
+   * Voci di navigazione (un'unica fonte per sidebar desktop e drawer mobile).
+   * `feature` = chiave feature-flag richiesta per mostrare la voce; se assente
+   * (es. Dashboard) la voce è sempre visibile.
+   */
+  readonly navMain: { label: string; route: string; icon: string; feature?: string }[] = [
     { label: 'Dashboard', route: '/dashboard', icon: 'pi pi-home' },
-    { label: 'FIR', route: '/fir', icon: 'pi pi-file' },
-    { label: 'Catalogo CER', route: '/cer', icon: 'pi pi-tags' },
-    { label: 'MUD', route: '/mud', icon: 'pi pi-file-export' },
-    { label: 'Giacenze', route: '/giacenze', icon: 'pi pi-box' },
-    { label: 'Contratti', route: '/contratti', icon: 'pi pi-briefcase' },
-    { label: 'ESG / CO2', route: '/esg', icon: 'pi pi-chart-line' },
-    { label: 'Anomalie', route: '/anomalie', icon: 'pi pi-exclamation-triangle' }
+    { label: 'FIR', route: '/fir', icon: 'pi pi-file', feature: 'fir' },
+    { label: 'Catalogo CER', route: '/cer', icon: 'pi pi-tags', feature: 'cer' },
+    { label: 'MUD', route: '/mud', icon: 'pi pi-file-export', feature: 'mud' },
+    { label: 'Giacenze', route: '/giacenze', icon: 'pi pi-box', feature: 'giacenze' },
+    { label: 'Contratti', route: '/contratti', icon: 'pi pi-briefcase', feature: 'contratti' },
+    { label: 'ESG / CO2', route: '/esg', icon: 'pi pi-chart-line', feature: 'esg' },
+    { label: 'Anomalie', route: '/anomalie', icon: 'pi pi-exclamation-triangle', feature: 'anomalie' }
   ];
+  /** Intera sezione gated dalla feature 'anagrafiche' (vedi template). */
   readonly navAnagrafiche = [
     { label: 'Produttori', route: '/produttori', icon: 'pi pi-building' },
     { label: 'Trasportatori', route: '/trasportatori', icon: 'pi pi-truck' },
     { label: 'Destinatari', route: '/destinatari', icon: 'pi pi-inbox' }
   ];
-  readonly navImpostazioni = [
-    { label: 'Certificato RENTRI', route: '/rentri/certificato', icon: 'pi pi-key' },
-    { label: 'Dati di riferimento', route: '/reference-data', icon: 'pi pi-database' }
+  readonly navImpostazioni: { label: string; route: string; icon: string; feature: string }[] = [
+    { label: 'Certificato RENTRI', route: '/rentri/certificato', icon: 'pi pi-key', feature: 'rentri' },
+    { label: 'Dati di riferimento', route: '/reference-data', icon: 'pi pi-database', feature: 'reference_data' }
   ];
+
+  /** Voci Impostazioni effettivamente visibili in base alle feature attive. */
+  readonly visibleImpostazioni = computed(() =>
+    this.navImpostazioni.filter((item) => this.ff.has(item.feature)),
+  );
+
+  /** Tenant accessibili dall'utente standard (GET /consultant/tenants). */
+  readonly userTenants = signal<UserTenant[]>([]);
+
+  /** Id del tenant attivo per l'utente standard (dal JWT, via TenantSwitchService). */
+  readonly currentUserTenantId = this.tenantSwitchService.currentTenantId;
+
+  /** Nome del tenant quando l'utente ne ha uno solo (placeholder org-switcher). */
+  readonly singleTenantName = computed(() => this.userTenants()[0]?.name ?? 'Azienda');
+  readonly singleTenantInitials = computed(() => {
+    const name = this.singleTenantName();
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return (name.slice(0, 2) || 'AZ').toUpperCase();
+  });
 
   /** Titolo di contesto mostrato in topbar (desktop), derivato dalla rotta attiva. */
   readonly currentTitle = signal<string>('Dashboard');
@@ -751,9 +821,16 @@ export class LayoutComponent implements OnInit {
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
       .subscribe(() => this.updateTitle());
 
-    // Solo il super admin può vedere/scegliere i tenant: carico la lista.
+    // Feature-flag del tenant corrente: guida la visibilità delle voci di menu.
+    this.ff.load().subscribe();
+
     if (this.isSuperAdmin()) {
+      // Super admin: tenant switcher basato su X-Tenant-ID (comportamento esistente).
       this.loadAdminTenants();
+    } else {
+      // Utente standard: se è associato a più aziende mostro un tenant switcher
+      // generico (stesso endpoint usato dai consulenti, non richiede ruolo).
+      this.loadUserTenants();
     }
   }
 
@@ -763,6 +840,47 @@ export class LayoutComponent implements OnInit {
       next: (tenants) => this.adminTenants.set(tenants ?? []),
       error: () => this.adminTenants.set([]),
     });
+  }
+
+  /**
+   * Carica i tenant accessibili dall'utente standard tramite
+   * GET /consultant/tenants (l'endpoint richiede solo il login, non il ruolo
+   * CONSULTANT). Mappa in modo difensivo: il backend ritorna `tenantId`/`roleId`
+   * ma normalizziamo verso `{ id, name, role }` accettando anche eventuali
+   * `name`/`ragioneSociale`/`tenantName`. Se ne restituisce <2, il template
+   * mostra il semplice placeholder col nome dell'azienda.
+   */
+  private loadUserTenants(): void {
+    this.http
+      .get<{ tenants?: any[] }>(`${environment.apiUrl}/consultant/tenants`)
+      .subscribe({
+        next: (res) => {
+          const list = Array.isArray(res?.tenants) ? res.tenants : [];
+          const mapped: UserTenant[] = list.map((t) => {
+            const id = t.id ?? t.tenantId;
+            return {
+              id,
+              name: t.name ?? t.ragioneSociale ?? t.tenantName ?? id,
+              role: t.role ?? t.roleId,
+            };
+          });
+          this.userTenants.set(mapped);
+        },
+        error: () => this.userTenants.set([]),
+      });
+  }
+
+  /**
+   * Cambio azienda per l'utente standard multi-tenant: riusa
+   * `switchTenantWithReload`, che ri-emette il JWT col nuovo tenant e ricarica
+   * l'app (così le feature-flag e tutti i dati vengono ricaricati nel nuovo
+   * contesto).
+   */
+  onUserTenantChange(tenantId: string | null): void {
+    if (!tenantId || tenantId === this.currentUserTenantId()) {
+      return;
+    }
+    this.tenantSwitchService.switchTenantWithReload(tenantId);
   }
 
   /**

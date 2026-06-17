@@ -34,6 +34,8 @@ import { RentriModule } from './infrastructure/rentri/rentri.module'
 // Amministrazione piattaforma (SUPER_ADMIN): tenant + utenti (provisioning Keycloak)
 import { AdminTenantModule } from './application/admin/admin-tenant.module'
 import { AdminUserModule } from './application/admin/admin-user.module'
+// Endpoint "self" utente autenticato (feature abilitate dal piano)
+import { MeModule } from './api/me/me.module'
 
 @Module({
   imports: [
@@ -108,6 +110,9 @@ import { AdminUserModule } from './application/admin/admin-user.module'
     // Amministrazione piattaforma (SUPER_ADMIN)
     AdminTenantModule,
     AdminUserModule,
+
+    // Endpoint "self" utente autenticato
+    MeModule,
   ],
   controllers: [HealthController],
   providers: [
