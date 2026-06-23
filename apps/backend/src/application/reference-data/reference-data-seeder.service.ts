@@ -2,6 +2,8 @@ import { Injectable, Inject, OnModuleInit } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { HttpService } from '@nestjs/axios'
 import { firstValueFrom } from 'rxjs'
+import * as fs from 'fs'
+import * as path from 'path'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import {
@@ -154,16 +156,31 @@ export class ReferenceDataSeederService implements OnModuleInit {
 
   // --- Helpers ---
 
-  /** Scarica e parsa il CSV di un dataset; [] se non configurato/irraggiungibile. */
+  /**
+   * Ottiene le righe CSV di un dataset. Priorita': URL (se configurato), poi
+   * file bundled in `prisma/reference-data/` (fallback offline deterministico).
+   * [] se nessuna sorgente disponibile.
+   */
   private async fetchRows(source: DatasetSource): Promise<string[][]> {
-    if (!source.url) {
+    let raw: string | null = null
+    if (source.url) {
+      const response = await firstValueFrom(
+        this.http.get(source.url, { responseType: 'text', timeout: 60000 }),
+      )
+      raw = String(response.data)
+    } else if (source.localFile) {
+      const filePath = path.resolve(process.cwd(), 'prisma', 'reference-data', source.localFile)
+      if (fs.existsSync(filePath)) {
+        raw = fs.readFileSync(filePath, 'utf8')
+      } else {
+        this.logger.warn(`Reference data: file bundled non trovato (${filePath})`)
+      }
+    }
+    if (raw === null) {
       this.logger.warn('Sorgente reference data non configurata: dataset saltato')
       return []
     }
-    const response = await firstValueFrom(
-      this.http.get(source.url, { responseType: 'text', timeout: 60000 }),
-    )
-    const rows = parseCsv(String(response.data), source.separator)
+    const rows = parseCsv(raw, source.separator)
     return source.hasHeader ? rows.slice(1) : rows
   }
 

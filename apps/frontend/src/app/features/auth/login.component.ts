@@ -76,71 +76,21 @@ import { AuthService } from '../../core/services/auth.service';
           <header class="auth__head">
             <h1 class="auth__title">Accedi</h1>
             <p class="auth__subtitle">
-              Entra con la tua identità digitale o con l'email del tuo ente.
+              Accedi a WasteFlow con le credenziali del tuo account.
             </p>
           </header>
 
-          <!-- Accesso con identità digitale (azione primaria) -->
-          <div class="auth__idp" role="group" aria-label="Accesso con identità digitale">
+          <!-- Accesso (via Keycloak). SPID/CIE saranno abilitati in una fase successiva. -->
+          <div class="auth__idp" role="group" aria-label="Accesso">
             <p-button
-              label="Accedi con SPID"
-              icon="pi pi-id-card"
+              label="Accedi"
+              icon="pi pi-sign-in"
+              [loading]="loading"
               styleClass="w-full idp-button idp-button--spid"
               (onClick)="onSPIDLogin()"
-              ariaLabel="Accedi con identità digitale SPID"
-            />
-            <p-button
-              label="Accedi con CIE"
-              icon="pi pi-id-card"
-              [outlined]="true"
-              styleClass="w-full idp-button idp-button--cie"
-              (onClick)="onCIELogin()"
-              ariaLabel="Accedi con Carta d'Identità Elettronica"
+              ariaLabel="Accedi a WasteFlow"
             />
           </div>
-
-          <div class="auth__sep" role="separator" aria-hidden="true">
-            <span>oppure con email</span>
-          </div>
-
-          <!-- Accesso con email -->
-          <form class="auth__form" (ngSubmit)="onLogin()" novalidate>
-            <div class="field">
-              <label for="email" class="field__label">
-                Email istituzionale <span class="field__req" aria-hidden="true">*</span>
-              </label>
-              <input
-                pInputText
-                id="email"
-                name="email"
-                type="email"
-                inputmode="email"
-                autocomplete="email"
-                [(ngModel)]="email"
-                placeholder="nome.cognome@comune.it"
-                class="w-full"
-                (keyup.enter)="onLogin()"
-                aria-required="true"
-                [attr.aria-invalid]="emailTouched && !email ? 'true' : null"
-                [attr.aria-describedby]="'email-hint'"
-              />
-              <p id="email-hint" class="field__hint">
-                <i class="pi pi-info-circle" aria-hidden="true"></i>
-                Modalità sviluppo: inserisci un indirizzo email valido qualsiasi.
-              </p>
-            </div>
-
-            <p-button
-              label="Continua"
-              icon="pi pi-arrow-right"
-              iconPos="right"
-              [loading]="loading"
-              type="submit"
-              styleClass="w-full submit-button"
-              [disabled]="!email || loading"
-              ariaLabel="Continua e accedi con email"
-            />
-          </form>
 
           <p class="auth__help">
             Hai bisogno di assistenza?
