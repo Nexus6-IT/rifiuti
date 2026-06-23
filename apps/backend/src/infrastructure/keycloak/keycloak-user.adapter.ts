@@ -396,6 +396,28 @@ export class KeycloakUserAdapter {
   }
 
   /**
+   * Delete user in Keycloak (rollback su provisioning fallito).
+   */
+  async deleteUser(keycloakUserId: string): Promise<void> {
+    this.logger.info('Deleting user in Keycloak', { keycloakUserId });
+    try {
+      const token = await this.getAccessToken();
+      await firstValueFrom(
+        this.httpService.delete(
+          `${this.keycloakUrl}/admin/realms/${this.realm}/users/${keycloakUserId}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        ),
+      );
+      this.logger.info('User deleted in Keycloak', { keycloakUserId });
+    } catch (error: any) {
+      this.logger.error('Failed to delete user in Keycloak', error, {
+        keycloakUserId,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Disable user in Keycloak
    */
   async disableUser(keycloakUserId: string): Promise<void> {

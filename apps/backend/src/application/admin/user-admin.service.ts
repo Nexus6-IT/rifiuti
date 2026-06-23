@@ -19,6 +19,7 @@ import {
   ForbiddenException,
   BadRequestException,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { UserRole, User } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/persistence/prisma.service';
@@ -113,6 +114,15 @@ export class UserAdminService {
     }
     const normalizedFiscalCode = new FiscalCode(dto.fiscalCode).getValue();
 
+    // 2-bis. Valida la password temporanea contro la policy del realm
+    // (length >= 10) prima di toccare Keycloak: errore chiaro e niente utenti
+    // orfani sull'IdP.
+    if (dto.tempPassword && dto.tempPassword.length < 10) {
+      throw new BadRequestException(
+        'La password temporanea deve avere almeno 10 caratteri',
+      );
+    }
+
     // 3. Crea l'utente su Keycloak.
     let keycloakId: string;
     try {
@@ -128,6 +138,12 @@ export class UserAdminService {
         fiscalCode: normalizedFiscalCode,
         tenantId: targetTenantId,
       });
+      // 409 dal realm = username (codice fiscale) o email gia' esistenti.
+      if (error?.response?.status === 409) {
+        throw new ConflictException(
+          'Esiste già un utente con questa email o codice fiscale',
+        );
+      }
       throw new BadRequestException(
         'Impossibile creare l’utente sul provider di identità',
       );
@@ -144,15 +160,16 @@ export class UserAdminService {
       try {
         await this.keycloak.setPassword(keycloakId, dto.tempPassword, true);
       } catch (error: any) {
-        // Rollback best-effort: l'utente esiste su KC ma senza password usabile.
+        // Rollback: l'utente esiste su KC ma senza password usabile → lo CANCELLO
+        // (non solo disabilito) per non lasciare conflitti su email/CF nei retry.
         this.logger.error(
-          'Impostazione password temporanea fallita, disabilito utente KC',
+          'Impostazione password temporanea fallita, rimuovo utente KC',
           error,
           { keycloakId },
         );
-        await this.safeDisableKeycloak(keycloakId);
+        await this.safeDeleteKeycloak(keycloakId);
         throw new BadRequestException(
-          'Impossibile impostare la password temporanea',
+          'Password non valida per la policy del provider (minimo 10 caratteri)',
         );
       }
     }
@@ -181,7 +198,13 @@ export class UserAdminService {
         error,
         { keycloakId, tenantId: targetTenantId },
       );
-      await this.safeDisableKeycloak(keycloakId);
+      await this.safeDeleteKeycloak(keycloakId);
+      // P2002 = violazione unique (es. fiscalCode gia' presente nel tenant).
+      if (error?.code === 'P2002') {
+        throw new ConflictException(
+          'Esiste già un utente con questo codice fiscale in questa azienda',
+        );
+      }
       throw new BadRequestException(
         'Impossibile creare l’utente: registrazione locale fallita',
       );
@@ -337,6 +360,23 @@ export class UserAdminService {
     } catch (error: any) {
       this.logger.error(
         'Rollback Keycloak (disableUser) fallito; intervento manuale richiesto',
+        error,
+        { keycloakId },
+      );
+    }
+  }
+
+  /**
+   * Cancella l'utente su Keycloak ignorando errori (rollback best-effort):
+   * usato quando il provisioning fallisce, per non lasciare utenti orfani che
+   * causerebbero conflitti (409) sui tentativi successivi.
+   */
+  private async safeDeleteKeycloak(keycloakId: string): Promise<void> {
+    try {
+      await this.keycloak.deleteUser(keycloakId);
+    } catch (error: any) {
+      this.logger.error(
+        'Rollback Keycloak (deleteUser) fallito; intervento manuale richiesto',
         error,
         { keycloakId },
       );

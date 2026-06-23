@@ -60,7 +60,7 @@ export class CreateUserDto {
    */
   @IsString()
   @IsOptional()
-  @MinLength(8, { message: 'tempPassword deve avere almeno 8 caratteri' })
+  @MinLength(10, { message: 'La password temporanea deve avere almeno 10 caratteri' })
   tempPassword?: string;
 
   /**

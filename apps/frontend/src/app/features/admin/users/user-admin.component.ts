@@ -256,14 +256,26 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
           </div>
           <div class="field col-12 md:col-6">
             <label for="u-fiscalCode" class="block mb-2">Codice fiscale *</label>
-            <input
-              id="u-fiscalCode"
-              pInputText
-              formControlName="fiscalCode"
-              class="w-full font-mono"
-              maxlength="16"
-              style="text-transform: uppercase;"
-            />
+            <div class="flex gap-2">
+              <input
+                id="u-fiscalCode"
+                pInputText
+                formControlName="fiscalCode"
+                class="w-full font-mono"
+                maxlength="16"
+                style="text-transform: uppercase;"
+                aria-describedby="u-cf-hint"
+              />
+              <p-button
+                type="button"
+                icon="pi pi-sync"
+                [outlined]="true"
+                pTooltip="Genera un codice fiscale di test valido"
+                ariaLabel="Genera un codice fiscale di test valido"
+                (onClick)="generaCfTest()"
+              ></p-button>
+            </div>
+            <small id="u-cf-hint" class="block mt-1 text-tertiary">16 caratteri. Per i test usa "Genera".</small>
             <small *ngIf="showError('fiscalCode')" class="block mt-1 field-error">Il codice fiscale deve avere 16 caratteri.</small>
           </div>
 
@@ -332,9 +344,9 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
               ariaLabel="Password temporanea"
             ></p-password>
             <small id="u-password-hint" class="block mt-1 text-tertiary">
-              Minimo 8 caratteri. L'utente la cambierà al primo accesso. Lascia vuoto per generarla automaticamente.
+              Minimo 10 caratteri. L'utente la cambierà al primo accesso.
             </small>
-            <small *ngIf="showError('tempPassword')" class="block mt-1 field-error">La password deve avere almeno 8 caratteri.</small>
+            <small *ngIf="showError('tempPassword')" class="block mt-1 field-error">La password deve avere almeno 10 caratteri.</small>
           </div>
         </form>
         <ng-template pTemplate="footer">
@@ -468,7 +480,7 @@ export class UserAdminComponent implements OnInit {
     fiscalCode: ['', [Validators.required, Validators.pattern(CF_REGEX)]],
     role: ['OPERATOR' as UserRole, [Validators.required]],
     tenantId: [null as string | null],
-    tempPassword: ['', [Validators.minLength(8)]],
+    tempPassword: ['', [Validators.minLength(10)]],
     /** Quota aziende: valorizzata solo dal SUPER_ADMIN per i nuovi ADMIN. */
     companyLimit: [1 as number | null],
   });
@@ -558,6 +570,22 @@ export class UserAdminComponent implements OnInit {
   showError(controlName: string): boolean {
     const c = this.createForm.get(controlName);
     return !!c && c.invalid && (c.dirty || c.touched);
+  }
+
+  /**
+   * Genera un codice fiscale di test formalmente valido (formato corretto:
+   * 6 lettere + 2 cifre anno + lettera mese + giorno 01-31 + lettera+3 cifre
+   * comune + lettera controllo). NON e' un CF reale, solo per i test.
+   */
+  generaCfTest(): void {
+    const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const rl = (n: number) => Array.from({ length: n }, () => L[Math.floor(Math.random() * L.length)]).join('');
+    const rd = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');
+    const mesi = 'ABCDEHLMPRST';
+    const giorno = String(1 + Math.floor(Math.random() * 28)).padStart(2, '0');
+    const cf = rl(6) + rd(2) + mesi[Math.floor(Math.random() * mesi.length)] + giorno + rl(1) + rd(3) + rl(1);
+    this.createForm.get('fiscalCode')?.setValue(cf);
+    this.createForm.get('fiscalCode')?.markAsDirty();
   }
 
   // --- Creazione ---
