@@ -47,6 +47,28 @@ interface UserTenant {
     <!-- Link salta-contenuto per accessibilità (WCAG 2.4.1) -->
     <a href="#main-content" class="skip-to-main">Vai al contenuto principale</a>
 
+    <!-- ===== Banner globale di impersonificazione (full-width, sopra tutto) ===== -->
+    @if (isImpersonating()) {
+      <div class="impersonation-banner" role="status" aria-live="polite">
+        <span class="impersonation-banner__message">
+          <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+          <span>
+            Stai impersonando
+            <strong class="impersonation-banner__name">{{ impersonatingName() }}</strong>
+          </span>
+        </span>
+        <button
+          type="button"
+          class="impersonation-banner__exit"
+          (click)="exitImpersonation()"
+          [attr.aria-label]="'Torna al tuo account di amministratore, termina l\\'impersonificazione di ' + impersonatingName()"
+        >
+          <i class="pi pi-sign-out" aria-hidden="true"></i>
+          <span>Torna al tuo account</span>
+        </button>
+      </div>
+    }
+
     <div class="app-shell">
       <!-- ===== Sidebar desktop (fissa ≥992px) ===== -->
       <aside class="sidebar" aria-hidden="false">
@@ -330,6 +352,71 @@ interface UserTenant {
   `,
   styles: [`
     :host { display: block; }
+
+    /* ============================================================
+       Banner globale di impersonificazione
+       Full-width, in cima a tutto (sopra topbar/sidebar/drawer).
+       Sfondo ambra + testo scuro slate-900 → contrasto AA abbondante.
+       ============================================================ */
+    .impersonation-banner {
+      position: relative;
+      z-index: calc(var(--z-sticky) + 10);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-sm) var(--spacing-base);
+      padding: var(--spacing-sm) clamp(1rem, 2vw, var(--spacing-xl));
+      background: var(--color-warning-bg);
+      color: var(--color-gray-900);
+      border-bottom: 2px solid var(--color-warning);
+      font-size: var(--font-size-sm);
+      line-height: 1.3;
+    }
+    .impersonation-banner__message {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      font-weight: var(--font-weight-medium);
+      text-align: center;
+    }
+    .impersonation-banner__message i {
+      color: var(--color-warning);
+      font-size: 1.15rem;
+      flex-shrink: 0;
+    }
+    .impersonation-banner__name { font-weight: var(--font-weight-bold); }
+
+    .impersonation-banner__exit {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      min-height: var(--touch-target-min);
+      padding: 0.375rem var(--spacing-md);
+      border: 1px solid var(--color-warning);
+      border-radius: var(--radius-md);
+      background: var(--color-warning);
+      color: var(--text-inverse);
+      font-family: inherit;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      cursor: pointer;
+      transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+    .impersonation-banner__exit:hover {
+      background: var(--brand-secondary-dark, #92400e);
+      border-color: var(--brand-secondary-dark, #92400e);
+    }
+    .impersonation-banner__exit:focus-visible {
+      outline: 3px solid var(--color-gray-900);
+      outline-offset: 2px;
+    }
+
+    /* Mobile: messaggio + bottone vanno a capo restando centrati */
+    @media (max-width: 575.98px) {
+      .impersonation-banner { flex-direction: column; }
+      .impersonation-banner__exit { width: 100%; justify-content: center; }
+    }
 
     /* ============================================================
        Struttura: sidebar fissa a sinistra + colonna contenuto.
@@ -707,6 +794,21 @@ export class LayoutComponent implements OnInit {
   // Mobile sidebar visibility signal
   mobileSidebarVisible = signal(false);
 
+  /**
+   * Stato di impersonificazione: vero quando un SUPER_ADMIN sta operando come
+   * un altro utente. Le chiavi sono impostate da un altro componente all'avvio
+   * dell'impersonificazione (NON gestito qui):
+   *  - wf_impersonator_token   = access token del super admin (da ripristinare)
+   *  - wf_impersonator_refresh = refresh token del super admin (opzionale)
+   *  - wf_impersonating_name   = nome dell'utente impersonato
+   * In aggiunta, il JWT corrente (localStorage.accessToken) porta il claim
+   * `impersonatorId` quando è una sessione di impersonificazione.
+   */
+  readonly isImpersonating = signal(false);
+
+  /** Nome leggibile dell'utente attualmente impersonato (per il banner). */
+  readonly impersonatingName = signal<string>('');
+
   /** Tenant disponibili (caricati da GET /admin/tenants per il super admin). */
   readonly adminTenants = signal<AdminTenant[]>([]);
 
@@ -831,6 +933,7 @@ export class LayoutComponent implements OnInit {
   constructor(readonly authService: AuthService, private readonly router: Router) {}
 
   ngOnInit(): void {
+    this.detectImpersonation();
     this.updateTitle();
     this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
@@ -948,6 +1051,73 @@ export class LayoutComponent implements OnInit {
 
   isActiveRoute(route: string): boolean {
     return window.location.pathname.startsWith(route);
+  }
+
+  /**
+   * Rileva una sessione di impersonificazione attiva e popola le signal usate
+   * dal banner. Considera impersonificazione se è presente
+   * `wf_impersonator_token` in localStorage OPPURE se il JWT corrente contiene
+   * il claim `impersonatorId`. Il nome mostrato proviene da
+   * `wf_impersonating_name` con fallback generico.
+   */
+  private detectImpersonation(): void {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return;
+    }
+    const hasImpersonatorToken = !!localStorage.getItem('wf_impersonator_token');
+    const jwtHasClaim = this.currentTokenHasImpersonatorClaim();
+    const active = hasImpersonatorToken || jwtHasClaim;
+    this.isImpersonating.set(active);
+    if (active) {
+      this.impersonatingName.set(
+        localStorage.getItem('wf_impersonating_name')?.trim() || 'questo utente',
+      );
+    }
+  }
+
+  /**
+   * Decodifica (best-effort) il payload base64url del JWT in
+   * `localStorage.accessToken` e verifica la presenza del claim
+   * `impersonatorId`. Qualsiasi errore di parsing è trattato come "assente".
+   */
+  private currentTokenHasImpersonatorClaim(): boolean {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const payload = token?.split('.')[1];
+      if (!payload) return false;
+      const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+      const decoded = JSON.parse(atob(normalized));
+      return decoded != null && decoded.impersonatorId != null;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Termina l'impersonificazione: ripristina i token del super admin, ripulisce
+   * le chiavi temporanee e ricarica completamente l'app sulla dashboard così da
+   * tornare al contesto originale (feature-flag, dati e ruolo ricalcolati).
+   */
+  exitImpersonation(): void {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return;
+    }
+    const impersonatorToken = localStorage.getItem('wf_impersonator_token');
+    const impersonatorRefresh = localStorage.getItem('wf_impersonator_refresh');
+
+    if (impersonatorToken) {
+      localStorage.setItem('accessToken', impersonatorToken);
+    }
+    if (impersonatorRefresh) {
+      localStorage.setItem('refreshToken', impersonatorRefresh);
+    }
+
+    localStorage.removeItem('wf_impersonator_token');
+    localStorage.removeItem('wf_impersonator_refresh');
+    localStorage.removeItem('wf_impersonating_name');
+
+    // Reload completo → si torna ad operare come super amministratore.
+    window.location.href = '/dashboard';
   }
 
   onLogout(): void {

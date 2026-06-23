@@ -29,6 +29,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator';
 import { UserAdminService } from '../../application/admin/user-admin.service';
+import { ImpersonationService } from '../../application/admin/impersonation.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
@@ -40,7 +41,10 @@ import { SetCompanyLimitDto } from './dto/set-company-limit.dto';
 export class UserAdminController {
   private readonly logger = new Logger(UserAdminController.name);
 
-  constructor(private readonly userAdminService: UserAdminService) {}
+  constructor(
+    private readonly userAdminService: UserAdminService,
+    private readonly impersonationService: ImpersonationService,
+  ) {}
 
   /**
    * GET /api/v1/admin/users
@@ -127,6 +131,22 @@ export class UserAdminController {
       dto.companyLimit,
     );
     return this.toResponse(user);
+  }
+
+  /**
+   * POST /api/v1/admin/users/:id/impersonate
+   * Avvia una sessione di impersonificazione dell'utente target.
+   * Riservato al SUPER_ADMIN. Ritorna un token che agisce come l'utente target.
+   */
+  @Post(':id/impersonate')
+  @HttpCode(HttpStatus.OK)
+  @Roles('SUPER_ADMIN')
+  async impersonate(
+    @CurrentUser() currentUser: CurrentUserPayload,
+    @Param('id') id: string,
+  ) {
+    this.logger.warn(`Impersonificazione richiesta: ${currentUser.id} -> ${id}`);
+    return this.impersonationService.impersonate(currentUser, id);
   }
 
   /**

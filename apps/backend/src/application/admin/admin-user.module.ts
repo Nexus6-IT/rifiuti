@@ -19,12 +19,13 @@ import { KeycloakModule } from '../../infrastructure/keycloak/keycloak.module';
 import { AuthModule } from '../../auth/auth.module';
 import { LoggerModule } from '../../core/logger/logger.module';
 import { UserAdminService } from './user-admin.service';
+import { ImpersonationService } from './impersonation.service';
 import { UserAdminController } from '../../api/admin/user-admin.controller';
 
 @Module({
   imports: [PrismaModule, KeycloakModule, AuthModule, LoggerModule],
   controllers: [UserAdminController],
-  providers: [UserAdminService],
+  providers: [UserAdminService, ImpersonationService],
   exports: [UserAdminService],
 })
 export class AdminUserModule {}

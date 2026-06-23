@@ -20,6 +20,7 @@ import {
   CreateUserDto,
   UserRole,
   TenantOption,
+  ImpersonateResult,
 } from './user-admin.service';
 
 interface SelectOption<T> {
@@ -143,7 +144,7 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
                   <th scope="col">Quota aziende</th>
                 }
                 <th scope="col">Stato</th>
-                <th scope="col" style="width: 190px">Azioni</th>
+                <th scope="col" style="width: 230px">Azioni</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-u>
@@ -170,6 +171,18 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
                   ></p-tag>
                 </td>
                 <td>
+                  <!-- Impersona: solo SUPER_ADMIN, mai sugli altri super-admin -->
+                  @if (isSuperAdmin() && u.role !== 'SUPER_ADMIN') {
+                    <p-button
+                      icon="pi pi-eye"
+                      [rounded]="true"
+                      [text]="true"
+                      severity="help"
+                      (onClick)="openImpersonateDialog(u)"
+                      pTooltip="Impersona"
+                      [ariaLabel]="'Impersona ' + u.firstName + ' ' + u.lastName"
+                    />
+                  }
                   <p-button
                     icon="pi pi-user-edit"
                     [rounded]="true"
@@ -473,6 +486,14 @@ export class UserAdminComponent implements OnInit {
   targetCompanyLimit: number | null = 1;
   readonly savingLimit = signal(false);
 
+  // Impersonificazione
+  readonly impersonating = signal(false);
+
+  /** Chiavi localStorage usate durante l'impersonificazione (lette dal banner globale). */
+  private static readonly IMPERSONATOR_TOKEN_KEY = 'wf_impersonator_token';
+  private static readonly IMPERSONATOR_REFRESH_KEY = 'wf_impersonator_refresh';
+  private static readonly IMPERSONATING_NAME_KEY = 'wf_impersonating_name';
+
   ngOnInit(): void {
     if (this.isSuperAdmin()) {
       this.loadTenants();
@@ -674,6 +695,67 @@ export class UserAdminComponent implements OnInit {
           },
           error: () => this.toast.error('Errore nell\'aggiornamento dello stato'),
         });
+      },
+    });
+  }
+
+  // --- Impersonificazione (solo SUPER_ADMIN) ---
+  openImpersonateDialog(u: AdminUser): void {
+    // Difesa in profondità: l'azione è già nascosta, ma blocchiamo comunque
+    // l'impersonificazione di sé stessi o di altri super-admin.
+    if (!this.isSuperAdmin() || u.role === 'SUPER_ADMIN') return;
+    const fullName = `${u.firstName} ${u.lastName}`;
+    this.confirmation.confirm({
+      header: 'Impersona utente',
+      message: `Vuoi impersonare ${fullName}? Agirai come questo utente finché non torni al tuo account.`,
+      icon: 'pi pi-eye',
+      acceptLabel: 'Impersona',
+      rejectLabel: 'Annulla',
+      accept: () => this.doImpersonate(u),
+    });
+  }
+
+  private doImpersonate(u: AdminUser): void {
+    this.impersonating.set(true);
+    this.userService.impersonate(u.id).subscribe({
+      next: (res: ImpersonateResult) => {
+        try {
+          // 1. Salva i token correnti del super admin per poter tornare indietro.
+          const currentAccess = localStorage.getItem('accessToken');
+          const currentRefresh = localStorage.getItem('refreshToken');
+          if (currentAccess) {
+            localStorage.setItem(
+              UserAdminComponent.IMPERSONATOR_TOKEN_KEY,
+              currentAccess,
+            );
+          }
+          if (currentRefresh) {
+            localStorage.setItem(
+              UserAdminComponent.IMPERSONATOR_REFRESH_KEY,
+              currentRefresh,
+            );
+          }
+          localStorage.setItem(
+            UserAdminComponent.IMPERSONATING_NAME_KEY,
+            `${u.firstName} ${u.lastName}`,
+          );
+
+          // 2. Sostituisce i token con quelli dell'utente impersonato.
+          localStorage.setItem('accessToken', res.accessToken);
+          if (res.refreshToken) {
+            localStorage.setItem('refreshToken', res.refreshToken);
+          }
+
+          // 3. Reload completo: guard/feature/menu ripartono nel contesto target.
+          window.location.href = '/dashboard';
+        } catch {
+          this.impersonating.set(false);
+          this.toast.error('Impossibile avviare l\'impersonificazione');
+        }
+      },
+      error: () => {
+        this.impersonating.set(false);
+        this.toast.error('Errore durante l\'impersonificazione dell\'utente');
       },
     });
   }

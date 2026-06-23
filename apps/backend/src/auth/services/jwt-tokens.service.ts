@@ -13,6 +13,8 @@ export interface JwtPayload {
   fiscalCode?: string
   tenantId?: string
   role?: string
+  /** Id del SUPER_ADMIN che sta impersonando questo utente (solo token di impersonificazione). */
+  impersonatorId?: string
   type: 'access' | 'refresh'
   iat?: number
   exp?: number
@@ -42,7 +44,7 @@ export class JwtTokensService {
   /**
    * Generate access token (short-lived, 15min)
    */
-  generateAccessToken(user: UserTokenPayload): string {
+  generateAccessToken(user: UserTokenPayload, impersonatorId?: string): string {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -50,6 +52,7 @@ export class JwtTokensService {
       tenantId: user.tenantId,
       role: user.role,
       type: 'access',
+      ...(impersonatorId ? { impersonatorId } : {}),
     }
 
     return this.jwtService.sign(payload, {
@@ -74,8 +77,8 @@ export class JwtTokensService {
   /**
    * Generate both access and refresh tokens
    */
-  generateTokenPair(user: UserTokenPayload): TokenPair {
-    const accessToken = this.generateAccessToken(user)
+  generateTokenPair(user: UserTokenPayload, impersonatorId?: string): TokenPair {
+    const accessToken = this.generateAccessToken(user, impersonatorId)
     const refreshToken = this.generateRefreshToken(user.id)
 
     // Parse expiration time to seconds

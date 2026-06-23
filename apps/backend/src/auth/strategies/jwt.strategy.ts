@@ -17,6 +17,8 @@ export interface CurrentUserPayload {
   tenantId: string
   role: string
   permissions: string[]
+  /** Presente solo se la sessione e' un'impersonificazione (id del SUPER_ADMIN). */
+  impersonatorId?: string
 }
 
 @Injectable()
@@ -71,6 +73,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       tenantId,
       role,
       permissions,
+      impersonatorId: payload.impersonatorId,
     }
   }
 

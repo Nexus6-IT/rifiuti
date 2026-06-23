@@ -52,6 +52,24 @@ export interface TenantOption {
 }
 
 /**
+ * Risposta dell'impersonificazione (`POST /admin/users/:id/impersonate`).
+ * Il token rilasciato agisce come l'utente target.
+ */
+export interface ImpersonateResult {
+  accessToken: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  user: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    tenantId: string;
+    role: UserRole;
+  };
+}
+
+/**
  * Client per la gestione utenti (area amministrazione).
  * Consuma l'API NestJS `admin` (prefix globale /api/v1 già in apiUrl).
  */
@@ -102,5 +120,16 @@ export class UserAdminService {
   /** Lista tenant per i selettori (solo SUPER_ADMIN). */
   listTenants(): Observable<TenantOption[]> {
     return this.http.get<TenantOption[]>(`${this.API_URL}/tenants`);
+  }
+
+  /**
+   * Impersonifica un utente (solo SUPER_ADMIN).
+   * `POST /admin/users/:id/impersonate` → token che agisce come l'utente target.
+   */
+  impersonate(userId: string): Observable<ImpersonateResult> {
+    return this.http.post<ImpersonateResult>(
+      `${this.API_URL}/users/${userId}/impersonate`,
+      {},
+    );
   }
 }
