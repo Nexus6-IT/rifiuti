@@ -50,28 +50,33 @@ jobs:
           username: Graziano
           password: ${{ secrets.CR_TOKEN }}
 
-      - name: Build & push BACKEND
-        uses: docker/build-push-action@v6
-        with:
-          context: ./apps/backend
-          file: ./apps/backend/Dockerfile.prod
-          push: true
-          provenance: false
-          tags: |
-            ${{ env.BACKEND_IMAGE }}:latest
-            ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tag }}
+      # Build & push con RETRY: il push sul Gitea CR (via Funnel) fallisce a
+      # intermittenza ("failed to push ... unknown"). Riproviamo fino a 3 volte;
+      # la cache di layer rende i retry rapidi. context backend = ./apps/backend,
+      # frontend = root del monorepo (il frontend non ha lockfile proprio).
+      - name: Build & push BACKEND (retry)
+        run: |
+          n=0
+          until [ $n -ge 3 ]; do
+            docker buildx build --provenance=false \
+              -t "${BACKEND_IMAGE}:latest" \
+              -t "${BACKEND_IMAGE}:${{ steps.meta.outputs.tag }}" \
+              -f ./apps/backend/Dockerfile.prod --push ./apps/backend && exit 0
+            n=$((n+1)); echo "::warning::push BACKEND fallito (tentativo $n), riprovo tra 10s"; sleep 10
+          done
+          echo "::error::push BACKEND fallito dopo 3 tentativi"; exit 1
 
-      - name: Build & push FRONTEND
-        uses: docker/build-push-action@v6
-        with:
-          # Contesto = root del monorepo (il frontend non ha lockfile proprio)
-          context: .
-          file: ./apps/frontend/Dockerfile.prod
-          push: true
-          provenance: false
-          tags: |
-            ${{ env.FRONTEND_IMAGE }}:latest
-            ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.tag }}
+      - name: Build & push FRONTEND (retry)
+        run: |
+          n=0
+          until [ $n -ge 3 ]; do
+            docker buildx build --provenance=false \
+              -t "${FRONTEND_IMAGE}:latest" \
+              -t "${FRONTEND_IMAGE}:${{ steps.meta.outputs.tag }}" \
+              -f ./apps/frontend/Dockerfile.prod --push . && exit 0
+            n=$((n+1)); echo "::warning::push FRONTEND fallito (tentativo $n), riprovo tra 10s"; sleep 10
+          done
+          echo "::error::push FRONTEND fallito dopo 3 tentativi"; exit 1
 
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
