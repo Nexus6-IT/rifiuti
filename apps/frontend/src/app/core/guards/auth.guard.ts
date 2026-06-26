@@ -22,14 +22,13 @@ export const authGuard: CanActivateFn = (
   const authService = inject(AuthService);
   const router = inject(Router);
 
-  const accessToken = authService.getAccessToken();
-
-  if (accessToken) {
-    // User has token, allow access
+  // Token presente e NON scaduto → accesso consentito.
+  if (authService.isTokenValid()) {
     return true;
   }
 
-  // Not authenticated, redirect to login with return URL
+  // Sessione assente o scaduta: pulizia + redirect alla login con returnUrl.
+  authService.clearSession();
   const returnUrl = state.url;
   return router.createUrlTree(['/login'], {
     queryParams: { returnUrl },

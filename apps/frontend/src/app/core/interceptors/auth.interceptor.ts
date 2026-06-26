@@ -3,18 +3,21 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
+import { AuthService } from '../services/auth.service';
 
 /**
  * Auth Interceptor
  *
- * Automatically attaches JWT access token to all outgoing HTTP requests.
- * Handles 401 Unauthorized responses by redirecting to login.
+ * Allega il JWT alle richieste e, su 401 (sessione scaduta/non valida),
+ * pulisce la sessione e riporta alla pagina di login conservando l'URL di
+ * ritorno. Evita loop quando si è già sulla login.
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const router = inject(Router);
+  const authService = inject(AuthService);
 
-  const publicEndpoints = ['/auth/login', '/auth/register', '/health'];
-  const isPublicEndpoint = publicEndpoints.some(endpoint => req.url.includes(endpoint));
+  const publicEndpoints = ['/auth/spid', '/auth/callback', '/auth/refresh', '/health'];
+  const isPublicEndpoint = publicEndpoints.some((endpoint) => req.url.includes(endpoint));
 
   if (isPublicEndpoint) {
     return next(req);
@@ -34,11 +37,13 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   return next(authRequest).pipe(
     catchError((error: HttpErrorResponse) => {
       if (error.status === 401) {
-        console.error('Authentication failed - redirecting to login');
-        localStorage.removeItem('accessToken');
-        router.navigate(['/auth/login']);
+        authService.clearSession();
+        // Evita redirect ripetuti se siamo già sulla login.
+        if (!router.url.startsWith('/login')) {
+          const returnUrl = router.url && router.url !== '/' ? router.url : undefined;
+          router.navigate(['/login'], returnUrl ? { queryParams: { returnUrl } } : {});
+        }
       }
-
       return throwError(() => error);
     })
   );

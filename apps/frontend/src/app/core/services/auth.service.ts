@@ -133,4 +133,38 @@ export class AuthService {
   getRefreshToken(): string | null {
     return localStorage.getItem('refreshToken');
   }
+
+  /**
+   * Pulisce completamente la sessione: token, eventuali chiavi di
+   * impersonificazione / contesto admin, e stato in memoria.
+   */
+  clearSession(): void {
+    [
+      'accessToken',
+      'refreshToken',
+      'wf_impersonator_token',
+      'wf_impersonator_refresh',
+      'wf_impersonating_name',
+      'wf_admin_tenant',
+    ].forEach((k) => localStorage.removeItem(k));
+    this.currentUser.set(null);
+    this.isAuthenticated.set(false);
+  }
+
+  /**
+   * Verifica che l'access token sia presente e NON scaduto (claim `exp`).
+   * Decodifica best-effort: token malformato => considerato non valido.
+   */
+  isTokenValid(): boolean {
+    const token = this.getAccessToken();
+    if (!token) return false;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (!payload?.exp) return true; // nessuna scadenza dichiarata
+      // exp e' in secondi; piccolo margine (5s) per evitare race a cavallo della scadenza.
+      return payload.exp * 1000 > Date.now() + 5000;
+    } catch {
+      return false;
+    }
+  }
 }
