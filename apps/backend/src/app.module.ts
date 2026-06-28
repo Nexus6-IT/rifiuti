@@ -3,11 +3,12 @@
  * Configures all domain modules and infrastructure
  */
 
-import { Module } from '@nestjs/common'
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
 import { APP_GUARD } from '@nestjs/core'
+import { TenantContextMiddleware } from './core/middleware/tenant-context.middleware'
 import { HealthController } from './api/health/health.controller'
 import { AuthModule } from './auth/auth.module'
 import { PrismaModule } from './infrastructure/persistence/prisma.module'
@@ -123,4 +124,13 @@ import { MeModule } from './api/me/me.module'
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  /**
+   * Popola il TenantContext (AsyncLocalStorage) per ogni richiesta a partire dal
+   * JWT: abilita l'isolamento multi-tenant (RLS extension) e sblocca i percorsi di
+   * scrittura dei repository (che usano TenantContext.requireTenantId()).
+   */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(TenantContextMiddleware).forRoutes('*')
+  }
+}

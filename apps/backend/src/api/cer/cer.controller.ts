@@ -27,6 +27,45 @@ export class CERStatisticsDto {
 export class CERController {
   constructor(private readonly cerCatalogService: CERCatalogService) {}
 
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Lista paginata del catalogo CER',
+    description: 'Restituisce i codici CER paginati, con filtri opzionali per categoria/pericolosità.',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'category', required: false })
+  @ApiQuery({ name: 'pericoloso', required: false, type: Boolean })
+  async list(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('category') category?: string,
+    @Query('pericoloso') pericoloso?: string,
+  ): Promise<{ items: CERResponseDto[]; total: number; page: number; limit: number; totalPages: number }> {
+    const pageNum = Number(page) || 1
+    const limitNum = Number(limit) || 50
+    const filters: any = {}
+    if (pericoloso !== undefined) filters.pericoloso = pericoloso === 'true'
+    if (category) filters.category = category
+
+    const { items, total } = await this.cerCatalogService.list(pageNum, limitNum, filters)
+    return {
+      items: items.map((cer) => ({
+        id: cer.id,
+        code: cer.code,
+        description: cer.description,
+        isPericoloso: cer.isPericoloso,
+        category: cer.category,
+        subcategory: cer.subcategory,
+      })),
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    }
+  }
+
   @Get('search')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

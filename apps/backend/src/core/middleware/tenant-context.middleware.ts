@@ -1,85 +1,90 @@
 import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
+import * as jwt from 'jsonwebtoken';
 import { TenantContext } from '../context/tenant-context';
 
 /**
  * Tenant Context Middleware
  *
- * Extracts tenant ID from authenticated user's JWT token
- * and attaches it to the request object for downstream use.
+ * Popola il `TenantContext` (AsyncLocalStorage) per ogni richiesta HTTP a partire
+ * dal JWT, così i repository risolvono il "tenant corrente" dal contesto e
+ * l'estensione RLS (prisma) applica il filtro per tenant.
  *
- * This middleware is CRITICAL for multi-tenant data isolation.
- * It must run AFTER authentication middleware.
+ * NB: in NestJS i middleware girano PRIMA dei guard, quindi `req.user` (popolato
+ * dal JwtAuthGuard/passport) NON è ancora disponibile qui. Per questo il
+ * middleware decodifica direttamente il Bearer token (gli header sono accessibili
+ * nel middleware). L'autenticazione "vera" resta a carico del JwtAuthGuard: se il
+ * token è assente/non valido si prosegue SENZA contesto e sarà il guard della
+ * rotta a rispondere 401 (le rotte pubbliche passano comunque).
  *
- * Usage in app.module.ts:
- * ```typescript
- * export class AppModule implements NestModule {
- *   configure(consumer: MiddlewareConsumer) {
- *     consumer
- *       .apply(TenantContextMiddleware)
- *       .forRoutes('*');
- *   }
- * }
- * ```
+ * Registrato in app.module.ts via NestModule.configure() su tutte le rotte.
  */
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
+  private readonly jwtSecret: string;
+
+  constructor(private readonly configService: ConfigService) {
+    this.jwtSecret = this.configService.get<string>('JWT_SECRET') || '';
+  }
+
   use(req: Request, res: Response, next: NextFunction) {
-    // Skip tenant isolation for public routes
-    const publicRoutes = ['/health', '/metrics', '/auth/login', '/auth/register'];
-    if (publicRoutes.some(route => req.path.startsWith(route))) {
+    const payload = this.decodeToken(req);
+
+    // Nessun token valido (rotta pubblica o richiesta non autenticata): si
+    // prosegue senza contesto; il JwtAuthGuard della rotta gestira' l'eventuale 401.
+    if (!payload) {
       return next();
     }
 
-    // Extract tenant ID from authenticated user
-    // Keycloak JWT contains user info in req.user
-    const user = (req as any).user;
+    // Il SUPER_ADMIN è un amministratore di piattaforma: ricavato SOLO dal ruolo
+    // verificato nel token, mai da un header.
+    const isSuperAdmin = payload.role === 'SUPER_ADMIN';
 
-    if (!user) {
-      throw new UnauthorizedException('User not authenticated');
-    }
-
-    // Il SUPER_ADMIN è un amministratore di piattaforma: lo ricaviamo SOLO dal
-    // ruolo verificato nel token, mai da un header (security: il bypass tenant
-    // non deve essere inferibile da utenti normali).
-    const isSuperAdmin = user.role === 'SUPER_ADMIN';
-
-    // Un SUPER_ADMIN può scegliere di operare su uno specifico tenant passando
-    // l'header `X-Tenant-ID`. Per gli utenti normali l'header viene IGNORATO:
-    // il tenant è sempre e solo quello del loro JWT (fail-closed).
+    // Un SUPER_ADMIN può operare su uno specifico tenant via header `X-Tenant-ID`.
+    // Per gli utenti normali l'header è IGNORATO (fail-closed): vale il tenant del JWT.
     const headerTenantId = this.readTenantHeader(req);
 
     let tenantId: string | undefined;
-
     if (isSuperAdmin) {
-      // Super admin: usa il tenant target se indicato, altrimenti opera
-      // cross-tenant (nessun vincolo di tenant → RLS bypassata a valle).
-      tenantId = headerTenantId ?? user.tenantId ?? undefined;
-      // Un tenantId vuoto ('') va normalizzato a undefined per evitare di
-      // attivare il filtro RLS con un valore non valido.
-      if (!tenantId) {
-        tenantId = undefined;
-      }
+      tenantId = headerTenantId ?? payload.tenantId ?? undefined;
+      if (!tenantId) tenantId = undefined; // '' → undefined (no filtro RLS non valido)
     } else {
-      // Utente normale: deve avere un tenant nel token (invariato).
-      if (!user.tenantId) {
-        throw new UnauthorizedException('Tenant ID not found in user token');
-      }
-      tenantId = user.tenantId;
+      tenantId = payload.tenantId || undefined;
     }
 
-    // Attach tenant ID to request for downstream use (undefined per super admin
-    // cross-tenant).
     (req as any).tenantId = tenantId;
     (req as any).isSuperAdmin = isSuperAdmin;
 
-    // Esegue il resto della richiesta DENTRO il TenantContext (AsyncLocalStorage):
-    // così i repository risolvono il tenant corrente dal contesto, senza il
-    // fallback al "primo tenant" che causava il cross-tenant data leak.
     TenantContext.run(
-      { tenantId, userId: user.id ?? user.userId, isSuperAdmin },
+      { tenantId, userId: payload.sub, isSuperAdmin },
       () => next(),
     );
+  }
+
+  /**
+   * Estrae e verifica il Bearer token. Ritorna il payload ({sub, tenantId, role})
+   * oppure null se assente/non valido (in tal caso il guard gestira' la 401).
+   */
+  private decodeToken(req: Request): { sub?: string; tenantId?: string; role?: string } | null {
+    const auth = req.headers['authorization'];
+    if (!auth || !auth.startsWith('Bearer ') || !this.jwtSecret) {
+      return null;
+    }
+    const token = auth.slice(7);
+    try {
+      const decoded = jwt.verify(token, this.jwtSecret) as Record<string, unknown>;
+      if (decoded && decoded['type'] === 'access') {
+        return {
+          sub: decoded['sub'] as string | undefined,
+          tenantId: decoded['tenantId'] as string | undefined,
+          role: decoded['role'] as string | undefined,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   /**

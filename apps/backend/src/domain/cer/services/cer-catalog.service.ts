@@ -50,6 +50,19 @@ export class CERCatalogService {
   }
 
   /**
+   * Lista paginata del catalogo (con filtri opzionali categoria/pericoloso).
+   */
+  async list(
+    page: number,
+    limit: number,
+    filters?: CERSearchFilters,
+  ): Promise<{ items: CERCode[]; total: number }> {
+    const safePage = page > 0 ? page : 1
+    const safeLimit = limit > 0 && limit <= 200 ? limit : 50
+    return this.repository.findPaginated(safePage, safeLimit, filters)
+  }
+
+  /**
    * Get CER codes by category
    */
   async getByCategory(category: string): Promise<CERCode[]> {

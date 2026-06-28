@@ -38,6 +38,15 @@ export interface ICERRepository {
   findAllPericolosi(): Promise<CERCode[]>
 
   /**
+   * Lista paginata del catalogo (con filtri opzionali).
+   */
+  findPaginated(
+    page: number,
+    limit: number,
+    filters?: CERSearchFilters,
+  ): Promise<{ items: CERCode[]; total: number }>
+
+  /**
    * Save single CER code
    */
   save(cer: CERCode): Promise<void>
