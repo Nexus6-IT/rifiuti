@@ -139,19 +139,31 @@ export class FIRPrismaRepository implements IFIRRepository {
 
   async save(fir: FIR): Promise<void> {
     const data = this.toPersistence(fir)
+    // Le relazioni obbligatorie (tenant, producerUser) vanno fornite a Prisma in
+    // forma `connect`, non come FK scalari: l'upsert con write annidati usa
+    // l'input "checked" che richiede la relazione (altrimenti: "Argument
+    // `tenant` is missing"). Si estraggono quindi gli scalari e si collega.
+    const { tenantId, producerUserId, ...scalars } = data
+
     // I trasportatori aggiuntivi (tratte intermodali) sono uno snapshot fissato
     // alla creazione del FIR: si scrivono solo nel ramo `create` dell'upsert, mai
     // negli update (transizioni di stato) per non duplicarli.
     const transportersCreate = this.transportersToCreate(fir)
-    const createData: any = { ...data }
+    const createData: any = {
+      ...scalars,
+      tenant: { connect: { id: tenantId } },
+      producerUser: { connect: { id: producerUserId } },
+    }
     if (transportersCreate.length > 0) {
       createData.transportersAggiuntivi = { create: transportersCreate }
     }
 
+    // Le transizioni di stato aggiornano solo i campi scalari: tenant e
+    // produttore-utente non cambiano dopo la creazione.
     await this.prisma.fIR.upsert({
       where: { id: fir.id },
       create: createData,
-      update: data,
+      update: scalars,
     })
   }
 

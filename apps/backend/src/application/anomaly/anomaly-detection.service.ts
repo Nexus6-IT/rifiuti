@@ -128,9 +128,9 @@ export class AnomalyDetectionService {
   private fir(
     type: AnomalyType,
     severity: AnomalySeverity,
-    fir: { id: string; firNumber: string },
+    fir: { id: string; firNumber: string | null },
     message: string,
   ): Anomaly {
-    return { type, severity, firId: fir.id, firNumber: fir.firNumber, message }
+    return { type, severity, firId: fir.id, firNumber: fir.firNumber ?? '', message }
   }
 }

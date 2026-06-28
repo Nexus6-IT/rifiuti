@@ -161,7 +161,8 @@ model FIR {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  firNumber String @map("fir_number") @db.VarChar(50)
+  // Assegnato all'emissione (BOZZA → EMESSO): nullable finché il FIR è bozza.
+  firNumber String? @map("fir_number") @db.VarChar(50)
 
   status             FIRStatus @default(DRAFT)
   workflowVersion    Int       @default(1) @map("workflow_version")
