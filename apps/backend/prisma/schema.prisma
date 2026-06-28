@@ -196,7 +196,8 @@ model FIR {
   receiverAddress    String  @map("receiver_address") @db.VarChar(500)
   receiverContact    String? @map("receiver_contact") @db.VarChar(255)
 
-  cerCode          String  @map("cer_code") @db.VarChar(6)
+  // Formato canonico del catalogo "NN NN NN"(*) → fino a 9 char (VarChar(10)).
+  cerCode          String  @map("cer_code") @db.VarChar(10)
   wasteDescription String  @map("waste_description") @db.VarChar(500)
   wasteCategory    String  @map("waste_category") @db.VarChar(100)
   quantity         Decimal @db.Decimal(10, 2)
