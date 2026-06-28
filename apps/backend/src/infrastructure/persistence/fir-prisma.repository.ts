@@ -22,6 +22,35 @@ export class FIRPrismaRepository implements IFIRRepository {
     transportersAggiuntivi: { orderBy: { ordine: 'asc' } },
   }
 
+  // Mappatura stato dominio (italiano) <-> enum Prisma `FIRStatus` (inglese).
+  // Il dominio resta in italiano; la persistenza usa l'enum del DB. Senza questa
+  // mappatura Prisma rifiuta il valore (es. "BOZZA" non e' un FIRStatus valido).
+  private static readonly STATO_TO_DB: Record<FIRStato, PrismaFIRStatus> = {
+    [FIRStato.BOZZA]: PrismaFIRStatus.DRAFT,
+    [FIRStato.EMESSO]: PrismaFIRStatus.AWAITING_CARRIER,
+    [FIRStato.IN_TRANSITO]: PrismaFIRStatus.AWAITING_RECEIVER,
+    [FIRStato.CONSEGNATO]: PrismaFIRStatus.COMPLETED,
+    [FIRStato.ANNULLATO]: PrismaFIRStatus.CANCELLED,
+  }
+
+  private static readonly DB_TO_STATO: Record<string, FIRStato> = {
+    [PrismaFIRStatus.DRAFT]: FIRStato.BOZZA,
+    [PrismaFIRStatus.AWAITING_PRODUCER]: FIRStato.BOZZA,
+    [PrismaFIRStatus.AWAITING_CARRIER]: FIRStato.EMESSO,
+    [PrismaFIRStatus.AWAITING_RECEIVER]: FIRStato.IN_TRANSITO,
+    [PrismaFIRStatus.COMPLETED]: FIRStato.CONSEGNATO,
+    [PrismaFIRStatus.SYNCED_TO_RENTRI]: FIRStato.CONSEGNATO,
+    [PrismaFIRStatus.CANCELLED]: FIRStato.ANNULLATO,
+  }
+
+  private statoToDb(stato: FIRStato): PrismaFIRStatus {
+    return FIRPrismaRepository.STATO_TO_DB[stato] ?? PrismaFIRStatus.DRAFT
+  }
+
+  private statoFromDb(status: string): FIRStato {
+    return FIRPrismaRepository.DB_TO_STATO[status] ?? FIRStato.BOZZA
+  }
+
   async findById(id: string): Promise<FIR | null> {
     // Usa il client RLS-aware: con TenantContext attivo l'estensione inietta il
     // `tenantId` reale (findFirst), evitando di restituire FIR di altri tenant
@@ -68,7 +97,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     }
 
     if (filters?.stato) {
-      where.status = filters.stato
+      where.status = this.statoToDb(filters.stato as FIRStato)
     }
 
     if (filters?.cerCode) {
@@ -92,7 +121,7 @@ export class FIRPrismaRepository implements IFIRRepository {
 
   async findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]> {
     const where: any = {
-      status: stato as any
+      status: this.statoToDb(stato)
     }
 
     if (tenantId) {
@@ -180,7 +209,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     const where: any = {}
 
     if (filters?.stato) {
-      where.status = filters.stato
+      where.status = this.statoToDb(filters.stato as FIRStato)
     }
 
     if (filters?.produttoreId) {
@@ -251,7 +280,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     // Restore state (using reflection - in production use proper reconstitution)
     Object.assign(fir, {
       _id: record.id,
-      _stato: record.status as any, // Map FIRStatus to FIRStato
+      _stato: this.statoFromDb(record.status), // Map FIRStatus (DB) -> FIRStato (dominio)
       _numeroProgressivo: record.firNumber,
       _dataPresaCarico: record.transportDate,
       _dataConsegna: record.actualArrivalDate,
@@ -294,7 +323,7 @@ export class FIRPrismaRepository implements IFIRRepository {
 
     return {
       id: fir.id,
-      status: fir.stato as any, // Map FIRStato to FIRStatus
+      status: this.statoToDb(fir.stato), // Map FIRStato (dominio) -> FIRStatus (DB)
       firNumber: fir.numeroProgressivo,
       // tenantId reale del FIR; fallback a produttoreId per i FIR legacy creati
       // prima dell'introduzione del tenantId sull'aggregate.

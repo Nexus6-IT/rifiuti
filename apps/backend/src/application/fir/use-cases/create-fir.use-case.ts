@@ -30,11 +30,15 @@ export class CreateFIRUseCase {
   ) {}
 
   async execute(command: CreateFIRCommand): Promise<Result<FIR>> {
-    // 1. Validate CER code exists
-    const cerExists = await this.cerRepository.exists(command.rifiuto.cerCode)
+    // 1. Normalize + validate CER code. Il catalogo memorizza i codici nel
+    //    formato canonico "NN NN NN" (con spazi, "*" per i pericolosi): si
+    //    accetta anche l'input senza spazi (es. "200301") normalizzandolo.
+    const cerCode = this.normalizeCerCode(command.rifiuto.cerCode)
+    const cerExists = await this.cerRepository.exists(cerCode)
     if (!cerExists) {
       return Result.fail<FIR>(`CER code not found: ${command.rifiuto.cerCode}`)
     }
+    const rifiuto = { ...command.rifiuto, cerCode }
 
     // 2. Validate the three parties are provided
     if (!command.produttoreId || !command.trasportatoreId || !command.destinatarioId) {
@@ -76,7 +80,7 @@ export class CreateFIRUseCase {
     try {
       const fir = FIR.create({
         produttoreId: command.produttoreId,
-        rifiuto: command.rifiuto,
+        rifiuto,
         trasportatoreId: command.trasportatoreId,
         destinatarioId: command.destinatarioId,
         tenantId: command.tenantId,
@@ -95,6 +99,22 @@ export class CreateFIRUseCase {
     } catch (error) {
       return Result.fail<FIR>(`Failed to create FIR: ${error.message}`)
     }
+  }
+
+  /**
+   * Normalizza un codice CER al formato canonico del catalogo "NN NN NN"
+   * (con "*" finale per i pericolosi). Accetta input senza spazi ("200301")
+   * o con spaziatura irregolare; se il formato non è 6 cifre lascia invariato
+   * (la validazione successiva fallirà con messaggio chiaro).
+   */
+  private normalizeCerCode(raw: string): string {
+    if (!raw) return raw
+    const trimmed = raw.trim().toUpperCase()
+    const hazardous = trimmed.includes('*')
+    const digits = trimmed.replace(/[^0-9]/g, '')
+    if (digits.length !== 6) return trimmed
+    const spaced = `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 6)}`
+    return hazardous ? `${spaced}*` : spaced
   }
 
   private snapshotProduttore(p: Produttore): ParteFIR {
