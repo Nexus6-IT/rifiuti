@@ -131,7 +131,7 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
-    return result.value.map(p => ({
+    const items = result.value.map(p => ({
       id: p.id,
       ragioneSociale: p.ragioneSociale,
       partitaIVA: p.partitaIVA.getValue(),
@@ -140,6 +140,7 @@ export class RegistryController {
       telefono: p.telefono,
       pec: p.pec,
     }))
+    return this.toPaginated(items)
   }
 
   @Get('produttori/:id')
@@ -201,7 +202,7 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
-    return result.value.map(t => ({
+    const items = result.value.map(t => ({
       id: t.id,
       ragioneSociale: t.ragioneSociale,
       partitaIVA: t.partitaIVA.getValue(),
@@ -211,6 +212,7 @@ export class RegistryController {
       telefono: t.telefono,
       pec: t.pec,
     }))
+    return this.toPaginated(items)
   }
 
   @Get('trasportatori/:id')
@@ -274,7 +276,7 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
-    return result.value.map(d => ({
+    const items = result.value.map(d => ({
       id: d.id,
       ragioneSociale: d.ragioneSociale,
       partitaIVA: d.partitaIVA.getValue(),
@@ -284,6 +286,7 @@ export class RegistryController {
       telefono: d.telefono,
       pec: d.pec,
     }))
+    return this.toPaginated(items)
   }
 
   @Get('destinatari/:id')
@@ -333,6 +336,24 @@ export class RegistryController {
 
     if (result.isFailure) {
       throw new NotFoundException(result.error)
+    }
+  }
+
+  // ============= RESPONSE HELPERS =============
+
+  /**
+   * Avvolge la lista nell'envelope paginato atteso dal frontend
+   * (PaginatedResponse: items/total/page/limit/totalPages), coerente con
+   * gli endpoint FIR e CER. Le liste anagrafiche non sono ancora paginate
+   * lato dominio: si restituisce l'intero set come pagina unica.
+   */
+  private toPaginated<T>(items: T[]) {
+    return {
+      items,
+      total: items.length,
+      page: 1,
+      limit: items.length,
+      totalPages: 1,
     }
   }
 
