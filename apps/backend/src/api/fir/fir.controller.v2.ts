@@ -17,6 +17,8 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
+import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, ValidateNested } from 'class-validator'
+import { Type } from 'class-transformer'
 import { CreateFIRDto } from './dtos/create-fir.dto'
 import { ListFIRsDto } from './dtos/list-firs.dto'
 import { FIRResponseDto } from './dtos/fir-response.dto'
@@ -38,30 +40,46 @@ import { ListFIRsQuery } from '../../application/fir/queries/list-firs.query'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 
+// Firma "applicativa" (firmatario + certificato): NON è la firma qualificata a
+// norma (blocco separato). Le proprietà richiedono decoratori class-validator,
+// altrimenti il ValidationPipe (whitelist + forbidNonWhitelisted) le rifiuta
+// ("property ... should not exist").
+export class FirmaDto {
+  @IsString()
+  @IsNotEmpty()
+  firmatario: string
+
+  @IsString()
+  @IsNotEmpty()
+  certificato: string
+}
+
 export class EmettiFIRDto {
-  firmaProduttore: {
-    firmatario: string
-    certificato: string
-  }
+  @ValidateNested()
+  @Type(() => FirmaDto)
+  firmaProduttore: FirmaDto
 }
 
 export class PresaInCaricoFIRDto {
-  firmaTrasportatore: {
-    firmatario: string
-    certificato: string
-  }
+  @ValidateNested()
+  @Type(() => FirmaDto)
+  firmaTrasportatore: FirmaDto
 }
 
 export class ConfermaConsegnaFIRDto {
+  @IsNumber()
+  @Min(0.01)
   pesoEffettivo: number
-  firmaDestinatario: {
-    firmatario: string
-    certificato: string
-  }
+
+  @ValidateNested()
+  @Type(() => FirmaDto)
+  firmaDestinatario: FirmaDto
 }
 
 export class AnnullaFIRDto {
-  motivo: string
+  @IsString()
+  @IsOptional()
+  motivo?: string
 }
 
 @ApiTags('fir')
