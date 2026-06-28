@@ -89,6 +89,8 @@ export class CreateFIRDto {
   produttoreId: string
 
   @ApiProperty({ type: RifiutoDto, description: 'Dettagli rifiuto' })
+  @ValidateNested()
+  @Type(() => RifiutoDto)
   rifiuto: RifiutoDto
 
   @ApiProperty({
