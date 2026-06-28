@@ -93,6 +93,10 @@ class MockCERRepository implements ICERRepository {
     return []
   }
 
+  async findPaginated(): Promise<{ items: any[]; total: number }> {
+    return { items: [], total: 0 }
+  }
+
   async save(cer: any): Promise<void> {}
 
   async saveMany(cers: any[]): Promise<void> {}

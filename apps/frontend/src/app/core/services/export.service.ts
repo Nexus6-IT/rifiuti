@@ -29,7 +29,7 @@ export class ExportService {
       fir.numeroProgressivo || 'N/A',
       fir.anno.toString(),
       fir.rifiuto.cerCode,
-      `${fir.rifiuto.quantitaDichiarata} ${fir.rifiuto.unitaMisura}`,
+      `${fir.rifiuto.quantita} ${fir.rifiuto.unitaMisura}`,
       this.getStatoLabel(fir.stato),
       format(new Date(fir.createdAt), 'dd/MM/yyyy')
     ]);
@@ -74,7 +74,7 @@ export class ExportService {
 
     const rifiutoData = [
       ['Codice CER', fir.rifiuto.cerCode],
-      ['Quantità Dichiarata', `${fir.rifiuto.quantitaDichiarata} ${fir.rifiuto.unitaMisura}`],
+      ['Quantità Dichiarata', `${fir.rifiuto.quantita} ${fir.rifiuto.unitaMisura}`],
       ['Stato Fisico', fir.rifiuto.statoFisico || 'N/D'],
       ['Peso Effettivo', fir.pesoEffettivo ? `${fir.pesoEffettivo} kg` : 'N/D']
     ];
@@ -149,7 +149,7 @@ export class ExportService {
       'Anno': fir.anno,
       'Stato': this.getStatoLabel(fir.stato),
       'Codice CER': fir.rifiuto.cerCode,
-      'Quantità Dichiarata': fir.rifiuto.quantitaDichiarata,
+      'Quantità Dichiarata': fir.rifiuto.quantita,
       'Unità di Misura': fir.rifiuto.unitaMisura,
       'Stato Fisico': fir.rifiuto.statoFisico || 'N/D',
       'Peso Effettivo': fir.pesoEffettivo || 'N/D',

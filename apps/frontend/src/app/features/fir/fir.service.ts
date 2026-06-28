@@ -1,7 +1,8 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { FIR, PaginatedFIRResponse, FIRStato } from '../../shared/models/fir.model';
+import { FIR, PaginatedFIRResponse, FIRStato, FirmaApplicativa } from '../../shared/models/fir.model';
+import { AuthService } from '../../core/services/auth.service';
 import { environment } from '../../../environments/environment';
 
 export type TipoTratta = 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA';
@@ -13,24 +14,16 @@ export interface TrasportatoreAggiuntivoDto {
 }
 
 export interface CreateFIRDto {
-  anno: number;
   produttoreId: string;
   trasportatoreId: string;
   destinatarioId: string;
   trasportatoriAggiuntivi?: TrasportatoreAggiuntivoDto[];
   rifiuto: {
     cerCode: string;
-    quantitaDichiarata: number;
+    quantita: number;
     unitaMisura: string;
     statoFisico?: string;
   };
-}
-
-export interface UpdateFIRDto {
-  stato?: FIRStato;
-  dataPresaCarico?: string;
-  dataConsegna?: string;
-  pesoEffettivo?: number;
 }
 
 @Injectable({
@@ -38,8 +31,23 @@ export interface UpdateFIRDto {
 })
 export class FirService {
   private readonly API_URL = `${environment.apiUrl}/fir`;
+  private readonly auth = inject(AuthService);
 
   constructor(private http: HttpClient) {}
+
+  /**
+   * Costruisce la firma applicativa (NON qualificata) a partire dall'utente
+   * loggato. La firma digitale qualificata è un sottosistema separato e fuori
+   * scope: qui si traccia solo chi ha eseguito la transizione applicativa.
+   */
+  private buildFirma(): FirmaApplicativa {
+    const user = this.auth.currentUser();
+    const nome = user
+      ? [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
+      : '';
+    const firmatario = nome || user?.email || 'Operatore';
+    return { firmatario, certificato: 'FIRMA-NON-QUALIFICATA' };
+  }
 
   /**
    * Ottiene lista paginata di FIR
@@ -64,57 +72,47 @@ export class FirService {
   }
 
   /**
-   * Crea nuovo FIR
+   * Crea nuovo FIR (stato BOZZA)
    */
   createFIR(dto: CreateFIRDto): Observable<FIR> {
     return this.http.post<FIR>(this.API_URL, dto);
   }
 
   /**
-   * Aggiorna FIR esistente
-   */
-  updateFIR(id: string, dto: UpdateFIRDto): Observable<FIR> {
-    return this.http.patch<FIR>(`${this.API_URL}/${id}`, dto);
-  }
-
-  /**
-   * Emette un FIR (cambia stato da BOZZA a EMESSO)
+   * Emette un FIR: BOZZA → EMESSO (assegna il numero progressivo).
+   * Allega la firma applicativa del produttore.
    */
   emettiFIR(id: string): Observable<FIR> {
-    return this.http.post<FIR>(`${this.API_URL}/${id}/emetti`, {});
+    return this.http.post<FIR>(`${this.API_URL}/${id}/emetti`, {
+      firmaProduttore: this.buildFirma()
+    });
   }
 
   /**
-   * Prende in carico un FIR (trasportatore)
+   * Presa in carico (trasportatore): EMESSO → IN_TRANSITO.
    */
   presaInCarico(id: string): Observable<FIR> {
     return this.http.post<FIR>(`${this.API_URL}/${id}/presa-in-carico`, {
-      dataPresaCarico: new Date().toISOString()
+      firmaTrasportatore: this.buildFirma()
     });
   }
 
   /**
-   * Consegna un FIR (destinatario)
+   * Conferma consegna (destinatario): IN_TRANSITO → CONSEGNATO.
+   * Richiede il peso effettivo (kg) rilevato a destinazione.
    */
-  consegnaFIR(id: string, pesoEffettivo: number): Observable<FIR> {
-    return this.http.post<FIR>(`${this.API_URL}/${id}/consegna`, {
-      dataConsegna: new Date().toISOString(),
-      pesoEffettivo
+  confermaConsegna(id: string, pesoEffettivo: number): Observable<FIR> {
+    return this.http.post<FIR>(`${this.API_URL}/${id}/conferma-consegna`, {
+      pesoEffettivo,
+      firmaDestinatario: this.buildFirma()
     });
   }
 
   /**
-   * Annulla un FIR
+   * Annulla un FIR: qualsiasi stato tranne CONSEGNATO → ANNULLATO.
    */
-  annullaFIR(id: string): Observable<FIR> {
-    return this.http.post<FIR>(`${this.API_URL}/${id}/annulla`, {});
-  }
-
-  /**
-   * Elimina un FIR
-   */
-  deleteFIR(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.API_URL}/${id}`);
+  annullaFIR(id: string, motivo: string): Observable<FIR> {
+    return this.http.post<FIR>(`${this.API_URL}/${id}/annulla`, { motivo });
   }
 
   /**

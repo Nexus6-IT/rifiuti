@@ -127,7 +127,6 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
             <ng-template pTemplate="header">
               <tr>
                 <th scope="col">Numero</th>
-                <th scope="col">Anno</th>
                 <th scope="col">CER</th>
                 <th scope="col">Quantità</th>
                 <th scope="col">Stato</th>
@@ -138,9 +137,8 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
             <ng-template pTemplate="body" let-fir>
               <tr>
                 <td><span class="cell-mono">{{ fir.numeroProgressivo || 'N/D' }}</span></td>
-                <td>{{ fir.anno }}</td>
                 <td><span class="cell-mono">{{ fir.rifiuto.cerCode }}</span></td>
-                <td>{{ fir.rifiuto.quantitaDichiarata }} {{ fir.rifiuto.unitaMisura }}</td>
+                <td>{{ fir.rifiuto.quantita }} {{ fir.rifiuto.unitaMisura }}</td>
                 <td>
                   <p-tag
                     [value]="getStatoLabel(fir.stato)"
@@ -152,50 +150,49 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
                   <div class="row-actions">
                     <p-button
                       *ngIf="fir.stato === 'BOZZA'"
+                      label="Emetti"
                       icon="pi pi-send"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="info"
+                      size="small"
                       (onClick)="emettiFIR(fir)"
-                      pTooltip="Emetti"
-                      [attr.aria-label]="'Emetti FIR ' + (fir.numeroProgressivo || fir.anno)"
+                      [attr.aria-label]="'Emetti FIR ' + (fir.numeroProgressivo || fir.id)"
                     />
                     <p-button
                       *ngIf="fir.stato === 'EMESSO'"
+                      label="Presa in carico"
                       icon="pi pi-truck"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="warning"
+                      size="small"
                       (onClick)="presaInCarico(fir)"
-                      pTooltip="Presa in carico"
-                      [attr.aria-label]="'Presa in carico FIR ' + (fir.numeroProgressivo || fir.anno)"
+                      [attr.aria-label]="'Presa in carico FIR ' + (fir.numeroProgressivo || fir.id)"
                     />
                     <p-button
                       *ngIf="fir.stato === 'IN_TRANSITO'"
+                      label="Conferma consegna"
                       icon="pi pi-check"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="success"
+                      size="small"
                       (onClick)="showConsegnaDialog(fir)"
-                      pTooltip="Consegna"
-                      [attr.aria-label]="'Conferma consegna FIR ' + (fir.numeroProgressivo || fir.anno)"
+                      [attr.aria-label]="'Conferma consegna FIR ' + (fir.numeroProgressivo || fir.id)"
                     />
                     <p-button
-                      icon="pi pi-trash"
-                      [rounded]="true"
-                      [text]="true"
+                      *ngIf="fir.stato === 'BOZZA' || fir.stato === 'EMESSO' || fir.stato === 'IN_TRANSITO'"
+                      label="Annulla"
+                      icon="pi pi-times"
+                      size="small"
                       severity="danger"
-                      (onClick)="deleteFIR(fir)"
-                      pTooltip="Elimina"
-                      [attr.aria-label]="'Elimina FIR ' + (fir.numeroProgressivo || fir.anno)"
+                      [text]="true"
+                      (onClick)="annullaFIR(fir)"
+                      [attr.aria-label]="'Annulla FIR ' + (fir.numeroProgressivo || fir.id)"
                     />
+                    <span
+                      *ngIf="fir.stato === 'CONSEGNATO' || fir.stato === 'ANNULLATO'"
+                      class="row-actions__none"
+                    >—</span>
                   </div>
                 </td>
               </tr>
             </ng-template>
             <ng-template pTemplate="emptymessage">
               <tr>
-                <td colspan="7">
+                <td colspan="6">
                   <div class="empty-state">
                     <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
                     <p class="empty-state__title">Nessun FIR trovato</p>
@@ -217,17 +214,6 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
       >
         <div class="dialog-form">
           <div class="dialog-form__field">
-            <label for="new-anno">Anno</label>
-            <p-inputNumber
-              inputId="new-anno"
-              [(ngModel)]="newFIR.anno"
-              [useGrouping]="false"
-              [min]="2020"
-              [max]="2030"
-              styleClass="w-full"
-            />
-          </div>
-          <div class="dialog-form__field">
             <label for="new-cer">Codice CER</label>
             <input
               id="new-cer"
@@ -242,7 +228,7 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
               <label for="new-qta">Quantità dichiarata</label>
               <p-inputNumber
                 inputId="new-qta"
-                [(ngModel)]="newFIR.rifiuto.quantitaDichiarata"
+                [(ngModel)]="newFIR.rifiuto.quantita"
                 [minFractionDigits]="2"
                 styleClass="w-full"
               />
@@ -476,8 +462,14 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
 
     .table-card { padding: 0; overflow: hidden; }
 
-    .col-actions { width: 12rem; }
-    .row-actions { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; }
+    .col-actions { width: 18rem; }
+    .row-actions { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; align-items: center; }
+    .row-actions__none { color: var(--text-secondary); }
+    /* Garantisce testo leggibile (bianco) sui pulsanti pieni teal del design system B */
+    .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-label,
+    .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-icon {
+      color: #ffffff;
+    }
 
     .cell-mono {
       font-family: var(--font-family-mono);
@@ -581,13 +573,12 @@ export class FirListComponent implements OnInit {
   ];
 
   newFIR: CreateFIRDto = {
-    anno: new Date().getFullYear(),
     produttoreId: '',
     trasportatoreId: '',
     destinatarioId: '',
     rifiuto: {
       cerCode: '',
-      quantitaDichiarata: 0,
+      quantita: 0,
       unitaMisura: 'kg'
     }
   };
@@ -747,13 +738,12 @@ export class FirListComponent implements OnInit {
 
   showCreateDialog(): void {
     this.newFIR = {
-      anno: new Date().getFullYear(),
       produttoreId: '',
       trasportatoreId: '',
       destinatarioId: '',
       rifiuto: {
         cerCode: '',
-        quantitaDichiarata: 0,
+        quantita: 0,
         unitaMisura: 'kg'
       }
     };
@@ -808,9 +798,14 @@ export class FirListComponent implements OnInit {
     });
   }
 
+  /** Emette il FIR (BOZZA → EMESSO), assegnando il numero progressivo. */
   emettiFIR(fir: FIR): void {
     this.confirmationService.confirm({
-      message: 'Confermi di voler emettere questo FIR?',
+      header: 'Conferma emissione',
+      message: 'Confermi di voler emettere questo FIR? Verrà assegnato il numero progressivo.',
+      icon: 'pi pi-send',
+      acceptLabel: 'Emetti',
+      rejectLabel: 'Annulla',
       accept: () => {
         this.firService.emettiFIR(fir.id).subscribe({
           next: () => {
@@ -821,11 +816,11 @@ export class FirListComponent implements OnInit {
             });
             this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
           },
-          error: () => {
+          error: (err) => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: 'Errore nell\'emissione del FIR'
+              detail: this.extractError(err, 'Errore nell\'emissione del FIR')
             });
           }
         });
@@ -833,9 +828,14 @@ export class FirListComponent implements OnInit {
     });
   }
 
+  /** Presa in carico del FIR da parte del trasportatore (EMESSO → IN_TRANSITO). */
   presaInCarico(fir: FIR): void {
     this.confirmationService.confirm({
+      header: 'Conferma presa in carico',
       message: 'Confermi la presa in carico di questo FIR?',
+      icon: 'pi pi-truck',
+      acceptLabel: 'Presa in carico',
+      rejectLabel: 'Annulla',
       accept: () => {
         this.firService.presaInCarico(fir.id).subscribe({
           next: () => {
@@ -846,11 +846,11 @@ export class FirListComponent implements OnInit {
             });
             this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
           },
-          error: () => {
+          error: (err) => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: 'Errore nella presa in carico del FIR'
+              detail: this.extractError(err, 'Errore nella presa in carico del FIR')
             });
           }
         });
@@ -860,61 +860,82 @@ export class FirListComponent implements OnInit {
 
   showConsegnaDialog(fir: FIR): void {
     this.selectedFIR = fir;
-    this.pesoEffettivo = fir.rifiuto.quantitaDichiarata;
+    this.pesoEffettivo = fir.rifiuto.quantita;
     this.displayConsegnaDialog = true;
   }
 
+  /** Conferma consegna (IN_TRANSITO → CONSEGNATO) con il peso effettivo rilevato. */
   consegnaFIR(): void {
     if (!this.selectedFIR) return;
 
+    if (!this.pesoEffettivo || this.pesoEffettivo <= 0) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Peso non valido',
+        detail: 'Indica un peso effettivo maggiore di zero'
+      });
+      return;
+    }
+
     this.saving = true;
-    this.firService.consegnaFIR(this.selectedFIR.id, this.pesoEffettivo).subscribe({
+    this.firService.confermaConsegna(this.selectedFIR.id, this.pesoEffettivo).subscribe({
       next: () => {
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
-          detail: 'FIR consegnato con successo'
+          detail: 'Consegna FIR confermata con successo'
         });
         this.displayConsegnaDialog = false;
         this.saving = false;
         this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
       },
-      error: () => {
+      error: (err) => {
         this.saving = false;
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: 'Errore nella consegna del FIR'
+          detail: this.extractError(err, 'Errore nella conferma della consegna')
         });
       }
     });
   }
 
-  deleteFIR(fir: FIR): void {
+  /** Annulla un FIR non ancora consegnato (BOZZA/EMESSO/IN_TRANSITO → ANNULLATO). */
+  annullaFIR(fir: FIR): void {
     this.confirmationService.confirm({
-      message: 'Sei sicuro di voler eliminare questo FIR?',
-      header: 'Conferma Eliminazione',
+      header: 'Conferma annullamento',
+      message: 'Confermi di voler annullare questo FIR? L\'operazione non è reversibile.',
       icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Annulla FIR',
+      rejectLabel: 'Indietro',
+      acceptButtonStyleClass: 'p-button-danger',
       accept: () => {
-        this.firService.deleteFIR(fir.id).subscribe({
+        this.firService.annullaFIR(fir.id, 'Annullato dall\'operatore').subscribe({
           next: () => {
             this.messageService.add({
               severity: 'success',
               summary: 'Successo',
-              detail: 'FIR eliminato con successo'
+              detail: 'FIR annullato con successo'
             });
             this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
           },
-          error: () => {
+          error: (err) => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: 'Errore nell\'eliminazione del FIR'
+              detail: this.extractError(err, 'Errore nell\'annullamento del FIR')
             });
           }
         });
       }
     });
+  }
+
+  /** Estrae il messaggio di errore restituito dal backend, con fallback. */
+  private extractError(err: unknown, fallback: string): string {
+    const message = (err as { error?: { message?: string | string[] } })?.error?.message;
+    if (Array.isArray(message)) return message.join(', ');
+    return message || fallback;
   }
 
   reload(): void {

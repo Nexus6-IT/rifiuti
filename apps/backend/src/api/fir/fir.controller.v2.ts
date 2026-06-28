@@ -25,12 +25,14 @@ import { CreateFIRUseCase } from '../../application/fir/use-cases/create-fir.use
 import { EmettiFIRUseCase } from '../../application/fir/use-cases/emetti-fir.use-case'
 import { PresaInCaricoFIRUseCase } from '../../application/fir/use-cases/presa-in-carico-fir.use-case'
 import { ConfermaConsegnaFIRUseCase } from '../../application/fir/use-cases/conferma-consegna-fir.use-case'
+import { AnnullaFIRUseCase } from '../../application/fir/use-cases/annulla-fir.use-case'
 import { GetFIRByIdQueryHandler } from '../../application/fir/queries/get-fir-by-id.handler'
 import { ListFIRsQueryHandler } from '../../application/fir/queries/list-firs.handler'
 import { CreateFIRCommand } from '../../application/fir/commands/create-fir.command'
 import { EmettiFIRCommand } from '../../application/fir/commands/emetti-fir.command'
 import { PresaInCaricoFIRCommand } from '../../application/fir/commands/presa-in-carico-fir.command'
 import { ConfermaConsegnaFIRCommand } from '../../application/fir/commands/conferma-consegna-fir.command'
+import { AnnullaFIRCommand } from '../../application/fir/commands/annulla-fir.command'
 import { GetFIRByIdQuery } from '../../application/fir/queries/get-fir-by-id.query'
 import { ListFIRsQuery } from '../../application/fir/queries/list-firs.query'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -58,6 +60,10 @@ export class ConfermaConsegnaFIRDto {
   }
 }
 
+export class AnnullaFIRDto {
+  motivo: string
+}
+
 @ApiTags('fir')
 @Controller('fir')
 @UseGuards(JwtAuthGuard)
@@ -68,6 +74,7 @@ export class FIRControllerV2 {
     private readonly emettiFIRUseCase: EmettiFIRUseCase,
     private readonly presaInCaricoFIRUseCase: PresaInCaricoFIRUseCase,
     private readonly confermaConsegnaFIRUseCase: ConfermaConsegnaFIRUseCase,
+    private readonly annullaFIRUseCase: AnnullaFIRUseCase,
     private readonly getFIRByIdHandler: GetFIRByIdQueryHandler,
     private readonly listFIRsHandler: ListFIRsQueryHandler
   ) {}
@@ -272,6 +279,35 @@ export class FIRControllerV2 {
     )
 
     const result = await this.confermaConsegnaFIRUseCase.execute(command)
+
+    if (result.isFailure) {
+      if (result.error.includes('not found')) {
+        throw new NotFoundException(result.error)
+      }
+      throw new BadRequestException(result.error)
+    }
+
+    return FIRResponseDto.fromDomain(result.value)
+  }
+
+  @Post(':id/annulla')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Annulla FIR',
+    description: 'Annulla un FIR non ancora consegnato (qualsiasi stato tranne CONSEGNATO → ANNULLATO)',
+  })
+  @ApiParam({ name: 'id', description: 'ID del FIR da annullare' })
+  @ApiResponse({ status: 200, description: 'FIR annullato con successo', type: FIRResponseDto })
+  @ApiResponse({ status: 400, description: 'Stato non valido (FIR già consegnato)' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  async annulla(
+    @Param('id') id: string,
+    @Body() dto: AnnullaFIRDto,
+    @CurrentUser() user: CurrentUserPayload
+  ): Promise<FIRResponseDto> {
+    const command = new AnnullaFIRCommand(id, dto?.motivo ?? '', user.id)
+
+    const result = await this.annullaFIRUseCase.execute(command)
 
     if (result.isFailure) {
       if (result.error.includes('not found')) {

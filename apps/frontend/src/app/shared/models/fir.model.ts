@@ -6,9 +6,19 @@ export enum FIRStato {
   ANNULLATO = 'ANNULLATO'
 }
 
+/**
+ * Firma applicativa (NON qualificata) allegata alle transizioni di stato del FIR.
+ * Deriva dall'utente loggato; non sostituisce la firma digitale qualificata.
+ */
+export interface FirmaApplicativa {
+  firmatario: string;
+  certificato: string;
+}
+
 export interface FIR {
   id: string;
-  numeroProgressivo?: string;
+  numeroProgressivo?: string | null;
+  /** Anno di riferimento (campo client; non restituito dalla risposta backend). */
   anno: number;
   stato: FIRStato;
   produttoreId: string;
@@ -16,15 +26,19 @@ export interface FIR {
   destinatarioId: string;
   rifiuto: {
     cerCode: string;
-    quantitaDichiarata: number;
+    quantita: number;
     unitaMisura: string;
     statoFisico?: string;
+    caratteristichePericolo?: string;
+    descrizione?: string;
+    categoria?: string;
+    tipoOperazione?: string;
   };
-  dataPresaCarico?: string;
-  dataConsegna?: string;
-  pesoEffettivo?: number;
+  dataPresaCarico?: string | null;
+  dataConsegna?: string | null;
+  pesoEffettivo?: number | null;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 export interface PaginatedFIRResponse {

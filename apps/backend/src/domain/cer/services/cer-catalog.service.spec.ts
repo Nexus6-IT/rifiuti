@@ -54,6 +54,15 @@ class MockCERRepository implements ICERRepository {
     return results
   }
 
+  async findPaginated(
+    page: number,
+    limit: number,
+  ): Promise<{ items: CERCode[]; total: number }> {
+    const all = Array.from(this.cers.values())
+    const start = (page - 1) * limit
+    return { items: all.slice(start, start + limit), total: all.length }
+  }
+
   async save(cer: CERCode): Promise<void> {
     this.cers.set(cer.code, cer)
   }
