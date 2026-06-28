@@ -177,13 +177,18 @@ interface DashboardStats {
           </div>
 
           <p-chart
-            *ngIf="!loading"
+            *ngIf="!loading && hasChartData"
             type="doughnut"
             [data]="chartData"
             [options]="chartOptions"
             role="img"
             aria-label="Grafico a ciambella che mostra la distribuzione dei FIR per stato"
           />
+
+          <div *ngIf="!loading && !hasChartData" class="empty-state">
+            <i class="pi pi-chart-bar empty-state__icon" aria-hidden="true"></i>
+            <p class="empty-state__title">Nessun dato disponibile</p>
+          </div>
         </div>
       </div>
     </div>
@@ -191,7 +196,8 @@ interface DashboardStats {
   styles: [`
     .dashboard-grid {
       display: grid;
-      gap: var(--spacing-lg);
+      /* Allineato al gap delle KPI (.stat-grid) per continuità visiva */
+      gap: var(--spacing-base);
       grid-template-columns: 1fr;
     }
     @media (min-width: 992px) {
@@ -224,8 +230,9 @@ interface DashboardStats {
       gap: var(--spacing-xs);
     }
     .stat-card__label .pi { color: var(--brand-primary); }
-    .stat-card__value--warning { color: var(--brand-secondary); }
-    .stat-card__value--success { color: var(--brand-primary); }
+    /* Valori KPI neutri: sono conteggi, non stati/soglie da evidenziare */
+    .stat-card__value--warning { color: var(--text-primary); }
+    .stat-card__value--success { color: var(--text-primary); }
 
     .chart-skeleton {
       display: flex;
@@ -287,7 +294,9 @@ export class DashboardComponent implements OnInit {
     this.chartOptions = {
       plugins: {
         legend: {
-          position: 'bottom'
+          position: 'bottom',
+          // Etichette leggibili (WCAG AA) -> --text-secondary
+          labels: { color: '#475569' }
         }
       }
     };
@@ -305,10 +314,17 @@ export class DashboardComponent implements OnInit {
             this.stats.firConsegnati,
             0  // Count annullato separately if needed
           ],
-          backgroundColor: ['#6b7770', '#0e7490', '#b45309', '#15803d', '#b91c1c']
+          // Palette semantica: secondary / info / warning / success / danger
+          backgroundColor: ['#64748b', '#1d4ed8', '#b45309', '#15803d', '#b91c1c']
         }
       ]
     };
+  }
+
+  /** True quando il grafico "FIR per stato" ha almeno un valore > 0 */
+  get hasChartData(): boolean {
+    const data: number[] = this.chartData?.datasets?.[0]?.data ?? [];
+    return data.some((v) => v > 0);
   }
 
   getStatoSeverity(stato: FIRStato): "success" | "info" | "warning" | "danger" | "secondary" | "contrast" | undefined {

@@ -54,7 +54,6 @@ import { MudService, MudVersion } from './mud.service';
             <p-button
               label="Scarica file MUD"
               icon="pi pi-download"
-              severity="success"
               [outlined]="true"
               [loading]="downloading()"
               [disabled]="!selectedYear"
@@ -153,7 +152,7 @@ import { MudService, MudVersion } from './mud.service';
         display: flex;
         flex-wrap: wrap;
         align-items: flex-end;
-        gap: var(--control-gap);
+        gap: var(--spacing-md);
       }
       .mud-toolbar__field {
         flex: 1 1 220px;
@@ -163,7 +162,7 @@ import { MudService, MudVersion } from './mud.service';
       .mud-toolbar__actions {
         display: flex;
         flex-wrap: wrap;
-        gap: var(--control-gap);
+        gap: var(--spacing-md);
       }
       .mud-toolbar__field label { font-weight: var(--font-weight-medium); }
       @media (max-width: 576px) {

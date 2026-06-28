@@ -67,7 +67,7 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model';
             />
           </p-iconField>
           <span class="registry-count" aria-live="polite">
-            {{ totalRecords }} {{ totalRecords === 1 ? 'produttore' : 'produttori' }}
+            {{ totalRecords ?? 0 }} {{ (totalRecords ?? 0) === 1 ? 'produttore' : 'produttori' }}
           </span>
         </div>
 
@@ -92,7 +92,7 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model';
             (onLazyLoad)="loadProduttori($event)"
             [rowsPerPageOptions]="[10, 25, 50]"
             currentPageReportTemplate="{first}-{last} di {totalRecords}"
-            [showCurrentPageReport]="true"
+            [showCurrentPageReport]="totalRecords > 0"
             responsiveLayout="scroll"
           >
             <ng-template pTemplate="header">
@@ -262,6 +262,8 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model';
     }
     .registry-search { flex: 1 1 18rem; min-width: 0; display: block; }
     .registry-search .w-full { width: 100%; }
+    /* Spazio a sinistra: evita che l'icona lente si sovrapponga a placeholder/testo */
+    .registry-search input { padding-left: 2.5rem; }
     .registry-count {
       font-size: var(--font-size-sm); color: var(--text-tertiary);
       font-weight: var(--font-weight-medium); white-space: nowrap;
@@ -361,8 +363,8 @@ export class ProduttoriListComponent implements OnInit {
 
     this.registryService.getProduttori(page, event.rows).subscribe({
       next: (response) => {
-        this.produttori = response.items;
-        this.totalRecords = response.total;
+        this.produttori = response.items ?? [];
+        this.totalRecords = response.total ?? this.produttori.length;
         this.loading = false;
       },
       error: (err) => {

@@ -48,6 +48,8 @@
   --surface-overlay: #ffffff;
   --surface-border: #e2e8f0;
   --surface-border-strong: #cbd5e1;
+  /* Bordo dei controlli editabili (input/select): ~3:1 su bianco (WCAG 1.4.11). */
+  --control-border: #8b97a8;
   --surface-hover: #f8fafc;
 
   /* ===== Testo ===== */
@@ -271,6 +273,10 @@ kbd {
 }
 /* Testo e icona ereditano SEMPRE il colore del bottone */
 .p-button .p-button-label, .p-button .p-button-icon, .p-button .p-button-loading-icon { color: inherit !important; }
+/* Spazio coerente icona↔testo (PrimeNG non lo garantisce con i nostri override). */
+.p-button .p-button-icon-left { margin-right: var(--spacing-sm); }
+.p-button .p-button-icon-right { margin-left: var(--spacing-sm); }
+.p-button-icon-only .p-button-icon { margin: 0; }
 /* Varianti piene: testo bianco garantito */
 .p-button.p-button-success, .p-button.p-button-danger, .p-button.p-button-warning,
 .p-button.p-button-secondary, .p-button.p-button-info, .p-button.p-button-help { color: #fff; }
@@ -297,7 +303,7 @@ kbd {
 .p-inputtext, .p-calendar .p-inputtext, .p-inputnumber-input, .p-password input {
   height: var(--control-md);
   border-radius: var(--radius-md) !important;
-  border-color: var(--surface-border-strong) !important;
+  border-color: var(--control-border) !important;
   padding: 0 0.75rem !important;
   font-size: var(--font-size-sm) !important;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast) !important;
@@ -313,7 +319,7 @@ textarea.p-inputtext { height: auto; min-height: calc(var(--control-md) * 2); pa
   align-items: stretch;
   padding: 0 !important;
   border-radius: var(--radius-md) !important;
-  border-color: var(--surface-border-strong) !important;
+  border-color: var(--control-border) !important;
   background: var(--surface-section);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast) !important;
 }

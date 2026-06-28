@@ -55,6 +55,7 @@ import { MessageService } from 'primeng/api';
           <p-button
             label="Esporta CSV"
             icon="pi pi-download"
+            [outlined]="true"
             (onClick)="exportCSV()"
             [disabled]="!dashboard()"
             ariaLabel="Esporta i dati della dashboard in formato CSV"
@@ -155,6 +156,7 @@ import { MessageService } from 'primeng/api';
           <div class="surface-card">
             <h3 class="card-title">Stato dei FIR</h3>
             <p-chart
+              *ngIf="hasStatusData(); else chartEmpty"
               type="pie"
               [data]="statusChartData()"
               [options]="chartOptions"
@@ -167,6 +169,7 @@ import { MessageService } from 'primeng/api';
           <div class="surface-card">
             <h3 class="card-title">Destinazione rifiuti</h3>
             <p-chart
+              *ngIf="hasDestinationData(); else chartEmpty"
               type="doughnut"
               [data]="destinationChartData()"
               [options]="chartOptions"
@@ -194,6 +197,7 @@ import { MessageService } from 'primeng/api';
           <div class="surface-card">
             <h3 class="card-title">Top 10 codici CER</h3>
             <p-chart
+              *ngIf="hasCerData(); else chartEmpty"
               type="bar"
               [data]="cerChartData()"
               [options]="barChartOptions"
@@ -331,13 +335,22 @@ import { MessageService } from 'primeng/api';
             </ng-template>
           </div>
         </section>
+
+        <!-- Stato vuoto condiviso per i grafici senza dati -->
+        <ng-template #chartEmpty>
+          <div class="empty-state">
+            <i class="pi pi-chart-bar empty-state__icon" aria-hidden="true"></i>
+            <p class="empty-state__title">Nessun dato disponibile</p>
+          </div>
+        </ng-template>
       </div>
     </div>
   `,
   styles: [`
     .dashboard-grid {
       display: grid;
-      gap: var(--spacing-lg);
+      /* Allineato al gap delle KPI (.stat-grid) per continuità visiva */
+      gap: var(--spacing-base);
     }
     .dashboard-grid--two {
       grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -399,9 +412,11 @@ import { MessageService } from 'primeng/api';
       margin: 0;
       line-height: 1.1;
     }
+    /* Stato reale (direzione crescita): colore semantico mantenuto */
     .trend-item__value--up { color: var(--color-success); }
     .trend-item__value--down { color: var(--color-danger); }
-    .trend-item__value--accent { color: var(--brand-accent); }
+    /* Valore neutro: la previsione non rappresenta uno stato/soglia */
+    .trend-item__value--accent { color: var(--text-primary); }
 
     /* Metriche */
     .metric-block { margin-bottom: var(--spacing-lg); }
@@ -433,9 +448,10 @@ import { MessageService } from 'primeng/api';
       color: var(--text-primary);
       line-height: 1.1;
     }
-    .metric-pair__value--success { color: var(--color-success); }
-    .metric-pair__value--warning { color: var(--color-warning); }
-    .metric-pair__value--accent { color: var(--brand-accent); }
+    /* Valori KPI neutri di default: sono conteggi, non stati/soglie */
+    .metric-pair__value--success { color: var(--text-primary); }
+    .metric-pair__value--warning { color: var(--text-primary); }
+    .metric-pair__value--accent { color: var(--text-primary); }
 
     /* Liste classifica */
     .rank-list {
@@ -496,10 +512,17 @@ export class DashboardPageComponent implements OnInit {
   protected readonly dashboard = signal<DashboardData | null>(null);
   protected readonly error = signal<string | null>(null);
 
+  // Colore neutro leggibile (WCAG AA) per tick/legenda/titoli assi -> --text-secondary
+  private readonly axisTextColor = '#475569';
+  private readonly axisGridColor = '#e2e8f0';
+
   protected readonly chartOptions = {
     plugins: {
       legend: {
         position: 'bottom' as const,
+        labels: {
+          color: this.axisTextColor,
+        },
       },
     },
   };
@@ -507,6 +530,18 @@ export class DashboardPageComponent implements OnInit {
   protected readonly barChartOptions = {
     ...this.chartOptions,
     indexAxis: 'y' as const,
+    scales: {
+      x: {
+        ticks: { color: this.axisTextColor },
+        grid: { color: this.axisGridColor },
+        title: { color: this.axisTextColor },
+      },
+      y: {
+        ticks: { color: this.axisTextColor },
+        grid: { color: this.axisGridColor },
+        title: { color: this.axisTextColor },
+      },
+    },
   };
 
   // Computed values
@@ -529,9 +564,17 @@ export class DashboardPageComponent implements OnInit {
       labels: Object.keys(data.status.breakdown),
       datasets: [{
         data: Object.values(data.status.breakdown),
-        backgroundColor: ['#0e7490', '#15803d', '#b45309', '#b91c1c'],
+        // Palette semantica: info / success / warning / danger
+        backgroundColor: ['#1d4ed8', '#15803d', '#b45309', '#b91c1c'],
       }],
     };
+  });
+
+  // True quando il grafico "Stato dei FIR" ha almeno un valore > 0
+  protected readonly hasStatusData = computed(() => {
+    const data = this.dashboard();
+    if (!data) return false;
+    return Object.values(data.status.breakdown).some(v => (v as number) > 0);
   });
 
   protected readonly destinationChartData = computed(() => {
@@ -545,9 +588,17 @@ export class DashboardPageComponent implements OnInit {
           data.waste.byDestination.recovery.count,
           data.waste.byDestination.disposal.count,
         ],
+        // Palette semantica: success (recupero) / warning (smaltimento)
         backgroundColor: ['#15803d', '#b45309'],
       }],
     };
+  });
+
+  // True quando il grafico "Destinazione rifiuti" ha almeno un valore > 0
+  protected readonly hasDestinationData = computed(() => {
+    const data = this.dashboard();
+    if (!data) return false;
+    return (data.waste.byDestination.recovery.count + data.waste.byDestination.disposal.count) > 0;
   });
 
   protected readonly cerChartData = computed(() => {
@@ -561,9 +612,16 @@ export class DashboardPageComponent implements OnInit {
       datasets: [{
         label: 'Quantità (kg)',
         data: top10.map(w => w.totalQuantity),
-        backgroundColor: '#0e7c66',
+        // Colore brand primario (scuro, contrasto adeguato)
+        backgroundColor: '#0f766e',
       }],
     };
+  });
+
+  // True quando il grafico "Top 10 codici CER" ha almeno una voce
+  protected readonly hasCerData = computed(() => {
+    const data = this.dashboard();
+    return !!data && data.waste.byCERCode.length > 0;
   });
 
   ngOnInit(): void {

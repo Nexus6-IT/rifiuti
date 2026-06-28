@@ -114,8 +114,8 @@ const PRICING_LABELS: Record<PricingModel, string> = {
 
       <!-- Filtro per stato -->
       <section class="surface-card mb-4" aria-label="Filtro contratti">
-        <div class="grid formgrid" style="align-items: end;">
-          <div class="field col-12 md:col-5">
+        <div class="filter-row">
+          <div class="filter-row__field">
             <label for="contract-status-filter" class="block mb-2">Stato</label>
             <p-dropdown
               inputId="contract-status-filter"
@@ -131,15 +131,13 @@ const PRICING_LABELS: Record<PricingModel, string> = {
               (onClear)="loadContracts()"
             ></p-dropdown>
           </div>
-          <div class="field col-12 md:col-3 flex align-items-end">
-            <p-button
-              label="Aggiorna"
-              icon="pi pi-refresh"
-              [outlined]="true"
-              (onClick)="loadContracts()"
-              ariaLabel="Aggiorna l'elenco dei contratti"
-            />
-          </div>
+          <p-button
+            label="Aggiorna"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            (onClick)="loadContracts()"
+            ariaLabel="Aggiorna l'elenco dei contratti"
+          />
         </div>
       </section>
 
@@ -368,6 +366,18 @@ const PRICING_LABELS: Record<PricingModel, string> = {
     `
       .text-tertiary { color: var(--text-tertiary); }
       .empty-state__icon--danger { color: var(--color-danger); }
+      /* Barra filtri: dropdown stato + Aggiorna allineati e spaziati a 12px */
+      .filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: var(--spacing-md);
+      }
+      .filter-row__field {
+        flex: 1 1 220px;
+        min-width: 200px;
+        max-width: 320px;
+      }
       .mb-4 { margin-bottom: var(--spacing-xl); }
       .mb-3 { margin-bottom: var(--spacing-base); }
       .mb-2 { margin-bottom: var(--spacing-sm); }
