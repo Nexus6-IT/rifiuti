@@ -3,7 +3,36 @@
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { FIR, FIRStato, ParteFIR } from '../../../domain/fir/aggregates/fir.aggregate'
+import {
+  FIR,
+  FIRStato,
+  ParteFIR,
+  TipoTratta,
+} from '../../../domain/fir/aggregates/fir.aggregate'
+
+/** Trasportatore aggiuntivo (tratta intermodale) nella risposta del FIR. */
+export class TrasportatoreAggiuntivoResponse {
+  @ApiProperty({ example: 2, description: 'Ordine della tratta (1-based)' })
+  ordine: number
+
+  @ApiProperty({ enum: TipoTratta, example: TipoTratta.FERROVIARIA, description: 'Tipo di tratta' })
+  tipoTratta: TipoTratta
+
+  @ApiProperty({ example: 'Trasporti Rossi Srl', description: 'Denominazione (snapshot)' })
+  denominazione: string
+
+  @ApiPropertyOptional({ example: '12345678901', description: 'Partita IVA (snapshot)' })
+  partitaIva?: string
+
+  @ApiPropertyOptional({ example: 'RSSMRA80A01H501U', description: 'Codice fiscale (snapshot)' })
+  codiceFiscale?: string
+
+  @ApiPropertyOptional({ example: 'MI/000123', description: 'Numero iscrizione Albo gestori (snapshot)' })
+  numeroIscrizioneAlbo?: string
+
+  @ApiPropertyOptional({ example: 'AB123CD', description: 'Mezzo/identificativo (targa, treno, nave)' })
+  mezzo?: string
+}
 
 export class FIRResponseDto {
   @ApiProperty({ example: 'uuid-123', description: 'ID univoco FIR' })
@@ -51,6 +80,12 @@ export class FIRResponseDto {
   @ApiPropertyOptional({ description: 'Snapshot anagrafico destinatario (congelato alla creazione)' })
   destinatario?: ParteFIR | null
 
+  @ApiPropertyOptional({
+    type: [TrasportatoreAggiuntivoResponse],
+    description: 'Trasportatori aggiuntivi (tratte intermodali), ordinati per `ordine`',
+  })
+  trasportatoriAggiuntivi: TrasportatoreAggiuntivoResponse[]
+
   @ApiPropertyOptional({ description: 'Data presa in carico trasportatore' })
   dataPresaCarico: Date | null
 
@@ -84,6 +119,15 @@ export class FIRResponseDto {
       produttore: fir.produttore,
       trasportatore: fir.trasportatore,
       destinatario: fir.destinatario,
+      trasportatoriAggiuntivi: (fir.trasportatoriAggiuntivi ?? []).map(t => ({
+        ordine: t.ordine,
+        tipoTratta: t.tipoTratta,
+        denominazione: t.denominazione,
+        partitaIva: t.partitaIva,
+        codiceFiscale: t.codiceFiscale,
+        numeroIscrizioneAlbo: t.numeroIscrizioneAlbo,
+        mezzo: t.mezzo,
+      })),
       dataPresaCarico: fir.dataPresaCarico,
       dataConsegna: fir.dataConsegna,
       pesoEffettivo: fir.pesoEffettivo,

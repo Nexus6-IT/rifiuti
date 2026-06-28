@@ -221,7 +221,7 @@ kbd {
 .page-header__titles { min-width: 0; }
 .page-title { font-family: var(--font-display); font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); letter-spacing: -0.02em; margin: 0; }
 .page-subtitle { color: var(--text-secondary); margin: 0.25rem 0 0; font-size: var(--font-size-sm); }
-.page-actions { display: flex; flex-wrap: wrap; gap: var(--control-gap); }
+.page-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-md); }
 
 .surface-card { background: var(--surface-card); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: var(--spacing-lg); }
 
@@ -263,30 +263,34 @@ kbd {
   font-size: var(--font-size-sm) !important;
   letter-spacing: 0.01em;
   padding: 0 1rem !important;
-  background: var(--brand-primary);
-  border-color: var(--brand-primary);
-  color: var(--primary-color-text);
+  /* Primario: teal scuro per garantire 4.5:1 col testo bianco (WCAG AA). */
+  background: var(--brand-primary-dark);
+  border-color: var(--brand-primary-dark);
+  color: #ffffff;
   transition: background var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast) !important;
 }
-/* Testo e icona ereditano SEMPRE il colore del bottone (fix grigio/blu su verde) */
+/* Testo e icona ereditano SEMPRE il colore del bottone */
 .p-button .p-button-label, .p-button .p-button-icon, .p-button .p-button-loading-icon { color: inherit !important; }
 /* Varianti piene: testo bianco garantito */
 .p-button.p-button-success, .p-button.p-button-danger, .p-button.p-button-warning,
 .p-button.p-button-secondary, .p-button.p-button-info, .p-button.p-button-help { color: #fff; }
-.p-button:not(:disabled):hover { background: var(--brand-primary-dark); border-color: var(--brand-primary-dark); box-shadow: var(--shadow-sm) !important; }
+.p-button:not(:disabled):hover { background: #0a5f57; border-color: #0a5f57; box-shadow: var(--shadow-sm) !important; }
 .p-button:not(:disabled):active { transform: translateY(1px); }
-.p-button.p-button-outlined { background: transparent; color: var(--brand-primary-dark); border-color: var(--surface-border-strong); }
-.p-button.p-button-outlined:not(:disabled):hover { background: var(--brand-primary-50); border-color: var(--brand-primary); color: var(--brand-primary-dark); }
-.p-button.p-button-text { background: transparent; color: var(--brand-primary-dark); border-color: transparent; }
-.p-button.p-button-text:not(:disabled):hover { background: var(--brand-primary-50); color: var(--brand-primary-dark); }
+/* Secondari NEUTRI: il teal resta riservato all'azione primaria (gerarchia). */
+.p-button.p-button-outlined { background: transparent; color: var(--text-secondary); border-color: var(--surface-border-strong); }
+.p-button.p-button-outlined:not(:disabled):hover { background: var(--color-gray-100); border-color: var(--surface-border-strong); color: var(--text-primary); }
+.p-button.p-button-text { background: transparent; color: var(--text-secondary); border-color: transparent; }
+.p-button.p-button-text:not(:disabled):hover { background: var(--color-gray-100); color: var(--text-primary); }
 .p-button.p-button-secondary { background: var(--color-gray-700); border-color: var(--color-gray-700); }
 .p-button.p-button-secondary:not(:disabled):hover { background: var(--color-gray-800); border-color: var(--color-gray-800); }
 .p-button.p-button-success { background: var(--color-success); border-color: var(--color-success); }
 .p-button.p-button-danger { background: var(--color-danger); border-color: var(--color-danger); }
 .p-button.p-button-warning { background: var(--color-warning); border-color: var(--color-warning); }
+/* Stato disabilitato coerente per tutte le varianti */
+.p-button:disabled, .p-button.p-disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none !important; }
 .p-button-icon-only { width: var(--control-md); height: var(--control-md); padding: 0 !important; }
 .p-button-rounded { border-radius: var(--radius-full) !important; }
-.p-button.p-button-sm { height: var(--control-sm); padding: 0 0.7rem !important; font-size: var(--font-size-xs) !important; }
+.p-button.p-button-sm { height: var(--control-sm); padding: 0 var(--spacing-md) !important; font-size: var(--font-size-xs) !important; }
 .p-button.p-button-lg { height: var(--control-lg); }
 
 /* Campi input reali — altezza unica --control-md */
@@ -323,7 +327,13 @@ textarea.p-inputtext { height: auto; min-height: calc(var(--control-md) * 2); pa
   font-size: var(--font-size-sm) !important;
 }
 .p-dropdown .p-dropdown-trigger, .p-multiselect .p-multiselect-trigger { width: 2.5rem; }
-.p-inputtext::placeholder { color: var(--text-tertiary); }
+/* Placeholder leggibili (AA): ~5.4:1 su bianco; esteso a tutti i controlli. */
+.p-inputtext::placeholder,
+.p-inputnumber-input::placeholder,
+textarea.p-inputtext::placeholder,
+.p-password input::placeholder { color: #5b6878; opacity: 1; }
+.p-dropdown .p-dropdown-label.p-placeholder,
+.p-multiselect .p-multiselect-label.p-placeholder { color: #5b6878; }
 .p-inputtext:enabled:hover, .p-dropdown:not(.p-disabled):hover, .p-multiselect:not(.p-disabled):hover { border-color: var(--brand-primary-light) !important; }
 .p-inputtext:enabled:focus,
 .p-dropdown:not(.p-disabled).p-focus,
@@ -344,15 +354,15 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 .p-datatable { border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--surface-border); }
 .p-datatable .p-datatable-header { background: var(--surface-section); border: none; padding: var(--spacing-md); }
 .p-datatable .p-datatable-thead > tr > th {
-  background: var(--color-gray-50); color: var(--text-tertiary);
+  background: var(--color-gray-50); color: var(--text-secondary);
   font-weight: var(--font-weight-semibold); border-bottom: 1px solid var(--surface-border);
-  padding: 0.6rem var(--spacing-md); font-size: var(--font-size-xs);
+  padding: var(--spacing-sm) var(--spacing-md); font-size: var(--font-size-xs);
   text-transform: uppercase; letter-spacing: 0.06em;
 }
 .p-datatable .p-datatable-tbody > tr { transition: background-color var(--transition-fast); color: var(--text-primary); }
 .p-datatable .p-datatable-tbody > tr:hover { background: var(--brand-primary-50) !important; }
-.p-datatable .p-datatable-tbody > tr > td { padding: 0.55rem var(--spacing-md); border-bottom: 1px solid var(--surface-border); font-size: var(--font-size-sm); }
-.p-datatable.p-datatable-sm .p-datatable-tbody > tr > td { padding: 0.4rem var(--spacing-md); }
+.p-datatable .p-datatable-tbody > tr > td { padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--surface-border); font-size: var(--font-size-sm); }
+.p-datatable.p-datatable-sm .p-datatable-tbody > tr > td { padding: var(--spacing-xs) var(--spacing-md); }
 .p-datatable .p-sortable-column.p-highlight, .p-datatable .p-sortable-column.p-highlight .p-sortable-column-icon { color: var(--brand-primary-dark); }
 .p-paginator { background: var(--surface-section); border: none; padding: var(--spacing-md); }
 .p-paginator .p-paginator-pages .p-paginator-page.p-highlight { background: var(--brand-primary); color: #fff; border-radius: var(--radius-base); }
@@ -360,9 +370,21 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 /* Dialog */
 .p-dialog { border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-xl) !important; overflow: hidden; }
 .p-dialog .p-dialog-header { background: var(--surface-section); padding: var(--spacing-lg); border-bottom: 1px solid var(--surface-border); }
-.p-dialog .p-dialog-header .p-dialog-title { font-family: var(--font-display); font-weight: var(--font-weight-semibold); }
+/* Titolo dialog un gradino sotto il titolo pagina (gerarchia). */
+.p-dialog .p-dialog-header .p-dialog-title { font-family: var(--font-display); font-weight: var(--font-weight-semibold); font-size: var(--font-size-lg); }
+/* X di chiusura: icona ghost neutra (NON teal pieno), hover tenue. */
+.p-dialog .p-dialog-header-icon {
+  width: 2.25rem; height: 2.25rem;
+  color: var(--text-tertiary) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: var(--radius-full) !important;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.p-dialog .p-dialog-header-icon:hover { background: var(--color-gray-100) !important; color: var(--text-primary) !important; }
 .p-dialog .p-dialog-content { padding: var(--spacing-lg); }
-.p-dialog .p-dialog-footer { padding: var(--spacing-base) var(--spacing-lg); border-top: 1px solid var(--surface-border); }
+/* Footer simmetrico (24px) + azioni allineate a destra con gap coerente. */
+.p-dialog .p-dialog-footer { padding: var(--spacing-lg); border-top: 1px solid var(--surface-border); display: flex; justify-content: flex-end; gap: var(--spacing-md); }
 .p-overlay-mask { background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(2px); }
 
 /* Tag / Badge — colore + soft bg (mai solo colore: il testo è nel value) */

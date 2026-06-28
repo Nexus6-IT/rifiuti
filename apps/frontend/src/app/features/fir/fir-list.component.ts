@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MessageService } from 'primeng/api';
@@ -15,9 +15,11 @@ import { SplitButtonModule } from 'primeng/splitbutton';
 import { CardModule } from 'primeng/card';
 import { MenuItem } from 'primeng/api';
 import { TooltipModule } from 'primeng/tooltip';
-import { FirService, CreateFIRDto } from './fir.service';
+import { FirService, CreateFIRDto, TipoTratta } from './fir.service';
 import { FIR, FIRStato } from '../../shared/models/fir.model';
 import { ExportService } from '../../core/services/export.service';
+import { RegistryService } from '../registry/registry.service';
+import { Produttore, Trasportatore, Destinatario } from '../../shared/models/registry.model';
 
 @Component({
   selector: 'app-fir-list',
@@ -257,31 +259,149 @@ import { ExportService } from '../../core/services/export.service';
             </div>
           </div>
           <div class="dialog-form__field">
-            <label for="new-produttore">Produttore ID</label>
-            <input
-              id="new-produttore"
-              pInputText
+            <label for="new-produttore">Produttore</label>
+            <p-dropdown
+              inputId="new-produttore"
+              [options]="produttori()"
               [(ngModel)]="newFIR.produttoreId"
-              class="w-full"
-            />
+              optionLabel="ragioneSociale"
+              optionValue="id"
+              [filter]="true"
+              filterBy="ragioneSociale,partitaIVA"
+              [showClear]="true"
+              placeholder="Cerca produttore…"
+              [loading]="loadingAnagrafiche"
+              styleClass="w-full"
+            >
+              <ng-template let-opt pTemplate="item">
+                <div class="opt">
+                  <span class="opt__name">{{ opt.ragioneSociale }}</span>
+                  <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                </div>
+              </ng-template>
+            </p-dropdown>
           </div>
           <div class="dialog-form__field">
-            <label for="new-trasportatore">Trasportatore ID</label>
-            <input
-              id="new-trasportatore"
-              pInputText
+            <label for="new-trasportatore">Trasportatore</label>
+            <p-dropdown
+              inputId="new-trasportatore"
+              [options]="trasportatori()"
               [(ngModel)]="newFIR.trasportatoreId"
-              class="w-full"
-            />
+              optionLabel="ragioneSociale"
+              optionValue="id"
+              [filter]="true"
+              filterBy="ragioneSociale,partitaIVA"
+              [showClear]="true"
+              placeholder="Cerca trasportatore…"
+              [loading]="loadingAnagrafiche"
+              styleClass="w-full"
+            >
+              <ng-template let-opt pTemplate="item">
+                <div class="opt">
+                  <span class="opt__name">{{ opt.ragioneSociale }}</span>
+                  <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                </div>
+              </ng-template>
+            </p-dropdown>
           </div>
           <div class="dialog-form__field">
-            <label for="new-destinatario">Destinatario ID</label>
-            <input
-              id="new-destinatario"
-              pInputText
+            <label for="new-destinatario">Destinatario</label>
+            <p-dropdown
+              inputId="new-destinatario"
+              [options]="destinatari()"
               [(ngModel)]="newFIR.destinatarioId"
-              class="w-full"
-            />
+              optionLabel="ragioneSociale"
+              optionValue="id"
+              [filter]="true"
+              filterBy="ragioneSociale,partitaIVA"
+              [showClear]="true"
+              placeholder="Cerca destinatario…"
+              [loading]="loadingAnagrafiche"
+              styleClass="w-full"
+            >
+              <ng-template let-opt pTemplate="item">
+                <div class="opt">
+                  <span class="opt__name">{{ opt.ragioneSociale }}</span>
+                  <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                </div>
+              </ng-template>
+            </p-dropdown>
+          </div>
+
+          <!-- Trasportatori aggiuntivi (trasporto intermodale) -->
+          <div class="trasporti-extra">
+            <button
+              type="button"
+              class="trasporti-extra__toggle"
+              (click)="showTrasportatoriAggiuntivi = !showTrasportatoriAggiuntivi"
+              [attr.aria-expanded]="showTrasportatoriAggiuntivi"
+            >
+              <i
+                class="pi"
+                [ngClass]="showTrasportatoriAggiuntivi ? 'pi-chevron-down' : 'pi-chevron-right'"
+                aria-hidden="true"
+              ></i>
+              <span>Trasportatori aggiuntivi (trasporto intermodale)</span>
+              <span *ngIf="trasportatoriAggiuntivi.length > 0" class="trasporti-extra__count">
+                {{ trasportatoriAggiuntivi.length }}
+              </span>
+            </button>
+
+            <div *ngIf="showTrasportatoriAggiuntivi" class="trasporti-extra__body">
+              <div
+                *ngFor="let t of trasportatoriAggiuntivi; let i = index"
+                class="trasporto-row"
+              >
+                <div class="trasporto-row__field trasporto-row__field--tratta">
+                  <p-dropdown
+                    [options]="tipoTrattaOptions"
+                    [(ngModel)]="t.tipoTratta"
+                    optionLabel="label"
+                    optionValue="value"
+                    [attr.aria-label]="'Tipo tratta trasportatore ' + (i + 2)"
+                    styleClass="w-full"
+                  />
+                </div>
+                <div class="trasporto-row__field trasporto-row__field--trasp">
+                  <p-dropdown
+                    [options]="trasportatori()"
+                    [(ngModel)]="t.trasportatoreId"
+                    optionLabel="ragioneSociale"
+                    optionValue="id"
+                    [filter]="true"
+                    filterBy="ragioneSociale,partitaIVA"
+                    [showClear]="true"
+                    placeholder="Cerca trasportatore…"
+                    [attr.aria-label]="'Trasportatore aggiuntivo ' + (i + 2)"
+                    styleClass="w-full"
+                  >
+                    <ng-template let-opt pTemplate="item">
+                      <div class="opt">
+                        <span class="opt__name">{{ opt.ragioneSociale }}</span>
+                        <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                      </div>
+                    </ng-template>
+                  </p-dropdown>
+                </div>
+                <p-button
+                  icon="pi pi-times"
+                  [rounded]="true"
+                  [text]="true"
+                  severity="danger"
+                  (onClick)="removeTrasportatoreAggiuntivo(i)"
+                  pTooltip="Rimuovi"
+                  [attr.aria-label]="'Rimuovi trasportatore aggiuntivo ' + (i + 2)"
+                />
+              </div>
+
+              <p-button
+                label="Aggiungi trasportatore"
+                icon="pi pi-plus"
+                [text]="true"
+                severity="secondary"
+                (onClick)="addTrasportatoreAggiuntivo()"
+              />
+            </div>
           </div>
         </div>
         <ng-template pTemplate="footer">
@@ -357,7 +477,7 @@ import { ExportService } from '../../core/services/export.service';
     .table-card { padding: 0; overflow: hidden; }
 
     .col-actions { width: 12rem; }
-    .row-actions { display: flex; gap: var(--spacing-xs); flex-wrap: wrap; }
+    .row-actions { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; }
 
     .cell-mono {
       font-family: var(--font-family-mono);
@@ -366,13 +486,64 @@ import { ExportService } from '../../core/services/export.service';
     }
 
     .dialog-form { display: flex; flex-direction: column; gap: var(--spacing-base); }
-    .dialog-form__field { display: flex; flex-direction: column; gap: var(--spacing-xs); }
+    .dialog-form__field { display: flex; flex-direction: column; gap: var(--spacing-sm); }
     .dialog-form__field label { font-size: var(--font-size-sm); }
     .dialog-form__row { display: flex; flex-wrap: wrap; gap: var(--spacing-base); }
     .dialog-form__row .dialog-form__field { flex: 1 1 160px; }
 
+    /* Dropdown option (ragione sociale + P.IVA) */
+    .opt { display: flex; flex-direction: column; gap: 0; line-height: 1.3; }
+    .opt__name { font-weight: var(--font-weight-medium); color: var(--text-primary); }
+    .opt__piva { font-size: var(--font-size-sm); color: var(--text-secondary); }
+
+    /* Trasportatori aggiuntivi (intermodale) */
+    .trasporti-extra {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-sm);
+      border-top: 1px solid var(--surface-border, var(--border-color));
+      padding-top: var(--spacing-base);
+    }
+    .trasporti-extra__toggle {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-medium);
+      color: var(--text-secondary);
+      text-align: left;
+    }
+    .trasporti-extra__count {
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-medium);
+      color: var(--text-primary);
+      background: var(--surface-hover, var(--surface-100));
+      border-radius: 999px;
+      padding: 0 var(--spacing-sm);
+    }
+    .trasporti-extra__body {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-sm);
+    }
+    .trasporto-row {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+    .trasporto-row__field { min-width: 0; }
+    .trasporto-row__field--tratta { flex: 0 0 9rem; }
+    .trasporto-row__field--trasp { flex: 1 1 auto; }
+
     @media (max-width: 576px) {
       .filters__field { flex: 1 1 100%; }
+      .trasporto-row { flex-wrap: wrap; }
+      .trasporto-row__field--tratta { flex: 1 1 100%; }
+      .trasporto-row__field--trasp { flex: 1 1 100%; }
     }
   `]
 })
@@ -392,6 +563,22 @@ export class FirListComponent implements OnInit {
   displayConsegnaDialog = false;
   selectedFIR: FIR | null = null;
   pesoEffettivo = 0;
+
+  // Anagrafiche per i dropdown ricercabili
+  produttori = signal<Produttore[]>([]);
+  trasportatori = signal<Trasportatore[]>([]);
+  destinatari = signal<Destinatario[]>([]);
+  loadingAnagrafiche = false;
+
+  // Trasporto intermodale: trasportatori aggiuntivi
+  showTrasportatoriAggiuntivi = false;
+  trasportatoriAggiuntivi: { trasportatoreId: string | null; tipoTratta: TipoTratta }[] = [];
+
+  tipoTrattaOptions = [
+    { label: 'Terrestre', value: 'TERRESTRE' as TipoTratta },
+    { label: 'Ferroviaria', value: 'FERROVIARIA' as TipoTratta },
+    { label: 'Marittima', value: 'MARITTIMA' as TipoTratta }
+  ];
 
   newFIR: CreateFIRDto = {
     anno: new Date().getFullYear(),
@@ -426,12 +613,51 @@ export class FirListComponent implements OnInit {
     private firService: FirService,
     private messageService: MessageService,
     private confirmationService: ConfirmationService,
-    private exportService: ExportService
+    private exportService: ExportService,
+    private registryService: RegistryService
   ) {}
 
   ngOnInit(): void {
     this.initializeExportMenu();
+    this.loadAnagrafiche();
     this.loadFIRList({ first: 0, rows: this.pageSize });
+  }
+
+  /**
+   * Carica le anagrafiche per i dropdown ricercabili.
+   * La ricerca dei dropdown è client-side sulle opzioni caricate (limit alto).
+   */
+  loadAnagrafiche(): void {
+    this.loadingAnagrafiche = true;
+    const limit = 200;
+    let pending = 3;
+    const done = () => {
+      pending -= 1;
+      if (pending === 0) this.loadingAnagrafiche = false;
+    };
+    this.registryService.getProduttori(1, limit).subscribe({
+      next: (res) => this.produttori.set(res.items),
+      error: () => done(),
+      complete: () => done()
+    });
+    this.registryService.getTrasportatori(1, limit).subscribe({
+      next: (res) => this.trasportatori.set(res.items),
+      error: () => done(),
+      complete: () => done()
+    });
+    this.registryService.getDestinatari(1, limit).subscribe({
+      next: (res) => this.destinatari.set(res.items),
+      error: () => done(),
+      complete: () => done()
+    });
+  }
+
+  addTrasportatoreAggiuntivo(): void {
+    this.trasportatoriAggiuntivi.push({ trasportatoreId: null, tipoTratta: 'TERRESTRE' });
+  }
+
+  removeTrasportatoreAggiuntivo(index: number): void {
+    this.trasportatoriAggiuntivi.splice(index, 1);
   }
 
   initializeExportMenu(): void {
@@ -531,12 +757,36 @@ export class FirListComponent implements OnInit {
         unitaMisura: 'kg'
       }
     };
+    this.trasportatoriAggiuntivi = [];
+    this.showTrasportatoriAggiuntivi = false;
     this.displayCreateDialog = true;
   }
 
   createFIR(): void {
+    if (!this.newFIR.produttoreId || !this.newFIR.trasportatoreId || !this.newFIR.destinatarioId) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Campi obbligatori',
+        detail: 'Seleziona produttore, trasportatore e destinatario'
+      });
+      return;
+    }
+
+    const aggiuntivi = this.trasportatoriAggiuntivi
+      .filter((t) => !!t.trasportatoreId)
+      .map((t, i) => ({
+        trasportatoreId: t.trasportatoreId as string,
+        tipoTratta: t.tipoTratta,
+        ordine: i + 1
+      }));
+
+    const dto: CreateFIRDto = { ...this.newFIR };
+    if (aggiuntivi.length > 0) {
+      dto.trasportatoriAggiuntivi = aggiuntivi;
+    }
+
     this.saving = true;
-    this.firService.createFIR(this.newFIR).subscribe({
+    this.firService.createFIR(dto).subscribe({
       next: () => {
         this.messageService.add({
           severity: 'success',

@@ -43,6 +43,37 @@ export interface ParteFIR {
   contatto?: string
 }
 
+/**
+ * Tipo di tratta di un trasporto intermodale (FIR multimodale):
+ * trasporto su gomma (TERRESTRE), su rotaia (FERROVIARIA) o via mare (MARITTIMA).
+ */
+export enum TipoTratta {
+  TERRESTRE = 'TERRESTRE',
+  FERROVIARIA = 'FERROVIARIA',
+  MARITTIMA = 'MARITTIMA',
+}
+
+/**
+ * Snapshot anagrafico immutabile di un trasportatore aggiuntivo (tratta
+ * intermodale), "congelato" alla creazione del FIR a partire dal registro
+ * Trasportatore. Il trasportatore principale resta inline (vedi ParteFIR);
+ * qui si modellano le N tratte successive, ordinate.
+ */
+export interface TrattaTrasportoFIR {
+  /** Ordine della tratta nella sequenza del trasporto intermodale (1-based). */
+  ordine: number
+  tipoTratta: TipoTratta
+  /** Riferimento al registro Trasportatore di provenienza dello snapshot. */
+  trasportatoreId?: string
+  denominazione: string
+  partitaIva?: string
+  codiceFiscale?: string
+  numeroIscrizioneAlbo?: string
+  /** Mezzo/identificativo: targa, numero treno o nome nave. */
+  mezzo?: string
+  dataPresaInCarico?: Date
+}
+
 export interface FirmaDigitale {
   firmatario: string
   timestamp: Date
@@ -77,6 +108,8 @@ export interface CreateFIRProps {
   produttore?: ParteFIR
   trasportatore?: ParteFIR
   destinatario?: ParteFIR
+  /** Trasportatori aggiuntivi (tratte intermodali), snapshot ordinati. */
+  trasportatoriAggiuntivi?: TrattaTrasportoFIR[]
 }
 
 // Domain Events
@@ -122,7 +155,8 @@ export class FIR extends AggregateRoot {
     private readonly _produttore: ParteFIR | null = null,
     private readonly _trasportatore: ParteFIR | null = null,
     private readonly _destinatario: ParteFIR | null = null,
-    private readonly _tenantId: string | null = null
+    private readonly _tenantId: string | null = null,
+    private readonly _trasportatoriAggiuntivi: TrattaTrasportoFIR[] = []
   ) {
     super()
   }
@@ -158,7 +192,8 @@ export class FIR extends AggregateRoot {
       props.produttore ?? null,
       props.trasportatore ?? null,
       props.destinatario ?? null,
-      props.tenantId ?? null
+      props.tenantId ?? null,
+      props.trasportatoriAggiuntivi ?? []
     )
   }
 
@@ -293,6 +328,14 @@ export class FIR extends AggregateRoot {
   /** Snapshot anagrafico del destinatario al momento della creazione. */
   get destinatario(): ParteFIR | null {
     return this._destinatario
+  }
+
+  /**
+   * Trasportatori aggiuntivi (tratte intermodali), snapshot ordinati per
+   * `ordine`. Vuoto per un FIR mono-trasportatore.
+   */
+  get trasportatoriAggiuntivi(): TrattaTrasportoFIR[] {
+    return this._trasportatoriAggiuntivi
   }
 
   private static generateId(): string {

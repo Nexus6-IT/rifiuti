@@ -14,7 +14,7 @@ import { Trasportatore } from '../../../domain/registry/entities/trasportatore'
 import { Destinatario } from '../../../domain/registry/entities/destinatario'
 import { PartitaIVA } from '../../../domain/registry/value-objects/partita-iva'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
-import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
+import { FIR, FIRStato, TipoTratta } from '../../../domain/fir/aggregates/fir.aggregate'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 
 // Mock Repositories
@@ -355,6 +355,64 @@ describe('CreateFIRUseCase', () => {
 
       expect(result.isSuccess).toBe(true)
       expect(result.value.rifiuto.quantita.unitaMisura).toBe(UnitaMisura.KG)
+    })
+
+    it('should snapshot additional carriers for intermodal transport', async () => {
+      cerRepository.addCode('13 02 05*')
+      const command = new CreateFIRCommand(
+        'tenant-producer-123',
+        { cerCode: '13 02 05*', quantita: 120 },
+        'tenant-transporter-456',
+        'tenant-destination-789',
+        'user-123',
+        'tenant-1',
+        [
+          { trasportatoreId: 'carrier-rail', tipoTratta: TipoTratta.FERROVIARIA, ordine: 2 },
+          { trasportatoreId: 'carrier-sea', tipoTratta: TipoTratta.MARITTIMA, ordine: 3 },
+        ]
+      )
+
+      const result = await useCase.execute(command)
+
+      expect(result.isSuccess).toBe(true)
+      const tratte = result.value.trasportatoriAggiuntivi
+      expect(tratte).toHaveLength(2)
+      expect(tratte[0]).toMatchObject({
+        ordine: 2,
+        tipoTratta: TipoTratta.FERROVIARIA,
+        trasportatoreId: 'carrier-rail',
+        denominazione: 'Trasporti Srl',
+        partitaIva: '22345678901',
+        numeroIscrizioneAlbo: 'ALBO-123',
+      })
+      expect(tratte[1].tipoTratta).toBe(TipoTratta.MARITTIMA)
+    })
+
+    it('should fail if an additional carrier is not in the registry', async () => {
+      cerRepository.addCode('13 02 05*')
+      trasportatoreRepository.missing.add('carrier-missing')
+      const command = new CreateFIRCommand(
+        'tenant-producer-123',
+        { cerCode: '13 02 05*', quantita: 120 },
+        'tenant-transporter-456',
+        'tenant-destination-789',
+        'user-123',
+        'tenant-1',
+        [{ trasportatoreId: 'carrier-missing', tipoTratta: TipoTratta.TERRESTRE, ordine: 2 }]
+      )
+
+      const result = await useCase.execute(command)
+
+      expect(result.isFailure).toBe(true)
+      expect(result.error).toContain('Trasportatore not found: carrier-missing')
+    })
+
+    it('should create a FIR with no additional carriers (backward compatible)', async () => {
+      cerRepository.addCode('13 02 05*')
+      const result = await useCase.execute(createValidCommand())
+
+      expect(result.isSuccess).toBe(true)
+      expect(result.value.trasportatoriAggiuntivi).toEqual([])
     })
 
     it('should create multiple FIRs independently', async () => {

@@ -4,11 +4,20 @@ import { Observable } from 'rxjs';
 import { FIR, PaginatedFIRResponse, FIRStato } from '../../shared/models/fir.model';
 import { environment } from '../../../environments/environment';
 
+export type TipoTratta = 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA';
+
+export interface TrasportatoreAggiuntivoDto {
+  trasportatoreId: string;
+  tipoTratta: TipoTratta;
+  ordine: number;
+}
+
 export interface CreateFIRDto {
   anno: number;
   produttoreId: string;
   trasportatoreId: string;
   destinatarioId: string;
+  trasportatoriAggiuntivi?: TrasportatoreAggiuntivoDto[];
   rifiuto: {
     cerCode: string;
     quantitaDichiarata: number;

@@ -228,6 +228,11 @@ model FIR {
   signatures   FIRSignature[]
   activityLogs ActivityLog[]
 
+  // Trasportatori aggiuntivi per trasporto intermodale (oltre al trasportatore
+  // principale inline Campo 4): N tratte ordinate (terrestre/ferroviaria/
+  // marittima), ognuna con proprio snapshot anagrafico immutabile.
+  transportersAggiuntivi FIRTransporter[]
+
   @@unique([tenantId, firNumber])
   @@index([tenantId])
   @@index([status])
@@ -291,6 +296,48 @@ model FIRSignature {
   @@index([firId])
   @@index([userId])
   @@map("fir_signatures")
+}
+
+/// Tipo di tratta di un trasporto intermodale (D.Lgs 152/2006, FIR multimodale):
+/// trasporto su gomma (TERRESTRE), su rotaia (FERROVIARIA) o via mare (MARITTIMA).
+enum TipoTratta {
+  TERRESTRE
+  FERROVIARIA
+  MARITTIMA
+
+  @@map("tipo_tratta")
+}
+
+/// Trasportatore aggiuntivo di una tratta intermodale del FIR. Il trasportatore
+/// principale resta inline su FIR (Campo 4); qui si modellano le N tratte
+/// successive, ordinate, ognuna con lo snapshot anagrafico immutabile preso dal
+/// registro Trasportatore al momento della creazione del FIR.
+model FIRTransporter {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firId     String   @map("fir_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  ordine     Int        @db.Integer
+  tipoTratta TipoTratta @map("tipo_tratta")
+
+  // Riferimento al registro Trasportatore di provenienza dello snapshot (può
+  // essere null per trasportatori non presenti nel registro).
+  trasportatoreId String? @map("trasportatore_id") @db.Uuid
+
+  // Snapshot anagrafico immutabile (congelato alla creazione del FIR).
+  denominazione        String  @map("denominazione") @db.VarChar(255)
+  partitaIva           String? @map("partita_iva") @db.VarChar(11)
+  codiceFiscale        String? @map("codice_fiscale") @db.VarChar(16)
+  numeroIscrizioneAlbo String? @map("numero_iscrizione_albo") @db.VarChar(50)
+
+  // Mezzo/identificativo: targa (terrestre), numero treno o nome nave.
+  mezzo             String?   @map("mezzo") @db.VarChar(100)
+  dataPresaInCarico DateTime? @map("data_presa_in_carico")
+
+  fir FIR @relation(fields: [firId], references: [id], onDelete: Cascade)
+
+  @@index([firId])
+  @@map("fir_transporters")
 }
 
 model MUDReport {

@@ -14,12 +14,21 @@ import { PrismaService } from './prisma.service'
 export class FIRPrismaRepository implements IFIRRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Carica sempre i trasportatori aggiuntivi (tratte intermodali) ordinati, così
+  // che lo snapshot del FIR sia completo ovunque venga ricostruito l'aggregate.
+  // Cast ad any: la relazione è disponibile dopo `prisma generate` sullo schema
+  // aggiornato (modello FIRTransporter).
+  private static readonly FIR_INCLUDE: any = {
+    transportersAggiuntivi: { orderBy: { ordine: 'asc' } },
+  }
+
   async findById(id: string): Promise<FIR | null> {
     // Usa il client RLS-aware: con TenantContext attivo l'estensione inietta il
     // `tenantId` reale (findFirst), evitando di restituire FIR di altri tenant
     // tramite un id noto. Senza contesto (job di sistema) è un no-op = by-id.
     const record = await this.prisma.db.fIR.findFirst({
       where: { id },
+      include: FIRPrismaRepository.FIR_INCLUDE,
     })
 
     if (!record) return null
@@ -31,6 +40,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     // Public access without tenant filter - used for signature verification
     const record = await this.prisma.fIR.findUnique({
       where: { id },
+      include: FIRPrismaRepository.FIR_INCLUDE,
     })
 
     if (!record) return null
@@ -44,6 +54,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     // in fondo al file).
     const record = await this.prisma.fIR.findFirst({
       where: { firNumber: numeroProgressivo },
+      include: FIRPrismaRepository.FIR_INCLUDE,
     })
 
     if (!record) return null
@@ -73,6 +84,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     const records = await this.prisma.fIR.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      include: FIRPrismaRepository.FIR_INCLUDE,
     })
 
     return records.map((r: any) => this.toDomain(r))
@@ -90,17 +102,43 @@ export class FIRPrismaRepository implements IFIRRepository {
     const records = await this.prisma.fIR.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      include: FIRPrismaRepository.FIR_INCLUDE,
     })
 
     return records.map((r: any) => this.toDomain(r))
   }
 
   async save(fir: FIR): Promise<void> {
+    const data = this.toPersistence(fir)
+    // I trasportatori aggiuntivi (tratte intermodali) sono uno snapshot fissato
+    // alla creazione del FIR: si scrivono solo nel ramo `create` dell'upsert, mai
+    // negli update (transizioni di stato) per non duplicarli.
+    const transportersCreate = this.transportersToCreate(fir)
+    const createData: any = { ...data }
+    if (transportersCreate.length > 0) {
+      createData.transportersAggiuntivi = { create: transportersCreate }
+    }
+
     await this.prisma.fIR.upsert({
       where: { id: fir.id },
-      create: this.toPersistence(fir),
-      update: this.toPersistence(fir),
+      create: createData,
+      update: data,
     })
+  }
+
+  /** Mappa i trasportatori aggiuntivi dell'aggregate in righe `FIRTransporter`. */
+  private transportersToCreate(fir: FIR): any[] {
+    return (fir.trasportatoriAggiuntivi ?? []).map(t => ({
+      ordine: t.ordine,
+      tipoTratta: t.tipoTratta as any,
+      trasportatoreId: t.trasportatoreId || undefined,
+      denominazione: t.denominazione,
+      partitaIva: t.partitaIva || undefined,
+      codiceFiscale: t.codiceFiscale || undefined,
+      numeroIscrizioneAlbo: t.numeroIscrizioneAlbo || undefined,
+      mezzo: t.mezzo || undefined,
+      dataPresaInCarico: t.dataPresaInCarico || undefined,
+    }))
   }
 
   async delete(id: string): Promise<void> {
@@ -197,6 +235,17 @@ export class FIRPrismaRepository implements IFIRRepository {
         record.receiverAddress,
         record.receiverContact,
       ),
+      trasportatoriAggiuntivi: (record.transportersAggiuntivi ?? []).map((t: any) => ({
+        ordine: t.ordine,
+        tipoTratta: t.tipoTratta,
+        trasportatoreId: t.trasportatoreId || undefined,
+        denominazione: t.denominazione,
+        partitaIva: t.partitaIva || undefined,
+        codiceFiscale: t.codiceFiscale || undefined,
+        numeroIscrizioneAlbo: t.numeroIscrizioneAlbo || undefined,
+        mezzo: t.mezzo || undefined,
+        dataPresaInCarico: t.dataPresaInCarico || undefined,
+      })),
     })
 
     // Restore state (using reflection - in production use proper reconstitution)

@@ -3,7 +3,12 @@
  * Business logic orchestration
  */
 
-import { FIR, ParteFIR } from '../../../domain/fir/aggregates/fir.aggregate'
+import {
+  FIR,
+  ParteFIR,
+  TrattaTrasportoFIR,
+  TipoTratta,
+} from '../../../domain/fir/aggregates/fir.aggregate'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { ICERRepository } from '../../../domain/cer/repositories/cer-repository.interface'
 import { ProduttoreRepository } from '../../../domain/registry/repositories/produttore.repository'
@@ -55,6 +60,18 @@ export class CreateFIRUseCase {
       return Result.fail<FIR>(`Destinatario not found: ${command.destinatarioId}`)
     }
 
+    // 3b. Load the additional carriers (intermodal legs) from the registry, with
+    //     the same tenant scoping as the principal carrier. Each one becomes an
+    //     immutable anagrafica SNAPSHOT frozen on the FIR.
+    const trasportatoriAggiuntivi: TrattaTrasportoFIR[] = []
+    for (const tratta of command.trasportatoriAggiuntivi ?? []) {
+      const carrier = await this.trasportatoreRepository.findById(tratta.trasportatoreId)
+      if (!carrier) {
+        return Result.fail<FIR>(`Trasportatore not found: ${tratta.trasportatoreId}`)
+      }
+      trasportatoriAggiuntivi.push(this.snapshotTratta(carrier, tratta.ordine, tratta.tipoTratta))
+    }
+
     // 4. Create FIR aggregate with the frozen anagrafica snapshots
     try {
       const fir = FIR.create({
@@ -67,6 +84,7 @@ export class CreateFIRUseCase {
         produttore: this.snapshotProduttore(produttore),
         trasportatore: this.snapshotTrasportatore(trasportatore),
         destinatario: this.snapshotDestinatario(destinatario),
+        trasportatoriAggiuntivi,
       })
 
       // 5. Persist FIR
@@ -106,6 +124,26 @@ export class CreateFIRUseCase {
       partitaIva: d.partitaIVA.getValue(),
       indirizzo: d.sede.getFormatted(),
       contatto: d.pec || d.email || undefined,
+    }
+  }
+
+  /**
+   * Snapshot anagrafico immutabile di un trasportatore aggiuntivo (tratta
+   * intermodale). Mezzo e data presa in carico restano vuoti alla creazione:
+   * verranno valorizzati a runtime durante l'esecuzione del trasporto.
+   */
+  private snapshotTratta(
+    t: Trasportatore,
+    ordine: number,
+    tipoTratta: TipoTratta
+  ): TrattaTrasportoFIR {
+    return {
+      ordine,
+      tipoTratta,
+      trasportatoreId: t.id,
+      denominazione: t.ragioneSociale,
+      partitaIva: t.partitaIVA.getValue(),
+      numeroIscrizioneAlbo: t.numeroIscrizione,
     }
   }
 }
