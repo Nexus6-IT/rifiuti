@@ -17,7 +17,7 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
-import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, ValidateNested } from 'class-validator'
+import { IsString, IsNotEmpty, IsNumber, IsOptional, IsObject, Min, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
 import { CreateFIRDto } from './dtos/create-fir.dto'
 import { ListFIRsDto } from './dtos/list-firs.dto'
@@ -55,12 +55,16 @@ export class FirmaDto {
 }
 
 export class EmettiFIRDto {
+  // @IsObject garantisce che la proprietà superi il whitelist del ValidationPipe
+  // (il solo @ValidateNested non basta in questa versione di class-validator).
+  @IsObject()
   @ValidateNested()
   @Type(() => FirmaDto)
   firmaProduttore: FirmaDto
 }
 
 export class PresaInCaricoFIRDto {
+  @IsObject()
   @ValidateNested()
   @Type(() => FirmaDto)
   firmaTrasportatore: FirmaDto
@@ -71,6 +75,7 @@ export class ConfermaConsegnaFIRDto {
   @Min(0.01)
   pesoEffettivo: number
 
+  @IsObject()
   @ValidateNested()
   @Type(() => FirmaDto)
   firmaDestinatario: FirmaDto
