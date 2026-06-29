@@ -9,6 +9,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
+import { PrometheusModule } from '@willsoto/nestjs-prometheus'
 import { TenantContextMiddleware } from './core/middleware/tenant-context.middleware'
 import { TenantSwitchInterceptor } from './core/interceptors/tenant-switch.interceptor'
 import { HealthController } from './api/health/health.controller'
@@ -51,6 +52,14 @@ import { RegistroModule } from './api/registro/registro.module'
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
+    }),
+
+    // Metriche Prometheus esposte su GET /metrics (escluso dal global prefix api/v1).
+    // Il percorso standard /metrics è usato dallo scraper Prometheus in /opt/observability/.
+    // Protezione: solo loopback/rete interna (nginx non espone /metrics pubblicamente).
+    PrometheusModule.register({
+      path: '/metrics',
+      defaultMetrics: { enabled: true },
     }),
 
     // Event system per eventi di dominio (firma, audit) — global per tutti i moduli
