@@ -856,6 +856,7 @@ export class LayoutComponent implements OnInit {
   readonly navMain: { label: string; route: string; icon: string; feature?: string }[] = [
     { label: 'Dashboard', route: '/dashboard', icon: 'pi pi-home' },
     { label: 'FIR', route: '/fir', icon: 'pi pi-file', feature: 'fir' },
+    { label: 'Registro C/S', route: '/registro', icon: 'pi pi-clipboard', feature: 'registro' },
     { label: 'Catalogo CER', route: '/cer', icon: 'pi pi-tags', feature: 'cer' },
     { label: 'MUD', route: '/mud', icon: 'pi pi-file-export', feature: 'mud' },
     { label: 'Giacenze', route: '/giacenze', icon: 'pi pi-box', feature: 'giacenze' },
