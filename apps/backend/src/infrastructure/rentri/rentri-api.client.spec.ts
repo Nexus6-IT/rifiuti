@@ -288,6 +288,7 @@ describe('RENTRIApiClient', () => {
 
       expect(xFIR).toEqual({
         firId: 'fir-123',
+        // flat DTO usa `firNumber`, aggregate usa `numeroProgressivo`
         numeroFormulario: 'FIR-2025-00042',
         dataEmissione: (expect as any).any(String),
         produttore: {
@@ -314,11 +315,17 @@ describe('RENTRIApiClient', () => {
           categoria: 'NON PERICOLOSO',
           quantita: 100.5,
           unita: 'KG',
+          // Campi aggiuntivi DM 59/2023: undefined su flat DTO (rifiuto=null)
+          statoFisico: undefined,
+          caratteristichePericolo: undefined,
+          numeroColli: undefined,
+          codiceOperazione: undefined,
         },
         trasporto: {
           dataPartenza: (expect as any).any(String),
           dataArrivoPrevista: (expect as any).any(String),
           note: 'Handle with care',
+          // dataArrivo undefined su flat DTO (nessun dataConsegna)
         },
         firmeDigitali: (expect as any).any(Array),
       });
@@ -349,6 +356,145 @@ describe('RENTRIApiClient', () => {
 
       expect(xFIR.produttore.contatto).toBeUndefined();
       expect(xFIR.trasporto.note).toBeUndefined();
+    });
+
+    /**
+     * Test del mapping dall'aggregate FIR reale (con snapshot ParteFIR annidati
+     * e value object Quantita), come restituito da FIRPrismaRepository.toDomain().
+     */
+    it('dovrebbe mappare correttamente il FIR aggregate (snapshot ParteFIR annidati)', () => {
+      // Simula la shape dell'aggregate FIR (aggregates/fir.aggregate.ts)
+      // con le anagrafiche come snapshot ParteFIR e il rifiuto come FIRRifiuto
+      // con value object Quantita ({ valore, unitaMisura }).
+      const firAggregate = {
+        id: 'agg-fir-001',
+        // Aggregate usa `numeroProgressivo`, non `firNumber`
+        numeroProgressivo: 'FIR-2026-000001',
+        // Snapshot anagrafici — shape ParteFIR
+        produttore: {
+          registroId: 'prod-reg-123',
+          ragioneSociale: 'Azienda Produttrice SRL',
+          partitaIva: '01234567890',
+          indirizzo: 'Via Roma 1, 20100 Milano',
+          contatto: 'produttore@test.it',
+        },
+        trasportatore: {
+          registroId: 'carr-reg-456',
+          ragioneSociale: 'Trasporti Rifiuti SpA',
+          partitaIva: '09876543210',
+          targaVeicolo: 'AB 123 CD',
+          contatto: 'carrier@test.it',
+        },
+        destinatario: {
+          registroId: 'recv-reg-789',
+          ragioneSociale: 'Impianto Ricevente Srl',
+          partitaIva: '11122233344',
+          indirizzo: 'Via Verdi 5, 00100 Roma',
+        },
+        // FIRRifiuto con value object Quantita
+        rifiuto: {
+          cerCode: '200301',
+          quantita: { valore: 250.75, unitaMisura: 'KG' },
+          descrizione: 'Rifiuti solidi urbani',
+          categoria: 'NON PERICOLOSO',
+          statoFisico: 'SOLIDO',
+          caratteristichePericolo: undefined,
+          numeroColli: 5,
+          tipoOperazione: 'RECOVERY',
+          codiceOperazione: 'R1',
+        },
+        // Date dell'aggregate (non del flat DTO)
+        dataPresaCarico: new Date('2026-06-15T08:00:00Z'),
+        dataConsegna: new Date('2026-06-15T14:30:00Z'),
+        annotazioni: 'Rifiuti speciali — trasporto urgente',
+        // Firme nell'aggregate come { produttore?, trasportatore?, destinatario? }
+        firme: {
+          produttore: {
+            firmatario: 'Mario Rossi',
+            timestamp: new Date('2026-06-15T07:55:00Z'),
+            certificato: 'sha256:certproduttore',
+          },
+          trasportatore: undefined,
+          destinatario: undefined,
+        },
+      };
+
+      const xFIR = client['convertToXFIRFormat'](firAggregate);
+
+      // Identifiers
+      expect(xFIR.firId).toBe('agg-fir-001');
+      expect(xFIR.numeroFormulario).toBe('FIR-2026-000001'); // da numeroProgressivo
+
+      // Produttore — dal snapshot ParteFIR
+      expect(xFIR.produttore.partitaIva).toBe('01234567890');
+      expect(xFIR.produttore.ragioneSociale).toBe('Azienda Produttrice SRL');
+      expect(xFIR.produttore.indirizzo).toBe('Via Roma 1, 20100 Milano');
+      expect(xFIR.produttore.contatto).toBe('produttore@test.it');
+
+      // Trasportatore — dal snapshot ParteFIR
+      expect(xFIR.trasportatore.partitaIva).toBe('09876543210');
+      expect(xFIR.trasportatore.ragioneSociale).toBe('Trasporti Rifiuti SpA');
+      expect(xFIR.trasportatore.targaVeicolo).toBe('AB 123 CD');
+
+      // Destinatario — dal snapshot ParteFIR
+      expect(xFIR.destinatario.partitaIva).toBe('11122233344');
+      expect(xFIR.destinatario.ragioneSociale).toBe('Impianto Ricevente Srl');
+
+      // Rifiuto — da FIRRifiuto + Quantita value object
+      expect(xFIR.rifiuto.codiceEER).toBe('200301');
+      expect(xFIR.rifiuto.quantita).toBe(250.75);    // da Quantita.valore
+      expect(xFIR.rifiuto.unita).toBe('KG');          // da Quantita.unitaMisura
+      expect(xFIR.rifiuto.statoFisico).toBe('SOLIDO');
+      expect(xFIR.rifiuto.numeroColli).toBe(5);
+      expect(xFIR.rifiuto.codiceOperazione).toBe('R1');
+
+      // Trasporto — da dataPresaCarico (non transportDate)
+      expect(xFIR.trasporto.dataPartenza).toBe('2026-06-15T08:00:00.000Z');
+      // dataConsegna → dataArrivo
+      expect(xFIR.trasporto.dataArrivo).toBe('2026-06-15T14:30:00.000Z');
+      // Campo 17 FIR — da annotazioni (non transportNotes)
+      expect(xFIR.trasporto.note).toBe('Rifiuti speciali — trasporto urgente');
+
+      // Firme digitali — da fir.firme (aggregate shape), solo la firma produttore
+      expect(xFIR.firmeDigitali).toHaveLength(1);
+      expect(xFIR.firmeDigitali[0].ruolo).toBe('PRODUTTORE');
+      expect(xFIR.firmeDigitali[0].firmatario).toBe('Mario Rossi');
+      expect(xFIR.firmeDigitali[0].dataFirma).toBe('2026-06-15T07:55:00.000Z');
+    });
+
+    it('non deve esporre la chiave privata RENTRI nel risultato xFIR', () => {
+      // Verifica che convertToXFIRFormat non includa MAI dati sensibili
+      // anche se per errore vengono passati nell'oggetto FIR.
+      const firConDatiSensibili = {
+        id: 'fir-sec-001',
+        firNumber: 'FIR-2026-000002',
+        producerPartitaIva: '12345678901',
+        producerName: 'Test SRL',
+        producerAddress: 'Via Test 1',
+        carrierPartitaIva: '98765432109',
+        carrierName: 'Carrier SRL',
+        carrierVehiclePlate: 'XY999YZ',
+        receiverPartitaIva: '11223344556',
+        receiverName: 'Receiver SRL',
+        receiverAddress: 'Via Dest 1',
+        cerCode: '150102',
+        wasteDescription: 'Test',
+        wasteCategory: 'NON PERICOLOSO',
+        quantity: 10,
+        unit: 'KG',
+        // Dati sensibili che NON devono apparire nel payload xFIR
+        privateKeyPem: '-----BEGIN PRIVATE KEY-----\nSECRET\n-----END PRIVATE KEY-----',
+        password: 'secret123',
+        apiKey: 'rentri-api-key-segreto',
+      };
+
+      const xFIR = client['convertToXFIRFormat'](firConDatiSensibili);
+      const xFIRJson = JSON.stringify(xFIR);
+
+      // La chiave privata, password o API key non deve MAI comparire nel payload
+      expect(xFIRJson).not.toContain('PRIVATE KEY');
+      expect(xFIRJson).not.toContain('secret123');
+      expect(xFIRJson).not.toContain('rentri-api-key-segreto');
     });
   });
 

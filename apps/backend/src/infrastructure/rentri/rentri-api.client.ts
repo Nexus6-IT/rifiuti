@@ -17,24 +17,40 @@ import { RentriSignatureService } from './rentri-signature.service';
  *   e firma di integrità `Agid-JWT-Signature` su ogni richiesta con body
  *   (vedi {@link RentriSignatureService}).
  *
- * Formato dati: xFIR secondo le specifiche tecniche D.M. 59/2023.
+ * Formato dati: xFIR secondo le specifiche tecniche D.M. 59/2023 (Decreto
+ * Ministeriale, allegato tecnico RENTRI). Il corpo della richiesta segue la
+ * struttura xFIR: `produttore`, `trasportatore`, `destinatario`, `rifiuto`,
+ * `trasporto`, `firmeDigitali`.
  *
- * NB sui path del servizio `formulari`: la specifica OpenAPI ufficiale è
- * pubblicata su https://api.rentri.gov.it/docs/formulari/v1.0 (demo:
- * https://demoapi.rentri.gov.it). I path qui sotto seguono la convenzione del
- * servizio (`/formulari/v1.0/...`, cfr. `/dati-registri/v1.0`) e sono isolati
- * in costanti: vanno confermati/aggiustati sull'OpenAPI prima del go-live.
+ * Servizio API RENTRI confermato: `vidimazione-formulari` v1.0.
+ * Documentazione ufficiale: https://demoapi.rentri.gov.it/docs?api=vidimazione-formulari&v=v1.0
+ *                           https://api.rentri.gov.it/docs
+ *
+ * ATTIVARE: caricare certificato + completare iscrizione RENTRI (area operatori)
+ * e verificare i path OpenAPI di seguito su Swagger ufficiale prima del go-live.
+ *
+ * I path del servizio sono isolati nelle costanti FORMULARI_* per facilitare
+ * la correzione una volta confermati sull'OpenAPI ufficiale RENTRI.
  */
 @Injectable()
 export class RENTRIApiClient {
   private readonly timeout = 30000; // 30s
 
-  // Path del servizio formulari — DA CONFERMARE sull'OpenAPI ufficiale.
-  private static readonly FORMULARI_BASE = '/formulari/v1.0';
-  private static readonly PATH_SUBMIT = `${RENTRIApiClient.FORMULARI_BASE}/formulari`;
-  private static readonly PATH_VALIDATE = `${RENTRIApiClient.FORMULARI_BASE}/formulari/validazione`;
+  // =========================================================================
+  // Path del servizio `vidimazione-formulari` v1.0 — DA CONFERMARE sull'OpenAPI
+  // ufficiale disponibile su https://demoapi.rentri.gov.it (Swagger UI).
+  //
+  // Fonte: documentazione RENTRI, incontri tecnici SH (2025-10-22).
+  //   POST  <base>/vidimazione-formulari/v1.0/formulari          → vidima/crea FIR
+  //   GET   <base>/vidimazione-formulari/v1.0/formulari/{id}     → stato FIR
+  //   PUT   <base>/vidimazione-formulari/v1.0/formulari/{id}     → modifica FIR
+  //   POST  <base>/vidimazione-formulari/v1.0/formulari/{id}/annulla-fir → annulla
+  // =========================================================================
+  private static readonly FORMULARI_BASE = '/vidimazione-formulari/v1.0'; // DA CONFERMARE
+  private static readonly PATH_SUBMIT = `${RENTRIApiClient.FORMULARI_BASE}/formulari`; // DA CONFERMARE
+  private static readonly PATH_VALIDATE = `${RENTRIApiClient.FORMULARI_BASE}/formulari/validazione`; // DA CONFERMARE (potrebbe non esistere)
   private static readonly PATH_STATUS = (id: string) =>
-    `${RENTRIApiClient.FORMULARI_BASE}/formulari/${id}`;
+    `${RENTRIApiClient.FORMULARI_BASE}/formulari/${id}`; // DA CONFERMARE
 
   constructor(
     private readonly httpService: HttpService,
@@ -253,61 +269,131 @@ export class RENTRIApiClient {
   }
 
   /**
-   * Convert internal FIR format to xFIR (RENTRI standard)
+   * Converte il FIR interno nel formato xFIR (standard RENTRI — D.M. 59/2023).
+   *
+   * Supporta DUE strutture di input in modo trasparente:
+   *
+   * 1. **Aggregate FIR** (`aggregates/fir.aggregate.ts`) — restituito dal
+   *    repository Prisma. Le anagrafiche sono snapshot annidati (`ParteFIR`):
+   *    `fir.produttore.partitaIva`, `fir.rifiuto.cerCode`,
+   *    `fir.rifiuto.quantita.valore` (value object `Quantita`), ecc.
+   *
+   * 2. **Flat DTO** (usato nei test unitari, shape legacy): proprietà piatte
+   *    `fir.producerPartitaIva`, `fir.cerCode`, `fir.quantity`, ecc.
+   *
+   * La risoluzione usa `??` (nullish coalescing): la forma aggregate ha
+   * precedenza, il flat DTO serve da fallback per retrocompatibilità.
+   *
+   * I nomi dei campi nel payload xFIR sono in italiano, coerenti con le
+   * specifiche tecniche RENTRI (D.M. 59/2023) e con la struttura dell'API
+   * `vidimazione-formulari`. DA CONFERMARE sull'OpenAPI ufficiale prima del go-live.
    */
-  private convertToXFIRFormat(fir: any): any {
+  private convertToXFIRFormat(fir: any): XFIRPayload {
+    // Snapshot anagrafici (FIR aggregate) — null se non popolati.
+    const snapshotProduttore = fir.produttore ?? null;
+    const snapshotTrasportatore = fir.trasportatore ?? null;
+    const snapshotDestinatario = fir.destinatario ?? null;
+    // Waste info (FIR aggregate ha `rifiuto: FIRRifiuto` con `quantita: Quantita`).
+    const rifiutoAgg = fir.rifiuto ?? null;
+    // Value object Quantita: { valore: number, unitaMisura: string }
+    const quantitaVo = rifiutoAgg?.quantita ?? null;
+
     return {
       firId: fir.id,
-      numeroFormulario: fir.firNumber,
+      // FIR aggregate: `numeroProgressivo` (assegnato all'emissione); flat DTO: `firNumber`
+      numeroFormulario: fir.numeroProgressivo ?? fir.firNumber,
       dataEmissione: new Date().toISOString(),
 
-      // Producer (Produttore)
+      // Produttore — snapshot ParteFIR (aggregate) con fallback flat DTO
       produttore: {
-        partitaIva: fir.producerPartitaIva,
-        ragioneSociale: fir.producerName,
-        indirizzo: fir.producerAddress,
-        contatto: fir.producerContact,
+        partitaIva: snapshotProduttore?.partitaIva ?? fir.producerPartitaIva,
+        ragioneSociale: snapshotProduttore?.ragioneSociale ?? fir.producerName,
+        indirizzo: snapshotProduttore?.indirizzo ?? fir.producerAddress,
+        contatto: snapshotProduttore?.contatto ?? fir.producerContact,
       },
 
-      // Carrier (Trasportatore)
+      // Trasportatore — snapshot ParteFIR (aggregate) con fallback flat DTO
       trasportatore: {
-        partitaIva: fir.carrierPartitaIva,
-        ragioneSociale: fir.carrierName,
-        targaVeicolo: fir.carrierVehiclePlate,
-        contatto: fir.carrierContact,
+        partitaIva: snapshotTrasportatore?.partitaIva ?? fir.carrierPartitaIva,
+        ragioneSociale: snapshotTrasportatore?.ragioneSociale ?? fir.carrierName,
+        // `targaVeicolo` è nel snapshot trasportatore o nei dati di trasporto
+        targaVeicolo: snapshotTrasportatore?.targaVeicolo ?? fir.carrierVehiclePlate,
+        contatto: snapshotTrasportatore?.contatto ?? fir.carrierContact,
       },
 
-      // Receiver (Destinatario)
+      // Destinatario — snapshot ParteFIR (aggregate) con fallback flat DTO
       destinatario: {
-        partitaIva: fir.receiverPartitaIva,
-        ragioneSociale: fir.receiverName,
-        indirizzo: fir.receiverAddress,
-        contatto: fir.receiverContact,
+        partitaIva: snapshotDestinatario?.partitaIva ?? fir.receiverPartitaIva,
+        ragioneSociale: snapshotDestinatario?.ragioneSociale ?? fir.receiverName,
+        indirizzo: snapshotDestinatario?.indirizzo ?? fir.receiverAddress,
+        contatto: snapshotDestinatario?.contatto ?? fir.receiverContact,
       },
 
-      // Waste (Rifiuto)
+      // Rifiuto — FIRRifiuto (aggregate) con fallback flat DTO
       rifiuto: {
-        codiceEER: fir.cerCode,
-        descrizione: fir.wasteDescription,
-        categoria: fir.wasteCategory,
-        quantita: fir.quantity,
-        unita: fir.unit,
+        codiceEER: rifiutoAgg?.cerCode ?? fir.cerCode,
+        descrizione: rifiutoAgg?.descrizione ?? fir.wasteDescription,
+        categoria: rifiutoAgg?.categoria ?? fir.wasteCategory,
+        // Quantita value object ha `.valore` (numero) e `.unitaMisura` (enum)
+        quantita: quantitaVo?.valore ?? fir.quantity,
+        unita: quantitaVo?.unitaMisura ?? fir.unit,
+        // Campi aggiuntivi DM 59/2023 (presenti solo nell'aggregate)
+        statoFisico: rifiutoAgg?.statoFisico,
+        caratteristichePericolo: rifiutoAgg?.caratteristichePericolo,
+        numeroColli: rifiutoAgg?.numeroColli,
+        codiceOperazione: rifiutoAgg?.codiceOperazione,
       },
 
-      // Transport (Trasporto)
+      // Trasporto — date dell'aggregate (dataPresaCarico/dataConsegna) o flat DTO
       trasporto: {
-        dataPartenza: fir.transportDate?.toISOString?.() ?? fir.transportDate,
+        // dataPresaCarico = data partenza (aggregato); transportDate = flat DTO
+        dataPartenza: (fir.dataPresaCarico ?? fir.transportDate)?.toISOString?.()
+          ?? fir.dataPresaCarico ?? fir.transportDate,
         dataArrivoPrevista: fir.estimatedArrivalDate?.toISOString?.() ?? fir.estimatedArrivalDate,
-        note: fir.transportNotes,
+        // dataConsegna = data arrivo effettiva (aggregato); undefined se non ancora consegnato
+        dataArrivo: fir.dataConsegna?.toISOString?.(),
+        // Campo 17 FIR (annotazioni) o transportNotes del flat DTO
+        note: fir.annotazioni ?? fir.transportNotes,
       },
 
-      // Digital signatures (Firme Digitali)
-      firmeDigitali: this.convertSignatures(fir.signatures || []),
+      // Firme digitali — FirmeDigitali (aggregate) o array piatto (flat DTO)
+      firmeDigitali: this.buildFirmeDigitali(fir),
     };
   }
 
   /**
-   * Convert signatures to xFIR format
+   * Costruisce l'array `firmeDigitali` per xFIR supportando entrambe le forme:
+   * - **Aggregate**: `fir.firme: { produttore?, trasportatore?, destinatario? }`
+   *   dove ciascuna è una `FirmaDigitale { firmatario, timestamp, certificato }`.
+   * - **Flat DTO**: `fir.signatures: any[]` (array con shape legacy).
+   */
+  private buildFirmeDigitali(fir: any): any[] {
+    // FIR aggregate: `fir.firme` è sempre un oggetto (anche vuoto `{}`)
+    if (fir.firme && typeof fir.firme === 'object') {
+      const firme = fir.firme as { produttore?: any; trasportatore?: any; destinatario?: any };
+      const result: any[] = [];
+      const roles: Array<['PRODUTTORE' | 'TRASPORTATORE' | 'DESTINATARIO', any]> = [
+        ['PRODUTTORE', firme.produttore],
+        ['TRASPORTATORE', firme.trasportatore],
+        ['DESTINATARIO', firme.destinatario],
+      ];
+      for (const [ruolo, fd] of roles) {
+        if (!fd) continue;
+        result.push({
+          ruolo,
+          dataFirma: fd.timestamp?.toISOString?.() ?? fd.timestamp,
+          firmatario: fd.firmatario,
+          hashCertificato: fd.certificato,
+        });
+      }
+      return result;
+    }
+    // Flat DTO legacy (test)
+    return this.convertSignatures(fir.signatures || []);
+  }
+
+  /**
+   * Converte un array di firme flat DTO in formato xFIR (retrocompatibilità test).
    */
   private convertSignatures(signatures: any[]): any[] {
     return signatures.map(sig => ({
@@ -320,6 +406,55 @@ export class RENTRIApiClient {
       timestampToken: sig.timestampToken,
     }));
   }
+}
+
+/**
+ * Payload xFIR nel formato del servizio `vidimazione-formulari` RENTRI.
+ * DA CONFERMARE la struttura esatta sull'OpenAPI ufficiale prima del go-live.
+ */
+export interface XFIRPayload {
+  firId: string;
+  /** Numero formulario (FIR-ANNO-NNNNNN). */
+  numeroFormulario: string | null;
+  /** Data e ora di emissione del documento (ISO 8601). */
+  dataEmissione: string;
+  produttore: {
+    partitaIva?: string;
+    ragioneSociale?: string;
+    indirizzo?: string;
+    contatto?: string;
+  };
+  trasportatore: {
+    partitaIva?: string;
+    ragioneSociale?: string;
+    targaVeicolo?: string;
+    contatto?: string;
+  };
+  destinatario: {
+    partitaIva?: string;
+    ragioneSociale?: string;
+    indirizzo?: string;
+    contatto?: string;
+  };
+  rifiuto: {
+    codiceEER?: string;
+    descrizione?: string;
+    categoria?: string;
+    quantita?: number;
+    unita?: string;
+    statoFisico?: string;
+    caratteristichePericolo?: string;
+    numeroColli?: number;
+    codiceOperazione?: string;
+  };
+  trasporto: {
+    dataPartenza?: string;
+    dataArrivoPrevista?: string;
+    /** Data arrivo effettiva — valorizzata dopo la consegna. */
+    dataArrivo?: string;
+    note?: string;
+  };
+  firmeDigitali: any[];
 }
 
 /**

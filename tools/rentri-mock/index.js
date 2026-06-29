@@ -1,3 +1,24 @@
+/**
+ * RENTRI Mock API Server
+ *
+ * Simula l'API RENTRI per lo sviluppo e i test automatici (RENTRI_MODE=mock).
+ * Accetta il formato xFIR conforme alle specifiche D.M. 59/2023.
+ *
+ * ROTTE DISPONIBILI:
+ *
+ * Stile legacy (percorsi interni, compatibilità backwards):
+ *   POST /api/v1/fir/validate   → validazione pre-invio
+ *   POST /api/v1/fir/submit     → invio FIR
+ *   GET  /api/v1/fir/:firId     → stato FIR
+ *
+ * Stile API reale RENTRI (servizio `vidimazione-formulari` v1.0 — DA CONFERMARE):
+ *   POST /vidimazione-formulari/v1.0/formulari            → vidima/crea FIR
+ *   GET  /vidimazione-formulari/v1.0/formulari/:firId     → stato FIR
+ *   POST /vidimazione-formulari/v1.0/formulari/:firId/annulla-fir → annulla FIR
+ *
+ * Entrambi gli stili accettano il payload xFIR direttamente nel body (senza wrapper).
+ */
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -5,7 +26,6 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -13,145 +33,211 @@ app.use(bodyParser.json());
 const firRegistry = new Map();
 const registryEntries = [];
 
-// Mock data generator
-const generateMockResponse = (firId, data) => {
+// ---------------------------------------------------------------------------
+// Helper: genera una risposta mock xFIR (numero protocollo + rentriId)
+// ---------------------------------------------------------------------------
+function generateMockResponse(firId, xFIR) {
+  const rentriId = `RENTRI-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000000)).padStart(6, '0')}`;
   return {
-    firId: firId,
-    protocolNumber: `RENTRI-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 100000)).padStart(6, '0')}`,
+    firId,
+    rentriId,
+    protocolNumber: rentriId,
+    numeroFormulario: xFIR.numeroFormulario,
     status: 'ACCEPTED',
+    receivedAt: new Date().toISOString(),
     registeredAt: new Date().toISOString(),
     validationErrors: [],
-    data: data
+    data: xFIR,
   };
-};
+}
 
-// Health check endpoint
+// ---------------------------------------------------------------------------
+// Helper: valida il body xFIR (struttura RENTRI — D.M. 59/2023)
+// ---------------------------------------------------------------------------
+function validateXFIR(xFIR) {
+  const errors = [];
+  if (!xFIR) {
+    errors.push({ code: 'E000', field: 'body', message: 'Payload xFIR obbligatorio' });
+    return errors;
+  }
+  if (!xFIR.firId) {
+    errors.push({ code: 'E001', field: 'firId', message: 'firId obbligatorio' });
+  }
+  if (!xFIR.produttore?.partitaIva) {
+    errors.push({ code: 'E010', field: 'produttore.partitaIva', message: 'Partita IVA produttore obbligatoria' });
+  }
+  if (!xFIR.trasportatore?.partitaIva) {
+    errors.push({ code: 'E011', field: 'trasportatore.partitaIva', message: 'Partita IVA trasportatore obbligatoria' });
+  }
+  if (!xFIR.destinatario?.partitaIva) {
+    errors.push({ code: 'E012', field: 'destinatario.partitaIva', message: 'Partita IVA destinatario obbligatoria' });
+  }
+  if (!xFIR.rifiuto?.codiceEER) {
+    errors.push({ code: 'E020', field: 'rifiuto.codiceEER', message: 'Codice EER obbligatorio' });
+  }
+  if (!xFIR.rifiuto?.quantita || xFIR.rifiuto.quantita <= 0) {
+    errors.push({ code: 'E021', field: 'rifiuto.quantita', message: 'Quantità rifiuto obbligatoria e > 0' });
+  }
+  if (!xFIR.trasporto?.dataPartenza) {
+    errors.push({ code: 'E030', field: 'trasporto.dataPartenza', message: 'Data di partenza obbligatoria' });
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: simula random failure (5%) e log
+// ---------------------------------------------------------------------------
+function randomServiceUnavailable(res) {
+  if (Math.random() < 0.05) {
+    res.status(503).json({
+      error: 'SERVICE_UNAVAILABLE',
+      message: 'RENTRI service temporarily unavailable',
+      retryAfter: 300,
+    });
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Health check
+// ---------------------------------------------------------------------------
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
-    service: 'RENTRI Mock API',
+    service: 'RENTRI Mock API (vidimazione-formulari)',
+    version: 'v1.0',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    note: 'Mock locale — ATTIVARE: caricare certificato + iscrizione RENTRI per go-live',
   });
 });
 
-// POST /api/v1/fir/validate - Pre-submission validation
-app.post('/api/v1/fir/validate', (req, res) => {
-  const { fir } = req.body;
+// ===========================================================================
+// Stile API reale RENTRI: POST /vidimazione-formulari/v1.0/formulari
+// (servizio confermato; path DA CONFERMARE sull'OpenAPI ufficiale)
+// ===========================================================================
 
-  const errors = [];
-
-  // Basic validation rules
-  if (!fir) {
-    errors.push({ field: 'fir', message: 'FIR data is required' });
-  } else {
-    if (!fir.wasteProducer || !fir.wasteProducer.partitaIva) {
-      errors.push({ field: 'wasteProducer.partitaIva', message: 'Producer VAT number is required' });
-    }
-    if (!fir.wasteCarrier || !fir.wasteCarrier.partitaIva) {
-      errors.push({ field: 'wasteCarrier.partitaIva', message: 'Carrier VAT number is required' });
-    }
-    if (!fir.wasteReceiver || !fir.wasteReceiver.partitaIva) {
-      errors.push({ field: 'wasteReceiver.partitaIva', message: 'Receiver VAT number is required' });
-    }
-    if (!fir.wasteDetails || !fir.wasteDetails.cerCode) {
-      errors.push({ field: 'wasteDetails.cerCode', message: 'CER code is required' });
-    }
-    if (!fir.wasteDetails || !fir.wasteDetails.quantity || fir.wasteDetails.quantity <= 0) {
-      errors.push({ field: 'wasteDetails.quantity', message: 'Valid quantity is required' });
-    }
-    if (!fir.transportDate) {
-      errors.push({ field: 'transportDate', message: 'Transport date is required' });
-    }
-  }
+// POST /vidimazione-formulari/v1.0/formulari — vidima/crea FIR (xFIR body diretto)
+app.post('/vidimazione-formulari/v1.0/formulari', (req, res) => {
+  const xFIR = req.body;
+  const errors = validateXFIR(xFIR);
 
   if (errors.length > 0) {
-    return res.status(400).json({
-      valid: false,
-      errors: errors
+    return res.status(400).json({ valid: false, errors });
+  }
+
+  if (randomServiceUnavailable(res)) return;
+
+  const firId = xFIR.firId;
+  const mockResponse = generateMockResponse(firId, xFIR);
+  firRegistry.set(firId, mockResponse);
+
+  registryEntries.push({
+    firId,
+    protocolNumber: mockResponse.protocolNumber,
+    submittedAt: mockResponse.registeredAt,
+    cerCode: xFIR.rifiuto?.codiceEER,
+    quantity: xFIR.rifiuto?.quantita,
+    producerVat: xFIR.produttore?.partitaIva,
+  });
+
+  console.log(`[RENTRI Mock] FIR vidimato: ${firId} -> ${mockResponse.rentriId}`);
+  res.status(201).json(mockResponse);
+});
+
+// GET /vidimazione-formulari/v1.0/formulari/:firId — stato FIR
+app.get('/vidimazione-formulari/v1.0/formulari/:firId', (req, res) => {
+  const { firId } = req.params;
+  const fir = firRegistry.get(firId);
+  if (!fir) {
+    return res.status(404).json({
+      error: 'NOT_FOUND',
+      message: `FIR ${firId} non trovato nel registro RENTRI mock`,
     });
+  }
+  res.status(200).json(fir);
+});
+
+// POST /vidimazione-formulari/v1.0/formulari/:firId/annulla-fir — annulla FIR
+app.post('/vidimazione-formulari/v1.0/formulari/:firId/annulla-fir', (req, res) => {
+  const { firId } = req.params;
+  if (!firRegistry.has(firId)) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: `FIR ${firId} non trovato` });
+  }
+  const existing = firRegistry.get(firId);
+  existing.status = 'CANCELLED';
+  existing.cancelledAt = new Date().toISOString();
+  console.log(`[RENTRI Mock] FIR annullato: ${firId}`);
+  res.status(200).json({ success: true, firId, status: 'CANCELLED' });
+});
+
+// ===========================================================================
+// Stile legacy (percorsi interni) — retrocompatibilità con il client mock
+// ===========================================================================
+
+// POST /api/v1/fir/validate — validazione pre-invio (xFIR body diretto)
+app.post('/api/v1/fir/validate', (req, res) => {
+  const xFIR = req.body;
+  const errors = validateXFIR(xFIR);
+
+  if (errors.length > 0) {
+    return res.status(400).json({ valid: false, errors });
   }
 
   res.status(200).json({
     valid: true,
     errors: [],
-    message: 'FIR validation passed'
+    warnings: [],
+    message: 'FIR valido secondo le specifiche xFIR (mock)',
   });
 });
 
-// POST /api/v1/fir/submit - Submit FIR to RENTRI
+// POST /api/v1/fir/submit — invio FIR (xFIR body diretto)
 app.post('/api/v1/fir/submit', (req, res) => {
-  const { firId, fir } = req.body;
+  const xFIR = req.body;
 
-  if (!firId) {
-    return res.status(400).json({
-      error: 'BAD_REQUEST',
-      message: 'firId is required'
-    });
+  if (!xFIR?.firId) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'firId obbligatorio nel payload xFIR' });
   }
 
-  if (!fir) {
-    return res.status(400).json({
-      error: 'BAD_REQUEST',
-      message: 'FIR data is required'
-    });
-  }
+  if (randomServiceUnavailable(res)) return;
 
-  // Simulate random failures (5% failure rate)
-  const shouldFail = Math.random() < 0.05;
-
-  if (shouldFail) {
-    return res.status(503).json({
-      error: 'SERVICE_UNAVAILABLE',
-      message: 'RENTRI service temporarily unavailable',
-      retryAfter: 300
-    });
-  }
-
-  // Store FIR in mock registry
-  const mockResponse = generateMockResponse(firId, fir);
+  const firId = xFIR.firId;
+  const mockResponse = generateMockResponse(firId, xFIR);
   firRegistry.set(firId, mockResponse);
 
-  // Add to registry entries
   registryEntries.push({
-    firId: firId,
+    firId,
     protocolNumber: mockResponse.protocolNumber,
     submittedAt: mockResponse.registeredAt,
-    cerCode: fir.wasteDetails?.cerCode,
-    quantity: fir.wasteDetails?.quantity,
-    producerVat: fir.wasteProducer?.partitaIva
+    cerCode: xFIR.rifiuto?.codiceEER,
+    quantity: xFIR.rifiuto?.quantita,
+    producerVat: xFIR.produttore?.partitaIva,
   });
 
   console.log(`[RENTRI Mock] FIR submitted: ${firId} -> ${mockResponse.protocolNumber}`);
-
   res.status(201).json(mockResponse);
 });
 
-// GET /api/v1/fir/:firId - Get FIR status
+// GET /api/v1/fir/:firId — stato FIR (legacy)
 app.get('/api/v1/fir/:firId', (req, res) => {
   const { firId } = req.params;
-
   const fir = firRegistry.get(firId);
-
   if (!fir) {
     return res.status(404).json({
       error: 'NOT_FOUND',
-      message: `FIR with ID ${firId} not found in RENTRI registry`
+      message: `FIR with ID ${firId} not found in RENTRI registry`,
     });
   }
-
   res.status(200).json(fir);
 });
 
-// POST /api/v1/registry/batch - Batch submit registry entries
+// POST /api/v1/registry/batch — batch submit (legacy)
 app.post('/api/v1/registry/batch', (req, res) => {
   const { entries } = req.body;
-
   if (!entries || !Array.isArray(entries)) {
-    return res.status(400).json({
-      error: 'BAD_REQUEST',
-      message: 'entries array is required'
-    });
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'entries array is required' });
   }
 
   const results = entries.map(entry => {
@@ -162,65 +248,40 @@ app.post('/api/v1/registry/batch', (req, res) => {
   });
 
   console.log(`[RENTRI Mock] Batch submitted: ${results.length} entries`);
-
-  res.status(201).json({
-    success: true,
-    processedCount: results.length,
-    results: results
-  });
+  res.status(201).json({ success: true, processedCount: results.length, results });
 });
 
-// GET /api/v1/registry/search - Search registry entries
+// GET /api/v1/registry/search — ricerca (legacy)
 app.get('/api/v1/registry/search', (req, res) => {
   const { cerCode, partitaIva, dateFrom, dateTo } = req.query;
-
   let filtered = registryEntries;
 
-  if (cerCode) {
-    filtered = filtered.filter(e => e.cerCode === cerCode);
-  }
+  if (cerCode) filtered = filtered.filter(e => e.cerCode === cerCode);
+  if (partitaIva) filtered = filtered.filter(e => e.producerVat === partitaIva);
+  if (dateFrom) filtered = filtered.filter(e => new Date(e.submittedAt) >= new Date(dateFrom));
+  if (dateTo) filtered = filtered.filter(e => new Date(e.submittedAt) <= new Date(dateTo));
 
-  if (partitaIva) {
-    filtered = filtered.filter(e => e.producerVat === partitaIva);
-  }
-
-  if (dateFrom) {
-    filtered = filtered.filter(e => new Date(e.submittedAt) >= new Date(dateFrom));
-  }
-
-  if (dateTo) {
-    filtered = filtered.filter(e => new Date(e.submittedAt) <= new Date(dateTo));
-  }
-
-  res.status(200).json({
-    total: filtered.length,
-    entries: filtered
-  });
+  res.status(200).json({ total: filtered.length, entries: filtered });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
+// ---------------------------------------------------------------------------
+// Error handling
+// ---------------------------------------------------------------------------
+app.use((err, req, res, _next) => {
   console.error('[RENTRI Mock] Error:', err);
-  res.status(500).json({
-    error: 'INTERNAL_SERVER_ERROR',
-    message: err.message
-  });
+  res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: err.message });
 });
 
-// Start server
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`[RENTRI Mock API] Server running on port ${PORT}`);
-  console.log(`[RENTRI Mock API] Health check: http://localhost:${PORT}/health`);
-  console.log(`[RENTRI Mock API] Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`[RENTRI Mock API] Health:  http://localhost:${PORT}/health`);
+  console.log(`[RENTRI Mock API] Submit:  POST http://localhost:${PORT}/vidimazione-formulari/v1.0/formulari`);
+  console.log(`[RENTRI Mock API] Legacy:  POST http://localhost:${PORT}/api/v1/fir/submit`);
+  console.log(`[RENTRI Mock API] NOTE: ATTIVARE con certificato RENTRI reale per go-live`);
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('[RENTRI Mock API] SIGTERM received, shutting down gracefully');
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('[RENTRI Mock API] SIGINT received, shutting down gracefully');
-  process.exit(0);
-});
+process.on('SIGTERM', () => { console.log('[RENTRI Mock] SIGTERM'); process.exit(0); });
+process.on('SIGINT',  () => { console.log('[RENTRI Mock] SIGINT');  process.exit(0); });
