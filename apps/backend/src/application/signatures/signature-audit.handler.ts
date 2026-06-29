@@ -5,7 +5,7 @@ import {
   FIRCompletedEvent,
 } from '../../domain/fir/events/fir-signed.event';
 import { LoggerService } from '../../core/logger/logger.service';
-import { PrismaService } from '../../infrastructure/database/prisma.service';
+import { PrismaService } from '../../infrastructure/persistence/prisma.service';
 
 /**
  * Signature Audit Handler

@@ -1,3 +1,23 @@
+/**
+ * Signatures Controller
+ *
+ * Endpoint REST per la firma digitale dei FIR:
+ *  - POST /fir/:firId/sign    — applica firma digitale (richiede auth SPID Level 2+)
+ *  - GET  /fir/:firId/verify  — verifica tutte le firme (endpoint pubblico)
+ *  - GET  /fir/:firId/verify-url — URL pubblica per verifica QR code
+ *
+ * Workflow firma tre stadi (DM 59/2023):
+ *  1. Produttore firma all'emissione del rifiuto
+ *  2. Trasportatore firma alla presa in carico
+ *  3. Destinatario firma alla consegna
+ *
+ * FIRMA NON QUALIFICATA (sandbox, default):
+ *  Le chiavi sono effimere, generate server-side per ogni firma.
+ *  Il client NON invia mai chiavi crittografiche.
+ *  ATTIVARE firma qualificata: SIGNATURE_PROVIDER=qes (vedi SignaturesModule).
+ *
+ * Normativa: DM 59/2023, art. 188-bis D.Lgs. 152/2006, Reg. UE 910/2014 (eIDAS).
+ */
 import {
   Controller,
   Post,
@@ -17,7 +37,7 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { SpidLevelGuard } from '../auth/guards/spid-level.guard';
+import { SpidLevelGuard } from '../../auth/guards/spid-level.guard';
 import { ApplySignatureUseCase } from '../../application/signatures/apply-signature.use-case';
 import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case';
 import {
@@ -26,20 +46,6 @@ import {
 } from './dto/apply-signature.dto';
 import { VerifySignaturesResponseDto } from './dto/verify-signatures.dto';
 
-/**
- * Signatures Controller
- *
- * API endpoints for FIR digital signature operations:
- * - POST /fir/:id/sign - Apply digital signature (requires SPID Level 2+)
- * - GET /fir/:id/verify - Verify all signatures (public endpoint)
- *
- * Digital signatures enforce three-stage workflow:
- * 1. Producer signs at waste emission
- * 2. Carrier signs at pickup
- * 3. Receiver signs at delivery
- *
- * Uses ECDSA-SHA256 for Italian regulatory compliance (D.M. 59/2023).
- */
 @ApiTags('Signatures')
 @Controller('fir/:firId')
 export class SignaturesController {
@@ -49,204 +55,112 @@ export class SignaturesController {
   ) {}
 
   /**
-   * Apply Digital Signature to FIR
+   * Applica firma digitale al FIR.
    *
    * POST /fir/:firId/sign
    *
-   * Requires:
-   * - SPID Level 2+ authentication
-   * - Recent authentication (<15 minutes)
-   * - Correct signature order (Producer → Carrier → Receiver)
+   * Richiede:
+   *  - Autenticazione JWT (JwtAuthGuard)
+   *  - SPID Level 2+ (SpidLevelGuard — in sandbox simulato se claim assente)
+   *  - Ordine firma: Produttore → Trasportatore → Destinatario
    *
-   * Returns:
-   * - Applied signature details
-   * - New FIR status
-   * - Completion indicator
+   * SICUREZZA: nessuna chiave crittografica viene accettata dal client.
+   * Il provider genera/recupera le chiavi internamente.
+   *
+   * ATTIVARE firma qualificata: SIGNATURE_PROVIDER=qes in .env.
    */
   @Post('sign')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, SpidLevelGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Apply digital signature to FIR',
-    description: `
-      Apply cryptographic digital signature to FIR document.
-
-      **Requirements:**
-      - SPID Level 2 or higher
-      - Authentication within last 15 minutes
-      - Signature order: Producer → Carrier → Receiver
-
-      **Business Rules:**
-      - Each role can only sign once
-      - FIR becomes immutable after all three signatures
-      - Triggers RENTRI sync when completed
-    `,
+    summary: 'Applica firma digitale al FIR',
+    description:
+      'Applica firma crittografica al documento FIR.\n\n' +
+      '**Sandbox (default):** firma ECDSA P-256 effimera, NON qualificata.\n' +
+      '**ATTIVARE:** SIGNATURE_PROVIDER=qes con credenziali QTSP AgID per firma qualificata (DM 59/2023).',
   })
-  @ApiParam({
-    name: 'firId',
-    description: 'FIR identifier',
-    example: 'fir-123',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Signature applied successfully',
-    type: ApplySignatureResponseDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid signature order or duplicate signature',
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Not authenticated',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Insufficient SPID level or authentication expired',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'FIR not found',
-  })
+  @ApiParam({ name: 'firId', description: 'ID FIR', example: 'fir-uuid-123' })
+  @ApiResponse({ status: 200, description: 'Firma applicata con successo', type: ApplySignatureResponseDto })
+  @ApiResponse({ status: 400, description: 'Ordine firma non rispettato o firma duplicata' })
+  @ApiResponse({ status: 401, description: 'Non autenticato' })
+  @ApiResponse({ status: 403, description: 'Livello SPID insufficiente o autenticazione scaduta' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
   async applySignature(
     @Param('firId') firId: string,
     @Body() dto: ApplySignatureDto,
     @Req() req: any,
   ): Promise<ApplySignatureResponseDto> {
-    // Extract user info from JWT token
     const user = req.user;
-    const tenantId = user.tenantId;
-    const signerFiscalCode = user.fiscalCode;
-    const signerName = `${user.firstName} ${user.lastName}`;
-    const spidLevel = user.spidLevel || 0;
-    const authenticatedAt = new Date(user.authenticatedAt);
 
-    // Generate or retrieve user's key pair
-    // In production, retrieve from HSM or user's secure storage
-    let privateKey = dto.privateKey;
-    let publicKey = dto.publicKey;
+    // SANDBOX: spidLevel=2 simulato se claim assente (gestito anche da SpidLevelGuard)
+    const acrLevel = user.acr ? parseInt((user.acr.match(/SpidL(\d)/) ?? [])[1] ?? '0', 10) || null : null
+    const spidLevel: number = user.spidLevel ?? acrLevel ?? 2;
+    const authenticatedAt: Date = user.authenticatedAt
+      ? new Date(user.authenticatedAt)
+      : new Date(); // Sandbox: ora corrente come fallback
 
-    if (!privateKey || !publicKey) {
-      // For development/testing, generate ephemeral keys
-      const keyPair = await this.applySignatureUseCase.generateUserKeyPair(
-        user.userId,
-      );
-      privateKey = keyPair.privateKey;
-      publicKey = keyPair.publicKey;
-    }
-
-    // Execute use case
     const result = await this.applySignatureUseCase.execute({
       firId,
-      tenantId,
+      tenantId: user.tenantId,
+      userId: user.id,   // UUID utente (per fir_signatures.user_id)
       role: dto.role,
-      signerFiscalCode,
-      signerName,
+      signerFiscalCode: user.fiscalCode ?? user.sub ?? 'SANDBOX000A00A000A',
+      signerName: user.name ?? (`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Utente Sandbox'),
       spidLevel,
       authenticatedAt,
-      privateKey,
-      publicKey,
     });
 
     return {
       ...result,
-      message: `${dto.role} signature applied successfully`,
+      message: `Firma ${dto.role} applicata (${result.signature.isQualified ? 'QUALIFICATA' : 'SANDBOX-NON-QUALIFICATA'})`,
     };
   }
 
   /**
-   * Verify FIR Signatures
+   * Verifica le firme del FIR (endpoint pubblico per QR code).
    *
    * GET /fir/:firId/verify
    *
-   * Public endpoint - no authentication required.
-   * Verifies all digital signatures cryptographically.
-   *
-   * Used for:
-   * - Regulatory compliance verification
-   * - QR code scanning
-   * - Third-party validation
-   *
-   * Returns:
-   * - Verification status for each signature
-   * - Overall validity indicator
-   * - Completion status
+   * Endpoint pubblico — nessuna autenticazione richiesta.
+   * Verifica crittograficamente tutte le firme presenti sul FIR.
+   * Usato per la scansione QR code sulle copie cartacee.
    */
   @Get('verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Verify all FIR signatures (public)',
-    description: `
-      Verify all digital signatures on FIR document.
-
-      **Public endpoint** - no authentication required.
-
-      Verifies:
-      - Cryptographic signature validity (ECDSA)
-      - Document hash integrity
-      - Signature order and completeness
-      - Timestamp token presence
-
-      Used for QR code verification and regulatory compliance.
-    `,
+    summary: 'Verifica firme FIR (endpoint pubblico)',
+    description:
+      'Verifica crittograficamente tutte le firme sul FIR.\n\n' +
+      '**Endpoint pubblico** — nessuna autenticazione richiesta.\n' +
+      'Utilizzabile per scansione QR code e verifica di terzi.',
   })
-  @ApiParam({
-    name: 'firId',
-    description: 'FIR identifier',
-    example: 'fir-123',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Verification completed',
-    type: VerifySignaturesResponseDto,
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'FIR not found',
-  })
+  @ApiParam({ name: 'firId', description: 'ID FIR', example: 'fir-uuid-123' })
+  @ApiResponse({ status: 200, description: 'Verifica completata', type: VerifySignaturesResponseDto })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
   async verifySignatures(
     @Param('firId') firId: string,
   ): Promise<VerifySignaturesResponseDto> {
-    // Public verification - no tenant filter
-    const result = await this.verifySignaturesUseCase.execute({
-      firId,
-    });
-
-    return result;
+    return this.verifySignaturesUseCase.execute({ firId });
   }
 
   /**
-   * Get verification URL for QR code
+   * URL di verifica per QR code.
    *
    * GET /fir/:firId/verify-url
    *
-   * Returns public URL for signature verification.
-   * Used when generating QR codes for PDF exports.
+   * Restituisce l'URL pubblica di verifica firma (per il PDF del FIR).
    */
   @Get('verify-url')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Get public verification URL',
-    description: 'Returns public URL for FIR signature verification (for QR code generation)',
+    summary: 'URL pubblica di verifica firma (per QR code)',
+    description: 'Restituisce l\'URL pubblica per la verifica firma FIR (per generare QR code nel PDF).',
   })
-  @ApiParam({
-    name: 'firId',
-    description: 'FIR identifier',
-    example: 'fir-123',
-  })
+  @ApiParam({ name: 'firId', description: 'ID FIR' })
   @ApiResponse({
     status: 200,
-    description: 'Verification URL returned',
-    schema: {
-      type: 'object',
-      properties: {
-        url: {
-          type: 'string',
-          example: 'https://wasteflow.it/verify/fir-123',
-        },
-      },
-    },
+    schema: { type: 'object', properties: { url: { type: 'string', example: 'https://rifiuti.ignicraft.com/verify/fir-123' } } },
   })
   async getVerificationUrl(
     @Param('firId') firId: string,

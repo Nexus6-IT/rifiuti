@@ -311,11 +311,22 @@ model FIRSignature {
 
   timestampToken String? @map("timestamp_token") @db.Text
 
+  /// Codice fiscale del firmatario (snapshot auto-descrittivo — invariante legale).
+  /// Nullable per retrocompatibilità con firme pre-migrazione.
+  /// ATTIVARE: popolato automaticamente da POST /fir/:id/sign (WS-E).
+  signerFiscalCode String? @map("signer_fiscal_code") @db.VarChar(16)
+  /// Nome e cognome del firmatario (snapshot auto-descrittivo).
+  signerName       String? @map("signer_name") @db.VarChar(255)
+  /// Chiave pubblica PEM per verifica crittografica offline.
+  /// Nullable per retrocompatibilità. ATTIVARE: popolato da POST /fir/:id/sign.
+  publicKey        String? @map("public_key") @db.Text
+
   fir  FIR  @relation(fields: [firId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id])
 
   @@index([firId])
   @@index([userId])
+  @@index([signerFiscalCode])
   @@map("fir_signatures")
 }
 

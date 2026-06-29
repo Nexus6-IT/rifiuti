@@ -29,6 +29,17 @@ export class FIR extends AggregateRoot {
     return new FIR(params);
   }
 
+  /**
+   * Ricostituisce un aggregate FIR da dati persistiti (DB) con le firme già caricate.
+   * Bypassa le validazioni di business (i dati sono già verificati a livello DB).
+   * Usato da SignatureFIRRepository.findById/findByIdPublic.
+   */
+  static reconstitute(params: any, existingSignatures: DigitalSignature[] = []): FIR {
+    const fir = new FIR(params);
+    fir.signatures = [...existingSignatures];
+    return fir;
+  }
+
   applySignature(signature: DigitalSignature, userFiscalCode: string, spidLevel: number): void {
     if (spidLevel < 2) {
       throw DomainException.businessRuleViolation('INSUFFICIENT_SPID_LEVEL', 'SPID Level 2 or higher required for signatures');

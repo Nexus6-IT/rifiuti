@@ -1,80 +1,55 @@
-import { IsEnum, IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import { IsEnum, IsNotEmpty } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { SignatureRole } from '../../../domain/fir/digital-signature.vo';
 
 /**
  * Apply Signature Request DTO
  *
- * Request body for POST /fir/:id/sign endpoint.
- * User authenticates with SPID Level 2+ and applies digital signature.
+ * Richiesta per POST /fir/:id/sign.
+ *
+ * SICUREZZA: le chiavi crittografiche NON vengono mai passate dal client.
+ * In modalità sandbox il provider genera chiavi effimere internamente.
+ * In modalità QES il provider recupera il certificato dall'HSM/QTSP.
+ *
+ * ATTIVARE firma qualificata: SIGNATURE_PROVIDER=qes + credenziali QTSP.
  */
 export class ApplySignatureDto {
   @ApiProperty({
-    description: 'Signature role (Producer, Carrier, or Receiver)',
+    description: 'Ruolo del firmatario (Produttore, Trasportatore o Destinatario)',
     enum: ['PRODUCER', 'CARRIER', 'RECEIVER'],
     example: 'PRODUCER',
   })
   @IsEnum(['PRODUCER', 'CARRIER', 'RECEIVER'], {
-    message: 'Role must be PRODUCER, CARRIER, or RECEIVER',
+    message: 'Il ruolo deve essere PRODUCER, CARRIER o RECEIVER',
   })
   @IsNotEmpty()
   role: SignatureRole;
-
-  @ApiProperty({
-    description: 'Optional private key (for testing). In production, retrieved from user session or HSM.',
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  privateKey?: string;
-
-  @ApiProperty({
-    description: 'Optional public key (for testing). In production, retrieved from SPID certificate.',
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  publicKey?: string;
 }
 
 /**
  * Apply Signature Response DTO
- *
- * Response body for POST /fir/:id/sign endpoint.
  */
 export class ApplySignatureResponseDto {
-  @ApiProperty({
-    description: 'Success indicator',
-    example: true,
-  })
+  @ApiProperty({ description: 'Esito operazione', example: true })
   success: boolean;
 
-  @ApiProperty({
-    description: 'Applied signature details',
-  })
+  @ApiProperty({ description: 'Dettagli firma applicata' })
   signature: {
     role: SignatureRole;
     signerFiscalCode: string;
     signerName: string;
     signedAt: Date;
     signatureMethod: string;
+    /** false = sandbox/non qualificata; true = QES a norma */
+    isQualified: boolean;
   };
 
-  @ApiProperty({
-    description: 'New FIR status after signature',
-    example: 'SIGNED_BY_PRODUCER',
-  })
+  @ApiProperty({ description: 'Nuovo stato FIR dopo la firma', example: 'SIGNED_BY_PRODUCER' })
   firStatus: string;
 
-  @ApiProperty({
-    description: 'Whether FIR is completed (all three signatures applied)',
-    example: false,
-  })
+  @ApiProperty({ description: 'FIR completo (tutte e tre le firme presenti)', example: false })
   isCompleted: boolean;
 
-  @ApiProperty({
-    description: 'Success message',
-    example: 'Signature applied successfully',
-  })
+  @ApiProperty({ description: 'Messaggio operazione', required: false })
   message?: string;
 }

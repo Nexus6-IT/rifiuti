@@ -154,6 +154,37 @@ export class DigitalSignature {
   }
 
   /**
+   * Ricostituisce un DigitalSignature da dati persistiti (DB).
+   * Bypassa le validazioni — i dati sono già trusted (provenienza DB).
+   * Usato da SignatureFIRRepository per ricostruire le firme esistenti.
+   */
+  static reconstitute(params: {
+    signerFiscalCode: string;
+    signerName: string;
+    role: SignatureRole;
+    signatureValue: string;
+    signatureMethod: SignatureMethod;
+    certificateHash: string;
+    documentHash: string;
+    publicKey?: string;
+    timestampToken?: string;
+    signedAt?: Date;
+  }): DigitalSignature {
+    return new DigitalSignature(
+      params.signerFiscalCode || 'ZZZZZZZ00A00A000A',
+      params.signerName || 'Sconosciuto',
+      params.role,
+      params.signatureValue,
+      params.signatureMethod,
+      params.certificateHash,
+      params.documentHash,
+      params.publicKey || '',
+      params.timestampToken,
+      params.signedAt,
+    );
+  }
+
+  /**
    * Verify signature against document hash
    *
    * In production, this would use Node.js crypto module to verify ECDSA signature

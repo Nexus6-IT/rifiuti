@@ -5,6 +5,7 @@
 
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
+import { EventEmitterModule } from '@nestjs/event-emitter'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
@@ -38,6 +39,9 @@ import { AdminTenantModule } from './application/admin/admin-tenant.module'
 import { AdminUserModule } from './application/admin/admin-user.module'
 // Endpoint "self" utente autenticato (feature abilitate dal piano)
 import { MeModule } from './api/me/me.module'
+// Firma digitale FIR "pronta-ma-non-collegata" (WS-E)
+// Default: sandbox ECDSA effimera. ATTIVARE: SIGNATURE_PROVIDER=qes + TSA_PROVIDER=rfc3161
+import { SignaturesModule } from './application/signatures/signatures.module'
 
 @Module({
   imports: [
@@ -46,6 +50,9 @@ import { MeModule } from './api/me/me.module'
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
+
+    // Event system per eventi di dominio (firma, audit) — global per tutti i moduli
+    EventEmitterModule.forRoot({ global: true }),
 
     // Scheduled tasks (T131)
     ScheduleModule.forRoot(),
@@ -115,6 +122,9 @@ import { MeModule } from './api/me/me.module'
 
     // Endpoint "self" utente autenticato
     MeModule,
+
+    // Firma digitale FIR (WS-E) — cablato e raggiungibile; default sandbox
+    SignaturesModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -1,32 +1,38 @@
-import { Injectable } from '@nestjs/common';
+/**
+ * Apply Signature Use Case
+ *
+ * Orchestrates the digital signature workflow for FIR:
+ * 1. Valida autenticazione e livello SPID
+ * 2. Carica il FIR aggregate (con firme già presenti)
+ * 3. Genera la firma crittografica via DigitalSignatureService (provider configurabile)
+ * 4. Applica la firma all'aggregate (regole di business: ordine, unicità per ruolo)
+ * 5. Persiste la firma in fir_signatures
+ * 6. Emette eventi dominio per audit trail
+ *
+ * Business Rules:
+ * - SPID Level 2+ obbligatorio (verificato dal SpidLevelGuard prima del controller)
+ * - Autenticazione recente (<15 minuti) per la firma
+ * - Ordine firma: Produttore → Trasportatore → Destinatario
+ * - Ogni ruolo può firmare una sola volta
+ * - FIR diventa immutabile dopo le tre firme
+ *
+ * FIRMA NON QUALIFICATA (sandbox, default):
+ *  La firma prodotta è ECDSA P-256 effimera, senza valore legale a norma DM 59/2023.
+ *  ATTIVARE: SIGNATURE_PROVIDER=qes con credenziali QTSP AgID per firma qualificata.
+ */
+
+import { Injectable, Inject } from '@nestjs/common';
 import { DomainException } from '../../domain/shared/domain-exception';
-import { FIRRepository } from '../../domain/fir/fir.repository';
+import { FIRRepository, FIR_REPOSITORY } from '../../domain/fir/fir.repository';
 import { DigitalSignature, SignatureRole } from '../../domain/fir/digital-signature.vo';
 import { DigitalSignatureService } from './digital-signature.service';
 import { LoggerService } from '../../core/logger/logger.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
-/**
- * Apply Signature Use Case
- *
- * Orchestrates the digital signature application workflow:
- * 1. Validate user authentication and SPID level
- * 2. Load FIR aggregate
- * 3. Generate cryptographic signature
- * 4. Apply signature to FIR (enforces business rules)
- * 5. Persist FIR with signature
- * 6. Emit domain events for audit logging
- *
- * Business Rules:
- * - User must be authenticated with SPID Level 2+
- * - Authentication must be recent (<15 minutes for signatures)
- * - Signatures must be applied in order: Producer → Carrier → Receiver
- * - Each role can only sign once
- * - FIR becomes immutable after all three signatures
- */
 @Injectable()
 export class ApplySignatureUseCase {
   constructor(
+    @Inject(FIR_REPOSITORY)
     private readonly firRepository: FIRRepository,
     private readonly signatureService: DigitalSignatureService,
     private readonly logger: LoggerService,
@@ -36,21 +42,21 @@ export class ApplySignatureUseCase {
   }
 
   /**
-   * Execute signature application
+   * Applica la firma digitale al FIR.
    *
-   * @param params - Signature parameters
-   * @returns Applied signature details
+   * @param params.userId - UUID utente dal JWT (per persistenza in fir_signatures)
+   * @param params.spidLevel - Livello SPID dall'autenticazione
+   * @param params.authenticatedAt - Timestamp autenticazione (freschezza <15 min)
    */
   async execute(params: {
     firId: string;
     tenantId: string;
+    userId: string;
     role: SignatureRole;
     signerFiscalCode: string;
     signerName: string;
     spidLevel: number;
     authenticatedAt: Date;
-    privateKey: string; // User's private key (from secure storage or SPID certificate)
-    publicKey: string; // User's public key
   }): Promise<{
     success: boolean;
     signature: {
@@ -59,71 +65,73 @@ export class ApplySignatureUseCase {
       signerName: string;
       signedAt: Date;
       signatureMethod: string;
+      isQualified: boolean;
     };
     firStatus: string;
     isCompleted: boolean;
   }> {
     this.logger.info(
-      `Applying ${params.role} signature to FIR ${params.firId} by ${params.signerFiscalCode}`,
+      `Firma ${params.role} su FIR ${params.firId} da ${params.signerFiscalCode}`,
     );
 
-    // 1. Validate SPID level
+    // 1. Valida livello SPID (doppia verifica dopo guard)
     if (params.spidLevel < 2) {
       throw DomainException.businessRuleViolation(
         'INSUFFICIENT_SPID_LEVEL',
-        'SPID Level 2 or higher required for digital signatures',
+        'SPID Level 2 o superiore obbligatorio per la firma FIR (DM 59/2023). ' +
+        'SANDBOX: livello simulato se claim assente nel JWT.',
       );
     }
 
-    // 2. Validate authentication recency (15 minutes for signatures)
-    const authAgeMinutes =
-      (Date.now() - params.authenticatedAt.getTime()) / 1000 / 60;
+    // 2. Valida freschezza autenticazione (15 min per operazioni firma)
+    const authAgeMinutes = (Date.now() - params.authenticatedAt.getTime()) / 1000 / 60;
     if (authAgeMinutes > 15) {
       throw DomainException.businessRuleViolation(
         'AUTHENTICATION_EXPIRED',
-        'Authentication expired. Please re-authenticate to sign documents (SPID authentication must be <15 minutes old)',
+        'Autenticazione scaduta. Effettuare nuovamente il login per firmare ' +
+        '(autenticazione SPID/CIE deve essere < 15 minuti).',
       );
     }
 
-    // 3. Load FIR aggregate
+    // 3. Carica FIR (con firme già presenti)
     const fir = await this.firRepository.findById(params.firId);
     if (!fir) {
       throw DomainException.notFound('FIR', params.firId);
     }
 
-    // 3a. Verify tenant isolation
+    // 4. Verifica isolamento tenant
     if (fir.getTenantId && fir.getTenantId() !== params.tenantId) {
-      throw DomainException.notFound('FIR', params.firId); // Don't leak existence of FIR to other tenants
+      throw DomainException.notFound('FIR', params.firId);
     }
 
-    // 4. Generate cryptographic signature
-    const firDocument = fir.toSignableDocument(); // Get canonical representation for signing
+    // 5. Genera firma crittografica via provider configurato
+    //    Il provider gestisce internamente la chiave privata (mai esposta)
+    const firDocument = fir.toSignableDocument();
     const signatureData = await this.signatureService.createSignature(
       firDocument,
-      params.privateKey,
-      params.publicKey,
+      params.userId,
     );
 
-    // 5. Create DigitalSignature value object
+    // 6. Crea il Value Object DigitalSignature
     const signature = DigitalSignature.create({
       signerFiscalCode: params.signerFiscalCode,
       signerName: params.signerName,
       role: params.role,
       signatureValue: signatureData.signatureValue,
-      signatureMethod: 'ECDSA-SHA256',
+      signatureMethod: signatureData.signatureMethod as any,
       certificateHash: signatureData.certificateHash,
       documentHash: signatureData.documentHash,
-      publicKey: params.publicKey,
+      publicKey: signatureData.publicKey,
       timestampToken: signatureData.timestampToken,
     });
 
-    // 6. Apply signature to FIR aggregate (enforces business rules)
+    // 7. Applica la firma all'aggregate (business rules: ordine, unicità)
     fir.applySignature(signature, params.signerFiscalCode, params.spidLevel);
 
-    // 7. Persist FIR with signature
+    // 8. Persiste la firma
     await this.firRepository.save(fir);
 
-    // 8. Emit domain events
+    // 9. Emette eventi dominio per audit
     const events = fir.getDomainEvents();
     for (const event of events) {
       this.eventEmitter.emit(event.eventType, event);
@@ -131,7 +139,9 @@ export class ApplySignatureUseCase {
     fir.clearDomainEvents();
 
     this.logger.info(
-      `${params.role} signature applied successfully to FIR ${params.firId}. New status: ${fir.getStatus()}`,
+      `Firma ${params.role} applicata su FIR ${params.firId}. ` +
+      `Provider: ${signatureData.providerType}. Qualificata: ${signatureData.isQualified}. ` +
+      `Nuovo stato: ${fir.getStatus()}`,
     );
 
     return {
@@ -142,38 +152,10 @@ export class ApplySignatureUseCase {
         signerName: params.signerName,
         signedAt: signature.getSignedAt(),
         signatureMethod: signature.getSignatureMethod(),
+        isQualified: signatureData.isQualified,
       },
       firStatus: fir.getStatus(),
       isCompleted: fir.isImmutable(),
     };
-  }
-
-  /**
-   * Generate signing key pair for user
-   *
-   * In production, this would:
-   * - Retrieve user's certificate from SPID provider
-   * - Extract public key from certificate
-   * - Securely store private key in HSM or user's secure storage
-   *
-   * For development/testing, generates ephemeral key pair.
-   */
-  async generateUserKeyPair(userId: string): Promise<{
-    privateKey: string;
-    publicKey: string;
-  }> {
-    this.logger.debug(`Generating key pair for user ${userId}`);
-
-    // In production, would integrate with:
-    // - SPID certificate provider
-    // - Hardware Security Module (HSM)
-    // - User's secure key storage
-
-    const keyPair = await this.signatureService.generateKeyPair();
-
-    // Store keys securely (in production, use HSM or encrypted storage)
-    // For now, return directly for testing
-
-    return keyPair;
   }
 }

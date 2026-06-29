@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { FIRRepository } from '../../domain/fir/fir.repository';
+import { Injectable, Inject } from '@nestjs/common';
+import { FIRRepository, FIR_REPOSITORY } from '../../domain/fir/fir.repository';
 import { DigitalSignatureService } from './digital-signature.service';
 import { LoggerService } from '../../core/logger/logger.service';
 import { DomainException } from '../../domain/shared/domain-exception';
@@ -20,6 +20,7 @@ import { SignatureRole } from '../../domain/fir/digital-signature.vo';
 @Injectable()
 export class VerifySignaturesUseCase {
   constructor(
+    @Inject(FIR_REPOSITORY)
     private readonly firRepository: FIRRepository,
     private readonly signatureService: DigitalSignatureService,
     private readonly logger: LoggerService,

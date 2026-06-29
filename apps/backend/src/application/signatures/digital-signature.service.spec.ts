@@ -280,6 +280,43 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
     });
   });
 
+  describe('createSignature (nuovo API con userId)', () => {
+    it('genera firma completa per un documento con userId', async () => {
+      const document = { firNumber: 'FIR-2026-001', cerCode: '20 03 01' };
+
+      const result = await service.createSignature(document, 'user-123');
+
+      expect(result.signatureValue).toBeDefined();
+      expect(result.documentHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(result.certificateHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(result.timestampToken).toBeDefined();
+      expect(result.publicKey).toContain('BEGIN PUBLIC KEY');
+      expect(result.isQualified).toBe(false); // sandbox: non qualificata
+    });
+
+    it('produce documentHash riproducibile per lo stesso documento', async () => {
+      const document = { firNumber: 'FIR-2026-001', cerCode: '20 03 01' };
+      const r1 = await service.createSignature(document, 'user-1');
+      const r2 = await service.createSignature(document, 'user-1');
+      // Hash documento deve essere identico (stesso documento)
+      expect(r1.documentHash).toBe(r2.documentHash);
+      // Firme diverse (chiavi effimere distinte)
+      expect(r1.signatureValue).not.toBe(r2.signatureValue);
+    });
+
+    it('la firma è verificabile con la publicKey restituita', async () => {
+      const document = { id: 'fir-test', quantity: 50 };
+      const result = await service.createSignature(document, 'user-abc');
+
+      const isValid = await service.verify(
+        result.documentHash,
+        result.signatureValue,
+        result.publicKey,
+      );
+      expect(isValid).toBe(true);
+    });
+  });
+
   describe('Error Handling', () => {
     it('should handle invalid private key', async () => {
       const documentHash = service.hashDocument({ test: 'data' });
