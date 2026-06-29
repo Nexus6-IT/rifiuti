@@ -1,45 +1,66 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DropdownModule } from 'primeng/dropdown';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
-import { AuthService } from '../../services/auth.service';
+import { Router } from '@angular/router';
+import { AdminTenantContextService } from '../../services/admin-tenant-context.service';
 import { environment } from '../../../../environments/environment';
 
+interface TenantOption {
+  id: string;
+  ragioneSociale: string;
+}
+
+interface ListTenantsResponse {
+  tenants: TenantOption[];
+  currentTenantId: string | null;
+}
+
 /**
- * Tenant Selector Component
+ * TenantSelectorComponent (header)
  *
- * Allows users with access to multiple tenants to switch context.
- * Updates JWT token with new tenant context.
+ * Dropdown che permette a qualunque utente con accesso a PIÙ società di cambiare
+ * il contesto attivo. Visibile solo quando `GET /api/v1/me/tenants` restituisce
+ * più di una società.
  *
- * Used in header for multi-tenant consultants.
+ * Al cambio di selezione:
+ *   1. Aggiorna `AdminTenantContextService` → il `tenantInterceptor` aggiungerà
+ *      `X-Tenant-ID: <id>` a tutte le richieste successive.
+ *   2. Naviga alla rotta corrente per ricaricare i dati con il nuovo tenant.
+ *
+ * Non emette un nuovo JWT (approccio a header): il backend `TenantSwitchInterceptor`
+ * valida la membership e aggiorna il TenantContext server-side su ogni richiesta.
+ *
+ * Per gli utenti SUPER_ADMIN il meccanismo è identico: `AdminTenantContextService`
+ * era già il loro punto di switch.
  */
 @Component({
   selector: 'app-tenant-selector',
   standalone: true,
   imports: [CommonModule, DropdownModule, FormsModule],
   template: `
-    @if (tenants().length > 1) {
+    @if (hasPiuSocieta()) {
       <div class="tenant-selector" data-cy="tenant-selector">
         <p-dropdown
-          [(ngModel)]="selectedTenantId"
-          [options]="tenants()"
-          optionLabel="name"
+          [(ngModel)]="tenantSelezionato"
+          [options]="societa()"
+          optionLabel="ragioneSociale"
           optionValue="id"
-          placeholder="Seleziona cliente"
-          (onChange)="onTenantChange()"
+          placeholder="Seleziona società"
+          (onChange)="onCambioSocieta()"
           styleClass="w-full"
           [showClear]="false">
           <ng-template pTemplate="selectedItem" let-option>
             <div class="flex align-items-center gap-2">
               <i class="pi pi-building"></i>
-              <span>{{ option.name }}</span>
+              <span>{{ option.ragioneSociale }}</span>
             </div>
           </ng-template>
           <ng-template pTemplate="item" let-option>
             <div class="flex align-items-center gap-2" data-cy="tenant-option">
               <i class="pi pi-building"></i>
-              <span>{{ option.name }}</span>
+              <span>{{ option.ragioneSociale }}</span>
             </div>
           </ng-template>
         </p-dropdown>
@@ -49,7 +70,7 @@ import { environment } from '../../../../environments/environment';
   styles: [
     `
       .tenant-selector {
-        min-width: 250px;
+        min-width: 200px;
       }
 
       :host ::ng-deep .p-dropdown {
@@ -60,56 +81,62 @@ import { environment } from '../../../../environments/environment';
 })
 export class TenantSelectorComponent implements OnInit {
   private readonly http = inject(HttpClient);
-  private readonly authService = inject(AuthService);
+  private readonly router = inject(Router);
+  private readonly tenantContext = inject(AdminTenantContextService);
 
-  protected readonly tenants = signal<Tenant[]>([]);
-  protected selectedTenantId: string = '';
+  protected readonly societa = signal<TenantOption[]>([]);
+  protected readonly hasPiuSocieta = computed(() => this.societa().length > 1);
+  protected tenantSelezionato = '';
 
   ngOnInit(): void {
-    this.loadUserTenants();
+    this.caricaSocieta();
   }
 
-  private loadUserTenants(): void {
-    // In a real implementation, this would fetch user's tenants from API
-    // For now, get from current user
-    const currentUser = this.authService.currentUser();
-
-    if (currentUser) {
-      // Mock multiple tenants for demo
-      this.tenants.set([
-        { id: currentUser.tenantId, name: 'Azienda Principale' },
-        // Add more tenants if user has access to multiple
-      ]);
-
-      this.selectedTenantId = currentUser.tenantId;
-    }
-  }
-
-  protected onTenantChange(): void {
-    if (!this.selectedTenantId) return;
-
-    // Call API to switch tenant context
+  private caricaSocieta(): void {
     this.http
-      .post<{ accessToken: string }>(
-        `${environment.apiUrl}/auth/switch-tenant`,
-        { tenantId: this.selectedTenantId }
-      )
+      .get<ListTenantsResponse>(`${environment.apiUrl}/me/tenants`)
       .subscribe({
         next: (response) => {
-          // Update token in localStorage
-          localStorage.setItem('accessToken', response.accessToken);
+          this.societa.set(response.tenants ?? []);
 
-          // Reload page to refresh data for new tenant
-          window.location.reload();
+          // Inizializza la selezione: usa il tenant già scelto (persistito in
+          // localStorage) oppure il tenant corrente dal JWT.
+          const stored = this.tenantContext.selectedTenantId();
+          const defaultId = response.currentTenantId ?? '';
+
+          // Se il tenant memorizzato è tra quelli accessibili, mantienilo.
+          const tenantValido = response.tenants?.find(
+            (t) => t.id === stored,
+          );
+          this.tenantSelezionato = tenantValido?.id ?? defaultId;
+
+          // Se non è già impostato nel contesto, imposta il default.
+          if (!stored && defaultId) {
+            const nome = response.tenants?.find((t) => t.id === defaultId)?.ragioneSociale ?? '';
+            this.tenantContext.set(defaultId, nome);
+          }
         },
-        error: (error) => {
-          console.error('Failed to switch tenant', error);
+        error: () => {
+          // Errore di rete o utente con un solo tenant: il selettore resta
+          // nascosto (hasPiuSocieta() = false).
         },
       });
   }
-}
 
-interface Tenant {
-  id: string;
-  name: string;
+  protected onCambioSocieta(): void {
+    if (!this.tenantSelezionato) return;
+
+    const societa = this.societa().find((t) => t.id === this.tenantSelezionato);
+    const nome = societa?.ragioneSociale ?? '';
+
+    // Aggiorna il contesto: il tenantInterceptor aggiungerà X-Tenant-ID a tutte
+    // le richieste successive. La validazione è sul backend (TenantSwitchInterceptor).
+    this.tenantContext.set(this.tenantSelezionato, nome);
+
+    // Ricarica la rotta corrente per aggiornare i dati con la nuova società.
+    const url = this.router.url;
+    this.router.navigateByUrl('/', { skipLocationChange: true }).then(() => {
+      this.router.navigateByUrl(url);
+    });
+  }
 }

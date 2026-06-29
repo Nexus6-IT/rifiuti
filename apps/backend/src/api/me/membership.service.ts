@@ -43,6 +43,39 @@ export class MembershipService {
     return { tenants, currentTenantId: user.tenantId ?? null };
   }
 
+  /**
+   * Verifica se l'utente ha accesso al tenant indicato (senza emettere un nuovo
+   * JWT). Usato dal `TenantSwitchInterceptor` per validare l'header `X-Tenant-ID`.
+   *
+   * Tre sorgenti di membership controllate nell'ordine:
+   *   1. Tenant primario del JWT (sempre consentito, nessuna query extra).
+   *   2. Tenant di cui l'utente è owner (`Tenant.ownerUserId`).
+   *   3. Associazioni consulente attive (`ConsultantTenantAssociation`).
+   *
+   * Fail-closed: qualunque errore interno è propagato al chiamante, che deve
+   * ignorare l'header e ricadere sul tenant primario.
+   */
+  async checkAccess(userId: string, targetTenantId: string, primaryTenantId: string): Promise<boolean> {
+    // 1. Tenant primario (già nel JWT): accesso sempre garantito.
+    if (primaryTenantId && primaryTenantId === targetTenantId) {
+      return true;
+    }
+
+    // 2. Tenant di proprietà dell'utente.
+    const owned = await this.prisma.tenant.findFirst({
+      where: { id: targetTenantId, ownerUserId: userId },
+      select: { id: true },
+    });
+    if (owned) return true;
+
+    // 3. Associazione consulente attiva.
+    const assoc = await this.prisma.consultantTenantAssociation.findFirst({
+      where: { consultantUserId: userId, tenantId: targetTenantId, isActive: true },
+      select: { id: true },
+    });
+    return !!assoc;
+  }
+
   /** Verifica l'accesso e ri-emette il JWT con il tenant target. */
   async switchTenant(user: CurrentUserPayload, targetTenantId: string) {
     const isSuperAdmin = user.role === 'SUPER_ADMIN';

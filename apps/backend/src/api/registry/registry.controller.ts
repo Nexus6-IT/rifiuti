@@ -124,7 +124,11 @@ export class RegistryController {
 
   @Get('produttori')
   async listProduttori(@Req() req: any) {
-    const tenantId = req.user?.tenantId || 'default-tenant'
+    // req.tenantId è impostato dal TenantContextMiddleware (da JWT) e sovrascritto
+    // dal TenantSwitchInterceptor quando l'utente invia X-Tenant-ID valido.
+    // NON usare req.user?.tenantId: il JwtStrategy lo popola sempre dal tenant
+    // primario del DB, ignorando qualunque switch di società.
+    const tenantId = req.tenantId || req.user?.tenantId || ''
     const result = await this.listProduttoriUseCase.execute({ tenantId })
 
     if (result.isFailure) {
@@ -195,7 +199,7 @@ export class RegistryController {
 
   @Get('trasportatori')
   async listTrasportatori(@Req() req: any) {
-    const tenantId = req.user?.tenantId || 'default-tenant'
+    const tenantId = req.tenantId || req.user?.tenantId || ''
     const result = await this.listTrasportatoriUseCase.execute({ tenantId })
 
     if (result.isFailure) {
@@ -269,7 +273,7 @@ export class RegistryController {
 
   @Get('destinatari')
   async listDestinatari(@Req() req: any) {
-    const tenantId = req.user?.tenantId || 'default-tenant'
+    const tenantId = req.tenantId || req.user?.tenantId || ''
     const result = await this.listDestinatariUseCase.execute({ tenantId })
 
     if (result.isFailure) {

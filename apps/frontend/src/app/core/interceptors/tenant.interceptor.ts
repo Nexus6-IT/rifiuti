@@ -6,10 +6,14 @@ import { environment } from '../../../environments/environment';
 /**
  * Tenant Interceptor
  *
- * Quando un utente SUPER_ADMIN ha selezionato un tenant tramite il tenant
- * switcher, aggiunge l'header `X-Tenant-ID: <id>` a tutte le richieste dirette
- * verso il backend (`environment.apiUrl`). Per gli utenti non super-admin la
- * selezione resta vuota → nessun header aggiunto (no-op).
+ * Quando l'utente ha selezionato una società tramite il tenant switcher
+ * (`AdminTenantContextService.set()`), aggiunge l'header `X-Tenant-ID: <id>`
+ * a tutte le richieste dirette verso il backend (`environment.apiUrl`).
+ *
+ * Funziona per QUALUNQUE utente con accesso a più società (SUPER_ADMIN,
+ * consulenti, owner multi-azienda). Il backend (`TenantSwitchInterceptor`)
+ * è il punto autorevole di validazione: verifica la membership prima di
+ * applicare il cambio di contesto.
  *
  * Deve essere registrato DOPO l'auth interceptor in `app.config.ts`.
  */

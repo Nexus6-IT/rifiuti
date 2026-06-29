@@ -7,8 +7,9 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
-import { APP_GUARD } from '@nestjs/core'
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
 import { TenantContextMiddleware } from './core/middleware/tenant-context.middleware'
+import { TenantSwitchInterceptor } from './core/interceptors/tenant-switch.interceptor'
 import { HealthController } from './api/health/health.controller'
 import { AuthModule } from './auth/auth.module'
 import { PrismaModule } from './infrastructure/persistence/prisma.module'
@@ -121,6 +122,13 @@ import { MeModule } from './api/me/me.module'
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    // Validazione header X-Tenant-ID per tutti gli utenti (non solo SUPER_ADMIN).
+    // Gira dopo i guard Passport (JWT), quindi req.user è disponibile.
+    // Dipende da MembershipService esportato da MeModule.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantSwitchInterceptor,
     },
   ],
 })

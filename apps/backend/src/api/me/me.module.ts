@@ -23,5 +23,8 @@ import { MembershipService } from './membership.service';
   imports: [PrismaModule, AuthModule],
   controllers: [MeFeaturesController, MembershipController],
   providers: [MeFeaturesService, MembershipService],
+  // MembershipService esportato: usato dal TenantSwitchInterceptor (globale in AppModule)
+  // per validare la membership dell'utente all'header X-Tenant-ID.
+  exports: [MembershipService],
 })
 export class MeModule {}

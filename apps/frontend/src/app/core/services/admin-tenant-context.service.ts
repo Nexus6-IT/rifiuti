@@ -1,15 +1,19 @@
 import { Injectable, computed, signal } from '@angular/core';
 
 /**
- * Admin Tenant Context Service
+ * Admin Tenant Context Service (usato da TUTTI gli utenti multi-società)
  *
- * Mantiene il tenant attualmente "impersonato" da un utente SUPER_ADMIN
- * per operare in un contesto multi-tenant. La selezione viene persistita in
- * localStorage (`wf_admin_tenant`) così da sopravvivere a reload/refresh.
+ * Mantiene la società attualmente selezionata dall'utente. La selezione viene
+ * persistita in localStorage (`wf_admin_tenant`) così da sopravvivere a
+ * reload/refresh.
  *
- * Per gli utenti non SUPER_ADMIN il servizio resta inattivo: non viene mai
- * impostato alcun tenant, quindi `selectedTenantId()` resta `null` e
- * l'interceptor non aggiunge alcun header (no-op).
+ * Quando `selectedTenantId()` è valorizzato, il `tenantInterceptor` aggiunge
+ * l'header `X-Tenant-ID` a tutte le richieste verso il backend. Il backend
+ * (`TenantSwitchInterceptor`) valida la membership e applica lo scope dei dati
+ * al tenant selezionato.
+ *
+ * Funziona per qualunque ruolo utente: SUPER_ADMIN (impersonazione cross-tenant),
+ * ADMIN/OPERATOR/VIEWER con accesso a più società (consulente o owner multi-azienda).
  */
 
 const STORAGE_KEY = 'wf_admin_tenant';
