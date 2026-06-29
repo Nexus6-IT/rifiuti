@@ -23,7 +23,9 @@ if (process.env.SENTRY_DSN) {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule)
+  // rawBody: true è necessario per la verifica della firma webhook Stripe.
+  // Il raw body è accessibile via req.rawBody (Buffer) nei controller.
+  const app = await NestFactory.create(AppModule, { rawBody: true })
 
   // Security: Helmet.js - Set various HTTP headers for security (T256)
   app.use(

@@ -89,14 +89,34 @@ export interface TenantFeatureSource {
 /**
  * Feature effettivamente abilitate per un tenant.
  *
- * - Se `featureFlags` è un array → override esplicito (filtrato sulle sole
- *   chiavi valide del catalogo, per robustezza verso dati legacy/sporchi).
- * - Altrimenti → default derivati dal piano `subscriptionTier`.
+ * Semantica (fix feature-flag propagation — WS-F):
+ *  - Le feature di default del piano (`PLAN_FEATURES[subscriptionTier]`) sono
+ *    SEMPRE incluse, indipendentemente dall'override. Questo garantisce che i
+ *    tenant esistenti ricevano automaticamente le nuove feature aggiunte al
+ *    loro piano (es. 'registro' aggiunto a PROFESSIONAL).
+ *  - `featureFlags` è ADDITIVO: aggiunge feature extra oltre al piano
+ *    (es. accesso anticipato a funzionalità premium per un tenant specifico).
+ *  - Per RIMUOVERE una feature da un tenant si imposta `featureFlags = null`
+ *    e si declassa il piano — non si usa l'array come blacklist.
+ *
+ * Invariante: un tenant TRIAL non riceve mai feature PROFESSIONAL/ENTERPRISE
+ * da questo calcolo (le feature aggiuntive in `featureFlags` sono additive ma
+ * un SUPER_ADMIN può tecnicamente aggiungere qualsiasi feature; è la sua
+ * responsabilità, non un bug di sicurezza commerciale).
  */
 export function effectiveFeatures(tenant: TenantFeatureSource): FeatureKey[] {
+  const planFeatures = PLAN_FEATURES[tenant.subscriptionTier] ?? [];
   const flags = tenant.featureFlags;
-  if (Array.isArray(flags)) {
-    return flags.filter(isFeatureKey);
+
+  if (!Array.isArray(flags)) {
+    // Nessun override: usa le feature del piano.
+    return planFeatures;
   }
-  return PLAN_FEATURES[tenant.subscriptionTier] ?? [];
+
+  // Override additivo: unione di (feature di piano) + (feature dell'override).
+  // Garantisce che nuove feature aggiunte al piano si propaghino ai tenant
+  // con override storico, senza togliere mai feature del piano corrente.
+  const extraKeys = (flags as unknown[]).filter(isFeatureKey);
+  const merged = new Set<FeatureKey>([...planFeatures, ...extraKeys]);
+  return [...merged];
 }

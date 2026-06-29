@@ -176,9 +176,6 @@ export class TenantService {
     >;
     let subscriptionData: SubscriptionData;
     if (isSuperAdmin) {
-      const effectiveTier = dto.subscriptionTier ?? SubscriptionTier.TRIAL;
-      const featureFlags = dto.featureFlags ?? PLAN_FEATURES[effectiveTier];
-
       subscriptionData = {
         subscriptionStatus:
           dto.subscriptionStatus ?? SubscriptionStatus.TRIAL,
@@ -191,17 +188,23 @@ export class TenantService {
         ...(dto.userLimitTotal !== undefined
           ? { userLimitTotal: dto.userLimitTotal }
           : {}),
-        featureFlags: featureFlags as unknown as Prisma.InputJsonValue,
+        // featureFlags: null di default → derivato dal piano (fix WS-F).
+        // Solo se il SUPER_ADMIN ha passato un override esplicito nel DTO lo si
+        // persiste; altrimenti null garantisce che le nuove feature del piano
+        // si propaghino automaticamente ai tenant esistenti.
+        featureFlags: dto.featureFlags
+          ? (dto.featureFlags as unknown as Prisma.InputJsonValue)
+          : Prisma.DbNull,
       };
     } else {
       // Piano di default forzato per le aziende create dagli admin.
+      // featureFlags=null → si derivano sempre dal piano (fix WS-F):
+      // i nuovi tenant ricevono automaticamente tutte le feature del loro piano.
       subscriptionData = {
         subscriptionTier: SubscriptionTier.TRIAL,
         subscriptionStatus: SubscriptionStatus.TRIAL,
         // userLimitTotal/firLimitPerMonth: si lasciano i default di schema.
-        featureFlags: PLAN_FEATURES[
-          SubscriptionTier.TRIAL
-        ] as unknown as Prisma.InputJsonValue,
+        featureFlags: Prisma.DbNull,
       };
     }
 

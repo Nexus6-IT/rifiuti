@@ -20,9 +20,10 @@ import { ProduttorePrismaRepository } from '../infrastructure/persistence/produt
 import { TrasportatorePrismaRepository } from '../infrastructure/persistence/trasportatore-prisma.repository'
 import { DestinatarioPrismaRepository } from '../infrastructure/persistence/destinatario-prisma.repository'
 import { PrismaModule } from '../infrastructure/persistence/prisma.module'
+import { BillingModule } from '../application/billing/billing.module'
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, BillingModule],
   controllers: [FIRControllerV2],
   providers: [
     // Repositories (provide as concrete classes)

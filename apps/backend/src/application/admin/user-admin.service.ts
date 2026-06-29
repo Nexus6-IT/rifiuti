@@ -27,6 +27,7 @@ import { KeycloakUserAdapter } from '../../infrastructure/keycloak/keycloak-user
 import { LoggerService } from '../../core/logger/logger.service';
 import { FiscalCode } from '../../domain/shared/fiscal-code.vo';
 import { CreateUserDto } from '../../api/admin/dto/create-user.dto';
+import { SubscriptionEnforcementService } from './../../application/billing/subscription-enforcement.service';
 
 /**
  * Forma minima dell'utente autenticato letto dalla request (req.user).
@@ -44,6 +45,7 @@ export class UserAdminService {
     private readonly prisma: PrismaService,
     private readonly keycloak: KeycloakUserAdapter,
     private readonly logger: LoggerService,
+    private readonly enforcement: SubscriptionEnforcementService,
   ) {
     this.logger.setContext('UserAdminService');
   }
@@ -100,10 +102,11 @@ export class UserAdminService {
       );
     }
 
-    // 1-bis. Enforcement del limite utenze del piano.
-    // I tenant admin (ruolo ADMIN) NON contano nel limite ("a parte il tenant
-    // admin"); il SUPER_ADMIN (amministratore di piattaforma) bypassa il
-    // controllo del tutto.
+    // 1-bis. Enforcement abbonamento: verifica sospensione e limite utenti.
+    // Il SUPER_ADMIN (amministratore di piattaforma) bypassa i controlli.
+    if (!this.isSuperAdmin(currentUser)) {
+      await this.enforcement.assertNotSuspended(targetTenantId);
+    }
     await this.enforceUserLimit(currentUser, targetTenantId, dto.role);
 
     // 2. Valida il codice fiscale (riusa la VO di dominio).

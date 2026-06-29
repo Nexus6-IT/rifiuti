@@ -39,6 +39,7 @@ import { GetFIRByIdQuery } from '../../application/fir/queries/get-fir-by-id.que
 import { ListFIRsQuery } from '../../application/fir/queries/list-firs.query'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { SubscriptionEnforcementService } from '../../application/billing/subscription-enforcement.service'
 
 // Firma "applicativa" (firmatario + certificato): NON è la firma qualificata a
 // norma (blocco separato). Le proprietà richiedono decoratori class-validator,
@@ -99,7 +100,8 @@ export class FIRControllerV2 {
     private readonly confermaConsegnaFIRUseCase: ConfermaConsegnaFIRUseCase,
     private readonly annullaFIRUseCase: AnnullaFIRUseCase,
     private readonly getFIRByIdHandler: GetFIRByIdQueryHandler,
-    private readonly listFIRsHandler: ListFIRsQueryHandler
+    private readonly listFIRsHandler: ListFIRsQueryHandler,
+    private readonly enforcement: SubscriptionEnforcementService,
   ) {}
 
   @Post()
@@ -114,6 +116,10 @@ export class FIRControllerV2 {
     @Body() dto: CreateFIRDto,
     @CurrentUser() user: CurrentUserPayload
   ): Promise<FIRResponseDto> {
+    // Enforcement abbonamento: blocca se tenant sospeso/scaduto o FIR limit raggiunto.
+    await this.enforcement.assertNotSuspended(user.tenantId)
+    await this.enforcement.assertFirLimitNotReached(user.tenantId)
+
     const command = new CreateFIRCommand(
       dto.produttoreId,
       dto.rifiuto,

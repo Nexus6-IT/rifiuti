@@ -63,6 +63,11 @@ model Tenant {
   // derivano dal piano (subscriptionTier); se valorizzato e' un override admin.
   featureFlags Json? @map("feature_flags")
 
+  // Integrazione Stripe (SaaS billing). Nullable: null finché il tenant non ha
+  // mai avviato un checkout. ATTIVARE: impostare STRIPE_SECRET_KEY in .env.
+  stripeCustomerId     String? @map("stripe_customer_id") @db.VarChar(255)
+  stripeSubscriptionId String? @map("stripe_subscription_id") @db.VarChar(255)
+
   // Admin proprietario (chi ha creato l'azienda in self-service); null se creata
   // dal super admin. Usato per la quota aziende per-admin e per la lista "le mie aziende".
   ownerUserId String? @map("owner_user_id") @db.Uuid

@@ -21,9 +21,10 @@ import { LoggerModule } from '../../core/logger/logger.module';
 import { UserAdminService } from './user-admin.service';
 import { ImpersonationService } from './impersonation.service';
 import { UserAdminController } from '../../api/admin/user-admin.controller';
+import { BillingModule } from './../../application/billing/billing.module';
 
 @Module({
-  imports: [PrismaModule, KeycloakModule, AuthModule, LoggerModule],
+  imports: [PrismaModule, KeycloakModule, AuthModule, LoggerModule, BillingModule],
   controllers: [UserAdminController],
   providers: [UserAdminService, ImpersonationService],
   exports: [UserAdminService],
