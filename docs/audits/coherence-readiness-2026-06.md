@@ -5,9 +5,12 @@ tecnico/sicurezza/GDPR, commerciale/competitivo) + verifica diretta. Onestà: di
 è realmente funzionante da stub/mock/"pronto a connettersi".
 
 ## Verdetto
+> ⚠️ Verdetto ORIGINALE (2026-06-28). Vedi **"Aggiornamento SWARM (2026-06-29)"** più sotto: registro/FIR/firma-cablata/pagamenti/onboarding/legali ora CONSEGNATI e verificati live. Restano da "accendere" gli adempimenti che dipendono da terzi (RENTRI cert reale, firma qualificata, Stripe live, validazione legale).
 - **Vendibile oggi come SaaS?** ❌ No — prodotto **pre-commerciale**.
 - **Usabile per operare "in regola"?** ❌ No sugli adempimenti core (registro, RENTRI, firma).
 - **Base di valore reale?** ✅ Sì (architettura, MUD, IAM, ESG) → time-to-market accorciabile.
+
+> **Stato post-swarm (2026-06-29):** software pronto come SaaS self-service (registro operativo, FIR completo, billing+enforcement, signup, legali in bozza). Per operare "in regola" e vendere servono le attivazioni esterne: RENTRI (cert+iscrizione), firma qualificata (QES/SPID-CIE+TSA), Stripe live+SMTP, validazione legale. Target immediato realistico: pilota white-glove con queste attivazioni.
 
 ## Matrice di coerenza (sintesi)
 | Area | Stato | Evidenza | Impatto |
@@ -70,6 +73,26 @@ all'emissione, peso effettivo accettato, stato CONSEGNATO terminale.
 - Lista anagrafiche: colonna "Sede legale" mostra "undefined" (bug di formatting solo display; dato persistito correttamente).
 - `GET /api/v1/notifications/unread-count` → 502 intermittente (endpoint notifiche, slegato dal FIR).
 - Multi-azienda: il cambio società non ri-scopa le anagrafiche (la lista filtra per tenant statico del JWT, non per la società attiva). NON è un leak cross-utente (resta filtrato per tenant), ma il cambio società non ha effetto server-side: richiede una decisione di design auth/multi-tenant.
+
+## Aggiornamento SWARM "Production Ready" (2026-06-29) — Fasi 0/1/2 + legali consegnate e verificate live
+
+Eseguito lo swarm `docs/planning/PRODUCTION_READY_SWARM_PROMPT.md` (target: SaaS self-service; dipendenze esterne "pronte-ma-non-collegate"; bozze legali; ri-scopo multi-azienda). Tutto deployato su https://rifiuti.ignicraft.com e verificato via Playwright.
+
+**Consegnato e verificato live:**
+- **Multi-tenant (WS-A)**: il cambio società ri-scopa i dati lato server (interceptor `X-Tenant-ID` validato sulla membership) + test anti-leak. Era il difetto "stesso produttore su più società".
+- **Dati di riferimento (WS-J)**: ATECO 2007 (995), nazioni ISO (196), **CER 497→837** (auto-upgrade al boot via seeder runtime). 
+- **FIR (WS-B)**: campi obbligatori DM 59/2023 (stato fisico, HP, colli, operazione R/D, Campo 17, 4ª copia) persistiti + form + PDF; fix display "Sede legale". Ciclo di vita verificato (emissioni con progressivi distinti).
+- **Registro cronologico C/S (WS-C)**: operativo (era guscio) — movimenti carico/scarico, progressivo per tenant/anno (advisory lock), blocco scarico su giacenza insufficiente, hash integrità; feature di **base** (obbligo art. 190).
+- **Firma (WS-E)**: provider astratto (sandbox default + stub QES/SPID-CIE + TSA via env), controller firme **cablato** (era non registrato), chiavi mai esposte. *Pronto-ma-non-collegato*.
+- **RENTRI (WS-D)**: client ModI/AgID finalizzato, xFIR conforme, path `vidimazione-formulari/v1.0` (alcuni DA CONFERMARE su Swagger ufficiale), credenziali per-tenant AES-256-GCM, mock/sandbox. *Pronto-ma-non-collegato*.
+- **Pagamenti/abbonamento (WS-F)**: Stripe test-mode via env, listino TRIAL/PROFESSIONAL €79/ENTERPRISE €199, billing UI `/abbonamento`, webhook idempotente, **enforcement** firLimit/userLimit/scadenza/SUSPENDED, fix propagazione feature-flag. *Pronto-ma-non-collegato (chiavi live).*
+- **Onboarding self-service (WS-G)**: signup pubblico `/signup` → tenant TRIAL + admin + utente Keycloak (VERIFY_EMAIL) con rollback atomico.
+- **Affidabilità (WS-I)**: fix 502 notifiche, healthcheck frontend, `/metrics` Prometheus, error tracking Bugsink (via `SENTRY_DSN`), script backup/restore. Suite test resa verde.
+- **Legali (WS-H)**: bozze IT DPA/Privacy/ToS + pagine `/legal/*` (marcate "DA VALIDARE CON UN LEGALE").
+
+**Da "accendere" (azioni del committente):** certificato+iscrizione RENTRI; provider firma QES/SPID-CIE + TSA; chiavi Stripe live + SMTP (email verifica/notifiche); validazione legale dei documenti; compilazione segnaposto legali e dati anagrafici del fornitore.
+
+**Coda residua (non bloccante):** attivazione "CI gate" (richiede azzeramento ~124 errori ESLint); **bonifica PII dalla git history** (`backup_*.sql` con CF/P.IVA — operazione distruttiva, da fare supervisionata con conferma); polish billing (banner test-mode/guard upgrade senza Stripe); link footer `/login`; `GET /fir/:id/verify` → 404 invece di 500 su id inesistente; refresh token silenzioso (logout su scadenza); aggiornare passport-saml; export PDF registro; tenant pre-esistenti con override featureFlags vanno aggiornati dall'admin per le nuove feature.
 
 ## Target realistico oggi
 Singolo **consulente ambientale pilota seguito a mano** (white-glove, fattura offline). Micro-azienda
