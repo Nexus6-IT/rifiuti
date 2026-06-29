@@ -655,8 +655,16 @@ export class RegistroComponent implements OnInit {
     { label: 'Scarico', value: 'SCARICO' },
   ];
 
+  /**
+   * Signal reattivo che rispecchia il valore del controllo "type" nel form.
+   * Necessario perché computed() non traccia le proprietà di un FormControl
+   * (non sono signal): senza questo, causaliOptions e formTitolo non si
+   * aggiornerebbero al cambio di CARICO/SCARICO.
+   */
+  private readonly tipoCorrente = signal<TipoMovimento>('CARICO');
+
   readonly causaliOptions = computed<DropdownOption<CausaleMovimento>[]>(() => {
-    const tipo: TipoMovimento = this.form?.get('type')?.value ?? 'CARICO';
+    const tipo = this.tipoCorrente();
     const causali = tipo === 'CARICO' ? CAUSALI_CARICO : CAUSALI_SCARICO;
     return causali.map((c) => ({ label: CAUSALE_LABELS[c], value: c }));
   });
@@ -664,7 +672,7 @@ export class RegistroComponent implements OnInit {
   readonly statiFisiciOptions = STATI_FISICI.map((s) => ({ label: s, value: s }));
 
   readonly formTitolo = computed(() =>
-    this.form?.get('type')?.value === 'SCARICO'
+    this.tipoCorrente() === 'SCARICO'
       ? 'Registra scarico'
       : 'Registra carico',
   );
@@ -717,6 +725,7 @@ export class RegistroComponent implements OnInit {
   }
 
   apriForm(): void {
+    this.tipoCorrente.set('CARICO');
     this.form.reset({
       type: 'CARICO',
       movementDate: new Date(),
@@ -732,7 +741,10 @@ export class RegistroComponent implements OnInit {
   }
 
   onTipoChange(): void {
-    // Azzera la causale quando cambia il tipo (causali diverse per CARICO/SCARICO)
+    // Aggiorna il signal reattivo (per causaliOptions/formTitolo) e azzera la
+    // causale perché il set valido è diverso tra CARICO e SCARICO.
+    const tipo: TipoMovimento = this.form?.get('type')?.value ?? 'CARICO';
+    this.tipoCorrente.set(tipo);
     this.form.get('causale')?.reset(null);
   }
 
@@ -747,7 +759,14 @@ export class RegistroComponent implements OnInit {
     const v = this.form.value;
     this.saving.set(true);
 
-    const toIsoDate = (d: Date) => d.toISOString().split('T')[0];
+    // Usa i componenti locali della data per evitare lo shift UTC negativo
+    // (es. GMT+2: scegliendo il 29 giugno, toISOString() restituirebbe il 28).
+    const toIsoDate = (d: Date) => {
+      const yyyy = d.getFullYear();
+      const mm   = String(d.getMonth() + 1).padStart(2, '0');
+      const dd   = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
 
     this.registroService
       .registra({
