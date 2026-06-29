@@ -79,6 +79,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/reference-data/reference-data.component').then(m => m.ReferenceDataComponent)
       },
       {
+        // Gestione abbonamento SaaS (pagamento, upgrade piano, Billing Portal Stripe)
+        path: 'abbonamento',
+        loadComponent: () => import('./features/billing/billing-page.component').then(m => m.BillingPageComponent)
+      },
+      {
         // Amministrazione piattaforma — gestione tenant (SUPER_ADMIN; enforcement lato backend)
         path: 'admin/tenants',
         loadComponent: () => import('./features/admin/tenants/tenant-admin.component').then(m => m.TenantAdminComponent)

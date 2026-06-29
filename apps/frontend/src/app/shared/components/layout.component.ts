@@ -258,6 +258,23 @@ interface UserTenant {
         </ul>
       }
 
+      <!-- ===== Abbonamento (sempre visibile) ===== -->
+      <p class="nav-group__title" id="nav-account">Account</p>
+      <ul class="nav-group" role="list" aria-labelledby="nav-account">
+        <li>
+          <a
+            routerLink="/abbonamento"
+            routerLinkActive="nav-item--active"
+            class="nav-item"
+            [attr.aria-current]="isActiveRoute('/abbonamento') ? 'page' : null"
+            (click)="mobile ? closeMobileSidebar() : null"
+          >
+            <i class="nav-item__icon pi pi-credit-card" aria-hidden="true"></i>
+            <span class="nav-item__label">Abbonamento</span>
+          </a>
+        </li>
+      </ul>
+
       <!-- ===== Amministrazione (gated per ruolo) ===== -->
       @if (canSeeAdminSection()) {
         <p class="nav-group__title" id="nav-amministrazione">Amministrazione</p>
@@ -1037,7 +1054,8 @@ export class LayoutComponent implements OnInit {
       { label: this.tenantsMenuLabel(), route: '/admin/tenants' },
       { label: 'Utenti', route: '/admin/utenti' },
     ];
-    const all = [...this.navMain, ...this.navAnagrafiche, ...this.navImpostazioni, ...navAmministrazione];
+    const navAccount = [{ label: 'Abbonamento', route: '/abbonamento' }];
+    const all = [...this.navMain, ...this.navAnagrafiche, ...this.navImpostazioni, ...navAmministrazione, ...navAccount];
     const match = all.find(item => this.isActiveRoute(item.route));
     this.currentTitle.set(match?.label ?? 'WasteFlow');
   }
