@@ -51,13 +51,15 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
  *   - PROFESSIONAL: TRIAL + moduli operativi avanzati.
  *   - ENTERPRISE:   tutte le feature del catalogo.
  */
-const TRIAL_FEATURES: FeatureKey[] = ['fir', 'cer', 'anagrafiche'];
+// Il registro cronologico C/S è un adempimento OBBLIGATORIO di legge (art. 190
+// D.Lgs 152/2006) per qualsiasi operatore, come il FIR: fa parte delle feature
+// di base, non è un modulo premium.
+const TRIAL_FEATURES: FeatureKey[] = ['fir', 'cer', 'anagrafiche', 'registro'];
 
 const PROFESSIONAL_FEATURES: FeatureKey[] = [
   ...TRIAL_FEATURES,
   'mud',
   'giacenze',
-  'registro',
   'contratti',
   'esg',
   'anomalie',
