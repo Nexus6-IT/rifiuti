@@ -69,9 +69,13 @@ describe('EmettiFIRUseCase', () => {
     useCase = new EmettiFIRUseCase(repository)
   })
 
+  const TENANT_ID = 'tenant-uuid-real-001'
+  const PRODUTTORE_ID = 'produttore-uuid-different-999'
+
   const createBozzaFIR = (): FIR => {
     return FIR.create({
-      produttoreId: 'tenant-producer-123',
+      produttoreId: PRODUTTORE_ID,
+      tenantId: TENANT_ID,
       rifiuto: {
         cerCode: '13 02 05*',
         quantita: 120,
@@ -178,6 +182,37 @@ describe('EmettiFIRUseCase', () => {
 
       expect(result.value.domainEvents.length).toBe(1);
       expect(result.value.domainEvents[0].eventName).toBe('fir.emesso')
+    })
+
+    it('due FIR sullo stesso tenant generano progressivi distinti e crescenti', async () => {
+      const fir1 = createBozzaFIR()
+      const fir2 = createBozzaFIR()
+      repository.addFIR(fir1)
+      repository.addFIR(fir2)
+
+      // Spia per verificare che venga passato tenantId (non produttoreId)
+      const spy = jest.spyOn(repository, 'generateNumeroProgressivo')
+
+      const cmd1 = new EmettiFIRCommand(fir1.id, { firmatario: 'A', certificato: 'c1' }, 'u1')
+      const cmd2 = new EmettiFIRCommand(fir2.id, { firmatario: 'B', certificato: 'c2' }, 'u2')
+
+      const r1 = await useCase.execute(cmd1)
+      const r2 = await useCase.execute(cmd2)
+
+      // Entrambi devono avere successo
+      expect(r1.isSuccess).toBe(true)
+      expect(r2.isSuccess).toBe(true)
+
+      // I progressivi devono essere distinti e crescenti
+      expect(r1.value.numeroProgressivo).toContain('000001')
+      expect(r2.value.numeroProgressivo).toContain('000002')
+
+      // La spia deve aver ricevuto tenantId (non produttoreId)
+      const calls = spy.mock.calls
+      expect(calls.length).toBe(2)
+      expect(calls[0][0]).toBe(TENANT_ID)
+      expect(calls[0][0]).not.toBe(PRODUTTORE_ID)
+      expect(calls[1][0]).toBe(TENANT_ID)
     })
 
     it('should include numero progressivo in current year', async () => {

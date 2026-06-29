@@ -18,10 +18,10 @@ export class EmettiFIRUseCase {
       return Result.fail<FIR>(`FIR not found: ${command.firId}`)
     }
 
-    // 2. Generate numero progressivo
+    // 2. Generate numero progressivo (usa tenantId, non produttoreId)
     const anno = new Date().getFullYear()
     const numeroProgressivo = await this.firRepository.generateNumeroProgressivo(
-      fir.produttoreId,
+      fir.tenantId ?? fir.produttoreId,
       anno
     )
 
