@@ -40,9 +40,10 @@ export function loadReferenceDataConfig(config: ConfigService): ReferenceDataCon
   })
 
   return {
-    // ATECO/nazioni: nessun bundle (fonte ufficiale non stabile) → configurare via URL.
-    ateco: src('REFDATA_ATECO_URL'),
-    nazioni: src('REFDATA_NAZIONI_URL'),
+    // ATECO/nazioni: bundle CSV bundled come fallback offline deterministico.
+    // File aggiornabili via env URL in produzione senza rebuild.
+    ateco: src('REFDATA_ATECO_URL', 'ateco.csv'),
+    nazioni: src('REFDATA_NAZIONI_URL', 'nazioni.csv'),
     // Province/comuni: bundle CSV in repo (dati ISTAT) come fallback offline e deterministico.
     province: src('REFDATA_PROVINCE_URL', 'province.csv'),
     comuni: src('REFDATA_COMUNI_URL', 'comuni.csv'),

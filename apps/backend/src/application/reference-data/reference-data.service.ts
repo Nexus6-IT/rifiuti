@@ -32,6 +32,20 @@ export class ReferenceDataService {
     return this.prisma.istatNazione.findUnique({ where: { code } })
   }
 
+  searchNazioni(query: string, limit = 20) {
+    return this.prisma.istatNazione.findMany({
+      where: {
+        OR: [
+          { code: { startsWith: query.toUpperCase() } },
+          { iso3: { startsWith: query.toUpperCase() } },
+          { name: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      take: limit,
+      orderBy: { name: 'asc' },
+    })
+  }
+
   // --- Province ---
   findProvinciaBySigla(sigla: string) {
     return this.prisma.istatProvincia.findUnique({ where: { sigla: sigla.toUpperCase() } })

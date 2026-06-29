@@ -40,6 +40,13 @@ export class ReferenceDataController {
     return this.referenceData.searchAteco(q)
   }
 
+  @Get('nazioni')
+  @ApiOperation({ summary: 'Ricerca nazioni per nome o codice ISO' })
+  @ApiQuery({ name: 'q', required: true })
+  async searchNazioni(@Query('q') q: string) {
+    return this.referenceData.searchNazioni(q)
+  }
+
   @Post('reseed')
   @HttpCode(HttpStatus.ACCEPTED)
   @UseGuards(RolesGuard)

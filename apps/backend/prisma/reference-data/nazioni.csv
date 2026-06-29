@@ -1,0 +1,197 @@
+code;name;iso3
+AF;Afghanistan;AFG
+AL;Albania;ALB
+DZ;Algeria;DZA
+AD;Andorra;AND
+AO;Angola;AGO
+AG;Antigua e Barbuda;ATG
+AR;Argentina;ARG
+AM;Armenia;ARM
+AU;Australia;AUS
+AT;Austria;AUT
+AZ;Azerbaigian;AZE
+BS;Bahamas;BHS
+BH;Bahrein;BHR
+BD;Bangladesh;BGD
+BB;Barbados;BRB
+BY;Bielorussia;BLR
+BE;Belgio;BEL
+BZ;Belize;BLZ
+BJ;Benin;BEN
+BT;Bhutan;BTN
+BO;Bolivia;BOL
+BA;Bosnia ed Erzegovina;BIH
+BW;Botswana;BWA
+BR;Brasile;BRA
+BN;Brunei Darussalam;BRN
+BG;Bulgaria;BGR
+BF;Burkina Faso;BFA
+BI;Burundi;BDI
+CV;Capo Verde;CPV
+KH;Cambogia;KHM
+CM;Camerun;CMR
+CA;Canada;CAN
+CF;Repubblica Centrafricana;CAF
+TD;Ciad;TCD
+CL;Cile;CHL
+CN;Cina;CHN
+CO;Colombia;COL
+KM;Comore;COM
+CG;Congo;COG
+CD;Repubblica Democratica del Congo;COD
+CR;Costa Rica;CRI
+CI;Costa d'Avorio;CIV
+HR;Croazia;HRV
+CU;Cuba;CUB
+CY;Cipro;CYP
+CZ;Repubblica Ceca;CZE
+DK;Danimarca;DNK
+DJ;Gibuti;DJI
+DM;Dominica;DMA
+DO;Repubblica Dominicana;DOM
+EC;Ecuador;ECU
+EG;Egitto;EGY
+SV;El Salvador;SLV
+GQ;Guinea Equatoriale;GNQ
+ER;Eritrea;ERI
+EE;Estonia;EST
+SZ;Eswatini;SWZ
+ET;Etiopia;ETH
+FJ;Figi;FJI
+FI;Finlandia;FIN
+FR;Francia;FRA
+GA;Gabon;GAB
+GM;Gambia;GMB
+GE;Georgia;GEO
+DE;Germania;DEU
+GH;Ghana;GHA
+GR;Grecia;GRC
+GD;Grenada;GRD
+GT;Guatemala;GTM
+GN;Guinea;GIN
+GW;Guinea-Bissau;GNB
+GY;Guyana;GUY
+HT;Haiti;HTI
+HN;Honduras;HND
+HU;Ungheria;HUN
+IS;Islanda;ISL
+IN;India;IND
+ID;Indonesia;IDN
+IR;Iran;IRN
+IQ;Iraq;IRQ
+IE;Irlanda;IRL
+IL;Israele;ISR
+IT;Italia;ITA
+JM;Giamaica;JAM
+JP;Giappone;JPN
+JO;Giordania;JOR
+KZ;Kazakistan;KAZ
+KE;Kenya;KEN
+KI;Kiribati;KIR
+KP;Corea del Nord;PRK
+KR;Corea del Sud;KOR
+KW;Kuwait;KWT
+KG;Kirghizistan;KGZ
+LA;Laos;LAO
+LV;Lettonia;LVA
+LB;Libano;LBN
+LS;Lesotho;LSO
+LR;Liberia;LBR
+LY;Libia;LBY
+LI;Liechtenstein;LIE
+LT;Lituania;LTU
+LU;Lussemburgo;LUX
+MG;Madagascar;MDG
+MW;Malawi;MWI
+MY;Malaysia;MYS
+MV;Maldive;MDV
+ML;Mali;MLI
+MT;Malta;MLT
+MH;Isole Marshall;MHL
+MR;Mauritania;MRT
+MU;Mauritius;MUS
+MX;Messico;MEX
+FM;Micronesia;FSM
+MD;Moldova;MDA
+MC;Monaco;MCO
+MN;Mongolia;MNG
+ME;Montenegro;MNE
+MA;Marocco;MAR
+MZ;Mozambico;MOZ
+MM;Myanmar;MMR
+NA;Namibia;NAM
+NR;Nauru;NRU
+NP;Nepal;NPL
+NL;Paesi Bassi;NLD
+NZ;Nuova Zelanda;NZL
+NI;Nicaragua;NIC
+NE;Niger;NER
+NG;Nigeria;NGA
+MK;Macedonia del Nord;MKD
+NO;Norvegia;NOR
+OM;Oman;OMN
+PK;Pakistan;PAK
+PW;Palau;PLW
+PA;Panama;PAN
+PG;Papua Nuova Guinea;PNG
+PY;Paraguay;PRY
+PE;Peru;PER
+PH;Filippine;PHL
+PL;Polonia;POL
+PT;Portogallo;PRT
+QA;Qatar;QAT
+RO;Romania;ROU
+RU;Russia;RUS
+RW;Ruanda;RWA
+KN;Saint Kitts e Nevis;KNA
+LC;Saint Lucia;LCA
+VC;Saint Vincent e Grenadine;VCT
+WS;Samoa;WSM
+SM;San Marino;SMR
+ST;Sao Tome e Principe;STP
+SA;Arabia Saudita;SAU
+SN;Senegal;SEN
+RS;Serbia;SRB
+SC;Seychelles;SYC
+SL;Sierra Leone;SLE
+SG;Singapore;SGP
+SK;Slovacchia;SVK
+SI;Slovenia;SVN
+SB;Isole Salomone;SLB
+SO;Somalia;SOM
+ZA;Sudafrica;ZAF
+SS;Sudan del Sud;SSD
+ES;Spagna;ESP
+LK;Sri Lanka;LKA
+SD;Sudan;SDN
+SR;Suriname;SUR
+SE;Svezia;SWE
+CH;Svizzera;CHE
+SY;Siria;SYR
+TW;Taiwan;TWN
+TJ;Tagikistan;TJK
+TZ;Tanzania;TZA
+TH;Thailandia;THA
+TL;Timor Est;TLS
+TG;Togo;TGO
+TO;Tonga;TON
+TT;Trinidad e Tobago;TTO
+TN;Tunisia;TUN
+TR;Turchia;TUR
+TM;Turkmenistan;TKM
+TV;Tuvalu;TUV
+UG;Uganda;UGA
+UA;Ucraina;UKR
+AE;Emirati Arabi Uniti;ARE
+GB;Regno Unito;GBR
+US;Stati Uniti d'America;USA
+UY;Uruguay;URY
+UZ;Uzbekistan;UZB
+VU;Vanuatu;VUT
+VE;Venezuela;VEN
+VN;Vietnam;VNM
+YE;Yemen;YEM
+ZM;Zambia;ZMB
+ZW;Zimbabwe;ZWE
+XK;Kosovo;XKX
+PS;Palestina;PSE

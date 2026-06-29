@@ -7,6 +7,7 @@ code,description,isPericoloso,category,subcategory
 01 03 07*,altri rifiuti contenenti sostanze pericolose prodotti da trattamenti chimici e fisici di minerali metalliferi,true,01,03
 01 03 08,polveri e residui diversi da quelli di cui alla voce 01 03 07,false,01,03
 01 03 09,fanghi rossi derivanti dalla produzione di allumina non rientranti alla voce 01 03 07,false,01,03
+01 03 99,rifiuti non specificati altrimenti,false,01,03
 01 04 07*,rifiuti contenenti sostanze pericolose prodotti da trattamenti chimici e fisici di minerali non metalliferi,true,01,04
 01 04 08,scarti di ghiaia e pietrisco diversi da quelli di cui alla voce 01 04 07,false,01,04
 01 04 09,scarti di sabbia e argilla,false,01,04
@@ -14,11 +15,13 @@ code,description,isPericoloso,category,subcategory
 01 04 11,rifiuti della lavorazione di potassa e salgemma diversi da quelli di cui alla voce 01 04 07,false,01,04
 01 04 12,sterili ed altri residui del lavaggio e della pulitura di minerali diversi da quelli di cui alle voci 01 04 07 e 01 04 11,false,01,04
 01 04 13,rifiuti prodotti dal taglio e dalla segagione della pietra diversi da quelli di cui alla voce 01 04 07,false,01,04
+01 04 99,rifiuti non specificati altrimenti,false,01,04
 01 05 04,fanghi e rifiuti di perforazione di pozzi per acque dolci,false,01,05
 01 05 05*,fanghi e rifiuti di perforazione contenenti oli,true,01,05
 01 05 06*,fanghi di perforazione ed altri rifiuti di perforazione contenenti sostanze pericolose,true,01,05
 01 05 07,fanghi e rifiuti di perforazione contenenti barite diversi da quelli delle voci 01 05 05 e 01 05 06,false,01,05
 01 05 08,fanghi e rifiuti di perforazione contenenti cloruri diversi da quelli delle voci 01 05 05 e 01 05 06,false,01,05
+01 05 99,rifiuti non specificati altrimenti,false,01,05
 02 01 01,fanghi prodotti da operazioni di lavaggio e pulizia,false,02,01
 02 01 02,scarti di tessuti animali,false,02,01
 02 01 03,scarti di tessuti vegetali,false,02,01
@@ -28,28 +31,35 @@ code,description,isPericoloso,category,subcategory
 02 01 08*,rifiuti agrochimici contenenti sostanze pericolose,true,02,01
 02 01 09,rifiuti agrochimici diversi da quelli della voce 02 01 08,false,02,01
 02 01 10,rifiuti metallici,false,02,01
+02 01 99,rifiuti non specificati altrimenti,false,02,01
 02 02 01,fanghi prodotti da operazioni di lavaggio e pulizia,false,02,02
 02 02 02,scarti di tessuti animali,false,02,02
 02 02 03,scarti inutilizzabili per il consumo o la trasformazione,false,02,02
 02 02 04,fanghi da trattamento in loco degli effluenti,false,02,02
+02 02 99,rifiuti non specificati altrimenti,false,02,02
 02 03 01,fanghi prodotti da operazioni di lavaggio pulizia sbucciatura centrifugazione e separazione,false,02,03
 02 03 02,rifiuti legati all'impiego di conservanti,false,02,03
 02 03 03,rifiuti prodotti dall'estrazione tramite solvente,false,02,03
 02 03 04,scarti inutilizzabili per il consumo o la trasformazione,false,02,03
 02 03 05,fanghi da trattamento in loco degli effluenti,false,02,03
+02 03 99,rifiuti non specificati altrimenti,false,02,03
 02 04 01,terriccio residuo delle operazioni di pulizia e lavaggio delle barbabietole,false,02,04
 02 04 02,carbonato di calcio fuori specifica,false,02,04
 02 04 03,fanghi da trattamento in loco degli effluenti,false,02,04
+02 04 99,rifiuti non specificati altrimenti,false,02,04
 02 05 01,scarti inutilizzabili per il consumo o la trasformazione,false,02,05
 02 05 02,fanghi da trattamento in loco degli effluenti,false,02,05
+02 05 99,rifiuti non specificati altrimenti,false,02,05
 02 06 01,scarti inutilizzabili per il consumo o la trasformazione,false,02,06
 02 06 02,rifiuti prodotti dall'impiego di conservanti,false,02,06
 02 06 03,fanghi da trattamento in loco degli effluenti,false,02,06
+02 06 99,rifiuti non specificati altrimenti,false,02,06
 02 07 01,rifiuti prodotti dalle operazioni di lavaggio pulitura e macinazione della materia prima,false,02,07
 02 07 02,rifiuti prodotti dalla distillazione di bevande alcoliche,false,02,07
 02 07 03,rifiuti prodotti dai trattamenti chimici,false,02,07
 02 07 04,scarti inutilizzabili per il consumo o la trasformazione,false,02,07
 02 07 05,fanghi da trattamento in loco degli effluenti,false,02,07
+02 07 99,rifiuti non specificati altrimenti,false,02,07
 03 01 01,scarti di corteccia e sughero,false,03,01
 03 01 04*,segatura trucioli residui di taglio legno truciolato e piallacci contenenti sostanze pericolose,true,03,01
 03 01 05,segatura trucioli residui di taglio legno truciolato e piallacci diversi da quelli di cui alla voce 03 01 04,false,03,01
@@ -68,24 +78,74 @@ code,description,isPericoloso,category,subcategory
 03 03 09,fanghi di scarto contenenti carbonato di calcio,false,03,03
 03 03 10,scarti di fibre e fanghi contenenti fibre riempitivi e prodotti di rivestimento generati dai processi di separazione meccanica,false,03,03
 03 03 11,fanghi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 03 03 10,false,03,03
+03 03 99,rifiuti non specificati altrimenti,false,03,03
+04 01 01,carniccio e rifiuti di calce,false,04,01
+04 01 02,rifiuti di calcinazione,false,04,01
+04 01 03*,bagni di sgrassatura esauriti contenenti solventi senza fase liquida,true,04,01
+04 01 04,liquido di concia contenente cromo,false,04,01
+04 01 05,liquido di concia non contenente cromo,false,04,01
+04 01 06,fanghi prodotti dal trattamento in loco degli effluenti contenenti cromo,false,04,01
+04 01 07,fanghi prodotti dal trattamento in loco degli effluenti non contenenti cromo,false,04,01
+04 01 08,cuoio conciato contenenti cromo (scarti di taglio rifili e polveri),false,04,01
+04 01 09,rifiuti delle operazioni di confezionamento e finitura,false,04,01
+04 01 99,rifiuti non specificati altrimenti,false,04,01
+04 02 09,rifiuti da materiali compositi (fibre impregnate tessili rivestiti plastificati),false,04,02
+04 02 10,materiale organico proveniente da prodotti naturali (grassi cere),false,04,02
+04 02 14*,rifiuti provenienti da operazioni di finitura contenenti solventi organici,true,04,02
+04 02 15,rifiuti da operazioni di finitura diversi da quelli di cui alla voce 04 02 14,false,04,02
+04 02 16*,tinture e pigmenti contenenti sostanze pericolose,true,04,02
+04 02 17,tinture e pigmenti diversi da quelli di cui alla voce 04 02 16,false,04,02
+04 02 19*,fanghi prodotti dal trattamento in loco degli effluenti contenenti sostanze pericolose,true,04,02
+04 02 20,fanghi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 04 02 19,false,04,02
+04 02 21,rifiuti da fibre tessili grezze,false,04,02
+04 02 22,rifiuti da fibre tessili lavorate,false,04,02
+04 02 99,rifiuti non specificati altrimenti,false,04,02
+05 01 02*,fanghi da processi di dissalazione,true,05,01
+05 01 03*,morchie depositate sul fondo dei serbatoi,true,05,01
+05 01 04*,fanghi acidi prodotti da processi di alchilazione,true,05,01
+05 01 05*,perdite di olio,true,05,01
+05 01 06*,fanghi oleosi prodotti dalla manutenzione di impianti e apparecchiature,true,05,01
+05 01 07*,catrami acidi,true,05,01
+05 01 08*,altri catrami,true,05,01
+05 01 09*,fanghi prodotti dal trattamento in loco degli effluenti contenenti sostanze pericolose,true,05,01
+05 01 10,fanghi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 05 01 09,false,05,01
+05 01 11*,rifiuti prodotti dalla purificazione di carburanti tramite basi,true,05,01
+05 01 12*,acidi contenenti oli,true,05,01
+05 01 13,fanghi residui dell'acqua di alimentazione delle caldaie,false,05,01
+05 01 14,rifiuti prodotti dalle torri di raffreddamento,false,05,01
+05 01 15*,filtri di argilla esauriti,true,05,01
+05 01 16,rifiuti contenenti zolfo prodotti dalla desolforizzazione del petrolio,false,05,01
+05 01 17,bitumi,false,05,01
+05 01 99,rifiuti non specificati altrimenti,false,05,01
+05 06 01*,catrami acidi,true,05,06
+05 06 03*,altri catrami,true,05,06
+05 06 04,rifiuti prodotti dalle torri di raffreddamento,false,05,06
+05 06 99,rifiuti non specificati altrimenti,false,05,06
+05 07 01*,rifiuti contenenti mercurio,true,05,07
+05 07 02,rifiuti contenenti zolfo,false,05,07
+05 07 99,rifiuti non specificati altrimenti,false,05,07
 06 01 01*,acido solforico e acido solforoso,true,06,01
 06 01 02*,acido cloridrico,true,06,01
 06 01 03*,acido fluoridrico,true,06,01
 06 01 04*,acido fosforico e fosforoso,true,06,01
 06 01 05*,acido nitrico e acido nitroso,true,06,01
 06 01 06*,altri acidi,true,06,01
+06 01 99,rifiuti non specificati altrimenti,false,06,01
 06 02 01*,idrossido di calcio,true,06,02
 06 02 03*,idrossido di ammonio,true,06,02
 06 02 04*,idrossido di sodio e di potassio,true,06,02
 06 02 05*,altre basi,true,06,02
+06 02 99,rifiuti non specificati altrimenti,false,06,02
 06 03 11*,sali e loro soluzioni contenenti cianuri,true,06,03
 06 03 13*,sali e loro soluzioni contenenti metalli pesanti,true,06,03
 06 03 14,sali e loro soluzioni diversi da quelli delle voci 06 03 11 e 06 03 13,false,06,03
 06 03 15*,ossidi metallici contenenti metalli pesanti,true,06,03
 06 03 16,ossidi metallici diversi da quelli di cui alla voce 06 03 15,false,06,03
+06 03 99,rifiuti non specificati altrimenti,false,06,03
 06 04 03*,rifiuti contenenti arsenico,true,06,04
 06 04 04*,rifiuti contenenti mercurio,true,06,04
 06 04 05*,rifiuti contenenti altri metalli pesanti,true,06,04
+06 04 99,rifiuti non specificati altrimenti,false,06,04
 06 05 02*,fanghi da trattamento in loco di effluenti contenenti sostanze pericolose,true,06,05
 06 05 03,fanghi da trattamento in loco di effluenti diversi da quelli di cui alla voce 06 05 02,false,06,05
 06 06 02*,rifiuti contenenti solfuri pericolosi,true,06,06
@@ -94,10 +154,13 @@ code,description,isPericoloso,category,subcategory
 06 07 02*,carbone attivo dalla produzione di cloro,true,06,07
 06 07 03*,fanghi di solfato di bario contenenti mercurio,true,06,07
 06 07 04*,soluzioni e acidi ad esempio acido di contatto,true,06,07
+06 07 99,rifiuti non specificati altrimenti,false,06,07
 06 08 02*,rifiuti contenenti clorosilani pericolosi,true,06,08
+06 08 99,rifiuti non specificati altrimenti,false,06,08
 06 09 02,scorie fosforose,false,06,09
 06 09 03*,rifiuti prodotti da reazioni a base di calcio contenenti sostanze pericolose o contaminati da tali sostanze,true,06,09
 06 09 04,rifiuti prodotti da reazioni a base di calcio diversi da quelli di cui alla voce 06 09 03,false,06,09
+06 09 99,rifiuti non specificati altrimenti,false,06,09
 06 10 02*,rifiuti contenenti sostanze pericolose,true,06,10
 06 10 99,rifiuti non specificati altrimenti,false,06,10
 06 11 01,rifiuti prodotti dalla fabbricazione del titanio,false,06,11
@@ -107,6 +170,85 @@ code,description,isPericoloso,category,subcategory
 06 13 03,nerofumo,false,06,13
 06 13 04*,rifiuti derivanti dai processi di lavorazione dell'amianto,true,06,13
 06 13 05*,fuliggine,true,06,13
+06 13 99,rifiuti non specificati altrimenti,false,06,13
+07 01 01*,soluzioni acquose di lavaggio ed acque madri,true,07,01
+07 01 03*,solventi organici alogenati soluzioni di lavaggio ed acque madri,true,07,01
+07 01 04*,altri solventi organici soluzioni di lavaggio ed acque madri,true,07,01
+07 01 07*,fondi e residui di reazione alogenati,true,07,01
+07 01 08*,altri fondi e residui di reazione,true,07,01
+07 01 09*,residui di filtrazione e assorbenti esauriti alogenati,true,07,01
+07 01 10*,altri residui di filtrazione e assorbenti esauriti,true,07,01
+07 01 11*,fanghi prodotti dal trattamento in loco degli effluenti contenenti sostanze pericolose,true,07,01
+07 01 12,fanghi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 07 01 11,false,07,01
+07 01 99,rifiuti non specificati altrimenti,false,07,01
+07 02 01*,soluzioni acquose di lavaggio ed acque madri,true,07,02
+07 02 03*,solventi organici alogenati soluzioni di lavaggio ed acque madri,true,07,02
+07 02 04*,altri solventi organici soluzioni di lavaggio ed acque madri,true,07,02
+07 02 07*,fondi e residui di reazione alogenati,true,07,02
+07 02 08*,altri fondi e residui di reazione,true,07,02
+07 02 09*,residui di filtrazione e assorbenti esauriti alogenati,true,07,02
+07 02 10*,altri residui di filtrazione e assorbenti esauriti,true,07,02
+07 02 11*,fanghi prodotti dal trattamento in loco degli effluenti contenenti sostanze pericolose,true,07,02
+07 02 12,fanghi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 07 02 11,false,07,02
+07 02 13,rifiuti plastici,false,07,02
+07 02 14*,rifiuti prodotti da additivi contenenti sostanze pericolose,true,07,02
+07 02 15,rifiuti prodotti da additivi diversi da quelli di cui alla voce 07 02 14,false,07,02
+07 02 16*,rifiuti contenenti siliconi pericolosi,true,07,02
+07 02 17,rifiuti contenenti siliconi diversi da quelli di cui alla voce 07 02 16,false,07,02
+07 02 99,rifiuti non specificati altrimenti,false,07,02
+07 03 01*,soluzioni acquose di lavaggio ed acque madri,true,07,03
+07 03 03*,solventi organici alogenati soluzioni di lavaggio ed acque madri,true,07,03
+07 03 04*,altri solventi organici soluzioni di lavaggio ed acque madri,true,07,03
+07 03 07*,fondi e residui di reazione alogenati,true,07,03
+07 03 08*,altri fondi e residui di reazione,true,07,03
+07 03 09*,residui di filtrazione e assorbenti esauriti alogenati,true,07,03
+07 03 10*,altri residui di filtrazione e assorbenti esauriti,true,07,03
+07 03 11*,fanghi prodotti dal trattamento in loco degli effluenti contenenti sostanze pericolose,true,07,03
+07 03 12,fanghi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 07 03 11,false,07,03
+07 03 99,rifiuti non specificati altrimenti,false,07,03
+07 04 01*,soluzioni acquose di lavaggio ed acque madri,true,07,04
+07 04 03*,solventi organici alogenati soluzioni di lavaggio ed acque madri,true,07,04
+07 04 04*,altri solventi organici soluzioni di lavaggio ed acque madri,true,07,04
+07 04 07*,fondi e residui di reazione alogenati,true,07,04
+07 04 08*,altri fondi e residui di reazione,true,07,04
+07 04 09*,residui di filtrazione e assorbenti esauriti alogenati,true,07,04
+07 04 10*,altri residui di filtrazione e assorbenti esauriti,true,07,04
+07 04 11*,fanghi prodotti dal trattamento in loco degli effluenti contenenti sostanze pericolose,true,07,04
+07 04 12,fanghi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 07 04 11,false,07,04
+07 04 13*,rifiuti solidi contenenti sostanze pericolose,true,07,04
+07 04 99,rifiuti non specificati altrimenti,false,07,04
+07 05 01*,soluzioni acquose di lavaggio ed acque madri,true,07,05
+07 05 03*,solventi organici alogenati soluzioni di lavaggio ed acque madri,true,07,05
+07 05 04*,altri solventi organici soluzioni di lavaggio ed acque madri,true,07,05
+07 05 07*,fondi e residui di reazione alogenati,true,07,05
+07 05 08*,altri fondi e residui di reazione,true,07,05
+07 05 09*,residui di filtrazione e assorbenti esauriti alogenati,true,07,05
+07 05 10*,altri residui di filtrazione e assorbenti esauriti,true,07,05
+07 05 11*,fanghi prodotti dal trattamento in loco degli effluenti contenenti sostanze pericolose,true,07,05
+07 05 12,fanghi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 07 05 11,false,07,05
+07 05 13*,rifiuti solidi contenenti sostanze pericolose,true,07,05
+07 05 14,rifiuti solidi diversi da quelli di cui alla voce 07 05 13,false,07,05
+07 05 99,rifiuti non specificati altrimenti,false,07,05
+07 06 01*,soluzioni acquose di lavaggio ed acque madri,true,07,06
+07 06 03*,solventi organici alogenati soluzioni di lavaggio ed acque madri,true,07,06
+07 06 04*,altri solventi organici soluzioni di lavaggio ed acque madri,true,07,06
+07 06 07*,fondi e residui di reazione alogenati,true,07,06
+07 06 08*,altri fondi e residui di reazione,true,07,06
+07 06 09*,residui di filtrazione e assorbenti esauriti alogenati,true,07,06
+07 06 10*,altri residui di filtrazione e assorbenti esauriti,true,07,06
+07 06 11*,fanghi prodotti dal trattamento in loco degli effluenti contenenti sostanze pericolose,true,07,06
+07 06 12,fanghi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 07 06 11,false,07,06
+07 06 99,rifiuti non specificati altrimenti,false,07,06
+07 07 01*,soluzioni acquose di lavaggio ed acque madri,true,07,07
+07 07 03*,solventi organici alogenati soluzioni di lavaggio ed acque madri,true,07,07
+07 07 04*,altri solventi organici soluzioni di lavaggio ed acque madri,true,07,07
+07 07 07*,fondi e residui di reazione alogenati,true,07,07
+07 07 08*,altri fondi e residui di reazione,true,07,07
+07 07 09*,residui di filtrazione e assorbenti esauriti alogenati,true,07,07
+07 07 10*,altri residui di filtrazione e assorbenti esauriti,true,07,07
+07 07 11*,fanghi prodotti dal trattamento in loco degli effluenti contenenti sostanze pericolose,true,07,07
+07 07 12,fanghi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 07 07 11,false,07,07
+07 07 99,rifiuti non specificati altrimenti,false,07,07
 08 01 11*,pitture e vernici di scarto contenenti solventi organici o altre sostanze pericolose,true,08,01
 08 01 12,pitture e vernici di scarto diverse da quelle di cui alla voce 08 01 11,false,08,01
 08 01 13*,fanghi prodotti da pitture e vernici contenenti solventi organici o altre sostanze pericolose,true,08,01
@@ -122,6 +264,7 @@ code,description,isPericoloso,category,subcategory
 08 02 01,polveri di scarto di rivestimenti,false,08,02
 08 02 02,fanghi acquosi contenenti materiali ceramici,false,08,02
 08 02 03,sospensioni acquose contenenti materiali ceramici,false,08,02
+08 02 99,rifiuti non specificati altrimenti,false,08,02
 08 03 07,fanghi acquosi contenenti inchiostro,false,08,03
 08 03 08,rifiuti liquidi acquosi contenenti inchiostro,false,08,03
 08 03 12*,scarti di inchiostro contenenti sostanze pericolose,true,08,03
@@ -132,6 +275,7 @@ code,description,isPericoloso,category,subcategory
 08 03 17*,toner per stampa esauriti contenenti sostanze pericolose,true,08,03
 08 03 18,toner per stampa esauriti diversi da quelli di cui alla voce 08 03 17,false,08,03
 08 03 19*,oli dispersi,true,08,03
+08 03 99,rifiuti non specificati altrimenti,false,08,03
 08 04 09*,adesivi e sigillanti di scarto contenenti solventi organici o altre sostanze pericolose,true,08,04
 08 04 10,adesivi e sigillanti di scarto diversi da quelli di cui alla voce 08 04 09,false,08,04
 08 04 11*,fanghi di adesivi e sigillanti contenenti solventi organici o altre sostanze pericolose,true,08,04
@@ -141,6 +285,21 @@ code,description,isPericoloso,category,subcategory
 08 04 15*,rifiuti liquidi acquosi contenenti adesivi o sigillanti contenenti solventi organici o altre sostanze pericolose,true,08,04
 08 04 16,rifiuti liquidi acquosi contenenti adesivi o sigillanti diversi da quelli di cui alla voce 08 04 15,false,08,04
 08 04 17*,olio di resina,true,08,04
+08 04 99,rifiuti non specificati altrimenti,false,08,04
+08 05 01*,isocianati di scarto,true,08,05
+09 01 01*,soluzioni di sviluppo e attivanti a base acquosa,true,09,01
+09 01 02*,soluzioni di sviluppo per lastre offset a base acquosa,true,09,01
+09 01 03*,soluzioni di sviluppo a base di solventi,true,09,01
+09 01 04*,soluzioni fissative,true,09,01
+09 01 05*,soluzioni di sbianca e soluzioni di sbianca-fissaggio,true,09,01
+09 01 06*,rifiuti contenenti argento prodotti dal trattamento in loco di rifiuti fotografici,true,09,01
+09 01 07,carta e pellicole per fotografia contenenti argento o composti dell'argento,false,09,01
+09 01 08,carta e pellicole per fotografia non contenenti argento,false,09,01
+09 01 10,macchine fotografiche monouso senza batterie,false,09,01
+09 01 11*,macchine fotografiche monouso contenenti batterie incluse nella voce 16 06 01 16 06 02 o 16 06 03,true,09,01
+09 01 12,macchine fotografiche monouso contenenti batterie diverse da quelle di cui alla voce 09 01 11,false,09,01
+09 01 13*,rifiuti liquidi acquosi prodotti dal recupero in loco dell'argento diversi da quelli di cui alla voce 09 01 06,true,09,01
+09 01 99,rifiuti non specificati altrimenti,false,09,01
 10 01 01,ceneri pesanti scorie e polveri di caldaia (tranne le polveri di caldaia di cui alla voce 10 01 04),false,10,01
 10 01 02,ceneri leggere di carbone,false,10,01
 10 01 03,ceneri leggere di torba e di legno non trattato,false,10,01
@@ -162,6 +321,185 @@ code,description,isPericoloso,category,subcategory
 10 01 24,sabbie dei reattori a letto fluidizzato,false,10,01
 10 01 25,rifiuti dell'immagazzinamento e della preparazione del combustibile delle centrali termoelettriche a carbone,false,10,01
 10 01 26,rifiuti prodotti dal trattamento delle acque di raffreddamento,false,10,01
+10 01 99,rifiuti non specificati altrimenti,false,10,01
+10 02 01,rifiuti del trattamento delle scorie,false,10,02
+10 02 02,scorie non trattate,false,10,02
+10 02 07*,rifiuti solidi prodotti dal trattamento dei fumi contenenti sostanze pericolose,true,10,02
+10 02 08,rifiuti solidi prodotti dal trattamento dei fumi diversi da quelli di cui alla voce 10 02 07,false,10,02
+10 02 10,scaglie di laminazione,false,10,02
+10 02 11*,rifiuti prodotti dal trattamento delle acque di raffreddamento contenenti oli,true,10,02
+10 02 12,rifiuti prodotti dal trattamento delle acque di raffreddamento diversi da quelli di cui alla voce 10 02 11,false,10,02
+10 02 13*,fanghi e residui di filtrazione prodotti dal trattamento dei fumi contenenti sostanze pericolose,true,10,02
+10 02 14,fanghi e residui di filtrazione prodotti dal trattamento dei fumi diversi da quelli di cui alla voce 10 02 13,false,10,02
+10 02 15,altri fanghi e residui di filtrazione,false,10,02
+10 02 99,rifiuti non specificati altrimenti,false,10,02
+10 03 02,frammenti di anodi,false,10,03
+10 03 04*,scorie della produzione primaria,true,10,03
+10 03 05,rifiuti di allumina,false,10,03
+10 03 08*,scorie saline della produzione secondaria,true,10,03
+10 03 09*,scorie nere della produzione secondaria,true,10,03
+10 03 15*,schiumature infiammabili o che emettono in contatto con l'acqua gas infiammabili in quantità pericolose,true,10,03
+10 03 16,schiumature diverse da quelle di cui alla voce 10 03 15,false,10,03
+10 03 17*,rifiuti contenenti catrame derivante dalla produzione degli anodi,true,10,03
+10 03 18,rifiuti contenenti carbone derivanti dalla produzione di anodi diversi da quelli di cui alla voce 10 03 17,false,10,03
+10 03 19*,polveri dei gas di combustione contenenti sostanze pericolose,true,10,03
+10 03 20,polveri dei gas di combustione diverse da quelle di cui alla voce 10 03 19,false,10,03
+10 03 21*,altre polveri e particolato (comprese le polveri prodotte da mulini a sfere) contenenti sostanze pericolose,true,10,03
+10 03 22,altre polveri e particolato (comprese le polveri prodotte da mulini a sfere) diverse da quelle di cui alla voce 10 03 21,false,10,03
+10 03 23*,rifiuti solidi prodotti dal trattamento dei fumi contenenti sostanze pericolose,true,10,03
+10 03 24,rifiuti solidi prodotti dal trattamento dei fumi diversi da quelli di cui alla voce 10 03 23,false,10,03
+10 03 25*,fanghi e residui di filtrazione prodotti dal trattamento dei fumi contenenti sostanze pericolose,true,10,03
+10 03 26,fanghi e residui di filtrazione prodotti dal trattamento dei fumi diversi da quelli di cui alla voce 10 03 25,false,10,03
+10 03 27*,rifiuti prodotti dal trattamento delle acque di raffreddamento contenenti oli,true,10,03
+10 03 28,rifiuti prodotti dal trattamento delle acque di raffreddamento diversi da quelli di cui alla voce 10 03 27,false,10,03
+10 03 29*,rifiuti prodotti dal trattamento di scorie saline e scorie nere contenenti sostanze pericolose,true,10,03
+10 03 30,rifiuti prodotti dal trattamento di scorie saline e scorie nere diversi da quelli di cui alla voce 10 03 29,false,10,03
+10 03 99,rifiuti non specificati altrimenti,false,10,03
+10 04 01*,scorie della produzione primaria e secondaria,true,10,04
+10 04 02*,scorie e schiumature della produzione primaria e secondaria,true,10,04
+10 04 03*,arsenato di calcio,true,10,04
+10 04 04*,polveri dei gas di combustione,true,10,04
+10 04 05*,altre polveri e particolato,true,10,04
+10 04 06*,rifiuti solidi prodotti dal trattamento dei fumi,true,10,04
+10 04 07*,fanghi e residui di filtrazione prodotti dal trattamento dei fumi,true,10,04
+10 04 09*,rifiuti prodotti dal trattamento delle acque di raffreddamento contenenti oli,true,10,04
+10 04 10,rifiuti prodotti dal trattamento delle acque di raffreddamento diversi da quelli di cui alla voce 10 04 09,false,10,04
+10 04 99,rifiuti non specificati altrimenti,false,10,04
+10 05 01,scorie della produzione primaria e secondaria,false,10,05
+10 05 03*,polveri dei gas di combustione,true,10,05
+10 05 04,altre polveri e particolato,false,10,05
+10 05 05*,rifiuti solidi prodotti dal trattamento dei fumi,true,10,05
+10 05 06*,fanghi e residui di filtrazione prodotti dal trattamento dei fumi,true,10,05
+10 05 08*,rifiuti prodotti dal trattamento delle acque di raffreddamento contenenti oli,true,10,05
+10 05 09,rifiuti prodotti dal trattamento delle acque di raffreddamento diversi da quelli di cui alla voce 10 05 08,false,10,05
+10 05 10*,scorie e schiumature infiammabili o che emettono in contatto con l'acqua gas infiammabili in quantità pericolose,true,10,05
+10 05 11,scorie e schiumature diverse da quelle di cui alla voce 10 05 10,false,10,05
+10 05 99,rifiuti non specificati altrimenti,false,10,05
+10 06 01,scorie della produzione primaria e secondaria,false,10,06
+10 06 02,scorie e schiumature della produzione primaria e secondaria,false,10,06
+10 06 03*,polveri dei gas di combustione,true,10,06
+10 06 04,altre polveri e particolato,false,10,06
+10 06 06*,rifiuti solidi prodotti dal trattamento dei fumi,true,10,06
+10 06 07*,fanghi e residui di filtrazione prodotti dal trattamento dei fumi,true,10,06
+10 06 09*,rifiuti prodotti dal trattamento delle acque di raffreddamento contenenti oli,true,10,06
+10 06 10,rifiuti prodotti dal trattamento delle acque di raffreddamento diversi da quelli di cui alla voce 10 06 09,false,10,06
+10 06 99,rifiuti non specificati altrimenti,false,10,06
+10 07 01,scorie della produzione primaria e secondaria,false,10,07
+10 07 02,scorie e schiumature della produzione primaria e secondaria,false,10,07
+10 07 03,rifiuti solidi prodotti dal trattamento dei fumi,false,10,07
+10 07 04,altre polveri e particolato,false,10,07
+10 07 05,fanghi e residui di filtrazione prodotti dal trattamento dei fumi,false,10,07
+10 07 07*,rifiuti prodotti dal trattamento delle acque di raffreddamento contenenti oli,true,10,07
+10 07 08,rifiuti prodotti dal trattamento delle acque di raffreddamento diversi da quelli di cui alla voce 10 07 07,false,10,07
+10 07 99,rifiuti non specificati altrimenti,false,10,07
+10 08 04,polveri e particolato,false,10,08
+10 08 08*,scorie saline della produzione primaria e secondaria,true,10,08
+10 08 09,altre scorie,false,10,08
+10 08 10*,scorie e schiumature infiammabili o che emettono in contatto con l'acqua gas infiammabili in quantità pericolose,true,10,08
+10 08 11,scorie e schiumature diverse da quelle di cui alla voce 10 08 10,false,10,08
+10 08 12*,rifiuti contenenti catrame derivante dalla produzione degli anodi,true,10,08
+10 08 13,rifiuti contenenti carbonio derivanti dalla produzione di anodi diversi da quelli di cui alla voce 10 08 12,false,10,08
+10 08 14,frammenti di anodi,false,10,08
+10 08 15*,polveri dei gas di combustione contenenti sostanze pericolose,true,10,08
+10 08 16,polveri dei gas di combustione diverse da quelle di cui alla voce 10 08 15,false,10,08
+10 08 17*,fanghi e residui di filtrazione prodotti dal trattamento dei fumi contenenti sostanze pericolose,true,10,08
+10 08 18,fanghi e residui di filtrazione prodotti dal trattamento dei fumi diversi da quelli di cui alla voce 10 08 17,false,10,08
+10 08 19*,rifiuti prodotti dal trattamento delle acque di raffreddamento contenenti oli,true,10,08
+10 08 20,rifiuti prodotti dal trattamento delle acque di raffreddamento diversi da quelli di cui alla voce 10 08 19,false,10,08
+10 08 99,rifiuti non specificati altrimenti,false,10,08
+10 09 03,scorie di fusione,false,10,09
+10 09 05*,forme e anime da fonderia inutilizzate contenenti sostanze pericolose,true,10,09
+10 09 06,forme e anime da fonderia inutilizzate diverse da quelle di cui alla voce 10 09 05,false,10,09
+10 09 07*,forme e anime da fonderia utilizzate contenenti sostanze pericolose,true,10,09
+10 09 08,forme e anime da fonderia utilizzate diverse da quelle di cui alla voce 10 09 07,false,10,09
+10 09 09*,polveri dei gas di combustione contenenti sostanze pericolose,true,10,09
+10 09 10,polveri dei gas di combustione diverse da quelle di cui alla voce 10 09 09,false,10,09
+10 09 11*,altri particolato contenenti sostanze pericolose,true,10,09
+10 09 12,altri particolato diversi da quelli di cui alla voce 10 09 11,false,10,09
+10 09 13*,scarti di leganti contenenti sostanze pericolose,true,10,09
+10 09 14,scarti di leganti diversi da quelli di cui alla voce 10 09 13,false,10,09
+10 09 15*,scarti di prodotti rilevatori di crepe contenenti sostanze pericolose,true,10,09
+10 09 16,scarti di prodotti rilevatori di crepe diversi da quelli di cui alla voce 10 09 15,false,10,09
+10 09 99,rifiuti non specificati altrimenti,false,10,09
+10 10 03,scorie di fusione,false,10,10
+10 10 05*,forme e anime da fonderia inutilizzate contenenti sostanze pericolose,true,10,10
+10 10 06,forme e anime da fonderia inutilizzate diverse da quelle di cui alla voce 10 10 05,false,10,10
+10 10 07*,forme e anime da fonderia utilizzate contenenti sostanze pericolose,true,10,10
+10 10 08,forme e anime da fonderia utilizzate diverse da quelle di cui alla voce 10 10 07,false,10,10
+10 10 09*,polveri dei gas di combustione contenenti sostanze pericolose,true,10,10
+10 10 10,polveri dei gas di combustione diverse da quelle di cui alla voce 10 10 09,false,10,10
+10 10 11*,altri particolato contenenti sostanze pericolose,true,10,10
+10 10 12,altri particolato diversi da quelli di cui alla voce 10 10 11,false,10,10
+10 10 13*,scarti di leganti contenenti sostanze pericolose,true,10,10
+10 10 14,scarti di leganti diversi da quelli di cui alla voce 10 10 13,false,10,10
+10 10 15*,scarti di prodotti rilevatori di crepe contenenti sostanze pericolose,true,10,10
+10 10 16,scarti di prodotti rilevatori di crepe diversi da quelli di cui alla voce 10 10 15,false,10,10
+10 10 99,rifiuti non specificati altrimenti,false,10,10
+10 11 03,scarti di materiali in fibra a base di vetro,false,10,11
+10 11 05,polveri e particolato,false,10,11
+10 11 09*,residui di miscela di preparazione non sottoposti a trattamento termico contenenti sostanze pericolose,true,10,11
+10 11 10,residui di miscela di preparazione non sottoposti a trattamento termico diversi da quelli di cui alla voce 10 11 09,false,10,11
+10 11 11*,rifiuti di vetro in forma di particolato e polveri di vetro contenenti metalli pesanti (ad esempio prodotti da tubi catodici),true,10,11
+10 11 12,rifiuti di vetro diversi da quelli di cui alla voce 10 11 11,false,10,11
+10 11 13*,fanghi provenienti dalla lucidatura e dalla macinazione del vetro contenenti sostanze pericolose,true,10,11
+10 11 14,fanghi provenienti dalla lucidatura e dalla macinazione del vetro diversi da quelli di cui alla voce 10 11 13,false,10,11
+10 11 15*,rifiuti solidi prodotti dal trattamento dei fumi contenenti sostanze pericolose,true,10,11
+10 11 16,rifiuti solidi prodotti dal trattamento dei fumi diversi da quelli di cui alla voce 10 11 15,false,10,11
+10 11 17*,fanghi e residui di filtrazione prodotti dal trattamento dei fumi contenenti sostanze pericolose,true,10,11
+10 11 18,fanghi e residui di filtrazione prodotti dal trattamento dei fumi diversi da quelli di cui alla voce 10 11 17,false,10,11
+10 11 19*,rifiuti solidi prodotti dal trattamento in loco degli effluenti contenenti sostanze pericolose,true,10,11
+10 11 20,rifiuti solidi prodotti dal trattamento in loco degli effluenti diversi da quelli di cui alla voce 10 11 19,false,10,11
+10 11 99,rifiuti non specificati altrimenti,false,10,11
+10 12 01,residui di miscela di preparazione non sottoposti a trattamento termico,false,10,12
+10 12 03,polveri e particolato,false,10,12
+10 12 05,fanghi e residui di filtrazione prodotti dal trattamento dei fumi,false,10,12
+10 12 06,stampi di scarto,false,10,12
+10 12 08,"scarti di ceramica, mattoni, mattonelle e materiali da costruzione (dopo il trattamento termico)",false,10,12
+10 12 09*,rifiuti solidi prodotti dal trattamento dei fumi contenenti sostanze pericolose,true,10,12
+10 12 10,rifiuti solidi prodotti dal trattamento dei fumi diversi da quelli di cui alla voce 10 12 09,false,10,12
+10 12 11*,rifiuti delle operazioni di smaltatura contenenti metalli pesanti,true,10,12
+10 12 12,rifiuti delle operazioni di smaltatura diversi da quelli di cui alla voce 10 12 11,false,10,12
+10 12 13,fanghi prodotti dal trattamento in loco degli effluenti,false,10,12
+10 12 99,rifiuti non specificati altrimenti,false,10,12
+10 13 01,residui di miscela di preparazione non sottoposti a trattamento termico,false,10,13
+10 13 04,rifiuti di calcinazione e di idratazione della calce,false,10,13
+10 13 05,scarti di miscele prima del trattamento termico,false,10,13
+10 13 06,polveri e residui diversi da quelli di cui alle voci 10 13 04 e 10 13 05,false,10,13
+10 13 07,fanghi e residui di filtrazione prodotti dal trattamento dei fumi,false,10,13
+10 13 09*,rifiuti dalla produzione di cemento amianto contenenti amianto,true,10,13
+10 13 10,rifiuti dalla produzione di cemento-amianto diversi da quelli di cui alla voce 10 13 09,false,10,13
+10 13 11,rifiuti da altri materiali compositi a base di cemento diversi da quelli di cui alle voci 10 13 09 e 10 13 10,false,10,13
+10 13 12*,rifiuti solidi prodotti dal trattamento dei fumi contenenti sostanze pericolose,true,10,13
+10 13 13,rifiuti solidi prodotti dal trattamento dei fumi diversi da quelli di cui alla voce 10 13 12,false,10,13
+10 13 14,rifiuti di calcestruzzo e fanghi di calcestruzzo,false,10,13
+10 13 99,rifiuti non specificati altrimenti,false,10,13
+11 01 05*,acidi di decappaggio,true,11,01
+11 01 06*,acidi non specificati altrimenti,true,11,01
+11 01 07*,basi di decappaggio,true,11,01
+11 01 08*,fanghi di fosfatazione,true,11,01
+11 01 09*,fanghi e residui di filtrazione contenenti sostanze pericolose,true,11,01
+11 01 10,fanghi e residui di filtrazione diversi da quelli di cui alla voce 11 01 09,false,11,01
+11 01 11*,soluzioni acquose di lavaggio contenenti sostanze pericolose,true,11,01
+11 01 12,soluzioni acquose di lavaggio diverse da quelle di cui alla voce 11 01 11,false,11,01
+11 01 13*,rifiuti di sgrassaggio contenenti sostanze pericolose,true,11,01
+11 01 14,rifiuti di sgrassaggio diversi da quelli di cui alla voce 11 01 13,false,11,01
+11 01 15*,eluati e fanghi di sistemi a membrana o a scambio ionico contenenti sostanze pericolose,true,11,01
+11 01 16*,resine a scambio ionico saturate o esaurite,true,11,01
+11 01 98*,altri rifiuti contenenti sostanze pericolose,true,11,01
+11 01 99,rifiuti non specificati altrimenti,false,11,01
+11 02 02*,fanghi della lavorazione idrometallurgica dello zinco (incluse jarosite e goethite),true,11,02
+11 02 03,rifiuti della produzione di anodi per processi di elettrolisi acquosa,false,11,02
+11 02 05*,rifiuti della lavorazione idrometallurgica del rame contenenti sostanze pericolose,true,11,02
+11 02 06,rifiuti della lavorazione idrometallurgica del rame diversi da quelli di cui alla voce 11 02 05,false,11,02
+11 02 07*,altri rifiuti contenenti sostanze pericolose,true,11,02
+11 02 99,rifiuti non specificati altrimenti,false,11,02
+11 03 01*,rifiuti contenenti cianuro,true,11,03
+11 03 02*,altri rifiuti,true,11,03
+11 05 01,zinco solido,false,11,05
+11 05 02,ceneri di zinco,false,11,05
+11 05 03*,rifiuti solidi prodotti dal trattamento dei fumi,true,11,05
+11 05 04*,fondente esaurito,true,11,05
+11 05 99,rifiuti non specificati altrimenti,false,11,05
 12 01 01,limatura e trucioli di materiali ferrosi,false,12,01
 12 01 02,polveri e particolato di materiali ferrosi,false,12,01
 12 01 03,limatura e trucioli di materiali non ferrosi,false,12,01
@@ -182,6 +520,8 @@ code,description,isPericoloso,category,subcategory
 12 01 19*,oli per macchinari facilmente biodegradabili,true,12,01
 12 01 20*,materiale abrasivo di scarto contenente sostanze pericolose,true,12,01
 12 01 21,materiale abrasivo di scarto diverso da quello di cui alla voce 12 01 20,false,12,01
+12 03 01*,soluzioni acquose di lavaggio,true,12,03
+12 03 02*,rifiuti prodotti dai processi di sgrassaggio a vapore,true,12,03
 13 01 01*,oli per circuiti idraulici contenenti PCB,true,13,01
 13 01 04*,emulsioni clorurate,true,13,01
 13 01 05*,emulsioni non clorurate,true,13,01

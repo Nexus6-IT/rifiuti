@@ -17,7 +17,7 @@ describe('ReferenceDataSeederService', () => {
   let logger: any
   let config: ReferenceDataConfig
 
-  const baseSource = { separator: ';', hasHeader: true }
+  const baseSource = { separator: ';', hasHeader: true, localFile: null as string | null }
 
   beforeEach(() => {
     http = { get: jest.fn() }
