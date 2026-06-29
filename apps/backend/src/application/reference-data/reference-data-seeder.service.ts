@@ -13,7 +13,7 @@ import {
 } from './reference-data.config'
 import { parseCsv } from './csv.util'
 
-export type ReferenceDataset = 'ateco' | 'nazioni' | 'province' | 'comuni'
+export type ReferenceDataset = 'ateco' | 'nazioni' | 'province' | 'comuni' | 'cer'
 
 /**
  * Popolamento automatico dei dati di riferimento (ATECO, ISTAT) da CSV
@@ -49,9 +49,30 @@ export class ReferenceDataSeederService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     if (this.config.seedOnBootIfEmpty) {
       // Best-effort: non bloccare l'avvio dell'app.
-      this.seedIfEmpty().catch((e) =>
-        this.logger.warn(`Seed reference data al boot fallito: ${e.message}`),
-      )
+      this.seedIfEmpty()
+        .then(() => this.ensureCerComplete())
+        .catch((e) =>
+          this.logger.warn(`Seed reference data al boot fallito: ${e.message}`),
+        )
+    }
+  }
+
+  /**
+   * Auto-aggiornamento del catalogo CER al boot: se il DB ha MENO voci del CSV
+   * bundled (es. catalogo storico 497 → completo 837), ri-popola via upsert
+   * idempotente. Così la completezza del catalogo è riproducibile a ogni deploy
+   * senza interventi manuali in produzione.
+   */
+  private async ensureCerComplete(): Promise<void> {
+    try {
+      const rows = await this.fetchRows(this.config.cer)
+      if (rows.length === 0) return
+      const current = await this.prisma.cERCode.count()
+      if (current < rows.length) {
+        await this.safe('cer', () => this.upsertCerRows(rows))
+      }
+    } catch (e: any) {
+      this.logger.warn(`Auto-aggiornamento catalogo CER fallito: ${e.message}`)
     }
   }
 
@@ -69,6 +90,7 @@ export class ReferenceDataSeederService implements OnModuleInit {
     if (counts.nazioni === 0) await this.safe('nazioni', () => this.seedNazioni())
     if (counts.province === 0) await this.safe('province', () => this.seedProvince())
     if (counts.comuni === 0) await this.safe('comuni', () => this.seedComuni())
+    if (counts.cer === 0) await this.safe('cer', () => this.seedCer())
   }
 
   /** Reseed di tutti i dataset (o di uno solo). */
@@ -77,16 +99,47 @@ export class ReferenceDataSeederService implements OnModuleInit {
     if (!dataset || dataset === 'nazioni') await this.safe('nazioni', () => this.seedNazioni())
     if (!dataset || dataset === 'province') await this.safe('province', () => this.seedProvince())
     if (!dataset || dataset === 'comuni') await this.safe('comuni', () => this.seedComuni())
+    if (!dataset || dataset === 'cer') await this.safe('cer', () => this.seedCer())
   }
 
   async counts() {
-    const [ateco, nazioni, province, comuni] = await Promise.all([
+    const [ateco, nazioni, province, comuni, cer] = await Promise.all([
       this.prisma.atecoCode.count(),
       this.prisma.istatNazione.count(),
       this.prisma.istatProvincia.count(),
       this.prisma.istatComune.count(),
+      this.prisma.cERCode.count(),
     ])
-    return { ateco, nazioni, province, comuni }
+    return { ateco, nazioni, province, comuni, cer }
+  }
+
+  /** Seed del catalogo CER/EER dal CSV bundled (code,description,isPericoloso,category,subcategory). */
+  async seedCer(): Promise<number> {
+    const rows = await this.fetchRows(this.config.cer)
+    return this.upsertCerRows(rows)
+  }
+
+  private async upsertCerRows(rows: string[][]): Promise<number> {
+    return this.upsertChunked(rows, (r) =>
+      r[0]
+        ? this.prisma.cERCode.upsert({
+            where: { code: r[0] },
+            create: {
+              code: r[0],
+              description: r[1] || '',
+              isPericoloso: String(r[2]).toLowerCase() === 'true' || r[0].includes('*'),
+              category: r[3] || r[0].slice(0, 2),
+              subcategory: r[4] || '',
+            },
+            update: {
+              description: r[1] || '',
+              isPericoloso: String(r[2]).toLowerCase() === 'true' || r[0].includes('*'),
+              category: r[3] || r[0].slice(0, 2),
+              subcategory: r[4] || '',
+            },
+          })
+        : null,
+    )
   }
 
   // --- Seeders per dataset ---

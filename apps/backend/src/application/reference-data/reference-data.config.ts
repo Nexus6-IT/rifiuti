@@ -25,6 +25,8 @@ export interface ReferenceDataConfig {
   nazioni: DatasetSource
   province: DatasetSource
   comuni: DatasetSource
+  /** Catalogo CER/EER completo (separatore virgola, con header). */
+  cer: DatasetSource
   /** Esegui il seed all'avvio se le tabelle sono vuote. */
   seedOnBootIfEmpty: boolean
 }
@@ -47,6 +49,8 @@ export function loadReferenceDataConfig(config: ConfigService): ReferenceDataCon
     // Province/comuni: bundle CSV in repo (dati ISTAT) come fallback offline e deterministico.
     province: src('REFDATA_PROVINCE_URL', 'province.csv'),
     comuni: src('REFDATA_COMUNI_URL', 'comuni.csv'),
+    // CER/EER: catalogo completo bundled (CSV separato da virgola, con header).
+    cer: src('REFDATA_CER_URL', 'cer.csv', ','),
     seedOnBootIfEmpty: config.get<string>('REFDATA_SEED_ON_BOOT') !== 'false',
   }
 }

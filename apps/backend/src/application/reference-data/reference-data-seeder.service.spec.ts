@@ -26,6 +26,7 @@ describe('ReferenceDataSeederService', () => {
       istatNazione: { upsert: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
       istatProvincia: { upsert: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
       istatComune: { upsert: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
+      cERCode: { upsert: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
     }
     logger = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
     config = {
@@ -33,6 +34,7 @@ describe('ReferenceDataSeederService', () => {
       nazioni: { url: null, ...baseSource },
       province: { url: null, ...baseSource },
       comuni: { url: null, ...baseSource },
+      cer: { url: null, ...baseSource, separator: ',' },
       seedOnBootIfEmpty: false,
     }
   })
