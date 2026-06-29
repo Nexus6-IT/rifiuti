@@ -3,11 +3,24 @@
  * MVP Application Bootstrap
  */
 
+import * as Sentry from '@sentry/node'
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe } from '@nestjs/common'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import helmet from 'helmet'
 import { AppModule } from './app.module'
+
+// Error tracking Bugsink/Sentry — attivo solo se SENTRY_DSN è impostato.
+// In assenza della variabile l'SDK è un no-op completo: nessun impatto runtime.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV ?? 'development',
+    release: process.env.APP_VERSION,
+    // Campionamento 100% in produzione (Bugsink self-hosted: nessun costo)
+    tracesSampleRate: 1.0,
+  })
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
@@ -64,8 +77,10 @@ async function bootstrap() {
     maxAge: 3600, // Cache preflight requests for 1 hour
   })
 
-  // API prefix
-  app.setGlobalPrefix(process.env.API_PREFIX || 'api/v1')
+  // API prefix — /metrics è escluso: Prometheus scraper accede direttamente
+  app.setGlobalPrefix(process.env.API_PREFIX || 'api/v1', {
+    exclude: ['metrics'],
+  })
 
   // Swagger API Documentation
   const config = new DocumentBuilder()
