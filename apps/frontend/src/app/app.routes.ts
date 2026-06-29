@@ -7,6 +7,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/login.component').then(m => m.LoginComponent)
   },
   {
+    // Registrazione self-service azienda + utente admin (WS-G)
+    path: 'signup',
+    loadComponent: () => import('./features/auth/signup/signup.component').then(m => m.SignupComponent)
+  },
+  {
     // Riceve i token dopo il login SAML/Keycloak (rotta pubblica)
     path: 'auth/callback',
     loadComponent: () => import('./features/auth/auth-callback.component').then(m => m.AuthCallbackComponent)

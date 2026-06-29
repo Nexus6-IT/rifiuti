@@ -16,7 +16,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const router = inject(Router);
   const authService = inject(AuthService);
 
-  const publicEndpoints = ['/auth/spid', '/auth/callback', '/auth/refresh', '/health'];
+  const publicEndpoints = ['/auth/spid', '/auth/callback', '/auth/refresh', '/health', '/auth/signup'];
   const isPublicEndpoint = publicEndpoints.some((endpoint) => req.url.includes(endpoint));
 
   if (isPublicEndpoint) {

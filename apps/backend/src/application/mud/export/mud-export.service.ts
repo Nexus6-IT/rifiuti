@@ -45,7 +45,12 @@ export class MudExportService {
     }
 
     // Risolve il codice ISTAT del comune dalle tabelle di riferimento condivise.
-    const comune = await this.referenceData.findComuneByName(tenant.city, tenant.province)
+    // city/province potrebbero essere null per tenant creati via signup self-service
+    // (WS-G): in quel caso il comune non viene risolto (undefined).
+    const comune =
+      tenant.city && tenant.province
+        ? await this.referenceData.findComuneByName(tenant.city, tenant.province)
+        : undefined
 
     const data: MudExportData = {
       year,
@@ -53,12 +58,12 @@ export class MudExportService {
         ragioneSociale: tenant.ragioneSociale,
         partitaIva: tenant.partitaIva,
         codiceFiscale: tenant.codiceFiscale ?? undefined,
-        via: tenant.address,
+        via: tenant.address ?? undefined,
         civico: tenant.civico ?? undefined,
-        comune: tenant.city,
+        comune: tenant.city ?? undefined,
         comuneCode: comune?.code,
-        provincia: tenant.province,
-        cap: tenant.postalCode,
+        provincia: tenant.province ?? undefined,
+        cap: tenant.postalCode ?? undefined,
         pec: tenant.pec ?? undefined,
         telefono: tenant.telefono ?? undefined,
         atecoCode: tenant.atecoCode ?? undefined,

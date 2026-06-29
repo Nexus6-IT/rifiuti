@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Router, ActivatedRoute, RouterModule } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import { CardModule } from 'primeng/card';
 import { InputTextModule } from 'primeng/inputtext';
@@ -16,6 +16,7 @@ import { AuthService } from '../../core/services/auth.service';
   imports: [
     CommonModule,
     FormsModule,
+    RouterModule,
     CardModule,
     InputTextModule,
     PasswordModule,
@@ -93,6 +94,10 @@ import { AuthService } from '../../core/services/auth.service';
           </div>
 
           <p class="auth__help">
+            Non hai ancora un account?
+            <a routerLink="/signup" class="auth__help-link">Registra la tua azienda</a>
+          </p>
+          <p class="auth__help" style="margin-top: 0.5rem">
             Hai bisogno di assistenza?
             <a href="mailto:supporto@wasteflow.it" class="auth__help-link">Contatta il supporto</a>
           </p>

@@ -8,11 +8,15 @@ export interface MudAzienda {
   ragioneSociale: string
   partitaIva: string
   codiceFiscale?: string
-  via: string
+  /** Indirizzo sede legale (opzionale per tenant creati via signup self-service). */
+  via?: string
   civico?: string
-  comune: string
-  provincia: string
-  cap: string
+  /** Comune sede legale (opzionale per tenant creati via signup self-service). */
+  comune?: string
+  /** Provincia (sigla 2 lettere, opzionale per tenant creati via signup self-service). */
+  provincia?: string
+  /** CAP (5 cifre, opzionale per tenant creati via signup self-service). */
+  cap?: string
   pec?: string
   telefono?: string
   /** Codice attività economica ISTAT (ATECO 2007, 6 cifre). */

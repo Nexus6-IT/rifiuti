@@ -85,7 +85,14 @@ export class KeycloakUserAdapter {
   }
 
   /**
-   * Create user in Keycloak
+   * Create user in Keycloak.
+   *
+   * @param params.emailVerified   Se true (default) l'email è considerata già
+   *   verificata (flusso admin-provisioning). Per il signup self-service passare
+   *   `false` + `requiredActions: ['VERIFY_EMAIL']` affinché Keycloak invii
+   *   la mail di verifica al primo login (o via sendVerifyEmail()).
+   * @param params.requiredActions Azioni richieste al primo login (es.
+   *   VERIFY_EMAIL, UPDATE_PASSWORD). Default: [].
    */
   async createUser(params: {
     fiscalCode: string;
@@ -93,6 +100,8 @@ export class KeycloakUserAdapter {
     lastName: string;
     email: string;
     tenantId: string;
+    emailVerified?: boolean;
+    requiredActions?: string[];
   }): Promise<string> {
     this.logger.info('Creating user in Keycloak', {
       fiscalCode: params.fiscalCode,
@@ -108,7 +117,8 @@ export class KeycloakUserAdapter {
         firstName: params.firstName,
         lastName: params.lastName,
         enabled: true,
-        emailVerified: true,
+        emailVerified: params.emailVerified ?? true,
+        requiredActions: params.requiredActions ?? [],
         attributes: {
           fiscalCode: [params.fiscalCode],
           tenantId: [params.tenantId],
@@ -391,6 +401,36 @@ export class KeycloakUserAdapter {
         keycloakUserId,
       });
 
+      throw error;
+    }
+  }
+
+  /**
+   * Invia (o ri-invia) la mail di verifica email a un utente Keycloak.
+   *
+   * Chiama `PUT /admin/realms/{realm}/users/{id}/send-verify-email`.
+   * Se Keycloak non è configurato con un provider SMTP il server risponde
+   * con errore 500; in questo caso il chiamante deve gestire l'eccezione
+   * come best-effort (non bloccare la risposta al client).
+   *
+   * ATTIVARE: configurare il provider SMTP nel realm Keycloak (`ignicraft`).
+   */
+  async sendVerifyEmail(keycloakUserId: string): Promise<void> {
+    this.logger.info('Sending verify-email to user in Keycloak', { keycloakUserId });
+    try {
+      const token = await this.getAccessToken();
+      await firstValueFrom(
+        this.httpService.put(
+          `${this.keycloakUrl}/admin/realms/${this.realm}/users/${keycloakUserId}/send-verify-email`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } },
+        ),
+      );
+      this.logger.info('Verify-email sent via Keycloak', { keycloakUserId });
+    } catch (error: any) {
+      this.logger.error('Failed to send verify-email from Keycloak (best-effort)', error, {
+        keycloakUserId,
+      });
       throw error;
     }
   }

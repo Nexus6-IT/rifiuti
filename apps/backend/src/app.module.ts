@@ -47,6 +47,8 @@ import { SignaturesModule } from './application/signatures/signatures.module'
 import { RegistroModule } from './api/registro/registro.module'
 // Billing SaaS (WS-F): Stripe + enforcement limiti di piano
 import { BillingModule } from './application/billing/billing.module'
+// Onboarding self-service (WS-G): registrazione autonoma azienda + utente ADMIN
+import { SignupModule } from './application/signup/signup.module'
 
 @Module({
   imports: [
@@ -144,6 +146,9 @@ import { BillingModule } from './application/billing/billing.module'
 
     // Billing SaaS (WS-F): Stripe checkout/webhook/portal + enforcement limiti piano
     BillingModule,
+
+    // Onboarding self-service (WS-G): POST /auth/signup pubblico
+    SignupModule,
   ],
   controllers: [HealthController],
   providers: [
