@@ -17,6 +17,22 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/auth-callback.component').then(m => m.AuthCallbackComponent)
   },
   {
+    // Pagine legali pubbliche (ToS, Privacy, DPA) — senza authGuard
+    path: 'legal/termini',
+    loadComponent: () => import('./features/legal/legal-page.component').then(m => m.LegalPageComponent),
+    data: { page: 'termini' },
+  },
+  {
+    path: 'legal/privacy',
+    loadComponent: () => import('./features/legal/legal-page.component').then(m => m.LegalPageComponent),
+    data: { page: 'privacy' },
+  },
+  {
+    path: 'legal/dpa',
+    loadComponent: () => import('./features/legal/legal-page.component').then(m => m.LegalPageComponent),
+    data: { page: 'dpa' },
+  },
+  {
     path: '',
     loadComponent: () => import('./shared/components/layout.component').then(m => m.LayoutComponent),
     canActivate: [authGuard],

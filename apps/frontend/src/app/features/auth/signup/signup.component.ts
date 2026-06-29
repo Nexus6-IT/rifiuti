@@ -309,7 +309,7 @@ import { SignupService, SignupPayload } from './signup.service';
                 />
                 <label for="tosAccepted" class="consent-item__label">
                   Ho letto e accetto i
-                  <a href="/docs/legal/tos.pdf" target="_blank" rel="noopener" class="consent-item__link">
+                  <a routerLink="/legal/termini" target="_blank" rel="noopener" class="consent-item__link">
                     Termini di Servizio
                   </a>
                   <span class="field__req" aria-hidden="true"> *</span>
@@ -329,11 +329,11 @@ import { SignupService, SignupPayload } from './signup.service';
                 />
                 <label for="privacyAccepted" class="consent-item__label">
                   Ho letto e accetto la
-                  <a href="/docs/legal/privacy.pdf" target="_blank" rel="noopener" class="consent-item__link">
+                  <a routerLink="/legal/privacy" target="_blank" rel="noopener" class="consent-item__link">
                     Privacy Policy
                   </a>
                   e il
-                  <a href="/docs/legal/dpa.pdf" target="_blank" rel="noopener" class="consent-item__link">
+                  <a routerLink="/legal/dpa" target="_blank" rel="noopener" class="consent-item__link">
                     DPA
                   </a>
                   <span class="field__req" aria-hidden="true"> *</span>
@@ -364,9 +364,9 @@ import { SignupService, SignupPayload } from './signup.service';
         <footer class="auth__footer">
           <span>&copy; {{ currentYear }} WasteFlow</span>
           <span class="auth__footer-sep" aria-hidden="true">·</span>
-          <a href="/docs/legal/privacy.pdf" class="auth__footer-link" target="_blank" rel="noopener">Privacy</a>
+          <a routerLink="/legal/privacy" target="_blank" rel="noopener" class="auth__footer-link">Privacy</a>
           <span class="auth__footer-sep" aria-hidden="true">·</span>
-          <a href="/docs/legal/tos.pdf" class="auth__footer-link" target="_blank" rel="noopener">Termini di servizio</a>
+          <a routerLink="/legal/termini" target="_blank" rel="noopener" class="auth__footer-link">Termini di servizio</a>
         </footer>
       </main>
     </div>
