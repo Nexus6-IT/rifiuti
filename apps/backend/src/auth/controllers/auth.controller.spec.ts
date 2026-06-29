@@ -11,8 +11,16 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { ConfigService } from '@nestjs/config'
 import { UnauthorizedException } from '@nestjs/common'
 import { createPrismaMock, MockPrisma } from '../../../test/utils/prisma-mock'
-import { createConfigServiceMock, MockConfigService } from '../../../test/utils/config-service-mock.factory'
-import { createMockUser, createMockSpidUser, createMockTokens, VALID_FISCAL_CODES } from '../../../test/utils/test-fixtures.factory'
+import {
+  createConfigServiceMock,
+  MockConfigService,
+} from '../../../test/utils/config-service-mock.factory'
+import {
+  createMockUser,
+  createMockSpidUser,
+  createMockTokens,
+  VALID_FISCAL_CODES,
+} from '../../../test/utils/test-fixtures.factory'
 
 describe('AuthController', () => {
   let controller: AuthController
@@ -63,7 +71,11 @@ describe('AuthController', () => {
   })
 
   describe('spidCallback', () => {
-    it('should handle SPID callback and return tokens', async () => {
+    // Il controller spidCallback ora reindirizza il browser alla SPA Angular
+    // passando i token nel fragment (#) per non esporli in log/referer server.
+    // I test verificano che res.redirect venga chiamato con l'URL corretto.
+
+    it('dovrebbe reindirizzare alla SPA con i token nel fragment', async () => {
       const mockSpidUser = createMockSpidUser({
         id: 'user-123',
         email: 'test@example.com',
@@ -88,21 +100,17 @@ describe('AuthController', () => {
       jwtTokensService.generateTokenPair.mockReturnValue(mockTokens)
       redisService.storeRefreshToken.mockResolvedValue(undefined)
 
-      const result = await controller.spidCallback({ user: mockSpidUser })
+      const mockRes = { redirect: jest.fn() }
 
-      expect(result).toEqual({
-        accessToken: mockTokens.accessToken,
-        refreshToken: mockTokens.refreshToken,
-        expiresIn: mockTokens.expiresIn,
-        user: {
-          id: 'user-123',
-          email: 'test@example.com',
-          fiscalCode: VALID_FISCAL_CODES.MARIO_ROSSI,
-          firstName: 'Mario',
-          lastName: 'Rossi',
-        },
-        isNewUser: false,
-      })
+      await controller.spidCallback({ user: mockSpidUser }, mockRes as any)
+
+      // Verifica che il redirect punti all'URL frontend con il fragment corretto
+      expect(mockRes.redirect).toHaveBeenCalledTimes(1)
+      const redirectUrl: string = mockRes.redirect.mock.calls[0][1]
+      expect(redirectUrl).toContain('/auth/callback#')
+      expect(redirectUrl).toContain('accessToken=')
+      expect(redirectUrl).toContain('refreshToken=')
+      expect(redirectUrl).toContain('expiresIn=')
 
       expect(jwtTokensService.generateTokenPair).toHaveBeenCalledWith({
         id: mockSpidUser.id,
@@ -115,11 +123,11 @@ describe('AuthController', () => {
       expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
         mockSpidUser.id,
         mockTokens.refreshToken,
-        7 * 24 * 60 * 60 // 7 days in seconds
+        7 * 24 * 60 * 60 // 7 giorni in secondi
       )
     })
 
-    it('should handle new user registration via SPID', async () => {
+    it('dovrebbe reindirizzare anche per un nuovo utente (isNewUser=true)', async () => {
       const mockNewUser = createMockSpidUser({
         id: 'user-new',
         email: 'newuser@example.com',
@@ -143,13 +151,16 @@ describe('AuthController', () => {
       jwtTokensService.generateTokenPair.mockReturnValue(mockTokens)
       redisService.storeRefreshToken.mockResolvedValue(undefined)
 
-      const result = await controller.spidCallback({ user: mockNewUser })
+      const mockRes = { redirect: jest.fn() }
 
-      expect(result.isNewUser).toBe(true)
-      expect(result.user.id).toBe('user-new')
+      await controller.spidCallback({ user: mockNewUser }, mockRes as any)
+
+      expect(mockRes.redirect).toHaveBeenCalledTimes(1)
+      const redirectUrl: string = mockRes.redirect.mock.calls[0][1]
+      expect(redirectUrl).toContain('/auth/callback#')
     })
 
-    it('should store refresh token in Redis', async () => {
+    it('dovrebbe memorizzare il refresh token in Redis', async () => {
       const mockSpidUser = createMockSpidUser()
 
       const mockDbUser = createMockUser({
@@ -163,12 +174,13 @@ describe('AuthController', () => {
       jwtTokensService.generateTokenPair.mockReturnValue(mockTokens)
       redisService.storeRefreshToken.mockResolvedValue(undefined)
 
-      await controller.spidCallback({ user: mockSpidUser })
+      const mockRes = { redirect: jest.fn() }
+      await controller.spidCallback({ user: mockSpidUser }, mockRes as any)
 
       expect(redisService.storeRefreshToken).toHaveBeenCalledWith(
         'user-123',
         mockTokens.refreshToken,
-        604800 // 7 days in seconds
+        604800 // 7 giorni in secondi
       )
     })
   })
