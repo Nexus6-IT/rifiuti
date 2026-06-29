@@ -80,7 +80,7 @@ export class RegistryController {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
       partitaIVA: result.value.partitaIVA.getValue(),
-      sedeLegale: result.value.sedeLegale.getFormatted(),
+      sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
     }
   }
 
@@ -97,7 +97,7 @@ export class RegistryController {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
       partitaIVA: result.value.partitaIVA.getValue(),
-      sedeLegale: result.value.sedeLegale.getFormatted(),
+      sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       numeroIscrizione: result.value.numeroIscrizione,
     }
   }
@@ -115,7 +115,7 @@ export class RegistryController {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
       partitaIVA: result.value.partitaIVA.getValue(),
-      sede: result.value.sede.getFormatted(),
+      sede: this.indirizzoToObject(result.value.sede),
       numeroAutorizzazione: result.value.numeroAutorizzazione,
     }
   }
@@ -139,7 +139,7 @@ export class RegistryController {
       id: p.id,
       ragioneSociale: p.ragioneSociale,
       partitaIVA: p.partitaIVA.getValue(),
-      sedeLegale: p.sedeLegale.getFormatted(),
+      sedeLegale: this.indirizzoToObject(p.sedeLegale),
       email: p.email,
       telefono: p.telefono,
       pec: p.pec,
@@ -159,7 +159,7 @@ export class RegistryController {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
       partitaIVA: result.value.partitaIVA.getValue(),
-      sedeLegale: result.value.sedeLegale.getFormatted(),
+      sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       email: result.value.email,
       telefono: result.value.telefono,
       pec: result.value.pec,
@@ -178,7 +178,7 @@ export class RegistryController {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
       partitaIVA: result.value.partitaIVA.getValue(),
-      sedeLegale: result.value.sedeLegale.getFormatted(),
+      sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       email: result.value.email,
       telefono: result.value.telefono,
       pec: result.value.pec,
@@ -210,7 +210,7 @@ export class RegistryController {
       id: t.id,
       ragioneSociale: t.ragioneSociale,
       partitaIVA: t.partitaIVA.getValue(),
-      sedeLegale: t.sedeLegale.getFormatted(),
+      sedeLegale: this.indirizzoToObject(t.sedeLegale),
       numeroIscrizione: t.numeroIscrizione,
       email: t.email,
       telefono: t.telefono,
@@ -231,7 +231,7 @@ export class RegistryController {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
       partitaIVA: result.value.partitaIVA.getValue(),
-      sedeLegale: result.value.sedeLegale.getFormatted(),
+      sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       numeroIscrizione: result.value.numeroIscrizione,
       email: result.value.email,
       telefono: result.value.telefono,
@@ -251,7 +251,7 @@ export class RegistryController {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
       partitaIVA: result.value.partitaIVA.getValue(),
-      sedeLegale: result.value.sedeLegale.getFormatted(),
+      sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       numeroIscrizione: result.value.numeroIscrizione,
       email: result.value.email,
       telefono: result.value.telefono,
@@ -284,7 +284,7 @@ export class RegistryController {
       id: d.id,
       ragioneSociale: d.ragioneSociale,
       partitaIVA: d.partitaIVA.getValue(),
-      sede: d.sede.getFormatted(),
+      sede: this.indirizzoToObject(d.sede),
       numeroAutorizzazione: d.numeroAutorizzazione,
       email: d.email,
       telefono: d.telefono,
@@ -305,7 +305,7 @@ export class RegistryController {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
       partitaIVA: result.value.partitaIVA.getValue(),
-      sede: result.value.sede.getFormatted(),
+      sede: this.indirizzoToObject(result.value.sede),
       numeroAutorizzazione: result.value.numeroAutorizzazione,
       email: result.value.email,
       telefono: result.value.telefono,
@@ -325,7 +325,7 @@ export class RegistryController {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
       partitaIVA: result.value.partitaIVA.getValue(),
-      sede: result.value.sede.getFormatted(),
+      sede: this.indirizzoToObject(result.value.sede),
       numeroAutorizzazione: result.value.numeroAutorizzazione,
       email: result.value.email,
       telefono: result.value.telefono,
@@ -344,6 +344,24 @@ export class RegistryController {
   }
 
   // ============= RESPONSE HELPERS =============
+
+  /**
+   * Converte il value object Indirizzo in un oggetto piano compatibile con il
+   * modello frontend (Indirizzo: via/civico/cap/comune/provincia). Il dominio
+   * usa `citta`, il frontend usa `comune`: si mappa qui per evitare confusione.
+   * Fix bug "Sede legale: undefined undefined" (l'endpoint restituiva la stringa
+   * formattata invece di un oggetto strutturato).
+   */
+  private indirizzoToObject(indirizzo: any) {
+    if (!indirizzo) return null
+    return {
+      via: indirizzo.getVia?.() ?? indirizzo.via ?? '',
+      civico: indirizzo.getCivico?.() ?? indirizzo.civico ?? '',
+      cap: indirizzo.getCAP?.() ?? indirizzo.cap ?? '',
+      comune: indirizzo.getCitta?.() ?? indirizzo.citta ?? indirizzo.comune ?? '',
+      provincia: indirizzo.getProvincia?.() ?? indirizzo.provincia ?? '',
+    }
+  }
 
   /**
    * Avvolge la lista nell'envelope paginato atteso dal frontend

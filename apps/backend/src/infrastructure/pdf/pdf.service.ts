@@ -146,38 +146,86 @@ export class PDFService {
     content.push({ text: 'DESTINATARIO', style: 'sectionHeader' });
     content.push(this.buildCompanyInfo(fir.receiver));
 
-    // Waste Section
-    content.push({ text: 'DETTAGLI RIFIUTO', style: 'sectionHeader' });
+    // Campo 2 — Dettagli rifiuto (DM 59/2023)
+    content.push({ text: 'CAMPO 2 — DETTAGLI RIFIUTO', style: 'sectionHeader' });
     content.push({
       columns: [
         {
           width: '50%',
           stack: [
             { text: 'Codice CER', style: 'label' },
-            { text: fir.cerCode, style: 'value', bold: true },
+            { text: fir.rifiuto?.cerCode || fir.cerCode || 'N/D', style: 'value', bold: true },
             { text: 'Quantità', style: 'label' },
-            { text: `${fir.quantity} ${fir.unitOfMeasure}`, style: 'value' },
+            {
+              text: fir.rifiuto
+                ? `${fir.rifiuto.quantita} ${fir.rifiuto.unitaMisura}`
+                : `${fir.quantity} ${fir.unitOfMeasure}`,
+              style: 'value',
+            },
+            { text: 'Stato fisico', style: 'label' },
+            { text: fir.rifiuto?.statoFisico || fir.wastePhysicalState || 'N/D', style: 'value' },
+            { text: 'Numero colli', style: 'label' },
+            { text: (fir.rifiuto?.numeroColli ?? fir.wastePackageCount ?? 'N/D').toString(), style: 'value' },
           ],
         },
         {
           width: '50%',
           stack: [
-            { text: 'Tipo Operazione', style: 'label' },
+            { text: 'Caratteristiche pericolo HP', style: 'label' },
+            { text: fir.rifiuto?.caratteristichePericolo || fir.wasteHazardClasses || 'Non pericoloso', style: 'value' },
+            { text: 'Campo 3 — Operazione', style: 'label' },
             {
-              text:
-                fir.wasteOperationType === 'RECOVERY'
-                  ? 'Recupero (R)'
-                  : fir.wasteOperationType === 'DISPOSAL'
-                    ? 'Smaltimento (D)'
-                    : 'N/A',
+              text: this.buildOperazioneLabel(
+                fir.rifiuto?.codiceOperazione || fir.wasteOperationCode,
+                fir.rifiuto?.tipoOperazione || fir.wasteOperationType
+              ),
               style: 'value',
             },
-            { text: 'Descrizione', style: 'label' },
-            { text: fir.wasteDescription || 'N/A', style: 'value' },
+            { text: 'Descrizione rifiuto', style: 'label' },
+            { text: fir.rifiuto?.descrizione || fir.wasteDescription || 'N/A', style: 'value' },
           ],
         },
       ],
     });
+
+    // Campo 17 — Annotazioni (DM 59/2023)
+    const annotazioni = fir.annotazioni || fir.wasteNotes;
+    if (annotazioni) {
+      content.push({ text: 'CAMPO 17 — ANNOTAZIONI', style: 'sectionHeader' });
+      content.push({ text: annotazioni, style: 'value', margin: [0, 0, 0, 8] });
+    }
+
+    // 4ª copia — Esito destinatario
+    if (fir.fourthCopyReturnedAt || fir.pesoEffettivo) {
+      content.push({ text: '4ª COPIA — ESITO DESTINATARIO', style: 'sectionHeader' });
+      content.push({
+        columns: [
+          {
+            width: '50%',
+            stack: [
+              { text: 'Peso effettivo ricevuto', style: 'label' },
+              { text: fir.pesoEffettivo ? `${fir.pesoEffettivo} kg` : 'N/D', style: 'value' },
+            ],
+          },
+          {
+            width: '50%',
+            stack: [
+              { text: 'Data restituzione 4ª copia', style: 'label' },
+              {
+                text: fir.fourthCopyReturnedAt
+                  ? new Date(fir.fourthCopyReturnedAt).toLocaleDateString('it-IT')
+                  : 'N/D',
+                style: 'value',
+              },
+            ],
+          },
+        ],
+      });
+      if (fir.fourthCopyNotes) {
+        content.push({ text: 'Note destinatario', style: 'label' });
+        content.push({ text: fir.fourthCopyNotes, style: 'value' });
+      }
+    }
 
     // Signatures Section
     content.push({ text: 'FIRME DIGITALI', style: 'sectionHeader' });
@@ -365,6 +413,20 @@ export class PDFService {
     });
 
     return content;
+  }
+
+  /**
+   * Costruisce la label leggibile per il tipo/codice di operazione R/D.
+   * Campo 3 FIR (DM 59/2023, Allegati B e C D.Lgs 152/2006).
+   */
+  private buildOperazioneLabel(codice?: string, tipo?: string): string {
+    if (codice) {
+      const prefix = codice.startsWith('R') ? 'Recupero' : codice.startsWith('D') ? 'Smaltimento' : '';
+      return prefix ? `${prefix} (${codice})` : codice;
+    }
+    if (tipo === 'RECOVERY') return 'Recupero (R)';
+    if (tipo === 'DISPOSAL') return 'Smaltimento (D)';
+    return 'N/D';
   }
 
   /**

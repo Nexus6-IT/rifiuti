@@ -209,6 +209,25 @@ model FIR {
   // non cattura il valore in fase di creazione FIR.
   wasteOperationType WasteOperationType @default(DISPOSAL) @map("waste_operation_type")
 
+  // ---- Campi obbligatori FIR (DM 59/2023, art. 193 D.Lgs 152/2006) ----
+  // Campo 2: stato fisico del rifiuto (Solido/Liquido/Fangoso/Gassoso/Polvere/Misto)
+  wastePhysicalState String? @map("waste_physical_state") @db.VarChar(50)
+  // Campo 2: caratteristiche di pericolo HP (Reg. UE 1357/2014, All. III D.Lgs 152/2006)
+  // Multi-valore, memorizzato come lista separata da virgole es. "HP4,HP14"
+  wasteHazardClasses String? @map("waste_hazard_classes") @db.Text
+  // Campo 2: numero colli dichiarato dal produttore
+  wastePackageCount Int? @map("waste_package_count")
+  // Campo 3: codice operazione R/D specifico (es. "R1", "D13") - All. B e C D.Lgs 152/2006
+  wasteOperationCode String? @map("waste_operation_code") @db.VarChar(10)
+  // Campo 17: annotazioni libere (obbligatorie per alcune tipologie di rifiuto)
+  wasteNotes String? @map("waste_notes") @db.Text
+  // Peso effettivo rilevato dal destinatario alla consegna (4ª copia FIR)
+  effectiveWeight Decimal? @map("effective_weight") @db.Decimal(10, 2)
+  // 4ª copia: data restituzione da destinatario a produttore
+  fourthCopyReturnedAt DateTime? @map("fourth_copy_returned_at")
+  // 4ª copia: note/esito del destinatario alla ricezione
+  fourthCopyNotes String? @map("fourth_copy_notes") @db.Text
+
   transportDate        DateTime  @map("transport_date")
   estimatedArrivalDate DateTime? @map("estimated_arrival_date")
   actualArrivalDate    DateTime? @map("actual_arrival_date")

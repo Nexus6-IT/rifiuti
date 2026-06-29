@@ -245,11 +245,13 @@ export class FIRPrismaRepository implements IFIRRepository {
         cerCode: record.cerCode,
         quantita: Number(record.quantity),
         unitaMisura: record.unit as UnitaMisura,
-        statoFisico: undefined, // Not persisted yet
-        caratteristichePericolo: undefined, // Not persisted yet
+        statoFisico: record.wastePhysicalState || undefined,
+        caratteristichePericolo: record.wasteHazardClasses || undefined,
+        numeroColli: record.wastePackageCount || undefined,
         descrizione: record.wasteDescription || undefined,
         categoria: record.wasteCategory || undefined,
         tipoOperazione: record.wasteOperationType || undefined,
+        codiceOperazione: record.wasteOperationCode || undefined,
       },
       trasportatoreId: record.carrierId || record.carrierUserId || '',
       destinatarioId: record.receiverId || record.receiverUserId || '',
@@ -296,9 +298,12 @@ export class FIRPrismaRepository implements IFIRRepository {
       _numeroProgressivo: record.firNumber,
       _dataPresaCarico: record.transportDate,
       _dataConsegna: record.actualArrivalDate,
-      _pesoEffettivo: undefined, // Not in schema
+      _pesoEffettivo: record.effectiveWeight ? Number(record.effectiveWeight) : null,
       _firme: {}, // Would come from signatures relation
       _createdAt: record.createdAt,
+      _annotazioni: record.wasteNotes || null,
+      _fourthCopyReturnedAt: record.fourthCopyReturnedAt || null,
+      _fourthCopyNotes: record.fourthCopyNotes || null,
     })
 
     return fir
@@ -362,6 +367,16 @@ export class FIRPrismaRepository implements IFIRRepository {
       wasteDescription: fir.rifiuto.descrizione || '',
       wasteCategory: fir.rifiuto.categoria || '',
       wasteOperationType: fir.rifiuto.tipoOperazione || undefined,
+      // Campi obbligatori DM 59/2023 — ora persistiti
+      wastePhysicalState: fir.rifiuto.statoFisico || undefined,
+      wasteHazardClasses: fir.rifiuto.caratteristichePericolo || undefined,
+      wastePackageCount: fir.rifiuto.numeroColli || undefined,
+      wasteOperationCode: fir.rifiuto.codiceOperazione || undefined,
+      wasteNotes: fir.annotazioni || undefined,
+      // Peso effettivo destinatario (4ª copia)
+      effectiveWeight: fir.pesoEffettivo ?? undefined,
+      fourthCopyReturnedAt: fir.fourthCopyReturnedAt || undefined,
+      fourthCopyNotes: fir.fourthCopyNotes || undefined,
       quantity: fir.rifiuto.quantita.valore,
       unit: fir.rifiuto.quantita.unitaMisura,
       transportDate: fir.dataPresaCarico || new Date(),

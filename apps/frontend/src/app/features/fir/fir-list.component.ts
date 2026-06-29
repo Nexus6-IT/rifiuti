@@ -16,6 +16,7 @@ import { CardModule } from 'primeng/card';
 import { MenuItem } from 'primeng/api';
 import { TooltipModule } from 'primeng/tooltip';
 import { FirService, CreateFIRDto, TipoTratta } from './fir.service';
+import { InputTextareaModule } from 'primeng/inputtextarea';
 import { FIR, FIRStato } from '../../shared/models/fir.model';
 import { ExportService } from '../../core/services/export.service';
 import { RegistryService } from '../registry/registry.service';
@@ -37,7 +38,8 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
     ConfirmDialogModule,
     SplitButtonModule,
     CardModule,
-    TooltipModule
+    TooltipModule,
+    InputTextareaModule
   ],
   providers: [ConfirmationService],
   template: `
@@ -244,6 +246,72 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
               />
             </div>
           </div>
+
+          <!-- Campo 2: stato fisico + numero colli -->
+          <div class="dialog-form__row">
+            <div class="dialog-form__field">
+              <label for="new-stato-fisico">
+                Stato fisico
+                <abbr title="Campo 2 FIR — DM 59/2023" class="field-norm">¹</abbr>
+              </label>
+              <p-dropdown
+                inputId="new-stato-fisico"
+                [options]="statoFisicoOptions"
+                [(ngModel)]="newFIR.rifiuto.statoFisico"
+                placeholder="Seleziona…"
+                [showClear]="true"
+                styleClass="w-full"
+                ariaLabel="Stato fisico del rifiuto (Campo 2 FIR)"
+              />
+            </div>
+            <div class="dialog-form__field dialog-form__field--sm">
+              <label for="new-colli">N° colli</label>
+              <p-inputNumber
+                inputId="new-colli"
+                [(ngModel)]="newFIR.rifiuto.numeroColli"
+                [min]="1"
+                [useGrouping]="false"
+                styleClass="w-full"
+                ariaLabel="Numero colli"
+              />
+            </div>
+          </div>
+
+          <!-- Campo 2: caratteristiche HP -->
+          <div class="dialog-form__field">
+            <label for="new-hp">
+              Caratteristiche pericolo HP
+              <abbr title="Reg. UE 1357/2014, Campo 2 FIR" class="field-norm">¹</abbr>
+            </label>
+            <p-dropdown
+              inputId="new-hp"
+              [options]="hpOptions"
+              [(ngModel)]="newFIR.rifiuto.caratteristichePericolo"
+              placeholder="Seleziona (se rifiuto pericoloso)…"
+              [showClear]="true"
+              styleClass="w-full"
+              ariaLabel="Caratteristiche di pericolo HP"
+            />
+          </div>
+
+          <!-- Campo 3: codice operazione R/D -->
+          <div class="dialog-form__field">
+            <label for="new-op-code">
+              Operazione destinatario R/D
+              <abbr title="Campo 3 FIR — Allegati B e C D.Lgs 152/2006" class="field-norm">¹</abbr>
+            </label>
+            <p-dropdown
+              inputId="new-op-code"
+              [options]="operazioneRDOptions"
+              [(ngModel)]="newFIR.rifiuto.codiceOperazione"
+              placeholder="Seleziona operazione…"
+              [showClear]="true"
+              [filter]="true"
+              styleClass="w-full"
+              ariaLabel="Codice operazione di recupero o smaltimento"
+            />
+          </div>
+
           <div class="dialog-form__field">
             <label for="new-produttore">Produttore</label>
             <p-dropdown
@@ -312,6 +380,23 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
                 </div>
               </ng-template>
             </p-dropdown>
+          </div>
+
+          <!-- Campo 17: annotazioni libere -->
+          <div class="dialog-form__field">
+            <label for="new-annotazioni">
+              Annotazioni
+              <abbr title="Campo 17 FIR — DM 59/2023" class="field-norm">¹</abbr>
+            </label>
+            <textarea
+              id="new-annotazioni"
+              pTextarea
+              [(ngModel)]="newFIR.annotazioni"
+              rows="3"
+              placeholder="Note libere, es. provenienza rifiuto, condizioni trasporto…"
+              class="w-full"
+              aria-label="Campo 17 FIR: annotazioni libere"
+            ></textarea>
           </div>
 
           <!-- Trasportatori aggiuntivi (trasporto intermodale) -->
@@ -482,6 +567,14 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
     .dialog-form__field label { font-size: var(--font-size-sm); }
     .dialog-form__row { display: flex; flex-wrap: wrap; gap: var(--spacing-base); }
     .dialog-form__row .dialog-form__field { flex: 1 1 160px; }
+    .dialog-form__field--sm { flex: 0 0 100px !important; min-width: 80px; }
+    .field-norm {
+      font-size: var(--font-size-xs);
+      color: var(--text-tertiary);
+      cursor: help;
+      margin-left: 2px;
+      text-decoration: none;
+    }
 
     /* Dropdown option (ragione sociale + P.IVA) */
     .opt { display: flex; flex-direction: column; gap: 0; line-height: 1.3; }
@@ -572,6 +665,77 @@ export class FirListComponent implements OnInit {
     { label: 'Marittima', value: 'MARITTIMA' as TipoTratta }
   ];
 
+  /**
+   * Stato fisico del rifiuto — Campo 2 FIR (DM 59/2023, art. 193 D.Lgs 152/2006).
+   */
+  statoFisicoOptions = [
+    { label: 'Solido', value: 'Solido' },
+    { label: 'Liquido', value: 'Liquido' },
+    { label: 'Fangoso', value: 'Fangoso' },
+    { label: 'Gassoso', value: 'Gassoso' },
+    { label: 'Polvere', value: 'Polvere' },
+    { label: 'Misto', value: 'Misto' },
+  ];
+
+  /**
+   * Caratteristiche di pericolo HP — Reg. UE 1357/2014, All. III D.Lgs 152/2006.
+   * Multi-valore; qui si seleziona un singolo codice o una lista pre-composta.
+   */
+  hpOptions = [
+    { label: 'HP1 — Esplosivo', value: 'HP1' },
+    { label: 'HP2 — Comburente', value: 'HP2' },
+    { label: 'HP3 — Infiammabile', value: 'HP3' },
+    { label: 'HP4 — Irritante', value: 'HP4' },
+    { label: 'HP5 — Tossico (organi specifici)', value: 'HP5' },
+    { label: 'HP6 — Tossicità acuta', value: 'HP6' },
+    { label: 'HP7 — Cancerogeno', value: 'HP7' },
+    { label: 'HP8 — Corrosivo', value: 'HP8' },
+    { label: 'HP9 — Infettivo', value: 'HP9' },
+    { label: 'HP10 — Tossico per riproduzione', value: 'HP10' },
+    { label: 'HP11 — Mutageno', value: 'HP11' },
+    { label: 'HP12 — Rilascio gas tossici', value: 'HP12' },
+    { label: 'HP13 — Sensibilizzante', value: 'HP13' },
+    { label: 'HP14 — Ecotossico', value: 'HP14' },
+    { label: 'HP15 — Pericolosità latente', value: 'HP15' },
+  ];
+
+  /**
+   * Codici operazione R (recupero) e D (smaltimento) — Allegati C e B D.Lgs 152/2006.
+   * Campo 3 FIR (DM 59/2023).
+   */
+  operazioneRDOptions = [
+    { label: '— Recupero —', value: null, disabled: true },
+    { label: 'R1 — Utilizzazione come combustibile', value: 'R1' },
+    { label: 'R2 — Recupero/rigenerazione solventi', value: 'R2' },
+    { label: 'R3 — Riciclo/recupero sostanze organiche', value: 'R3' },
+    { label: 'R4 — Riciclo/recupero metalli', value: 'R4' },
+    { label: 'R5 — Riciclo/recupero altre sostanze inorganiche', value: 'R5' },
+    { label: 'R6 — Rigenerazione acidi/basi', value: 'R6' },
+    { label: 'R7 — Recupero componenti per la riduzione dell\'inquinamento', value: 'R7' },
+    { label: 'R8 — Recupero componenti catalizzatori', value: 'R8' },
+    { label: 'R9 — Rigenerazione oli usati', value: 'R9' },
+    { label: 'R10 — Spandimento sul suolo', value: 'R10' },
+    { label: 'R11 — Utilizzo rifiuti da R1–R10', value: 'R11' },
+    { label: 'R12 — Scambio per sottoposizione a R1–R11', value: 'R12' },
+    { label: 'R13 — Messa in riserva per R1–R12', value: 'R13' },
+    { label: '— Smaltimento —', value: null, disabled: true },
+    { label: 'D1 — Deposito sul suolo', value: 'D1' },
+    { label: 'D2 — Trattamento nel suolo', value: 'D2' },
+    { label: 'D3 — Iniezione in profondità', value: 'D3' },
+    { label: 'D4 — Lagunaggio', value: 'D4' },
+    { label: 'D5 — Messa in discarica', value: 'D5' },
+    { label: 'D6 — Scarico in corpi idrici', value: 'D6' },
+    { label: 'D7 — Immersione', value: 'D7' },
+    { label: 'D8 — Trattamento biologico', value: 'D8' },
+    { label: 'D9 — Trattamento fisico-chimico', value: 'D9' },
+    { label: 'D10 — Incenerimento a terra', value: 'D10' },
+    { label: 'D11 — Incenerimento in mare', value: 'D11' },
+    { label: 'D12 — Deposito permanente', value: 'D12' },
+    { label: 'D13 — Raggruppamento per D1–D12', value: 'D13' },
+    { label: 'D14 — Ricondizionamento per D1–D13', value: 'D14' },
+    { label: 'D15 — Deposito in attesa di D1–D14', value: 'D15' },
+  ];
+
   newFIR: CreateFIRDto = {
     produttoreId: '',
     trasportatoreId: '',
@@ -579,8 +743,13 @@ export class FirListComponent implements OnInit {
     rifiuto: {
       cerCode: '',
       quantita: 0,
-      unitaMisura: 'kg'
-    }
+      unitaMisura: 'kg',
+      statoFisico: undefined,
+      caratteristichePericolo: undefined,
+      numeroColli: undefined,
+      codiceOperazione: undefined,
+    },
+    annotazioni: undefined,
   };
 
   statoOptions = [
@@ -744,8 +913,13 @@ export class FirListComponent implements OnInit {
       rifiuto: {
         cerCode: '',
         quantita: 0,
-        unitaMisura: 'kg'
-      }
+        unitaMisura: 'kg',
+        statoFisico: undefined,
+        caratteristichePericolo: undefined,
+        numeroColli: undefined,
+        codiceOperazione: undefined,
+      },
+      annotazioni: undefined,
     };
     this.trasportatoriAggiuntivi = [];
     this.showTrasportatoriAggiuntivi = false;

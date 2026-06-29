@@ -51,18 +51,25 @@ export class FIRResponseDto {
   produttoreId: string
 
   @ApiProperty({
-    example: { cerCode: '13 02 05*', quantita: 120, unitaMisura: 'kg' },
-    description: 'Dettagli rifiuto',
+    example: { cerCode: '13 02 05*', quantita: 120, unitaMisura: 'kg', statoFisico: 'Liquido', numeroColli: 5 },
+    description: 'Dettagli rifiuto (Campo 2 FIR)',
   })
   rifiuto: {
     cerCode: string
     quantita: number
     unitaMisura: string
+    /** Campo 2 FIR: stato fisico (DM 59/2023). */
     statoFisico?: string
+    /** Campo 2 FIR: caratteristiche HP (Reg. UE 1357/2014). */
     caratteristichePericolo?: string
+    /** Campo 2 FIR: numero di colli. */
+    numeroColli?: number
     descrizione?: string
     categoria?: string
+    /** RECOVERY / DISPOSAL — categoria macro. */
     tipoOperazione?: string
+    /** Campo 3 FIR: codice operazione R/D specifico. */
+    codiceOperazione?: string
   }
 
   @ApiProperty({ example: 'tenant-uuid-transporter', description: 'ID trasportatore' })
@@ -92,8 +99,20 @@ export class FIRResponseDto {
   @ApiPropertyOptional({ description: 'Data consegna destinatario' })
   dataConsegna: Date | null
 
-  @ApiPropertyOptional({ example: 118, description: 'Peso effettivo alla destinazione' })
+  @ApiPropertyOptional({ example: 118, description: 'Peso effettivo rilevato alla destinazione (4ª copia)' })
   pesoEffettivo: number | null
+
+  /** Campo 17 FIR (DM 59/2023): annotazioni libere. */
+  @ApiPropertyOptional({ description: 'Campo 17 FIR: annotazioni libere' })
+  annotazioni: string | null
+
+  /** 4ª copia: data restituzione dal destinatario al produttore. */
+  @ApiPropertyOptional({ description: '4ª copia: data restituzione dal destinatario' })
+  fourthCopyReturnedAt: Date | null
+
+  /** 4ª copia: note/esito del destinatario. */
+  @ApiPropertyOptional({ description: '4ª copia: note/esito del destinatario' })
+  fourthCopyNotes: string | null
 
   @ApiProperty({ description: 'Data creazione' })
   createdAt: Date
@@ -110,9 +129,11 @@ export class FIRResponseDto {
         unitaMisura: fir.rifiuto.quantita.unitaMisura,
         statoFisico: fir.rifiuto.statoFisico,
         caratteristichePericolo: fir.rifiuto.caratteristichePericolo,
+        numeroColli: fir.rifiuto.numeroColli,
         descrizione: fir.rifiuto.descrizione,
         categoria: fir.rifiuto.categoria,
         tipoOperazione: fir.rifiuto.tipoOperazione,
+        codiceOperazione: fir.rifiuto.codiceOperazione,
       },
       trasportatoreId: fir.trasportatoreId,
       destinatarioId: fir.destinatarioId,
@@ -131,6 +152,9 @@ export class FIRResponseDto {
       dataPresaCarico: fir.dataPresaCarico,
       dataConsegna: fir.dataConsegna,
       pesoEffettivo: fir.pesoEffettivo,
+      annotazioni: fir.annotazioni,
+      fourthCopyReturnedAt: fir.fourthCopyReturnedAt,
+      fourthCopyNotes: fir.fourthCopyNotes,
       createdAt: fir.createdAt,
     }
   }

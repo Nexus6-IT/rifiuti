@@ -21,11 +21,18 @@ export type TipoOperazioneRifiuto = 'RECOVERY' | 'DISPOSAL'
 export interface FIRRifiuto {
   cerCode: string
   quantita: Quantita
+  /** Campo 2 FIR (DM 59/2023): stato fisico del rifiuto. */
   statoFisico?: string
+  /** Campo 2 FIR: caratteristiche di pericolo HP (Reg. UE 1357/2014), multi-valore. */
   caratteristichePericolo?: string
+  /** Campo 2 FIR: numero di colli dichiarato. */
+  numeroColli?: number
   descrizione?: string
   categoria?: string
+  /** RECOVERY / DISPOSAL — categoria macro (per aggregazioni MUD). */
   tipoOperazione?: TipoOperazioneRifiuto
+  /** Campo 3 FIR: codice operazione R/D specifico (es. "R1", "D13"). */
+  codiceOperazione?: string
 }
 
 /**
@@ -94,12 +101,16 @@ export interface CreateFIRProps {
     unitaMisura?: UnitaMisura
     statoFisico?: string
     caratteristichePericolo?: string
+    numeroColli?: number
     descrizione?: string
     categoria?: string
     tipoOperazione?: TipoOperazioneRifiuto
+    codiceOperazione?: string
   }
   trasportatoreId: string
   destinatarioId: string
+  /** Campo 17 FIR: annotazioni libere. */
+  annotazioni?: string
   /** Tenant proprietario del FIR (isolamento multi-tenant). */
   tenantId?: string
   /** Utente (operatore) che crea il FIR — FK obbligatoria a User in persistenza. */
@@ -156,7 +167,13 @@ export class FIR extends AggregateRoot {
     private readonly _trasportatore: ParteFIR | null = null,
     private readonly _destinatario: ParteFIR | null = null,
     private readonly _tenantId: string | null = null,
-    private readonly _trasportatoriAggiuntivi: TrattaTrasportoFIR[] = []
+    private readonly _trasportatoriAggiuntivi: TrattaTrasportoFIR[] = [],
+    /** Campo 17 FIR: annotazioni libere (obbligatorie per alcune tipologie). */
+    private readonly _annotazioni: string | null = null,
+    /** Data restituzione 4ª copia dal destinatario al produttore. */
+    private _fourthCopyReturnedAt: Date | null = null,
+    /** Note/esito del destinatario (4ª copia FIR). */
+    private _fourthCopyNotes: string | null = null
   ) {
     super()
   }
@@ -170,15 +187,17 @@ export class FIR extends AggregateRoot {
       ),
       statoFisico: props.rifiuto.statoFisico,
       caratteristichePericolo: props.rifiuto.caratteristichePericolo,
+      numeroColli: props.rifiuto.numeroColli,
       descrizione: props.rifiuto.descrizione,
       categoria: props.rifiuto.categoria,
       tipoOperazione: props.rifiuto.tipoOperazione,
+      codiceOperazione: props.rifiuto.codiceOperazione,
     }
 
     return new FIR(
       this.generateId(),
       FIRStato.BOZZA,
-      null, // numeroProgressivo assigned on emission
+      null, // numeroProgressivo assegnato all'emissione
       props.produttoreId,
       rifiuto,
       props.trasportatoreId,
@@ -193,7 +212,8 @@ export class FIR extends AggregateRoot {
       props.trasportatore ?? null,
       props.destinatario ?? null,
       props.tenantId ?? null,
-      props.trasportatoriAggiuntivi ?? []
+      props.trasportatoriAggiuntivi ?? [],
+      props.annotazioni ?? null
     )
   }
 
@@ -227,7 +247,7 @@ export class FIR extends AggregateRoot {
     this.addDomainEvent(new FIRPresaInCaricoEvent(this._id))
   }
 
-  confermaConsegna(pesoEffettivo: number, firmaDestinatario: FirmaDigitale): void {
+  confermaConsegna(pesoEffettivo: number, firmaDestinatario: FirmaDigitale, noteDestinatario?: string): void {
     if (this._stato !== FIRStato.IN_TRANSITO) {
       throw new InvalidStateTransitionError(this._stato, FIRStato.CONSEGNATO)
     }
@@ -243,6 +263,13 @@ export class FIR extends AggregateRoot {
     this._dataConsegna = new Date()
     this._pesoEffettivo = pesoEffettivo
     this._firme.destinatario = firmaDestinatario
+
+    // 4ª copia: la firma/risposta del destinatario equivale alla restituzione
+    // della 4ª copia al produttore (DM 59/2023). Si registra la data e le note.
+    this._fourthCopyReturnedAt = new Date()
+    if (noteDestinatario) {
+      this._fourthCopyNotes = noteDestinatario
+    }
 
     this.addDomainEvent(new FIRConsegnatoEvent(this._id, pesoEffettivo))
   }
@@ -336,6 +363,21 @@ export class FIR extends AggregateRoot {
    */
   get trasportatoriAggiuntivi(): TrattaTrasportoFIR[] {
     return this._trasportatoriAggiuntivi
+  }
+
+  /** Campo 17 FIR (DM 59/2023): annotazioni libere. */
+  get annotazioni(): string | null {
+    return this._annotazioni
+  }
+
+  /** Data restituzione 4ª copia dal destinatario al produttore. */
+  get fourthCopyReturnedAt(): Date | null {
+    return this._fourthCopyReturnedAt
+  }
+
+  /** Note/esito del destinatario (4ª copia FIR). */
+  get fourthCopyNotes(): string | null {
+    return this._fourthCopyNotes
   }
 
   private static generateId(): string {

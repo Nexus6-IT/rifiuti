@@ -121,7 +121,8 @@ export class FIRControllerV2 {
       dto.destinatarioId,
       user.id,
       user.tenantId,
-      dto.trasportatoriAggiuntivi ?? []
+      dto.trasportatoriAggiuntivi ?? [],
+      dto.annotazioni
     )
 
     const result = await this.createFIRUseCase.execute(command)

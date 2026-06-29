@@ -38,6 +38,8 @@ export class CreateFIRUseCase {
     if (!cerExists) {
       return Result.fail<FIR>(`CER code not found: ${command.rifiuto.cerCode}`)
     }
+    // Il cerCode normalizzato sovrascrive il valore originale (normalizzato a
+    // "NN NN NN" / "NN NN NN*"). Gli altri campi del rifiuto passano invariati.
     const rifiuto = { ...command.rifiuto, cerCode }
 
     // 2. Validate the three parties are provided
@@ -89,6 +91,7 @@ export class CreateFIRUseCase {
         trasportatore: this.snapshotTrasportatore(trasportatore),
         destinatario: this.snapshotDestinatario(destinatario),
         trasportatoriAggiuntivi,
+        annotazioni: command.annotazioni,
       })
 
       // 5. Persist FIR

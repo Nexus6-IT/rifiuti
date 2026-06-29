@@ -22,8 +22,17 @@ export interface CreateFIRDto {
     cerCode: string;
     quantita: number;
     unitaMisura: string;
+    /** Campo 2 FIR: stato fisico del rifiuto (DM 59/2023). */
     statoFisico?: string;
+    /** Campo 2 FIR: caratteristiche HP (Reg. UE 1357/2014), comma-separated. */
+    caratteristichePericolo?: string;
+    /** Campo 2 FIR: numero di colli. */
+    numeroColli?: number;
+    /** Campo 3 FIR: codice operazione R/D specifico (es. "R13", "D1"). */
+    codiceOperazione?: string;
   };
+  /** Campo 17 FIR (DM 59/2023): annotazioni libere. */
+  annotazioni?: string;
 }
 
 @Injectable({
