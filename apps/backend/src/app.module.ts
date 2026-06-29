@@ -42,6 +42,8 @@ import { MeModule } from './api/me/me.module'
 // Firma digitale FIR "pronta-ma-non-collegata" (WS-E)
 // Default: sandbox ECDSA effimera. ATTIVARE: SIGNATURE_PROVIDER=qes + TSA_PROVIDER=rfc3161
 import { SignaturesModule } from './application/signatures/signatures.module'
+// Registro cronologico carico/scarico (WS-C) — art. 190 D.Lgs 152/2006
+import { RegistroModule } from './api/registro/registro.module'
 
 @Module({
   imports: [
@@ -125,6 +127,9 @@ import { SignaturesModule } from './application/signatures/signatures.module'
 
     // Firma digitale FIR (WS-E) — cablato e raggiungibile; default sandbox
     SignaturesModule,
+
+    // Registro cronologico carico/scarico (WS-C) — art. 190 D.Lgs 152/2006
+    RegistroModule,
   ],
   controllers: [HealthController],
   providers: [

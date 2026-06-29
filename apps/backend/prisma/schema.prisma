@@ -76,6 +76,7 @@ model Tenant {
   produttori       Produttore[]
   trasportatori    Trasportatore[]
   destinatari      Destinatario[]
+  wasteMovements   WasteMovement[]
 
   @@map("tenants")
 }
@@ -135,6 +136,7 @@ model User {
   activityLogs            ActivityLog[]
   createdBackupSchedules  BackupSchedule[] @relation("CreatedByUser")
   executedBackupHistories BackupHistory[]  @relation("ExecutedByUser")
+  recordedMovements       WasteMovement[]  @relation("RecordedMovements")
 
   @@unique([tenantId, fiscalCode])
   @@index([tenantId])
@@ -1133,26 +1135,75 @@ enum ContractStatus {
 }
 
 /// Movimento del registro cronologico di carico/scarico rifiuti
-/// (D.Lgs 152/2006). I CARICO incrementano la giacenza in deposito temporaneo,
-/// gli SCARICO la decrementano (tipicamente collegati a un FIR). Base per il
-/// calcolo giacenze e per il monitoraggio dei limiti di deposito temporaneo.
+/// (art. 190 D.Lgs 152/2006, DM 59/2023). I CARICO incrementano la giacenza in
+/// deposito temporaneo, gli SCARICO la decrementano (tipicamente collegati a
+/// un FIR). Base per il calcolo giacenze, monitoraggio deposito temporaneo e
+/// export del registro. Vidimazione digitale tramite hash SHA-256 dei campi
+/// chiave (entryHash), obbligatoria dal 13/02/2025 per soggetti RENTRI.
 model WasteMovement {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId  String   @map("tenant_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  type         WasteMovementType
-  cerCode      String   @map("cer_code") @db.VarChar(6)
-  quantity     Decimal  @db.Decimal(10, 2)
-  unit         String   @default("KG") @db.VarChar(10)
-  movementDate DateTime @map("movement_date")
-  /// SCARICO: FIR collegato (uscita verso trasportatore/destinatario).
-  firId        String?  @map("fir_id") @db.Uuid
-  notes        String?  @db.Text
+  /// Numero progressivo dell'annotazione per tenant/anno (art. 190 D.Lgs 152/2006).
+  /// Assegnato automaticamente in sequenza — mai modificabile post-registrazione.
+  progressiveNumber Int @map("progressive_number")
+  /// Anno solare del progressivo (per il reset annuale).
+  progressiveYear   Int @map("progressive_year")
 
+  type WasteMovementType
+
+  /// Data effettiva dell'operazione di carico/scarico.
+  movementDate DateTime @map("movement_date")
+  /// Data di annotazione nel registro. Per legge: entro 10 gg lavorativi per
+  /// produttori (art. 190 c. 1 lett. a); entro 2 gg lavorativi per gestori
+  /// impianti di recupero/smaltimento (art. 190 c. 1 lett. d).
+  registrationDate DateTime @default(now()) @map("registration_date")
+
+  /// Causale specifica del movimento.
+  /// CARICO: PRODUZIONE_INTERNA | INGRESSO_ESTERNO | RICLASSIFICAZIONE | RECUPERO_PARZIALE | ALTRO_CARICO
+  /// SCARICO: CONFERIMENTO_TRASPORTATORE | AVVIO_RECUPERO | AVVIO_SMALTIMENTO | CESSIONE | RICLASSIFICAZIONE | ALTRO_SCARICO
+  causale String @db.VarChar(100)
+
+  /// Codice CER (formato canonico "NN NN NN" o "NN NN NN*" per pericolosi, max 10 char).
+  cerCode          String  @map("cer_code") @db.VarChar(10)
+  wasteDescription String? @map("waste_description") @db.VarChar(500)
+  quantity         Decimal @db.Decimal(10, 2)
+  unit             String  @default("KG") @db.VarChar(10)
+
+  /// Stato fisico del rifiuto (Solido/Liquido/Fangoso/Gassoso/Polvere/Misto).
+  wastePhysicalState String? @map("waste_physical_state") @db.VarChar(50)
+  /// Caratteristiche di pericolo HP (es. "HP4,HP14") — obbligatorio per rifiuti pericolosi.
+  wasteHazardClasses String? @map("waste_hazard_classes") @db.VarChar(100)
+  /// Codice operazione di destinazione R/D (es. "R1", "D13") — All. B/C D.Lgs 152/2006.
+  operationCode      String? @map("operation_code") @db.VarChar(10)
+
+  /// Denominazione della controparte (cedente/produttore per CARICO; destinatario per SCARICO).
+  counterpartName    String? @map("counterpart_name") @db.VarChar(255)
+  /// Indirizzo impianto/sede della controparte.
+  counterpartAddress String? @map("counterpart_address") @db.VarChar(500)
+
+  /// SCARICO: FIR collegato (uscita verso trasportatore/destinatario).
+  firId String? @map("fir_id") @db.Uuid
+
+  /// Utente (operatore) che ha registrato l'annotazione.
+  recordedByUserId String? @map("recorded_by_user_id") @db.Uuid
+
+  /// Hash SHA-256 dei campi chiave dell'annotazione (vidimazione digitale, DM 59/2023).
+  /// Formato: SHA-256 hex di "{tenantId}|{progressiveYear}|{progressiveNumber}|{type}|{cerCode}|{quantity}|{movementDate}|{causale}"
+  entryHash String @default("") @map("entry_hash") @db.VarChar(64)
+
+  notes String? @db.Text
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recordedByUser User?  @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
+
+  @@unique([tenantId, progressiveYear, progressiveNumber])
   @@index([tenantId, cerCode])
   @@index([tenantId, movementDate])
+  @@index([tenantId, type])
+  @@index([firId])
   @@map("waste_movements")
 }
 
