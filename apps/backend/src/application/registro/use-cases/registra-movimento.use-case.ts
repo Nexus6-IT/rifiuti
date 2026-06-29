@@ -93,14 +93,18 @@ export class RegistraMovimentoUseCase {
     let movimento: MovimentoRegistrato
     try {
       movimento = await this.prisma.$transaction(async (tx) => {
-        // Preleva il massimo progressivo corrente per il tenant/anno con lock esclusivo.
-        // NB: Prisma non espone FOR UPDATE direttamente → usiamo $queryRaw.
+        // Advisory lock per-tenant/anno: serializza le numerazioni dello stesso
+        // tenant in transazioni concorrenti senza usare FOR UPDATE su aggregati
+        // (PostgreSQL 0A000: "FOR UPDATE is not allowed with aggregate functions").
+        // pg_advisory_xact_lock è rilasciato automaticamente al commit/rollback.
+        const lockKey = `${command.tenantId}-${anno}`
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
         const [row] = await tx.$queryRaw<Array<{ max_num: number | null }>>`
           SELECT MAX(progressive_number) AS max_num
           FROM waste_movements
           WHERE tenant_id = ${command.tenantId}::uuid
             AND progressive_year = ${anno}
-          FOR UPDATE
         `
         const nextProgressivo = (row.max_num ?? 0) + 1
 

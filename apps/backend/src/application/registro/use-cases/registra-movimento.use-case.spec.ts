@@ -40,10 +40,12 @@ describe('RegistraMovimentoUseCase', () => {
     )
   }
 
-  /** Helper che simula la transazione Prisma con un singolo progressivo disponibile. */
+  /** Helper che simula la transazione Prisma con un singolo progressivo disponibile.
+   * Aggiunge `$executeRaw` per il mock dell'advisory lock (pg_advisory_xact_lock). */
   function mockTransazione(record: object) {
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
       const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0), // advisory lock no-op nel test
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
         wasteMovement: {
           create: jest.fn().mockResolvedValue(record),
@@ -74,6 +76,7 @@ describe('RegistraMovimentoUseCase', () => {
     let capturedData: any
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
       const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
         wasteMovement: {
           create: jest.fn().mockImplementation(async (args: any) => {
@@ -116,6 +119,7 @@ describe('RegistraMovimentoUseCase', () => {
     let capturedData: any
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
       const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: 42 }]),
         wasteMovement: {
           create: jest.fn().mockImplementation(async (args: any) => {
@@ -144,6 +148,7 @@ describe('RegistraMovimentoUseCase', () => {
     let capturedData: any
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
       const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
         wasteMovement: {
           create: jest.fn().mockImplementation(async (args: any) => {
@@ -192,6 +197,7 @@ describe('RegistraMovimentoUseCase', () => {
     ])
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
       const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: 5 }]),
         wasteMovement: {
           create: jest.fn().mockResolvedValue({
@@ -243,6 +249,7 @@ describe('RegistraMovimentoUseCase', () => {
 
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
       const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
         wasteMovement: {
           create: jest.fn().mockResolvedValue({
@@ -293,6 +300,7 @@ describe('RegistraMovimentoUseCase', () => {
     prisma.wasteMovement.groupBy.mockResolvedValue([])
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
       const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
         wasteMovement: {
           create: jest.fn().mockResolvedValue({
@@ -338,5 +346,50 @@ describe('RegistraMovimentoUseCase', () => {
     // Il dominio lancia un'eccezione che la use-case cattura come Result.fail
     expect(result.isFailure).toBe(true)
     expect(result.error).toContain('Causale non valida per CARICO')
+  })
+
+  // ─── Due movimenti consecutivi ───────────────────────────────────────────────
+
+  it('due movimenti consecutivi → progressivi 1, 2 (advisory lock, nessun errore SQL)', async () => {
+    // Simula due chiamate sequenziali: la seconda vede max_num = 1 (inserito dalla prima).
+    let chiamate = 0
+    prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
+      chiamate++
+      const maxNum = chiamate === 1 ? null : 1
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0), // advisory lock
+        $queryRaw: jest.fn().mockResolvedValue([{ max_num: maxNum }]),
+        wasteMovement: {
+          create: jest.fn().mockImplementation(async (args: any) => ({
+            ...args.data,
+            id: `id-consec-${chiamate}`,
+            createdAt: TODAY,
+            updatedAt: TODAY,
+            quantity: args.data.quantity,
+            wasteDescription: null,
+            wastePhysicalState: null,
+            wasteHazardClasses: null,
+            operationCode: null,
+            counterpartName: null,
+            counterpartAddress: null,
+            firId: null,
+            recordedByUserId: USER,
+            notes: null,
+          })),
+        },
+      }
+      return fn(tx)
+    })
+
+    const cmd = buildCommand()
+    const r1 = await useCase.execute(cmd)
+    const r2 = await useCase.execute(cmd)
+
+    expect(r1.isSuccess).toBe(true)
+    expect(r2.isSuccess).toBe(true)
+    expect(r1.value.progressiveNumber).toBe(1)
+    expect(r2.value.progressiveNumber).toBe(2)
+    // L'advisory lock deve essere stato chiamato per entrambe le transazioni
+    expect(chiamate).toBe(2)
   })
 })
