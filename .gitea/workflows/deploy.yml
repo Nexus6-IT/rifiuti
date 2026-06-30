@@ -54,14 +54,18 @@ jobs:
         working-directory: apps/backend
         run: npm run prisma:generate
 
-      # Lint backend — solo errori bloccano (--max-warnings=-1):
-      # i warning esistenti (no-explicit-any) sono attesi.
+      # Lint backend — solo errori bloccano (--max-warnings=-1): i warning
+      # esistenti (no-explicit-any) sono attesi. Eseguito DENTRO apps/backend
+      # così `parserOptions.project` (type-aware) risolve src+test senza
+      # "Parsing error" (che si verifica solo eseguendo eslint dalla root).
       - name: Lint backend
-        run: npx eslint "apps/backend/{src,test}/**/*.ts" --max-warnings=-1
+        working-directory: apps/backend
+        run: npx eslint "{src,test}/**/*.ts" --max-warnings=-1
 
-      # Lint frontend — idem.
+      # Lint frontend — idem, dalla dir del workspace.
       - name: Lint frontend
-        run: npx eslint "apps/frontend/src/**/*.ts" --max-warnings=-1
+        working-directory: apps/frontend
+        run: npx eslint "src/**/*.ts" --max-warnings=-1
 
       # Test unitari backend.
       - name: Test backend (Jest)
