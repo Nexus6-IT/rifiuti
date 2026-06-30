@@ -92,7 +92,9 @@ Eseguito lo swarm `docs/planning/PRODUCTION_READY_SWARM_PROMPT.md` (target: SaaS
 
 **Da "accendere" (azioni del committente):** certificato+iscrizione RENTRI; provider firma QES/SPID-CIE + TSA; chiavi Stripe live + SMTP (email verifica/notifiche); validazione legale dei documenti; compilazione segnaposto legali e dati anagrafici del fornitore.
 
-**Coda residua (non bloccante):** attivazione "CI gate" (richiede azzeramento ~124 errori ESLint); **bonifica PII dalla git history** (`backup_*.sql` con CF/P.IVA — operazione distruttiva, da fare supervisionata con conferma); polish billing (banner test-mode/guard upgrade senza Stripe); link footer `/login`; `GET /fir/:id/verify` → 404 invece di 500 su id inesistente; refresh token silenzioso (logout su scadenza); aggiornare passport-saml; export PDF registro; tenant pre-esistenti con override featureFlags vanno aggiornati dall'admin per le nuove feature.
+**Fatto in chiusura:** **CI gate ATTIVO** — `deploy.yml` ha un job `quality` (lint backend+frontend + nest build) da cui dipende il build/deploy: un deploy si blocca se lint o build falliscono. ESLint errori azzerati (0 errori; ~830 warning `no-explicit-any` tollerati). Aggiunti `timeout-minutes` a tutti i job (nessun deploy può restare appeso). NB: i **test unitari NON sono nel gate di deploy** (alcune spec aprono connessioni Redis/DB eager → si appendono in CI senza infra; la suite gira in `ci.yml`); riportarli nel gate richiede hardening jest (no connessioni eager + `--forceExit`).
+
+**Coda residua (non bloccante):** **bonifica PII dalla git history** (`backup_*.sql` con CF/P.IVA — distruttiva, RINVIATA su decisione del committente); riportare i test nel gate di deploy (hardening jest); polish billing (banner test-mode/guard upgrade senza Stripe); link footer `/login`; `GET /fir/:id/verify` → 404 invece di 500 su id inesistente; refresh token silenzioso (logout su scadenza); aggiornare passport-saml; export PDF registro; tenant pre-esistenti con override featureFlags da aggiornare dall'admin per le nuove feature.
 
 ## Target realistico oggi
 Singolo **consulente ambientale pilota seguito a mano** (white-glove, fattura offline). Micro-azienda
