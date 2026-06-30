@@ -6,51 +6,42 @@
  * @IncrementCounter - Auto-increment counter
  */
 
-import { Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common'
 
-const logger = new Logger('MetricsDecorator');
+const logger = new Logger('MetricsDecorator')
 
 /**
  * Track method duration and expose as Prometheus histogram
  * Usage: @TrackDuration('my_operation_duration_seconds')
  */
 export function TrackDuration(metricName: string) {
-  return function (
-    target: any,
-    propertyKey: string,
-    descriptor: PropertyDescriptor,
-  ) {
-    const originalMethod = descriptor.value;
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+    const originalMethod = descriptor.value
 
     descriptor.value = async function (...args: any[]) {
-      const startTime = performance.now();
+      const startTime = performance.now()
 
       try {
-        const result = await originalMethod.apply(this, args);
-        const durationMs = performance.now() - startTime;
-        const durationSeconds = durationMs / 1000;
+        const result = await originalMethod.apply(this, args)
+        const durationMs = performance.now() - startTime
+        const _durationSeconds = durationMs / 1000
 
         // Log duration
-        logger.debug(
-          `${metricName}: ${propertyKey} completed in ${durationMs.toFixed(2)}ms`,
-        );
+        logger.debug(`${metricName}: ${propertyKey} completed in ${durationMs.toFixed(2)}ms`)
 
         // TODO: Record to Prometheus histogram (requires access to metrics service)
         // This.metricsService?.recordDuration(metricName, durationSeconds);
 
-        return result;
+        return result
       } catch (error) {
-        const durationMs = performance.now() - startTime;
-        logger.error(
-          `${metricName}: ${propertyKey} failed after ${durationMs.toFixed(2)}ms`,
-          error,
-        );
-        throw error;
+        const durationMs = performance.now() - startTime
+        logger.error(`${metricName}: ${propertyKey} failed after ${durationMs.toFixed(2)}ms`, error)
+        throw error
       }
-    };
+    }
 
-    return descriptor;
-  };
+    return descriptor
+  }
 }
 
 /**
@@ -58,72 +49,64 @@ export function TrackDuration(metricName: string) {
  * Usage: @IncrementCounter('my_operation_total')
  */
 export function IncrementCounter(metricName: string) {
-  return function (
-    target: any,
-    propertyKey: string,
-    descriptor: PropertyDescriptor,
-  ) {
-    const originalMethod = descriptor.value;
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+    const originalMethod = descriptor.value
 
     descriptor.value = async function (...args: any[]) {
       try {
-        const result = await originalMethod.apply(this, args);
+        const result = await originalMethod.apply(this, args)
 
         // Log increment
-        logger.debug(`${metricName}: ${propertyKey} executed successfully`);
+        logger.debug(`${metricName}: ${propertyKey} executed successfully`)
 
         // TODO: Increment Prometheus counter
         // this.metricsService?.incrementCounter(metricName);
 
-        return result;
+        return result
       } catch (error) {
-        logger.error(`${metricName}: ${propertyKey} failed`, error);
-        throw error;
+        logger.error(`${metricName}: ${propertyKey} failed`, error)
+        throw error
       }
-    };
+    }
 
-    return descriptor;
-  };
+    return descriptor
+  }
 }
 
 /**
  * Track performance with labels
  * Usage: @TrackPerformance({ metric: 'operation_duration', labels: { type: 'database' } })
  */
-export function TrackPerformance(options: {
-  metric: string;
-  labels?: Record<string, string>;
-}) {
-  return function (
-    target: any,
-    propertyKey: string,
-    descriptor: PropertyDescriptor,
-  ) {
-    const originalMethod = descriptor.value;
+export function TrackPerformance(options: { metric: string; labels?: Record<string, string> }) {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+    const originalMethod = descriptor.value
 
     descriptor.value = async function (...args: any[]) {
-      const startTime = performance.now();
+      const startTime = performance.now()
 
       try {
-        const result = await originalMethod.apply(this, args);
-        const durationMs = performance.now() - startTime;
+        const result = await originalMethod.apply(this, args)
+        const durationMs = performance.now() - startTime
 
         const labelStr = options.labels
           ? Object.entries(options.labels)
               .map(([k, v]) => `${k}=${v}`)
               .join(', ')
-          : '';
+          : ''
 
         logger.debug(
-          `${options.metric}: ${propertyKey} [${labelStr}] completed in ${durationMs.toFixed(2)}ms`,
-        );
+          `${options.metric}: ${propertyKey} [${labelStr}] completed in ${durationMs.toFixed(2)}ms`
+        )
 
-        return result;
+        return result
       } catch (error) {
-        throw error;
+        logger.error(
+          `${options.metric}: ${propertyKey} failed after ${(performance.now() - startTime).toFixed(2)}ms`
+        )
+        throw error
       }
-    };
+    }
 
-    return descriptor;
-  };
+    return descriptor
+  }
 }

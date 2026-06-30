@@ -1,4 +1,4 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, signal } from '@angular/core'
 
 /**
  * Admin Tenant Context Service (usato da TUTTI gli utenti multi-società)
@@ -16,41 +16,41 @@ import { Injectable, computed, signal } from '@angular/core';
  * ADMIN/OPERATOR/VIEWER con accesso a più società (consulente o owner multi-azienda).
  */
 
-const STORAGE_KEY = 'wf_admin_tenant';
+const STORAGE_KEY = 'wf_admin_tenant'
 
 interface StoredTenant {
-  id: string;
-  name: string;
+  id: string
+  name: string
 }
 
 @Injectable({
   providedIn: 'root',
 })
 export class AdminTenantContextService {
-  private readonly _selectedTenantId = signal<string | null>(null);
-  private readonly _selectedTenantName = signal<string | null>(null);
+  private readonly _selectedTenantId = signal<string | null>(null)
+  private readonly _selectedTenantName = signal<string | null>(null)
 
   /** ID del tenant selezionato dal super admin (null se nessuno). */
-  readonly selectedTenantId = this._selectedTenantId.asReadonly();
+  readonly selectedTenantId = this._selectedTenantId.asReadonly()
   /** Ragione sociale del tenant selezionato dal super admin (null se nessuno). */
-  readonly selectedTenantName = this._selectedTenantName.asReadonly();
+  readonly selectedTenantName = this._selectedTenantName.asReadonly()
 
   /** True se un tenant è attualmente selezionato. */
-  readonly hasSelection = computed(() => this._selectedTenantId() !== null);
+  readonly hasSelection = computed(() => this._selectedTenantId() !== null)
 
   constructor() {
-    this.restoreFromStorage();
+    this.restoreFromStorage()
   }
 
   /**
    * Imposta il tenant corrente (solo super admin) e lo persiste.
    */
   set(id: string, name: string): void {
-    this._selectedTenantId.set(id);
-    this._selectedTenantName.set(name);
+    this._selectedTenantId.set(id)
+    this._selectedTenantName.set(name)
     try {
-      const payload: StoredTenant = { id, name };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      const payload: StoredTenant = { id, name }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
     } catch {
       // localStorage non disponibile (es. modalità privata): ignora, lo stato
       // in memoria resta comunque valido per la sessione corrente.
@@ -61,10 +61,10 @@ export class AdminTenantContextService {
    * Pulisce la selezione del tenant (ritorno al contesto "globale").
    */
   clear(): void {
-    this._selectedTenantId.set(null);
-    this._selectedTenantName.set(null);
+    this._selectedTenantId.set(null)
+    this._selectedTenantName.set(null)
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_KEY)
     } catch {
       // no-op
     }
@@ -72,17 +72,17 @@ export class AdminTenantContextService {
 
   private restoreFromStorage(): void {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Partial<StoredTenant>;
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Partial<StoredTenant>
       if (parsed && typeof parsed.id === 'string' && parsed.id) {
-        this._selectedTenantId.set(parsed.id);
-        this._selectedTenantName.set(typeof parsed.name === 'string' ? parsed.name : null);
+        this._selectedTenantId.set(parsed.id)
+        this._selectedTenantName.set(typeof parsed.name === 'string' ? parsed.name : null)
       }
     } catch {
       // valore corrotto: ripulisci silenziosamente
       try {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(STORAGE_KEY)
       } catch {
         // no-op
       }

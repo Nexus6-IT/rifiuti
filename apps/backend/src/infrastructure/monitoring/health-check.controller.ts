@@ -1,6 +1,6 @@
-import { Controller, Get } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { PrismaService } from '../database/prisma.service';
+import { Controller, Get } from '@nestjs/common'
+import { ApiTags, ApiOperation } from '@nestjs/swagger'
+import { PrismaService } from '../database/prisma.service'
 
 /**
  * Health Check Controller
@@ -20,24 +20,24 @@ export class HealthCheckController {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       memory: process.memoryUsage(),
-    };
+    }
   }
 
   @Get('db')
   @ApiOperation({ summary: 'Database health check' })
   async databaseHealth() {
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
-      return { status: 'ok', database: 'connected' };
+      await this.prisma.$queryRaw`SELECT 1`
+      return { status: 'ok', database: 'connected' }
     } catch (error) {
-      return { status: 'error', database: 'disconnected', error: (error as Error).message };
+      return { status: 'error', database: 'disconnected', error: (error as Error).message }
     }
   }
 
   @Get('detailed')
   @ApiOperation({ summary: 'Detailed health metrics' })
   async detailedHealth() {
-    const dbHealth = await this.databaseHealth();
+    const dbHealth = await this.databaseHealth()
 
     return {
       status: dbHealth.status === 'ok' ? 'healthy' : 'unhealthy',
@@ -51,6 +51,6 @@ export class HealthCheckController {
         rss: process.memoryUsage().rss,
       },
       database: dbHealth,
-    };
+    }
   }
 }

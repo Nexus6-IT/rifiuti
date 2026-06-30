@@ -15,33 +15,33 @@ export class AssignRoleCommand {
     public readonly facilityIds?: string[] | null,
     public readonly isDelegated?: boolean,
     public readonly delegationReason?: string | null,
-    public readonly replaceExisting?: boolean, // If true, revoke existing roles first
+    public readonly replaceExisting?: boolean // If true, revoke existing roles first
   ) {
     // Validate required fields
     if (!userId || userId.trim() === '') {
-      throw new Error('User ID is required');
+      throw new Error('User ID is required')
     }
 
     if (!roleId || roleId.trim() === '') {
-      throw new Error('Role ID is required');
+      throw new Error('Role ID is required')
     }
 
     if (!tenantId || tenantId.trim() === '') {
-      throw new Error('Tenant ID is required');
+      throw new Error('Tenant ID is required')
     }
 
     if (!assignedBy || assignedBy.trim() === '') {
-      throw new Error('Assigned by user ID is required');
+      throw new Error('Assigned by user ID is required')
     }
 
     // Validate expiration date
     if (expiresAt && expiresAt.getTime() <= Date.now()) {
-      throw new Error('Expiration date must be in the future');
+      throw new Error('Expiration date must be in the future')
     }
 
     // Validate delegation reason if delegated
     if (isDelegated && (!delegationReason || delegationReason.trim() === '')) {
-      throw new Error('Delegation reason is required for delegated roles');
+      throw new Error('Delegation reason is required for delegated roles')
     }
   }
 }

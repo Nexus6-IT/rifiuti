@@ -4,6 +4,6 @@ export class RejectTemporaryPermissionCommand {
     public readonly grantId: string,
     public readonly tenantId: string,
     public readonly rejectedBy: string,
-    public readonly reason: string,
+    public readonly reason: string
   ) {}
 }

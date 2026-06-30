@@ -14,11 +14,7 @@
  * ============================================================================
  */
 
-import {
-  applyTenantScope,
-  TENANT_SCOPED_MODELS,
-  rlsExtension,
-} from './prisma-rls.extension'
+import { applyTenantScope, TENANT_SCOPED_MODELS, rlsExtension } from './prisma-rls.extension'
 import { TenantContext } from '../../core/context/tenant-context'
 
 const TENANT_B = 'tenant-B-societa-beta'
@@ -27,11 +23,7 @@ const TENANT_B = 'tenant-B-societa-beta'
  * Esegue `applyTenantScope` su una singola operazione e ritorna gli `args`
  * effettivamente passati a `query` (cioè ciò che arriverebbe a Prisma).
  */
-function runOperation(params: {
-  model?: string
-  operation: string
-  args: unknown
-}): any {
+function runOperation(params: { model?: string; operation: string; args: unknown }): any {
   const query = jest.fn((a: unknown) => a)
   applyTenantScope({ ...params, query })
   expect(query).toHaveBeenCalledTimes(1)

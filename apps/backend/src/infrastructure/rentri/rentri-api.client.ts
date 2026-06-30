@@ -1,11 +1,11 @@
-import { Injectable, Inject } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import { LoggerService } from '../../core/logger/logger.service';
-import { MetricsService } from '../../core/metrics/metrics.service';
-import { firstValueFrom } from 'rxjs';
-import { RentriConfig, RENTRI_CONFIG } from './rentri-config';
-import { RentriAuthService } from './rentri-auth.service';
-import { RentriSignatureService } from './rentri-signature.service';
+import { Injectable, Inject } from '@nestjs/common'
+import { HttpService } from '@nestjs/axios'
+import { LoggerService } from '../../core/logger/logger.service'
+import { MetricsService } from '../../core/metrics/metrics.service'
+import { firstValueFrom } from 'rxjs'
+import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
+import { RentriAuthService } from './rentri-auth.service'
+import { RentriSignatureService } from './rentri-signature.service'
 
 /**
  * RENTRI API Client
@@ -34,7 +34,7 @@ import { RentriSignatureService } from './rentri-signature.service';
  */
 @Injectable()
 export class RENTRIApiClient {
-  private readonly timeout = 30000; // 30s
+  private readonly timeout = 30000 // 30s
 
   // =========================================================================
   // Path del servizio `vidimazione-formulari` v1.0 — DA CONFERMARE sull'OpenAPI
@@ -46,11 +46,11 @@ export class RENTRIApiClient {
   //   PUT   <base>/vidimazione-formulari/v1.0/formulari/{id}     → modifica FIR
   //   POST  <base>/vidimazione-formulari/v1.0/formulari/{id}/annulla-fir → annulla
   // =========================================================================
-  private static readonly FORMULARI_BASE = '/vidimazione-formulari/v1.0'; // DA CONFERMARE
-  private static readonly PATH_SUBMIT = `${RENTRIApiClient.FORMULARI_BASE}/formulari`; // DA CONFERMARE
-  private static readonly PATH_VALIDATE = `${RENTRIApiClient.FORMULARI_BASE}/formulari/validazione`; // DA CONFERMARE (potrebbe non esistere)
+  private static readonly FORMULARI_BASE = '/vidimazione-formulari/v1.0' // DA CONFERMARE
+  private static readonly PATH_SUBMIT = `${RENTRIApiClient.FORMULARI_BASE}/formulari` // DA CONFERMARE
+  private static readonly PATH_VALIDATE = `${RENTRIApiClient.FORMULARI_BASE}/formulari/validazione` // DA CONFERMARE (potrebbe non esistere)
   private static readonly PATH_STATUS = (id: string) =>
-    `${RENTRIApiClient.FORMULARI_BASE}/formulari/${id}`; // DA CONFERMARE
+    `${RENTRIApiClient.FORMULARI_BASE}/formulari/${id}` // DA CONFERMARE
 
   constructor(
     private readonly httpService: HttpService,
@@ -58,73 +58,73 @@ export class RENTRIApiClient {
     private readonly metrics: MetricsService,
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
     private readonly auth: RentriAuthService,
-    private readonly signature: RentriSignatureService,
+    private readonly signature: RentriSignatureService
   ) {
-    this.logger.setContext('RENTRIApiClient');
+    this.logger.setContext('RENTRIApiClient')
   }
 
   private get isLive(): boolean {
-    return this.config.mode === 'live';
+    return this.config.mode === 'live'
   }
 
   /**
    * Submit FIR to RENTRI
    */
   async submitFIR(fir: any): Promise<RENTRISubmitResponse> {
-    const startTime = Date.now();
-    const xFIR = this.convertToXFIRFormat(fir);
-    const path = this.isLive ? RENTRIApiClient.PATH_SUBMIT : '/api/v1/fir/submit';
+    const startTime = Date.now()
+    const xFIR = this.convertToXFIRFormat(fir)
+    const path = this.isLive ? RENTRIApiClient.PATH_SUBMIT : '/api/v1/fir/submit'
 
     try {
       this.logger.info('Submitting FIR to RENTRI', {
         firId: fir.id,
         firNumber: fir.firNumber,
         mode: this.config.mode,
-      });
+      })
 
-      const response = await this.post(path, xFIR, '/fir/submit');
-      const duration = Date.now() - startTime;
+      const response = await this.post(path, xFIR, '/fir/submit')
+      const duration = Date.now() - startTime
 
       this.metrics.rentriApiRequestDuration.observe(
         { endpoint: '/fir/submit', status: 'success' },
-        duration / 1000,
-      );
+        duration / 1000
+      )
 
       this.logger.info('FIR submitted to RENTRI successfully', {
         firId: fir.id,
         rentriId: response.data.rentriId,
         protocolNumber: response.data.protocolNumber,
         duration,
-      });
+      })
 
       return {
         success: true,
         protocolNumber: response.data.protocolNumber,
         rentriId: response.data.rentriId,
         receivedAt: response.data.receivedAt,
-      };
+      }
     } catch (error: any) {
       // Handle RENTRI validation errors
       if (error.response?.status === 400) {
         this.metrics.rentriApiErrors.inc({
           endpoint: '/fir/submit',
           error_type: 'VALIDATION_ERROR',
-        });
+        })
 
         this.logger.warn('RENTRI validation error', {
           firId: fir.id,
           errors: error.response.data.errors,
-        });
+        })
 
         return {
           success: false,
           errors: error.response.data.errors || [],
-        };
+        }
       }
 
       // Expired/invalid token → invalidate cache so the next attempt re-auths
       if (error.response?.status === 401) {
-        this.auth.invalidate();
+        this.auth.invalidate()
       }
 
       // Handle service unavailable
@@ -132,16 +132,16 @@ export class RENTRIApiClient {
         this.metrics.rentriApiErrors.inc({
           endpoint: '/fir/submit',
           error_type: 'SERVICE_UNAVAILABLE',
-        });
+        })
 
-        const retryAfter = error.response.data?.retryAfter || 300;
+        const retryAfter = error.response.data?.retryAfter || 300
 
         this.logger.error('RENTRI service unavailable', error, {
           firId: fir.id,
           retryAfter,
-        });
+        })
 
-        throw new Error(`RENTRI service temporarily unavailable. Retry after ${retryAfter}s`);
+        throw new Error(`RENTRI service temporarily unavailable. Retry after ${retryAfter}s`)
       }
 
       // Handle timeout
@@ -149,27 +149,27 @@ export class RENTRIApiClient {
         this.metrics.rentriApiErrors.inc({
           endpoint: '/fir/submit',
           error_type: 'TIMEOUT',
-        });
+        })
 
         this.logger.error('RENTRI API timeout', error, {
           firId: fir.id,
           timeout: this.timeout,
-        });
+        })
 
-        throw new Error('RENTRI API timeout');
+        throw new Error('RENTRI API timeout')
       }
 
       this.metrics.rentriApiErrors.inc({
         endpoint: '/fir/submit',
         error_type: 'UNKNOWN',
-      });
+      })
 
       this.logger.error('RENTRI API error', error, {
         firId: fir.id,
         error: error.message,
-      });
+      })
 
-      throw error;
+      throw error
     }
   }
 
@@ -177,23 +177,23 @@ export class RENTRIApiClient {
    * Validate FIR before submission
    */
   async validateFIR(fir: any): Promise<RENTRIValidationResponse> {
-    const xFIR = this.convertToXFIRFormat(fir);
-    const path = this.isLive ? RENTRIApiClient.PATH_VALIDATE : '/api/v1/fir/validate';
+    const xFIR = this.convertToXFIRFormat(fir)
+    const path = this.isLive ? RENTRIApiClient.PATH_VALIDATE : '/api/v1/fir/validate'
 
     try {
-      const response = await this.post(path, xFIR, '/fir/validate');
+      const response = await this.post(path, xFIR, '/fir/validate')
 
       return {
         valid: response.data.valid,
         errors: response.data.errors || [],
         warnings: response.data.warnings || [],
-      };
+      }
     } catch (error: any) {
       if (error.response?.status === 401) {
-        this.auth.invalidate();
+        this.auth.invalidate()
       }
-      this.logger.error('RENTRI validation error', error, { firId: fir.id });
-      throw error;
+      this.logger.error('RENTRI validation error', error, { firId: fir.id })
+      throw error
     }
   }
 
@@ -201,21 +201,19 @@ export class RENTRIApiClient {
    * Get FIR status from RENTRI
    */
   async getFIRStatus(firId: string): Promise<RENTRIFIRStatus> {
-    const path = this.isLive
-      ? RENTRIApiClient.PATH_STATUS(firId)
-      : `/api/v1/fir/${firId}`;
+    const path = this.isLive ? RENTRIApiClient.PATH_STATUS(firId) : `/api/v1/fir/${firId}`
 
     try {
-      const response = await this.get(path);
-      return response.data.data ?? response.data;
+      const response = await this.get(path)
+      return response.data.data ?? response.data
     } catch (error: any) {
       if (error.response?.status === 404) {
-        throw new Error('FIR non trovato in RENTRI');
+        throw new Error('FIR non trovato in RENTRI')
       }
       if (error.response?.status === 401) {
-        this.auth.invalidate();
+        this.auth.invalidate()
       }
-      throw error;
+      throw error
     }
   }
 
@@ -224,48 +222,48 @@ export class RENTRIApiClient {
    * live: Bearer + firma di integrità Agid-JWT-Signature sul body).
    */
   private async post(path: string, body: unknown, metricEndpoint: string) {
-    const url = `${this.config.baseUrl}${path}`;
-    const rawBody = JSON.stringify(body);
+    const url = `${this.config.baseUrl}${path}`
+    const rawBody = JSON.stringify(body)
 
     let headers: Record<string, string> = {
       'Content-Type': 'application/json',
-    };
+    }
 
     if (this.isLive) {
-      const token = await this.auth.getAccessToken();
-      const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody);
+      const token = await this.auth.getAccessToken()
+      const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody)
       headers = {
         ...headers,
         Authorization: `Bearer ${token}`,
         ...integrityHeaders,
-      };
+      }
     } else {
-      headers['X-API-Key'] = this.config.mockApiKey;
+      headers['X-API-Key'] = this.config.mockApiKey
     }
 
     try {
       return await firstValueFrom(
-        this.httpService.post(url, body, { headers, timeout: this.timeout }),
-      );
+        this.httpService.post(url, body, { headers, timeout: this.timeout })
+      )
     } catch (error: any) {
-      this.metrics.rentriApiErrors.inc({ endpoint: metricEndpoint, error_type: 'HTTP' });
-      throw error;
+      this.metrics.rentriApiErrors.inc({ endpoint: metricEndpoint, error_type: 'HTTP' })
+      throw error
     }
   }
 
   /** GET con Bearer (live) o X-API-Key (mock). */
   private async get(path: string) {
-    const url = `${this.config.baseUrl}${path}`;
-    let headers: Record<string, string> = {};
+    const url = `${this.config.baseUrl}${path}`
+    const headers: Record<string, string> = {}
 
     if (this.isLive) {
-      const token = await this.auth.getAccessToken();
-      headers.Authorization = `Bearer ${token}`;
+      const token = await this.auth.getAccessToken()
+      headers.Authorization = `Bearer ${token}`
     } else {
-      headers['X-API-Key'] = this.config.mockApiKey;
+      headers['X-API-Key'] = this.config.mockApiKey
     }
 
-    return firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }));
+    return firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }))
   }
 
   /**
@@ -290,13 +288,13 @@ export class RENTRIApiClient {
    */
   private convertToXFIRFormat(fir: any): XFIRPayload {
     // Snapshot anagrafici (FIR aggregate) — null se non popolati.
-    const snapshotProduttore = fir.produttore ?? null;
-    const snapshotTrasportatore = fir.trasportatore ?? null;
-    const snapshotDestinatario = fir.destinatario ?? null;
+    const snapshotProduttore = fir.produttore ?? null
+    const snapshotTrasportatore = fir.trasportatore ?? null
+    const snapshotDestinatario = fir.destinatario ?? null
     // Waste info (FIR aggregate ha `rifiuto: FIRRifiuto` con `quantita: Quantita`).
-    const rifiutoAgg = fir.rifiuto ?? null;
+    const rifiutoAgg = fir.rifiuto ?? null
     // Value object Quantita: { valore: number, unitaMisura: string }
-    const quantitaVo = rifiutoAgg?.quantita ?? null;
+    const quantitaVo = rifiutoAgg?.quantita ?? null
 
     return {
       firId: fir.id,
@@ -347,8 +345,10 @@ export class RENTRIApiClient {
       // Trasporto — date dell'aggregate (dataPresaCarico/dataConsegna) o flat DTO
       trasporto: {
         // dataPresaCarico = data partenza (aggregato); transportDate = flat DTO
-        dataPartenza: (fir.dataPresaCarico ?? fir.transportDate)?.toISOString?.()
-          ?? fir.dataPresaCarico ?? fir.transportDate,
+        dataPartenza:
+          (fir.dataPresaCarico ?? fir.transportDate)?.toISOString?.() ??
+          fir.dataPresaCarico ??
+          fir.transportDate,
         dataArrivoPrevista: fir.estimatedArrivalDate?.toISOString?.() ?? fir.estimatedArrivalDate,
         // dataConsegna = data arrivo effettiva (aggregato); undefined se non ancora consegnato
         dataArrivo: fir.dataConsegna?.toISOString?.(),
@@ -358,7 +358,7 @@ export class RENTRIApiClient {
 
       // Firme digitali — FirmeDigitali (aggregate) o array piatto (flat DTO)
       firmeDigitali: this.buildFirmeDigitali(fir),
-    };
+    }
   }
 
   /**
@@ -370,26 +370,26 @@ export class RENTRIApiClient {
   private buildFirmeDigitali(fir: any): any[] {
     // FIR aggregate: `fir.firme` è sempre un oggetto (anche vuoto `{}`)
     if (fir.firme && typeof fir.firme === 'object') {
-      const firme = fir.firme as { produttore?: any; trasportatore?: any; destinatario?: any };
-      const result: any[] = [];
+      const firme = fir.firme as { produttore?: any; trasportatore?: any; destinatario?: any }
+      const result: any[] = []
       const roles: Array<['PRODUTTORE' | 'TRASPORTATORE' | 'DESTINATARIO', any]> = [
         ['PRODUTTORE', firme.produttore],
         ['TRASPORTATORE', firme.trasportatore],
         ['DESTINATARIO', firme.destinatario],
-      ];
+      ]
       for (const [ruolo, fd] of roles) {
-        if (!fd) continue;
+        if (!fd) continue
         result.push({
           ruolo,
           dataFirma: fd.timestamp?.toISOString?.() ?? fd.timestamp,
           firmatario: fd.firmatario,
           hashCertificato: fd.certificato,
-        });
+        })
       }
-      return result;
+      return result
     }
     // Flat DTO legacy (test)
-    return this.convertSignatures(fir.signatures || []);
+    return this.convertSignatures(fir.signatures || [])
   }
 
   /**
@@ -404,7 +404,7 @@ export class RENTRIApiClient {
       hashCertificato: sig.certificateHash,
       hashDocumento: sig.documentHash,
       timestampToken: sig.timestampToken,
-    }));
+    }))
   }
 }
 
@@ -413,71 +413,71 @@ export class RENTRIApiClient {
  * DA CONFERMARE la struttura esatta sull'OpenAPI ufficiale prima del go-live.
  */
 export interface XFIRPayload {
-  firId: string;
+  firId: string
   /** Numero formulario (FIR-ANNO-NNNNNN). */
-  numeroFormulario: string | null;
+  numeroFormulario: string | null
   /** Data e ora di emissione del documento (ISO 8601). */
-  dataEmissione: string;
+  dataEmissione: string
   produttore: {
-    partitaIva?: string;
-    ragioneSociale?: string;
-    indirizzo?: string;
-    contatto?: string;
-  };
+    partitaIva?: string
+    ragioneSociale?: string
+    indirizzo?: string
+    contatto?: string
+  }
   trasportatore: {
-    partitaIva?: string;
-    ragioneSociale?: string;
-    targaVeicolo?: string;
-    contatto?: string;
-  };
+    partitaIva?: string
+    ragioneSociale?: string
+    targaVeicolo?: string
+    contatto?: string
+  }
   destinatario: {
-    partitaIva?: string;
-    ragioneSociale?: string;
-    indirizzo?: string;
-    contatto?: string;
-  };
+    partitaIva?: string
+    ragioneSociale?: string
+    indirizzo?: string
+    contatto?: string
+  }
   rifiuto: {
-    codiceEER?: string;
-    descrizione?: string;
-    categoria?: string;
-    quantita?: number;
-    unita?: string;
-    statoFisico?: string;
-    caratteristichePericolo?: string;
-    numeroColli?: number;
-    codiceOperazione?: string;
-  };
+    codiceEER?: string
+    descrizione?: string
+    categoria?: string
+    quantita?: number
+    unita?: string
+    statoFisico?: string
+    caratteristichePericolo?: string
+    numeroColli?: number
+    codiceOperazione?: string
+  }
   trasporto: {
-    dataPartenza?: string;
-    dataArrivoPrevista?: string;
+    dataPartenza?: string
+    dataArrivoPrevista?: string
     /** Data arrivo effettiva — valorizzata dopo la consegna. */
-    dataArrivo?: string;
-    note?: string;
-  };
-  firmeDigitali: any[];
+    dataArrivo?: string
+    note?: string
+  }
+  firmeDigitali: any[]
 }
 
 /**
  * RENTRI API Response Types
  */
 export interface RENTRISubmitResponse {
-  success: boolean;
-  protocolNumber?: string;
-  rentriId?: string;
-  receivedAt?: string;
-  errors?: Array<{ code: string; field: string; message: string }>;
+  success: boolean
+  protocolNumber?: string
+  rentriId?: string
+  receivedAt?: string
+  errors?: Array<{ code: string; field: string; message: string }>
 }
 
 export interface RENTRIValidationResponse {
-  valid: boolean;
-  errors: Array<{ code: string; field: string; message: string }>;
-  warnings: string[];
+  valid: boolean
+  errors: Array<{ code: string; field: string; message: string }>
+  warnings: string[]
 }
 
 export interface RENTRIFIRStatus {
-  firId: string;
-  rentriId: string;
-  protocolNumber: string;
-  status: 'ACCEPTED' | 'REJECTED' | 'PROCESSING';
-  submittedAt: string;
+  firId: string
+  rentriId: string
+  protocolNumber: string
+  status: 'ACCEPTED' | 'REJECTED' | 'PROCESSING'
+  submittedAt: string
 }

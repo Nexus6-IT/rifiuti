@@ -29,13 +29,9 @@ describe('PrismaService — applicazione estensione RLS su `db`', () => {
   it('onModuleInit: connette il client base e costruisce `db` via $extends(rlsExtension)', async () => {
     const service = new PrismaService()
 
-    const connectSpy = jest
-      .spyOn(service as any, '$connect')
-      .mockResolvedValue(undefined)
+    const connectSpy = jest.spyOn(service as any, '$connect').mockResolvedValue(undefined)
     const extendedMarker = Symbol('extended-client')
-    const extendsSpy = jest
-      .spyOn(service as any, '$extends')
-      .mockReturnValue(extendedMarker)
+    const extendsSpy = jest.spyOn(service as any, '$extends').mockReturnValue(extendedMarker)
 
     await service.onModuleInit()
 
@@ -50,9 +46,7 @@ describe('PrismaService — applicazione estensione RLS su `db`', () => {
   it('il getter `db` è lazy: lo costruisce on-demand anche senza onModuleInit', () => {
     const service = new PrismaService()
     const extendedMarker = Symbol('lazy-extended')
-    const extendsSpy = jest
-      .spyOn(service as any, '$extends')
-      .mockReturnValue(extendedMarker)
+    const extendsSpy = jest.spyOn(service as any, '$extends').mockReturnValue(extendedMarker)
 
     expect(service.db).toBe(extendedMarker)
     expect(extendsSpy).toHaveBeenCalledTimes(1)
@@ -135,7 +129,7 @@ describe('PrismaService — applicazione estensione RLS su `db`', () => {
     const original = { where: { partitaIVA: '123' } }
     await (service.db as any).produttore.findMany(original)
 
-    expect((captured.args as any)).toBe(original)
+    expect(captured.args as any).toBe(original)
     expect((captured.args as any).where.tenantId).toBeUndefined()
   })
 })

@@ -216,11 +216,7 @@ describe('Trasportatore Entity', () => {
         numeroIscrizione: 'MI/001234',
       })
 
-      trasportatore.updateContatti(
-        'nuova@email.it',
-        '02-99999999',
-        'nuova@pec.it'
-      )
+      trasportatore.updateContatti('nuova@email.it', '02-99999999', 'nuova@pec.it')
 
       expect(trasportatore.email).toBe('nuova@email.it')
       expect(trasportatore.telefono).toBe('02-99999999')
@@ -261,7 +257,9 @@ describe('Trasportatore Entity', () => {
         numeroIscrizione: 'MI/001234',
       })
 
-      expect(() => trasportatore.updateNumeroIscrizione('')).toThrow('Numero iscrizione is required')
+      expect(() => trasportatore.updateNumeroIscrizione('')).toThrow(
+        'Numero iscrizione is required'
+      )
     })
   })
 })

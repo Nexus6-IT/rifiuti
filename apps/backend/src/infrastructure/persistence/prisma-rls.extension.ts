@@ -106,7 +106,7 @@ function injectData(args: unknown, tenantId: string): unknown {
   if (Array.isArray(data)) {
     return {
       ...a,
-      data: data.map((row) => {
+      data: data.map(row => {
         const r = (row ?? {}) as Record<string, unknown>
         return r.tenantId === undefined ? { ...r, tenantId } : r
       }),

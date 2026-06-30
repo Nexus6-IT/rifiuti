@@ -62,9 +62,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // limiter's admin bypass) instead of an empty placeholder.
     // Senza un tenant (es. SUPER_ADMIN cross-tenant) non si risolvono permessi
     // tenant-scoped: il flusso prosegue con un array vuoto, senza rompersi.
-    const permissions = tenantId
-      ? await this.resolvePermissions(user.id, tenantId)
-      : []
+    const permissions = tenantId ? await this.resolvePermissions(user.id, tenantId) : []
 
     return {
       id: user.id,
@@ -85,10 +83,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
    * the same permission through several roles. Mirrors the resolution performed
    * by PermissionGuard.loadPermissionsFromDb so the formats stay identical.
    */
-  private async resolvePermissions(
-    userId: string,
-    tenantId: string
-  ): Promise<string[]> {
+  private async resolvePermissions(userId: string, tenantId: string): Promise<string[]> {
     const assignments = await this.prismaService.userRoleAssignment.findMany({
       where: {
         userId,

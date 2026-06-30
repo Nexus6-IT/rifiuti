@@ -1,4 +1,4 @@
-import { DomainEvent } from '../../shared/domain-event.interface';
+import { DomainEvent } from '../../shared/domain-event.interface'
 
 /**
  * FIR Synced to RENTRI Event
@@ -8,19 +8,19 @@ import { DomainEvent } from '../../shared/domain-event.interface';
  */
 export class FIRSyncedToRENTRIEvent extends DomainEvent {
   constructor(params: {
-    aggregateId: string; // FIR ID
-    tenantId: string;
-    userId?: string;
-    correlationId?: string;
-    protocolNumber: string;
-    attempts: number;
-    syncedAt?: Date;
+    aggregateId: string // FIR ID
+    tenantId: string
+    userId?: string
+    correlationId?: string
+    protocolNumber: string
+    attempts: number
+    syncedAt?: Date
   }) {
     if (!params.protocolNumber || params.protocolNumber.trim() === '') {
-      throw new Error('Protocol number is required');
+      throw new Error('Protocol number is required')
     }
     if (params.attempts <= 0) {
-      throw new Error('Attempts must be positive');
+      throw new Error('Attempts must be positive')
     }
 
     super({
@@ -34,7 +34,7 @@ export class FIRSyncedToRENTRIEvent extends DomainEvent {
         attempts: params.attempts,
         syncedAt: params.syncedAt || new Date(),
       },
-    });
+    })
   }
 }
 
@@ -46,21 +46,21 @@ export class FIRSyncedToRENTRIEvent extends DomainEvent {
  */
 export class FIRSyncFailedEvent extends DomainEvent {
   constructor(params: {
-    aggregateId: string; // FIR ID
-    tenantId: string;
-    userId?: string;
-    correlationId?: string;
-    error: string;
-    errorCode?: string;
-    attempts: number;
-    willRetry: boolean;
-    nextRetryAt?: Date;
+    aggregateId: string // FIR ID
+    tenantId: string
+    userId?: string
+    correlationId?: string
+    error: string
+    errorCode?: string
+    attempts: number
+    willRetry: boolean
+    nextRetryAt?: Date
   }) {
     if (!params.error || params.error.trim() === '') {
-      throw new Error('Error message is required');
+      throw new Error('Error message is required')
     }
     if (params.attempts <= 0) {
-      throw new Error('Attempts must be positive');
+      throw new Error('Attempts must be positive')
     }
 
     super({
@@ -76,6 +76,6 @@ export class FIRSyncFailedEvent extends DomainEvent {
         willRetry: params.willRetry,
         nextRetryAt: params.nextRetryAt,
       },
-    });
+    })
   }
 }

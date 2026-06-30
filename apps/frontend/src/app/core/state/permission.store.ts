@@ -1,15 +1,9 @@
-import { computed, inject } from '@angular/core';
-import {
-  patchState,
-  signalStore,
-  withComputed,
-  withMethods,
-  withState,
-} from '@ngrx/signals';
-import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { pipe, switchMap, tap } from 'rxjs';
-import { tapResponse } from '@ngrx/operators';
-import { PermissionApiService } from '../../features/permissions/services/permission-api.service';
+import { computed, inject } from '@angular/core'
+import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals'
+import { rxMethod } from '@ngrx/signals/rxjs-interop'
+import { pipe, switchMap, tap } from 'rxjs'
+import { tapResponse } from '@ngrx/operators'
+import { PermissionApiService } from '../../features/permissions/services/permission-api.service'
 
 /**
  * PermissionStore
@@ -21,11 +15,11 @@ import { PermissionApiService } from '../../features/permissions/services/permis
 
 // State shape
 interface PermissionState {
-  permissions: string[]; // User's effective permissions (resource:action:scope format)
-  isLoading: boolean;
-  error: string | null;
-  lastFetchedAt: number | null;
-  cacheTTL: number; // 5 minutes default
+  permissions: string[] // User's effective permissions (resource:action:scope format)
+  isLoading: boolean
+  error: string | null
+  lastFetchedAt: number | null
+  cacheTTL: number // 5 minutes default
 }
 
 // Initial state
@@ -35,93 +29,87 @@ const initialState: PermissionState = {
   error: null,
   lastFetchedAt: null,
   cacheTTL: 5 * 60 * 1000, // 5 minutes in ms
-};
+}
 
 export const PermissionStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),
-  withComputed((store) => ({
+  withComputed(store => ({
     /**
      * Check if user has specific permission
      * Supports scope hierarchy: own < facility < all
      */
     hasPermission: computed(() => (requiredPermission: string): boolean => {
-      const userPermissions = store.permissions();
+      const userPermissions = store.permissions()
 
       // Exact match
       if (userPermissions.includes(requiredPermission)) {
-        return true;
+        return true
       }
 
       // Parse permission: resource:action:scope
-      const parts = requiredPermission.split(':');
+      const parts = requiredPermission.split(':')
       if (parts.length !== 3) {
         console.warn(
-          `Invalid permission format: ${requiredPermission}. Expected format: resource:action:scope`,
-        );
-        return false;
+          `Invalid permission format: ${requiredPermission}. Expected format: resource:action:scope`
+        )
+        return false
       }
 
-      const [reqResource, reqAction, reqScope] = parts;
+      const [reqResource, reqAction, reqScope] = parts
 
       // Scope hierarchy: own < facility < all
-      const scopeHierarchy = ['own', 'facility', 'all'];
-      const reqScopeLevel = scopeHierarchy.indexOf(reqScope);
+      const scopeHierarchy = ['own', 'facility', 'all']
+      const reqScopeLevel = scopeHierarchy.indexOf(reqScope)
 
       // Check for broader scope permissions
       for (const userPerm of userPermissions) {
-        const [userResource, userAction, userScope] = userPerm.split(':');
+        const [userResource, userAction, userScope] = userPerm.split(':')
 
         // Must match resource and action
         if (userResource !== reqResource || userAction !== reqAction) {
-          continue;
+          continue
         }
 
         // Check if user scope is broader or equal
-        const userScopeLevel = scopeHierarchy.indexOf(userScope);
+        const userScopeLevel = scopeHierarchy.indexOf(userScope)
         if (userScopeLevel >= reqScopeLevel) {
-          return true;
+          return true
         }
       }
 
-      return false;
+      return false
     }),
 
     /**
      * Check if cache is stale (older than TTL)
      */
     isCacheStale: computed(() => {
-      const lastFetched = store.lastFetchedAt();
-      const ttl = store.cacheTTL();
+      const lastFetched = store.lastFetchedAt()
+      const ttl = store.cacheTTL()
 
       if (!lastFetched) {
-        return true; // Never fetched
+        return true // Never fetched
       }
 
-      return Date.now() - lastFetched > ttl;
+      return Date.now() - lastFetched > ttl
     }),
 
     /**
      * Check if user has ANY of the specified permissions
      */
-    hasAnyPermission: computed(
-      () =>
-        (requiredPermissions: string[]): boolean => {
-          const userPermissions = store.permissions();
-          return requiredPermissions.some((perm) => userPermissions.includes(perm));
-        },
-    ),
+    hasAnyPermission: computed(() => (requiredPermissions: string[]): boolean => {
+      const userPermissions = store.permissions()
+      return requiredPermissions.some(perm => userPermissions.includes(perm))
+    }),
 
     /**
      * Check if user has ALL of the specified permissions
      */
-    hasAllPermissions: computed(
-      () =>
-        (requiredPermissions: string[]): boolean => {
-          const userPermissions = store.permissions();
-          return requiredPermissions.every((perm) => userPermissions.includes(perm));
-        },
-    ),
+    hasAllPermissions: computed(() => (requiredPermissions: string[]): boolean => {
+      const userPermissions = store.permissions()
+      return requiredPermissions.every(perm => userPermissions.includes(perm))
+    }),
   })),
   withMethods((store, permissionApi = inject(PermissionApiService)) => {
     // Internal rxMethod (not exposed publicly)
@@ -131,26 +119,26 @@ export const PermissionStore = signalStore(
         switchMap(() =>
           permissionApi.getMyPermissions(false).pipe(
             tapResponse({
-              next: (response) => {
+              next: response => {
                 patchState(store, {
                   permissions: response.permissions,
                   isLoading: false,
                   error: null,
                   lastFetchedAt: Date.now(),
-                });
+                })
               },
               error: (error: Error) => {
-                console.error('Failed to load permissions:', error);
+                console.error('Failed to load permissions:', error)
                 patchState(store, {
                   isLoading: false,
                   error: error.message || 'Failed to load permissions',
-                });
+                })
               },
-            }),
-          ),
-        ),
-      ),
-    );
+            })
+          )
+        )
+      )
+    )
 
     // Public synchronous methods
     return {
@@ -160,22 +148,22 @@ export const PermissionStore = signalStore(
        * T091: Uses PermissionApiService for backend integration
        */
       loadPermissions(): void {
-        _loadPermissionsEffect();
+        _loadPermissionsEffect()
       },
 
       /**
        * Reload permissions from server (bypasses cache)
        */
       refreshPermissions(): void {
-        patchState(store, { lastFetchedAt: null });
-        _loadPermissionsEffect();
+        patchState(store, { lastFetchedAt: null })
+        _loadPermissionsEffect()
       },
 
       /**
        * Clear permissions (e.g., on logout)
        */
       clearPermissions(): void {
-        patchState(store, initialState);
+        patchState(store, initialState)
       },
 
       /**
@@ -189,10 +177,10 @@ export const PermissionStore = signalStore(
           permissions: [],
           lastFetchedAt: null,
           error: null,
-        });
+        })
 
         // Reload permissions for new tenant context
-        _loadPermissionsEffect();
+        _loadPermissionsEffect()
       },
 
       /**
@@ -200,9 +188,9 @@ export const PermissionStore = signalStore(
        * Used after role assignment operations
        */
       addPermissions(newPermissions: string[]): void {
-        const current = store.permissions();
-        const updated = [...new Set([...current, ...newPermissions])];
-        patchState(store, { permissions: updated });
+        const current = store.permissions()
+        const updated = [...new Set([...current, ...newPermissions])]
+        patchState(store, { permissions: updated })
       },
 
       /**
@@ -210,9 +198,9 @@ export const PermissionStore = signalStore(
        * Used after role revocation operations
        */
       removePermissions(permissionsToRemove: string[]): void {
-        const current = store.permissions();
-        const updated = current.filter((p) => !permissionsToRemove.includes(p));
-        patchState(store, { permissions: updated });
+        const current = store.permissions()
+        const updated = current.filter(p => !permissionsToRemove.includes(p))
+        patchState(store, { permissions: updated })
       },
 
       /**
@@ -220,9 +208,9 @@ export const PermissionStore = signalStore(
        */
       ensurePermissionsLoaded(): void {
         if (store.isCacheStale()) {
-          _loadPermissionsEffect();
+          _loadPermissionsEffect()
         }
       },
-    };
-  }),
-);
+    }
+  })
+)

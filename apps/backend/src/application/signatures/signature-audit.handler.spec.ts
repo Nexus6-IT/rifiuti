@@ -11,7 +11,13 @@ describe('SignatureAuditHandler', () => {
 
   beforeEach(() => {
     prisma = { activityLog: { create: jest.fn().mockResolvedValue({}) } }
-    logger = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+    logger = {
+      setContext: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn(),
+    }
     handler = new SignatureAuditHandler(prisma, logger)
   })
 
@@ -33,7 +39,7 @@ describe('SignatureAuditHandler', () => {
     } as any
   }
 
-  it('usa event.userId come userId dell\'audit (non il codice fiscale)', async () => {
+  it("usa event.userId come userId dell'audit (non il codice fiscale)", async () => {
     await handler.handleFIRSigned(signedEvent({ userId: 'user-123' }))
 
     const data = prisma.activityLog.create.mock.calls[0][0].data

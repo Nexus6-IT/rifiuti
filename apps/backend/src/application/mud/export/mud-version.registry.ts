@@ -19,10 +19,10 @@ export class MudVersionRegistry {
 
   /** Ritorna il tracciato per l'anno richiesto; lancia se non supportato. */
   getForYear(year: number): MudTracciatoVersion {
-    const version = this.versions.find((v) => v.year === year)
+    const version = this.versions.find(v => v.year === year)
     if (!version) {
       throw new Error(
-        `MUD: nessun tracciato disponibile per l'anno ${year}. Anni supportati: ${this.supportedYears().join(', ')}`,
+        `MUD: nessun tracciato disponibile per l'anno ${year}. Anni supportati: ${this.supportedYears().join(', ')}`
       )
     }
     return version
@@ -30,11 +30,11 @@ export class MudVersionRegistry {
 
   /** Anni di dichiarazione supportati (con relativa versione tracciato). */
   supportedYears(): number[] {
-    return this.versions.map((v) => v.year).sort((a, b) => b - a)
+    return this.versions.map(v => v.year).sort((a, b) => b - a)
   }
 
   /** Elenco versioni supportate (anno → versione). */
   listVersions(): Array<{ year: number; version: string }> {
-    return this.versions.map((v) => ({ year: v.year, version: v.version }))
+    return this.versions.map(v => ({ year: v.year, version: v.version }))
   }
 }

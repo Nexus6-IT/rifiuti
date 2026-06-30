@@ -12,49 +12,49 @@
  * descrittivo — l'app non crasha e mostra un avviso informativo.
  */
 
-import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { Injectable, inject } from '@angular/core'
+import { HttpClient } from '@angular/common/http'
+import { Observable } from 'rxjs'
+import { environment } from '../../../environments/environment'
 
-export type SubscriptionTier = 'TRIAL' | 'PROFESSIONAL' | 'ENTERPRISE';
-export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'SUSPENDED';
+export type SubscriptionTier = 'TRIAL' | 'PROFESSIONAL' | 'ENTERPRISE'
+export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'SUSPENDED'
 
 export interface BillingStatus {
-  tier: SubscriptionTier;
-  status: SubscriptionStatus;
-  subscriptionEnd: string | null;
-  firLimitPerMonth: number;
-  userLimitTotal: number;
-  stripeCustomerId: string | null;
-  stripeSubscriptionId: string | null;
+  tier: SubscriptionTier
+  status: SubscriptionStatus
+  subscriptionEnd: string | null
+  firLimitPerMonth: number
+  userLimitTotal: number
+  stripeCustomerId: string | null
+  stripeSubscriptionId: string | null
 }
 
 export interface CheckoutResponse {
-  url: string | null;
-  testMode: boolean;
-  message?: string;
+  url: string | null
+  testMode: boolean
+  message?: string
 }
 
 export interface PortalResponse {
-  url: string | null;
-  testMode: boolean;
+  url: string | null
+  testMode: boolean
 }
 
 @Injectable({ providedIn: 'root' })
 export class BillingApiService {
-  private readonly http = inject(HttpClient);
-  private readonly apiUrl = `${environment.apiUrl}/billing`;
+  private readonly http = inject(HttpClient)
+  private readonly apiUrl = `${environment.apiUrl}/billing`
 
   getStatus(): Observable<BillingStatus> {
-    return this.http.get<BillingStatus>(`${this.apiUrl}/status`);
+    return this.http.get<BillingStatus>(`${this.apiUrl}/status`)
   }
 
   createCheckout(plan: 'PROFESSIONAL' | 'ENTERPRISE'): Observable<CheckoutResponse> {
-    return this.http.post<CheckoutResponse>(`${this.apiUrl}/checkout`, { plan });
+    return this.http.post<CheckoutResponse>(`${this.apiUrl}/checkout`, { plan })
   }
 
   createPortal(): Observable<PortalResponse> {
-    return this.http.post<PortalResponse>(`${this.apiUrl}/portal`, {});
+    return this.http.post<PortalResponse>(`${this.apiUrl}/portal`, {})
   }
 }

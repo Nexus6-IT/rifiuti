@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { LoggerService } from '../../core/logger/logger.service';
-import { firstValueFrom } from 'rxjs';
+import { Injectable } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { HttpService } from '@nestjs/axios'
+import { LoggerService } from '../../core/logger/logger.service'
+import { firstValueFrom } from 'rxjs'
 
 /**
  * Keycloak User Adapter
@@ -22,24 +22,24 @@ import { firstValueFrom } from 'rxjs';
  */
 @Injectable()
 export class KeycloakUserAdapter {
-  private readonly keycloakUrl: string;
-  private readonly realm: string;
-  private readonly clientId: string;
-  private readonly clientSecret: string;
-  private accessToken?: string;
-  private tokenExpiry?: Date;
+  private readonly keycloakUrl: string
+  private readonly realm: string
+  private readonly clientId: string
+  private readonly clientSecret: string
+  private accessToken?: string
+  private tokenExpiry?: Date
 
   constructor(
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.keycloakUrl = this.configService.get<string>('KEYCLOAK_URL') || '';
-    this.realm = this.configService.get<string>('KEYCLOAK_REALM') || '';
-    this.clientId = this.configService.get<string>('KEYCLOAK_CLIENT_ID') || '';
-    this.clientSecret = this.configService.get<string>('KEYCLOAK_CLIENT_SECRET') || '';
+    this.keycloakUrl = this.configService.get<string>('KEYCLOAK_URL') || ''
+    this.realm = this.configService.get<string>('KEYCLOAK_REALM') || ''
+    this.clientId = this.configService.get<string>('KEYCLOAK_CLIENT_ID') || ''
+    this.clientSecret = this.configService.get<string>('KEYCLOAK_CLIENT_SECRET') || ''
 
-    this.logger.setContext('KeycloakUserAdapter');
+    this.logger.setContext('KeycloakUserAdapter')
   }
 
   /**
@@ -48,10 +48,10 @@ export class KeycloakUserAdapter {
   private async getAccessToken(): Promise<string> {
     // Return cached token if still valid
     if (this.accessToken && this.tokenExpiry && this.tokenExpiry > new Date()) {
-      return this.accessToken;
+      return this.accessToken
     }
 
-    this.logger.debug('Getting Keycloak admin token');
+    this.logger.debug('Getting Keycloak admin token')
 
     try {
       const response = await firstValueFrom(
@@ -68,19 +68,19 @@ export class KeycloakUserAdapter {
             },
           }
         )
-      );
+      )
 
-      const tokenData = response.data as { access_token: string; expires_in?: number };
-      this.accessToken = tokenData.access_token;
-      const expiresIn = tokenData.expires_in || 300; // Default 5 minutes
-      this.tokenExpiry = new Date(Date.now() + (expiresIn - 30) * 1000); // Refresh 30s before expiry
+      const tokenData = response.data as { access_token: string; expires_in?: number }
+      this.accessToken = tokenData.access_token
+      const expiresIn = tokenData.expires_in || 300 // Default 5 minutes
+      this.tokenExpiry = new Date(Date.now() + (expiresIn - 30) * 1000) // Refresh 30s before expiry
 
-      this.logger.debug('Keycloak admin token obtained');
+      this.logger.debug('Keycloak admin token obtained')
 
-      return this.accessToken;
+      return this.accessToken
     } catch (error: any) {
-      this.logger.error('Failed to get Keycloak admin token', error);
-      throw new Error('Keycloak authentication failed');
+      this.logger.error('Failed to get Keycloak admin token', error)
+      throw new Error('Keycloak authentication failed')
     }
   }
 
@@ -95,21 +95,21 @@ export class KeycloakUserAdapter {
    *   VERIFY_EMAIL, UPDATE_PASSWORD). Default: [].
    */
   async createUser(params: {
-    fiscalCode: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    tenantId: string;
-    emailVerified?: boolean;
-    requiredActions?: string[];
+    fiscalCode: string
+    firstName: string
+    lastName: string
+    email: string
+    tenantId: string
+    emailVerified?: boolean
+    requiredActions?: string[]
   }): Promise<string> {
     this.logger.info('Creating user in Keycloak', {
       fiscalCode: params.fiscalCode,
       email: params.email,
-    });
+    })
 
     try {
-      const token = await this.getAccessToken();
+      const token = await this.getAccessToken()
 
       const keycloakUser = {
         username: params.fiscalCode,
@@ -123,7 +123,7 @@ export class KeycloakUserAdapter {
           fiscalCode: [params.fiscalCode],
           tenantId: [params.tenantId],
         },
-      };
+      }
 
       const response = await firstValueFrom(
         this.httpService.post(
@@ -136,25 +136,25 @@ export class KeycloakUserAdapter {
             },
           }
         )
-      );
+      )
 
       // Keycloak returns user ID in Location header
-      const headers = response.headers as { location?: string };
-      const location = headers.location;
-      const userId = location?.split('/').pop();
+      const headers = response.headers as { location?: string }
+      const location = headers.location
+      const userId = location?.split('/').pop()
 
       this.logger.info('User created in Keycloak', {
         fiscalCode: params.fiscalCode,
         keycloakUserId: userId,
-      });
+      })
 
-      return userId || '';
+      return userId || ''
     } catch (error: any) {
       this.logger.error('Failed to create user in Keycloak', error, {
         fiscalCode: params.fiscalCode,
-      });
+      })
 
-      throw error;
+      throw error
     }
   }
 
@@ -164,20 +164,20 @@ export class KeycloakUserAdapter {
   async updateUser(
     keycloakUserId: string,
     params: {
-      firstName?: string;
-      lastName?: string;
-      email?: string;
+      firstName?: string
+      lastName?: string
+      email?: string
     }
   ): Promise<void> {
-    this.logger.info('Updating user in Keycloak', { keycloakUserId });
+    this.logger.info('Updating user in Keycloak', { keycloakUserId })
 
     try {
-      const token = await this.getAccessToken();
+      const token = await this.getAccessToken()
 
-      const updateData: any = {};
-      if (params.firstName) updateData.firstName = params.firstName;
-      if (params.lastName) updateData.lastName = params.lastName;
-      if (params.email) updateData.email = params.email;
+      const updateData: any = {}
+      if (params.firstName) updateData.firstName = params.firstName
+      if (params.lastName) updateData.lastName = params.lastName
+      if (params.email) updateData.email = params.email
 
       await firstValueFrom(
         this.httpService.put(
@@ -190,15 +190,15 @@ export class KeycloakUserAdapter {
             },
           }
         )
-      );
+      )
 
-      this.logger.info('User updated in Keycloak', { keycloakUserId });
+      this.logger.info('User updated in Keycloak', { keycloakUserId })
     } catch (error: any) {
       this.logger.error('Failed to update user in Keycloak', error, {
         keycloakUserId,
-      });
+      })
 
-      throw error;
+      throw error
     }
   }
 
@@ -209,24 +209,21 @@ export class KeycloakUserAdapter {
     this.logger.info('Assigning role in Keycloak', {
       keycloakUserId,
       role,
-    });
+    })
 
     try {
-      const token = await this.getAccessToken();
+      const token = await this.getAccessToken()
 
       // First, get role representation
       const roleResponse = await firstValueFrom(
-        this.httpService.get(
-          `${this.keycloakUrl}/admin/realms/${this.realm}/roles/${role}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        )
-      );
+        this.httpService.get(`${this.keycloakUrl}/admin/realms/${this.realm}/roles/${role}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+      )
 
-      const roleRepresentation = roleResponse.data as { id: string; name: string };
+      const roleRepresentation = roleResponse.data as { id: string; name: string }
 
       // Assign role to user
       await firstValueFrom(
@@ -240,39 +237,36 @@ export class KeycloakUserAdapter {
             },
           }
         )
-      );
+      )
 
       this.logger.info('Role assigned in Keycloak', {
         keycloakUserId,
         role,
-      });
+      })
     } catch (error: any) {
       this.logger.error('Failed to assign role in Keycloak', error, {
         keycloakUserId,
         role,
-      });
+      })
 
-      throw error;
+      throw error
     }
   }
 
   /**
    * Add user to tenant group in Keycloak
    */
-  async addUserToTenantGroup(
-    keycloakUserId: string,
-    tenantId: string
-  ): Promise<void> {
+  async addUserToTenantGroup(keycloakUserId: string, tenantId: string): Promise<void> {
     this.logger.info('Adding user to tenant group in Keycloak', {
       keycloakUserId,
       tenantId,
-    });
+    })
 
     try {
-      const token = await this.getAccessToken();
+      const token = await this.getAccessToken()
 
       // Find or create tenant group
-      const groupId = await this.getOrCreateTenantGroup(tenantId);
+      const groupId = await this.getOrCreateTenantGroup(tenantId)
 
       // Add user to group
       await firstValueFrom(
@@ -285,20 +279,20 @@ export class KeycloakUserAdapter {
             },
           }
         )
-      );
+      )
 
       this.logger.info('User added to tenant group in Keycloak', {
         keycloakUserId,
         tenantId,
         groupId,
-      });
+      })
     } catch (error: any) {
       this.logger.error('Failed to add user to tenant group', error, {
         keycloakUserId,
         tenantId,
-      });
+      })
 
-      throw error;
+      throw error
     }
   }
 
@@ -306,30 +300,25 @@ export class KeycloakUserAdapter {
    * Get or create tenant group in Keycloak
    */
   private async getOrCreateTenantGroup(tenantId: string): Promise<string> {
-    const token = await this.getAccessToken();
+    const token = await this.getAccessToken()
 
     // Search for existing group
     const searchResponse = await firstValueFrom(
-      this.httpService.get(
-        `${this.keycloakUrl}/admin/realms/${this.realm}/groups`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          params: {
-            search: `tenant-${tenantId}`,
-          },
-        }
-      )
-    );
+      this.httpService.get(`${this.keycloakUrl}/admin/realms/${this.realm}/groups`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        params: {
+          search: `tenant-${tenantId}`,
+        },
+      })
+    )
 
-    const groups = searchResponse.data as Array<{ id: string; name: string }>;
-    const existingGroup = groups.find(
-      (g) => g.name === `tenant-${tenantId}`
-    );
+    const groups = searchResponse.data as Array<{ id: string; name: string }>
+    const existingGroup = groups.find(g => g.name === `tenant-${tenantId}`)
 
     if (existingGroup) {
-      return existingGroup.id;
+      return existingGroup.id
     }
 
     // Create new group
@@ -349,13 +338,13 @@ export class KeycloakUserAdapter {
           },
         }
       )
-    );
+    )
 
-    const createHeaders = createResponse.headers as { location?: string };
-    const location = createHeaders.location;
-    const groupId = location?.split('/').pop();
+    const createHeaders = createResponse.headers as { location?: string }
+    const location = createHeaders.location
+    const groupId = location?.split('/').pop()
 
-    return groupId || '';
+    return groupId || ''
   }
 
   /**
@@ -365,18 +354,14 @@ export class KeycloakUserAdapter {
    * `temporary` is true (default) Keycloak forces the user to change the
    * password on first login (UPDATE_PASSWORD required action).
    */
-  async setPassword(
-    keycloakUserId: string,
-    password: string,
-    temporary = true,
-  ): Promise<void> {
+  async setPassword(keycloakUserId: string, password: string, temporary = true): Promise<void> {
     this.logger.info('Setting user password in Keycloak', {
       keycloakUserId,
       temporary,
-    });
+    })
 
     try {
-      const token = await this.getAccessToken();
+      const token = await this.getAccessToken()
 
       await firstValueFrom(
         this.httpService.put(
@@ -393,15 +378,15 @@ export class KeycloakUserAdapter {
             },
           }
         )
-      );
+      )
 
-      this.logger.info('User password set in Keycloak', { keycloakUserId });
+      this.logger.info('User password set in Keycloak', { keycloakUserId })
     } catch (error: any) {
       this.logger.error('Failed to set user password in Keycloak', error, {
         keycloakUserId,
-      });
+      })
 
-      throw error;
+      throw error
     }
   }
 
@@ -416,22 +401,22 @@ export class KeycloakUserAdapter {
    * ATTIVARE: configurare il provider SMTP nel realm Keycloak (`ignicraft`).
    */
   async sendVerifyEmail(keycloakUserId: string): Promise<void> {
-    this.logger.info('Sending verify-email to user in Keycloak', { keycloakUserId });
+    this.logger.info('Sending verify-email to user in Keycloak', { keycloakUserId })
     try {
-      const token = await this.getAccessToken();
+      const token = await this.getAccessToken()
       await firstValueFrom(
         this.httpService.put(
           `${this.keycloakUrl}/admin/realms/${this.realm}/users/${keycloakUserId}/send-verify-email`,
           {},
-          { headers: { Authorization: `Bearer ${token}` } },
-        ),
-      );
-      this.logger.info('Verify-email sent via Keycloak', { keycloakUserId });
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+      )
+      this.logger.info('Verify-email sent via Keycloak', { keycloakUserId })
     } catch (error: any) {
       this.logger.error('Failed to send verify-email from Keycloak (best-effort)', error, {
         keycloakUserId,
-      });
-      throw error;
+      })
+      throw error
     }
   }
 
@@ -439,21 +424,21 @@ export class KeycloakUserAdapter {
    * Delete user in Keycloak (rollback su provisioning fallito).
    */
   async deleteUser(keycloakUserId: string): Promise<void> {
-    this.logger.info('Deleting user in Keycloak', { keycloakUserId });
+    this.logger.info('Deleting user in Keycloak', { keycloakUserId })
     try {
-      const token = await this.getAccessToken();
+      const token = await this.getAccessToken()
       await firstValueFrom(
         this.httpService.delete(
           `${this.keycloakUrl}/admin/realms/${this.realm}/users/${keycloakUserId}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        ),
-      );
-      this.logger.info('User deleted in Keycloak', { keycloakUserId });
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+      )
+      this.logger.info('User deleted in Keycloak', { keycloakUserId })
     } catch (error: any) {
       this.logger.error('Failed to delete user in Keycloak', error, {
         keycloakUserId,
-      });
-      throw error;
+      })
+      throw error
     }
   }
 
@@ -461,10 +446,10 @@ export class KeycloakUserAdapter {
    * Disable user in Keycloak
    */
   async disableUser(keycloakUserId: string): Promise<void> {
-    this.logger.info('Disabling user in Keycloak', { keycloakUserId });
+    this.logger.info('Disabling user in Keycloak', { keycloakUserId })
 
     try {
-      const token = await this.getAccessToken();
+      const token = await this.getAccessToken()
 
       await firstValueFrom(
         this.httpService.put(
@@ -477,15 +462,15 @@ export class KeycloakUserAdapter {
             },
           }
         )
-      );
+      )
 
-      this.logger.info('User disabled in Keycloak', { keycloakUserId });
+      this.logger.info('User disabled in Keycloak', { keycloakUserId })
     } catch (error: any) {
       this.logger.error('Failed to disable user in Keycloak', error, {
         keycloakUserId,
-      });
+      })
 
-      throw error;
+      throw error
     }
   }
 }

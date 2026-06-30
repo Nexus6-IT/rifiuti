@@ -1,16 +1,10 @@
-import {
-  Controller,
-  Get,
-  UseGuards,
-  Logger,
-  Query,
-} from '@nestjs/common';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { TenantIsolationGuard } from '../guards/tenant-isolation.guard';
-import { CurrentTenant } from '../decorators/current-tenant.decorator';
-import { CurrentUser } from '../decorators/current-user.decorator';
-import { GetUserPermissionsQueryHandler } from '../../application/queries/handlers/get-user-permissions.handler';
-import { GetUserPermissionsQuery } from '../../application/queries/get-user-permissions.query';
+import { Controller, Get, UseGuards, Logger, Query } from '@nestjs/common'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
+import { CurrentTenant } from '../decorators/current-tenant.decorator'
+import { CurrentUser } from '../decorators/current-user.decorator'
+import { GetUserPermissionsQueryHandler } from '../../application/queries/handlers/get-user-permissions.handler'
+import { GetUserPermissionsQuery } from '../../application/queries/get-user-permissions.query'
 
 /**
  * PermissionController
@@ -22,11 +16,9 @@ import { GetUserPermissionsQuery } from '../../application/queries/get-user-perm
 @Controller('permissions')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard)
 export class PermissionController {
-  private readonly logger = new Logger(PermissionController.name);
+  private readonly logger = new Logger(PermissionController.name)
 
-  constructor(
-    private readonly getUserPermissionsHandler: GetUserPermissionsQueryHandler,
-  ) {}
+  constructor(private readonly getUserPermissionsHandler: GetUserPermissionsQueryHandler) {}
 
   /**
    * GET /api/v1/permissions/my-permissions
@@ -37,26 +29,20 @@ export class PermissionController {
   async getMyPermissions(
     @CurrentTenant() tenantId: string,
     @CurrentUser('userId') userId: string,
-    @Query('includeTemp') includeTemp?: string,
+    @Query('includeTemp') includeTemp?: string
   ) {
-    this.logger.debug(
-      `Fetching permissions for user ${userId} in tenant ${tenantId}`,
-    );
+    this.logger.debug(`Fetching permissions for user ${userId} in tenant ${tenantId}`)
 
-    const query = new GetUserPermissionsQuery(
-      userId,
-      tenantId,
-      includeTemp === 'true',
-    );
+    const query = new GetUserPermissionsQuery(userId, tenantId, includeTemp === 'true')
 
-    const result = await this.getUserPermissionsHandler.execute(query);
+    const result = await this.getUserPermissionsHandler.execute(query)
 
     return {
       permissions: result.permissions,
       facilityIds: result.facilityIds,
       source: result.source,
       cachedAt: new Date().toISOString(),
-    };
+    }
   }
 
   /**
@@ -67,8 +53,8 @@ export class PermissionController {
   async getPermissionsMe(
     @CurrentTenant() tenantId: string,
     @CurrentUser('userId') userId: string,
-    @Query('includeTemp') includeTemp?: string,
+    @Query('includeTemp') includeTemp?: string
   ) {
-    return this.getMyPermissions(tenantId, userId, includeTemp);
+    return this.getMyPermissions(tenantId, userId, includeTemp)
   }
 }

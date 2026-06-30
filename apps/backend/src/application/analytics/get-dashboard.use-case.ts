@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import { AnalyticsService } from './analytics.service';
-import { LoggerService } from '../../core/logger/logger.service';
+import { Injectable } from '@nestjs/common'
+import { AnalyticsService } from './analytics.service'
+import { LoggerService } from '../../core/logger/logger.service'
 
 /**
  * Get Dashboard Use Case
@@ -19,22 +19,22 @@ import { LoggerService } from '../../core/logger/logger.service';
 export class GetDashboardUseCase {
   constructor(
     private readonly analyticsService: AnalyticsService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext(GetDashboardUseCase.name);
+    this.logger.setContext(GetDashboardUseCase.name)
   }
 
   /**
    * Execute dashboard query
    */
   async execute(params: {
-    tenantId: string;
+    tenantId: string
     dateRange?: {
-      startDate: Date;
-      endDate: Date;
-    };
+      startDate: Date
+      endDate: Date
+    }
   }): Promise<DashboardData> {
-    this.logger.info(`Fetching dashboard data for tenant ${params.tenantId}`);
+    this.logger.info(`Fetching dashboard data for tenant ${params.tenantId}`)
 
     try {
       // Fetch all metrics in parallel
@@ -68,9 +68,9 @@ export class GetDashboardUseCase {
         this.analyticsService.predictNextMonthVolume(params.tenantId),
         this.analyticsService.getTopProducers(params.tenantId, 5),
         this.analyticsService.getTopCarriers(params.tenantId, 5),
-      ]);
+      ])
 
-      this.logger.info(`Dashboard data fetched successfully for tenant ${params.tenantId}`);
+      this.logger.info(`Dashboard data fetched successfully for tenant ${params.tenantId}`)
 
       return {
         overview: {
@@ -124,10 +124,10 @@ export class GetDashboardUseCase {
           carriers: topCarriers,
         },
         generatedAt: new Date(),
-      };
+      }
     } catch (error) {
-      this.logger.error(`Failed to fetch dashboard data for tenant ${params.tenantId}`, error);
-      throw error;
+      this.logger.error(`Failed to fetch dashboard data for tenant ${params.tenantId}`, error)
+      throw error
     }
   }
 }
@@ -137,60 +137,60 @@ export class GetDashboardUseCase {
  */
 export interface DashboardData {
   overview: {
-    totalFIRs: number;
-    totalWasteKg: number;
-    completedFIRs: number;
-    pendingFIRs: number;
-    overdueFIRs: number;
-  };
+    totalFIRs: number
+    totalWasteKg: number
+    completedFIRs: number
+    pendingFIRs: number
+    overdueFIRs: number
+  }
   status: {
-    breakdown: Record<string, number>;
-    chart: Array<{ status: string; count: number }>;
-  };
+    breakdown: Record<string, number>
+    chart: Array<{ status: string; count: number }>
+  }
   waste: {
-    totalKg: number;
-    byCERCode: Array<{ cerCode: string; count: number; totalQuantity: number }>;
+    totalKg: number
+    byCERCode: Array<{ cerCode: string; count: number; totalQuantity: number }>
     byDestination: {
-      recovery: { count: number; quantity: number };
-      disposal: { count: number; quantity: number };
-      recyclingRate: number;
-    };
-    recyclingRate: number;
-  };
+      recovery: { count: number; quantity: number }
+      disposal: { count: number; quantity: number }
+      recyclingRate: number
+    }
+    recyclingRate: number
+  }
   rentri: {
-    syncRate: number;
-    totalCompleted: number;
-    synced: number;
-    pending: number;
-  };
+    syncRate: number
+    totalCompleted: number
+    synced: number
+    pending: number
+  }
   signatures: {
-    completionRate: number;
-    total: number;
-    completed: number;
-    averageTimeHours: number;
-  };
+    completionRate: number
+    total: number
+    completed: number
+    averageTimeHours: number
+  }
   compliance: {
-    score: number;
-    level: 'EXCELLENT' | 'GOOD' | 'NEEDS_IMPROVEMENT' | 'CRITICAL';
+    score: number
+    level: 'EXCELLENT' | 'GOOD' | 'NEEDS_IMPROVEMENT' | 'CRITICAL'
     factors: {
-      signatureCompletionRate: number;
-      rentriSyncRate: number;
-      overdueRate: number;
-    };
-  };
+      signatureCompletionRate: number
+      rentriSyncRate: number
+      overdueRate: number
+    }
+  }
   trends: {
     monthOverMonth: {
-      current: number;
-      previous: number;
-      percentage: number;
-    };
+      current: number
+      previous: number
+      percentage: number
+    }
     prediction: {
-      nextMonth: number;
-    };
-  };
+      nextMonth: number
+    }
+  }
   top: {
-    producers: Array<{ partitaIva: string; count: number }>;
-    carriers: Array<{ partitaIva: string; count: number }>;
-  };
-  generatedAt: Date;
+    producers: Array<{ partitaIva: string; count: number }>
+    carriers: Array<{ partitaIva: string; count: number }>
+  }
+  generatedAt: Date
 }

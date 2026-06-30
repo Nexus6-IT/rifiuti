@@ -37,9 +37,7 @@ export interface MovimentoListItem {
 export class ListMovimentiHandler {
   constructor(private readonly prisma: PrismaService) {}
 
-  async execute(
-    query: ListMovimentiQuery,
-  ): Promise<Result<PaginatedMovimenti<MovimentoListItem>>> {
+  async execute(query: ListMovimentiQuery): Promise<Result<PaginatedMovimenti<MovimentoListItem>>> {
     const page = query.pagination?.page ?? 1
     const limit = Math.min(query.pagination?.limit ?? 20, 100)
     const skip = (page - 1) * limit
@@ -47,7 +45,8 @@ export class ListMovimentiHandler {
     const where: Record<string, unknown> = { tenantId: query.tenantId }
 
     if (query.filters?.type) where['type'] = query.filters.type
-    if (query.filters?.cerCode) where['cerCode'] = { contains: query.filters.cerCode, mode: 'insensitive' }
+    if (query.filters?.cerCode)
+      where['cerCode'] = { contains: query.filters.cerCode, mode: 'insensitive' }
     if (query.filters?.causale) where['causale'] = query.filters.causale
     if (query.filters?.firId) where['firId'] = query.filters.firId
 
@@ -68,7 +67,7 @@ export class ListMovimentiHandler {
       }),
     ])
 
-    const items: MovimentoListItem[] = records.map((r) => ({
+    const items: MovimentoListItem[] = records.map(r => ({
       id: r.id,
       tenantId: r.tenantId,
       progressiveNumber: r.progressiveNumber,

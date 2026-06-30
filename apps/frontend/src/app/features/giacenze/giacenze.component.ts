@@ -1,16 +1,16 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { ButtonModule } from 'primeng/button';
-import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { ToastService } from '../../core/services/toast.service';
+import { Component, OnInit, inject, signal, computed } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { ButtonModule } from 'primeng/button'
+import { TableModule } from 'primeng/table'
+import { TagModule } from 'primeng/tag'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { ToastService } from '../../core/services/toast.service'
 import {
   GiacenzeService,
   Giacenza,
   DepositoTemporaneoAlert,
   DepositoTemporaneoReason,
-} from './giacenze.service';
+} from './giacenze.service'
 
 /**
  * Pagina Giacenze e deposito temporaneo: mostra le giacenze aggregate per CER
@@ -20,19 +20,15 @@ import {
 @Component({
   selector: 'app-giacenze',
   standalone: true,
-  imports: [
-    CommonModule,
-    ButtonModule,
-    TableModule,
-    TagModule,
-    ProgressSpinnerModule,
-  ],
+  imports: [CommonModule, ButtonModule, TableModule, TagModule, ProgressSpinnerModule],
   template: `
     <div class="page">
       <header class="page-header">
         <div class="page-header__titles">
           <h1 class="page-title">Giacenze e deposito temporaneo</h1>
-          <p class="page-subtitle">Riepilogo delle giacenze per codice CER e controllo dei limiti di deposito temporaneo</p>
+          <p class="page-subtitle">
+            Riepilogo delle giacenze per codice CER e controllo dei limiti di deposito temporaneo
+          </p>
         </div>
         <div class="page-actions">
           <p-button
@@ -49,16 +45,28 @@ import {
       <!-- Stato di errore -->
       <section *ngIf="error()" class="surface-card mb-4">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
+          <i
+            class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger"
+            aria-hidden="true"
+          ></i>
           <span class="empty-state__title">{{ error() }}</span>
-          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="reload()"></p-button>
+          <p-button
+            label="Riprova"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            (onClick)="reload()"
+          ></p-button>
         </div>
       </section>
 
       <!-- Stato di caricamento -->
       <section *ngIf="loading()" class="surface-card">
         <div class="flex justify-content-center p-5">
-          <p-progressSpinner strokeWidth="4" [style]="{ width: '48px', height: '48px' }" ariaLabel="Caricamento giacenze"></p-progressSpinner>
+          <p-progressSpinner
+            strokeWidth="4"
+            [style]="{ width: '48px', height: '48px' }"
+            ariaLabel="Caricamento giacenze"
+          ></p-progressSpinner>
         </div>
       </section>
 
@@ -87,14 +95,19 @@ import {
           <h2 class="giacenze-section-title mb-3">Alert deposito temporaneo</h2>
 
           <div *ngIf="!alerts().length" class="empty-state empty-state--compact">
-            <i class="pi pi-check-circle empty-state__icon empty-state__icon--success" aria-hidden="true"></i>
+            <i
+              class="pi pi-check-circle empty-state__icon empty-state__icon--success"
+              aria-hidden="true"
+            ></i>
             <span class="empty-state__title">Nessun superamento soglie</span>
             <p>Nessun codice CER supera le soglie di deposito temporaneo.</p>
           </div>
 
           <div *ngFor="let alert of alerts()" class="alert-banner mb-2">
             <div class="alert-header">
-              <span class="alert-cer"><strong>CER {{ alert.cerCode }}</strong></span>
+              <span class="alert-cer"
+                ><strong>CER {{ alert.cerCode }}</strong></span
+              >
               <span class="alert-qty">{{ alert.giacenzaKg | number: '1.0-2' }} kg in giacenza</span>
             </div>
             <div class="alert-tags">
@@ -130,13 +143,17 @@ import {
               </ng-template>
               <ng-template pTemplate="body" let-g>
                 <tr>
-                  <td><strong>{{ g.cerCode }}</strong></td>
+                  <td>
+                    <strong>{{ g.cerCode }}</strong>
+                  </td>
                   <td class="text-right">{{ g.caricoKg | number: '1.0-2' }}</td>
                   <td class="text-right">{{ g.scaricoKg | number: '1.0-2' }}</td>
                   <td class="text-right">
                     <strong>{{ g.giacenzaKg | number: '1.0-2' }}</strong>
                   </td>
-                  <td>{{ g.oldestCaricoDate ? (g.oldestCaricoDate | date: 'dd/MM/yyyy') : '-' }}</td>
+                  <td>
+                    {{ g.oldestCaricoDate ? (g.oldestCaricoDate | date: 'dd/MM/yyyy') : '-' }}
+                  </td>
                 </tr>
               </ng-template>
               <ng-template pTemplate="emptymessage">
@@ -169,9 +186,15 @@ import {
         background: var(--color-warning-bg);
       }
 
-      .empty-state--compact { padding: var(--spacing-lg); }
-      .empty-state__icon--danger { color: var(--color-danger); }
-      .empty-state__icon--success { color: var(--color-success); }
+      .empty-state--compact {
+        padding: var(--spacing-lg);
+      }
+      .empty-state__icon--danger {
+        color: var(--color-danger);
+      }
+      .empty-state__icon--success {
+        color: var(--color-success);
+      }
 
       .alert-banner {
         border: 1px solid var(--surface-border);
@@ -190,8 +213,12 @@ import {
         margin-bottom: var(--spacing-sm);
       }
 
-      .alert-cer { font-size: var(--font-size-base); }
-      .alert-qty { color: var(--text-secondary); }
+      .alert-cer {
+        font-size: var(--font-size-base);
+      }
+      .alert-qty {
+        color: var(--text-secondary);
+      }
 
       .alert-tags {
         display: flex;
@@ -205,77 +232,85 @@ import {
         font-size: var(--font-size-sm);
       }
 
-      .text-right { text-align: right; }
-      .mb-4 { margin-bottom: var(--spacing-xl); }
-      .mb-3 { margin-bottom: var(--spacing-base); }
-      .mb-2 { margin-bottom: var(--spacing-sm); }
+      .text-right {
+        text-align: right;
+      }
+      .mb-4 {
+        margin-bottom: var(--spacing-xl);
+      }
+      .mb-3 {
+        margin-bottom: var(--spacing-base);
+      }
+      .mb-2 {
+        margin-bottom: var(--spacing-sm);
+      }
     `,
   ],
 })
 export class GiacenzeComponent implements OnInit {
-  private readonly giacenzeService = inject(GiacenzeService);
-  private readonly toast = inject(ToastService);
+  private readonly giacenzeService = inject(GiacenzeService)
+  private readonly toast = inject(ToastService)
 
-  readonly giacenze = signal<Giacenza[]>([]);
-  readonly alerts = signal<DepositoTemporaneoAlert[]>([]);
-  readonly loading = signal(false);
-  readonly error = signal<string | null>(null);
+  readonly giacenze = signal<Giacenza[]>([])
+  readonly alerts = signal<DepositoTemporaneoAlert[]>([])
+  readonly loading = signal(false)
+  readonly error = signal<string | null>(null)
 
   /** True quando non ci sono né giacenze né alert (stato vuoto complessivo). */
-  readonly isEmpty = computed(() => !this.giacenze().length && !this.alerts().length);
+  readonly isEmpty = computed(() => !this.giacenze().length && !this.alerts().length)
 
   /** Somma delle giacenze (kg) su tutti i codici CER. */
   readonly totalGiacenzaKg = computed(() =>
-    this.giacenze().reduce((sum, g) => sum + (g.giacenzaKg ?? 0), 0),
-  );
+    this.giacenze().reduce((sum, g) => sum + (g.giacenzaKg ?? 0), 0)
+  )
 
   ngOnInit(): void {
-    this.reload();
+    this.reload()
   }
 
   reload(): void {
-    this.loading.set(true);
-    this.error.set(null);
+    this.loading.set(true)
+    this.error.set(null)
 
-    let pending = 2;
+    let pending = 2
     const done = () => {
-      if (--pending === 0) this.loading.set(false);
-    };
+      if (--pending === 0) this.loading.set(false)
+    }
 
     this.giacenzeService.getGiacenze().subscribe({
-      next: (data) => {
-        this.giacenze.set(data ?? []);
-        done();
+      next: data => {
+        this.giacenze.set(data ?? [])
+        done()
       },
       error: () => {
-        this.error.set('Impossibile caricare le giacenze.');
-        this.toast.error('Errore nel caricamento delle giacenze');
-        done();
+        this.error.set('Impossibile caricare le giacenze.')
+        this.toast.error('Errore nel caricamento delle giacenze')
+        done()
       },
-    });
+    })
 
     this.giacenzeService.getDepositoTemporaneoAlerts().subscribe({
-      next: (data) => {
-        this.alerts.set(data ?? []);
-        done();
+      next: data => {
+        this.alerts.set(data ?? [])
+        done()
       },
       error: () => {
-        this.error.set('Impossibile caricare gli alert di deposito temporaneo.');
-        this.toast.error('Errore nel caricamento degli alert di deposito temporaneo');
-        done();
+        this.error.set('Impossibile caricare gli alert di deposito temporaneo.')
+        this.toast.error('Errore nel caricamento degli alert di deposito temporaneo')
+        done()
       },
-    });
+    })
   }
 
   reasonLabel(reason: DepositoTemporaneoReason): string {
-    return reason === 'DURATION' ? 'Durata superata' : 'Quantità superata';
+    return reason === 'DURATION' ? 'Durata superata' : 'Quantità superata'
   }
 
   reasonSeverity(reason: DepositoTemporaneoReason): 'warning' | 'danger' {
-    return reason === 'DURATION' ? 'warning' : 'danger';
+    return reason === 'DURATION' ? 'warning' : 'danger'
   }
 
   reasonIcon(reason: DepositoTemporaneoReason): string {
-    return reason === 'DURATION' ? 'pi pi-clock' : 'pi pi-exclamation-triangle';
+    return reason === 'DURATION' ? 'pi pi-clock' : 'pi pi-exclamation-triangle'
   }
 }

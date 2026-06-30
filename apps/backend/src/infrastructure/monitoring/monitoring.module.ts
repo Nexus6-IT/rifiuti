@@ -1,6 +1,6 @@
-import { Module } from '@nestjs/common';
-import { HealthCheckController } from './health-check.controller';
-import { PrismaModule } from '../database/prisma.module';
+import { Module } from '@nestjs/common'
+import { HealthCheckController } from './health-check.controller'
+import { PrismaModule } from '../database/prisma.module'
 
 /**
  * Monitoring Module

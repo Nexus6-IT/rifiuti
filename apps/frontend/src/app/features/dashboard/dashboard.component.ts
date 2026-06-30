@@ -1,22 +1,22 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
-import { CardModule } from 'primeng/card';
-import { ButtonModule } from 'primeng/button';
-import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
-import { ChartModule } from 'primeng/chart';
-import { FirService } from '../fir/fir.service';
-import { FIR, FIRStato } from '../../shared/models/fir.model';
-import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader.component';
-import { EmptyStateComponent } from '../../shared/components/empty-state.component';
-import { ErrorStateComponent } from '../../shared/components/error-state.component';
+import { Component, OnInit } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { RouterLink } from '@angular/router'
+import { CardModule } from 'primeng/card'
+import { ButtonModule } from 'primeng/button'
+import { TableModule } from 'primeng/table'
+import { TagModule } from 'primeng/tag'
+import { ChartModule } from 'primeng/chart'
+import { FirService } from '../fir/fir.service'
+import { FIR, FIRStato } from '../../shared/models/fir.model'
+import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader.component'
+import { EmptyStateComponent } from '../../shared/components/empty-state.component'
+import { ErrorStateComponent } from '../../shared/components/error-state.component'
 
 interface DashboardStats {
-  totalFIR: number;
-  firInTransito: number;
-  firConsegnati: number;
-  firBozza: number;
+  totalFIR: number
+  firInTransito: number
+  firConsegnati: number
+  firBozza: number
 }
 
 @Component({
@@ -32,7 +32,7 @@ interface DashboardStats {
     ChartModule,
     SkeletonLoaderComponent,
     EmptyStateComponent,
-    ErrorStateComponent
+    ErrorStateComponent,
   ],
   template: `
     <div class="page">
@@ -56,7 +56,7 @@ interface DashboardStats {
       <ng-container *ngIf="loading && recentFIR.length === 0">
         <div class="stat-grid" aria-busy="true">
           <span class="sr-only">Caricamento statistiche in corso</span>
-          <app-skeleton-loader *ngFor="let _ of [1,2,3,4]" variant="stats" [repeat]="1" />
+          <app-skeleton-loader *ngFor="let _ of [1, 2, 3, 4]" variant="stats" [repeat]="1" />
         </div>
       </ng-container>
 
@@ -75,14 +75,18 @@ interface DashboardStats {
             <span class="stat-card__label">
               <i class="pi pi-truck" aria-hidden="true"></i> In transito
             </span>
-            <span class="stat-card__value stat-card__value--warning">{{ stats.firInTransito }}</span>
+            <span class="stat-card__value stat-card__value--warning">{{
+              stats.firInTransito
+            }}</span>
           </article>
 
           <article class="stat-card">
             <span class="stat-card__label">
               <i class="pi pi-check-circle" aria-hidden="true"></i> Consegnati
             </span>
-            <span class="stat-card__value stat-card__value--success">{{ stats.firConsegnati }}</span>
+            <span class="stat-card__value stat-card__value--success">{{
+              stats.firConsegnati
+            }}</span>
           </article>
 
           <article class="stat-card">
@@ -134,7 +138,9 @@ interface DashboardStats {
               </ng-template>
               <ng-template pTemplate="body" let-fir>
                 <tr>
-                  <td><span class="font-semibold">{{ fir.numeroProgressivo || 'N/A' }}</span></td>
+                  <td>
+                    <span class="font-semibold">{{ fir.numeroProgressivo || 'N/A' }}</span>
+                  </td>
                   <td>{{ fir.rifiuto.cerCode }}</td>
                   <td>
                     <p-tag
@@ -193,101 +199,113 @@ interface DashboardStats {
       </div>
     </div>
   `,
-  styles: [`
-    .dashboard-grid {
-      display: grid;
-      /* Allineato al gap delle KPI (.stat-grid) per continuità visiva */
-      gap: var(--spacing-base);
-      grid-template-columns: 1fr;
-    }
-    @media (min-width: 992px) {
+  styles: [
+    `
       .dashboard-grid {
-        grid-template-columns: 2fr 1fr;
-        align-items: start;
+        display: grid;
+        /* Allineato al gap delle KPI (.stat-grid) per continuità visiva */
+        gap: var(--spacing-base);
+        grid-template-columns: 1fr;
       }
-    }
+      @media (min-width: 992px) {
+        .dashboard-grid {
+          grid-template-columns: 2fr 1fr;
+          align-items: start;
+        }
+      }
 
-    .card-header {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--spacing-sm);
-      margin-bottom: var(--spacing-base);
-    }
+      .card-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-sm);
+        margin-bottom: var(--spacing-base);
+      }
 
-    .card-title {
-      margin: 0;
-      font-family: var(--font-display);
-      font-size: var(--font-size-lg);
-      font-weight: var(--font-weight-semibold);
-      color: var(--text-primary);
-    }
+      .card-title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+      }
 
-    .stat-card__label {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--spacing-xs);
-    }
-    .stat-card__label .pi { color: var(--brand-primary); }
-    /* Valori KPI neutri: sono conteggi, non stati/soglie da evidenziare */
-    .stat-card__value--warning { color: var(--text-primary); }
-    .stat-card__value--success { color: var(--text-primary); }
+      .stat-card__label {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+      }
+      .stat-card__label .pi {
+        color: var(--brand-primary);
+      }
+      /* Valori KPI neutri: sono conteggi, non stati/soglie da evidenziare */
+      .stat-card__value--warning {
+        color: var(--text-primary);
+      }
+      .stat-card__value--success {
+        color: var(--text-primary);
+      }
 
-    .chart-skeleton {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: var(--spacing-2xl);
-    }
+      .chart-skeleton {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: var(--spacing-2xl);
+      }
 
-    .mt-4 { margin-top: var(--spacing-lg); }
-  `]
+      .mt-4 {
+        margin-top: var(--spacing-lg);
+      }
+    `,
+  ],
 })
 export class DashboardComponent implements OnInit {
   stats: DashboardStats = {
     totalFIR: 0,
     firInTransito: 0,
     firConsegnati: 0,
-    firBozza: 0
-  };
+    firBozza: 0,
+  }
 
-  recentFIR: FIR[] = [];
-  loading = false;
-  error = '';
+  recentFIR: FIR[] = []
+  loading = false
+  error = ''
 
-  chartData: any;
-  chartOptions: any;
+  chartData: any
+  chartOptions: any
 
   constructor(private firService: FirService) {}
 
   ngOnInit(): void {
-    this.loadDashboardData();
-    this.initChart();
+    this.loadDashboardData()
+    this.initChart()
   }
 
   loadDashboardData(): void {
-    this.loading = true;
-    this.error = '';
+    this.loading = true
+    this.error = ''
     this.firService.getFIRList(1, 5).subscribe({
-      next: (response) => {
-        this.recentFIR = response.items;
-        this.calculateStats(response.items);
-        this.updateChartData();
-        this.loading = false;
+      next: response => {
+        this.recentFIR = response.items
+        this.calculateStats(response.items)
+        this.updateChartData()
+        this.loading = false
       },
-      error: (err) => {
-        this.loading = false;
-        this.error = err.error?.message || 'Si è verificato un errore nel caricamento dei dati. Riprova più tardi.';
-      }
-    });
+      error: err => {
+        this.loading = false
+        this.error =
+          err.error?.message ||
+          'Si è verificato un errore nel caricamento dei dati. Riprova più tardi.'
+      },
+    })
   }
 
   calculateStats(firList: FIR[]): void {
-    this.stats.totalFIR = firList.length;
-    this.stats.firInTransito = firList.filter(f => f.stato === FIRStato.IN_TRANSITO).length;
-    this.stats.firConsegnati = firList.filter(f => f.stato === FIRStato.CONSEGNATO).length;
-    this.stats.firBozza = firList.filter(f => f.stato === FIRStato.BOZZA).length;
+    this.stats.totalFIR = firList.length
+    this.stats.firInTransito = firList.filter(f => f.stato === FIRStato.IN_TRANSITO).length
+    this.stats.firConsegnati = firList.filter(f => f.stato === FIRStato.CONSEGNATO).length
+    this.stats.firBozza = firList.filter(f => f.stato === FIRStato.BOZZA).length
   }
 
   initChart(): void {
@@ -296,10 +314,10 @@ export class DashboardComponent implements OnInit {
         legend: {
           position: 'bottom',
           // Etichette leggibili (WCAG AA) -> --text-secondary
-          labels: { color: '#475569' }
-        }
-      }
-    };
+          labels: { color: '#475569' },
+        },
+      },
+    }
   }
 
   updateChartData(): void {
@@ -312,29 +330,31 @@ export class DashboardComponent implements OnInit {
             0, // Count emesso separately if needed
             this.stats.firInTransito,
             this.stats.firConsegnati,
-            0  // Count annullato separately if needed
+            0, // Count annullato separately if needed
           ],
           // Palette semantica: secondary / info / warning / success / danger
-          backgroundColor: ['#64748b', '#1d4ed8', '#b45309', '#15803d', '#b91c1c']
-        }
-      ]
-    };
+          backgroundColor: ['#64748b', '#1d4ed8', '#b45309', '#15803d', '#b91c1c'],
+        },
+      ],
+    }
   }
 
   /** True quando il grafico "FIR per stato" ha almeno un valore > 0 */
   get hasChartData(): boolean {
-    const data: number[] = this.chartData?.datasets?.[0]?.data ?? [];
-    return data.some((v) => v > 0);
+    const data: number[] = this.chartData?.datasets?.[0]?.data ?? []
+    return data.some(v => v > 0)
   }
 
-  getStatoSeverity(stato: FIRStato): "success" | "info" | "warning" | "danger" | "secondary" | "contrast" | undefined {
-    const severityMap: Record<FIRStato, "success" | "info" | "warning" | "danger" | "secondary"> = {
+  getStatoSeverity(
+    stato: FIRStato
+  ): 'success' | 'info' | 'warning' | 'danger' | 'secondary' | 'contrast' | undefined {
+    const severityMap: Record<FIRStato, 'success' | 'info' | 'warning' | 'danger' | 'secondary'> = {
       [FIRStato.BOZZA]: 'secondary',
       [FIRStato.EMESSO]: 'info',
       [FIRStato.IN_TRANSITO]: 'warning',
       [FIRStato.CONSEGNATO]: 'success',
-      [FIRStato.ANNULLATO]: 'danger'
-    };
-    return severityMap[stato];
+      [FIRStato.ANNULLATO]: 'danger',
+    }
+    return severityMap[stato]
   }
 }

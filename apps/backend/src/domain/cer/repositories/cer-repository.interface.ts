@@ -43,7 +43,7 @@ export interface ICERRepository {
   findPaginated(
     page: number,
     limit: number,
-    filters?: CERSearchFilters,
+    filters?: CERSearchFilters
   ): Promise<{ items: CERCode[]; total: number }>
 
   /**

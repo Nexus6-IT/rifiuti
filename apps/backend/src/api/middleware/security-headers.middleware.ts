@@ -1,5 +1,5 @@
-import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
-import { Request, Response, NextFunction } from 'express';
+import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
+import { Request, Response, NextFunction } from 'express'
 
 /**
  * SecurityHeadersMiddleware
@@ -20,8 +20,8 @@ import { Request, Response, NextFunction } from 'express';
  */
 @Injectable()
 export class SecurityHeadersMiddleware implements NestMiddleware {
-  private readonly logger = new Logger(SecurityHeadersMiddleware.name);
-  private readonly isProduction = process.env.NODE_ENV === 'production';
+  private readonly logger = new Logger(SecurityHeadersMiddleware.name)
+  private readonly isProduction = process.env.NODE_ENV === 'production'
 
   use(req: Request, res: Response, next: NextFunction) {
     // Content Security Policy (CSP)
@@ -36,38 +36,38 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
       "frame-ancestors 'none'", // Prevent framing (clickjacking)
       "base-uri 'self'", // Restrict base tag
       "form-action 'self'", // Restrict form submissions
-      "upgrade-insecure-requests", // Upgrade HTTP to HTTPS in production
-    ];
+      'upgrade-insecure-requests', // Upgrade HTTP to HTTPS in production
+    ]
 
     // More restrictive CSP in production
     if (this.isProduction) {
-      res.setHeader('Content-Security-Policy', cspDirectives.join('; '));
+      res.setHeader('Content-Security-Policy', cspDirectives.join('; '))
     } else {
       // Report-only mode in development for easier debugging
-      res.setHeader('Content-Security-Policy-Report-Only', cspDirectives.join('; '));
+      res.setHeader('Content-Security-Policy-Report-Only', cspDirectives.join('; '))
     }
 
     // X-Frame-Options
     // Prevents clickjacking by disallowing page to be framed
-    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Frame-Options', 'DENY')
 
     // X-Content-Type-Options
     // Prevents MIME type sniffing
-    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Content-Type-Options', 'nosniff')
 
     // Strict-Transport-Security (HSTS)
     // Forces HTTPS connections
     if (this.isProduction) {
-      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload')
     }
 
     // X-XSS-Protection
     // Legacy XSS protection (most browsers now rely on CSP)
-    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('X-XSS-Protection', '1; mode=block')
 
     // Referrer-Policy
     // Controls how much referrer information is sent
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
 
     // Permissions-Policy (formerly Feature-Policy)
     // Controls which browser features can be used
@@ -80,42 +80,42 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
       'accelerometer=()', // Disable accelerometer
       'gyroscope=()', // Disable gyroscope
       'magnetometer=()', // Disable magnetometer
-    ];
-    res.setHeader('Permissions-Policy', permissionsPolicy.join(', '));
+    ]
+    res.setHeader('Permissions-Policy', permissionsPolicy.join(', '))
 
     // X-Permitted-Cross-Domain-Policies
     // Restricts Adobe Flash and PDF cross-domain requests
-    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none')
 
     // Cross-Origin-Embedder-Policy
     // Prevents document from loading cross-origin resources
-    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
 
     // Cross-Origin-Opener-Policy
     // Isolates browsing context to prevent attacks
-    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
 
     // Cross-Origin-Resource-Policy
     // Protects against cross-origin attacks
-    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
 
     // Remove X-Powered-By header (hides technology stack)
-    res.removeHeader('X-Powered-By');
+    res.removeHeader('X-Powered-By')
 
     // Cache-Control for sensitive endpoints
     if (this.isSensitiveEndpoint(req.path)) {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-      res.setHeader('Surrogate-Control', 'no-store');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      res.setHeader('Pragma', 'no-cache')
+      res.setHeader('Expires', '0')
+      res.setHeader('Surrogate-Control', 'no-store')
     }
 
     // Log security header application in development
     if (!this.isProduction) {
-      this.logger.debug(`Security headers applied to ${req.method} ${req.path}`);
+      this.logger.debug(`Security headers applied to ${req.method} ${req.path}`)
     }
 
-    next();
+    next()
   }
 
   /**
@@ -128,9 +128,9 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
       '/api/v1/admin', // Admin endpoints
       '/api/v1/permissions', // Permission data
       '/api/v1/audit', // Audit logs
-    ];
+    ]
 
-    return sensitivePatterns.some((pattern) => path.startsWith(pattern));
+    return sensitivePatterns.some(pattern => path.startsWith(pattern))
   }
 }
 
@@ -153,7 +153,7 @@ export class SecurityHeadersConfig {
       'Cross-Origin-Embedder-Policy': 'require-corp',
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Resource-Policy': 'same-origin',
-    };
+    }
   }
 
   static development(): Record<string, string> {
@@ -164,13 +164,13 @@ export class SecurityHeadersConfig {
       'X-Content-Type-Options': 'nosniff',
       'X-XSS-Protection': '1; mode=block',
       'Referrer-Policy': 'strict-origin-when-cross-origin',
-    };
+    }
   }
 
   static test(): Record<string, string> {
     return {
       'X-Frame-Options': 'DENY',
       'X-Content-Type-Options': 'nosniff',
-    };
+    }
   }
 }

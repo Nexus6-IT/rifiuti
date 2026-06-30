@@ -1,13 +1,13 @@
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
-import { IsUUID } from 'class-validator';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator';
-import { MembershipService } from './membership.service';
+import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common'
+import { IsUUID } from 'class-validator'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { CurrentUser } from '../../auth/decorators/current-user.decorator'
+import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { MembershipService } from './membership.service'
 
 class SwitchTenantDto {
   @IsUUID()
-  tenantId!: string;
+  tenantId!: string
 }
 
 /**
@@ -22,11 +22,11 @@ export class MembershipController {
 
   @Get('tenants')
   listTenants(@CurrentUser() user: CurrentUserPayload) {
-    return this.membership.listTenants(user);
+    return this.membership.listTenants(user)
   }
 
   @Post('switch-tenant')
   switchTenant(@CurrentUser() user: CurrentUserPayload, @Body() dto: SwitchTenantDto) {
-    return this.membership.switchTenant(user, dto.tenantId);
+    return this.membership.switchTenant(user, dto.tenantId)
   }
 }

@@ -16,6 +16,6 @@ export class AssignTaskCommand {
     public readonly tenantId: string,
     public readonly assignedBy: string,
     public readonly driverId?: string, // If provided, manual assignment; otherwise automatic
-    public readonly reason?: string, // Optional reason for manual assignment
+    public readonly reason?: string // Optional reason for manual assignment
   ) {}
 }

@@ -41,14 +41,14 @@ import { BillingModule } from '../application/billing/billing.module'
         cerRepo: CERPrismaRepository,
         produttoreRepo: ProduttorePrismaRepository,
         trasportatoreRepo: TrasportatorePrismaRepository,
-        destinatarioRepo: DestinatarioPrismaRepository,
+        destinatarioRepo: DestinatarioPrismaRepository
       ) => {
         return new CreateFIRUseCase(
           firRepo,
           cerRepo,
           produttoreRepo,
           trasportatoreRepo,
-          destinatarioRepo,
+          destinatarioRepo
         )
       },
       inject: [

@@ -17,21 +17,21 @@ import {
   ConflictException,
   BadRequestException,
   InternalServerErrorException,
-} from '@nestjs/common';
-import { randomUUID } from 'crypto';
-import { UserRole, SubscriptionTier, SubscriptionStatus, Prisma } from '@prisma/client';
-import { PrismaService } from '../../infrastructure/persistence/prisma.service';
-import { KeycloakUserAdapter } from '../../infrastructure/keycloak/keycloak-user.adapter';
-import { LoggerService } from '../../core/logger/logger.service';
-import { FiscalCode } from '../../domain/shared/fiscal-code.vo';
-import { seedRolesForTenant } from '../admin/system-roles';
-import { SignupDto } from '../../api/signup/dto/signup.dto';
+} from '@nestjs/common'
+import { randomUUID } from 'crypto'
+import { UserRole, SubscriptionTier, SubscriptionStatus, Prisma } from '@prisma/client'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { KeycloakUserAdapter } from '../../infrastructure/keycloak/keycloak-user.adapter'
+import { LoggerService } from '../../core/logger/logger.service'
+import { FiscalCode } from '../../domain/shared/fiscal-code.vo'
+import { seedRolesForTenant } from '../admin/system-roles'
+import { SignupDto } from '../../api/signup/dto/signup.dto'
 
 export interface SignupResult {
   /** Messaggio localizzato da mostrare all'utente. */
-  message: string;
+  message: string
   /** UUID del tenant appena creato. */
-  tenantId: string;
+  tenantId: string
 }
 
 @Injectable()
@@ -39,9 +39,9 @@ export class SignupService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly keycloak: KeycloakUserAdapter,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext(SignupService.name);
+    this.logger.setContext(SignupService.name)
   }
 
   /**
@@ -58,29 +58,27 @@ export class SignupService {
   async signup(dto: SignupDto): Promise<SignupResult> {
     // ── 1. Validazione CF ─────────────────────────────────────────────────
     if (!FiscalCode.isValid(dto.fiscalCode)) {
-      throw new BadRequestException(
-        `Codice fiscale non valido: ${dto.fiscalCode}`,
-      );
+      throw new BadRequestException(`Codice fiscale non valido: ${dto.fiscalCode}`)
     }
-    const normalizedCf = new FiscalCode(dto.fiscalCode).getValue();
+    const normalizedCf = new FiscalCode(dto.fiscalCode).getValue()
 
     // ── 2. Unicità P.IVA ──────────────────────────────────────────────────
     const existingTenant = await this.prisma.tenant.findUnique({
       where: { partitaIva: dto.partitaIva },
       select: { id: true },
-    });
+    })
     if (existingTenant) {
       throw new ConflictException(
-        `Partita IVA ${dto.partitaIva} già registrata. Contatta il supporto se pensi sia un errore.`,
-      );
+        `Partita IVA ${dto.partitaIva} già registrata. Contatta il supporto se pensi sia un errore.`
+      )
     }
 
     // ── 3. Pre-genera gli UUID per poterli passare a Keycloak prima della tx ──
-    const tenantId = randomUUID();
-    const userId = randomUUID();
+    const tenantId = randomUUID()
+    const userId = randomUUID()
 
     // ── 4. Crea l'utente su Keycloak (email non ancora verificata) ────────
-    let keycloakId: string;
+    let keycloakId: string
     try {
       keycloakId = await this.keycloak.createUser({
         fiscalCode: normalizedCf,
@@ -90,32 +88,30 @@ export class SignupService {
         tenantId,
         emailVerified: false,
         requiredActions: ['VERIFY_EMAIL'],
-      });
+      })
     } catch (error: any) {
       this.logger.error('Creazione utente su Keycloak fallita durante signup', error, {
         email: dto.email,
         partitaIva: dto.partitaIva,
-      });
+      })
       if (error?.response?.status === 409) {
-        throw new ConflictException(
-          'Esiste già un account con questa email o codice fiscale.',
-        );
+        throw new ConflictException('Esiste già un account con questa email o codice fiscale.')
       }
       throw new BadRequestException(
-        'Impossibile creare l\'account sul provider di identità. Riprova più tardi.',
-      );
+        "Impossibile creare l'account sul provider di identità. Riprova più tardi."
+      )
     }
 
     if (!keycloakId) {
       throw new InternalServerErrorException(
-        'Il provider di identità non ha restituito un identificativo utente valido.',
-      );
+        'Il provider di identità non ha restituito un identificativo utente valido.'
+      )
     }
 
     // ── 5. Transazione Prisma: Tenant + User + ownerUserId ────────────────
-    let result: { tenantId: string; userId: string };
+    let result: { tenantId: string; userId: string }
     try {
-      result = await this.prisma.$transaction(async (tx) => {
+      result = await this.prisma.$transaction(async tx => {
         // 5a. Crea il tenant (piano TRIAL, featureFlags null = derivate dal piano)
         const tenant = await tx.tenant.create({
           data: {
@@ -126,7 +122,7 @@ export class SignupService {
             subscriptionStatus: SubscriptionStatus.TRIAL,
             featureFlags: Prisma.DbNull,
           },
-        });
+        })
 
         // 5b. Crea l'utente ADMIN del tenant
         const user = await tx.user.create({
@@ -140,78 +136,74 @@ export class SignupService {
             lastName: dto.lastName,
             role: UserRole.ADMIN,
           },
-        });
+        })
 
         // 5c. Imposta l'owner del tenant (FK userId → user.id)
         await tx.tenant.update({
           where: { id: tenant.id },
           data: { ownerUserId: user.id },
-        });
+        })
 
-        return { tenantId: tenant.id, userId: user.id };
-      });
+        return { tenantId: tenant.id, userId: user.id }
+      })
     } catch (error: any) {
       // Rollback Keycloak: elimina l'utente creato per non lasciare orfani
       // che causerebbero conflitti 409 sui tentativi successivi.
-      await this.safeDeleteKeycloak(keycloakId);
+      await this.safeDeleteKeycloak(keycloakId)
 
-      this.logger.error(
-        'Transazione DB fallita durante signup (utente KC rimosso)',
-        error,
-        { keycloakId, tenantId, email: dto.email },
-      );
+      this.logger.error('Transazione DB fallita durante signup (utente KC rimosso)', error, {
+        keycloakId,
+        tenantId,
+        email: dto.email,
+      })
 
       if (error?.code === 'P2002') {
-        throw new ConflictException(
-          'Esiste già un account con questa email o codice fiscale.',
-        );
+        throw new ConflictException('Esiste già un account con questa email o codice fiscale.')
       }
       throw new InternalServerErrorException(
-        'Registrazione non completata per un errore interno. Riprova più tardi.',
-      );
+        'Registrazione non completata per un errore interno. Riprova più tardi.'
+      )
     }
 
     // ── 6. Best-effort: seed ruoli di sistema per il nuovo tenant ─────────
-    await this.seedRolesBestEffort(result.tenantId, result.userId);
+    await this.seedRolesBestEffort(result.tenantId, result.userId)
 
     // ── 7. Best-effort: associa l'admin al tenant per il tenant switcher ──
-    await this.associateOwnerBestEffort(result.tenantId, result.userId);
+    await this.associateOwnerBestEffort(result.tenantId, result.userId)
 
     // ── 8. Best-effort: invia mail di verifica via Keycloak ───────────────
     // Se SMTP non è configurato nel realm Keycloak, questo step fallisce silenziosamente.
     // L'utente è comunque creato; il super admin può attivarlo manualmente o
     // inviare la mail di verifica dalla console Keycloak.
     // ATTIVARE: configurare SMTP provider nel realm `ignicraft` su Keycloak.
-    await this.sendVerifyEmailBestEffort(keycloakId, dto.email);
+    await this.sendVerifyEmailBestEffort(keycloakId, dto.email)
 
     this.logger.info('Signup self-service completato', {
       tenantId: result.tenantId,
       userId: result.userId,
       partitaIva: dto.partitaIva,
-    });
+    })
 
     return {
       message:
-        'Registrazione completata. Controlla la tua email per verificare l\'account e accedere a WasteFlow.',
+        "Registrazione completata. Controlla la tua email per verificare l'account e accedere a WasteFlow.",
       tenantId: result.tenantId,
-    };
+    }
   }
 
   // ── Helper privati ────────────────────────────────────────────────────────
 
   private async seedRolesBestEffort(tenantId: string, createdBy: string): Promise<void> {
     try {
-      const count = await seedRolesForTenant(this.prisma, tenantId, createdBy);
+      const count = await seedRolesForTenant(this.prisma, tenantId, createdBy)
       this.logger.info('Ruoli di sistema seminati per il nuovo tenant signup', {
         tenantId,
         rolesCreated: count,
-      });
+      })
     } catch (error) {
-      this.logger.error(
-        'Seeding ruoli fallito (tenant comunque creato)',
-        error as Error,
-        { tenantId },
-      );
+      this.logger.error('Seeding ruoli fallito (tenant comunque creato)', error as Error, {
+        tenantId,
+      })
     }
   }
 
@@ -220,14 +212,14 @@ export class SignupService {
       const adminRole = await this.prisma.role.findUnique({
         where: { tenantId_name: { tenantId, name: 'ADMIN' } },
         select: { id: true },
-      });
+      })
 
       if (!adminRole) {
         this.logger.warn(
           'Ruolo ADMIN non trovato per il tenant signup: associazione owner saltata',
-          { tenantId, ownerUserId },
-        );
-        return;
+          { tenantId, ownerUserId }
+        )
+        return
       }
 
       await this.prisma.consultantTenantAssociation.upsert({
@@ -240,22 +232,22 @@ export class SignupService {
           addedBy: ownerUserId,
           isActive: true,
         },
-      });
+      })
 
-      this.logger.info('Owner associato al tenant (signup)', { tenantId, ownerUserId });
+      this.logger.info('Owner associato al tenant (signup)', { tenantId, ownerUserId })
     } catch (error) {
       this.logger.error(
         'Associazione owner↔tenant fallita nel signup (tenant comunque creato)',
         error as Error,
-        { tenantId, ownerUserId },
-      );
+        { tenantId, ownerUserId }
+      )
     }
   }
 
   private async sendVerifyEmailBestEffort(keycloakId: string, email: string): Promise<void> {
     try {
-      await this.keycloak.sendVerifyEmail(keycloakId);
-      this.logger.info('Mail di verifica inviata tramite Keycloak', { keycloakId, email });
+      await this.keycloak.sendVerifyEmail(keycloakId)
+      this.logger.info('Mail di verifica inviata tramite Keycloak', { keycloakId, email })
     } catch (error) {
       // Non blocca il signup: l'utente esiste già; il super admin può inviare
       // la mail di verifica manualmente dalla console Keycloak.
@@ -263,8 +255,8 @@ export class SignupService {
       this.logger.warn(
         'Invio mail di verifica via Keycloak fallito (best-effort). ' +
           'Verificare la configurazione SMTP del realm o inviare la mail manualmente.',
-        { keycloakId, email },
-      );
+        { keycloakId, email }
+      )
     }
   }
 
@@ -274,13 +266,13 @@ export class SignupService {
    */
   private async safeDeleteKeycloak(keycloakId: string): Promise<void> {
     try {
-      await this.keycloak.deleteUser(keycloakId);
+      await this.keycloak.deleteUser(keycloakId)
     } catch (error: any) {
       this.logger.error(
         'Rollback KC (deleteUser) fallito durante signup; intervento manuale richiesto',
         error,
-        { keycloakId },
-      );
+        { keycloakId }
+      )
     }
   }
 }

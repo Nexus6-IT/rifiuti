@@ -1,10 +1,10 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { PrismaModule } from '../../infrastructure/persistence/prisma.module';
-import { StripeService } from './stripe.service';
-import { BillingService } from './billing.service';
-import { BillingController } from './billing.controller';
-import { SubscriptionEnforcementService } from './subscription-enforcement.service';
+import { Module } from '@nestjs/common'
+import { ConfigModule } from '@nestjs/config'
+import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
+import { StripeService } from './stripe.service'
+import { BillingService } from './billing.service'
+import { BillingController } from './billing.controller'
+import { SubscriptionEnforcementService } from './subscription-enforcement.service'
 
 /**
  * BillingModule — apparato commerciale SaaS (WS-F).

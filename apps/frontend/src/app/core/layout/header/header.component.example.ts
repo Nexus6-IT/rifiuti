@@ -1,7 +1,7 @@
-import { Component, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { TenantSelectorComponent } from '../../../features/permissions/components/tenant-selector/tenant-selector.component';
-import { TenantSwitchService } from '../../../features/permissions/services/tenant-switch.service';
+import { Component, inject } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { TenantSelectorComponent } from '../../../features/permissions/components/tenant-selector/tenant-selector.component'
+import { TenantSwitchService } from '../../../features/permissions/services/tenant-switch.service'
 
 /**
  * HeaderComponent Integration Example
@@ -49,119 +49,121 @@ import { TenantSwitchService } from '../../../features/permissions/services/tena
       </div>
     </header>
   `,
-  styles: [`
-    .app-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 1rem 2rem;
-      background: white;
-      border-bottom: 1px solid #e9ecef;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-      height: 64px;
-    }
-
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
-
-    .logo {
-      height: 40px;
-      width: auto;
-    }
-
-    .app-title {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: #1976d2;
-    }
-
-    .header-center {
-      flex: 1;
-      display: flex;
-      justify-content: center;
-      padding: 0 2rem;
-    }
-
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 1.5rem;
-    }
-
-    .notification-button {
-      position: relative;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      padding: 0.5rem;
-      color: #6c757d;
-      transition: color 0.2s;
-    }
-
-    .notification-button:hover {
-      color: #1976d2;
-    }
-
-    .notification-badge {
-      position: absolute;
-      top: 0;
-      right: 0;
-      background: #dc3545;
-      color: white;
-      border-radius: 50%;
-      padding: 0.125rem 0.375rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
-    .user-menu {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.5rem 1rem;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .user-menu:hover {
-      background: #f8f9fa;
-    }
-
-    .avatar {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      border: 2px solid #e9ecef;
-    }
-
-    .user-name {
-      font-weight: 500;
-      color: #2c3e50;
-    }
-
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
+  styles: [
+    `
       .app-header {
-        padding: 0.75rem 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 2rem;
+        background: white;
+        border-bottom: 1px solid #e9ecef;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        height: 64px;
       }
 
-      .header-center {
-        display: none; /* Hide tenant selector on mobile, use sidebar instead */
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+
+      .logo {
+        height: 40px;
+        width: auto;
       }
 
       .app-title {
-        font-size: 1.125rem;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #1976d2;
       }
-    }
-  `]
+
+      .header-center {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        padding: 0 2rem;
+      }
+
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+      }
+
+      .notification-button {
+        position: relative;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0.5rem;
+        color: #6c757d;
+        transition: color 0.2s;
+      }
+
+      .notification-button:hover {
+        color: #1976d2;
+      }
+
+      .notification-badge {
+        position: absolute;
+        top: 0;
+        right: 0;
+        background: #dc3545;
+        color: white;
+        border-radius: 50%;
+        padding: 0.125rem 0.375rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+
+      .user-menu {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .user-menu:hover {
+        background: #f8f9fa;
+      }
+
+      .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 2px solid #e9ecef;
+      }
+
+      .user-name {
+        font-weight: 500;
+        color: #2c3e50;
+      }
+
+      /* Responsive adjustments */
+      @media (max-width: 768px) {
+        .app-header {
+          padding: 0.75rem 1rem;
+        }
+
+        .header-center {
+          display: none; /* Hide tenant selector on mobile, use sidebar instead */
+        }
+
+        .app-title {
+          font-size: 1.125rem;
+        }
+      }
+    `,
+  ],
 })
 export class HeaderComponentExample {
-  protected readonly tenantSwitchService = inject(TenantSwitchService);
-  userName = 'Dr. Maria Rossi';
+  protected readonly tenantSwitchService = inject(TenantSwitchService)
+  userName = 'Dr. Maria Rossi'
 }
 
 /**

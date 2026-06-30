@@ -1,21 +1,21 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { RoleStore, Role, UserRoleAssignment } from '../../../../core/state/role.store';
-import { RoleApiService } from '../../services/role-api.service';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { DialogModule } from 'primeng/dialog';
-import { DropdownModule } from 'primeng/dropdown';
-import { CardModule } from 'primeng/card';
-import { TagModule } from 'primeng/tag';
-import { TooltipModule } from 'primeng/tooltip';
-import { ConfirmDialogModule } from 'primeng/confirmdialog';
-import { ToastModule } from 'primeng/toast';
-import { InputTextModule } from 'primeng/inputtext';
-import { CalendarModule } from 'primeng/calendar';
-import { CheckboxModule } from 'primeng/checkbox';
-import { ConfirmationService, MessageService } from 'primeng/api';
+import { Component, OnInit, inject, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { RoleStore, Role, UserRoleAssignment } from '../../../../core/state/role.store'
+import { RoleApiService } from '../../services/role-api.service'
+import { TableModule } from 'primeng/table'
+import { ButtonModule } from 'primeng/button'
+import { DialogModule } from 'primeng/dialog'
+import { DropdownModule } from 'primeng/dropdown'
+import { CardModule } from 'primeng/card'
+import { TagModule } from 'primeng/tag'
+import { TooltipModule } from 'primeng/tooltip'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
+import { ToastModule } from 'primeng/toast'
+import { InputTextModule } from 'primeng/inputtext'
+import { CalendarModule } from 'primeng/calendar'
+import { CheckboxModule } from 'primeng/checkbox'
+import { ConfirmationService, MessageService } from 'primeng/api'
 
 /**
  * RoleManagementComponent
@@ -74,14 +74,16 @@ import { ConfirmationService, MessageService } from 'primeng/api';
                 type="text"
                 #searchInput
                 (input)="dt.filterGlobal($any($event.target).value, 'contains')"
-                placeholder="Cerca ruoli..." />
+                placeholder="Cerca ruoli..."
+              />
             </span>
             <button
               pButton
               icon="pi pi-refresh"
               class="p-button-outlined"
               (click)="refreshRoles()"
-              label="Aggiorna"></button>
+              label="Aggiorna"
+            ></button>
           </div>
         </div>
 
@@ -95,14 +97,12 @@ import { ConfirmationService, MessageService } from 'primeng/api';
             [rowsPerPageOptions]="[10, 25, 50]"
             [globalFilterFields]="['name', 'description']"
             dataKey="id"
-            styleClass="p-datatable-sm">
-
+            styleClass="p-datatable-sm"
+          >
             <ng-template pTemplate="header">
               <tr>
                 <th style="width: 3rem"><span class="sr-only">Espandi</span></th>
-                <th pSortableColumn="name">
-                  Nome ruolo <p-sortIcon field="name"></p-sortIcon>
-                </th>
+                <th pSortableColumn="name">Nome ruolo <p-sortIcon field="name"></p-sortIcon></th>
                 <th>Descrizione</th>
                 <th style="width: 8rem">Tipo</th>
                 <th style="width: 8rem">Utenti</th>
@@ -120,7 +120,10 @@ import { ConfirmationService, MessageService } from 'primeng/api';
                     [pRowToggler]="role"
                     class="p-button-text p-button-rounded p-button-plain"
                     [icon]="expanded ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
-                    [attr.aria-label]="(expanded ? 'Comprimi' : 'Espandi') + ' i permessi del ruolo ' + role.name"></button>
+                    [attr.aria-label]="
+                      (expanded ? 'Comprimi' : 'Espandi') + ' i permessi del ruolo ' + role.name
+                    "
+                  ></button>
                 </td>
                 <td>
                   <strong>{{ role.name }}</strong>
@@ -129,10 +132,15 @@ import { ConfirmationService, MessageService } from 'primeng/api';
                 <td>
                   <p-tag
                     [value]="role.isSystemRole ? 'Sistema' : 'Personalizzato'"
-                    [severity]="role.isSystemRole ? 'info' : 'success'"></p-tag>
+                    [severity]="role.isSystemRole ? 'info' : 'success'"
+                  ></p-tag>
                 </td>
                 <td>
-                  <span class="user-count" [attr.aria-label]="getUserCount(role.id) + ' utenti assegnati'">{{ getUserCount(role.id) }}</span>
+                  <span
+                    class="user-count"
+                    [attr.aria-label]="getUserCount(role.id) + ' utenti assegnati'"
+                    >{{ getUserCount(role.id) }}</span
+                  >
                 </td>
                 <td>
                   <div class="row-actions">
@@ -142,14 +150,16 @@ import { ConfirmationService, MessageService } from 'primeng/api';
                       class="p-button-sm p-button-success"
                       (click)="openAssignDialog(role)"
                       label="Assegna"
-                      pTooltip="Assegna questo ruolo a un utente"></button>
+                      pTooltip="Assegna questo ruolo a un utente"
+                    ></button>
                     <button
                       pButton
                       icon="pi pi-users"
                       class="p-button-sm p-button-outlined"
                       (click)="viewUserAssignments(role)"
                       pTooltip="Vedi gli utenti con questo ruolo"
-                      aria-label="Vedi gli utenti con questo ruolo"></button>
+                      aria-label="Vedi gli utenti con questo ruolo"
+                    ></button>
 
                     <!-- T179: Delete custom role with validation -->
                     @if (!role.isSystemRole) {
@@ -159,8 +169,15 @@ import { ConfirmationService, MessageService } from 'primeng/api';
                         class="p-button-sm p-button-danger p-button-outlined"
                         (click)="confirmDeleteRole(role)"
                         [disabled]="getUserCount(role.id) > 0"
-                        [pTooltip]="getUserCount(role.id) > 0 ? 'Impossibile eliminare: ' + getUserCount(role.id) + ' utente/i assegnato/i' : 'Elimina ruolo personalizzato'"
-                        [attr.aria-label]="'Elimina il ruolo ' + role.name"></button>
+                        [pTooltip]="
+                          getUserCount(role.id) > 0
+                            ? 'Impossibile eliminare: ' +
+                              getUserCount(role.id) +
+                              ' utente/i assegnato/i'
+                            : 'Elimina ruolo personalizzato'
+                        "
+                        [attr.aria-label]="'Elimina il ruolo ' + role.name"
+                      ></button>
                     }
                   </div>
                 </td>
@@ -176,7 +193,8 @@ import { ConfirmationService, MessageService } from 'primeng/api';
                       <p-tag
                         *ngFor="let permission of role.permissions"
                         [value]="permission"
-                        severity="secondary"></p-tag>
+                        severity="secondary"
+                      ></p-tag>
                     </div>
                     <div *ngIf="role.permissions.length === 0" class="text-tertiary">
                       Nessun permesso assegnato a questo ruolo
@@ -201,14 +219,18 @@ import { ConfirmationService, MessageService } from 'primeng/api';
       </section>
 
       <!-- Assegnazioni attive -->
-      <section class="surface-card mb-section" *ngIf="selectedRole()" aria-label="Assegnazioni di ruolo attive">
+      <section
+        class="surface-card mb-section"
+        *ngIf="selectedRole()"
+        aria-label="Assegnazioni di ruolo attive"
+      >
         <h2 class="card-title">Assegnazioni attive</h2>
         <div class="table-responsive">
           <p-table
             [value]="currentUserAssignments()"
             [loading]="isLoadingAssignments()"
-            styleClass="p-datatable-sm">
-
+            styleClass="p-datatable-sm"
+          >
             <ng-template pTemplate="header">
               <tr>
                 <th>ID utente</th>
@@ -233,14 +255,13 @@ import { ConfirmationService, MessageService } from 'primeng/api';
                   <span *ngIf="assignment.expiresAt">
                     {{ assignment.expiresAt | date: 'short' }}
                   </span>
-                  <span *ngIf="!assignment.expiresAt" class="text-tertiary">
-                    Mai
-                  </span>
+                  <span *ngIf="!assignment.expiresAt" class="text-tertiary"> Mai </span>
                 </td>
                 <td>
                   <p-tag
                     [value]="assignment.facilityIds ? 'Impianti specifici' : 'Tutti gli impianti'"
-                    [severity]="assignment.facilityIds ? 'warning' : 'info'"></p-tag>
+                    [severity]="assignment.facilityIds ? 'warning' : 'info'"
+                  ></p-tag>
                 </td>
                 <td>
                   <button
@@ -248,7 +269,8 @@ import { ConfirmationService, MessageService } from 'primeng/api';
                     icon="pi pi-trash"
                     class="p-button-sm p-button-danger p-button-outlined"
                     (click)="confirmRevokeRole(assignment)"
-                    label="Revoca"></button>
+                    label="Revoca"
+                  ></button>
                 </td>
               </tr>
             </ng-template>
@@ -274,8 +296,8 @@ import { ConfirmationService, MessageService } from 'primeng/api';
         [modal]="true"
         [style]="{ width: '600px' }"
         [breakpoints]="{ '640px': '95vw' }"
-        [draggable]="false">
-
+        [draggable]="false"
+      >
         <div class="field">
           <label for="userId">ID utente *</label>
           <input
@@ -284,7 +306,8 @@ import { ConfirmationService, MessageService } from 'primeng/api';
             pInputText
             [(ngModel)]="assignmentForm.userId"
             class="w-full"
-            placeholder="Inserisci l'ID utente" />
+            placeholder="Inserisci l'ID utente"
+          />
         </div>
 
         <div class="field">
@@ -296,7 +319,8 @@ import { ConfirmationService, MessageService } from 'primeng/api';
             [showIcon]="true"
             dateFormat="yy-mm-dd"
             class="w-full"
-            placeholder="Nessuna scadenza"></p-calendar>
+            placeholder="Nessuna scadenza"
+          ></p-calendar>
         </div>
 
         <div class="field">
@@ -308,7 +332,8 @@ import { ConfirmationService, MessageService } from 'primeng/api';
             [(ngModel)]="assignmentForm.facilityIdsInput"
             class="w-full"
             placeholder="es. fac-1, fac-2"
-            aria-describedby="facilityIds-help" />
+            aria-describedby="facilityIds-help"
+          />
           <small id="facilityIds-help" class="text-tertiary">
             Lascia vuoto per concedere l'accesso a tutti gli impianti
           </small>
@@ -318,7 +343,8 @@ import { ConfirmationService, MessageService } from 'primeng/api';
           <p-checkbox
             [(ngModel)]="assignmentForm.replaceExisting"
             [binary]="true"
-            inputId="replaceExisting"></p-checkbox>
+            inputId="replaceExisting"
+          ></p-checkbox>
           <label for="replaceExisting">
             Sostituisci le assegnazioni di ruolo esistenti dell'utente
           </label>
@@ -330,14 +356,16 @@ import { ConfirmationService, MessageService } from 'primeng/api';
             label="Annulla"
             icon="pi pi-times"
             class="p-button-text"
-            (click)="showAssignDialog = false"></button>
+            (click)="showAssignDialog = false"
+          ></button>
           <button
             pButton
             label="Assegna ruolo"
             icon="pi pi-check"
             class="p-button-success"
             (click)="assignRole()"
-            [loading]="isAssigning()"></button>
+            [loading]="isAssigning()"
+          ></button>
         </ng-template>
       </p-dialog>
 
@@ -348,93 +376,121 @@ import { ConfirmationService, MessageService } from 'primeng/api';
       <p-confirmDialog></p-confirmDialog>
     </div>
   `,
-  styles: [`
-    .mb-section { margin-bottom: var(--spacing-lg); }
+  styles: [
+    `
+      .mb-section {
+        margin-bottom: var(--spacing-lg);
+      }
 
-    .card-title {
-      font-family: var(--font-display);
-      font-size: var(--font-size-xl);
-      margin: 0 0 var(--spacing-base);
-    }
+      .card-title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-xl);
+        margin: 0 0 var(--spacing-base);
+      }
 
-    .card-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--spacing-base);
-      margin-bottom: var(--spacing-base);
-    }
-    .card-toolbar .card-title { margin: 0; }
-    .card-toolbar__actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--spacing-sm);
-      align-items: center;
-    }
-    .search-box input { min-width: 220px; }
+      .card-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-base);
+        margin-bottom: var(--spacing-base);
+      }
+      .card-toolbar .card-title {
+        margin: 0;
+      }
+      .card-toolbar__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+        align-items: center;
+      }
+      .search-box input {
+        min-width: 220px;
+      }
 
-    .row-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-sm); }
+      .row-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+      }
 
-    .expansion { padding: var(--spacing-base); }
-    .expansion__title {
-      font-family: var(--font-display);
-      font-size: var(--font-size-lg);
-      margin: 0 0 var(--spacing-md);
-    }
+      .expansion {
+        padding: var(--spacing-base);
+      }
+      .expansion__title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-lg);
+        margin: 0 0 var(--spacing-md);
+      }
 
-    .permissions-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--spacing-sm);
-      margin-top: var(--spacing-sm);
-    }
+      .permissions-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+        margin-top: var(--spacing-sm);
+      }
 
-    .user-count {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 2rem;
-      height: 2rem;
-      padding: 0 var(--spacing-sm);
-      background: var(--brand-primary-50);
-      color: var(--brand-primary-dark);
-      border-radius: var(--radius-full);
-      font-weight: var(--font-weight-semibold);
-      font-size: var(--font-size-sm);
-    }
+      .user-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2rem;
+        height: 2rem;
+        padding: 0 var(--spacing-sm);
+        background: var(--brand-primary-50);
+        color: var(--brand-primary-dark);
+        border-radius: var(--radius-full);
+        font-weight: var(--font-weight-semibold);
+        font-size: var(--font-size-sm);
+      }
 
-    .field { margin-bottom: var(--spacing-lg); }
-    .field label { display: block; margin-bottom: var(--spacing-sm); }
-    .field .w-full { width: 100%; }
-    :host ::ng-deep .field .p-calendar { width: 100%; }
+      .field {
+        margin-bottom: var(--spacing-lg);
+      }
+      .field label {
+        display: block;
+        margin-bottom: var(--spacing-sm);
+      }
+      .field .w-full {
+        width: 100%;
+      }
+      :host ::ng-deep .field .p-calendar {
+        width: 100%;
+      }
 
-    .field-checkbox {
-      display: flex;
-      align-items: flex-start;
-      gap: var(--spacing-sm);
-      margin-bottom: var(--spacing-base);
-    }
+      .field-checkbox {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+        margin-bottom: var(--spacing-base);
+      }
 
-    @media (max-width: 640px) {
-      .card-toolbar__actions { width: 100%; }
-      .search-box, .search-box input { width: 100%; }
-    }
-  `]
+      @media (max-width: 640px) {
+        .card-toolbar__actions {
+          width: 100%;
+        }
+        .search-box,
+        .search-box input {
+          width: 100%;
+        }
+      }
+    `,
+  ],
 })
 export class RoleManagementComponent implements OnInit {
-  protected readonly roleStore = inject(RoleStore);
-  private readonly roleApiService = inject(RoleApiService);
-  private readonly confirmationService = inject(ConfirmationService);
-  private readonly messageService = inject(MessageService);
+  protected readonly roleStore = inject(RoleStore)
+  private readonly roleApiService = inject(RoleApiService)
+  private readonly confirmationService = inject(ConfirmationService)
+  private readonly messageService = inject(MessageService)
 
   // Dialog state
-  showAssignDialog = false;
-  selectedRole = signal<Role | null>(null);
-  selectedRoleForAssignment = signal<Role | null>(null);
-  currentUserAssignments = signal<UserRoleAssignment[]>([]);
-  isLoadingAssignments = signal(false);
-  isAssigning = signal(false);
+  showAssignDialog = false
+  selectedRole = signal<Role | null>(null)
+  selectedRoleForAssignment = signal<Role | null>(null)
+  currentUserAssignments = signal<UserRoleAssignment[]>([])
+  isLoadingAssignments = signal(false)
+  isAssigning = signal(false)
 
   // Assignment form
   assignmentForm = {
@@ -442,63 +498,59 @@ export class RoleManagementComponent implements OnInit {
     expiresAt: null as Date | null,
     facilityIdsInput: '',
     replaceExisting: false,
-  };
+  }
 
   ngOnInit(): void {
     // Load roles on component init
-    this.roleStore.loadRoles();
+    this.roleStore.loadRoles()
   }
 
   /**
    * Refresh roles from backend
    */
   refreshRoles(): void {
-    this.roleStore.loadRoles();
+    this.roleStore.loadRoles()
     this.messageService.add({
       severity: 'info',
       summary: 'Aggiornamento',
       detail: 'Caricamento dei ruoli più recenti...',
-    });
+    })
   }
 
   /**
    * Get count of users assigned to a role
    */
   getUserCount(roleId: string): number {
-    return this.roleStore
-      .userRoles()
-      .filter((ur) => ur.roleId === roleId).length;
+    return this.roleStore.userRoles().filter(ur => ur.roleId === roleId).length
   }
 
   /**
    * Open assignment dialog for a role
    */
   openAssignDialog(role: Role): void {
-    this.selectedRoleForAssignment.set(role);
-    this.resetAssignmentForm();
-    this.showAssignDialog = true;
+    this.selectedRoleForAssignment.set(role)
+    this.resetAssignmentForm()
+    this.showAssignDialog = true
   }
 
   /**
    * View users with this role
    */
   viewUserAssignments(role: Role): void {
-    this.selectedRole.set(role);
-    this.isLoadingAssignments.set(true);
+    this.selectedRole.set(role)
+    this.isLoadingAssignments.set(true)
 
     // Filter current role assignments
-    const assignments = this.roleStore
-      .userRoles()
-      .filter((ur) => ur.roleId === role.id);
+    const assignments = this.roleStore.userRoles().filter(ur => ur.roleId === role.id)
 
-    this.currentUserAssignments.set(assignments);
-    this.isLoadingAssignments.set(false);
+    this.currentUserAssignments.set(assignments)
+    this.isLoadingAssignments.set(false)
 
     this.messageService.add({
       severity: 'info',
       summary: 'Assegnazioni',
       detail: `Trovati ${assignments.length} utente/i con il ruolo ${role.name}`,
-    });
+    })
   }
 
   /**
@@ -510,20 +562,20 @@ export class RoleManagementComponent implements OnInit {
         severity: 'warn',
         summary: 'Errore di validazione',
         detail: "L'ID utente è obbligatorio",
-      });
-      return;
+      })
+      return
     }
 
-    const role = this.selectedRoleForAssignment();
-    if (!role) return;
+    const role = this.selectedRoleForAssignment()
+    if (!role) return
 
-    this.isAssigning.set(true);
+    this.isAssigning.set(true)
 
     // Parse facility IDs
     const facilityIds = this.assignmentForm.facilityIdsInput
       .split(',')
-      .map((id) => id.trim())
-      .filter((id) => id.length > 0);
+      .map(id => id.trim())
+      .filter(id => id.length > 0)
 
     const payload = {
       userId: this.assignmentForm.userId,
@@ -531,35 +583,35 @@ export class RoleManagementComponent implements OnInit {
       expiresAt: this.assignmentForm.expiresAt?.toISOString() || undefined,
       facilityIds: facilityIds.length > 0 ? facilityIds : undefined,
       replaceExisting: this.assignmentForm.replaceExisting,
-    };
+    }
 
     this.roleApiService.assignRole(payload).subscribe({
-      next: (response) => {
+      next: response => {
         this.messageService.add({
           severity: 'success',
           summary: 'Ruolo assegnato',
           detail: `Ruolo ${role.name} assegnato con successo all'utente ${this.assignmentForm.userId}`,
-        });
+        })
 
         // Optimistically add to store - enrich with roleName
         const enrichedAssignment: UserRoleAssignment = {
           ...response,
           roleName: role.name,
-        };
-        this.roleStore.addUserRole(enrichedAssignment);
+        }
+        this.roleStore.addUserRole(enrichedAssignment)
 
-        this.showAssignDialog = false;
-        this.isAssigning.set(false);
+        this.showAssignDialog = false
+        this.isAssigning.set(false)
       },
-      error: (error) => {
+      error: error => {
         this.messageService.add({
           severity: 'error',
           summary: 'Assegnazione non riuscita',
           detail: error.error?.message || 'Impossibile assegnare il ruolo',
-        });
-        this.isAssigning.set(false);
+        })
+        this.isAssigning.set(false)
       },
-    });
+    })
   }
 
   /**
@@ -574,9 +626,9 @@ export class RoleManagementComponent implements OnInit {
       rejectLabel: 'Annulla',
       acceptButtonStyleClass: 'p-button-danger',
       accept: () => {
-        this.revokeRole(assignment);
+        this.revokeRole(assignment)
       },
-    });
+    })
   }
 
   /**
@@ -589,25 +641,25 @@ export class RoleManagementComponent implements OnInit {
           severity: 'success',
           summary: 'Ruolo revocato',
           detail: `Ruolo ${assignment.roleName} revocato con successo all'utente ${assignment.userId}`,
-        });
+        })
 
         // Optimistically remove from store
-        this.roleStore.removeUserRole(assignment.id);
+        this.roleStore.removeUserRole(assignment.id)
 
         // Refresh assignments view
-        const currentRole = this.selectedRole();
+        const currentRole = this.selectedRole()
         if (currentRole) {
-          this.viewUserAssignments(currentRole);
+          this.viewUserAssignments(currentRole)
         }
       },
-      error: (error) => {
+      error: error => {
         this.messageService.add({
           severity: 'error',
           summary: 'Revoca non riuscita',
           detail: error.error?.message || 'Impossibile revocare il ruolo',
-        });
+        })
       },
-    });
+    })
   }
 
   /**
@@ -619,7 +671,7 @@ export class RoleManagementComponent implements OnInit {
       expiresAt: null,
       facilityIdsInput: '',
       replaceExisting: false,
-    };
+    }
   }
 
   /**
@@ -629,7 +681,7 @@ export class RoleManagementComponent implements OnInit {
    */
   confirmDeleteRole(role: Role): void {
     // Check if role has users assigned
-    const userCount = this.getUserCount(role.id);
+    const userCount = this.getUserCount(role.id)
 
     if (userCount > 0) {
       this.messageService.add({
@@ -637,8 +689,8 @@ export class RoleManagementComponent implements OnInit {
         summary: 'Impossibile eliminare il ruolo',
         detail: `Impossibile eliminare il ruolo "${role.name}" perché è assegnato a ${userCount} utente/i. Rimuovi tutte le assegnazioni prima di eliminarlo.`,
         life: 5000,
-      });
-      return;
+      })
+      return
     }
 
     // Prevent deleting system roles
@@ -648,8 +700,8 @@ export class RoleManagementComponent implements OnInit {
         summary: 'Impossibile eliminare il ruolo',
         detail: 'I ruoli di sistema non possono essere eliminati.',
         life: 3000,
-      });
-      return;
+      })
+      return
     }
 
     // Confirm deletion
@@ -661,9 +713,9 @@ export class RoleManagementComponent implements OnInit {
       rejectLabel: 'Annulla',
       acceptButtonStyleClass: 'p-button-danger',
       accept: () => {
-        this.deleteRole(role);
+        this.deleteRole(role)
       },
-    });
+    })
   }
 
   /**
@@ -676,14 +728,15 @@ export class RoleManagementComponent implements OnInit {
           severity: 'success',
           summary: 'Ruolo eliminato',
           detail: `Ruolo "${role.name}" eliminato con successo`,
-        });
+        })
 
         // Refresh roles list
-        this.roleStore.loadRoles();
+        this.roleStore.loadRoles()
       },
-      error: (error) => {
+      error: error => {
         // Backend might return error if role has users (additional safety check)
-        const errorMessage = error.error?.message || error.message || 'Impossibile eliminare il ruolo';
+        const errorMessage =
+          error.error?.message || error.message || 'Impossibile eliminare il ruolo'
 
         if (errorMessage.includes('assigned to') || errorMessage.includes('user')) {
           this.messageService.add({
@@ -691,15 +744,15 @@ export class RoleManagementComponent implements OnInit {
             summary: 'Impossibile eliminare il ruolo',
             detail: errorMessage,
             life: 5000,
-          });
+          })
         } else {
           this.messageService.add({
             severity: 'error',
             summary: 'Eliminazione non riuscita',
             detail: errorMessage,
-          });
+          })
         }
       },
-    });
+    })
   }
 }

@@ -1,10 +1,10 @@
-import { Component, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router } from '@angular/router';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { MessageModule } from 'primeng/message';
-import { ButtonModule } from 'primeng/button';
-import { AuthService } from '../../../core/services/auth.service';
+import { Component, OnInit, inject } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { ActivatedRoute, Router } from '@angular/router'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { MessageModule } from 'primeng/message'
+import { ButtonModule } from 'primeng/button'
+import { AuthService } from '../../../core/services/auth.service'
 
 /**
  * SPID Callback Component
@@ -21,25 +21,16 @@ import { AuthService } from '../../../core/services/auth.service';
       <div class="callback-card">
         @if (processing) {
           <div class="text-center">
-            <p-progressSpinner
-              styleClass="w-4rem h-4rem"
-              strokeWidth="4"
-              animationDuration="1s">
+            <p-progressSpinner styleClass="w-4rem h-4rem" strokeWidth="4" animationDuration="1s">
             </p-progressSpinner>
             <h2 class="callback-title mt-4">Autenticazione in corso...</h2>
-            <p class="callback-hint mt-2">
-              Stiamo completando l'accesso con SPID
-            </p>
+            <p class="callback-hint mt-2">Stiamo completando l'accesso con SPID</p>
           </div>
         }
 
         @if (error) {
           <div class="text-center">
-            <p-message
-              severity="error"
-              [text]="errorMessage"
-              styleClass="w-full mb-4">
-            </p-message>
+            <p-message severity="error" [text]="errorMessage" styleClass="w-full mb-4"> </p-message>
 
             <h2 class="callback-title mb-2">Autenticazione fallita</h2>
             <p class="callback-hint mb-4">
@@ -51,7 +42,8 @@ import { AuthService } from '../../../core/services/auth.service';
               icon="pi pi-arrow-left"
               [outlined]="true"
               (onClick)="returnToLogin()"
-              ariaLabel="Torna alla pagina di login">
+              ariaLabel="Torna alla pagina di login"
+            >
             </p-button>
           </div>
         }
@@ -96,58 +88,56 @@ import { AuthService } from '../../../core/services/auth.service';
   ],
 })
 export class SpidCallbackComponent implements OnInit {
-  private readonly authService = inject(AuthService);
-  private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
+  private readonly authService = inject(AuthService)
+  private readonly route = inject(ActivatedRoute)
+  private readonly router = inject(Router)
 
-  protected processing = true;
-  protected error = false;
-  protected errorMessage = '';
+  protected processing = true
+  protected error = false
+  protected errorMessage = ''
 
   ngOnInit(): void {
-    this.handleCallback();
+    this.handleCallback()
   }
 
   private handleCallback(): void {
     // Get SAML response from query params
-    const samlResponse = this.route.snapshot.queryParams['SAMLResponse'];
-    const returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/dashboard';
+    const samlResponse = this.route.snapshot.queryParams['SAMLResponse']
+    const returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/dashboard'
 
     if (!samlResponse) {
-      this.showError('SAML response mancante');
-      return;
+      this.showError('SAML response mancante')
+      return
     }
 
     // Process callback
     this.authService.handleCallback(samlResponse).subscribe({
-      next: (response) => {
-        console.log('SPID authentication successful', response);
+      next: response => {
+        console.log('SPID authentication successful', response)
 
         // Wait a moment to show success state, then redirect
         setTimeout(() => {
-          this.router.navigate([returnUrl]);
-        }, 1000);
+          this.router.navigate([returnUrl])
+        }, 1000)
       },
-      error: (error) => {
-        console.error('SPID authentication failed', error);
+      error: error => {
+        console.error('SPID authentication failed', error)
 
         const message =
-          error.error?.message ||
-          error.message ||
-          'Errore durante l\'autenticazione SPID';
+          error.error?.message || error.message || "Errore durante l'autenticazione SPID"
 
-        this.showError(message);
+        this.showError(message)
       },
-    });
+    })
   }
 
   private showError(message: string): void {
-    this.processing = false;
-    this.error = true;
-    this.errorMessage = message;
+    this.processing = false
+    this.error = true
+    this.errorMessage = message
   }
 
   protected returnToLogin(): void {
-    this.router.navigate(['/login']);
+    this.router.navigate(['/login'])
   }
 }

@@ -1,7 +1,7 @@
-import { Module } from '@nestjs/common';
-import { BackupService } from './backup.service';
-import { BackupController } from '../../api/backup/backup.controller';
-import { LoggerModule } from '../../core/logger/logger.module';
+import { Module } from '@nestjs/common'
+import { BackupService } from './backup.service'
+import { BackupController } from '../../api/backup/backup.controller'
+import { LoggerModule } from '../../core/logger/logger.module'
 
 /**
  * Backup Module

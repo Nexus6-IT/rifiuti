@@ -1,9 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
-import { ConfigService } from '@nestjs/config';
-import { LoggerService } from '../../core/logger/logger.service';
-import { UserRepository } from '../persistence/user.repository';
+import { Injectable, UnauthorizedException } from '@nestjs/common'
+import { PassportStrategy } from '@nestjs/passport'
+import { ExtractJwt, Strategy } from 'passport-jwt'
+import { ConfigService } from '@nestjs/config'
+import { LoggerService } from '../../core/logger/logger.service'
+import { UserRepository } from '../persistence/user.repository'
 
 /**
  * JWT Strategy
@@ -32,15 +32,15 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
     private readonly configService: ConfigService,
     private readonly logger: LoggerService,
-    private readonly userRepository: UserRepository,
+    private readonly userRepository: UserRepository
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: configService.get<string>('JWT_SECRET'),
-    });
+    })
 
-    this.logger.setContext('JwtStrategy');
+    this.logger.setContext('JwtStrategy')
   }
 
   /**
@@ -52,31 +52,31 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     this.logger.debug('Validating JWT payload', {
       userId: payload.sub,
       tenantId: payload.tenantId,
-    });
+    })
 
     try {
       // Extract user ID from payload
-      const userId = payload.sub;
+      const userId = payload.sub
 
       // Load user from database
-      const user = await this.userRepository.findById(userId);
+      const user = await this.userRepository.findById(userId)
 
       if (!user) {
-        this.logger.warn('User not found for JWT', { userId });
-        throw new UnauthorizedException('User not found');
+        this.logger.warn('User not found for JWT', { userId })
+        throw new UnauthorizedException('User not found')
       }
 
       // Check if user is active
       if (!user.getIsActive()) {
-        this.logger.warn('Inactive user attempted access', { userId });
-        throw new UnauthorizedException('User account is inactive');
+        this.logger.warn('Inactive user attempted access', { userId })
+        throw new UnauthorizedException('User account is inactive')
       }
 
       this.logger.debug('JWT validation successful', {
         userId,
         fiscalCode: user.getFiscalCode(),
         tenantId: user.getTenantId(),
-      });
+      })
 
       // Return authenticated user object
       // This will be attached to request.user by Passport
@@ -91,17 +91,17 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         spidLevel: user.getSpidLevel(),
         canSignDocuments: user.canSignDocuments(),
         isActive: user.getIsActive(),
-      };
+      }
     } catch (error: any) {
       this.logger.error('JWT validation failed', error, {
         userId: payload.sub,
-      });
+      })
 
       if (error instanceof UnauthorizedException) {
-        throw error;
+        throw error
       }
 
-      throw new UnauthorizedException('Invalid token');
+      throw new UnauthorizedException('Invalid token')
     }
   }
 }
@@ -112,15 +112,15 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
  * Structure of data encoded in JWT access token
  */
 export interface JwtPayload {
-  sub: string; // User ID
-  fiscalCode: string;
-  email: string;
-  tenantId: string;
-  roles: string[];
-  spidLevel: number;
-  canSignDocuments: boolean;
-  iat?: number; // Issued at (timestamp)
-  exp?: number; // Expiration (timestamp)
+  sub: string // User ID
+  fiscalCode: string
+  email: string
+  tenantId: string
+  roles: string[]
+  spidLevel: number
+  canSignDocuments: boolean
+  iat?: number // Issued at (timestamp)
+  exp?: number // Expiration (timestamp)
 }
 
 /**
@@ -129,14 +129,14 @@ export interface JwtPayload {
  * User object attached to request after JWT validation
  */
 export interface AuthenticatedUser {
-  id: string;
-  fiscalCode: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  tenantId: string;
-  roles: string[];
-  spidLevel: number;
-  canSignDocuments: boolean;
-  isActive: boolean;
+  id: string
+  fiscalCode: string
+  firstName: string
+  lastName: string
+  email: string
+  tenantId: string
+  roles: string[]
+  spidLevel: number
+  canSignDocuments: boolean
+  isActive: boolean
 }

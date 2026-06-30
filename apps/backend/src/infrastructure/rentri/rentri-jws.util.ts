@@ -14,16 +14,16 @@ import * as jwt from 'jsonwebtoken'
  */
 export function pemChainToX5c(certificatePem: string): string[] {
   const matches = certificatePem.match(
-    /-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/g,
+    /-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/g
   )
   if (!matches || matches.length === 0) {
     throw new Error('RENTRI: certificato PEM non valido (nessun blocco CERTIFICATE)')
   }
-  return matches.map((block) =>
+  return matches.map(block =>
     block
       .replace(/-----BEGIN CERTIFICATE-----/, '')
       .replace(/-----END CERTIFICATE-----/, '')
-      .replace(/\s+/g, ''),
+      .replace(/\s+/g, '')
   )
 }
 

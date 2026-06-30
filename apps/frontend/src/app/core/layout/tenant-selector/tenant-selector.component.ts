@@ -1,20 +1,20 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { DropdownModule } from 'primeng/dropdown';
-import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
-import { Router } from '@angular/router';
-import { AdminTenantContextService } from '../../services/admin-tenant-context.service';
-import { environment } from '../../../../environments/environment';
+import { Component, OnInit, inject, signal, computed } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { DropdownModule } from 'primeng/dropdown'
+import { FormsModule } from '@angular/forms'
+import { HttpClient } from '@angular/common/http'
+import { Router } from '@angular/router'
+import { AdminTenantContextService } from '../../services/admin-tenant-context.service'
+import { environment } from '../../../../environments/environment'
 
 interface TenantOption {
-  id: string;
-  ragioneSociale: string;
+  id: string
+  ragioneSociale: string
 }
 
 interface ListTenantsResponse {
-  tenants: TenantOption[];
-  currentTenantId: string | null;
+  tenants: TenantOption[]
+  currentTenantId: string | null
 }
 
 /**
@@ -50,7 +50,8 @@ interface ListTenantsResponse {
           placeholder="Seleziona società"
           (onChange)="onCambioSocieta()"
           styleClass="w-full"
-          [showClear]="false">
+          [showClear]="false"
+        >
           <ng-template pTemplate="selectedItem" let-option>
             <div class="flex align-items-center gap-2">
               <i class="pi pi-building"></i>
@@ -80,63 +81,59 @@ interface ListTenantsResponse {
   ],
 })
 export class TenantSelectorComponent implements OnInit {
-  private readonly http = inject(HttpClient);
-  private readonly router = inject(Router);
-  private readonly tenantContext = inject(AdminTenantContextService);
+  private readonly http = inject(HttpClient)
+  private readonly router = inject(Router)
+  private readonly tenantContext = inject(AdminTenantContextService)
 
-  protected readonly societa = signal<TenantOption[]>([]);
-  protected readonly hasPiuSocieta = computed(() => this.societa().length > 1);
-  protected tenantSelezionato = '';
+  protected readonly societa = signal<TenantOption[]>([])
+  protected readonly hasPiuSocieta = computed(() => this.societa().length > 1)
+  protected tenantSelezionato = ''
 
   ngOnInit(): void {
-    this.caricaSocieta();
+    this.caricaSocieta()
   }
 
   private caricaSocieta(): void {
-    this.http
-      .get<ListTenantsResponse>(`${environment.apiUrl}/me/tenants`)
-      .subscribe({
-        next: (response) => {
-          this.societa.set(response.tenants ?? []);
+    this.http.get<ListTenantsResponse>(`${environment.apiUrl}/me/tenants`).subscribe({
+      next: response => {
+        this.societa.set(response.tenants ?? [])
 
-          // Inizializza la selezione: usa il tenant già scelto (persistito in
-          // localStorage) oppure il tenant corrente dal JWT.
-          const stored = this.tenantContext.selectedTenantId();
-          const defaultId = response.currentTenantId ?? '';
+        // Inizializza la selezione: usa il tenant già scelto (persistito in
+        // localStorage) oppure il tenant corrente dal JWT.
+        const stored = this.tenantContext.selectedTenantId()
+        const defaultId = response.currentTenantId ?? ''
 
-          // Se il tenant memorizzato è tra quelli accessibili, mantienilo.
-          const tenantValido = response.tenants?.find(
-            (t) => t.id === stored,
-          );
-          this.tenantSelezionato = tenantValido?.id ?? defaultId;
+        // Se il tenant memorizzato è tra quelli accessibili, mantienilo.
+        const tenantValido = response.tenants?.find(t => t.id === stored)
+        this.tenantSelezionato = tenantValido?.id ?? defaultId
 
-          // Se non è già impostato nel contesto, imposta il default.
-          if (!stored && defaultId) {
-            const nome = response.tenants?.find((t) => t.id === defaultId)?.ragioneSociale ?? '';
-            this.tenantContext.set(defaultId, nome);
-          }
-        },
-        error: () => {
-          // Errore di rete o utente con un solo tenant: il selettore resta
-          // nascosto (hasPiuSocieta() = false).
-        },
-      });
+        // Se non è già impostato nel contesto, imposta il default.
+        if (!stored && defaultId) {
+          const nome = response.tenants?.find(t => t.id === defaultId)?.ragioneSociale ?? ''
+          this.tenantContext.set(defaultId, nome)
+        }
+      },
+      error: () => {
+        // Errore di rete o utente con un solo tenant: il selettore resta
+        // nascosto (hasPiuSocieta() = false).
+      },
+    })
   }
 
   protected onCambioSocieta(): void {
-    if (!this.tenantSelezionato) return;
+    if (!this.tenantSelezionato) return
 
-    const societa = this.societa().find((t) => t.id === this.tenantSelezionato);
-    const nome = societa?.ragioneSociale ?? '';
+    const societa = this.societa().find(t => t.id === this.tenantSelezionato)
+    const nome = societa?.ragioneSociale ?? ''
 
     // Aggiorna il contesto: il tenantInterceptor aggiungerà X-Tenant-ID a tutte
     // le richieste successive. La validazione è sul backend (TenantSwitchInterceptor).
-    this.tenantContext.set(this.tenantSelezionato, nome);
+    this.tenantContext.set(this.tenantSelezionato, nome)
 
     // Ricarica la rotta corrente per aggiornare i dati con la nuova società.
-    const url = this.router.url;
+    const url = this.router.url
     this.router.navigateByUrl('/', { skipLocationChange: true }).then(() => {
-      this.router.navigateByUrl(url);
-    });
+      this.router.navigateByUrl(url)
+    })
   }
 }

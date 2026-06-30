@@ -4,18 +4,17 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
-  Inject,
-} from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { AssignRoleCommand } from '../assign-role.command';
-import { RoleRepository } from '../../../domain/identity-access/role.repository.interface';
-import { UserRoleRepository } from '../../../domain/identity-access/user-role.repository.interface';
-import { UserRole } from '../../../domain/identity-access/user-role.entity';
-import { PermissionCacheService } from '../../../infrastructure/cache/permission-cache.service';
-import { RedisPubSubService } from '../../../infrastructure/cache/redis-pub-sub.service';
-import { UserRoleAssignedEvent } from '../../../domain/events/user-role-assigned.event';
-import { PrismaService } from '../../../infrastructure/persistence/prisma.service';
+} from '@nestjs/common'
+import { InjectQueue } from '@nestjs/bullmq'
+import { Queue } from 'bullmq'
+import { AssignRoleCommand } from '../assign-role.command'
+import { RoleRepository } from '../../../domain/identity-access/role.repository.interface'
+import { UserRoleRepository } from '../../../domain/identity-access/user-role.repository.interface'
+import { UserRole } from '../../../domain/identity-access/user-role.entity'
+import { PermissionCacheService } from '../../../infrastructure/cache/permission-cache.service'
+import { RedisPubSubService } from '../../../infrastructure/cache/redis-pub-sub.service'
+import { UserRoleAssignedEvent } from '../../../domain/events/user-role-assigned.event'
+import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 
 /**
  * AssignRoleCommandHandler
@@ -32,7 +31,7 @@ import { PrismaService } from '../../../infrastructure/persistence/prisma.servic
  */
 @Injectable()
 export class AssignRoleCommandHandler {
-  private readonly logger = new Logger(AssignRoleCommandHandler.name);
+  private readonly logger = new Logger(AssignRoleCommandHandler.name)
 
   constructor(
     private readonly roleRepository: RoleRepository,
@@ -40,25 +39,22 @@ export class AssignRoleCommandHandler {
     private readonly permissionCache: PermissionCacheService,
     private readonly redisPubSub: RedisPubSubService,
     private readonly prisma: PrismaService,
-    @InjectQueue('audit-logging') private readonly auditQueue: Queue,
+    @InjectQueue('audit-logging') private readonly auditQueue: Queue
   ) {}
 
   async execute(command: AssignRoleCommand): Promise<UserRole> {
     try {
       // Step 1: Validate role exists and belongs to tenant
-      const role = await this.roleRepository.findById(
-        command.roleId,
-        command.tenantId,
-      );
+      const role = await this.roleRepository.findById(command.roleId, command.tenantId)
 
       if (!role) {
-        this.logAuditFailure(command, 'Role not found');
-        throw new NotFoundException('Role not found');
+        this.logAuditFailure(command, 'Role not found')
+        throw new NotFoundException('Role not found')
       }
 
       if (role.tenantId !== command.tenantId) {
-        this.logAuditFailure(command, 'Cross-tenant role assignment denied');
-        throw new ForbiddenException('Cross-tenant role assignment denied');
+        this.logAuditFailure(command, 'Cross-tenant role assignment denied')
+        throw new ForbiddenException('Cross-tenant role assignment denied')
       }
 
       // Step 2: Validate the target user exists AND belongs to the same tenant.
@@ -67,44 +63,43 @@ export class AssignRoleCommandHandler {
       const targetUser = await this.prisma.user.findUnique({
         where: { id: command.userId },
         select: { id: true, tenantId: true },
-      });
+      })
 
       if (!targetUser) {
-        this.logAuditFailure(command, 'Target user not found');
-        throw new NotFoundException('User not found');
+        this.logAuditFailure(command, 'Target user not found')
+        throw new NotFoundException('User not found')
       }
 
       if (targetUser.tenantId !== command.tenantId) {
         this.logAuditFailure(
           command,
-          'Cross-tenant role assignment denied (user belongs to another tenant)',
-        );
-        throw new ForbiddenException('Cross-tenant role assignment denied');
+          'Cross-tenant role assignment denied (user belongs to another tenant)'
+        )
+        throw new ForbiddenException('Cross-tenant role assignment denied')
       }
 
       // Step 3: Check for existing assignment
-      const existingAssignment =
-        await this.userRoleRepository.findByUserIdAndRoleId(
-          command.userId,
-          command.roleId,
-          command.tenantId,
-        );
+      const existingAssignment = await this.userRoleRepository.findByUserIdAndRoleId(
+        command.userId,
+        command.roleId,
+        command.tenantId
+      )
 
       if (existingAssignment && existingAssignment.isActive()) {
-        this.logAuditFailure(command, 'Role is already assigned to user');
-        throw new BadRequestException('Role is already assigned to user');
+        this.logAuditFailure(command, 'Role is already assigned to user')
+        throw new BadRequestException('Role is already assigned to user')
       }
 
       // Step 4: Get current role for audit trail (before changing)
       const currentRoles = await this.userRoleRepository.findActiveByUserId(
         command.userId,
-        command.tenantId,
-      );
-      const oldRoleId = currentRoles.length > 0 ? currentRoles[0].roleId : null;
+        command.tenantId
+      )
+      const oldRoleId = currentRoles.length > 0 ? currentRoles[0].roleId : null
 
       // Step 5: Last admin protection (if replacing existing roles)
       if (command.replaceExisting) {
-        await this.enforceLastAdminProtection(command, role.name);
+        await this.enforceLastAdminProtection(command, role.name)
       }
 
       // Step 6: Create user role assignment
@@ -117,25 +112,19 @@ export class AssignRoleCommandHandler {
         facilityIds: command.facilityIds || null,
         isDelegated: command.isDelegated || false,
         delegationReason: command.delegationReason || null,
-      });
+      })
 
       // Step 7: Save to database
-      const savedUserRole = await this.userRoleRepository.save(userRole);
+      const savedUserRole = await this.userRoleRepository.save(userRole)
 
       // Step 8: Invalidate user permission cache
-      await this.permissionCache.invalidateUser(
-        command.tenantId,
-        command.userId,
-      );
+      await this.permissionCache.invalidateUser(command.tenantId, command.userId)
 
       // Step 9: Publish cache invalidation to all instances
-      await this.redisPubSub.publishUserInvalidation(
-        command.tenantId,
-        command.userId,
-      );
+      await this.redisPubSub.publishUserInvalidation(command.tenantId, command.userId)
 
       // Step 10: Publish domain event
-      const event = new UserRoleAssignedEvent(
+      const _event = new UserRoleAssignedEvent(
         savedUserRole.id,
         savedUserRole.tenantId,
         savedUserRole.userId,
@@ -145,21 +134,21 @@ export class AssignRoleCommandHandler {
         savedUserRole.expiresAt,
         savedUserRole.facilityIds,
         savedUserRole.isDelegated,
-        savedUserRole.delegationReason,
-      );
+        savedUserRole.delegationReason
+      )
 
       // TODO: Publish event to event bus for audit logging
       this.logger.log(
-        `✓ Assigned role ${role.name} to user ${command.userId} in tenant ${command.tenantId}`,
-      );
+        `✓ Assigned role ${role.name} to user ${command.userId} in tenant ${command.tenantId}`
+      )
 
       // Step 11: Log successful audit (asynchronous, non-blocking)
-      this.logAuditSuccess(command, savedUserRole, oldRoleId, command.roleId).catch((error) => {
-        this.logger.error(`Failed to log role change history: ${error.message}`, error.stack);
+      this.logAuditSuccess(command, savedUserRole, oldRoleId, command.roleId).catch(error => {
+        this.logger.error(`Failed to log role change history: ${error.message}`, error.stack)
         // Don't throw - audit logging failure should not break role assignment
-      });
+      })
 
-      return savedUserRole;
+      return savedUserRole
     } catch (error) {
       // Log failure audit
       if (
@@ -167,15 +156,12 @@ export class AssignRoleCommandHandler {
         error instanceof ForbiddenException ||
         error instanceof BadRequestException
       ) {
-        throw error;
+        throw error
       }
 
-      this.logger.error(
-        `Failed to assign role: ${error.message}`,
-        error.stack,
-      );
-      this.logAuditFailure(command, error.message);
-      throw error;
+      this.logger.error(`Failed to assign role: ${error.message}`, error.stack)
+      this.logAuditFailure(command, error.message)
+      throw error
     }
   }
 
@@ -185,41 +171,38 @@ export class AssignRoleCommandHandler {
    */
   private async enforceLastAdminProtection(
     command: AssignRoleCommand,
-    newRoleName: string,
+    newRoleName: string
   ): Promise<void> {
     // Find ADMIN role
-    const adminRole = await this.roleRepository.findByName(
-      'ADMIN',
-      command.tenantId,
-    );
+    const adminRole = await this.roleRepository.findByName('ADMIN', command.tenantId)
 
     if (!adminRole) {
-      return; // No admin role defined, skip protection
+      return // No admin role defined, skip protection
     }
 
     // Check if user currently has ADMIN role
     const userRoles = await this.userRoleRepository.findActiveByUserId(
       command.userId,
-      command.tenantId,
-    );
+      command.tenantId
+    )
 
-    const hasAdminRole = userRoles.some((ur) => ur.roleId === adminRole.id);
+    const hasAdminRole = userRoles.some(ur => ur.roleId === adminRole.id)
 
     // If user has ADMIN and we're assigning non-ADMIN role
     if (hasAdminRole && newRoleName !== 'ADMIN') {
       // Count total active admins
       const adminCount = await this.userRoleRepository.countActiveAdmins(
         adminRole.id,
-        command.tenantId,
-      );
+        command.tenantId
+      )
 
       if (adminCount <= 1) {
         this.logger.warn(
-          `⚠️  Blocked attempt to remove last administrator from tenant ${command.tenantId}`,
-        );
+          `⚠️  Blocked attempt to remove last administrator from tenant ${command.tenantId}`
+        )
         throw new ForbiddenException(
-          'Cannot remove last administrator from tenant. Assign another admin first.',
-        );
+          'Cannot remove last administrator from tenant. Assign another admin first.'
+        )
       }
     }
   }
@@ -233,7 +216,7 @@ export class AssignRoleCommandHandler {
     command: AssignRoleCommand,
     userRole: UserRole,
     oldRoleId: string | null,
-    newRoleId: string,
+    newRoleId: string
   ): Promise<void> {
     try {
       // Queue role change audit event (async, <1ms overhead)
@@ -263,17 +246,14 @@ export class AssignRoleCommandHandler {
             type: 'exponential',
             delay: 1000, // Start with 1 second
           },
-        },
-      );
+        }
+      )
 
       this.logger.debug(
-        `[AUDIT] Queued role change audit: user=${command.userId}, oldRole=${oldRoleId}, newRole=${newRoleId}, tenant=${command.tenantId}`,
-      );
+        `[AUDIT] Queued role change audit: user=${command.userId}, oldRole=${oldRoleId}, newRole=${newRoleId}, tenant=${command.tenantId}`
+      )
     } catch (error) {
-      this.logger.error(
-        `Failed to queue role change audit: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`Failed to queue role change audit: ${error.message}`, error.stack)
       // Don't throw - audit logging failure should not break role assignment
     }
   }
@@ -284,7 +264,7 @@ export class AssignRoleCommandHandler {
   private logAuditFailure(command: AssignRoleCommand, reason: string): void {
     // TODO: Use AuditLogService to persist audit entry
     this.logger.debug(
-      `[AUDIT] DENY assign_role: user=${command.userId}, role=${command.roleId}, tenant=${command.tenantId}, reason=${reason}`,
-    );
+      `[AUDIT] DENY assign_role: user=${command.userId}, role=${command.roleId}, tenant=${command.tenantId}, reason=${reason}`
+    )
   }
 }

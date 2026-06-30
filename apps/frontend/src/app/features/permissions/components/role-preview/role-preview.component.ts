@@ -1,11 +1,11 @@
-import { Component, Input, signal, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { CardModule } from 'primeng/card';
-import { ButtonModule } from 'primeng/button';
-import { TagModule } from 'primeng/tag';
-import { DividerModule } from 'primeng/divider';
-import { TooltipModule } from 'primeng/tooltip';
-import { AccordionModule } from 'primeng/accordion';
+import { Component, Input, signal, computed } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { CardModule } from 'primeng/card'
+import { ButtonModule } from 'primeng/button'
+import { TagModule } from 'primeng/tag'
+import { DividerModule } from 'primeng/divider'
+import { TooltipModule } from 'primeng/tooltip'
+import { AccordionModule } from 'primeng/accordion'
 
 /**
  * RolePreviewComponent
@@ -84,7 +84,10 @@ import { AccordionModule } from 'primeng/accordion';
                     <div class="permission-item" [class.sensitive]="perm.isSensitive">
                       <div class="permission-icon">
                         @if (perm.isSensitive) {
-                          <i class="pi pi-exclamation-triangle" style="color: var(--color-warning)"></i>
+                          <i
+                            class="pi pi-exclamation-triangle"
+                            style="color: var(--color-warning)"
+                          ></i>
                         } @else {
                           <i class="pi pi-check" style="color: var(--color-success)"></i>
                         }
@@ -117,194 +120,198 @@ import { AccordionModule } from 'primeng/accordion';
           <div class="sensitive-warning">
             <i class="pi pi-exclamation-triangle"></i>
             <span>
-              This role includes {{ sensitiveCount() }} sensitive permission(s).
-              Ensure you trust the user before assigning this role.
+              This role includes {{ sensitiveCount() }} sensitive permission(s). Ensure you trust
+              the user before assigning this role.
             </span>
           </div>
         }
       </p-card>
     </div>
   `,
-  styles: [`
-    .role-preview {
-      width: 100%;
-    }
+  styles: [
+    `
+      .role-preview {
+        width: 100%;
+      }
 
-    .preview-summary {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: var(--spacing-base);
-      margin-bottom: var(--spacing-base);
-    }
-
-    .summary-item {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-md);
-      padding: var(--spacing-base);
-      background: var(--color-gray-50);
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--surface-border);
-    }
-
-    .summary-item i {
-      font-size: var(--font-size-2xl);
-      color: var(--brand-primary);
-    }
-
-    .summary-content {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-    }
-
-    .summary-label {
-      font-size: var(--font-size-sm);
-      color: var(--text-secondary);
-    }
-
-    .summary-value {
-      font-size: var(--font-size-2xl);
-      font-weight: var(--font-weight-semibold);
-      color: var(--text-primary);
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: var(--spacing-3xl) var(--spacing-base);
-      color: var(--text-secondary);
-    }
-
-    .empty-state i {
-      font-size: 3rem;
-      margin-bottom: var(--spacing-base);
-      display: block;
-      color: var(--color-gray-400);
-    }
-
-    .permission-list {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-md);
-    }
-
-    .permission-item {
-      display: flex;
-      gap: var(--spacing-md);
-      padding: var(--spacing-md);
-      border: 1px solid var(--surface-border);
-      border-radius: var(--radius-base);
-      background: var(--surface-card);
-      transition: background var(--transition-fast), border-color var(--transition-fast);
-    }
-
-    .permission-item:hover {
-      background: var(--surface-hover);
-      border-color: var(--brand-primary-light);
-    }
-
-    .permission-item.sensitive {
-      border-color: var(--color-warning);
-      background: var(--color-warning-bg);
-    }
-
-    .permission-icon {
-      flex-shrink: 0;
-      width: 24px;
-      height: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .permission-details {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-    }
-
-    .permission-action {
-      font-weight: var(--font-weight-semibold);
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-    }
-
-    .permission-description {
-      font-size: var(--font-size-sm);
-      color: var(--text-secondary);
-    }
-
-    .permission-code {
-      margin-top: 0.25rem;
-    }
-
-    .permission-code code {
-      font-size: var(--font-size-xs);
-      padding: 0.25rem 0.5rem;
-      background: var(--color-gray-100);
-      border-radius: var(--radius-sm);
-      color: var(--brand-primary-dark);
-      font-family: var(--font-family-mono);
-    }
-
-    .sensitive-warning {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-md);
-      padding: var(--spacing-base);
-      margin-top: var(--spacing-base);
-      background: var(--color-warning-bg);
-      border: 1px solid var(--color-warning);
-      border-radius: var(--radius-base);
-      color: var(--brand-secondary-dark);
-    }
-
-    .sensitive-warning i {
-      font-size: var(--font-size-xl);
-      color: var(--color-warning);
-    }
-
-    /* Mobile responsive */
-    @media (max-width: 768px) {
       .preview-summary {
-        grid-template-columns: 1fr;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: var(--spacing-base);
+        margin-bottom: var(--spacing-base);
+      }
+
+      .summary-item {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        padding: var(--spacing-base);
+        background: var(--color-gray-50);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--surface-border);
+      }
+
+      .summary-item i {
+        font-size: var(--font-size-2xl);
+        color: var(--brand-primary);
+      }
+
+      .summary-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .summary-label {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+      }
+
+      .summary-value {
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: var(--spacing-3xl) var(--spacing-base);
+        color: var(--text-secondary);
+      }
+
+      .empty-state i {
+        font-size: 3rem;
+        margin-bottom: var(--spacing-base);
+        display: block;
+        color: var(--color-gray-400);
+      }
+
+      .permission-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
       }
 
       .permission-item {
-        flex-direction: column;
-        align-items: flex-start;
+        display: flex;
+        gap: var(--spacing-md);
+        padding: var(--spacing-md);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-base);
+        background: var(--surface-card);
+        transition:
+          background var(--transition-fast),
+          border-color var(--transition-fast);
       }
-    }
-  `],
+
+      .permission-item:hover {
+        background: var(--surface-hover);
+        border-color: var(--brand-primary-light);
+      }
+
+      .permission-item.sensitive {
+        border-color: var(--color-warning);
+        background: var(--color-warning-bg);
+      }
+
+      .permission-icon {
+        flex-shrink: 0;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .permission-details {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .permission-action {
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+      }
+
+      .permission-description {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+      }
+
+      .permission-code {
+        margin-top: 0.25rem;
+      }
+
+      .permission-code code {
+        font-size: var(--font-size-xs);
+        padding: 0.25rem 0.5rem;
+        background: var(--color-gray-100);
+        border-radius: var(--radius-sm);
+        color: var(--brand-primary-dark);
+        font-family: var(--font-family-mono);
+      }
+
+      .sensitive-warning {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        padding: var(--spacing-base);
+        margin-top: var(--spacing-base);
+        background: var(--color-warning-bg);
+        border: 1px solid var(--color-warning);
+        border-radius: var(--radius-base);
+        color: var(--brand-secondary-dark);
+      }
+
+      .sensitive-warning i {
+        font-size: var(--font-size-xl);
+        color: var(--color-warning);
+      }
+
+      /* Mobile responsive */
+      @media (max-width: 768px) {
+        .preview-summary {
+          grid-template-columns: 1fr;
+        }
+
+        .permission-item {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    `,
+  ],
 })
 export class RolePreviewComponent {
   @Input() set permissions(value: string[]) {
-    this._permissions.set(value || []);
+    this._permissions.set(value || [])
   }
 
-  @Input() roleName: string = '';
-  @Input() roleDescription: string = '';
+  @Input() roleName: string = ''
+  @Input() roleDescription: string = ''
 
-  private _permissions = signal<string[]>([]);
+  private _permissions = signal<string[]>([])
 
-  permissions = computed(() => this._permissions());
+  permissions = computed(() => this._permissions())
 
   previewTitle = computed(() => {
     if (this.roleName) {
-      return `Preview: ${this.roleName}`;
+      return `Preview: ${this.roleName}`
     }
-    return 'Role Preview';
-  });
+    return 'Role Preview'
+  })
 
   /**
    * Parse permissions and enrich with metadata
    */
   enrichedPermissions = computed(() => {
-    return this.permissions().map((perm) => {
-      const parts = perm.split(':');
-      const [resource, action, scope] = parts;
+    return this.permissions().map(perm => {
+      const parts = perm.split(':')
+      const [resource, action, scope] = parts
 
       return {
         permission: perm,
@@ -313,67 +320,57 @@ export class RolePreviewComponent {
         scope: scope || 'unknown',
         isSensitive: this.isSensitivePermission(perm),
         description: this.getPermissionDescription(resource, action, scope),
-      };
-    });
-  });
+      }
+    })
+  })
 
   /**
    * Group permissions by resource
    */
   groupedPermissions = computed(() => {
-    const grouped = new Map<string, typeof this.enrichedPermissions extends () => infer R ? R[number][] : never>();
+    const grouped = new Map<
+      string,
+      typeof this.enrichedPermissions extends () => infer R ? R[number][] : never
+    >()
 
     for (const perm of this.enrichedPermissions()) {
-      const existing = grouped.get(perm.resource) || [];
-      existing.push(perm);
-      grouped.set(perm.resource, existing);
+      const existing = grouped.get(perm.resource) || []
+      existing.push(perm)
+      grouped.set(perm.resource, existing)
     }
 
     return Array.from(grouped.entries()).map(([resource, permissions]) => ({
       resource,
       permissions,
       count: permissions.length,
-    }));
-  });
+    }))
+  })
 
   /**
    * Count sensitive permissions
    */
   sensitiveCount = computed(() => {
-    return this.enrichedPermissions().filter((p) => p.isSensitive).length;
-  });
+    return this.enrichedPermissions().filter(p => p.isSensitive).length
+  })
 
   /**
    * Check if permission is sensitive
    */
   private isSensitivePermission(permission: string): boolean {
-    const sensitivePatterns = [
-      'delete',
-      'approve',
-      'reject',
-      'sign',
-      'admin',
-      'all',
-    ];
+    const sensitivePatterns = ['delete', 'approve', 'reject', 'sign', 'admin', 'all']
 
-    return sensitivePatterns.some((pattern) =>
-      permission.toLowerCase().includes(pattern)
-    );
+    return sensitivePatterns.some(pattern => permission.toLowerCase().includes(pattern))
   }
 
   /**
    * Get human-readable description
    */
-  private getPermissionDescription(
-    resource: string,
-    action: string,
-    scope: string
-  ): string {
-    const resourceName = this.formatResourceName(resource);
-    const actionName = this.formatActionName(action);
-    const scopeName = this.formatScopeName(scope);
+  private getPermissionDescription(resource: string, action: string, scope: string): string {
+    const resourceName = this.formatResourceName(resource)
+    const actionName = this.formatActionName(action)
+    const scopeName = this.formatScopeName(scope)
 
-    return `${actionName} ${resourceName} ${scopeName}`;
+    return `${actionName} ${resourceName} ${scopeName}`
   }
 
   /**
@@ -388,9 +385,9 @@ export class RolePreviewComponent {
       vehicle: 'vehicles',
       report: 'reports',
       audit: 'audit logs',
-    };
+    }
 
-    return names[resource] || resource;
+    return names[resource] || resource
   }
 
   /**
@@ -407,9 +404,9 @@ export class RolePreviewComponent {
       sign: 'Sign',
       export: 'Export',
       manage: 'Manage',
-    };
+    }
 
-    return names[action] || action;
+    return names[action] || action
   }
 
   /**
@@ -420,22 +417,22 @@ export class RolePreviewComponent {
       own: 'for own records only',
       facility: 'within assigned facilities',
       all: 'across entire organization',
-    };
+    }
 
-    return names[scope] || scope;
+    return names[scope] || scope
   }
 
   /**
    * Format action with scope
    */
   formatAction(action: string, scope: string): string {
-    return `${this.formatActionName(action)} (${scope})`;
+    return `${this.formatActionName(action)} (${scope})`
   }
 
   /**
    * Get group header
    */
   getGroupHeader(group: { resource: string; count: number }): string {
-    return `${this.formatResourceName(group.resource)} (${group.count} permission${group.count !== 1 ? 's' : ''})`;
+    return `${this.formatResourceName(group.resource)} (${group.count} permission${group.count !== 1 ? 's' : ''})`
   }
 }

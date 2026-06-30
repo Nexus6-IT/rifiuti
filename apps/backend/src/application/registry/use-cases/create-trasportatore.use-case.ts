@@ -36,15 +36,13 @@ export class CreateTrasportatoreUseCase {
   constructor(
     @Inject(TRASPORTATORE_REPOSITORY)
     private readonly trasportatoreRepository: TrasportatoreRepository,
-    @Optional() private readonly referenceData?: ReferenceDataService,
+    @Optional() private readonly referenceData?: ReferenceDataService
   ) {}
 
   async execute(command: CreateTrasportatoreCommand): Promise<Result<Trasportatore>> {
     try {
       // Check if Partita IVA already exists
-      const existingByPIVA = await this.trasportatoreRepository.findByPartitaIVA(
-        command.partitaIVA,
-      )
+      const existingByPIVA = await this.trasportatoreRepository.findByPartitaIVA(command.partitaIVA)
 
       if (existingByPIVA) {
         return Result.fail('Trasportatore with this Partita IVA already exists')
@@ -52,7 +50,7 @@ export class CreateTrasportatoreUseCase {
 
       // Check if Numero Iscrizione already exists
       const existingByNumero = await this.trasportatoreRepository.findByNumeroIscrizione(
-        command.numeroIscrizione,
+        command.numeroIscrizione
       )
 
       if (existingByNumero) {
@@ -63,7 +61,7 @@ export class CreateTrasportatoreUseCase {
       if (this.referenceData) {
         const v = await this.referenceData.validateLocalita(
           command.sedeLegale.citta,
-          command.sedeLegale.provincia,
+          command.sedeLegale.provincia
         )
         if (!v.ok) return Result.fail(v.error!)
       }

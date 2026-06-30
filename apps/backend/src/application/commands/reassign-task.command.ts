@@ -21,6 +21,6 @@ export class ReassignTaskCommand {
     public readonly newDriverId: string,
     public readonly tenantId: string,
     public readonly reassignedBy: string,
-    public readonly reason: string, // Required for audit trail
+    public readonly reason: string // Required for audit trail
   ) {}
 }

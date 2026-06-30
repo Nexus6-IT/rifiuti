@@ -12,116 +12,116 @@
  * - SYSTEM_ANNOUNCEMENT
  */
 export class Notification {
-  private id: string;
-  private tenantId: string;
-  private userId: string;
-  private type: NotificationType;
-  private title: string;
-  private message: string;
-  private severity: NotificationSeverity;
-  private read: boolean;
-  private actionUrl?: string;
-  private metadata: Record<string, any>;
-  private createdAt: Date;
-  private readAt?: Date;
+  private id: string
+  private tenantId: string
+  private userId: string
+  private type: NotificationType
+  private title: string
+  private message: string
+  private severity: NotificationSeverity
+  private read: boolean
+  private actionUrl?: string
+  private metadata: Record<string, any>
+  private createdAt: Date
+  private readAt?: Date
 
   private constructor(params: {
-    id: string;
-    tenantId: string;
-    userId: string;
-    type: NotificationType;
-    title: string;
-    message: string;
-    severity: NotificationSeverity;
-    actionUrl?: string;
-    metadata?: Record<string, any>;
+    id: string
+    tenantId: string
+    userId: string
+    type: NotificationType
+    title: string
+    message: string
+    severity: NotificationSeverity
+    actionUrl?: string
+    metadata?: Record<string, any>
   }) {
-    this.id = params.id;
-    this.tenantId = params.tenantId;
-    this.userId = params.userId;
-    this.type = params.type;
-    this.title = params.title;
-    this.message = params.message;
-    this.severity = params.severity;
-    this.read = false;
-    this.actionUrl = params.actionUrl;
-    this.metadata = params.metadata || {};
-    this.createdAt = new Date();
+    this.id = params.id
+    this.tenantId = params.tenantId
+    this.userId = params.userId
+    this.type = params.type
+    this.title = params.title
+    this.message = params.message
+    this.severity = params.severity
+    this.read = false
+    this.actionUrl = params.actionUrl
+    this.metadata = params.metadata || {}
+    this.createdAt = new Date()
   }
 
   static create(params: {
-    id: string;
-    tenantId: string;
-    userId: string;
-    type: NotificationType;
-    title: string;
-    message: string;
-    severity: NotificationSeverity;
-    actionUrl?: string;
-    metadata?: Record<string, any>;
+    id: string
+    tenantId: string
+    userId: string
+    type: NotificationType
+    title: string
+    message: string
+    severity: NotificationSeverity
+    actionUrl?: string
+    metadata?: Record<string, any>
   }): Notification {
-    return new Notification(params);
+    return new Notification(params)
   }
 
   markAsRead(): void {
     if (!this.read) {
-      this.read = true;
-      this.readAt = new Date();
+      this.read = true
+      this.readAt = new Date()
     }
   }
 
   markAsUnread(): void {
-    this.read = false;
-    this.readAt = undefined;
+    this.read = false
+    this.readAt = undefined
   }
 
   // Getters
   getId(): string {
-    return this.id;
+    return this.id
   }
 
   getTenantId(): string {
-    return this.tenantId;
+    return this.tenantId
   }
 
   getUserId(): string {
-    return this.userId;
+    return this.userId
   }
 
   getType(): NotificationType {
-    return this.type;
+    return this.type
   }
 
   getTitle(): string {
-    return this.title;
+    return this.title
   }
 
   getMessage(): string {
-    return this.message;
+    return this.message
   }
 
   getSeverity(): NotificationSeverity {
-    return this.severity;
+    return this.severity
   }
 
   isRead(): boolean {
-    return this.read;
+    return this.read
   }
 
   getActionUrl(): string | undefined {
-    return this.actionUrl;
+    return this.actionUrl
   }
 
   getMetadata(): Record<string, any> {
-    return this.metadata;
+    return this.metadata
   }
 
   getCreatedAt(): Date {
-    return this.createdAt;
+    return this.createdAt
   }
 
   getReadAt(): Date | undefined {
-    return this.readAt;
+    return this.readAt
   }
 
   toPlainObject() {
@@ -138,7 +138,7 @@ export class Notification {
       metadata: this.metadata,
       createdAt: this.createdAt,
       readAt: this.readAt,
-    };
+    }
   }
 }
 
@@ -150,7 +150,7 @@ export type NotificationType =
   | 'MUD_DEADLINE_APPROACHING'
   | 'SUBSCRIPTION_EXPIRING'
   | 'SIGNATURE_REQUIRED'
-  | 'SYSTEM_ERROR';
+  | 'SYSTEM_ERROR'
 
 // Notification severity - must match Prisma schema enum (no SUCCESS in Prisma)
-export type NotificationSeverity = 'INFO' | 'WARNING' | 'ERROR';
+export type NotificationSeverity = 'INFO' | 'WARNING' | 'ERROR'

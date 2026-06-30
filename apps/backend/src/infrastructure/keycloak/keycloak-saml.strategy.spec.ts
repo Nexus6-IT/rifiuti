@@ -1,10 +1,9 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { KeycloakSamlStrategy } from './keycloak-saml.strategy';
-import { ConfigService } from '@nestjs/config';
-import { LoggerService } from '../../core/logger/logger.service';
-import { UserRepository } from '../persistence/user.repository';
-import { DomainException } from '../../domain/shared/domain-exception';
-import { HandleSPIDCallbackUseCase } from '../../application/auth/handle-spid-callback.use-case';
+import { Test, TestingModule } from '@nestjs/testing'
+import { KeycloakSamlStrategy } from './keycloak-saml.strategy'
+import { ConfigService } from '@nestjs/config'
+import { LoggerService } from '../../core/logger/logger.service'
+import { UserRepository } from '../persistence/user.repository'
+import { HandleSPIDCallbackUseCase } from '../../application/auth/handle-spid-callback.use-case'
 
 /**
  * Keycloak SAML Strategy Integration Tests
@@ -21,11 +20,10 @@ import { HandleSPIDCallbackUseCase } from '../../application/auth/handle-spid-ca
  * - issuer (Identity Provider URL)
  */
 describe('KeycloakSamlStrategy (Integration)', () => {
-  let strategy: KeycloakSamlStrategy;
-  let userRepository: jest.Mocked<UserRepository>;
-  let configService: jest.Mocked<ConfigService>;
-  let logger: jest.Mocked<LoggerService>;
-  let handleSPIDCallbackUseCase: jest.Mocked<HandleSPIDCallbackUseCase>;
+  let strategy: KeycloakSamlStrategy
+  let userRepository: jest.Mocked<UserRepository>
+  let logger: jest.Mocked<LoggerService>
+  let handleSPIDCallbackUseCase: jest.Mocked<HandleSPIDCallbackUseCase>
 
   beforeEach(async () => {
     // Mock dependencies
@@ -33,7 +31,7 @@ describe('KeycloakSamlStrategy (Integration)', () => {
       findByFiscalCode: jest.fn(),
       save: jest.fn(),
       update: jest.fn(),
-    };
+    }
 
     const mockConfigService = {
       get: jest.fn((key: string) => {
@@ -45,10 +43,10 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           SAML_CALLBACK_URL: 'http://localhost:3000/auth/callback',
           SAML_ISSUER: 'wasteflow-backend',
           SAML_CERT: 'fake-cert',
-        };
-        return config[key];
+        }
+        return config[key]
       }),
-    };
+    }
 
     const mockLogger = {
       setContext: jest.fn(),
@@ -56,7 +54,7 @@ describe('KeycloakSamlStrategy (Integration)', () => {
       warn: jest.fn(),
       error: jest.fn(),
       debug: jest.fn(),
-    };
+    }
 
     const mockHandleSPIDCallbackUseCase = {
       execute: jest.fn().mockResolvedValue({
@@ -71,7 +69,7 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           tenantId: 'tenant-123',
         },
       }),
-    };
+    }
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -81,14 +79,13 @@ describe('KeycloakSamlStrategy (Integration)', () => {
         { provide: LoggerService, useValue: mockLogger },
         { provide: HandleSPIDCallbackUseCase, useValue: mockHandleSPIDCallbackUseCase },
       ],
-    }).compile();
+    }).compile()
 
-    strategy = module.get<KeycloakSamlStrategy>(KeycloakSamlStrategy);
-    userRepository = module.get(UserRepository);
-    configService = module.get(ConfigService);
-    logger = module.get(LoggerService);
-    handleSPIDCallbackUseCase = module.get(HandleSPIDCallbackUseCase);
-  });
+    strategy = module.get<KeycloakSamlStrategy>(KeycloakSamlStrategy)
+    userRepository = module.get(UserRepository)
+    logger = module.get(LoggerService)
+    handleSPIDCallbackUseCase = module.get(HandleSPIDCallbackUseCase)
+  })
 
   describe('SAML Profile Validation', () => {
     it('should successfully validate complete SPID SAML profile', async () => {
@@ -104,10 +101,10 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           email: 'mario.rossi@example.it',
           spidCode: '2',
         },
-      };
+      }
 
       // Mock user not found (new user)
-      userRepository.findByFiscalCode.mockResolvedValue(null);
+      userRepository.findByFiscalCode.mockResolvedValue(null)
       userRepository.save.mockResolvedValue({
         id: 'user-123',
         fiscalCode: 'RSSMRA80A01H501U',
@@ -115,21 +112,24 @@ describe('KeycloakSamlStrategy (Integration)', () => {
         lastName: 'Rossi',
         email: 'mario.rossi@example.it',
         tenantId: 'tenant-123',
-      } as any);
+      } as any)
 
-      const done = jest.fn();
-      await strategy.validate(samlProfile, done);
+      const done = jest.fn()
+      await strategy.validate(samlProfile, done)
 
-      expect(done).toHaveBeenCalledWith(null, expect.objectContaining({
-        user: expect.objectContaining({
-          fiscalCode: 'RSSMRA80A01H501U',
-          firstName: 'Mario',
-          lastName: 'Rossi',
-          email: 'mario.rossi@example.it',
-          spidLevel: 2,
-        }),
-      }));
-    });
+      expect(done).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({
+          user: expect.objectContaining({
+            fiscalCode: 'RSSMRA80A01H501U',
+            firstName: 'Mario',
+            lastName: 'Rossi',
+            email: 'mario.rossi@example.it',
+            spidLevel: 2,
+          }),
+        })
+      )
+    })
 
     it('should update existing user SPID attributes', async () => {
       const samlProfile = {
@@ -143,7 +143,7 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           email: 'mario.rossi@example.it',
           spidCode: '3', // Upgraded to Level 3
         },
-      };
+      }
 
       const existingUser = {
         id: 'user-123',
@@ -153,23 +153,26 @@ describe('KeycloakSamlStrategy (Integration)', () => {
         email: 'mario.rossi@example.it',
         tenantId: 'tenant-123',
         updateSpidAuthentication: jest.fn(),
-      };
+      }
 
-      userRepository.findByFiscalCode.mockResolvedValue(existingUser as any);
+      userRepository.findByFiscalCode.mockResolvedValue(existingUser as any)
 
-      const done = jest.fn();
-      await strategy.validate(samlProfile, done);
+      const done = jest.fn()
+      await strategy.validate(samlProfile, done)
 
-      expect(done).toHaveBeenCalledWith(null, expect.objectContaining({
-        user: expect.anything(),
-      }));
-    });
+      expect(done).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({
+          user: expect.anything(),
+        })
+      )
+    })
 
     it('should fail with missing fiscal code', async () => {
       const invalidProfile = {
         issuer: 'https://identity.infocert.it',
         sessionIndex: 'session-123',
-        nameID: undefined,  // No nameID either
+        nameID: undefined, // No nameID either
         attributes: {
           name: 'Mario',
           familyName: 'Rossi',
@@ -177,15 +180,15 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           // Missing fiscalCode
           spidCode: '2',
         },
-      };
+      }
 
-      const done = jest.fn();
-      await strategy.validate(invalidProfile, done);
+      const done = jest.fn()
+      await strategy.validate(invalidProfile, done)
 
       // Should fail because fiscalCode is required
-      expect(done).toHaveBeenCalledWith(expect.any(Error), null);
-      expect(logger.error).toHaveBeenCalled();
-    });
+      expect(done).toHaveBeenCalledWith(expect.any(Error), null)
+      expect(logger.error).toHaveBeenCalled()
+    })
 
     it('should fail with invalid SPID level', async () => {
       const invalidProfile = {
@@ -199,14 +202,14 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           email: 'mario.rossi@example.it',
           spidCode: '5', // Invalid level
         },
-      };
+      }
 
-      const done = jest.fn();
-      await strategy.validate(invalidProfile, done);
+      const done = jest.fn()
+      await strategy.validate(invalidProfile, done)
 
       // Should still work - SPID level 5 just gets parsed as 5, validation happens elsewhere
-      expect(done).toHaveBeenCalledWith(null, expect.anything());
-    });
+      expect(done).toHaveBeenCalledWith(null, expect.anything())
+    })
 
     it('should fail with missing email', async () => {
       const invalidProfile = {
@@ -220,14 +223,14 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           // Missing email
           spidCode: '2',
         },
-      };
+      }
 
-      const done = jest.fn();
-      await strategy.validate(invalidProfile, done);
+      const done = jest.fn()
+      await strategy.validate(invalidProfile, done)
 
-      expect(done).toHaveBeenCalledWith(expect.any(Error), null);
-    });
-  });
+      expect(done).toHaveBeenCalledWith(expect.any(Error), null)
+    })
+  })
 
   describe('CIE (Carta Identità Elettronica) Support', () => {
     it('should accept CIE authentication', async () => {
@@ -242,22 +245,25 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           email: 'mario.rossi@example.it',
           spidCode: '3', // CIE is always Level 3
         },
-      };
+      }
 
-      userRepository.findByFiscalCode.mockResolvedValue(null);
+      userRepository.findByFiscalCode.mockResolvedValue(null)
       userRepository.save.mockResolvedValue({
         id: 'user-123',
         fiscalCode: 'RSSMRA80A01H501U',
-      } as any);
+      } as any)
 
-      const done = jest.fn();
-      await strategy.validate(cieProfile, done);
+      const done = jest.fn()
+      await strategy.validate(cieProfile, done)
 
-      expect(done).toHaveBeenCalledWith(null, expect.objectContaining({
-        user: expect.anything(),
-      }));
-    });
-  });
+      expect(done).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({
+          user: expect.anything(),
+        })
+      )
+    })
+  })
 
   describe('Multiple Identity Provider Support', () => {
     it('should accept multiple SPID providers', async () => {
@@ -269,7 +275,7 @@ describe('KeycloakSamlStrategy (Integration)', () => {
         'https://spid.register.it',
         'https://id.lepida.it/idp/profile/SAML2/POST/SSO',
         'https://loginspid.tim.it/sso',
-      ];
+      ]
 
       for (const issuer of providers) {
         const profile = {
@@ -283,21 +289,21 @@ describe('KeycloakSamlStrategy (Integration)', () => {
             email: 'mario.rossi@example.it',
             spidCode: '2',
           },
-        };
+        }
 
-        userRepository.findByFiscalCode.mockResolvedValue(null);
+        userRepository.findByFiscalCode.mockResolvedValue(null)
         userRepository.save.mockResolvedValue({
           id: 'user-123',
           fiscalCode: 'RSSMRA80A01H501U',
-        } as any);
+        } as any)
 
-        const done = jest.fn();
-        await strategy.validate(profile, done);
+        const done = jest.fn()
+        await strategy.validate(profile, done)
 
-        expect(done).toHaveBeenCalledWith(null, expect.anything());
+        expect(done).toHaveBeenCalledWith(null, expect.anything())
       }
-    });
-  });
+    })
+  })
 
   describe('Session Management', () => {
     it('should include session ID and timestamp', async () => {
@@ -312,20 +318,20 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           email: 'mario.rossi@example.it',
           spidCode: '2',
         },
-      };
+      }
 
-      userRepository.findByFiscalCode.mockResolvedValue(null);
+      userRepository.findByFiscalCode.mockResolvedValue(null)
       userRepository.save.mockResolvedValue({
         id: 'user-123',
         fiscalCode: 'RSSMRA80A01H501U',
-      } as any);
+      } as any)
 
-      const done = jest.fn();
-      await strategy.validate(profile, done);
+      const done = jest.fn()
+      await strategy.validate(profile, done)
 
-      expect(done).toHaveBeenCalledWith(null, expect.anything());
-    });
-  });
+      expect(done).toHaveBeenCalledWith(null, expect.anything())
+    })
+  })
 
   describe('Error Handling', () => {
     it('should handle repository errors gracefully', async () => {
@@ -340,19 +346,17 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           email: 'mario.rossi@example.it',
           spidCode: '2',
         },
-      };
+      }
 
       // Mock the use case to throw an error (simulating repository failure)
-      handleSPIDCallbackUseCase.execute.mockRejectedValue(
-        new Error('Database connection failed')
-      );
+      handleSPIDCallbackUseCase.execute.mockRejectedValue(new Error('Database connection failed'))
 
-      const done = jest.fn();
-      await strategy.validate(profile, done);
+      const done = jest.fn()
+      await strategy.validate(profile, done)
 
-      expect(done).toHaveBeenCalledWith(expect.any(Error), null);
-      expect(logger.error).toHaveBeenCalled();
-    });
+      expect(done).toHaveBeenCalledWith(expect.any(Error), null)
+      expect(logger.error).toHaveBeenCalled()
+    })
 
     it('should log authentication attempts', async () => {
       const profile = {
@@ -366,22 +370,22 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           email: 'mario.rossi@example.it',
           spidCode: '2',
         },
-      };
+      }
 
-      userRepository.findByFiscalCode.mockResolvedValue(null);
+      userRepository.findByFiscalCode.mockResolvedValue(null)
       userRepository.save.mockResolvedValue({
         id: 'user-123',
         fiscalCode: 'RSSMRA80A01H501U',
-      } as any);
+      } as any)
 
-      const done = jest.fn();
-      await strategy.validate(profile, done);
+      const done = jest.fn()
+      await strategy.validate(profile, done)
 
       // Check that info logging was called (multiple times - validating, extracting, success)
-      expect(logger.info).toHaveBeenCalled();
-      expect(done).toHaveBeenCalledWith(null, expect.anything());
-    });
-  });
+      expect(logger.info).toHaveBeenCalled()
+      expect(done).toHaveBeenCalledWith(null, expect.anything())
+    })
+  })
 
   describe('Attribute Mapping', () => {
     it('should map SPID attributes correctly', async () => {
@@ -396,26 +400,29 @@ describe('KeycloakSamlStrategy (Integration)', () => {
           emailAddress: 'mario.rossi@example.it', // Alternative attribute name
           spidLevel: '2', // Alternative attribute name
         },
-      };
+      }
 
-      userRepository.findByFiscalCode.mockResolvedValue(null);
+      userRepository.findByFiscalCode.mockResolvedValue(null)
       userRepository.save.mockResolvedValue({
         id: 'user-123',
         fiscalCode: 'RSSMRA80A01H501U',
-      } as any);
+      } as any)
 
-      const done = jest.fn();
-      await strategy.validate(profile, done);
+      const done = jest.fn()
+      await strategy.validate(profile, done)
 
-      expect(done).toHaveBeenCalledWith(null, expect.objectContaining({
-        user: expect.objectContaining({
-          fiscalCode: 'RSSMRA80A01H501U',
-          firstName: 'Mario',
-          lastName: 'Rossi',
-          email: 'mario.rossi@example.it',
-          spidLevel: 2,
-        }),
-      }));
-    });
-  });
-});
+      expect(done).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({
+          user: expect.objectContaining({
+            fiscalCode: 'RSSMRA80A01H501U',
+            firstName: 'Mario',
+            lastName: 'Rossi',
+            email: 'mario.rossi@example.it',
+            spidLevel: 2,
+          }),
+        })
+      )
+    })
+  })
+})

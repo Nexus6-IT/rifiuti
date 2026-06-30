@@ -6,11 +6,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
-import {
-  ReferenceDataConfig,
-  REFERENCE_DATA_CONFIG,
-  DatasetSource,
-} from './reference-data.config'
+import { ReferenceDataConfig, REFERENCE_DATA_CONFIG, DatasetSource } from './reference-data.config'
 import { parseCsv } from './csv.util'
 
 export type ReferenceDataset = 'ateco' | 'nazioni' | 'province' | 'comuni' | 'cer'
@@ -41,7 +37,7 @@ export class ReferenceDataSeederService implements OnModuleInit {
     private readonly http: HttpService,
     private readonly prisma: PrismaService,
     @Inject(REFERENCE_DATA_CONFIG) private readonly config: ReferenceDataConfig,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
     this.logger.setContext(ReferenceDataSeederService.name)
   }
@@ -51,9 +47,7 @@ export class ReferenceDataSeederService implements OnModuleInit {
       // Best-effort: non bloccare l'avvio dell'app.
       this.seedIfEmpty()
         .then(() => this.ensureCerComplete())
-        .catch((e) =>
-          this.logger.warn(`Seed reference data al boot fallito: ${e.message}`),
-        )
+        .catch(e => this.logger.warn(`Seed reference data al boot fallito: ${e.message}`))
     }
   }
 
@@ -120,7 +114,7 @@ export class ReferenceDataSeederService implements OnModuleInit {
   }
 
   private async upsertCerRows(rows: string[][]): Promise<number> {
-    return this.upsertChunked(rows, (r) =>
+    return this.upsertChunked(rows, r =>
       r[0]
         ? this.prisma.cERCode.upsert({
             where: { code: r[0] },
@@ -138,7 +132,7 @@ export class ReferenceDataSeederService implements OnModuleInit {
               subcategory: r[4] || '',
             },
           })
-        : null,
+        : null
     )
   }
 
@@ -146,46 +140,51 @@ export class ReferenceDataSeederService implements OnModuleInit {
 
   async seedAteco(): Promise<number> {
     const rows = await this.fetchRows(this.config.ateco)
-    return this.upsertChunked(rows, (r) =>
+    return this.upsertChunked(rows, r =>
       r[0]
         ? this.prisma.atecoCode.upsert({
             where: { code: r[0] },
             create: { code: r[0], description: r[1] || '' },
             update: { description: r[1] || '' },
           })
-        : null,
+        : null
     )
   }
 
   async seedNazioni(): Promise<number> {
     const rows = await this.fetchRows(this.config.nazioni)
-    return this.upsertChunked(rows, (r) =>
+    return this.upsertChunked(rows, r =>
       r[0]
         ? this.prisma.istatNazione.upsert({
             where: { code: r[0] },
             create: { code: r[0], name: r[1] || '', iso3: r[2] || null },
             update: { name: r[1] || '', iso3: r[2] || null },
           })
-        : null,
+        : null
     )
   }
 
   async seedProvince(): Promise<number> {
     const rows = await this.fetchRows(this.config.province)
-    return this.upsertChunked(rows, (r) =>
+    return this.upsertChunked(rows, r =>
       r[0]
         ? this.prisma.istatProvincia.upsert({
             where: { sigla: r[0].toUpperCase() },
-            create: { sigla: r[0].toUpperCase(), code: r[1] || '', name: r[2] || '', regione: r[3] || '' },
+            create: {
+              sigla: r[0].toUpperCase(),
+              code: r[1] || '',
+              name: r[2] || '',
+              regione: r[3] || '',
+            },
             update: { code: r[1] || '', name: r[2] || '', regione: r[3] || '' },
           })
-        : null,
+        : null
     )
   }
 
   async seedComuni(): Promise<number> {
     const rows = await this.fetchRows(this.config.comuni)
-    return this.upsertChunked(rows, (r) =>
+    return this.upsertChunked(rows, r =>
       r[0]
         ? this.prisma.istatComune.upsert({
             where: { code: r[0] },
@@ -203,7 +202,7 @@ export class ReferenceDataSeederService implements OnModuleInit {
               cap: r[4] || null,
             },
           })
-        : null,
+        : null
     )
   }
 
@@ -218,7 +217,7 @@ export class ReferenceDataSeederService implements OnModuleInit {
     let raw: string | null = null
     if (source.url) {
       const response = await firstValueFrom(
-        this.http.get(source.url, { responseType: 'text', timeout: 60000 }),
+        this.http.get(source.url, { responseType: 'text', timeout: 60000 })
       )
       raw = String(response.data)
     } else if (source.localFile) {
@@ -240,7 +239,7 @@ export class ReferenceDataSeederService implements OnModuleInit {
   /** Upsert a blocchi; ritorna il numero di righe processate. */
   private async upsertChunked(
     rows: string[][],
-    op: (row: string[]) => Promise<unknown> | null,
+    op: (row: string[]) => Promise<unknown> | null
   ): Promise<number> {
     let processed = 0
     for (let i = 0; i < rows.length; i += this.CHUNK) {

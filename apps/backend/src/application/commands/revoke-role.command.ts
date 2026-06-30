@@ -10,19 +10,19 @@ export class RevokeRoleCommand {
     public readonly userRoleId: string, // ID of UserRoleAssignment to revoke
     public readonly tenantId: string,
     public readonly revokedBy: string,
-    public readonly reason?: string, // Optional reason for audit trail
+    public readonly reason?: string // Optional reason for audit trail
   ) {
     // Validate required fields
     if (!userRoleId || userRoleId.trim() === '') {
-      throw new Error('User role assignment ID is required');
+      throw new Error('User role assignment ID is required')
     }
 
     if (!tenantId || tenantId.trim() === '') {
-      throw new Error('Tenant ID is required');
+      throw new Error('Tenant ID is required')
     }
 
     if (!revokedBy || revokedBy.trim() === '') {
-      throw new Error('Revoked by user ID is required');
+      throw new Error('Revoked by user ID is required')
     }
   }
 }

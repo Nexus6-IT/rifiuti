@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
-import { RoleRepository } from '../../domain/identity-access/role.repository.interface';
-import { Role } from '../../domain/identity-access/role.entity';
-import { RoleCacheService } from '../cache/role-cache.service';
+import { Injectable, Logger } from '@nestjs/common'
+import { PrismaService } from './prisma.service'
+import { RoleRepository } from '../../domain/identity-access/role.repository.interface'
+import { Role } from '../../domain/identity-access/role.entity'
+import { RoleCacheService } from '../cache/role-cache.service'
 
 /**
  * RoleRepository Prisma Implementation
@@ -11,19 +11,19 @@ import { RoleCacheService } from '../cache/role-cache.service';
  */
 @Injectable()
 export class PrismaRoleRepository implements RoleRepository {
-  private readonly logger = new Logger(PrismaRoleRepository.name);
+  private readonly logger = new Logger(PrismaRoleRepository.name)
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly roleCache: RoleCacheService,
+    private readonly roleCache: RoleCacheService
   ) {}
 
   async findById(roleId: string, tenantId: string): Promise<Role | null> {
     // Check cache first
-    const cached = await this.roleCache.getRole(roleId);
+    const cached = await this.roleCache.getRole(roleId)
     if (cached) {
-      this.logger.debug(`Cache hit for role ${roleId}`);
-      return cached;
+      this.logger.debug(`Cache hit for role ${roleId}`)
+      return cached
     }
 
     // Query database
@@ -32,10 +32,10 @@ export class PrismaRoleRepository implements RoleRepository {
         id: roleId,
         tenantId, // Tenant isolation
       },
-    });
+    })
 
     if (!dbRole) {
-      return null;
+      return null
     }
 
     // Map to domain entity
@@ -48,12 +48,12 @@ export class PrismaRoleRepository implements RoleRepository {
       createdBy: dbRole.createdBy,
       createdAt: dbRole.createdAt,
       updatedAt: dbRole.updatedAt,
-    });
+    })
 
     // Cache for future lookups
-    await this.roleCache.setRole(role.id, role);
+    await this.roleCache.setRole(role.id, role)
 
-    return role;
+    return role
   }
 
   async findByName(roleName: string, tenantId: string): Promise<Role | null> {
@@ -64,10 +64,10 @@ export class PrismaRoleRepository implements RoleRepository {
           name: roleName.toUpperCase(),
         },
       },
-    });
+    })
 
     if (!dbRole) {
-      return null;
+      return null
     }
 
     return Role.fromPersistence({
@@ -79,13 +79,10 @@ export class PrismaRoleRepository implements RoleRepository {
       createdBy: dbRole.createdBy,
       createdAt: dbRole.createdAt,
       updatedAt: dbRole.updatedAt,
-    });
+    })
   }
 
-  async findByTenant(
-    tenantId: string,
-    includeDeleted: boolean = false,
-  ): Promise<Role[]> {
+  async findByTenant(tenantId: string, _includeDeleted: boolean = false): Promise<Role[]> {
     const dbRoles = await this.prisma.role.findMany({
       where: {
         tenantId,
@@ -93,7 +90,7 @@ export class PrismaRoleRepository implements RoleRepository {
       orderBy: {
         name: 'asc',
       },
-    });
+    })
 
     return dbRoles.map((dbRole: any) =>
       Role.fromPersistence({
@@ -105,8 +102,8 @@ export class PrismaRoleRepository implements RoleRepository {
         createdBy: dbRole.createdBy,
         createdAt: dbRole.createdAt,
         updatedAt: dbRole.updatedAt,
-      }),
-    );
+      })
+    )
   }
 
   async findSystemRoles(tenantId: string): Promise<Role[]> {
@@ -118,7 +115,7 @@ export class PrismaRoleRepository implements RoleRepository {
       orderBy: {
         name: 'asc',
       },
-    });
+    })
 
     return dbRoles.map((dbRole: any) =>
       Role.fromPersistence({
@@ -130,14 +127,11 @@ export class PrismaRoleRepository implements RoleRepository {
         createdBy: dbRole.createdBy,
         createdAt: dbRole.createdAt,
         updatedAt: dbRole.updatedAt,
-      }),
-    );
+      })
+    )
   }
 
-  async findCustomRoles(
-    tenantId: string,
-    includeDeleted: boolean = false,
-  ): Promise<Role[]> {
+  async findCustomRoles(tenantId: string, _includeDeleted: boolean = false): Promise<Role[]> {
     const dbRoles = await this.prisma.role.findMany({
       where: {
         tenantId,
@@ -146,7 +140,7 @@ export class PrismaRoleRepository implements RoleRepository {
       orderBy: {
         name: 'asc',
       },
-    });
+    })
 
     return dbRoles.map((dbRole: any) =>
       Role.fromPersistence({
@@ -158,12 +152,12 @@ export class PrismaRoleRepository implements RoleRepository {
         createdBy: dbRole.createdBy,
         createdAt: dbRole.createdAt,
         updatedAt: dbRole.updatedAt,
-      }),
-    );
+      })
+    )
   }
 
   async save(role: Role): Promise<Role> {
-    const persistence = role.toPersistence();
+    const persistence = role.toPersistence()
 
     const dbRole = await this.prisma.role.upsert({
       where: {
@@ -183,7 +177,7 @@ export class PrismaRoleRepository implements RoleRepository {
         description: persistence.description,
         updatedAt: persistence.updatedAt,
       },
-    });
+    })
 
     const savedRole = Role.fromPersistence({
       id: dbRole.id,
@@ -194,14 +188,14 @@ export class PrismaRoleRepository implements RoleRepository {
       createdBy: dbRole.createdBy,
       createdAt: dbRole.createdAt,
       updatedAt: dbRole.updatedAt,
-    });
+    })
 
     // Update cache
-    await this.roleCache.setRole(savedRole.tenantId, savedRole);
+    await this.roleCache.setRole(savedRole.tenantId, savedRole)
 
-    this.logger.log(`Saved role ${savedRole.name} (${savedRole.id})`);
+    this.logger.log(`Saved role ${savedRole.name} (${savedRole.id})`)
 
-    return savedRole;
+    return savedRole
   }
 
   async delete(roleId: string, tenantId: string): Promise<void> {
@@ -211,32 +205,28 @@ export class PrismaRoleRepository implements RoleRepository {
         id: roleId,
         tenantId,
       },
-    });
+    })
 
     // Invalidate cache
-    await this.roleCache.invalidateRole(roleId);
+    await this.roleCache.invalidateRole(roleId)
 
-    this.logger.log(`Deleted role ${roleId}`);
+    this.logger.log(`Deleted role ${roleId}`)
   }
 
-  async nameExists(
-    roleName: string,
-    tenantId: string,
-    excludeRoleId?: string,
-  ): Promise<boolean> {
+  async nameExists(roleName: string, tenantId: string, excludeRoleId?: string): Promise<boolean> {
     const count = await this.prisma.role.count({
       where: {
         tenantId,
         name: roleName.toUpperCase(),
         ...(excludeRoleId ? { id: { not: excludeRoleId } } : {}),
       },
-    });
+    })
 
-    return count > 0;
+    return count > 0
   }
 
   async countActiveUsers(roleId: string, tenantId: string): Promise<number> {
-    const now = new Date();
+    const now = new Date()
 
     const count = await this.prisma.userRoleAssignment.count({
       where: {
@@ -247,8 +237,8 @@ export class PrismaRoleRepository implements RoleRepository {
           { expiresAt: { gt: now } }, // Not expired
         ],
       },
-    });
+    })
 
-    return count;
+    return count
   }
 }

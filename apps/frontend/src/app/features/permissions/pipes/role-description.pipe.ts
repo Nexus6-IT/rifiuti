@@ -1,4 +1,4 @@
-import { Pipe, PipeTransform } from '@angular/core';
+import { Pipe, PipeTransform } from '@angular/core'
 
 /**
  * RoleDescriptionPipe
@@ -32,9 +32,9 @@ export class RoleDescriptionPipe implements PipeTransform {
   private readonly roleMetadata: Record<
     string,
     {
-      displayName: string;
-      shortDescription: string;
-      longDescription: string;
+      displayName: string
+      shortDescription: string
+      longDescription: string
     }
   > = {
     SYSTEM_ADMIN: {
@@ -73,7 +73,7 @@ export class RoleDescriptionPipe implements PipeTransform {
       longDescription:
         'Viewers have read-only access to FIRs and reports within their assigned facilities, without the ability to create or modify data.',
     },
-  };
+  }
 
   /**
    * Transform role name/ID to human-readable description
@@ -82,35 +82,32 @@ export class RoleDescriptionPipe implements PipeTransform {
    * @param mode Format mode: "name", "short", or "long" (default)
    * @returns Human-readable role description
    */
-  transform(
-    roleNameOrId: string,
-    mode: 'name' | 'short' | 'long' = 'long',
-  ): string {
+  transform(roleNameOrId: string, mode: 'name' | 'short' | 'long' = 'long'): string {
     // Validation
     if (!roleNameOrId || typeof roleNameOrId !== 'string') {
-      return 'Unknown role';
+      return 'Unknown role'
     }
 
     // Normalize role name (convert to uppercase, handle both IDs and names)
-    const normalizedRole = this.normalizeRoleName(roleNameOrId);
+    const normalizedRole = this.normalizeRoleName(roleNameOrId)
 
     // Get role metadata
-    const metadata = this.roleMetadata[normalizedRole];
+    const metadata = this.roleMetadata[normalizedRole]
 
     if (!metadata) {
       // Fallback for unknown roles
-      return this.formatUnknownRole(roleNameOrId, mode);
+      return this.formatUnknownRole(roleNameOrId, mode)
     }
 
     // Return appropriate format
     switch (mode) {
       case 'name':
-        return metadata.displayName;
+        return metadata.displayName
       case 'short':
-        return metadata.shortDescription;
+        return metadata.shortDescription
       case 'long':
       default:
-        return metadata.longDescription;
+        return metadata.longDescription
     }
   }
 
@@ -120,11 +117,11 @@ export class RoleDescriptionPipe implements PipeTransform {
   private normalizeRoleName(roleNameOrId: string): string {
     // If it's a UUID-like ID, can't normalize - return as-is
     if (roleNameOrId.includes('-') && roleNameOrId.length > 20) {
-      return roleNameOrId;
+      return roleNameOrId
     }
 
     // Convert to uppercase and handle common variations
-    let normalized = roleNameOrId.toUpperCase().trim();
+    const normalized = roleNameOrId.toUpperCase().trim()
 
     // Handle common name variations
     const nameMap: Record<string, string> = {
@@ -137,35 +134,32 @@ export class RoleDescriptionPipe implements PipeTransform {
       OFFICER: 'COMPLIANCE_OFFICER',
       'READ-ONLY': 'VIEWER',
       READONLY: 'VIEWER',
-    };
+    }
 
-    return nameMap[normalized] || normalized;
+    return nameMap[normalized] || normalized
   }
 
   /**
    * Format unknown role name gracefully
    */
-  private formatUnknownRole(
-    roleNameOrId: string,
-    mode: 'name' | 'short' | 'long',
-  ): string {
+  private formatUnknownRole(roleNameOrId: string, mode: 'name' | 'short' | 'long'): string {
     // Try to make it human-readable
     const formatted = roleNameOrId
       .replace(/_/g, ' ')
       .replace(/-/g, ' ')
       .toLowerCase()
       .split(' ')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
 
     switch (mode) {
       case 'name':
-        return formatted;
+        return formatted
       case 'short':
-        return `Custom role: ${formatted}`;
+        return `Custom role: ${formatted}`
       case 'long':
       default:
-        return `This is a custom role named "${formatted}". Contact your administrator for details about this role's permissions.`;
+        return `This is a custom role named "${formatted}". Contact your administrator for details about this role's permissions.`
     }
   }
 
@@ -174,14 +168,14 @@ export class RoleDescriptionPipe implements PipeTransform {
    * Useful for dropdowns and selection components
    */
   getAllRoles(): Array<{
-    name: string;
-    displayName: string;
-    description: string;
+    name: string
+    displayName: string
+    description: string
   }> {
     return Object.entries(this.roleMetadata).map(([name, metadata]) => ({
       name,
       displayName: metadata.displayName,
       description: metadata.shortDescription,
-    }));
+    }))
   }
 }

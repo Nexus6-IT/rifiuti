@@ -35,15 +35,13 @@ export class CreateProduttoreUseCase {
   constructor(
     @Inject(PRODUTTORE_REPOSITORY)
     private readonly produttoreRepository: ProduttoreRepository,
-    @Optional() private readonly referenceData?: ReferenceDataService,
+    @Optional() private readonly referenceData?: ReferenceDataService
   ) {}
 
   async execute(command: CreateProduttoreCommand): Promise<Result<Produttore>> {
     try {
       // Check if Partita IVA already exists
-      const existing = await this.produttoreRepository.findByPartitaIVA(
-        command.partitaIVA,
-      )
+      const existing = await this.produttoreRepository.findByPartitaIVA(command.partitaIVA)
 
       if (existing) {
         return Result.fail('Produttore with this Partita IVA already exists')
@@ -53,7 +51,7 @@ export class CreateProduttoreUseCase {
       if (this.referenceData) {
         const v = await this.referenceData.validateLocalita(
           command.sedeLegale.citta,
-          command.sedeLegale.provincia,
+          command.sedeLegale.provincia
         )
         if (!v.ok) return Result.fail(v.error!)
       }

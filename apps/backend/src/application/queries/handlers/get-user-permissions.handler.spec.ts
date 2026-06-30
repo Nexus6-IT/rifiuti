@@ -32,7 +32,7 @@ describe('GetUserPermissionsQueryHandler — permessi temporanei', () => {
       roleRepo,
       permissionRepo,
       cache,
-      tempGrantRepo,
+      tempGrantRepo
     )
   })
 
@@ -42,9 +42,7 @@ describe('GetUserPermissionsQueryHandler — permessi temporanei', () => {
       { isActive: () => false, permissions: ['fir:delete:all'] }, // scaduto/revocato → escluso
     ])
 
-    const result = await handler.execute(
-      new GetUserPermissionsQuery('user-1', 'tenant-1', true),
-    )
+    const result = await handler.execute(new GetUserPermissionsQuery('user-1', 'tenant-1', true))
 
     expect(tempGrantRepo.findActiveByUser).toHaveBeenCalledWith('user-1', 'tenant-1')
     expect(result.permissions).toEqual(expect.arrayContaining(['fir:read:all', 'fir:export:all']))
@@ -52,9 +50,7 @@ describe('GetUserPermissionsQueryHandler — permessi temporanei', () => {
   })
 
   it('non interroga i grant temporanei se includeTempPermissions=false', async () => {
-    const result = await handler.execute(
-      new GetUserPermissionsQuery('user-1', 'tenant-1', false),
-    )
+    const result = await handler.execute(new GetUserPermissionsQuery('user-1', 'tenant-1', false))
 
     expect(tempGrantRepo.findActiveByUser).not.toHaveBeenCalled()
     expect(result.permissions).toEqual(['fir:read:all'])

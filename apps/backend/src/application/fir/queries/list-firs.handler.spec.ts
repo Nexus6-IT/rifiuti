@@ -16,7 +16,7 @@ class MockFIRRepository implements IFIRRepository {
     return null
   }
 
-  async findByIdPublic(id: string): Promise<FIR | null> {
+  async findByIdPublic(_id: string): Promise<FIR | null> {
     return null
   }
 
@@ -98,7 +98,7 @@ describe('ListFIRsQueryHandler', () => {
       const result = await handler.execute(query)
 
       expect(result.isSuccess).toBe(true)
-      expect(result.value.items.length).toBe(2);
+      expect(result.value.items.length).toBe(2)
       expect(result.value.total).toBe(2)
     })
 
@@ -106,16 +106,11 @@ describe('ListFIRsQueryHandler', () => {
       const firs = Array.from({ length: 15 }, () => createFIR('tenant-123'))
       repository.addFIRs(firs)
 
-      const query = new ListFIRsQuery(
-        'tenant-123',
-        'user-123',
-        undefined,
-        { page: 1, limit: 10 }
-      )
+      const query = new ListFIRsQuery('tenant-123', 'user-123', undefined, { page: 1, limit: 10 })
 
       const result = await handler.execute(query)
 
-      expect(result.value.items.length).toBe(10);
+      expect(result.value.items.length).toBe(10)
       expect(result.value.page).toBe(1)
       expect(result.value.limit).toBe(10)
       expect(result.value.total).toBe(15)
@@ -126,16 +121,11 @@ describe('ListFIRsQueryHandler', () => {
       const firs = Array.from({ length: 15 }, () => createFIR('tenant-123'))
       repository.addFIRs(firs)
 
-      const query = new ListFIRsQuery(
-        'tenant-123',
-        'user-123',
-        undefined,
-        { page: 2, limit: 10 }
-      )
+      const query = new ListFIRsQuery('tenant-123', 'user-123', undefined, { page: 2, limit: 10 })
 
       const result = await handler.execute(query)
 
-      expect(result.value.items.length).toBe(5); // Remaining items
+      expect(result.value.items.length).toBe(5) // Remaining items
       expect(result.value.page).toBe(2)
     })
 
@@ -156,7 +146,7 @@ describe('ListFIRsQueryHandler', () => {
 
       const result = await handler.execute(query)
 
-      expect(result.value.items.length).toBe(1);
+      expect(result.value.items.length).toBe(1)
       expect(result.value.items[0].stato).toBe(FIRStato.EMESSO)
     })
 
@@ -170,7 +160,7 @@ describe('ListFIRsQueryHandler', () => {
 
       expect(result.value.page).toBe(1)
       expect(result.value.limit).toBe(10)
-      expect(result.value.items.length).toBe(3);
+      expect(result.value.items.length).toBe(3)
     })
 
     it('should return empty list if no FIRs', async () => {
@@ -179,7 +169,7 @@ describe('ListFIRsQueryHandler', () => {
       const result = await handler.execute(query)
 
       expect(result.isSuccess).toBe(true)
-      expect(result.value.items.length).toBe(0);
+      expect(result.value.items.length).toBe(0)
       expect(result.value.total).toBe(0)
     })
 
@@ -187,12 +177,7 @@ describe('ListFIRsQueryHandler', () => {
       const firs = Array.from({ length: 25 }, () => createFIR('tenant-123'))
       repository.addFIRs(firs)
 
-      const query = new ListFIRsQuery(
-        'tenant-123',
-        'user-123',
-        undefined,
-        { page: 1, limit: 10 }
-      )
+      const query = new ListFIRsQuery('tenant-123', 'user-123', undefined, { page: 1, limit: 10 })
 
       const result = await handler.execute(query)
 

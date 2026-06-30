@@ -87,7 +87,7 @@ export class ReferenceDataService {
    */
   async validateLocalita(
     comune: string,
-    provinciaSigla: string,
+    provinciaSigla: string
   ): Promise<{ ok: boolean; error?: string; comuneCode?: string }> {
     const provinceCount = await this.prisma.istatProvincia.count()
     if (provinceCount === 0) return { ok: true } // tabelle non popolate → skip

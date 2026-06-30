@@ -1,13 +1,13 @@
-import { Component, OnInit, signal, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { ButtonModule } from 'primeng/button';
-import { PaginatorModule } from 'primeng/paginator';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { MessageModule } from 'primeng/message';
-import { AuditApiService } from '../../services/audit-api.service';
-import { AuditTimelineComponent } from '../../components/audit-timeline/audit-timeline.component';
-import { AuditFiltersComponent } from '../../components/audit-filters/audit-filters.component';
-import { CsvExportButtonComponent } from '../../components/csv-export-button/csv-export-button.component';
+import { Component, OnInit, signal, computed } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { ButtonModule } from 'primeng/button'
+import { PaginatorModule } from 'primeng/paginator'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { MessageModule } from 'primeng/message'
+import { AuditApiService } from '../../services/audit-api.service'
+import { AuditTimelineComponent } from '../../components/audit-timeline/audit-timeline.component'
+import { AuditFiltersComponent } from '../../components/audit-filters/audit-filters.component'
+import { CsvExportButtonComponent } from '../../components/csv-export-button/csv-export-button.component'
 
 /**
  * AuditTrailViewerComponent
@@ -71,9 +71,7 @@ import { CsvExportButtonComponent } from '../../components/csv-export-button/csv
       </header>
 
       <!-- Filtri -->
-      <app-audit-filters
-        (filtersChanged)="onFiltersChanged($event)"
-      ></app-audit-filters>
+      <app-audit-filters (filtersChanged)="onFiltersChanged($event)"></app-audit-filters>
 
       <!-- Statistiche -->
       @if (statistics()) {
@@ -84,11 +82,15 @@ import { CsvExportButtonComponent } from '../../components/csv-export-button/csv
           </div>
           <div class="stat-card">
             <span class="stat-card__label">Consentiti</span>
-            <span class="stat-card__value stat-success">{{ statistics()!.allowedCount | number }}</span>
+            <span class="stat-card__value stat-success">{{
+              statistics()!.allowedCount | number
+            }}</span>
           </div>
           <div class="stat-card">
             <span class="stat-card__label">Negati</span>
-            <span class="stat-card__value stat-danger">{{ statistics()!.deniedCount | number }}</span>
+            <span class="stat-card__value stat-danger">{{
+              statistics()!.deniedCount | number
+            }}</span>
           </div>
           <div class="stat-card">
             <span class="stat-card__label">Utenti unici</span>
@@ -102,7 +104,12 @@ import { CsvExportButtonComponent } from '../../components/csv-export-button/csv
         <p-message
           styleClass="w-full"
           [severity]="performanceMetrics()!.exceededTarget ? 'warn' : 'info'"
-          [text]="'Query completata in ' + performanceMetrics()!.queryTimeMs.toFixed(2) + ' ms' + (performanceMetrics()!.exceededTarget ? ' (oltre il limite di 500 ms)' : '')"
+          [text]="
+            'Query completata in ' +
+            performanceMetrics()!.queryTimeMs.toFixed(2) +
+            ' ms' +
+            (performanceMetrics()!.exceededTarget ? ' (oltre il limite di 500 ms)' : '')
+          "
         ></p-message>
       }
 
@@ -157,70 +164,90 @@ import { CsvExportButtonComponent } from '../../components/csv-export-button/csv
       }
     </div>
   `,
-  styles: [`
-    .page-title {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-md);
-    }
-    .page-title i { color: var(--brand-primary-dark); }
+  styles: [
+    `
+      .page-title {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+      }
+      .page-title i {
+        color: var(--brand-primary-dark);
+      }
 
-    .statistics-grid { margin-bottom: var(--spacing-lg); }
-    .stat-success { color: var(--color-success); }
-    .stat-danger { color: var(--color-danger); }
+      .statistics-grid {
+        margin-bottom: var(--spacing-lg);
+      }
+      .stat-success {
+        color: var(--color-success);
+      }
+      .stat-danger {
+        color: var(--color-danger);
+      }
 
-    .timeline-card { margin-top: var(--spacing-lg); padding: 0; overflow: hidden; }
+      .timeline-card {
+        margin-top: var(--spacing-lg);
+        padding: 0;
+        overflow: hidden;
+      }
 
-    .empty-state { padding: var(--spacing-3xl) var(--spacing-base); }
+      .empty-state {
+        padding: var(--spacing-3xl) var(--spacing-base);
+      }
 
-    :host ::ng-deep .w-full { width: 100%; display: block; margin: var(--spacing-base) 0; }
-  `],
+      :host ::ng-deep .w-full {
+        width: 100%;
+        display: block;
+        margin: var(--spacing-base) 0;
+      }
+    `,
+  ],
 })
 export class AuditTrailViewerComponent implements OnInit {
   // Signals
-  isLoading = signal(false);
-  error = signal<string | null>(null);
-  auditLogs = signal<any[]>([]);
+  isLoading = signal(false)
+  error = signal<string | null>(null)
+  auditLogs = signal<any[]>([])
   pagination = signal<{
-    total: number;
-    page?: number;
-    pageSize?: number;
-    totalPages: number;
-  } | null>(null);
+    total: number
+    page?: number
+    pageSize?: number
+    totalPages: number
+  } | null>(null)
   performanceMetrics = signal<{
-    queryTimeMs: number;
-    exceededTarget: boolean;
-  } | null>(null);
+    queryTimeMs: number
+    exceededTarget: boolean
+  } | null>(null)
   statistics = signal<{
-    totalLogs: number;
-    allowedCount: number;
-    deniedCount: number;
-    uniqueUsers: number;
-  } | null>(null);
-  showDetails = signal(false);
+    totalLogs: number
+    allowedCount: number
+    deniedCount: number
+    uniqueUsers: number
+  } | null>(null)
+  showDetails = signal(false)
 
   // Filters
-  currentFilters: any = {};
-  currentPage = 1;
-  pageSize = 50;
+  currentFilters: any = {}
+  currentPage = 1
+  pageSize = 50
 
   // Computed
   exportFilters = computed(() => ({
     userId: this.currentFilters.userId,
     startDate: this.currentFilters.startDate,
     endDate: this.currentFilters.endDate,
-  }));
+  }))
 
   constructor(private auditApiService: AuditApiService) {}
 
   ngOnInit(): void {
-    this.loadAuditLogs();
-    this.loadStatistics();
+    this.loadAuditLogs()
+    this.loadStatistics()
   }
 
   loadAuditLogs(): void {
-    this.isLoading.set(true);
-    this.error.set(null);
+    this.isLoading.set(true)
+    this.error.set(null)
 
     this.auditApiService
       .getAuditTrail({
@@ -229,40 +256,40 @@ export class AuditTrailViewerComponent implements OnInit {
         pageSize: this.pageSize,
       })
       .subscribe({
-        next: (response) => {
-          this.auditLogs.set(response.data.logs);
-          this.pagination.set(response.data.pagination);
-          this.performanceMetrics.set(response.data.performanceMetrics || null);
-          this.isLoading.set(false);
+        next: response => {
+          this.auditLogs.set(response.data.logs)
+          this.pagination.set(response.data.pagination)
+          this.performanceMetrics.set(response.data.performanceMetrics || null)
+          this.isLoading.set(false)
         },
-        error: (error) => {
-          this.error.set(error.message || 'Unknown error');
-          this.isLoading.set(false);
+        error: error => {
+          this.error.set(error.message || 'Unknown error')
+          this.isLoading.set(false)
         },
-      });
+      })
   }
 
   loadStatistics(): void {
     this.auditApiService.getStatistics(this.currentFilters).subscribe({
-      next: (response) => {
-        this.statistics.set(response.data);
+      next: response => {
+        this.statistics.set(response.data)
       },
-      error: (error) => {
-        console.error('Failed to load statistics:', error);
+      error: error => {
+        console.error('Failed to load statistics:', error)
       },
-    });
+    })
   }
 
   onFiltersChanged(filters: any): void {
-    this.currentFilters = filters;
-    this.currentPage = 1; // Reset to first page
-    this.loadAuditLogs();
-    this.loadStatistics();
+    this.currentFilters = filters
+    this.currentPage = 1 // Reset to first page
+    this.loadAuditLogs()
+    this.loadStatistics()
   }
 
   onPageChange(event: any): void {
-    this.currentPage = event.page + 1; // PrimeNG uses 0-based pages
-    this.pageSize = event.rows;
-    this.loadAuditLogs();
+    this.currentPage = event.page + 1 // PrimeNG uses 0-based pages
+    this.pageSize = event.rows
+    this.loadAuditLogs()
   }
 }

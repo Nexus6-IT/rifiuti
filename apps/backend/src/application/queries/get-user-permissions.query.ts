@@ -9,15 +9,15 @@ export class GetUserPermissionsQuery {
   constructor(
     public readonly userId: string,
     public readonly tenantId: string,
-    public readonly includeTempPermissions: boolean = false,
+    public readonly includeTempPermissions: boolean = false
   ) {
     // Validate required fields
     if (!userId || userId.trim() === '') {
-      throw new Error('User ID is required');
+      throw new Error('User ID is required')
     }
 
     if (!tenantId || tenantId.trim() === '') {
-      throw new Error('Tenant ID is required');
+      throw new Error('Tenant ID is required')
     }
   }
 }

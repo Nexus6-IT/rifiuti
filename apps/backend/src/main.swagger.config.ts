@@ -5,8 +5,10 @@
  * Generates interactive API documentation at /api/docs
  */
 
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { INestApplication } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import { INestApplication } from '@nestjs/common'
+import * as fs from 'fs'
+import * as path from 'path'
 
 export function setupSwagger(app: INestApplication): void {
   const config = new DocumentBuilder()
@@ -90,14 +92,10 @@ All error responses follow this format:
 - **Email**: api-support@wasteflow.it
 - **Documentation**: https://docs.wasteflow.it
 - **Status Page**: https://status.wasteflow.it
-      `,
+      `
     )
     .setVersion('2.0.0')
-    .setContact(
-      'WasteFlow Support',
-      'https://wasteflow.it',
-      'support@wasteflow.it',
-    )
+    .setContact('WasteFlow Support', 'https://wasteflow.it', 'support@wasteflow.it')
     .setLicense('Proprietary', 'https://wasteflow.it/license')
     .addServer('https://api.wasteflow.it', 'Production')
     .addServer('https://staging-api.wasteflow.it', 'Staging')
@@ -109,7 +107,7 @@ All error responses follow this format:
         bearerFormat: 'JWT',
         description: 'Enter JWT token obtained from /api/v1/auth/login',
       },
-      'JWT',
+      'JWT'
     )
     .addTag('Authentication', 'SPID/CIE authentication and session management')
     .addTag('FIR', 'Formulario Identificazione Rifiuti management')
@@ -127,14 +125,14 @@ All error responses follow this format:
         in: 'header',
         description: 'Tenant identifier for multi-tenant isolation',
       },
-      'TenantID',
+      'TenantID'
     )
-    .build();
+    .build()
 
   const document = SwaggerModule.createDocument(app, config, {
     ignoreGlobalPrefix: false,
     deepScanRoutes: true,
-  });
+  })
 
   // Customize Swagger UI
   SwaggerModule.setup('api/docs', app, document, {
@@ -156,14 +154,12 @@ All error responses follow this format:
       tagsSorter: 'alpha',
       operationsSorter: 'alpha',
     },
-  });
+  })
 
   // Export OpenAPI JSON for external tools
-  const fs = require('fs');
-  const path = require('path');
-  const outputPath = path.join(process.cwd(), 'docs', 'openapi.json');
-  fs.writeFileSync(outputPath, JSON.stringify(document, null, 2));
-  console.log(`OpenAPI spec written to: ${outputPath}`);
+  const outputPath = path.join(process.cwd(), 'docs', 'openapi.json')
+  fs.writeFileSync(outputPath, JSON.stringify(document, null, 2))
+  console.log(`OpenAPI spec written to: ${outputPath}`)
 }
 
 /**
@@ -242,4 +238,4 @@ export const swaggerExamples = {
     autoRevoked: false,
     revokedAt: null,
   },
-};
+}

@@ -1,19 +1,19 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { TagModule } from 'primeng/tag';
-import { DialogModule } from 'primeng/dialog';
-import { DropdownModule } from 'primeng/dropdown';
-import { InputTextModule } from 'primeng/inputtext';
-import { InputNumberModule } from 'primeng/inputnumber';
-import { PasswordModule } from 'primeng/password';
-import { ConfirmDialogModule } from 'primeng/confirmdialog';
-import { TooltipModule } from 'primeng/tooltip';
-import { ConfirmationService } from 'primeng/api';
-import { ToastService } from '../../../core/services/toast.service';
-import { AuthService } from '../../../core/services/auth.service';
+import { Component, OnInit, computed, inject, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule, ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms'
+import { TableModule } from 'primeng/table'
+import { ButtonModule } from 'primeng/button'
+import { TagModule } from 'primeng/tag'
+import { DialogModule } from 'primeng/dialog'
+import { DropdownModule } from 'primeng/dropdown'
+import { InputTextModule } from 'primeng/inputtext'
+import { InputNumberModule } from 'primeng/inputnumber'
+import { PasswordModule } from 'primeng/password'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
+import { TooltipModule } from 'primeng/tooltip'
+import { ConfirmationService } from 'primeng/api'
+import { ToastService } from '../../../core/services/toast.service'
+import { AuthService } from '../../../core/services/auth.service'
 import {
   UserAdminService,
   AdminUser,
@@ -21,11 +21,11 @@ import {
   UserRole,
   TenantOption,
   ImpersonateResult,
-} from './user-admin.service';
+} from './user-admin.service'
 
 interface SelectOption<T> {
-  label: string;
-  value: T;
+  label: string
+  value: T
 }
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -33,17 +33,17 @@ const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: 'Amministratore',
   OPERATOR: 'Operatore',
   VIEWER: 'Visualizzatore',
-};
+}
 
 const ROLE_SEVERITY: Record<UserRole, 'success' | 'info' | 'warning' | 'danger' | 'secondary'> = {
   SUPER_ADMIN: 'danger',
   ADMIN: 'warning',
   OPERATOR: 'info',
   VIEWER: 'secondary',
-};
+}
 
 /** Regex CF persona fisica (16 alfanumerici); validazione di forma, non di checksum. */
-const CF_REGEX = /^[A-Za-z0-9]{16}$/;
+const CF_REGEX = /^[A-Za-z0-9]{16}$/
 
 @Component({
   selector: 'app-user-admin',
@@ -117,10 +117,18 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
       <!-- Stato error -->
       <section *ngIf="error()" class="surface-card">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
+          <i
+            class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger"
+            aria-hidden="true"
+          ></i>
           <span class="empty-state__title">Impossibile caricare gli utenti</span>
           <p>Si è verificato un errore. Riprova.</p>
-          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadUsers()" />
+          <p-button
+            label="Riprova"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            (onClick)="loadUsers()"
+          />
         </div>
       </section>
 
@@ -149,7 +157,9 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
             </ng-template>
             <ng-template pTemplate="body" let-u>
               <tr>
-                <td><strong>{{ u.firstName }} {{ u.lastName }}</strong></td>
+                <td>
+                  <strong>{{ u.firstName }} {{ u.lastName }}</strong>
+                </td>
                 <td>{{ u.email }}</td>
                 <td class="font-mono">{{ u.fiscalCode }}</td>
                 <td>
@@ -161,7 +171,9 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
                     <span *ngIf="u.role === 'ADMIN'; else noQuota">
                       {{ u.companyLimit ?? 1 }}
                     </span>
-                    <ng-template #noQuota><span class="text-tertiary" aria-hidden="true">—</span></ng-template>
+                    <ng-template #noQuota
+                      ><span class="text-tertiary" aria-hidden="true">—</span></ng-template
+                    >
                   </td>
                 }
                 <td>
@@ -209,7 +221,12 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
                     [severity]="u.enabled === false ? 'success' : 'danger'"
                     (onClick)="toggleStatus(u)"
                     [pTooltip]="u.enabled === false ? 'Abilita utente' : 'Disabilita utente'"
-                    [ariaLabel]="(u.enabled === false ? 'Abilita ' : 'Disabilita ') + u.firstName + ' ' + u.lastName"
+                    [ariaLabel]="
+                      (u.enabled === false ? 'Abilita ' : 'Disabilita ') +
+                      u.firstName +
+                      ' ' +
+                      u.lastName
+                    "
                   />
                 </td>
               </tr>
@@ -240,19 +257,44 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
         <form [formGroup]="createForm" class="grid formgrid" (ngSubmit)="createUser()">
           <div class="field col-12 md:col-6">
             <label for="u-firstName" class="block mb-2">Nome *</label>
-            <input id="u-firstName" pInputText formControlName="firstName" class="w-full" autocomplete="given-name" />
-            <small *ngIf="showError('firstName')" class="block mt-1 field-error">Il nome è obbligatorio.</small>
+            <input
+              id="u-firstName"
+              pInputText
+              formControlName="firstName"
+              class="w-full"
+              autocomplete="given-name"
+            />
+            <small *ngIf="showError('firstName')" class="block mt-1 field-error"
+              >Il nome è obbligatorio.</small
+            >
           </div>
           <div class="field col-12 md:col-6">
             <label for="u-lastName" class="block mb-2">Cognome *</label>
-            <input id="u-lastName" pInputText formControlName="lastName" class="w-full" autocomplete="family-name" />
-            <small *ngIf="showError('lastName')" class="block mt-1 field-error">Il cognome è obbligatorio.</small>
+            <input
+              id="u-lastName"
+              pInputText
+              formControlName="lastName"
+              class="w-full"
+              autocomplete="family-name"
+            />
+            <small *ngIf="showError('lastName')" class="block mt-1 field-error"
+              >Il cognome è obbligatorio.</small
+            >
           </div>
 
           <div class="field col-12 md:col-6">
             <label for="u-email" class="block mb-2">Email *</label>
-            <input id="u-email" pInputText type="email" formControlName="email" class="w-full" autocomplete="email" />
-            <small *ngIf="showError('email')" class="block mt-1 field-error">Inserisci un indirizzo email valido.</small>
+            <input
+              id="u-email"
+              pInputText
+              type="email"
+              formControlName="email"
+              class="w-full"
+              autocomplete="email"
+            />
+            <small *ngIf="showError('email')" class="block mt-1 field-error"
+              >Inserisci un indirizzo email valido.</small
+            >
           </div>
           <div class="field col-12 md:col-6">
             <label for="u-fiscalCode" class="block mb-2">Codice fiscale *</label>
@@ -275,8 +317,12 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
                 (onClick)="generaCfTest()"
               ></p-button>
             </div>
-            <small id="u-cf-hint" class="block mt-1 text-tertiary">16 caratteri. Per i test usa "Genera".</small>
-            <small *ngIf="showError('fiscalCode')" class="block mt-1 field-error">Il codice fiscale deve avere 16 caratteri.</small>
+            <small id="u-cf-hint" class="block mt-1 text-tertiary"
+              >16 caratteri. Per i test usa "Genera".</small
+            >
+            <small *ngIf="showError('fiscalCode')" class="block mt-1 field-error"
+              >Il codice fiscale deve avere 16 caratteri.</small
+            >
           </div>
 
           <div class="field col-12" [class.md:col-6]="!isSuperAdmin()">
@@ -292,7 +338,9 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
               appendTo="body"
               ariaLabel="Ruolo dell'utente"
             ></p-dropdown>
-            <small *ngIf="showError('role')" class="block mt-1 field-error">Seleziona un ruolo.</small>
+            <small *ngIf="showError('role')" class="block mt-1 field-error"
+              >Seleziona un ruolo.</small
+            >
           </div>
 
           <div class="field col-12 md:col-6" *ngIf="isSuperAdmin()">
@@ -310,7 +358,9 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
               appendTo="body"
               ariaLabel="Tenant dell'utente"
             ></p-dropdown>
-            <small *ngIf="showError('tenantId')" class="block mt-1 field-error">Seleziona un tenant.</small>
+            <small *ngIf="showError('tenantId')" class="block mt-1 field-error"
+              >Seleziona un tenant.</small
+            >
           </div>
 
           <!-- Quota aziende: solo SUPER_ADMIN + ruolo ADMIN selezionato -->
@@ -346,12 +396,19 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
             <small id="u-password-hint" class="block mt-1 text-tertiary">
               Minimo 10 caratteri. L'utente la cambierà al primo accesso.
             </small>
-            <small *ngIf="showError('tempPassword')" class="block mt-1 field-error">La password deve avere almeno 10 caratteri.</small>
+            <small *ngIf="showError('tempPassword')" class="block mt-1 field-error"
+              >La password deve avere almeno 10 caratteri.</small
+            >
           </div>
         </form>
         <ng-template pTemplate="footer">
           <p-button label="Annulla" [text]="true" (onClick)="displayCreate = false" />
-          <p-button label="Crea utente" icon="pi pi-check" [loading]="saving()" (onClick)="createUser()" />
+          <p-button
+            label="Crea utente"
+            icon="pi pi-check"
+            [loading]="saving()"
+            (onClick)="createUser()"
+          />
         </ng-template>
       </p-dialog>
 
@@ -403,8 +460,8 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
       >
         <div *ngIf="selectedUser() as su">
           <p class="mb-3">
-            Amministratore <strong>{{ su.firstName }} {{ su.lastName }}</strong>.
-            Imposta il numero massimo di aziende che può creare.
+            Amministratore <strong>{{ su.firstName }} {{ su.lastName }}</strong
+            >. Imposta il numero massimo di aziende che può creare.
           </p>
           <label for="u-company-limit-edit" class="block mb-2">Quota aziende</label>
           <p-inputNumber
@@ -434,44 +491,60 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/;
   `,
   styles: [
     `
-      .text-tertiary { color: var(--text-tertiary); }
-      .field-error { color: var(--color-danger); }
-      .empty-state__icon--danger { color: var(--color-danger); }
-      .mb-4 { margin-bottom: var(--spacing-xl); }
-      .mb-3 { margin-bottom: var(--spacing-base); }
-      .mb-2 { margin-bottom: var(--spacing-sm); }
-      .mt-1 { margin-top: var(--spacing-xs); }
-      .field { margin-bottom: 0; }
+      .text-tertiary {
+        color: var(--text-tertiary);
+      }
+      .field-error {
+        color: var(--color-danger);
+      }
+      .empty-state__icon--danger {
+        color: var(--color-danger);
+      }
+      .mb-4 {
+        margin-bottom: var(--spacing-xl);
+      }
+      .mb-3 {
+        margin-bottom: var(--spacing-base);
+      }
+      .mb-2 {
+        margin-bottom: var(--spacing-sm);
+      }
+      .mt-1 {
+        margin-top: var(--spacing-xs);
+      }
+      .field {
+        margin-bottom: 0;
+      }
     `,
   ],
 })
 export class UserAdminComponent implements OnInit {
-  private readonly userService = inject(UserAdminService);
-  private readonly toast = inject(ToastService);
-  private readonly confirmation = inject(ConfirmationService);
-  private readonly auth = inject(AuthService);
-  private readonly fb = inject(FormBuilder);
+  private readonly userService = inject(UserAdminService)
+  private readonly toast = inject(ToastService)
+  private readonly confirmation = inject(ConfirmationService)
+  private readonly auth = inject(AuthService)
+  private readonly fb = inject(FormBuilder)
 
-  readonly users = signal<AdminUser[]>([]);
-  readonly tenantOptions = signal<TenantOption[]>([]);
-  readonly loading = signal(false);
-  readonly error = signal(false);
-  readonly saving = signal(false);
-  readonly changingRole = signal(false);
-  readonly selectedUser = signal<AdminUser | null>(null);
+  readonly users = signal<AdminUser[]>([])
+  readonly tenantOptions = signal<TenantOption[]>([])
+  readonly loading = signal(false)
+  readonly error = signal(false)
+  readonly saving = signal(false)
+  readonly changingRole = signal(false)
+  readonly selectedUser = signal<AdminUser | null>(null)
 
   /** True se l'utente corrente è SUPER_ADMIN (mostra selettore/campo tenant). */
-  readonly isSuperAdmin = computed(() => this.auth.currentUser()?.role === 'SUPER_ADMIN');
+  readonly isSuperAdmin = computed(() => this.auth.currentUser()?.role === 'SUPER_ADMIN')
 
-  tenantFilter: string | null = null;
+  tenantFilter: string | null = null
 
-  displayCreate = false;
-  displayRole = false;
-  targetRole: UserRole | null = null;
+  displayCreate = false
+  displayRole = false
+  targetRole: UserRole | null = null
 
   readonly roleOptions: SelectOption<UserRole>[] = (Object.keys(ROLE_LABELS) as UserRole[]).map(
-    (r) => ({ label: ROLE_LABELS[r], value: r })
-  );
+    r => ({ label: ROLE_LABELS[r], value: r })
+  )
 
   readonly createForm = this.fb.group({
     firstName: ['', [Validators.required]],
@@ -483,41 +556,39 @@ export class UserAdminComponent implements OnInit {
     tempPassword: ['', [Validators.minLength(10)]],
     /** Quota aziende: valorizzata solo dal SUPER_ADMIN per i nuovi ADMIN. */
     companyLimit: [1 as number | null],
-  });
+  })
 
   /** Valore corrente del controllo "role" come signal (per il template). */
-  private readonly roleValue = signal<UserRole | null>(
-    this.createForm.controls.role.value,
-  );
+  private readonly roleValue = signal<UserRole | null>(this.createForm.controls.role.value)
 
   /** True se il ruolo selezionato nel form di creazione è ADMIN. */
-  readonly selectedRoleIsAdmin = computed(() => this.roleValue() === 'ADMIN');
+  readonly selectedRoleIsAdmin = computed(() => this.roleValue() === 'ADMIN')
 
   // Dialog quota aziende
-  displayCompanyLimit = false;
-  targetCompanyLimit: number | null = 1;
-  readonly savingLimit = signal(false);
+  displayCompanyLimit = false
+  targetCompanyLimit: number | null = 1
+  readonly savingLimit = signal(false)
 
   // Impersonificazione
-  readonly impersonating = signal(false);
+  readonly impersonating = signal(false)
 
   /** Chiavi localStorage usate durante l'impersonificazione (lette dal banner globale). */
-  private static readonly IMPERSONATOR_TOKEN_KEY = 'wf_impersonator_token';
-  private static readonly IMPERSONATOR_REFRESH_KEY = 'wf_impersonator_refresh';
-  private static readonly IMPERSONATING_NAME_KEY = 'wf_impersonating_name';
+  private static readonly IMPERSONATOR_TOKEN_KEY = 'wf_impersonator_token'
+  private static readonly IMPERSONATOR_REFRESH_KEY = 'wf_impersonator_refresh'
+  private static readonly IMPERSONATING_NAME_KEY = 'wf_impersonating_name'
 
   ngOnInit(): void {
     if (this.isSuperAdmin()) {
-      this.loadTenants();
+      this.loadTenants()
     }
-    this.loadUsers();
+    this.loadUsers()
 
     // Tiene allineato il signal del ruolo (guida la visibilità del campo quota)
     // e gestisce i validatori della quota quando il ruolo passa da/ad ADMIN.
-    this.createForm.controls.role.valueChanges.subscribe((role) => {
-      this.roleValue.set(role);
-      this.syncCompanyLimitValidators();
-    });
+    this.createForm.controls.role.valueChanges.subscribe(role => {
+      this.roleValue.set(role)
+      this.syncCompanyLimitValidators()
+    })
   }
 
   /**
@@ -525,51 +596,51 @@ export class UserAdminComponent implements OnInit {
    * e il ruolo scelto è ADMIN; altrimenti il campo non è validato.
    */
   private syncCompanyLimitValidators(): void {
-    const ctrl = this.createForm.controls.companyLimit;
+    const ctrl = this.createForm.controls.companyLimit
     if (this.isSuperAdmin() && this.selectedRoleIsAdmin()) {
-      ctrl.setValidators([Validators.required, Validators.min(1)]);
+      ctrl.setValidators([Validators.required, Validators.min(1)])
     } else {
-      ctrl.clearValidators();
+      ctrl.clearValidators()
     }
-    ctrl.updateValueAndValidity({ emitEvent: false });
+    ctrl.updateValueAndValidity({ emitEvent: false })
   }
 
   loadTenants(): void {
     this.userService.listTenants().subscribe({
-      next: (rows) => this.tenantOptions.set(rows ?? []),
+      next: rows => this.tenantOptions.set(rows ?? []),
       error: () => this.toast.error('Errore nel caricamento dei tenant'),
-    });
+    })
   }
 
   loadUsers(): void {
-    this.loading.set(true);
-    this.error.set(false);
-    const tenantId = this.isSuperAdmin() ? this.tenantFilter ?? undefined : undefined;
+    this.loading.set(true)
+    this.error.set(false)
+    const tenantId = this.isSuperAdmin() ? (this.tenantFilter ?? undefined) : undefined
     this.userService.list(tenantId).subscribe({
-      next: (rows) => {
-        this.users.set(rows ?? []);
-        this.loading.set(false);
+      next: rows => {
+        this.users.set(rows ?? [])
+        this.loading.set(false)
       },
       error: () => {
-        this.loading.set(false);
-        this.error.set(true);
-        this.toast.error('Errore nel caricamento degli utenti');
+        this.loading.set(false)
+        this.error.set(true)
+        this.toast.error('Errore nel caricamento degli utenti')
       },
-    });
+    })
   }
 
   // --- Etichette ---
   roleLabel(r: UserRole): string {
-    return ROLE_LABELS[r] ?? r;
+    return ROLE_LABELS[r] ?? r
   }
   roleSeverity(r: UserRole): 'success' | 'info' | 'warning' | 'danger' | 'secondary' {
-    return ROLE_SEVERITY[r] ?? 'info';
+    return ROLE_SEVERITY[r] ?? 'info'
   }
 
   // --- Form helper ---
   showError(controlName: string): boolean {
-    const c = this.createForm.get(controlName);
-    return !!c && c.invalid && (c.dirty || c.touched);
+    const c = this.createForm.get(controlName)
+    return !!c && c.invalid && (c.dirty || c.touched)
   }
 
   /**
@@ -578,14 +649,17 @@ export class UserAdminComponent implements OnInit {
    * comune + lettera controllo). NON e' un CF reale, solo per i test.
    */
   generaCfTest(): void {
-    const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const rl = (n: number) => Array.from({ length: n }, () => L[Math.floor(Math.random() * L.length)]).join('');
-    const rd = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');
-    const mesi = 'ABCDEHLMPRST';
-    const giorno = String(1 + Math.floor(Math.random() * 28)).padStart(2, '0');
-    const cf = rl(6) + rd(2) + mesi[Math.floor(Math.random() * mesi.length)] + giorno + rl(1) + rd(3) + rl(1);
-    this.createForm.get('fiscalCode')?.setValue(cf);
-    this.createForm.get('fiscalCode')?.markAsDirty();
+    const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    const rl = (n: number) =>
+      Array.from({ length: n }, () => L[Math.floor(Math.random() * L.length)]).join('')
+    const rd = (n: number) =>
+      Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('')
+    const mesi = 'ABCDEHLMPRST'
+    const giorno = String(1 + Math.floor(Math.random() * 28)).padStart(2, '0')
+    const cf =
+      rl(6) + rd(2) + mesi[Math.floor(Math.random() * mesi.length)] + giorno + rl(1) + rd(3) + rl(1)
+    this.createForm.get('fiscalCode')?.setValue(cf)
+    this.createForm.get('fiscalCode')?.markAsDirty()
   }
 
   // --- Creazione ---
@@ -599,116 +673,116 @@ export class UserAdminComponent implements OnInit {
       tenantId: null,
       tempPassword: '',
       companyLimit: 1,
-    });
-    this.roleValue.set('OPERATOR');
+    })
+    this.roleValue.set('OPERATOR')
     // Per SUPER_ADMIN il tenant è obbligatorio; per ADMIN lo gestisce il backend.
-    const tenantCtrl = this.createForm.get('tenantId');
+    const tenantCtrl = this.createForm.get('tenantId')
     if (this.isSuperAdmin()) {
-      tenantCtrl?.addValidators(Validators.required);
+      tenantCtrl?.addValidators(Validators.required)
     } else {
-      tenantCtrl?.clearValidators();
+      tenantCtrl?.clearValidators()
     }
-    tenantCtrl?.updateValueAndValidity();
-    this.syncCompanyLimitValidators();
-    this.displayCreate = true;
+    tenantCtrl?.updateValueAndValidity()
+    this.syncCompanyLimitValidators()
+    this.displayCreate = true
   }
 
   createUser(): void {
     if (this.createForm.invalid) {
-      this.createForm.markAllAsTouched();
-      this.toast.warn('Compila correttamente tutti i campi obbligatori');
-      return;
+      this.createForm.markAllAsTouched()
+      this.toast.warn('Compila correttamente tutti i campi obbligatori')
+      return
     }
-    const v = this.createForm.getRawValue();
+    const v = this.createForm.getRawValue()
     const dto: CreateUserDto = {
       firstName: (v.firstName ?? '').trim(),
       lastName: (v.lastName ?? '').trim(),
       email: (v.email ?? '').trim(),
       fiscalCode: (v.fiscalCode ?? '').trim().toUpperCase(),
       role: v.role as UserRole,
-    };
+    }
     if (this.isSuperAdmin() && v.tenantId) {
-      dto.tenantId = v.tenantId;
+      dto.tenantId = v.tenantId
     }
     if (v.tempPassword) {
-      dto.tempPassword = v.tempPassword;
+      dto.tempPassword = v.tempPassword
     }
     // Quota aziende: inviata solo dal SUPER_ADMIN per i nuovi ADMIN.
     if (this.isSuperAdmin() && dto.role === 'ADMIN' && v.companyLimit != null) {
-      dto.companyLimit = v.companyLimit;
+      dto.companyLimit = v.companyLimit
     }
 
-    this.saving.set(true);
+    this.saving.set(true)
     this.userService.create(dto).subscribe({
       next: () => {
-        this.saving.set(false);
-        this.displayCreate = false;
-        this.toast.success('Utente creato');
-        this.loadUsers();
+        this.saving.set(false)
+        this.displayCreate = false
+        this.toast.success('Utente creato')
+        this.loadUsers()
       },
       error: () => {
-        this.saving.set(false);
-        this.toast.error('Errore nella creazione dell\'utente');
+        this.saving.set(false)
+        this.toast.error("Errore nella creazione dell'utente")
       },
-    });
+    })
   }
 
   // --- Cambio ruolo ---
   openRoleDialog(u: AdminUser): void {
-    this.selectedUser.set(u);
-    this.targetRole = u.role;
-    this.displayRole = true;
+    this.selectedUser.set(u)
+    this.targetRole = u.role
+    this.displayRole = true
   }
 
   confirmRoleChange(): void {
-    const u = this.selectedUser();
-    if (!u || !this.targetRole || this.targetRole === u.role) return;
-    const role = this.targetRole;
-    this.changingRole.set(true);
+    const u = this.selectedUser()
+    if (!u || !this.targetRole || this.targetRole === u.role) return
+    const role = this.targetRole
+    this.changingRole.set(true)
     this.userService.updateRole(u.id, role).subscribe({
       next: () => {
-        this.changingRole.set(false);
-        this.displayRole = false;
-        this.toast.success('Ruolo aggiornato');
-        this.loadUsers();
+        this.changingRole.set(false)
+        this.displayRole = false
+        this.toast.success('Ruolo aggiornato')
+        this.loadUsers()
       },
       error: () => {
-        this.changingRole.set(false);
-        this.toast.error('Errore nell\'aggiornamento del ruolo');
+        this.changingRole.set(false)
+        this.toast.error("Errore nell'aggiornamento del ruolo")
       },
-    });
+    })
   }
 
   // --- Quota aziende ---
   openCompanyLimitDialog(u: AdminUser): void {
-    this.selectedUser.set(u);
-    this.targetCompanyLimit = u.companyLimit ?? 1;
-    this.displayCompanyLimit = true;
+    this.selectedUser.set(u)
+    this.targetCompanyLimit = u.companyLimit ?? 1
+    this.displayCompanyLimit = true
   }
 
   confirmCompanyLimit(): void {
-    const u = this.selectedUser();
-    const limit = this.targetCompanyLimit;
-    if (!u || limit === null || limit < 1) return;
-    this.savingLimit.set(true);
+    const u = this.selectedUser()
+    const limit = this.targetCompanyLimit
+    if (!u || limit === null || limit < 1) return
+    this.savingLimit.set(true)
     this.userService.setCompanyLimit(u.id, limit).subscribe({
       next: () => {
-        this.savingLimit.set(false);
-        this.displayCompanyLimit = false;
-        this.toast.success('Quota aziende aggiornata');
-        this.loadUsers();
+        this.savingLimit.set(false)
+        this.displayCompanyLimit = false
+        this.toast.success('Quota aziende aggiornata')
+        this.loadUsers()
       },
       error: () => {
-        this.savingLimit.set(false);
-        this.toast.error('Errore nell\'aggiornamento della quota aziende');
+        this.savingLimit.set(false)
+        this.toast.error("Errore nell'aggiornamento della quota aziende")
       },
-    });
+    })
   }
 
   // --- Abilita/disabilita ---
   toggleStatus(u: AdminUser): void {
-    const enable = u.enabled === false; // se disabilitato → abilita
-    const azione = enable ? 'abilitare' : 'disabilitare';
+    const enable = u.enabled === false // se disabilitato → abilita
+    const azione = enable ? 'abilitare' : 'disabilitare'
     this.confirmation.confirm({
       header: enable ? 'Abilita utente' : 'Disabilita utente',
       message: `Sei sicuro di voler ${azione} ${u.firstName} ${u.lastName}?`,
@@ -718,21 +792,21 @@ export class UserAdminComponent implements OnInit {
       accept: () => {
         this.userService.setStatus(u.id, enable).subscribe({
           next: () => {
-            this.toast.success(enable ? 'Utente abilitato' : 'Utente disabilitato');
-            this.loadUsers();
+            this.toast.success(enable ? 'Utente abilitato' : 'Utente disabilitato')
+            this.loadUsers()
           },
-          error: () => this.toast.error('Errore nell\'aggiornamento dello stato'),
-        });
+          error: () => this.toast.error("Errore nell'aggiornamento dello stato"),
+        })
       },
-    });
+    })
   }
 
   // --- Impersonificazione (solo SUPER_ADMIN) ---
   openImpersonateDialog(u: AdminUser): void {
     // Difesa in profondità: l'azione è già nascosta, ma blocchiamo comunque
     // l'impersonificazione di sé stessi o di altri super-admin.
-    if (!this.isSuperAdmin() || u.role === 'SUPER_ADMIN') return;
-    const fullName = `${u.firstName} ${u.lastName}`;
+    if (!this.isSuperAdmin() || u.role === 'SUPER_ADMIN') return
+    const fullName = `${u.firstName} ${u.lastName}`
     this.confirmation.confirm({
       header: 'Impersona utente',
       message: `Vuoi impersonare ${fullName}? Agirai come questo utente finché non torni al tuo account.`,
@@ -740,51 +814,45 @@ export class UserAdminComponent implements OnInit {
       acceptLabel: 'Impersona',
       rejectLabel: 'Annulla',
       accept: () => this.doImpersonate(u),
-    });
+    })
   }
 
   private doImpersonate(u: AdminUser): void {
-    this.impersonating.set(true);
+    this.impersonating.set(true)
     this.userService.impersonate(u.id).subscribe({
       next: (res: ImpersonateResult) => {
         try {
           // 1. Salva i token correnti del super admin per poter tornare indietro.
-          const currentAccess = localStorage.getItem('accessToken');
-          const currentRefresh = localStorage.getItem('refreshToken');
+          const currentAccess = localStorage.getItem('accessToken')
+          const currentRefresh = localStorage.getItem('refreshToken')
           if (currentAccess) {
-            localStorage.setItem(
-              UserAdminComponent.IMPERSONATOR_TOKEN_KEY,
-              currentAccess,
-            );
+            localStorage.setItem(UserAdminComponent.IMPERSONATOR_TOKEN_KEY, currentAccess)
           }
           if (currentRefresh) {
-            localStorage.setItem(
-              UserAdminComponent.IMPERSONATOR_REFRESH_KEY,
-              currentRefresh,
-            );
+            localStorage.setItem(UserAdminComponent.IMPERSONATOR_REFRESH_KEY, currentRefresh)
           }
           localStorage.setItem(
             UserAdminComponent.IMPERSONATING_NAME_KEY,
-            `${u.firstName} ${u.lastName}`,
-          );
+            `${u.firstName} ${u.lastName}`
+          )
 
           // 2. Sostituisce i token con quelli dell'utente impersonato.
-          localStorage.setItem('accessToken', res.accessToken);
+          localStorage.setItem('accessToken', res.accessToken)
           if (res.refreshToken) {
-            localStorage.setItem('refreshToken', res.refreshToken);
+            localStorage.setItem('refreshToken', res.refreshToken)
           }
 
           // 3. Reload completo: guard/feature/menu ripartono nel contesto target.
-          window.location.href = '/dashboard';
+          window.location.href = '/dashboard'
         } catch {
-          this.impersonating.set(false);
-          this.toast.error('Impossibile avviare l\'impersonificazione');
+          this.impersonating.set(false)
+          this.toast.error("Impossibile avviare l'impersonificazione")
         }
       },
       error: () => {
-        this.impersonating.set(false);
-        this.toast.error('Errore durante l\'impersonificazione dell\'utente');
+        this.impersonating.set(false)
+        this.toast.error("Errore durante l'impersonificazione dell'utente")
       },
-    });
+    })
   }
 }

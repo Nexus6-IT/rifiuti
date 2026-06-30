@@ -39,19 +39,39 @@ describe('MudExportService', () => {
     // 20 a smaltimento (destinatario D1).
     prisma.fIR.findMany.mockResolvedValue([
       {
-        cerCode: '170405', quantity: 80, wasteOperationType: 'RECOVERY',
-        carrierId: 'car-1', carrierName: 'Trasporti Srl', carrierPartitaIva: '22222222222',
-        receiverId: 'dest-1', receiverName: 'Recupero Metalli Srl', receiverPartitaIva: '33333333333',
+        cerCode: '170405',
+        quantity: 80,
+        wasteOperationType: 'RECOVERY',
+        carrierId: 'car-1',
+        carrierName: 'Trasporti Srl',
+        carrierPartitaIva: '22222222222',
+        receiverId: 'dest-1',
+        receiverName: 'Recupero Metalli Srl',
+        receiverPartitaIva: '33333333333',
       },
       {
-        cerCode: '170405', quantity: 20, wasteOperationType: 'DISPOSAL',
-        carrierId: 'car-1', carrierName: 'Trasporti Srl', carrierPartitaIva: '22222222222',
-        receiverId: 'dest-1', receiverName: 'Recupero Metalli Srl', receiverPartitaIva: '33333333333',
+        cerCode: '170405',
+        quantity: 20,
+        wasteOperationType: 'DISPOSAL',
+        carrierId: 'car-1',
+        carrierName: 'Trasporti Srl',
+        carrierPartitaIva: '22222222222',
+        receiverId: 'dest-1',
+        receiverName: 'Recupero Metalli Srl',
+        receiverPartitaIva: '33333333333',
       },
     ])
     prisma.destinatario.findMany.mockResolvedValue([
-      { id: 'dest-1', ragioneSociale: 'Recupero Metalli Srl', partitaIVA: '33333333333',
-        via: 'Via Industria', civico: '5', cap: '20100', comune: 'Milano', provincia: 'MI' },
+      {
+        id: 'dest-1',
+        ragioneSociale: 'Recupero Metalli Srl',
+        partitaIVA: '33333333333',
+        via: 'Via Industria',
+        civico: '5',
+        cap: '20100',
+        comune: 'Milano',
+        provincia: 'MI',
+      },
     ])
 
     const result = await service.exportTelematico('tenant-1', 2024)
@@ -68,15 +88,15 @@ describe('MudExportService', () => {
 
     const lines = result.content.trim().split('\r\n')
     // AA contiene REA, addetti, legale rappresentante e mantiene la lunghezza 338
-    const aa = lines.find((l) => l.startsWith('AA;'))!
+    const aa = lines.find(l => l.startsWith('AA;'))!
     expect(aa.length).toBe(338)
     expect(aa).toContain('000123456') // REA (9)
     expect(aa).toContain('00042') // addetti (5)
     expect(aa).toContain('ROSSI')
     expect(aa).toContain('MARIO')
     // modulo BB DR (destinatario) e TE (trasportatore)
-    const dr = lines.find((l) => l.startsWith('BB;') && l.includes(';DR;'))!
-    const te = lines.find((l) => l.startsWith('BB;') && l.includes(';TE;'))!
+    const dr = lines.find(l => l.startsWith('BB;') && l.includes(';DR;'))!
+    const te = lines.find(l => l.startsWith('BB;') && l.includes(';TE;'))!
     expect(dr).toContain('RECUPERO METALLI SRL')
     expect(dr).toContain('33333333333') // CF destinatario
     expect(dr).toContain('0000100,000') // quantità conferita = 80+20
@@ -91,7 +111,7 @@ describe('MudExportService', () => {
 
   it('supportedVersions elenca anno/versione', () => {
     expect(service.supportedVersions()).toEqual(
-      expect.arrayContaining([{ year: 2024, version: '6.04/24' }]),
+      expect.arrayContaining([{ year: 2024, version: '6.04/24' }])
     )
   })
 })

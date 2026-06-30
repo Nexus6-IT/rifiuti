@@ -1,4 +1,4 @@
-import { BullModule } from '@nestjs/bullmq';
+import { BullModule } from '@nestjs/bullmq'
 
 /**
  * BullMQ Queue Configuration
@@ -10,6 +10,6 @@ export const QueuesConfig = [
     { name: 'permission-cleanup' }, // T205: Cleanup old requests daily at 2 AM
     { name: 'audit-archival' },
     { name: 'cache-warming' },
-    { name: 'audit-logging' }, // T148: Async audit logging
+    { name: 'audit-logging' } // T148: Async audit logging
   ),
-];
+]

@@ -48,7 +48,7 @@ describe('SandboxSignatureProvider', () => {
       expect(result.isQualified).toBe(false)
     })
 
-    it('NON espone la chiave privata nell\'output', async () => {
+    it("NON espone la chiave privata nell'output", async () => {
       const result = await provider.sign({ data: 'test' }, 'user-1')
 
       // L'output non deve contenere alcuna chiave privata
@@ -107,7 +107,11 @@ describe('SandboxSignatureProvider', () => {
       const original = { data: 'originale' }
       const modified = { data: 'modificato' }
 
-      const { signatureValue, publicKey, documentHash: originalHash } = await provider.sign(original, 'user-1')
+      const {
+        signatureValue,
+        publicKey,
+        documentHash: originalHash,
+      } = await provider.sign(original, 'user-1')
       const modifiedHash = provider.hashDocument(modified)
 
       expect(originalHash).not.toBe(modifiedHash)

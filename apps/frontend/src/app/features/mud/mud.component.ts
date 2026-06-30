@@ -1,12 +1,12 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { DropdownModule } from 'primeng/dropdown';
-import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
-import { ToastService } from '../../core/services/toast.service';
-import { MudService, MudVersion } from './mud.service';
+import { Component, OnInit, inject, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { ButtonModule } from 'primeng/button'
+import { DropdownModule } from 'primeng/dropdown'
+import { TableModule } from 'primeng/table'
+import { TagModule } from 'primeng/tag'
+import { ToastService } from '../../core/services/toast.service'
+import { MudService, MudVersion } from './mud.service'
 
 /**
  * Pagina MUD: genera il report annuale e scarica il file telematico
@@ -21,7 +21,9 @@ import { MudService, MudVersion } from './mud.service';
       <header class="page-header">
         <div class="page-header__titles">
           <h1 class="page-title">MUD — Dichiarazione Ambientale</h1>
-          <p class="page-subtitle">Report annuale ed export telematico, versionato per anno (tracciato Unioncamere)</p>
+          <p class="page-subtitle">
+            Report annuale ed export telematico, versionato per anno (tracciato Unioncamere)
+          </p>
         </div>
       </header>
 
@@ -62,10 +64,16 @@ import { MudService, MudVersion } from './mud.service';
             ></p-button>
           </div>
         </div>
-        <small *ngIf="versionForSelected() as v" class="block mt-1 text-tertiary">Tracciato: {{ v }}</small>
+        <small *ngIf="versionForSelected() as v" class="block mt-1 text-tertiary"
+          >Tracciato: {{ v }}</small
+        >
 
         <div *ngIf="!supportedYears().length" class="mt-3">
-          <p-tag severity="warning" value="Nessun tracciato disponibile" icon="pi pi-exclamation-triangle"></p-tag>
+          <p-tag
+            severity="warning"
+            value="Nessun tracciato disponibile"
+            icon="pi pi-exclamation-triangle"
+          ></p-tag>
         </div>
       </section>
 
@@ -91,7 +99,9 @@ import { MudService, MudVersion } from './mud.service';
           </div>
           <div class="stat-card">
             <span class="stat-card__label">Tasso di recupero</span>
-            <span class="stat-card__value">{{ (r.totals?.recyclingRate * 100) | number: '1.0-1' }}%</span>
+            <span class="stat-card__value"
+              >{{ r.totals?.recyclingRate * 100 | number: '1.0-1' }}%</span
+            >
             <span class="stat-card__hint">quota avviata a recupero</span>
           </div>
         </div>
@@ -109,7 +119,9 @@ import { MudService, MudVersion } from './mud.service';
               </ng-template>
               <ng-template pTemplate="body" let-w>
                 <tr>
-                  <td><strong>{{ w.cerCode }}</strong></td>
+                  <td>
+                    <strong>{{ w.cerCode }}</strong>
+                  </td>
                   <td class="text-right">{{ w.totalQuantity | number: '1.0-0' }}</td>
                   <td class="text-right">{{ w.count }}</td>
                 </tr>
@@ -164,96 +176,121 @@ import { MudService, MudVersion } from './mud.service';
         flex-wrap: wrap;
         gap: var(--spacing-md);
       }
-      .mud-toolbar__field label { font-weight: var(--font-weight-medium); }
-      @media (max-width: 576px) {
-        .mud-toolbar__field { max-width: none; flex-basis: 100%; }
-        .mud-toolbar__actions { width: 100%; }
-        .mud-toolbar__actions .p-button { flex: 1 1 auto; }
+      .mud-toolbar__field label {
+        font-weight: var(--font-weight-medium);
       }
-      .text-right { text-align: right; }
-      .text-tertiary { color: var(--text-tertiary); }
-      .mb-4 { margin-bottom: var(--spacing-xl); }
-      .mb-3 { margin-bottom: var(--spacing-base); }
-      .mb-2 { margin-bottom: var(--spacing-sm); }
-      .mt-3 { margin-top: var(--spacing-base); }
-      .mt-1 { margin-top: var(--spacing-xs); }
+      @media (max-width: 576px) {
+        .mud-toolbar__field {
+          max-width: none;
+          flex-basis: 100%;
+        }
+        .mud-toolbar__actions {
+          width: 100%;
+        }
+        .mud-toolbar__actions .p-button {
+          flex: 1 1 auto;
+        }
+      }
+      .text-right {
+        text-align: right;
+      }
+      .text-tertiary {
+        color: var(--text-tertiary);
+      }
+      .mb-4 {
+        margin-bottom: var(--spacing-xl);
+      }
+      .mb-3 {
+        margin-bottom: var(--spacing-base);
+      }
+      .mb-2 {
+        margin-bottom: var(--spacing-sm);
+      }
+      .mt-3 {
+        margin-top: var(--spacing-base);
+      }
+      .mt-1 {
+        margin-top: var(--spacing-xs);
+      }
     `,
   ],
 })
 export class MudComponent implements OnInit {
-  private readonly mudService = inject(MudService);
-  private readonly toast = inject(ToastService);
+  private readonly mudService = inject(MudService)
+  private readonly toast = inject(ToastService)
 
-  readonly supportedYears = signal<MudVersion[]>([]);
-  readonly report = signal<any | null>(null);
-  readonly loadingReport = signal(false);
-  readonly downloading = signal(false);
+  readonly supportedYears = signal<MudVersion[]>([])
+  readonly report = signal<any | null>(null)
+  readonly loadingReport = signal(false)
+  readonly downloading = signal(false)
 
-  selectedYear: number | null = null;
+  selectedYear: number | null = null
 
   years() {
-    return this.supportedYears().map((v) => ({ label: String(v.year), value: v.year }));
+    return this.supportedYears().map(v => ({ label: String(v.year), value: v.year }))
   }
 
   versionForSelected(): string | null {
-    return this.supportedYears().find((v) => v.year === this.selectedYear)?.version ?? null;
+    return this.supportedYears().find(v => v.year === this.selectedYear)?.version ?? null
   }
 
   ngOnInit(): void {
     this.mudService.getVersions().subscribe({
-      next: (res) => {
-        this.supportedYears.set(res.versions || []);
-        if (res.versions?.length) this.selectedYear = res.versions[0].year;
+      next: res => {
+        this.supportedYears.set(res.versions || [])
+        if (res.versions?.length) this.selectedYear = res.versions[0].year
       },
       error: () => this.toast.error('Impossibile caricare le versioni MUD'),
-    });
+    })
   }
 
   loadReport(): void {
-    if (!this.selectedYear) return;
-    this.loadingReport.set(true);
+    if (!this.selectedYear) return
+    this.loadingReport.set(true)
     this.mudService.getReport(this.selectedYear).subscribe({
-      next: (r) => {
-        this.report.set(r);
-        this.loadingReport.set(false);
+      next: r => {
+        this.report.set(r)
+        this.loadingReport.set(false)
       },
       error: () => {
-        this.loadingReport.set(false);
-        this.toast.error('Errore nella generazione del report MUD');
+        this.loadingReport.set(false)
+        this.toast.error('Errore nella generazione del report MUD')
       },
-    });
+    })
   }
 
   download(): void {
-    if (!this.selectedYear) return;
-    this.downloading.set(true);
+    if (!this.selectedYear) return
+    this.downloading.set(true)
     this.mudService.downloadExport(this.selectedYear).subscribe({
-      next: (res) => {
-        this.downloading.set(false);
-        const blob = res.body as Blob;
-        const filename = this.filenameFrom(res.headers.get('content-disposition')) || `MUD_${this.selectedYear}.txt`;
-        this.triggerDownload(blob, filename);
-        this.toast.success('File MUD generato');
+      next: res => {
+        this.downloading.set(false)
+        const blob = res.body as Blob
+        const filename =
+          this.filenameFrom(res.headers.get('content-disposition')) ||
+          `MUD_${this.selectedYear}.txt`
+        this.triggerDownload(blob, filename)
+        this.toast.success('File MUD generato')
       },
       error: () => {
-        this.downloading.set(false);
-        this.toast.error('Errore nel download del file MUD');
+        this.downloading.set(false)
+        this.toast.error('Errore nel download del file MUD')
       },
-    });
+    })
   }
 
   private filenameFrom(contentDisposition: string | null): string | null {
-    if (!contentDisposition) return null;
-    const m = /filename="?([^"]+)"?/.exec(contentDisposition);
-    return m ? m[1] : null;
+    if (!contentDisposition) return null
+    const m = /filename="?([^"]+)"?/.exec(contentDisposition)
+    return m ? m[1] : null
   }
 
   private triggerDownload(blob: Blob, filename: string): void {
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    window.URL.revokeObjectURL(url);
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    window.URL.revokeObjectURL(url)
   }
 }

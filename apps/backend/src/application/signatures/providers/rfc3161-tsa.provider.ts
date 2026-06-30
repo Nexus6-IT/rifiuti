@@ -36,11 +36,7 @@
 
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import {
-  ITsaProvider,
-  TsaTokenResult,
-  TsaProviderType,
-} from './signature-provider.interface'
+import { ITsaProvider, TsaTokenResult, TsaProviderType } from './signature-provider.interface'
 
 @Injectable()
 export class Rfc3161TsaProvider implements ITsaProvider {
@@ -54,9 +50,9 @@ export class Rfc3161TsaProvider implements ITsaProvider {
     // 3. Valida TimeStampResponse e restituisce TimeStampToken base64
     throw new Error(
       '[RFC3161-TSA] Provider TSA qualificato non ancora implementato. ' +
-      'Configurare QTSP AgID accreditato (Aruba/InfoCert/Namirial/Poste) e ' +
-      'impostare TSA_URL + TSA_PROVIDER=rfc3161. ' +
-      'Riferimento: https://www.agid.gov.it/sites/default/files/repository_files/register_manuale_v1.0.pdf',
+        'Configurare QTSP AgID accreditato (Aruba/InfoCert/Namirial/Poste) e ' +
+        'impostare TSA_URL + TSA_PROVIDER=rfc3161. ' +
+        'Riferimento: https://www.agid.gov.it/sites/default/files/repository_files/register_manuale_v1.0.pdf'
     )
   }
 
@@ -73,7 +69,7 @@ export class Rfc3161TsaProvider implements ITsaProvider {
     if (!tsaUrl) {
       throw new Error(
         '[RFC3161-TSA] TSA_URL non configurata. ' +
-        'Impostare TSA_URL o usare TSA_PROVIDER=mock per la modalità sandbox.',
+          'Impostare TSA_URL o usare TSA_PROVIDER=mock per la modalità sandbox.'
       )
     }
   }

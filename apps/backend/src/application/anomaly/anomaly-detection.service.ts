@@ -46,14 +46,14 @@ function normalizeCer(cer: string): string {
 export class AnomalyDetectionService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
     this.logger.setContext(AnomalyDetectionService.name)
   }
 
   async detectAnomalies(
     tenantId: string,
-    config: AnomalyDetectionConfig = DEFAULT_CONFIG,
+    config: AnomalyDetectionConfig = DEFAULT_CONFIG
   ): Promise<Anomaly[]> {
     const anomalies: Anomaly[] = []
 
@@ -70,22 +70,29 @@ export class AnomalyDetectionService {
 
     // Catalogo CER valido (normalizzato) per il controllo di validità del codice.
     const catalog = await this.prisma.cERCode.findMany({ select: { code: true } })
-    const validCerSet = new Set(catalog.map((c) => normalizeCer(c.code)))
+    const validCerSet = new Set(catalog.map(c => normalizeCer(c.code)))
 
     for (const fir of firs) {
       const qty = fir.quantity ? Number(fir.quantity) : 0
 
       if (qty <= 0) {
-        anomalies.push(this.fir('NON_POSITIVE_QUANTITY', 'HIGH', fir, `Quantità non positiva (${qty})`))
+        anomalies.push(
+          this.fir('NON_POSITIVE_QUANTITY', 'HIGH', fir, `Quantità non positiva (${qty})`)
+        )
       } else if (qty > config.maxQuantityKg) {
         anomalies.push(
-          this.fir('EXCESSIVE_QUANTITY', 'MEDIUM', fir, `Quantità sospetta (${qty} kg)`),
+          this.fir('EXCESSIVE_QUANTITY', 'MEDIUM', fir, `Quantità sospetta (${qty} kg)`)
         )
       }
 
       if (validCerSet.size > 0 && !validCerSet.has(normalizeCer(fir.cerCode))) {
         anomalies.push(
-          this.fir('INVALID_CER', 'HIGH', fir, `Codice CER non presente in catalogo: ${fir.cerCode}`),
+          this.fir(
+            'INVALID_CER',
+            'HIGH',
+            fir,
+            `Codice CER non presente in catalogo: ${fir.cerCode}`
+          )
         )
       }
 
@@ -129,7 +136,7 @@ export class AnomalyDetectionService {
     type: AnomalyType,
     severity: AnomalySeverity,
     fir: { id: string; firNumber: string | null },
-    message: string,
+    message: string
   ): Anomaly {
     return { type, severity, firId: fir.id, firNumber: fir.firNumber ?? '', message }
   }

@@ -21,29 +21,29 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
-} from '@nestjs/common';
-import { UserRole } from '@prisma/client';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../../auth/guards/roles.guard';
-import { Roles } from '../../auth/decorators/roles.decorator';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator';
-import { UserAdminService } from '../../application/admin/user-admin.service';
-import { ImpersonationService } from '../../application/admin/impersonation.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateRoleDto } from './dto/update-role.dto';
-import { UpdateStatusDto } from './dto/update-status.dto';
-import { SetCompanyLimitDto } from './dto/set-company-limit.dto';
+} from '@nestjs/common'
+import { UserRole } from '@prisma/client'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
+import { CurrentUser } from '../../auth/decorators/current-user.decorator'
+import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { UserAdminService } from '../../application/admin/user-admin.service'
+import { ImpersonationService } from '../../application/admin/impersonation.service'
+import { CreateUserDto } from './dto/create-user.dto'
+import { UpdateRoleDto } from './dto/update-role.dto'
+import { UpdateStatusDto } from './dto/update-status.dto'
+import { SetCompanyLimitDto } from './dto/set-company-limit.dto'
 
 @Controller('admin/users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN')
 export class UserAdminController {
-  private readonly logger = new Logger(UserAdminController.name);
+  private readonly logger = new Logger(UserAdminController.name)
 
   constructor(
     private readonly userAdminService: UserAdminService,
-    private readonly impersonationService: ImpersonationService,
+    private readonly impersonationService: ImpersonationService
   ) {}
 
   /**
@@ -52,12 +52,9 @@ export class UserAdminController {
    * (o vedere tutti). ADMIN vede solo il proprio tenant.
    */
   @Get()
-  async list(
-    @CurrentUser() currentUser: CurrentUserPayload,
-    @Query('tenantId') tenantId?: string,
-  ) {
-    const users = await this.userAdminService.listUsers(currentUser, tenantId);
-    return users.map((u) => this.toResponse(u));
+  async list(@CurrentUser() currentUser: CurrentUserPayload, @Query('tenantId') tenantId?: string) {
+    const users = await this.userAdminService.listUsers(currentUser, tenantId)
+    return users.map(u => this.toResponse(u))
   }
 
   /**
@@ -66,15 +63,10 @@ export class UserAdminController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(
-    @CurrentUser() currentUser: CurrentUserPayload,
-    @Body() dto: CreateUserDto,
-  ) {
-    this.logger.log(
-      `Creazione utente ${dto.fiscalCode} da parte di ${currentUser.id}`,
-    );
-    const user = await this.userAdminService.createUser(currentUser, dto);
-    return this.toResponse(user);
+  async create(@CurrentUser() currentUser: CurrentUserPayload, @Body() dto: CreateUserDto) {
+    this.logger.log(`Creazione utente ${dto.fiscalCode} da parte di ${currentUser.id}`)
+    const user = await this.userAdminService.createUser(currentUser, dto)
+    return this.toResponse(user)
   }
 
   /**
@@ -85,14 +77,10 @@ export class UserAdminController {
   async updateRole(
     @CurrentUser() currentUser: CurrentUserPayload,
     @Param('id') id: string,
-    @Body() dto: UpdateRoleDto,
+    @Body() dto: UpdateRoleDto
   ) {
-    const user = await this.userAdminService.updateRole(
-      currentUser,
-      id,
-      dto.role as UserRole,
-    );
-    return this.toResponse(user);
+    const user = await this.userAdminService.updateRole(currentUser, id, dto.role as UserRole)
+    return this.toResponse(user)
   }
 
   /**
@@ -103,14 +91,10 @@ export class UserAdminController {
   async updateStatus(
     @CurrentUser() currentUser: CurrentUserPayload,
     @Param('id') id: string,
-    @Body() dto: UpdateStatusDto,
+    @Body() dto: UpdateStatusDto
   ) {
-    const user = await this.userAdminService.setEnabled(
-      currentUser,
-      id,
-      dto.enabled,
-    );
-    return this.toResponse(user);
+    const user = await this.userAdminService.setEnabled(currentUser, id, dto.enabled)
+    return this.toResponse(user)
   }
 
   /**
@@ -123,14 +107,10 @@ export class UserAdminController {
   async setCompanyLimit(
     @CurrentUser() currentUser: CurrentUserPayload,
     @Param('id') id: string,
-    @Body() dto: SetCompanyLimitDto,
+    @Body() dto: SetCompanyLimitDto
   ) {
-    const user = await this.userAdminService.setCompanyLimit(
-      currentUser,
-      id,
-      dto.companyLimit,
-    );
-    return this.toResponse(user);
+    const user = await this.userAdminService.setCompanyLimit(currentUser, id, dto.companyLimit)
+    return this.toResponse(user)
   }
 
   /**
@@ -141,29 +121,26 @@ export class UserAdminController {
   @Post(':id/impersonate')
   @HttpCode(HttpStatus.OK)
   @Roles('SUPER_ADMIN')
-  async impersonate(
-    @CurrentUser() currentUser: CurrentUserPayload,
-    @Param('id') id: string,
-  ) {
-    this.logger.warn(`Impersonificazione richiesta: ${currentUser.id} -> ${id}`);
-    return this.impersonationService.impersonate(currentUser, id);
+  async impersonate(@CurrentUser() currentUser: CurrentUserPayload, @Param('id') id: string) {
+    this.logger.warn(`Impersonificazione richiesta: ${currentUser.id} -> ${id}`)
+    return this.impersonationService.impersonate(currentUser, id)
   }
 
   /**
    * Proiezione di risposta: espone solo i campi sicuri/utili al client.
    */
   private toResponse(user: {
-    id: string;
-    tenantId: string;
-    keycloakId: string;
-    fiscalCode: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    role: UserRole;
-    companyLimit: number;
-    createdAt: Date;
-    updatedAt: Date;
+    id: string
+    tenantId: string
+    keycloakId: string
+    fiscalCode: string
+    firstName: string
+    lastName: string
+    email: string
+    role: UserRole
+    companyLimit: number
+    createdAt: Date
+    updatedAt: Date
   }) {
     return {
       id: user.id,
@@ -177,6 +154,6 @@ export class UserAdminController {
       companyLimit: user.companyLimit,
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString(),
-    };
+    }
   }
 }

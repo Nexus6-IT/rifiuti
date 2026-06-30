@@ -74,7 +74,7 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
 
   /** Conta i record del corpo che iniziano con un dato tipo. */
   private countType(body: string[], type: string): number {
-    return body.filter((l) => l.startsWith(`${type};`)).length
+    return body.filter(l => l.startsWith(`${type};`)).length
   }
 
   /** XX — Testata del file di export e modulo riepilogativo (488 caratteri). */
@@ -84,11 +84,38 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
     // 30 contatori di record (AA..AR nell'ordine del tracciato); solo AA/AB/BA/BB
     // sono valorizzati, gli altri tipi non applicabili a 0.
     const countOrder = [
-      'AA', 'AB', 'BA', 'BB', 'BC', 'BD', 'BE', 'DA', 'DB', 'RA', 'RB', 'RC',
-      'RD', 'RE', 'RF', 'VC', 'VD', 'VE', 'VF', 'VG', 'VH', 'IA', 'IB', 'IC',
-      'ID', 'IE', 'IF', 'MA', 'AU', 'AR',
+      'AA',
+      'AB',
+      'BA',
+      'BB',
+      'BC',
+      'BD',
+      'BE',
+      'DA',
+      'DB',
+      'RA',
+      'RB',
+      'RC',
+      'RD',
+      'RE',
+      'RF',
+      'VC',
+      'VD',
+      'VE',
+      'VF',
+      'VG',
+      'VH',
+      'IA',
+      'IB',
+      'IC',
+      'ID',
+      'IE',
+      'IF',
+      'MA',
+      'AU',
+      'AR',
     ]
-    const counters = countOrder.map((t) => mudNum(this.countType(body, t), 5))
+    const counters = countOrder.map(t => mudNum(this.countType(body, t), 5))
 
     return mudRecord('XX', [
       mudAlfa(this.version, 7), // costante release file
@@ -217,7 +244,7 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
   /** 7 flag (0/1) di stato fisico nell'ordine del tracciato; default solido NON polverulento. */
   private statoFisicoFlags(stato?: StatoFisico): string[] {
     const selected = stato ?? 'SOLIDO_NON_POLVERULENTO'
-    return STATO_FISICO_ORDER.map((s) => (s === selected ? '1' : '0'))
+    return STATO_FISICO_ORDER.map(s => (s === selected ? '1' : '0'))
   }
 
   /** Totale conferito a terzi (somma quantità dei moduli DR). */
@@ -234,7 +261,7 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
     r: MudRifiutoLine,
     schedaProgr: number,
     allegatoProgr: number,
-    dr: MudAllegatoDR,
+    dr: MudAllegatoDR
   ): string {
     return this.recordBB(data, r, schedaProgr, 'DR', allegatoProgr, {
       cf: dr.codiceFiscale,
@@ -257,7 +284,7 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
     r: MudRifiutoLine,
     schedaProgr: number,
     allegatoProgr: number,
-    te: MudAllegatoTE,
+    te: MudAllegatoTE
   ): string {
     return this.recordBB(data, r, schedaProgr, 'TE', allegatoProgr, {
       cf: te.codiceFiscale,
@@ -281,7 +308,7 @@ export class MudTracciatoV604_2024 implements MudTracciatoVersion {
       civico?: string
       cap?: string
       quantitaKg?: number
-    },
+    }
   ): string {
     return mudRecord('BB', [
       mudNum(data.year, 4),

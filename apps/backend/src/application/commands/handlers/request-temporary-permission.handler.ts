@@ -1,8 +1,8 @@
-import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
-import { Logger, Inject, BadRequestException } from '@nestjs/common';
-import { RequestTemporaryPermissionCommand } from '../request-temporary-permission.command';
-import { TemporaryPermissionGrant } from '../../../domain/identity-access/temporary-permission-grant.entity';
-import { TemporaryPermissionGrantRepository } from '../../../domain/identity-access/temporary-permission-grant.repository.interface';
+import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
+import { Logger, Inject, BadRequestException } from '@nestjs/common'
+import { RequestTemporaryPermissionCommand } from '../request-temporary-permission.command'
+import { TemporaryPermissionGrant } from '../../../domain/identity-access/temporary-permission-grant.entity'
+import { TemporaryPermissionGrantRepository } from '../../../domain/identity-access/temporary-permission-grant.repository.interface'
 
 /**
  * RequestTemporaryPermissionCommandHandler
@@ -12,17 +12,17 @@ import { TemporaryPermissionGrantRepository } from '../../../domain/identity-acc
 export class RequestTemporaryPermissionCommandHandler
   implements ICommandHandler<RequestTemporaryPermissionCommand>
 {
-  private readonly logger = new Logger(RequestTemporaryPermissionCommandHandler.name);
+  private readonly logger = new Logger(RequestTemporaryPermissionCommandHandler.name)
 
   constructor(
     @Inject('TemporaryPermissionGrantRepository')
-    private readonly grantRepository: TemporaryPermissionGrantRepository,
+    private readonly grantRepository: TemporaryPermissionGrantRepository
   ) {}
 
   async execute(command: RequestTemporaryPermissionCommand): Promise<TemporaryPermissionGrant> {
     this.logger.log(
-      `User ${command.userId} requesting ${command.permissions.length} temporary permissions`,
-    );
+      `User ${command.userId} requesting ${command.permissions.length} temporary permissions`
+    )
 
     // Check for overlapping grants
     const hasOverlap = await this.grantRepository.hasOverlappingGrant(
@@ -30,13 +30,13 @@ export class RequestTemporaryPermissionCommandHandler
       command.tenantId,
       command.permissions,
       command.startTime,
-      command.endTime,
-    );
+      command.endTime
+    )
 
     if (hasOverlap) {
       throw new BadRequestException(
-        'You already have an overlapping permission grant for this time period',
-      );
+        'You already have an overlapping permission grant for this time period'
+      )
     }
 
     // Create grant
@@ -48,13 +48,13 @@ export class RequestTemporaryPermissionCommandHandler
       endTime: command.endTime,
       justification: command.justification,
       requestedBy: command.userId,
-    });
+    })
 
     // Save
-    const saved = await this.grantRepository.save(grant);
+    const saved = await this.grantRepository.save(grant)
 
-    this.logger.log(`✓ Permission grant ${saved.id} created - status: pending`);
+    this.logger.log(`✓ Permission grant ${saved.id} created - status: pending`)
 
-    return saved;
+    return saved
   }
 }

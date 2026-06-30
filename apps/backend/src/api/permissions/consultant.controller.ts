@@ -9,21 +9,21 @@ import {
   HttpStatus,
   UseGuards,
   Logger,
-} from '@nestjs/common';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { TenantIsolationGuard } from '../guards/tenant-isolation.guard';
-import { RequirePermission } from '../decorators/require-permission.decorator';
-import { CurrentUser } from '../decorators/current-user.decorator';
-import { CurrentTenant } from '../decorators/current-tenant.decorator';
-import { AuditAction } from '../decorators/audit-action.decorator';
-import { SwitchTenantContextCommand } from '../../application/commands/switch-tenant-context.command';
-import { SwitchTenantContextCommandHandler } from '../../application/commands/handlers/switch-tenant-context.handler';
-import { GetConsultantTenantsQuery } from '../../application/queries/get-consultant-tenants.query';
-import { GetConsultantTenantsQueryHandler } from '../../application/queries/handlers/get-consultant-tenants.handler';
-import { GetAggregatedDashboardQuery } from '../../application/queries/get-aggregated-dashboard.query';
-import { GetAggregatedDashboardQueryHandler } from '../../application/queries/handlers/get-aggregated-dashboard.handler';
-import { ConsultantTenantAssociationRepository } from '../../domain/identity-access/consultant-tenant-association.repository.interface';
-import { ConsultantTenantAssociation } from '../../domain/identity-access/consultant-tenant-association.entity';
+} from '@nestjs/common'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
+import { RequirePermission } from '../decorators/require-permission.decorator'
+import { CurrentUser } from '../decorators/current-user.decorator'
+import { CurrentTenant } from '../decorators/current-tenant.decorator'
+import { AuditAction } from '../decorators/audit-action.decorator'
+import { SwitchTenantContextCommand } from '../../application/commands/switch-tenant-context.command'
+import { SwitchTenantContextCommandHandler } from '../../application/commands/handlers/switch-tenant-context.handler'
+import { GetConsultantTenantsQuery } from '../../application/queries/get-consultant-tenants.query'
+import { GetConsultantTenantsQueryHandler } from '../../application/queries/handlers/get-consultant-tenants.handler'
+import { GetAggregatedDashboardQuery } from '../../application/queries/get-aggregated-dashboard.query'
+import { GetAggregatedDashboardQueryHandler } from '../../application/queries/handlers/get-aggregated-dashboard.handler'
+import { ConsultantTenantAssociationRepository } from '../../domain/identity-access/consultant-tenant-association.repository.interface'
+import { ConsultantTenantAssociation } from '../../domain/identity-access/consultant-tenant-association.entity'
 
 /**
  * ConsultantController
@@ -46,13 +46,13 @@ import { ConsultantTenantAssociation } from '../../domain/identity-access/consul
 @Controller('consultant')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard)
 export class ConsultantController {
-  private readonly logger = new Logger(ConsultantController.name);
+  private readonly logger = new Logger(ConsultantController.name)
 
   constructor(
     private readonly switchTenantContextHandler: SwitchTenantContextCommandHandler,
     private readonly getConsultantTenantsHandler: GetConsultantTenantsQueryHandler,
     private readonly getAggregatedDashboardHandler: GetAggregatedDashboardQueryHandler,
-    private readonly consultantAssociationRepository: ConsultantTenantAssociationRepository,
+    private readonly consultantAssociationRepository: ConsultantTenantAssociationRepository
   ) {}
 
   /**
@@ -69,15 +69,15 @@ export class ConsultantController {
   @HttpCode(HttpStatus.OK)
   @AuditAction('list_consultant_tenants')
   async listTenants(@CurrentUser('userId') userId: string) {
-    this.logger.log(`Consultant ${userId} fetching accessible tenants`);
+    this.logger.log(`Consultant ${userId} fetching accessible tenants`)
 
-    const query = new GetConsultantTenantsQuery(userId);
-    const result = await this.getConsultantTenantsHandler.execute(query);
+    const query = new GetConsultantTenantsQuery(userId)
+    const result = await this.getConsultantTenantsHandler.execute(query)
 
     return {
       tenants: result.tenants,
       totalActiveAssociations: result.totalActiveAssociations,
-    };
+    }
   }
 
   /**
@@ -104,26 +104,20 @@ export class ConsultantController {
   async switchTenant(
     @CurrentUser('userId') userId: string,
     @CurrentTenant() sourceTenantId: string,
-    @Body('targetTenantId') targetTenantId: string,
+    @Body('targetTenantId') targetTenantId: string
   ) {
-    this.logger.log(
-      `Consultant ${userId} switching from ${sourceTenantId} to ${targetTenantId}`,
-    );
+    this.logger.log(`Consultant ${userId} switching from ${sourceTenantId} to ${targetTenantId}`)
 
-    const command = new SwitchTenantContextCommand(
-      userId,
-      sourceTenantId,
-      targetTenantId,
-    );
+    const command = new SwitchTenantContextCommand(userId, sourceTenantId, targetTenantId)
 
-    const result = await this.switchTenantContextHandler.execute(command);
+    const result = await this.switchTenantContextHandler.execute(command)
 
     return {
       newJwt: result.newJwt,
       tenantId: result.tenantId,
       roleId: result.roleId,
       message: `Successfully switched to tenant ${result.tenantId}`,
-    };
+    }
   }
 
   /**
@@ -144,12 +138,12 @@ export class ConsultantController {
   @HttpCode(HttpStatus.OK)
   @AuditAction('view_consultant_dashboard')
   async getDashboard(@CurrentUser('userId') userId: string) {
-    this.logger.log(`Consultant ${userId} fetching aggregated dashboard`);
+    this.logger.log(`Consultant ${userId} fetching aggregated dashboard`)
 
-    const query = new GetAggregatedDashboardQuery(userId);
-    const result = await this.getAggregatedDashboardHandler.execute(query);
+    const query = new GetAggregatedDashboardQuery(userId)
+    const result = await this.getAggregatedDashboardHandler.execute(query)
 
-    return result;
+    return result
   }
 
   /**
@@ -174,11 +168,11 @@ export class ConsultantController {
     @CurrentUser('userId') adminUserId: string,
     @Body('consultantUserId') consultantUserId: string,
     @Body('roleId') roleId: string,
-    @Body('expiresAt') expiresAt?: string,
+    @Body('expiresAt') expiresAt?: string
   ) {
     this.logger.log(
-      `Admin ${adminUserId} associating consultant ${consultantUserId} with tenant ${tenantId}`,
-    );
+      `Admin ${adminUserId} associating consultant ${consultantUserId} with tenant ${tenantId}`
+    )
 
     // Create new association
     const association = ConsultantTenantAssociation.create({
@@ -187,9 +181,9 @@ export class ConsultantController {
       roleId,
       addedBy: adminUserId,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
-    });
+    })
 
-    const saved = await this.consultantAssociationRepository.save(association);
+    const saved = await this.consultantAssociationRepository.save(association)
 
     return {
       association: {
@@ -202,7 +196,7 @@ export class ConsultantController {
         isActive: saved.isActive,
       },
       message: `Consultant ${consultantUserId} successfully associated with tenant ${tenantId}`,
-    };
+    }
   }
 
   /**
@@ -223,33 +217,29 @@ export class ConsultantController {
   async removeAssociation(
     @Param('id') associationId: string,
     @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') adminUserId: string,
+    @CurrentUser('userId') adminUserId: string
   ) {
-    this.logger.log(
-      `Admin ${adminUserId} removing consultant association ${associationId}`,
-    );
+    this.logger.log(`Admin ${adminUserId} removing consultant association ${associationId}`)
 
     // Fetch association to verify it belongs to current tenant
-    const association = await this.consultantAssociationRepository.findById(
-      associationId,
-    );
+    const association = await this.consultantAssociationRepository.findById(associationId)
 
     if (!association) {
-      throw new Error(`Consultant association ${associationId} not found`);
+      throw new Error(`Consultant association ${associationId} not found`)
     }
 
     // Verify association belongs to current tenant (tenant isolation)
     if (association.tenantId !== tenantId) {
-      throw new Error('Cannot remove association from different tenant');
+      throw new Error('Cannot remove association from different tenant')
     }
 
     // Deactivate instead of hard delete (audit trail preservation)
-    await this.consultantAssociationRepository.deactivate(associationId);
+    await this.consultantAssociationRepository.deactivate(associationId)
 
     return {
       message: `Consultant association ${associationId} has been removed`,
       associationId,
       consultantUserId: association.consultantUserId,
-    };
+    }
   }
 }

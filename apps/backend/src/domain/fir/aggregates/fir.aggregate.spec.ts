@@ -13,7 +13,11 @@ import {
   FIRConsegnatoEvent,
 } from './fir.aggregate'
 import { UnitaMisura } from '../value-objects/quantita'
-import { DomainError, InvalidStateTransitionError, InvalidQuantityError } from '../../../core/domain/errors'
+import {
+  DomainError,
+  InvalidStateTransitionError,
+  InvalidQuantityError,
+} from '../../../core/domain/errors'
 
 // Test Fixtures
 const createValidFIRProps = (): CreateFIRProps => ({
@@ -102,10 +106,10 @@ describe('FIR Aggregate', () => {
       fir.emetti('FIR-2025-001234', firma)
 
       const events = fir.domainEvents
-      expect(events.length).toBe(1);
-      expect(events[0]).toBeInstanceOf(FIREmessoEvent);
-      expect((events[0] as FIREmessoEvent).firId).toBe(fir.id);
-      expect((events[0] as FIREmessoEvent).numeroProgressivo).toBe('FIR-2025-001234');
+      expect(events.length).toBe(1)
+      expect(events[0]).toBeInstanceOf(FIREmessoEvent)
+      expect((events[0] as FIREmessoEvent).firId).toBe(fir.id)
+      expect((events[0] as FIREmessoEvent).numeroProgressivo).toBe('FIR-2025-001234')
     })
 
     it('should throw error if not in BOZZA state', () => {
@@ -147,16 +151,16 @@ describe('FIR Aggregate', () => {
       fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
 
       const events = fir.domainEvents
-      expect(events.length).toBe(1);
-      expect(events[0]).toBeInstanceOf(FIRPresaInCaricoEvent);
+      expect(events.length).toBe(1)
+      expect(events[0]).toBeInstanceOf(FIRPresaInCaricoEvent)
     })
 
     it('should throw error if not in EMESSO state', () => {
       const fir = FIR.create(createValidFIRProps())
 
-      expect(() =>
-        fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
-      ).toThrow(InvalidStateTransitionError)
+      expect(() => fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))).toThrow(
+        InvalidStateTransitionError
+      )
     })
   })
 
@@ -185,9 +189,9 @@ describe('FIR Aggregate', () => {
       fir.confermaConsegna(120, createMockFirma('Destinatario'))
 
       const events = fir.domainEvents
-      expect(events.length).toBe(1);
-      expect(events[0]).toBeInstanceOf(FIRConsegnatoEvent);
-      expect((events[0] as FIRConsegnatoEvent).pesoEffettivo).toBe(120);
+      expect(events.length).toBe(1)
+      expect(events[0]).toBeInstanceOf(FIRConsegnatoEvent)
+      expect((events[0] as FIRConsegnatoEvent).pesoEffettivo).toBe(120)
     })
 
     it('should accept peso at +10% tolerance boundary', () => {
@@ -215,12 +219,12 @@ describe('FIR Aggregate', () => {
       fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
       fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
 
-      expect(() =>
-        fir.confermaConsegna(135, createMockFirma('Destinatario')) // +12.5%
+      expect(
+        () => fir.confermaConsegna(135, createMockFirma('Destinatario')) // +12.5%
       ).toThrow(DomainError)
-      expect(() =>
-        fir.confermaConsegna(135, createMockFirma('Destinatario'))
-      ).toThrow(/eccede tolleranza/)
+      expect(() => fir.confermaConsegna(135, createMockFirma('Destinatario'))).toThrow(
+        /eccede tolleranza/
+      )
     })
 
     it('should throw error if peso exceeds -10% tolerance', () => {
@@ -228,8 +232,8 @@ describe('FIR Aggregate', () => {
       fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
       fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
 
-      expect(() =>
-        fir.confermaConsegna(105, createMockFirma('Destinatario')) // -12.5%
+      expect(
+        () => fir.confermaConsegna(105, createMockFirma('Destinatario')) // -12.5%
       ).toThrow(DomainError)
     })
 
@@ -237,9 +241,9 @@ describe('FIR Aggregate', () => {
       const fir = FIR.create(createValidFIRProps())
       fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
 
-      expect(() =>
-        fir.confermaConsegna(120, createMockFirma('Destinatario'))
-      ).toThrow(InvalidStateTransitionError)
+      expect(() => fir.confermaConsegna(120, createMockFirma('Destinatario'))).toThrow(
+        InvalidStateTransitionError
+      )
     })
   })
 
@@ -316,10 +320,10 @@ describe('FIR Aggregate', () => {
       fir.confermaConsegna(120, createMockFirma('Destinatario'))
 
       const events = fir.domainEvents
-      expect(events.length).toBe(3);
-      expect(events[0]).toBeInstanceOf(FIREmessoEvent);
-      expect(events[1]).toBeInstanceOf(FIRPresaInCaricoEvent);
-      expect(events[2]).toBeInstanceOf(FIRConsegnatoEvent);
+      expect(events.length).toBe(3)
+      expect(events[0]).toBeInstanceOf(FIREmessoEvent)
+      expect(events[1]).toBeInstanceOf(FIRPresaInCaricoEvent)
+      expect(events[2]).toBeInstanceOf(FIRConsegnatoEvent)
     })
   })
 })

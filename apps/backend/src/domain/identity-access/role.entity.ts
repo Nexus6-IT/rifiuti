@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'crypto'
 
 /**
  * Role Domain Entity
@@ -21,48 +21,48 @@ export class Role {
     public readonly createdBy: string,
     public readonly createdAt: Date,
     public updatedAt: Date,
-    public isDeleted: boolean = false,
+    public isDeleted: boolean = false
   ) {}
 
   /**
    * Create new role
    */
   static create(data: {
-    tenantId: string;
-    name: string;
-    description: string | null;
-    isSystemRole: boolean;
-    createdBy: string;
+    tenantId: string
+    name: string
+    description: string | null
+    isSystemRole: boolean
+    createdBy: string
   }): Role {
     // Validate tenant ID
     if (!data.tenantId || data.tenantId.trim() === '') {
-      throw new Error('Tenant ID is required');
+      throw new Error('Tenant ID is required')
     }
 
     // Validate name
     if (!data.name || data.name.trim() === '') {
-      throw new Error('Role name cannot be empty');
+      throw new Error('Role name cannot be empty')
     }
 
     if (data.name.length > 100) {
-      throw new Error('Role name cannot exceed 100 characters');
+      throw new Error('Role name cannot exceed 100 characters')
     }
 
     // Normalize name to uppercase
-    const normalizedName = data.name.toUpperCase();
+    const normalizedName = data.name.toUpperCase()
 
     // Validate name format (only letters, numbers, underscores)
-    const nameRegex = /^[A-Z0-9_]+$/;
+    const nameRegex = /^[A-Z0-9_]+$/
     if (!nameRegex.test(normalizedName)) {
-      throw new Error('Role name can only contain letters, numbers, and underscores');
+      throw new Error('Role name can only contain letters, numbers, and underscores')
     }
 
     // Validate createdBy
     if (!data.createdBy || data.createdBy.trim() === '') {
-      throw new Error('Creator user ID is required');
+      throw new Error('Creator user ID is required')
     }
 
-    const now = new Date();
+    const now = new Date()
 
     return new Role(
       randomUUID(),
@@ -73,23 +73,23 @@ export class Role {
       data.createdBy,
       now,
       now,
-      false,
-    );
+      false
+    )
   }
 
   /**
    * Reconstruct role from persistence
    */
   static fromPersistence(data: {
-    id: string;
-    tenantId: string;
-    name: string;
-    description: string | null;
-    isSystemRole: boolean;
-    createdBy: string;
-    createdAt: Date;
-    updatedAt: Date;
-    isDeleted?: boolean;
+    id: string
+    tenantId: string
+    name: string
+    description: string | null
+    isSystemRole: boolean
+    createdBy: string
+    createdAt: Date
+    updatedAt: Date
+    isDeleted?: boolean
   }): Role {
     return new Role(
       data.id,
@@ -100,8 +100,8 @@ export class Role {
       data.createdBy,
       data.createdAt,
       data.updatedAt,
-      data.isDeleted || false,
-    );
+      data.isDeleted || false
+    )
   }
 
   /**
@@ -110,11 +110,11 @@ export class Role {
    */
   updateDescription(newDescription: string): void {
     if (this.isSystemRole) {
-      throw new Error('System roles cannot be modified');
+      throw new Error('System roles cannot be modified')
     }
 
-    this.description = newDescription;
-    this.updatedAt = new Date();
+    this.description = newDescription
+    this.updatedAt = new Date()
   }
 
   /**
@@ -123,36 +123,36 @@ export class Role {
    */
   markAsDeleted(): void {
     if (this.isSystemRole) {
-      throw new Error('System roles cannot be deleted');
+      throw new Error('System roles cannot be deleted')
     }
 
     if (this.isDeleted) {
-      throw new Error('Role is already deleted');
+      throw new Error('Role is already deleted')
     }
 
-    this.isDeleted = true;
-    this.updatedAt = new Date();
+    this.isDeleted = true
+    this.updatedAt = new Date()
   }
 
   /**
    * Check if role is active (not deleted)
    */
   isActive(): boolean {
-    return !this.isDeleted;
+    return !this.isDeleted
   }
 
   /**
    * Convert to persistence format
    */
   toPersistence(): {
-    id: string;
-    tenantId: string;
-    name: string;
-    description: string | null;
-    isSystemRole: boolean;
-    createdBy: string;
-    createdAt: Date;
-    updatedAt: Date;
+    id: string
+    tenantId: string
+    name: string
+    description: string | null
+    isSystemRole: boolean
+    createdBy: string
+    createdAt: Date
+    updatedAt: Date
   } {
     return {
       id: this.id,
@@ -163,6 +163,6 @@ export class Role {
       createdBy: this.createdBy,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
-    };
+    }
   }
 }

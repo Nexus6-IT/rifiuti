@@ -1,4 +1,4 @@
-import { ConsultantTenantAssociation } from './consultant-tenant-association.entity';
+import { ConsultantTenantAssociation } from './consultant-tenant-association.entity'
 
 /**
  * ConsultantTenantAssociationRepository Interface
@@ -17,14 +17,14 @@ export interface ConsultantTenantAssociationRepository {
    * @param association - ConsultantTenantAssociation entity
    * @returns Saved association
    */
-  save(association: ConsultantTenantAssociation): Promise<ConsultantTenantAssociation>;
+  save(association: ConsultantTenantAssociation): Promise<ConsultantTenantAssociation>
 
   /**
    * Find association by ID
    * @param id - Association ID
    * @returns Association or null if not found
    */
-  findById(id: string): Promise<ConsultantTenantAssociation | null>;
+  findById(id: string): Promise<ConsultantTenantAssociation | null>
 
   /**
    * Find all associations for a consultant
@@ -32,9 +32,7 @@ export interface ConsultantTenantAssociationRepository {
    * @param consultantUserId - Consultant user ID
    * @returns Array of associations (active and inactive)
    */
-  findAllByConsultant(
-    consultantUserId: string,
-  ): Promise<ConsultantTenantAssociation[]>;
+  findAllByConsultant(consultantUserId: string): Promise<ConsultantTenantAssociation[]>
 
   /**
    * Find active association for consultant and specific tenant
@@ -45,8 +43,8 @@ export interface ConsultantTenantAssociationRepository {
    */
   findActiveByConsultantAndTenant(
     consultantUserId: string,
-    tenantId: string,
-  ): Promise<ConsultantTenantAssociation | null>;
+    tenantId: string
+  ): Promise<ConsultantTenantAssociation | null>
 
   /**
    * Find all consultants associated with a tenant
@@ -54,7 +52,7 @@ export interface ConsultantTenantAssociationRepository {
    * @param tenantId - Tenant ID
    * @returns Array of associations
    */
-  findAllByTenant(tenantId: string): Promise<ConsultantTenantAssociation[]>;
+  findAllByTenant(tenantId: string): Promise<ConsultantTenantAssociation[]>
 
   /**
    * Deactivate association
@@ -62,20 +60,20 @@ export interface ConsultantTenantAssociationRepository {
    * @param id - Association ID
    * @returns Updated association
    */
-  deactivate(id: string): Promise<ConsultantTenantAssociation>;
+  deactivate(id: string): Promise<ConsultantTenantAssociation>
 
   /**
    * Reactivate association
    * @param id - Association ID
    * @returns Updated association
    */
-  reactivate(id: string): Promise<ConsultantTenantAssociation>;
+  reactivate(id: string): Promise<ConsultantTenantAssociation>
 
   /**
    * Delete association (soft delete)
    * @param id - Association ID
    */
-  delete(id: string): Promise<void>;
+  delete(id: string): Promise<void>
 
   /**
    * Count active associations for consultant
@@ -83,7 +81,7 @@ export interface ConsultantTenantAssociationRepository {
    * @param consultantUserId - Consultant user ID
    * @returns Count of active associations
    */
-  countActiveByConsultant(consultantUserId: string): Promise<number>;
+  countActiveByConsultant(consultantUserId: string): Promise<number>
 
   /**
    * Find associations expiring soon
@@ -91,5 +89,5 @@ export interface ConsultantTenantAssociationRepository {
    * @param daysThreshold - Warning threshold (default 30 days)
    * @returns Array of associations expiring within threshold
    */
-  findExpiringSoon(daysThreshold?: number): Promise<ConsultantTenantAssociation[]>;
+  findExpiringSoon(daysThreshold?: number): Promise<ConsultantTenantAssociation[]>
 }

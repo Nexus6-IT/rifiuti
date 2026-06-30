@@ -26,7 +26,7 @@ export class TenantContextSwitchedEvent {
     public readonly timestamp: Date,
     public readonly sessionId?: string,
     public readonly ipAddress?: string,
-    public readonly userAgent?: string,
+    public readonly userAgent?: string
   ) {}
 
   /**
@@ -34,26 +34,26 @@ export class TenantContextSwitchedEvent {
    * Used for event sourcing and message routing
    */
   get eventType(): string {
-    return 'tenant_context_switched';
+    return 'tenant_context_switched'
   }
 
   /**
    * Convert to event payload for publishing
    */
   toEventPayload(): {
-    eventType: string;
-    consultantUserId: string;
-    sourceTenantId: string;
-    targetTenantId: string;
-    targetRoleId: string;
-    timestamp: string;
-    sessionId?: string;
-    ipAddress?: string;
-    userAgent?: string;
+    eventType: string
+    consultantUserId: string
+    sourceTenantId: string
+    targetTenantId: string
+    targetRoleId: string
+    timestamp: string
+    sessionId?: string
+    ipAddress?: string
+    userAgent?: string
     metadata: {
-      direction: string;
-      isConsultantMode: boolean;
-    };
+      direction: string
+      isConsultantMode: boolean
+    }
   } {
     return {
       eventType: this.eventType,
@@ -69,7 +69,7 @@ export class TenantContextSwitchedEvent {
         direction: `${this.sourceTenantId} → ${this.targetTenantId}`,
         isConsultantMode: true,
       },
-    };
+    }
   }
 
   /**
@@ -77,11 +77,11 @@ export class TenantContextSwitchedEvent {
    * Per plan.md: All tenant switches must be logged for compliance
    */
   toAuditLog(): {
-    userId: string;
-    actionAttempted: string;
-    decision: 'ALLOW';
-    contextAttributes: Record<string, any>;
-    timestamp: Date;
+    userId: string
+    actionAttempted: string
+    decision: 'ALLOW'
+    contextAttributes: Record<string, any>
+    timestamp: Date
   } {
     return {
       userId: this.consultantUserId,
@@ -98,6 +98,6 @@ export class TenantContextSwitchedEvent {
         switchDirection: `${this.sourceTenantId} → ${this.targetTenantId}`,
       },
       timestamp: this.timestamp,
-    };
+    }
   }
 }

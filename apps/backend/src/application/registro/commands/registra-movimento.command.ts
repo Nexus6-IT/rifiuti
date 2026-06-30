@@ -1,4 +1,7 @@
-import type { CausaleMovimento, WasteMovementType } from '../../../domain/waste-movement/waste-movement.entity'
+import type {
+  CausaleMovimento,
+  WasteMovementType,
+} from '../../../domain/waste-movement/waste-movement.entity'
 
 /**
  * Command per la registrazione di un movimento nel registro cronologico
@@ -39,6 +42,6 @@ export class RegistraMovimentoCommand {
     /** ID del FIR collegato (obbligatorio per SCARICO con causale CONFERIMENTO_TRASPORTATORE). */
     public readonly firId: string | undefined,
     /** Note libere. */
-    public readonly notes: string | undefined,
+    public readonly notes: string | undefined
   ) {}
 }

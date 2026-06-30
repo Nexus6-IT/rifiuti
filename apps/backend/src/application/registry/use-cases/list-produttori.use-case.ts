@@ -19,14 +19,12 @@ export interface ListProduttoriCommand {
 export class ListProduttoriUseCase {
   constructor(
     @Inject(PRODUTTORE_REPOSITORY)
-    private readonly produttoreRepository: ProduttoreRepository,
+    private readonly produttoreRepository: ProduttoreRepository
   ) {}
 
   async execute(command: ListProduttoriCommand): Promise<Result<Produttore[]>> {
     try {
-      const produttori = await this.produttoreRepository.findByTenantId(
-        command.tenantId,
-      )
+      const produttori = await this.produttoreRepository.findByTenantId(command.tenantId)
 
       return Result.ok(produttori)
     } catch (error: any) {

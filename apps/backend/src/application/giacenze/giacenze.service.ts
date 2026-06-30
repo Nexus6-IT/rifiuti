@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
-import {
-  DepositoTemporaneoConfig,
-  DEFAULT_DEPOSITO_TEMPORANEO,
-} from './deposito-temporaneo.config'
+import { DepositoTemporaneoConfig, DEFAULT_DEPOSITO_TEMPORANEO } from './deposito-temporaneo.config'
 
 export interface GiacenzaCer {
   cerCode: string
@@ -36,7 +33,7 @@ export interface DepositoTemporaneoAlert {
 export class GiacenzeService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
     this.logger.setContext(GiacenzeService.name)
   }
@@ -93,7 +90,7 @@ export class GiacenzeService {
   async getDepositoTemporaneoAlerts(
     tenantId: string,
     config: DepositoTemporaneoConfig = DEFAULT_DEPOSITO_TEMPORANEO,
-    now: Date = new Date(),
+    now: Date = new Date()
   ): Promise<DepositoTemporaneoAlert[]> {
     const giacenze = await this.getGiacenze(tenantId)
     const alerts: DepositoTemporaneoAlert[] = []
@@ -106,7 +103,7 @@ export class GiacenzeService {
 
       if (g.oldestCaricoDate) {
         durationDays = Math.floor(
-          (now.getTime() - g.oldestCaricoDate.getTime()) / (24 * 60 * 60 * 1000),
+          (now.getTime() - g.oldestCaricoDate.getTime()) / (24 * 60 * 60 * 1000)
         )
         if (durationDays > config.maxDurationDays) reasons.push('DURATION')
       }
@@ -125,7 +122,7 @@ export class GiacenzeService {
 
     if (alerts.length > 0) {
       this.logger.warn(
-        `Deposito temporaneo: ${alerts.length} CER oltre soglia per tenant ${tenantId}`,
+        `Deposito temporaneo: ${alerts.length} CER oltre soglia per tenant ${tenantId}`
       )
     }
     return alerts

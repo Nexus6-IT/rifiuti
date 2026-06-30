@@ -1,5 +1,5 @@
-import { PrismaClient } from '@prisma/client';
-import { mockDeep, mockReset, DeepMockProxy } from 'jest-mock-extended';
+import { PrismaClient } from '@prisma/client'
+import { mockDeep, mockReset, DeepMockProxy } from 'jest-mock-extended'
 
 /**
  * Type-safe Prisma mock for Jest tests
@@ -25,7 +25,7 @@ import { mockDeep, mockReset, DeepMockProxy } from 'jest-mock-extended';
  * });
  * ```
  */
-export type MockPrisma = DeepMockProxy<PrismaClient>;
+export type MockPrisma = DeepMockProxy<PrismaClient>
 
 /**
  * Creates a new type-safe Prisma mock
@@ -33,8 +33,8 @@ export type MockPrisma = DeepMockProxy<PrismaClient>;
  * @returns A deep mock proxy of PrismaClient with full type safety
  */
 export const createPrismaMock = (): MockPrisma => {
-  return mockDeep<PrismaClient>();
-};
+  return mockDeep<PrismaClient>()
+}
 
 /**
  * Resets all mocks on the Prisma client
@@ -44,5 +44,5 @@ export const createPrismaMock = (): MockPrisma => {
  * @param prisma The Prisma mock to reset
  */
 export const resetPrismaMock = (prisma: MockPrisma): void => {
-  mockReset(prisma);
-};
+  mockReset(prisma)
+}

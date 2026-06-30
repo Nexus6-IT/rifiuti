@@ -7,14 +7,32 @@
  */
 
 const ACCENT_MAP: Record<string, string> = {
-  à: "A'", á: "A'", è: "E'", é: "E'", ì: "I'", í: "I'", ò: "O'", ó: "O'", ù: "U'", ú: "U'",
-  À: "A'", Á: "A'", È: "E'", É: "E'", Ì: "I'", Í: "I'", Ò: "O'", Ó: "O'", Ù: "U'", Ú: "U'",
+  à: "A'",
+  á: "A'",
+  è: "E'",
+  é: "E'",
+  ì: "I'",
+  í: "I'",
+  ò: "O'",
+  ó: "O'",
+  ù: "U'",
+  ú: "U'",
+  À: "A'",
+  Á: "A'",
+  È: "E'",
+  É: "E'",
+  Ì: "I'",
+  Í: "I'",
+  Ò: "O'",
+  Ó: "O'",
+  Ù: "U'",
+  Ú: "U'",
 }
 
 /** Converte una stringa in ASCII MUD (accenti → vocale+apice, maiuscolo, no set esteso). */
 export function toMudAscii(input: string | null | undefined): string {
   if (!input) return ''
-  let s = input.replace(/[àáèéìíòóùúÀÁÈÉÌÍÒÓÙÚ]/g, (c) => ACCENT_MAP[c] ?? c)
+  let s = input.replace(/[àáèéìíòóùúÀÁÈÉÌÍÒÓÙÚ]/g, c => ACCENT_MAP[c] ?? c)
   s = s.toUpperCase()
   // Rimuove eventuali caratteri residui fuori dall'ASCII stampabile.
   s = s.replace(/[^\x20-\x7E]/g, '')
@@ -33,7 +51,7 @@ export function mudKg(value: number): string {
  * Ogni campo è seguito da `;` (incluso l'ultimo), come da specifica.
  */
 export function mudRecord(type: string, fields: Array<string | number>): string {
-  const parts = fields.map((f) => (typeof f === 'number' ? String(f) : toMudAscii(f)))
+  const parts = fields.map(f => (typeof f === 'number' ? String(f) : toMudAscii(f)))
   return `${type};${parts.join(';')};`
 }
 

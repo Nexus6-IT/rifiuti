@@ -1,12 +1,5 @@
-import {
-  ExceptionFilter,
-  Catch,
-  ArgumentsHost,
-  ForbiddenException,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
-import { Response } from 'express';
+import { ExceptionFilter, Catch, ArgumentsHost, ForbiddenException, Logger } from '@nestjs/common'
+import { Response } from 'express'
 
 /**
  * PermissionExceptionFilter
@@ -20,32 +13,32 @@ import { Response } from 'express';
  */
 @Catch(ForbiddenException)
 export class PermissionExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(PermissionExceptionFilter.name);
+  private readonly logger = new Logger(PermissionExceptionFilter.name)
 
   catch(exception: ForbiddenException, host: ArgumentsHost) {
-    const ctx = host.switchToHttp();
-    const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest();
+    const ctx = host.switchToHttp()
+    const response = ctx.getResponse<Response>()
+    const request = ctx.getRequest()
 
-    const status = exception.getStatus();
-    const exceptionResponse = exception.getResponse();
+    const status = exception.getStatus()
+    const exceptionResponse = exception.getResponse()
 
     // Check if this is a structured permission error
     const isStructuredError =
       typeof exceptionResponse === 'object' &&
       exceptionResponse !== null &&
-      'requiredPermission' in exceptionResponse;
+      'requiredPermission' in exceptionResponse
 
     if (isStructuredError) {
       // Structured permission denial with context
-      const errorDetails = exceptionResponse as any;
+      const errorDetails = exceptionResponse as any
 
       this.logger.warn(
         `Permission denied: user=${request.user?.userId}, ` +
           `permission=${errorDetails.requiredPermission}, ` +
           `currentRole=${errorDetails.currentRole}, ` +
-          `path=${request.url}`,
-      );
+          `path=${request.url}`
+      )
 
       response.status(status).json({
         statusCode: status,
@@ -54,36 +47,26 @@ export class PermissionExceptionFilter implements ExceptionFilter {
         details: {
           requiredPermission: errorDetails.requiredPermission,
           currentRole: errorDetails.currentRole,
-          resource: this.extractResourceFromPermission(
-            errorDetails.requiredPermission,
-          ),
-          action: this.extractActionFromPermission(
-            errorDetails.requiredPermission,
-          ),
-          scope: this.extractScopeFromPermission(
-            errorDetails.requiredPermission,
-          ),
+          resource: this.extractResourceFromPermission(errorDetails.requiredPermission),
+          action: this.extractActionFromPermission(errorDetails.requiredPermission),
+          scope: this.extractScopeFromPermission(errorDetails.requiredPermission),
         },
         userGuidance: {
-          message:
-            errorDetails.contactAdmin ||
-            'Contact your administrator to request access',
+          message: errorDetails.contactAdmin || 'Contact your administrator to request access',
           supportEmail: 'support@wasteflow.it',
           learnMoreUrl: '/docs/permissions',
         },
         timestamp: new Date().toISOString(),
         path: request.url,
-      });
+      })
     } else {
       // Generic forbidden error
-      this.logger.warn(
-        `Generic forbidden error: user=${request.user?.userId}, path=${request.url}`,
-      );
+      this.logger.warn(`Generic forbidden error: user=${request.user?.userId}, path=${request.url}`)
 
       const message =
         typeof exceptionResponse === 'string'
           ? exceptionResponse
-          : (exceptionResponse as any).message || 'Forbidden';
+          : (exceptionResponse as any).message || 'Forbidden'
 
       response.status(status).json({
         statusCode: status,
@@ -95,7 +78,7 @@ export class PermissionExceptionFilter implements ExceptionFilter {
         },
         timestamp: new Date().toISOString(),
         path: request.url,
-      });
+      })
     }
   }
 
@@ -104,8 +87,8 @@ export class PermissionExceptionFilter implements ExceptionFilter {
    * Example: "fir:create:facility" -> "fir"
    */
   private extractResourceFromPermission(permission: string): string {
-    const parts = permission.split(':');
-    return parts[0] || 'unknown';
+    const parts = permission.split(':')
+    return parts[0] || 'unknown'
   }
 
   /**
@@ -113,8 +96,8 @@ export class PermissionExceptionFilter implements ExceptionFilter {
    * Example: "fir:create:facility" -> "create"
    */
   private extractActionFromPermission(permission: string): string {
-    const parts = permission.split(':');
-    return parts[1] || 'unknown';
+    const parts = permission.split(':')
+    return parts[1] || 'unknown'
   }
 
   /**
@@ -122,7 +105,7 @@ export class PermissionExceptionFilter implements ExceptionFilter {
    * Example: "fir:create:facility" -> "facility"
    */
   private extractScopeFromPermission(permission: string): string {
-    const parts = permission.split(':');
-    return parts[2] || 'unknown';
+    const parts = permission.split(':')
+    return parts[2] || 'unknown'
   }
 }

@@ -1,26 +1,26 @@
-import { Component, OnInit, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { MessageService } from 'primeng/api';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { InputTextModule } from 'primeng/inputtext';
-import { DropdownModule } from 'primeng/dropdown';
-import { TagModule } from 'primeng/tag';
-import { DialogModule } from 'primeng/dialog';
-import { InputNumberModule } from 'primeng/inputnumber';
-import { ConfirmDialogModule } from 'primeng/confirmdialog';
-import { ConfirmationService } from 'primeng/api';
-import { SplitButtonModule } from 'primeng/splitbutton';
-import { CardModule } from 'primeng/card';
-import { MenuItem } from 'primeng/api';
-import { TooltipModule } from 'primeng/tooltip';
-import { FirService, CreateFIRDto, TipoTratta } from './fir.service';
-import { InputTextareaModule } from 'primeng/inputtextarea';
-import { FIR, FIRStato } from '../../shared/models/fir.model';
-import { ExportService } from '../../core/services/export.service';
-import { RegistryService } from '../registry/registry.service';
-import { Produttore, Trasportatore, Destinatario } from '../../shared/models/registry.model';
+import { Component, OnInit, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { MessageService } from 'primeng/api'
+import { TableModule } from 'primeng/table'
+import { ButtonModule } from 'primeng/button'
+import { InputTextModule } from 'primeng/inputtext'
+import { DropdownModule } from 'primeng/dropdown'
+import { TagModule } from 'primeng/tag'
+import { DialogModule } from 'primeng/dialog'
+import { InputNumberModule } from 'primeng/inputnumber'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
+import { ConfirmationService } from 'primeng/api'
+import { SplitButtonModule } from 'primeng/splitbutton'
+import { CardModule } from 'primeng/card'
+import { MenuItem } from 'primeng/api'
+import { TooltipModule } from 'primeng/tooltip'
+import { FirService, CreateFIRDto, TipoTratta } from './fir.service'
+import { InputTextareaModule } from 'primeng/inputtextarea'
+import { FIR, FIRStato } from '../../shared/models/fir.model'
+import { ExportService } from '../../core/services/export.service'
+import { RegistryService } from '../registry/registry.service'
+import { Produttore, Trasportatore, Destinatario } from '../../shared/models/registry.model'
 
 @Component({
   selector: 'app-fir-list',
@@ -39,7 +39,7 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
     SplitButtonModule,
     CardModule,
     TooltipModule,
-    InputTextareaModule
+    InputTextareaModule,
   ],
   providers: [ConfirmationService],
   template: `
@@ -48,7 +48,9 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
       <header class="page-header">
         <div class="page-header__titles">
           <h1 class="page-title">Gestione FIR</h1>
-          <p class="page-subtitle">Formulari di Identificazione dei Rifiuti: creazione, emissione e tracciamento</p>
+          <p class="page-subtitle">
+            Formulari di Identificazione dei Rifiuti: creazione, emissione e tracciamento
+          </p>
         </div>
         <div class="page-actions">
           <p-splitButton
@@ -58,11 +60,7 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
             [outlined]="true"
             [disabled]="loading || firList.length === 0"
           />
-          <p-button
-            label="Nuovo FIR"
-            icon="pi pi-plus"
-            (onClick)="showCreateDialog()"
-          />
+          <p-button label="Nuovo FIR" icon="pi pi-plus" (onClick)="showCreateDialog()" />
         </div>
       </header>
 
@@ -101,7 +99,11 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
       <!-- Stato di errore -->
       <div *ngIf="error && !loading" class="surface-card" role="alert">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon" style="color: var(--color-danger);" aria-hidden="true"></i>
+          <i
+            class="pi pi-exclamation-triangle empty-state__icon"
+            style="color: var(--color-danger);"
+            aria-hidden="true"
+          ></i>
           <p class="empty-state__title">Impossibile caricare i FIR</p>
           <p>Si è verificato un errore durante il recupero dei dati. Riprova.</p>
           <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="reload()" />
@@ -138,8 +140,12 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
             </ng-template>
             <ng-template pTemplate="body" let-fir>
               <tr>
-                <td><span class="cell-mono">{{ fir.numeroProgressivo || 'N/D' }}</span></td>
-                <td><span class="cell-mono">{{ fir.rifiuto.cerCode }}</span></td>
+                <td>
+                  <span class="cell-mono">{{ fir.numeroProgressivo || 'N/D' }}</span>
+                </td>
+                <td>
+                  <span class="cell-mono">{{ fir.rifiuto.cerCode }}</span>
+                </td>
                 <td>{{ fir.rifiuto.quantita }} {{ fir.rifiuto.unitaMisura }}</td>
                 <td>
                   <p-tag
@@ -172,10 +178,16 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
                       icon="pi pi-check"
                       size="small"
                       (onClick)="showConsegnaDialog(fir)"
-                      [attr.aria-label]="'Conferma consegna FIR ' + (fir.numeroProgressivo || fir.id)"
+                      [attr.aria-label]="
+                        'Conferma consegna FIR ' + (fir.numeroProgressivo || fir.id)
+                      "
                     />
                     <p-button
-                      *ngIf="fir.stato === 'BOZZA' || fir.stato === 'EMESSO' || fir.stato === 'IN_TRANSITO'"
+                      *ngIf="
+                        fir.stato === 'BOZZA' ||
+                        fir.stato === 'EMESSO' ||
+                        fir.stato === 'IN_TRANSITO'
+                      "
                       label="Annulla"
                       icon="pi pi-times"
                       size="small"
@@ -187,7 +199,8 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
                     <span
                       *ngIf="fir.stato === 'CONSEGNATO' || fir.stato === 'ANNULLATO'"
                       class="row-actions__none"
-                    >—</span>
+                      >—</span
+                    >
                   </div>
                 </td>
               </tr>
@@ -419,10 +432,7 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
             </button>
 
             <div *ngIf="showTrasportatoriAggiuntivi" class="trasporti-extra__body">
-              <div
-                *ngFor="let t of trasportatoriAggiuntivi; let i = index"
-                class="trasporto-row"
-              >
+              <div *ngFor="let t of trasportatoriAggiuntivi; let i = index" class="trasporto-row">
                 <div class="trasporto-row__field trasporto-row__field--tratta">
                   <p-dropdown
                     [options]="tipoTrattaOptions"
@@ -476,16 +486,8 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
           </div>
         </div>
         <ng-template pTemplate="footer">
-          <p-button
-            label="Annulla"
-            [text]="true"
-            (onClick)="displayCreateDialog = false"
-          />
-          <p-button
-            label="Salva"
-            (onClick)="createFIR()"
-            [loading]="saving"
-          />
+          <p-button label="Annulla" [text]="true" (onClick)="displayCreateDialog = false" />
+          <p-button label="Salva" (onClick)="createFIR()" [loading]="saving" />
         </ng-template>
       </p-dialog>
 
@@ -506,164 +508,219 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
           />
         </div>
         <ng-template pTemplate="footer">
-          <p-button
-            label="Annulla"
-            [text]="true"
-            (onClick)="displayConsegnaDialog = false"
-          />
-          <p-button
-            label="Conferma"
-            (onClick)="consegnaFIR()"
-            [loading]="saving"
-          />
+          <p-button label="Annulla" [text]="true" (onClick)="displayConsegnaDialog = false" />
+          <p-button label="Conferma" (onClick)="consegnaFIR()" [loading]="saving" />
         </ng-template>
       </p-dialog>
 
       <p-confirmDialog />
     </div>
   `,
-  styles: [`
-    .filters {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--spacing-base);
-      align-items: flex-end;
-      margin-bottom: var(--spacing-lg);
-    }
-    .filters__field {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-xs);
-      flex: 1 1 240px;
-      min-width: 0;
-    }
-    .filters__label {
-      font-size: var(--font-size-sm);
-      font-weight: var(--font-weight-medium);
-      color: var(--text-secondary);
-    }
-    .filters__search { display: block; width: 100%; }
-    .filters__search input { width: 100%; }
+  styles: [
+    `
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-base);
+        align-items: flex-end;
+        margin-bottom: var(--spacing-lg);
+      }
+      .filters__field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        flex: 1 1 240px;
+        min-width: 0;
+      }
+      .filters__label {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-secondary);
+      }
+      .filters__search {
+        display: block;
+        width: 100%;
+      }
+      .filters__search input {
+        width: 100%;
+      }
 
-    .table-card { padding: 0; overflow: hidden; }
+      .table-card {
+        padding: 0;
+        overflow: hidden;
+      }
 
-    .col-actions { width: 18rem; }
-    .row-actions { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; align-items: center; }
-    .row-actions__none { color: var(--text-secondary); }
-    /* Garantisce testo leggibile (bianco) sui pulsanti pieni teal del design system B */
-    .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-label,
-    .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-icon {
-      color: #ffffff;
-    }
+      .col-actions {
+        width: 18rem;
+      }
+      .row-actions {
+        display: flex;
+        gap: var(--spacing-sm);
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .row-actions__none {
+        color: var(--text-secondary);
+      }
+      /* Garantisce testo leggibile (bianco) sui pulsanti pieni teal del design system B */
+      .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-label,
+      .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-icon {
+        color: #ffffff;
+      }
 
-    .cell-mono {
-      font-family: var(--font-family-mono);
-      font-weight: var(--font-weight-medium);
-      color: var(--text-primary);
-    }
+      .cell-mono {
+        font-family: var(--font-family-mono);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-primary);
+      }
 
-    .dialog-form { display: flex; flex-direction: column; gap: var(--spacing-base); }
-    .dialog-form__field { display: flex; flex-direction: column; gap: var(--spacing-sm); }
-    .dialog-form__field label { font-size: var(--font-size-sm); }
-    .dialog-form__row { display: flex; flex-wrap: wrap; gap: var(--spacing-base); }
-    .dialog-form__row .dialog-form__field { flex: 1 1 160px; }
-    .dialog-form__field--sm { flex: 0 0 100px !important; min-width: 80px; }
-    .field-norm {
-      font-size: var(--font-size-xs);
-      color: var(--text-tertiary);
-      cursor: help;
-      margin-left: 2px;
-      text-decoration: none;
-    }
+      .dialog-form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-base);
+      }
+      .dialog-form__field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+      }
+      .dialog-form__field label {
+        font-size: var(--font-size-sm);
+      }
+      .dialog-form__row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-base);
+      }
+      .dialog-form__row .dialog-form__field {
+        flex: 1 1 160px;
+      }
+      .dialog-form__field--sm {
+        flex: 0 0 100px !important;
+        min-width: 80px;
+      }
+      .field-norm {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        cursor: help;
+        margin-left: 2px;
+        text-decoration: none;
+      }
 
-    /* Dropdown option (ragione sociale + P.IVA) */
-    .opt { display: flex; flex-direction: column; gap: 0; line-height: 1.3; }
-    .opt__name { font-weight: var(--font-weight-medium); color: var(--text-primary); }
-    .opt__piva { font-size: var(--font-size-sm); color: var(--text-secondary); }
+      /* Dropdown option (ragione sociale + P.IVA) */
+      .opt {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        line-height: 1.3;
+      }
+      .opt__name {
+        font-weight: var(--font-weight-medium);
+        color: var(--text-primary);
+      }
+      .opt__piva {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+      }
 
-    /* Trasportatori aggiuntivi (intermodale) */
-    .trasporti-extra {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-sm);
-      border-top: 1px solid var(--surface-border, var(--border-color));
-      padding-top: var(--spacing-base);
-    }
-    .trasporti-extra__toggle {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-sm);
-      background: none;
-      border: none;
-      padding: 0;
-      cursor: pointer;
-      font-size: var(--font-size-sm);
-      font-weight: var(--font-weight-medium);
-      color: var(--text-secondary);
-      text-align: left;
-    }
-    .trasporti-extra__count {
-      font-size: var(--font-size-sm);
-      font-weight: var(--font-weight-medium);
-      color: var(--text-primary);
-      background: var(--surface-hover, var(--surface-100));
-      border-radius: 999px;
-      padding: 0 var(--spacing-sm);
-    }
-    .trasporti-extra__body {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-sm);
-    }
-    .trasporto-row {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-sm);
-    }
-    .trasporto-row__field { min-width: 0; }
-    .trasporto-row__field--tratta { flex: 0 0 9rem; }
-    .trasporto-row__field--trasp { flex: 1 1 auto; }
+      /* Trasportatori aggiuntivi (intermodale) */
+      .trasporti-extra {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        border-top: 1px solid var(--surface-border, var(--border-color));
+        padding-top: var(--spacing-base);
+      }
+      .trasporti-extra__toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-secondary);
+        text-align: left;
+      }
+      .trasporti-extra__count {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-primary);
+        background: var(--surface-hover, var(--surface-100));
+        border-radius: 999px;
+        padding: 0 var(--spacing-sm);
+      }
+      .trasporti-extra__body {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+      }
+      .trasporto-row {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+      }
+      .trasporto-row__field {
+        min-width: 0;
+      }
+      .trasporto-row__field--tratta {
+        flex: 0 0 9rem;
+      }
+      .trasporto-row__field--trasp {
+        flex: 1 1 auto;
+      }
 
-    @media (max-width: 576px) {
-      .filters__field { flex: 1 1 100%; }
-      .trasporto-row { flex-wrap: wrap; }
-      .trasporto-row__field--tratta { flex: 1 1 100%; }
-      .trasporto-row__field--trasp { flex: 1 1 100%; }
-    }
-  `]
+      @media (max-width: 576px) {
+        .filters__field {
+          flex: 1 1 100%;
+        }
+        .trasporto-row {
+          flex-wrap: wrap;
+        }
+        .trasporto-row__field--tratta {
+          flex: 1 1 100%;
+        }
+        .trasporto-row__field--trasp {
+          flex: 1 1 100%;
+        }
+      }
+    `,
+  ],
 })
 export class FirListComponent implements OnInit {
-  firList: FIR[] = [];
-  loading = false;
-  error = false;
-  saving = false;
-  totalRecords = 0;
-  pageSize = 10;
-  currentPage = 1;
+  firList: FIR[] = []
+  loading = false
+  error = false
+  saving = false
+  totalRecords = 0
+  pageSize = 10
+  currentPage = 1
 
-  searchText = '';
-  selectedStato: FIRStato | null = null;
+  searchText = ''
+  selectedStato: FIRStato | null = null
 
-  displayCreateDialog = false;
-  displayConsegnaDialog = false;
-  selectedFIR: FIR | null = null;
-  pesoEffettivo = 0;
+  displayCreateDialog = false
+  displayConsegnaDialog = false
+  selectedFIR: FIR | null = null
+  pesoEffettivo = 0
 
   // Anagrafiche per i dropdown ricercabili
-  produttori = signal<Produttore[]>([]);
-  trasportatori = signal<Trasportatore[]>([]);
-  destinatari = signal<Destinatario[]>([]);
-  loadingAnagrafiche = false;
+  produttori = signal<Produttore[]>([])
+  trasportatori = signal<Trasportatore[]>([])
+  destinatari = signal<Destinatario[]>([])
+  loadingAnagrafiche = false
 
   // Trasporto intermodale: trasportatori aggiuntivi
-  showTrasportatoriAggiuntivi = false;
-  trasportatoriAggiuntivi: { trasportatoreId: string | null; tipoTratta: TipoTratta }[] = [];
+  showTrasportatoriAggiuntivi = false
+  trasportatoriAggiuntivi: { trasportatoreId: string | null; tipoTratta: TipoTratta }[] = []
 
   tipoTrattaOptions = [
     { label: 'Terrestre', value: 'TERRESTRE' as TipoTratta },
     { label: 'Ferroviaria', value: 'FERROVIARIA' as TipoTratta },
-    { label: 'Marittima', value: 'MARITTIMA' as TipoTratta }
-  ];
+    { label: 'Marittima', value: 'MARITTIMA' as TipoTratta },
+  ]
 
   /**
    * Stato fisico del rifiuto — Campo 2 FIR (DM 59/2023, art. 193 D.Lgs 152/2006).
@@ -675,7 +732,7 @@ export class FirListComponent implements OnInit {
     { label: 'Gassoso', value: 'Gassoso' },
     { label: 'Polvere', value: 'Polvere' },
     { label: 'Misto', value: 'Misto' },
-  ];
+  ]
 
   /**
    * Caratteristiche di pericolo HP — Reg. UE 1357/2014, All. III D.Lgs 152/2006.
@@ -697,7 +754,7 @@ export class FirListComponent implements OnInit {
     { label: 'HP13 — Sensibilizzante', value: 'HP13' },
     { label: 'HP14 — Ecotossico', value: 'HP14' },
     { label: 'HP15 — Pericolosità latente', value: 'HP15' },
-  ];
+  ]
 
   /**
    * Codici operazione R (recupero) e D (smaltimento) — Allegati C e B D.Lgs 152/2006.
@@ -711,7 +768,7 @@ export class FirListComponent implements OnInit {
     { label: 'R4 — Riciclo/recupero metalli', value: 'R4' },
     { label: 'R5 — Riciclo/recupero altre sostanze inorganiche', value: 'R5' },
     { label: 'R6 — Rigenerazione acidi/basi', value: 'R6' },
-    { label: 'R7 — Recupero componenti per la riduzione dell\'inquinamento', value: 'R7' },
+    { label: "R7 — Recupero componenti per la riduzione dell'inquinamento", value: 'R7' },
     { label: 'R8 — Recupero componenti catalizzatori', value: 'R8' },
     { label: 'R9 — Rigenerazione oli usati', value: 'R9' },
     { label: 'R10 — Spandimento sul suolo', value: 'R10' },
@@ -734,7 +791,7 @@ export class FirListComponent implements OnInit {
     { label: 'D13 — Raggruppamento per D1–D12', value: 'D13' },
     { label: 'D14 — Ricondizionamento per D1–D13', value: 'D14' },
     { label: 'D15 — Deposito in attesa di D1–D14', value: 'D15' },
-  ];
+  ]
 
   newFIR: CreateFIRDto = {
     produttoreId: '',
@@ -750,24 +807,24 @@ export class FirListComponent implements OnInit {
       codiceOperazione: undefined,
     },
     annotazioni: undefined,
-  };
+  }
 
   statoOptions = [
     { label: 'Bozza', value: FIRStato.BOZZA },
     { label: 'Emesso', value: FIRStato.EMESSO },
     { label: 'In Transito', value: FIRStato.IN_TRANSITO },
     { label: 'Consegnato', value: FIRStato.CONSEGNATO },
-    { label: 'Annullato', value: FIRStato.ANNULLATO }
-  ];
+    { label: 'Annullato', value: FIRStato.ANNULLATO },
+  ]
 
   unitaMisuraOptions = [
     { label: 'kg', value: 'kg' },
     { label: 't', value: 't' },
-    { label: 'm³', value: 'm3' }
-  ];
+    { label: 'm³', value: 'm3' },
+  ]
 
-  exportMenuItems: MenuItem[] = [];
-  private lastLoadEvent: any = { first: 0, rows: this.pageSize };
+  exportMenuItems: MenuItem[] = []
+  private lastLoadEvent: any = { first: 0, rows: this.pageSize }
 
   constructor(
     private firService: FirService,
@@ -778,9 +835,9 @@ export class FirListComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.initializeExportMenu();
-    this.loadAnagrafiche();
-    this.loadFIRList({ first: 0, rows: this.pageSize });
+    this.initializeExportMenu()
+    this.loadAnagrafiche()
+    this.loadFIRList({ first: 0, rows: this.pageSize })
   }
 
   /**
@@ -788,36 +845,36 @@ export class FirListComponent implements OnInit {
    * La ricerca dei dropdown è client-side sulle opzioni caricate (limit alto).
    */
   loadAnagrafiche(): void {
-    this.loadingAnagrafiche = true;
-    const limit = 200;
-    let pending = 3;
+    this.loadingAnagrafiche = true
+    const limit = 200
+    let pending = 3
     const done = () => {
-      pending -= 1;
-      if (pending === 0) this.loadingAnagrafiche = false;
-    };
+      pending -= 1
+      if (pending === 0) this.loadingAnagrafiche = false
+    }
     this.registryService.getProduttori(1, limit).subscribe({
-      next: (res) => this.produttori.set(res.items),
+      next: res => this.produttori.set(res.items),
       error: () => done(),
-      complete: () => done()
-    });
+      complete: () => done(),
+    })
     this.registryService.getTrasportatori(1, limit).subscribe({
-      next: (res) => this.trasportatori.set(res.items),
+      next: res => this.trasportatori.set(res.items),
       error: () => done(),
-      complete: () => done()
-    });
+      complete: () => done(),
+    })
     this.registryService.getDestinatari(1, limit).subscribe({
-      next: (res) => this.destinatari.set(res.items),
+      next: res => this.destinatari.set(res.items),
       error: () => done(),
-      complete: () => done()
-    });
+      complete: () => done(),
+    })
   }
 
   addTrasportatoreAggiuntivo(): void {
-    this.trasportatoriAggiuntivi.push({ trasportatoreId: null, tipoTratta: 'TERRESTRE' });
+    this.trasportatoriAggiuntivi.push({ trasportatoreId: null, tipoTratta: 'TERRESTRE' })
   }
 
   removeTrasportatoreAggiuntivo(index: number): void {
-    this.trasportatoriAggiuntivi.splice(index, 1);
+    this.trasportatoriAggiuntivi.splice(index, 1)
   }
 
   initializeExportMenu(): void {
@@ -825,14 +882,14 @@ export class FirListComponent implements OnInit {
       {
         label: 'Esporta PDF',
         icon: 'pi pi-file-pdf',
-        command: () => this.exportToPDF()
+        command: () => this.exportToPDF(),
       },
       {
         label: 'Esporta Excel',
         icon: 'pi pi-file-excel',
-        command: () => this.exportToExcel()
-      }
-    ];
+        command: () => this.exportToExcel(),
+      },
+    ]
   }
 
   exportToPDF(): void {
@@ -840,17 +897,17 @@ export class FirListComponent implements OnInit {
       this.messageService.add({
         severity: 'warn',
         summary: 'Attenzione',
-        detail: 'Nessun FIR da esportare'
-      });
-      return;
+        detail: 'Nessun FIR da esportare',
+      })
+      return
     }
 
-    this.exportService.exportFIRListToPDF(this.firList);
+    this.exportService.exportFIRListToPDF(this.firList)
     this.messageService.add({
       severity: 'success',
       summary: 'Successo',
-      detail: 'FIR esportati in PDF'
-    });
+      detail: 'FIR esportati in PDF',
+    })
   }
 
   exportToExcel(): void {
@@ -858,51 +915,51 @@ export class FirListComponent implements OnInit {
       this.messageService.add({
         severity: 'warn',
         summary: 'Attenzione',
-        detail: 'Nessun FIR da esportare'
-      });
-      return;
+        detail: 'Nessun FIR da esportare',
+      })
+      return
     }
 
-    this.exportService.exportFIRListToExcel(this.firList);
+    this.exportService.exportFIRListToExcel(this.firList)
     this.messageService.add({
       severity: 'success',
       summary: 'Successo',
-      detail: 'FIR esportati in Excel'
-    });
+      detail: 'FIR esportati in Excel',
+    })
   }
 
   loadFIRList(event: any): void {
-    this.loading = true;
-    this.error = false;
-    this.lastLoadEvent = event;
-    const page = Math.floor(event.first / event.rows) + 1;
-    this.currentPage = page;
+    this.loading = true
+    this.error = false
+    this.lastLoadEvent = event
+    const page = Math.floor(event.first / event.rows) + 1
+    this.currentPage = page
 
     this.firService.getFIRList(page, event.rows, this.selectedStato || undefined).subscribe({
-      next: (response) => {
-        this.firList = response.items;
-        this.totalRecords = response.total;
-        this.loading = false;
+      next: response => {
+        this.firList = response.items
+        this.totalRecords = response.total
+        this.loading = false
       },
       error: () => {
-        this.loading = false;
-        this.error = true;
+        this.loading = false
+        this.error = true
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: 'Errore nel caricamento dei FIR'
-        });
-      }
-    });
+          detail: 'Errore nel caricamento dei FIR',
+        })
+      },
+    })
   }
 
   onSearch(): void {
     // Implement search logic
-    this.loadFIRList({ first: 0, rows: this.pageSize });
+    this.loadFIRList({ first: 0, rows: this.pageSize })
   }
 
   onFilterChange(): void {
-    this.loadFIRList({ first: 0, rows: this.pageSize });
+    this.loadFIRList({ first: 0, rows: this.pageSize })
   }
 
   showCreateDialog(): void {
@@ -920,10 +977,10 @@ export class FirListComponent implements OnInit {
         codiceOperazione: undefined,
       },
       annotazioni: undefined,
-    };
-    this.trasportatoriAggiuntivi = [];
-    this.showTrasportatoriAggiuntivi = false;
-    this.displayCreateDialog = true;
+    }
+    this.trasportatoriAggiuntivi = []
+    this.showTrasportatoriAggiuntivi = false
+    this.displayCreateDialog = true
   }
 
   createFIR(): void {
@@ -931,45 +988,45 @@ export class FirListComponent implements OnInit {
       this.messageService.add({
         severity: 'warn',
         summary: 'Campi obbligatori',
-        detail: 'Seleziona produttore, trasportatore e destinatario'
-      });
-      return;
+        detail: 'Seleziona produttore, trasportatore e destinatario',
+      })
+      return
     }
 
     const aggiuntivi = this.trasportatoriAggiuntivi
-      .filter((t) => !!t.trasportatoreId)
+      .filter(t => !!t.trasportatoreId)
       .map((t, i) => ({
         trasportatoreId: t.trasportatoreId as string,
         tipoTratta: t.tipoTratta,
-        ordine: i + 1
-      }));
+        ordine: i + 1,
+      }))
 
-    const dto: CreateFIRDto = { ...this.newFIR };
+    const dto: CreateFIRDto = { ...this.newFIR }
     if (aggiuntivi.length > 0) {
-      dto.trasportatoriAggiuntivi = aggiuntivi;
+      dto.trasportatoriAggiuntivi = aggiuntivi
     }
 
-    this.saving = true;
+    this.saving = true
     this.firService.createFIR(dto).subscribe({
       next: () => {
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
-          detail: 'FIR creato con successo'
-        });
-        this.displayCreateDialog = false;
-        this.saving = false;
-        this.loadFIRList({ first: 0, rows: this.pageSize });
+          detail: 'FIR creato con successo',
+        })
+        this.displayCreateDialog = false
+        this.saving = false
+        this.loadFIRList({ first: 0, rows: this.pageSize })
       },
       error: () => {
-        this.saving = false;
+        this.saving = false
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: 'Errore nella creazione del FIR'
-        });
-      }
-    });
+          detail: 'Errore nella creazione del FIR',
+        })
+      },
+    })
   }
 
   /** Emette il FIR (BOZZA → EMESSO), assegnando il numero progressivo. */
@@ -986,20 +1043,20 @@ export class FirListComponent implements OnInit {
             this.messageService.add({
               severity: 'success',
               summary: 'Successo',
-              detail: 'FIR emesso con successo'
-            });
-            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+              detail: 'FIR emesso con successo',
+            })
+            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
           },
-          error: (err) => {
+          error: err => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: this.extractError(err, 'Errore nell\'emissione del FIR')
-            });
-          }
-        });
-      }
-    });
+              detail: this.extractError(err, "Errore nell'emissione del FIR"),
+            })
+          },
+        })
+      },
+    })
   }
 
   /** Presa in carico del FIR da parte del trasportatore (EMESSO → IN_TRANSITO). */
@@ -1016,118 +1073,120 @@ export class FirListComponent implements OnInit {
             this.messageService.add({
               severity: 'success',
               summary: 'Successo',
-              detail: 'FIR preso in carico con successo'
-            });
-            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+              detail: 'FIR preso in carico con successo',
+            })
+            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
           },
-          error: (err) => {
+          error: err => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: this.extractError(err, 'Errore nella presa in carico del FIR')
-            });
-          }
-        });
-      }
-    });
+              detail: this.extractError(err, 'Errore nella presa in carico del FIR'),
+            })
+          },
+        })
+      },
+    })
   }
 
   showConsegnaDialog(fir: FIR): void {
-    this.selectedFIR = fir;
-    this.pesoEffettivo = fir.rifiuto.quantita;
-    this.displayConsegnaDialog = true;
+    this.selectedFIR = fir
+    this.pesoEffettivo = fir.rifiuto.quantita
+    this.displayConsegnaDialog = true
   }
 
   /** Conferma consegna (IN_TRANSITO → CONSEGNATO) con il peso effettivo rilevato. */
   consegnaFIR(): void {
-    if (!this.selectedFIR) return;
+    if (!this.selectedFIR) return
 
     if (!this.pesoEffettivo || this.pesoEffettivo <= 0) {
       this.messageService.add({
         severity: 'warn',
         summary: 'Peso non valido',
-        detail: 'Indica un peso effettivo maggiore di zero'
-      });
-      return;
+        detail: 'Indica un peso effettivo maggiore di zero',
+      })
+      return
     }
 
-    this.saving = true;
+    this.saving = true
     this.firService.confermaConsegna(this.selectedFIR.id, this.pesoEffettivo).subscribe({
       next: () => {
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
-          detail: 'Consegna FIR confermata con successo'
-        });
-        this.displayConsegnaDialog = false;
-        this.saving = false;
-        this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+          detail: 'Consegna FIR confermata con successo',
+        })
+        this.displayConsegnaDialog = false
+        this.saving = false
+        this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
       },
-      error: (err) => {
-        this.saving = false;
+      error: err => {
+        this.saving = false
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: this.extractError(err, 'Errore nella conferma della consegna')
-        });
-      }
-    });
+          detail: this.extractError(err, 'Errore nella conferma della consegna'),
+        })
+      },
+    })
   }
 
   /** Annulla un FIR non ancora consegnato (BOZZA/EMESSO/IN_TRANSITO → ANNULLATO). */
   annullaFIR(fir: FIR): void {
     this.confirmationService.confirm({
       header: 'Conferma annullamento',
-      message: 'Confermi di voler annullare questo FIR? L\'operazione non è reversibile.',
+      message: "Confermi di voler annullare questo FIR? L'operazione non è reversibile.",
       icon: 'pi pi-exclamation-triangle',
       acceptLabel: 'Annulla FIR',
       rejectLabel: 'Indietro',
       acceptButtonStyleClass: 'p-button-danger',
       accept: () => {
-        this.firService.annullaFIR(fir.id, 'Annullato dall\'operatore').subscribe({
+        this.firService.annullaFIR(fir.id, "Annullato dall'operatore").subscribe({
           next: () => {
             this.messageService.add({
               severity: 'success',
               summary: 'Successo',
-              detail: 'FIR annullato con successo'
-            });
-            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+              detail: 'FIR annullato con successo',
+            })
+            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
           },
-          error: (err) => {
+          error: err => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: this.extractError(err, 'Errore nell\'annullamento del FIR')
-            });
-          }
-        });
-      }
-    });
+              detail: this.extractError(err, "Errore nell'annullamento del FIR"),
+            })
+          },
+        })
+      },
+    })
   }
 
   /** Estrae il messaggio di errore restituito dal backend, con fallback. */
   private extractError(err: unknown, fallback: string): string {
-    const message = (err as { error?: { message?: string | string[] } })?.error?.message;
-    if (Array.isArray(message)) return message.join(', ');
-    return message || fallback;
+    const message = (err as { error?: { message?: string | string[] } })?.error?.message
+    if (Array.isArray(message)) return message.join(', ')
+    return message || fallback
   }
 
   reload(): void {
-    this.loadFIRList(this.lastLoadEvent);
+    this.loadFIRList(this.lastLoadEvent)
   }
 
   getStatoLabel(stato: FIRStato): string {
-    return this.statoOptions.find((o) => o.value === stato)?.label ?? stato;
+    return this.statoOptions.find(o => o.value === stato)?.label ?? stato
   }
 
-  getStatoSeverity(stato: FIRStato): "success" | "info" | "warning" | "danger" | "secondary" | "contrast" | undefined {
-    const severityMap: Record<FIRStato, "success" | "info" | "warning" | "danger" | "secondary"> = {
+  getStatoSeverity(
+    stato: FIRStato
+  ): 'success' | 'info' | 'warning' | 'danger' | 'secondary' | 'contrast' | undefined {
+    const severityMap: Record<FIRStato, 'success' | 'info' | 'warning' | 'danger' | 'secondary'> = {
       [FIRStato.BOZZA]: 'secondary',
       [FIRStato.EMESSO]: 'info',
       [FIRStato.IN_TRANSITO]: 'warning',
       [FIRStato.CONSEGNATO]: 'success',
-      [FIRStato.ANNULLATO]: 'danger'
-    };
-    return severityMap[stato];
+      [FIRStato.ANNULLATO]: 'danger',
+    }
+    return severityMap[stato]
   }
 }

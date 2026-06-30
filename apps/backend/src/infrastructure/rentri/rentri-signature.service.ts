@@ -20,7 +20,7 @@ import { signJws } from './rentri-jws.util'
 export class RentriSignatureService {
   constructor(
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
-    private readonly credentialResolver: RentriCredentialResolver,
+    private readonly credentialResolver: RentriCredentialResolver
   ) {}
 
   /** Nome dell'header HTTP che trasporta la firma di integrità. */
@@ -44,7 +44,7 @@ export class RentriSignatureService {
    */
   async buildIntegrityHeaders(
     rawBody: string,
-    contentType = 'application/json',
+    contentType = 'application/json'
   ): Promise<Record<string, string>> {
     const cred = await this.credentialResolver.resolve()
     const digest = this.computeDigest(rawBody)

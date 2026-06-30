@@ -1,5 +1,5 @@
-import { DomainException } from '../shared/domain-exception';
-import { FiscalCode } from '../shared/fiscal-code.vo';
+import { DomainException } from '../shared/domain-exception'
+import { FiscalCode } from '../shared/fiscal-code.vo'
 
 /**
  * Digital Signature Value Object
@@ -22,16 +22,16 @@ import { FiscalCode } from '../shared/fiscal-code.vo';
  * Italian Requirements: D.M. 59/2023
  */
 export class DigitalSignature {
-  private readonly signerFiscalCode: string;
-  private readonly signerName: string;
-  private readonly role: SignatureRole;
-  private readonly signatureValue: string; // Base64 encoded signature
-  private readonly signatureMethod: SignatureMethod;
-  private readonly certificateHash: string; // SHA-256 hash of certificate
-  private readonly documentHash: string; // SHA-256 hash of signed document
-  private readonly timestampToken?: string; // RFC 3161 timestamp
-  private readonly publicKey: string; // PEM format public key
-  private readonly signedAt: Date;
+  private readonly signerFiscalCode: string
+  private readonly signerName: string
+  private readonly role: SignatureRole
+  private readonly signatureValue: string // Base64 encoded signature
+  private readonly signatureMethod: SignatureMethod
+  private readonly certificateHash: string // SHA-256 hash of certificate
+  private readonly documentHash: string // SHA-256 hash of signed document
+  private readonly timestampToken?: string // RFC 3161 timestamp
+  private readonly publicKey: string // PEM format public key
+  private readonly signedAt: Date
 
   private constructor(
     signerFiscalCode: string,
@@ -45,50 +45,47 @@ export class DigitalSignature {
     timestampToken?: string,
     signedAt?: Date
   ) {
-    this.signerFiscalCode = signerFiscalCode;
-    this.signerName = signerName;
-    this.role = role;
-    this.signatureValue = signatureValue;
-    this.signatureMethod = signatureMethod;
-    this.certificateHash = certificateHash;
-    this.documentHash = documentHash;
-    this.publicKey = publicKey;
-    this.timestampToken = timestampToken;
-    this.signedAt = signedAt || new Date();
+    this.signerFiscalCode = signerFiscalCode
+    this.signerName = signerName
+    this.role = role
+    this.signatureValue = signatureValue
+    this.signatureMethod = signatureMethod
+    this.certificateHash = certificateHash
+    this.documentHash = documentHash
+    this.publicKey = publicKey
+    this.timestampToken = timestampToken
+    this.signedAt = signedAt || new Date()
 
     // Make object truly immutable at runtime
-    Object.freeze(this);
+    Object.freeze(this)
   }
 
   /**
    * Create digital signature with validation
    */
   static create(params: {
-    signerFiscalCode: string;
-    signerName: string;
-    role: SignatureRole;
-    signatureValue: string;
-    signatureMethod: SignatureMethod;
-    certificateHash: string;
-    documentHash: string;
-    publicKey: string;
-    timestampToken?: string;
-    signedAt?: Date;
+    signerFiscalCode: string
+    signerName: string
+    role: SignatureRole
+    signatureValue: string
+    signatureMethod: SignatureMethod
+    certificateHash: string
+    documentHash: string
+    publicKey: string
+    timestampToken?: string
+    signedAt?: Date
   }): DigitalSignature {
     // Validate fiscal code
     if (!params.signerFiscalCode || !FiscalCode.isValid(params.signerFiscalCode)) {
       throw DomainException.validationFailed(
         'INVALID_SIGNER_FISCAL_CODE',
         `Invalid Italian fiscal code for signer: ${params.signerFiscalCode}`
-      );
+      )
     }
 
     // Validate signer name
     if (!params.signerName || params.signerName.trim() === '') {
-      throw DomainException.validationFailed(
-        'MISSING_SIGNER_NAME',
-        'Signer name is required'
-      );
+      throw DomainException.validationFailed('MISSING_SIGNER_NAME', 'Signer name is required')
     }
 
     // Validate role
@@ -96,7 +93,7 @@ export class DigitalSignature {
       throw DomainException.validationFailed(
         'INVALID_SIGNATURE_ROLE',
         `Invalid signature role: ${params.role}. Must be PRODUCER, CARRIER, or RECEIVER`
-      );
+      )
     }
 
     // Validate signature value
@@ -104,7 +101,7 @@ export class DigitalSignature {
       throw DomainException.validationFailed(
         'MISSING_SIGNATURE_VALUE',
         'Signature value is required'
-      );
+      )
     }
 
     // Validate signature method
@@ -112,7 +109,7 @@ export class DigitalSignature {
       throw DomainException.validationFailed(
         'INVALID_SIGNATURE_METHOD',
         `Invalid signature method: ${params.signatureMethod}. Must be ECDSA-SHA256 or RSA-SHA256`
-      );
+      )
     }
 
     // Validate certificate hash
@@ -120,7 +117,7 @@ export class DigitalSignature {
       throw DomainException.validationFailed(
         'MISSING_CERTIFICATE_HASH',
         'Certificate hash is required'
-      );
+      )
     }
 
     // Validate document hash
@@ -128,7 +125,7 @@ export class DigitalSignature {
       throw DomainException.validationFailed(
         'MISSING_DOCUMENT_HASH',
         'Document hash is required for signature'
-      );
+      )
     }
 
     // Validate public key
@@ -136,7 +133,7 @@ export class DigitalSignature {
       throw DomainException.validationFailed(
         'MISSING_PUBLIC_KEY',
         'Public key is required for signature verification'
-      );
+      )
     }
 
     return new DigitalSignature(
@@ -150,7 +147,7 @@ export class DigitalSignature {
       params.publicKey.trim(),
       params.timestampToken?.trim(),
       params.signedAt
-    );
+    )
   }
 
   /**
@@ -159,16 +156,16 @@ export class DigitalSignature {
    * Usato da SignatureFIRRepository per ricostruire le firme esistenti.
    */
   static reconstitute(params: {
-    signerFiscalCode: string;
-    signerName: string;
-    role: SignatureRole;
-    signatureValue: string;
-    signatureMethod: SignatureMethod;
-    certificateHash: string;
-    documentHash: string;
-    publicKey?: string;
-    timestampToken?: string;
-    signedAt?: Date;
+    signerFiscalCode: string
+    signerName: string
+    role: SignatureRole
+    signatureValue: string
+    signatureMethod: SignatureMethod
+    certificateHash: string
+    documentHash: string
+    publicKey?: string
+    timestampToken?: string
+    signedAt?: Date
   }): DigitalSignature {
     return new DigitalSignature(
       params.signerFiscalCode || 'ZZZZZZZ00A00A000A',
@@ -180,8 +177,8 @@ export class DigitalSignature {
       params.documentHash,
       params.publicKey || '',
       params.timestampToken,
-      params.signedAt,
-    );
+      params.signedAt
+    )
   }
 
   /**
@@ -193,7 +190,7 @@ export class DigitalSignature {
   verify(documentHash: string): boolean {
     // Check if document hash matches
     if (documentHash !== this.documentHash) {
-      return false;
+      return false
     }
 
     // In real implementation:
@@ -203,7 +200,7 @@ export class DigitalSignature {
     // 4. Return verification result
 
     // For tests, simple check
-    return !!(this.signatureValue && this.signatureValue.length > 0);
+    return !!(this.signatureValue && this.signatureValue.length > 0)
   }
 
   /**
@@ -219,23 +216,23 @@ export class DigitalSignature {
       certificateHash: this.certificateHash,
       documentHash: this.documentHash,
       hasTimestamp: !!this.timestampToken,
-    };
+    }
   }
 
   /**
    * Serialize to plain object
    */
   toPlainObject(): {
-    signerFiscalCode: string;
-    signerName: string;
-    role: SignatureRole;
-    signatureValue: string;
-    signatureMethod: SignatureMethod;
-    certificateHash: string;
-    documentHash: string;
-    timestampToken?: string;
-    publicKey: string;
-    signedAt: Date;
+    signerFiscalCode: string
+    signerName: string
+    role: SignatureRole
+    signatureValue: string
+    signatureMethod: SignatureMethod
+    certificateHash: string
+    documentHash: string
+    timestampToken?: string
+    publicKey: string
+    signedAt: Date
   } {
     return {
       signerFiscalCode: this.signerFiscalCode,
@@ -248,57 +245,57 @@ export class DigitalSignature {
       timestampToken: this.timestampToken,
       publicKey: this.publicKey,
       signedAt: this.signedAt,
-    };
+    }
   }
 
   // Getters
   getSignerFiscalCode(): string {
-    return this.signerFiscalCode;
+    return this.signerFiscalCode
   }
 
   getSignerName(): string {
-    return this.signerName;
+    return this.signerName
   }
 
   getRole(): SignatureRole {
-    return this.role;
+    return this.role
   }
 
   getSignatureValue(): string {
-    return this.signatureValue;
+    return this.signatureValue
   }
 
   getSignatureMethod(): SignatureMethod {
-    return this.signatureMethod;
+    return this.signatureMethod
   }
 
   getCertificateHash(): string {
-    return this.certificateHash;
+    return this.certificateHash
   }
 
   getDocumentHash(): string {
-    return this.documentHash;
+    return this.documentHash
   }
 
   getTimestampToken(): string | undefined {
-    return this.timestampToken;
+    return this.timestampToken
   }
 
   getPublicKey(): string {
-    return this.publicKey;
+    return this.publicKey
   }
 
   getSignedAt(): Date {
-    return this.signedAt;
+    return this.signedAt
   }
 
   // Validation helpers
   private static isValidRole(role: string): role is SignatureRole {
-    return ['PRODUCER', 'CARRIER', 'RECEIVER'].includes(role);
+    return ['PRODUCER', 'CARRIER', 'RECEIVER'].includes(role)
   }
 
   private static isValidSignatureMethod(method: string): method is SignatureMethod {
-    return ['ECDSA-SHA256', 'RSA-SHA256'].includes(method);
+    return ['ECDSA-SHA256', 'RSA-SHA256'].includes(method)
   }
 }
 
@@ -306,17 +303,17 @@ export class DigitalSignature {
  * Type Definitions
  */
 
-export type SignatureRole = 'PRODUCER' | 'CARRIER' | 'RECEIVER';
+export type SignatureRole = 'PRODUCER' | 'CARRIER' | 'RECEIVER'
 
-export type SignatureMethod = 'ECDSA-SHA256' | 'RSA-SHA256';
+export type SignatureMethod = 'ECDSA-SHA256' | 'RSA-SHA256'
 
 export interface SignatureVerificationInfo {
-  signerFiscalCode: string;
-  signerName: string;
-  role: SignatureRole;
-  signedAt: Date;
-  signatureMethod: SignatureMethod;
-  certificateHash: string;
-  documentHash: string;
-  hasTimestamp: boolean;
+  signerFiscalCode: string
+  signerName: string
+  role: SignatureRole
+  signedAt: Date
+  signatureMethod: SignatureMethod
+  certificateHash: string
+  documentHash: string
+  hasTimestamp: boolean
 }

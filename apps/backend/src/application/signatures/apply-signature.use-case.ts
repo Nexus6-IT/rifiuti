@@ -21,13 +21,13 @@
  *  ATTIVARE: SIGNATURE_PROVIDER=qes con credenziali QTSP AgID per firma qualificata.
  */
 
-import { Injectable, Inject } from '@nestjs/common';
-import { DomainException } from '../../domain/shared/domain-exception';
-import { FIRRepository, FIR_REPOSITORY } from '../../domain/fir/fir.repository';
-import { DigitalSignature, SignatureRole } from '../../domain/fir/digital-signature.vo';
-import { DigitalSignatureService } from './digital-signature.service';
-import { LoggerService } from '../../core/logger/logger.service';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Injectable, Inject } from '@nestjs/common'
+import { DomainException } from '../../domain/shared/domain-exception'
+import { FIRRepository, FIR_REPOSITORY } from '../../domain/fir/fir.repository'
+import { DigitalSignature, SignatureRole } from '../../domain/fir/digital-signature.vo'
+import { DigitalSignatureService } from './digital-signature.service'
+import { LoggerService } from '../../core/logger/logger.service'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 @Injectable()
 export class ApplySignatureUseCase {
@@ -36,9 +36,9 @@ export class ApplySignatureUseCase {
     private readonly firRepository: FIRRepository,
     private readonly signatureService: DigitalSignatureService,
     private readonly logger: LoggerService,
-    private readonly eventEmitter: EventEmitter2,
+    private readonly eventEmitter: EventEmitter2
   ) {
-    this.logger.setContext(ApplySignatureUseCase.name);
+    this.logger.setContext(ApplySignatureUseCase.name)
   }
 
   /**
@@ -49,68 +49,63 @@ export class ApplySignatureUseCase {
    * @param params.authenticatedAt - Timestamp autenticazione (freschezza <15 min)
    */
   async execute(params: {
-    firId: string;
-    tenantId: string;
-    userId: string;
-    role: SignatureRole;
-    signerFiscalCode: string;
-    signerName: string;
-    spidLevel: number;
-    authenticatedAt: Date;
+    firId: string
+    tenantId: string
+    userId: string
+    role: SignatureRole
+    signerFiscalCode: string
+    signerName: string
+    spidLevel: number
+    authenticatedAt: Date
   }): Promise<{
-    success: boolean;
+    success: boolean
     signature: {
-      role: SignatureRole;
-      signerFiscalCode: string;
-      signerName: string;
-      signedAt: Date;
-      signatureMethod: string;
-      isQualified: boolean;
-    };
-    firStatus: string;
-    isCompleted: boolean;
+      role: SignatureRole
+      signerFiscalCode: string
+      signerName: string
+      signedAt: Date
+      signatureMethod: string
+      isQualified: boolean
+    }
+    firStatus: string
+    isCompleted: boolean
   }> {
-    this.logger.info(
-      `Firma ${params.role} su FIR ${params.firId} da ${params.signerFiscalCode}`,
-    );
+    this.logger.info(`Firma ${params.role} su FIR ${params.firId} da ${params.signerFiscalCode}`)
 
     // 1. Valida livello SPID (doppia verifica dopo guard)
     if (params.spidLevel < 2) {
       throw DomainException.businessRuleViolation(
         'INSUFFICIENT_SPID_LEVEL',
         'SPID Level 2 o superiore obbligatorio per la firma FIR (DM 59/2023). ' +
-        'SANDBOX: livello simulato se claim assente nel JWT.',
-      );
+          'SANDBOX: livello simulato se claim assente nel JWT.'
+      )
     }
 
     // 2. Valida freschezza autenticazione (15 min per operazioni firma)
-    const authAgeMinutes = (Date.now() - params.authenticatedAt.getTime()) / 1000 / 60;
+    const authAgeMinutes = (Date.now() - params.authenticatedAt.getTime()) / 1000 / 60
     if (authAgeMinutes > 15) {
       throw DomainException.businessRuleViolation(
         'AUTHENTICATION_EXPIRED',
         'Autenticazione scaduta. Effettuare nuovamente il login per firmare ' +
-        '(autenticazione SPID/CIE deve essere < 15 minuti).',
-      );
+          '(autenticazione SPID/CIE deve essere < 15 minuti).'
+      )
     }
 
     // 3. Carica FIR (con firme già presenti)
-    const fir = await this.firRepository.findById(params.firId);
+    const fir = await this.firRepository.findById(params.firId)
     if (!fir) {
-      throw DomainException.notFound('FIR', params.firId);
+      throw DomainException.notFound('FIR', params.firId)
     }
 
     // 4. Verifica isolamento tenant
     if (fir.getTenantId && fir.getTenantId() !== params.tenantId) {
-      throw DomainException.notFound('FIR', params.firId);
+      throw DomainException.notFound('FIR', params.firId)
     }
 
     // 5. Genera firma crittografica via provider configurato
     //    Il provider gestisce internamente la chiave privata (mai esposta)
-    const firDocument = fir.toSignableDocument();
-    const signatureData = await this.signatureService.createSignature(
-      firDocument,
-      params.userId,
-    );
+    const firDocument = fir.toSignableDocument()
+    const signatureData = await this.signatureService.createSignature(firDocument, params.userId)
 
     // 6. Crea il Value Object DigitalSignature
     const signature = DigitalSignature.create({
@@ -123,26 +118,26 @@ export class ApplySignatureUseCase {
       documentHash: signatureData.documentHash,
       publicKey: signatureData.publicKey,
       timestampToken: signatureData.timestampToken,
-    });
+    })
 
     // 7. Applica la firma all'aggregate (business rules: ordine, unicità)
-    fir.applySignature(signature, params.signerFiscalCode, params.spidLevel);
+    fir.applySignature(signature, params.signerFiscalCode, params.spidLevel)
 
     // 8. Persiste la firma
-    await this.firRepository.save(fir);
+    await this.firRepository.save(fir)
 
     // 9. Emette eventi dominio per audit
-    const events = fir.getDomainEvents();
+    const events = fir.getDomainEvents()
     for (const event of events) {
-      this.eventEmitter.emit(event.eventType, event);
+      this.eventEmitter.emit(event.eventType, event)
     }
-    fir.clearDomainEvents();
+    fir.clearDomainEvents()
 
     this.logger.info(
       `Firma ${params.role} applicata su FIR ${params.firId}. ` +
-      `Provider: ${signatureData.providerType}. Qualificata: ${signatureData.isQualified}. ` +
-      `Nuovo stato: ${fir.getStatus()}`,
-    );
+        `Provider: ${signatureData.providerType}. Qualificata: ${signatureData.isQualified}. ` +
+        `Nuovo stato: ${fir.getStatus()}`
+    )
 
     return {
       success: true,
@@ -156,6 +151,6 @@ export class ApplySignatureUseCase {
       },
       firStatus: fir.getStatus(),
       isCompleted: fir.isImmutable(),
-    };
+    }
   }
 }

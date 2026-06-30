@@ -1,5 +1,5 @@
-import { Injectable } from '@angular/core';
-import { MessageService } from 'primeng/api';
+import { Injectable } from '@angular/core'
+import { MessageService } from 'primeng/api'
 
 /**
  * Toast Service
@@ -32,7 +32,7 @@ export class ToastService {
       summary,
       detail,
       life,
-    });
+    })
   }
 
   /**
@@ -44,7 +44,7 @@ export class ToastService {
       summary,
       detail,
       life,
-    });
+    })
   }
 
   /**
@@ -56,7 +56,7 @@ export class ToastService {
       summary,
       detail,
       life,
-    });
+    })
   }
 
   /**
@@ -68,18 +68,18 @@ export class ToastService {
       summary,
       detail,
       life,
-    });
+    })
   }
 
   /**
    * Show custom toast with all options
    */
   show(options: {
-    severity: 'success' | 'error' | 'warn' | 'info';
-    summary: string;
-    detail: string;
-    life?: number;
-    sticky?: boolean;
+    severity: 'success' | 'error' | 'warn' | 'info'
+    summary: string
+    detail: string
+    life?: number
+    sticky?: boolean
   }): void {
     this.messageService.add({
       severity: options.severity,
@@ -87,20 +87,20 @@ export class ToastService {
       detail: options.detail,
       life: options.life || 5000,
       sticky: options.sticky || false,
-    });
+    })
   }
 
   /**
    * Clear all toasts
    */
   clear(): void {
-    this.messageService.clear();
+    this.messageService.clear()
   }
 
   /**
    * Clear specific toast by key
    */
   clearByKey(key: string): void {
-    this.messageService.clear(key);
+    this.messageService.clear(key)
   }
 }

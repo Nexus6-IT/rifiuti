@@ -46,28 +46,28 @@ describe('GiacenzeService', () => {
       [
         { cerCode: '150101', _min: { movementDate: new Date('2026-01-01') } },
         { cerCode: '170504', _min: { movementDate: new Date('2026-05-01') } },
-      ],
+      ]
     )
 
     const giacenze = await service.getGiacenze('tenant-1')
 
-    const cer15 = giacenze.find((g) => g.cerCode === '150101')!
+    const cer15 = giacenze.find(g => g.cerCode === '150101')!
     expect(cer15.giacenzaKg).toBe(70)
     expect(cer15.oldestCaricoDate).toEqual(new Date('2026-01-01'))
-    const cer17 = giacenze.find((g) => g.cerCode === '170504')!
+    const cer17 = giacenze.find(g => g.cerCode === '170504')!
     expect(cer17.giacenzaKg).toBe(0) // clamp: 10-25 → 0
   })
 
   it('alza alert DURATION quando il carico più vecchio supera i giorni massimi', async () => {
     mockGroupBy(
       [{ cerCode: '150101', type: 'CARICO', _sum: { quantity: 100 } }],
-      [{ cerCode: '150101', _min: { movementDate: new Date('2026-01-01') } }],
+      [{ cerCode: '150101', _min: { movementDate: new Date('2026-01-01') } }]
     )
 
     const alerts = await service.getDepositoTemporaneoAlerts(
       'tenant-1',
       { maxDurationDays: 90, maxQuantityKg: 1_000_000 },
-      new Date('2026-06-01'), // ~151 giorni dopo
+      new Date('2026-06-01') // ~151 giorni dopo
     )
 
     expect(alerts).toHaveLength(1)
@@ -78,13 +78,13 @@ describe('GiacenzeService', () => {
   it('alza alert QUANTITY quando la giacenza supera la soglia in kg', async () => {
     mockGroupBy(
       [{ cerCode: '150101', type: 'CARICO', _sum: { quantity: 50000 } }],
-      [{ cerCode: '150101', _min: { movementDate: new Date('2026-05-30') } }],
+      [{ cerCode: '150101', _min: { movementDate: new Date('2026-05-30') } }]
     )
 
     const alerts = await service.getDepositoTemporaneoAlerts(
       'tenant-1',
       { maxDurationDays: 90, maxQuantityKg: 30000 },
-      new Date('2026-06-01'),
+      new Date('2026-06-01')
     )
 
     expect(alerts).toHaveLength(1)
@@ -98,7 +98,7 @@ describe('GiacenzeService', () => {
         { cerCode: '150101', type: 'CARICO', _sum: { quantity: 100 } },
         { cerCode: '150101', type: 'SCARICO', _sum: { quantity: 100 } }, // giacenza 0
       ],
-      [{ cerCode: '150101', _min: { movementDate: new Date('2020-01-01') } }],
+      [{ cerCode: '150101', _min: { movementDate: new Date('2020-01-01') } }]
     )
 
     const alerts = await service.getDepositoTemporaneoAlerts('tenant-1')

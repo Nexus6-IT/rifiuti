@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
-import { PrismaService } from '../../infrastructure/database/prisma.service';
-import { TemplateService } from '../../infrastructure/email/template.service';
-import { EmailService } from '../../infrastructure/email/email.service';
-import { LoggerService } from '../../core/logger/logger.service';
+import { Injectable } from '@nestjs/common'
+import { Cron, CronExpression } from '@nestjs/schedule'
+import { PrismaService } from '../../infrastructure/database/prisma.service'
+import { TemplateService } from '../../infrastructure/email/template.service'
+import { EmailService } from '../../infrastructure/email/email.service'
+import { LoggerService } from '../../core/logger/logger.service'
 
 /**
  * Deadline Checker Service
@@ -16,19 +16,19 @@ import { LoggerService } from '../../core/logger/logger.service';
 @Injectable()
 export class DeadlineCheckerService {
   // MUD deadline: April 30th each year
-  private readonly MUD_DEADLINE_MONTH = 3; // April (0-indexed)
-  private readonly MUD_DEADLINE_DAY = 30;
+  private readonly MUD_DEADLINE_MONTH = 3 // April (0-indexed)
+  private readonly MUD_DEADLINE_DAY = 30
 
   // Notification intervals (days before deadline)
-  private readonly NOTIFICATION_INTERVALS = [30, 15, 7, 3, 1];
+  private readonly NOTIFICATION_INTERVALS = [30, 15, 7, 3, 1]
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly templateService: TemplateService,
     private readonly emailService: EmailService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext(DeadlineCheckerService.name);
+    this.logger.setContext(DeadlineCheckerService.name)
   }
 
   /**
@@ -37,30 +37,32 @@ export class DeadlineCheckerService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
   async checkMudDeadlines(): Promise<void> {
-    this.logger.info('Starting MUD deadline check');
+    this.logger.info('Starting MUD deadline check')
 
     try {
-      const today = new Date();
-      const currentYear = today.getFullYear();
-      const previousYear = currentYear - 1;
+      const today = new Date()
+      const currentYear = today.getFullYear()
+      const previousYear = currentYear - 1
 
       // Calculate this year's MUD deadline (April 30th)
-      const deadline = new Date(currentYear, this.MUD_DEADLINE_MONTH, this.MUD_DEADLINE_DAY);
-      const daysUntilDeadline = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const deadline = new Date(currentYear, this.MUD_DEADLINE_MONTH, this.MUD_DEADLINE_DAY)
+      const daysUntilDeadline = Math.ceil(
+        (deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      )
 
       // Skip if deadline has passed or too far in future
       if (daysUntilDeadline < 0 || daysUntilDeadline > 30) {
-        this.logger.debug(`MUD deadline is ${daysUntilDeadline} days away, skipping notifications`);
-        return;
+        this.logger.debug(`MUD deadline is ${daysUntilDeadline} days away, skipping notifications`)
+        return
       }
 
       // Check if we should send notifications today
       if (!this.NOTIFICATION_INTERVALS.includes(daysUntilDeadline)) {
-        this.logger.debug(`No notification scheduled for ${daysUntilDeadline} days before deadline`);
-        return;
+        this.logger.debug(`No notification scheduled for ${daysUntilDeadline} days before deadline`)
+        return
       }
 
-      this.logger.info(`Sending MUD deadline reminders: ${daysUntilDeadline} days remaining`);
+      this.logger.info(`Sending MUD deadline reminders: ${daysUntilDeadline} days remaining`)
 
       // Find all active tenants with MUD reports for previous year
       const tenants = await this.prisma.tenant.findMany({
@@ -83,16 +85,18 @@ export class DeadlineCheckerService {
             },
           },
         },
-      });
+      })
 
-      let notificationsSent = 0;
+      let notificationsSent = 0
 
       for (const tenant of tenants) {
         // Get or create MUD report for previous year
-        let mudReport = tenant.mudReports[0];
+        let mudReport = tenant.mudReports[0]
 
         if (!mudReport) {
-          this.logger.info(`Creating draft MUD report for tenant ${tenant.id}, year ${previousYear}`);
+          this.logger.info(
+            `Creating draft MUD report for tenant ${tenant.id}, year ${previousYear}`
+          )
           mudReport = await this.prisma.mUDReport.create({
             data: {
               tenantId: tenant.id,
@@ -100,14 +104,14 @@ export class DeadlineCheckerService {
               status: 'DRAFT',
               reportData: {},
             },
-          });
+          })
         }
 
         // Determine completion status
-        const isComplete = mudReport.status === 'SUBMITTED';
-        const reportData = mudReport.reportData as any;
-        const completionPercentage = this.calculateMudCompletionPercentage(reportData);
-        const missingData = this.getMudMissingData(reportData);
+        const isComplete = mudReport.status === 'SUBMITTED'
+        const reportData = mudReport.reportData as any
+        const completionPercentage = this.calculateMudCompletionPercentage(reportData)
+        const missingData = this.getMudMissingData(reportData)
 
         // Send notifications to all admin/operator users
         for (const user of tenant.users) {
@@ -127,13 +131,13 @@ export class DeadlineCheckerService {
               completionPercentage,
               missingData,
               mudUrl: `${process.env.PUBLIC_URL || 'https://wasteflow.app'}/mud/${mudReport.id}`,
-            });
+            })
 
             await this.emailService.sendEmail({
               to: user.email,
               subject: `[WasteFlow] Promemoria Scadenza MUD ${previousYear}`,
               html,
-            });
+            })
 
             // Create in-app notification
             await this.prisma.notification.create({
@@ -142,25 +146,25 @@ export class DeadlineCheckerService {
                 userId: user.id,
                 type: 'MUD_DEADLINE_APPROACHING',
                 title: `Promemoria Scadenza MUD ${previousYear}`,
-                message: `Mancano ${daysUntilDeadline} giorni alla scadenza del MUD. ${isComplete ? 'Il MUD è pronto per l\'invio.' : `Completamento: ${completionPercentage}%`}`,
+                message: `Mancano ${daysUntilDeadline} giorni alla scadenza del MUD. ${isComplete ? "Il MUD è pronto per l'invio." : `Completamento: ${completionPercentage}%`}`,
                 severity: daysUntilDeadline <= 7 ? 'WARNING' : 'INFO',
                 actionUrl: `/mud/${mudReport.id}`,
                 isRead: false,
               },
-            });
+            })
 
-            notificationsSent++;
-            this.logger.debug(`Sent MUD reminder to ${user.email}`);
+            notificationsSent++
+            this.logger.debug(`Sent MUD reminder to ${user.email}`)
           } catch (error) {
-            this.logger.error(`Failed to send MUD reminder to ${user.email}`, error);
+            this.logger.error(`Failed to send MUD reminder to ${user.email}`, error)
           }
         }
       }
 
-      this.logger.info(`MUD deadline check completed: ${notificationsSent} notifications sent`);
+      this.logger.info(`MUD deadline check completed: ${notificationsSent} notifications sent`)
     } catch (error) {
-      this.logger.error('Failed to check MUD deadlines', error);
-      throw error;
+      this.logger.error('Failed to check MUD deadlines', error)
+      throw error
     }
   }
 
@@ -170,7 +174,7 @@ export class DeadlineCheckerService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async checkVidimazioneDeadlines(): Promise<void> {
-    this.logger.info('Starting vidimazione deadline check');
+    this.logger.info('Starting vidimazione deadline check')
 
     try {
       // TODO: Implement when Register models are added
@@ -178,9 +182,9 @@ export class DeadlineCheckerService {
       // - Check deadline (typically 60 days from first use)
       // - Send reminders using templateService.renderVidimazioneReminder()
 
-      this.logger.debug('Vidimazione deadline check not yet implemented (awaiting Register schema)');
+      this.logger.debug('Vidimazione deadline check not yet implemented (awaiting Register schema)')
     } catch (error) {
-      this.logger.error('Failed to check vidimazione deadlines', error);
+      this.logger.error('Failed to check vidimazione deadlines', error)
     }
   }
 
@@ -190,7 +194,7 @@ export class DeadlineCheckerService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_10AM)
   async checkAuthorizationExpirations(): Promise<void> {
-    this.logger.info('Starting authorization expiration check');
+    this.logger.info('Starting authorization expiration check')
 
     try {
       // TODO: Implement when Authorization models are added
@@ -199,9 +203,11 @@ export class DeadlineCheckerService {
       // - Send reminders using templateService.renderAuthorizationExpiration()
       // - Mark expired authorizations
 
-      this.logger.debug('Authorization expiration check not yet implemented (awaiting Authorization schema)');
+      this.logger.debug(
+        'Authorization expiration check not yet implemented (awaiting Authorization schema)'
+      )
     } catch (error) {
-      this.logger.error('Failed to check authorization expirations', error);
+      this.logger.error('Failed to check authorization expirations', error)
     }
   }
 
@@ -210,10 +216,10 @@ export class DeadlineCheckerService {
    */
   @Cron(CronExpression.EVERY_WEEK)
   async cleanupOldNotifications(): Promise<void> {
-    this.logger.info('Starting notification cleanup');
+    this.logger.info('Starting notification cleanup')
 
     try {
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
       const result = await this.prisma.notification.deleteMany({
         where: {
@@ -222,11 +228,11 @@ export class DeadlineCheckerService {
           },
           isRead: true,
         },
-      });
+      })
 
-      this.logger.info(`Cleaned up ${result.count} old notifications`);
+      this.logger.info(`Cleaned up ${result.count} old notifications`)
     } catch (error) {
-      this.logger.error('Failed to cleanup old notifications', error);
+      this.logger.error('Failed to cleanup old notifications', error)
     }
   }
 
@@ -235,7 +241,7 @@ export class DeadlineCheckerService {
    */
   private calculateMudCompletionPercentage(reportData: any): number {
     if (!reportData || typeof reportData !== 'object') {
-      return 0;
+      return 0
     }
 
     const requiredFields = [
@@ -245,17 +251,17 @@ export class DeadlineCheckerService {
       'wasteReceived',
       'wasteTransported',
       'certificates',
-    ];
+    ]
 
-    let completedFields = 0;
+    let completedFields = 0
 
     for (const field of requiredFields) {
       if (reportData[field] && Object.keys(reportData[field]).length > 0) {
-        completedFields++;
+        completedFields++
       }
     }
 
-    return Math.round((completedFields / requiredFields.length) * 100);
+    return Math.round((completedFields / requiredFields.length) * 100)
   }
 
   /**
@@ -270,30 +276,33 @@ export class DeadlineCheckerService {
         'Rifiuti ricevuti',
         'Rifiuti trasportati',
         'Certificati analitici',
-      ];
+      ]
     }
 
-    const missing: string[] = [];
+    const missing: string[] = []
 
     if (!reportData.companyInfo || Object.keys(reportData.companyInfo).length === 0) {
-      missing.push('Dati azienda');
+      missing.push('Dati azienda')
     }
-    if (!reportData.legalRepresentative || Object.keys(reportData.legalRepresentative).length === 0) {
-      missing.push('Rappresentante legale');
+    if (
+      !reportData.legalRepresentative ||
+      Object.keys(reportData.legalRepresentative).length === 0
+    ) {
+      missing.push('Rappresentante legale')
     }
     if (!reportData.wasteProduced || Object.keys(reportData.wasteProduced).length === 0) {
-      missing.push('Rifiuti prodotti');
+      missing.push('Rifiuti prodotti')
     }
     if (!reportData.wasteReceived || Object.keys(reportData.wasteReceived).length === 0) {
-      missing.push('Rifiuti ricevuti');
+      missing.push('Rifiuti ricevuti')
     }
     if (!reportData.wasteTransported || Object.keys(reportData.wasteTransported).length === 0) {
-      missing.push('Rifiuti trasportati');
+      missing.push('Rifiuti trasportati')
     }
     if (!reportData.certificates || Object.keys(reportData.certificates).length === 0) {
-      missing.push('Certificati analitici');
+      missing.push('Certificati analitici')
     }
 
-    return missing;
+    return missing
   }
 }

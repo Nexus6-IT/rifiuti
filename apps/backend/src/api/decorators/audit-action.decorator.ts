@@ -1,4 +1,4 @@
-import { SetMetadata } from '@nestjs/common';
+import { SetMetadata } from '@nestjs/common'
 
 /**
  * @AuditAction Decorator
@@ -9,6 +9,5 @@ import { SetMetadata } from '@nestjs/common';
  * @Delete(':id')
  * async deleteFIR() { ... }
  */
-export const AUDIT_ACTION_KEY = 'auditAction';
-export const AuditAction = (action: string) =>
-  SetMetadata(AUDIT_ACTION_KEY, action);
+export const AUDIT_ACTION_KEY = 'auditAction'
+export const AuditAction = (action: string) => SetMetadata(AUDIT_ACTION_KEY, action)

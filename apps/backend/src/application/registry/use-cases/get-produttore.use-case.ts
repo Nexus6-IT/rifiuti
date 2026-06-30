@@ -19,7 +19,7 @@ export interface GetProduttoreCommand {
 export class GetProduttoreUseCase {
   constructor(
     @Inject(PRODUTTORE_REPOSITORY)
-    private readonly produttoreRepository: ProduttoreRepository,
+    private readonly produttoreRepository: ProduttoreRepository
   ) {}
 
   async execute(command: GetProduttoreCommand): Promise<Result<Produttore>> {

@@ -6,8 +6,11 @@
 import { Injectable } from '@nestjs/common'
 import { FIRStatus as PrismaFIRStatus } from '@prisma/client'
 import { FIR, FIRStato } from '../../domain/fir/aggregates/fir.aggregate'
-import { IFIRRepository, FIRSearchFilters } from '../../domain/fir/repositories/fir-repository.interface'
-import { Quantita, UnitaMisura } from '../../domain/fir/value-objects/quantita'
+import {
+  IFIRRepository,
+  FIRSearchFilters,
+} from '../../domain/fir/repositories/fir-repository.interface'
+import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { PrismaService } from './prisma.service'
 
 @Injectable()
@@ -121,7 +124,7 @@ export class FIRPrismaRepository implements IFIRRepository {
 
   async findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]> {
     const where: any = {
-      status: this.statoToDb(stato)
+      status: this.statoToDb(stato),
     }
 
     if (tenantId) {
@@ -188,7 +191,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       where: { id },
       data: {
         status: PrismaFIRStatus.CANCELLED,
-        cancelledAt: new Date()
+        cancelledAt: new Date(),
       },
     })
   }
@@ -210,7 +213,7 @@ export class FIRPrismaRepository implements IFIRRepository {
         firNumber: { not: null },
         createdAt: {
           gte: new Date(anno, 0, 1),
-          lt:  new Date(anno + 1, 0, 1),
+          lt: new Date(anno + 1, 0, 1),
         },
       },
       orderBy: { firNumber: 'desc' },
@@ -274,7 +277,7 @@ export class FIRPrismaRepository implements IFIRRepository {
         record.producerName,
         record.producerPartitaIva,
         record.producerAddress,
-        record.producerContact,
+        record.producerContact
       ),
       trasportatore: this.partyFromRecord(
         record.carrierId,
@@ -282,14 +285,14 @@ export class FIRPrismaRepository implements IFIRRepository {
         record.carrierPartitaIva,
         undefined,
         record.carrierContact,
-        record.carrierVehiclePlate,
+        record.carrierVehiclePlate
       ),
       destinatario: this.partyFromRecord(
         record.receiverId,
         record.receiverName,
         record.receiverPartitaIva,
         record.receiverAddress,
-        record.receiverContact,
+        record.receiverContact
       ),
       trasportatoriAggiuntivi: (record.transportersAggiuntivi ?? []).map((t: any) => ({
         ordine: t.ordine,
@@ -329,7 +332,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     partitaIva?: string | null,
     indirizzo?: string | null,
     contatto?: string | null,
-    targaVeicolo?: string | null,
+    targaVeicolo?: string | null
   ) {
     if (!ragioneSociale && !partitaIva && !registroId) return undefined
     return {

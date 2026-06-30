@@ -1,15 +1,15 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { DropdownModule } from 'primeng/dropdown';
-import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { ToastService } from '../../core/services/toast.service';
-import { Anomaly, AnomalySeverity, AnomalyService, AnomalyType } from './anomaly.service';
+import { Component, OnInit, computed, inject, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { ButtonModule } from 'primeng/button'
+import { DropdownModule } from 'primeng/dropdown'
+import { TableModule } from 'primeng/table'
+import { TagModule } from 'primeng/tag'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { ToastService } from '../../core/services/toast.service'
+import { Anomaly, AnomalySeverity, AnomalyService, AnomalyType } from './anomaly.service'
 
-type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined;
+type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined
 
 /**
  * Pagina Anomalie: rilevamento automatico di incongruenze su FIR e movimenti
@@ -67,7 +67,11 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined;
       </div>
 
       <!-- Filtri -->
-      <section class="surface-card mb-4" *ngIf="!loading() && !error()" aria-label="Filtri anomalie">
+      <section
+        class="surface-card mb-4"
+        *ngIf="!loading() && !error()"
+        aria-label="Filtri anomalie"
+      >
         <div class="grid formgrid" style="align-items: end;">
           <div class="field col-12 md:col-4">
             <label for="anomaly-severity" class="block mb-2">Gravità</label>
@@ -108,24 +112,42 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined;
       <!-- Loading -->
       <section *ngIf="loading()" class="surface-card">
         <div class="flex justify-content-center p-5">
-          <p-progressSpinner styleClass="w-4rem h-4rem" strokeWidth="4" ariaLabel="Caricamento anomalie"></p-progressSpinner>
+          <p-progressSpinner
+            styleClass="w-4rem h-4rem"
+            strokeWidth="4"
+            ariaLabel="Caricamento anomalie"
+          ></p-progressSpinner>
         </div>
       </section>
 
       <!-- Error -->
       <section *ngIf="error() && !loading()" class="surface-card">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
+          <i
+            class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger"
+            aria-hidden="true"
+          ></i>
           <span class="empty-state__title">Impossibile caricare le anomalie</span>
           <p>Si è verificato un errore. Riprova.</p>
-          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="load()"></p-button>
+          <p-button
+            label="Riprova"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            (onClick)="load()"
+          ></p-button>
         </div>
       </section>
 
       <!-- Empty -->
-      <section *ngIf="!loading() && !error() && loaded() && filtered().length === 0" class="surface-card">
+      <section
+        *ngIf="!loading() && !error() && loaded() && filtered().length === 0"
+        class="surface-card"
+      >
         <div class="empty-state">
-          <i class="pi pi-check-circle empty-state__icon empty-state__icon--success" aria-hidden="true"></i>
+          <i
+            class="pi pi-check-circle empty-state__icon empty-state__icon--success"
+            aria-hidden="true"
+          ></i>
           <span class="empty-state__title">Nessuna anomalia rilevata</span>
           <p>Nessuna anomalia per i criteri selezionati.</p>
         </div>
@@ -172,49 +194,71 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined;
   `,
   styles: [
     `
-      .text-tertiary { color: var(--text-tertiary); }
-      .empty-state__icon--danger { color: var(--color-danger); }
-      .empty-state__icon--success { color: var(--color-success); }
-      .stat-card--danger { border-color: var(--color-danger); }
-      .stat-card--danger .stat-card__value { color: var(--color-danger); }
-      .stat-card--warning { border-color: var(--color-warning); }
-      .stat-card--warning .stat-card__value { color: var(--color-warning); }
-      .stat-card--info { border-color: var(--color-info); }
-      .stat-card--info .stat-card__value { color: var(--color-info); }
-      .mb-4 { margin-bottom: var(--spacing-xl); }
-      .mb-2 { margin-bottom: var(--spacing-sm); }
+      .text-tertiary {
+        color: var(--text-tertiary);
+      }
+      .empty-state__icon--danger {
+        color: var(--color-danger);
+      }
+      .empty-state__icon--success {
+        color: var(--color-success);
+      }
+      .stat-card--danger {
+        border-color: var(--color-danger);
+      }
+      .stat-card--danger .stat-card__value {
+        color: var(--color-danger);
+      }
+      .stat-card--warning {
+        border-color: var(--color-warning);
+      }
+      .stat-card--warning .stat-card__value {
+        color: var(--color-warning);
+      }
+      .stat-card--info {
+        border-color: var(--color-info);
+      }
+      .stat-card--info .stat-card__value {
+        color: var(--color-info);
+      }
+      .mb-4 {
+        margin-bottom: var(--spacing-xl);
+      }
+      .mb-2 {
+        margin-bottom: var(--spacing-sm);
+      }
     `,
   ],
 })
 export class AnomalyComponent implements OnInit {
-  private readonly anomalyService = inject(AnomalyService);
-  private readonly toast = inject(ToastService);
+  private readonly anomalyService = inject(AnomalyService)
+  private readonly toast = inject(ToastService)
 
-  readonly anomalies = signal<Anomaly[]>([]);
-  readonly loading = signal(false);
-  readonly loaded = signal(false);
-  readonly error = signal(false);
+  readonly anomalies = signal<Anomaly[]>([])
+  readonly loading = signal(false)
+  readonly loaded = signal(false)
+  readonly error = signal(false)
 
-  selectedSeverity: AnomalySeverity | null = null;
-  selectedType: AnomalyType | null = null;
+  selectedSeverity: AnomalySeverity | null = null
+  selectedType: AnomalyType | null = null
 
   // Trigger per ricalcolare il computed sui filtri (ngModel non è signal-based).
-  private readonly filterTick = signal(0);
+  private readonly filterTick = signal(0)
 
   readonly filtered = computed<Anomaly[]>(() => {
-    this.filterTick();
+    this.filterTick()
     return this.anomalies().filter(
-      (a) =>
+      a =>
         (!this.selectedSeverity || a.severity === this.selectedSeverity) &&
-        (!this.selectedType || a.type === this.selectedType),
-    );
-  });
+        (!this.selectedType || a.type === this.selectedType)
+    )
+  })
 
   readonly severityOptions = [
     { label: 'Alta', value: 'HIGH' as AnomalySeverity },
     { label: 'Media', value: 'MEDIUM' as AnomalySeverity },
     { label: 'Bassa', value: 'LOW' as AnomalySeverity },
-  ];
+  ]
 
   readonly typeOptions = [
     { label: 'CER non in catalogo', value: 'INVALID_CER' as AnomalyType },
@@ -222,56 +266,56 @@ export class AnomalyComponent implements OnInit {
     { label: 'Quantità eccessiva', value: 'EXCESSIVE_QUANTITY' as AnomalyType },
     { label: 'Descrizione mancante', value: 'MISSING_DESCRIPTION' as AnomalyType },
     { label: 'Giacenza impossibile', value: 'NEGATIVE_STOCK' as AnomalyType },
-  ];
+  ]
 
   ngOnInit(): void {
-    this.load();
+    this.load()
   }
 
   load(): void {
-    this.loading.set(true);
-    this.error.set(false);
+    this.loading.set(true)
+    this.error.set(false)
     this.anomalyService.detect().subscribe({
-      next: (data) => {
-        this.anomalies.set(data || []);
-        this.loaded.set(true);
-        this.loading.set(false);
+      next: data => {
+        this.anomalies.set(data || [])
+        this.loaded.set(true)
+        this.loading.set(false)
       },
       error: () => {
-        this.loading.set(false);
-        this.error.set(true);
-        this.toast.error('Errore nel caricamento delle anomalie');
+        this.loading.set(false)
+        this.error.set(true)
+        this.toast.error('Errore nel caricamento delle anomalie')
       },
-    });
+    })
   }
 
   applyFilters(): void {
-    this.filterTick.update((v) => v + 1);
+    this.filterTick.update(v => v + 1)
   }
 
   /** Conta le anomalie (su tutto il set, non filtrato) per livello di gravità. */
   countBySeverity(severity: AnomalySeverity): number {
-    return this.anomalies().filter((a) => a.severity === severity).length;
+    return this.anomalies().filter(a => a.severity === severity).length
   }
 
   severityTag(severity: AnomalySeverity): TagSeverity {
     switch (severity) {
       case 'HIGH':
-        return 'danger';
+        return 'danger'
       case 'MEDIUM':
-        return 'warning';
+        return 'warning'
       case 'LOW':
-        return 'info';
+        return 'info'
       default:
-        return undefined;
+        return undefined
     }
   }
 
   severityLabel(severity: AnomalySeverity): string {
-    return this.severityOptions.find((o) => o.value === severity)?.label ?? severity;
+    return this.severityOptions.find(o => o.value === severity)?.label ?? severity
   }
 
   typeLabel(type: AnomalyType): string {
-    return this.typeOptions.find((o) => o.value === type)?.label ?? type;
+    return this.typeOptions.find(o => o.value === type)?.label ?? type
   }
 }

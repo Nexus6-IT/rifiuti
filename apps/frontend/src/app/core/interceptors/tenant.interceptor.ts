@@ -1,7 +1,7 @@
-import { HttpInterceptorFn } from '@angular/common/http';
-import { inject } from '@angular/core';
-import { AdminTenantContextService } from '../services/admin-tenant-context.service';
-import { environment } from '../../../environments/environment';
+import { HttpInterceptorFn } from '@angular/common/http'
+import { inject } from '@angular/core'
+import { AdminTenantContextService } from '../services/admin-tenant-context.service'
+import { environment } from '../../../environments/environment'
 
 /**
  * Tenant Interceptor
@@ -18,24 +18,24 @@ import { environment } from '../../../environments/environment';
  * Deve essere registrato DOPO l'auth interceptor in `app.config.ts`.
  */
 export const tenantInterceptor: HttpInterceptorFn = (req, next) => {
-  const tenantContext = inject(AdminTenantContextService);
-  const tenantId = tenantContext.selectedTenantId();
+  const tenantContext = inject(AdminTenantContextService)
+  const tenantId = tenantContext.selectedTenantId()
 
   // Nessun tenant selezionato (utente standard o super admin in contesto globale).
   if (!tenantId) {
-    return next(req);
+    return next(req)
   }
 
   // Aggiungi l'header solo alle richieste verso il backend dell'applicazione.
   if (!req.url.startsWith(environment.apiUrl)) {
-    return next(req);
+    return next(req)
   }
 
   const tenantRequest = req.clone({
     setHeaders: {
       'X-Tenant-ID': tenantId,
     },
-  });
+  })
 
-  return next(tenantRequest);
-};
+  return next(tenantRequest)
+}

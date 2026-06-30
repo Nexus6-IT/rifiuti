@@ -17,6 +17,6 @@ export class RequestTemporaryPermissionCommand {
     public readonly permissions: string[],
     public readonly startTime: Date,
     public readonly endTime: Date,
-    public readonly justification: string,
+    public readonly justification: string
   ) {}
 }

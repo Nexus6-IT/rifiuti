@@ -15,7 +15,7 @@ export class ListMovimentiQuery {
     public readonly pagination?: {
       page: number
       limit: number
-    },
+    }
   ) {}
 }
 

@@ -1,7 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { PrismaService } from '../../src/infrastructure/database/prisma.service';
-import * as request from 'supertest';
+import { Test, TestingModule } from '@nestjs/testing'
+import { INestApplication, ValidationPipe } from '@nestjs/common'
+import { PrismaService } from '../../src/infrastructure/database/prisma.service'
+import * as request from 'supertest'
 
 /**
  * Integration Test Setup
@@ -17,17 +17,17 @@ import * as request from 'supertest';
  */
 
 export class IntegrationTestSetup {
-  private app: INestApplication;
-  private prisma: PrismaService;
-  private moduleRef: TestingModule;
+  private app: INestApplication
+  private prisma: PrismaService
+  private moduleRef: TestingModule
 
   /**
    * Initialize test application
    */
   async setup(moduleMetadata: any): Promise<void> {
-    this.moduleRef = await Test.createTestingModule(moduleMetadata).compile();
+    this.moduleRef = await Test.createTestingModule(moduleMetadata).compile()
 
-    this.app = this.moduleRef.createNestApplication();
+    this.app = this.moduleRef.createNestApplication()
 
     // Apply same pipes as production
     this.app.useGlobalPipes(
@@ -35,33 +35,33 @@ export class IntegrationTestSetup {
         whitelist: true,
         forbidNonWhitelisted: true,
         transform: true,
-      }),
-    );
+      })
+    )
 
-    await this.app.init();
-    this.prisma = this.app.get(PrismaService);
+    await this.app.init()
+    this.prisma = this.app.get(PrismaService)
   }
 
   /**
    * Clean up after tests
    */
   async teardown(): Promise<void> {
-    await this.cleanDatabase();
-    await this.app.close();
+    await this.cleanDatabase()
+    await this.app.close()
   }
 
   /**
    * Get app instance for supertest
    */
   getApp(): INestApplication {
-    return this.app;
+    return this.app
   }
 
   /**
    * Get HTTP server for supertest
    */
   getHttpServer(): any {
-    return this.app.getHttpServer();
+    return this.app.getHttpServer()
   }
 
   /**
@@ -69,16 +69,16 @@ export class IntegrationTestSetup {
    */
   async cleanDatabase(): Promise<void> {
     // Delete in order to respect foreign keys
-    await this.prisma.auditLog.deleteMany();
-    await this.prisma.temporaryPermissionGrant.deleteMany();
-    await this.prisma.resourceOwnership.deleteMany();
-    await this.prisma.fIR.deleteMany();
-    await this.prisma.notification.deleteMany();
-    await this.prisma.userPermission.deleteMany();
-    await this.prisma.user.deleteMany();
-    await this.prisma.role.deleteMany();
-    await this.prisma.facility.deleteMany();
-    await this.prisma.tenant.deleteMany();
+    await this.prisma.auditLog.deleteMany()
+    await this.prisma.temporaryPermissionGrant.deleteMany()
+    await this.prisma.resourceOwnership.deleteMany()
+    await this.prisma.fIR.deleteMany()
+    await this.prisma.notification.deleteMany()
+    await this.prisma.userPermission.deleteMany()
+    await this.prisma.user.deleteMany()
+    await this.prisma.role.deleteMany()
+    await this.prisma.facility.deleteMany()
+    await this.prisma.tenant.deleteMany()
   }
 
   /**
@@ -93,7 +93,7 @@ export class IntegrationTestSetup {
         subdomain: 'test-municipality',
         isActive: true,
       },
-    });
+    })
 
     // Create facilities
     const producerFacility = await this.prisma.facility.create({
@@ -105,7 +105,7 @@ export class IntegrationTestSetup {
         address: 'Via Test 1, Milano',
         isActive: true,
       },
-    });
+    })
 
     const transporterFacility = await this.prisma.facility.create({
       data: {
@@ -116,7 +116,7 @@ export class IntegrationTestSetup {
         address: 'Via Test 2, Milano',
         isActive: true,
       },
-    });
+    })
 
     // Create roles
     const adminRole = await this.prisma.role.create({
@@ -128,7 +128,7 @@ export class IntegrationTestSetup {
         permissions: ['*:*:*'],
         isSystem: true,
       },
-    });
+    })
 
     const operatorRole = await this.prisma.role.create({
       data: {
@@ -139,7 +139,7 @@ export class IntegrationTestSetup {
         permissions: ['fir:read:facility', 'fir:create:facility'],
         isSystem: false,
       },
-    });
+    })
 
     const driverRole = await this.prisma.role.create({
       data: {
@@ -150,7 +150,7 @@ export class IntegrationTestSetup {
         permissions: ['fir:read:own', 'fir:update:own'],
         isSystem: false,
       },
-    });
+    })
 
     // Create users
     const adminUser = await this.prisma.user.create({
@@ -164,7 +164,7 @@ export class IntegrationTestSetup {
         isActive: true,
         emailVerified: true,
       },
-    });
+    })
 
     const operatorUser = await this.prisma.user.create({
       data: {
@@ -177,7 +177,7 @@ export class IntegrationTestSetup {
         isActive: true,
         emailVerified: true,
       },
-    });
+    })
 
     const driverUser = await this.prisma.user.create({
       data: {
@@ -190,7 +190,7 @@ export class IntegrationTestSetup {
         isActive: true,
         emailVerified: true,
       },
-    });
+    })
 
     // Assign roles
     await this.prisma.userPermission.create({
@@ -200,7 +200,7 @@ export class IntegrationTestSetup {
         tenantId: tenant.id,
         scope: 'all',
       },
-    });
+    })
 
     await this.prisma.userPermission.create({
       data: {
@@ -210,7 +210,7 @@ export class IntegrationTestSetup {
         scope: 'facility',
         facilityId: producerFacility.id,
       },
-    });
+    })
 
     await this.prisma.userPermission.create({
       data: {
@@ -219,7 +219,7 @@ export class IntegrationTestSetup {
         tenantId: tenant.id,
         scope: 'own',
       },
-    });
+    })
 
     return {
       tenant,
@@ -237,7 +237,7 @@ export class IntegrationTestSetup {
         operator: operatorUser,
         driver: driverUser,
       },
-    };
+    }
   }
 
   /**
@@ -252,10 +252,10 @@ export class IntegrationTestSetup {
       permissions,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour
-    };
+    }
 
     // Return mock token for testing
-    return Buffer.from(JSON.stringify(payload)).toString('base64');
+    return Buffer.from(JSON.stringify(payload)).toString('base64')
   }
 
   /**
@@ -266,14 +266,14 @@ export class IntegrationTestSetup {
     path: string,
     userId: string,
     tenantId: string,
-    permissions: string[],
+    permissions: string[]
   ): request.Test {
-    const token = this.generateAuthToken(userId, tenantId, permissions);
-    const req = request(this.getHttpServer());
+    const token = this.generateAuthToken(userId, tenantId, permissions)
+    const req = request(this.getHttpServer())
 
     return req[method](path)
       .set('Authorization', `Bearer ${token}`)
-      .set('Content-Type', 'application/json');
+      .set('Content-Type', 'application/json')
   }
 }
 
@@ -285,45 +285,41 @@ export class TestUtilities {
    * Wait for async operation
    */
   static async wait(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise(resolve => setTimeout(resolve, ms))
   }
 
   /**
    * Generate random test ID
    */
   static generateTestId(prefix: string): string {
-    return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(7)}`
   }
 
   /**
    * Expect pagination response structure
    */
   static expectPaginatedResponse(response: any): void {
-    expect(response.body).toHaveProperty('success', true);
-    expect(response.body).toHaveProperty('data');
-    expect(response.body).toHaveProperty('pagination');
-    expect(response.body.pagination).toHaveProperty('hasMore');
-    expect(Array.isArray(response.body.data)).toBe(true);
+    expect(response.body).toHaveProperty('success', true)
+    expect(response.body).toHaveProperty('data')
+    expect(response.body).toHaveProperty('pagination')
+    expect(response.body.pagination).toHaveProperty('hasMore')
+    expect(Array.isArray(response.body.data)).toBe(true)
   }
 
   /**
    * Expect error response structure
    */
-  static expectErrorResponse(
-    response: any,
-    statusCode: number,
-    errorType?: string,
-  ): void {
-    expect(response.status).toBe(statusCode);
-    expect(response.body).toHaveProperty('success', false);
-    expect(response.body).toHaveProperty('error');
-    expect(response.body.error).toHaveProperty('statusCode', statusCode);
-    expect(response.body.error).toHaveProperty('message');
-    expect(response.body.error).toHaveProperty('timestamp');
-    expect(response.body.error).toHaveProperty('correlationId');
+  static expectErrorResponse(response: any, statusCode: number, errorType?: string): void {
+    expect(response.status).toBe(statusCode)
+    expect(response.body).toHaveProperty('success', false)
+    expect(response.body).toHaveProperty('error')
+    expect(response.body.error).toHaveProperty('statusCode', statusCode)
+    expect(response.body.error).toHaveProperty('message')
+    expect(response.body.error).toHaveProperty('timestamp')
+    expect(response.body.error).toHaveProperty('correlationId')
 
     if (errorType) {
-      expect(response.body.error).toHaveProperty('error', errorType);
+      expect(response.body.error).toHaveProperty('error', errorType)
     }
   }
 
@@ -331,9 +327,9 @@ export class TestUtilities {
    * Expect success response structure
    */
   static expectSuccessResponse(response: any): void {
-    expect(response.status).toBeLessThan(300);
-    expect(response.body).toHaveProperty('success', true);
-    expect(response.body).toHaveProperty('data');
+    expect(response.status).toBeLessThan(300)
+    expect(response.body).toHaveProperty('success', true)
+    expect(response.body).toHaveProperty('data')
   }
 }
 
@@ -348,7 +344,7 @@ export class MockExternalServices {
     return {
       syncFir: jest.fn().mockResolvedValue({ success: true, rentriId: 'RENTRI-123' }),
       getFirStatus: jest.fn().mockResolvedValue({ status: 'accepted' }),
-    };
+    }
   }
 
   /**
@@ -358,7 +354,7 @@ export class MockExternalServices {
     return {
       sendEmail: jest.fn().mockResolvedValue({ messageId: 'email-123' }),
       sendNotification: jest.fn().mockResolvedValue({ messageId: 'email-124' }),
-    };
+    }
   }
 
   /**
@@ -369,47 +365,47 @@ export class MockExternalServices {
       uploadFile: jest.fn().mockResolvedValue({ url: 'https://s3.amazonaws.com/file-123' }),
       deleteFile: jest.fn().mockResolvedValue({ success: true }),
       getSignedUrl: jest.fn().mockReturnValue('https://s3.amazonaws.com/file-123?signed=true'),
-    };
+    }
   }
 
   /**
    * Mock Redis cache
    */
   static mockRedisCache() {
-    const cache = new Map();
+    const cache = new Map()
     return {
       get: jest.fn((key: string) => Promise.resolve(cache.get(key))),
       set: jest.fn((key: string, value: any) => {
-        cache.set(key, value);
-        return Promise.resolve();
+        cache.set(key, value)
+        return Promise.resolve()
       }),
       del: jest.fn((key: string) => {
-        cache.delete(key);
-        return Promise.resolve();
+        cache.delete(key)
+        return Promise.resolve()
       }),
       clear: jest.fn(() => {
-        cache.clear();
-        return Promise.resolve();
+        cache.clear()
+        return Promise.resolve()
       }),
-    };
+    }
   }
 }
 
 // Test data types
 interface TestData {
-  tenant: any;
+  tenant: any
   facilities: {
-    producer: any;
-    transporter: any;
-  };
+    producer: any
+    transporter: any
+  }
   roles: {
-    admin: any;
-    operator: any;
-    driver: any;
-  };
+    admin: any
+    operator: any
+    driver: any
+  }
   users: {
-    admin: any;
-    operator: any;
-    driver: any;
-  };
+    admin: any
+    operator: any
+    driver: any
+  }
 }

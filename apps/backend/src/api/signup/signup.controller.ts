@@ -6,17 +6,11 @@
  * Rate limit: overrideato a 5 req/min per indirizzo IP (anti-abuso)
  */
 
-import {
-  Controller,
-  Post,
-  Body,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
-import { Public } from '../../auth/decorators/public.decorator';
-import { SignupService } from '../../application/signup/signup.service';
-import { SignupDto } from './dto/signup.dto';
+import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common'
+import { Throttle } from '@nestjs/throttler'
+import { Public } from '../../auth/decorators/public.decorator'
+import { SignupService } from '../../application/signup/signup.service'
+import { SignupDto } from './dto/signup.dto'
 
 @Controller('auth')
 export class SignupController {
@@ -37,6 +31,6 @@ export class SignupController {
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ medium: { ttl: 60000, limit: 5 } })
   async signup(@Body() dto: SignupDto) {
-    return this.signupService.signup(dto);
+    return this.signupService.signup(dto)
   }
 }

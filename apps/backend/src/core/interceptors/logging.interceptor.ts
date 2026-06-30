@@ -1,14 +1,9 @@
-import {
-  Injectable,
-  NestInterceptor,
-  ExecutionContext,
-  CallHandler,
-} from '@nestjs/common';
-import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
-import { Request, Response } from 'express';
-import { LoggerService } from '../logger/logger.service';
-import { MetricsService } from '../metrics/metrics.service';
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common'
+import { Observable } from 'rxjs'
+import { tap } from 'rxjs/operators'
+import { Request, Response } from 'express'
+import { LoggerService } from '../logger/logger.service'
+import { MetricsService } from '../metrics/metrics.service'
 
 /**
  * Logging Interceptor
@@ -37,21 +32,21 @@ import { MetricsService } from '../metrics/metrics.service';
 export class LoggingInterceptor implements NestInterceptor {
   constructor(
     private readonly logger: LoggerService,
-    private readonly metrics: MetricsService,
+    private readonly metrics: MetricsService
   ) {
-    this.logger.setContext('HTTP');
+    this.logger.setContext('HTTP')
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const ctx = context.switchToHttp();
-    const request = ctx.getRequest<Request>();
-    const response = ctx.getResponse<Response>();
+    const ctx = context.switchToHttp()
+    const request = ctx.getRequest<Request>()
+    const response = ctx.getResponse<Response>()
 
-    const { method, url } = request;
-    const correlationId = (request as any).correlationId || 'unknown';
-    const tenantId = (request as any).tenantId;
-    const userId = (request as any).user?.userId;
-    const startTime = Date.now();
+    const { method, url } = request
+    const correlationId = (request as any).correlationId || 'unknown'
+    const tenantId = (request as any).tenantId
+    const userId = (request as any).user?.userId
+    const startTime = Date.now()
 
     // Log incoming request
     this.logger.debug(`Incoming ${method} ${url}`, {
@@ -60,13 +55,13 @@ export class LoggingInterceptor implements NestInterceptor {
       userId,
       method,
       url,
-    });
+    })
 
     return next.handle().pipe(
       tap({
         next: () => {
-          const duration = Date.now() - startTime;
-          const statusCode = response.statusCode;
+          const duration = Date.now() - startTime
+          const statusCode = response.statusCode
 
           // Log successful response
           this.logger.info(`${method} ${url} - ${statusCode} - ${duration}ms`, {
@@ -77,14 +72,14 @@ export class LoggingInterceptor implements NestInterceptor {
             url,
             statusCode,
             duration,
-          });
+          })
 
           // Record metrics
-          this.recordMetrics(method, url, statusCode, duration);
+          this.recordMetrics(method, url, statusCode, duration)
         },
-        error: (error) => {
-          const duration = Date.now() - startTime;
-          const statusCode = error.status || 500;
+        error: error => {
+          const duration = Date.now() - startTime
+          const statusCode = error.status || 500
 
           // Log error response
           this.logger.error(`${method} ${url} - ${statusCode} - ${duration}ms`, error, {
@@ -96,32 +91,32 @@ export class LoggingInterceptor implements NestInterceptor {
             statusCode,
             duration,
             errorMessage: error.message,
-          });
+          })
 
           // Record error metrics
-          this.recordMetrics(method, url, statusCode, duration);
+          this.recordMetrics(method, url, statusCode, duration)
           this.metrics.httpRequestErrors.inc({
             method,
             route: this.normalizeRoute(url),
             error_code: error.code || 'UNKNOWN',
-          });
+          })
         },
-      }),
-    );
+      })
+    )
   }
 
   /**
    * Record HTTP metrics to Prometheus
    */
   private recordMetrics(method: string, url: string, statusCode: number, duration: number): void {
-    const route = this.normalizeRoute(url);
+    const route = this.normalizeRoute(url)
 
     // Record request count
     this.metrics.httpRequestTotal.inc({
       method,
       route,
       status_code: statusCode.toString(),
-    });
+    })
 
     // Record response time
     this.metrics.httpRequestDuration.observe(
@@ -130,8 +125,8 @@ export class LoggingInterceptor implements NestInterceptor {
         route,
         status_code: statusCode.toString(),
       },
-      duration / 1000, // Convert to seconds
-    );
+      duration / 1000 // Convert to seconds
+    )
   }
 
   /**
@@ -140,12 +135,9 @@ export class LoggingInterceptor implements NestInterceptor {
    */
   private normalizeRoute(url: string): string {
     // Remove query string
-    const path = url.split('?')[0];
+    const path = url.split('?')[0]
 
     // Replace UUIDs with :id
-    return path.replace(
-      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
-      ':id',
-    );
+    return path.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ':id')
   }
 }

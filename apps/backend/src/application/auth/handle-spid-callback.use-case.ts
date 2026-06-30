@@ -1,10 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { LoggerService } from '../../core/logger/logger.service';
-import { UserRepository } from '../../infrastructure/persistence/user.repository';
-import { User } from '../../domain/auth/user.entity';
-import { SPIDAttributes } from '../../domain/auth/spid-attributes.vo';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
+import { Injectable } from '@nestjs/common'
+import { LoggerService } from '../../core/logger/logger.service'
+import { UserRepository } from '../../infrastructure/persistence/user.repository'
+import { User } from '../../domain/auth/user.entity'
+import { SPIDAttributes } from '../../domain/auth/spid-attributes.vo'
+import { JwtService } from '@nestjs/jwt'
+import { ConfigService } from '@nestjs/config'
 
 /**
  * Handle SPID Callback Use Case
@@ -32,31 +32,31 @@ export class HandleSPIDCallbackUseCase {
     private readonly userRepository: UserRepository,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext('HandleSPIDCallbackUseCase');
+    this.logger.setContext('HandleSPIDCallbackUseCase')
   }
 
   /**
    * Execute SPID callback processing
    */
   async execute(params: {
-    fiscalCode: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    spidLevel: number;
-    issuer: string;
-    sessionId: string;
-    tenantId?: string; // Optional for new users
-    correlationId?: string;
+    fiscalCode: string
+    firstName: string
+    lastName: string
+    email: string
+    spidLevel: number
+    issuer: string
+    sessionId: string
+    tenantId?: string // Optional for new users
+    correlationId?: string
   }): Promise<SPIDCallbackResult> {
     this.logger.info('Processing SPID callback', {
       fiscalCode: params.fiscalCode,
       spidLevel: params.spidLevel,
       issuer: params.issuer,
       correlationId: params.correlationId,
-    });
+    })
 
     try {
       // Create SPID attributes value object
@@ -68,10 +68,10 @@ export class HandleSPIDCallbackUseCase {
         spidLevel: params.spidLevel,
         issuer: params.issuer,
         sessionId: params.sessionId,
-      });
+      })
 
       // Find existing user by fiscal code
-      let user = await this.userRepository.findByFiscalCode(params.fiscalCode);
+      let user = await this.userRepository.findByFiscalCode(params.fiscalCode)
 
       if (user) {
         // Update existing user SPID attributes
@@ -79,22 +79,22 @@ export class HandleSPIDCallbackUseCase {
           userId: user.getId(),
           fiscalCode: params.fiscalCode,
           spidLevel: params.spidLevel,
-        });
+        })
 
-        user.updateSpidAuthentication(spidAttributes);
-        await this.userRepository.update(user.getId(), user);
+        user.updateSpidAuthentication(spidAttributes)
+        await this.userRepository.update(user.getId(), user)
       } else {
         // Create new user
         this.logger.info('Creating new user from SPID authentication', {
           fiscalCode: params.fiscalCode,
           spidLevel: params.spidLevel,
-        });
+        })
 
         // For new users, tenantId is required
         if (!params.tenantId) {
           throw new Error(
             'Tenant ID required for new user registration. User must be invited to a tenant first.'
-          );
+          )
         }
 
         user = User.create({
@@ -106,20 +106,20 @@ export class HandleSPIDCallbackUseCase {
           tenantId: params.tenantId,
           spidAttributes,
           roles: ['USER'], // Default role
-        });
+        })
 
-        await this.userRepository.save(user);
+        await this.userRepository.save(user)
       }
 
       // Generate JWT tokens
-      const tokens = this.generateTokens(user);
+      const tokens = this.generateTokens(user)
 
       this.logger.info('SPID callback processed successfully', {
         userId: user.getId(),
         fiscalCode: params.fiscalCode,
         spidLevel: params.spidLevel,
         canSignDocuments: user.canSignDocuments(),
-      });
+      })
 
       return {
         user: {
@@ -137,14 +137,14 @@ export class HandleSPIDCallbackUseCase {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         expiresIn: 3600, // 1 hour
-      };
+      }
     } catch (error: any) {
       this.logger.error('Failed to process SPID callback', error, {
         fiscalCode: params.fiscalCode,
         correlationId: params.correlationId,
-      });
+      })
 
-      throw error;
+      throw error
     }
   }
 
@@ -152,8 +152,8 @@ export class HandleSPIDCallbackUseCase {
    * Generate JWT access and refresh tokens
    */
   private generateTokens(user: User): {
-    accessToken: string;
-    refreshToken: string;
+    accessToken: string
+    refreshToken: string
   } {
     const payload = {
       sub: user.getId(),
@@ -163,12 +163,12 @@ export class HandleSPIDCallbackUseCase {
       roles: user.getRoles(),
       spidLevel: user.getSpidLevel(),
       canSignDocuments: user.canSignDocuments(),
-    };
+    }
 
     const accessToken = this.jwtService.sign(payload, {
       secret: this.configService.get<string>('JWT_SECRET'),
       expiresIn: '1h',
-    });
+    })
 
     const refreshToken = this.jwtService.sign(
       { sub: user.getId(), type: 'refresh' },
@@ -176,16 +176,16 @@ export class HandleSPIDCallbackUseCase {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
         expiresIn: '7d',
       }
-    );
+    )
 
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken }
   }
 
   /**
    * Generate unique user ID
    */
   private generateUserId(): string {
-    return `user-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    return `user-${Date.now()}-${Math.random().toString(36).substring(7)}`
   }
 }
 
@@ -194,18 +194,18 @@ export class HandleSPIDCallbackUseCase {
  */
 export interface SPIDCallbackResult {
   user: {
-    id: string;
-    fiscalCode: string;
-    firstName: string;
-    lastName: string;
-    fullName: string;
-    email: string;
-    tenantId: string;
-    spidLevel: number;
-    canSignDocuments: boolean;
-    roles: string[];
-  };
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
+    id: string
+    fiscalCode: string
+    firstName: string
+    lastName: string
+    fullName: string
+    email: string
+    tenantId: string
+    spidLevel: number
+    canSignDocuments: boolean
+    roles: string[]
+  }
+  accessToken: string
+  refreshToken: string
+  expiresIn: number
 }

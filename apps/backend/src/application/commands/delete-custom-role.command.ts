@@ -19,6 +19,6 @@ export class DeleteCustomRoleCommand {
   constructor(
     public readonly roleId: string,
     public readonly tenantId: string,
-    public readonly deletedBy: string,
+    public readonly deletedBy: string
   ) {}
 }

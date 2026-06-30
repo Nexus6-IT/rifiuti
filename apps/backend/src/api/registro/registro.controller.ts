@@ -30,7 +30,7 @@ import { RegistraMovimentoDto, ListMovimentiDto } from './dtos/registra-moviment
 export class RegistroController {
   constructor(
     private readonly registraMovimentoUseCase: RegistraMovimentoUseCase,
-    private readonly listMovimentiHandler: ListMovimentiHandler,
+    private readonly listMovimentiHandler: ListMovimentiHandler
   ) {}
 
   /**
@@ -50,12 +50,15 @@ export class RegistroController {
       'Per SCARICO: verifica giacenza preventiva e blocca se insufficiente. ' +
       'Hash SHA-256 di vidimazione digitale calcolato e persistito automaticamente.',
   })
-  @ApiResponse({ status: 201, description: 'Movimento registrato con numero progressivo e hash vidimazione' })
-  @ApiResponse({ status: 400, description: 'Dati non validi o giacenza insufficiente (per SCARICO)' })
-  async registra(
-    @Body() dto: RegistraMovimentoDto,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
+  @ApiResponse({
+    status: 201,
+    description: 'Movimento registrato con numero progressivo e hash vidimazione',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Dati non validi o giacenza insufficiente (per SCARICO)',
+  })
+  async registra(@Body() dto: RegistraMovimentoDto, @CurrentUser() user: CurrentUserPayload) {
     const movementDate = new Date(dto.movementDate)
     const registrationDate = dto.registrationDate ? new Date(dto.registrationDate) : new Date()
 
@@ -76,7 +79,7 @@ export class RegistroController {
       dto.counterpartName,
       dto.counterpartAddress,
       dto.firId,
-      dto.notes,
+      dto.notes
     )
 
     const result = await this.registraMovimentoUseCase.execute(command)
@@ -113,7 +116,7 @@ export class RegistroController {
         dataTo: dto.dataTo ? new Date(dto.dataTo) : undefined,
         firId: dto.firId,
       },
-      { page: dto.page ?? 1, limit: dto.limit ?? 20 },
+      { page: dto.page ?? 1, limit: dto.limit ?? 20 }
     )
 
     const result = await this.listMovimentiHandler.execute(query)

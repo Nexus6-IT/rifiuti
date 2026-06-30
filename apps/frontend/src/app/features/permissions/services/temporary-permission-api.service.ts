@@ -1,7 +1,7 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { Injectable } from '@angular/core'
+import { HttpClient } from '@angular/common/http'
+import { Observable } from 'rxjs'
+import { environment } from '../../../../environments/environment'
 
 /**
  * TemporaryPermissionApiService
@@ -9,29 +9,29 @@ import { environment } from '../../../../environments/environment';
  */
 
 export interface PermissionGrant {
-  id: string;
-  userId?: string;
-  permissions: string[];
-  startTime: string;
-  endTime: string;
-  justification: string;
-  status: 'pending' | 'approved' | 'rejected' | 'revoked';
-  requestedAt: string;
-  requestedBy?: string;
-  approvedBy?: string;
-  approvedAt?: string;
-  approvalReason?: string;
-  revokedBy?: string;
-  revokedAt?: string;
-  isActive?: boolean;
-  isExpired?: boolean;
+  id: string
+  userId?: string
+  permissions: string[]
+  startTime: string
+  endTime: string
+  justification: string
+  status: 'pending' | 'approved' | 'rejected' | 'revoked'
+  requestedAt: string
+  requestedBy?: string
+  approvedBy?: string
+  approvedAt?: string
+  approvalReason?: string
+  revokedBy?: string
+  revokedAt?: string
+  isActive?: boolean
+  isExpired?: boolean
 }
 
 @Injectable({
   providedIn: 'root',
 })
 export class TemporaryPermissionApiService {
-  private readonly baseUrl = `${environment.apiUrl}/api/v1/permissions`;
+  private readonly baseUrl = `${environment.apiUrl}/api/v1/permissions`
 
   constructor(private http: HttpClient) {}
 
@@ -39,23 +39,23 @@ export class TemporaryPermissionApiService {
    * Submit temporary permission request
    */
   requestPermission(data: {
-    permissions: string[];
-    startTime: string;
-    endTime: string;
-    justification: string;
+    permissions: string[]
+    startTime: string
+    endTime: string
+    justification: string
   }): Observable<{ success: boolean; data: any; message: string }> {
-    return this.http.post<any>(`${this.baseUrl}/request`, data);
+    return this.http.post<any>(`${this.baseUrl}/request`, data)
   }
 
   /**
    * List pending permission requests (admin only)
    */
   listPending(): Observable<{
-    success: boolean;
-    data: { grants: PermissionGrant[]; total: number };
-    message: string;
+    success: boolean
+    data: { grants: PermissionGrant[]; total: number }
+    message: string
   }> {
-    return this.http.get<any>(`${this.baseUrl}/pending`);
+    return this.http.get<any>(`${this.baseUrl}/pending`)
   }
 
   /**
@@ -63,9 +63,9 @@ export class TemporaryPermissionApiService {
    */
   approve(
     grantId: string,
-    reason: string,
+    reason: string
   ): Observable<{ success: boolean; data: any; message: string }> {
-    return this.http.post<any>(`${this.baseUrl}/${grantId}/approve`, { reason });
+    return this.http.post<any>(`${this.baseUrl}/${grantId}/approve`, { reason })
   }
 
   /**
@@ -73,9 +73,9 @@ export class TemporaryPermissionApiService {
    */
   reject(
     grantId: string,
-    reason: string,
+    reason: string
   ): Observable<{ success: boolean; data: any; message: string }> {
-    return this.http.post<any>(`${this.baseUrl}/${grantId}/reject`, { reason });
+    return this.http.post<any>(`${this.baseUrl}/${grantId}/reject`, { reason })
   }
 
   /**
@@ -83,19 +83,19 @@ export class TemporaryPermissionApiService {
    */
   revoke(
     grantId: string,
-    reason: string,
+    reason: string
   ): Observable<{ success: boolean; data: any; message: string }> {
-    return this.http.post<any>(`${this.baseUrl}/${grantId}/revoke`, { reason });
+    return this.http.post<any>(`${this.baseUrl}/${grantId}/revoke`, { reason })
   }
 
   /**
    * List current user's permission grants
    */
   listMyGrants(): Observable<{
-    success: boolean;
-    data: { grants: PermissionGrant[]; total: number };
-    message: string;
+    success: boolean
+    data: { grants: PermissionGrant[]; total: number }
+    message: string
   }> {
-    return this.http.get<any>(`${this.baseUrl}/my-grants`);
+    return this.http.get<any>(`${this.baseUrl}/my-grants`)
   }
 }

@@ -1,5 +1,5 @@
-import { DomainEvent } from '../../shared/domain-event.interface';
-import { SignatureRole } from '../digital-signature.vo';
+import { DomainEvent } from '../../shared/domain-event.interface'
+import { SignatureRole } from '../digital-signature.vo'
 
 /**
  * FIR Signed Event
@@ -9,18 +9,18 @@ import { SignatureRole } from '../digital-signature.vo';
  */
 export class FIRSignedEvent extends DomainEvent {
   constructor(params: {
-    aggregateId: string;
-    firId: string;
-    firNumber: string;
-    tenantId: string;
-    role: SignatureRole;
-    signerFiscalCode: string;
-    signerName: string;
-    signatureMethod: string;
-    signedAt: Date;
-    newStatus: string;
-    userId?: string;
-    correlationId?: string;
+    aggregateId: string
+    firId: string
+    firNumber: string
+    tenantId: string
+    role: SignatureRole
+    signerFiscalCode: string
+    signerName: string
+    signatureMethod: string
+    signedAt: Date
+    newStatus: string
+    userId?: string
+    correlationId?: string
   }) {
     super({
       aggregateId: params.aggregateId,
@@ -39,7 +39,7 @@ export class FIRSignedEvent extends DomainEvent {
         signedAt: params.signedAt,
         newStatus: params.newStatus,
       },
-    });
+    })
   }
 }
 
@@ -51,14 +51,14 @@ export class FIRSignedEvent extends DomainEvent {
  */
 export class FIRCompletedEvent extends DomainEvent {
   constructor(params: {
-    aggregateId: string;
-    firId: string;
-    firNumber: string;
-    tenantId: string;
-    completedAt: Date;
-    signatureCount: number;
-    userId?: string;
-    correlationId?: string;
+    aggregateId: string
+    firId: string
+    firNumber: string
+    tenantId: string
+    completedAt: Date
+    signatureCount: number
+    userId?: string
+    correlationId?: string
   }) {
     super({
       aggregateId: params.aggregateId,
@@ -73,6 +73,6 @@ export class FIRCompletedEvent extends DomainEvent {
         completedAt: params.completedAt,
         signatureCount: params.signatureCount,
       },
-    });
+    })
   }
 }

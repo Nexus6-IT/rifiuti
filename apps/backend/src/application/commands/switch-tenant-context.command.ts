@@ -24,24 +24,24 @@ export class SwitchTenantContextCommand {
   constructor(
     public readonly consultantUserId: string,
     public readonly sourceTenantId: string,
-    public readonly targetTenantId: string,
+    public readonly targetTenantId: string
   ) {
     // Validation: All fields required
     if (!consultantUserId || consultantUserId.trim() === '') {
-      throw new Error('Consultant user ID is required');
+      throw new Error('Consultant user ID is required')
     }
 
     if (!sourceTenantId || sourceTenantId.trim() === '') {
-      throw new Error('Source tenant ID is required');
+      throw new Error('Source tenant ID is required')
     }
 
     if (!targetTenantId || targetTenantId.trim() === '') {
-      throw new Error('Target tenant ID is required');
+      throw new Error('Target tenant ID is required')
     }
 
     // Validation: Cannot switch to same tenant
     if (sourceTenantId === targetTenantId) {
-      throw new Error('Cannot switch to current tenant');
+      throw new Error('Cannot switch to current tenant')
     }
   }
 }

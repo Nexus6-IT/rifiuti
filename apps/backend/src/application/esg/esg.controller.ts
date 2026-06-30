@@ -26,7 +26,7 @@ export class EsgController {
   async getReport(
     @CurrentUser() user: CurrentUserPayload,
     @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query('endDate') endDate?: string
   ) {
     return this.esgService.getEnvironmentalReport(user.tenantId, {
       startDate: startDate ? new Date(startDate) : undefined,

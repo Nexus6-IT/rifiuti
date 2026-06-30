@@ -44,12 +44,16 @@ export class QesSignatureProvider implements ISignatureProvider {
     // La logica di sign va qui una volta disponibile il contratto QTSP.
     throw new Error(
       '[QES] Provider QES non ancora implementato. ' +
-      'Configurare QTSP (Aruba/InfoCert/Namirial/Poste) e sostituire questo stub. ' +
-      'Documentazione: https://www.agid.gov.it/en/platforms/qualified-electronic-signature',
+        'Configurare QTSP (Aruba/InfoCert/Namirial/Poste) e sostituire questo stub. ' +
+        'Documentazione: https://www.agid.gov.it/en/platforms/qualified-electronic-signature'
     )
   }
 
-  async verify(_documentHash: string, _signatureValue: string, _publicKey: string): Promise<boolean> {
+  async verify(
+    _documentHash: string,
+    _signatureValue: string,
+    _publicKey: string
+  ): Promise<boolean> {
     this.validateConfig()
     throw new Error('[QES] Verifica QES non ancora implementata — stub provider.')
   }
@@ -75,7 +79,7 @@ export class QesSignatureProvider implements ISignatureProvider {
     if (missing.length > 0) {
       throw new Error(
         `[QES] Credenziali mancanti per firma qualificata: ${missing.join(', ')}. ` +
-        'Impostare le variabili env o usare SIGNATURE_PROVIDER=sandbox per la modalità sandbox.',
+          'Impostare le variabili env o usare SIGNATURE_PROVIDER=sandbox per la modalità sandbox.'
       )
     }
   }

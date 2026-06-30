@@ -18,7 +18,7 @@ export interface DeleteTrasportatoreCommand {
 export class DeleteTrasportatoreUseCase {
   constructor(
     @Inject(TRASPORTATORE_REPOSITORY)
-    private readonly trasportatoreRepository: TrasportatoreRepository,
+    private readonly trasportatoreRepository: TrasportatoreRepository
   ) {}
 
   async execute(command: DeleteTrasportatoreCommand): Promise<Result<void>> {

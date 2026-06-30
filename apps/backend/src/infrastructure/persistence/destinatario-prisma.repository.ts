@@ -75,7 +75,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
     const destinatario = await this.prisma.db.destinatario.findFirst({
       where: {
         tenantId,
-        partitaIVA
+        partitaIVA,
       },
     })
 
@@ -92,7 +92,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
     const destinatario = await this.prisma.db.destinatario.findFirst({
       where: {
         tenantId,
-        numeroAutorizzazione
+        numeroAutorizzazione,
       },
     })
 

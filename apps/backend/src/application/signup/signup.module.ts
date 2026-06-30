@@ -14,12 +14,12 @@
  *   imports: [ ..., SignupModule ]
  */
 
-import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../infrastructure/persistence/prisma.module';
-import { KeycloakModule } from '../../infrastructure/keycloak/keycloak.module';
-import { LoggerModule } from '../../core/logger/logger.module';
-import { SignupService } from './signup.service';
-import { SignupController } from '../../api/signup/signup.controller';
+import { Module } from '@nestjs/common'
+import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
+import { KeycloakModule } from '../../infrastructure/keycloak/keycloak.module'
+import { LoggerModule } from '../../core/logger/logger.module'
+import { SignupService } from './signup.service'
+import { SignupController } from '../../api/signup/signup.controller'
 
 @Module({
   imports: [PrismaModule, KeycloakModule, LoggerModule],

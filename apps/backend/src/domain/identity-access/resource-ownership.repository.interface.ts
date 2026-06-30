@@ -1,4 +1,4 @@
-import { ResourceOwnership } from './resource-ownership.entity';
+import { ResourceOwnership } from './resource-ownership.entity'
 
 /**
  * ResourceOwnership Repository Interface
@@ -23,31 +23,24 @@ export interface ResourceOwnershipRepository {
   /**
    * Save or update resource ownership
    */
-  save(ownership: ResourceOwnership): Promise<ResourceOwnership>;
+  save(ownership: ResourceOwnership): Promise<ResourceOwnership>
 
   /**
    * Find resource ownership by ID
    */
-  findById(id: string, tenantId: string): Promise<ResourceOwnership | null>;
+  findById(id: string, tenantId: string): Promise<ResourceOwnership | null>
 
   /**
    * Find all active (non-expired, non-revoked) ownerships for a tenant
    * Used for task assignment routing
    */
-  findActiveByTenant(
-    tenantId: string,
-    resourceType?: string,
-  ): Promise<ResourceOwnership[]>;
+  findActiveByTenant(tenantId: string, resourceType?: string): Promise<ResourceOwnership[]>
 
   /**
    * Find all ownerships for a specific user
    * Includes both active and inactive assignments
    */
-  findByUserId(
-    userId: string,
-    tenantId: string,
-    activeOnly?: boolean,
-  ): Promise<ResourceOwnership[]>;
+  findByUserId(userId: string, tenantId: string, activeOnly?: boolean): Promise<ResourceOwnership[]>
 
   /**
    * Find all ownerships for a specific resource
@@ -56,8 +49,8 @@ export interface ResourceOwnershipRepository {
   findByResourceId(
     resourceId: string,
     tenantId: string,
-    activeOnly?: boolean,
-  ): Promise<ResourceOwnership[]>;
+    activeOnly?: boolean
+  ): Promise<ResourceOwnership[]>
 
   /**
    * Find active vehicle assignments with metadata (certifications, capacity)
@@ -66,26 +59,19 @@ export interface ResourceOwnershipRepository {
   findActiveVehicleAssignments(
     tenantId: string,
     requiredCertifications?: string[],
-    zone?: string,
-  ): Promise<ResourceOwnership[]>;
+    zone?: string
+  ): Promise<ResourceOwnership[]>
 
   /**
    * Find assignments that expire within a given timeframe
    * Used for expiration notifications
    */
-  findExpiringAssignments(
-    tenantId: string,
-    withinDays: number,
-  ): Promise<ResourceOwnership[]>;
+  findExpiringAssignments(tenantId: string, withinDays: number): Promise<ResourceOwnership[]>
 
   /**
    * Check if a user has an active assignment for a specific resource type
    */
-  hasActiveAssignment(
-    userId: string,
-    tenantId: string,
-    resourceType: string,
-  ): Promise<boolean>;
+  hasActiveAssignment(userId: string, tenantId: string, resourceType: string): Promise<boolean>
 
   /**
    * Get assignment history for a user
@@ -94,8 +80,8 @@ export interface ResourceOwnershipRepository {
   getAssignmentHistory(
     userId: string,
     tenantId: string,
-    limit?: number,
-  ): Promise<ResourceOwnership[]>;
+    limit?: number
+  ): Promise<ResourceOwnership[]>
 
   /**
    * Deactivate all active assignments for a user
@@ -105,8 +91,8 @@ export interface ResourceOwnershipRepository {
     userId: string,
     tenantId: string,
     revokedBy: string,
-    reason: string,
-  ): Promise<number>;
+    reason: string
+  ): Promise<number>
 
   /**
    * Deactivate all active assignments for a resource
@@ -116,12 +102,12 @@ export interface ResourceOwnershipRepository {
     resourceId: string,
     tenantId: string,
     revokedBy: string,
-    reason: string,
-  ): Promise<number>;
+    reason: string
+  ): Promise<number>
 
   /**
    * Delete a resource ownership (hard delete)
    * Only used for cleanup, not recommended for production
    */
-  delete(id: string, tenantId: string): Promise<void>;
+  delete(id: string, tenantId: string): Promise<void>
 }

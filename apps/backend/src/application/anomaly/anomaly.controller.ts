@@ -18,7 +18,8 @@ export class AnomalyController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Anomalie rilevate su FIR e movimenti',
-    description: 'CER non in catalogo, quantità anomale, descrizioni mancanti, giacenze impossibili.',
+    description:
+      'CER non in catalogo, quantità anomale, descrizioni mancanti, giacenze impossibili.',
   })
   @ApiResponse({ status: 200, description: 'Elenco anomalie' })
   async detect(@CurrentUser() user: CurrentUserPayload) {

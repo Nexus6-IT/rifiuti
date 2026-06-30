@@ -18,7 +18,7 @@ export interface DeleteDestinatarioCommand {
 export class DeleteDestinatarioUseCase {
   constructor(
     @Inject(DESTINATARIO_REPOSITORY)
-    private readonly destinatarioRepository: DestinatarioRepository,
+    private readonly destinatarioRepository: DestinatarioRepository
   ) {}
 
   async execute(command: DeleteDestinatarioCommand): Promise<Result<void>> {

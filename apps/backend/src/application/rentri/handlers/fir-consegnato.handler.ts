@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import { IDomainEventHandler } from '../../../domain/shared/domain-event.interface';
-import { LoggerService } from '../../../core/logger/logger.service';
+import { Injectable } from '@nestjs/common'
+import { IDomainEventHandler } from '../../../domain/shared/domain-event.interface'
+import { LoggerService } from '../../../core/logger/logger.service'
 
 /**
  * FIR Consegnato Event Handler
@@ -17,23 +17,23 @@ import { LoggerService } from '../../../core/logger/logger.service';
 export class FIRConsegnatoHandler implements IDomainEventHandler {
   constructor(
     private readonly rentriSyncQueue: any, // RENTRISyncQueue
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext('FIRConsegnatoHandler');
+    this.logger.setContext('FIRConsegnatoHandler')
   }
 
   /**
    * Handle FIR Consegnato event
    */
   async handle(event: any): Promise<void> {
-    const { aggregateId: firId, tenantId, correlationId } = event;
+    const { aggregateId: firId, tenantId, correlationId } = event
 
     this.logger.info('FIR consegnato - triggering RENTRI sync', {
       firId,
       tenantId,
       correlationId,
       eventType: event.eventType,
-    });
+    })
 
     try {
       // Queue RENTRI sync job with 5-minute delay
@@ -44,19 +44,19 @@ export class FIRConsegnatoHandler implements IDomainEventHandler {
         correlationId,
         delay: 5 * 60 * 1000, // 5 minutes
         priority: 'normal',
-      });
+      })
 
       this.logger.info('RENTRI sync job queued', {
         firId,
         jobId,
         delayMinutes: 5,
-      });
+      })
     } catch (error: any) {
       this.logger.error('Failed to queue RENTRI sync job', error, {
         firId,
         tenantId,
         correlationId,
-      });
+      })
       // Don't throw - event handling should be resilient
       // Sync can be triggered manually if this fails
     }

@@ -1,8 +1,6 @@
-import { RENTRIApiClient } from './rentri-api.client';
-import { Test, TestingModule } from '@nestjs/testing';
-import { HttpService } from '@nestjs/axios';
-import { of, throwError } from 'rxjs';
-import { AxiosResponse } from 'axios';
+import { RENTRIApiClient } from './rentri-api.client'
+import { of, throwError } from 'rxjs'
+import { AxiosResponse } from 'axios'
 
 /**
  * Integration tests for RENTRI API Client
@@ -11,35 +9,35 @@ import { AxiosResponse } from 'axios';
  * Verifies xFIR format conversion and error handling.
  */
 describe('RENTRIApiClient', () => {
-  let client: RENTRIApiClient;
-  let mockHttpService: any;
-  let mockConfig: any;
-  let mockAuth: any;
-  let mockSignature: any;
-  let mockLogger: any;
-  let mockMetrics: any;
+  let client: RENTRIApiClient
+  let mockHttpService: any
+  let mockConfig: any
+  let mockAuth: any
+  let mockSignature: any
+  let mockLogger: any
+  let mockMetrics: any
 
   beforeEach(() => {
     mockHttpService = {
       post: jest.fn(),
       get: jest.fn(),
-    };
+    }
 
     // Modalità mock: autenticazione X-API-Key verso il mock locale.
     mockConfig = {
       mode: 'mock',
       baseUrl: 'http://localhost:3001',
       mockApiKey: 'demo-key',
-    };
+    }
 
     mockAuth = {
       getAccessToken: jest.fn().mockResolvedValue('test-token'),
       invalidate: jest.fn(),
-    };
+    }
 
     mockSignature = {
       buildIntegrityHeaders: jest.fn().mockReturnValue({}),
-    };
+    }
 
     mockLogger = {
       setContext: jest.fn(),
@@ -47,7 +45,7 @@ describe('RENTRIApiClient', () => {
       error: jest.fn(),
       warn: jest.fn(),
       debug: jest.fn(),
-    };
+    }
 
     mockMetrics = {
       rentriApiRequestDuration: {
@@ -56,7 +54,7 @@ describe('RENTRIApiClient', () => {
       rentriApiErrors: {
         inc: jest.fn(),
       },
-    };
+    }
 
     // Directly instantiate the client with mocks (new constructor order)
     client = new RENTRIApiClient(
@@ -65,9 +63,9 @@ describe('RENTRIApiClient', () => {
       mockMetrics,
       mockConfig,
       mockAuth,
-      mockSignature,
-    );
-  });
+      mockSignature
+    )
+  })
 
   describe('submitFIR', () => {
     it('should submit FIR successfully and return protocol number', async () => {
@@ -89,7 +87,7 @@ describe('RENTRIApiClient', () => {
         quantity: 100,
         unit: 'KG',
         transportDate: new Date('2025-01-18'),
-      };
+      }
 
       const mockResponse: AxiosResponse = {
         data: {
@@ -102,14 +100,14 @@ describe('RENTRIApiClient', () => {
         statusText: 'Created',
         headers: {},
         config: {} as any,
-      };
+      }
 
-      mockHttpService.post.mockReturnValue(of(mockResponse));
+      mockHttpService.post.mockReturnValue(of(mockResponse))
 
-      const result = await client.submitFIR(mockFIR);
+      const result = await client.submitFIR(mockFIR)
 
-      expect(result.success).toBe(true);
-      expect(result.protocolNumber).toBe('PROT-1705583400000');
+      expect(result.success).toBe(true)
+      expect(result.protocolNumber).toBe('PROT-1705583400000')
       expect(mockHttpService.post).toHaveBeenCalledWith(
         'http://localhost:3001/api/v1/fir/submit',
         (expect as any).objectContaining({
@@ -134,9 +132,9 @@ describe('RENTRIApiClient', () => {
           headers: (expect as any).objectContaining({
             'X-API-Key': 'demo-key',
           }),
-        }),
-      );
-    });
+        })
+      )
+    })
 
     it('should handle RENTRI validation errors', async () => {
       const mockFIR = {
@@ -157,7 +155,7 @@ describe('RENTRIApiClient', () => {
         quantity: 100,
         unit: 'KG',
         transportDate: new Date('2025-01-18'),
-      };
+      }
 
       // Mock a 400 error response
       mockHttpService.post.mockReturnValue(
@@ -174,17 +172,17 @@ describe('RENTRIApiClient', () => {
               ],
             },
           },
-        })),
-      );
+        }))
+      )
 
-      const result = await client.submitFIR(mockFIR as any);
+      const result = await client.submitFIR(mockFIR as any)
 
-      expect(result.success).toBe(false);
-      expect(result.errors).toBeDefined();
-      expect(result.errors!.length).toBe(1);
-      expect(result.errors![0].code).toBe('E001');
-      expect(result.errors![0].field).toBe('rifiuto.codiceEER');
-    });
+      expect(result.success).toBe(false)
+      expect(result.errors).toBeDefined()
+      expect(result.errors!.length).toBe(1)
+      expect(result.errors![0].code).toBe('E001')
+      expect(result.errors![0].field).toBe('rifiuto.codiceEER')
+    })
 
     it('should handle RENTRI service unavailable (503)', async () => {
       const mockFIR = {
@@ -205,7 +203,7 @@ describe('RENTRIApiClient', () => {
         quantity: 100,
         unit: 'KG',
         transportDate: new Date('2025-01-18'),
-      };
+      }
 
       mockHttpService.post.mockReturnValue(
         throwError(() => ({
@@ -217,13 +215,13 @@ describe('RENTRIApiClient', () => {
               retryAfter: 300,
             },
           },
-        })),
-      );
+        }))
+      )
 
       await expect(client.submitFIR(mockFIR as any)).rejects.toThrow(
-        'RENTRI service temporarily unavailable',
-      );
-    });
+        'RENTRI service temporarily unavailable'
+      )
+    })
 
     it('should handle network timeout', async () => {
       const mockFIR = {
@@ -244,18 +242,18 @@ describe('RENTRIApiClient', () => {
         quantity: 100,
         unit: 'KG',
         transportDate: new Date('2025-01-18'),
-      };
+      }
 
       mockHttpService.post.mockReturnValue(
         throwError(() => ({
           code: 'ECONNABORTED',
           message: 'timeout of 30000ms exceeded',
-        })),
-      );
+        }))
+      )
 
-      await expect(client.submitFIR(mockFIR as any)).rejects.toThrow('timeout');
-    });
-  });
+      await expect(client.submitFIR(mockFIR as any)).rejects.toThrow('timeout')
+    })
+  })
 
   describe('xFIR Format Conversion', () => {
     it('should convert FIR to xFIR format correctly', () => {
@@ -282,9 +280,9 @@ describe('RENTRIApiClient', () => {
         transportDate: new Date('2025-01-18T08:00:00Z'),
         estimatedArrivalDate: new Date('2025-01-18T14:00:00Z'),
         transportNotes: 'Handle with care',
-      };
+      }
 
-      const xFIR = client['convertToXFIRFormat'](fir);
+      const xFIR = client['convertToXFIRFormat'](fir)
 
       expect(xFIR).toEqual({
         firId: 'fir-123',
@@ -328,8 +326,8 @@ describe('RENTRIApiClient', () => {
           // dataArrivo undefined su flat DTO (nessun dataConsegna)
         },
         firmeDigitali: (expect as any).any(Array),
-      });
-    });
+      })
+    })
 
     it('should handle optional fields correctly', () => {
       const minimalFIR = {
@@ -350,13 +348,13 @@ describe('RENTRIApiClient', () => {
         quantity: 100,
         unit: 'KG',
         transportDate: new Date(),
-      };
+      }
 
-      const xFIR = client['convertToXFIRFormat'](minimalFIR);
+      const xFIR = client['convertToXFIRFormat'](minimalFIR)
 
-      expect(xFIR.produttore.contatto).toBeUndefined();
-      expect(xFIR.trasporto.note).toBeUndefined();
-    });
+      expect(xFIR.produttore.contatto).toBeUndefined()
+      expect(xFIR.trasporto.note).toBeUndefined()
+    })
 
     /**
      * Test del mapping dall'aggregate FIR reale (con snapshot ParteFIR annidati
@@ -417,50 +415,50 @@ describe('RENTRIApiClient', () => {
           trasportatore: undefined,
           destinatario: undefined,
         },
-      };
+      }
 
-      const xFIR = client['convertToXFIRFormat'](firAggregate);
+      const xFIR = client['convertToXFIRFormat'](firAggregate)
 
       // Identifiers
-      expect(xFIR.firId).toBe('agg-fir-001');
-      expect(xFIR.numeroFormulario).toBe('FIR-2026-000001'); // da numeroProgressivo
+      expect(xFIR.firId).toBe('agg-fir-001')
+      expect(xFIR.numeroFormulario).toBe('FIR-2026-000001') // da numeroProgressivo
 
       // Produttore — dal snapshot ParteFIR
-      expect(xFIR.produttore.partitaIva).toBe('01234567890');
-      expect(xFIR.produttore.ragioneSociale).toBe('Azienda Produttrice SRL');
-      expect(xFIR.produttore.indirizzo).toBe('Via Roma 1, 20100 Milano');
-      expect(xFIR.produttore.contatto).toBe('produttore@test.it');
+      expect(xFIR.produttore.partitaIva).toBe('01234567890')
+      expect(xFIR.produttore.ragioneSociale).toBe('Azienda Produttrice SRL')
+      expect(xFIR.produttore.indirizzo).toBe('Via Roma 1, 20100 Milano')
+      expect(xFIR.produttore.contatto).toBe('produttore@test.it')
 
       // Trasportatore — dal snapshot ParteFIR
-      expect(xFIR.trasportatore.partitaIva).toBe('09876543210');
-      expect(xFIR.trasportatore.ragioneSociale).toBe('Trasporti Rifiuti SpA');
-      expect(xFIR.trasportatore.targaVeicolo).toBe('AB 123 CD');
+      expect(xFIR.trasportatore.partitaIva).toBe('09876543210')
+      expect(xFIR.trasportatore.ragioneSociale).toBe('Trasporti Rifiuti SpA')
+      expect(xFIR.trasportatore.targaVeicolo).toBe('AB 123 CD')
 
       // Destinatario — dal snapshot ParteFIR
-      expect(xFIR.destinatario.partitaIva).toBe('11122233344');
-      expect(xFIR.destinatario.ragioneSociale).toBe('Impianto Ricevente Srl');
+      expect(xFIR.destinatario.partitaIva).toBe('11122233344')
+      expect(xFIR.destinatario.ragioneSociale).toBe('Impianto Ricevente Srl')
 
       // Rifiuto — da FIRRifiuto + Quantita value object
-      expect(xFIR.rifiuto.codiceEER).toBe('200301');
-      expect(xFIR.rifiuto.quantita).toBe(250.75);    // da Quantita.valore
-      expect(xFIR.rifiuto.unita).toBe('KG');          // da Quantita.unitaMisura
-      expect(xFIR.rifiuto.statoFisico).toBe('SOLIDO');
-      expect(xFIR.rifiuto.numeroColli).toBe(5);
-      expect(xFIR.rifiuto.codiceOperazione).toBe('R1');
+      expect(xFIR.rifiuto.codiceEER).toBe('200301')
+      expect(xFIR.rifiuto.quantita).toBe(250.75) // da Quantita.valore
+      expect(xFIR.rifiuto.unita).toBe('KG') // da Quantita.unitaMisura
+      expect(xFIR.rifiuto.statoFisico).toBe('SOLIDO')
+      expect(xFIR.rifiuto.numeroColli).toBe(5)
+      expect(xFIR.rifiuto.codiceOperazione).toBe('R1')
 
       // Trasporto — da dataPresaCarico (non transportDate)
-      expect(xFIR.trasporto.dataPartenza).toBe('2026-06-15T08:00:00.000Z');
+      expect(xFIR.trasporto.dataPartenza).toBe('2026-06-15T08:00:00.000Z')
       // dataConsegna → dataArrivo
-      expect(xFIR.trasporto.dataArrivo).toBe('2026-06-15T14:30:00.000Z');
+      expect(xFIR.trasporto.dataArrivo).toBe('2026-06-15T14:30:00.000Z')
       // Campo 17 FIR — da annotazioni (non transportNotes)
-      expect(xFIR.trasporto.note).toBe('Rifiuti speciali — trasporto urgente');
+      expect(xFIR.trasporto.note).toBe('Rifiuti speciali — trasporto urgente')
 
       // Firme digitali — da fir.firme (aggregate shape), solo la firma produttore
-      expect(xFIR.firmeDigitali).toHaveLength(1);
-      expect(xFIR.firmeDigitali[0].ruolo).toBe('PRODUTTORE');
-      expect(xFIR.firmeDigitali[0].firmatario).toBe('Mario Rossi');
-      expect(xFIR.firmeDigitali[0].dataFirma).toBe('2026-06-15T07:55:00.000Z');
-    });
+      expect(xFIR.firmeDigitali).toHaveLength(1)
+      expect(xFIR.firmeDigitali[0].ruolo).toBe('PRODUTTORE')
+      expect(xFIR.firmeDigitali[0].firmatario).toBe('Mario Rossi')
+      expect(xFIR.firmeDigitali[0].dataFirma).toBe('2026-06-15T07:55:00.000Z')
+    })
 
     it('non deve esporre la chiave privata RENTRI nel risultato xFIR', () => {
       // Verifica che convertToXFIRFormat non includa MAI dati sensibili
@@ -486,17 +484,17 @@ describe('RENTRIApiClient', () => {
         privateKeyPem: '-----BEGIN PRIVATE KEY-----\nSECRET\n-----END PRIVATE KEY-----',
         password: 'secret123',
         apiKey: 'rentri-api-key-segreto',
-      };
+      }
 
-      const xFIR = client['convertToXFIRFormat'](firConDatiSensibili);
-      const xFIRJson = JSON.stringify(xFIR);
+      const xFIR = client['convertToXFIRFormat'](firConDatiSensibili)
+      const xFIRJson = JSON.stringify(xFIR)
 
       // La chiave privata, password o API key non deve MAI comparire nel payload
-      expect(xFIRJson).not.toContain('PRIVATE KEY');
-      expect(xFIRJson).not.toContain('secret123');
-      expect(xFIRJson).not.toContain('rentri-api-key-segreto');
-    });
-  });
+      expect(xFIRJson).not.toContain('PRIVATE KEY')
+      expect(xFIRJson).not.toContain('secret123')
+      expect(xFIRJson).not.toContain('rentri-api-key-segreto')
+    })
+  })
 
   describe('validateFIR', () => {
     it('should validate FIR before submission', async () => {
@@ -518,7 +516,7 @@ describe('RENTRIApiClient', () => {
         quantity: 100,
         unit: 'KG',
         transportDate: new Date('2025-01-18'),
-      };
+      }
 
       const mockResponse: AxiosResponse = {
         data: {
@@ -530,15 +528,15 @@ describe('RENTRIApiClient', () => {
         statusText: 'OK',
         headers: {},
         config: {} as any,
-      };
+      }
 
-      mockHttpService.post.mockReturnValue(of(mockResponse));
+      mockHttpService.post.mockReturnValue(of(mockResponse))
 
-      const result = await client.validateFIR(mockFIR as any);
+      const result = await client.validateFIR(mockFIR as any)
 
-      expect(result.valid).toBe(true);
-      expect(result.errors.length).toBe(0);
-    });
+      expect(result.valid).toBe(true)
+      expect(result.errors.length).toBe(0)
+    })
 
     it('should return validation warnings', async () => {
       const mockFIR = {
@@ -559,7 +557,7 @@ describe('RENTRIApiClient', () => {
         quantity: 15000, // Very high quantity
         unit: 'KG',
         transportDate: new Date('2025-01-18'),
-      };
+      }
 
       const mockResponse: AxiosResponse = {
         data: {
@@ -571,20 +569,20 @@ describe('RENTRIApiClient', () => {
         statusText: 'OK',
         headers: {},
         config: {} as any,
-      };
+      }
 
-      mockHttpService.post.mockReturnValue(of(mockResponse));
+      mockHttpService.post.mockReturnValue(of(mockResponse))
 
-      const result = await client.validateFIR(mockFIR as any);
+      const result = await client.validateFIR(mockFIR as any)
 
-      expect(result.valid).toBe(true);
-      expect(result.warnings.length).toBe(1);
-    });
-  });
+      expect(result.valid).toBe(true)
+      expect(result.warnings.length).toBe(1)
+    })
+  })
 
   describe('getFIRStatus', () => {
     it('should retrieve FIR status from RENTRI', async () => {
-      const firId = 'fir-123';
+      const firId = 'fir-123'
 
       const mockResponse: AxiosResponse = {
         data: {
@@ -601,19 +599,22 @@ describe('RENTRIApiClient', () => {
         statusText: 'OK',
         headers: {},
         config: {} as any,
-      };
+      }
 
-      mockHttpService.get.mockReturnValue(of(mockResponse));
+      mockHttpService.get.mockReturnValue(of(mockResponse))
 
-      const result = await client.getFIRStatus(firId);
+      const result = await client.getFIRStatus(firId)
 
-      expect(result.firId).toBe(firId);
-      expect(result.status).toBe('ACCEPTED');
-      expect(mockHttpService.get).toHaveBeenCalledWith(`http://localhost:3001/api/v1/fir/${firId}`, (expect as any).any(Object));
-    });
+      expect(result.firId).toBe(firId)
+      expect(result.status).toBe('ACCEPTED')
+      expect(mockHttpService.get).toHaveBeenCalledWith(
+        `http://localhost:3001/api/v1/fir/${firId}`,
+        (expect as any).any(Object)
+      )
+    })
 
     it('should handle FIR not found in RENTRI', async () => {
-      const firId = 'nonexistent-fir';
+      const firId = 'nonexistent-fir'
 
       mockHttpService.get.mockReturnValue(
         throwError(() => ({
@@ -624,10 +625,9 @@ describe('RENTRIApiClient', () => {
               error: 'FIR non trovato in RENTRI',
             },
           },
-        })),
-      );
-
-      await expect(client.getFIRStatus(firId)).rejects.toThrow('FIR non trovato') as any;
-    });
-  });
-});
+        }))
+      )
+      ;(await expect(client.getFIRStatus(firId)).rejects.toThrow('FIR non trovato')) as any
+    })
+  })
+})

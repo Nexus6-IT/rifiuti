@@ -31,10 +31,7 @@ export type SignatureProviderType = 'SANDBOX' | 'QES' | 'SPID_CIE'
 export type TsaProviderType = 'MOCK' | 'RFC3161'
 
 /** Tipo di metodo firma; FIRMA-NON-QUALIFICATA è il sandbox. */
-export type SignatureMethodProvider =
-  | 'ECDSA-SHA256'
-  | 'RSA-SHA256'
-  | 'FIRMA-NON-QUALIFICATA'
+export type SignatureMethodProvider = 'ECDSA-SHA256' | 'RSA-SHA256' | 'FIRMA-NON-QUALIFICATA'
 
 export interface SignatureProviderResult {
   /** Valore firma, base64. */

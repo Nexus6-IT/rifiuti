@@ -1,21 +1,10 @@
+import { Controller, Get, Query, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import {
-  Controller,
-  Get,
-  Query,
-  UseGuards,
-  Req,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiQuery,
-} from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { GetDashboardUseCase, DashboardData } from '../../application/analytics/get-dashboard.use-case';
+  GetDashboardUseCase,
+  DashboardData,
+} from '../../application/analytics/get-dashboard.use-case'
 
 /**
  * Dashboard Controller
@@ -31,9 +20,7 @@ import { GetDashboardUseCase, DashboardData } from '../../application/analytics/
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class DashboardController {
-  constructor(
-    private readonly getDashboardUseCase: GetDashboardUseCase,
-  ) {}
+  constructor(private readonly getDashboardUseCase: GetDashboardUseCase) {}
 
   /**
    * Get Dashboard Data
@@ -131,9 +118,9 @@ export class DashboardController {
   async getDashboard(
     @Req() req: any,
     @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query('endDate') endDate?: string
   ): Promise<DashboardData> {
-    const tenantId = req.user.tenantId;
+    const tenantId = req.user.tenantId
 
     const dateRange =
       startDate && endDate
@@ -141,12 +128,12 @@ export class DashboardController {
             startDate: new Date(startDate),
             endDate: new Date(endDate),
           }
-        : undefined;
+        : undefined
 
     return await this.getDashboardUseCase.execute({
       tenantId,
       dateRange,
-    });
+    })
   }
 
   /**
@@ -185,72 +172,72 @@ export class DashboardController {
   })
   async exportDashboard(
     @Req() req: any,
-    @Query('format') format: 'csv' | 'xlsx' = 'csv',
+    @Query('format') _format: 'csv' | 'xlsx' = 'csv'
   ): Promise<string> {
-    const tenantId = req.user.tenantId;
+    const tenantId = req.user.tenantId
 
-    const dashboard = await this.getDashboardUseCase.execute({ tenantId });
+    const dashboard = await this.getDashboardUseCase.execute({ tenantId })
 
     // Generate CSV
-    const csv = this.generateCSV(dashboard);
+    const csv = this.generateCSV(dashboard)
 
     // Set headers for file download
-    req.res.setHeader('Content-Type', 'text/csv');
+    req.res.setHeader('Content-Type', 'text/csv')
     req.res.setHeader(
       'Content-Disposition',
-      `attachment; filename=dashboard-${new Date().toISOString().split('T')[0]}.csv`,
-    );
+      `attachment; filename=dashboard-${new Date().toISOString().split('T')[0]}.csv`
+    )
 
-    return csv;
+    return csv
   }
 
   /**
    * Generate CSV from dashboard data
    */
   private generateCSV(data: DashboardData): string {
-    const lines: string[] = [];
+    const lines: string[] = []
 
     // Overview section
-    lines.push('OVERVIEW');
-    lines.push('Metric,Value');
-    lines.push(`Total FIRs,${data.overview.totalFIRs}`);
-    lines.push(`Total Waste (kg),${data.overview.totalWasteKg}`);
-    lines.push(`Completed FIRs,${data.overview.completedFIRs}`);
-    lines.push(`Pending FIRs,${data.overview.pendingFIRs}`);
-    lines.push(`Overdue FIRs,${data.overview.overdueFIRs}`);
-    lines.push('');
+    lines.push('OVERVIEW')
+    lines.push('Metric,Value')
+    lines.push(`Total FIRs,${data.overview.totalFIRs}`)
+    lines.push(`Total Waste (kg),${data.overview.totalWasteKg}`)
+    lines.push(`Completed FIRs,${data.overview.completedFIRs}`)
+    lines.push(`Pending FIRs,${data.overview.pendingFIRs}`)
+    lines.push(`Overdue FIRs,${data.overview.overdueFIRs}`)
+    lines.push('')
 
     // Status breakdown
-    lines.push('STATUS BREAKDOWN');
-    lines.push('Status,Count');
+    lines.push('STATUS BREAKDOWN')
+    lines.push('Status,Count')
     Object.entries(data.status.breakdown).forEach(([status, count]) => {
-      lines.push(`${status},${count}`);
-    });
-    lines.push('');
+      lines.push(`${status},${count}`)
+    })
+    lines.push('')
 
     // Waste by CER code
-    lines.push('WASTE BY CER CODE');
-    lines.push('CER Code,Count,Quantity (kg)');
+    lines.push('WASTE BY CER CODE')
+    lines.push('CER Code,Count,Quantity (kg)')
     data.waste.byCERCode.forEach(w => {
-      lines.push(`${w.cerCode},${w.count},${w.totalQuantity}`);
-    });
-    lines.push('');
+      lines.push(`${w.cerCode},${w.count},${w.totalQuantity}`)
+    })
+    lines.push('')
 
     // Compliance
-    lines.push('COMPLIANCE');
-    lines.push('Metric,Value');
-    lines.push(`Score,${(data.compliance.score * 100).toFixed(1)}%`);
-    lines.push(`Level,${data.compliance.level}`);
-    lines.push('');
+    lines.push('COMPLIANCE')
+    lines.push('Metric,Value')
+    lines.push(`Score,${(data.compliance.score * 100).toFixed(1)}%`)
+    lines.push(`Level,${data.compliance.level}`)
+    lines.push('')
 
     // Trends
-    lines.push('TRENDS');
-    lines.push('Metric,Value');
-    lines.push(`Current Month,${data.trends.monthOverMonth.current}`);
-    lines.push(`Previous Month,${data.trends.monthOverMonth.previous}`);
-    lines.push(`Growth,${(data.trends.monthOverMonth.percentage * 100).toFixed(1)}%`);
-    lines.push(`Next Month Prediction,${data.trends.prediction.nextMonth}`);
+    lines.push('TRENDS')
+    lines.push('Metric,Value')
+    lines.push(`Current Month,${data.trends.monthOverMonth.current}`)
+    lines.push(`Previous Month,${data.trends.monthOverMonth.previous}`)
+    lines.push(`Growth,${(data.trends.monthOverMonth.percentage * 100).toFixed(1)}%`)
+    lines.push(`Next Month Prediction,${data.trends.prediction.nextMonth}`)
 
-    return lines.join('\n');
+    return lines.join('\n')
   }
 }

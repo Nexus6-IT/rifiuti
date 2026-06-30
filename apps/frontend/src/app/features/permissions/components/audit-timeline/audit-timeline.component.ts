@@ -1,6 +1,6 @@
-import { Component, Input } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { AuditTimestampPipe } from '../../pipes/audit-timestamp.pipe';
+import { Component, Input } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { AuditTimestampPipe } from '../../pipes/audit-timestamp.pipe'
 
 /**
  * AuditTimelineComponent
@@ -108,213 +108,215 @@ import { AuditTimestampPipe } from '../../pipes/audit-timestamp.pipe';
       }
     </div>
   `,
-  styles: [`
-    .audit-timeline {
-      position: relative;
-      padding: var(--spacing-base);
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: var(--spacing-3xl);
-      color: var(--text-secondary);
-    }
-
-    .empty-state i {
-      font-size: 3rem;
-      margin-bottom: var(--spacing-base);
-      opacity: 0.5;
-    }
-
-    .timeline-item {
-      position: relative;
-      padding-left: 2.5rem;
-      padding-bottom: var(--spacing-xl);
-      border-left: 2px solid var(--surface-border);
-    }
-
-    .timeline-item:last-child {
-      border-left-color: transparent;
-    }
-
-    .timeline-marker {
-      position: absolute;
-      left: -0.75rem;
-      top: 0;
-      width: 1.5rem;
-      height: 1.5rem;
-      border-radius: var(--radius-full);
-      background: var(--color-success);
-      color: var(--text-inverse);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: var(--font-size-xs);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .timeline-marker.denied {
-      background: var(--color-danger);
-    }
-
-    .timeline-content {
-      background: var(--surface-card);
-      border: 1px solid var(--surface-border);
-      border-radius: var(--radius-lg);
-      padding: var(--spacing-base);
-      margin-left: 0.5rem;
-      box-shadow: var(--shadow-sm);
-      transition: box-shadow var(--transition-fast);
-    }
-
-    .timeline-content:hover {
-      box-shadow: var(--shadow-base);
-    }
-
-    .timeline-item.denied .timeline-content {
-      border-left: 3px solid var(--color-danger);
-    }
-
-    .timeline-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: var(--spacing-md);
-    }
-
-    .decision-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.25rem 0.75rem;
-      background: var(--color-success-bg);
-      color: var(--color-success);
-      border-radius: var(--radius-xl);
-      font-size: var(--font-size-xs);
-      font-weight: var(--font-weight-semibold);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .decision-badge.denied {
-      background: var(--color-danger-bg);
-      color: var(--color-danger);
-    }
-
-    .timestamp {
-      font-size: var(--font-size-sm);
-      color: var(--text-secondary);
-      font-family: var(--font-family-mono);
-    }
-
-    .timeline-body {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-sm);
-    }
-
-    .action-info {
-      font-size: var(--font-size-base);
-      color: var(--text-primary);
-    }
-
-    .action-info strong {
-      font-weight: var(--font-weight-semibold);
-    }
-
-    .resource-type {
-      color: var(--text-secondary);
-      font-size: var(--font-size-sm);
-      margin-left: 0.5rem;
-    }
-
-    .user-info,
-    .reason-info {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-sm);
-      font-size: var(--font-size-sm);
-      color: var(--text-secondary);
-    }
-
-    .reason-info {
-      color: var(--brand-secondary);
-      font-style: italic;
-    }
-
-    .details-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: var(--spacing-md);
-      margin-top: var(--spacing-base);
-      padding-top: var(--spacing-base);
-      border-top: 1px solid var(--surface-border);
-    }
-
-    .detail-item {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-    }
-
-    .detail-label {
-      font-size: var(--font-size-xs);
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .detail-value {
-      font-size: var(--font-size-sm);
-      color: var(--text-primary);
-      word-break: break-all;
-    }
-
-    /* Mobile responsive */
-    @media (max-width: 768px) {
+  styles: [
+    `
       .audit-timeline {
-        padding: 0.5rem;
+        position: relative;
+        padding: var(--spacing-base);
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: var(--spacing-3xl);
+        color: var(--text-secondary);
+      }
+
+      .empty-state i {
+        font-size: 3rem;
+        margin-bottom: var(--spacing-base);
+        opacity: 0.5;
       }
 
       .timeline-item {
-        padding-left: 2rem;
+        position: relative;
+        padding-left: 2.5rem;
+        padding-bottom: var(--spacing-xl);
+        border-left: 2px solid var(--surface-border);
+      }
+
+      .timeline-item:last-child {
+        border-left-color: transparent;
       }
 
       .timeline-marker {
-        left: -0.625rem;
-        width: 1.25rem;
-        height: 1.25rem;
-        font-size: 0.625rem;
+        position: absolute;
+        left: -0.75rem;
+        top: 0;
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: var(--radius-full);
+        background: var(--color-success);
+        color: var(--text-inverse);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: var(--font-size-xs);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .timeline-marker.denied {
+        background: var(--color-danger);
       }
 
       .timeline-content {
-        margin-left: 0.25rem;
-        padding: 0.75rem;
+        background: var(--surface-card);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-lg);
+        padding: var(--spacing-base);
+        margin-left: 0.5rem;
+        box-shadow: var(--shadow-sm);
+        transition: box-shadow var(--transition-fast);
+      }
+
+      .timeline-content:hover {
+        box-shadow: var(--shadow-base);
+      }
+
+      .timeline-item.denied .timeline-content {
+        border-left: 3px solid var(--color-danger);
+      }
+
+      .timeline-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--spacing-md);
+      }
+
+      .decision-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.75rem;
+        background: var(--color-success-bg);
+        color: var(--color-success);
+        border-radius: var(--radius-xl);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .decision-badge.denied {
+        background: var(--color-danger-bg);
+        color: var(--color-danger);
+      }
+
+      .timestamp {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        font-family: var(--font-family-mono);
+      }
+
+      .timeline-body {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+      }
+
+      .action-info {
+        font-size: var(--font-size-base);
+        color: var(--text-primary);
+      }
+
+      .action-info strong {
+        font-weight: var(--font-weight-semibold);
+      }
+
+      .resource-type {
+        color: var(--text-secondary);
+        font-size: var(--font-size-sm);
+        margin-left: 0.5rem;
+      }
+
+      .user-info,
+      .reason-info {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+      }
+
+      .reason-info {
+        color: var(--brand-secondary);
+        font-style: italic;
       }
 
       .details-grid {
-        grid-template-columns: 1fr;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: var(--spacing-md);
+        margin-top: var(--spacing-base);
+        padding-top: var(--spacing-base);
+        border-top: 1px solid var(--surface-border);
       }
-    }
-  `],
+
+      .detail-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .detail-label {
+        font-size: var(--font-size-xs);
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .detail-value {
+        font-size: var(--font-size-sm);
+        color: var(--text-primary);
+        word-break: break-all;
+      }
+
+      /* Mobile responsive */
+      @media (max-width: 768px) {
+        .audit-timeline {
+          padding: 0.5rem;
+        }
+
+        .timeline-item {
+          padding-left: 2rem;
+        }
+
+        .timeline-marker {
+          left: -0.625rem;
+          width: 1.25rem;
+          height: 1.25rem;
+          font-size: 0.625rem;
+        }
+
+        .timeline-content {
+          margin-left: 0.25rem;
+          padding: 0.75rem;
+        }
+
+        .details-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    `,
+  ],
 })
 export class AuditTimelineComponent {
   @Input() logs: Array<{
-    id: string;
-    userId: string;
-    tenantId: string;
-    actionAttempted: string;
-    resourceType?: string;
-    resourceId?: string;
-    decision: 'ALLOW' | 'DENY';
-    reason?: string;
-    spidFiscalCode?: string;
-    sessionId?: string;
-    ipAddress?: string;
-    userAgent?: string;
-    timestamp: string;
-    hash?: string;
-    previousHash: string;
-  }> = [];
+    id: string
+    userId: string
+    tenantId: string
+    actionAttempted: string
+    resourceType?: string
+    resourceId?: string
+    decision: 'ALLOW' | 'DENY'
+    reason?: string
+    spidFiscalCode?: string
+    sessionId?: string
+    ipAddress?: string
+    userAgent?: string
+    timestamp: string
+    hash?: string
+    previousHash: string
+  }> = []
 
-  @Input() showDetails = false;
+  @Input() showDetails = false
 }

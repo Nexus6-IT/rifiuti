@@ -1,13 +1,13 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { CalendarModule } from 'primeng/calendar';
-import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { ToastService } from '../../core/services/toast.service';
-import { EsgReport, EsgService } from './esg.service';
+import { Component, OnInit, inject, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { ButtonModule } from 'primeng/button'
+import { CalendarModule } from 'primeng/calendar'
+import { TableModule } from 'primeng/table'
+import { TagModule } from 'primeng/tag'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { ToastService } from '../../core/services/toast.service'
+import { EsgReport, EsgService } from './esg.service'
 
 /**
  * Pagina ESG / CO2: indicatori ambientali aggregati del tenant.
@@ -33,16 +33,22 @@ import { EsgReport, EsgService } from './esg.service';
         <div class="page-header__titles">
           <h1 class="page-title">ESG / CO2 — Indicatori ambientali</h1>
           <p class="page-subtitle">
-            Tasso di recupero, rifiuti deviati da discarica e CO2 evitata, con dettaglio per codice CER
+            Tasso di recupero, rifiuti deviati da discarica e CO2 evitata, con dettaglio per codice
+            CER
           </p>
         </div>
         <div class="page-actions">
           <p-tag
             *ngIf="report() as r"
             severity="info"
-            [value]="r.period
-              ? ('Periodo: ' + (r.period.from | date: 'dd/MM/yyyy') + ' — ' + (r.period.to | date: 'dd/MM/yyyy'))
-              : 'Periodo: tutto lo storico'"
+            [value]="
+              r.period
+                ? 'Periodo: ' +
+                  (r.period.from | date: 'dd/MM/yyyy') +
+                  ' — ' +
+                  (r.period.to | date: 'dd/MM/yyyy')
+                : 'Periodo: tutto lo storico'
+            "
             icon="pi pi-calendar"
           ></p-tag>
         </div>
@@ -104,17 +110,29 @@ import { EsgReport, EsgService } from './esg.service';
       <!-- Loading -->
       <section *ngIf="loading()" class="surface-card">
         <div class="flex justify-content-center p-5">
-          <p-progressSpinner strokeWidth="4" [style]="{ width: '50px', height: '50px' }" ariaLabel="Caricamento report ESG"></p-progressSpinner>
+          <p-progressSpinner
+            strokeWidth="4"
+            [style]="{ width: '50px', height: '50px' }"
+            ariaLabel="Caricamento report ESG"
+          ></p-progressSpinner>
         </div>
       </section>
 
       <!-- Error -->
       <section *ngIf="!loading() && error()" class="surface-card">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
+          <i
+            class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger"
+            aria-hidden="true"
+          ></i>
           <span class="empty-state__title">Impossibile caricare il report ESG</span>
           <p>Si è verificato un errore. Riprova.</p>
-          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadReport()"></p-button>
+          <p-button
+            label="Riprova"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            (onClick)="loadReport()"
+          ></p-button>
         </div>
       </section>
 
@@ -124,7 +142,9 @@ import { EsgReport, EsgService } from './esg.service';
         <div class="stat-grid mb-3">
           <div class="stat-card">
             <span class="stat-card__label">Tasso di recupero</span>
-            <span class="stat-card__value">{{ r.totals.recyclingRate * 100 | number: '1.0-1' }}%</span>
+            <span class="stat-card__value"
+              >{{ r.totals.recyclingRate * 100 | number: '1.0-1' }}%</span
+            >
             <span class="stat-card__hint">quota avviata a recupero</span>
           </div>
           <div class="stat-card">
@@ -173,7 +193,9 @@ import { EsgReport, EsgService } from './esg.service';
               </ng-template>
               <ng-template pTemplate="body" let-row>
                 <tr>
-                  <td><strong>{{ row.cerCode }}</strong></td>
+                  <td>
+                    <strong>{{ row.cerCode }}</strong>
+                  </td>
                   <td class="text-right">{{ row.recoveryKg | number: '1.0-0' }}</td>
                   <td class="text-right">{{ row.disposalKg | number: '1.0-0' }}</td>
                   <td class="text-right">{{ row.co2AvoidedKg | number: '1.0-0' }}</td>
@@ -210,59 +232,69 @@ import { EsgReport, EsgService } from './esg.service';
       .stat-card--sub .stat-card__value {
         font-size: var(--font-size-2xl);
       }
-      .empty-state__icon--danger { color: var(--color-danger); }
-      .text-right { text-align: right; }
-      .mb-4 { margin-bottom: var(--spacing-xl); }
-      .mb-3 { margin-bottom: var(--spacing-base); }
-      .mb-2 { margin-bottom: var(--spacing-sm); }
+      .empty-state__icon--danger {
+        color: var(--color-danger);
+      }
+      .text-right {
+        text-align: right;
+      }
+      .mb-4 {
+        margin-bottom: var(--spacing-xl);
+      }
+      .mb-3 {
+        margin-bottom: var(--spacing-base);
+      }
+      .mb-2 {
+        margin-bottom: var(--spacing-sm);
+      }
     `,
   ],
 })
 export class EsgComponent implements OnInit {
-  private readonly esgService = inject(EsgService);
-  private readonly toast = inject(ToastService);
+  private readonly esgService = inject(EsgService)
+  private readonly toast = inject(ToastService)
 
-  readonly report = signal<EsgReport | null>(null);
-  readonly loading = signal(false);
-  readonly error = signal(false);
+  readonly report = signal<EsgReport | null>(null)
+  readonly loading = signal(false)
+  readonly error = signal(false)
 
-  startDate: Date | null = null;
-  endDate: Date | null = null;
+  startDate: Date | null = null
+  endDate: Date | null = null
 
   ngOnInit(): void {
-    this.loadReport();
+    this.loadReport()
   }
 
   loadReport(): void {
-    this.loading.set(true);
-    this.error.set(false);
+    this.loading.set(true)
+    this.error.set(false)
 
     this.esgService.getReport(this.toIso(this.startDate), this.toIso(this.endDate)).subscribe({
-      next: (r) => {
-        this.report.set(r);
-        this.loading.set(false);
+      next: r => {
+        this.report.set(r)
+        this.loading.set(false)
       },
       error: () => {
-        this.loading.set(false);
-        this.error.set(true);
-        this.report.set(null);
-        this.toast.error('Errore nel caricamento del report ESG');
+        this.loading.set(false)
+        this.error.set(true)
+        this.report.set(null)
+        this.toast.error('Errore nel caricamento del report ESG')
       },
-    });
+    })
   }
 
   clearFilter(): void {
-    this.startDate = null;
-    this.endDate = null;
-    this.loadReport();
+    this.startDate = null
+    this.endDate = null
+    this.loadReport()
   }
 
   /** Converte una Date locale in stringa ISO yyyy-mm-dd (senza shift di fuso). */
   private toIso(date: Date | null): string | undefined {
-    if (!date) return undefined;
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    if (!date) return undefined
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
   }
 }

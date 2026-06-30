@@ -1,10 +1,10 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger, Inject } from '@nestjs/common';
-import { Job } from 'bullmq';
-import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-change-history.repository.interface';
-import { RoleChangeHistory } from '../../domain/identity-access/role-change-history.entity';
-import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface';
-import { PermissionAuditLog } from '../../domain/identity-access/permission-audit-log.entity';
+import { Processor, WorkerHost } from '@nestjs/bullmq'
+import { Logger, Inject } from '@nestjs/common'
+import { Job } from 'bullmq'
+import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-change-history.repository.interface'
+import { RoleChangeHistory } from '../../domain/identity-access/role-change-history.entity'
+import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface'
+import { PermissionAuditLog } from '../../domain/identity-access/permission-audit-log.entity'
 
 /**
  * AuditLoggingProcessor
@@ -24,29 +24,29 @@ import { PermissionAuditLog } from '../../domain/identity-access/permission-audi
   concurrency: 10, // Process 10 audit logs in parallel
 })
 export class AuditLoggingProcessor extends WorkerHost {
-  private readonly logger = new Logger(AuditLoggingProcessor.name);
+  private readonly logger = new Logger(AuditLoggingProcessor.name)
 
   constructor(
     @Inject('RoleChangeHistoryRepository')
     private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository,
     @Inject('PermissionAuditLogRepository')
-    private readonly auditLogRepository: PermissionAuditLogRepository,
+    private readonly auditLogRepository: PermissionAuditLogRepository
   ) {
-    super();
+    super()
   }
 
   async process(job: Job): Promise<void> {
-    const { type, data } = job.data;
+    const { type, data } = job.data
 
     switch (type) {
       case 'role-change':
-        await this.processRoleChange(job, data);
-        break;
+        await this.processRoleChange(job, data)
+        break
       case 'permission-check':
-        await this.processPermissionCheck(job, data);
-        break;
+        await this.processPermissionCheck(job, data)
+        break
       default:
-        this.logger.warn(`Unknown audit log type: ${type}`);
+        this.logger.warn(`Unknown audit log type: ${type}`)
     }
   }
 
@@ -63,32 +63,27 @@ export class AuditLoggingProcessor extends WorkerHost {
         changedBy: data.changedBy,
         reason: data.reason,
         timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
-        effectiveDate: data.effectiveDate
-          ? new Date(data.effectiveDate)
-          : new Date(),
+        effectiveDate: data.effectiveDate ? new Date(data.effectiveDate) : new Date(),
         metadata: data.metadata,
-      });
+      })
 
-      await this.roleChangeHistoryRepository.save(roleChange);
+      await this.roleChangeHistoryRepository.save(roleChange)
 
       this.logger.debug(
-        `[AUDIT] Logged role change for user ${data.userId}: ${data.oldRoleId} → ${data.newRoleId}`,
-      );
+        `[AUDIT] Logged role change for user ${data.userId}: ${data.oldRoleId} → ${data.newRoleId}`
+      )
     } catch (error) {
-      this.logger.error(
-        `Failed to process role change audit: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`Failed to process role change audit: ${error.message}`, error.stack)
 
       // Retry failed jobs (BullMQ will handle retry logic)
       if (job.attemptsMade < 3) {
-        throw error; // Will trigger retry
+        throw error // Will trigger retry
       }
 
       // After 3 retries, log and discard
       this.logger.error(
-        `Discarding role change audit after 3 failed attempts: ${JSON.stringify(data)}`,
-      );
+        `Discarding role change audit after 3 failed attempts: ${JSON.stringify(data)}`
+      )
     }
   }
 
@@ -99,10 +94,8 @@ export class AuditLoggingProcessor extends WorkerHost {
   private async processPermissionCheck(job: Job, data: any): Promise<void> {
     try {
       // Create permission audit log with cryptographic chaining
-      const previousLog = await this.auditLogRepository.getLatestLog(
-        data.tenantId,
-      );
-      const previousHash = previousLog?.hash || '0'; // Genesis log uses '0'
+      const previousLog = await this.auditLogRepository.getLatestLog(data.tenantId)
+      const previousHash = previousLog?.hash || '0' // Genesis log uses '0'
 
       const auditLog = PermissionAuditLog.create({
         userId: data.userId,
@@ -118,28 +111,25 @@ export class AuditLoggingProcessor extends WorkerHost {
         userAgent: data.userAgent,
         timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
         previousHash,
-      });
+      })
 
-      await this.auditLogRepository.save(auditLog);
+      await this.auditLogRepository.save(auditLog)
 
       this.logger.debug(
-        `[AUDIT] Logged permission check: user=${data.userId}, action=${data.actionAttempted}, decision=${data.decision}`,
-      );
+        `[AUDIT] Logged permission check: user=${data.userId}, action=${data.actionAttempted}, decision=${data.decision}`
+      )
     } catch (error) {
-      this.logger.error(
-        `Failed to process permission check audit: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`Failed to process permission check audit: ${error.message}`, error.stack)
 
       // Retry failed jobs (BullMQ will handle retry logic)
       if (job.attemptsMade < 3) {
-        throw error; // Will trigger retry
+        throw error // Will trigger retry
       }
 
       // After 3 retries, log and discard
       this.logger.error(
-        `Discarding permission check audit after 3 failed attempts: ${JSON.stringify(data)}`,
-      );
+        `Discarding permission check audit after 3 failed attempts: ${JSON.stringify(data)}`
+      )
     }
   }
 }

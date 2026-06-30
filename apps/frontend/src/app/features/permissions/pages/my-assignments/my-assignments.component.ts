@@ -1,28 +1,31 @@
 import {
   Component,
   OnInit,
-  OnDestroy,
   inject,
   signal,
   computed,
   effect,
   ChangeDetectionStrategy,
-} from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
-import { DataViewModule } from 'primeng/dataview';
-import { CardModule } from 'primeng/card';
-import { ButtonModule } from 'primeng/button';
-import { TooltipModule } from 'primeng/tooltip';
-import { BadgeModule } from 'primeng/badge';
-import { TagModule } from 'primeng/tag';
-import { ConfirmDialogModule } from 'primeng/confirmdialog';
-import { ToastModule } from 'primeng/toast';
-import { MessageService, ConfirmationService } from 'primeng/api';
-import { interval, Subject } from 'rxjs';
-import { takeUntil, switchMap } from 'rxjs/operators';
-import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '../../../task-assignment/services/task-assignment-api.service';
+} from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout'
+import { DataViewModule } from 'primeng/dataview'
+import { CardModule } from 'primeng/card'
+import { ButtonModule } from 'primeng/button'
+import { TooltipModule } from 'primeng/tooltip'
+import { BadgeModule } from 'primeng/badge'
+import { TagModule } from 'primeng/tag'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
+import { ToastModule } from 'primeng/toast'
+import { MessageService, ConfirmationService } from 'primeng/api'
+import { interval, Subject } from 'rxjs'
+import { takeUntil, switchMap } from 'rxjs/operators'
+import {
+  TaskAssignmentApiService,
+  MyAssignment,
+  MyAssignmentsResponse,
+} from '../../../task-assignment/services/task-assignment-api.service'
 
 /**
  * MyAssignmentsComponent
@@ -78,8 +81,17 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
             role="status"
             [class.online]="isOnline()"
             [class.offline]="!isOnline()"
-            [pTooltip]="isOnline() ? 'Posizione GPS attiva' : 'Modalità offline - Ultima sincronizzazione: ' + (lastSyncTime() | date: 'short')">
-            <i class="pi" [ngClass]="isOnline() ? 'pi-circle-fill' : 'pi-exclamation-circle'" aria-hidden="true"></i>
+            [pTooltip]="
+              isOnline()
+                ? 'Posizione GPS attiva'
+                : 'Modalità offline - Ultima sincronizzazione: ' + (lastSyncTime() | date: 'short')
+            "
+          >
+            <i
+              class="pi"
+              [ngClass]="isOnline() ? 'pi-circle-fill' : 'pi-exclamation-circle'"
+              aria-hidden="true"
+            ></i>
             {{ isOnline() ? 'GPS attivo' : 'Offline' }}
           </span>
 
@@ -91,7 +103,8 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
             class="p-button-rounded p-button-text"
             pTooltip="Aggiorna le attività"
             tooltipPosition="top"
-            aria-label="Aggiorna le attività"></button>
+            aria-label="Aggiorna le attività"
+          ></button>
         </div>
       </header>
 
@@ -107,7 +120,12 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
       <div *ngIf="error()" class="surface-card error-state" role="alert">
         <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
         <p>{{ error() }}</p>
-        <button pButton label="Riprova" icon="pi pi-refresh" (click)="refreshAssignments()"></button>
+        <button
+          pButton
+          label="Riprova"
+          icon="pi pi-refresh"
+          (click)="refreshAssignments()"
+        ></button>
       </div>
 
       <!-- Riepilogo veicolo -->
@@ -115,15 +133,21 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
         <div class="stat-grid">
           <div class="stat-card">
             <span class="stat-card__label">Capacità veicolo</span>
-            <span class="stat-card__value">{{ assignments()?.vehicleInfo?.capacity || 0 }} <small>kg</small></span>
+            <span class="stat-card__value"
+              >{{ assignments()?.vehicleInfo?.capacity || 0 }} <small>kg</small></span
+            >
           </div>
           <div class="stat-card">
             <span class="stat-card__label">Carico attuale</span>
-            <span class="stat-card__value">{{ assignments()?.vehicleInfo?.currentLoad || 0 }} <small>kg</small></span>
+            <span class="stat-card__value"
+              >{{ assignments()?.vehicleInfo?.currentLoad || 0 }} <small>kg</small></span
+            >
           </div>
           <div class="stat-card">
             <span class="stat-card__label">Disponibile</span>
-            <span class="stat-card__value">{{ assignments()?.vehicleInfo?.availableCapacity || 0 }} <small>kg</small></span>
+            <span class="stat-card__value"
+              >{{ assignments()?.vehicleInfo?.availableCapacity || 0 }} <small>kg</small></span
+            >
           </div>
           <div class="stat-card capacity-card">
             <span class="stat-card__label">Capacità utilizzata</span>
@@ -133,7 +157,8 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
               [attr.aria-valuenow]="getCapacityPercentage()"
               aria-valuemin="0"
               aria-valuemax="100"
-              [attr.aria-label]="'Capacità utilizzata: ' + getCapacityPercentage() + '%'">
+              [attr.aria-label]="'Capacità utilizzata: ' + getCapacityPercentage() + '%'"
+            >
               <div class="progress-fill" [style.width.%]="getCapacityPercentage()"></div>
             </div>
             <span class="stat-card__hint">{{ getCapacityPercentage() }}%</span>
@@ -142,7 +167,10 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
       </div>
 
       <!-- Stato vuoto -->
-      <div *ngIf="assignments() && sortedAssignments().length === 0 && !isLoading()" class="surface-card">
+      <div
+        *ngIf="assignments() && sortedAssignments().length === 0 && !isLoading()"
+        class="surface-card"
+      >
         <div class="empty-state">
           <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
           <p class="empty-state__title">Nessuna attività</p>
@@ -156,7 +184,8 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
         [value]="sortedAssignments()"
         [rows]="10"
         [paginator]="true"
-        class="assignments-dataview">
+        class="assignments-dataview"
+      >
         <!-- Intestazione DataView con opzioni di ordinamento -->
         <ng-template pTemplate="header">
           <div class="dataview-header">
@@ -167,7 +196,8 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
                 class="sort-select"
                 [(ngModel)]="sortBy"
                 (change)="onSortChange()"
-                data-testid="sort-select">
+                data-testid="sort-select"
+              >
                 <option value="proximity">Vicinanza (più vicine prima)</option>
                 <option value="transportDate">Data di trasporto</option>
                 <option value="priority">Priorità</option>
@@ -190,11 +220,13 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
                   <p-tag
                     [value]="getStatusLabel(assignment.status)"
                     [severity]="getStatusSeverity(assignment.status)"
-                    [attr.data-testid]="'status-' + assignment.status"></p-tag>
+                    [attr.data-testid]="'status-' + assignment.status"
+                  ></p-tag>
                   <p-tag
                     [value]="getPriorityLabel(assignment.priority)"
                     [severity]="getPrioritySeverity(assignment.priority)"
-                    class="priority-tag"></p-tag>
+                    class="priority-tag"
+                  ></p-tag>
                 </div>
               </div>
 
@@ -219,7 +251,9 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
                   <p class="location-address">{{ assignment.pickupLocation.address }}</p>
                   <div *ngIf="assignment.pickupLocation.distance" class="distance-info">
                     <i class="pi pi-arrow-right" aria-hidden="true"></i>
-                    <span class="distance">{{ getFormattedDistance(assignment.pickupLocation.distance) }}</span>
+                    <span class="distance">{{
+                      getFormattedDistance(assignment.pickupLocation.distance)
+                    }}</span>
                   </div>
                 </div>
 
@@ -255,7 +289,8 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
                   class="p-button-primary p-button-sm action-button"
                   (click)="viewAssignmentDetails(assignment)"
                   [attr.data-testid]="'view-details-' + assignment.firId"
-                  [attr.aria-label]="'Dettagli del FIR ' + assignment.firNumber"></button>
+                  [attr.aria-label]="'Dettagli del FIR ' + assignment.firNumber"
+                ></button>
                 <button
                   pButton
                   label="Avvia ritiro"
@@ -264,7 +299,8 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
                   (click)="startPickup(assignment)"
                   [disabled]="assignment.status !== 'AWAITING_CARRIER'"
                   [attr.data-testid]="'start-pickup-' + assignment.firId"
-                  [attr.aria-label]="'Avvia ritiro per il FIR ' + assignment.firNumber"></button>
+                  [attr.aria-label]="'Avvia ritiro per il FIR ' + assignment.firNumber"
+                ></button>
               </div>
             </p-card>
           </div>
@@ -272,7 +308,10 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
       </p-dataView>
 
       <!-- Confirmation Dialog for Actions -->
-      <p-confirmDialog [style]="{ width: '50vw' }" [breakpoints]="{ '960px': '75vw', '640px': '90vw' }"></p-confirmDialog>
+      <p-confirmDialog
+        [style]="{ width: '50vw' }"
+        [breakpoints]="{ '960px': '75vw', '640px': '90vw' }"
+      ></p-confirmDialog>
 
       <!-- Toast Notifications -->
       <p-toast position="top-right"></p-toast>
@@ -299,11 +338,19 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
 
         i {
           font-size: 0.8rem;
-          &.pi-circle-fill { color: var(--color-success); }
-          &.pi-exclamation-circle { color: var(--color-warning); }
+          &.pi-circle-fill {
+            color: var(--color-success);
+          }
+          &.pi-exclamation-circle {
+            color: var(--color-warning);
+          }
         }
-        &.online { color: var(--color-success); }
-        &.offline { color: var(--color-warning); }
+        &.online {
+          color: var(--color-success);
+        }
+        &.offline {
+          color: var(--color-warning);
+        }
       }
     }
 
@@ -318,9 +365,17 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
       border-left: 4px solid var(--color-danger);
       background: var(--color-danger-bg);
 
-      i { margin-bottom: var(--spacing-base); color: var(--color-danger); font-size: 2.5rem; }
-      p { margin: var(--spacing-sm) 0; }
-      button { margin-top: var(--spacing-base); }
+      i {
+        margin-bottom: var(--spacing-base);
+        color: var(--color-danger);
+        font-size: 2.5rem;
+      }
+      p {
+        margin: var(--spacing-sm) 0;
+      }
+      button {
+        margin-top: var(--spacing-base);
+      }
     }
 
     .vehicle-info {
@@ -615,58 +670,57 @@ import { TaskAssignmentApiService, MyAssignment, MyAssignmentsResponse } from '.
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MyAssignmentsComponent implements OnInit {
-  private readonly taskAssignmentApi = inject(TaskAssignmentApiService);
-  private readonly breakpointObserver = inject(BreakpointObserver);
-  private readonly messageService = inject(MessageService);
-  private readonly confirmationService = inject(ConfirmationService);
-  private readonly destroy$ = new Subject<void>();
+  private readonly taskAssignmentApi = inject(TaskAssignmentApiService)
+  private readonly breakpointObserver = inject(BreakpointObserver)
+  private readonly messageService = inject(MessageService)
+  private readonly confirmationService = inject(ConfirmationService)
+  private readonly destroy$ = new Subject<void>()
 
   // Signal state
-  isLoading = signal(false);
-  error = signal<string | null>(null);
-  assignments = signal<MyAssignmentsResponse | null>(null);
-  currentLocation = signal<{ latitude: number; longitude: number } | null>(null);
-  isMobile = signal(false);
-  isOnline = signal(navigator.onLine);
-  lastSyncTime = signal<Date | null>(null);
-  sortBy = signal<'proximity' | 'transportDate' | 'priority'>('proximity');
+  isLoading = signal(false)
+  error = signal<string | null>(null)
+  assignments = signal<MyAssignmentsResponse | null>(null)
+  currentLocation = signal<{ latitude: number; longitude: number } | null>(null)
+  isMobile = signal(false)
+  isOnline = signal(navigator.onLine)
+  lastSyncTime = signal<Date | null>(null)
+  sortBy = signal<'proximity' | 'transportDate' | 'priority'>('proximity')
 
   // Computed derived state
   sortedAssignments = computed(() => {
-    const assigns = this.assignments()?.assignments || [];
-    const sort = this.sortBy();
+    const assigns = this.assignments()?.assignments || []
+    const sort = this.sortBy()
 
     if (sort === 'proximity') {
-      return this.sortByProximity(assigns);
+      return this.sortByProximity(assigns)
     } else if (sort === 'transportDate') {
       return [...assigns].sort(
-        (a, b) =>
-          new Date(a.transportDate).getTime() - new Date(b.transportDate).getTime(),
-      );
+        (a, b) => new Date(a.transportDate).getTime() - new Date(b.transportDate).getTime()
+      )
     } else if (sort === 'priority') {
-      const priorityMap = { urgent: 0, high: 1, normal: 2, low: 3 };
+      const priorityMap = { urgent: 0, high: 1, normal: 2, low: 3 }
       return [...assigns].sort(
         (a, b) =>
           priorityMap[a.priority as keyof typeof priorityMap] -
-          priorityMap[b.priority as keyof typeof priorityMap],
-      );
+          priorityMap[b.priority as keyof typeof priorityMap]
+      )
     }
 
-    return assigns;
-  });
+    return assigns
+  })
 
   constructor() {
     // Setup responsive design
     this.breakpointObserver
       .observe([Breakpoints.Handset])
       .pipe(takeUntil(this.destroy$))
-      .subscribe((result) => {
-        this.isMobile.set(result.matches);
-      });
+      .subscribe(result => {
+        this.isMobile.set(result.matches)
+      })
 
     // Setup online/offline detection
-    window.addEventListener('online', () => this.isOnline.set(true));
-    window.addEventListener('offline', () => this.isOnline.set(false));
+    window.addEventListener('online', () => this.isOnline.set(true))
+    window.addEventListener('offline', () => this.isOnline.set(false))
 
     // Setup auto-refresh every 30 seconds (if online)
     effect(() => {
@@ -674,32 +728,32 @@ export class MyAssignmentsComponent implements OnInit {
         const refreshSubscription = interval(30000)
           .pipe(
             switchMap(() => {
-              return this.taskAssignmentApi.getMyAssignments();
+              return this.taskAssignmentApi.getMyAssignments()
             }),
-            takeUntil(this.destroy$),
+            takeUntil(this.destroy$)
           )
           .subscribe({
-            next: (response) => {
+            next: response => {
               if (response.success && response.data) {
-                this.assignments.set(response.data);
-                this.lastSyncTime.set(new Date());
+                this.assignments.set(response.data)
+                this.lastSyncTime.set(new Date())
               }
             },
-            error: (err) => {
-              console.error('Auto-refresh failed:', err);
+            error: err => {
+              console.error('Auto-refresh failed:', err)
             },
-          });
+          })
 
-        return () => refreshSubscription.unsubscribe();
+        return () => refreshSubscription.unsubscribe()
       }
-      return () => {}; // No-op cleanup when offline
-    });
+      return () => {} // No-op cleanup when offline
+    })
   }
 
   ngOnInit(): void {
-    this.initializeGeolocation();
-    this.refreshAssignments();
-    this.loadFromIndexedDB();
+    this.initializeGeolocation()
+    this.refreshAssignments()
+    this.loadFromIndexedDB()
   }
 
   /**
@@ -709,22 +763,22 @@ export class MyAssignmentsComponent implements OnInit {
   private initializeGeolocation(): void {
     if ('geolocation' in navigator) {
       navigator.geolocation.watchPosition(
-        (position) => {
+        position => {
           this.currentLocation.set({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
-          });
+          })
         },
-        (error) => {
-          console.warn('Geolocation error:', error);
+        error => {
+          console.warn('Geolocation error:', error)
           // Fallback to cached location if available
         },
         {
           enableHighAccuracy: true,
           maximumAge: 30000, // Cache position for 30 seconds
           timeout: 10000,
-        },
-      );
+        }
+      )
     }
   }
 
@@ -732,57 +786,55 @@ export class MyAssignmentsComponent implements OnInit {
    * Refresh assignments from backend
    */
   refreshAssignments(): void {
-    this.isLoading.set(true);
-    this.error.set(null);
+    this.isLoading.set(true)
+    this.error.set(null)
 
     this.taskAssignmentApi
       .getMyAssignments()
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: (response) => {
+        next: response => {
           if (response.success && response.data) {
             // Calculate distances for each assignment
-            const dataWithDistances = this.addDistancesToAssignments(response.data);
-            this.assignments.set(dataWithDistances);
-            this.lastSyncTime.set(new Date());
+            const dataWithDistances = this.addDistancesToAssignments(response.data)
+            this.assignments.set(dataWithDistances)
+            this.lastSyncTime.set(new Date())
 
             // Cache in IndexedDB for offline support
-            this.saveToIndexedDB(dataWithDistances);
+            this.saveToIndexedDB(dataWithDistances)
 
             this.messageService.add({
               severity: 'success',
               summary: 'Fatto',
               detail: 'Attività aggiornate',
               life: 2000,
-            });
+            })
           }
-          this.isLoading.set(false);
+          this.isLoading.set(false)
         },
-        error: (err) => {
-          console.error('Failed to load assignments:', err);
-          this.error.set('Impossibile caricare le attività. Controlla la connessione.');
-          this.isLoading.set(false);
+        error: err => {
+          console.error('Failed to load assignments:', err)
+          this.error.set('Impossibile caricare le attività. Controlla la connessione.')
+          this.isLoading.set(false)
 
           // Try to load from cache on error
-          this.loadFromIndexedDB();
+          this.loadFromIndexedDB()
         },
-      });
+      })
   }
 
   /**
    * Add calculated distances to assignments based on current location
    */
-  private addDistancesToAssignments(
-    data: MyAssignmentsResponse,
-  ): MyAssignmentsResponse {
+  private addDistancesToAssignments(data: MyAssignmentsResponse): MyAssignmentsResponse {
     if (!this.currentLocation()) {
-      return data;
+      return data
     }
 
-    const loc = this.currentLocation()!;
+    const loc = this.currentLocation()!
     return {
       ...data,
-      assignments: data.assignments.map((assignment) => ({
+      assignments: data.assignments.map(assignment => ({
         ...assignment,
         pickupLocation: {
           ...assignment.pickupLocation,
@@ -790,38 +842,30 @@ export class MyAssignmentsComponent implements OnInit {
             loc.latitude,
             loc.longitude,
             assignment.pickupLocation.latitude,
-            assignment.pickupLocation.longitude,
+            assignment.pickupLocation.longitude
           ),
         },
       })),
-    };
+    }
   }
 
   /**
    * Haversine formula for calculating distance between two points
    * Returns distance in meters
    */
-  private calculateDistance(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number,
-  ): number {
-    const R = 6371000; // Earth's radius in meters
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371000 // Earth's radius in meters
+    const φ1 = (lat1 * Math.PI) / 180
+    const φ2 = (lat2 * Math.PI) / 180
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180
 
     const a =
       Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) *
-        Math.cos(φ2) *
-        Math.sin(Δλ / 2) *
-        Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 
-    return R * c;
+    return R * c
   }
 
   /**
@@ -829,10 +873,10 @@ export class MyAssignmentsComponent implements OnInit {
    */
   private sortByProximity(assignments: MyAssignment[]): MyAssignment[] {
     return [...assignments].sort((a, b) => {
-      const distA = a.pickupLocation.distance || Number.MAX_SAFE_INTEGER;
-      const distB = b.pickupLocation.distance || Number.MAX_SAFE_INTEGER;
-      return distA - distB;
-    });
+      const distA = a.pickupLocation.distance || Number.MAX_SAFE_INTEGER
+      const distB = b.pickupLocation.distance || Number.MAX_SAFE_INTEGER
+      return distA - distB
+    })
   }
 
   /**
@@ -847,9 +891,9 @@ export class MyAssignmentsComponent implements OnInit {
    */
   getFormattedDistance(distanceInMeters: number): string {
     if (distanceInMeters < 1000) {
-      return `${Math.round(distanceInMeters)} m`;
+      return `${Math.round(distanceInMeters)} m`
     }
-    return `${(distanceInMeters / 1000).toFixed(1)} km`;
+    return `${(distanceInMeters / 1000).toFixed(1)} km`
   }
 
   /**
@@ -861,21 +905,26 @@ export class MyAssignmentsComponent implements OnInit {
       IN_TRANSIT: 'In transito',
       COMPLETED: 'Completata',
       FAILED: 'Fallita',
-    };
-    return statusMap[status] || status;
+    }
+    return statusMap[status] || status
   }
 
   /**
    * Get status severity for tag coloring
    */
-  getStatusSeverity(status: string): 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' | undefined {
-    const severityMap: Record<string, 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' | undefined> = {
+  getStatusSeverity(
+    status: string
+  ): 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' | undefined {
+    const severityMap: Record<
+      string,
+      'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' | undefined
+    > = {
       AWAITING_CARRIER: 'warning',
       IN_TRANSIT: 'info',
       COMPLETED: 'success',
       FAILED: 'danger',
-    };
-    return severityMap[status] || 'info';
+    }
+    return severityMap[status] || 'info'
   }
 
   /**
@@ -887,30 +936,35 @@ export class MyAssignmentsComponent implements OnInit {
       normal: 'Normale',
       high: 'Alta',
       urgent: 'Urgente',
-    };
-    return labelMap[priority] || priority.toUpperCase();
+    }
+    return labelMap[priority] || priority.toUpperCase()
   }
 
   /**
    * Get priority severity for tag coloring
    */
-  getPrioritySeverity(priority: string): 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' | undefined {
-    const severityMap: Record<string, 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' | undefined> = {
+  getPrioritySeverity(
+    priority: string
+  ): 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' | undefined {
+    const severityMap: Record<
+      string,
+      'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' | undefined
+    > = {
       low: 'info',
       normal: 'secondary',
       high: 'warning',
       urgent: 'danger',
-    };
-    return severityMap[priority] || 'secondary';
+    }
+    return severityMap[priority] || 'secondary'
   }
 
   /**
    * Get vehicle capacity usage percentage
    */
   getCapacityPercentage(): number {
-    const info = this.assignments()?.vehicleInfo;
-    if (!info || info.capacity === 0) return 0;
-    return Math.round((info.currentLoad / info.capacity) * 100);
+    const info = this.assignments()?.vehicleInfo
+    if (!info || info.capacity === 0) return 0
+    return Math.round((info.currentLoad / info.capacity) * 100)
   }
 
   /**
@@ -918,12 +972,12 @@ export class MyAssignmentsComponent implements OnInit {
    */
   viewAssignmentDetails(assignment: MyAssignment): void {
     // TODO: Navigate to assignment detail page
-    console.log('View details for:', assignment.firId);
+    console.log('View details for:', assignment.firId)
     this.messageService.add({
       severity: 'info',
       summary: 'Dettagli',
       detail: `Caricamento dei dettagli per il FIR ${assignment.firNumber}...`,
-    });
+    })
   }
 
   /**
@@ -941,9 +995,9 @@ export class MyAssignmentsComponent implements OnInit {
           severity: 'success',
           summary: 'Ritiro avviato',
           detail: `Ritiro del FIR ${assignment.firNumber} avviato`,
-        });
+        })
       },
-    });
+    })
   }
 
   /**
@@ -951,24 +1005,24 @@ export class MyAssignmentsComponent implements OnInit {
    */
   private saveToIndexedDB(data: MyAssignmentsResponse): void {
     if (!('indexedDB' in window)) {
-      console.warn('IndexedDB not available');
-      return;
+      console.warn('IndexedDB not available')
+      return
     }
 
-    const request = indexedDB.open('RifiutiDB', 1);
+    const request = indexedDB.open('RifiutiDB', 1)
     request.onsuccess = () => {
-      const db = request.result;
-      const tx = db.transaction('assignments', 'readwrite');
-      const store = tx.objectStore('assignments');
+      const db = request.result
+      const tx = db.transaction('assignments', 'readwrite')
+      const store = tx.objectStore('assignments')
       store.put({
         id: 'my-assignments',
         data,
         timestamp: Date.now(),
-      });
-    };
+      })
+    }
     request.onerror = () => {
-      console.warn('Failed to open IndexedDB');
-    };
+      console.warn('Failed to open IndexedDB')
+    }
   }
 
   /**
@@ -976,32 +1030,32 @@ export class MyAssignmentsComponent implements OnInit {
    */
   private loadFromIndexedDB(): void {
     if (!('indexedDB' in window)) {
-      return;
+      return
     }
 
-    const request = indexedDB.open('RifiutiDB', 1);
+    const request = indexedDB.open('RifiutiDB', 1)
     request.onsuccess = () => {
-      const db = request.result;
-      const tx = db.transaction('assignments', 'readonly');
-      const store = tx.objectStore('assignments');
-      const getRequest = store.get('my-assignments');
+      const db = request.result
+      const tx = db.transaction('assignments', 'readonly')
+      const store = tx.objectStore('assignments')
+      const getRequest = store.get('my-assignments')
 
       getRequest.onsuccess = () => {
-        const result = getRequest.result;
+        const result = getRequest.result
         if (result) {
-          const age = Date.now() - result.timestamp;
+          const age = Date.now() - result.timestamp
           // Use cache if less than 24 hours old
           if (age < 24 * 60 * 60 * 1000) {
-            this.assignments.set(result.data);
-            this.lastSyncTime.set(new Date(result.timestamp));
+            this.assignments.set(result.data)
+            this.lastSyncTime.set(new Date(result.timestamp))
           }
         }
-      };
-    };
+      }
+    }
   }
 
   ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
+    this.destroy$.next()
+    this.destroy$.complete()
   }
 }

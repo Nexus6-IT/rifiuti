@@ -1,10 +1,10 @@
-import { Component, Input, OnInit, OnDestroy, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { TagModule } from 'primeng/tag';
-import { TooltipModule } from 'primeng/tooltip';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { Subject, takeUntil, timer, switchMap } from 'rxjs';
-import { RENTRISyncService, SyncJobStatus } from '../../services/rentri-sync.service';
+import { Component, Input, OnInit, OnDestroy, inject, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { TagModule } from 'primeng/tag'
+import { TooltipModule } from 'primeng/tooltip'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { Subject, takeUntil, timer, switchMap } from 'rxjs'
+import { RENTRISyncService, SyncJobStatus } from '../../services/rentri-sync.service'
 
 /**
  * RENTRI Sync Status Badge Component
@@ -25,12 +25,7 @@ import { RENTRISyncService, SyncJobStatus } from '../../services/rentri-sync.ser
 @Component({
   selector: 'app-rentri-sync-badge',
   standalone: true,
-  imports: [
-    CommonModule,
-    TagModule,
-    TooltipModule,
-    ProgressSpinnerModule,
-  ],
+  imports: [CommonModule, TagModule, TooltipModule, ProgressSpinnerModule],
   template: `
     <div class="rentri-sync-badge">
       @if (isPolling()) {
@@ -39,7 +34,8 @@ import { RENTRISyncService, SyncJobStatus } from '../../services/rentri-sync.ser
           [value]="pollingStatus()?.status || 'Processing'"
           [pTooltip]="getTooltipText()"
           tooltipPosition="top"
-          styleClass="sync-status-badge">
+          styleClass="sync-status-badge"
+        >
           <i class="pi pi-spin pi-spinner mr-1"></i>
           {{ pollingStatus()?.progress }}%
         </p-tag>
@@ -49,98 +45,100 @@ import { RENTRISyncService, SyncJobStatus } from '../../services/rentri-sync.ser
           [value]="getDisplayText()"
           [pTooltip]="getTooltipText()"
           tooltipPosition="top"
-          styleClass="sync-status-badge">
+          styleClass="sync-status-badge"
+        >
           <i [class]="getIcon()" class="mr-1"></i>
         </p-tag>
       }
     </div>
   `,
-  styles: [`
-    .rentri-sync-badge {
-      display: inline-block;
-    }
+  styles: [
+    `
+      .rentri-sync-badge {
+        display: inline-block;
+      }
 
-    :host ::ng-deep .sync-status-badge {
-      font-size: var(--font-size-xs);
-      padding: 0.25rem 0.5rem;
-    }
+      :host ::ng-deep .sync-status-badge {
+        font-size: var(--font-size-xs);
+        padding: 0.25rem 0.5rem;
+      }
 
-    :host ::ng-deep .sync-status-badge i {
-      font-size: var(--font-size-xs);
-    }
-  `],
+      :host ::ng-deep .sync-status-badge i {
+        font-size: var(--font-size-xs);
+      }
+    `,
+  ],
 })
 export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
-  private readonly rentriSyncService = inject(RENTRISyncService);
-  private readonly destroy$ = new Subject<void>();
+  private readonly rentriSyncService = inject(RENTRISyncService)
+  private readonly destroy$ = new Subject<void>()
 
   /**
    * Current RENTRI sync status from FIR
    * Values: PENDING, SYNCED, FAILED
    */
-  @Input({ required: true }) rentriSyncStatus!: string;
+  @Input({ required: true }) rentriSyncStatus!: string
 
   /**
    * Job ID for active sync (if any)
    */
-  @Input() syncJobId?: string;
+  @Input() syncJobId?: string
 
   /**
    * RENTRI protocol number (if synced)
    */
-  @Input() protocolNumber?: string;
+  @Input() protocolNumber?: string
 
   /**
    * Sync attempt count
    */
-  @Input() syncAttempts: number = 0;
+  @Input() syncAttempts: number = 0
 
   /**
    * Last sync error message
    */
-  @Input() lastSyncError?: string;
+  @Input() lastSyncError?: string
 
   /**
    * Enable auto-polling for in-progress syncs
    */
-  @Input() autoPoll: boolean = true;
+  @Input() autoPoll: boolean = true
 
   /**
    * Polling interval in milliseconds
    */
-  @Input() pollInterval: number = 3000;
+  @Input() pollInterval: number = 3000
 
   // Signals
-  protected readonly isPolling = signal(false);
-  protected readonly pollingStatus = signal<SyncJobStatus | null>(null);
+  protected readonly isPolling = signal(false)
+  protected readonly pollingStatus = signal<SyncJobStatus | null>(null)
 
   ngOnInit(): void {
     // Start polling if there's an active job
     if (this.autoPoll && this.syncJobId && this.isInProgress()) {
-      this.startPolling();
+      this.startPolling()
     }
   }
 
   ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
+    this.destroy$.next()
+    this.destroy$.complete()
   }
 
   /**
    * Check if sync is in progress
    */
   private isInProgress(): boolean {
-    return this.rentriSyncStatus === 'PENDING' ||
-           this.rentriSyncStatus === 'IN_PROGRESS';
+    return this.rentriSyncStatus === 'PENDING' || this.rentriSyncStatus === 'IN_PROGRESS'
   }
 
   /**
    * Start polling job status
    */
   private startPolling(): void {
-    if (!this.syncJobId) return;
+    if (!this.syncJobId) return
 
-    this.isPolling.set(true);
+    this.isPolling.set(true)
 
     timer(0, this.pollInterval)
       .pipe(
@@ -148,20 +146,20 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
         takeUntil(this.destroy$)
       )
       .subscribe({
-        next: (status) => {
-          this.pollingStatus.set(status);
+        next: status => {
+          this.pollingStatus.set(status)
 
           // Stop polling if job is done
           if (status.status === 'completed' || status.status === 'failed') {
-            this.isPolling.set(false);
-            this.destroy$.next();
+            this.isPolling.set(false)
+            this.destroy$.next()
           }
         },
-        error: (error) => {
-          console.error('Error polling sync status:', error);
-          this.isPolling.set(false);
+        error: error => {
+          console.error('Error polling sync status:', error)
+          this.isPolling.set(false)
         },
-      });
+      })
   }
 
   /**
@@ -169,19 +167,19 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
    */
   protected getSeverity(): 'success' | 'info' | 'warning' | 'danger' {
     if (this.isPolling()) {
-      return 'info';
+      return 'info'
     }
 
     switch (this.rentriSyncStatus) {
       case 'SYNCED':
-        return 'success';
+        return 'success'
       case 'PENDING':
       case 'IN_PROGRESS':
-        return 'info';
+        return 'info'
       case 'FAILED':
-        return this.syncAttempts >= 5 ? 'danger' : 'warning';
+        return this.syncAttempts >= 5 ? 'danger' : 'warning'
       default:
-        return 'info';
+        return 'info'
     }
   }
 
@@ -190,21 +188,21 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
    */
   protected getDisplayText(): string {
     if (this.isPolling()) {
-      const status = this.pollingStatus();
-      return status ? `Syncing ${status.progress}%` : 'Syncing...';
+      const status = this.pollingStatus()
+      return status ? `Syncing ${status.progress}%` : 'Syncing...'
     }
 
     switch (this.rentriSyncStatus) {
       case 'SYNCED':
-        return 'Synced';
+        return 'Synced'
       case 'PENDING':
-        return 'Pending';
+        return 'Pending'
       case 'IN_PROGRESS':
-        return 'Syncing';
+        return 'Syncing'
       case 'FAILED':
-        return this.syncAttempts >= 5 ? 'Failed' : `Retry ${this.syncAttempts}/5`;
+        return this.syncAttempts >= 5 ? 'Failed' : `Retry ${this.syncAttempts}/5`
       default:
-        return 'Unknown';
+        return 'Unknown'
     }
   }
 
@@ -213,20 +211,20 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
    */
   protected getIcon(): string {
     if (this.isPolling()) {
-      return 'pi pi-spin pi-spinner';
+      return 'pi pi-spin pi-spinner'
     }
 
     switch (this.rentriSyncStatus) {
       case 'SYNCED':
-        return 'pi pi-check-circle';
+        return 'pi pi-check-circle'
       case 'PENDING':
-        return 'pi pi-clock';
+        return 'pi pi-clock'
       case 'IN_PROGRESS':
-        return 'pi pi-spin pi-spinner';
+        return 'pi pi-spin pi-spinner'
       case 'FAILED':
-        return 'pi pi-exclamation-triangle';
+        return 'pi pi-exclamation-triangle'
       default:
-        return 'pi pi-question-circle';
+        return 'pi pi-question-circle'
     }
   }
 
@@ -235,36 +233,38 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
    */
   protected getTooltipText(): string {
     if (this.isPolling()) {
-      const status = this.pollingStatus();
+      const status = this.pollingStatus()
       if (status) {
-        return `Sync in progress (${status.progress}% complete) - Attempt ${status.attemptsMade}`;
+        return `Sync in progress (${status.progress}% complete) - Attempt ${status.attemptsMade}`
       }
-      return 'Sync in progress...';
+      return 'Sync in progress...'
     }
 
     switch (this.rentriSyncStatus) {
       case 'SYNCED':
         return this.protocolNumber
           ? `Synced to RENTRI - Protocol: ${this.protocolNumber}`
-          : 'Successfully synced to RENTRI';
+          : 'Successfully synced to RENTRI'
 
       case 'PENDING':
-        return 'Waiting for sync to RENTRI';
+        return 'Waiting for sync to RENTRI'
 
       case 'IN_PROGRESS':
-        return 'Sync to RENTRI in progress...';
+        return 'Sync to RENTRI in progress...'
 
-      case 'FAILED':
-        const attemptsText = this.syncAttempts >= 5
-          ? 'Max retries reached'
-          : `Will retry (${this.syncAttempts}/5 attempts)`;
+      case 'FAILED': {
+        const attemptsText =
+          this.syncAttempts >= 5
+            ? 'Max retries reached'
+            : `Will retry (${this.syncAttempts}/5 attempts)`
 
         return this.lastSyncError
           ? `Sync failed: ${this.lastSyncError}\n${attemptsText}`
-          : `Sync failed - ${attemptsText}`;
+          : `Sync failed - ${attemptsText}`
+      }
 
       default:
-        return 'RENTRI sync status unknown';
+        return 'RENTRI sync status unknown'
     }
   }
 }

@@ -10,7 +10,7 @@
  * - SchedulerService: Schedules auto-revocation at expiration time
  */
 export class PermissionGrantedEvent {
-  public readonly occurredAt: Date;
+  public readonly occurredAt: Date
 
   constructor(
     public readonly aggregateId: string, // TemporaryPermissionGrant ID
@@ -20,52 +20,52 @@ export class PermissionGrantedEvent {
     public readonly startTime: Date,
     public readonly endTime: Date,
     public readonly grantedBy: string,
-    public readonly businessJustification: string,
+    public readonly businessJustification: string
   ) {
-    this.occurredAt = new Date();
+    this.occurredAt = new Date()
   }
 
   /**
    * Get event name for routing/logging
    */
   getEventName(): string {
-    return 'permission.granted';
+    return 'permission.granted'
   }
 
   /**
    * Get duration in minutes
    */
   getDurationMinutes(): number {
-    return Math.floor((this.endTime.getTime() - this.startTime.getTime()) / 60000);
+    return Math.floor((this.endTime.getTime() - this.startTime.getTime()) / 60000)
   }
 
   /**
    * Get remaining time in minutes (from now until expiration)
    */
   getRemainingMinutes(): number {
-    const now = Date.now();
+    const now = Date.now()
     if (now >= this.endTime.getTime()) {
-      return 0; // Already expired
+      return 0 // Already expired
     }
-    return Math.floor((this.endTime.getTime() - now) / 60000);
+    return Math.floor((this.endTime.getTime() - now) / 60000)
   }
 
   /**
    * Check if grant is currently active
    */
   isActive(): boolean {
-    const now = Date.now();
-    return now >= this.startTime.getTime() && now < this.endTime.getTime();
+    const now = Date.now()
+    return now >= this.startTime.getTime() && now < this.endTime.getTime()
   }
 
   /**
    * Check if grant is sensitive (contains high-risk permissions)
    */
   isSensitive(): boolean {
-    const sensitiveKeywords = ['delete', 'approve', 'configure', 'admin'];
-    return this.permissions.some((perm) =>
-      sensitiveKeywords.some((keyword) => perm.toLowerCase().includes(keyword)),
-    );
+    const sensitiveKeywords = ['delete', 'approve', 'configure', 'admin']
+    return this.permissions.some(perm =>
+      sensitiveKeywords.some(keyword => perm.toLowerCase().includes(keyword))
+    )
   }
 
   /**
@@ -85,7 +85,7 @@ export class PermissionGrantedEvent {
       occurredAt: this.occurredAt.toISOString(),
       durationMinutes: this.getDurationMinutes(),
       isSensitive: this.isSensitive(),
-    };
+    }
   }
 
   /**
@@ -100,7 +100,7 @@ export class PermissionGrantedEvent {
       new Date(obj.startTime),
       new Date(obj.endTime),
       obj.grantedBy,
-      obj.businessJustification,
-    );
+      obj.businessJustification
+    )
   }
 }

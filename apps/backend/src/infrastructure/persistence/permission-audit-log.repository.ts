@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
-import { PermissionAuditLog } from '../../domain/identity-access/permission-audit-log.entity';
-import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface';
+import { Injectable } from '@nestjs/common'
+import { PrismaService } from './prisma.service'
+import { PermissionAuditLog } from '../../domain/identity-access/permission-audit-log.entity'
+import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface'
 
 /**
  * PermissionAuditLogRepository Implementation (Prisma)
@@ -19,13 +19,11 @@ import { PermissionAuditLogRepository } from '../../domain/identity-access/permi
  * - Support CSV export for ARPA inspections
  */
 @Injectable()
-export class PrismaPermissionAuditLogRepository
-  implements PermissionAuditLogRepository
-{
+export class PrismaPermissionAuditLogRepository implements PermissionAuditLogRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async save(log: PermissionAuditLog): Promise<void> {
-    const data = log.toPersistence();
+    const data = log.toPersistence()
 
     await this.prisma.permissionAuditLog.create({
       data: {
@@ -44,12 +42,12 @@ export class PrismaPermissionAuditLogRepository
         previousEntryHash: data.previousHash,
         currentHash: data.hash,
       },
-    });
+    })
   }
 
   async saveBatch(logs: PermissionAuditLog[]): Promise<void> {
-    const data = logs.map((log) => {
-      const persistence = log.toPersistence();
+    const data = logs.map(log => {
+      const persistence = log.toPersistence()
       return {
         id: persistence.id,
         tenantId: persistence.tenantId,
@@ -65,21 +63,21 @@ export class PrismaPermissionAuditLogRepository
         sessionId: persistence.sessionId,
         previousEntryHash: persistence.previousHash,
         currentHash: persistence.hash,
-      };
-    });
+      }
+    })
 
     await this.prisma.permissionAuditLog.createMany({
       data,
-    });
+    })
   }
 
   async getLatestLog(tenantId: string): Promise<PermissionAuditLog | null> {
     const result = await this.prisma.permissionAuditLog.findFirst({
       where: { tenantId },
       orderBy: { timestamp: 'desc' },
-    });
+    })
 
-    if (!result) return null;
+    if (!result) return null
 
     return PermissionAuditLog.fromPersistence({
       id: result.id,
@@ -96,66 +94,66 @@ export class PrismaPermissionAuditLogRepository
       sessionId: result.sessionId,
       previousHash: result.previousEntryHash,
       hash: result.currentHash,
-    });
+    })
   }
 
   async findWithFilters(filters: {
-    tenantId: string;
-    userId?: string;
-    startDate?: Date;
-    endDate?: Date;
-    decision?: 'ALLOW' | 'DENY';
-    resourceType?: string;
-    resourceId?: string;
-    actionAttempted?: string;
-    page?: number;
-    pageSize?: number;
+    tenantId: string
+    userId?: string
+    startDate?: Date
+    endDate?: Date
+    decision?: 'ALLOW' | 'DENY'
+    resourceType?: string
+    resourceId?: string
+    actionAttempted?: string
+    page?: number
+    pageSize?: number
   }): Promise<{
-    logs: PermissionAuditLog[];
-    total: number;
-    page?: number;
-    pageSize?: number;
+    logs: PermissionAuditLog[]
+    total: number
+    page?: number
+    pageSize?: number
   }> {
     const where: any = {
       tenantId: filters.tenantId,
-    };
+    }
 
     if (filters.userId) {
-      where.userId = filters.userId;
+      where.userId = filters.userId
     }
 
     if (filters.decision) {
-      where.decision = filters.decision;
+      where.decision = filters.decision
     }
 
     if (filters.resourceType) {
-      where.resourceType = filters.resourceType;
+      where.resourceType = filters.resourceType
     }
 
     if (filters.resourceId) {
-      where.resourceId = filters.resourceId;
+      where.resourceId = filters.resourceId
     }
 
     if (filters.actionAttempted) {
       where.actionAttempted = {
         contains: filters.actionAttempted,
         mode: 'insensitive',
-      };
+      }
     }
 
     if (filters.startDate || filters.endDate) {
-      where.timestamp = {};
+      where.timestamp = {}
       if (filters.startDate) {
-        where.timestamp.gte = filters.startDate;
+        where.timestamp.gte = filters.startDate
       }
       if (filters.endDate) {
-        where.timestamp.lte = filters.endDate;
+        where.timestamp.lte = filters.endDate
       }
     }
 
-    const page = filters.page || 1;
-    const pageSize = filters.pageSize || 100;
-    const skip = (page - 1) * pageSize;
+    const page = filters.page || 1
+    const pageSize = filters.pageSize || 100
+    const skip = (page - 1) * pageSize
 
     const [results, total] = await Promise.all([
       this.prisma.permissionAuditLog.findMany({
@@ -165,7 +163,7 @@ export class PrismaPermissionAuditLogRepository
         take: pageSize,
       }),
       this.prisma.permissionAuditLog.count({ where }),
-    ]);
+    ])
 
     const logs = results.map((result: any) =>
       PermissionAuditLog.fromPersistence({
@@ -183,30 +181,30 @@ export class PrismaPermissionAuditLogRepository
         sessionId: result.sessionId,
         previousHash: result.previousEntryHash,
         hash: result.currentHash,
-      }),
-    );
+      })
+    )
 
     return {
       logs,
       total,
       page,
       pageSize,
-    };
+    }
   }
 
   async findByTenant(
     tenantId: string,
     options?: {
-      limit?: number;
-      offset?: number;
-    },
+      limit?: number
+      offset?: number
+    }
   ): Promise<PermissionAuditLog[]> {
     const results = await this.prisma.permissionAuditLog.findMany({
       where: { tenantId },
       orderBy: { timestamp: 'desc' },
       skip: options?.offset,
       take: options?.limit,
-    });
+    })
 
     return results.map((result: any) =>
       PermissionAuditLog.fromPersistence({
@@ -224,24 +222,24 @@ export class PrismaPermissionAuditLogRepository
         sessionId: result.sessionId,
         previousHash: result.previousEntryHash,
         hash: result.currentHash,
-      }),
-    );
+      })
+    )
   }
 
   async findByUser(
     userId: string,
     tenantId: string,
     options?: {
-      limit?: number;
-      offset?: number;
-    },
+      limit?: number
+      offset?: number
+    }
   ): Promise<PermissionAuditLog[]> {
     const results = await this.prisma.permissionAuditLog.findMany({
       where: { userId, tenantId },
       orderBy: { timestamp: 'desc' },
       skip: options?.offset,
       take: options?.limit,
-    });
+    })
 
     return results.map((result: any) =>
       PermissionAuditLog.fromPersistence({
@@ -259,8 +257,8 @@ export class PrismaPermissionAuditLogRepository
         sessionId: result.sessionId,
         previousHash: result.previousEntryHash,
         hash: result.currentHash,
-      }),
-    );
+      })
+    )
   }
 
   async findByResource(
@@ -268,16 +266,16 @@ export class PrismaPermissionAuditLogRepository
     resourceId: string,
     tenantId: string,
     options?: {
-      limit?: number;
-      offset?: number;
-    },
+      limit?: number
+      offset?: number
+    }
   ): Promise<PermissionAuditLog[]> {
     const results = await this.prisma.permissionAuditLog.findMany({
       where: { resourceType, resourceId, tenantId },
       orderBy: { timestamp: 'desc' },
       skip: options?.offset,
       take: options?.limit,
-    });
+    })
 
     return results.map((result: any) =>
       PermissionAuditLog.fromPersistence({
@@ -295,8 +293,8 @@ export class PrismaPermissionAuditLogRepository
         sessionId: result.sessionId,
         previousHash: result.previousEntryHash,
         hash: result.currentHash,
-      }),
-    );
+      })
+    )
   }
 
   async findByDateRange(
@@ -304,9 +302,9 @@ export class PrismaPermissionAuditLogRepository
     startDate: Date,
     endDate: Date,
     options?: {
-      limit?: number;
-      offset?: number;
-    },
+      limit?: number
+      offset?: number
+    }
   ): Promise<PermissionAuditLog[]> {
     const results = await this.prisma.permissionAuditLog.findMany({
       where: {
@@ -319,7 +317,7 @@ export class PrismaPermissionAuditLogRepository
       orderBy: { timestamp: 'desc' },
       skip: options?.offset,
       take: options?.limit,
-    });
+    })
 
     return results.map((result: any) =>
       PermissionAuditLog.fromPersistence({
@@ -337,24 +335,24 @@ export class PrismaPermissionAuditLogRepository
         sessionId: result.sessionId,
         previousHash: result.previousEntryHash,
         hash: result.currentHash,
-      }),
-    );
+      })
+    )
   }
 
   async findByDecision(
     tenantId: string,
     decision: 'ALLOW' | 'DENY',
     options?: {
-      limit?: number;
-      offset?: number;
-    },
+      limit?: number
+      offset?: number
+    }
   ): Promise<PermissionAuditLog[]> {
     const results = await this.prisma.permissionAuditLog.findMany({
       where: { tenantId, decision },
       orderBy: { timestamp: 'desc' },
       skip: options?.offset,
       take: options?.limit,
-    });
+    })
 
     return results.map((result: any) =>
       PermissionAuditLog.fromPersistence({
@@ -372,66 +370,66 @@ export class PrismaPermissionAuditLogRepository
         sessionId: result.sessionId,
         previousHash: result.previousEntryHash,
         hash: result.currentHash,
-      }),
-    );
+      })
+    )
   }
 
   async count(filters: {
-    tenantId: string;
-    userId?: string;
-    startDate?: Date;
-    endDate?: Date;
-    decision?: 'ALLOW' | 'DENY';
-    resourceType?: string;
+    tenantId: string
+    userId?: string
+    startDate?: Date
+    endDate?: Date
+    decision?: 'ALLOW' | 'DENY'
+    resourceType?: string
   }): Promise<number> {
     const where: any = {
       tenantId: filters.tenantId,
-    };
+    }
 
     if (filters.userId) {
-      where.userId = filters.userId;
+      where.userId = filters.userId
     }
 
     if (filters.decision) {
-      where.decision = filters.decision;
+      where.decision = filters.decision
     }
 
     if (filters.resourceType) {
-      where.resourceType = filters.resourceType;
+      where.resourceType = filters.resourceType
     }
 
     if (filters.startDate || filters.endDate) {
-      where.timestamp = {};
+      where.timestamp = {}
       if (filters.startDate) {
-        where.timestamp.gte = filters.startDate;
+        where.timestamp.gte = filters.startDate
       }
       if (filters.endDate) {
-        where.timestamp.lte = filters.endDate;
+        where.timestamp.lte = filters.endDate
       }
     }
 
-    return this.prisma.permissionAuditLog.count({ where });
+    return this.prisma.permissionAuditLog.count({ where })
   }
 
   async validateChainIntegrity(
     tenantId: string,
     options?: {
-      startDate?: Date;
-      endDate?: Date;
-    },
+      startDate?: Date
+      endDate?: Date
+    }
   ): Promise<{
-    isValid: boolean;
-    totalLogs: number;
-    firstInvalidLogId?: string;
-    error?: string;
+    isValid: boolean
+    totalLogs: number
+    firstInvalidLogId?: string
+    error?: string
   }> {
-    const logs = await this.getLogsInChronologicalOrder(tenantId, options);
+    const logs = await this.getLogsInChronologicalOrder(tenantId, options)
 
     if (logs.length === 0) {
       return {
         isValid: true,
         totalLogs: 0,
-      };
+      }
     }
 
     // Check first log has no previous hash
@@ -441,13 +439,13 @@ export class PrismaPermissionAuditLogRepository
         totalLogs: logs.length,
         firstInvalidLogId: logs[0].id,
         error: 'First log should not have a previous hash',
-      };
+      }
     }
 
     // Validate chain
     for (let i = 1; i < logs.length; i++) {
-      const currentLog = logs[i];
-      const previousLog = logs[i - 1];
+      const currentLog = logs[i]
+      const previousLog = logs[i - 1]
 
       if (!currentLog.isChainValid(previousLog)) {
         return {
@@ -455,33 +453,33 @@ export class PrismaPermissionAuditLogRepository
           totalLogs: logs.length,
           firstInvalidLogId: currentLog.id,
           error: `Chain broken at log ${i + 1}: expected previousHash=${previousLog.hash}, got ${currentLog.previousHash}`,
-        };
+        }
       }
     }
 
     return {
       isValid: true,
       totalLogs: logs.length,
-    };
+    }
   }
 
   async getLogsInChronologicalOrder(
     tenantId: string,
     options?: {
-      startDate?: Date;
-      endDate?: Date;
-      limit?: number;
-    },
+      startDate?: Date
+      endDate?: Date
+      limit?: number
+    }
   ): Promise<PermissionAuditLog[]> {
-    const where: any = { tenantId };
+    const where: any = { tenantId }
 
     if (options?.startDate || options?.endDate) {
-      where.timestamp = {};
+      where.timestamp = {}
       if (options.startDate) {
-        where.timestamp.gte = options.startDate;
+        where.timestamp.gte = options.startDate
       }
       if (options.endDate) {
-        where.timestamp.lte = options.endDate;
+        where.timestamp.lte = options.endDate
       }
     }
 
@@ -489,7 +487,7 @@ export class PrismaPermissionAuditLogRepository
       where,
       orderBy: { timestamp: 'asc' }, // Chronological order
       take: options?.limit,
-    });
+    })
 
     return results.map((result: any) =>
       PermissionAuditLog.fromPersistence({
@@ -507,36 +505,36 @@ export class PrismaPermissionAuditLogRepository
         sessionId: result.sessionId,
         previousHash: result.previousEntryHash,
         hash: result.currentHash,
-      }),
-    );
+      })
+    )
   }
 
   async exportToCsv(filters: {
-    tenantId: string;
-    startDate?: Date;
-    endDate?: Date;
-    userId?: string;
+    tenantId: string
+    startDate?: Date
+    endDate?: Date
+    userId?: string
   }): Promise<string> {
-    const where: any = { tenantId: filters.tenantId };
+    const where: any = { tenantId: filters.tenantId }
 
     if (filters.userId) {
-      where.userId = filters.userId;
+      where.userId = filters.userId
     }
 
     if (filters.startDate || filters.endDate) {
-      where.timestamp = {};
+      where.timestamp = {}
       if (filters.startDate) {
-        where.timestamp.gte = filters.startDate;
+        where.timestamp.gte = filters.startDate
       }
       if (filters.endDate) {
-        where.timestamp.lte = filters.endDate;
+        where.timestamp.lte = filters.endDate
       }
     }
 
     const results = await this.prisma.permissionAuditLog.findMany({
       where,
       orderBy: { timestamp: 'asc' },
-    });
+    })
 
     // CSV header
     const headers = [
@@ -550,7 +548,7 @@ export class PrismaPermissionAuditLogRepository
       'Decision',
       'Session ID',
       'Hash',
-    ];
+    ]
 
     // CSV rows
     const rows = results.map((result: any) => [
@@ -564,24 +562,24 @@ export class PrismaPermissionAuditLogRepository
       result.decision,
       result.sessionId,
       result.currentHash,
-    ]);
+    ])
 
     // Format as CSV
     const csvLines = [
       headers.join(','),
       ...rows.map((row: any) =>
-        row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(','),
+        row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(',')
       ),
-    ];
+    ]
 
-    return csvLines.join('\n');
+    return csvLines.join('\n')
   }
 
   async archiveLogs(
     tenantId: string,
-    olderThan: Date,
+    olderThan: Date
   ): Promise<{
-    archivedCount: number;
+    archivedCount: number
   }> {
     // In a real implementation, this would move logs to S3 cold storage
     // For now, we just count the logs that would be archived
@@ -592,77 +590,72 @@ export class PrismaPermissionAuditLogRepository
           lt: olderThan,
         },
       },
-    });
+    })
 
     // TODO: Implement actual archival to S3
     // await this.s3Service.archiveAuditLogs(...)
 
     return {
       archivedCount: count,
-    };
+    }
   }
 
   async getStatistics(
     tenantId: string,
     options?: {
-      startDate?: Date;
-      endDate?: Date;
-    },
+      startDate?: Date
+      endDate?: Date
+    }
   ): Promise<{
-    totalLogs: number;
-    allowedCount: number;
-    deniedCount: number;
-    uniqueUsers: number;
-    topDeniedActions: Array<{ action: string; count: number }>;
+    totalLogs: number
+    allowedCount: number
+    deniedCount: number
+    uniqueUsers: number
+    topDeniedActions: Array<{ action: string; count: number }>
   }> {
-    const where: any = { tenantId };
+    const where: any = { tenantId }
 
     if (options?.startDate || options?.endDate) {
-      where.timestamp = {};
+      where.timestamp = {}
       if (options.startDate) {
-        where.timestamp.gte = options.startDate;
+        where.timestamp.gte = options.startDate
       }
       if (options.endDate) {
-        where.timestamp.lte = options.endDate;
+        where.timestamp.lte = options.endDate
       }
     }
 
-    const [
-      totalLogs,
-      allowedCount,
-      deniedCount,
-      uniqueUsersResult,
-      deniedActions,
-    ] = await Promise.all([
-      this.prisma.permissionAuditLog.count({ where }),
-      this.prisma.permissionAuditLog.count({
-        where: { ...where, decision: 'ALLOW' },
-      }),
-      this.prisma.permissionAuditLog.count({
-        where: { ...where, decision: 'DENY' },
-      }),
-      this.prisma.permissionAuditLog.findMany({
-        where,
-        select: { userId: true },
-        distinct: ['userId'],
-      }),
-      this.prisma.permissionAuditLog.groupBy({
-        by: ['actionAttempted'],
-        where: { ...where, decision: 'DENY' },
-        _count: true,
-        orderBy: {
-          _count: {
-            actionAttempted: 'desc',
+    const [totalLogs, allowedCount, deniedCount, uniqueUsersResult, deniedActions] =
+      await Promise.all([
+        this.prisma.permissionAuditLog.count({ where }),
+        this.prisma.permissionAuditLog.count({
+          where: { ...where, decision: 'ALLOW' },
+        }),
+        this.prisma.permissionAuditLog.count({
+          where: { ...where, decision: 'DENY' },
+        }),
+        this.prisma.permissionAuditLog.findMany({
+          where,
+          select: { userId: true },
+          distinct: ['userId'],
+        }),
+        this.prisma.permissionAuditLog.groupBy({
+          by: ['actionAttempted'],
+          where: { ...where, decision: 'DENY' },
+          _count: true,
+          orderBy: {
+            _count: {
+              actionAttempted: 'desc',
+            },
           },
-        },
-        take: 10,
-      }),
-    ]);
+          take: 10,
+        }),
+      ])
 
     const topDeniedActions = deniedActions.map((item: any) => ({
       action: item.actionAttempted,
       count: item._count,
-    }));
+    }))
 
     return {
       totalLogs,
@@ -670,6 +663,6 @@ export class PrismaPermissionAuditLogRepository
       deniedCount,
       uniqueUsers: uniqueUsersResult.length,
       topDeniedActions,
-    };
+    }
   }
 }

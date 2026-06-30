@@ -14,11 +14,7 @@
  */
 
 import { Injectable } from '@nestjs/common'
-import {
-  ITsaProvider,
-  TsaTokenResult,
-  TsaProviderType,
-} from './signature-provider.interface'
+import { ITsaProvider, TsaTokenResult, TsaProviderType } from './signature-provider.interface'
 import { LoggerService } from '../../../core/logger/logger.service'
 
 @Injectable()
@@ -42,8 +38,9 @@ export class MockTsaProvider implements ITsaProvider {
       genTime: timestamp,
       accuracy: { seconds: 1 },
       tsa: 'CN=WasteFlow MOCK-TSA,O=WasteFlow-Sandbox,C=IT',
-      _note: 'MOCK — NON è una marca temporale qualificata RFC 3161. ' +
-             'ATTIVARE: TSA_PROVIDER=rfc3161 + TSA_URL con QTSP AgID.',
+      _note:
+        'MOCK — NON è una marca temporale qualificata RFC 3161. ' +
+        'ATTIVARE: TSA_PROVIDER=rfc3161 + TSA_URL con QTSP AgID.',
     }
 
     const token = Buffer.from(JSON.stringify(tokenData)).toString('base64')

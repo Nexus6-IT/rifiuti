@@ -1,9 +1,9 @@
-import { Injectable } from '@angular/core';
-import { CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot, UrlTree } from '@angular/router';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
-import { ConnectionMonitorService } from '../services/connection-monitor.service';
-import { MessageService } from 'primeng/api';
+import { Injectable } from '@angular/core'
+import { CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot, UrlTree } from '@angular/router'
+import { Observable } from 'rxjs'
+import { map } from 'rxjs/operators'
+import { ConnectionMonitorService } from '../services/connection-monitor.service'
+import { MessageService } from 'primeng/api'
 
 /**
  * Offline High-Risk Operation Guard
@@ -35,37 +35,37 @@ export class OfflineHighRiskGuard implements CanActivate {
     'remove',
     'revoke',
     'grant-admin',
-  ];
+  ]
 
   constructor(
     private connectionMonitor: ConnectionMonitorService,
-    private messageService: MessageService,
+    private messageService: MessageService
   ) {}
 
   canActivate(
     route: ActivatedRouteSnapshot,
-    state: RouterStateSnapshot,
+    state: RouterStateSnapshot
   ): Observable<boolean | UrlTree> | Promise<boolean | UrlTree> | boolean | UrlTree {
     return this.connectionMonitor.isOnline$.pipe(
-      map((isOnline) => {
+      map(isOnline => {
         // If online, allow all operations
         if (isOnline) {
-          return true;
+          return true
         }
 
         // If offline, check if this is a high-risk operation
-        const isHighRisk = this.isHighRiskOperation(state.url, route.data);
+        const isHighRisk = this.isHighRiskOperation(state.url, route.data)
 
         if (isHighRisk) {
           // Block high-risk operation and show message
-          this.showOfflineBlockedMessage(route.data['operationName'] || 'Questa operazione');
-          return false;
+          this.showOfflineBlockedMessage(route.data['operationName'] || 'Questa operazione')
+          return false
         }
 
         // Allow low-risk operations (read-only) offline
-        return true;
-      }),
-    );
+        return true
+      })
+    )
   }
 
   /**
@@ -75,14 +75,12 @@ export class OfflineHighRiskGuard implements CanActivate {
   private isHighRiskOperation(url: string, routeData: any): boolean {
     // Check route data for explicit high-risk flag
     if (routeData['requiresOnline'] === true) {
-      return true;
+      return true
     }
 
     // Check URL for high-risk operation keywords
-    const urlLower = url.toLowerCase();
-    return this.HIGH_RISK_OPERATIONS.some((operation) =>
-      urlLower.includes(operation),
-    );
+    const urlLower = url.toLowerCase()
+    return this.HIGH_RISK_OPERATIONS.some(operation => urlLower.includes(operation))
   }
 
   /**
@@ -95,7 +93,7 @@ export class OfflineHighRiskGuard implements CanActivate {
       detail: `${operationName} richiede una connessione internet attiva. Riprova quando sei online.`,
       sticky: true,
       closable: true,
-    });
+    })
   }
 }
 

@@ -1,20 +1,20 @@
-import { Component, OnInit, signal, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { DynamicDialogConfig, DynamicDialogRef } from 'primeng/dynamicdialog';
-import { MessageService } from 'primeng/api';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { TagModule } from 'primeng/tag';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { MessageModule } from 'primeng/message';
-import { InputTextareaModule } from 'primeng/inputtextarea';
-import { RadioButtonModule } from 'primeng/radiobutton';
-import { TooltipModule } from 'primeng/tooltip';
+import { Component, OnInit, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { DynamicDialogConfig, DynamicDialogRef } from 'primeng/dynamicdialog'
+import { MessageService } from 'primeng/api'
+import { TableModule } from 'primeng/table'
+import { ButtonModule } from 'primeng/button'
+import { TagModule } from 'primeng/tag'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { MessageModule } from 'primeng/message'
+import { InputTextareaModule } from 'primeng/inputtextarea'
+import { RadioButtonModule } from 'primeng/radiobutton'
+import { TooltipModule } from 'primeng/tooltip'
 import {
   TaskAssignmentApiService,
   QualifiedDriver,
-} from '../../services/task-assignment-api.service';
+} from '../../services/task-assignment-api.service'
 
 /**
  * DriverAssignmentDialogComponent
@@ -50,9 +50,10 @@ import {
       <div class="dialog-header">
         <h2>{{ isReassignment() ? 'Reassign Task' : 'Assign Task' }}</h2>
         <p class="header-subtitle">
-          {{ isReassignment()
-            ? 'Select a new driver for this pickup task'
-            : 'Select the best driver or let the system choose automatically'
+          {{
+            isReassignment()
+              ? 'Select a new driver for this pickup task'
+              : 'Select the best driver or let the system choose automatically'
           }}
         </p>
       </div>
@@ -222,198 +223,202 @@ import {
           [label]="isReassignment() ? 'Reassign' : 'Assign Selected Driver'"
           icon="pi pi-check"
           (click)="manualAssign()"
-          [disabled]="!selectedDriver() || isAssigning() || (isReassignment() && !reassignmentReason)"
+          [disabled]="
+            !selectedDriver() || isAssigning() || (isReassignment() && !reassignmentReason)
+          "
           [loading]="isAssigning()"
         ></button>
       </div>
     </div>
   `,
-  styles: [`
-    .driver-assignment-dialog {
-      padding: 1rem;
-    }
+  styles: [
+    `
+      .driver-assignment-dialog {
+        padding: 1rem;
+      }
 
-    .dialog-header h2 {
-      margin: 0 0 0.5rem 0;
-      font-size: 1.5rem;
-      font-weight: 700;
-    }
+      .dialog-header h2 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
 
-    .header-subtitle {
-      margin: 0 0 1.5rem 0;
-      color: var(--text-color-secondary);
-    }
+      .header-subtitle {
+        margin: 0 0 1.5rem 0;
+        color: var(--text-color-secondary);
+      }
 
-    .loading-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 4rem;
-      gap: 1rem;
-    }
+      .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 4rem;
+        gap: 1rem;
+      }
 
-    .drivers-section {
-      margin: 1.5rem 0;
-    }
+      .drivers-section {
+        margin: 1.5rem 0;
+      }
 
-    .section-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1rem;
-    }
+      .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
 
-    .section-header h3 {
-      margin: 0;
-      font-size: 1.125rem;
-      font-weight: 600;
-    }
+      .section-header h3 {
+        margin: 0;
+        font-size: 1.125rem;
+        font-weight: 600;
+      }
 
-    .selected-row {
-      background: var(--primary-50) !important;
-    }
+      .selected-row {
+        background: var(--primary-50) !important;
+      }
 
-    .driver-cell {
-      display: flex;
-      align-items: center;
-    }
+      .driver-cell {
+        display: flex;
+        align-items: center;
+      }
 
-    .certifications-cell {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.25rem;
-    }
+      .certifications-cell {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+      }
 
-    .score-cell {
-      display: flex;
-      align-items: center;
-    }
+      .score-cell {
+        display: flex;
+        align-items: center;
+      }
 
-    .text-muted {
-      color: var(--text-color-secondary);
-      font-style: italic;
-    }
+      .text-muted {
+        color: var(--text-color-secondary);
+        font-style: italic;
+      }
 
-    .text-danger {
-      color: var(--red-500);
-      font-weight: 600;
-    }
+      .text-danger {
+        color: var(--red-500);
+        font-weight: 600;
+      }
 
-    .text-success {
-      color: var(--green-500);
-      font-weight: 600;
-    }
+      .text-success {
+        color: var(--green-500);
+        font-weight: 600;
+      }
 
-    .reason-section {
-      margin: 1.5rem 0;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
+      .reason-section {
+        margin: 1.5rem 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
 
-    .reason-section label {
-      font-weight: 600;
-    }
+      .reason-section label {
+        font-weight: 600;
+      }
 
-    .dialog-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 0.75rem;
-      margin-top: 1.5rem;
-      padding-top: 1.5rem;
-      border-top: 1px solid var(--surface-border);
-    }
-  `],
+      .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--surface-border);
+      }
+    `,
+  ],
 })
 export class DriverAssignmentDialogComponent implements OnInit {
   // Signals
-  isLoading = signal(false);
-  isAssigning = signal(false);
-  error = signal<string | null>(null);
-  qualifiedDrivers = signal<QualifiedDriver[]>([]);
-  selectedDriver = signal<string | null>(null);
+  isLoading = signal(false)
+  isAssigning = signal(false)
+  error = signal<string | null>(null)
+  qualifiedDrivers = signal<QualifiedDriver[]>([])
+  selectedDriver = signal<string | null>(null)
 
   // Form data
-  selectedDriverId: string | null = null;
-  reassignmentReason = '';
+  selectedDriverId: string | null = null
+  reassignmentReason = ''
 
   // Config
-  firId: string;
-  isReassignment = signal(false);
+  firId: string
+  isReassignment = signal(false)
 
   constructor(
     private config: DynamicDialogConfig,
     private ref: DynamicDialogRef,
     private taskAssignmentService: TaskAssignmentApiService,
-    private messageService: MessageService,
+    private messageService: MessageService
   ) {
-    this.firId = this.config.data.firId;
-    this.isReassignment.set(this.config.data.isReassignment || false);
+    this.firId = this.config.data.firId
+    this.isReassignment.set(this.config.data.isReassignment || false)
   }
 
   ngOnInit(): void {
-    this.loadQualifiedDrivers();
+    this.loadQualifiedDrivers()
   }
 
   loadQualifiedDrivers(): void {
-    this.isLoading.set(true);
-    this.error.set(null);
+    this.isLoading.set(true)
+    this.error.set(null)
 
     this.taskAssignmentService.getQualifiedDrivers(this.firId).subscribe({
-      next: (response) => {
-        this.qualifiedDrivers.set(response.data.qualifiedDrivers);
-        this.isLoading.set(false);
+      next: response => {
+        this.qualifiedDrivers.set(response.data.qualifiedDrivers)
+        this.isLoading.set(false)
 
         if (response.data.totalQualified === 0) {
           this.messageService.add({
             severity: 'warn',
             summary: 'No Qualified Drivers',
             detail: response.message,
-          });
+          })
         }
       },
-      error: (error) => {
-        this.error.set(`Failed to load qualified drivers: ${error.message}`);
-        this.isLoading.set(false);
+      error: error => {
+        this.error.set(`Failed to load qualified drivers: ${error.message}`)
+        this.isLoading.set(false)
       },
-    });
+    })
   }
 
   selectDriver(driver: QualifiedDriver): void {
-    this.selectedDriver.set(driver.userId);
-    this.selectedDriverId = driver.userId;
+    this.selectedDriver.set(driver.userId)
+    this.selectedDriverId = driver.userId
   }
 
   autoAssign(): void {
-    this.isAssigning.set(true);
+    this.isAssigning.set(true)
 
     this.taskAssignmentService.autoAssignTask(this.firId).subscribe({
-      next: (response) => {
+      next: response => {
         this.messageService.add({
           severity: 'success',
           summary: 'Task Assigned',
           detail: response.message,
-        });
+        })
 
-        this.isAssigning.set(false);
-        this.ref.close({ success: true, data: response.data });
+        this.isAssigning.set(false)
+        this.ref.close({ success: true, data: response.data })
       },
-      error: (error) => {
+      error: error => {
         this.messageService.add({
           severity: 'error',
           summary: 'Assignment Failed',
           detail: error.error?.message || error.message,
-        });
+        })
 
-        this.isAssigning.set(false);
+        this.isAssigning.set(false)
       },
-    });
+    })
   }
 
   manualAssign(): void {
     if (!this.selectedDriver()) {
-      return;
+      return
     }
 
     if (this.isReassignment() && !this.reassignmentReason) {
@@ -421,61 +426,56 @@ export class DriverAssignmentDialogComponent implements OnInit {
         severity: 'warn',
         summary: 'Reason Required',
         detail: 'Please provide a reason for reassignment',
-      });
-      return;
+      })
+      return
     }
 
-    this.isAssigning.set(true);
+    this.isAssigning.set(true)
 
     const assignCall = this.isReassignment()
       ? this.taskAssignmentService.reassignTask(
           this.firId,
           this.selectedDriver()!,
-          this.reassignmentReason,
+          this.reassignmentReason
         )
-      : this.taskAssignmentService.manualAssignTask(
-          this.firId,
-          this.selectedDriver()!,
-        );
+      : this.taskAssignmentService.manualAssignTask(this.firId, this.selectedDriver()!)
 
     assignCall.subscribe({
-      next: (response) => {
+      next: response => {
         this.messageService.add({
           severity: 'success',
           summary: this.isReassignment() ? 'Task Reassigned' : 'Task Assigned',
           detail: response.message,
-        });
+        })
 
         // Show warnings if any
         if (response.data.warnings && response.data.warnings.length > 0) {
-          response.data.warnings.forEach((warning) => {
+          response.data.warnings.forEach(warning => {
             this.messageService.add({
               severity: 'warn',
               summary: 'Warning',
               detail: warning,
               life: 5000,
-            });
-          });
+            })
+          })
         }
 
-        this.isAssigning.set(false);
-        this.ref.close({ success: true, data: response.data });
+        this.isAssigning.set(false)
+        this.ref.close({ success: true, data: response.data })
       },
-      error: (error) => {
+      error: error => {
         this.messageService.add({
           severity: 'error',
-          summary: this.isReassignment()
-            ? 'Reassignment Failed'
-            : 'Assignment Failed',
+          summary: this.isReassignment() ? 'Reassignment Failed' : 'Assignment Failed',
           detail: error.error?.message || error.message,
-        });
+        })
 
-        this.isAssigning.set(false);
+        this.isAssigning.set(false)
       },
-    });
+    })
   }
 
   cancel(): void {
-    this.ref.close({ success: false });
+    this.ref.close({ success: false })
   }
 }

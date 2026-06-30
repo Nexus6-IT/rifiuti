@@ -1,6 +1,6 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { ButtonModule } from 'primeng/button';
+import { Component, Input, Output, EventEmitter } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { ButtonModule } from 'primeng/button'
 
 /**
  * Empty State Component
@@ -71,146 +71,148 @@ import { ButtonModule } from 'primeng/button';
       </div>
     </div>
   `,
-  styles: [`
-    .empty-state {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 300px;
-      padding: var(--spacing-2xl);
-      text-align: center;
-    }
-
-    .empty-state__content {
-      max-width: 480px;
-      width: 100%;
-    }
-
-    .empty-state__icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 80px;
-      height: 80px;
-      margin: 0 auto var(--spacing-lg);
-      border-radius: var(--radius-full);
-      background: var(--color-gray-100);
-      color: var(--color-gray-500);
-    }
-
-    .empty-state__icon i {
-      font-size: 2.5rem;
-    }
-
-    /* Variant-specific icon styles */
-    .empty-state--error .empty-state__icon {
-      background: var(--color-danger-bg);
-      color: var(--color-danger);
-    }
-
-    .empty-state--success .empty-state__icon {
-      background: var(--color-success-bg);
-      color: var(--color-success);
-    }
-
-    .empty-state--warning .empty-state__icon {
-      background: var(--color-warning-bg);
-      color: var(--color-warning);
-    }
-
-    .empty-state--info .empty-state__icon {
-      background: var(--color-info-bg);
-      color: var(--color-info);
-    }
-
-    .empty-state--search .empty-state__icon {
-      background: var(--brand-primary-50);
-      color: var(--brand-primary-dark);
-    }
-
-    .empty-state__title {
-      margin: 0 0 var(--spacing-sm) 0;
-      font-size: var(--font-size-xl);
-      font-weight: var(--font-weight-semibold);
-      color: var(--text-primary);
-      line-height: var(--line-height-tight);
-    }
-
-    .empty-state__message {
-      margin: 0 0 var(--spacing-xl) 0;
-      font-size: var(--font-size-base);
-      color: var(--text-secondary);
-      line-height: var(--line-height-relaxed);
-    }
-
-    .empty-state__actions {
-      display: flex;
-      gap: var(--spacing-md);
-      justify-content: center;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
-    .empty-state__custom {
-      margin-top: var(--spacing-lg);
-    }
-
-    /* Responsive Design */
-    @media (max-width: 576px) {
+  styles: [
+    `
       .empty-state {
-        min-height: 250px;
-        padding: var(--spacing-xl) var(--spacing-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 300px;
+        padding: var(--spacing-2xl);
+        text-align: center;
+      }
+
+      .empty-state__content {
+        max-width: 480px;
+        width: 100%;
       }
 
       .empty-state__icon {
-        width: 64px;
-        height: 64px;
-        margin-bottom: var(--spacing-md);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 80px;
+        height: 80px;
+        margin: 0 auto var(--spacing-lg);
+        border-radius: var(--radius-full);
+        background: var(--color-gray-100);
+        color: var(--color-gray-500);
       }
 
       .empty-state__icon i {
-        font-size: 2rem;
+        font-size: 2.5rem;
+      }
+
+      /* Variant-specific icon styles */
+      .empty-state--error .empty-state__icon {
+        background: var(--color-danger-bg);
+        color: var(--color-danger);
+      }
+
+      .empty-state--success .empty-state__icon {
+        background: var(--color-success-bg);
+        color: var(--color-success);
+      }
+
+      .empty-state--warning .empty-state__icon {
+        background: var(--color-warning-bg);
+        color: var(--color-warning);
+      }
+
+      .empty-state--info .empty-state__icon {
+        background: var(--color-info-bg);
+        color: var(--color-info);
+      }
+
+      .empty-state--search .empty-state__icon {
+        background: var(--brand-primary-50);
+        color: var(--brand-primary-dark);
       }
 
       .empty-state__title {
-        font-size: var(--font-size-lg);
+        margin: 0 0 var(--spacing-sm) 0;
+        font-size: var(--font-size-xl);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+        line-height: var(--line-height-tight);
       }
 
       .empty-state__message {
-        font-size: var(--font-size-sm);
+        margin: 0 0 var(--spacing-xl) 0;
+        font-size: var(--font-size-base);
+        color: var(--text-secondary);
+        line-height: var(--line-height-relaxed);
       }
 
       .empty-state__actions {
-        flex-direction: column;
-        width: 100%;
-      }
-
-      .empty-state__actions ::ng-deep .p-button {
-        width: 100%;
+        display: flex;
+        gap: var(--spacing-md);
         justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
       }
-    }
 
-    /* Accessibility */
-    @media (prefers-reduced-motion: reduce) {
-      .empty-state__icon {
-        transition: none;
+      .empty-state__custom {
+        margin-top: var(--spacing-lg);
       }
-    }
-  `]
+
+      /* Responsive Design */
+      @media (max-width: 576px) {
+        .empty-state {
+          min-height: 250px;
+          padding: var(--spacing-xl) var(--spacing-md);
+        }
+
+        .empty-state__icon {
+          width: 64px;
+          height: 64px;
+          margin-bottom: var(--spacing-md);
+        }
+
+        .empty-state__icon i {
+          font-size: 2rem;
+        }
+
+        .empty-state__title {
+          font-size: var(--font-size-lg);
+        }
+
+        .empty-state__message {
+          font-size: var(--font-size-sm);
+        }
+
+        .empty-state__actions {
+          flex-direction: column;
+          width: 100%;
+        }
+
+        .empty-state__actions ::ng-deep .p-button {
+          width: 100%;
+          justify-content: center;
+        }
+      }
+
+      /* Accessibility */
+      @media (prefers-reduced-motion: reduce) {
+        .empty-state__icon {
+          transition: none;
+        }
+      }
+    `,
+  ],
 })
 export class EmptyStateComponent {
   /** Icon class (PrimeNG icon) - e.g., 'pi-inbox', 'pi-search', 'pi-exclamation-triangle' */
-  @Input() icon = 'pi-inbox';
+  @Input() icon = 'pi-inbox'
 
   /** Custom icon CSS class for additional styling */
-  @Input() iconClass = '';
+  @Input() iconClass = ''
 
   /** Title text */
-  @Input() title = 'Nessun dato disponibile';
+  @Input() title = 'Nessun dato disponibile'
 
   /** Description message */
-  @Input() message = '';
+  @Input() message = ''
 
   /**
    * Visual variant for different contexts
@@ -221,37 +223,37 @@ export class EmptyStateComponent {
    * - info: Informational state (blue)
    * - search: Search-specific state (brand color)
    */
-  @Input() variant: 'default' | 'error' | 'success' | 'warning' | 'info' | 'search' = 'default';
+  @Input() variant: 'default' | 'error' | 'success' | 'warning' | 'info' | 'search' = 'default'
 
   /** Primary action button label */
-  @Input() actionLabel = '';
+  @Input() actionLabel = ''
 
   /** Primary action button icon */
-  @Input() actionIcon = '';
+  @Input() actionIcon = ''
 
   /** Make primary action button outlined */
-  @Input() actionOutlined = false;
+  @Input() actionOutlined = false
 
   /** Secondary action button label */
-  @Input() secondaryActionLabel = '';
+  @Input() secondaryActionLabel = ''
 
   /** Secondary action button icon */
-  @Input() secondaryActionIcon = '';
+  @Input() secondaryActionIcon = ''
 
   /** Enable custom content projection */
-  @Input() customContent = false;
+  @Input() customContent = false
 
   /** Primary action event */
-  @Output() action = new EventEmitter<void>();
+  @Output() action = new EventEmitter<void>()
 
   /** Secondary action event */
-  @Output() secondaryAction = new EventEmitter<void>();
+  @Output() secondaryAction = new EventEmitter<void>()
 
   onAction(): void {
-    this.action.emit();
+    this.action.emit()
   }
 
   onSecondaryAction(): void {
-    this.secondaryAction.emit();
+    this.secondaryAction.emit()
   }
 }

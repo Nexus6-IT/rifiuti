@@ -24,23 +24,23 @@ export class AuditMetadata {
     public readonly spidFiscalCode: string | undefined,
     public readonly requestId: string | undefined,
     public readonly geolocation: string | undefined,
-    public readonly deviceType: string | undefined,
+    public readonly deviceType: string | undefined
   ) {
     // Freeze object to enforce immutability
-    Object.freeze(this);
+    Object.freeze(this)
   }
 
   /**
    * Factory method: Create audit metadata
    */
   static create(props: {
-    sessionId?: string;
-    ipAddress?: string;
-    userAgent?: string;
-    spidFiscalCode?: string;
-    requestId?: string;
-    geolocation?: string;
-    deviceType?: string;
+    sessionId?: string
+    ipAddress?: string
+    userAgent?: string
+    spidFiscalCode?: string
+    requestId?: string
+    geolocation?: string
+    deviceType?: string
   }): AuditMetadata {
     return new AuditMetadata(
       props.sessionId,
@@ -49,24 +49,24 @@ export class AuditMetadata {
       props.spidFiscalCode,
       props.requestId,
       props.geolocation,
-      props.deviceType,
-    );
+      props.deviceType
+    )
   }
 
   /**
    * Create from HTTP request
    */
   static fromRequest(req: {
-    sessionId?: string;
-    ip?: string;
-    headers?: Record<string, string>;
+    sessionId?: string
+    ip?: string
+    headers?: Record<string, string>
     user?: {
-      spidFiscalCode?: string;
-    };
+      spidFiscalCode?: string
+    }
   }): AuditMetadata {
-    const userAgent = req.headers?.['user-agent'];
-    const requestId = req.headers?.['x-request-id'] || req.headers?.['x-correlation-id'];
-    const deviceType = AuditMetadata.detectDeviceType(userAgent);
+    const userAgent = req.headers?.['user-agent']
+    const requestId = req.headers?.['x-request-id'] || req.headers?.['x-correlation-id']
+    const deviceType = AuditMetadata.detectDeviceType(userAgent)
 
     return new AuditMetadata(
       req.sessionId,
@@ -75,8 +75,8 @@ export class AuditMetadata {
       req.user?.spidFiscalCode,
       requestId,
       undefined, // Geolocation not implemented yet
-      deviceType,
-    );
+      deviceType
+    )
   }
 
   /**
@@ -90,63 +90,58 @@ export class AuditMetadata {
       undefined,
       undefined,
       undefined,
-      'System',
-    );
+      'System'
+    )
   }
 
   /**
    * Check if metadata is complete (has all required fields)
    */
   isComplete(): boolean {
-    return !!(
-      this.sessionId &&
-      this.ipAddress &&
-      this.userAgent &&
-      this.requestId
-    );
+    return !!(this.sessionId && this.ipAddress && this.userAgent && this.requestId)
   }
 
   /**
    * Check if this is a system operation (no user context)
    */
   isSystemOperation(): boolean {
-    return this.userAgent === 'System' && !this.sessionId;
+    return this.userAgent === 'System' && !this.sessionId
   }
 
   /**
    * Detect device type from user agent
    */
   private static detectDeviceType(userAgent?: string): string | undefined {
-    if (!userAgent) return undefined;
+    if (!userAgent) return undefined
 
-    const ua = userAgent.toLowerCase();
+    const ua = userAgent.toLowerCase()
 
     if (ua.includes('mobile') || ua.includes('android') || ua.includes('iphone')) {
-      return 'mobile';
+      return 'mobile'
     }
 
     if (ua.includes('tablet') || ua.includes('ipad')) {
-      return 'tablet';
+      return 'tablet'
     }
 
     if (ua.includes('bot') || ua.includes('crawler') || ua.includes('spider')) {
-      return 'bot';
+      return 'bot'
     }
 
-    return 'desktop';
+    return 'desktop'
   }
 
   /**
    * Convert to plain object
    */
   toObject(): {
-    sessionId?: string;
-    ipAddress?: string;
-    userAgent?: string;
-    spidFiscalCode?: string;
-    requestId?: string;
-    geolocation?: string;
-    deviceType?: string;
+    sessionId?: string
+    ipAddress?: string
+    userAgent?: string
+    spidFiscalCode?: string
+    requestId?: string
+    geolocation?: string
+    deviceType?: string
   } {
     return {
       sessionId: this.sessionId,
@@ -156,46 +151,46 @@ export class AuditMetadata {
       requestId: this.requestId,
       geolocation: this.geolocation,
       deviceType: this.deviceType,
-    };
+    }
   }
 
   /**
    * Serialize for logging
    */
   toString(): string {
-    const parts: string[] = [];
+    const parts: string[] = []
 
-    if (this.sessionId) parts.push(`session=${this.sessionId}`);
-    if (this.ipAddress) parts.push(`ip=${this.ipAddress}`);
-    if (this.deviceType) parts.push(`device=${this.deviceType}`);
-    if (this.requestId) parts.push(`request=${this.requestId}`);
+    if (this.sessionId) parts.push(`session=${this.sessionId}`)
+    if (this.ipAddress) parts.push(`ip=${this.ipAddress}`)
+    if (this.deviceType) parts.push(`device=${this.deviceType}`)
+    if (this.requestId) parts.push(`request=${this.requestId}`)
 
-    return parts.join(' ');
+    return parts.join(' ')
   }
 
   /**
    * Mask sensitive information for public display
    */
   toPublicView(): {
-    sessionId?: string;
-    ipAddress?: string;
-    deviceType?: string;
-    requestId?: string;
+    sessionId?: string
+    ipAddress?: string
+    deviceType?: string
+    requestId?: string
   } {
     return {
       sessionId: this.sessionId ? this.maskSessionId(this.sessionId) : undefined,
       ipAddress: this.ipAddress ? this.maskIpAddress(this.ipAddress) : undefined,
       deviceType: this.deviceType,
       requestId: this.requestId,
-    };
+    }
   }
 
   /**
    * Mask session ID (show first 8 characters)
    */
   private maskSessionId(sessionId: string): string {
-    if (sessionId.length <= 8) return sessionId;
-    return `${sessionId.substring(0, 8)}...`;
+    if (sessionId.length <= 8) return sessionId
+    return `${sessionId.substring(0, 8)}...`
   }
 
   /**
@@ -204,27 +199,27 @@ export class AuditMetadata {
   private maskIpAddress(ip: string): string {
     // IPv4
     if (ip.includes('.')) {
-      const parts = ip.split('.');
+      const parts = ip.split('.')
       if (parts.length === 4) {
-        return `${parts[0]}.${parts[1]}.${parts[2]}.***`;
+        return `${parts[0]}.${parts[1]}.${parts[2]}.***`
       }
     }
 
     // IPv6 or other format - mask last 4 characters
     if (ip.length > 4) {
-      return `${ip.substring(0, ip.length - 4)}****`;
+      return `${ip.substring(0, ip.length - 4)}****`
     }
 
-    return '***';
+    return '***'
   }
 
   /**
    * Check if IP address is from private network
    */
   isPrivateNetwork(): boolean {
-    if (!this.ipAddress) return false;
+    if (!this.ipAddress) return false
 
-    const ip = this.ipAddress;
+    const ip = this.ipAddress
 
     // Check common private IP ranges
     return (
@@ -240,16 +235,13 @@ export class AuditMetadata {
       ip.startsWith('127.') ||
       ip === 'localhost' ||
       ip === '::1'
-    );
+    )
   }
 
   /**
    * Enrich metadata with additional context
    */
-  withAdditionalContext(props: {
-    spidFiscalCode?: string;
-    geolocation?: string;
-  }): AuditMetadata {
+  withAdditionalContext(props: { spidFiscalCode?: string; geolocation?: string }): AuditMetadata {
     return new AuditMetadata(
       this.sessionId,
       this.ipAddress,
@@ -257,7 +249,7 @@ export class AuditMetadata {
       props.spidFiscalCode || this.spidFiscalCode,
       this.requestId,
       props.geolocation || this.geolocation,
-      this.deviceType,
-    );
+      this.deviceType
+    )
   }
 }

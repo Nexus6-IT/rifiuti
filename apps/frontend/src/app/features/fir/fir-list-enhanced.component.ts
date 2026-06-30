@@ -1,26 +1,26 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
-import { MessageService } from 'primeng/api';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { InputTextModule } from 'primeng/inputtext';
-import { DropdownModule } from 'primeng/dropdown';
-import { TagModule } from 'primeng/tag';
-import { DialogModule } from 'primeng/dialog';
-import { InputNumberModule } from 'primeng/inputnumber';
-import { ConfirmDialogModule } from 'primeng/confirmdialog';
-import { ConfirmationService } from 'primeng/api';
-import { SplitButtonModule } from 'primeng/splitbutton';
-import { CardModule } from 'primeng/card';
-import { MenuItem } from 'primeng/api';
-import { FirService, CreateFIRDto } from './fir.service';
-import { FIR, FIRStato } from '../../shared/models/fir.model';
-import { ExportService } from '../../core/services/export.service';
-import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader.component';
-import { EmptyStateComponent } from '../../shared/components/empty-state.component';
-import { ErrorStateComponent } from '../../shared/components/error-state.component';
+import { Component, OnInit } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { Router } from '@angular/router'
+import { MessageService } from 'primeng/api'
+import { TableModule } from 'primeng/table'
+import { ButtonModule } from 'primeng/button'
+import { InputTextModule } from 'primeng/inputtext'
+import { DropdownModule } from 'primeng/dropdown'
+import { TagModule } from 'primeng/tag'
+import { DialogModule } from 'primeng/dialog'
+import { InputNumberModule } from 'primeng/inputnumber'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
+import { ConfirmationService } from 'primeng/api'
+import { SplitButtonModule } from 'primeng/splitbutton'
+import { CardModule } from 'primeng/card'
+import { MenuItem } from 'primeng/api'
+import { FirService, CreateFIRDto } from './fir.service'
+import { FIR, FIRStato } from '../../shared/models/fir.model'
+import { ExportService } from '../../core/services/export.service'
+import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader.component'
+import { EmptyStateComponent } from '../../shared/components/empty-state.component'
+import { ErrorStateComponent } from '../../shared/components/error-state.component'
 
 /**
  * Enhanced FIR List Component
@@ -51,7 +51,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
     CardModule,
     SkeletonLoaderComponent,
     EmptyStateComponent,
-    ErrorStateComponent
+    ErrorStateComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -167,7 +167,9 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
                 <span class="cer-code">{{ fir.rifiuto.cerCode }}</span>
               </td>
               <td>
-                <span class="quantity">{{ fir.rifiuto.quantitaDichiarata }} {{ fir.rifiuto.unitaMisura }}</span>
+                <span class="quantity"
+                  >{{ fir.rifiuto.quantitaDichiarata }} {{ fir.rifiuto.unitaMisura }}</span
+                >
               </td>
               <td>
                 <p-tag
@@ -232,7 +234,11 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
                 <app-empty-state
                   icon="pi-file"
                   title="Nessun FIR trovato"
-                  [message]="searchText || selectedStato ? 'Nessun FIR corrisponde ai criteri di ricerca. Prova a modificare i filtri.' : 'Non ci sono FIR da visualizzare. Crea il tuo primo FIR per iniziare.'"
+                  [message]="
+                    searchText || selectedStato
+                      ? 'Nessun FIR corrisponde ai criteri di ricerca. Prova a modificare i filtri.'
+                      : 'Non ci sono FIR da visualizzare. Crea il tuo primo FIR per iniziare.'
+                  "
                   [actionLabel]="searchText || selectedStato ? '' : 'Crea FIR'"
                   actionIcon="pi pi-plus"
                   (action)="showCreateDialog()"
@@ -251,7 +257,11 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
           *ngIf="firList.length === 0"
           icon="pi-file"
           title="Nessun FIR trovato"
-          [message]="searchText || selectedStato ? 'Nessun FIR corrisponde ai criteri di ricerca.' : 'Crea il tuo primo FIR per iniziare.'"
+          [message]="
+            searchText || selectedStato
+              ? 'Nessun FIR corrisponde ai criteri di ricerca.'
+              : 'Crea il tuo primo FIR per iniziare.'
+          "
           [actionLabel]="searchText || selectedStato ? '' : 'Crea FIR'"
           actionIcon="pi pi-plus"
           (action)="showCreateDialog()"
@@ -265,10 +275,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
                 <span class="label">FIR</span>
                 <span class="value">{{ fir.numeroProgressivo || 'N/A' }}</span>
               </div>
-              <p-tag
-                [value]="fir.stato"
-                [severity]="getStatoSeverity(fir.stato)"
-              />
+              <p-tag [value]="fir.stato" [severity]="getStatoSeverity(fir.stato)" />
             </div>
 
             <div class="fir-card-content">
@@ -278,7 +285,9 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
               </div>
               <div class="fir-card-row">
                 <span class="label">Quantità:</span>
-                <span class="value">{{ fir.rifiuto.quantitaDichiarata }} {{ fir.rifiuto.unitaMisura }}</span>
+                <span class="value"
+                  >{{ fir.rifiuto.quantitaDichiarata }} {{ fir.rifiuto.unitaMisura }}</span
+                >
               </div>
               <div class="fir-card-row">
                 <span class="label">Anno:</span>
@@ -338,9 +347,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
               (onClick)="previousPage()"
               aria-label="Pagina precedente"
             />
-            <span class="page-info">
-              Pagina {{ currentPage }} di {{ totalPages }}
-            </span>
+            <span class="page-info"> Pagina {{ currentPage }} di {{ totalPages }} </span>
             <p-button
               icon="pi pi-chevron-right"
               [outlined]="true"
@@ -437,16 +444,8 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
           </div>
         </div>
         <ng-template pTemplate="footer">
-          <p-button
-            label="Annulla"
-            [text]="true"
-            (onClick)="displayCreateDialog = false"
-          />
-          <p-button
-            label="Salva"
-            (onClick)="createFIR()"
-            [loading]="saving"
-          />
+          <p-button label="Annulla" [text]="true" (onClick)="displayCreateDialog = false" />
+          <p-button label="Salva" (onClick)="createFIR()" [loading]="saving" />
         </ng-template>
       </p-dialog>
 
@@ -469,265 +468,259 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
           />
         </div>
         <ng-template pTemplate="footer">
-          <p-button
-            label="Annulla"
-            [text]="true"
-            (onClick)="displayConsegnaDialog = false"
-          />
-          <p-button
-            label="Conferma"
-            (onClick)="consegnaFIR()"
-            [loading]="saving"
-          />
+          <p-button label="Annulla" [text]="true" (onClick)="displayConsegnaDialog = false" />
+          <p-button label="Conferma" (onClick)="consegnaFIR()" [loading]="saving" />
         </ng-template>
       </p-dialog>
 
       <p-confirmDialog />
     </div>
   `,
-  styles: [`
-    .fir-list {
-      animation: fadeIn 0.3s ease-in;
-    }
+  styles: [
+    `
+      .fir-list {
+        animation: fadeIn 0.3s ease-in;
+      }
 
-    /* Page Header */
-    .page-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: var(--spacing-xl, 1.75rem);
-      gap: var(--spacing-md, 1rem);
-    }
-
-    .page-title {
-      margin: 0 0 var(--spacing-xs, 0.5rem) 0;
-      font-size: var(--font-size-2xl, 1.875rem);
-      font-weight: var(--font-weight-bold, 700);
-      color: var(--text-primary);
-    }
-
-    .page-subtitle {
-      margin: 0;
-      font-size: var(--font-size-base, 1rem);
-      color: var(--text-secondary);
-    }
-
-    .page-actions {
-      display: flex;
-      gap: var(--spacing-sm, 0.75rem);
-      flex-shrink: 0;
-    }
-
-    /* Field Labels */
-    .field-label {
-      display: block;
-      margin-bottom: var(--spacing-xs, 0.5rem);
-      font-size: var(--font-size-sm, 0.875rem);
-      font-weight: var(--font-weight-medium, 500);
-      color: var(--text-primary);
-    }
-
-    /* Filters Card */
-    :host ::ng-deep .filters-card {
-      border: 1px solid var(--surface-border);
-    }
-
-    /* Desktop View */
-    .desktop-view {
-      display: block;
-    }
-
-    .mobile-view {
-      display: none;
-    }
-
-    /* Table Enhancements */
-    :host ::ng-deep .fir-table {
-      border: 1px solid var(--surface-border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-    }
-
-    :host ::ng-deep .fir-table .p-datatable-thead > tr > th {
-      background: var(--color-gray-50);
-      color: var(--text-primary);
-      font-weight: var(--font-weight-semibold, 600);
-      font-size: var(--font-size-sm, 0.875rem);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .cer-code {
-      font-family: var(--font-family-mono);
-      background: var(--color-gray-100);
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: var(--font-size-sm, 0.875rem);
-    }
-
-    .quantity {
-      font-weight: var(--font-weight-medium, 500);
-    }
-
-    .action-buttons {
-      display: flex;
-      gap: var(--spacing-xs, 0.5rem);
-      justify-content: flex-end;
-    }
-
-    .actions-col {
-      width: 180px;
-    }
-
-    /* Mobile Card View */
-    .fir-cards {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-md, 1rem);
-    }
-
-    :host ::ng-deep .fir-card {
-      border: 1px solid var(--surface-border);
-      transition: box-shadow 0.2s ease;
-    }
-
-    :host ::ng-deep .fir-card:hover {
-      box-shadow: var(--shadow-lg);
-    }
-
-    .fir-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: var(--spacing-md, 1rem);
-      padding-bottom: var(--spacing-md, 1rem);
-      border-bottom: 1px solid var(--surface-border);
-    }
-
-    .fir-card-number {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .fir-card-number .label {
-      font-size: var(--font-size-xs, 0.75rem);
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .fir-card-number .value {
-      font-size: var(--font-size-xl, 1.25rem);
-      font-weight: var(--font-weight-bold, 700);
-      color: var(--text-primary);
-    }
-
-    .fir-card-content {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-sm, 0.75rem);
-      margin-bottom: var(--spacing-lg, 1.5rem);
-    }
-
-    .fir-card-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .fir-card-row .label {
-      font-size: var(--font-size-sm, 0.875rem);
-      color: var(--text-secondary);
-    }
-
-    .fir-card-row .value {
-      font-size: var(--font-size-sm, 0.875rem);
-      font-weight: var(--font-weight-medium, 500);
-      color: var(--text-primary);
-    }
-
-    .fir-card-actions {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-sm, 0.75rem);
-    }
-
-    .mobile-pagination {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: var(--spacing-md, 1rem);
-      margin-top: var(--spacing-lg, 1.5rem);
-      padding: var(--spacing-md, 1rem);
-    }
-
-    .page-info {
-      font-size: var(--font-size-sm, 0.875rem);
-      color: var(--text-secondary);
-    }
-
-    /* Responsive Design */
-    @media (max-width: 768px) {
+      /* Page Header */
       .page-header {
-        flex-direction: column;
-        align-items: stretch;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: var(--spacing-xl, 1.75rem);
+        gap: var(--spacing-md, 1rem);
+      }
+
+      .page-title {
+        margin: 0 0 var(--spacing-xs, 0.5rem) 0;
+        font-size: var(--font-size-2xl, 1.875rem);
+        font-weight: var(--font-weight-bold, 700);
+        color: var(--text-primary);
+      }
+
+      .page-subtitle {
+        margin: 0;
+        font-size: var(--font-size-base, 1rem);
+        color: var(--text-secondary);
       }
 
       .page-actions {
-        width: 100%;
-        justify-content: space-between;
+        display: flex;
+        gap: var(--spacing-sm, 0.75rem);
+        flex-shrink: 0;
       }
 
-      .page-actions ::ng-deep .p-button {
-        flex: 1;
+      /* Field Labels */
+      .field-label {
+        display: block;
+        margin-bottom: var(--spacing-xs, 0.5rem);
+        font-size: var(--font-size-sm, 0.875rem);
+        font-weight: var(--font-weight-medium, 500);
+        color: var(--text-primary);
       }
 
+      /* Filters Card */
+      :host ::ng-deep .filters-card {
+        border: 1px solid var(--surface-border);
+      }
+
+      /* Desktop View */
       .desktop-view {
-        display: none;
+        display: block;
       }
 
       .mobile-view {
-        display: block;
+        display: none;
       }
-    }
 
-    /* Animations */
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
+      /* Table Enhancements */
+      :host ::ng-deep .fir-table {
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
       }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
 
-    @media (prefers-reduced-motion: reduce) {
-      .fir-list,
+      :host ::ng-deep .fir-table .p-datatable-thead > tr > th {
+        background: var(--color-gray-50);
+        color: var(--text-primary);
+        font-weight: var(--font-weight-semibold, 600);
+        font-size: var(--font-size-sm, 0.875rem);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .cer-code {
+        font-family: var(--font-family-mono);
+        background: var(--color-gray-100);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: var(--font-size-sm, 0.875rem);
+      }
+
+      .quantity {
+        font-weight: var(--font-weight-medium, 500);
+      }
+
+      .action-buttons {
+        display: flex;
+        gap: var(--spacing-xs, 0.5rem);
+        justify-content: flex-end;
+      }
+
+      .actions-col {
+        width: 180px;
+      }
+
+      /* Mobile Card View */
+      .fir-cards {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md, 1rem);
+      }
+
       :host ::ng-deep .fir-card {
-        animation: none;
-        transition: none;
+        border: 1px solid var(--surface-border);
+        transition: box-shadow 0.2s ease;
       }
-    }
-  `]
+
+      :host ::ng-deep .fir-card:hover {
+        box-shadow: var(--shadow-lg);
+      }
+
+      .fir-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--spacing-md, 1rem);
+        padding-bottom: var(--spacing-md, 1rem);
+        border-bottom: 1px solid var(--surface-border);
+      }
+
+      .fir-card-number {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .fir-card-number .label {
+        font-size: var(--font-size-xs, 0.75rem);
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .fir-card-number .value {
+        font-size: var(--font-size-xl, 1.25rem);
+        font-weight: var(--font-weight-bold, 700);
+        color: var(--text-primary);
+      }
+
+      .fir-card-content {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm, 0.75rem);
+        margin-bottom: var(--spacing-lg, 1.5rem);
+      }
+
+      .fir-card-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .fir-card-row .label {
+        font-size: var(--font-size-sm, 0.875rem);
+        color: var(--text-secondary);
+      }
+
+      .fir-card-row .value {
+        font-size: var(--font-size-sm, 0.875rem);
+        font-weight: var(--font-weight-medium, 500);
+        color: var(--text-primary);
+      }
+
+      .fir-card-actions {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm, 0.75rem);
+      }
+
+      .mobile-pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: var(--spacing-md, 1rem);
+        margin-top: var(--spacing-lg, 1.5rem);
+        padding: var(--spacing-md, 1rem);
+      }
+
+      .page-info {
+        font-size: var(--font-size-sm, 0.875rem);
+        color: var(--text-secondary);
+      }
+
+      /* Responsive Design */
+      @media (max-width: 768px) {
+        .page-header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .page-actions {
+          width: 100%;
+          justify-content: space-between;
+        }
+
+        .page-actions ::ng-deep .p-button {
+          flex: 1;
+        }
+
+        .desktop-view {
+          display: none;
+        }
+
+        .mobile-view {
+          display: block;
+        }
+      }
+
+      /* Animations */
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .fir-list,
+        :host ::ng-deep .fir-card {
+          animation: none;
+          transition: none;
+        }
+      }
+    `,
+  ],
 })
 export class FirListEnhancedComponent implements OnInit {
-  firList: FIR[] = [];
-  loading = false;
-  saving = false;
-  error = '';
-  totalRecords = 0;
-  pageSize = 10;
-  currentPage = 1;
+  firList: FIR[] = []
+  loading = false
+  saving = false
+  error = ''
+  totalRecords = 0
+  pageSize = 10
+  currentPage = 1
 
-  searchText = '';
-  selectedStato: FIRStato | null = null;
+  searchText = ''
+  selectedStato: FIRStato | null = null
 
-  displayCreateDialog = false;
-  displayConsegnaDialog = false;
-  selectedFIR: FIR | null = null;
-  pesoEffettivo = 0;
+  displayCreateDialog = false
+  displayConsegnaDialog = false
+  selectedFIR: FIR | null = null
+  pesoEffettivo = 0
 
   newFIR: CreateFIRDto = {
     anno: new Date().getFullYear(),
@@ -737,28 +730,28 @@ export class FirListEnhancedComponent implements OnInit {
     rifiuto: {
       cerCode: '',
       quantitaDichiarata: 0,
-      unitaMisura: 'kg'
-    }
-  };
+      unitaMisura: 'kg',
+    },
+  }
 
   statoOptions = [
     { label: 'Bozza', value: FIRStato.BOZZA },
     { label: 'Emesso', value: FIRStato.EMESSO },
     { label: 'In Transito', value: FIRStato.IN_TRANSITO },
     { label: 'Consegnato', value: FIRStato.CONSEGNATO },
-    { label: 'Annullato', value: FIRStato.ANNULLATO }
-  ];
+    { label: 'Annullato', value: FIRStato.ANNULLATO },
+  ]
 
   unitaMisuraOptions = [
     { label: 'kg', value: 'kg' },
     { label: 't', value: 't' },
-    { label: 'm³', value: 'm3' }
-  ];
+    { label: 'm³', value: 'm3' },
+  ]
 
-  exportMenuItems: MenuItem[] = [];
+  exportMenuItems: MenuItem[] = []
 
   get totalPages(): number {
-    return Math.ceil(this.totalRecords / this.pageSize);
+    return Math.ceil(this.totalRecords / this.pageSize)
   }
 
   constructor(
@@ -770,8 +763,8 @@ export class FirListEnhancedComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.initializeExportMenu();
-    this.loadFIRList({ first: 0, rows: this.pageSize });
+    this.initializeExportMenu()
+    this.loadFIRList({ first: 0, rows: this.pageSize })
   }
 
   initializeExportMenu(): void {
@@ -779,14 +772,14 @@ export class FirListEnhancedComponent implements OnInit {
       {
         label: 'Esporta PDF',
         icon: 'pi pi-file-pdf',
-        command: () => this.exportToPDF()
+        command: () => this.exportToPDF(),
       },
       {
         label: 'Esporta Excel',
         icon: 'pi pi-file-excel',
-        command: () => this.exportToExcel()
-      }
-    ];
+        command: () => this.exportToExcel(),
+      },
+    ]
   }
 
   exportToPDF(): void {
@@ -794,17 +787,17 @@ export class FirListEnhancedComponent implements OnInit {
       this.messageService.add({
         severity: 'warn',
         summary: 'Attenzione',
-        detail: 'Nessun FIR da esportare'
-      });
-      return;
+        detail: 'Nessun FIR da esportare',
+      })
+      return
     }
 
-    this.exportService.exportFIRListToPDF(this.firList);
+    this.exportService.exportFIRListToPDF(this.firList)
     this.messageService.add({
       severity: 'success',
       summary: 'Successo',
-      detail: 'FIR esportati in PDF'
-    });
+      detail: 'FIR esportati in PDF',
+    })
   }
 
   exportToExcel(): void {
@@ -812,68 +805,68 @@ export class FirListEnhancedComponent implements OnInit {
       this.messageService.add({
         severity: 'warn',
         summary: 'Attenzione',
-        detail: 'Nessun FIR da esportare'
-      });
-      return;
+        detail: 'Nessun FIR da esportare',
+      })
+      return
     }
 
-    this.exportService.exportFIRListToExcel(this.firList);
+    this.exportService.exportFIRListToExcel(this.firList)
     this.messageService.add({
       severity: 'success',
       summary: 'Successo',
-      detail: 'FIR esportati in Excel'
-    });
+      detail: 'FIR esportati in Excel',
+    })
   }
 
   loadFIRList(event: any): void {
-    this.loading = true;
-    this.error = '';
-    const page = Math.floor(event.first / event.rows) + 1;
-    this.currentPage = page;
+    this.loading = true
+    this.error = ''
+    const page = Math.floor(event.first / event.rows) + 1
+    this.currentPage = page
 
     this.firService.getFIRList(page, event.rows, this.selectedStato || undefined).subscribe({
-      next: (response) => {
-        this.firList = response.items;
-        this.totalRecords = response.total;
-        this.loading = false;
+      next: response => {
+        this.firList = response.items
+        this.totalRecords = response.total
+        this.loading = false
       },
-      error: (err) => {
-        this.loading = false;
-        this.error = err.error?.message || 'Errore nel caricamento dei FIR. Riprova più tardi.';
+      error: err => {
+        this.loading = false
+        this.error = err.error?.message || 'Errore nel caricamento dei FIR. Riprova più tardi.'
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: this.error
-        });
-      }
-    });
+          detail: this.error,
+        })
+      },
+    })
   }
 
   onSearch(): void {
-    this.loadFIRList({ first: 0, rows: this.pageSize });
+    this.loadFIRList({ first: 0, rows: this.pageSize })
   }
 
   onFilterChange(): void {
-    this.loadFIRList({ first: 0, rows: this.pageSize });
+    this.loadFIRList({ first: 0, rows: this.pageSize })
   }
 
   resetFilters(): void {
-    this.searchText = '';
-    this.selectedStato = null;
-    this.loadFIRList({ first: 0, rows: this.pageSize });
+    this.searchText = ''
+    this.selectedStato = null
+    this.loadFIRList({ first: 0, rows: this.pageSize })
   }
 
   previousPage(): void {
     if (this.currentPage > 1) {
-      const first = (this.currentPage - 2) * this.pageSize;
-      this.loadFIRList({ first, rows: this.pageSize });
+      const first = (this.currentPage - 2) * this.pageSize
+      this.loadFIRList({ first, rows: this.pageSize })
     }
   }
 
   nextPage(): void {
     if (this.currentPage < this.totalPages) {
-      const first = this.currentPage * this.pageSize;
-      this.loadFIRList({ first, rows: this.pageSize });
+      const first = this.currentPage * this.pageSize
+      this.loadFIRList({ first, rows: this.pageSize })
     }
   }
 
@@ -886,34 +879,34 @@ export class FirListEnhancedComponent implements OnInit {
       rifiuto: {
         cerCode: '',
         quantitaDichiarata: 0,
-        unitaMisura: 'kg'
-      }
-    };
-    this.displayCreateDialog = true;
+        unitaMisura: 'kg',
+      },
+    }
+    this.displayCreateDialog = true
   }
 
   createFIR(): void {
-    this.saving = true;
+    this.saving = true
     this.firService.createFIR(this.newFIR).subscribe({
       next: () => {
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
-          detail: 'FIR creato con successo'
-        });
-        this.displayCreateDialog = false;
-        this.saving = false;
-        this.loadFIRList({ first: 0, rows: this.pageSize });
+          detail: 'FIR creato con successo',
+        })
+        this.displayCreateDialog = false
+        this.saving = false
+        this.loadFIRList({ first: 0, rows: this.pageSize })
       },
       error: () => {
-        this.saving = false;
+        this.saving = false
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: 'Errore nella creazione del FIR'
-        });
-      }
-    });
+          detail: 'Errore nella creazione del FIR',
+        })
+      },
+    })
   }
 
   emettiFIR(fir: FIR): void {
@@ -927,20 +920,20 @@ export class FirListEnhancedComponent implements OnInit {
             this.messageService.add({
               severity: 'success',
               summary: 'Successo',
-              detail: 'FIR emesso con successo'
-            });
-            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+              detail: 'FIR emesso con successo',
+            })
+            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
           },
           error: () => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: 'Errore nell\'emissione del FIR'
-            });
-          }
-        });
-      }
-    });
+              detail: "Errore nell'emissione del FIR",
+            })
+          },
+        })
+      },
+    })
   }
 
   presaInCarico(fir: FIR): void {
@@ -954,52 +947,52 @@ export class FirListEnhancedComponent implements OnInit {
             this.messageService.add({
               severity: 'success',
               summary: 'Successo',
-              detail: 'FIR preso in carico con successo'
-            });
-            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+              detail: 'FIR preso in carico con successo',
+            })
+            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
           },
           error: () => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: 'Errore nella presa in carico del FIR'
-            });
-          }
-        });
-      }
-    });
+              detail: 'Errore nella presa in carico del FIR',
+            })
+          },
+        })
+      },
+    })
   }
 
   showConsegnaDialog(fir: FIR): void {
-    this.selectedFIR = fir;
-    this.pesoEffettivo = fir.rifiuto.quantitaDichiarata;
-    this.displayConsegnaDialog = true;
+    this.selectedFIR = fir
+    this.pesoEffettivo = fir.rifiuto.quantitaDichiarata
+    this.displayConsegnaDialog = true
   }
 
   consegnaFIR(): void {
-    if (!this.selectedFIR) return;
+    if (!this.selectedFIR) return
 
-    this.saving = true;
+    this.saving = true
     this.firService.consegnaFIR(this.selectedFIR.id, this.pesoEffettivo).subscribe({
       next: () => {
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
-          detail: 'FIR consegnato con successo'
-        });
-        this.displayConsegnaDialog = false;
-        this.saving = false;
-        this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+          detail: 'FIR consegnato con successo',
+        })
+        this.displayConsegnaDialog = false
+        this.saving = false
+        this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
       },
       error: () => {
-        this.saving = false;
+        this.saving = false
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: 'Errore nella consegna del FIR'
-        });
-      }
-    });
+          detail: 'Errore nella consegna del FIR',
+        })
+      },
+    })
   }
 
   deleteFIR(fir: FIR): void {
@@ -1013,30 +1006,32 @@ export class FirListEnhancedComponent implements OnInit {
             this.messageService.add({
               severity: 'success',
               summary: 'Successo',
-              detail: 'FIR eliminato con successo'
-            });
-            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+              detail: 'FIR eliminato con successo',
+            })
+            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
           },
           error: () => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: 'Errore nell\'eliminazione del FIR'
-            });
-          }
-        });
-      }
-    });
+              detail: "Errore nell'eliminazione del FIR",
+            })
+          },
+        })
+      },
+    })
   }
 
-  getStatoSeverity(stato: FIRStato): "success" | "info" | "warning" | "danger" | "secondary" | "contrast" | undefined {
-    const severityMap: Record<FIRStato, "success" | "info" | "warning" | "danger" | "secondary"> = {
+  getStatoSeverity(
+    stato: FIRStato
+  ): 'success' | 'info' | 'warning' | 'danger' | 'secondary' | 'contrast' | undefined {
+    const severityMap: Record<FIRStato, 'success' | 'info' | 'warning' | 'danger' | 'secondary'> = {
       [FIRStato.BOZZA]: 'secondary',
       [FIRStato.EMESSO]: 'info',
       [FIRStato.IN_TRANSITO]: 'warning',
       [FIRStato.CONSEGNATO]: 'success',
-      [FIRStato.ANNULLATO]: 'danger'
-    };
-    return severityMap[stato];
+      [FIRStato.ANNULLATO]: 'danger',
+    }
+    return severityMap[stato]
   }
 }

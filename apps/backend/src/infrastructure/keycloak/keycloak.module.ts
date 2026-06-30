@@ -11,11 +11,11 @@
  * iniettarlo.
  */
 
-import { Module } from '@nestjs/common';
-import { HttpModule } from '@nestjs/axios';
-import { ConfigModule } from '@nestjs/config';
-import { LoggerModule } from '../../core/logger/logger.module';
-import { KeycloakUserAdapter } from './keycloak-user.adapter';
+import { Module } from '@nestjs/common'
+import { HttpModule } from '@nestjs/axios'
+import { ConfigModule } from '@nestjs/config'
+import { LoggerModule } from '../../core/logger/logger.module'
+import { KeycloakUserAdapter } from './keycloak-user.adapter'
 
 @Module({
   imports: [HttpModule, ConfigModule, LoggerModule],

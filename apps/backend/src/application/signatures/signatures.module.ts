@@ -18,28 +18,28 @@
  *            Reg. UE 910/2014 eIDAS (QES), AgID Linee Guida conservazione.
  */
 
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { EventEmitterModule } from '@nestjs/event-emitter';
-import { SignaturesController } from '../../api/signatures/signatures.controller';
-import { ApplySignatureUseCase } from './apply-signature.use-case';
-import { VerifySignaturesUseCase } from './verify-signatures.use-case';
-import { DigitalSignatureService } from './digital-signature.service';
-import { SignatureAuditHandler } from './signature-audit.handler';
-import { SignatureFIRRepository } from '../../infrastructure/signatures/signature-fir.repository';
-import { PrismaModule } from '../../infrastructure/persistence/prisma.module';
-import { LoggerService } from '../../core/logger/logger.service';
-import { FIR_REPOSITORY } from '../../domain/fir/fir.repository';
+import { Module } from '@nestjs/common'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { EventEmitterModule } from '@nestjs/event-emitter'
+import { SignaturesController } from '../../api/signatures/signatures.controller'
+import { ApplySignatureUseCase } from './apply-signature.use-case'
+import { VerifySignaturesUseCase } from './verify-signatures.use-case'
+import { DigitalSignatureService } from './digital-signature.service'
+import { SignatureAuditHandler } from './signature-audit.handler'
+import { SignatureFIRRepository } from '../../infrastructure/signatures/signature-fir.repository'
+import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
+import { LoggerService } from '../../core/logger/logger.service'
+import { FIR_REPOSITORY } from '../../domain/fir/fir.repository'
 import {
   SIGNATURE_PROVIDER,
   TSA_PROVIDER,
   ISignatureProvider,
   ITsaProvider,
-} from './providers/signature-provider.interface';
-import { SandboxSignatureProvider } from './providers/sandbox-signature.provider';
-import { QesSignatureProvider } from './providers/qes-signature.provider';
-import { MockTsaProvider } from './providers/mock-tsa.provider';
-import { Rfc3161TsaProvider } from './providers/rfc3161-tsa.provider';
+} from './providers/signature-provider.interface'
+import { SandboxSignatureProvider } from './providers/sandbox-signature.provider'
+import { QesSignatureProvider } from './providers/qes-signature.provider'
+import { MockTsaProvider } from './providers/mock-tsa.provider'
+import { Rfc3161TsaProvider } from './providers/rfc3161-tsa.provider'
 
 @Module({
   imports: [
@@ -65,12 +65,12 @@ import { Rfc3161TsaProvider } from './providers/rfc3161-tsa.provider';
     {
       provide: SIGNATURE_PROVIDER,
       useFactory: (config: ConfigService, logger: LoggerService): ISignatureProvider => {
-        const providerType = config.get<string>('SIGNATURE_PROVIDER', 'sandbox');
+        const providerType = config.get<string>('SIGNATURE_PROVIDER', 'sandbox')
         if (providerType === 'qes') {
-          return new QesSignatureProvider(config);
+          return new QesSignatureProvider(config)
         }
         // Default: sandbox
-        return new SandboxSignatureProvider(logger);
+        return new SandboxSignatureProvider(logger)
       },
       inject: [ConfigService, LoggerService],
     },
@@ -81,12 +81,12 @@ import { Rfc3161TsaProvider } from './providers/rfc3161-tsa.provider';
     {
       provide: TSA_PROVIDER,
       useFactory: (config: ConfigService, logger: LoggerService): ITsaProvider => {
-        const providerType = config.get<string>('TSA_PROVIDER', 'mock');
+        const providerType = config.get<string>('TSA_PROVIDER', 'mock')
         if (providerType === 'rfc3161') {
-          return new Rfc3161TsaProvider(config);
+          return new Rfc3161TsaProvider(config)
         }
         // Default: mock
-        return new MockTsaProvider(logger);
+        return new MockTsaProvider(logger)
       },
       inject: [ConfigService, LoggerService],
     },
@@ -99,10 +99,6 @@ import { Rfc3161TsaProvider } from './providers/rfc3161-tsa.provider';
     // ===== Audit trail firma (eventi dominio → ActivityLog) =====
     SignatureAuditHandler,
   ],
-  exports: [
-    DigitalSignatureService,
-    ApplySignatureUseCase,
-    VerifySignaturesUseCase,
-  ],
+  exports: [DigitalSignatureService, ApplySignatureUseCase, VerifySignaturesUseCase],
 })
 export class SignaturesModule {}

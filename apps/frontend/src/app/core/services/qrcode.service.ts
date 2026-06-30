@@ -1,6 +1,6 @@
-import { Injectable, inject } from '@angular/core';
-import { Observable, from } from 'rxjs';
-import { LoggerService } from './logger.service';
+import { Injectable, inject } from '@angular/core'
+import { Observable, from } from 'rxjs'
+import { LoggerService } from './logger.service'
 
 /**
  * QR Code Generator Service
@@ -14,10 +14,10 @@ import { LoggerService } from './logger.service';
   providedIn: 'root',
 })
 export class QRCodeService {
-  private readonly logger = inject(LoggerService);
+  private readonly logger = inject(LoggerService)
 
   constructor() {
-    this.logger.setContext(QRCodeService.name);
+    this.logger.setContext(QRCodeService.name)
   }
 
   /**
@@ -30,11 +30,8 @@ export class QRCodeService {
    * @param options - QR code options
    * @returns Data URL of QR code image
    */
-  generateQRCode(
-    url: string,
-    options?: QRCodeOptions,
-  ): Observable<string> {
-    this.logger.debug(`Generating QR code for URL: ${url}`);
+  generateQRCode(url: string, options?: QRCodeOptions): Observable<string> {
+    this.logger.debug(`Generating QR code for URL: ${url}`)
 
     const defaultOptions: QRCodeGenerationOptions = {
       width: options?.width || 300,
@@ -44,9 +41,9 @@ export class QRCodeService {
         light: options?.lightColor || '#FFFFFF',
       },
       errorCorrectionLevel: options?.errorCorrectionLevel || 'M',
-    };
+    }
 
-    return from(this.generateQRCodeInternal(url, defaultOptions));
+    return from(this.generateQRCodeInternal(url, defaultOptions))
   }
 
   /**
@@ -58,17 +55,14 @@ export class QRCodeService {
    * @param verificationUrl - Public verification URL
    * @returns Data URL of QR code image
    */
-  generateVerificationQRCode(
-    firId: string,
-    verificationUrl: string,
-  ): Observable<string> {
-    this.logger.info(`Generating verification QR code for FIR ${firId}`);
+  generateVerificationQRCode(firId: string, verificationUrl: string): Observable<string> {
+    this.logger.info(`Generating verification QR code for FIR ${firId}`)
 
     return this.generateQRCode(verificationUrl, {
       width: 300,
       margin: 4,
       errorCorrectionLevel: 'H', // High error correction for printed documents
-    });
+    })
   }
 
   /**
@@ -85,9 +79,9 @@ export class QRCodeService {
   async generateQRCodeWithLogo(
     url: string,
     logoUrl: string,
-    options?: QRCodeOptions,
+    options?: QRCodeOptions
   ): Promise<string> {
-    this.logger.debug(`Generating QR code with logo for URL: ${url}`);
+    this.logger.debug(`Generating QR code with logo for URL: ${url}`)
 
     // Generate base QR code
     const qrDataUrl = await this.generateQRCodeInternal(url, {
@@ -98,43 +92,43 @@ export class QRCodeService {
         light: options?.lightColor || '#FFFFFF',
       },
       errorCorrectionLevel: 'H', // High error correction required for logo overlay
-    });
+    })
 
     // Create canvas to composite QR code and logo
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
 
     if (!ctx) {
-      this.logger.error('Failed to get canvas context');
-      return qrDataUrl; // Fallback to QR code without logo
+      this.logger.error('Failed to get canvas context')
+      return qrDataUrl // Fallback to QR code without logo
     }
 
-    const width = options?.width || 300;
-    canvas.width = width;
-    canvas.height = width;
+    const width = options?.width || 300
+    canvas.width = width
+    canvas.height = width
 
     try {
       // Load QR code image
-      const qrImage = await this.loadImage(qrDataUrl);
-      ctx.drawImage(qrImage, 0, 0, width, width);
+      const qrImage = await this.loadImage(qrDataUrl)
+      ctx.drawImage(qrImage, 0, 0, width, width)
 
       // Load and draw logo in center
-      const logoImage = await this.loadImage(logoUrl);
-      const logoSize = width * 0.2; // Logo is 20% of QR code size
-      const logoX = (width - logoSize) / 2;
-      const logoY = (width - logoSize) / 2;
+      const logoImage = await this.loadImage(logoUrl)
+      const logoSize = width * 0.2 // Logo is 20% of QR code size
+      const logoX = (width - logoSize) / 2
+      const logoY = (width - logoSize) / 2
 
       // Draw white background for logo
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(logoX - 5, logoY - 5, logoSize + 10, logoSize + 10);
+      ctx.fillStyle = '#FFFFFF'
+      ctx.fillRect(logoX - 5, logoY - 5, logoSize + 10, logoSize + 10)
 
       // Draw logo
-      ctx.drawImage(logoImage, logoX, logoY, logoSize, logoSize);
+      ctx.drawImage(logoImage, logoX, logoY, logoSize, logoSize)
 
-      return canvas.toDataURL('image/png');
+      return canvas.toDataURL('image/png')
     } catch (error) {
-      this.logger.error('Failed to add logo to QR code', error);
-      return qrDataUrl; // Fallback to QR code without logo
+      this.logger.error('Failed to add logo to QR code', error)
+      return qrDataUrl // Fallback to QR code without logo
     }
   }
 
@@ -146,7 +140,7 @@ export class QRCodeService {
    */
   private async generateQRCodeInternal(
     url: string,
-    options: QRCodeGenerationOptions,
+    options: QRCodeGenerationOptions
   ): Promise<string> {
     try {
       // Placeholder implementation
@@ -155,59 +149,56 @@ export class QRCodeService {
       // return await QRCode.toDataURL(url, options);
 
       // Mock implementation for development
-      this.logger.warn('Using mock QR code generation - install qrcode library for production');
+      this.logger.warn('Using mock QR code generation - install qrcode library for production')
 
-      return this.generateMockQRCode(url, options);
+      return this.generateMockQRCode(url, options)
     } catch (error) {
-      this.logger.error('QR code generation failed', error);
-      throw new Error(`Failed to generate QR code: ${error}`);
+      this.logger.error('QR code generation failed', error)
+      throw new Error(`Failed to generate QR code: ${error}`)
     }
   }
 
   /**
    * Generate mock QR code (development only)
    */
-  private generateMockQRCode(
-    url: string,
-    options: QRCodeGenerationOptions,
-  ): string {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+  private generateMockQRCode(url: string, options: QRCodeGenerationOptions): string {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
 
     if (!ctx) {
-      return '';
+      return ''
     }
 
-    const width = options.width;
-    canvas.width = width;
-    canvas.height = width;
+    const width = options.width
+    canvas.width = width
+    canvas.height = width
 
     // Draw mock QR code pattern
-    ctx.fillStyle = options.color.light;
-    ctx.fillRect(0, 0, width, width);
+    ctx.fillStyle = options.color.light
+    ctx.fillRect(0, 0, width, width)
 
-    ctx.fillStyle = options.color.dark;
-    const cellSize = width / 25;
+    ctx.fillStyle = options.color.dark
+    const cellSize = width / 25
 
     // Draw random pattern (not a real QR code)
     for (let i = 0; i < 25; i++) {
       for (let j = 0; j < 25; j++) {
         if (Math.random() > 0.5) {
-          ctx.fillRect(i * cellSize, j * cellSize, cellSize, cellSize);
+          ctx.fillRect(i * cellSize, j * cellSize, cellSize, cellSize)
         }
       }
     }
 
     // Draw "QR" text in center
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(width / 4, width / 4, width / 2, width / 2);
-    ctx.fillStyle = '#000000';
-    ctx.font = `${width / 10}px Arial`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('QR', width / 2, width / 2);
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(width / 4, width / 4, width / 2, width / 2)
+    ctx.fillStyle = '#000000'
+    ctx.font = `${width / 10}px Arial`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('QR', width / 2, width / 2)
 
-    return canvas.toDataURL('image/png');
+    return canvas.toDataURL('image/png')
   }
 
   /**
@@ -215,11 +206,11 @@ export class QRCodeService {
    */
   private loadImage(url: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
-      img.src = url;
-    });
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error(`Failed to load image: ${url}`))
+      img.src = url
+    })
   }
 
   /**
@@ -227,10 +218,10 @@ export class QRCodeService {
    */
   private isValidUrl(url: string): boolean {
     try {
-      new URL(url);
-      return true;
+      new URL(url)
+      return true
     } catch {
-      return false;
+      return false
     }
   }
 }
@@ -239,22 +230,22 @@ export class QRCodeService {
  * QR Code Options
  */
 export interface QRCodeOptions {
-  width?: number;
-  margin?: number;
-  darkColor?: string;
-  lightColor?: string;
-  errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
+  width?: number
+  margin?: number
+  darkColor?: string
+  lightColor?: string
+  errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
 }
 
 /**
  * Internal QR Code Generation Options
  */
 interface QRCodeGenerationOptions {
-  width: number;
-  margin: number;
+  width: number
+  margin: number
   color: {
-    dark: string;
-    light: string;
-  };
-  errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H';
+    dark: string
+    light: string
+  }
+  errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
 }

@@ -4,11 +4,12 @@
  */
 
 import { JwtStrategy } from './jwt.strategy'
-import { ConfigService } from '@nestjs/config'
 import { UnauthorizedException } from '@nestjs/common'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { createPrismaMock, MockPrisma } from '../../../test/utils/prisma-mock'
-import { createConfigServiceMock, MockConfigService } from '../../../test/utils/config-service-mock.factory'
+import {
+  createConfigServiceMock,
+  MockConfigService,
+} from '../../../test/utils/config-service-mock.factory'
 import { createMockUser, createMockJwtPayload } from '../../../test/utils/test-fixtures.factory'
 
 describe('JwtStrategy', () => {
@@ -86,14 +87,14 @@ describe('JwtStrategy', () => {
       const result = await strategy.validate(mockPayload)
 
       expect(result.permissions).toEqual(
-        expect.arrayContaining(['fir:read:all', 'fir:create:own', 'report:read:all']),
+        expect.arrayContaining(['fir:read:all', 'fir:create:own', 'report:read:all'])
       )
       expect(result.permissions).toHaveLength(3)
       // only active (non-expired) assignments for the tenant are considered
       expect(prismaService.userRoleAssignment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ userId: 'user-123', tenantId: 'tenant-123' }),
-        }),
+        })
       )
     })
 

@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { QueryHandler, IQueryHandler } from '@nestjs/cqrs';
-import { GetAuditTrailQuery } from './get-audit-trail.query';
-import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface';
-import { PermissionAuditLog } from '../../domain/identity-access/permission-audit-log.entity';
+import { Injectable, Logger } from '@nestjs/common'
+import { QueryHandler, IQueryHandler } from '@nestjs/cqrs'
+import { GetAuditTrailQuery } from './get-audit-trail.query'
+import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface'
+import { PermissionAuditLog } from '../../domain/identity-access/permission-audit-log.entity'
 
 /**
  * GetAuditTrailHandler
@@ -25,26 +25,24 @@ import { PermissionAuditLog } from '../../domain/identity-access/permission-audi
 @QueryHandler(GetAuditTrailQuery)
 @Injectable()
 export class GetAuditTrailHandler implements IQueryHandler<GetAuditTrailQuery> {
-  private readonly logger = new Logger(GetAuditTrailHandler.name);
+  private readonly logger = new Logger(GetAuditTrailHandler.name)
 
-  constructor(
-    private readonly auditLogRepository: PermissionAuditLogRepository,
-  ) {}
+  constructor(private readonly auditLogRepository: PermissionAuditLogRepository) {}
 
   async execute(query: GetAuditTrailQuery): Promise<{
-    logs: PermissionAuditLog[];
-    total: number;
-    page?: number;
-    pageSize?: number;
+    logs: PermissionAuditLog[]
+    total: number
+    page?: number
+    pageSize?: number
     performanceMetrics?: {
-      queryTimeMs: number;
-      exceededTarget: boolean;
-    };
+      queryTimeMs: number
+      exceededTarget: boolean
+    }
   }> {
-    const startTime = performance.now();
+    const startTime = performance.now()
 
     try {
-      this.logger.log(`Executing GetAuditTrailQuery for tenant ${query.tenantId}`);
+      this.logger.log(`Executing GetAuditTrailQuery for tenant ${query.tenantId}`)
 
       // Execute query with filters
       const result = await this.auditLogRepository.findWithFilters({
@@ -58,22 +56,22 @@ export class GetAuditTrailHandler implements IQueryHandler<GetAuditTrailQuery> {
         actionAttempted: query.filters?.actionAttempted,
         page: query.pagination?.page,
         pageSize: query.pagination?.pageSize,
-      });
+      })
 
-      const endTime = performance.now();
-      const queryTimeMs = endTime - startTime;
+      const endTime = performance.now()
+      const queryTimeMs = endTime - startTime
 
       // Check if query exceeded performance target
-      const exceededTarget = queryTimeMs > 500;
+      const exceededTarget = queryTimeMs > 500
 
       if (exceededTarget) {
         this.logger.warn(
-          `Audit trail query exceeded 500ms target: ${queryTimeMs.toFixed(2)}ms for tenant ${query.tenantId}`,
-        );
+          `Audit trail query exceeded 500ms target: ${queryTimeMs.toFixed(2)}ms for tenant ${query.tenantId}`
+        )
       } else {
         this.logger.log(
-          `Audit trail query completed in ${queryTimeMs.toFixed(2)}ms for tenant ${query.tenantId}`,
-        );
+          `Audit trail query completed in ${queryTimeMs.toFixed(2)}ms for tenant ${query.tenantId}`
+        )
       }
 
       return {
@@ -85,17 +83,17 @@ export class GetAuditTrailHandler implements IQueryHandler<GetAuditTrailQuery> {
           queryTimeMs,
           exceededTarget,
         },
-      };
+      }
     } catch (error) {
-      const endTime = performance.now();
-      const queryTimeMs = endTime - startTime;
+      const endTime = performance.now()
+      const queryTimeMs = endTime - startTime
 
       this.logger.error(
         `Failed to execute GetAuditTrailQuery after ${queryTimeMs.toFixed(2)}ms: ${error.message}`,
-        error.stack,
-      );
+        error.stack
+      )
 
-      throw new Error(`Failed to retrieve audit trail: ${error.message}`);
+      throw new Error(`Failed to retrieve audit trail: ${error.message}`)
     }
   }
 }

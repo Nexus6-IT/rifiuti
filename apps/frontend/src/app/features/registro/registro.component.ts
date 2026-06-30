@@ -8,35 +8,29 @@
  * Design system "B": slate + teal #0d9488, IBM Plex, griglia 8pt, WCAG 2.1 AA.
  */
 
-import {
-  Component,
-  OnInit,
-  inject,
-  signal,
-  computed,
-} from '@angular/core';
-import { CommonModule, DatePipe } from '@angular/common';
+import { Component, OnInit, inject, signal, computed } from '@angular/core'
+import { CommonModule, DatePipe } from '@angular/common'
 import {
   FormBuilder,
   FormGroup,
   FormsModule,
   ReactiveFormsModule,
   Validators,
-} from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { DialogModule } from 'primeng/dialog';
-import { SelectButtonModule } from 'primeng/selectbutton';
-import { CalendarModule } from 'primeng/calendar';
-import { InputNumberModule } from 'primeng/inputnumber';
-import { InputTextModule } from 'primeng/inputtext';
-import { InputTextareaModule } from 'primeng/inputtextarea';
-import { DropdownModule } from 'primeng/dropdown';
-import { TooltipModule } from 'primeng/tooltip';
-import { PaginatorModule } from 'primeng/paginator';
-import { ToastService } from '../../core/services/toast.service';
+} from '@angular/forms'
+import { ButtonModule } from 'primeng/button'
+import { TableModule } from 'primeng/table'
+import { TagModule } from 'primeng/tag'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { DialogModule } from 'primeng/dialog'
+import { SelectButtonModule } from 'primeng/selectbutton'
+import { CalendarModule } from 'primeng/calendar'
+import { InputNumberModule } from 'primeng/inputnumber'
+import { InputTextModule } from 'primeng/inputtext'
+import { InputTextareaModule } from 'primeng/inputtextarea'
+import { DropdownModule } from 'primeng/dropdown'
+import { TooltipModule } from 'primeng/tooltip'
+import { PaginatorModule } from 'primeng/paginator'
+import { ToastService } from '../../core/services/toast.service'
 import {
   RegistroService,
   Movimento,
@@ -47,9 +41,12 @@ import {
   CAUSALE_LABELS,
   STATI_FISICI,
   CausaleMovimento,
-} from './registro.service';
+} from './registro.service'
 
-interface DropdownOption<T> { label: string; value: T }
+interface DropdownOption<T> {
+  label: string
+  value: T
+}
 
 @Component({
   selector: 'app-registro',
@@ -149,14 +146,23 @@ interface DropdownOption<T> { label: string; value: T }
         <div class="empty-state">
           <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger"></i>
           <span class="empty-state__title">{{ error() }}</span>
-          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="ricarica()"></p-button>
+          <p-button
+            label="Riprova"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            (onClick)="ricarica()"
+          ></p-button>
         </div>
       </section>
 
       <!-- Loading --------------------------------------------------------------->
       <section *ngIf="loading()" class="surface-card">
         <div class="flex justify-content-center p-5">
-          <p-progressSpinner strokeWidth="4" [style]="{ width: '48px', height: '48px' }" ariaLabel="Caricamento registro"></p-progressSpinner>
+          <p-progressSpinner
+            strokeWidth="4"
+            [style]="{ width: '48px', height: '48px' }"
+            ariaLabel="Caricamento registro"
+          ></p-progressSpinner>
         </div>
       </section>
 
@@ -196,14 +202,16 @@ interface DropdownOption<T> { label: string; value: T }
                 ></p-tag>
               </td>
               <td>{{ m.movementDate | date: 'dd/MM/yyyy' }}</td>
-              <td><strong>{{ m.cerCode }}</strong></td>
+              <td>
+                <strong>{{ m.cerCode }}</strong>
+              </td>
               <td>
                 {{ causaleLabel(m.causale) }}
-                <span *ngIf="m.wasteDescription" class="waste-desc">· {{ m.wasteDescription }}</span>
+                <span *ngIf="m.wasteDescription" class="waste-desc"
+                  >· {{ m.wasteDescription }}</span
+                >
               </td>
-              <td class="text-right">
-                {{ m.quantity | number: '1.0-2' }} {{ m.unit }}
-              </td>
+              <td class="text-right">{{ m.quantity | number: '1.0-2' }} {{ m.unit }}</td>
               <td>
                 <span *ngIf="m.counterpartName; else nessuno">{{ m.counterpartName }}</span>
                 <ng-template #nessuno><span class="text-muted">—</span></ng-template>
@@ -216,7 +224,9 @@ interface DropdownOption<T> { label: string; value: T }
                 <span
                   *ngIf="m.fuoriTermine"
                   class="fuori-termine-badge"
-                  [pTooltip]="'Registrato con ' + m.ritardoGg + ' gg di ritardo sul termine di legge'"
+                  [pTooltip]="
+                    'Registrato con ' + m.ritardoGg + ' gg di ritardo sul termine di legge'
+                  "
                   aria-label="Fuori termine"
                 >
                   <i class="pi pi-clock"></i>
@@ -308,7 +318,9 @@ interface DropdownOption<T> { label: string; value: T }
                 ariaLabel="Data di annotazione nel registro"
                 styleClass="w-full"
               ></p-calendar>
-              <small class="form-hint">Termine: 10 gg lav. per produttori (art. 190 D.Lgs 152/2006)</small>
+              <small class="form-hint"
+                >Termine: 10 gg lav. per produttori (art. 190 D.Lgs 152/2006)</small
+              >
             </div>
           </div>
 
@@ -340,10 +352,13 @@ interface DropdownOption<T> { label: string; value: T }
               <small
                 *ngIf="form.get('cerCode')?.invalid && form.get('cerCode')?.touched"
                 class="form-error"
-              >Campo obbligatorio</small>
+                >Campo obbligatorio</small
+              >
             </div>
             <div class="form-field">
-              <label class="form-label" for="quantity">Quantità ({{ form.get('unit')?.value ?? 'KG' }}) *</label>
+              <label class="form-label" for="quantity"
+                >Quantità ({{ form.get('unit')?.value ?? 'KG' }}) *</label
+              >
               <p-inputNumber
                 formControlName="quantity"
                 id="quantity"
@@ -384,7 +399,11 @@ interface DropdownOption<T> { label: string; value: T }
             <div class="form-field">
               <label class="form-label" for="wasteHazardClasses">
                 Classi pericolo HP
-                <i class="pi pi-info-circle" pTooltip="Obbligatorio per rifiuti pericolosi (es. HP4,HP14)" aria-hidden="true"></i>
+                <i
+                  class="pi pi-info-circle"
+                  pTooltip="Obbligatorio per rifiuti pericolosi (es. HP4,HP14)"
+                  aria-hidden="true"
+                ></i>
               </label>
               <input
                 pInputText
@@ -407,16 +426,18 @@ interface DropdownOption<T> { label: string; value: T }
               />
             </div>
             <div class="form-field">
-              <label class="form-label" for="firId">ID FIR collegato
-                <span *ngIf="form.get('type')?.value === 'SCARICO' && form.get('causale')?.value === 'CONFERIMENTO_TRASPORTATORE'"
-                  class="required-mark">*</span>
+              <label class="form-label" for="firId"
+                >ID FIR collegato
+                <span
+                  *ngIf="
+                    form.get('type')?.value === 'SCARICO' &&
+                    form.get('causale')?.value === 'CONFERIMENTO_TRASPORTATORE'
+                  "
+                  class="required-mark"
+                  >*</span
+                >
               </label>
-              <input
-                pInputText
-                formControlName="firId"
-                id="firId"
-                placeholder="UUID del FIR"
-              />
+              <input pInputText formControlName="firId" id="firId" placeholder="UUID del FIR" />
             </div>
           </div>
 
@@ -460,8 +481,8 @@ interface DropdownOption<T> { label: string; value: T }
           <!-- Alert ritardo ------------------------------------------------->
           <div *ngIf="ritardoAvvertimento()" class="avvertimento-ritardo" role="alert">
             <i class="pi pi-clock" aria-hidden="true"></i>
-            Attenzione: sono trascorsi {{ ritardoGgCalcolato() }} gg dalla data dell'operazione.
-            Il termine di legge per i produttori è di 10 giorni lavorativi (≈ 14 gg di calendario).
+            Attenzione: sono trascorsi {{ ritardoGgCalcolato() }} gg dalla data dell'operazione. Il
+            termine di legge per i produttori è di 10 giorni lavorativi (≈ 14 gg di calendario).
           </div>
 
           <!-- Azioni form --------------------------------------------------->
@@ -539,8 +560,12 @@ interface DropdownOption<T> { label: string; value: T }
       .text-right {
         text-align: right;
       }
-      .mb-4 { margin-bottom: var(--spacing-xl); }
-      .mt-2 { margin-top: var(--spacing-sm); }
+      .mb-4 {
+        margin-bottom: var(--spacing-xl);
+      }
+      .mt-2 {
+        margin-top: var(--spacing-sm);
+      }
 
       /* ─── Form dialog ─────────────────────────────────────────────────────── */
       .form-grid {
@@ -563,7 +588,9 @@ interface DropdownOption<T> { label: string; value: T }
       }
 
       @media (max-width: 480px) {
-        .form-cols-2 { grid-template-columns: 1fr; }
+        .form-cols-2 {
+          grid-template-columns: 1fr;
+        }
       }
 
       .form-field {
@@ -619,28 +646,28 @@ interface DropdownOption<T> { label: string; value: T }
   ],
 })
 export class RegistroComponent implements OnInit {
-  private readonly registroService = inject(RegistroService);
-  private readonly toast = inject(ToastService);
-  private readonly fb = inject(FormBuilder);
-  private readonly datePipe = inject(DatePipe);
+  private readonly registroService = inject(RegistroService)
+  private readonly toast = inject(ToastService)
+  private readonly fb = inject(FormBuilder)
+  private readonly datePipe = inject(DatePipe)
 
   // ─── Stato ────────────────────────────────────────────────────────────────
 
-  readonly movimenti = signal<Movimento[]>([]);
-  readonly paginazione = signal({ total: 0, page: 1, limit: 20, totalPages: 0 });
-  readonly loading = signal(false);
-  readonly saving = signal(false);
-  readonly error = signal<string | null>(null);
+  readonly movimenti = signal<Movimento[]>([])
+  readonly paginazione = signal({ total: 0, page: 1, limit: 20, totalPages: 0 })
+  readonly loading = signal(false)
+  readonly saving = signal(false)
+  readonly error = signal<string | null>(null)
 
-  formVisible = false;
-  filtroTipo: TipoMovimento | null = null;
-  filtroCer = '';
+  formVisible = false
+  filtroTipo: TipoMovimento | null = null
+  filtroCer = ''
 
-  readonly oggi = new Date();
+  readonly oggi = new Date()
 
   // ─── Form ─────────────────────────────────────────────────────────────────
 
-  form!: FormGroup;
+  form!: FormGroup
 
   // ─── Opzioni dropdown ────────────────────────────────────────────────────
 
@@ -648,12 +675,12 @@ export class RegistroComponent implements OnInit {
     { label: 'Tutti', value: null },
     { label: 'Carico', value: 'CARICO' },
     { label: 'Scarico', value: 'SCARICO' },
-  ];
+  ]
 
   readonly tipoFormOptions: DropdownOption<TipoMovimento>[] = [
     { label: 'Carico', value: 'CARICO' },
     { label: 'Scarico', value: 'SCARICO' },
-  ];
+  ]
 
   /**
    * Signal reattivo che rispecchia il valore del controllo "type" nel form.
@@ -661,45 +688,38 @@ export class RegistroComponent implements OnInit {
    * (non sono signal): senza questo, causaliOptions e formTitolo non si
    * aggiornerebbero al cambio di CARICO/SCARICO.
    */
-  private readonly tipoCorrente = signal<TipoMovimento>('CARICO');
+  private readonly tipoCorrente = signal<TipoMovimento>('CARICO')
 
   readonly causaliOptions = computed<DropdownOption<CausaleMovimento>[]>(() => {
-    const tipo = this.tipoCorrente();
-    const causali = tipo === 'CARICO' ? CAUSALI_CARICO : CAUSALI_SCARICO;
-    return causali.map((c) => ({ label: CAUSALE_LABELS[c], value: c }));
-  });
+    const tipo = this.tipoCorrente()
+    const causali = tipo === 'CARICO' ? CAUSALI_CARICO : CAUSALI_SCARICO
+    return causali.map(c => ({ label: CAUSALE_LABELS[c], value: c }))
+  })
 
-  readonly statiFisiciOptions = STATI_FISICI.map((s) => ({ label: s, value: s }));
+  readonly statiFisiciOptions = STATI_FISICI.map(s => ({ label: s, value: s }))
 
   readonly formTitolo = computed(() =>
-    this.tipoCorrente() === 'SCARICO'
-      ? 'Registra scarico'
-      : 'Registra carico',
-  );
+    this.tipoCorrente() === 'SCARICO' ? 'Registra scarico' : 'Registra carico'
+  )
 
   // ─── Avvertimento ritardo ────────────────────────────────────────────────
 
   readonly ritardoGgCalcolati = computed(() => {
-    const mov = this.form?.get('movementDate')?.value as Date | null;
-    const reg = this.form?.get('registrationDate')?.value as Date | null;
-    if (!mov || !reg) return 0;
-    return Math.max(
-      0,
-      Math.floor((reg.getTime() - mov.getTime()) / (1000 * 60 * 60 * 24)),
-    );
-  });
+    const mov = this.form?.get('movementDate')?.value as Date | null
+    const reg = this.form?.get('registrationDate')?.value as Date | null
+    if (!mov || !reg) return 0
+    return Math.max(0, Math.floor((reg.getTime() - mov.getTime()) / (1000 * 60 * 60 * 24)))
+  })
 
-  readonly ritardoGgCalcolato = computed(() => this.ritardoGgCalcolati());
+  readonly ritardoGgCalcolato = computed(() => this.ritardoGgCalcolati())
 
-  readonly ritardoAvvertimento = computed(
-    () => this.ritardoGgCalcolati() > 14,
-  );
+  readonly ritardoAvvertimento = computed(() => this.ritardoGgCalcolati() > 14)
 
   // ─── Lifecycle ───────────────────────────────────────────────────────────
 
   ngOnInit(): void {
-    this.initForm();
-    this.ricarica();
+    this.initForm()
+    this.ricarica()
   }
 
   // ─── Form ─────────────────────────────────────────────────────────────────
@@ -721,52 +741,52 @@ export class RegistroComponent implements OnInit {
       counterpartAddress: [''],
       firId: [''],
       notes: [''],
-    });
+    })
   }
 
   apriForm(): void {
-    this.tipoCorrente.set('CARICO');
+    this.tipoCorrente.set('CARICO')
     this.form.reset({
       type: 'CARICO',
       movementDate: new Date(),
       registrationDate: new Date(),
       causale: null,
       unit: 'KG',
-    });
-    this.formVisible = true;
+    })
+    this.formVisible = true
   }
 
   chiudiForm(): void {
-    this.formVisible = false;
+    this.formVisible = false
   }
 
   onTipoChange(): void {
     // Aggiorna il signal reattivo (per causaliOptions/formTitolo) e azzera la
     // causale perché il set valido è diverso tra CARICO e SCARICO.
-    const tipo: TipoMovimento = this.form?.get('type')?.value ?? 'CARICO';
-    this.tipoCorrente.set(tipo);
-    this.form.get('causale')?.reset(null);
+    const tipo: TipoMovimento = this.form?.get('type')?.value ?? 'CARICO'
+    this.tipoCorrente.set(tipo)
+    this.form.get('causale')?.reset(null)
   }
 
   // ─── Salvataggio ─────────────────────────────────────────────────────────
 
   salva(): void {
     if (this.form.invalid) {
-      this.form.markAllAsTouched();
-      return;
+      this.form.markAllAsTouched()
+      return
     }
 
-    const v = this.form.value;
-    this.saving.set(true);
+    const v = this.form.value
+    this.saving.set(true)
 
     // Usa i componenti locali della data per evitare lo shift UTC negativo
     // (es. GMT+2: scegliendo il 29 giugno, toISOString() restituirebbe il 28).
     const toIsoDate = (d: Date) => {
-      const yyyy = d.getFullYear();
-      const mm   = String(d.getMonth() + 1).padStart(2, '0');
-      const dd   = String(d.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
-    };
+      const yyyy = d.getFullYear()
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const dd = String(d.getDate()).padStart(2, '0')
+      return `${yyyy}-${mm}-${dd}`
+    }
 
     this.registroService
       .registra({
@@ -787,29 +807,28 @@ export class RegistroComponent implements OnInit {
         notes: v.notes || undefined,
       })
       .subscribe({
-        next: (m) => {
-          this.saving.set(false);
-          this.chiudiForm();
+        next: m => {
+          this.saving.set(false)
+          this.chiudiForm()
           this.toast.success(
             `Movimento ${m.progressiveYear}/${m.progressiveNumber} registrato` +
-              (m.fuoriTermine ? ' — ATTENZIONE: fuori termine di legge' : ''),
-          );
-          this.ricarica();
+              (m.fuoriTermine ? ' — ATTENZIONE: fuori termine di legge' : '')
+          )
+          this.ricarica()
         },
-        error: (err) => {
-          this.saving.set(false);
-          const msg =
-            err?.error?.message ?? err?.message ?? 'Errore durante la registrazione';
-          this.toast.error(msg);
+        error: err => {
+          this.saving.set(false)
+          const msg = err?.error?.message ?? err?.message ?? 'Errore durante la registrazione'
+          this.toast.error(msg)
         },
-      });
+      })
   }
 
   // ─── Lista ────────────────────────────────────────────────────────────────
 
   ricarica(page = 1): void {
-    this.loading.set(true);
-    this.error.set(null);
+    this.loading.set(true)
+    this.error.set(null)
 
     this.registroService
       .lista({
@@ -820,40 +839,40 @@ export class RegistroComponent implements OnInit {
       })
       .subscribe({
         next: (data: PaginatedMovimenti) => {
-          this.movimenti.set(data.items);
+          this.movimenti.set(data.items)
           this.paginazione.set({
             total: data.total,
             page: data.page,
             limit: data.limit,
             totalPages: data.totalPages,
-          });
-          this.loading.set(false);
+          })
+          this.loading.set(false)
         },
         error: () => {
-          this.error.set('Impossibile caricare il registro');
-          this.toast.error('Errore nel caricamento del registro');
-          this.loading.set(false);
+          this.error.set('Impossibile caricare il registro')
+          this.toast.error('Errore nel caricamento del registro')
+          this.loading.set(false)
         },
-      });
+      })
   }
 
   onFiltroTipoChange(): void {
-    this.ricarica(1);
+    this.ricarica(1)
   }
 
   resetFiltri(): void {
-    this.filtroTipo = null;
-    this.filtroCer = '';
-    this.ricarica(1);
+    this.filtroTipo = null
+    this.filtroCer = ''
+    this.ricarica(1)
   }
 
   onPageChange(event: { page?: number }): void {
-    this.ricarica((event.page ?? 0) + 1);
+    this.ricarica((event.page ?? 0) + 1)
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
   causaleLabel(causale: string): string {
-    return CAUSALE_LABELS[causale as CausaleMovimento] ?? causale;
+    return CAUSALE_LABELS[causale as CausaleMovimento] ?? causale
   }
 }

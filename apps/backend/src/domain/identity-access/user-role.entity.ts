@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'crypto'
 
 /**
  * UserRole Domain Entity
@@ -24,53 +24,53 @@ export class UserRole {
     public readonly facilityIds: string[] | null,
     public readonly isDelegated: boolean,
     public readonly delegationReason: string | null,
-    private _isRevoked: boolean = false,
+    private _isRevoked: boolean = false
   ) {}
 
   /**
    * Create new user role assignment
    */
   static create(data: {
-    userId: string;
-    roleId: string;
-    tenantId: string;
-    assignedBy: string;
-    expiresAt?: Date | null;
-    facilityIds?: string[] | null;
-    isDelegated?: boolean;
-    delegationReason?: string | null;
+    userId: string
+    roleId: string
+    tenantId: string
+    assignedBy: string
+    expiresAt?: Date | null
+    facilityIds?: string[] | null
+    isDelegated?: boolean
+    delegationReason?: string | null
   }): UserRole {
     // Validate userId
     if (!data.userId || data.userId.trim() === '') {
-      throw new Error('User ID is required');
+      throw new Error('User ID is required')
     }
 
     // Validate roleId
     if (!data.roleId || data.roleId.trim() === '') {
-      throw new Error('Role ID is required');
+      throw new Error('Role ID is required')
     }
 
     // Validate tenantId
     if (!data.tenantId || data.tenantId.trim() === '') {
-      throw new Error('Tenant ID is required');
+      throw new Error('Tenant ID is required')
     }
 
     // Validate assignedBy
     if (!data.assignedBy || data.assignedBy.trim() === '') {
-      throw new Error('Assigned by user ID is required');
+      throw new Error('Assigned by user ID is required')
     }
 
     // Validate expiration date is in future
     if (data.expiresAt && data.expiresAt.getTime() <= Date.now()) {
-      throw new Error('Expiration date must be in the future');
+      throw new Error('Expiration date must be in the future')
     }
 
     // Validate delegation reason if delegated
-    const isDelegated = data.isDelegated || false;
-    const delegationReason = data.delegationReason || null;
+    const isDelegated = data.isDelegated || false
+    const delegationReason = data.delegationReason || null
 
     if (isDelegated && (!delegationReason || delegationReason.trim() === '')) {
-      throw new Error('Delegation reason is required for delegated roles');
+      throw new Error('Delegation reason is required for delegated roles')
     }
 
     return new UserRole(
@@ -84,24 +84,24 @@ export class UserRole {
       data.facilityIds || null,
       isDelegated,
       delegationReason,
-      false,
-    );
+      false
+    )
   }
 
   /**
    * Reconstruct user role from persistence
    */
   static fromPersistence(data: {
-    id: string;
-    userId: string;
-    roleId: string;
-    tenantId: string;
-    assignedBy: string;
-    assignedAt: Date;
-    expiresAt: Date | null;
-    facilityIds: string[] | null;
-    isDelegated: boolean;
-    delegationReason: string | null;
+    id: string
+    userId: string
+    roleId: string
+    tenantId: string
+    assignedBy: string
+    assignedAt: Date
+    expiresAt: Date | null
+    facilityIds: string[] | null
+    isDelegated: boolean
+    delegationReason: string | null
   }): UserRole {
     return new UserRole(
       data.id,
@@ -114,8 +114,8 @@ export class UserRole {
       data.facilityIds,
       data.isDelegated,
       data.delegationReason,
-      false,
-    );
+      false
+    )
   }
 
   /**
@@ -123,24 +123,24 @@ export class UserRole {
    */
   isExpired(): boolean {
     if (!this.expiresAt) {
-      return false; // No expiration date = never expires
+      return false // No expiration date = never expires
     }
 
-    return this.expiresAt.getTime() <= Date.now();
+    return this.expiresAt.getTime() <= Date.now()
   }
 
   /**
    * Check if user role is permanent (no expiration)
    */
   isPermanent(): boolean {
-    return this.expiresAt === null;
+    return this.expiresAt === null
   }
 
   /**
    * Check if user role is facility-scoped
    */
   isFacilityScoped(): boolean {
-    return this.facilityIds !== null && this.facilityIds.length > 0;
+    return this.facilityIds !== null && this.facilityIds.length > 0
   }
 
   /**
@@ -151,17 +151,17 @@ export class UserRole {
    */
   appliesToFacility(facilityId: string): boolean {
     if (!this.isFacilityScoped()) {
-      return true; // Not facility-scoped = applies to all facilities
+      return true // Not facility-scoped = applies to all facilities
     }
 
-    return this.facilityIds!.includes(facilityId);
+    return this.facilityIds!.includes(facilityId)
   }
 
   /**
    * Check if user role is revoked
    */
   isRevoked(): boolean {
-    return this._isRevoked;
+    return this._isRevoked
   }
 
   /**
@@ -169,10 +169,10 @@ export class UserRole {
    */
   revoke(): void {
     if (this._isRevoked) {
-      throw new Error('User role is already revoked');
+      throw new Error('User role is already revoked')
     }
 
-    this._isRevoked = true;
+    this._isRevoked = true
   }
 
   /**
@@ -180,23 +180,23 @@ export class UserRole {
    * Active = not expired AND not revoked
    */
   isActive(): boolean {
-    return !this.isExpired() && !this.isRevoked();
+    return !this.isExpired() && !this.isRevoked()
   }
 
   /**
    * Convert to persistence format
    */
   toPersistence(): {
-    id: string;
-    userId: string;
-    roleId: string;
-    tenantId: string;
-    assignedBy: string;
-    assignedAt: Date;
-    expiresAt: Date | null;
-    facilityIds: string[] | null;
-    isDelegated: boolean;
-    delegationReason: string | null;
+    id: string
+    userId: string
+    roleId: string
+    tenantId: string
+    assignedBy: string
+    assignedAt: Date
+    expiresAt: Date | null
+    facilityIds: string[] | null
+    isDelegated: boolean
+    delegationReason: string | null
   } {
     return {
       id: this.id,
@@ -209,6 +209,6 @@ export class UserRole {
       facilityIds: this.facilityIds,
       isDelegated: this.isDelegated,
       delegationReason: this.delegationReason,
-    };
+    }
   }
 }

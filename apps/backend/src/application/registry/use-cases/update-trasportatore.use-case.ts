@@ -35,7 +35,7 @@ export class UpdateTrasportatoreUseCase {
   constructor(
     @Inject(TRASPORTATORE_REPOSITORY)
     private readonly trasportatoreRepository: TrasportatoreRepository,
-    @Optional() private readonly referenceData?: ReferenceDataService,
+    @Optional() private readonly referenceData?: ReferenceDataService
   ) {}
 
   async execute(command: UpdateTrasportatoreCommand): Promise<Result<Trasportatore>> {
@@ -50,7 +50,7 @@ export class UpdateTrasportatoreUseCase {
       // Check if new Numero Iscrizione already exists (if changing)
       if (command.numeroIscrizione && command.numeroIscrizione !== trasportatore.numeroIscrizione) {
         const existing = await this.trasportatoreRepository.findByNumeroIscrizione(
-          command.numeroIscrizione,
+          command.numeroIscrizione
         )
 
         if (existing) {
@@ -67,7 +67,7 @@ export class UpdateTrasportatoreUseCase {
         if (this.referenceData) {
           const v = await this.referenceData.validateLocalita(
             command.sedeLegale.citta,
-            command.sedeLegale.provincia,
+            command.sedeLegale.provincia
           )
           if (!v.ok) return Result.fail(v.error!)
         }
@@ -79,11 +79,15 @@ export class UpdateTrasportatoreUseCase {
       }
 
       // Update contacts if any field is provided
-      if (command.email !== undefined || command.telefono !== undefined || command.pec !== undefined) {
+      if (
+        command.email !== undefined ||
+        command.telefono !== undefined ||
+        command.pec !== undefined
+      ) {
         trasportatore.updateContatti(
           command.email !== undefined ? command.email : trasportatore.email,
           command.telefono !== undefined ? command.telefono : trasportatore.telefono,
-          command.pec !== undefined ? command.pec : trasportatore.pec,
+          command.pec !== undefined ? command.pec : trasportatore.pec
         )
       }
 

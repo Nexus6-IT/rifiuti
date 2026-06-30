@@ -24,7 +24,7 @@ export class MudExportService {
     private readonly prisma: PrismaService,
     private readonly registry: MudVersionRegistry,
     private readonly referenceData: ReferenceDataService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
     this.logger.setContext(MudExportService.name)
   }
@@ -77,7 +77,7 @@ export class MudExportService {
 
     const content = tracciato.generate(data)
     this.logger.info(
-      `MUD export generato: tenant ${tenantId}, anno ${year}, versione ${tracciato.version}, ${data.rifiuti.length} righe`,
+      `MUD export generato: tenant ${tenantId}, anno ${year}, versione ${tracciato.version}, ${data.rifiuti.length} righe`
     )
 
     return {
@@ -114,7 +114,7 @@ export class MudExportService {
     })
 
     // Anagrafica + codici ISTAT dei destinatari (per i moduli DR).
-    const destInfo = await this.loadDestinatariInfo(firs.map((f) => f.receiverId))
+    const destInfo = await this.loadDestinatariInfo(firs.map(f => f.receiverId))
 
     interface Acc {
       recuperoKg: number

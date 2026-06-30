@@ -216,11 +216,7 @@ describe('Destinatario Entity', () => {
         numeroAutorizzazione: 'NA/AUT/2023/001',
       })
 
-      destinatario.updateContatti(
-        'nuova@email.it',
-        '081-1234567',
-        'nuova@pec.it'
-      )
+      destinatario.updateContatti('nuova@email.it', '081-1234567', 'nuova@pec.it')
 
       expect(destinatario.email).toBe('nuova@email.it')
       expect(destinatario.telefono).toBe('081-1234567')
@@ -261,7 +257,9 @@ describe('Destinatario Entity', () => {
         numeroAutorizzazione: 'NA/AUT/2023/001',
       })
 
-      expect(() => destinatario.updateNumeroAutorizzazione('')).toThrow('Numero autorizzazione is required')
+      expect(() => destinatario.updateNumeroAutorizzazione('')).toThrow(
+        'Numero autorizzazione is required'
+      )
     })
   })
 })

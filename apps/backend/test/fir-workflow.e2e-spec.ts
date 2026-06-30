@@ -79,7 +79,7 @@ describe('FIR Workflow (E2E)', () => {
         })
         .expect(201)
 
-      const firId = createResponse.body.id
+      const _firId = createResponse.body.id
       expect(createResponse.body.stato).toBe('BOZZA')
       expect(createResponse.body.numeroProgressivo).toBeNull()
 

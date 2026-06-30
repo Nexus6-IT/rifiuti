@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate';
-import { ITenantRepository } from '../../domain/shared/repository.interface';
+import { Injectable } from '@nestjs/common'
+import { PrismaClient } from '@prisma/client'
+import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
+import { ITenantRepository } from '../../domain/shared/repository.interface'
 
 /**
  * RENTRI Sync Log Repository
@@ -13,11 +13,11 @@ import { ITenantRepository } from '../../domain/shared/repository.interface';
 export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog> {
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly tenantId: string,
+    private readonly tenantId: string
   ) {}
 
   getTenantId(): string {
-    return this.tenantId;
+    return this.tenantId
   }
 
   /**
@@ -43,14 +43,14 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
 
     // await this.prisma.rENTRISyncLog.create({ data } as any);
 
-    return syncLog;
+    return syncLog
   }
 
   /**
    * Find sync log by ID
    * TODO: rENTRISyncLog model doesn't exist in Prisma schema
    */
-  async findById(id: string): Promise<RENTRISyncLog | null> {
+  async findById(_id: string): Promise<RENTRISyncLog | null> {
     // const record = await this.prisma.rENTRISyncLog.findUnique({
     //   where: { id },
     // }) as any;
@@ -60,21 +60,21 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
     // }
 
     // return this.toDomain(record);
-    return null;
+    return null
   }
 
   /**
    * Find all sync logs for a FIR
    * TODO: rENTRISyncLog model doesn't exist in Prisma schema
    */
-  async findByFIRId(firId: string): Promise<RENTRISyncLog[]> {
+  async findByFIRId(_firId: string): Promise<RENTRISyncLog[]> {
     // const records = await this.prisma.rENTRISyncLog.findMany({
     //   where: { firId, tenantId: this.tenantId },
     //   orderBy: { createdAt: 'desc' },
     // }) as any[];
 
     // return records.map(r => this.toDomain(r));
-    return [];
+    return []
   }
 
   /**
@@ -82,14 +82,14 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
    * TODO: rENTRISyncLog model doesn't exist in Prisma schema
    */
   async findPaginated(
-    limit: number,
-    offset: number,
-    criteria?: {
-      firId?: string;
-      status?: 'SUCCESS' | 'FAILURE' | 'PENDING';
-      dateFrom?: Date;
-      dateTo?: Date;
-    },
+    _limit: number,
+    _offset: number,
+    _criteria?: {
+      firId?: string
+      status?: 'SUCCESS' | 'FAILURE' | 'PENDING'
+      dateFrom?: Date
+      dateTo?: Date
+    }
   ): Promise<{ data: RENTRISyncLog[]; total: number }> {
     // const where: any = {
     //   tenantId: this.tenantId,
@@ -131,65 +131,65 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
     return {
       data: [],
       total: 0,
-    };
+    }
   }
 
   /**
    * Find all logs (for tenant)
    * TODO: rENTRISyncLog model doesn't exist in Prisma schema
    */
-  async findAll(criteria?: any): Promise<RENTRISyncLog[]> {
+  async findAll(_criteria?: any): Promise<RENTRISyncLog[]> {
     // const records = await this.prisma.rENTRISyncLog.findMany({
     //   where: { tenantId: this.tenantId, ...criteria },
     //   orderBy: { createdAt: 'desc' },
     // }) as any[];
 
     // return records.map(r => this.toDomain(r));
-    return [];
+    return []
   }
 
   async findByTenant(criteria?: any): Promise<RENTRISyncLog[]> {
-    return this.findAll(criteria);
+    return this.findAll(criteria)
   }
 
-  async update(id: string, data: Partial<RENTRISyncLog>): Promise<RENTRISyncLog> {
-    throw new Error('Sync logs are immutable - cannot update');
+  async update(_id: string, _data: Partial<RENTRISyncLog>): Promise<RENTRISyncLog> {
+    throw new Error('Sync logs are immutable - cannot update')
   }
 
-  async delete(id: string): Promise<boolean> {
-    throw new Error('Sync logs are immutable - cannot delete');
+  async delete(_id: string): Promise<boolean> {
+    throw new Error('Sync logs are immutable - cannot delete')
   }
 
-  async exists(id: string): Promise<boolean> {
+  async exists(_id: string): Promise<boolean> {
     // TODO: rENTRISyncLog model doesn't exist in Prisma schema
     // const count = await this.prisma.rENTRISyncLog.count({
     //   where: { id, tenantId: this.tenantId },
     // }) as any;
 
     // return count > 0;
-    return false;
+    return false
   }
 
-  async count(criteria?: any): Promise<number> {
+  async count(_criteria?: any): Promise<number> {
     // TODO: rENTRISyncLog model doesn't exist in Prisma schema
     // return this.prisma.rENTRISyncLog.count({
     //   where: { tenantId: this.tenantId, ...criteria },
     // }) as any;
-    return 0;
+    return 0
   }
 
   /**
    * Create pending log entry
    */
   async createPending(params: {
-    id: string;
-    firId: string;
-    tenantId: string;
-    attempt: number;
-    requestPayload: string;
+    id: string
+    firId: string
+    tenantId: string
+    attempt: number
+    requestPayload: string
   }): Promise<RENTRISyncLog> {
-    const syncLog = RENTRISyncLog.createPending(params);
-    return this.save(syncLog);
+    const syncLog = RENTRISyncLog.createPending(params)
+    return this.save(syncLog)
   }
 
   /**
@@ -209,7 +209,7 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
       record.protocolNumber,
       record.syncedAt,
       record.durationMs,
-      record.createdAt,
-    );
+      record.createdAt
+    )
   }
 }

@@ -20,23 +20,23 @@ import {
   BadRequestException,
   NotFoundException,
   ConflictException,
-} from '@nestjs/common';
-import { UserRole, User } from '@prisma/client';
-import { PrismaService } from '../../infrastructure/persistence/prisma.service';
-import { KeycloakUserAdapter } from '../../infrastructure/keycloak/keycloak-user.adapter';
-import { LoggerService } from '../../core/logger/logger.service';
-import { FiscalCode } from '../../domain/shared/fiscal-code.vo';
-import { CreateUserDto } from '../../api/admin/dto/create-user.dto';
-import { SubscriptionEnforcementService } from './../../application/billing/subscription-enforcement.service';
+} from '@nestjs/common'
+import { UserRole, User } from '@prisma/client'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { KeycloakUserAdapter } from '../../infrastructure/keycloak/keycloak-user.adapter'
+import { LoggerService } from '../../core/logger/logger.service'
+import { FiscalCode } from '../../domain/shared/fiscal-code.vo'
+import { CreateUserDto } from '../../api/admin/dto/create-user.dto'
+import { SubscriptionEnforcementService } from './../../application/billing/subscription-enforcement.service'
 
 /**
  * Forma minima dell'utente autenticato letto dalla request (req.user).
  * Allineata a `CurrentUserPayload` della JWT strategy.
  */
 export interface CurrentUser {
-  id: string;
-  tenantId: string;
-  role: string;
+  id: string
+  tenantId: string
+  role: string
 }
 
 @Injectable()
@@ -45,13 +45,13 @@ export class UserAdminService {
     private readonly prisma: PrismaService,
     private readonly keycloak: KeycloakUserAdapter,
     private readonly logger: LoggerService,
-    private readonly enforcement: SubscriptionEnforcementService,
+    private readonly enforcement: SubscriptionEnforcementService
   ) {
-    this.logger.setContext('UserAdminService');
+    this.logger.setContext('UserAdminService')
   }
 
   private isSuperAdmin(currentUser: CurrentUser): boolean {
-    return currentUser.role === UserRole.SUPER_ADMIN;
+    return currentUser.role === UserRole.SUPER_ADMIN
   }
 
   /**
@@ -60,25 +60,22 @@ export class UserAdminService {
    *  - ADMIN: solo quelli del proprio tenant (il `tenantId` passato e' ignorato
    *    se diverso dal proprio).
    */
-  async listUsers(
-    currentUser: CurrentUser,
-    tenantId?: string,
-  ): Promise<User[]> {
-    let where: { tenantId?: string } = {};
+  async listUsers(currentUser: CurrentUser, tenantId?: string): Promise<User[]> {
+    let where: { tenantId?: string } = {}
 
     if (this.isSuperAdmin(currentUser)) {
       if (tenantId) {
-        where = { tenantId };
+        where = { tenantId }
       }
     } else {
       // ADMIN: forzato al proprio tenant
-      where = { tenantId: currentUser.tenantId };
+      where = { tenantId: currentUser.tenantId }
     }
 
     return this.prisma.user.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-    });
+    })
   }
 
   /**
@@ -86,48 +83,38 @@ export class UserAdminService {
    */
   async createUser(currentUser: CurrentUser, dto: CreateUserDto): Promise<User> {
     // 1. Determina e valida il tenant di destinazione.
-    const targetTenantId = this.isSuperAdmin(currentUser)
-      ? dto.tenantId
-      : currentUser.tenantId;
+    const targetTenantId = this.isSuperAdmin(currentUser) ? dto.tenantId : currentUser.tenantId
 
     if (!targetTenantId) {
-      throw new BadRequestException(
-        'tenantId obbligatorio per la creazione utente',
-      );
+      throw new BadRequestException('tenantId obbligatorio per la creazione utente')
     }
 
     if (!this.isSuperAdmin(currentUser) && dto.tenantId && dto.tenantId !== currentUser.tenantId) {
-      throw new ForbiddenException(
-        'Un ADMIN può creare utenti solo nel proprio tenant',
-      );
+      throw new ForbiddenException('Un ADMIN può creare utenti solo nel proprio tenant')
     }
 
     // 1-bis. Enforcement abbonamento: verifica sospensione e limite utenti.
     // Il SUPER_ADMIN (amministratore di piattaforma) bypassa i controlli.
     if (!this.isSuperAdmin(currentUser)) {
-      await this.enforcement.assertNotSuspended(targetTenantId);
+      await this.enforcement.assertNotSuspended(targetTenantId)
     }
-    await this.enforceUserLimit(currentUser, targetTenantId, dto.role);
+    await this.enforceUserLimit(currentUser, targetTenantId, dto.role)
 
     // 2. Valida il codice fiscale (riusa la VO di dominio).
     if (!FiscalCode.isValid(dto.fiscalCode)) {
-      throw new BadRequestException(
-        `Codice fiscale non valido: ${dto.fiscalCode}`,
-      );
+      throw new BadRequestException(`Codice fiscale non valido: ${dto.fiscalCode}`)
     }
-    const normalizedFiscalCode = new FiscalCode(dto.fiscalCode).getValue();
+    const normalizedFiscalCode = new FiscalCode(dto.fiscalCode).getValue()
 
     // 2-bis. Valida la password temporanea contro la policy del realm
     // (length >= 10) prima di toccare Keycloak: errore chiaro e niente utenti
     // orfani sull'IdP.
     if (dto.tempPassword && dto.tempPassword.length < 10) {
-      throw new BadRequestException(
-        'La password temporanea deve avere almeno 10 caratteri',
-      );
+      throw new BadRequestException('La password temporanea deve avere almeno 10 caratteri')
     }
 
     // 3. Crea l'utente su Keycloak.
-    let keycloakId: string;
+    let keycloakId: string
     try {
       keycloakId = await this.keycloak.createUser({
         fiscalCode: normalizedFiscalCode,
@@ -135,45 +122,37 @@ export class UserAdminService {
         lastName: dto.lastName,
         email: dto.email,
         tenantId: targetTenantId,
-      });
+      })
     } catch (error: any) {
       this.logger.error('Creazione utente su Keycloak fallita', error, {
         fiscalCode: normalizedFiscalCode,
         tenantId: targetTenantId,
-      });
+      })
       // 409 dal realm = username (codice fiscale) o email gia' esistenti.
       if (error?.response?.status === 409) {
-        throw new ConflictException(
-          'Esiste già un utente con questa email o codice fiscale',
-        );
+        throw new ConflictException('Esiste già un utente con questa email o codice fiscale')
       }
-      throw new BadRequestException(
-        'Impossibile creare l’utente sul provider di identità',
-      );
+      throw new BadRequestException('Impossibile creare l’utente sul provider di identità')
     }
 
     if (!keycloakId) {
-      throw new BadRequestException(
-        'Keycloak non ha restituito un id utente valido',
-      );
+      throw new BadRequestException('Keycloak non ha restituito un id utente valido')
     }
 
     // 4. Imposta l'eventuale password temporanea.
     if (dto.tempPassword) {
       try {
-        await this.keycloak.setPassword(keycloakId, dto.tempPassword, true);
+        await this.keycloak.setPassword(keycloakId, dto.tempPassword, true)
       } catch (error: any) {
         // Rollback: l'utente esiste su KC ma senza password usabile → lo CANCELLO
         // (non solo disabilito) per non lasciare conflitti su email/CF nei retry.
-        this.logger.error(
-          'Impostazione password temporanea fallita, rimuovo utente KC',
-          error,
-          { keycloakId },
-        );
-        await this.safeDeleteKeycloak(keycloakId);
+        this.logger.error('Impostazione password temporanea fallita, rimuovo utente KC', error, {
+          keycloakId,
+        })
+        await this.safeDeleteKeycloak(keycloakId)
         throw new BadRequestException(
-          'Password non valida per la policy del provider (minimo 10 caratteri)',
-        );
+          'Password non valida per la policy del provider (minimo 10 caratteri)'
+        )
       }
     }
 
@@ -194,23 +173,21 @@ export class UserAdminService {
             ? { companyLimit: dto.companyLimit }
             : {}),
         },
-      });
+      })
     } catch (error: any) {
       this.logger.error(
         'Creazione record utente nel DB fallita dopo provisioning Keycloak (incoerenza)',
         error,
-        { keycloakId, tenantId: targetTenantId },
-      );
-      await this.safeDeleteKeycloak(keycloakId);
+        { keycloakId, tenantId: targetTenantId }
+      )
+      await this.safeDeleteKeycloak(keycloakId)
       // P2002 = violazione unique (es. fiscalCode gia' presente nel tenant).
       if (error?.code === 'P2002') {
         throw new ConflictException(
-          'Esiste già un utente con questo codice fiscale in questa azienda',
-        );
+          'Esiste già un utente con questo codice fiscale in questa azienda'
+        )
       }
-      throw new BadRequestException(
-        'Impossibile creare l’utente: registrazione locale fallita',
-      );
+      throw new BadRequestException('Impossibile creare l’utente: registrazione locale fallita')
     }
   }
 
@@ -218,37 +195,29 @@ export class UserAdminService {
    * Abilita/disabilita un utente. Per ora la disabilitazione viene propagata a
    * Keycloak (blocca il login). Verifica lo scoping tenant.
    */
-  async setEnabled(
-    currentUser: CurrentUser,
-    userId: string,
-    enabled: boolean,
-  ): Promise<User> {
-    const user = await this.findScopedUser(currentUser, userId);
+  async setEnabled(currentUser: CurrentUser, userId: string, enabled: boolean): Promise<User> {
+    const user = await this.findScopedUser(currentUser, userId)
 
     if (!enabled) {
-      await this.keycloak.disableUser(user.keycloakId);
+      await this.keycloak.disableUser(user.keycloakId)
     }
     // NB: la riabilitazione su Keycloak richiederebbe un updateUser con
     // { enabled: true }; non esposto dall'adapter al momento, lasciato come
     // follow-up (vedi report).
 
-    return user;
+    return user
   }
 
   /**
    * Aggiorna il ruolo applicativo dell'utente nel DB (con scoping tenant).
    */
-  async updateRole(
-    currentUser: CurrentUser,
-    userId: string,
-    role: UserRole,
-  ): Promise<User> {
-    const user = await this.findScopedUser(currentUser, userId);
+  async updateRole(currentUser: CurrentUser, userId: string, role: UserRole): Promise<User> {
+    const user = await this.findScopedUser(currentUser, userId)
 
     return this.prisma.user.update({
       where: { id: user.id },
       data: { role },
-    });
+    })
   }
 
   /**
@@ -261,23 +230,21 @@ export class UserAdminService {
   async setCompanyLimit(
     currentUser: CurrentUser,
     userId: string,
-    companyLimit: number,
+    companyLimit: number
   ): Promise<User> {
     if (!this.isSuperAdmin(currentUser)) {
-      throw new ForbiddenException(
-        'Solo il super admin può impostare la quota aziende',
-      );
+      throw new ForbiddenException('Solo il super admin può impostare la quota aziende')
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({ where: { id: userId } })
     if (!user) {
-      throw new NotFoundException('Utente non trovato');
+      throw new NotFoundException('Utente non trovato')
     }
 
     return this.prisma.user.update({
       where: { id: userId },
       data: { companyLimit },
-    });
+    })
   }
 
   /**
@@ -296,24 +263,24 @@ export class UserAdminService {
   private async enforceUserLimit(
     currentUser: CurrentUser,
     targetTenantId: string,
-    newRole: string,
+    newRole: string
   ): Promise<void> {
     if (this.isSuperAdmin(currentUser)) {
-      return;
+      return
     }
 
     // Gli ADMIN (tenant admin) non rientrano nel limite.
     if (newRole === UserRole.ADMIN) {
-      return;
+      return
     }
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: targetTenantId },
       select: { userLimitTotal: true },
-    });
+    })
 
     if (!tenant) {
-      throw new NotFoundException('Tenant non trovato');
+      throw new NotFoundException('Tenant non trovato')
     }
 
     const nonAdminCount = await this.prisma.user.count({
@@ -321,10 +288,10 @@ export class UserAdminService {
         tenantId: targetTenantId,
         role: { not: UserRole.ADMIN },
       },
-    });
+    })
 
     if (nonAdminCount >= tenant.userLimitTotal) {
-      throw new ForbiddenException('Limite utenze del piano raggiunto');
+      throw new ForbiddenException('Limite utenze del piano raggiunto')
     }
   }
 
@@ -332,25 +299,19 @@ export class UserAdminService {
    * Recupera un utente verificando che il chiamante abbia visibilita' sul suo
    * tenant. SUPER_ADMIN vede tutti; ADMIN solo il proprio tenant.
    */
-  private async findScopedUser(
-    currentUser: CurrentUser,
-    userId: string,
-  ): Promise<User> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  private async findScopedUser(currentUser: CurrentUser, userId: string): Promise<User> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } })
 
     if (!user) {
-      throw new NotFoundException('Utente non trovato');
+      throw new NotFoundException('Utente non trovato')
     }
 
-    if (
-      !this.isSuperAdmin(currentUser) &&
-      user.tenantId !== currentUser.tenantId
-    ) {
+    if (!this.isSuperAdmin(currentUser) && user.tenantId !== currentUser.tenantId) {
       // Non si rivela l'esistenza dell'utente fuori tenant.
-      throw new NotFoundException('Utente non trovato');
+      throw new NotFoundException('Utente non trovato')
     }
 
-    return user;
+    return user
   }
 
   /**
@@ -359,13 +320,13 @@ export class UserAdminService {
    */
   private async safeDisableKeycloak(keycloakId: string): Promise<void> {
     try {
-      await this.keycloak.disableUser(keycloakId);
+      await this.keycloak.disableUser(keycloakId)
     } catch (error: any) {
       this.logger.error(
         'Rollback Keycloak (disableUser) fallito; intervento manuale richiesto',
         error,
-        { keycloakId },
-      );
+        { keycloakId }
+      )
     }
   }
 
@@ -376,13 +337,13 @@ export class UserAdminService {
    */
   private async safeDeleteKeycloak(keycloakId: string): Promise<void> {
     try {
-      await this.keycloak.deleteUser(keycloakId);
+      await this.keycloak.deleteUser(keycloakId)
     } catch (error: any) {
       this.logger.error(
         'Rollback Keycloak (deleteUser) fallito; intervento manuale richiesto',
         error,
-        { keycloakId },
-      );
+        { keycloakId }
+      )
     }
   }
 }

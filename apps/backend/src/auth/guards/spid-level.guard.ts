@@ -50,8 +50,7 @@ export class SpidLevelGuard implements CanActivate {
 
     // `acr` è il claim OpenID Connect usato da Keycloak per il livello SPID
     // (Access Context Class Reference). In assenza, cerchiamo `spidLevel`.
-    const spidLevel: number =
-      this.parseAcr(user.acr) ?? user.spidLevel ?? user.amr?.level ?? null
+    const spidLevel: number = this.parseAcr(user.acr) ?? user.spidLevel ?? user.amr?.level ?? null
 
     const strictCheck = this.config?.get<string>('SPID_STRICT_LEVEL_CHECK') === 'true'
 
@@ -59,13 +58,13 @@ export class SpidLevelGuard implements CanActivate {
       if (strictCheck) {
         throw new ForbiddenException(
           'Livello SPID non rilevabile dal JWT. ' +
-          'Autenticarsi con SPID Level 2 o CIE per firmare il FIR.',
+            'Autenticarsi con SPID Level 2 o CIE per firmare il FIR.'
         )
       }
       // SANDBOX: claim assente → simuliamo Level 2 (sviluppo/test)
       this.logger.warn(
         '[SANDBOX] Claim spidLevel assente nel JWT — livello SPID simulato a 2. ' +
-        'ATTIVARE: SPID_STRICT_LEVEL_CHECK=true in produzione.',
+          'ATTIVARE: SPID_STRICT_LEVEL_CHECK=true in produzione.'
       )
       return true
     }
@@ -73,7 +72,7 @@ export class SpidLevelGuard implements CanActivate {
     if (spidLevel < REQUIRED_SPID_LEVEL) {
       throw new ForbiddenException(
         `Livello SPID insufficiente (${spidLevel}). ` +
-        `Richiesto SPID Level ${REQUIRED_SPID_LEVEL} per la firma FIR (DM 59/2023).`,
+          `Richiesto SPID Level ${REQUIRED_SPID_LEVEL} per la firma FIR (DM 59/2023).`
       )
     }
 

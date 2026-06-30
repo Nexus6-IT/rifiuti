@@ -1,5 +1,5 @@
-import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
-import { Request, Response, NextFunction } from 'express';
+import { Injectable, NestMiddleware, Logger } from '@nestjs/common'
+import { Request, Response, NextFunction } from 'express'
 
 /**
  * RequestLoggerMiddleware
@@ -15,33 +15,33 @@ import { Request, Response, NextFunction } from 'express';
  */
 @Injectable()
 export class RequestLoggerMiddleware implements NestMiddleware {
-  private readonly logger = new Logger(RequestLoggerMiddleware.name);
-  private readonly SLOW_REQUEST_THRESHOLD_MS = 1000; // 1 second
+  private readonly logger = new Logger(RequestLoggerMiddleware.name)
+  private readonly SLOW_REQUEST_THRESHOLD_MS = 1000 // 1 second
 
   use(req: Request, res: Response, next: NextFunction) {
-    const startTime = Date.now();
+    const startTime = Date.now()
 
     // Generate correlation ID if not present
-    const correlationId = req.headers['x-correlation-id'] || this.generateCorrelationId();
-    req.headers['x-correlation-id'] = correlationId as string;
+    const correlationId = req.headers['x-correlation-id'] || this.generateCorrelationId()
+    req.headers['x-correlation-id'] = correlationId as string
 
     // Log request start
-    this.logRequestStart(req, correlationId as string);
+    this.logRequestStart(req, correlationId as string)
 
     // Capture response finish event
     res.on('finish', () => {
-      const duration = Date.now() - startTime;
-      this.logRequestComplete(req, res, duration, correlationId as string);
-    });
+      const duration = Date.now() - startTime
+      this.logRequestComplete(req, res, duration, correlationId as string)
+    })
 
-    next();
+    next()
   }
 
   /**
    * Log request start
    */
   private logRequestStart(req: Request, correlationId: string): void {
-    const user = (req as any).user;
+    const user = (req as any).user
 
     this.logger.log({
       type: 'request_start',
@@ -53,7 +53,7 @@ export class RequestLoggerMiddleware implements NestMiddleware {
       tenantId: user?.tenantId || 'none',
       ip: req.ip,
       userAgent: req.get('user-agent'),
-    });
+    })
   }
 
   /**
@@ -63,9 +63,9 @@ export class RequestLoggerMiddleware implements NestMiddleware {
     req: Request,
     res: Response,
     duration: number,
-    correlationId: string,
+    correlationId: string
   ): void {
-    const user = (req as any).user;
+    const user = (req as any).user
 
     const logData = {
       type: 'request_complete',
@@ -77,27 +77,27 @@ export class RequestLoggerMiddleware implements NestMiddleware {
       userId: user?.userId || 'anonymous',
       tenantId: user?.tenantId || 'none',
       contentLength: res.get('content-length'),
-    };
+    }
 
     // Determine log level based on status code and duration
     if (res.statusCode >= 500) {
-      this.logger.error('Server error response', logData);
+      this.logger.error('Server error response', logData)
     } else if (res.statusCode >= 400) {
-      this.logger.warn('Client error response', logData);
+      this.logger.warn('Client error response', logData)
     } else if (duration > this.SLOW_REQUEST_THRESHOLD_MS) {
-      this.logger.warn(`Slow request (${duration}ms)`, logData);
+      this.logger.warn(`Slow request (${duration}ms)`, logData)
     } else {
-      this.logger.log('Request completed successfully', logData);
+      this.logger.log('Request completed successfully', logData)
     }
 
     // Add correlation ID to response headers for client tracking
-    res.setHeader('X-Correlation-ID', correlationId);
+    res.setHeader('X-Correlation-ID', correlationId)
   }
 
   /**
    * Generate unique correlation ID
    */
   private generateCorrelationId(): string {
-    return `req-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    return `req-${Date.now()}-${Math.random().toString(36).substring(7)}`
   }
 }

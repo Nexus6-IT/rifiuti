@@ -114,19 +114,21 @@ export class AuthController {
     }
 
     // Find user by email (email is not unique in schema, so use findFirst)
-    let user = await this.prismaService.user.findFirst({
+    const user = await this.prismaService.user.findFirst({
       where: { email: dto.email },
       include: {
         tenant: true,
       },
     })
 
-    let isNewUser = false
+    const isNewUser = false
 
     if (!user) {
       // Create new user - requires a tenant ID
       // In dev mode, we need to create or use a default tenant
-      throw new UnauthorizedException('Dev login requires existing user with tenant. Please create user first.')
+      throw new UnauthorizedException(
+        'Dev login requires existing user with tenant. Please create user first.'
+      )
     }
 
     // Get tenant and role (User has direct tenantId)
@@ -225,9 +227,7 @@ export class AuthController {
     await this.redisService.revokeRefreshToken(userId, dto.refreshToken)
 
     // Revoke access token (if present)
-    const accessToken = this.jwtTokensService.extractTokenFromHeader(
-      req.headers.authorization
-    )
+    const accessToken = this.jwtTokensService.extractTokenFromHeader(req.headers.authorization)
     if (accessToken) {
       await this.redisService.revokeAccessToken(accessToken, 900) // 15 minutes TTL
     }

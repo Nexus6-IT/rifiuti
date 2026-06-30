@@ -1,7 +1,7 @@
-import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { ToastModule } from 'primeng/toast';
-import { LoadingComponent } from './shared/components/loading.component';
+import { Component } from '@angular/core'
+import { RouterOutlet } from '@angular/router'
+import { ToastModule } from 'primeng/toast'
+import { LoadingComponent } from './shared/components/loading.component'
 
 @Component({
   selector: 'app-root',
@@ -11,6 +11,6 @@ import { LoadingComponent } from './shared/components/loading.component';
     <router-outlet></router-outlet>
     <p-toast></p-toast>
     <app-loading></app-loading>
-  `
+  `,
 })
 export class AppComponent {}

@@ -1,9 +1,9 @@
-import { Test } from '@nestjs/testing';
-import { ConfigModule } from '@nestjs/config';
-import { PermissionsModule } from './permissions.module';
-import { PermissionGuard } from '../guards/permission.guard';
-import { PermissionController } from './permission.controller';
-import { GetUserPermissionsQueryHandler } from '../../application/queries/handlers/get-user-permissions.handler';
+import { Test } from '@nestjs/testing'
+import { ConfigModule } from '@nestjs/config'
+import { PermissionsModule } from './permissions.module'
+import { PermissionGuard } from '../guards/permission.guard'
+import { PermissionController } from './permission.controller'
+import { GetUserPermissionsQueryHandler } from '../../application/queries/handlers/get-user-permissions.handler'
 
 /**
  * DI smoke test per PermissionsModule.
@@ -17,25 +17,22 @@ import { GetUserPermissionsQueryHandler } from '../../application/queries/handle
 describe('PermissionsModule (DI wiring)', () => {
   it('resolves the PermissionGuard and its string-token dependencies', async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
-        PermissionsModule,
-      ],
-    }).compile();
+      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), PermissionsModule],
+    }).compile()
 
-    const guard = moduleRef.get(PermissionGuard);
-    expect(guard).toBeDefined();
+    const guard = moduleRef.get(PermissionGuard)
+    expect(guard).toBeDefined()
 
     // Token stringa richiesti dal guard
-    expect(moduleRef.get('UserRoleRepository')).toBeDefined();
-    expect(moduleRef.get('PermissionRepository')).toBeDefined();
-    expect(moduleRef.get('AbacPolicyRepository')).toBeDefined();
-    expect(moduleRef.get('PermissionAuditLogRepository')).toBeDefined();
+    expect(moduleRef.get('UserRoleRepository')).toBeDefined()
+    expect(moduleRef.get('PermissionRepository')).toBeDefined()
+    expect(moduleRef.get('AbacPolicyRepository')).toBeDefined()
+    expect(moduleRef.get('PermissionAuditLogRepository')).toBeDefined()
 
     // Controller + handler
-    expect(moduleRef.get(PermissionController)).toBeDefined();
-    expect(moduleRef.get(GetUserPermissionsQueryHandler)).toBeDefined();
+    expect(moduleRef.get(PermissionController)).toBeDefined()
+    expect(moduleRef.get(GetUserPermissionsQueryHandler)).toBeDefined()
 
-    await moduleRef.close();
-  });
-});
+    await moduleRef.close()
+  })
+})

@@ -36,11 +36,11 @@ class MockFIRRepository implements IFIRRepository {
     return null
   }
 
-  async findByTenant(tenantId: string, filters?: any): Promise<FIR[]> {
+  async findByTenant(_tenantId: string, _filters?: any): Promise<FIR[]> {
     return Array.from(this.firs.values())
   }
 
-  async findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]> {
+  async findByStato(stato: FIRStato, _tenantId?: string): Promise<FIR[]> {
     return Array.from(this.firs.values()).filter(f => f.stato === stato)
   }
 
@@ -61,7 +61,7 @@ class MockFIRRepository implements IFIRRepository {
     return `FIR-${anno}-${String(count).padStart(6, '0')}`
   }
 
-  async count(filters?: any): Promise<number> {
+  async count(_filters?: any): Promise<number> {
     return this.firs.size
   }
 }
@@ -77,15 +77,15 @@ class MockCERRepository implements ICERRepository {
     return this.existingCodes.has(code) ? { code } : null
   }
 
-  async findById(id: string): Promise<any> {
+  async findById(_id: string): Promise<any> {
     return null
   }
 
-  async search(keyword: string, filters?: any): Promise<any[]> {
+  async search(_keyword: string, _filters?: any): Promise<any[]> {
     return []
   }
 
-  async findByCategory(category: string): Promise<any[]> {
+  async findByCategory(_category: string): Promise<any[]> {
     return []
   }
 
@@ -97,9 +97,9 @@ class MockCERRepository implements ICERRepository {
     return { items: [], total: 0 }
   }
 
-  async save(cer: any): Promise<void> {}
+  async save(_cer: any): Promise<void> {}
 
-  async saveMany(cers: any[]): Promise<void> {}
+  async saveMany(_cers: any[]): Promise<void> {}
 
   async count(): Promise<number> {
     return this.existingCodes.size
@@ -121,14 +121,24 @@ class MockProduttoreRepository implements ProduttoreRepository {
       id,
       ragioneSociale: 'Produttore SpA',
       partitaIVA: PartitaIVA.create('12345678901'),
-      sedeLegale: Indirizzo.create({ via: 'Via Roma', civico: '1', cap: '00100', citta: 'Roma', provincia: 'RM' }),
+      sedeLegale: Indirizzo.create({
+        via: 'Via Roma',
+        civico: '1',
+        cap: '00100',
+        citta: 'Roma',
+        provincia: 'RM',
+      }),
       pec: 'prod@pec.it',
       createdAt: new Date(),
       updatedAt: new Date(),
     })
   }
-  async findByTenantId(): Promise<Produttore[]> { return [] }
-  async findByPartitaIVA(): Promise<Produttore | null> { return null }
+  async findByTenantId(): Promise<Produttore[]> {
+    return []
+  }
+  async findByPartitaIVA(): Promise<Produttore | null> {
+    return null
+  }
   async delete(): Promise<void> {}
 }
 
@@ -141,15 +151,27 @@ class MockTrasportatoreRepository implements TrasportatoreRepository {
       id,
       ragioneSociale: 'Trasporti Srl',
       partitaIVA: PartitaIVA.create('22345678901'),
-      sedeLegale: Indirizzo.create({ via: 'Via Po', civico: '2', cap: '10100', citta: 'Torino', provincia: 'TO' }),
+      sedeLegale: Indirizzo.create({
+        via: 'Via Po',
+        civico: '2',
+        cap: '10100',
+        citta: 'Torino',
+        provincia: 'TO',
+      }),
       numeroIscrizione: 'ALBO-123',
       createdAt: new Date(),
       updatedAt: new Date(),
     })
   }
-  async findByTenantId(): Promise<Trasportatore[]> { return [] }
-  async findByPartitaIVA(): Promise<Trasportatore | null> { return null }
-  async findByNumeroIscrizione(): Promise<Trasportatore | null> { return null }
+  async findByTenantId(): Promise<Trasportatore[]> {
+    return []
+  }
+  async findByPartitaIVA(): Promise<Trasportatore | null> {
+    return null
+  }
+  async findByNumeroIscrizione(): Promise<Trasportatore | null> {
+    return null
+  }
   async delete(): Promise<void> {}
 }
 
@@ -162,15 +184,27 @@ class MockDestinatarioRepository implements DestinatarioRepository {
       id,
       ragioneSociale: 'Impianto Recupero Srl',
       partitaIVA: PartitaIVA.create('32345678901'),
-      sede: Indirizzo.create({ via: 'Via Etna', civico: '3', cap: '95100', citta: 'Catania', provincia: 'CT' }),
+      sede: Indirizzo.create({
+        via: 'Via Etna',
+        civico: '3',
+        cap: '95100',
+        citta: 'Catania',
+        provincia: 'CT',
+      }),
       numeroAutorizzazione: 'AUT-999',
       createdAt: new Date(),
       updatedAt: new Date(),
     })
   }
-  async findByTenantId(): Promise<Destinatario[]> { return [] }
-  async findByPartitaIVA(): Promise<Destinatario | null> { return null }
-  async findByNumeroAutorizzazione(): Promise<Destinatario | null> { return null }
+  async findByTenantId(): Promise<Destinatario[]> {
+    return []
+  }
+  async findByPartitaIVA(): Promise<Destinatario | null> {
+    return null
+  }
+  async findByNumeroAutorizzazione(): Promise<Destinatario | null> {
+    return null
+  }
   async delete(): Promise<void> {}
 }
 
@@ -193,7 +227,7 @@ describe('CreateFIRUseCase', () => {
       cerRepository,
       produttoreRepository,
       trasportatoreRepository,
-      destinatarioRepository,
+      destinatarioRepository
     )
   })
 

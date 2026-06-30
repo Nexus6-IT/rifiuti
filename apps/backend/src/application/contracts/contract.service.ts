@@ -66,7 +66,7 @@ export interface FirAutoFill {
 export class ContractService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
     this.logger.setContext(ContractService.name)
   }
@@ -119,9 +119,7 @@ export class ContractService {
     if (current === newStatus) return contract
 
     if (!ALLOWED_TRANSITIONS[current].includes(newStatus)) {
-      throw new BadRequestException(
-        `Transizione non ammessa: ${current} → ${newStatus}`,
-      )
+      throw new BadRequestException(`Transizione non ammessa: ${current} → ${newStatus}`)
     }
 
     this.logger.info(`Contratto ${id}: ${current} → ${newStatus}`)
@@ -140,7 +138,7 @@ export class ContractService {
     tenantId: string,
     producerId: string,
     cerCode: string,
-    now: Date = new Date(),
+    now: Date = new Date()
   ): Promise<FirAutoFill | null> {
     const contract = await this.prisma.contract.findFirst({
       where: {

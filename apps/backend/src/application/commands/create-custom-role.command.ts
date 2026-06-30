@@ -22,6 +22,6 @@ export class CreateCustomRoleCommand {
     public readonly name: string,
     public readonly description: string,
     public readonly permissions: string[],
-    public readonly createdBy: string,
+    public readonly createdBy: string
   ) {}
 }

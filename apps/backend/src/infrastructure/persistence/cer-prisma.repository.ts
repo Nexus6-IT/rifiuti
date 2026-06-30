@@ -6,7 +6,10 @@
 
 import { Injectable } from '@nestjs/common'
 import { CERCode } from '../../domain/cer/entities/cer-code.entity'
-import { ICERRepository, CERSearchFilters } from '../../domain/cer/repositories/cer-repository.interface'
+import {
+  ICERRepository,
+  CERSearchFilters,
+} from '../../domain/cer/repositories/cer-repository.interface'
 import { PrismaService } from './prisma.service'
 
 @Injectable()
@@ -35,7 +38,7 @@ export class CERPrismaRepository implements ICERRepository {
       orderBy: { code: 'asc' },
       take: 50,
     })
-    return records.map((r) => this.toDomain(r))
+    return records.map(r => this.toDomain(r))
   }
 
   async findByCategory(category: string): Promise<CERCode[]> {
@@ -43,7 +46,7 @@ export class CERPrismaRepository implements ICERRepository {
       where: { category },
       orderBy: { code: 'asc' },
     })
-    return records.map((r) => this.toDomain(r))
+    return records.map(r => this.toDomain(r))
   }
 
   async findAllPericolosi(): Promise<CERCode[]> {
@@ -51,7 +54,7 @@ export class CERPrismaRepository implements ICERRepository {
       where: { isPericoloso: true },
       orderBy: { code: 'asc' },
     })
-    return records.map((r) => this.toDomain(r))
+    return records.map(r => this.toDomain(r))
   }
 
   /**
@@ -60,7 +63,7 @@ export class CERPrismaRepository implements ICERRepository {
   async findPaginated(
     page: number,
     limit: number,
-    filters?: CERSearchFilters,
+    filters?: CERSearchFilters
   ): Promise<{ items: CERCode[]; total: number }> {
     const where = this.filterWhere(filters)
     const [records, total] = await Promise.all([
@@ -72,7 +75,7 @@ export class CERPrismaRepository implements ICERRepository {
       }),
       this.prisma.cERCode.count({ where }),
     ])
-    return { items: records.map((r) => this.toDomain(r)), total }
+    return { items: records.map(r => this.toDomain(r)), total }
   }
 
   async save(cer: CERCode): Promise<void> {

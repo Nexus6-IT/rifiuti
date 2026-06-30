@@ -35,7 +35,7 @@ export class UpdateDestinatarioUseCase {
   constructor(
     @Inject(DESTINATARIO_REPOSITORY)
     private readonly destinatarioRepository: DestinatarioRepository,
-    @Optional() private readonly referenceData?: ReferenceDataService,
+    @Optional() private readonly referenceData?: ReferenceDataService
   ) {}
 
   async execute(command: UpdateDestinatarioCommand): Promise<Result<Destinatario>> {
@@ -48,9 +48,12 @@ export class UpdateDestinatarioUseCase {
       }
 
       // Check if new Numero Autorizzazione already exists (if changing)
-      if (command.numeroAutorizzazione && command.numeroAutorizzazione !== destinatario.numeroAutorizzazione) {
+      if (
+        command.numeroAutorizzazione &&
+        command.numeroAutorizzazione !== destinatario.numeroAutorizzazione
+      ) {
         const existing = await this.destinatarioRepository.findByNumeroAutorizzazione(
-          command.numeroAutorizzazione,
+          command.numeroAutorizzazione
         )
 
         if (existing) {
@@ -67,7 +70,7 @@ export class UpdateDestinatarioUseCase {
         if (this.referenceData) {
           const v = await this.referenceData.validateLocalita(
             command.sede.citta,
-            command.sede.provincia,
+            command.sede.provincia
           )
           if (!v.ok) return Result.fail(v.error!)
         }
@@ -79,11 +82,15 @@ export class UpdateDestinatarioUseCase {
       }
 
       // Update contacts if any field is provided
-      if (command.email !== undefined || command.telefono !== undefined || command.pec !== undefined) {
+      if (
+        command.email !== undefined ||
+        command.telefono !== undefined ||
+        command.pec !== undefined
+      ) {
         destinatario.updateContatti(
           command.email !== undefined ? command.email : destinatario.email,
           command.telefono !== undefined ? command.telefono : destinatario.telefono,
-          command.pec !== undefined ? command.pec : destinatario.pec,
+          command.pec !== undefined ? command.pec : destinatario.pec
         )
       }
 

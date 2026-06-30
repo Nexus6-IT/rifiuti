@@ -1,8 +1,8 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
-import { PrismaService } from '../../src/infrastructure/persistence/prisma.service';
-import { AppModule } from '../../src/app.module';
+import { Test, TestingModule } from '@nestjs/testing'
+import { INestApplication } from '@nestjs/common'
+import * as request from 'supertest'
+import { PrismaService } from '../../src/infrastructure/persistence/prisma.service'
+import { AppModule } from '../../src/app.module'
 
 /**
  * Task Assignment Integration Tests
@@ -21,21 +21,21 @@ import { AppModule } from '../../src/app.module';
  * score = (certifications * 40) + (availableCapacity * 30) + (workloadBalance * 30)
  */
 describe('Task Assignment Integration Tests', () => {
-  let app: INestApplication;
-  let prisma: PrismaService;
-  let authToken: string;
-  let tenantId: string;
-  let fleetManagerId: string;
+  let app: INestApplication
+  let prisma: PrismaService
+  let authToken: string
+  let tenantId: string
+  let fleetManagerId: string
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    }).compile()
 
-    app = moduleFixture.createNestApplication();
-    await app.init();
+    app = moduleFixture.createNestApplication()
+    await app.init()
 
-    prisma = app.get<PrismaService>(PrismaService);
+    prisma = app.get<PrismaService>(PrismaService)
 
     // Create test tenant and user
     const tenant = await prisma.tenant.create({
@@ -47,9 +47,9 @@ describe('Task Assignment Integration Tests', () => {
         province: 'RM',
         postalCode: '00100',
       },
-    });
+    })
 
-    tenantId = tenant.id;
+    tenantId = tenant.id
 
     const user = await prisma.user.create({
       data: {
@@ -61,37 +61,37 @@ describe('Task Assignment Integration Tests', () => {
         email: 'mario.rossi@test.com',
         role: 'ADMIN',
       },
-    });
+    })
 
-    fleetManagerId = user.id;
+    fleetManagerId = user.id
 
     // Generate JWT token (simplified for test)
-    authToken = 'Bearer test-jwt-token';
-  });
+    authToken = 'Bearer test-jwt-token'
+  })
 
   afterAll(async () => {
     // Cleanup test data
     await prisma.resourceOwnership.deleteMany({
       where: { tenantId },
-    });
+    })
 
     await prisma.user.deleteMany({
       where: { tenantId },
-    });
+    })
 
     await prisma.tenant.delete({
       where: { id: tenantId },
-    });
+    })
 
-    await app.close();
-  });
+    await app.close()
+  })
 
   describe('US6 Scenario 1: Hazardous Waste Assignment (ADR Certification)', () => {
-    let driver1Id: string;
-    let driver2Id: string;
-    let vehicle1Id: string;
-    let vehicle2Id: string;
-    let firId: string;
+    let driver1Id: string
+    let driver2Id: string
+    let vehicle1Id: string
+    let vehicle2Id: string
+    let firId: string
 
     beforeEach(async () => {
       // Create two drivers
@@ -105,8 +105,8 @@ describe('Task Assignment Integration Tests', () => {
           email: 'driver1@test.com',
           role: 'OPERATOR',
         },
-      });
-      driver1Id = driver1.id;
+      })
+      driver1Id = driver1.id
 
       const driver2 = await prisma.user.create({
         data: {
@@ -118,12 +118,12 @@ describe('Task Assignment Integration Tests', () => {
           email: 'driver2@test.com',
           role: 'OPERATOR',
         },
-      });
-      driver2Id = driver2.id;
+      })
+      driver2Id = driver2.id
 
       // Create vehicle assignments
-      vehicle1Id = 'vehicle-adr-truck';
-      vehicle2Id = 'vehicle-standard-truck';
+      vehicle1Id = 'vehicle-adr-truck'
+      vehicle2Id = 'vehicle-standard-truck'
 
       // Driver 1: Has ADR certification
       await prisma.resourceOwnership.create({
@@ -141,7 +141,7 @@ describe('Task Assignment Integration Tests', () => {
             zoneIds: ['zone-north'],
           },
         },
-      });
+      })
 
       // Driver 2: No ADR certification
       await prisma.resourceOwnership.create({
@@ -159,7 +159,7 @@ describe('Task Assignment Integration Tests', () => {
             zoneIds: ['zone-north'],
           },
         },
-      });
+      })
 
       // Create hazardous waste FIR
       const fir = await prisma.fIR.create({
@@ -182,23 +182,23 @@ describe('Task Assignment Integration Tests', () => {
           quantity: 500,
           transportDate: new Date(),
         },
-      });
-      firId = fir.id;
-    });
+      })
+      firId = fir.id
+    })
 
     afterEach(async () => {
       await prisma.fIR.deleteMany({
         where: { id: firId },
-      });
+      })
 
       await prisma.resourceOwnership.deleteMany({
         where: { userId: { in: [driver1Id, driver2Id] } },
-      });
+      })
 
       await prisma.user.deleteMany({
         where: { id: { in: [driver1Id, driver2Id] } },
-      });
-    });
+      })
+    })
 
     it('should automatically assign hazardous waste to driver with ADR certification', async () => {
       // Act: Automatic assignment
@@ -206,13 +206,13 @@ describe('Task Assignment Integration Tests', () => {
         .post(`/api/v1/tasks/${firId}/assign`)
         .set('Authorization', authToken)
         .send({})
-        .expect(200);
+        .expect(200)
 
       // Assert: Should assign to driver with ADR
-      expect(response.body.success).toBe(true);
-      expect(response.body.data.assignedDriverId).toBe(driver1Id);
-      expect(response.body.data.assignmentMethod).toBe('automatic');
-    });
+      expect(response.body.success).toBe(true)
+      expect(response.body.data.assignedDriverId).toBe(driver1Id)
+      expect(response.body.data.assignmentMethod).toBe('automatic')
+    })
 
     it('should warn if manually assigning hazardous waste to driver without ADR', async () => {
       // Act: Manual assignment to unqualified driver
@@ -223,22 +223,22 @@ describe('Task Assignment Integration Tests', () => {
           driverId: driver2Id, // Driver without ADR
           reason: 'Emergency override',
         })
-        .expect(200);
+        .expect(200)
 
       // Assert: Should complete with warnings
-      expect(response.body.success).toBe(true);
-      expect(response.body.data.assignedDriverId).toBe(driver2Id);
-      expect(response.body.data.warnings).toBeDefined();
-      expect(response.body.data.warnings.length).toBeGreaterThan(0);
-      expect(response.body.data.warnings[0]).toContain('ADR');
-    });
-  });
+      expect(response.body.success).toBe(true)
+      expect(response.body.data.assignedDriverId).toBe(driver2Id)
+      expect(response.body.data.warnings).toBeDefined()
+      expect(response.body.data.warnings.length).toBeGreaterThan(0)
+      expect(response.body.data.warnings[0]).toContain('ADR')
+    })
+  })
 
   describe('US6 Scenario 4: Load Balancing', () => {
-    let driver1Id: string;
-    let driver2Id: string;
-    let driver3Id: string;
-    let firId: string;
+    let driver1Id: string
+    let driver2Id: string
+    let driver3Id: string
+    let firId: string
 
     beforeEach(async () => {
       // Create three drivers with different workloads
@@ -252,8 +252,8 @@ describe('Task Assignment Integration Tests', () => {
           email: 'heavy@test.com',
           role: 'OPERATOR',
         },
-      });
-      driver1Id = driver1.id;
+      })
+      driver1Id = driver1.id
 
       const driver2 = await prisma.user.create({
         data: {
@@ -265,8 +265,8 @@ describe('Task Assignment Integration Tests', () => {
           email: 'light@test.com',
           role: 'OPERATOR',
         },
-      });
-      driver2Id = driver2.id;
+      })
+      driver2Id = driver2.id
 
       const driver3 = await prisma.user.create({
         data: {
@@ -278,8 +278,8 @@ describe('Task Assignment Integration Tests', () => {
           email: 'medium@test.com',
           role: 'OPERATOR',
         },
-      });
-      driver3Id = driver3.id;
+      })
+      driver3Id = driver3.id
 
       // Assign vehicles with different workloads
       await prisma.resourceOwnership.create({
@@ -297,7 +297,7 @@ describe('Task Assignment Integration Tests', () => {
             zoneIds: ['zone-north'],
           },
         },
-      });
+      })
 
       await prisma.resourceOwnership.create({
         data: {
@@ -314,7 +314,7 @@ describe('Task Assignment Integration Tests', () => {
             zoneIds: ['zone-north'],
           },
         },
-      });
+      })
 
       await prisma.resourceOwnership.create({
         data: {
@@ -331,7 +331,7 @@ describe('Task Assignment Integration Tests', () => {
             zoneIds: ['zone-north'],
           },
         },
-      });
+      })
 
       // Create non-hazardous FIR
       const fir = await prisma.fIR.create({
@@ -354,23 +354,23 @@ describe('Task Assignment Integration Tests', () => {
           quantity: 100,
           transportDate: new Date(),
         },
-      });
-      firId = fir.id;
-    });
+      })
+      firId = fir.id
+    })
 
     afterEach(async () => {
       await prisma.fIR.deleteMany({
         where: { id: firId },
-      });
+      })
 
       await prisma.resourceOwnership.deleteMany({
         where: { userId: { in: [driver1Id, driver2Id, driver3Id] } },
-      });
+      })
 
       await prisma.user.deleteMany({
         where: { id: { in: [driver1Id, driver2Id, driver3Id] } },
-      });
-    });
+      })
+    })
 
     it('should assign to driver with lightest load (load balancing)', async () => {
       // Act: Automatic assignment
@@ -378,33 +378,33 @@ describe('Task Assignment Integration Tests', () => {
         .post(`/api/v1/tasks/${firId}/assign`)
         .set('Authorization', authToken)
         .send({})
-        .expect(200);
+        .expect(200)
 
       // Assert: Should assign to driver with lightest load
-      expect(response.body.success).toBe(true);
-      expect(response.body.data.assignedDriverId).toBe(driver2Id); // Light load driver
-    });
+      expect(response.body.success).toBe(true)
+      expect(response.body.data.assignedDriverId).toBe(driver2Id) // Light load driver
+    })
 
     it('should list qualified drivers sorted by score', async () => {
       // Act: Get qualified drivers
       const response = await request(app.getHttpServer())
         .get(`/api/v1/tasks/${firId}/qualified-drivers`)
         .set('Authorization', authToken)
-        .expect(200);
+        .expect(200)
 
       // Assert: All three drivers qualified, sorted by score
-      expect(response.body.success).toBe(true);
-      expect(response.body.data.qualifiedDrivers).toHaveLength(3);
-      expect(response.body.data.qualifiedDrivers[0].userId).toBe(driver2Id); // Best score
+      expect(response.body.success).toBe(true)
+      expect(response.body.data.qualifiedDrivers).toHaveLength(3)
+      expect(response.body.data.qualifiedDrivers[0].userId).toBe(driver2Id) // Best score
       expect(response.body.data.qualifiedDrivers[0].score).toBeGreaterThan(
-        response.body.data.qualifiedDrivers[1].score,
-      );
-    });
-  });
+        response.body.data.qualifiedDrivers[1].score
+      )
+    })
+  })
 
   describe('US6 Scenario 5: Capacity Check', () => {
-    let driverId: string;
-    let firId: string;
+    let driverId: string
+    let firId: string
 
     beforeEach(async () => {
       const driver = await prisma.user.create({
@@ -417,8 +417,8 @@ describe('Task Assignment Integration Tests', () => {
           email: 'full@test.com',
           role: 'OPERATOR',
         },
-      });
-      driverId = driver.id;
+      })
+      driverId = driver.id
 
       // Driver with almost full vehicle
       await prisma.resourceOwnership.create({
@@ -436,7 +436,7 @@ describe('Task Assignment Integration Tests', () => {
             zoneIds: ['zone-north'],
           },
         },
-      });
+      })
 
       // Create heavy FIR (exceeds available capacity)
       const fir = await prisma.fIR.create({
@@ -459,23 +459,23 @@ describe('Task Assignment Integration Tests', () => {
           quantity: 100, // Exceeds available capacity (950 + 100 > 1000)
           transportDate: new Date(),
         },
-      });
-      firId = fir.id;
-    });
+      })
+      firId = fir.id
+    })
 
     afterEach(async () => {
       await prisma.fIR.deleteMany({
         where: { id: firId },
-      });
+      })
 
       await prisma.resourceOwnership.deleteMany({
         where: { userId: driverId },
-      });
+      })
 
       await prisma.user.deleteMany({
         where: { id: driverId },
-      });
-    });
+      })
+    })
 
     it('should reject automatic assignment if no driver has sufficient capacity', async () => {
       // Act & Assert
@@ -483,8 +483,8 @@ describe('Task Assignment Integration Tests', () => {
         .post(`/api/v1/tasks/${firId}/assign`)
         .set('Authorization', authToken)
         .send({})
-        .expect(400); // Bad Request - No qualified drivers
-    });
+        .expect(400) // Bad Request - No qualified drivers
+    })
 
     it('should reject manual assignment if driver exceeds capacity', async () => {
       // Act & Assert
@@ -495,14 +495,14 @@ describe('Task Assignment Integration Tests', () => {
           driverId,
           reason: 'Try to force assignment',
         })
-        .expect(400); // Bad Request - Capacity exceeded
-    });
-  });
+        .expect(400) // Bad Request - Capacity exceeded
+    })
+  })
 
   describe('US6 Scenario 3: Manual Reassignment', () => {
-    let driver1Id: string;
-    let driver2Id: string;
-    let firId: string;
+    let driver1Id: string
+    let driver2Id: string
+    let firId: string
 
     beforeEach(async () => {
       const driver1 = await prisma.user.create({
@@ -515,8 +515,8 @@ describe('Task Assignment Integration Tests', () => {
           email: 'original@test.com',
           role: 'OPERATOR',
         },
-      });
-      driver1Id = driver1.id;
+      })
+      driver1Id = driver1.id
 
       const driver2 = await prisma.user.create({
         data: {
@@ -528,8 +528,8 @@ describe('Task Assignment Integration Tests', () => {
           email: 'replacement@test.com',
           role: 'OPERATOR',
         },
-      });
-      driver2Id = driver2.id;
+      })
+      driver2Id = driver2.id
 
       // Assign vehicles
       await prisma.resourceOwnership.create({
@@ -547,7 +547,7 @@ describe('Task Assignment Integration Tests', () => {
             zoneIds: ['zone-north'],
           },
         },
-      });
+      })
 
       await prisma.resourceOwnership.create({
         data: {
@@ -564,7 +564,7 @@ describe('Task Assignment Integration Tests', () => {
             zoneIds: ['zone-north'],
           },
         },
-      });
+      })
 
       // Create FIR assigned to driver1
       const fir = await prisma.fIR.create({
@@ -588,23 +588,23 @@ describe('Task Assignment Integration Tests', () => {
           quantity: 150,
           transportDate: new Date(),
         },
-      });
-      firId = fir.id;
-    });
+      })
+      firId = fir.id
+    })
 
     afterEach(async () => {
       await prisma.fIR.deleteMany({
         where: { id: firId },
-      });
+      })
 
       await prisma.resourceOwnership.deleteMany({
         where: { userId: { in: [driver1Id, driver2Id] } },
-      });
+      })
 
       await prisma.user.deleteMany({
         where: { id: { in: [driver1Id, driver2Id] } },
-      });
-    });
+      })
+    })
 
     it('should successfully reassign task to different driver', async () => {
       // Act: Reassign from driver1 to driver2
@@ -615,14 +615,14 @@ describe('Task Assignment Integration Tests', () => {
           newDriverId: driver2Id,
           reason: 'Driver 1 vehicle breakdown',
         })
-        .expect(200);
+        .expect(200)
 
       // Assert
-      expect(response.body.success).toBe(true);
-      expect(response.body.data.previousDriverId).toBe(driver1Id);
-      expect(response.body.data.newDriverId).toBe(driver2Id);
-      expect(response.body.data.reason).toBe('Driver 1 vehicle breakdown');
-    });
+      expect(response.body.success).toBe(true)
+      expect(response.body.data.previousDriverId).toBe(driver1Id)
+      expect(response.body.data.newDriverId).toBe(driver2Id)
+      expect(response.body.data.reason).toBe('Driver 1 vehicle breakdown')
+    })
 
     it('should require reason for reassignment', async () => {
       // Act & Assert: Reassign without reason
@@ -633,7 +633,7 @@ describe('Task Assignment Integration Tests', () => {
           newDriverId: driver2Id,
           reason: '', // Empty reason
         })
-        .expect(400); // Bad Request
-    });
-  });
-});
+        .expect(400) // Bad Request
+    })
+  })
+})

@@ -31,7 +31,8 @@ export class CERController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Lista paginata del catalogo CER',
-    description: 'Restituisce i codici CER paginati, con filtri opzionali per categoria/pericolosità.',
+    description:
+      'Restituisce i codici CER paginati, con filtri opzionali per categoria/pericolosità.',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -41,8 +42,14 @@ export class CERController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('category') category?: string,
-    @Query('pericoloso') pericoloso?: string,
-  ): Promise<{ items: CERResponseDto[]; total: number; page: number; limit: number; totalPages: number }> {
+    @Query('pericoloso') pericoloso?: string
+  ): Promise<{
+    items: CERResponseDto[]
+    total: number
+    page: number
+    limit: number
+    totalPages: number
+  }> {
     const pageNum = Number(page) || 1
     const limitNum = Number(limit) || 50
     const filters: any = {}
@@ -51,7 +58,7 @@ export class CERController {
 
     const { items, total } = await this.cerCatalogService.list(pageNum, limitNum, filters)
     return {
-      items: items.map((cer) => ({
+      items: items.map(cer => ({
         id: cer.id,
         code: cer.code,
         description: cer.description,
@@ -73,7 +80,12 @@ export class CERController {
     description: 'Full-text search nel catalogo CER con filtri opzionali',
   })
   @ApiQuery({ name: 'q', required: true, description: 'Keyword di ricerca' })
-  @ApiQuery({ name: 'pericoloso', required: false, type: Boolean, description: 'Filtra solo rifiuti pericolosi' })
+  @ApiQuery({
+    name: 'pericoloso',
+    required: false,
+    type: Boolean,
+    description: 'Filtra solo rifiuti pericolosi',
+  })
   @ApiQuery({ name: 'category', required: false, description: 'Filtra per categoria (es. "13")' })
   @ApiResponse({ status: 200, description: 'Lista codici CER trovati', type: [CERResponseDto] })
   @ApiResponse({ status: 400, description: 'Keyword mancante o non valida' })

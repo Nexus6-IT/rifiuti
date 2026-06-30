@@ -1,16 +1,11 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { RevokeRoleCommand } from '../revoke-role.command';
-import { RoleRepository } from '../../../domain/identity-access/role.repository.interface';
-import { UserRoleRepository } from '../../../domain/identity-access/user-role.repository.interface';
-import { PermissionCacheService } from '../../../infrastructure/cache/permission-cache.service';
-import { RedisPubSubService } from '../../../infrastructure/cache/redis-pub-sub.service';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common'
+import { InjectQueue } from '@nestjs/bullmq'
+import { Queue } from 'bullmq'
+import { RevokeRoleCommand } from '../revoke-role.command'
+import { RoleRepository } from '../../../domain/identity-access/role.repository.interface'
+import { UserRoleRepository } from '../../../domain/identity-access/user-role.repository.interface'
+import { PermissionCacheService } from '../../../infrastructure/cache/permission-cache.service'
+import { RedisPubSubService } from '../../../infrastructure/cache/redis-pub-sub.service'
 
 /**
  * RevokeRoleCommandHandler
@@ -27,92 +22,72 @@ import { RedisPubSubService } from '../../../infrastructure/cache/redis-pub-sub.
  */
 @Injectable()
 export class RevokeRoleCommandHandler {
-  private readonly logger = new Logger(RevokeRoleCommandHandler.name);
+  private readonly logger = new Logger(RevokeRoleCommandHandler.name)
 
   constructor(
     private readonly roleRepository: RoleRepository,
     private readonly userRoleRepository: UserRoleRepository,
     private readonly permissionCache: PermissionCacheService,
     private readonly redisPubSub: RedisPubSubService,
-    @InjectQueue('audit-logging') private readonly auditQueue: Queue,
+    @InjectQueue('audit-logging') private readonly auditQueue: Queue
   ) {}
 
   async execute(command: RevokeRoleCommand): Promise<void> {
     try {
       // Step 1: Find user role assignment
-      const userRole = await this.userRoleRepository.findById(
-        command.userRoleId,
-        command.tenantId,
-      );
+      const userRole = await this.userRoleRepository.findById(command.userRoleId, command.tenantId)
 
       if (!userRole) {
-        this.logAuditFailure(command, 'User role assignment not found');
-        throw new NotFoundException('User role assignment not found');
+        this.logAuditFailure(command, 'User role assignment not found')
+        throw new NotFoundException('User role assignment not found')
       }
 
       // Step 2: Validate tenant isolation
       if (userRole.tenantId !== command.tenantId) {
-        this.logAuditFailure(command, 'Cross-tenant revocation denied');
-        throw new ForbiddenException('Cross-tenant revocation denied');
+        this.logAuditFailure(command, 'Cross-tenant revocation denied')
+        throw new ForbiddenException('Cross-tenant revocation denied')
       }
 
       // Step 3: Get role details
-      const role = await this.roleRepository.findById(
-        userRole.roleId,
-        command.tenantId,
-      );
+      const role = await this.roleRepository.findById(userRole.roleId, command.tenantId)
 
       if (!role) {
-        this.logAuditFailure(command, 'Role not found');
-        throw new NotFoundException('Role not found');
+        this.logAuditFailure(command, 'Role not found')
+        throw new NotFoundException('Role not found')
       }
 
       // Step 4: Last admin protection
       if (role.name === 'ADMIN') {
-        await this.enforceLastAdminProtection(userRole.roleId, command.tenantId);
+        await this.enforceLastAdminProtection(userRole.roleId, command.tenantId)
       }
 
       // Step 5: Revoke assignment
-      await this.userRoleRepository.revoke(command.userRoleId, command.tenantId);
+      await this.userRoleRepository.revoke(command.userRoleId, command.tenantId)
 
       // Step 6: Invalidate user permission cache
-      await this.permissionCache.invalidateUser(
-        command.tenantId,
-        userRole.userId,
-      );
+      await this.permissionCache.invalidateUser(command.tenantId, userRole.userId)
 
       // Step 7: Publish cache invalidation to all instances
-      await this.redisPubSub.publishUserInvalidation(
-        command.tenantId,
-        userRole.userId,
-      );
+      await this.redisPubSub.publishUserInvalidation(command.tenantId, userRole.userId)
 
       this.logger.log(
-        `✓ Revoked role ${role.name} from user ${userRole.userId} in tenant ${command.tenantId}`,
-      );
+        `✓ Revoked role ${role.name} from user ${userRole.userId} in tenant ${command.tenantId}`
+      )
 
       // Step 8: Persist the revocation to the audit trail (async, non-blocking).
       // A revocation is a role change with newRoleId = null. Failures here must
       // not break the revocation itself.
-      this.logAuditSuccess(command, userRole.userId, userRole.roleId, role.name).catch(
-        (error) => {
-          this.logger.error(
-            `Failed to log role revocation history: ${error.message}`,
-            error.stack,
-          );
-        },
-      );
+      this.logAuditSuccess(command, userRole.userId, userRole.roleId, role.name).catch(error => {
+        this.logger.error(`Failed to log role revocation history: ${error.message}`, error.stack)
+      })
     } catch (error) {
-      if (
-        error instanceof NotFoundException ||
-        error instanceof ForbiddenException
-      ) {
-        throw error;
+      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+        throw error
       }
 
-      this.logger.error(`Failed to revoke role: ${error.message}`, error.stack);
-      this.logAuditFailure(command, error.message);
-      throw error;
+      this.logger.error(`Failed to revoke role: ${error.message}`, error.stack)
+      this.logAuditFailure(command, error.message)
+      throw error
     }
   }
 
@@ -120,23 +95,15 @@ export class RevokeRoleCommandHandler {
    * Enforce last admin protection
    * Prevent removing last ADMIN from tenant
    */
-  private async enforceLastAdminProtection(
-    adminRoleId: string,
-    tenantId: string,
-  ): Promise<void> {
+  private async enforceLastAdminProtection(adminRoleId: string, tenantId: string): Promise<void> {
     // Count total active admins
-    const adminCount = await this.userRoleRepository.countActiveAdmins(
-      adminRoleId,
-      tenantId,
-    );
+    const adminCount = await this.userRoleRepository.countActiveAdmins(adminRoleId, tenantId)
 
     if (adminCount <= 1) {
-      this.logger.warn(
-        `⚠️  Blocked attempt to revoke last administrator from tenant ${tenantId}`,
-      );
+      this.logger.warn(`⚠️  Blocked attempt to revoke last administrator from tenant ${tenantId}`)
       throw new ForbiddenException(
-        'Cannot revoke last administrator from tenant. Assign another admin first.',
-      );
+        'Cannot revoke last administrator from tenant. Assign another admin first.'
+      )
     }
   }
 
@@ -150,7 +117,7 @@ export class RevokeRoleCommandHandler {
     command: RevokeRoleCommand,
     userId: string,
     revokedRoleId: string,
-    roleName: string,
+    roleName: string
   ): Promise<void> {
     await this.auditQueue.add(
       'role-change',
@@ -171,12 +138,12 @@ export class RevokeRoleCommandHandler {
       {
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
-      },
-    );
+      }
+    )
 
     this.logger.debug(
-      `[AUDIT] Queued role revocation: userRole=${command.userRoleId}, user=${userId}, role=${roleName}, tenant=${command.tenantId}`,
-    );
+      `[AUDIT] Queued role revocation: userRole=${command.userRoleId}, user=${userId}, role=${roleName}, tenant=${command.tenantId}`
+    )
   }
 
   /**
@@ -185,7 +152,7 @@ export class RevokeRoleCommandHandler {
    */
   private logAuditFailure(command: RevokeRoleCommand, reason: string): void {
     this.logger.debug(
-      `[AUDIT] DENY revoke_role: userRole=${command.userRoleId}, tenant=${command.tenantId}, reason=${reason}`,
-    );
+      `[AUDIT] DENY revoke_role: userRole=${command.userRoleId}, tenant=${command.tenantId}, reason=${reason}`
+    )
   }
 }

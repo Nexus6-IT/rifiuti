@@ -1,15 +1,18 @@
-import { Component, OnInit, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { CardModule } from 'primeng/card';
-import { ButtonModule } from 'primeng/button';
-import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { MessageModule } from 'primeng/message';
-import { ToastModule } from 'primeng/toast';
-import { DialogService } from 'primeng/dynamicdialog';
-import { MessageService } from 'primeng/api';
-import { TemporaryPermissionApiService, PermissionGrant } from '../../services/temporary-permission-api.service';
+import { Component, OnInit, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { CardModule } from 'primeng/card'
+import { ButtonModule } from 'primeng/button'
+import { TableModule } from 'primeng/table'
+import { TagModule } from 'primeng/tag'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { MessageModule } from 'primeng/message'
+import { ToastModule } from 'primeng/toast'
+import { DialogService } from 'primeng/dynamicdialog'
+import { MessageService } from 'primeng/api'
+import {
+  TemporaryPermissionApiService,
+  PermissionGrant,
+} from '../../services/temporary-permission-api.service'
 
 /**
  * PendingGrantsComponent
@@ -65,7 +68,11 @@ import { TemporaryPermissionApiService, PermissionGrant } from '../../services/t
       @if (!isLoading() && pendingGrants().length === 0) {
         <div class="surface-card">
           <div class="empty-state">
-            <i class="pi pi-check-circle empty-state__icon" style="color: var(--color-success);" aria-hidden="true"></i>
+            <i
+              class="pi pi-check-circle empty-state__icon"
+              style="color: var(--color-success);"
+              aria-hidden="true"
+            ></i>
             <p class="empty-state__title">Nessuna richiesta in attesa</p>
             <p>Tutte le richieste di permesso sono state esaminate.</p>
           </div>
@@ -150,132 +157,136 @@ import { TemporaryPermissionApiService, PermissionGrant } from '../../services/t
       <p-toast></p-toast>
     </div>
   `,
-  styles: [`
-    .loading-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--spacing-base);
-      padding: var(--spacing-2xl);
-      color: var(--text-secondary);
-    }
+  styles: [
+    `
+      .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--spacing-base);
+        padding: var(--spacing-2xl);
+        color: var(--text-secondary);
+      }
 
-    .permissions-cell {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--spacing-xs);
-    }
+      .permissions-cell {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-xs);
+      }
 
-    .time-cell { font-size: var(--font-size-sm); }
+      .time-cell {
+        font-size: var(--font-size-sm);
+      }
 
-    .duration {
-      margin-top: var(--spacing-sm);
-      color: var(--text-tertiary);
-    }
+      .duration {
+        margin-top: var(--spacing-sm);
+        color: var(--text-tertiary);
+      }
 
-    .justification-cell {
-      max-width: 320px;
-      font-size: var(--font-size-sm);
-      line-height: var(--line-height-normal);
-    }
+      .justification-cell {
+        max-width: 320px;
+        font-size: var(--font-size-sm);
+        line-height: var(--line-height-normal);
+      }
 
-    .action-buttons {
-      display: flex;
-      gap: var(--spacing-sm);
-      flex-direction: column;
-    }
-  `],
+      .action-buttons {
+        display: flex;
+        gap: var(--spacing-sm);
+        flex-direction: column;
+      }
+    `,
+  ],
 })
 export class PendingGrantsComponent implements OnInit {
-  isLoading = signal(false);
-  error = signal<string | null>(null);
-  pendingGrants = signal<PermissionGrant[]>([]);
+  isLoading = signal(false)
+  error = signal<string | null>(null)
+  pendingGrants = signal<PermissionGrant[]>([])
 
   constructor(
     private apiService: TemporaryPermissionApiService,
-    private messageService: MessageService,
+    private messageService: MessageService
   ) {}
 
   ngOnInit(): void {
-    this.loadPendingGrants();
+    this.loadPendingGrants()
   }
 
   loadPendingGrants(): void {
-    this.isLoading.set(true);
-    this.error.set(null);
+    this.isLoading.set(true)
+    this.error.set(null)
 
     this.apiService.listPending().subscribe({
-      next: (response) => {
-        this.pendingGrants.set(response.data.grants);
-        this.isLoading.set(false);
+      next: response => {
+        this.pendingGrants.set(response.data.grants)
+        this.isLoading.set(false)
       },
-      error: (error) => {
-        this.error.set(`Impossibile caricare le richieste in attesa: ${error.message}`);
-        this.isLoading.set(false);
+      error: error => {
+        this.error.set(`Impossibile caricare le richieste in attesa: ${error.message}`)
+        this.isLoading.set(false)
       },
-    });
+    })
   }
 
   approveGrant(grant: PermissionGrant): void {
-    const reason = prompt("Inserisci la motivazione dell'approvazione:");
-    if (!reason) return;
+    const reason = prompt("Inserisci la motivazione dell'approvazione:")
+    if (!reason) return
 
     this.apiService.approve(grant.id, reason).subscribe({
-      next: (response) => {
+      next: response => {
         this.messageService.add({
           severity: 'success',
           summary: 'Approvata',
           detail: response.message,
-        });
-        this.loadPendingGrants(); // Refresh
+        })
+        this.loadPendingGrants() // Refresh
       },
-      error: (error) => {
+      error: error => {
         this.messageService.add({
           severity: 'error',
           summary: 'Approvazione non riuscita',
           detail: error.error?.message || error.message,
-        });
+        })
       },
-    });
+    })
   }
 
   rejectGrant(grant: PermissionGrant): void {
-    const reason = prompt('Inserisci la motivazione del rifiuto:');
-    if (!reason) return;
+    const reason = prompt('Inserisci la motivazione del rifiuto:')
+    if (!reason) return
 
     this.apiService.reject(grant.id, reason).subscribe({
-      next: (response) => {
+      next: response => {
         this.messageService.add({
           severity: 'info',
           summary: 'Rifiutata',
           detail: response.message,
-        });
-        this.loadPendingGrants(); // Refresh
+        })
+        this.loadPendingGrants() // Refresh
       },
-      error: (error) => {
+      error: error => {
         this.messageService.add({
           severity: 'error',
           summary: 'Rifiuto non riuscito',
           detail: error.error?.message || error.message,
-        });
+        })
       },
-    });
+    })
   }
 
   formatDate(dateStr: string): string {
-    return new Date(dateStr).toLocaleString('it-IT');
+    return new Date(dateStr).toLocaleString('it-IT')
   }
 
   calculateDuration(grant: PermissionGrant): string {
-    const start = new Date(grant.startTime);
-    const end = new Date(grant.endTime);
-    const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+    const start = new Date(grant.startTime)
+    const end = new Date(grant.endTime)
+    const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60)
 
     if (durationHours < 24) {
-      return `${Math.round(durationHours)} ore`;
+      return `${Math.round(durationHours)} ore`
     }
 
-    const durationDays = durationHours / 24;
-    return `${durationDays.toFixed(1)} giorni`;
+    const durationDays = durationHours / 24
+    return `${durationDays.toFixed(1)} giorni`
   }
 }

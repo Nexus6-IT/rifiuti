@@ -41,10 +41,7 @@ export class ContractController {
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Lista contratti del tenant (filtro per stato)' })
-  async list(
-    @CurrentUser() user: CurrentUserPayload,
-    @Query('status') status?: ContractStatus,
-  ) {
+  async list(@CurrentUser() user: CurrentUserPayload, @Query('status') status?: ContractStatus) {
     return this.contractService.list(user.tenantId, status)
   }
 
@@ -57,7 +54,7 @@ export class ContractController {
   async autoFill(
     @CurrentUser() user: CurrentUserPayload,
     @Query('producerId') producerId: string,
-    @Query('cerCode') cerCode: string,
+    @Query('cerCode') cerCode: string
   ) {
     return this.contractService.getAutoFillForFir(user.tenantId, producerId, cerCode)
   }
@@ -76,7 +73,7 @@ export class ContractController {
   async changeStatus(
     @Param('id') id: string,
     @Body() dto: ChangeContractStatusDto,
-    @CurrentUser() user: CurrentUserPayload,
+    @CurrentUser() user: CurrentUserPayload
   ) {
     return this.contractService.changeStatus(user.tenantId, id, dto.status as ContractStatus)
   }

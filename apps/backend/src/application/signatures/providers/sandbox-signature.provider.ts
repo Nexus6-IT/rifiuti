@@ -48,7 +48,7 @@ export class SandboxSignatureProvider implements ISignatureProvider {
     // privateKey esce dallo scope e viene raccolta dal GC — mai loggata
     this.logger.debug(
       `[SANDBOX] Firma effimera generata per utente ${userId}: ` +
-      `hash=${documentHash.substring(0, 16)}... (FIRMA-NON-QUALIFICATA)`,
+        `hash=${documentHash.substring(0, 16)}... (FIRMA-NON-QUALIFICATA)`
     )
 
     return {

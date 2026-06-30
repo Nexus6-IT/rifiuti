@@ -1,6 +1,6 @@
-import { FIR } from './fir.aggregate';
-import { DigitalSignature } from './digital-signature.vo';
-import { DomainException } from '../shared/domain-exception';
+import { FIR } from './fir.aggregate'
+import { DigitalSignature } from './digital-signature.vo'
+import { DomainException } from '../shared/domain-exception'
 
 /**
  * FIR Aggregate Tests - Digital Signature Workflow
@@ -17,7 +17,7 @@ import { DomainException } from '../shared/domain-exception';
  * - User must have SPID Level 2+ to sign
  */
 describe('FIR Aggregate - Digital Signatures', () => {
-  const mockPublicKey = 'mock-public-key-base64';
+  const mockPublicKey = 'mock-public-key-base64'
 
   describe('applySignature() Business Rules', () => {
     it('should accept producer signature first', () => {
@@ -29,7 +29,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
       const producerSignature = DigitalSignature.create({
         signerFiscalCode: 'RSSMRA80A01H501U',
@@ -40,14 +40,14 @@ describe('FIR Aggregate - Digital Signatures', () => {
         certificateHash: 'cert-hash-1',
         documentHash: 'doc-hash',
         publicKey: mockPublicKey,
-      });
+      })
 
-      fir.applySignature(producerSignature, 'RSSMRA80A01H501U', 2);
+      fir.applySignature(producerSignature, 'RSSMRA80A01H501U', 2)
 
-      expect(fir.getSignatures().length).toBe(1);
-      expect(fir.getSignatures()[0].getRole()).toBe('PRODUCER');
-      expect(fir.getStatus()).toBe('SIGNED_BY_PRODUCER');
-    });
+      expect(fir.getSignatures().length).toBe(1)
+      expect(fir.getSignatures()[0].getRole()).toBe('PRODUCER')
+      expect(fir.getStatus()).toBe('SIGNED_BY_PRODUCER')
+    })
 
     it('should accept carrier signature after producer', () => {
       const fir = FIR.create({
@@ -58,7 +58,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
       // Producer signs first
       const producerSig = DigitalSignature.create({
@@ -70,8 +70,8 @@ describe('FIR Aggregate - Digital Signatures', () => {
         certificateHash: 'cert1',
         documentHash: 'hash',
         publicKey: mockPublicKey,
-      });
-      fir.applySignature(producerSig, 'RSSMRA80A01H501U', 2);
+      })
+      fir.applySignature(producerSig, 'RSSMRA80A01H501U', 2)
 
       // Carrier signs second
       const carrierSig = DigitalSignature.create({
@@ -83,12 +83,12 @@ describe('FIR Aggregate - Digital Signatures', () => {
         certificateHash: 'cert2',
         documentHash: 'hash',
         publicKey: mockPublicKey,
-      });
-      fir.applySignature(carrierSig, 'VRDGPP85M12H501Z', 2);
+      })
+      fir.applySignature(carrierSig, 'VRDGPP85M12H501Z', 2)
 
-      expect(fir.getSignatures().length).toBe(2);
-      expect(fir.getStatus()).toBe('IN_TRANSIT');
-    });
+      expect(fir.getSignatures().length).toBe(2)
+      expect(fir.getStatus()).toBe('IN_TRANSIT')
+    })
 
     it('should complete workflow with receiver signature', () => {
       const fir = FIR.create({
@@ -99,7 +99,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
       // Three-stage signing
       fir.applySignature(
@@ -115,7 +115,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'RSSMRA80A01H501U',
         2
-      );
+      )
 
       fir.applySignature(
         DigitalSignature.create({
@@ -130,7 +130,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'VRDGPP85M01H501Z',
         2
-      );
+      )
 
       fir.applySignature(
         DigitalSignature.create({
@@ -145,12 +145,12 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'MRNMRC88E41H501W',
         2
-      );
+      )
 
-      expect(fir.getSignatures().length).toBe(3);
-      expect(fir.getStatus()).toBe('COMPLETED');
-      expect(fir.isImmutable()).toBe(true);
-    });
+      expect(fir.getSignatures().length).toBe(3)
+      expect(fir.getStatus()).toBe('COMPLETED')
+      expect(fir.isImmutable()).toBe(true)
+    })
 
     it('should reject carrier signature before producer', () => {
       const fir = FIR.create({
@@ -161,7 +161,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
       const carrierSig = DigitalSignature.create({
         signerFiscalCode: 'VRDGPP85M01H501Z',
@@ -172,15 +172,15 @@ describe('FIR Aggregate - Digital Signatures', () => {
         certificateHash: 'cert',
         documentHash: 'hash',
         publicKey: mockPublicKey,
-      });
+      })
 
       expect(() => {
-        fir.applySignature(carrierSig, 'VRDGPP85M01H501Z', 2);
-      }).toThrow(DomainException);
+        fir.applySignature(carrierSig, 'VRDGPP85M01H501Z', 2)
+      }).toThrow(DomainException)
       expect(() => {
-        fir.applySignature(carrierSig, 'VRDGPP85M01H501Z', 2);
-      }).toThrow(/Producer must sign first/);
-    });
+        fir.applySignature(carrierSig, 'VRDGPP85M01H501Z', 2)
+      }).toThrow(/Producer must sign first/)
+    })
 
     it('should reject receiver signature before carrier', () => {
       const fir = FIR.create({
@@ -191,7 +191,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
       // Producer signs
       fir.applySignature(
@@ -207,7 +207,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'RSSMRA80A01H501U',
         2
-      );
+      )
 
       // Try to apply receiver signature without carrier
       const receiverSig = DigitalSignature.create({
@@ -219,15 +219,15 @@ describe('FIR Aggregate - Digital Signatures', () => {
         certificateHash: 'cert',
         documentHash: 'hash',
         publicKey: mockPublicKey,
-      });
+      })
 
       expect(() => {
-        fir.applySignature(receiverSig, 'MRNMRC88E41H501W', 2);
-      }).toThrow(DomainException);
+        fir.applySignature(receiverSig, 'MRNMRC88E41H501W', 2)
+      }).toThrow(DomainException)
       expect(() => {
-        fir.applySignature(receiverSig, 'MRNMRC88E41H501W', 2);
-      }).toThrow(/Carrier must sign before receiver/);
-    });
+        fir.applySignature(receiverSig, 'MRNMRC88E41H501W', 2)
+      }).toThrow(/Carrier must sign before receiver/)
+    })
 
     it('should reject duplicate signature from same role', () => {
       const fir = FIR.create({
@@ -238,7 +238,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
       // Producer signs once
       fir.applySignature(
@@ -254,7 +254,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'RSSMRA80A01H501U',
         2
-      );
+      )
 
       // Try to sign again
       expect(() => {
@@ -271,8 +271,8 @@ describe('FIR Aggregate - Digital Signatures', () => {
           }),
           'RSSMRA80A01H501U',
           2
-        );
-      }).toThrow(DomainException);
+        )
+      }).toThrow(DomainException)
       expect(() => {
         fir.applySignature(
           DigitalSignature.create({
@@ -287,9 +287,9 @@ describe('FIR Aggregate - Digital Signatures', () => {
           }),
           'RSSMRA80A01H501U',
           2
-        );
-      }).toThrow(/already signed/);
-    });
+        )
+      }).toThrow(/already signed/)
+    })
 
     it('should reject signature with insufficient SPID level', () => {
       const fir = FIR.create({
@@ -300,7 +300,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
       const signature = DigitalSignature.create({
         signerFiscalCode: 'RSSMRA80A01H501U',
@@ -311,15 +311,15 @@ describe('FIR Aggregate - Digital Signatures', () => {
         certificateHash: 'cert',
         documentHash: 'hash',
         publicKey: mockPublicKey,
-      });
+      })
 
       expect(() => {
-        fir.applySignature(signature, 'RSSMRA80A01H501U', 1); // Level 1 insufficient
-      }).toThrow(DomainException);
+        fir.applySignature(signature, 'RSSMRA80A01H501U', 1) // Level 1 insufficient
+      }).toThrow(DomainException)
       expect(() => {
-        fir.applySignature(signature, 'RSSMRA80A01H501U', 1);
-      }).toThrow(/SPID Level 2 or higher required/);
-    });
+        fir.applySignature(signature, 'RSSMRA80A01H501U', 1)
+      }).toThrow(/SPID Level 2 or higher required/)
+    })
 
     it('should reject signature when FIR is immutable', () => {
       const fir = FIR.create({
@@ -330,7 +330,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
       // Complete all signatures
       fir.applySignature(
@@ -346,7 +346,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'BNCGNN90R01F205K',
         2
-      );
+      )
 
       fir.applySignature(
         DigitalSignature.create({
@@ -361,7 +361,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'RSSMRA80A01H501U',
         2
-      );
+      )
 
       fir.applySignature(
         DigitalSignature.create({
@@ -376,10 +376,10 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'VRDGPP85M12F839X',
         2
-      );
+      )
 
       // FIR is now immutable
-      expect(fir.isImmutable()).toBe(true);
+      expect(fir.isImmutable()).toBe(true)
 
       // Try to modify (should fail)
       expect(() => {
@@ -396,10 +396,10 @@ describe('FIR Aggregate - Digital Signatures', () => {
           }),
           'X',
           2
-        );
-      }).toThrow(DomainException);
-    });
-  });
+        )
+      }).toThrow(DomainException)
+    })
+  })
 
   describe('isImmutable() Method', () => {
     it('should return false for FIR with no signatures', () => {
@@ -411,10 +411,10 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
-      expect(fir.isImmutable()).toBe(false);
-    });
+      expect(fir.isImmutable()).toBe(false)
+    })
 
     it('should return false for FIR with partial signatures', () => {
       const fir = FIR.create({
@@ -425,7 +425,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
       fir.applySignature(
         DigitalSignature.create({
@@ -440,10 +440,10 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'BNCGNN90R01F205K',
         2
-      );
+      )
 
-      expect(fir.isImmutable()).toBe(false);
-    });
+      expect(fir.isImmutable()).toBe(false)
+    })
 
     it('should return true for FIR with all signatures', () => {
       const fir = FIR.create({
@@ -454,7 +454,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         cerCode: '150101',
         quantity: 100,
         unit: 'KG',
-      });
+      })
 
       // Apply all three signatures
       fir.applySignature(
@@ -470,7 +470,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'FRNLCA75D01L736P',
         2
-      );
+      )
 
       fir.applySignature(
         DigitalSignature.create({
@@ -485,7 +485,7 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'RSSMRA80A01H501U',
         2
-      );
+      )
 
       fir.applySignature(
         DigitalSignature.create({
@@ -500,9 +500,9 @@ describe('FIR Aggregate - Digital Signatures', () => {
         }),
         'VRDGPP85M12F839X',
         2
-      );
+      )
 
-      expect(fir.isImmutable()).toBe(true);
-    });
-  });
-});
+      expect(fir.isImmutable()).toBe(true)
+    })
+  })
+})

@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
-import { PermissionRepository } from '../../domain/identity-access/permission.repository.interface';
-import { Permission } from '../../domain/identity-access/permission.entity';
+import { Injectable, Logger } from '@nestjs/common'
+import { PrismaService } from './prisma.service'
+import { PermissionRepository } from '../../domain/identity-access/permission.repository.interface'
+import { Permission } from '../../domain/identity-access/permission.entity'
 
 /**
  * PermissionRepository Prisma Implementation
@@ -10,17 +10,17 @@ import { Permission } from '../../domain/identity-access/permission.entity';
  */
 @Injectable()
 export class PrismaPermissionRepository implements PermissionRepository {
-  private readonly logger = new Logger(PrismaPermissionRepository.name);
+  private readonly logger = new Logger(PrismaPermissionRepository.name)
 
   constructor(private readonly prisma: PrismaService) {}
 
   async findById(permissionId: string): Promise<Permission | null> {
     const dbPermission = await this.prisma.permission.findUnique({
       where: { id: permissionId },
-    });
+    })
 
     if (!dbPermission) {
-      return null;
+      return null
     }
 
     return Permission.fromPersistence({
@@ -33,16 +33,16 @@ export class PrismaPermissionRepository implements PermissionRepository {
       module: dbPermission.module,
       createdAt: dbPermission.createdAt,
       updatedAt: dbPermission.updatedAt,
-    });
+    })
   }
 
   async findByString(permissionString: string): Promise<Permission | null> {
-    const parts = permissionString.split(':');
+    const parts = permissionString.split(':')
     if (parts.length !== 3) {
-      return null;
+      return null
     }
 
-    const [resource, action, scope] = parts;
+    const [resource, action, scope] = parts
 
     const dbPermission = await this.prisma.permission.findFirst({
       where: {
@@ -50,10 +50,10 @@ export class PrismaPermissionRepository implements PermissionRepository {
         action,
         scope,
       },
-    });
+    })
 
     if (!dbPermission) {
-      return null;
+      return null
     }
 
     return Permission.fromPersistence({
@@ -66,14 +66,14 @@ export class PrismaPermissionRepository implements PermissionRepository {
       module: dbPermission.module,
       createdAt: dbPermission.createdAt,
       updatedAt: dbPermission.updatedAt,
-    });
+    })
   }
 
   async findByModule(module: string): Promise<Permission[]> {
     const dbPermissions = await this.prisma.permission.findMany({
       where: { module },
       orderBy: [{ resource: 'asc' }, { action: 'asc' }, { scope: 'asc' }],
-    });
+    })
 
     return dbPermissions.map((dbPerm: any) =>
       Permission.fromPersistence({
@@ -86,14 +86,14 @@ export class PrismaPermissionRepository implements PermissionRepository {
         module: dbPerm.module,
         createdAt: dbPerm.createdAt,
         updatedAt: dbPerm.updatedAt,
-      }),
-    );
+      })
+    )
   }
 
   async findAll(): Promise<Permission[]> {
     const dbPermissions = await this.prisma.permission.findMany({
       orderBy: [{ module: 'asc' }, { resource: 'asc' }, { action: 'asc' }],
-    });
+    })
 
     return dbPermissions.map((dbPerm: any) =>
       Permission.fromPersistence({
@@ -106,8 +106,8 @@ export class PrismaPermissionRepository implements PermissionRepository {
         module: dbPerm.module,
         createdAt: dbPerm.createdAt,
         updatedAt: dbPerm.updatedAt,
-      }),
-    );
+      })
+    )
   }
 
   async findByIds(permissionIds: string[]): Promise<Permission[]> {
@@ -115,7 +115,7 @@ export class PrismaPermissionRepository implements PermissionRepository {
       where: {
         id: { in: permissionIds },
       },
-    });
+    })
 
     return dbPermissions.map((dbPerm: any) =>
       Permission.fromPersistence({
@@ -128,15 +128,15 @@ export class PrismaPermissionRepository implements PermissionRepository {
         module: dbPerm.module,
         createdAt: dbPerm.createdAt,
         updatedAt: dbPerm.updatedAt,
-      }),
-    );
+      })
+    )
   }
 
   async findByRole(roleId: string): Promise<Permission[]> {
     const rolePermissions = await this.prisma.rolePermission.findMany({
       where: { roleId },
       include: { permission: true },
-    });
+    })
 
     return rolePermissions.map((rp: any) =>
       Permission.fromPersistence({
@@ -149,15 +149,15 @@ export class PrismaPermissionRepository implements PermissionRepository {
         module: rp.permission.module,
         createdAt: rp.permission.createdAt,
         updatedAt: rp.permission.updatedAt,
-      }),
-    );
+      })
+    )
   }
 
   async findSensitive(): Promise<Permission[]> {
     const dbPermissions = await this.prisma.permission.findMany({
       where: { isSensitive: true },
       orderBy: [{ resource: 'asc' }, { action: 'asc' }],
-    });
+    })
 
     return dbPermissions.map((dbPerm: any) =>
       Permission.fromPersistence({
@@ -170,12 +170,12 @@ export class PrismaPermissionRepository implements PermissionRepository {
         module: dbPerm.module,
         createdAt: dbPerm.createdAt,
         updatedAt: dbPerm.updatedAt,
-      }),
-    );
+      })
+    )
   }
 
   async save(permission: Permission): Promise<Permission> {
-    const persistence = permission.toPersistence();
+    const persistence = permission.toPersistence()
 
     const dbPermission = await this.prisma.permission.upsert({
       where: { id: persistence.id },
@@ -194,11 +194,11 @@ export class PrismaPermissionRepository implements PermissionRepository {
         description: persistence.description,
         updatedAt: persistence.updatedAt,
       },
-    });
+    })
 
     this.logger.log(
-      `Saved permission ${dbPermission.resource}:${dbPermission.action}:${dbPermission.scope}`,
-    );
+      `Saved permission ${dbPermission.resource}:${dbPermission.action}:${dbPermission.scope}`
+    )
 
     return Permission.fromPersistence({
       id: dbPermission.id,
@@ -210,29 +210,29 @@ export class PrismaPermissionRepository implements PermissionRepository {
       module: dbPermission.module,
       createdAt: dbPermission.createdAt,
       updatedAt: dbPermission.updatedAt,
-    });
+    })
   }
 
   async bulkCreate(permissions: Permission[]): Promise<Permission[]> {
-    const data = permissions.map((perm) => perm.toPersistence());
+    const data = permissions.map(perm => perm.toPersistence())
 
     await this.prisma.permission.createMany({
       data,
       skipDuplicates: true,
-    });
+    })
 
-    this.logger.log(`Bulk created ${permissions.length} permissions`);
+    this.logger.log(`Bulk created ${permissions.length} permissions`)
 
-    return permissions;
+    return permissions
   }
 
   async exists(permissionString: string): Promise<boolean> {
-    const parts = permissionString.split(':');
+    const parts = permissionString.split(':')
     if (parts.length !== 3) {
-      return false;
+      return false
     }
 
-    const [resource, action, scope] = parts;
+    const [resource, action, scope] = parts
 
     const count = await this.prisma.permission.count({
       where: {
@@ -240,8 +240,8 @@ export class PrismaPermissionRepository implements PermissionRepository {
         action,
         scope,
       },
-    });
+    })
 
-    return count > 0;
+    return count > 0
   }
 }

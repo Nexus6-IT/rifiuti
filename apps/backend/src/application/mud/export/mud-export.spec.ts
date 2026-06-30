@@ -49,7 +49,7 @@ describe('MudVersionRegistry (versionamento per anno)', () => {
   it('elenca anni e versioni supportate', () => {
     expect(registry.supportedYears()).toContain(2024)
     expect(registry.listVersions()).toEqual(
-      expect.arrayContaining([{ year: 2024, version: '6.04/24' }]),
+      expect.arrayContaining([{ year: 2024, version: '6.04/24' }])
     )
   })
 })
@@ -69,12 +69,20 @@ describe('MudTracciatoV604_2024.generate', () => {
     rifiuti: [
       // metallo ferroso (rifiuto speciale): 100 kg, 80 a recupero, 20 a smaltimento
       {
-        cerCode: '170405', prodottoKg: 100, recuperoKg: 80, smaltimentoKg: 20,
+        cerCode: '170405',
+        prodottoKg: 100,
+        recuperoKg: 80,
+        smaltimentoKg: 20,
         dr: [
           {
-            codiceFiscale: '33333333333', ragioneSociale: 'Recupero Metalli Srl',
-            istatProvincia: '015', istatComune: '146', indirizzo: 'Via Industria',
-            civico: '5', cap: '20100', quantitaKg: 100,
+            codiceFiscale: '33333333333',
+            ragioneSociale: 'Recupero Metalli Srl',
+            istatProvincia: '015',
+            istatComune: '146',
+            indirizzo: 'Via Industria',
+            civico: '5',
+            cap: '20100',
+            quantitaKg: 100,
           },
         ],
         te: [{ codiceFiscale: '22222222222', ragioneSociale: 'Trasporti Srl' }],
@@ -89,16 +97,16 @@ describe('MudTracciatoV604_2024.generate', () => {
 
     expect(lines[0].startsWith('XX;')).toBe(true)
     expect(lines[0]).toContain('6.04/24')
-    expect(lines.some((l) => l.startsWith('AA;'))).toBe(true)
-    expect(lines.some((l) => l.startsWith('AB;'))).toBe(true)
-    expect(lines.filter((l) => l.startsWith('BA;'))).toHaveLength(2)
-    expect(lines.every((l) => l.endsWith(';'))).toBe(true)
+    expect(lines.some(l => l.startsWith('AA;'))).toBe(true)
+    expect(lines.some(l => l.startsWith('AB;'))).toBe(true)
+    expect(lines.filter(l => l.startsWith('BA;'))).toHaveLength(2)
+    expect(lines.every(l => l.endsWith(';'))).toBe(true)
   })
 
   it('i record hanno la lunghezza fissa esatta del tracciato V6.04/24', () => {
     const out = new MudTracciatoV604_2024().generate(data)
     const lines = out.trim().split('\r\n')
-    const len = (prefix: string) => lines.find((l) => l.startsWith(prefix))!.length
+    const len = (prefix: string) => lines.find(l => l.startsWith(prefix))!.length
 
     expect(len('XX;')).toBe(488)
     expect(len('AA;')).toBe(338)
@@ -120,7 +128,10 @@ describe('MudTracciatoV604_2024.generate', () => {
 
   it('record BA (rifiuto speciale metallo) ha 35 campi e quantità formattate', () => {
     const out = new MudTracciatoV604_2024().generate(data)
-    const ba = out.trim().split('\r\n').find((l) => l.startsWith('BA;'))!
+    const ba = out
+      .trim()
+      .split('\r\n')
+      .find(l => l.startsWith('BA;'))!
 
     // "BA" + 34 campi, ognuno seguito da ; → 35 segmenti + stringa vuota finale
     const segments = ba.split(';')
@@ -144,8 +155,8 @@ describe('MudTracciatoV604_2024.generate', () => {
     const out = new MudTracciatoV604_2024().generate(data)
     const lines = out.trim().split('\r\n')
 
-    const dr = lines.find((l) => l.startsWith('BB;') && l.includes(';DR;'))!
-    const te = lines.find((l) => l.startsWith('BB;') && l.includes(';TE;'))!
+    const dr = lines.find(l => l.startsWith('BB;') && l.includes(';DR;'))!
+    const te = lines.find(l => l.startsWith('BB;') && l.includes(';TE;'))!
     expect(dr).toBeDefined()
     expect(te).toBeDefined()
 
@@ -161,7 +172,7 @@ describe('MudTracciatoV604_2024.generate', () => {
     expect(te).toContain('TRASPORTI SRL')
 
     // BA del CER 170405 riporta i conteggi moduli: 1 TE e 1 DR
-    const ba = lines.find((l) => l.startsWith('BA;') && l.includes(';170405;'))!
+    const ba = lines.find(l => l.startsWith('BA;') && l.includes(';170405;'))!
     expect(ba).toContain('00001') // conteggio moduli (TE e DR = 1)
   })
 })

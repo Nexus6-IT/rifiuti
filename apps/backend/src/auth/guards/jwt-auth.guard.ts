@@ -36,7 +36,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   /**
    * Handle authentication result from passport
    */
-  handleRequest(err: any, user: any, info: any, context: any) {
+  handleRequest(err: any, user: any, _info: any, _context: any) {
     // If there's an error or no user, throw unauthorized
     if (err || !user) {
       throw new UnauthorizedException(err?.message || 'Unauthorized access')

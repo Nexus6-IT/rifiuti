@@ -114,13 +114,9 @@ describe('FIRController', () => {
     })
 
     it('should throw BadRequestException if use case fails', async () => {
-      createFIRUseCase.execute.mockResolvedValue(
-        Result.fail('CER code not found: 99 99 99')
-      )
+      createFIRUseCase.execute.mockResolvedValue(Result.fail('CER code not found: 99 99 99'))
 
-      await expect(controller.create(validDto, mockUser)).rejects.toThrow(
-        BadRequestException
-      )
+      await expect(controller.create(validDto, mockUser)).rejects.toThrow(BadRequestException)
 
       await expect(controller.create(validDto, mockUser)).rejects.toThrow(
         'CER code not found: 99 99 99'
@@ -177,7 +173,7 @@ describe('FIRController', () => {
 
       const result = await controller.list({}, mockUser)
 
-      expect(result.items.length).toBe(2);
+      expect(result.items.length).toBe(2)
       expect(result.total).toBe(2)
       expect(result.page).toBe(1)
       expect(result.limit).toBe(10)
@@ -272,9 +268,10 @@ describe('FIRController', () => {
 
     it('should throw BadRequestException if query fails', async () => {
       listFIRsQueryHandler.execute.mockResolvedValue(Result.fail('Invalid filter parameters'))
-
-      await expect(controller.list({}, mockUser)).rejects.toThrow(BadRequestException) as any;
-      await expect(controller.list({}, mockUser)).rejects.toThrow('Invalid filter parameters') as any;
+      ;(await expect(controller.list({}, mockUser)).rejects.toThrow(BadRequestException)) as any
+      ;(await expect(controller.list({}, mockUser)).rejects.toThrow(
+        'Invalid filter parameters'
+      )) as any
     })
   })
 })

@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Injectable } from '@angular/core'
+import { HttpClient } from '@angular/common/http'
+import { Observable } from 'rxjs'
 
 /**
  * RoleApiService
@@ -11,8 +11,8 @@ import { Observable } from 'rxjs';
   providedIn: 'root',
 })
 export class RoleApiService {
-  private readonly baseUrl = '/api/v1/roles';
-  private readonly userRolesUrl = '/api/v1/user-roles';
+  private readonly baseUrl = '/api/v1/roles'
+  private readonly userRolesUrl = '/api/v1/user-roles'
 
   constructor(private http: HttpClient) {}
 
@@ -21,7 +21,7 @@ export class RoleApiService {
    * List all roles for current tenant
    */
   listRoles(): Observable<RolesResponse> {
-    return this.http.get<RolesResponse>(this.baseUrl);
+    return this.http.get<RolesResponse>(this.baseUrl)
   }
 
   /**
@@ -29,7 +29,7 @@ export class RoleApiService {
    * Get role details with permissions
    */
   getRoleById(roleId: string): Observable<RoleDetailResponse> {
-    return this.http.get<RoleDetailResponse>(`${this.baseUrl}/${roleId}`);
+    return this.http.get<RoleDetailResponse>(`${this.baseUrl}/${roleId}`)
   }
 
   /**
@@ -37,9 +37,7 @@ export class RoleApiService {
    * Get all role assignments for a user
    */
   getUserRoles(userId: string): Observable<UserRolesResponse> {
-    return this.http.get<UserRolesResponse>(
-      `${this.userRolesUrl}/user/${userId}`,
-    );
+    return this.http.get<UserRolesResponse>(`${this.userRolesUrl}/user/${userId}`)
   }
 
   /**
@@ -47,10 +45,7 @@ export class RoleApiService {
    * Assign a role to a user
    */
   assignRole(dto: AssignRoleDto): Observable<UserRoleAssignment> {
-    return this.http.post<UserRoleAssignment>(
-      `${this.userRolesUrl}/assign`,
-      dto,
-    );
+    return this.http.post<UserRoleAssignment>(`${this.userRolesUrl}/assign`, dto)
   }
 
   /**
@@ -58,7 +53,7 @@ export class RoleApiService {
    * Revoke a role assignment
    */
   revokeRole(userRoleId: string): Observable<void> {
-    return this.http.delete<void>(`${this.userRolesUrl}/${userRoleId}`);
+    return this.http.delete<void>(`${this.userRolesUrl}/${userRoleId}`)
   }
 
   /**
@@ -67,7 +62,7 @@ export class RoleApiService {
    * Create custom role (enterprise only)
    */
   createCustomRole(dto: CreateCustomRoleDto): Observable<CustomRoleResponse> {
-    return this.http.post<CustomRoleResponse>(this.baseUrl, dto);
+    return this.http.post<CustomRoleResponse>(this.baseUrl, dto)
   }
 
   /**
@@ -75,7 +70,7 @@ export class RoleApiService {
    * Update custom role
    */
   updateCustomRole(roleId: string, dto: UpdateCustomRoleDto): Observable<CustomRoleResponse> {
-    return this.http.put<CustomRoleResponse>(`${this.baseUrl}/${roleId}`, dto);
+    return this.http.put<CustomRoleResponse>(`${this.baseUrl}/${roleId}`, dto)
   }
 
   /**
@@ -83,26 +78,26 @@ export class RoleApiService {
    * Delete custom role
    */
   deleteCustomRole(roleId: string): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/${roleId}`);
+    return this.http.delete<void>(`${this.baseUrl}/${roleId}`)
   }
 
   /**
    * Alias methods for component compatibility
    */
   getRole(roleId: string): Observable<RoleDetailResponse> {
-    return this.getRoleById(roleId);
+    return this.getRoleById(roleId)
   }
 
   createRole(dto: CreateCustomRoleDto): Observable<CustomRoleResponse> {
-    return this.createCustomRole(dto);
+    return this.createCustomRole(dto)
   }
 
   updateRole(roleId: string, dto: UpdateCustomRoleDto): Observable<CustomRoleResponse> {
-    return this.updateCustomRole(roleId, dto);
+    return this.updateCustomRole(roleId, dto)
   }
 
   deleteRole(roleId: string): Observable<void> {
-    return this.deleteCustomRole(roleId);
+    return this.deleteCustomRole(roleId)
   }
 
   /**
@@ -112,15 +107,20 @@ export class RoleApiService {
   addPermissionsToRole(roleId: string, permissions: string[]): Observable<AddPermissionsResponse> {
     return this.http.post<AddPermissionsResponse>(`${this.baseUrl}/${roleId}/permissions`, {
       permissions,
-    });
+    })
   }
 
   /**
    * DELETE /api/v1/roles/:id/permissions/:permissionId
    * Remove permission from custom role
    */
-  removePermissionFromRole(roleId: string, permissionId: string): Observable<RemovePermissionResponse> {
-    return this.http.delete<RemovePermissionResponse>(`${this.baseUrl}/${roleId}/permissions/${permissionId}`);
+  removePermissionFromRole(
+    roleId: string,
+    permissionId: string
+  ): Observable<RemovePermissionResponse> {
+    return this.http.delete<RemovePermissionResponse>(
+      `${this.baseUrl}/${roleId}/permissions/${permissionId}`
+    )
   }
 }
 
@@ -128,100 +128,100 @@ export class RoleApiService {
  * Response interfaces
  */
 export interface RolesResponse {
-  roles: Role[];
+  roles: Role[]
 }
 
 export interface Role {
-  id: string;
-  name: string;
-  description: string | null;
-  isSystemRole: boolean;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
+  id: string
+  name: string
+  description: string | null
+  isSystemRole: boolean
+  createdBy: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface RoleDetailResponse extends Role {
-  permissions: PermissionDetail[];
+  permissions: PermissionDetail[]
 }
 
 export interface PermissionDetail {
-  id: string;
-  permission: string;
-  description: string;
-  isSensitive: boolean;
-  module: string;
+  id: string
+  permission: string
+  description: string
+  isSensitive: boolean
+  module: string
 }
 
 export interface UserRolesResponse {
-  userRoles: UserRoleAssignment[];
+  userRoles: UserRoleAssignment[]
 }
 
 export interface UserRoleAssignment {
-  id: string;
-  userId: string;
-  roleId: string;
-  assignedBy: string;
-  assignedAt: string;
-  expiresAt: string | null;
-  facilityIds: string[] | null;
-  isDelegated: boolean;
-  isActive: boolean;
+  id: string
+  userId: string
+  roleId: string
+  assignedBy: string
+  assignedAt: string
+  expiresAt: string | null
+  facilityIds: string[] | null
+  isDelegated: boolean
+  isActive: boolean
 }
 
 export interface AssignRoleDto {
-  userId: string;
-  roleId: string;
-  expiresAt?: string;
-  facilityIds?: string[];
-  isDelegated?: boolean;
-  delegationReason?: string;
-  replaceExisting?: boolean;
+  userId: string
+  roleId: string
+  expiresAt?: string
+  facilityIds?: string[]
+  isDelegated?: boolean
+  delegationReason?: string
+  replaceExisting?: boolean
 }
 
 /**
  * T178: Custom Role DTOs
  */
 export interface CreateCustomRoleDto {
-  name: string;
-  description: string;
-  permissions: string[];
+  name: string
+  description: string
+  permissions: string[]
 }
 
 export interface UpdateCustomRoleDto {
-  name?: string;
-  description?: string;
-  permissions?: string[];
+  name?: string
+  description?: string
+  permissions?: string[]
 }
 
 export interface CustomRoleResponse {
-  success: boolean;
+  success: boolean
   data: {
-    id: string;
-    name: string;
-    description: string;
-    permissions: string[];
-    isCustom: boolean;
-    createdBy?: string;
-    createdAt?: string;
-    updatedAt?: string;
-  };
+    id: string
+    name: string
+    description: string
+    permissions: string[]
+    isCustom: boolean
+    createdBy?: string
+    createdAt?: string
+    updatedAt?: string
+  }
 }
 
 export interface AddPermissionsResponse {
-  success: boolean;
+  success: boolean
   data: {
-    id: string;
-    permissions: string[];
-    addedCount: number;
-  };
+    id: string
+    permissions: string[]
+    addedCount: number
+  }
 }
 
 export interface RemovePermissionResponse {
-  success: boolean;
+  success: boolean
   data: {
-    id: string;
-    permissions: string[];
-    removedPermission: string;
-  };
+    id: string
+    permissions: string[]
+    removedPermission: string
+  }
 }

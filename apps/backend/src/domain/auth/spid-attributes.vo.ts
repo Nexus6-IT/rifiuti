@@ -1,6 +1,6 @@
-import { DomainException } from '../shared/domain-exception';
-import { FiscalCode } from '../shared/fiscal-code.vo';
-import { Email } from '../shared/email.vo';
+import { DomainException } from '../shared/domain-exception'
+import { FiscalCode } from '../shared/fiscal-code.vo'
+import { Email } from '../shared/email.vo'
 
 /**
  * SPID Attributes Value Object
@@ -24,14 +24,14 @@ import { Email } from '../shared/email.vo';
  * @see D.M. 59/2023 for digital signature requirements
  */
 export class SPIDAttributes {
-  private readonly fiscalCode: string;
-  private readonly firstName: string;
-  private readonly lastName: string;
-  private readonly email: string;
-  private readonly spidLevel: number; // 1, 2, or 3
-  private readonly issuer: string; // Identity Provider URL
-  private readonly sessionId: string;
-  private readonly authenticatedAt: Date;
+  private readonly fiscalCode: string
+  private readonly firstName: string
+  private readonly lastName: string
+  private readonly email: string
+  private readonly spidLevel: number // 1, 2, or 3
+  private readonly issuer: string // Identity Provider URL
+  private readonly sessionId: string
+  private readonly authenticatedAt: Date
 
   private constructor(
     fiscalCode: string,
@@ -43,50 +43,44 @@ export class SPIDAttributes {
     sessionId: string,
     authenticatedAt: Date
   ) {
-    this.fiscalCode = fiscalCode;
-    this.firstName = firstName;
-    this.lastName = lastName;
-    this.email = email;
-    this.spidLevel = spidLevel;
-    this.issuer = issuer;
-    this.sessionId = sessionId;
-    this.authenticatedAt = authenticatedAt;
+    this.fiscalCode = fiscalCode
+    this.firstName = firstName
+    this.lastName = lastName
+    this.email = email
+    this.spidLevel = spidLevel
+    this.issuer = issuer
+    this.sessionId = sessionId
+    this.authenticatedAt = authenticatedAt
   }
 
   /**
    * Create SPID attributes with validation
    */
   static create(params: {
-    fiscalCode: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    spidLevel: number;
-    issuer: string;
-    sessionId: string;
-    authenticatedAt?: Date;
+    fiscalCode: string
+    firstName: string
+    lastName: string
+    email: string
+    spidLevel: number
+    issuer: string
+    sessionId: string
+    authenticatedAt?: Date
   }): SPIDAttributes {
     // Validate fiscal code
     if (!params.fiscalCode || !FiscalCode.isValid(params.fiscalCode)) {
       throw DomainException.validationFailed(
         'INVALID_FISCAL_CODE',
         `Invalid Italian fiscal code: ${params.fiscalCode}`
-      );
+      )
     }
 
     // Validate required fields
     if (!params.firstName || params.firstName.trim() === '') {
-      throw DomainException.validationFailed(
-        'MISSING_FIRST_NAME',
-        'First name is required'
-      );
+      throw DomainException.validationFailed('MISSING_FIRST_NAME', 'First name is required')
     }
 
     if (!params.lastName || params.lastName.trim() === '') {
-      throw DomainException.validationFailed(
-        'MISSING_LAST_NAME',
-        'Last name is required'
-      );
+      throw DomainException.validationFailed('MISSING_LAST_NAME', 'Last name is required')
     }
 
     // Validate email
@@ -94,7 +88,7 @@ export class SPIDAttributes {
       throw DomainException.validationFailed(
         'INVALID_EMAIL',
         `Invalid email address: ${params.email}`
-      );
+      )
     }
 
     // Validate SPID level
@@ -102,7 +96,7 @@ export class SPIDAttributes {
       throw DomainException.validationFailed(
         'INVALID_SPID_LEVEL',
         `SPID level must be 1, 2, or 3. Received: ${params.spidLevel}`
-      );
+      )
     }
 
     // Validate issuer URL
@@ -110,18 +104,15 @@ export class SPIDAttributes {
       throw DomainException.validationFailed(
         'INVALID_ISSUER',
         `Issuer must be a valid HTTPS URL: ${params.issuer}`
-      );
+      )
     }
 
     // Validate session ID
     if (!params.sessionId || params.sessionId.trim() === '') {
-      throw DomainException.validationFailed(
-        'MISSING_SESSION_ID',
-        'Session ID is required'
-      );
+      throw DomainException.validationFailed('MISSING_SESSION_ID', 'Session ID is required')
     }
 
-    const authenticatedAt = params.authenticatedAt || new Date();
+    const authenticatedAt = params.authenticatedAt || new Date()
 
     return new SPIDAttributes(
       params.fiscalCode.trim().toUpperCase(),
@@ -132,7 +123,7 @@ export class SPIDAttributes {
       params.issuer.trim(),
       params.sessionId.trim(),
       authenticatedAt
-    );
+    )
   }
 
   /**
@@ -140,7 +131,7 @@ export class SPIDAttributes {
    * Level 2 (OTP) or Level 3 (hardware token) required
    */
   canSignDocuments(): boolean {
-    return this.spidLevel >= 2;
+    return this.spidLevel >= 2
   }
 
   /**
@@ -148,15 +139,15 @@ export class SPIDAttributes {
    * Required for signature operations
    */
   isAuthenticationRecent(): boolean {
-    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
-    return this.authenticatedAt > fifteenMinutesAgo;
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000)
+    return this.authenticatedAt > fifteenMinutesAgo
   }
 
   /**
    * Value object equality
    */
   equals(other: SPIDAttributes): boolean {
-    if (!other) return false;
+    if (!other) return false
 
     return (
       this.fiscalCode === other.fiscalCode &&
@@ -166,21 +157,21 @@ export class SPIDAttributes {
       this.spidLevel === other.spidLevel &&
       this.issuer === other.issuer &&
       this.sessionId === other.sessionId
-    );
+    )
   }
 
   /**
    * Serialize to plain object
    */
   toPlainObject(): {
-    fiscalCode: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    spidLevel: number;
-    issuer: string;
-    sessionId: string;
-    authenticatedAt: Date;
+    fiscalCode: string
+    firstName: string
+    lastName: string
+    email: string
+    spidLevel: number
+    issuer: string
+    sessionId: string
+    authenticatedAt: Date
   } {
     return {
       fiscalCode: this.fiscalCode,
@@ -191,44 +182,44 @@ export class SPIDAttributes {
       issuer: this.issuer,
       sessionId: this.sessionId,
       authenticatedAt: this.authenticatedAt,
-    };
+    }
   }
 
   // Getters
   getFiscalCode(): string {
-    return this.fiscalCode;
+    return this.fiscalCode
   }
 
   getFirstName(): string {
-    return this.firstName;
+    return this.firstName
   }
 
   getLastName(): string {
-    return this.lastName;
+    return this.lastName
   }
 
   getFullName(): string {
-    return `${this.firstName} ${this.lastName}`;
+    return `${this.firstName} ${this.lastName}`
   }
 
   getEmail(): string {
-    return this.email;
+    return this.email
   }
 
   getSpidLevel(): number {
-    return this.spidLevel;
+    return this.spidLevel
   }
 
   getIssuer(): string {
-    return this.issuer;
+    return this.issuer
   }
 
   getSessionId(): string {
-    return this.sessionId;
+    return this.sessionId
   }
 
   getAuthenticatedAt(): Date {
-    return this.authenticatedAt;
+    return this.authenticatedAt
   }
 
   /**
@@ -236,10 +227,10 @@ export class SPIDAttributes {
    */
   private static isValidUrl(url: string): boolean {
     try {
-      const parsed = new URL(url);
-      return parsed.protocol === 'https:' || parsed.protocol === 'http:'; // Allow http for local dev
+      const parsed = new URL(url)
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:' // Allow http for local dev
     } catch {
-      return false;
+      return false
     }
   }
 }

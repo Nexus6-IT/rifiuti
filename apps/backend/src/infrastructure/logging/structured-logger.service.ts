@@ -1,5 +1,5 @@
-import { Injectable, LoggerService } from '@nestjs/common';
-import * as winston from 'winston';
+import { Injectable, LoggerService } from '@nestjs/common'
+import * as winston from 'winston'
 
 /**
  * StructuredLoggerService
@@ -16,8 +16,8 @@ import * as winston from 'winston';
  */
 @Injectable()
 export class StructuredLoggerService implements LoggerService {
-  private logger: winston.Logger;
-  private context: string = 'Application';
+  private logger: winston.Logger
+  private context: string = 'Application'
 
   constructor() {
     this.logger = winston.createLogger({
@@ -25,7 +25,7 @@ export class StructuredLoggerService implements LoggerService {
       format: winston.format.combine(
         winston.format.timestamp(),
         winston.format.errors({ stack: true }),
-        winston.format.json(),
+        winston.format.json()
       ),
       defaultMeta: {
         service: 'wasteflow-backend',
@@ -34,10 +34,7 @@ export class StructuredLoggerService implements LoggerService {
       transports: [
         // Console output
         new winston.transports.Console({
-          format: winston.format.combine(
-            winston.format.colorize(),
-            winston.format.simple(),
-          ),
+          format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
         }),
         // File output for errors
         new winston.transports.File({
@@ -49,14 +46,14 @@ export class StructuredLoggerService implements LoggerService {
           filename: 'logs/combined.log',
         }),
       ],
-    });
+    })
   }
 
   /**
    * Set logging context (e.g., controller name, service name)
    */
   setContext(context: string): void {
-    this.context = context;
+    this.context = context
   }
 
   /**
@@ -66,7 +63,7 @@ export class StructuredLoggerService implements LoggerService {
     this.logger.info(message, {
       context: this.context,
       ...this.enrichContext(context),
-    });
+    })
   }
 
   /**
@@ -77,7 +74,7 @@ export class StructuredLoggerService implements LoggerService {
       context: this.context,
       stack: trace,
       ...this.enrichContext(context),
-    });
+    })
   }
 
   /**
@@ -87,7 +84,7 @@ export class StructuredLoggerService implements LoggerService {
     this.logger.warn(message, {
       context: this.context,
       ...this.enrichContext(context),
-    });
+    })
   }
 
   /**
@@ -97,7 +94,7 @@ export class StructuredLoggerService implements LoggerService {
     this.logger.debug(message, {
       context: this.context,
       ...this.enrichContext(context),
-    });
+    })
   }
 
   /**
@@ -107,7 +104,7 @@ export class StructuredLoggerService implements LoggerService {
     this.logger.verbose(message, {
       context: this.context,
       ...this.enrichContext(context),
-    });
+    })
   }
 
   /**
@@ -124,12 +121,12 @@ export class StructuredLoggerService implements LoggerService {
       tenantId: req.user?.tenantId || 'none',
       ip: req.ip,
       userAgent: req.get('user-agent'),
-    };
+    }
 
     if (res.statusCode >= 400) {
-      this.logger.warn('HTTP request failed', logData);
+      this.logger.warn('HTTP request failed', logData)
     } else {
-      this.logger.info('HTTP request completed', logData);
+      this.logger.info('HTTP request completed', logData)
     }
   }
 
@@ -142,12 +139,12 @@ export class StructuredLoggerService implements LoggerService {
       duration: `${duration}ms`,
       recordCount: recordCount || 0,
       query: query.substring(0, 200), // Truncate long queries
-    };
+    }
 
     if (duration > 100) {
-      this.logger.warn('Slow database query detected', logData);
+      this.logger.warn('Slow database query detected', logData)
     } else {
-      this.logger.debug('Database query executed', logData);
+      this.logger.debug('Database query executed', logData)
     }
   }
 
@@ -160,7 +157,7 @@ export class StructuredLoggerService implements LoggerService {
       key,
       hit,
       duration: duration ? `${duration}ms` : undefined,
-    });
+    })
   }
 
   /**
@@ -171,7 +168,7 @@ export class StructuredLoggerService implements LoggerService {
       type: 'business_event',
       eventType,
       ...data,
-    });
+    })
   }
 
   /**
@@ -182,7 +179,7 @@ export class StructuredLoggerService implements LoggerService {
       type: 'security_event',
       eventType,
       ...data,
-    });
+    })
   }
 
   /**
@@ -194,20 +191,20 @@ export class StructuredLoggerService implements LoggerService {
       name,
       value,
       unit,
-    });
+    })
   }
 
   /**
    * Enrich log context with request data
    */
   private enrichContext(context: any): any {
-    if (!context) return {};
+    if (!context) return {}
 
     return {
       correlationId: context.correlationId,
       userId: context.userId,
       tenantId: context.tenantId,
       ...context,
-    };
+    }
   }
 }

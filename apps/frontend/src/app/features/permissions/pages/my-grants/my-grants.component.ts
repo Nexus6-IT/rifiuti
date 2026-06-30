@@ -1,15 +1,18 @@
-import { Component, OnInit, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { CardModule } from 'primeng/card';
-import { ButtonModule } from 'primeng/button';
-import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { MessageModule } from 'primeng/message';
-import { DialogService } from 'primeng/dynamicdialog';
-import { MessageService } from 'primeng/api';
-import { TemporaryPermissionApiService, PermissionGrant } from '../../services/temporary-permission-api.service';
-import { PermissionRequestDialogComponent } from '../../components/permission-request-dialog/permission-request-dialog.component';
+import { Component, OnInit, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { CardModule } from 'primeng/card'
+import { ButtonModule } from 'primeng/button'
+import { TableModule } from 'primeng/table'
+import { TagModule } from 'primeng/tag'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { MessageModule } from 'primeng/message'
+import { DialogService } from 'primeng/dynamicdialog'
+import { MessageService } from 'primeng/api'
+import {
+  TemporaryPermissionApiService,
+  PermissionGrant,
+} from '../../services/temporary-permission-api.service'
+import { PermissionRequestDialogComponent } from '../../components/permission-request-dialog/permission-request-dialog.component'
 
 /**
  * MyGrantsComponent
@@ -33,7 +36,9 @@ import { PermissionRequestDialogComponent } from '../../components/permission-re
       <header class="page-header">
         <div class="page-header__titles">
           <h1 class="page-title">I miei permessi temporanei</h1>
-          <p class="page-subtitle">Visualizza e gestisci le tue concessioni di permessi temporanei</p>
+          <p class="page-subtitle">
+            Visualizza e gestisci le tue concessioni di permessi temporanei
+          </p>
         </div>
         <div class="page-actions">
           <button
@@ -125,7 +130,9 @@ import { PermissionRequestDialogComponent } from '../../components/permission-re
                     @if (grant.status === 'approved') {
                       <div class="approval-info">
                         <div><strong>Approvato da:</strong> {{ grant.approvedBy }}</div>
-                        <div><small>{{ formatDate(grant.approvedAt!) }}</small></div>
+                        <div>
+                          <small>{{ formatDate(grant.approvedAt!) }}</small>
+                        </div>
                       </div>
                     }
                     @if (grant.status === 'rejected') {
@@ -147,69 +154,77 @@ import { PermissionRequestDialogComponent } from '../../components/permission-re
       }
     </div>
   `,
-  styles: [`
-    .loading-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--spacing-base);
-      padding: var(--spacing-2xl);
-      color: var(--text-secondary);
-    }
+  styles: [
+    `
+      .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--spacing-base);
+        padding: var(--spacing-2xl);
+        color: var(--text-secondary);
+      }
 
-    .permissions-cell {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-xs);
-    }
+      .permissions-cell {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+      }
 
-    .permissions-cell code {
-      font-size: var(--font-size-xs);
-      background: var(--color-gray-100);
-      padding: var(--spacing-xs) var(--spacing-sm);
-      border-radius: var(--radius-base);
-      font-family: var(--font-family-mono);
-    }
+      .permissions-cell code {
+        font-size: var(--font-size-xs);
+        background: var(--color-gray-100);
+        padding: var(--spacing-xs) var(--spacing-sm);
+        border-radius: var(--radius-base);
+        font-family: var(--font-family-mono);
+      }
 
-    .more-count {
-      font-size: var(--font-size-xs);
-      color: var(--text-tertiary);
-    }
+      .more-count {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+      }
 
-    .time-cell { font-size: var(--font-size-sm); }
-    .approval-info { font-size: var(--font-size-sm); }
-    .status-text { color: var(--text-tertiary); }
-  `],
+      .time-cell {
+        font-size: var(--font-size-sm);
+      }
+      .approval-info {
+        font-size: var(--font-size-sm);
+      }
+      .status-text {
+        color: var(--text-tertiary);
+      }
+    `,
+  ],
 })
 export class MyGrantsComponent implements OnInit {
-  isLoading = signal(false);
-  error = signal<string | null>(null);
-  grants = signal<PermissionGrant[]>([]);
+  isLoading = signal(false)
+  error = signal<string | null>(null)
+  grants = signal<PermissionGrant[]>([])
 
   constructor(
     private apiService: TemporaryPermissionApiService,
     private dialogService: DialogService,
-    private messageService: MessageService,
+    private messageService: MessageService
   ) {}
 
   ngOnInit(): void {
-    this.loadGrants();
+    this.loadGrants()
   }
 
   loadGrants(): void {
-    this.isLoading.set(true);
-    this.error.set(null);
+    this.isLoading.set(true)
+    this.error.set(null)
 
     this.apiService.listMyGrants().subscribe({
-      next: (response) => {
-        this.grants.set(response.data.grants);
-        this.isLoading.set(false);
+      next: response => {
+        this.grants.set(response.data.grants)
+        this.isLoading.set(false)
       },
-      error: (error) => {
-        this.error.set(`Impossibile caricare le concessioni: ${error.message}`);
-        this.isLoading.set(false);
+      error: error => {
+        this.error.set(`Impossibile caricare le concessioni: ${error.message}`)
+        this.isLoading.set(false)
       },
-    });
+    })
   }
 
   openRequestDialog(): void {
@@ -217,32 +232,32 @@ export class MyGrantsComponent implements OnInit {
       header: 'Richiedi permessi temporanei',
       width: '600px',
       modal: true,
-    });
+    })
 
-    ref.onClose.subscribe((result) => {
+    ref.onClose.subscribe(result => {
       if (result?.success) {
-        this.loadGrants(); // Refresh list
+        this.loadGrants() // Refresh list
       }
-    });
+    })
   }
 
   getStatusLabel(grant: PermissionGrant): string {
-    if (grant.status === 'approved' && grant.isActive) return 'Attivo';
-    if (grant.status === 'approved' && grant.isExpired) return 'Scaduto';
-    if (grant.status === 'pending') return 'In attesa';
-    if (grant.status === 'rejected') return 'Rifiutato';
-    if (grant.status === 'revoked') return 'Revocato';
-    return grant.status;
+    if (grant.status === 'approved' && grant.isActive) return 'Attivo'
+    if (grant.status === 'approved' && grant.isExpired) return 'Scaduto'
+    if (grant.status === 'pending') return 'In attesa'
+    if (grant.status === 'rejected') return 'Rifiutato'
+    if (grant.status === 'revoked') return 'Revocato'
+    return grant.status
   }
 
   getStatusSeverity(grant: PermissionGrant): 'success' | 'info' | 'warning' | 'danger' {
-    if (grant.isActive) return 'success';
-    if (grant.status === 'pending') return 'warning';
-    if (grant.status === 'rejected' || grant.status === 'revoked') return 'danger';
-    return 'info';
+    if (grant.isActive) return 'success'
+    if (grant.status === 'pending') return 'warning'
+    if (grant.status === 'rejected' || grant.status === 'revoked') return 'danger'
+    return 'info'
   }
 
   formatDate(dateStr: string): string {
-    return new Date(dateStr).toLocaleString('it-IT');
+    return new Date(dateStr).toLocaleString('it-IT')
   }
 }

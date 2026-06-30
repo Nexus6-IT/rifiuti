@@ -1,6 +1,12 @@
-import { inject } from '@angular/core';
-import { Router, CanActivateFn, ActivatedRouteSnapshot, RouterStateSnapshot, UrlTree } from '@angular/router';
-import { AuthService } from '../services/auth.service';
+import { inject } from '@angular/core'
+import {
+  Router,
+  CanActivateFn,
+  ActivatedRouteSnapshot,
+  RouterStateSnapshot,
+  UrlTree,
+} from '@angular/router'
+import { AuthService } from '../services/auth.service'
 
 /**
  * Auth Guard
@@ -19,28 +25,28 @@ export const authGuard: CanActivateFn = (
   route: ActivatedRouteSnapshot,
   state: RouterStateSnapshot
 ): boolean | UrlTree => {
-  const authService = inject(AuthService);
-  const router = inject(Router);
+  const authService = inject(AuthService)
+  const router = inject(Router)
 
   // Token presente e NON scaduto → accesso consentito.
   if (authService.isTokenValid()) {
-    return true;
+    return true
   }
 
   // Sessione assente o scaduta: pulizia + redirect alla login con returnUrl.
-  authService.clearSession();
-  const returnUrl = state.url;
+  authService.clearSession()
+  const returnUrl = state.url
   return router.createUrlTree(['/login'], {
     queryParams: { returnUrl },
-  });
-};
+  })
+}
 
 /**
  * Legacy class-based guard (kept for backward compatibility)
  * Note: This is exported for legacy code but should not be used in new code
  * @deprecated Use authGuard functional guard instead
  */
-export const AuthGuard = authGuard;
+export const AuthGuard = authGuard
 
 /**
  * SPID Level Guard (Legacy class-based)
@@ -50,18 +56,18 @@ export const AuthGuard = authGuard;
  * @deprecated Use functional guard pattern instead
  */
 export class SpidLevelGuard {
-  private readonly authService = inject(AuthService);
-  private readonly router = inject(Router);
+  private readonly authService = inject(AuthService)
+  private readonly router = inject(Router)
 
   canActivate(
     route: ActivatedRouteSnapshot,
     state: RouterStateSnapshot
   ): Promise<boolean | UrlTree> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       this.authService.getSpidStatus().subscribe({
-        next: (status) => {
+        next: status => {
           if (status.canSignDocuments) {
-            resolve(true);
+            resolve(true)
           } else {
             // Redirect to re-authentication or upgrade page
             resolve(
@@ -71,13 +77,13 @@ export class SpidLevelGuard {
                   reason: status.reason,
                 },
               })
-            );
+            )
           }
         },
         error: () => {
-          resolve(this.router.createUrlTree(['/login']));
+          resolve(this.router.createUrlTree(['/login']))
         },
-      });
-    });
+      })
+    })
   }
 }

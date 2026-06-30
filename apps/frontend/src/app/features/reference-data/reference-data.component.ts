@@ -1,33 +1,33 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
-import { InputTextModule } from 'primeng/inputtext';
-import { SelectButtonModule } from 'primeng/selectbutton';
-import { DropdownModule } from 'primeng/dropdown';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { ConfirmDialogModule } from 'primeng/confirmdialog';
-import { ConfirmationService } from 'primeng/api';
-import { AuthService } from '../../core/services/auth.service';
-import { ToastService } from '../../core/services/toast.service';
+import { Component, OnInit, computed, inject, signal } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { ButtonModule } from 'primeng/button'
+import { TableModule } from 'primeng/table'
+import { TagModule } from 'primeng/tag'
+import { InputTextModule } from 'primeng/inputtext'
+import { SelectButtonModule } from 'primeng/selectbutton'
+import { DropdownModule } from 'primeng/dropdown'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
+import { ConfirmationService } from 'primeng/api'
+import { AuthService } from '../../core/services/auth.service'
+import { ToastService } from '../../core/services/toast.service'
 import {
   ReferenceDataService,
   ReferenceDataStatus,
   ReferenceDataset,
   AtecoCode,
   IstatComune,
-} from './reference-data.service';
+} from './reference-data.service'
 
-const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN'];
+const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
 
-type SearchTipo = 'comuni' | 'ateco';
+type SearchTipo = 'comuni' | 'ateco'
 
 interface DatasetRow {
-  key: keyof ReferenceDataStatus;
-  label: string;
-  count: number;
+  key: keyof ReferenceDataStatus
+  label: string
+  count: number
 }
 
 /**
@@ -58,7 +58,9 @@ interface DatasetRow {
       <header class="page-header">
         <div class="page-header__titles">
           <h1 class="page-title">Dati di riferimento</h1>
-          <p class="page-subtitle">Stato delle tabelle condivise ISTAT/ATECO, ricerca e aggiornamento</p>
+          <p class="page-subtitle">
+            Stato delle tabelle condivise ISTAT/ATECO, ricerca e aggiornamento
+          </p>
         </div>
         <div class="page-actions">
           <p-button
@@ -90,16 +92,27 @@ interface DatasetRow {
       <!-- Stato popolamento: loading/error -->
       <section *ngIf="loadingStatus() && !status()" class="surface-card mb-4">
         <div class="flex justify-content-center p-4">
-          <p-progressSpinner styleClass="w-3rem h-3rem" ariaLabel="Caricamento stato dataset"></p-progressSpinner>
+          <p-progressSpinner
+            styleClass="w-3rem h-3rem"
+            ariaLabel="Caricamento stato dataset"
+          ></p-progressSpinner>
         </div>
       </section>
 
       <section *ngIf="statusError() && !loadingStatus()" class="surface-card mb-4">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger" aria-hidden="true"></i>
+          <i
+            class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger"
+            aria-hidden="true"
+          ></i>
           <span class="empty-state__title">Errore di caricamento</span>
           <p>Impossibile caricare lo stato dei dati di riferimento.</p>
-          <p-button label="Riprova" icon="pi pi-refresh" [outlined]="true" (onClick)="loadStatus()"></p-button>
+          <p-button
+            label="Riprova"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            (onClick)="loadStatus()"
+          ></p-button>
         </div>
       </section>
 
@@ -127,7 +140,9 @@ interface DatasetRow {
               [(ngModel)]="query"
               (keyup.enter)="search()"
               [placeholder]="searchTipo === 'comuni' ? 'es. Milano' : 'es. 38 o raccolta rifiuti'"
-              [attr.aria-label]="searchTipo === 'comuni' ? 'Cerca un comune' : 'Cerca un codice ATECO'"
+              [attr.aria-label]="
+                searchTipo === 'comuni' ? 'Cerca un comune' : 'Cerca un codice ATECO'
+              "
             />
           </div>
           <div class="field col-12 md:col-2">
@@ -158,7 +173,9 @@ interface DatasetRow {
             <ng-template pTemplate="body" let-c>
               <tr>
                 <td>{{ c.code }}</td>
-                <td><strong>{{ c.name }}</strong></td>
+                <td>
+                  <strong>{{ c.name }}</strong>
+                </td>
                 <td class="text-center">{{ c.provinciaSigla }}</td>
                 <td class="text-center">{{ c.cap || '-' }}</td>
                 <td class="text-center">{{ c.codiceCatastale || '-' }}</td>
@@ -188,7 +205,9 @@ interface DatasetRow {
             </ng-template>
             <ng-template pTemplate="body" let-a>
               <tr>
-                <td><strong>{{ a.code }}</strong></td>
+                <td>
+                  <strong>{{ a.code }}</strong>
+                </td>
                 <td>{{ a.description }}</td>
               </tr>
             </ng-template>
@@ -217,8 +236,8 @@ interface DatasetRow {
 
         <ng-container *ngIf="isAdmin()">
           <p class="text-secondary">
-            Ripopola i dati dalle sorgenti ufficiali. L'operazione viene eseguita in background
-            e può richiedere alcuni minuti; aggiorna lo stato per verificare i nuovi conteggi.
+            Ripopola i dati dalle sorgenti ufficiali. L'operazione viene eseguita in background e
+            può richiedere alcuni minuti; aggiorna lo stato per verificare i nuovi conteggi.
           </p>
           <div class="grid formgrid" style="align-items: end;">
             <div class="field col-12 md:col-5">
@@ -254,66 +273,82 @@ interface DatasetRow {
         font-size: var(--font-size-lg);
         margin: 0;
       }
-      .text-right { text-align: right; }
-      .text-center { text-align: center; }
-      .text-secondary { color: var(--text-secondary); }
-      .empty-state--compact { padding: var(--spacing-lg); }
-      .empty-state__icon--danger { color: var(--color-danger); }
-      .mb-4 { margin-bottom: var(--spacing-xl); }
-      .mb-3 { margin-bottom: var(--spacing-base); }
-      .mb-2 { margin-bottom: var(--spacing-sm); }
+      .text-right {
+        text-align: right;
+      }
+      .text-center {
+        text-align: center;
+      }
+      .text-secondary {
+        color: var(--text-secondary);
+      }
+      .empty-state--compact {
+        padding: var(--spacing-lg);
+      }
+      .empty-state__icon--danger {
+        color: var(--color-danger);
+      }
+      .mb-4 {
+        margin-bottom: var(--spacing-xl);
+      }
+      .mb-3 {
+        margin-bottom: var(--spacing-base);
+      }
+      .mb-2 {
+        margin-bottom: var(--spacing-sm);
+      }
     `,
   ],
 })
 export class ReferenceDataComponent implements OnInit {
-  private readonly referenceData = inject(ReferenceDataService);
-  private readonly auth = inject(AuthService);
-  private readonly toast = inject(ToastService);
-  private readonly confirm = inject(ConfirmationService);
+  private readonly referenceData = inject(ReferenceDataService)
+  private readonly auth = inject(AuthService)
+  private readonly toast = inject(ToastService)
+  private readonly confirm = inject(ConfirmationService)
 
   // Stato popolamento
-  readonly status = signal<ReferenceDataStatus | null>(null);
-  readonly loadingStatus = signal(false);
-  readonly statusError = signal(false);
+  readonly status = signal<ReferenceDataStatus | null>(null)
+  readonly loadingStatus = signal(false)
+  readonly statusError = signal(false)
 
   // Ricerca
-  readonly comuni = signal<IstatComune[]>([]);
-  readonly ateco = signal<AtecoCode[]>([]);
-  readonly searching = signal(false);
-  readonly searched = signal(false);
+  readonly comuni = signal<IstatComune[]>([])
+  readonly ateco = signal<AtecoCode[]>([])
+  readonly searching = signal(false)
+  readonly searched = signal(false)
 
   // Reseed
-  readonly reseeding = signal(false);
+  readonly reseeding = signal(false)
 
   readonly isAdmin = computed(() => {
-    const role = this.auth.currentUser()?.role;
-    return !!role && ADMIN_ROLES.includes(role);
-  });
+    const role = this.auth.currentUser()?.role
+    return !!role && ADMIN_ROLES.includes(role)
+  })
 
   readonly datasetRows = computed<DatasetRow[]>(() => {
-    const s = this.status();
-    if (!s) return [];
+    const s = this.status()
+    if (!s) return []
     return [
       { key: 'ateco', label: 'Codici ATECO', count: s.ateco },
       { key: 'nazioni', label: 'Nazioni (ISTAT)', count: s.nazioni },
       { key: 'province', label: 'Province (ISTAT)', count: s.province },
       { key: 'comuni', label: 'Comuni (ISTAT)', count: s.comuni },
-    ];
-  });
+    ]
+  })
 
   readonly emptyMessage = computed(() =>
-    this.searched() ? 'Nessun risultato trovato.' : 'Inserisci un termine di ricerca.',
-  );
+    this.searched() ? 'Nessun risultato trovato.' : 'Inserisci un termine di ricerca.'
+  )
 
   // Form state
-  searchTipo: SearchTipo = 'comuni';
-  query = '';
-  reseedDataset: ReferenceDataset | null = null;
+  searchTipo: SearchTipo = 'comuni'
+  query = ''
+  reseedDataset: ReferenceDataset | null = null
 
   readonly tipoOptions = [
     { label: 'Comuni', value: 'comuni' as SearchTipo },
     { label: 'ATECO', value: 'ateco' as SearchTipo },
-  ];
+  ]
 
   readonly datasetOptions: { label: string; value: ReferenceDataset | null }[] = [
     { label: 'Tutti i dataset', value: null },
@@ -321,69 +356,69 @@ export class ReferenceDataComponent implements OnInit {
     { label: 'Nazioni (ISTAT)', value: 'nazioni' },
     { label: 'Province (ISTAT)', value: 'province' },
     { label: 'Comuni (ISTAT)', value: 'comuni' },
-  ];
+  ]
 
   ngOnInit(): void {
-    this.loadStatus();
+    this.loadStatus()
   }
 
   loadStatus(): void {
-    this.loadingStatus.set(true);
-    this.statusError.set(false);
+    this.loadingStatus.set(true)
+    this.statusError.set(false)
     this.referenceData.getStatus().subscribe({
-      next: (s) => {
-        this.status.set(s);
-        this.loadingStatus.set(false);
+      next: s => {
+        this.status.set(s)
+        this.loadingStatus.set(false)
       },
       error: () => {
-        this.loadingStatus.set(false);
-        this.statusError.set(true);
-        this.toast.error('Impossibile caricare lo stato dei dati di riferimento');
+        this.loadingStatus.set(false)
+        this.statusError.set(true)
+        this.toast.error('Impossibile caricare lo stato dei dati di riferimento')
       },
-    });
+    })
   }
 
   onTipoChange(): void {
-    this.comuni.set([]);
-    this.ateco.set([]);
-    this.searched.set(false);
+    this.comuni.set([])
+    this.ateco.set([])
+    this.searched.set(false)
   }
 
   search(): void {
-    const q = this.query.trim();
-    if (!q) return;
-    this.searching.set(true);
+    const q = this.query.trim()
+    if (!q) return
+    this.searching.set(true)
 
     if (this.searchTipo === 'comuni') {
       this.referenceData.searchComuni(q).subscribe({
-        next: (res) => {
-          this.comuni.set(res || []);
-          this.searched.set(true);
-          this.searching.set(false);
+        next: res => {
+          this.comuni.set(res || [])
+          this.searched.set(true)
+          this.searching.set(false)
         },
         error: () => {
-          this.searching.set(false);
-          this.toast.error('Errore nella ricerca dei comuni');
+          this.searching.set(false)
+          this.toast.error('Errore nella ricerca dei comuni')
         },
-      });
+      })
     } else {
       this.referenceData.searchAteco(q).subscribe({
-        next: (res) => {
-          this.ateco.set(res || []);
-          this.searched.set(true);
-          this.searching.set(false);
+        next: res => {
+          this.ateco.set(res || [])
+          this.searched.set(true)
+          this.searching.set(false)
         },
         error: () => {
-          this.searching.set(false);
-          this.toast.error('Errore nella ricerca dei codici ATECO');
+          this.searching.set(false)
+          this.toast.error('Errore nella ricerca dei codici ATECO')
         },
-      });
+      })
     }
   }
 
   confirmReseed(): void {
-    const opt = this.datasetOptions.find((o) => o.value === this.reseedDataset);
-    const label = opt && opt.value ? `il dataset "${opt.label}"` : 'tutti i dataset';
+    const opt = this.datasetOptions.find(o => o.value === this.reseedDataset)
+    const label = opt && opt.value ? `il dataset "${opt.label}"` : 'tutti i dataset'
     this.confirm.confirm({
       message: `Confermi di voler ripopolare ${label}? L'operazione viene eseguita in background e sovrascrive i dati esistenti.`,
       header: 'Conferma aggiornamento',
@@ -391,22 +426,22 @@ export class ReferenceDataComponent implements OnInit {
       acceptLabel: 'Aggiorna',
       rejectLabel: 'Annulla',
       accept: () => this.reseed(),
-    });
+    })
   }
 
   private reseed(): void {
-    this.reseeding.set(true);
+    this.reseeding.set(true)
     this.referenceData.reseed(this.reseedDataset ?? undefined).subscribe({
-      next: (res) => {
-        this.reseeding.set(false);
+      next: res => {
+        this.reseeding.set(false)
         this.toast.success(
-          `Aggiornamento avviato (${res.dataset}). Il completamento può richiedere alcuni minuti.`,
-        );
+          `Aggiornamento avviato (${res.dataset}). Il completamento può richiedere alcuni minuti.`
+        )
       },
-      error: (err) => {
-        this.reseeding.set(false);
-        this.toast.error(err?.error?.message || 'Errore nell\'avvio dell\'aggiornamento');
+      error: err => {
+        this.reseeding.set(false)
+        this.toast.error(err?.error?.message || "Errore nell'avvio dell'aggiornamento")
       },
-    });
+    })
   }
 }

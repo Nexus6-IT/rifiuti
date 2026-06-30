@@ -10,16 +10,16 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
-} from '@nestjs/common';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../../auth/guards/roles.guard';
-import { Roles } from '../../auth/decorators/roles.decorator';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator';
-import { TenantService } from '../../application/admin/tenant.service';
-import { CreateTenantDto } from './dto/create-tenant.dto';
-import { UpdateTenantDto } from './dto/update-tenant.dto';
-import { SetTenantStatusDto } from './dto/set-tenant-status.dto';
+} from '@nestjs/common'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
+import { CurrentUser } from '../../auth/decorators/current-user.decorator'
+import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { TenantService } from '../../application/admin/tenant.service'
+import { CreateTenantDto } from './dto/create-tenant.dto'
+import { UpdateTenantDto } from './dto/update-tenant.dto'
+import { SetTenantStatusDto } from './dto/set-tenant-status.dto'
 
 /**
  * TenantController (admin)
@@ -46,7 +46,7 @@ export class TenantController {
   @Get()
   @Roles('SUPER_ADMIN', 'ADMIN')
   async list(@CurrentUser() currentUser: CurrentUserPayload) {
-    return this.tenantService.list(currentUser);
+    return this.tenantService.list(currentUser)
   }
 
   /**
@@ -56,7 +56,7 @@ export class TenantController {
   @Get(':id')
   @Roles('SUPER_ADMIN')
   async getById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tenantService.getById(id);
+    return this.tenantService.getById(id)
   }
 
   /**
@@ -67,11 +67,8 @@ export class TenantController {
   @Post()
   @Roles('SUPER_ADMIN', 'ADMIN')
   @HttpCode(HttpStatus.CREATED)
-  async create(
-    @CurrentUser() currentUser: CurrentUserPayload,
-    @Body() dto: CreateTenantDto,
-  ) {
-    return this.tenantService.create(currentUser, dto);
+  async create(@CurrentUser() currentUser: CurrentUserPayload, @Body() dto: CreateTenantDto) {
+    return this.tenantService.create(currentUser, dto)
   }
 
   /**
@@ -84,9 +81,9 @@ export class TenantController {
   async update(
     @CurrentUser() currentUser: CurrentUserPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateTenantDto,
+    @Body() dto: UpdateTenantDto
   ) {
-    return this.tenantService.update(currentUser, id, dto);
+    return this.tenantService.update(currentUser, id, dto)
   }
 
   /**
@@ -96,10 +93,7 @@ export class TenantController {
    */
   @Patch(':id/status')
   @Roles('SUPER_ADMIN')
-  async setStatus(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: SetTenantStatusDto,
-  ) {
-    return this.tenantService.setStatus(id, dto.status);
+  async setStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetTenantStatusDto) {
+    return this.tenantService.setStatus(id, dto.status)
   }
 }

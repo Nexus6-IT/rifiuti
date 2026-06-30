@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { PassportStrategy } from '@nestjs/passport';
-import { Strategy as SamlStrategy } from 'passport-saml';
-import { ConfigService } from '@nestjs/config';
-import { LoggerService } from '../../core/logger/logger.service';
-import { UserRepository } from '../persistence/user.repository';
-import { HandleSPIDCallbackUseCase } from '../../application/auth/handle-spid-callback.use-case';
-import { DomainException } from '../../domain/shared/domain-exception';
+import { Injectable } from '@nestjs/common'
+import { PassportStrategy } from '@nestjs/passport'
+import { Strategy as SamlStrategy } from 'passport-saml'
+import { ConfigService } from '@nestjs/config'
+import { LoggerService } from '../../core/logger/logger.service'
+import { UserRepository } from '../persistence/user.repository'
+import { HandleSPIDCallbackUseCase } from '../../application/auth/handle-spid-callback.use-case'
+import { DomainException } from '../../domain/shared/domain-exception'
 
 /**
  * Keycloak SAML Strategy
@@ -35,7 +35,7 @@ export class KeycloakSamlStrategy extends PassportStrategy(SamlStrategy, 'saml')
     private readonly configService: ConfigService,
     private readonly logger: LoggerService,
     private readonly userRepository: UserRepository,
-    private readonly handleSPIDCallbackUseCase: HandleSPIDCallbackUseCase,
+    private readonly handleSPIDCallbackUseCase: HandleSPIDCallbackUseCase
   ) {
     super({
       callbackUrl: configService.get<string>('SAML_CALLBACK_URL'),
@@ -43,9 +43,9 @@ export class KeycloakSamlStrategy extends PassportStrategy(SamlStrategy, 'saml')
       issuer: configService.get<string>('SAML_ISSUER') || 'wasteflow-backend',
       cert: configService.get<string>('SAML_CERT'),
       acceptedClockSkewMs: 5000, // 5 second clock skew tolerance
-    });
+    })
 
-    this.logger.setContext('KeycloakSamlStrategy');
+    this.logger.setContext('KeycloakSamlStrategy')
   }
 
   /**
@@ -58,61 +58,40 @@ export class KeycloakSamlStrategy extends PassportStrategy(SamlStrategy, 'saml')
       issuer: profile.issuer,
       nameID: profile.nameID,
       sessionIndex: profile.sessionIndex,
-    });
+    })
 
     try {
       // Extract SAML attributes with multiple naming conventions
-      const attributes = profile.attributes || profile;
+      const attributes = profile.attributes || profile
 
       const fiscalCode =
-        attributes.fiscalCode ||
-        attributes.fiscalNumber ||
-        attributes.fiscalcode ||
-        profile.nameID;
+        attributes.fiscalCode || attributes.fiscalNumber || attributes.fiscalcode || profile.nameID
 
-      const firstName =
-        attributes.name ||
-        attributes.givenName ||
-        attributes.firstName;
+      const firstName = attributes.name || attributes.givenName || attributes.firstName
 
-      const lastName =
-        attributes.familyName ||
-        attributes.surname ||
-        attributes.lastName;
+      const lastName = attributes.familyName || attributes.surname || attributes.lastName
 
-      const email =
-        attributes.email ||
-        attributes.emailAddress ||
-        attributes.mail;
+      const email = attributes.email || attributes.emailAddress || attributes.mail
 
       const spidLevelStr =
-        attributes.spidCode ||
-        attributes.spidLevel ||
-        attributes.authLevel ||
-        '2'; // Default to Level 2
+        attributes.spidCode || attributes.spidLevel || attributes.authLevel || '2' // Default to Level 2
 
-      const spidLevel = parseInt(spidLevelStr, 10);
+      const spidLevel = parseInt(spidLevelStr, 10)
 
       // Validate required attributes
       if (!fiscalCode) {
         throw DomainException.validationFailed(
           'MISSING_FISCAL_CODE',
           'Fiscal code not found in SAML assertion'
-        );
+        )
       }
 
       if (!firstName || !lastName) {
-        throw DomainException.validationFailed(
-          'MISSING_NAME',
-          'First name and last name required'
-        );
+        throw DomainException.validationFailed('MISSING_NAME', 'First name and last name required')
       }
 
       if (!email) {
-        throw DomainException.validationFailed(
-          'MISSING_EMAIL',
-          'Email not found in SAML assertion'
-        );
+        throw DomainException.validationFailed('MISSING_EMAIL', 'Email not found in SAML assertion')
       }
 
       this.logger.info('SAML attributes extracted', {
@@ -122,7 +101,7 @@ export class KeycloakSamlStrategy extends PassportStrategy(SamlStrategy, 'saml')
         email,
         spidLevel,
         issuer: profile.issuer,
-      });
+      })
 
       // Handle SPID callback via use case
       const result = await this.handleSPIDCallbackUseCase.execute({
@@ -136,24 +115,24 @@ export class KeycloakSamlStrategy extends PassportStrategy(SamlStrategy, 'saml')
         // For new users, tenantId will need to be determined
         // This could come from invitation token or default tenant
         tenantId: this.getDefaultTenantId(),
-      });
+      })
 
       this.logger.info('SAML authentication successful', {
         userId: result.user.id,
         fiscalCode: result.user.fiscalCode,
         spidLevel: result.user.spidLevel,
         canSignDocuments: result.user.canSignDocuments,
-      });
+      })
 
       // Return user for Passport
-      return done(null, result);
+      return done(null, result)
     } catch (error: any) {
       this.logger.error('SAML validation failed', error, {
         issuer: profile.issuer,
         sessionIndex: profile.sessionIndex,
-      });
+      })
 
-      return done(error, null);
+      return done(error, null)
     }
   }
 
@@ -162,6 +141,6 @@ export class KeycloakSamlStrategy extends PassportStrategy(SamlStrategy, 'saml')
    * In production, this would come from invitation or organization mapping
    */
   private getDefaultTenantId(): string {
-    return this.configService.get<string>('DEFAULT_TENANT_ID') || 'default-tenant';
+    return this.configService.get<string>('DEFAULT_TENANT_ID') || 'default-tenant'
   }
 }

@@ -19,7 +19,7 @@ export interface GetTrasportatoreCommand {
 export class GetTrasportatoreUseCase {
   constructor(
     @Inject(TRASPORTATORE_REPOSITORY)
-    private readonly trasportatoreRepository: TrasportatoreRepository,
+    private readonly trasportatoreRepository: TrasportatoreRepository
   ) {}
 
   async execute(command: GetTrasportatoreCommand): Promise<Result<Trasportatore>> {

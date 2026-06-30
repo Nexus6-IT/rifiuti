@@ -19,7 +19,7 @@
  */
 
 import { Injectable, Optional, Inject } from '@nestjs/common'
-import { createHash, generateKeyPairSync, sign, verify, KeyObject } from 'crypto'
+import { createHash, generateKeyPairSync, sign, verify } from 'crypto'
 import { LoggerService } from '../../core/logger/logger.service'
 import {
   ISignatureProvider,
@@ -47,7 +47,7 @@ export class DigitalSignatureService {
   constructor(
     private readonly logger: LoggerService,
     @Optional() @Inject(SIGNATURE_PROVIDER) private readonly signatureProvider?: ISignatureProvider,
-    @Optional() @Inject(TSA_PROVIDER) private readonly tsaProvider?: ITsaProvider,
+    @Optional() @Inject(TSA_PROVIDER) private readonly tsaProvider?: ITsaProvider
   ) {
     this.logger.setContext(DigitalSignatureService.name)
   }
@@ -62,7 +62,7 @@ export class DigitalSignatureService {
   async createSignature(document: any, userId: string): Promise<SignatureResult> {
     this.logger.info(
       `[createSignature] provider=${this.signatureProvider?.getProviderType() ?? 'INTERNAL_FALLBACK'} ` +
-      `tsa=${this.tsaProvider?.getProviderType() ?? 'INTERNAL_MOCK'} userId=${userId}`,
+        `tsa=${this.tsaProvider?.getProviderType() ?? 'INTERNAL_MOCK'} userId=${userId}`
     )
 
     let sigResult: SignatureProviderResult
@@ -92,8 +92,8 @@ export class DigitalSignatureService {
     if (!sigResult.isQualified || !tsaQualified) {
       this.logger.warn(
         '[firma] Firma NON qualificata (sandbox/mock). Per la valenza legale ' +
-        'ai sensi del DM 59/2023: ATTIVARE SIGNATURE_PROVIDER=qes + TSA_PROVIDER=rfc3161 ' +
-        'con credenziali QTSP AgID.',
+          'ai sensi del DM 59/2023: ATTIVARE SIGNATURE_PROVIDER=qes + TSA_PROVIDER=rfc3161 ' +
+          'con credenziali QTSP AgID.'
       )
     }
 
@@ -209,7 +209,7 @@ export class DigitalSignatureService {
   private async internalVerify(
     documentHash: string,
     signatureBase64: string,
-    publicKey: string,
+    publicKey: string
   ): Promise<boolean> {
     try {
       const hashBuffer = Buffer.from(documentHash, 'hex')

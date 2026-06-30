@@ -11,20 +11,20 @@ import {
   NotFoundException,
   HttpCode,
   HttpStatus,
-} from '@nestjs/common';
-import { CommandBus } from '@nestjs/cqrs';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { TenantIsolationGuard } from '../guards/tenant-isolation.guard';
-import { PermissionGuard } from '../guards/permission.guard';
-import { RequirePermission } from '../decorators/require-permission.decorator';
-import { CurrentTenant } from '../decorators/current-tenant.decorator';
-import { CurrentUser } from '../decorators/current-user.decorator';
-import { RoleRepository } from '../../domain/identity-access/role.repository.interface';
-import { PermissionRepository } from '../../domain/identity-access/permission.repository.interface';
-import { PrismaService } from '../../infrastructure/persistence/prisma.service';
-import { CreateCustomRoleCommand } from '../../application/commands/create-custom-role.command';
-import { UpdateCustomRoleCommand } from '../../application/commands/update-custom-role.command';
-import { DeleteCustomRoleCommand } from '../../application/commands/delete-custom-role.command';
+} from '@nestjs/common'
+import { CommandBus } from '@nestjs/cqrs'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
+import { PermissionGuard } from '../guards/permission.guard'
+import { RequirePermission } from '../decorators/require-permission.decorator'
+import { CurrentTenant } from '../decorators/current-tenant.decorator'
+import { CurrentUser } from '../decorators/current-user.decorator'
+import { RoleRepository } from '../../domain/identity-access/role.repository.interface'
+import { PermissionRepository } from '../../domain/identity-access/permission.repository.interface'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { CreateCustomRoleCommand } from '../../application/commands/create-custom-role.command'
+import { UpdateCustomRoleCommand } from '../../application/commands/update-custom-role.command'
+import { DeleteCustomRoleCommand } from '../../application/commands/delete-custom-role.command'
 
 /**
  * RoleController
@@ -36,13 +36,13 @@ import { DeleteCustomRoleCommand } from '../../application/commands/delete-custo
 @Controller('roles')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class RoleController {
-  private readonly logger = new Logger(RoleController.name);
+  private readonly logger = new Logger(RoleController.name)
 
   constructor(
     private readonly roleRepository: RoleRepository,
     private readonly permissionRepository: PermissionRepository,
     private readonly commandBus: CommandBus,
-    private readonly prisma: PrismaService,
+    private readonly prisma: PrismaService
   ) {}
 
   /**
@@ -52,9 +52,11 @@ export class RoleController {
     const rolePermissions = await this.prisma.rolePermission.findMany({
       where: { roleId },
       include: { permission: true },
-    });
+    })
 
-    return rolePermissions.map(rp => rp.permission.resource + ':' + rp.permission.action + ':' + rp.permission.scope);
+    return rolePermissions.map(
+      rp => rp.permission.resource + ':' + rp.permission.action + ':' + rp.permission.scope
+    )
   }
 
   /**
@@ -65,12 +67,12 @@ export class RoleController {
   @Get()
   @RequirePermission('user:read:all')
   async listRoles(@CurrentTenant() tenantId: string) {
-    this.logger.log(`Fetching roles for tenant ${tenantId}`);
+    this.logger.log(`Fetching roles for tenant ${tenantId}`)
 
-    const roles = await this.roleRepository.findByTenant(tenantId, false);
+    const roles = await this.roleRepository.findByTenant(tenantId, false)
 
     return {
-      roles: roles.map((role) => ({
+      roles: roles.map(role => ({
         id: role.id,
         name: role.name,
         description: role.description,
@@ -79,7 +81,7 @@ export class RoleController {
         createdAt: role.createdAt.toISOString(),
         updatedAt: role.updatedAt.toISOString(),
       })),
-    };
+    }
   }
 
   /**
@@ -89,20 +91,17 @@ export class RoleController {
    */
   @Get(':id')
   @RequirePermission('user:read:all')
-  async getRoleById(
-    @Param('id') roleId: string,
-    @CurrentTenant() tenantId: string,
-  ) {
-    this.logger.log(`Fetching role ${roleId} for tenant ${tenantId}`);
+  async getRoleById(@Param('id') roleId: string, @CurrentTenant() tenantId: string) {
+    this.logger.log(`Fetching role ${roleId} for tenant ${tenantId}`)
 
-    const role = await this.roleRepository.findById(roleId, tenantId);
+    const role = await this.roleRepository.findById(roleId, tenantId)
 
     if (!role) {
-      throw new NotFoundException('Role not found');
+      throw new NotFoundException('Role not found')
     }
 
     // Get permissions for this role
-    const permissions = await this.permissionRepository.findByRole(roleId);
+    const permissions = await this.permissionRepository.findByRole(roleId)
 
     return {
       id: role.id,
@@ -112,14 +111,14 @@ export class RoleController {
       createdBy: role.createdBy,
       createdAt: role.createdAt.toISOString(),
       updatedAt: role.updatedAt.toISOString(),
-      permissions: permissions.map((p) => ({
+      permissions: permissions.map(p => ({
         id: p.id,
         permission: p.toString(),
         description: p.description,
         isSensitive: p.isSensitive,
         module: p.module,
       })),
-    };
+    }
   }
 
   /**
@@ -135,27 +134,25 @@ export class RoleController {
     @CurrentUser() user: any,
     @Body()
     body: {
-      name: string;
-      description: string;
-      permissions: string[];
-    },
+      name: string
+      description: string
+      permissions: string[]
+    }
   ) {
-    this.logger.log(
-      `Creating custom role "${body.name}" for tenant ${tenantId}`,
-    );
+    this.logger.log(`Creating custom role "${body.name}" for tenant ${tenantId}`)
 
     const command = new CreateCustomRoleCommand(
       tenantId,
       body.name,
       body.description,
       body.permissions,
-      user.userId,
-    );
+      user.userId
+    )
 
-    const role = await this.commandBus.execute(command);
+    const role = await this.commandBus.execute(command)
 
     // Fetch permissions separately
-    const permissions = await this.getRolePermissions(role.id);
+    const permissions = await this.getRolePermissions(role.id)
 
     return {
       success: true,
@@ -168,7 +165,7 @@ export class RoleController {
         createdBy: role.createdBy,
         createdAt: role.createdAt.toISOString(),
       },
-    };
+    }
   }
 
   /**
@@ -185,14 +182,12 @@ export class RoleController {
     @CurrentUser() user: any,
     @Body()
     body: {
-      name?: string;
-      description?: string;
-      permissions?: string[];
-    },
+      name?: string
+      description?: string
+      permissions?: string[]
+    }
   ) {
-    this.logger.log(
-      `Updating custom role ${roleId} for tenant ${tenantId}`,
-    );
+    this.logger.log(`Updating custom role ${roleId} for tenant ${tenantId}`)
 
     const command = new UpdateCustomRoleCommand(
       roleId,
@@ -200,13 +195,13 @@ export class RoleController {
       body.name,
       body.description,
       body.permissions,
-      user.userId,
-    );
+      user.userId
+    )
 
-    const role = await this.commandBus.execute(command);
+    const role = await this.commandBus.execute(command)
 
     // Fetch permissions separately
-    const rolePermissions = await this.getRolePermissions(role.id);
+    const rolePermissions = await this.getRolePermissions(role.id)
 
     return {
       success: true,
@@ -218,7 +213,7 @@ export class RoleController {
         isCustom: !role.isSystemRole,
         updatedAt: role.updatedAt?.toISOString(),
       },
-    };
+    }
   }
 
   /**
@@ -232,19 +227,13 @@ export class RoleController {
   async deleteCustomRole(
     @Param('id') roleId: string,
     @CurrentTenant() tenantId: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: any
   ) {
-    this.logger.log(
-      `Deleting custom role ${roleId} for tenant ${tenantId}`,
-    );
+    this.logger.log(`Deleting custom role ${roleId} for tenant ${tenantId}`)
 
-    const command = new DeleteCustomRoleCommand(
-      roleId,
-      tenantId,
-      user.userId,
-    );
+    const command = new DeleteCustomRoleCommand(roleId, tenantId, user.userId)
 
-    await this.commandBus.execute(command);
+    await this.commandBus.execute(command)
 
     // No content response (204)
   }
@@ -261,26 +250,22 @@ export class RoleController {
     @Param('id') roleId: string,
     @CurrentTenant() tenantId: string,
     @CurrentUser() user: any,
-    @Body() body: { permissions: string[] },
+    @Body() body: { permissions: string[] }
   ) {
-    this.logger.log(
-      `Adding ${body.permissions.length} permissions to role ${roleId}`,
-    );
+    this.logger.log(`Adding ${body.permissions.length} permissions to role ${roleId}`)
 
     // Load current role
-    const role = await this.roleRepository.findById(roleId, tenantId);
+    const role = await this.roleRepository.findById(roleId, tenantId)
 
     if (!role) {
-      throw new NotFoundException('Role not found');
+      throw new NotFoundException('Role not found')
     }
 
     // Get current permissions
-    const currentPermissions = await this.getRolePermissions(roleId);
+    const currentPermissions = await this.getRolePermissions(roleId)
 
     // Merge permissions (avoid duplicates)
-    const mergedPermissions = Array.from(
-      new Set([...currentPermissions, ...body.permissions]),
-    );
+    const mergedPermissions = Array.from(new Set([...currentPermissions, ...body.permissions]))
 
     // Update role with merged permissions
     const command = new UpdateCustomRoleCommand(
@@ -289,13 +274,13 @@ export class RoleController {
       undefined,
       undefined,
       mergedPermissions,
-      user.userId,
-    );
+      user.userId
+    )
 
-    const updatedRole = await this.commandBus.execute(command);
+    const updatedRole = await this.commandBus.execute(command)
 
     // Get updated permissions
-    const updatedPermissions = await this.getRolePermissions(updatedRole.id);
+    const updatedPermissions = await this.getRolePermissions(updatedRole.id)
 
     return {
       success: true,
@@ -304,7 +289,7 @@ export class RoleController {
         permissions: updatedPermissions,
         addedCount: updatedPermissions.length - currentPermissions.length,
       },
-    };
+    }
   }
 
   /**
@@ -319,26 +304,22 @@ export class RoleController {
     @Param('id') roleId: string,
     @Param('permissionId') permissionString: string,
     @CurrentTenant() tenantId: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: any
   ) {
-    this.logger.log(
-      `Removing permission "${permissionString}" from role ${roleId}`,
-    );
+    this.logger.log(`Removing permission "${permissionString}" from role ${roleId}`)
 
     // Load current role
-    const role = await this.roleRepository.findById(roleId, tenantId);
+    const role = await this.roleRepository.findById(roleId, tenantId)
 
     if (!role) {
-      throw new NotFoundException('Role not found');
+      throw new NotFoundException('Role not found')
     }
 
     // Get current permissions
-    const currentPermissions = await this.getRolePermissions(roleId);
+    const currentPermissions = await this.getRolePermissions(roleId)
 
     // Remove permission
-    const filteredPermissions = currentPermissions.filter(
-      (p) => p !== permissionString,
-    );
+    const filteredPermissions = currentPermissions.filter(p => p !== permissionString)
 
     // Update role with filtered permissions
     const command = new UpdateCustomRoleCommand(
@@ -347,10 +328,10 @@ export class RoleController {
       undefined,
       undefined,
       filteredPermissions,
-      user.userId,
-    );
+      user.userId
+    )
 
-    const updatedRole = await this.commandBus.execute(command);
+    const updatedRole = await this.commandBus.execute(command)
 
     return {
       success: true,
@@ -359,6 +340,6 @@ export class RoleController {
         permissions: updatedRole.permissions,
         removedPermission: permissionString,
       },
-    };
+    }
   }
 }

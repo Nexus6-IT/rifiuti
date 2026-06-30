@@ -47,7 +47,9 @@ export class CreateContractDto {
   @IsNotEmpty()
   producerId: string
 
-  @ApiProperty({ description: 'ID registro controparte (trasportatore/destinatario/intermediario)' })
+  @ApiProperty({
+    description: 'ID registro controparte (trasportatore/destinatario/intermediario)',
+  })
   @IsString()
   @IsNotEmpty()
   counterpartyId: string

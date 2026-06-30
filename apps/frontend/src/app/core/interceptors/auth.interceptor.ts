@@ -1,9 +1,9 @@
-import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
-import { inject } from '@angular/core';
-import { Router } from '@angular/router';
-import { throwError } from 'rxjs';
-import { catchError } from 'rxjs/operators';
-import { AuthService } from '../services/auth.service';
+import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http'
+import { inject } from '@angular/core'
+import { Router } from '@angular/router'
+import { throwError } from 'rxjs'
+import { catchError } from 'rxjs/operators'
+import { AuthService } from '../services/auth.service'
 
 /**
  * Auth Interceptor
@@ -13,38 +13,44 @@ import { AuthService } from '../services/auth.service';
  * ritorno. Evita loop quando si è già sulla login.
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  const router = inject(Router);
-  const authService = inject(AuthService);
+  const router = inject(Router)
+  const authService = inject(AuthService)
 
-  const publicEndpoints = ['/auth/spid', '/auth/callback', '/auth/refresh', '/health', '/auth/signup'];
-  const isPublicEndpoint = publicEndpoints.some((endpoint) => req.url.includes(endpoint));
+  const publicEndpoints = [
+    '/auth/spid',
+    '/auth/callback',
+    '/auth/refresh',
+    '/health',
+    '/auth/signup',
+  ]
+  const isPublicEndpoint = publicEndpoints.some(endpoint => req.url.includes(endpoint))
 
   if (isPublicEndpoint) {
-    return next(req);
+    return next(req)
   }
 
-  const accessToken = localStorage.getItem('accessToken');
+  const accessToken = localStorage.getItem('accessToken')
 
-  let authRequest = req;
+  let authRequest = req
   if (accessToken) {
     authRequest = req.clone({
       setHeaders: {
         Authorization: `Bearer ${accessToken}`,
       },
-    });
+    })
   }
 
   return next(authRequest).pipe(
     catchError((error: HttpErrorResponse) => {
       if (error.status === 401) {
-        authService.clearSession();
+        authService.clearSession()
         // Evita redirect ripetuti se siamo già sulla login.
         if (!router.url.startsWith('/login')) {
-          const returnUrl = router.url && router.url !== '/' ? router.url : undefined;
-          router.navigate(['/login'], returnUrl ? { queryParams: { returnUrl } } : {});
+          const returnUrl = router.url && router.url !== '/' ? router.url : undefined
+          router.navigate(['/login'], returnUrl ? { queryParams: { returnUrl } } : {})
         }
       }
-      return throwError(() => error);
+      return throwError(() => error)
     })
-  );
-};
+  )
+}

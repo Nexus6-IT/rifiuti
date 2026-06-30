@@ -10,7 +10,7 @@
  * - NotificationService: Notifies user of role assignment
  */
 export class UserRoleAssignedEvent {
-  public readonly occurredAt: Date;
+  public readonly occurredAt: Date
 
   constructor(
     public readonly aggregateId: string, // UserRole ID
@@ -22,30 +22,30 @@ export class UserRoleAssignedEvent {
     public readonly expiresAt: Date | null,
     public readonly facilityIds: string[] | null,
     public readonly isDelegated: boolean,
-    public readonly delegationReason: string | null,
+    public readonly delegationReason: string | null
   ) {
-    this.occurredAt = new Date();
+    this.occurredAt = new Date()
   }
 
   /**
    * Get event name for routing/logging
    */
   getEventName(): string {
-    return 'user-role.assigned';
+    return 'user-role.assigned'
   }
 
   /**
    * Check if assignment is temporary
    */
   isTemporary(): boolean {
-    return this.expiresAt !== null;
+    return this.expiresAt !== null
   }
 
   /**
    * Check if assignment is facility-scoped
    */
   isFacilityScoped(): boolean {
-    return this.facilityIds !== null && this.facilityIds.length > 0;
+    return this.facilityIds !== null && this.facilityIds.length > 0
   }
 
   /**
@@ -65,7 +65,7 @@ export class UserRoleAssignedEvent {
       isDelegated: this.isDelegated,
       delegationReason: this.delegationReason,
       occurredAt: this.occurredAt.toISOString(),
-    };
+    }
   }
 
   /**
@@ -82,7 +82,7 @@ export class UserRoleAssignedEvent {
       obj.expiresAt ? new Date(obj.expiresAt) : null,
       obj.facilityIds,
       obj.isDelegated,
-      obj.delegationReason,
-    );
+      obj.delegationReason
+    )
   }
 }

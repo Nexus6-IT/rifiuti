@@ -1,20 +1,20 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { MessageService } from 'primeng/api';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { InputTextModule } from 'primeng/inputtext';
-import { DialogModule } from 'primeng/dialog';
-import { ConfirmDialogModule } from 'primeng/confirmdialog';
-import { ConfirmationService } from 'primeng/api';
-import { TooltipModule } from 'primeng/tooltip';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { MessageModule } from 'primeng/message';
-import { IconFieldModule } from 'primeng/iconfield';
-import { InputIconModule } from 'primeng/inputicon';
-import { RegistryService, CreateProduttoreDto } from './registry.service';
-import { Produttore, Indirizzo } from '../../shared/models/registry.model';
+import { Component, OnInit } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { MessageService } from 'primeng/api'
+import { TableModule } from 'primeng/table'
+import { ButtonModule } from 'primeng/button'
+import { InputTextModule } from 'primeng/inputtext'
+import { DialogModule } from 'primeng/dialog'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
+import { ConfirmationService } from 'primeng/api'
+import { TooltipModule } from 'primeng/tooltip'
+import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { MessageModule } from 'primeng/message'
+import { IconFieldModule } from 'primeng/iconfield'
+import { InputIconModule } from 'primeng/inputicon'
+import { RegistryService, CreateProduttoreDto } from './registry.service'
+import { Produttore, Indirizzo } from '../../shared/models/registry.model'
 
 @Component({
   selector: 'app-produttori-list',
@@ -31,7 +31,7 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model';
     ProgressSpinnerModule,
     MessageModule,
     IconFieldModule,
-    InputIconModule
+    InputIconModule,
   ],
   providers: [ConfirmationService],
   template: `
@@ -120,7 +120,9 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model';
                 </td>
                 <td>
                   <span class="cell-label">PEC</span>
-                  <span [class.text-tertiary]="!produttore.pec">{{ produttore.pec || 'Non indicata' }}</span>
+                  <span [class.text-tertiary]="!produttore.pec">{{
+                    produttore.pec || 'Non indicata'
+                  }}</span>
                 </td>
                 <td>
                   <span class="cell-label">Azioni</span>
@@ -169,7 +171,11 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model';
               <tr>
                 <td colspan="5">
                   <div class="loading-row">
-                    <p-progressSpinner styleClass="loading-spinner" strokeWidth="4" aria-label="Caricamento in corso" />
+                    <p-progressSpinner
+                      styleClass="loading-spinner"
+                      strokeWidth="4"
+                      aria-label="Caricamento in corso"
+                    />
                     <span>Caricamento produttori…</span>
                   </div>
                 </td>
@@ -194,19 +200,45 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model';
             <legend class="form-legend">Dati aziendali</legend>
             <div class="grid formgrid p-fluid">
               <div class="field col-12">
-                <label for="prod-ragione">Ragione sociale <span class="req" aria-hidden="true">*</span></label>
-                <input pInputText id="prod-ragione" name="ragioneSociale" [(ngModel)]="formData.ragioneSociale"
-                       placeholder="es. Azienda S.r.l." required autocomplete="organization" />
+                <label for="prod-ragione"
+                  >Ragione sociale <span class="req" aria-hidden="true">*</span></label
+                >
+                <input
+                  pInputText
+                  id="prod-ragione"
+                  name="ragioneSociale"
+                  [(ngModel)]="formData.ragioneSociale"
+                  placeholder="es. Azienda S.r.l."
+                  required
+                  autocomplete="organization"
+                />
               </div>
               <div class="field col-12 md:col-6">
-                <label for="prod-piva">Partita IVA <span class="req" aria-hidden="true">*</span></label>
-                <input pInputText id="prod-piva" name="partitaIVA" [(ngModel)]="formData.partitaIVA"
-                       placeholder="11 cifre" maxlength="11" inputmode="numeric" required />
+                <label for="prod-piva"
+                  >Partita IVA <span class="req" aria-hidden="true">*</span></label
+                >
+                <input
+                  pInputText
+                  id="prod-piva"
+                  name="partitaIVA"
+                  [(ngModel)]="formData.partitaIVA"
+                  placeholder="11 cifre"
+                  maxlength="11"
+                  inputmode="numeric"
+                  required
+                />
               </div>
               <div class="field col-12 md:col-6">
                 <label for="prod-pec">PEC</label>
-                <input pInputText id="prod-pec" name="pec" type="email" [(ngModel)]="formData.pec"
-                       placeholder="pec@esempio.it" autocomplete="email" />
+                <input
+                  pInputText
+                  id="prod-pec"
+                  name="pec"
+                  type="email"
+                  [(ngModel)]="formData.pec"
+                  placeholder="pec@esempio.it"
+                  autocomplete="email"
+                />
               </div>
             </div>
           </fieldset>
@@ -216,118 +248,252 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model';
             <div class="grid formgrid p-fluid">
               <div class="field col-12 md:col-8">
                 <label for="prod-via">Via <span class="req" aria-hidden="true">*</span></label>
-                <input pInputText id="prod-via" name="via" [(ngModel)]="formData.sedeLegale.via"
-                       placeholder="es. Via Roma" required autocomplete="address-line1" />
+                <input
+                  pInputText
+                  id="prod-via"
+                  name="via"
+                  [(ngModel)]="formData.sedeLegale.via"
+                  placeholder="es. Via Roma"
+                  required
+                  autocomplete="address-line1"
+                />
               </div>
               <div class="field col-12 md:col-4">
-                <label for="prod-civico">Civico <span class="req" aria-hidden="true">*</span></label>
-                <input pInputText id="prod-civico" name="civico" [(ngModel)]="formData.sedeLegale.civico"
-                       placeholder="es. 12" required />
+                <label for="prod-civico"
+                  >Civico <span class="req" aria-hidden="true">*</span></label
+                >
+                <input
+                  pInputText
+                  id="prod-civico"
+                  name="civico"
+                  [(ngModel)]="formData.sedeLegale.civico"
+                  placeholder="es. 12"
+                  required
+                />
               </div>
               <div class="field col-12 md:col-4">
                 <label for="prod-cap">CAP <span class="req" aria-hidden="true">*</span></label>
-                <input pInputText id="prod-cap" name="cap" [(ngModel)]="formData.sedeLegale.cap"
-                       placeholder="5 cifre" maxlength="5" inputmode="numeric" required autocomplete="postal-code" />
+                <input
+                  pInputText
+                  id="prod-cap"
+                  name="cap"
+                  [(ngModel)]="formData.sedeLegale.cap"
+                  placeholder="5 cifre"
+                  maxlength="5"
+                  inputmode="numeric"
+                  required
+                  autocomplete="postal-code"
+                />
               </div>
               <div class="field col-12 md:col-4">
-                <label for="prod-comune">Comune <span class="req" aria-hidden="true">*</span></label>
-                <input pInputText id="prod-comune" name="comune" [(ngModel)]="formData.sedeLegale.comune"
-                       placeholder="es. Milano" required autocomplete="address-level2" />
+                <label for="prod-comune"
+                  >Comune <span class="req" aria-hidden="true">*</span></label
+                >
+                <input
+                  pInputText
+                  id="prod-comune"
+                  name="comune"
+                  [(ngModel)]="formData.sedeLegale.comune"
+                  placeholder="es. Milano"
+                  required
+                  autocomplete="address-level2"
+                />
               </div>
               <div class="field col-12 md:col-4">
-                <label for="prod-prov">Provincia <span class="req" aria-hidden="true">*</span></label>
-                <input pInputText id="prod-prov" name="provincia" [(ngModel)]="formData.sedeLegale.provincia"
-                       placeholder="es. MI" maxlength="2" style="text-transform: uppercase" required />
+                <label for="prod-prov"
+                  >Provincia <span class="req" aria-hidden="true">*</span></label
+                >
+                <input
+                  pInputText
+                  id="prod-prov"
+                  name="provincia"
+                  [(ngModel)]="formData.sedeLegale.provincia"
+                  placeholder="es. MI"
+                  maxlength="2"
+                  style="text-transform: uppercase"
+                  required
+                />
               </div>
             </div>
           </fieldset>
         </form>
 
         <ng-template pTemplate="footer">
-          <p-button label="Annulla" [text]="true" icon="pi pi-times" (onClick)="displayDialog = false" />
-          <p-button label="Salva" icon="pi pi-check" (onClick)="saveProduttore()" [loading]="saving" />
+          <p-button
+            label="Annulla"
+            [text]="true"
+            icon="pi pi-times"
+            (onClick)="displayDialog = false"
+          />
+          <p-button
+            label="Salva"
+            icon="pi pi-check"
+            (onClick)="saveProduttore()"
+            [loading]="saving"
+          />
         </ng-template>
       </p-dialog>
 
       <p-confirmDialog />
     </div>
   `,
-  styles: [`
-    .registry-panel { padding: 0; overflow: hidden; }
-
-    .registry-toolbar {
-      display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-base);
-      padding: var(--spacing-base) var(--spacing-lg);
-      border-bottom: 1px solid var(--surface-border);
-    }
-    .registry-search { flex: 1 1 18rem; min-width: 0; display: block; }
-    .registry-search .w-full { width: 100%; }
-    /* Spazio a sinistra: evita che l'icona lente si sovrapponga a placeholder/testo */
-    .registry-search input { padding-left: 2.5rem; }
-    .registry-count {
-      font-size: var(--font-size-sm); color: var(--text-tertiary);
-      font-weight: var(--font-weight-medium); white-space: nowrap;
-    }
-
-    .table-responsive { border-radius: 0; }
-    :host ::ng-deep .p-datatable { border: none; border-radius: 0; }
-
-    .mono { font-family: var(--font-family-mono); font-size: var(--font-size-sm); }
-    .row-actions { display: flex; gap: var(--spacing-xs); justify-content: flex-end; }
-
-    /* Etichette riga per la vista impilata su mobile (nascoste su desktop) */
-    .cell-label { display: none; font-weight: var(--font-weight-semibold); color: var(--text-tertiary);
-      font-size: var(--font-size-xs); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.15rem; }
-
-    .loading-row { display: flex; align-items: center; justify-content: center; gap: var(--spacing-md);
-      padding: var(--spacing-2xl); color: var(--text-tertiary); }
-    :host ::ng-deep .loading-spinner { width: 2.25rem; height: 2.25rem; }
-
-    .empty-state__icon { font-size: 2.75rem; }
-
-    /* Form dialog */
-    .dialog-form { display: flex; flex-direction: column; gap: var(--spacing-lg); }
-    .form-fieldset { border: none; padding: 0; margin: 0; }
-    .form-legend {
-      font-family: var(--font-display); font-weight: var(--font-weight-semibold);
-      font-size: var(--font-size-base); color: var(--text-primary);
-      padding: 0 0 var(--spacing-sm); margin-bottom: var(--spacing-sm);
-      border-bottom: 1px solid var(--surface-border); width: 100%;
-    }
-    .field { margin-bottom: var(--spacing-base); }
-    .field label { display: block; margin-bottom: var(--spacing-xs); }
-    .req { color: var(--color-danger); margin-left: 0.15rem; }
-
-    /* Vista a card impilata su mobile */
-    @media (max-width: 768px) {
-      :host ::ng-deep .p-datatable .p-datatable-thead { display: none; }
-      :host ::ng-deep .p-datatable .p-datatable-tbody > tr {
-        display: block; padding: var(--spacing-sm) 0; border-bottom: 1px solid var(--surface-border);
+  styles: [
+    `
+      .registry-panel {
+        padding: 0;
+        overflow: hidden;
       }
-      :host ::ng-deep .p-datatable .p-datatable-tbody > tr > td {
-        display: block; border: none; padding: 0.35rem var(--spacing-base);
+
+      .registry-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--spacing-base);
+        padding: var(--spacing-base) var(--spacing-lg);
+        border-bottom: 1px solid var(--surface-border);
       }
-      .cell-label { display: block; }
-      .row-actions { justify-content: flex-start; padding-top: var(--spacing-xs); }
-      .registry-toolbar { padding: var(--spacing-base); }
-    }
-  `]
+      .registry-search {
+        flex: 1 1 18rem;
+        min-width: 0;
+        display: block;
+      }
+      .registry-search .w-full {
+        width: 100%;
+      }
+      /* Spazio a sinistra: evita che l'icona lente si sovrapponga a placeholder/testo */
+      .registry-search input {
+        padding-left: 2.5rem;
+      }
+      .registry-count {
+        font-size: var(--font-size-sm);
+        color: var(--text-tertiary);
+        font-weight: var(--font-weight-medium);
+        white-space: nowrap;
+      }
+
+      .table-responsive {
+        border-radius: 0;
+      }
+      :host ::ng-deep .p-datatable {
+        border: none;
+        border-radius: 0;
+      }
+
+      .mono {
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-sm);
+      }
+      .row-actions {
+        display: flex;
+        gap: var(--spacing-xs);
+        justify-content: flex-end;
+      }
+
+      /* Etichette riga per la vista impilata su mobile (nascoste su desktop) */
+      .cell-label {
+        display: none;
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-tertiary);
+        font-size: var(--font-size-xs);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.15rem;
+      }
+
+      .loading-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-md);
+        padding: var(--spacing-2xl);
+        color: var(--text-tertiary);
+      }
+      :host ::ng-deep .loading-spinner {
+        width: 2.25rem;
+        height: 2.25rem;
+      }
+
+      .empty-state__icon {
+        font-size: 2.75rem;
+      }
+
+      /* Form dialog */
+      .dialog-form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-lg);
+      }
+      .form-fieldset {
+        border: none;
+        padding: 0;
+        margin: 0;
+      }
+      .form-legend {
+        font-family: var(--font-display);
+        font-weight: var(--font-weight-semibold);
+        font-size: var(--font-size-base);
+        color: var(--text-primary);
+        padding: 0 0 var(--spacing-sm);
+        margin-bottom: var(--spacing-sm);
+        border-bottom: 1px solid var(--surface-border);
+        width: 100%;
+      }
+      .field {
+        margin-bottom: var(--spacing-base);
+      }
+      .field label {
+        display: block;
+        margin-bottom: var(--spacing-xs);
+      }
+      .req {
+        color: var(--color-danger);
+        margin-left: 0.15rem;
+      }
+
+      /* Vista a card impilata su mobile */
+      @media (max-width: 768px) {
+        :host ::ng-deep .p-datatable .p-datatable-thead {
+          display: none;
+        }
+        :host ::ng-deep .p-datatable .p-datatable-tbody > tr {
+          display: block;
+          padding: var(--spacing-sm) 0;
+          border-bottom: 1px solid var(--surface-border);
+        }
+        :host ::ng-deep .p-datatable .p-datatable-tbody > tr > td {
+          display: block;
+          border: none;
+          padding: 0.35rem var(--spacing-base);
+        }
+        .cell-label {
+          display: block;
+        }
+        .row-actions {
+          justify-content: flex-start;
+          padding-top: var(--spacing-xs);
+        }
+        .registry-toolbar {
+          padding: var(--spacing-base);
+        }
+      }
+    `,
+  ],
 })
 export class ProduttoriListComponent implements OnInit {
-  produttori: Produttore[] = [];
-  loading = false;
-  saving = false;
-  error = '';
-  totalRecords = 0;
-  pageSize = 10;
-  currentPage = 1;
-  searchTerm = '';
+  produttori: Produttore[] = []
+  loading = false
+  saving = false
+  error = ''
+  totalRecords = 0
+  pageSize = 10
+  currentPage = 1
+  searchTerm = ''
 
-  displayDialog = false;
-  editMode = false;
-  selectedProduttore: Produttore | null = null;
+  displayDialog = false
+  editMode = false
+  selectedProduttore: Produttore | null = null
 
-  formData: CreateProduttoreDto = this.getEmptyFormData();
+  formData: CreateProduttoreDto = this.getEmptyFormData()
 
   constructor(
     private registryService: RegistryService,
@@ -336,66 +502,66 @@ export class ProduttoriListComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.loadProduttori({ first: 0, rows: this.pageSize });
+    this.loadProduttori({ first: 0, rows: this.pageSize })
   }
 
   /** Filtra la pagina corrente in base al testo di ricerca (case-insensitive). */
   get filteredProduttori(): Produttore[] {
-    const term = this.searchTerm?.trim().toLowerCase();
-    if (!term) return this.produttori;
-    return this.produttori.filter((p) =>
+    const term = this.searchTerm?.trim().toLowerCase()
+    if (!term) return this.produttori
+    return this.produttori.filter(p =>
       [
         p.ragioneSociale,
         p.partitaIVA,
         p.pec,
-        p.sedeLegale ? this.formatIndirizzo(p.sedeLegale) : ''
+        p.sedeLegale ? this.formatIndirizzo(p.sedeLegale) : '',
       ]
         .filter(Boolean)
-        .some((v) => (v as string).toLowerCase().includes(term))
-    );
+        .some(v => (v as string).toLowerCase().includes(term))
+    )
   }
 
   loadProduttori(event: any): void {
-    this.loading = true;
-    this.error = '';
-    const page = Math.floor(event.first / event.rows) + 1;
-    this.currentPage = page;
+    this.loading = true
+    this.error = ''
+    const page = Math.floor(event.first / event.rows) + 1
+    this.currentPage = page
 
     this.registryService.getProduttori(page, event.rows).subscribe({
-      next: (response) => {
-        this.produttori = response.items ?? [];
-        this.totalRecords = response.total ?? this.produttori.length;
-        this.loading = false;
+      next: response => {
+        this.produttori = response.items ?? []
+        this.totalRecords = response.total ?? this.produttori.length
+        this.loading = false
       },
-      error: (err) => {
-        this.loading = false;
-        this.error = err?.error?.message || 'Errore nel caricamento dei produttori';
+      error: err => {
+        this.loading = false
+        this.error = err?.error?.message || 'Errore nel caricamento dei produttori'
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: this.error
-        });
-      }
-    });
+          detail: this.error,
+        })
+      },
+    })
   }
 
   showCreateDialog(): void {
-    this.editMode = false;
-    this.selectedProduttore = null;
-    this.formData = this.getEmptyFormData();
-    this.displayDialog = true;
+    this.editMode = false
+    this.selectedProduttore = null
+    this.formData = this.getEmptyFormData()
+    this.displayDialog = true
   }
 
   editProduttore(produttore: Produttore): void {
-    this.editMode = true;
-    this.selectedProduttore = produttore;
+    this.editMode = true
+    this.selectedProduttore = produttore
     this.formData = {
       ragioneSociale: produttore.ragioneSociale,
       partitaIVA: produttore.partitaIVA,
       sedeLegale: { ...produttore.sedeLegale },
-      pec: produttore.pec
-    };
-    this.displayDialog = true;
+      pec: produttore.pec,
+    }
+    this.displayDialog = true
   }
 
   saveProduttore(): void {
@@ -403,36 +569,37 @@ export class ProduttoriListComponent implements OnInit {
       this.messageService.add({
         severity: 'warn',
         summary: 'Attenzione',
-        detail: 'Compila tutti i campi obbligatori'
-      });
-      return;
+        detail: 'Compila tutti i campi obbligatori',
+      })
+      return
     }
 
-    this.saving = true;
-    const operation = this.editMode && this.selectedProduttore
-      ? this.registryService.updateProduttore(this.selectedProduttore.id, this.formData)
-      : this.registryService.createProduttore(this.formData);
+    this.saving = true
+    const operation =
+      this.editMode && this.selectedProduttore
+        ? this.registryService.updateProduttore(this.selectedProduttore.id, this.formData)
+        : this.registryService.createProduttore(this.formData)
 
     operation.subscribe({
       next: () => {
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
-          detail: this.editMode ? 'Produttore aggiornato' : 'Produttore creato'
-        });
-        this.displayDialog = false;
-        this.saving = false;
-        this.loadProduttori({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+          detail: this.editMode ? 'Produttore aggiornato' : 'Produttore creato',
+        })
+        this.displayDialog = false
+        this.saving = false
+        this.loadProduttori({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
       },
       error: () => {
-        this.saving = false;
+        this.saving = false
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: 'Errore nel salvataggio del produttore'
-        });
-      }
-    });
+          detail: 'Errore nel salvataggio del produttore',
+        })
+      },
+    })
   }
 
   deleteProduttore(produttore: Produttore): void {
@@ -446,20 +613,23 @@ export class ProduttoriListComponent implements OnInit {
             this.messageService.add({
               severity: 'success',
               summary: 'Successo',
-              detail: 'Produttore eliminato'
-            });
-            this.loadProduttori({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+              detail: 'Produttore eliminato',
+            })
+            this.loadProduttori({
+              first: (this.currentPage - 1) * this.pageSize,
+              rows: this.pageSize,
+            })
           },
           error: () => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: 'Errore nell\'eliminazione del produttore'
-            });
-          }
-        });
-      }
-    });
+              detail: "Errore nell'eliminazione del produttore",
+            })
+          },
+        })
+      },
+    })
   }
 
   validateForm(): boolean {
@@ -471,12 +641,12 @@ export class ProduttoriListComponent implements OnInit {
       this.formData.sedeLegale.cap?.trim() &&
       this.formData.sedeLegale.comune?.trim() &&
       this.formData.sedeLegale.provincia?.trim()
-    );
+    )
   }
 
   formatIndirizzo(indirizzo: Indirizzo): string {
-    if (!indirizzo) return 'N/D';
-    return `${indirizzo.via} ${indirizzo.civico}, ${indirizzo.cap} ${indirizzo.comune} (${indirizzo.provincia})`;
+    if (!indirizzo) return 'N/D'
+    return `${indirizzo.via} ${indirizzo.civico}, ${indirizzo.cap} ${indirizzo.comune} (${indirizzo.provincia})`
   }
 
   private getEmptyFormData(): CreateProduttoreDto {
@@ -488,9 +658,9 @@ export class ProduttoriListComponent implements OnInit {
         civico: '',
         cap: '',
         comune: '',
-        provincia: ''
+        provincia: '',
       },
-      pec: ''
-    };
+      pec: '',
+    }
   }
 }

@@ -49,10 +49,10 @@ describe('CERController', () => {
 
       const result = await controller.search('olio')
 
-      expect(result.length).toBe(1);
-      expect(result[0].code).toBe('13 02 05*');
-      expect(result[0].description).toContain('oli minerali');
-      expect(service.search).toHaveBeenCalledWith('olio', {});
+      expect(result.length).toBe(1)
+      expect(result[0].code).toBe('13 02 05*')
+      expect(result[0].description).toContain('oli minerali')
+      expect(service.search).toHaveBeenCalledWith('olio', {})
     })
 
     it('should apply pericoloso filter', async () => {
@@ -67,8 +67,8 @@ describe('CERController', () => {
 
       const result = await controller.search('olio', 'true')
 
-      expect(result.length).toBe(1);
-      expect(service.search).toHaveBeenCalledWith('olio', { pericoloso: true });
+      expect(result.length).toBe(1)
+      expect(service.search).toHaveBeenCalledWith('olio', { pericoloso: true })
     })
 
     it('should apply category filter', async () => {
@@ -81,7 +81,7 @@ describe('CERController', () => {
 
       service.search.mockResolvedValue([cer])
 
-      const result = await controller.search('test', undefined, '13')
+      await controller.search('test', undefined, '13')
 
       expect(service.search).toHaveBeenCalledWith('test', { category: '13' })
     })
@@ -134,9 +134,9 @@ describe('CERController', () => {
 
       const result = await controller.getStatistics()
 
-      expect(result.total).toBe(842);
-      expect(result.pericolosi).toBe(405);
-      expect(result.nonPericolosi).toBe(437);
+      expect(result.total).toBe(842)
+      expect(result.pericolosi).toBe(405)
+      expect(result.nonPericolosi).toBe(437)
     })
   })
 })

@@ -1,14 +1,8 @@
-import {
-  Injectable,
-  NestInterceptor,
-  ExecutionContext,
-  CallHandler,
-  Logger,
-} from '@nestjs/common';
-import { Observable, from, switchMap } from 'rxjs';
-import { Request } from 'express';
-import { TenantContext } from '../context/tenant-context';
-import { MembershipService } from '../../api/me/membership.service';
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common'
+import { Observable, from, switchMap } from 'rxjs'
+import { Request } from 'express'
+import { TenantContext } from '../context/tenant-context'
+import { MembershipService } from '../../api/me/membership.service'
 
 /**
  * TenantSwitchInterceptor — validazione header `X-Tenant-ID` per TUTTI gli utenti.
@@ -44,74 +38,72 @@ import { MembershipService } from '../../api/me/membership.service';
  */
 @Injectable()
 export class TenantSwitchInterceptor implements NestInterceptor {
-  private readonly logger = new Logger(TenantSwitchInterceptor.name);
+  private readonly logger = new Logger(TenantSwitchInterceptor.name)
 
   constructor(private readonly membership: MembershipService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     // Funziona solo su richieste HTTP (non su WebSocket/RPC).
     if (context.getType() !== 'http') {
-      return next.handle();
+      return next.handle()
     }
 
-    const req = context.switchToHttp().getRequest<Request>();
-    const targetTenantId = this.readTenantHeader(req);
+    const req = context.switchToHttp().getRequest<Request>()
+    const targetTenantId = this.readTenantHeader(req)
 
     // Nessun header → passthrough immediato.
     if (!targetTenantId) {
-      return next.handle();
+      return next.handle()
     }
 
-    const user = (req as any).user;
+    const user = (req as any).user
 
     // Utente non autenticato (rotta pubblica) o SUPER_ADMIN (già gestito dal
     // middleware): passthrough.
     if (!user || user.role === 'SUPER_ADMIN') {
-      return next.handle();
+      return next.handle()
     }
 
     // Tenant primario dell'utente (risolto dal middleware dal JWT).
-    const primaryTenantId: string = (req as any).tenantId || user.tenantId || '';
+    const primaryTenantId: string = (req as any).tenantId || user.tenantId || ''
 
     // Validazione asincrona della membership, poi switch del contesto.
     return from(
-      this.membership
-        .checkAccess(user.id, targetTenantId, primaryTenantId)
-        .catch((err: Error) => {
-          this.logger.warn(
-            `Errore verifica membership (utente=${user.id}, target=${targetTenantId}): ${err.message}`,
-          );
-          return false; // fail-closed su errore DB
-        }),
+      this.membership.checkAccess(user.id, targetTenantId, primaryTenantId).catch((err: Error) => {
+        this.logger.warn(
+          `Errore verifica membership (utente=${user.id}, target=${targetTenantId}): ${err.message}`
+        )
+        return false // fail-closed su errore DB
+      })
     ).pipe(
       switchMap((isAllowed: boolean) => {
         if (!isAllowed) {
           // Fail-closed: header non autorizzato → prosegui col tenant primario.
           this.logger.warn(
             `Header X-Tenant-ID="${targetTenantId}" rifiutato per utente ${user.id} ` +
-              `(non membro). Proseguo con tenant primario "${primaryTenantId}".`,
-          );
-          return next.handle();
+              `(non membro). Proseguo con tenant primario "${primaryTenantId}".`
+          )
+          return next.handle()
         }
 
         // Accesso autorizzato: sovrapponi il TenantContext con il tenant selezionato
         // e aggiorna req.tenantId (usato dai controller come fonte del tenant effettivo).
-        (req as any).tenantId = targetTenantId;
+        ;(req as any).tenantId = targetTenantId
 
-        return new Observable<unknown>((subscriber) => {
+        return new Observable<unknown>(subscriber => {
           TenantContext.run(
             { tenantId: targetTenantId, userId: user.id, isSuperAdmin: false },
             () => {
               next.handle().subscribe({
-                next: (v) => subscriber.next(v),
-                error: (e) => subscriber.error(e),
+                next: v => subscriber.next(v),
+                error: e => subscriber.error(e),
                 complete: () => subscriber.complete(),
-              });
-            },
-          );
-        });
-      }),
-    );
+              })
+            }
+          )
+        })
+      })
+    )
   }
 
   /**
@@ -120,9 +112,9 @@ export class TenantSwitchInterceptor implements NestInterceptor {
    * Ritorna `null` se assente o vuoto.
    */
   private readTenantHeader(req: Request): string | null {
-    const raw = req.headers['x-tenant-id'];
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    const trimmed = typeof value === 'string' ? value.trim() : '';
-    return trimmed.length > 0 ? trimmed : null;
+    const raw = req.headers['x-tenant-id']
+    const value = Array.isArray(raw) ? raw[0] : raw
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    return trimmed.length > 0 ? trimmed : null
   }
 }

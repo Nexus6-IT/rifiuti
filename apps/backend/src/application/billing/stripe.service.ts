@@ -7,37 +7,37 @@
  * ATTIVARE: impostare STRIPE_SECRET_KEY (live) in .env di produzione.
  */
 
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Stripe from 'stripe';
+import { Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import Stripe from 'stripe'
 
 @Injectable()
 export class StripeService {
-  private readonly logger = new Logger(StripeService.name);
-  private readonly stripe: Stripe | null;
-  private readonly webhookSecret: string | null;
+  private readonly logger = new Logger(StripeService.name)
+  private readonly stripe: Stripe | null
+  private readonly webhookSecret: string | null
 
   constructor(private readonly config: ConfigService) {
-    const secretKey = this.config.get<string>('STRIPE_SECRET_KEY');
-    this.webhookSecret = this.config.get<string>('STRIPE_WEBHOOK_SECRET') ?? null;
+    const secretKey = this.config.get<string>('STRIPE_SECRET_KEY')
+    this.webhookSecret = this.config.get<string>('STRIPE_WEBHOOK_SECRET') ?? null
 
     if (secretKey) {
       this.stripe = new Stripe(secretKey, {
         apiVersion: '2025-02-24.acacia',
         typescript: true,
-      });
-      this.logger.log('Stripe SDK inizializzato (test/live mode)');
+      })
+      this.logger.log('Stripe SDK inizializzato (test/live mode)')
     } else {
-      this.stripe = null;
+      this.stripe = null
       this.logger.warn(
         'STRIPE_SECRET_KEY non impostata — billing in modalità no-op. ' +
-          'ATTIVARE: impostare STRIPE_SECRET_KEY in .env',
-      );
+          'ATTIVARE: impostare STRIPE_SECRET_KEY in .env'
+      )
     }
   }
 
   get isEnabled(): boolean {
-    return this.stripe !== null;
+    return this.stripe !== null
   }
 
   /**
@@ -46,9 +46,9 @@ export class StripeService {
    */
   private getClient(): Stripe {
     if (!this.stripe) {
-      throw new Error('Stripe non abilitato: impostare STRIPE_SECRET_KEY in .env');
+      throw new Error('Stripe non abilitato: impostare STRIPE_SECRET_KEY in .env')
     }
-    return this.stripe;
+    return this.stripe
   }
 
   /**
@@ -57,18 +57,18 @@ export class StripeService {
    */
   async getOrCreateCustomer(
     tenantId: string,
-    existing: { stripeCustomerId: string | null; email?: string | null; name?: string | null },
+    existing: { stripeCustomerId: string | null; email?: string | null; name?: string | null }
   ): Promise<string> {
     if (existing.stripeCustomerId) {
-      return existing.stripeCustomerId;
+      return existing.stripeCustomerId
     }
-    const stripe = this.getClient();
+    const stripe = this.getClient()
     const customer = await stripe.customers.create({
       name: existing.name ?? undefined,
       email: existing.email ?? undefined,
       metadata: { tenantId },
-    });
-    return customer.id;
+    })
+    return customer.id
   }
 
   /**
@@ -76,13 +76,13 @@ export class StripeService {
    * Returns: URL della pagina di pagamento Stripe Checkout.
    */
   async createCheckoutSession(params: {
-    customerId: string;
-    priceId: string;
-    tenantId: string;
-    successUrl: string;
-    cancelUrl: string;
+    customerId: string
+    priceId: string
+    tenantId: string
+    successUrl: string
+    cancelUrl: string
   }): Promise<string> {
-    const stripe = this.getClient();
+    const stripe = this.getClient()
     const session = await stripe.checkout.sessions.create({
       customer: params.customerId,
       mode: 'subscription',
@@ -96,8 +96,8 @@ export class StripeService {
       // Modalità trial: i nuovi checkout partono con 30 giorni di prova
       // SOLO se il tenant è ancora in TRIAL (verificato dal BillingService).
       allow_promotion_codes: true,
-    });
-    return session.url!;
+    })
+    return session.url!
   }
 
   /**
@@ -106,15 +106,15 @@ export class StripeService {
    * Returns: URL del Billing Portal Stripe.
    */
   async createBillingPortalSession(params: {
-    customerId: string;
-    returnUrl: string;
+    customerId: string
+    returnUrl: string
   }): Promise<string> {
-    const stripe = this.getClient();
+    const stripe = this.getClient()
     const session = await stripe.billingPortal.sessions.create({
       customer: params.customerId,
       return_url: params.returnUrl,
-    });
-    return session.url;
+    })
+    return session.url
   }
 
   /**
@@ -125,11 +125,9 @@ export class StripeService {
    */
   constructWebhookEvent(rawBody: Buffer | string, signature: string): Stripe.Event {
     if (!this.webhookSecret) {
-      throw new Error(
-        'STRIPE_WEBHOOK_SECRET non impostata — verifica firma webhook impossibile',
-      );
+      throw new Error('STRIPE_WEBHOOK_SECRET non impostata — verifica firma webhook impossibile')
     }
     // Lancia StripeSignatureVerificationError se la firma non è valida.
-    return this.getClient().webhooks.constructEvent(rawBody, signature, this.webhookSecret);
+    return this.getClient().webhooks.constructEvent(rawBody, signature, this.webhookSecret)
   }
 }

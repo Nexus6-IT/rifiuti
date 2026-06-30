@@ -1,4 +1,4 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { createParamDecorator, ExecutionContext } from '@nestjs/common'
 
 /**
  * @CurrentUser Decorator
@@ -12,34 +12,34 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
  */
 export const CurrentUser = createParamDecorator(
   (data: string | undefined, ctx: ExecutionContext) => {
-    const request = ctx.switchToHttp().getRequest();
-    const user = request.user;
+    const request = ctx.switchToHttp().getRequest()
+    const user = request.user
 
     if (!user) {
-      return null;
+      return null
     }
 
     // If data parameter provided, return specific field
     if (data) {
-      return user[data];
+      return user[data]
     }
 
     // Return full user object
-    return user;
-  },
-);
+    return user
+  }
+)
 
 /**
  * JWT Payload Interface
  * Standard structure expected in request.user
  */
 export interface JwtPayload {
-  userId: string;
-  tenantId: string;
-  email: string;
-  spidFiscalCode?: string;
-  role?: string;
-  lastSpidAuthTimestamp?: number;
-  iat?: number;
-  exp?: number;
+  userId: string
+  tenantId: string
+  email: string
+  spidFiscalCode?: string
+  role?: string
+  lastSpidAuthTimestamp?: number
+  iat?: number
+  exp?: number
 }

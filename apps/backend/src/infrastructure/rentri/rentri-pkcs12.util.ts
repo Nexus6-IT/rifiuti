@@ -44,9 +44,7 @@ export function parsePkcs12(base64OrBuffer: string | Buffer, passphrase: string)
     // node-forge usa lo stesso percorso per MAC verification e parsing: una
     // passphrase errata si manifesta tipicamente qui. Non distinguiamo i due
     // casi per non rivelare dettagli sul contenuto cifrato.
-    throw new Error(
-      'PKCS#12 non leggibile: file non valido oppure passphrase errata',
-    )
+    throw new Error('PKCS#12 non leggibile: file non valido oppure passphrase errata')
   }
 
   // 3. Estrai la chiave privata (cerca tra i bag pkcs8Shrouded e keyBag).
@@ -58,14 +56,14 @@ export function parsePkcs12(base64OrBuffer: string | Buffer, passphrase: string)
     ...(keyBags[forge.pki.oids.pkcs8ShroudedKeyBag] || []),
     ...(keyBags[forge.pki.oids.keyBag] || []),
   ]
-  const privateKey = keyBagList.find((bag) => bag.key)?.key
+  const privateKey = keyBagList.find(bag => bag.key)?.key
   if (!privateKey) {
     throw new Error('PKCS#12 privo di chiave privata')
   }
 
   // 4. Estrai il certificato (primo certBag disponibile).
   const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })
-  const certificate = (certBags[forge.pki.oids.certBag] || []).find((bag) => bag.cert)?.cert
+  const certificate = (certBags[forge.pki.oids.certBag] || []).find(bag => bag.cert)?.cert
   if (!certificate) {
     throw new Error('PKCS#12 privo di certificato')
   }

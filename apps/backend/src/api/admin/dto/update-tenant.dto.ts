@@ -8,9 +8,9 @@ import {
   IsEnum,
   IsArray,
   IsIn,
-} from 'class-validator';
-import { SubscriptionTier, SubscriptionStatus } from '@prisma/client';
-import { FEATURE_KEYS } from '../../../application/admin/feature-catalog';
+} from 'class-validator'
+import { SubscriptionTier, SubscriptionStatus } from '@prisma/client'
+import { FEATURE_KEYS } from '../../../application/admin/feature-catalog'
 
 /**
  * UpdateTenantDto
@@ -22,95 +22,95 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsString()
   @Length(1, 255)
-  ragioneSociale?: string;
+  ragioneSociale?: string
 
   @IsOptional()
   @IsString()
   @Length(11, 16)
-  codiceFiscale?: string;
+  codiceFiscale?: string
 
   @IsOptional()
   @IsString()
   @Length(1, 255)
-  pec?: string;
+  pec?: string
 
   @IsOptional()
   @IsString()
   @Length(1, 20)
-  telefono?: string;
+  telefono?: string
 
   @IsOptional()
   @IsString()
   @Length(1, 10)
-  atecoCode?: string;
+  atecoCode?: string
 
   @IsOptional()
   @IsString()
   @Length(1, 9)
-  reaNumber?: string;
+  reaNumber?: string
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  numeroAddetti?: number;
+  numeroAddetti?: number
 
   @IsOptional()
   @IsString()
   @Length(1, 25)
-  legaleRappresentanteNome?: string;
+  legaleRappresentanteNome?: string
 
   @IsOptional()
   @IsString()
   @Length(1, 25)
-  legaleRappresentanteCognome?: string;
+  legaleRappresentanteCognome?: string
 
   @IsOptional()
   @IsString()
   @Length(1, 255)
-  address?: string;
+  address?: string
 
   @IsOptional()
   @IsString()
   @Length(1, 10)
-  civico?: string;
+  civico?: string
 
   @IsOptional()
   @IsString()
   @Length(1, 100)
-  city?: string;
+  city?: string
 
   @IsOptional()
   @IsString()
   @Length(2, 2, { message: 'province deve essere la sigla di 2 lettere' })
-  province?: string;
+  province?: string
 
   @IsOptional()
   @IsString()
   @Matches(/^[0-9]{5}$/, { message: 'postalCode deve contenere 5 cifre' })
-  postalCode?: string;
+  postalCode?: string
 
   @IsOptional()
   @IsString()
   @Length(2, 2)
-  country?: string;
+  country?: string
 
   @IsOptional()
   @IsEnum(SubscriptionTier)
-  subscriptionTier?: SubscriptionTier;
+  subscriptionTier?: SubscriptionTier
 
   @IsOptional()
   @IsEnum(SubscriptionStatus)
-  subscriptionStatus?: SubscriptionStatus;
+  subscriptionStatus?: SubscriptionStatus
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  firLimitPerMonth?: number;
+  firLimitPerMonth?: number
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  userLimitTotal?: number;
+  userLimitTotal?: number
 
   /**
    * Override esplicito delle feature abilitate (array di chiavi del catalogo).
@@ -125,5 +125,5 @@ export class UpdateTenantDto {
     each: true,
     message: `featureFlags ammette solo: ${FEATURE_KEYS.join(', ')}`,
   })
-  featureFlags?: string[];
+  featureFlags?: string[]
 }

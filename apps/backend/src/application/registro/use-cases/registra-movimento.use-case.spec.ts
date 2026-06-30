@@ -17,8 +17,8 @@ describe('RegistraMovimentoUseCase', () => {
   }
 
   const TENANT = 'tenant-uuid-001'
-  const USER   = 'user-uuid-001'
-  const TODAY  = new Date('2026-06-29T10:00:00.000Z')
+  const USER = 'user-uuid-001'
+  const TODAY = new Date('2026-06-29T10:00:00.000Z')
 
   function buildPrisma(overrides: Partial<typeof prisma> = {}) {
     return {
@@ -33,16 +33,29 @@ describe('RegistraMovimentoUseCase', () => {
 
   function buildCommand(): RegistraMovimentoCommand {
     return new RegistraMovimentoCommand(
-      TENANT, USER, 'CARICO', TODAY, TODAY,
-      'PRODUZIONE_INTERNA', '20 03 01', 'Rifiuti urbani misti',
-      100, 'KG', 'Solido',
-      undefined, undefined, undefined, undefined, undefined, undefined,
+      TENANT,
+      USER,
+      'CARICO',
+      TODAY,
+      TODAY,
+      'PRODUZIONE_INTERNA',
+      '20 03 01',
+      'Rifiuti urbani misti',
+      100,
+      'KG',
+      'Solido',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
     )
   }
 
   /** Helper che simula la transazione Prisma con un singolo progressivo disponibile.
    * Aggiunge `$executeRaw` per il mock dell'advisory lock (pg_advisory_xact_lock). */
-  function mockTransazione(record: object) {
+  function _mockTransazione(record: object) {
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
       const tx = {
         $executeRaw: jest.fn().mockResolvedValue(0), // advisory lock no-op nel test
@@ -72,7 +85,7 @@ describe('RegistraMovimentoUseCase', () => {
 
   // ─── Numero progressivo ──────────────────────────────────────────────────────
 
-  it('assegna progressivo 1 al primo movimento dell\'anno', async () => {
+  it("assegna progressivo 1 al primo movimento dell'anno", async () => {
     let capturedData: any
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
       const tx = {
@@ -104,9 +117,23 @@ describe('RegistraMovimentoUseCase', () => {
     })
 
     const cmd = new RegistraMovimentoCommand(
-      TENANT, USER, 'CARICO', TODAY, TODAY,
-      'PRODUZIONE_INTERNA', '20 03 01', 'Rifiuti misti', 100, 'KG',
-      'Solido', undefined, undefined, undefined, undefined, undefined, undefined,
+      TENANT,
+      USER,
+      'CARICO',
+      TODAY,
+      TODAY,
+      'PRODUZIONE_INTERNA',
+      '20 03 01',
+      'Rifiuti misti',
+      100,
+      'KG',
+      'Solido',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
     )
     const result = await useCase.execute(cmd)
 
@@ -115,7 +142,7 @@ describe('RegistraMovimentoUseCase', () => {
     expect(capturedData.progressiveYear).toBe(2026)
   })
 
-  it('assegna progressivo n+1 quando esistono già movimenti nell\'anno', async () => {
+  it("assegna progressivo n+1 quando esistono già movimenti nell'anno", async () => {
     let capturedData: any
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
       const tx = {
@@ -132,9 +159,23 @@ describe('RegistraMovimentoUseCase', () => {
     })
 
     const cmd = new RegistraMovimentoCommand(
-      TENANT, USER, 'CARICO', TODAY, TODAY,
-      'PRODUZIONE_INTERNA', '20 03 01', undefined, 50, 'KG',
-      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      TENANT,
+      USER,
+      'CARICO',
+      TODAY,
+      TODAY,
+      'PRODUZIONE_INTERNA',
+      '20 03 01',
+      undefined,
+      50,
+      'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
     )
     const result = await useCase.execute(cmd)
 
@@ -161,9 +202,23 @@ describe('RegistraMovimentoUseCase', () => {
     })
 
     const cmd = new RegistraMovimentoCommand(
-      TENANT, USER, 'CARICO', TODAY, TODAY,
-      'PRODUZIONE_INTERNA', '20 03 01', undefined, 100, 'KG',
-      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      TENANT,
+      USER,
+      'CARICO',
+      TODAY,
+      TODAY,
+      'PRODUZIONE_INTERNA',
+      '20 03 01',
+      undefined,
+      100,
+      'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
     )
     await useCase.execute(cmd)
 
@@ -175,14 +230,28 @@ describe('RegistraMovimentoUseCase', () => {
   it('restituisce errore se lo scarico supera la giacenza disponibile', async () => {
     // Giacenza: 80 kg, scarico richiesto: 100 kg
     prisma.wasteMovement.groupBy.mockResolvedValue([
-      { type: 'CARICO',  _sum: { quantity: 80 } },
+      { type: 'CARICO', _sum: { quantity: 80 } },
       { type: 'SCARICO', _sum: { quantity: 0 } },
     ])
 
     const cmd = new RegistraMovimentoCommand(
-      TENANT, USER, 'SCARICO', TODAY, TODAY,
-      'CONFERIMENTO_TRASPORTATORE', '20 03 01', undefined, 100, 'KG',
-      undefined, undefined, undefined, undefined, undefined, 'fir-id-001', undefined,
+      TENANT,
+      USER,
+      'SCARICO',
+      TODAY,
+      TODAY,
+      'CONFERIMENTO_TRASPORTATORE',
+      '20 03 01',
+      undefined,
+      100,
+      'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'fir-id-001',
+      undefined
     )
     const result = await useCase.execute(cmd)
 
@@ -192,7 +261,7 @@ describe('RegistraMovimentoUseCase', () => {
 
   it('permette lo scarico se la giacenza è sufficiente', async () => {
     prisma.wasteMovement.groupBy.mockResolvedValue([
-      { type: 'CARICO',  _sum: { quantity: 200 } },
+      { type: 'CARICO', _sum: { quantity: 200 } },
       { type: 'SCARICO', _sum: { quantity: 50 } },
     ])
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
@@ -231,9 +300,23 @@ describe('RegistraMovimentoUseCase', () => {
     })
 
     const cmd = new RegistraMovimentoCommand(
-      TENANT, USER, 'SCARICO', TODAY, TODAY,
-      'CONFERIMENTO_TRASPORTATORE', '20 03 01', undefined, 100, 'KG',
-      undefined, undefined, undefined, undefined, undefined, 'fir-id-001', undefined,
+      TENANT,
+      USER,
+      'SCARICO',
+      TODAY,
+      TODAY,
+      'CONFERIMENTO_TRASPORTATORE',
+      '20 03 01',
+      undefined,
+      100,
+      'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'fir-id-001',
+      undefined
     )
     const result = await useCase.execute(cmd)
 
@@ -283,9 +366,23 @@ describe('RegistraMovimentoUseCase', () => {
     })
 
     const cmd = new RegistraMovimentoCommand(
-      TENANT, USER, 'CARICO', movDate, regDate,
-      'PRODUZIONE_INTERNA', '20 03 01', undefined, 50, 'KG',
-      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      TENANT,
+      USER,
+      'CARICO',
+      movDate,
+      regDate,
+      'PRODUZIONE_INTERNA',
+      '20 03 01',
+      undefined,
+      50,
+      'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
     )
     const result = await useCase.execute(cmd)
 
@@ -304,14 +401,29 @@ describe('RegistraMovimentoUseCase', () => {
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
         wasteMovement: {
           create: jest.fn().mockResolvedValue({
-            id: 'id-006', tenantId: TENANT, progressiveNumber: 1, progressiveYear: 2026,
-            type: 'SCARICO', movementDate: TODAY, registrationDate: TODAY,
-            causale: 'AVVIO_RECUPERO', cerCode: '20 03 01',
-            wasteDescription: null, quantity: 10, unit: 'KG',
-            wastePhysicalState: null, wasteHazardClasses: null, operationCode: null,
-            counterpartName: null, counterpartAddress: null,
-            firId: null, recordedByUserId: USER, entryHash: 'c'.repeat(64),
-            notes: null, createdAt: TODAY, updatedAt: TODAY,
+            id: 'id-006',
+            tenantId: TENANT,
+            progressiveNumber: 1,
+            progressiveYear: 2026,
+            type: 'SCARICO',
+            movementDate: TODAY,
+            registrationDate: TODAY,
+            causale: 'AVVIO_RECUPERO',
+            cerCode: '20 03 01',
+            wasteDescription: null,
+            quantity: 10,
+            unit: 'KG',
+            wastePhysicalState: null,
+            wasteHazardClasses: null,
+            operationCode: null,
+            counterpartName: null,
+            counterpartAddress: null,
+            firId: null,
+            recordedByUserId: USER,
+            entryHash: 'c'.repeat(64),
+            notes: null,
+            createdAt: TODAY,
+            updatedAt: TODAY,
           }),
         },
       }
@@ -319,9 +431,23 @@ describe('RegistraMovimentoUseCase', () => {
     })
 
     const cmd = new RegistraMovimentoCommand(
-      TENANT, USER, 'SCARICO', TODAY, TODAY,
-      'AVVIO_RECUPERO', '20 03 01', undefined, 10, 'KG',
-      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      TENANT,
+      USER,
+      'SCARICO',
+      TODAY,
+      TODAY,
+      'AVVIO_RECUPERO',
+      '20 03 01',
+      undefined,
+      10,
+      'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
     )
     await useCase.execute(cmd)
 
@@ -329,7 +455,7 @@ describe('RegistraMovimentoUseCase', () => {
     expect(prisma.wasteMovement.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ tenantId: TENANT }),
-      }),
+      })
     )
   })
 
@@ -337,10 +463,23 @@ describe('RegistraMovimentoUseCase', () => {
 
   it('rifiuta una causale di carico non valida', async () => {
     const cmd = new RegistraMovimentoCommand(
-      TENANT, USER, 'CARICO', TODAY, TODAY,
+      TENANT,
+      USER,
+      'CARICO',
+      TODAY,
+      TODAY,
       'CONFERIMENTO_TRASPORTATORE' as any, // causale di scarico su tipo CARICO
-      '20 03 01', undefined, 100, 'KG',
-      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      '20 03 01',
+      undefined,
+      100,
+      'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
     )
     const result = await useCase.execute(cmd)
     // Il dominio lancia un'eccezione che la use-case cattura come Result.fail

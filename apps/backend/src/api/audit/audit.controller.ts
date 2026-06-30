@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Query,
-  Param,
   Body,
   UseGuards,
   HttpCode,
@@ -11,17 +10,17 @@ import {
   Logger,
   Res,
   Inject,
-} from '@nestjs/common';
-import { Response } from 'express';
-import { QueryBus } from '@nestjs/cqrs';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { PermissionGuard } from '../guards/permission.guard';
-import { RequirePermission } from '../decorators/require-permission.decorator';
-import { CurrentUser } from '../decorators/current-user.decorator';
-import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.query';
-import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query';
-import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface';
-import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-change-history.repository.interface';
+} from '@nestjs/common'
+import { Response } from 'express'
+import { QueryBus } from '@nestjs/cqrs'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { PermissionGuard } from '../guards/permission.guard'
+import { RequirePermission } from '../decorators/require-permission.decorator'
+import { CurrentUser } from '../decorators/current-user.decorator'
+import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.query'
+import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query'
+import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface'
+import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-change-history.repository.interface'
 
 /**
  * AuditController
@@ -46,14 +45,14 @@ import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-c
 @Controller('audit')
 @UseGuards(JwtAuthGuard, PermissionGuard)
 export class AuditController {
-  private readonly logger = new Logger(AuditController.name);
+  private readonly logger = new Logger(AuditController.name)
 
   constructor(
     private readonly queryBus: QueryBus,
     @Inject('PermissionAuditLogRepository')
     private readonly auditLogRepository: PermissionAuditLogRepository,
     @Inject('RoleChangeHistoryRepository')
-    private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository,
+    private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository
   ) {}
 
   /**
@@ -73,7 +72,7 @@ export class AuditController {
     @Query('resourceId') resourceId?: string,
     @Query('actionAttempted') actionAttempted?: string,
     @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
+    @Query('pageSize') pageSize?: string
   ): Promise<any> {
     try {
       const query = new GetAuditTrailQuery(
@@ -90,14 +89,14 @@ export class AuditController {
         {
           page: page ? parseInt(page, 10) : undefined,
           pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-        },
-      );
+        }
+      )
 
-      const result = await this.queryBus.execute(query);
+      const result = await this.queryBus.execute(query)
 
       this.logger.log(
-        `Audit trail query completed: ${result.total} logs found in ${result.performanceMetrics?.queryTimeMs.toFixed(2)}ms`,
-      );
+        `Audit trail query completed: ${result.total} logs found in ${result.performanceMetrics?.queryTimeMs.toFixed(2)}ms`
+      )
 
       return {
         success: true,
@@ -123,16 +122,14 @@ export class AuditController {
             total: result.total,
             page: result.page,
             pageSize: result.pageSize,
-            totalPages: result.pageSize
-              ? Math.ceil(result.total / result.pageSize)
-              : 1,
+            totalPages: result.pageSize ? Math.ceil(result.total / result.pageSize) : 1,
           },
           performanceMetrics: result.performanceMetrics,
         },
-      };
+      }
     } catch (error) {
-      this.logger.error(`Failed to get audit trail: ${error.message}`, error.stack);
-      throw error;
+      this.logger.error(`Failed to get audit trail: ${error.message}`, error.stack)
+      throw error
     }
   }
 
@@ -148,26 +145,26 @@ export class AuditController {
     @Res() res: Response,
     @Query('userId') userId?: string,
     @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query('endDate') endDate?: string
   ): Promise<void> {
     try {
-      this.logger.log(`Exporting audit trail for tenant ${user.tenantId}`);
+      this.logger.log(`Exporting audit trail for tenant ${user.tenantId}`)
 
       const csv = await this.auditLogRepository.exportToCsv({
         tenantId: user.tenantId,
         userId,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-      });
+      })
 
-      const filename = `audit-trail-${user.tenantId}-${new Date().toISOString()}.csv`;
+      const filename = `audit-trail-${user.tenantId}-${new Date().toISOString()}.csv`
 
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(csv);
+      res.setHeader('Content-Type', 'text/csv')
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+      res.send(csv)
     } catch (error) {
-      this.logger.error(`Failed to export audit trail: ${error.message}`, error.stack);
-      throw error;
+      this.logger.error(`Failed to export audit trail: ${error.message}`, error.stack)
+      throw error
     }
   }
 
@@ -187,13 +184,13 @@ export class AuditController {
     @Query('endDate') endDate?: string,
     @Query('changeType') changeType?: 'INITIAL' | 'CHANGE' | 'REVOCATION',
     @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
+    @Query('pageSize') pageSize?: string
   ): Promise<any> {
     try {
-      this.logger.log(`Get role changes for tenant ${user.tenantId}`);
+      this.logger.log(`Get role changes for tenant ${user.tenantId}`)
 
-      const pageNum = page ? parseInt(page, 10) : 1;
-      const size = pageSize ? parseInt(pageSize, 10) : 50;
+      const pageNum = page ? parseInt(page, 10) : 1
+      const size = pageSize ? parseInt(pageSize, 10) : 50
 
       const result = await this.roleChangeHistoryRepository.findWithFilters({
         tenantId: user.tenantId,
@@ -205,7 +202,7 @@ export class AuditController {
         changeType,
         page: pageNum,
         pageSize: size,
-      });
+      })
 
       return {
         success: true,
@@ -229,10 +226,10 @@ export class AuditController {
             totalPages: size ? Math.ceil(result.total / size) : 1,
           },
         },
-      };
+      }
     } catch (error) {
-      this.logger.error(`Failed to get role changes: ${error.message}`, error.stack);
-      throw error;
+      this.logger.error(`Failed to get role changes: ${error.message}`, error.stack)
+      throw error
     }
   }
 
@@ -245,20 +242,18 @@ export class AuditController {
   @HttpCode(HttpStatus.OK)
   async reconstructHistoricalPermissions(
     @CurrentUser() user: any,
-    @Body() body: { userId: string; timestamp: string },
+    @Body() body: { userId: string; timestamp: string }
   ): Promise<any> {
     try {
-      this.logger.log(
-        `Reconstructing permissions for user ${body.userId} at ${body.timestamp}`,
-      );
+      this.logger.log(`Reconstructing permissions for user ${body.userId} at ${body.timestamp}`)
 
       const query = new ReconstructHistoricalPermissionsQuery(
         body.userId,
         user.tenantId,
-        new Date(body.timestamp),
-      );
+        new Date(body.timestamp)
+      )
 
-      const result = await this.queryBus.execute(query);
+      const result = await this.queryBus.execute(query)
 
       return {
         success: true,
@@ -272,13 +267,13 @@ export class AuditController {
           hadAccess: result.hadAccess,
           reconstructionMetadata: result.reconstructionMetadata,
         },
-      };
+      }
     } catch (error) {
       this.logger.error(
         `Failed to reconstruct historical permissions: ${error.message}`,
-        error.stack,
-      );
-      throw error;
+        error.stack
+      )
+      throw error
     }
   }
 
@@ -292,20 +287,20 @@ export class AuditController {
   async getAuditStatistics(
     @CurrentUser() user: any,
     @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query('endDate') endDate?: string
   ): Promise<any> {
     try {
-      this.logger.log(`Get audit statistics for tenant ${user.tenantId}`);
+      this.logger.log(`Get audit statistics for tenant ${user.tenantId}`)
 
       const stats = await this.auditLogRepository.getStatistics(user.tenantId, {
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-      });
+      })
 
-      return { success: true, data: stats };
+      return { success: true, data: stats }
     } catch (error) {
-      this.logger.error(`Failed to get audit statistics: ${error.message}`, error.stack);
-      throw error;
+      this.logger.error(`Failed to get audit statistics: ${error.message}`, error.stack)
+      throw error
     }
   }
 
@@ -318,20 +313,15 @@ export class AuditController {
   @HttpCode(HttpStatus.OK)
   async validateChainIntegrity(
     @CurrentUser() user: any,
-    @Body() body: { startDate?: string; endDate?: string },
+    @Body() body: { startDate?: string; endDate?: string }
   ): Promise<any> {
     try {
-      this.logger.log(
-        `Validating chain integrity for tenant ${user.tenantId}`,
-      );
+      this.logger.log(`Validating chain integrity for tenant ${user.tenantId}`)
 
-      const result = await this.auditLogRepository.validateChainIntegrity(
-        user.tenantId,
-        {
-          startDate: body.startDate ? new Date(body.startDate) : undefined,
-          endDate: body.endDate ? new Date(body.endDate) : undefined,
-        },
-      );
+      const result = await this.auditLogRepository.validateChainIntegrity(user.tenantId, {
+        startDate: body.startDate ? new Date(body.startDate) : undefined,
+        endDate: body.endDate ? new Date(body.endDate) : undefined,
+      })
 
       return {
         success: true,
@@ -341,13 +331,10 @@ export class AuditController {
           firstInvalidLogId: result.firstInvalidLogId ?? null,
           error: result.error ?? null,
         },
-      };
+      }
     } catch (error) {
-      this.logger.error(
-        `Failed to validate chain integrity: ${error.message}`,
-        error.stack,
-      );
-      throw error;
+      this.logger.error(`Failed to validate chain integrity: ${error.message}`, error.stack)
+      throw error
     }
   }
 }

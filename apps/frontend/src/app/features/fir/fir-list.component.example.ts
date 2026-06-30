@@ -1,7 +1,7 @@
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { HasPermissionDirective } from '../permissions/directives/has-permission.directive';
-import { RequirePermissionDirective } from '../permissions/directives/require-permission.directive';
+import { Component } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { HasPermissionDirective } from '../permissions/directives/has-permission.directive'
+import { RequirePermissionDirective } from '../permissions/directives/require-permission.directive'
 
 /**
  * FIR List Component Example
@@ -47,34 +47,18 @@ import { RequirePermissionDirective } from '../permissions/directives/require-pe
             <td>{{ fir.createdAt | date }}</td>
             <td>
               <!-- View button - always visible with read permission -->
-              <button
-                *hasPermission="'fir:read:facility'"
-                class="btn-view">
-                View
-              </button>
+              <button *hasPermission="'fir:read:facility'" class="btn-view">View</button>
 
               <!-- Edit button - only if user has update permission -->
-              <button
-                *hasPermission="'fir:update:facility'"
-                class="btn-edit">
-                Edit
-              </button>
+              <button *hasPermission="'fir:update:facility'" class="btn-edit">Edit</button>
 
               <!-- Delete button - requires delete permission -->
               <!-- This will be disabled if user lacks permission -->
-              <button
-                [requirePermission]="'fir:delete:facility'"
-                class="btn-delete">
-                Delete
-              </button>
+              <button [requirePermission]="'fir:delete:facility'" class="btn-delete">Delete</button>
 
               <!-- Approve button - high-risk operation -->
               <!-- Requires approve permission + SPID step-up -->
-              <button
-                *hasPermission="'fir:approve:facility'"
-                class="btn-approve">
-                Approve
-              </button>
+              <button *hasPermission="'fir:approve:facility'" class="btn-approve">Approve</button>
             </td>
           </tr>
         </tbody>
@@ -99,77 +83,89 @@ import { RequirePermissionDirective } from '../permissions/directives/require-pe
 
       <!-- Include temporary permissions -->
       <div *hasPermission="'fir:delete:facility'; includeTemp: true">
-        <p class="temp-permission-notice">
-          You have temporary delete permission
-        </p>
+        <p class="temp-permission-notice">You have temporary delete permission</p>
       </div>
     </div>
   `,
-  styles: [`
-    .fir-list-page {
-      padding: var(--spacing-xl);
-    }
+  styles: [
+    `
+      .fir-list-page {
+        padding: var(--spacing-xl);
+      }
 
-    .btn-primary {
-      background: var(--brand-primary);
-      color: var(--text-inverse);
-      padding: 0 1rem;
-      height: var(--control-md);
-      border: none;
-      border-radius: var(--radius-md);
-      cursor: pointer;
-      margin-bottom: var(--spacing-base);
-      font-weight: var(--font-weight-semibold);
-    }
+      .btn-primary {
+        background: var(--brand-primary);
+        color: var(--text-inverse);
+        padding: 0 1rem;
+        height: var(--control-md);
+        border: none;
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        margin-bottom: var(--spacing-base);
+        font-weight: var(--font-weight-semibold);
+      }
 
-    .fir-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: var(--spacing-base);
-    }
+      .fir-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: var(--spacing-base);
+      }
 
-    .fir-table th,
-    .fir-table td {
-      padding: var(--spacing-md);
-      text-align: left;
-      border-bottom: 1px solid var(--surface-border);
-    }
+      .fir-table th,
+      .fir-table td {
+        padding: var(--spacing-md);
+        text-align: left;
+        border-bottom: 1px solid var(--surface-border);
+      }
 
-    .btn-view,
-    .btn-edit,
-    .btn-delete,
-    .btn-approve {
-      margin-right: var(--spacing-sm);
-      padding: 0 0.75rem;
-      height: var(--control-sm);
-      border: none;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-weight: var(--font-weight-medium);
-    }
+      .btn-view,
+      .btn-edit,
+      .btn-delete,
+      .btn-approve {
+        margin-right: var(--spacing-sm);
+        padding: 0 0.75rem;
+        height: var(--control-sm);
+        border: none;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        font-weight: var(--font-weight-medium);
+      }
 
-    .btn-view { background: var(--color-info-bg); color: var(--color-info); }
-    .btn-edit { background: var(--color-warning-bg); color: var(--color-warning); }
-    .btn-delete { background: var(--color-danger-bg); color: var(--color-danger); }
-    .btn-approve { background: var(--color-success-bg); color: var(--color-success); }
+      .btn-view {
+        background: var(--color-info-bg);
+        color: var(--color-info);
+      }
+      .btn-edit {
+        background: var(--color-warning-bg);
+        color: var(--color-warning);
+      }
+      .btn-delete {
+        background: var(--color-danger-bg);
+        color: var(--color-danger);
+      }
+      .btn-approve {
+        background: var(--color-success-bg);
+        color: var(--color-success);
+      }
 
-    .btn-view:disabled,
-    .btn-edit:disabled,
-    .btn-delete:disabled,
-    .btn-approve:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
+      .btn-view:disabled,
+      .btn-edit:disabled,
+      .btn-delete:disabled,
+      .btn-approve:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
 
-    .temp-permission-notice {
-      background: var(--color-warning-bg);
-      color: var(--color-warning);
-      padding: var(--spacing-sm) var(--spacing-base);
-      border-left: 3px solid var(--color-warning);
-      margin-top: var(--spacing-base);
-      border-radius: var(--radius-sm);
-    }
-  `]
+      .temp-permission-notice {
+        background: var(--color-warning-bg);
+        color: var(--color-warning);
+        padding: var(--spacing-sm) var(--spacing-base);
+        border-left: 3px solid var(--color-warning);
+        margin-top: var(--spacing-base);
+        border-radius: var(--radius-sm);
+      }
+    `,
+  ],
 })
 export class FirListComponentExample {
   // Mock data for demonstration
@@ -177,7 +173,7 @@ export class FirListComponentExample {
     { id: 'FIR-001', status: 'Draft', createdAt: new Date() },
     { id: 'FIR-002', status: 'Submitted', createdAt: new Date() },
     { id: 'FIR-003', status: 'Approved', createdAt: new Date() },
-  ];
+  ]
 }
 
 /**

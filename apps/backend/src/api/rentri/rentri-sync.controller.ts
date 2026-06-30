@@ -11,16 +11,16 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
-} from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { TenantId } from '../../core/decorators/tenant.decorator';
-import { UserId } from '../../core/decorators/user.decorator';
-import { JwtAuthGuard } from '../../core/auth/jwt-auth.guard';
-import { LoggerService } from '../../core/logger/logger.service';
-import { TriggerBatchSyncUseCase } from '../../application/rentri/trigger-batch-sync.use-case';
-import { GetSyncStatusUseCase } from '../../application/rentri/get-sync-status.use-case';
-import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue';
-import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository';
+} from '@nestjs/common'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
+import { TenantId } from '../../core/decorators/tenant.decorator'
+import { UserId } from '../../core/decorators/user.decorator'
+import { JwtAuthGuard } from '../../core/auth/jwt-auth.guard'
+import { LoggerService } from '../../core/logger/logger.service'
+import { TriggerBatchSyncUseCase } from '../../application/rentri/trigger-batch-sync.use-case'
+import { GetSyncStatusUseCase } from '../../application/rentri/get-sync-status.use-case'
+import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
+import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import {
   SyncFIRRequestDto,
   SyncFIRResponseDto,
@@ -31,7 +31,7 @@ import {
   SyncLogsResponseDto,
   SyncLogEntryDto,
   QueueMetricsResponseDto,
-} from './dto/sync-fir.dto';
+} from './dto/sync-fir.dto'
 
 /**
  * RENTRI Sync Controller
@@ -57,9 +57,9 @@ export class RENTRISyncController {
     private readonly getSyncStatusUseCase: GetSyncStatusUseCase,
     private readonly rentriSyncQueue: RENTRISyncQueue,
     private readonly rentriSyncLogRepository: RENTRISyncLogRepository,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext('RENTRISyncController');
+    this.logger.setContext('RENTRISyncController')
   }
 
   /**
@@ -88,7 +88,7 @@ export class RENTRISyncController {
     @Param('id') firId: string,
     @TenantId() tenantId: string,
     @UserId() userId: string,
-    @Body() dto: SyncFIRRequestDto,
+    @Body() dto: SyncFIRRequestDto
   ): Promise<SyncFIRResponseDto> {
     this.logger.info('Sync FIR request received', {
       firId,
@@ -96,7 +96,7 @@ export class RENTRISyncController {
       userId,
       priority: dto.priority,
       delay: dto.delay,
-    });
+    })
 
     try {
       // Queue the sync job
@@ -106,18 +106,18 @@ export class RENTRISyncController {
         correlationId: dto.correlationId,
         delay: dto.delay || 0,
         priority: dto.priority || 'normal',
-      });
+      })
 
       const estimatedStartTime = dto.delay
         ? new Date(Date.now() + dto.delay).toISOString()
-        : undefined;
+        : undefined
 
       this.logger.info('FIR sync job queued', {
         jobId,
         firId,
         tenantId,
         estimatedStartTime,
-      });
+      })
 
       return {
         jobId,
@@ -126,22 +126,25 @@ export class RENTRISyncController {
           ? `FIR sync job queued with ${dto.delay / 1000}s delay`
           : 'FIR sync job queued successfully',
         estimatedStartTime,
-      };
+      }
     } catch (error: any) {
       this.logger.error('Failed to queue FIR sync job', error, {
         firId,
         tenantId,
-      });
+      })
 
       if (error.message?.includes('not found')) {
-        throw new NotFoundException(`FIR with ID ${firId} not found`);
+        throw new NotFoundException(`FIR with ID ${firId} not found`)
       }
 
-      if (error.message?.includes('not syncable') || error.message?.includes('BUSINESS_RULE_VIOLATION')) {
-        throw new BadRequestException(error.message);
+      if (
+        error.message?.includes('not syncable') ||
+        error.message?.includes('BUSINESS_RULE_VIOLATION')
+      ) {
+        throw new BadRequestException(error.message)
       }
 
-      throw error;
+      throw error
     }
   }
 
@@ -166,21 +169,21 @@ export class RENTRISyncController {
   async batchSync(
     @TenantId() tenantId: string,
     @UserId() userId: string,
-    @Body() dto: BatchSyncRequestDto,
+    @Body() dto: BatchSyncRequestDto
   ): Promise<BatchSyncResponseDto> {
     this.logger.info('Batch sync request received', {
       tenantId,
       userId,
       firCount: dto.firIds.length,
       priority: dto.priority,
-    });
+    })
 
     if (dto.firIds.length === 0) {
-      throw new BadRequestException('At least one FIR ID is required');
+      throw new BadRequestException('At least one FIR ID is required')
     }
 
     if (dto.firIds.length > 100) {
-      throw new BadRequestException('Maximum 100 FIRs per batch');
+      throw new BadRequestException('Maximum 100 FIRs per batch')
     }
 
     try {
@@ -190,28 +193,28 @@ export class RENTRISyncController {
         firIds: dto.firIds,
         tenantId,
         priority: dto.priority || 'normal',
-      });
+      })
 
       this.logger.info('Batch sync job queued', {
         batchJobId: result.batchJobId,
         tenantId,
         queuedCount: result.queuedCount,
         skippedCount: result.skippedCount,
-      });
+      })
 
       return {
         batchJobId: result.batchJobId || '',
         queuedCount: result.queuedCount,
         skippedCount: result.skippedCount || 0,
         message: `Queued ${result.queuedCount} FIRs for sync`,
-      };
+      }
     } catch (error: any) {
       this.logger.error('Failed to queue batch sync', error, {
         tenantId,
         firCount: dto.firIds.length,
-      });
+      })
 
-      throw new BadRequestException(error.message || 'Failed to queue batch sync');
+      throw new BadRequestException(error.message || 'Failed to queue batch sync')
     }
   }
 
@@ -239,16 +242,16 @@ export class RENTRISyncController {
   async getSyncStatus(
     @Param('jobId') jobId: string,
     @TenantId() tenantId: string,
-    @UserId() userId: string,
+    @UserId() userId: string
   ): Promise<SyncStatusResponseDto> {
     this.logger.debug('Get sync status request', {
       jobId,
       tenantId,
       userId,
-    });
+    })
 
     try {
-      const status = await this.getSyncStatusUseCase.execute(jobId, tenantId);
+      const status = await this.getSyncStatusUseCase.execute(jobId, tenantId)
 
       return {
         jobId: status.jobId,
@@ -260,22 +263,22 @@ export class RENTRISyncController {
         attemptsMade: status.attemptsMade,
         processedOn: status.processedOn,
         finishedOn: status.finishedOn,
-      };
+      }
     } catch (error: any) {
       this.logger.error('Failed to get sync status', error, {
         jobId,
         tenantId,
-      });
+      })
 
       if (error.message?.includes('not found')) {
-        throw new NotFoundException(`Job with ID ${jobId} not found`);
+        throw new NotFoundException(`Job with ID ${jobId} not found`)
       }
 
       if (error.message?.includes('Unauthorized')) {
-        throw new UnauthorizedException('Cannot access job from different tenant');
+        throw new UnauthorizedException('Cannot access job from different tenant')
       }
 
-      throw error;
+      throw error
     }
   }
 
@@ -295,46 +298,42 @@ export class RENTRISyncController {
   async getSyncLogs(
     @TenantId() tenantId: string,
     @UserId() userId: string,
-    @Query() query: SyncLogsQueryDto,
+    @Query() query: SyncLogsQueryDto
   ): Promise<SyncLogsResponseDto> {
     this.logger.debug('Get sync logs request', {
       tenantId,
       userId,
       query,
-    });
+    })
 
-    const page = query.page || 1;
-    const limit = query.limit || 20;
-    const offset = (page - 1) * limit;
+    const page = query.page || 1
+    const limit = query.limit || 20
+    const offset = (page - 1) * limit
 
     // Build filter criteria
-    const criteria: any = {};
+    const criteria: any = {}
 
     if (query.firId) {
-      criteria.firId = query.firId;
+      criteria.firId = query.firId
     }
 
     if (query.status) {
-      criteria.status = query.status;
+      criteria.status = query.status
     }
 
     if (query.dateFrom || query.dateTo) {
       if (query.dateFrom) {
-        criteria.dateFrom = new Date(query.dateFrom);
+        criteria.dateFrom = new Date(query.dateFrom)
       }
       if (query.dateTo) {
-        criteria.dateTo = new Date(query.dateTo);
+        criteria.dateTo = new Date(query.dateTo)
       }
     }
 
     try {
-      const result = await this.rentriSyncLogRepository.findPaginated(
-        limit,
-        offset,
-        criteria,
-      );
+      const result = await this.rentriSyncLogRepository.findPaginated(limit, offset, criteria)
 
-      const totalPages = Math.ceil(result.total / limit);
+      const totalPages = Math.ceil(result.total / limit)
 
       const data: SyncLogEntryDto[] = result.data.map(log => ({
         id: log.id,
@@ -347,7 +346,7 @@ export class RENTRISyncController {
         syncedAt: log.syncedAt || undefined,
         durationMs: log.durationMs || undefined,
         createdAt: log.createdAt,
-      }));
+      }))
 
       this.logger.info('Sync logs retrieved', {
         tenantId,
@@ -355,7 +354,7 @@ export class RENTRISyncController {
         page,
         limit,
         totalPages,
-      });
+      })
 
       return {
         data,
@@ -363,14 +362,14 @@ export class RENTRISyncController {
         page,
         limit,
         totalPages,
-      };
+      }
     } catch (error: any) {
       this.logger.error('Failed to get sync logs', error, {
         tenantId,
         query,
-      });
+      })
 
-      throw new BadRequestException('Failed to retrieve sync logs');
+      throw new BadRequestException('Failed to retrieve sync logs')
     }
   }
 
@@ -389,28 +388,28 @@ export class RENTRISyncController {
   })
   async getQueueMetrics(
     @TenantId() tenantId: string,
-    @UserId() userId: string,
+    @UserId() userId: string
   ): Promise<QueueMetricsResponseDto> {
     this.logger.debug('Get queue metrics request', {
       tenantId,
       userId,
-    });
+    })
 
     try {
-      const metrics = await this.rentriSyncQueue.getQueueMetrics(tenantId);
+      const metrics = await this.rentriSyncQueue.getQueueMetrics(tenantId)
 
       this.logger.debug('Queue metrics retrieved', {
         tenantId,
         metrics,
-      });
+      })
 
-      return metrics;
+      return metrics
     } catch (error: any) {
       this.logger.error('Failed to get queue metrics', error, {
         tenantId,
-      });
+      })
 
-      throw new BadRequestException('Failed to retrieve queue metrics');
+      throw new BadRequestException('Failed to retrieve queue metrics')
     }
   }
 }

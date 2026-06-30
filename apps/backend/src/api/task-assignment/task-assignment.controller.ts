@@ -9,17 +9,17 @@ import {
   Logger,
   HttpCode,
   HttpStatus,
-} from '@nestjs/common';
-import { CommandBus } from '@nestjs/cqrs';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { TenantIsolationGuard } from '../guards/tenant-isolation.guard';
-import { PermissionGuard } from '../guards/permission.guard';
-import { RequirePermission } from '../decorators/require-permission.decorator';
-import { CurrentTenant } from '../decorators/current-tenant.decorator';
-import { CurrentUser } from '../decorators/current-user.decorator';
-import { AssignTaskCommand } from '../../application/commands/assign-task.command';
-import { ReassignTaskCommand } from '../../application/commands/reassign-task.command';
-import { TaskAssignmentService } from '../../application/services/task-assignment.service';
+} from '@nestjs/common'
+import { CommandBus } from '@nestjs/cqrs'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
+import { PermissionGuard } from '../guards/permission.guard'
+import { RequirePermission } from '../decorators/require-permission.decorator'
+import { CurrentTenant } from '../decorators/current-tenant.decorator'
+import { CurrentUser } from '../decorators/current-user.decorator'
+import { AssignTaskCommand } from '../../application/commands/assign-task.command'
+import { ReassignTaskCommand } from '../../application/commands/reassign-task.command'
+import { TaskAssignmentService } from '../../application/services/task-assignment.service'
 
 /**
  * TaskAssignmentController
@@ -37,11 +37,11 @@ import { TaskAssignmentService } from '../../application/services/task-assignmen
 @Controller('tasks')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class TaskAssignmentController {
-  private readonly logger = new Logger(TaskAssignmentController.name);
+  private readonly logger = new Logger(TaskAssignmentController.name)
 
   constructor(
     private readonly commandBus: CommandBus,
-    private readonly taskAssignmentService: TaskAssignmentService,
+    private readonly taskAssignmentService: TaskAssignmentService
   ) {}
 
   /**
@@ -58,23 +58,17 @@ export class TaskAssignmentController {
     @CurrentUser() user: any,
     @Body()
     body: {
-      driverId?: string; // If provided, manual assignment; otherwise automatic
-      reason?: string; // Optional reason for manual assignment
-    },
+      driverId?: string // If provided, manual assignment; otherwise automatic
+      reason?: string // Optional reason for manual assignment
+    }
   ) {
     this.logger.log(
-      `Assigning task FIR ${firId}${body.driverId ? ` to driver ${body.driverId}` : ' (automatic)'}`,
-    );
+      `Assigning task FIR ${firId}${body.driverId ? ` to driver ${body.driverId}` : ' (automatic)'}`
+    )
 
-    const command = new AssignTaskCommand(
-      firId,
-      tenantId,
-      user.userId,
-      body.driverId,
-      body.reason,
-    );
+    const command = new AssignTaskCommand(firId, tenantId, user.userId, body.driverId, body.reason)
 
-    const result = await this.commandBus.execute(command);
+    const result = await this.commandBus.execute(command)
 
     return {
       success: true,
@@ -86,7 +80,7 @@ export class TaskAssignmentController {
       message: body.driverId
         ? 'Task manually assigned successfully'
         : 'Task automatically assigned to best qualified driver',
-    };
+    }
   }
 
   /**
@@ -103,23 +97,21 @@ export class TaskAssignmentController {
     @CurrentUser() user: any,
     @Body()
     body: {
-      newDriverId: string;
-      reason: string; // Required for audit trail
-    },
+      newDriverId: string
+      reason: string // Required for audit trail
+    }
   ) {
-    this.logger.log(
-      `Reassigning task FIR ${firId} to driver ${body.newDriverId}`,
-    );
+    this.logger.log(`Reassigning task FIR ${firId} to driver ${body.newDriverId}`)
 
     const command = new ReassignTaskCommand(
       firId,
       body.newDriverId,
       tenantId,
       user.userId,
-      body.reason,
-    );
+      body.reason
+    )
 
-    const result = await this.commandBus.execute(command);
+    const result = await this.commandBus.execute(command)
 
     return {
       success: true,
@@ -130,7 +122,7 @@ export class TaskAssignmentController {
         warnings: result.warnings,
       },
       message: 'Task reassigned successfully',
-    };
+    }
   }
 
   /**
@@ -140,20 +132,16 @@ export class TaskAssignmentController {
    */
   @Get(':firId/qualified-drivers')
   @RequirePermission('fir:read:facility')
-  async listQualifiedDrivers(
-    @Param('firId') firId: string,
-    @CurrentTenant() tenantId: string,
-  ) {
-    this.logger.log(`Listing qualified drivers for FIR ${firId}`);
+  async listQualifiedDrivers(@Param('firId') firId: string, @CurrentTenant() tenantId: string) {
+    this.logger.log(`Listing qualified drivers for FIR ${firId}`)
 
-    const qualifiedDrivers =
-      await this.taskAssignmentService.findQualifiedDrivers(firId, tenantId);
+    const qualifiedDrivers = await this.taskAssignmentService.findQualifiedDrivers(firId, tenantId)
 
     return {
       success: true,
       data: {
         firId,
-        qualifiedDrivers: qualifiedDrivers.map((driver) => ({
+        qualifiedDrivers: qualifiedDrivers.map(driver => ({
           userId: driver.userId,
           vehicleId: driver.resourceId,
           certifications: driver.certifications,
@@ -169,7 +157,7 @@ export class TaskAssignmentController {
         qualifiedDrivers.length > 0
           ? `Found ${qualifiedDrivers.length} qualified driver(s)`
           : 'No qualified drivers available for this task',
-    };
+    }
   }
 
   /**
@@ -180,11 +168,8 @@ export class TaskAssignmentController {
    */
   @Get('my-assignments')
   @RequirePermission('fir:read:own')
-  async getMyAssignments(
-    @CurrentTenant() tenantId: string,
-    @CurrentUser() user: any,
-  ) {
-    this.logger.log(`Getting assignments for driver ${user.userId}`);
+  async getMyAssignments(@CurrentTenant() tenantId: string, @CurrentUser() user: any) {
+    this.logger.log(`Getting assignments for driver ${user.userId}`)
 
     // Get driver's assigned FIRs
     // Note: This is a placeholder. In production, you'd query FIRs where carrierUserId = user.userId
@@ -227,6 +212,6 @@ export class TaskAssignmentController {
         },
       },
       message: 'Retrieved driver assignments',
-    };
+    }
   }
 }

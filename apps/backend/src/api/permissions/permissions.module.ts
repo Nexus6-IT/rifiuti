@@ -23,35 +23,34 @@
  * deve solo abilitare il guard senza rompere il bootstrap esistente.
  */
 
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { BullModule } from '@nestjs/bullmq';
+import { Module } from '@nestjs/common'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { BullModule } from '@nestjs/bullmq'
 
-import { PrismaModule } from '../../infrastructure/persistence/prisma.module';
-import { PrismaService } from '../../infrastructure/persistence/prisma.service';
+import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
 
 // Repository implementations (Prisma)
-import { PrismaUserRoleRepository } from '../../infrastructure/persistence/user-role.repository';
-import { PrismaRoleRepository } from '../../infrastructure/persistence/role.repository';
-import { PrismaPermissionRepository } from '../../infrastructure/persistence/permission.repository';
-import { PrismaAbacPolicyRepository } from '../../infrastructure/persistence/abac-policy.repository';
-import { PrismaPermissionAuditLogRepository } from '../../infrastructure/persistence/permission-audit-log.repository';
-import { PrismaTemporaryPermissionGrantRepository } from '../../infrastructure/persistence/temporary-permission-grant.repository';
+import { PrismaUserRoleRepository } from '../../infrastructure/persistence/user-role.repository'
+import { PrismaRoleRepository } from '../../infrastructure/persistence/role.repository'
+import { PrismaPermissionRepository } from '../../infrastructure/persistence/permission.repository'
+import { PrismaAbacPolicyRepository } from '../../infrastructure/persistence/abac-policy.repository'
+import { PrismaPermissionAuditLogRepository } from '../../infrastructure/persistence/permission-audit-log.repository'
+import { PrismaTemporaryPermissionGrantRepository } from '../../infrastructure/persistence/temporary-permission-grant.repository'
 
 // Cache + Redis
-import { RedisConfig } from '../../infrastructure/cache/redis.config';
-import { RoleCacheService } from '../../infrastructure/cache/role-cache.service';
-import { PermissionCacheService } from '../../infrastructure/cache/permission-cache.service';
+import { RedisConfig } from '../../infrastructure/cache/redis.config'
+import { RoleCacheService } from '../../infrastructure/cache/role-cache.service'
+import { PermissionCacheService } from '../../infrastructure/cache/permission-cache.service'
 
 // ABAC
-import { AbacPolicyEvaluator } from '../../domain/identity-access/abac/abac-policy-evaluator.service';
+import { AbacPolicyEvaluator } from '../../domain/identity-access/abac/abac-policy-evaluator.service'
 
 // Guard
-import { PermissionGuard } from '../guards/permission.guard';
+import { PermissionGuard } from '../guards/permission.guard'
 
 // Controllers (solo quelli con dipendenze interamente risolvibili)
-import { PermissionController } from './permission.controller';
-import { GetUserPermissionsQueryHandler } from '../../application/queries/handlers/get-user-permissions.handler';
+import { PermissionController } from './permission.controller'
+import { GetUserPermissionsQueryHandler } from '../../application/queries/handlers/get-user-permissions.handler'
 
 @Module({
   imports: [
@@ -66,11 +65,8 @@ import { GetUserPermissionsQueryHandler } from '../../application/queries/handle
       useFactory: (configService: ConfigService) => {
         // REDIS_CLUSTER_NODES = "host:port,..." — usiamo il primo nodo per la
         // connessione BullMQ (BullMQ non supporta cluster nativamente qui).
-        const nodes = configService.get<string>(
-          'REDIS_CLUSTER_NODES',
-          'localhost:6379',
-        );
-        const [host, portStr] = nodes.split(',')[0].split(':');
+        const nodes = configService.get<string>('REDIS_CLUSTER_NODES', 'localhost:6379')
+        const [host, portStr] = nodes.split(',')[0].split(':')
         return {
           connection: {
             host: host || 'localhost',
@@ -78,7 +74,7 @@ import { GetUserPermissionsQueryHandler } from '../../application/queries/handle
             password: configService.get<string>('REDIS_PASSWORD') || undefined,
             db: configService.get<number>('REDIS_DB', 0),
           },
-        };
+        }
       },
     }),
     // Registra la coda usata dal guard per il logging audit asincrono.
@@ -132,14 +128,14 @@ import { GetUserPermissionsQueryHandler } from '../../application/queries/handle
         roleRepo: PrismaRoleRepository,
         permissionRepo: PrismaPermissionRepository,
         permissionCache: PermissionCacheService,
-        tempGrantRepo: PrismaTemporaryPermissionGrantRepository,
+        tempGrantRepo: PrismaTemporaryPermissionGrantRepository
       ) =>
         new GetUserPermissionsQueryHandler(
           userRoleRepo,
           roleRepo,
           permissionRepo,
           permissionCache,
-          tempGrantRepo,
+          tempGrantRepo
         ),
       inject: [
         PrismaUserRoleRepository,

@@ -1,9 +1,9 @@
-import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../infrastructure/persistence/prisma.module';
-import { LoggerModule } from '../../core/logger/logger.module';
-import { AuthModule } from '../../auth/auth.module';
-import { TenantController } from '../../api/admin/tenant.controller';
-import { TenantService } from './tenant.service';
+import { Module } from '@nestjs/common'
+import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
+import { LoggerModule } from '../../core/logger/logger.module'
+import { AuthModule } from '../../auth/auth.module'
+import { TenantController } from '../../api/admin/tenant.controller'
+import { TenantService } from './tenant.service'
 
 /**
  * AdminTenantModule

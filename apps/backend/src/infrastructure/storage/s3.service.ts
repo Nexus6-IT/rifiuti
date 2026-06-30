@@ -1,7 +1,13 @@
-import { Injectable } from '@nestjs/common';
-import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { LoggerService } from '../../core/logger/logger.service';
-import { Readable } from 'stream';
+import { Injectable } from '@nestjs/common'
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3'
+import { LoggerService } from '../../core/logger/logger.service'
+import { Readable } from 'stream'
 
 /**
  * S3 Storage Service
@@ -15,16 +21,16 @@ import { Readable } from 'stream';
  */
 @Injectable()
 export class S3Service {
-  private readonly s3Client: S3Client;
-  private readonly bucketName: string;
-  private readonly region: string;
+  private readonly s3Client: S3Client
+  private readonly bucketName: string
+  private readonly region: string
 
   constructor(private readonly logger: LoggerService) {
-    this.logger.setContext(S3Service.name);
+    this.logger.setContext(S3Service.name)
 
     // Initialize S3 client
-    this.region = process.env.AWS_REGION || 'eu-south-1';
-    this.bucketName = process.env.AWS_S3_BUCKET || 'wasteflow-documents';
+    this.region = process.env.AWS_REGION || 'eu-south-1'
+    this.bucketName = process.env.AWS_S3_BUCKET || 'wasteflow-documents'
 
     this.s3Client = new S3Client({
       region: this.region,
@@ -34,15 +40,20 @@ export class S3Service {
             secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
           }
         : undefined, // Use IAM role if running on AWS
-    });
+    })
 
-    this.logger.info(`S3 Service initialized: bucket=${this.bucketName}, region=${this.region}`);
+    this.logger.info(`S3 Service initialized: bucket=${this.bucketName}, region=${this.region}`)
   }
 
   /**
    * Upload file to S3
    */
-  async uploadFile(key: string, buffer: Buffer, contentType: string, metadata?: Record<string, string>): Promise<string> {
+  async uploadFile(
+    key: string,
+    buffer: Buffer,
+    contentType: string,
+    metadata?: Record<string, string>
+  ): Promise<string> {
     try {
       const command = new PutObjectCommand({
         Bucket: this.bucketName,
@@ -50,17 +61,17 @@ export class S3Service {
         Body: buffer,
         ContentType: contentType,
         Metadata: metadata,
-      });
+      })
 
-      await this.s3Client.send(command);
+      await this.s3Client.send(command)
 
-      const url = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
-      this.logger.info(`File uploaded to S3: ${key}`);
+      const url = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`
+      this.logger.info(`File uploaded to S3: ${key}`)
 
-      return url;
+      return url
     } catch (error) {
-      this.logger.error(`Failed to upload file to S3: ${key}`, error);
-      throw new Error(`S3 upload failed: ${error.message}`);
+      this.logger.error(`Failed to upload file to S3: ${key}`, error)
+      throw new Error(`S3 upload failed: ${error.message}`)
     }
   }
 
@@ -72,22 +83,22 @@ export class S3Service {
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
         Key: key,
-      });
+      })
 
-      const response = await this.s3Client.send(command);
+      const response = await this.s3Client.send(command)
 
       // Convert stream to buffer
-      const stream = response.Body as Readable;
-      const chunks: Buffer[] = [];
+      const stream = response.Body as Readable
+      const chunks: Buffer[] = []
 
       return new Promise((resolve, reject) => {
-        stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-        stream.on('end', () => resolve(Buffer.concat(chunks)));
-        stream.on('error', reject);
-      });
+        stream.on('data', chunk => chunks.push(Buffer.from(chunk)))
+        stream.on('end', () => resolve(Buffer.concat(chunks)))
+        stream.on('error', reject)
+      })
     } catch (error) {
-      this.logger.error(`Failed to download file from S3: ${key}`, error);
-      throw new Error(`S3 download failed: ${error.message}`);
+      this.logger.error(`Failed to download file from S3: ${key}`, error)
+      throw new Error(`S3 download failed: ${error.message}`)
     }
   }
 
@@ -99,16 +110,16 @@ export class S3Service {
       const command = new HeadObjectCommand({
         Bucket: this.bucketName,
         Key: key,
-      });
+      })
 
-      await this.s3Client.send(command);
-      return true;
+      await this.s3Client.send(command)
+      return true
     } catch (error: any) {
       if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
-        return false;
+        return false
       }
-      this.logger.error(`Failed to check file existence in S3: ${key}`, error);
-      throw new Error(`S3 head failed: ${error.message}`);
+      this.logger.error(`Failed to check file existence in S3: ${key}`, error)
+      throw new Error(`S3 head failed: ${error.message}`)
     }
   }
 
@@ -120,13 +131,13 @@ export class S3Service {
       const command = new DeleteObjectCommand({
         Bucket: this.bucketName,
         Key: key,
-      });
+      })
 
-      await this.s3Client.send(command);
-      this.logger.info(`File deleted from S3: ${key}`);
+      await this.s3Client.send(command)
+      this.logger.info(`File deleted from S3: ${key}`)
     } catch (error) {
-      this.logger.error(`Failed to delete file from S3: ${key}`, error);
-      throw new Error(`S3 delete failed: ${error.message}`);
+      this.logger.error(`Failed to delete file from S3: ${key}`, error)
+      throw new Error(`S3 delete failed: ${error.message}`)
     }
   }
 
@@ -134,33 +145,37 @@ export class S3Service {
    * Generate S3 key for PDF caching
    */
   generatePdfKey(tenantId: string, documentType: 'fir' | 'mud', documentId: string): string {
-    const timestamp = Date.now();
-    return `pdfs/${tenantId}/${documentType}/${documentId}-${timestamp}.pdf`;
+    const timestamp = Date.now()
+    return `pdfs/${tenantId}/${documentType}/${documentId}-${timestamp}.pdf`
   }
 
   /**
    * Generate S3 key for attachments
    */
   generateAttachmentKey(tenantId: string, firId: string, filename: string): string {
-    const timestamp = Date.now();
-    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-    return `attachments/${tenantId}/${firId}/${timestamp}-${sanitizedFilename}`;
+    const timestamp = Date.now()
+    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_')
+    return `attachments/${tenantId}/${firId}/${timestamp}-${sanitizedFilename}`
   }
 
   /**
    * Generate S3 key for company logos
    */
   generateLogoKey(tenantId: string, filename: string): string {
-    const timestamp = Date.now();
-    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-    return `logos/${tenantId}/${timestamp}-${sanitizedFilename}`;
+    const timestamp = Date.now()
+    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_')
+    return `logos/${tenantId}/${timestamp}-${sanitizedFilename}`
   }
 
   /**
    * Generate S3 key for backups
    */
-  generateBackupKey(tenantId: string, backupType: 'full' | 'incremental', timestamp: number): string {
-    return `backups/${tenantId}/${backupType}/${timestamp}.sql.gz`;
+  generateBackupKey(
+    tenantId: string,
+    backupType: 'full' | 'incremental',
+    timestamp: number
+  ): string {
+    return `backups/${tenantId}/${backupType}/${timestamp}.sql.gz`
   }
 
   /**
@@ -171,16 +186,16 @@ export class S3Service {
       const command = new HeadObjectCommand({
         Bucket: this.bucketName,
         Key: key,
-      });
+      })
 
-      const response = await this.s3Client.send(command);
-      return response.Metadata || null;
+      const response = await this.s3Client.send(command)
+      return response.Metadata || null
     } catch (error: any) {
       if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
-        return null;
+        return null
       }
-      this.logger.error(`Failed to get file metadata from S3: ${key}`, error);
-      throw new Error(`S3 metadata retrieval failed: ${error.message}`);
+      this.logger.error(`Failed to get file metadata from S3: ${key}`, error)
+      throw new Error(`S3 metadata retrieval failed: ${error.message}`)
     }
   }
 
@@ -191,13 +206,13 @@ export class S3Service {
     key: string,
     pdfBuffer: Buffer,
     metadata: {
-      tenantId: string;
-      documentType: string;
-      documentId: string;
-      generatedAt: string;
-    },
+      tenantId: string
+      documentType: string
+      documentId: string
+      generatedAt: string
+    }
   ): Promise<string> {
-    return this.uploadFile(key, pdfBuffer, 'application/pdf', metadata);
+    return this.uploadFile(key, pdfBuffer, 'application/pdf', metadata)
   }
 
   /**
@@ -205,27 +220,27 @@ export class S3Service {
    */
   async getCachedPdf(key: string, maxAgeHours: number = 24): Promise<Buffer | null> {
     try {
-      const metadata = await this.getFileMetadata(key);
+      const metadata = await this.getFileMetadata(key)
 
       if (!metadata) {
-        return null;
+        return null
       }
 
       // Check if cache is expired
-      const generatedAt = new Date(metadata.generatedAt || 0);
-      const ageHours = (Date.now() - generatedAt.getTime()) / (1000 * 60 * 60);
+      const generatedAt = new Date(metadata.generatedAt || 0)
+      const ageHours = (Date.now() - generatedAt.getTime()) / (1000 * 60 * 60)
 
       if (ageHours > maxAgeHours) {
-        this.logger.debug(`Cached PDF expired: ${key} (age: ${ageHours.toFixed(2)}h)`);
-        await this.deleteFile(key); // Clean up expired cache
-        return null;
+        this.logger.debug(`Cached PDF expired: ${key} (age: ${ageHours.toFixed(2)}h)`)
+        await this.deleteFile(key) // Clean up expired cache
+        return null
       }
 
-      this.logger.debug(`Cached PDF hit: ${key} (age: ${ageHours.toFixed(2)}h)`);
-      return await this.downloadFile(key);
+      this.logger.debug(`Cached PDF hit: ${key} (age: ${ageHours.toFixed(2)}h)`)
+      return await this.downloadFile(key)
     } catch (error) {
-      this.logger.warn(`Failed to get cached PDF: ${key}`, error);
-      return null;
+      this.logger.warn(`Failed to get cached PDF: ${key}`, error)
+      return null
     }
   }
 }

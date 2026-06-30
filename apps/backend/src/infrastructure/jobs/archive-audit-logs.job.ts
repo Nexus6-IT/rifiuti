@@ -1,6 +1,6 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { Processor, WorkerHost } from '@nestjs/bullmq'
+import { Logger } from '@nestjs/common'
+import { Job } from 'bullmq'
 
 /**
  * Archive Audit Logs Job
@@ -8,11 +8,11 @@ import { Job } from 'bullmq';
  */
 @Processor('audit-archival')
 export class ArchiveAuditLogsJob extends WorkerHost {
-  private readonly logger = new Logger(ArchiveAuditLogsJob.name);
+  private readonly logger = new Logger(ArchiveAuditLogsJob.name)
 
-  async process(job: Job): Promise<void> {
-    this.logger.log('🔄 Running audit log archival...');
+  async process(_job: Job): Promise<void> {
+    this.logger.log('🔄 Running audit log archival...')
     // TODO: Archive logs older than 3 years to S3 cold storage
-    this.logger.log('✅ Audit log archival complete');
+    this.logger.log('✅ Audit log archival complete')
   }
 }

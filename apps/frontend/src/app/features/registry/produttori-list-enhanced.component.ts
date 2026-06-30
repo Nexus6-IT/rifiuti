@@ -1,19 +1,19 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { MessageService } from 'primeng/api';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { InputTextModule } from 'primeng/inputtext';
-import { DialogModule } from 'primeng/dialog';
-import { ConfirmDialogModule } from 'primeng/confirmdialog';
-import { ConfirmationService } from 'primeng/api';
-import { CardModule } from 'primeng/card';
-import { RegistryService, CreateProduttoreDto } from './registry.service';
-import { Produttore } from '../../shared/models/registry.model';
-import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader.component';
-import { EmptyStateComponent } from '../../shared/components/empty-state.component';
-import { ErrorStateComponent } from '../../shared/components/error-state.component';
+import { Component, OnInit } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { MessageService } from 'primeng/api'
+import { TableModule } from 'primeng/table'
+import { ButtonModule } from 'primeng/button'
+import { InputTextModule } from 'primeng/inputtext'
+import { DialogModule } from 'primeng/dialog'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
+import { ConfirmationService } from 'primeng/api'
+import { CardModule } from 'primeng/card'
+import { RegistryService, CreateProduttoreDto } from './registry.service'
+import { Produttore } from '../../shared/models/registry.model'
+import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader.component'
+import { EmptyStateComponent } from '../../shared/components/empty-state.component'
+import { ErrorStateComponent } from '../../shared/components/error-state.component'
 
 @Component({
   selector: 'app-produttori-list-enhanced',
@@ -29,7 +29,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
     CardModule,
     SkeletonLoaderComponent,
     EmptyStateComponent,
-    ErrorStateComponent
+    ErrorStateComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -245,9 +245,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
             <h3 class="section-title">Sede Legale</h3>
             <div class="form-grid">
               <div class="form-field span-2">
-                <label for="via" class="field-label">
-                  Via <span class="required">*</span>
-                </label>
+                <label for="via" class="field-label"> Via <span class="required">*</span> </label>
                 <input
                   pInputText
                   id="via"
@@ -275,9 +273,7 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
               </div>
 
               <div class="form-field">
-                <label for="cap" class="field-label">
-                  CAP <span class="required">*</span>
-                </label>
+                <label for="cap" class="field-label"> CAP <span class="required">*</span> </label>
                 <input
                   pInputText
                   id="cap"
@@ -327,16 +323,8 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
 
         <ng-template pTemplate="footer">
           <div class="dialog-footer">
-            <p-button
-              label="Annulla"
-              [text]="true"
-              (onClick)="displayDialog = false"
-            />
-            <p-button
-              label="Salva"
-              (onClick)="saveProduttore()"
-              [loading]="saving"
-            />
+            <p-button label="Annulla" [text]="true" (onClick)="displayDialog = false" />
+            <p-button label="Salva" (onClick)="saveProduttore()" [loading]="saving" />
           </div>
         </ng-template>
       </p-dialog>
@@ -344,269 +332,271 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
       <p-confirmDialog />
     </div>
   `,
-  styles: [`
-    .registry-list {
-      animation: fadeIn 0.3s ease-in;
-    }
+  styles: [
+    `
+      .registry-list {
+        animation: fadeIn 0.3s ease-in;
+      }
 
-    /* Page Header */
-    .page-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: var(--spacing-xl, 1.75rem);
-      gap: var(--spacing-md, 1rem);
-    }
-
-    .page-title {
-      margin: 0 0 var(--spacing-xs, 0.5rem) 0;
-      font-size: var(--font-size-2xl, 1.875rem);
-      font-weight: var(--font-weight-bold, 700);
-      color: var(--text-primary);
-    }
-
-    .page-subtitle {
-      margin: 0;
-      font-size: var(--font-size-base, 1rem);
-      color: var(--text-secondary);
-    }
-
-    /* Modern Table */
-    :host ::ng-deep .modern-table {
-      border: 1px solid var(--surface-border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-    }
-
-    :host ::ng-deep .modern-table .p-datatable-thead > tr > th {
-      background: var(--color-gray-50);
-      color: var(--text-primary);
-      font-weight: var(--font-weight-semibold, 600);
-      font-size: var(--font-size-sm, 0.875rem);
-      padding: var(--spacing-md, 1rem);
-      border-bottom: 2px solid var(--surface-border);
-    }
-
-    :host ::ng-deep .modern-table .p-datatable-tbody > tr > td {
-      padding: var(--spacing-md, 1rem);
-      font-size: var(--font-size-sm, 0.875rem);
-    }
-
-    .piva-code {
-      font-family: var(--font-family-mono);
-      background: var(--color-gray-100);
-      padding: 4px 8px;
-      border-radius: var(--radius-sm);
-      font-size: var(--font-size-sm, 0.875rem);
-      font-weight: var(--font-weight-medium, 500);
-    }
-
-    .email {
-      color: var(--brand-accent);
-    }
-
-    .action-buttons {
-      display: flex;
-      gap: var(--spacing-xs, 0.5rem);
-      justify-content: flex-end;
-    }
-
-    .actions-col {
-      width: 120px;
-    }
-
-    /* Mobile View */
-    .desktop-view {
-      display: block;
-    }
-
-    .mobile-view {
-      display: none;
-    }
-
-    .registry-cards {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-md, 1rem);
-    }
-
-    :host ::ng-deep .registry-card {
-      border: 1px solid var(--surface-border);
-      border-radius: var(--radius-lg);
-      transition: box-shadow var(--transition-base);
-    }
-
-    :host ::ng-deep .registry-card:hover {
-      box-shadow: var(--shadow-lg);
-    }
-
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: var(--spacing-md, 1rem);
-      padding-bottom: var(--spacing-md, 1rem);
-      border-bottom: 1px solid var(--surface-border);
-    }
-
-    .card-title {
-      margin: 0;
-      font-size: var(--font-size-lg, 1.125rem);
-      font-weight: var(--font-weight-semibold, 600);
-      color: var(--text-primary);
-    }
-
-    .piva-badge {
-      background: var(--brand-primary);
-      color: var(--text-inverse);
-      padding: 4px 12px;
-      border-radius: var(--radius-full);
-      font-size: var(--font-size-xs, 0.75rem);
-      font-weight: var(--font-weight-semibold, 600);
-    }
-
-    .card-content {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-sm, 0.75rem);
-      margin-bottom: var(--spacing-lg, 1.5rem);
-    }
-
-    .card-row {
-      display: flex;
-      align-items: flex-start;
-      gap: var(--spacing-sm, 0.75rem);
-      font-size: var(--font-size-sm, 0.875rem);
-      color: var(--text-secondary);
-    }
-
-    .card-row i {
-      color: var(--brand-primary);
-      margin-top: 2px;
-    }
-
-    .card-actions {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-sm, 0.75rem);
-    }
-
-    /* Form Styles */
-    .registry-form {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-xl, 1.75rem);
-    }
-
-    .form-section {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-md, 1rem);
-    }
-
-    .section-title {
-      margin: 0;
-      font-size: var(--font-size-base, 1rem);
-      font-weight: var(--font-weight-semibold, 600);
-      color: var(--text-primary);
-      padding-bottom: var(--spacing-sm, 0.75rem);
-      border-bottom: 1px solid var(--surface-border);
-    }
-
-    .form-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: var(--spacing-md, 1rem);
-    }
-
-    .form-field {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-xs, 0.5rem);
-    }
-
-    .form-field.span-2 {
-      grid-column: span 2;
-    }
-
-    .field-label {
-      font-size: var(--font-size-sm, 0.875rem);
-      font-weight: var(--font-weight-medium, 500);
-      color: var(--text-primary);
-    }
-
-    .required {
-      color: var(--color-danger);
-    }
-
-    .dialog-footer {
-      display: flex;
-      gap: var(--spacing-sm, 0.75rem);
-      justify-content: flex-end;
-    }
-
-    /* Responsive */
-    @media (max-width: 768px) {
+      /* Page Header */
       .page-header {
-        flex-direction: column;
-        align-items: stretch;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: var(--spacing-xl, 1.75rem);
+        gap: var(--spacing-md, 1rem);
       }
 
-      .page-header ::ng-deep .p-button {
-        width: 100%;
+      .page-title {
+        margin: 0 0 var(--spacing-xs, 0.5rem) 0;
+        font-size: var(--font-size-2xl, 1.875rem);
+        font-weight: var(--font-weight-bold, 700);
+        color: var(--text-primary);
       }
 
+      .page-subtitle {
+        margin: 0;
+        font-size: var(--font-size-base, 1rem);
+        color: var(--text-secondary);
+      }
+
+      /* Modern Table */
+      :host ::ng-deep .modern-table {
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+      }
+
+      :host ::ng-deep .modern-table .p-datatable-thead > tr > th {
+        background: var(--color-gray-50);
+        color: var(--text-primary);
+        font-weight: var(--font-weight-semibold, 600);
+        font-size: var(--font-size-sm, 0.875rem);
+        padding: var(--spacing-md, 1rem);
+        border-bottom: 2px solid var(--surface-border);
+      }
+
+      :host ::ng-deep .modern-table .p-datatable-tbody > tr > td {
+        padding: var(--spacing-md, 1rem);
+        font-size: var(--font-size-sm, 0.875rem);
+      }
+
+      .piva-code {
+        font-family: var(--font-family-mono);
+        background: var(--color-gray-100);
+        padding: 4px 8px;
+        border-radius: var(--radius-sm);
+        font-size: var(--font-size-sm, 0.875rem);
+        font-weight: var(--font-weight-medium, 500);
+      }
+
+      .email {
+        color: var(--brand-accent);
+      }
+
+      .action-buttons {
+        display: flex;
+        gap: var(--spacing-xs, 0.5rem);
+        justify-content: flex-end;
+      }
+
+      .actions-col {
+        width: 120px;
+      }
+
+      /* Mobile View */
       .desktop-view {
-        display: none;
-      }
-
-      .mobile-view {
         display: block;
       }
 
+      .mobile-view {
+        display: none;
+      }
+
+      .registry-cards {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md, 1rem);
+      }
+
+      :host ::ng-deep .registry-card {
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-lg);
+        transition: box-shadow var(--transition-base);
+      }
+
+      :host ::ng-deep .registry-card:hover {
+        box-shadow: var(--shadow-lg);
+      }
+
+      .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: var(--spacing-md, 1rem);
+        padding-bottom: var(--spacing-md, 1rem);
+        border-bottom: 1px solid var(--surface-border);
+      }
+
+      .card-title {
+        margin: 0;
+        font-size: var(--font-size-lg, 1.125rem);
+        font-weight: var(--font-weight-semibold, 600);
+        color: var(--text-primary);
+      }
+
+      .piva-badge {
+        background: var(--brand-primary);
+        color: var(--text-inverse);
+        padding: 4px 12px;
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-xs, 0.75rem);
+        font-weight: var(--font-weight-semibold, 600);
+      }
+
+      .card-content {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm, 0.75rem);
+        margin-bottom: var(--spacing-lg, 1.5rem);
+      }
+
+      .card-row {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacing-sm, 0.75rem);
+        font-size: var(--font-size-sm, 0.875rem);
+        color: var(--text-secondary);
+      }
+
+      .card-row i {
+        color: var(--brand-primary);
+        margin-top: 2px;
+      }
+
+      .card-actions {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm, 0.75rem);
+      }
+
+      /* Form Styles */
+      .registry-form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xl, 1.75rem);
+      }
+
+      .form-section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md, 1rem);
+      }
+
+      .section-title {
+        margin: 0;
+        font-size: var(--font-size-base, 1rem);
+        font-weight: var(--font-weight-semibold, 600);
+        color: var(--text-primary);
+        padding-bottom: var(--spacing-sm, 0.75rem);
+        border-bottom: 1px solid var(--surface-border);
+      }
+
       .form-grid {
-        grid-template-columns: 1fr;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-md, 1rem);
+      }
+
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs, 0.5rem);
       }
 
       .form-field.span-2 {
-        grid-column: span 1;
+        grid-column: span 2;
       }
-    }
 
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
+      .field-label {
+        font-size: var(--font-size-sm, 0.875rem);
+        font-weight: var(--font-weight-medium, 500);
+        color: var(--text-primary);
       }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
 
-    @media (prefers-reduced-motion: reduce) {
-      .registry-list,
-      :host ::ng-deep .registry-card {
-        animation: none;
-        transition: none;
+      .required {
+        color: var(--color-danger);
       }
-    }
-  `]
+
+      .dialog-footer {
+        display: flex;
+        gap: var(--spacing-sm, 0.75rem);
+        justify-content: flex-end;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .page-header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .page-header ::ng-deep .p-button {
+          width: 100%;
+        }
+
+        .desktop-view {
+          display: none;
+        }
+
+        .mobile-view {
+          display: block;
+        }
+
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .form-field.span-2 {
+          grid-column: span 1;
+        }
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .registry-list,
+        :host ::ng-deep .registry-card {
+          animation: none;
+          transition: none;
+        }
+      }
+    `,
+  ],
 })
 export class ProduttoriListEnhancedComponent implements OnInit {
-  produttori: Produttore[] = [];
-  loading = false;
-  saving = false;
-  error = '';
-  totalRecords = 0;
-  pageSize = 10;
-  currentPage = 1;
+  produttori: Produttore[] = []
+  loading = false
+  saving = false
+  error = ''
+  totalRecords = 0
+  pageSize = 10
+  currentPage = 1
 
-  displayDialog = false;
-  editMode = false;
-  selectedProduttore: Produttore | null = null;
+  displayDialog = false
+  editMode = false
+  selectedProduttore: Produttore | null = null
 
-  formData: CreateProduttoreDto = this.getEmptyFormData();
+  formData: CreateProduttoreDto = this.getEmptyFormData()
 
   constructor(
     private registryService: RegistryService,
@@ -615,50 +605,50 @@ export class ProduttoriListEnhancedComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.loadProduttori({ first: 0, rows: this.pageSize });
+    this.loadProduttori({ first: 0, rows: this.pageSize })
   }
 
   loadProduttori(event: any): void {
-    this.loading = true;
-    this.error = '';
-    const page = Math.floor(event.first / event.rows) + 1;
-    this.currentPage = page;
+    this.loading = true
+    this.error = ''
+    const page = Math.floor(event.first / event.rows) + 1
+    this.currentPage = page
 
     this.registryService.getProduttori(page, event.rows).subscribe({
-      next: (response) => {
-        this.produttori = response.items;
-        this.totalRecords = response.total;
-        this.loading = false;
+      next: response => {
+        this.produttori = response.items
+        this.totalRecords = response.total
+        this.loading = false
       },
-      error: (err) => {
-        this.loading = false;
-        this.error = err.error?.message || 'Errore nel caricamento dei produttori';
+      error: err => {
+        this.loading = false
+        this.error = err.error?.message || 'Errore nel caricamento dei produttori'
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: this.error
-        });
-      }
-    });
+          detail: this.error,
+        })
+      },
+    })
   }
 
   showCreateDialog(): void {
-    this.editMode = false;
-    this.selectedProduttore = null;
-    this.formData = this.getEmptyFormData();
-    this.displayDialog = true;
+    this.editMode = false
+    this.selectedProduttore = null
+    this.formData = this.getEmptyFormData()
+    this.displayDialog = true
   }
 
   editProduttore(produttore: Produttore): void {
-    this.editMode = true;
-    this.selectedProduttore = produttore;
+    this.editMode = true
+    this.selectedProduttore = produttore
     this.formData = {
       ragioneSociale: produttore.ragioneSociale,
       partitaIVA: produttore.partitaIVA,
       sedeLegale: { ...produttore.sedeLegale },
-      pec: produttore.pec
-    };
-    this.displayDialog = true;
+      pec: produttore.pec,
+    }
+    this.displayDialog = true
   }
 
   saveProduttore(): void {
@@ -666,36 +656,37 @@ export class ProduttoriListEnhancedComponent implements OnInit {
       this.messageService.add({
         severity: 'warn',
         summary: 'Attenzione',
-        detail: 'Compila tutti i campi obbligatori'
-      });
-      return;
+        detail: 'Compila tutti i campi obbligatori',
+      })
+      return
     }
 
-    this.saving = true;
-    const operation = this.editMode && this.selectedProduttore
-      ? this.registryService.updateProduttore(this.selectedProduttore.id, this.formData)
-      : this.registryService.createProduttore(this.formData);
+    this.saving = true
+    const operation =
+      this.editMode && this.selectedProduttore
+        ? this.registryService.updateProduttore(this.selectedProduttore.id, this.formData)
+        : this.registryService.createProduttore(this.formData)
 
     operation.subscribe({
       next: () => {
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
-          detail: this.editMode ? 'Produttore aggiornato' : 'Produttore creato'
-        });
-        this.displayDialog = false;
-        this.saving = false;
-        this.loadProduttori({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+          detail: this.editMode ? 'Produttore aggiornato' : 'Produttore creato',
+        })
+        this.displayDialog = false
+        this.saving = false
+        this.loadProduttori({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
       },
       error: () => {
-        this.saving = false;
+        this.saving = false
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: 'Errore nel salvataggio del produttore'
-        });
-      }
-    });
+          detail: 'Errore nel salvataggio del produttore',
+        })
+      },
+    })
   }
 
   deleteProduttore(produttore: Produttore): void {
@@ -709,20 +700,23 @@ export class ProduttoriListEnhancedComponent implements OnInit {
             this.messageService.add({
               severity: 'success',
               summary: 'Successo',
-              detail: 'Produttore eliminato'
-            });
-            this.loadProduttori({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize });
+              detail: 'Produttore eliminato',
+            })
+            this.loadProduttori({
+              first: (this.currentPage - 1) * this.pageSize,
+              rows: this.pageSize,
+            })
           },
           error: () => {
             this.messageService.add({
               severity: 'error',
               summary: 'Errore',
-              detail: 'Errore nell\'eliminazione del produttore'
-            });
-          }
-        });
-      }
-    });
+              detail: "Errore nell'eliminazione del produttore",
+            })
+          },
+        })
+      },
+    })
   }
 
   validateForm(): boolean {
@@ -734,12 +728,12 @@ export class ProduttoriListEnhancedComponent implements OnInit {
       this.formData.sedeLegale.cap?.trim() &&
       this.formData.sedeLegale.comune?.trim() &&
       this.formData.sedeLegale.provincia?.trim()
-    );
+    )
   }
 
   formatIndirizzo(indirizzo: any): string {
-    if (!indirizzo) return 'N/A';
-    return `${indirizzo.via} ${indirizzo.civico}, ${indirizzo.cap} ${indirizzo.comune} (${indirizzo.provincia})`;
+    if (!indirizzo) return 'N/A'
+    return `${indirizzo.via} ${indirizzo.civico}, ${indirizzo.cap} ${indirizzo.comune} (${indirizzo.provincia})`
   }
 
   private getEmptyFormData(): CreateProduttoreDto {
@@ -751,9 +745,9 @@ export class ProduttoriListEnhancedComponent implements OnInit {
         civico: '',
         cap: '',
         comune: '',
-        provincia: ''
+        provincia: '',
       },
-      pec: ''
-    };
+      pec: '',
+    }
   }
 }

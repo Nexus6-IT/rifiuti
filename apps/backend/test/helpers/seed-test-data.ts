@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client'
 
 /**
  * Test Data Seeder
@@ -13,7 +13,7 @@ export class TestDataSeeder {
    * Create a test tenant with default values
    */
   async createTestTenant(data?: Partial<any>) {
-    const timestamp = Date.now();
+    const _timestamp = Date.now()
     return this.prisma.tenant.create({
       data: {
         partitaIva: data?.partitaIva || '12345678901',
@@ -28,14 +28,14 @@ export class TestDataSeeder {
         subscriptionStatus: data?.subscriptionStatus || 'ACTIVE',
         ...data,
       },
-    });
+    })
   }
 
   /**
    * Create a test user with default values
    */
   async createTestUser(tenantId: string, data?: Partial<any>) {
-    const timestamp = Date.now();
+    const timestamp = Date.now()
     return this.prisma.user.create({
       data: {
         tenantId,
@@ -47,14 +47,14 @@ export class TestDataSeeder {
         role: data?.role || 'OPERATOR',
         ...data,
       },
-    });
+    })
   }
 
   /**
    * Create a test FIR with default values
    */
   async createTestFIR(tenantId: string, producerUserId: string, data?: Partial<any>) {
-    const timestamp = Date.now();
+    const timestamp = Date.now()
     return this.prisma.fIR.create({
       data: {
         tenantId,
@@ -78,22 +78,22 @@ export class TestDataSeeder {
         transportDate: data?.transportDate || new Date(),
         ...data,
       },
-    });
+    })
   }
 
   /**
    * Clean up all test data
    */
   async cleanup() {
-    await this.prisma.activityLog.deleteMany();
-    await this.prisma.notification.deleteMany();
-    await this.prisma.fIRSignature.deleteMany();
-    await this.prisma.fIR.deleteMany();
-    await this.prisma.mUDReport.deleteMany();
-    await this.prisma.backupHistory.deleteMany();
-    await this.prisma.backupSchedule.deleteMany();
-    await this.prisma.user.deleteMany();
-    await this.prisma.tenant.deleteMany();
+    await this.prisma.activityLog.deleteMany()
+    await this.prisma.notification.deleteMany()
+    await this.prisma.fIRSignature.deleteMany()
+    await this.prisma.fIR.deleteMany()
+    await this.prisma.mUDReport.deleteMany()
+    await this.prisma.backupHistory.deleteMany()
+    await this.prisma.backupSchedule.deleteMany()
+    await this.prisma.user.deleteMany()
+    await this.prisma.tenant.deleteMany()
   }
 }
 
@@ -101,12 +101,13 @@ export class TestDataSeeder {
  * Get test Prisma client with default test database
  */
 export function getTestPrismaClient(): PrismaClient {
-  const databaseUrl = process.env.DATABASE_URL || 'postgresql://wasteflow:wasteflow123@localhost:5432/wasteflow_test';
+  const databaseUrl =
+    process.env.DATABASE_URL || 'postgresql://wasteflow:wasteflow123@localhost:5432/wasteflow_test'
   return new PrismaClient({
     datasources: {
       db: {
         url: databaseUrl,
       },
     },
-  });
+  })
 }

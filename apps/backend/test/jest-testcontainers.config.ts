@@ -1,4 +1,4 @@
-import { Config } from '@jest/types';
+import { Config } from '@jest/types'
 
 /**
  * Jest configuration with Testcontainers
@@ -22,7 +22,7 @@ const config: Config.InitialOptions = {
   rootDir: '../',
   testRegex: '.e2e-spec.ts$',
   transform: {
-    '^.+\.(t|j)s$': 'ts-jest',
+    '^.+.(t|j)s$': 'ts-jest',
   },
   moduleFileExtensions: ['js', 'json', 'ts'],
   collectCoverageFrom: [
@@ -37,6 +37,6 @@ const config: Config.InitialOptions = {
   maxWorkers: 1, // Run E2E tests sequentially
   globalSetup: './test/global-setup.ts',
   globalTeardown: './test/global-teardown.ts',
-};
+}
 
-export default config;
+export default config

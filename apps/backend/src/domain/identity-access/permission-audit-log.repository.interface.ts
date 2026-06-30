@@ -1,4 +1,4 @@
-import { PermissionAuditLog } from './permission-audit-log.entity';
+import { PermissionAuditLog } from './permission-audit-log.entity'
 
 /**
  * PermissionAuditLogRepository Interface
@@ -24,38 +24,38 @@ export interface PermissionAuditLogRepository {
    * Save a new audit log entry
    * Note: Audit logs are immutable - no updates allowed
    */
-  save(log: PermissionAuditLog): Promise<void>;
+  save(log: PermissionAuditLog): Promise<void>
 
   /**
    * Batch save multiple audit logs (for performance)
    */
-  saveBatch(logs: PermissionAuditLog[]): Promise<void>;
+  saveBatch(logs: PermissionAuditLog[]): Promise<void>
 
   /**
    * Get the latest audit log for a tenant (for chaining)
    */
-  getLatestLog(tenantId: string): Promise<PermissionAuditLog | null>;
+  getLatestLog(tenantId: string): Promise<PermissionAuditLog | null>
 
   /**
    * Find audit logs with filters
    */
   findWithFilters(filters: {
-    tenantId: string;
-    userId?: string;
-    startDate?: Date;
-    endDate?: Date;
-    decision?: 'ALLOW' | 'DENY';
-    resourceType?: string;
-    resourceId?: string;
-    actionAttempted?: string;
-    page?: number;
-    pageSize?: number;
+    tenantId: string
+    userId?: string
+    startDate?: Date
+    endDate?: Date
+    decision?: 'ALLOW' | 'DENY'
+    resourceType?: string
+    resourceId?: string
+    actionAttempted?: string
+    page?: number
+    pageSize?: number
   }): Promise<{
-    logs: PermissionAuditLog[];
-    total: number;
-    page?: number;
-    pageSize?: number;
-  }>;
+    logs: PermissionAuditLog[]
+    total: number
+    page?: number
+    pageSize?: number
+  }>
 
   /**
    * Find logs by tenant ID
@@ -63,10 +63,10 @@ export interface PermissionAuditLogRepository {
   findByTenant(
     tenantId: string,
     options?: {
-      limit?: number;
-      offset?: number;
-    },
-  ): Promise<PermissionAuditLog[]>;
+      limit?: number
+      offset?: number
+    }
+  ): Promise<PermissionAuditLog[]>
 
   /**
    * Find logs by user ID
@@ -75,10 +75,10 @@ export interface PermissionAuditLogRepository {
     userId: string,
     tenantId: string,
     options?: {
-      limit?: number;
-      offset?: number;
-    },
-  ): Promise<PermissionAuditLog[]>;
+      limit?: number
+      offset?: number
+    }
+  ): Promise<PermissionAuditLog[]>
 
   /**
    * Find logs for specific resource
@@ -88,10 +88,10 @@ export interface PermissionAuditLogRepository {
     resourceId: string,
     tenantId: string,
     options?: {
-      limit?: number;
-      offset?: number;
-    },
-  ): Promise<PermissionAuditLog[]>;
+      limit?: number
+      offset?: number
+    }
+  ): Promise<PermissionAuditLog[]>
 
   /**
    * Find logs by date range
@@ -101,10 +101,10 @@ export interface PermissionAuditLogRepository {
     startDate: Date,
     endDate: Date,
     options?: {
-      limit?: number;
-      offset?: number;
-    },
-  ): Promise<PermissionAuditLog[]>;
+      limit?: number
+      offset?: number
+    }
+  ): Promise<PermissionAuditLog[]>
 
   /**
    * Find logs by decision (ALLOW or DENY)
@@ -113,22 +113,22 @@ export interface PermissionAuditLogRepository {
     tenantId: string,
     decision: 'ALLOW' | 'DENY',
     options?: {
-      limit?: number;
-      offset?: number;
-    },
-  ): Promise<PermissionAuditLog[]>;
+      limit?: number
+      offset?: number
+    }
+  ): Promise<PermissionAuditLog[]>
 
   /**
    * Count logs matching filters
    */
   count(filters: {
-    tenantId: string;
-    userId?: string;
-    startDate?: Date;
-    endDate?: Date;
-    decision?: 'ALLOW' | 'DENY';
-    resourceType?: string;
-  }): Promise<number>;
+    tenantId: string
+    userId?: string
+    startDate?: Date
+    endDate?: Date
+    decision?: 'ALLOW' | 'DENY'
+    resourceType?: string
+  }): Promise<number>
 
   /**
    * Validate chain integrity for a tenant
@@ -137,15 +137,15 @@ export interface PermissionAuditLogRepository {
   validateChainIntegrity(
     tenantId: string,
     options?: {
-      startDate?: Date;
-      endDate?: Date;
-    },
+      startDate?: Date
+      endDate?: Date
+    }
   ): Promise<{
-    isValid: boolean;
-    totalLogs: number;
-    firstInvalidLogId?: string;
-    error?: string;
-  }>;
+    isValid: boolean
+    totalLogs: number
+    firstInvalidLogId?: string
+    error?: string
+  }>
 
   /**
    * Get logs in chronological order for chain validation
@@ -153,21 +153,21 @@ export interface PermissionAuditLogRepository {
   getLogsInChronologicalOrder(
     tenantId: string,
     options?: {
-      startDate?: Date;
-      endDate?: Date;
-      limit?: number;
-    },
-  ): Promise<PermissionAuditLog[]>;
+      startDate?: Date
+      endDate?: Date
+      limit?: number
+    }
+  ): Promise<PermissionAuditLog[]>
 
   /**
    * Export logs to CSV format for ARPA inspection
    */
   exportToCsv(filters: {
-    tenantId: string;
-    startDate?: Date;
-    endDate?: Date;
-    userId?: string;
-  }): Promise<string>;
+    tenantId: string
+    startDate?: Date
+    endDate?: Date
+    userId?: string
+  }): Promise<string>
 
   /**
    * Archive old logs (for 10-year retention management)
@@ -175,10 +175,10 @@ export interface PermissionAuditLogRepository {
    */
   archiveLogs(
     tenantId: string,
-    olderThan: Date,
+    olderThan: Date
   ): Promise<{
-    archivedCount: number;
-  }>;
+    archivedCount: number
+  }>
 
   /**
    * Get audit statistics for dashboard
@@ -186,14 +186,14 @@ export interface PermissionAuditLogRepository {
   getStatistics(
     tenantId: string,
     options?: {
-      startDate?: Date;
-      endDate?: Date;
-    },
+      startDate?: Date
+      endDate?: Date
+    }
   ): Promise<{
-    totalLogs: number;
-    allowedCount: number;
-    deniedCount: number;
-    uniqueUsers: number;
-    topDeniedActions: Array<{ action: string; count: number }>;
-  }>;
+    totalLogs: number
+    allowedCount: number
+    deniedCount: number
+    uniqueUsers: number
+    topDeniedActions: Array<{ action: string; count: number }>
+  }>
 }

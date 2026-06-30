@@ -9,14 +9,14 @@ import {
   HttpStatus,
   UseGuards,
   Req,
-} from '@nestjs/common';
-import { QueryBus } from '@nestjs/cqrs';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { RequirePermission } from '../decorators/require-permission.decorator';
-import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.query';
-import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query';
-import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface';
-import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-change-history.repository.interface';
+} from '@nestjs/common'
+import { QueryBus } from '@nestjs/cqrs'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RequirePermission } from '../decorators/require-permission.decorator'
+import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.query'
+import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query'
+import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface'
+import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-change-history.repository.interface'
 
 /**
  * AuditController
@@ -41,7 +41,7 @@ export class AuditController {
   constructor(
     private readonly queryBus: QueryBus,
     private readonly auditLogRepository: PermissionAuditLogRepository,
-    private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository,
+    private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository
   ) {}
 
   /**
@@ -72,9 +72,9 @@ export class AuditController {
     @Query('resourceId') resourceId?: string,
     @Query('actionAttempted') actionAttempted?: string,
     @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
+    @Query('pageSize') pageSize?: string
   ) {
-    const tenantId = request.user.tenantId;
+    const tenantId = request.user.tenantId
 
     const query = new GetAuditTrailQuery(
       tenantId,
@@ -90,10 +90,10 @@ export class AuditController {
       {
         page: page ? parseInt(page, 10) : undefined,
         pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-      },
-    );
+      }
+    )
 
-    return await this.queryBus.execute(query);
+    return await this.queryBus.execute(query)
   }
 
   /**
@@ -109,9 +109,9 @@ export class AuditController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
+    @Query('pageSize') pageSize?: string
   ) {
-    const tenantId = request.user.tenantId;
+    const tenantId = request.user.tenantId
 
     const query = new GetAuditTrailQuery(
       tenantId,
@@ -123,10 +123,10 @@ export class AuditController {
       {
         page: page ? parseInt(page, 10) : undefined,
         pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-      },
-    );
+      }
+    )
 
-    return await this.queryBus.execute(query);
+    return await this.queryBus.execute(query)
   }
 
   /**
@@ -143,9 +143,9 @@ export class AuditController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
+    @Query('pageSize') pageSize?: string
   ) {
-    const tenantId = request.user.tenantId;
+    const tenantId = request.user.tenantId
 
     const query = new GetAuditTrailQuery(
       tenantId,
@@ -158,10 +158,10 @@ export class AuditController {
       {
         page: page ? parseInt(page, 10) : undefined,
         pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-      },
-    );
+      }
+    )
 
-    return await this.queryBus.execute(query);
+    return await this.queryBus.execute(query)
   }
 
   /**
@@ -179,19 +179,19 @@ export class AuditController {
     @Req() request: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('userId') userId?: string,
+    @Query('userId') userId?: string
   ) {
-    const tenantId = request.user.tenantId;
+    const tenantId = request.user.tenantId
 
     const csv = await this.auditLogRepository.exportToCsv({
       tenantId,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
       userId,
-    });
+    })
 
     // Set response headers for CSV download
-    const filename = `audit-trail-${tenantId}-${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = `audit-trail-${tenantId}-${new Date().toISOString().split('T')[0]}.csv`
 
     return {
       data: csv,
@@ -201,7 +201,7 @@ export class AuditController {
         'Content-Type': 'text/csv',
         'Content-Disposition': `attachment; filename="${filename}"`,
       },
-    };
+    }
   }
 
   /**
@@ -230,9 +230,9 @@ export class AuditController {
     @Query('endDate') endDate?: string,
     @Query('changeType') changeType?: 'INITIAL' | 'CHANGE' | 'REVOCATION',
     @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
+    @Query('pageSize') pageSize?: string
   ) {
-    const tenantId = request.user.tenantId;
+    const tenantId = request.user.tenantId
 
     const result = await this.roleChangeHistoryRepository.findWithFilters({
       tenantId,
@@ -244,11 +244,11 @@ export class AuditController {
       changeType,
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-    });
+    })
 
     // Map domain entities to DTOs
     return {
-      changes: result.changes.map((change) => ({
+      changes: result.changes.map(change => ({
         id: change.id,
         userId: change.userId,
         tenantId: change.tenantId,
@@ -267,7 +267,7 @@ export class AuditController {
       total: result.total,
       page: result.page,
       pageSize: result.pageSize,
-    };
+    }
   }
 
   /**
@@ -296,17 +296,17 @@ export class AuditController {
   @HttpCode(HttpStatus.OK)
   async reconstructPermissions(
     @Req() request: any,
-    @Body() body: { userId: string; timestamp: string },
+    @Body() body: { userId: string; timestamp: string }
   ) {
-    const tenantId = request.user.tenantId;
+    const tenantId = request.user.tenantId
 
     const query = new ReconstructHistoricalPermissionsQuery(
       body.userId,
       tenantId,
-      new Date(body.timestamp),
-    );
+      new Date(body.timestamp)
+    )
 
-    return await this.queryBus.execute(query);
+    return await this.queryBus.execute(query)
   }
 
   /**
@@ -319,9 +319,9 @@ export class AuditController {
   async getAuditStatistics(
     @Req() request: any,
     @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query('endDate') endDate?: string
   ) {
-    const tenantId = request.user.tenantId;
+    const tenantId = request.user.tenantId
 
     const [permissionStats, roleChangeStats] = await Promise.all([
       this.auditLogRepository.getStatistics(tenantId, {
@@ -332,12 +332,12 @@ export class AuditController {
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
       }),
-    ]);
+    ])
 
     return {
       permissions: permissionStats,
       roleChanges: roleChangeStats,
-    };
+    }
   }
 
   /**
@@ -350,17 +350,14 @@ export class AuditController {
   async validateChainIntegrity(
     @Req() request: any,
     @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query('endDate') endDate?: string
   ) {
-    const tenantId = request.user.tenantId;
+    const tenantId = request.user.tenantId
 
-    const result = await this.auditLogRepository.validateChainIntegrity(
-      tenantId,
-      {
-        startDate: startDate ? new Date(startDate) : undefined,
-        endDate: endDate ? new Date(endDate) : undefined,
-      },
-    );
+    const result = await this.auditLogRepository.validateChainIntegrity(tenantId, {
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    })
 
     return {
       isValid: result.isValid,
@@ -370,6 +367,6 @@ export class AuditController {
       message: result.isValid
         ? 'Audit log chain is valid (no tampering detected)'
         : `Chain integrity violation detected at log ${result.firstInvalidLogId}`,
-    };
+    }
   }
 }

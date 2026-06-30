@@ -1,10 +1,10 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { Worker, Job } from 'bullmq';
-import { ConfigService } from '@nestjs/config';
-import { LoggerService } from '../../../core/logger/logger.service';
-import { MetricsService } from '../../../core/metrics/metrics.service';
-import { SyncFIRToRENTRIUseCase } from '../../../application/rentri/sync-fir-to-rentri.use-case';
-import { RENTRISyncQueue } from '../rentri-sync.queue';
+import { Injectable, OnModuleInit } from '@nestjs/common'
+import { Worker, Job } from 'bullmq'
+import { ConfigService } from '@nestjs/config'
+import { LoggerService } from '../../../core/logger/logger.service'
+import { MetricsService } from '../../../core/metrics/metrics.service'
+import { SyncFIRToRENTRIUseCase } from '../../../application/rentri/sync-fir-to-rentri.use-case'
+import { RENTRISyncQueue } from '../rentri-sync.queue'
 
 /**
  * RENTRI Sync Job Processor
@@ -29,58 +29,54 @@ import { RENTRISyncQueue } from '../rentri-sync.queue';
  */
 @Injectable()
 export class RENTRISyncJobProcessor implements OnModuleInit {
-  private worker: Worker;
+  private worker: Worker
 
   constructor(
     private readonly configService: ConfigService,
     private readonly logger: LoggerService,
     private readonly metrics: MetricsService,
     private readonly syncFIRUseCase: SyncFIRToRENTRIUseCase,
-    private readonly rentriSyncQueue: RENTRISyncQueue,
+    private readonly rentriSyncQueue: RENTRISyncQueue
   ) {
-    this.logger.setContext('RENTRISyncJobProcessor');
+    this.logger.setContext('RENTRISyncJobProcessor')
   }
 
   /**
    * Initialize BullMQ worker on module init
    */
   async onModuleInit() {
-    const redisHost = this.configService.get<string>('REDIS_HOST') || 'localhost';
-    const redisPort = this.configService.get<number>('REDIS_PORT') || 6379;
-    const redisPassword = this.configService.get<string>('REDIS_PASSWORD');
+    const redisHost = this.configService.get<string>('REDIS_HOST') || 'localhost'
+    const redisPort = this.configService.get<number>('REDIS_PORT') || 6379
+    const redisPassword = this.configService.get<string>('REDIS_PASSWORD')
 
-    this.worker = new Worker(
-      'rentri-sync',
-      async (job: Job) => this.processJob(job),
-      {
-        connection: {
-          host: redisHost,
-          port: redisPort,
-          password: redisPassword,
-        },
-        concurrency: this.configService.get<number>('RENTRI_SYNC_CONCURRENCY') || 5,
-        limiter: {
-          max: 10, // Max 10 jobs per interval
-          duration: 1000, // 1 second interval
-        },
+    this.worker = new Worker('rentri-sync', async (job: Job) => this.processJob(job), {
+      connection: {
+        host: redisHost,
+        port: redisPort,
+        password: redisPassword,
       },
-    );
+      concurrency: this.configService.get<number>('RENTRI_SYNC_CONCURRENCY') || 5,
+      limiter: {
+        max: 10, // Max 10 jobs per interval
+        duration: 1000, // 1 second interval
+      },
+    })
 
     // Setup event listeners
-    this.setupEventListeners();
+    this.setupEventListeners()
 
     this.logger.info('RENTRI sync job processor initialized', {
       redisHost,
       redisPort,
       concurrency: 5,
-    });
+    })
   }
 
   /**
    * Process a job
    */
   private async processJob(job: Job): Promise<any> {
-    const { type, firId, firIds, tenantId, correlationId } = job.data;
+    const { type, firId, firIds, tenantId, correlationId } = job.data
 
     this.logger.info('Processing RENTRI sync job', {
       jobId: job.id,
@@ -90,15 +86,15 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
       tenantId,
       correlationId,
       attemptsMade: job.attemptsMade,
-    });
+    })
 
     try {
       if (type === 'single') {
-        return await this.processSingleSync(job);
+        return await this.processSingleSync(job)
       } else if (type === 'batch') {
-        return await this.processBatchSync(job);
+        return await this.processBatchSync(job)
       } else {
-        throw new Error(`Unknown job type: ${type}`);
+        throw new Error(`Unknown job type: ${type}`)
       }
     } catch (error: any) {
       this.logger.error('Job processing failed', error, {
@@ -107,7 +103,7 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
         firId,
         tenantId,
         attemptsMade: job.attemptsMade,
-      });
+      })
 
       // Increment failure metric
       // TODO: rentriSyncJobsFailed metric doesn't exist in MetricsService
@@ -121,15 +117,15 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
         this.logger.warn('Validation error - marking job as failed without retry', {
           jobId: job.id,
           error: error.message,
-        });
+        })
 
         // Move job to failed queue without retry
-        await job.moveToFailed(new Error(`Validation error: ${error.message}`), '0', false);
-        return;
+        await job.moveToFailed(new Error(`Validation error: ${error.message}`), '0', false)
+        return
       }
 
       // For other errors, let BullMQ handle retry with exponential backoff
-      throw error;
+      throw error
     }
   }
 
@@ -137,25 +133,22 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
    * Process single FIR sync
    */
   private async processSingleSync(job: Job): Promise<SyncJobResult> {
-    const { firId, tenantId, correlationId } = job.data;
-    const startTime = Date.now();
+    const { firId, tenantId, correlationId } = job.data
+    const startTime = Date.now()
 
     try {
       // Update job progress
-      await job.updateProgress(10);
+      await job.updateProgress(10)
 
       // Execute sync use case
-      const result = await this.syncFIRUseCase.execute(firId, tenantId, correlationId);
+      const result = await this.syncFIRUseCase.execute(firId, tenantId, correlationId)
 
-      const duration = Date.now() - startTime;
+      const duration = Date.now() - startTime
 
-      await job.updateProgress(100);
+      await job.updateProgress(100)
 
       // Record success metric using firSyncDuration
-      this.metrics.firSyncDuration.observe(
-        { tenant_id: tenantId },
-        duration / 1000,
-      );
+      this.metrics.firSyncDuration.observe({ tenant_id: tenantId }, duration / 1000)
 
       this.logger.info('Single FIR sync completed', {
         jobId: job.id,
@@ -164,7 +157,7 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
         success: result.success,
         protocolNumber: result.protocolNumber,
         duration,
-      });
+      })
 
       return {
         jobId: job.id as string,
@@ -173,16 +166,13 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
         firId,
         protocolNumber: result.protocolNumber,
         duration,
-      };
+      }
     } catch (error: any) {
-      const duration = Date.now() - startTime;
+      const duration = Date.now() - startTime
 
-      this.metrics.firSyncDuration.observe(
-        { tenant_id: tenantId },
-        duration / 1000,
-      );
+      this.metrics.firSyncDuration.observe({ tenant_id: tenantId }, duration / 1000)
 
-      throw error;
+      throw error
     }
   }
 
@@ -190,40 +180,40 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
    * Process batch FIR sync
    */
   private async processBatchSync(job: Job): Promise<SyncJobResult> {
-    const { firIds, tenantId, correlationId } = job.data;
-    const startTime = Date.now();
+    const { firIds, tenantId, correlationId } = job.data
+    const startTime = Date.now()
 
-    const results: Array<{ firId: string; success: boolean; error?: string }> = [];
-    const total = firIds.length;
-    let successCount = 0;
-    let failureCount = 0;
+    const results: Array<{ firId: string; success: boolean; error?: string }> = []
+    const total = firIds.length
+    let successCount = 0
+    let failureCount = 0
 
     this.logger.info('Starting batch sync', {
       jobId: job.id,
       totalFIRs: total,
       tenantId,
-    });
+    })
 
     try {
       for (let i = 0; i < firIds.length; i++) {
-        const firId = firIds[i];
+        const firId = firIds[i]
 
         // Update progress
-        const progress = Math.floor(((i + 1) / total) * 100);
-        await job.updateProgress(progress);
+        const progress = Math.floor(((i + 1) / total) * 100)
+        await job.updateProgress(progress)
 
         try {
-          const result = await this.syncFIRUseCase.execute(firId, tenantId, correlationId);
+          const result = await this.syncFIRUseCase.execute(firId, tenantId, correlationId)
 
           results.push({
             firId,
             success: result.success,
-          });
+          })
 
           if (result.success) {
-            successCount++;
+            successCount++
           } else {
-            failureCount++;
+            failureCount++
           }
 
           this.logger.info('Batch item processed', {
@@ -231,26 +221,26 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
             firId,
             success: result.success,
             progress: `${i + 1}/${total}`,
-          });
+          })
         } catch (error: any) {
-          failureCount++;
+          failureCount++
           results.push({
             firId,
             success: false,
             error: error.message,
-          });
+          })
 
           this.logger.error('Batch item failed', error, {
             jobId: job.id,
             firId,
             progress: `${i + 1}/${total}`,
-          });
+          })
 
           // Continue with next FIR even if one fails
         }
       }
 
-      const duration = Date.now() - startTime;
+      const duration = Date.now() - startTime
 
       // Record batch metric
       // TODO: rentriSyncBatchCompleted metric doesn't exist in MetricsService
@@ -265,7 +255,7 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
         successCount,
         failureCount,
         duration,
-      });
+      })
 
       return {
         jobId: job.id as string,
@@ -276,9 +266,9 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
         failureCount,
         results,
         duration,
-      };
+      }
     } catch (error: any) {
-      const duration = Date.now() - startTime;
+      const duration = Date.now() - startTime
 
       this.logger.error('Batch sync failed', error, {
         jobId: job.id,
@@ -286,9 +276,9 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
         total,
         processed: results.length,
         duration,
-      });
+      })
 
-      throw error;
+      throw error
     }
   }
 
@@ -301,11 +291,11 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
       'ALREADY_SYNCED_TO_RENTRI',
       'BUSINESS_RULE_VIOLATION',
       'VALIDATION_ERROR',
-    ];
+    ]
 
-    return validationErrorMessages.some(msg =>
-      error.message?.includes(msg) || error.code?.includes(msg)
-    );
+    return validationErrorMessages.some(
+      msg => error.message?.includes(msg) || error.code?.includes(msg)
+    )
   }
 
   /**
@@ -318,7 +308,7 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
         type: job.data.type,
         tenantId: job.data.tenantId,
         result,
-      });
+      })
 
       // Record completion metric
       // TODO: rentriSyncJobsCompleted metric doesn't exist in MetricsService
@@ -326,12 +316,12 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
       //   tenant_id: job.data.tenantId,
       //   job_type: job.data.type,
       // });
-    });
+    })
 
     this.worker.on('failed', (job: Job | undefined, error: Error) => {
       if (!job) {
-        this.logger.error('Job failed without job data', error);
-        return;
+        this.logger.error('Job failed without job data', error)
+        return
       }
 
       this.logger.error('Job failed', error, {
@@ -340,17 +330,17 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
         tenantId: job.data.tenantId,
         attemptsMade: job.attemptsMade,
         failedReason: job.failedReason,
-      });
+      })
 
       // Metric already recorded in processJob
-    });
+    })
 
     this.worker.on('active', (job: Job) => {
       this.logger.debug('Job started', {
         jobId: job.id,
         type: job.data.type,
         tenantId: job.data.tenantId,
-      });
+      })
 
       // Record active job metric
       // TODO: rentriSyncActiveJobs metric doesn't exist in MetricsService
@@ -358,15 +348,15 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
       //   { tenant_id: job.data.tenantId },
       //   1,
       // );
-    });
+    })
 
     this.worker.on('stalled', (jobId: string) => {
-      this.logger.warn('Job stalled', { jobId });
-    });
+      this.logger.warn('Job stalled', { jobId })
+    })
 
     this.worker.on('error', (error: Error) => {
-      this.logger.error('Worker error', error);
-    });
+      this.logger.error('Worker error', error)
+    })
   }
 
   /**
@@ -374,8 +364,8 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
    */
   async onModuleDestroy() {
     if (this.worker) {
-      await this.worker.close();
-      this.logger.info('RENTRI sync worker closed');
+      await this.worker.close()
+      this.logger.info('RENTRI sync worker closed')
     }
   }
 }
@@ -384,14 +374,14 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
  * Job Result Interface
  */
 export interface SyncJobResult {
-  jobId: string;
-  type: 'single' | 'batch';
-  success: boolean;
-  firId?: string;
-  protocolNumber?: string;
-  total?: number;
-  successCount?: number;
-  failureCount?: number;
-  results?: Array<{ firId: string; success: boolean; error?: string }>;
-  duration: number;
+  jobId: string
+  type: 'single' | 'batch'
+  success: boolean
+  firId?: string
+  protocolNumber?: string
+  total?: number
+  successCount?: number
+  failureCount?: number
+  results?: Array<{ firId: string; success: boolean; error?: string }>
+  duration: number
 }

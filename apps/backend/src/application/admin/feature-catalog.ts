@@ -1,4 +1,4 @@
-import { SubscriptionTier } from '@prisma/client';
+import { SubscriptionTier } from '@prisma/client'
 
 /**
  * Feature catalog — catalogo delle feature attivabili per-tenant.
@@ -25,10 +25,10 @@ export const FEATURE_KEYS = [
   'anomalie',
   'rentri',
   'reference_data',
-] as const;
+] as const
 
 /** Tipo della singola chiave feature. */
-export type FeatureKey = (typeof FEATURE_KEYS)[number];
+export type FeatureKey = (typeof FEATURE_KEYS)[number]
 
 /** Etichette in italiano per ciascuna feature (per UI / admin). */
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
@@ -43,7 +43,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   anomalie: 'Rilevamento anomalie',
   rentri: 'Interoperabilità RENTRI',
   reference_data: 'Dati di riferimento (ISTAT/ATECO)',
-};
+}
 
 /**
  * Feature abilitate di default da ciascun piano.
@@ -54,7 +54,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 // Il registro cronologico C/S è un adempimento OBBLIGATORIO di legge (art. 190
 // D.Lgs 152/2006) per qualsiasi operatore, come il FIR: fa parte delle feature
 // di base, non è un modulo premium.
-const TRIAL_FEATURES: FeatureKey[] = ['fir', 'cer', 'anagrafiche', 'registro'];
+const TRIAL_FEATURES: FeatureKey[] = ['fir', 'cer', 'anagrafiche', 'registro']
 
 const PROFESSIONAL_FEATURES: FeatureKey[] = [
   ...TRIAL_FEATURES,
@@ -63,19 +63,17 @@ const PROFESSIONAL_FEATURES: FeatureKey[] = [
   'contratti',
   'esg',
   'anomalie',
-];
+]
 
 export const PLAN_FEATURES: Record<SubscriptionTier, FeatureKey[]> = {
   [SubscriptionTier.TRIAL]: TRIAL_FEATURES,
   [SubscriptionTier.PROFESSIONAL]: PROFESSIONAL_FEATURES,
   [SubscriptionTier.ENTERPRISE]: [...FEATURE_KEYS],
-};
+}
 
 /** Type guard: la chiave è una feature valida del catalogo? */
 export function isFeatureKey(value: unknown): value is FeatureKey {
-  return (
-    typeof value === 'string' && (FEATURE_KEYS as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (FEATURE_KEYS as readonly string[]).includes(value)
 }
 
 /**
@@ -83,9 +81,9 @@ export function isFeatureKey(value: unknown): value is FeatureKey {
  * Compatibile con il record `Tenant` di Prisma (campi in più sono ignorati).
  */
 export interface TenantFeatureSource {
-  subscriptionTier: SubscriptionTier;
+  subscriptionTier: SubscriptionTier
   /** Override admin: array di chiavi feature. Se null/assente → deriva dal piano. */
-  featureFlags?: unknown;
+  featureFlags?: unknown
 }
 
 /**
@@ -107,18 +105,18 @@ export interface TenantFeatureSource {
  * responsabilità, non un bug di sicurezza commerciale).
  */
 export function effectiveFeatures(tenant: TenantFeatureSource): FeatureKey[] {
-  const planFeatures = PLAN_FEATURES[tenant.subscriptionTier] ?? [];
-  const flags = tenant.featureFlags;
+  const planFeatures = PLAN_FEATURES[tenant.subscriptionTier] ?? []
+  const flags = tenant.featureFlags
 
   if (!Array.isArray(flags)) {
     // Nessun override: usa le feature del piano.
-    return planFeatures;
+    return planFeatures
   }
 
   // Override additivo: unione di (feature di piano) + (feature dell'override).
   // Garantisce che nuove feature aggiunte al piano si propaghino ai tenant
   // con override storico, senza togliere mai feature del piano corrente.
-  const extraKeys = (flags as unknown[]).filter(isFeatureKey);
-  const merged = new Set<FeatureKey>([...planFeatures, ...extraKeys]);
-  return [...merged];
+  const extraKeys = (flags as unknown[]).filter(isFeatureKey)
+  const merged = new Set<FeatureKey>([...planFeatures, ...extraKeys])
+  return [...merged]
 }

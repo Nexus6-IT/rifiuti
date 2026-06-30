@@ -1,21 +1,12 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
-  Body,
-  Param,
-  UseGuards,
-} from '@nestjs/common';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { TenantIsolationGuard } from '../guards/tenant-isolation.guard';
-import { PermissionGuard } from '../guards/permission.guard';
-import { SpidStepUpGuard } from '../guards/spid-step-up.guard';
-import { RequirePermission } from '../decorators/require-permission.decorator';
-import { AuditAction } from '../decorators/audit-action.decorator';
-import { CurrentTenant } from '../decorators/current-tenant.decorator';
-import { CurrentUser } from '../decorators/current-user.decorator';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
+import { PermissionGuard } from '../guards/permission.guard'
+import { SpidStepUpGuard } from '../guards/spid-step-up.guard'
+import { RequirePermission } from '../decorators/require-permission.decorator'
+import { AuditAction } from '../decorators/audit-action.decorator'
+import { CurrentTenant } from '../decorators/current-tenant.decorator'
+import { CurrentUser } from '../decorators/current-user.decorator'
 
 /**
  * FIR Controller Example
@@ -39,12 +30,9 @@ export class FirControllerExample {
    */
   @Get()
   @RequirePermission('fir:read:facility')
-  async listFirs(
-    @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') userId: string,
-  ) {
+  async listFirs(@CurrentTenant() _tenantId: string, @CurrentUser('userId') _userId: string) {
     // Implementation fetches FIRs based on user's facility scope
-    return { firs: [] };
+    return { firs: [] }
   }
 
   /**
@@ -55,12 +43,12 @@ export class FirControllerExample {
   @RequirePermission('fir:create:facility')
   @AuditAction('create_fir')
   async createFir(
-    @Body() dto: any,
-    @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') userId: string,
+    @Body() _dto: any,
+    @CurrentTenant() _tenantId: string,
+    @CurrentUser('userId') _userId: string
   ) {
     // Implementation creates FIR
-    return { id: 'new-fir-id' };
+    return { id: 'new-fir-id' }
   }
 
   /**
@@ -72,11 +60,11 @@ export class FirControllerExample {
   @AuditAction('update_fir')
   async updateFir(
     @Param('id') firId: string,
-    @Body() dto: any,
-    @CurrentTenant() tenantId: string,
+    @Body() _dto: any,
+    @CurrentTenant() _tenantId: string
   ) {
     // Implementation updates FIR
-    return { id: firId };
+    return { id: firId }
   }
 
   /**
@@ -90,12 +78,12 @@ export class FirControllerExample {
   @RequirePermission('fir:delete:facility')
   @AuditAction('delete_fir')
   async deleteFir(
-    @Param('id') firId: string,
-    @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') userId: string,
+    @Param('id') _firId: string,
+    @CurrentTenant() _tenantId: string,
+    @CurrentUser('userId') _userId: string
   ) {
     // Implementation deletes FIR
-    return { deleted: true };
+    return { deleted: true }
   }
 
   /**
@@ -106,12 +94,9 @@ export class FirControllerExample {
   @UseGuards(SpidStepUpGuard)
   @RequirePermission('fir:approve:facility')
   @AuditAction('approve_fir')
-  async approveFir(
-    @Param('id') firId: string,
-    @CurrentTenant() tenantId: string,
-  ) {
+  async approveFir(@Param('id') _firId: string, @CurrentTenant() _tenantId: string) {
     // Implementation approves FIR
-    return { approved: true };
+    return { approved: true }
   }
 }
 

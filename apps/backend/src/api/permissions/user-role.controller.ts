@@ -9,19 +9,19 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
-} from '@nestjs/common';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { TenantIsolationGuard } from '../guards/tenant-isolation.guard';
-import { PermissionGuard } from '../guards/permission.guard';
-import { RequirePermission } from '../decorators/require-permission.decorator';
-import { CurrentTenant } from '../decorators/current-tenant.decorator';
-import { CurrentUser } from '../decorators/current-user.decorator';
-import { AuditAction } from '../decorators/audit-action.decorator';
-import { AssignRoleCommandHandler } from '../../application/commands/handlers/assign-role.handler';
-import { RevokeRoleCommandHandler } from '../../application/commands/handlers/revoke-role.handler';
-import { AssignRoleCommand } from '../../application/commands/assign-role.command';
-import { RevokeRoleCommand } from '../../application/commands/revoke-role.command';
-import { UserRoleRepository } from '../../domain/identity-access/user-role.repository.interface';
+} from '@nestjs/common'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
+import { PermissionGuard } from '../guards/permission.guard'
+import { RequirePermission } from '../decorators/require-permission.decorator'
+import { CurrentTenant } from '../decorators/current-tenant.decorator'
+import { CurrentUser } from '../decorators/current-user.decorator'
+import { AuditAction } from '../decorators/audit-action.decorator'
+import { AssignRoleCommandHandler } from '../../application/commands/handlers/assign-role.handler'
+import { RevokeRoleCommandHandler } from '../../application/commands/handlers/revoke-role.handler'
+import { AssignRoleCommand } from '../../application/commands/assign-role.command'
+import { RevokeRoleCommand } from '../../application/commands/revoke-role.command'
+import { UserRoleRepository } from '../../domain/identity-access/user-role.repository.interface'
 
 /**
  * UserRoleController
@@ -36,12 +36,12 @@ import { UserRoleRepository } from '../../domain/identity-access/user-role.repos
 @Controller('user-roles')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class UserRoleController {
-  private readonly logger = new Logger(UserRoleController.name);
+  private readonly logger = new Logger(UserRoleController.name)
 
   constructor(
     private readonly assignRoleHandler: AssignRoleCommandHandler,
     private readonly revokeRoleHandler: RevokeRoleCommandHandler,
-    private readonly userRoleRepository: UserRoleRepository,
+    private readonly userRoleRepository: UserRoleRepository
   ) {}
 
   /**
@@ -56,11 +56,9 @@ export class UserRoleController {
   async assignRole(
     @Body() dto: AssignRoleDto,
     @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') currentUserId: string,
+    @CurrentUser('userId') currentUserId: string
   ) {
-    this.logger.log(
-      `Assigning role ${dto.roleId} to user ${dto.userId} in tenant ${tenantId}`,
-    );
+    this.logger.log(`Assigning role ${dto.roleId} to user ${dto.userId} in tenant ${tenantId}`)
 
     const command = new AssignRoleCommand(
       dto.userId,
@@ -71,10 +69,10 @@ export class UserRoleController {
       dto.facilityIds || null,
       dto.isDelegated || false,
       dto.delegationReason || null,
-      dto.replaceExisting || false,
-    );
+      dto.replaceExisting || false
+    )
 
-    const userRole = await this.assignRoleHandler.execute(command);
+    const userRole = await this.assignRoleHandler.execute(command)
 
     return {
       id: userRole.id,
@@ -87,7 +85,7 @@ export class UserRoleController {
       facilityIds: userRole.facilityIds,
       isDelegated: userRole.isDelegated,
       delegationReason: userRole.delegationReason,
-    };
+    }
   }
 
   /**
@@ -102,22 +100,15 @@ export class UserRoleController {
   async revokeRole(
     @Param('id') userRoleId: string,
     @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') currentUserId: string,
+    @CurrentUser('userId') currentUserId: string
   ) {
-    this.logger.log(
-      `Revoking user role assignment ${userRoleId} in tenant ${tenantId}`,
-    );
+    this.logger.log(`Revoking user role assignment ${userRoleId} in tenant ${tenantId}`)
 
-    const command = new RevokeRoleCommand(
-      userRoleId,
-      tenantId,
-      currentUserId,
-      'Revoked via API',
-    );
+    const command = new RevokeRoleCommand(userRoleId, tenantId, currentUserId, 'Revoked via API')
 
-    await this.revokeRoleHandler.execute(command);
+    await this.revokeRoleHandler.execute(command)
 
-    return; // 204 No Content
+    return // 204 No Content
   }
 
   /**
@@ -127,19 +118,13 @@ export class UserRoleController {
    */
   @Get('user/:userId')
   @RequirePermission('user:read:all')
-  async getUserRoles(
-    @Param('userId') userId: string,
-    @CurrentTenant() tenantId: string,
-  ) {
-    this.logger.log(`Fetching role assignments for user ${userId}`);
+  async getUserRoles(@Param('userId') userId: string, @CurrentTenant() tenantId: string) {
+    this.logger.log(`Fetching role assignments for user ${userId}`)
 
-    const userRoles = await this.userRoleRepository.findActiveByUserId(
-      userId,
-      tenantId,
-    );
+    const userRoles = await this.userRoleRepository.findActiveByUserId(userId, tenantId)
 
     return {
-      userRoles: userRoles.map((ur) => ({
+      userRoles: userRoles.map(ur => ({
         id: ur.id,
         userId: ur.userId,
         roleId: ur.roleId,
@@ -150,7 +135,7 @@ export class UserRoleController {
         isDelegated: ur.isDelegated,
         isActive: ur.isActive(),
       })),
-    };
+    }
   }
 }
 
@@ -158,11 +143,11 @@ export class UserRoleController {
  * DTO for role assignment
  */
 export class AssignRoleDto {
-  userId: string;
-  roleId: string;
-  expiresAt?: string; // ISO 8601 date string
-  facilityIds?: string[];
-  isDelegated?: boolean;
-  delegationReason?: string;
-  replaceExisting?: boolean;
+  userId: string
+  roleId: string
+  expiresAt?: string // ISO 8601 date string
+  facilityIds?: string[]
+  isDelegated?: boolean
+  delegationReason?: string
+  replaceExisting?: boolean
 }

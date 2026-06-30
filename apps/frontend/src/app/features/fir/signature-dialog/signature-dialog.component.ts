@@ -1,13 +1,13 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { DynamicDialogConfig, DynamicDialogRef } from 'primeng/dynamicdialog';
-import { ButtonModule } from 'primeng/button';
-import { MessageModule } from 'primeng/message';
-import { DividerModule } from 'primeng/divider';
-import { TagModule } from 'primeng/tag';
-import { SignatureService } from '../../../core/services/signature.service';
-import { AuthService } from '../../../core/services/auth.service';
-import { MessageService } from 'primeng/api';
+import { Component, inject, signal, computed, OnInit } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { DynamicDialogConfig, DynamicDialogRef } from 'primeng/dynamicdialog'
+import { ButtonModule } from 'primeng/button'
+import { MessageModule } from 'primeng/message'
+import { DividerModule } from 'primeng/divider'
+import { TagModule } from 'primeng/tag'
+import { SignatureService } from '../../../core/services/signature.service'
+import { AuthService } from '../../../core/services/auth.service'
+import { MessageService } from 'primeng/api'
 
 /**
  * Signature Dialog Component
@@ -27,13 +27,7 @@ import { MessageService } from 'primeng/api';
 @Component({
   selector: 'app-signature-dialog',
   standalone: true,
-  imports: [
-    CommonModule,
-    ButtonModule,
-    MessageModule,
-    DividerModule,
-    TagModule,
-  ],
+  imports: [CommonModule, ButtonModule, MessageModule, DividerModule, TagModule],
   template: `
     <div class="signature-dialog">
       <!-- Header -->
@@ -51,11 +45,7 @@ import { MessageService } from 'primeng/api';
         <p-message
           *ngIf="currentUser() && currentUser().spidLevel >= 2"
           severity="success"
-          [text]="
-            'SPID Level ' +
-            currentUser().spidLevel +
-            ' - Autorizzato per firme digitali'
-          "
+          [text]="'SPID Level ' + currentUser().spidLevel + ' - Autorizzato per firme digitali'"
         />
         <p-message
           *ngIf="!currentUser() || currentUser().spidLevel < 2"
@@ -69,9 +59,7 @@ import { MessageService } from 'primeng/api';
         <p-message
           *ngIf="authStatus().isRecent"
           severity="info"
-          [text]="
-            'Autenticato ' + authStatus().minutesAgo + ' minuti fa - Valido per firma'
-          "
+          [text]="'Autenticato ' + authStatus().minutesAgo + ' minuti fa - Valido per firma'"
         />
         <p-message
           *ngIf="!authStatus().isRecent"
@@ -123,16 +111,13 @@ import { MessageService } from 'primeng/api';
 
       <!-- Warning -->
       <div class="warning-section mb-4" *ngIf="!requiresReAuth()">
-        <p-message
-          severity="warn"
-          styleClass="w-full"
-        >
+        <p-message severity="warn" styleClass="w-full">
           <ng-template pTemplate>
             <div class="flex flex-column">
               <span class="font-semibold mb-2">Attenzione</span>
               <span class="text-sm">
-                Applicando la firma digitale, confermi la correttezza dei dati del FIR.
-                La firma ha valore legale e non può essere revocata.
+                Applicando la firma digitale, confermi la correttezza dei dati del FIR. La firma ha
+                valore legale e non può essere revocata.
               </span>
             </div>
           </ng-template>
@@ -141,12 +126,7 @@ import { MessageService } from 'primeng/api';
 
       <!-- Actions -->
       <div class="dialog-actions flex gap-2 justify-content-end">
-        <p-button
-          label="Annulla"
-          [text]="true"
-          (onClick)="cancel()"
-          [disabled]="isSigning()"
-        />
+        <p-button label="Annulla" [text]="true" (onClick)="cancel()" [disabled]="isSigning()" />
         <p-button
           label="Firma Documento"
           icon="pi pi-check"
@@ -182,94 +162,88 @@ import { MessageService } from 'primeng/api';
   ],
 })
 export class SignatureDialogComponent implements OnInit {
-  private readonly signatureService = inject(SignatureService);
-  private readonly authService = inject(AuthService);
-  private readonly messageService = inject(MessageService);
-  public readonly config = inject(DynamicDialogConfig);
-  public readonly ref = inject(DynamicDialogRef);
+  private readonly signatureService = inject(SignatureService)
+  private readonly authService = inject(AuthService)
+  private readonly messageService = inject(MessageService)
+  public readonly config = inject(DynamicDialogConfig)
+  public readonly ref = inject(DynamicDialogRef)
 
   // Component state
-  protected readonly isSigning = signal(false);
-  protected readonly currentUser = this.authService.currentUser;
+  protected readonly isSigning = signal(false)
+  protected readonly currentUser = this.authService.currentUser
 
   // Dialog data
-  protected firId: string = '';
-  protected firNumber: string = '';
-  protected role: 'PRODUCER' | 'CARRIER' | 'RECEIVER' = 'PRODUCER';
+  protected firId: string = ''
+  protected firNumber: string = ''
+  protected role: 'PRODUCER' | 'CARRIER' | 'RECEIVER' = 'PRODUCER'
 
   // Computed authentication status
   protected readonly authStatus = computed(() => {
-    const user = this.currentUser();
+    const user = this.currentUser()
     if (!user || !user.authenticatedAt) {
-      return null;
+      return null
     }
 
-    const authenticatedAt = new Date(user.authenticatedAt);
-    const minutesAgo = Math.floor(
-      (Date.now() - authenticatedAt.getTime()) / 1000 / 60,
-    );
-    const isRecent = minutesAgo <= 15;
+    const authenticatedAt = new Date(user.authenticatedAt)
+    const minutesAgo = Math.floor((Date.now() - authenticatedAt.getTime()) / 1000 / 60)
+    const isRecent = minutesAgo <= 15
 
-    return { minutesAgo, isRecent };
-  });
+    return { minutesAgo, isRecent }
+  })
 
   // Computed re-auth requirement
   protected readonly requiresReAuth = computed(() => {
-    const user = this.currentUser();
-    if (!user) return true;
+    const user = this.currentUser()
+    if (!user) return true
 
-    const status = this.authStatus();
-    return !status || !status.isRecent || user.spidLevel < 2;
-  });
+    const status = this.authStatus()
+    return !status || !status.isRecent || user.spidLevel < 2
+  })
 
   // Computed can sign
   protected readonly canSign = computed(() => {
-    return !this.requiresReAuth() && !this.isSigning();
-  });
+    return !this.requiresReAuth() && !this.isSigning()
+  })
 
   ngOnInit(): void {
     // Get dialog data
-    this.firId = this.config.data?.firId;
-    this.firNumber = this.config.data?.firNumber;
-    this.role = this.config.data?.role || 'PRODUCER';
+    this.firId = this.config.data?.firId
+    this.firNumber = this.config.data?.firNumber
+    this.role = this.config.data?.role || 'PRODUCER'
   }
 
   /**
    * Apply digital signature
    */
   protected async sign(): Promise<void> {
-    this.isSigning.set(true);
+    this.isSigning.set(true)
 
     try {
-      const result = await this.signatureService
-        .applySignature(this.firId, this.role)
-        .toPromise();
+      const result = await this.signatureService.applySignature(this.firId, this.role).toPromise()
 
       this.messageService.add({
         severity: 'success',
         summary: 'Firma Applicata',
         detail: result?.message || 'Firma digitale applicata con successo',
         life: 5000,
-      });
+      })
 
       // Close dialog with success result
-      this.ref.close({ success: true, result });
+      this.ref.close({ success: true, result })
     } catch (error: any) {
-      console.error('Signature error:', error);
+      console.error('Signature error:', error)
 
       const errorMessage =
-        error.error?.message ||
-        error.message ||
-        'Errore durante applicazione firma';
+        error.error?.message || error.message || 'Errore durante applicazione firma'
 
       this.messageService.add({
         severity: 'error',
         summary: 'Errore Firma',
         detail: errorMessage,
         life: 8000,
-      });
+      })
     } finally {
-      this.isSigning.set(false);
+      this.isSigning.set(false)
     }
   }
 
@@ -277,7 +251,7 @@ export class SignatureDialogComponent implements OnInit {
    * Cancel signature
    */
   protected cancel(): void {
-    this.ref.close({ success: false });
+    this.ref.close({ success: false })
   }
 
   /**
@@ -285,29 +259,27 @@ export class SignatureDialogComponent implements OnInit {
    */
   protected reAuthenticate(): void {
     // Save return URL with signature intent
-    const returnUrl = `/fir/${this.firId}?sign=${this.role}`;
-    this.authService.loginWithSPID(returnUrl);
+    const returnUrl = `/fir/${this.firId}?sign=${this.role}`
+    this.authService.loginWithSPID(returnUrl)
   }
 
   /**
    * Get Italian label for role
    */
   protected getRoleLabel(role: string): string {
-    return this.signatureService.getRoleLabel(role as any);
+    return this.signatureService.getRoleLabel(role as any)
   }
 
   /**
    * Get severity color for role tag
    */
-  protected getRoleSeverity(
-    role: string,
-  ): 'success' | 'info' | 'warning' | 'danger' {
+  protected getRoleSeverity(role: string): 'success' | 'info' | 'warning' | 'danger' {
     const severities = {
       PRODUCER: 'info' as const,
       CARRIER: 'warning' as const,
       RECEIVER: 'success' as const,
-    };
-    return severities[role as keyof typeof severities] || 'info';
+    }
+    return severities[role as keyof typeof severities] || 'info'
   }
 
   /**
@@ -318,8 +290,8 @@ export class SignatureDialogComponent implements OnInit {
       PRODUCER: 'pi pi-building',
       CARRIER: 'pi pi-truck',
       RECEIVER: 'pi pi-inbox',
-    };
-    return icons[role as keyof typeof icons] || 'pi pi-user';
+    }
+    return icons[role as keyof typeof icons] || 'pi pi-user'
   }
 
   /**
@@ -327,12 +299,10 @@ export class SignatureDialogComponent implements OnInit {
    */
   protected getRoleDescription(role: string): string {
     const descriptions = {
-      PRODUCER:
-        'Firma del produttore al momento della produzione e conferimento del rifiuto',
+      PRODUCER: 'Firma del produttore al momento della produzione e conferimento del rifiuto',
       CARRIER: 'Firma del trasportatore al momento del ritiro del rifiuto',
-      RECEIVER:
-        'Firma del destinatario al momento della ricezione del rifiuto',
-    };
-    return descriptions[role as keyof typeof descriptions] || '';
+      RECEIVER: 'Firma del destinatario al momento della ricezione del rifiuto',
+    }
+    return descriptions[role as keyof typeof descriptions] || ''
   }
 }

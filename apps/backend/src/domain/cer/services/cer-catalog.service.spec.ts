@@ -54,10 +54,7 @@ class MockCERRepository implements ICERRepository {
     return results
   }
 
-  async findPaginated(
-    page: number,
-    limit: number,
-  ): Promise<{ items: CERCode[]; total: number }> {
+  async findPaginated(page: number, limit: number): Promise<{ items: CERCode[]; total: number }> {
     const all = Array.from(this.cers.values())
     const start = (page - 1) * limit
     return { items: all.slice(start, start + limit), total: all.length }
@@ -123,7 +120,7 @@ describe('CERCatalogService', () => {
     it('should search CER codes by keyword', async () => {
       const results = await service.search('olio')
 
-      expect(results.length).toBe(2);
+      expect(results.length).toBe(2)
       expect(results[0].code).toBe('13 02 05*')
       expect(results[1].code).toBe('13 02 06*')
     })
@@ -131,24 +128,24 @@ describe('CERCatalogService', () => {
     it('should search case-insensitive', async () => {
       const results = await service.search('OLIO')
 
-      expect(results.length).toBe(2);
+      expect(results.length).toBe(2)
     })
 
     it('should filter by pericoloso', async () => {
       const results = await service.search('olio', { pericoloso: true })
 
-      expect(results.length).toBe(2);
+      expect(results.length).toBe(2)
       expect(results.every(cer => cer.isPericoloso)).toBe(true)
     })
 
     it('should throw error for empty keyword', async () => {
-      await expect(service.search('')).rejects.toThrow('Search keyword cannot be empty') as any;
+      ;(await expect(service.search('')).rejects.toThrow('Search keyword cannot be empty')) as any
     })
 
     it('should trim whitespace from keyword', async () => {
       const results = await service.search('  olio  ')
 
-      expect(results.length).toBe(2);
+      expect(results.length).toBe(2)
     })
   })
 
@@ -215,7 +212,7 @@ describe('CERCatalogService', () => {
 
       const results = await service.getAllPericolosi()
 
-      expect(results.length).toBe(1);
+      expect(results.length).toBe(1)
       expect(results[0].code).toBe('13 02 05*')
     })
   })
@@ -244,12 +241,14 @@ describe('CERCatalogService', () => {
 
       const results = await service.getByCategory('13')
 
-      expect(results.length).toBe(2);
+      expect(results.length).toBe(2)
     })
 
     it('should throw error for invalid category format', async () => {
-      await expect(service.getByCategory('1')).rejects.toThrow('Invalid category format') as any;
-      await expect(service.getByCategory('ABC')).rejects.toThrow('Invalid category format') as any;
+      ;(await expect(service.getByCategory('1')).rejects.toThrow('Invalid category format')) as any
+      ;(await expect(service.getByCategory('ABC')).rejects.toThrow(
+        'Invalid category format'
+      )) as any
     })
   })
 
@@ -264,7 +263,7 @@ describe('CERCatalogService', () => {
 
       expect(result.imported).toBe(2)
       expect(result.skipped).toBe(0)
-      expect(result.errors.length).toBe(0);
+      expect(result.errors.length).toBe(0)
 
       const count = await repository.count()
       expect(count).toBe(2)
@@ -299,14 +298,12 @@ describe('CERCatalogService', () => {
       const result = await service.importFromCSV(csvRecords)
 
       expect(result.imported).toBe(1)
-      expect(result.errors.length).toBe(1);
+      expect(result.errors.length).toBe(1)
       expect(result.errors[0]).toContain('INVALID')
     })
 
     it('should auto-detect dangerous waste from asterisk', async () => {
-      const csvRecords = [
-        { code: '13 02 05*', description: 'dangerous oil', category: '13' },
-      ]
+      const csvRecords = [{ code: '13 02 05*', description: 'dangerous oil', category: '13' }]
 
       await service.importFromCSV(csvRecords)
 

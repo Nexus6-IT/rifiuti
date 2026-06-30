@@ -247,7 +247,11 @@ export class FIR extends AggregateRoot {
     this.addDomainEvent(new FIRPresaInCaricoEvent(this._id))
   }
 
-  confermaConsegna(pesoEffettivo: number, firmaDestinatario: FirmaDigitale, noteDestinatario?: string): void {
+  confermaConsegna(
+    pesoEffettivo: number,
+    firmaDestinatario: FirmaDigitale,
+    noteDestinatario?: string
+  ): void {
     if (this._stato !== FIRStato.IN_TRANSITO) {
       throw new InvalidStateTransitionError(this._stato, FIRStato.CONSEGNATO)
     }
@@ -274,7 +278,7 @@ export class FIR extends AggregateRoot {
     this.addDomainEvent(new FIRConsegnatoEvent(this._id, pesoEffettivo))
   }
 
-  annulla(motivo: string): void {
+  annulla(_motivo: string): void {
     if (this._stato === FIRStato.CONSEGNATO) {
       throw new DomainError('Cannot annull a completed FIR')
     }

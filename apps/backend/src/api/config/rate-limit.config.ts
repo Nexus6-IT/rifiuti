@@ -8,7 +8,7 @@
  * - Role changes: 20/hour per admin
  */
 
-import { ThrottlerModuleOptions } from '@nestjs/throttler';
+import { ThrottlerModuleOptions } from '@nestjs/throttler'
 
 /**
  * Global rate limit configuration
@@ -26,7 +26,7 @@ export const rateLimitConfig: ThrottlerModuleOptions = {
       limit: 10, // 10 requests per minute (sensitive endpoints)
     },
   ],
-};
+}
 
 /**
  * Endpoint-specific rate limits
@@ -74,7 +74,7 @@ export const RATE_LIMITS = {
     ttl: 300000, // 5 minutes
     limit: 5,
   },
-};
+}
 
 /**
  * Custom rate limit error message
@@ -84,7 +84,7 @@ export const RATE_LIMIT_MESSAGE = {
   statusCode: 429,
   error: 'Too Many Requests',
   retryAfter: 'See Retry-After header',
-};
+}
 
 /**
  * IP-based rate limiting for public endpoints
@@ -99,4 +99,4 @@ export const IP_RATE_LIMITS = {
     ttl: 300000, // 5 minutes
     limit: 10, // 10 SPID auth attempts per 5 minutes per IP
   },
-};
+}

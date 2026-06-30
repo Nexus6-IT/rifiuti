@@ -60,7 +60,7 @@ describe('AuditController — endpoint collegati al repository', () => {
     expect(result).toEqual({ success: true, data: stats })
   })
 
-  it('validateChainIntegrity propaga l\'esito reale della verifica della catena', async () => {
+  it("validateChainIntegrity propaga l'esito reale della verifica della catena", async () => {
     repo.validateChainIntegrity.mockResolvedValue({
       isValid: false,
       totalLogs: 5,
@@ -106,7 +106,7 @@ describe('AuditController — endpoint collegati al repository', () => {
     const result = await controller.getRoleChanges(user, 'u9')
 
     expect(roleChangeRepo.findWithFilters).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'tenant-1', userId: 'u9', page: 1, pageSize: 50 }),
+      expect.objectContaining({ tenantId: 'tenant-1', userId: 'u9', page: 1, pageSize: 50 })
     )
     expect(result.data.changes).toHaveLength(1)
     expect(result.data.changes[0]).toMatchObject({ id: 'rc-1', newRoleId: null })

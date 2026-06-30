@@ -16,7 +16,7 @@ import {
   Min,
   Length,
   MinLength,
-} from 'class-validator';
+} from 'class-validator'
 
 export enum UserRoleDto {
   SUPER_ADMIN = 'SUPER_ADMIN',
@@ -29,22 +29,22 @@ export class CreateUserDto {
   @IsString()
   @IsNotEmpty()
   @Length(16, 16, { message: 'fiscalCode deve essere di 16 caratteri' })
-  fiscalCode: string;
+  fiscalCode: string
 
   @IsString()
   @IsNotEmpty()
-  firstName: string;
+  firstName: string
 
   @IsString()
   @IsNotEmpty()
-  lastName: string;
+  lastName: string
 
   @IsEmail()
   @IsNotEmpty()
-  email: string;
+  email: string
 
   @IsEnum(UserRoleDto)
-  role: UserRoleDto;
+  role: UserRoleDto
 
   /**
    * Obbligatorio per SUPER_ADMIN (sceglie il tenant di destinazione).
@@ -52,7 +52,7 @@ export class CreateUserDto {
    */
   @IsUUID()
   @IsOptional()
-  tenantId?: string;
+  tenantId?: string
 
   /**
    * Password temporanea iniziale. Se presente viene impostata su Keycloak con
@@ -61,7 +61,7 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   @MinLength(10, { message: 'La password temporanea deve avere almeno 10 caratteri' })
-  tempPassword?: string;
+  tempPassword?: string
 
   /**
    * Quota di aziende creabili in autonomia dall'utente (self-service).
@@ -71,5 +71,5 @@ export class CreateUserDto {
   @IsInt()
   @Min(0)
   @IsOptional()
-  companyLimit?: number;
+  companyLimit?: number
 }

@@ -66,7 +66,7 @@ export class RentriCredentialController {
   @ApiResponse({ status: 401, description: 'Non autenticato' })
   async set(
     @Body() dto: SetRentriCredentialDto,
-    @CurrentUser() user: CurrentUserPayload,
+    @CurrentUser() user: CurrentUserPayload
   ): Promise<SuccessResponse> {
     let certificatePem: string
     let privateKeyPem: string
@@ -89,7 +89,7 @@ export class RentriCredentialController {
       privateKeyPem = dto.privateKeyPem
     } else {
       throw new BadRequestException(
-        'Fornire (certificatePem + privateKeyPem) oppure (pkcs12Base64 + pkcs12Passphrase)',
+        'Fornire (certificatePem + privateKeyPem) oppure (pkcs12Base64 + pkcs12Passphrase)'
       )
     }
 

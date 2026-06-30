@@ -9,4 +9,4 @@ export const environment = {
   // Error tracking: lascia vuoto in sviluppo (no-op). In produzione imposta
   // il DSN Bugsink nel file environment.prod.ts o iniettalo a build-time.
   sentryDsn: '',
-};
+}

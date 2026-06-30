@@ -59,9 +59,7 @@ export function loadRentriConfig(config: ConfigService): RentriConfig {
   const explicitMode = config.get<string>('RENTRI_MODE')
   const legacyMock = config.get<string>('RENTRI_ENABLE_MOCK')
   const mode: RentriMode =
-    explicitMode === 'live' || (explicitMode == null && legacyMock === 'false')
-      ? 'live'
-      : 'mock'
+    explicitMode === 'live' || (explicitMode == null && legacyMock === 'false') ? 'live' : 'mock'
 
   const baseUrl =
     config.get<string>('RENTRI_API_URL') ||

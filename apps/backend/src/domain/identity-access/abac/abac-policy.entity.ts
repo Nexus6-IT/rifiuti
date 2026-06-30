@@ -25,28 +25,28 @@ export enum AbacOperator {
 }
 
 export interface AbacConditionRule {
-  attribute: string; // e.g., "user.facility", "resource.producerFacility"
-  operator: AbacOperator;
-  value: any;
+  attribute: string // e.g., "user.facility", "resource.producerFacility"
+  operator: AbacOperator
+  value: any
 }
 
 export interface AbacConditions {
-  operator: 'AND' | 'OR';
-  rules: AbacConditionRule[];
+  operator: 'AND' | 'OR'
+  rules: AbacConditionRule[]
 }
 
 export interface AbacPolicyProps {
-  id: string;
-  name: string;
-  resourceType: string;
-  effect: AbacPolicyEffect;
-  conditions: AbacConditions;
-  priority: number;
-  isActive: boolean;
-  description?: string;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
+  id: string
+  name: string
+  resourceType: string
+  effect: AbacPolicyEffect
+  conditions: AbacConditions
+  priority: number
+  isActive: boolean
+  description?: string
+  createdBy: string
+  createdAt: Date
+  updatedAt: Date
 }
 
 export class AbacPolicy {
@@ -58,78 +58,78 @@ export class AbacPolicy {
       id: crypto.randomUUID(),
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    })
   }
 
   static reconstitute(props: AbacPolicyProps): AbacPolicy {
-    return new AbacPolicy(props);
+    return new AbacPolicy(props)
   }
 
   get id(): string {
-    return this.props.id;
+    return this.props.id
   }
 
   get name(): string {
-    return this.props.name;
+    return this.props.name
   }
 
   get resourceType(): string {
-    return this.props.resourceType;
+    return this.props.resourceType
   }
 
   get effect(): AbacPolicyEffect {
-    return this.props.effect;
+    return this.props.effect
   }
 
   get conditions(): AbacConditions {
-    return this.props.conditions;
+    return this.props.conditions
   }
 
   get priority(): number {
-    return this.props.priority;
+    return this.props.priority
   }
 
   get isActive(): boolean {
-    return this.props.isActive;
+    return this.props.isActive
   }
 
   get description(): string | undefined {
-    return this.props.description;
+    return this.props.description
   }
 
   get createdBy(): string {
-    return this.props.createdBy;
+    return this.props.createdBy
   }
 
   get createdAt(): Date {
-    return this.props.createdAt;
+    return this.props.createdAt
   }
 
   get updatedAt(): Date {
-    return this.props.updatedAt;
+    return this.props.updatedAt
   }
 
   deactivate(): void {
-    this.props.isActive = false;
-    this.props.updatedAt = new Date();
+    this.props.isActive = false
+    this.props.updatedAt = new Date()
   }
 
   activate(): void {
-    this.props.isActive = true;
-    this.props.updatedAt = new Date();
+    this.props.isActive = true
+    this.props.updatedAt = new Date()
   }
 
   updatePriority(newPriority: number): void {
-    this.props.priority = newPriority;
-    this.props.updatedAt = new Date();
+    this.props.priority = newPriority
+    this.props.updatedAt = new Date()
   }
 
   updateConditions(newConditions: AbacConditions): void {
-    this.props.conditions = newConditions;
-    this.props.updatedAt = new Date();
+    this.props.conditions = newConditions
+    this.props.updatedAt = new Date()
   }
 
   toJSON(): AbacPolicyProps {
-    return { ...this.props };
+    return { ...this.props }
   }
 }

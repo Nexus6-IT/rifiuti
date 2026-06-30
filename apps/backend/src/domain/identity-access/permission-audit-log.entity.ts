@@ -1,4 +1,4 @@
-import * as crypto from 'crypto';
+import * as crypto from 'crypto'
 
 /**
  * PermissionAuditLog Entity
@@ -36,57 +36,57 @@ export class PermissionAuditLog {
     public readonly userAgent: string | undefined,
     public readonly timestamp: Date,
     public readonly previousHash: string,
-    public readonly hash: string | undefined,
+    public readonly hash: string | undefined
   ) {
     // Freeze object to enforce immutability
-    Object.freeze(this);
+    Object.freeze(this)
   }
 
   /**
    * Factory method: Create new audit log
    */
   static create(props: {
-    id?: string;
-    userId: string;
-    tenantId: string;
-    actionAttempted: string;
-    resourceType?: string;
-    resourceId?: string;
-    decision: string;
-    reason?: string;
-    spidFiscalCode?: string;
-    sessionId?: string;
-    ipAddress?: string;
-    userAgent?: string;
-    timestamp?: Date;
-    previousHash: string;
+    id?: string
+    userId: string
+    tenantId: string
+    actionAttempted: string
+    resourceType?: string
+    resourceId?: string
+    decision: string
+    reason?: string
+    spidFiscalCode?: string
+    sessionId?: string
+    ipAddress?: string
+    userAgent?: string
+    timestamp?: Date
+    previousHash: string
   }): PermissionAuditLog {
     // Validation
     if (!props.userId || props.userId.trim() === '') {
-      throw new Error('userId is required');
+      throw new Error('userId is required')
     }
 
     if (!props.tenantId || props.tenantId.trim() === '') {
-      throw new Error('tenantId is required');
+      throw new Error('tenantId is required')
     }
 
     if (!props.actionAttempted || props.actionAttempted.trim() === '') {
-      throw new Error('actionAttempted is required');
+      throw new Error('actionAttempted is required')
     }
 
     if (props.decision !== 'ALLOW' && props.decision !== 'DENY') {
-      throw new Error('decision must be ALLOW or DENY');
+      throw new Error('decision must be ALLOW or DENY')
     }
 
     if (props.decision === 'DENY' && (!props.reason || props.reason.trim() === '')) {
-      throw new Error('reason is required when decision is DENY');
+      throw new Error('reason is required when decision is DENY')
     }
 
     // Generate ID if not provided
-    const id = props.id || crypto.randomUUID();
+    const id = props.id || crypto.randomUUID()
 
     // Use current timestamp if not provided
-    const timestamp = props.timestamp || new Date();
+    const timestamp = props.timestamp || new Date()
 
     // Create entity
     const log = new PermissionAuditLog(
@@ -104,11 +104,11 @@ export class PermissionAuditLog {
       props.userAgent,
       timestamp,
       props.previousHash,
-      undefined, // Hash will be calculated
-    );
+      undefined // Hash will be calculated
+    )
 
     // Calculate and store hash
-    const hash = log.calculateHash();
+    const hash = log.calculateHash()
 
     // Return new instance with hash
     return new PermissionAuditLog(
@@ -126,8 +126,8 @@ export class PermissionAuditLog {
       log.userAgent,
       log.timestamp,
       log.previousHash,
-      hash,
-    );
+      hash
+    )
   }
 
   /**
@@ -149,8 +149,8 @@ export class PermissionAuditLog {
       data.userAgent,
       data.timestamp instanceof Date ? data.timestamp : new Date(data.timestamp),
       data.previousHash,
-      data.hash,
-    );
+      data.hash
+    )
   }
 
   /**
@@ -173,10 +173,10 @@ export class PermissionAuditLog {
       userAgent: this.userAgent,
       timestamp: this.timestamp.toISOString(),
       previousHash: this.previousHash,
-    };
+    }
 
-    const jsonString = JSON.stringify(data);
-    return crypto.createHash('sha256').update(jsonString).digest('hex');
+    const jsonString = JSON.stringify(data)
+    return crypto.createHash('sha256').update(jsonString).digest('hex')
   }
 
   /**
@@ -185,11 +185,11 @@ export class PermissionAuditLog {
    */
   isHashValid(): boolean {
     if (!this.hash) {
-      return false;
+      return false
     }
 
-    const calculatedHash = this.calculateHash();
-    return this.hash === calculatedHash;
+    const calculatedHash = this.calculateHash()
+    return this.hash === calculatedHash
   }
 
   /**
@@ -198,10 +198,10 @@ export class PermissionAuditLog {
    */
   isChainValid(previousLog: PermissionAuditLog): boolean {
     if (!previousLog.hash) {
-      return false;
+      return false
     }
 
-    return this.previousHash === previousLog.hash;
+    return this.previousHash === previousLog.hash
   }
 
   /**
@@ -224,6 +224,6 @@ export class PermissionAuditLog {
       timestamp: this.timestamp,
       previousHash: this.previousHash,
       hash: this.hash,
-    };
+    }
   }
 }

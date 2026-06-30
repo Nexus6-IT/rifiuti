@@ -28,30 +28,21 @@ import {
   Req,
   HttpCode,
   HttpStatus,
-} from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiParam,
-} from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { SpidLevelGuard } from '../../auth/guards/spid-level.guard';
-import { ApplySignatureUseCase } from '../../application/signatures/apply-signature.use-case';
-import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case';
-import {
-  ApplySignatureDto,
-  ApplySignatureResponseDto,
-} from './dto/apply-signature.dto';
-import { VerifySignaturesResponseDto } from './dto/verify-signatures.dto';
+} from '@nestjs/common'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { SpidLevelGuard } from '../../auth/guards/spid-level.guard'
+import { ApplySignatureUseCase } from '../../application/signatures/apply-signature.use-case'
+import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case'
+import { ApplySignatureDto, ApplySignatureResponseDto } from './dto/apply-signature.dto'
+import { VerifySignaturesResponseDto } from './dto/verify-signatures.dto'
 
 @ApiTags('Signatures')
 @Controller('fir/:firId')
 export class SignaturesController {
   constructor(
     private readonly applySignatureUseCase: ApplySignatureUseCase,
-    private readonly verifySignaturesUseCase: VerifySignaturesUseCase,
+    private readonly verifySignaturesUseCase: VerifySignaturesUseCase
   ) {}
 
   /**
@@ -81,7 +72,11 @@ export class SignaturesController {
       '**ATTIVARE:** SIGNATURE_PROVIDER=qes con credenziali QTSP AgID per firma qualificata (DM 59/2023).',
   })
   @ApiParam({ name: 'firId', description: 'ID FIR', example: 'fir-uuid-123' })
-  @ApiResponse({ status: 200, description: 'Firma applicata con successo', type: ApplySignatureResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Firma applicata con successo',
+    type: ApplySignatureResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Ordine firma non rispettato o firma duplicata' })
   @ApiResponse({ status: 401, description: 'Non autenticato' })
   @ApiResponse({ status: 403, description: 'Livello SPID insufficiente o autenticazione scaduta' })
@@ -89,32 +84,33 @@ export class SignaturesController {
   async applySignature(
     @Param('firId') firId: string,
     @Body() dto: ApplySignatureDto,
-    @Req() req: any,
+    @Req() req: any
   ): Promise<ApplySignatureResponseDto> {
-    const user = req.user;
+    const user = req.user
 
     // SANDBOX: spidLevel=2 simulato se claim assente (gestito anche da SpidLevelGuard)
-    const acrLevel = user.acr ? parseInt((user.acr.match(/SpidL(\d)/) ?? [])[1] ?? '0', 10) || null : null
-    const spidLevel: number = user.spidLevel ?? acrLevel ?? 2;
-    const authenticatedAt: Date = user.authenticatedAt
-      ? new Date(user.authenticatedAt)
-      : new Date(); // Sandbox: ora corrente come fallback
+    const acrLevel = user.acr
+      ? parseInt((user.acr.match(/SpidL(\d)/) ?? [])[1] ?? '0', 10) || null
+      : null
+    const spidLevel: number = user.spidLevel ?? acrLevel ?? 2
+    const authenticatedAt: Date = user.authenticatedAt ? new Date(user.authenticatedAt) : new Date() // Sandbox: ora corrente come fallback
 
     const result = await this.applySignatureUseCase.execute({
       firId,
       tenantId: user.tenantId,
-      userId: user.id,   // UUID utente (per fir_signatures.user_id)
+      userId: user.id, // UUID utente (per fir_signatures.user_id)
       role: dto.role,
       signerFiscalCode: user.fiscalCode ?? user.sub ?? 'SANDBOX000A00A000A',
-      signerName: user.name ?? (`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Utente Sandbox'),
+      signerName:
+        user.name ?? (`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Utente Sandbox'),
       spidLevel,
       authenticatedAt,
-    });
+    })
 
     return {
       ...result,
       message: `Firma ${dto.role} applicata (${result.signature.isQualified ? 'QUALIFICATA' : 'SANDBOX-NON-QUALIFICATA'})`,
-    };
+    }
   }
 
   /**
@@ -136,12 +132,14 @@ export class SignaturesController {
       'Utilizzabile per scansione QR code e verifica di terzi.',
   })
   @ApiParam({ name: 'firId', description: 'ID FIR', example: 'fir-uuid-123' })
-  @ApiResponse({ status: 200, description: 'Verifica completata', type: VerifySignaturesResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Verifica completata',
+    type: VerifySignaturesResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
-  async verifySignatures(
-    @Param('firId') firId: string,
-  ): Promise<VerifySignaturesResponseDto> {
-    return this.verifySignaturesUseCase.execute({ firId });
+  async verifySignatures(@Param('firId') firId: string): Promise<VerifySignaturesResponseDto> {
+    return this.verifySignaturesUseCase.execute({ firId })
   }
 
   /**
@@ -155,17 +153,21 @@ export class SignaturesController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'URL pubblica di verifica firma (per QR code)',
-    description: 'Restituisce l\'URL pubblica per la verifica firma FIR (per generare QR code nel PDF).',
+    description:
+      "Restituisce l'URL pubblica per la verifica firma FIR (per generare QR code nel PDF).",
   })
   @ApiParam({ name: 'firId', description: 'ID FIR' })
   @ApiResponse({
     status: 200,
-    schema: { type: 'object', properties: { url: { type: 'string', example: 'https://rifiuti.ignicraft.com/verify/fir-123' } } },
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', example: 'https://rifiuti.ignicraft.com/verify/fir-123' },
+      },
+    },
   })
-  async getVerificationUrl(
-    @Param('firId') firId: string,
-  ): Promise<{ url: string }> {
-    const url = this.verifySignaturesUseCase.generateVerificationUrl(firId);
-    return { url };
+  async getVerificationUrl(@Param('firId') firId: string): Promise<{ url: string }> {
+    const url = this.verifySignaturesUseCase.generateVerificationUrl(firId)
+    return { url }
   }
 }

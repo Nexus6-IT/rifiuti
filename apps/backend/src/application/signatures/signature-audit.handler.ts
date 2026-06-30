@@ -1,11 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
-import {
-  FIRSignedEvent,
-  FIRCompletedEvent,
-} from '../../domain/fir/events/fir-signed.event';
-import { LoggerService } from '../../core/logger/logger.service';
-import { PrismaService } from '../../infrastructure/persistence/prisma.service';
+import { Injectable } from '@nestjs/common'
+import { OnEvent } from '@nestjs/event-emitter'
+import { FIRSignedEvent, FIRCompletedEvent } from '../../domain/fir/events/fir-signed.event'
+import { LoggerService } from '../../core/logger/logger.service'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 
 /**
  * Signature Audit Handler
@@ -33,9 +30,9 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service';
 export class SignatureAuditHandler {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext(SignatureAuditHandler.name);
+    this.logger.setContext(SignatureAuditHandler.name)
   }
 
   /**
@@ -46,8 +43,8 @@ export class SignatureAuditHandler {
   @OnEvent('FIR_SIGNED')
   async handleFIRSigned(event: FIRSignedEvent): Promise<void> {
     this.logger.info(
-      `FIR_SIGNED event received: ${event.payload.role} signature on FIR ${event.payload.firId}`,
-    );
+      `FIR_SIGNED event received: ${event.payload.role} signature on FIR ${event.payload.firId}`
+    )
 
     try {
       // L'audit della firma è persistito su ActivityLog (modello reale,
@@ -74,19 +71,19 @@ export class SignatureAuditHandler {
             occurredOn: event.occurredOn,
           },
         },
-      });
+      })
 
       this.logger.info(
-        `Audit log created for ${event.payload.role} signature on FIR ${event.payload.firId}`,
-      );
+        `Audit log created for ${event.payload.role} signature on FIR ${event.payload.firId}`
+      )
 
       // Send notification if configured
       // await this.notificationService.notifySignatureApplied(event.payload);
     } catch (error) {
       this.logger.error(
         `Failed to create audit log for FIR_SIGNED event: ${event.payload.firId}`,
-        error,
-      );
+        error
+      )
       // Don't throw - audit logging should not break main workflow
     }
   }
@@ -99,8 +96,8 @@ export class SignatureAuditHandler {
   @OnEvent('FIR_COMPLETED')
   async handleFIRCompleted(event: FIRCompletedEvent): Promise<void> {
     this.logger.info(
-      `FIR_COMPLETED event received: FIR ${event.payload.firId} with ${event.payload.signatureCount} signatures`,
-    );
+      `FIR_COMPLETED event received: FIR ${event.payload.firId} with ${event.payload.signatureCount} signatures`
+    )
 
     try {
       // Audit del completamento firma su ActivityLog (store di audit scelto).
@@ -109,7 +106,8 @@ export class SignatureAuditHandler {
           tenantId: event.payload.tenantId,
           firId: event.payload.firId,
           action: 'FIR_SIGNATURE_WORKFLOW_COMPLETED',
-          description: 'All three signatures (Producer, Carrier, Receiver) applied. FIR is now immutable.',
+          description:
+            'All three signatures (Producer, Carrier, Receiver) applied. FIR is now immutable.',
           metadata: {
             firId: event.payload.firId,
             firNumber: event.payload.firNumber,
@@ -117,22 +115,17 @@ export class SignatureAuditHandler {
             signatureCount: event.payload.signatureCount,
           },
         },
-      });
+      })
 
-      this.logger.info(
-        `Audit log created for FIR completion: ${event.payload.firId}`,
-      );
+      this.logger.info(`Audit log created for FIR completion: ${event.payload.firId}`)
 
       // Trigger RENTRI sync workflow
-      await this.triggerRENTRISync(event);
+      await this.triggerRENTRISync(event)
 
       // Send notifications
       // await this.notificationService.notifyFIRCompleted(event.payload);
     } catch (error) {
-      this.logger.error(
-        `Failed to handle FIR_COMPLETED event: ${event.payload.firId}`,
-        error,
-      );
+      this.logger.error(`Failed to handle FIR_COMPLETED event: ${event.payload.firId}`, error)
       // Don't throw - audit logging should not break main workflow
     }
   }
@@ -143,9 +136,7 @@ export class SignatureAuditHandler {
    * When FIR is completed (all signatures), queue for RENTRI submission.
    */
   private async triggerRENTRISync(event: FIRCompletedEvent): Promise<void> {
-    this.logger.info(
-      `Triggering RENTRI sync for completed FIR ${event.payload.firId}`,
-    );
+    this.logger.info(`Triggering RENTRI sync for completed FIR ${event.payload.firId}`)
 
     // Integrazione: alla firma completa il FIR va accodato per la sync RENTRI.
     // Il meccanismo scelto è BullMQ (coda 'rentri-sync', vedi
@@ -159,8 +150,8 @@ export class SignatureAuditHandler {
         firNumber: event.payload.firNumber,
         completedAt: event.payload.completedAt,
         signatureCount: event.payload.signatureCount,
-      },
-    );
+      }
+    )
   }
 
   /**
@@ -169,13 +160,16 @@ export class SignatureAuditHandler {
    * Returns chronological audit trail for regulatory compliance.
    * Lo storico firma è interrogato da ActivityLog (store di audit scelto).
    */
-  async getFIRSignatureAuditTrail(firId: string, tenantId: string): Promise<
+  async getFIRSignatureAuditTrail(
+    firId: string,
+    tenantId: string
+  ): Promise<
     Array<{
-      eventType: string;
-      action: string;
-      userName: string;
-      occurredAt: Date;
-      details: any;
+      eventType: string
+      action: string
+      userName: string
+      occurredAt: Date
+      details: any
     }>
   > {
     const logs = await this.prisma.activityLog.findMany({
@@ -183,13 +177,18 @@ export class SignatureAuditHandler {
         tenantId,
         firId: firId,
         action: {
-          in: ['PRODUCER_SIGNATURE_APPLIED', 'CARRIER_SIGNATURE_APPLIED', 'RECEIVER_SIGNATURE_APPLIED', 'FIR_SIGNATURE_WORKFLOW_COMPLETED'],
+          in: [
+            'PRODUCER_SIGNATURE_APPLIED',
+            'CARRIER_SIGNATURE_APPLIED',
+            'RECEIVER_SIGNATURE_APPLIED',
+            'FIR_SIGNATURE_WORKFLOW_COMPLETED',
+          ],
         },
       },
       orderBy: {
         createdAt: 'asc',
       },
-    });
+    })
 
     return logs.map((log: any) => ({
       eventType: log.action, // Use action as eventType
@@ -197,6 +196,6 @@ export class SignatureAuditHandler {
       userName: log.userId || 'Unknown', // ActivityLog has userId, not userName
       occurredAt: log.createdAt,
       details: log.metadata,
-    }));
+    }))
   }
 }

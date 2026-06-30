@@ -1,10 +1,10 @@
-import { Component, Output, EventEmitter, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { InputTextModule } from 'primeng/inputtext';
-import { CalendarModule } from 'primeng/calendar';
-import { DropdownModule } from 'primeng/dropdown';
+import { Component, Output, EventEmitter } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
+import { ButtonModule } from 'primeng/button'
+import { InputTextModule } from 'primeng/inputtext'
+import { CalendarModule } from 'primeng/calendar'
+import { DropdownModule } from 'primeng/dropdown'
 
 /**
  * AuditFiltersComponent
@@ -192,144 +192,146 @@ import { DropdownModule } from 'primeng/dropdown';
       }
     </div>
   `,
-  styles: [`
-    .audit-filters {
-      background: var(--surface-card);
-      border: 1px solid var(--surface-border);
-      border-radius: 8px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .filter-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 1.5rem;
-    }
-
-    .filter-header h3 {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin: 0;
-      font-size: 1.25rem;
-      font-weight: 600;
-    }
-
-    .filter-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .filter-field {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .filter-field label {
-      font-size: var(--font-size-sm);
-      font-weight: var(--font-weight-semibold);
-      color: var(--text-primary);
-    }
-
-    .filter-actions {
-      display: flex;
-      justify-content: flex-end;
-      padding-top: 1rem;
-      border-top: 1px solid var(--surface-border);
-    }
-
-    .active-filters {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.5rem;
-      margin-top: 1rem;
-      padding-top: 1rem;
-      border-top: 1px solid var(--surface-border);
-    }
-
-    .active-filters-label {
-      font-size: var(--font-size-sm);
-      font-weight: var(--font-weight-semibold);
-      color: var(--text-secondary);
-    }
-
-    .filter-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.25rem 0.75rem;
-      background: var(--brand-primary-50);
-      color: var(--brand-primary-dark);
-      border-radius: var(--radius-xl);
-      font-size: var(--font-size-sm);
-      font-weight: var(--font-weight-medium);
-    }
-
-    .filter-chip i {
-      cursor: pointer;
-      opacity: 0.7;
-      transition: opacity 0.2s ease;
-    }
-
-    .filter-chip i:hover {
-      opacity: 1;
-    }
-
-    /* Mobile responsive */
-    @media (max-width: 768px) {
+  styles: [
+    `
       .audit-filters {
-        padding: 1rem;
-      }
-
-      .filter-grid {
-        grid-template-columns: 1fr;
+        background: var(--surface-card);
+        border: 1px solid var(--surface-border);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
       }
 
       .filter-header {
-        flex-direction: column;
-        align-items: flex-start;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+      }
+
+      .filter-header h3 {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 600;
+      }
+
+      .filter-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
         gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .filter-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .filter-field label {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
       }
 
       .filter-actions {
-        justify-content: stretch;
+        display: flex;
+        justify-content: flex-end;
+        padding-top: 1rem;
+        border-top: 1px solid var(--surface-border);
       }
 
-      .filter-actions button {
-        width: 100%;
+      .active-filters {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--surface-border);
       }
-    }
-  `],
+
+      .active-filters-label {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-secondary);
+      }
+
+      .filter-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.25rem 0.75rem;
+        background: var(--brand-primary-50);
+        color: var(--brand-primary-dark);
+        border-radius: var(--radius-xl);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .filter-chip i {
+        cursor: pointer;
+        opacity: 0.7;
+        transition: opacity 0.2s ease;
+      }
+
+      .filter-chip i:hover {
+        opacity: 1;
+      }
+
+      /* Mobile responsive */
+      @media (max-width: 768px) {
+        .audit-filters {
+          padding: 1rem;
+        }
+
+        .filter-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .filter-header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 1rem;
+        }
+
+        .filter-actions {
+          justify-content: stretch;
+        }
+
+        .filter-actions button {
+          width: 100%;
+        }
+      }
+    `,
+  ],
 })
 export class AuditFiltersComponent {
   @Output() filtersChanged = new EventEmitter<{
-    userId?: string;
-    startDate?: Date;
-    endDate?: Date;
-    decision?: 'ALLOW' | 'DENY';
-    resourceType?: string;
-    actionAttempted?: string;
-  }>();
+    userId?: string
+    startDate?: Date
+    endDate?: Date
+    decision?: 'ALLOW' | 'DENY'
+    resourceType?: string
+    actionAttempted?: string
+  }>()
 
   // Filter values
-  userId = '';
-  startDate: Date | null = null;
-  endDate: Date | null = null;
-  decision: 'ALLOW' | 'DENY' | null = null;
-  resourceType = '';
-  actionAttempted = '';
+  userId = ''
+  startDate: Date | null = null
+  endDate: Date | null = null
+  decision: 'ALLOW' | 'DENY' | null = null
+  resourceType = ''
+  actionAttempted = ''
 
   // Dropdown options
   decisionOptions = [
     { label: 'Allow', value: 'ALLOW' },
     { label: 'Deny', value: 'DENY' },
-  ];
+  ]
 
   onFilterChange(): void {
     // Emit filters on change (for real-time filtering)
@@ -337,52 +339,52 @@ export class AuditFiltersComponent {
   }
 
   applyFilters(): void {
-    const filters: any = {};
+    const filters: any = {}
 
-    if (this.userId) filters.userId = this.userId;
-    if (this.startDate) filters.startDate = this.startDate;
-    if (this.endDate) filters.endDate = this.endDate;
-    if (this.decision) filters.decision = this.decision;
-    if (this.resourceType) filters.resourceType = this.resourceType;
-    if (this.actionAttempted) filters.actionAttempted = this.actionAttempted;
+    if (this.userId) filters.userId = this.userId
+    if (this.startDate) filters.startDate = this.startDate
+    if (this.endDate) filters.endDate = this.endDate
+    if (this.decision) filters.decision = this.decision
+    if (this.resourceType) filters.resourceType = this.resourceType
+    if (this.actionAttempted) filters.actionAttempted = this.actionAttempted
 
-    this.filtersChanged.emit(filters);
+    this.filtersChanged.emit(filters)
   }
 
   resetFilters(): void {
-    this.userId = '';
-    this.startDate = null;
-    this.endDate = null;
-    this.decision = null;
-    this.resourceType = '';
-    this.actionAttempted = '';
+    this.userId = ''
+    this.startDate = null
+    this.endDate = null
+    this.decision = null
+    this.resourceType = ''
+    this.actionAttempted = ''
 
-    this.filtersChanged.emit({});
+    this.filtersChanged.emit({})
   }
 
   clearFilter(filterName: string): void {
     switch (filterName) {
       case 'userId':
-        this.userId = '';
-        break;
+        this.userId = ''
+        break
       case 'startDate':
-        this.startDate = null;
-        break;
+        this.startDate = null
+        break
       case 'endDate':
-        this.endDate = null;
-        break;
+        this.endDate = null
+        break
       case 'decision':
-        this.decision = null;
-        break;
+        this.decision = null
+        break
       case 'resourceType':
-        this.resourceType = '';
-        break;
+        this.resourceType = ''
+        break
       case 'actionAttempted':
-        this.actionAttempted = '';
-        break;
+        this.actionAttempted = ''
+        break
     }
 
-    this.applyFilters();
+    this.applyFilters()
   }
 
   hasFilters(): boolean {
@@ -393,6 +395,6 @@ export class AuditFiltersComponent {
       this.decision ||
       this.resourceType ||
       this.actionAttempted
-    );
+    )
   }
 }

@@ -65,7 +65,7 @@ describe('RentriAuthService', () => {
     const form = new URLSearchParams(bodyStr)
     expect(form.get('grant_type')).toBe('client_credentials')
     expect(form.get('client_assertion_type')).toBe(
-      'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
     )
 
     // La client_assertion è un JWT firmato e verificabile col certificato

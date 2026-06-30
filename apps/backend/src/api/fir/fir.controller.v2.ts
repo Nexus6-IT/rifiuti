@@ -17,7 +17,15 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsObject, Min, ValidateNested } from 'class-validator'
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsObject,
+  Min,
+  ValidateNested,
+} from 'class-validator'
 import { Type } from 'class-transformer'
 import { CreateFIRDto } from './dtos/create-fir.dto'
 import { ListFIRsDto } from './dtos/list-firs.dto'
@@ -101,7 +109,7 @@ export class FIRControllerV2 {
     private readonly annullaFIRUseCase: AnnullaFIRUseCase,
     private readonly getFIRByIdHandler: GetFIRByIdQueryHandler,
     private readonly listFIRsHandler: ListFIRsQueryHandler,
-    private readonly enforcement: SubscriptionEnforcementService,
+    private readonly enforcement: SubscriptionEnforcementService
   ) {}
 
   @Post()
@@ -264,7 +272,11 @@ export class FIRControllerV2 {
     description: 'Presa in carico FIR da parte del trasportatore (EMESSO → IN_TRANSITO)',
   })
   @ApiParam({ name: 'id', description: 'ID del FIR da prendere in carico' })
-  @ApiResponse({ status: 200, description: 'FIR preso in carico con successo', type: FIRResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'FIR preso in carico con successo',
+    type: FIRResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Stato non valido o dati mancanti' })
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
   async presaInCarico(
@@ -293,8 +305,15 @@ export class FIRControllerV2 {
     description: 'Conferma consegna FIR da parte del destinatario (IN_TRANSITO → CONSEGNATO)',
   })
   @ApiParam({ name: 'id', description: 'ID del FIR da confermare' })
-  @ApiResponse({ status: 200, description: 'Consegna FIR confermata con successo', type: FIRResponseDto })
-  @ApiResponse({ status: 400, description: 'Stato non valido, peso fuori tolleranza o dati mancanti' })
+  @ApiResponse({
+    status: 200,
+    description: 'Consegna FIR confermata con successo',
+    type: FIRResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Stato non valido, peso fuori tolleranza o dati mancanti',
+  })
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
   async confermaConsegna(
     @Param('id') id: string,
@@ -324,7 +343,8 @@ export class FIRControllerV2 {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Annulla FIR',
-    description: 'Annulla un FIR non ancora consegnato (qualsiasi stato tranne CONSEGNATO → ANNULLATO)',
+    description:
+      'Annulla un FIR non ancora consegnato (qualsiasi stato tranne CONSEGNATO → ANNULLATO)',
   })
   @ApiParam({ name: 'id', description: 'ID del FIR da annullare' })
   @ApiResponse({ status: 200, description: 'FIR annullato con successo', type: FIRResponseDto })

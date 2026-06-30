@@ -55,7 +55,7 @@ export class CERCatalogService {
   async list(
     page: number,
     limit: number,
-    filters?: CERSearchFilters,
+    filters?: CERSearchFilters
   ): Promise<{ items: CERCode[]; total: number }> {
     const safePage = page > 0 ? page : 1
     const safeLimit = limit > 0 && limit <= 200 ? limit : 50
@@ -76,12 +76,14 @@ export class CERCatalogService {
   /**
    * Import CER codes from CSV data
    */
-  async importFromCSV(csvRecords: Array<{
-    code: string
-    description: string
-    category: string
-    subcategory?: string
-  }>): Promise<ImportCERResult> {
+  async importFromCSV(
+    csvRecords: Array<{
+      code: string
+      description: string
+      category: string
+      subcategory?: string
+    }>
+  ): Promise<ImportCERResult> {
     const result: ImportCERResult = {
       imported: 0,
       skipped: 0,

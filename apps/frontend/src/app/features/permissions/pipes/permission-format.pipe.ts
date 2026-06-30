@@ -1,4 +1,4 @@
-import { Pipe, PipeTransform } from '@angular/core';
+import { Pipe, PipeTransform } from '@angular/core'
 
 /**
  * PermissionFormatPipe
@@ -44,7 +44,7 @@ export class PermissionFormatPipe implements PipeTransform {
     analytics: 'analytics',
     mud: 'MUD report',
     backup: 'backup',
-  };
+  }
 
   /**
    * Action display names (verbs)
@@ -57,7 +57,7 @@ export class PermissionFormatPipe implements PipeTransform {
     assign: 'Assign',
     revoke: 'Revoke',
     export: 'Export',
-  };
+  }
 
   /**
    * Scope display descriptions
@@ -66,7 +66,7 @@ export class PermissionFormatPipe implements PipeTransform {
     own: 'own',
     facility: 'for assigned facilities',
     all: '',
-  };
+  }
 
   /**
    * Special plural forms for resources
@@ -80,7 +80,7 @@ export class PermissionFormatPipe implements PipeTransform {
     analytics: 'analytics data',
     mud: 'MUD reports',
     backup: 'system backups',
-  };
+  }
 
   /**
    * Transform permission string to human-readable format
@@ -92,31 +92,31 @@ export class PermissionFormatPipe implements PipeTransform {
   transform(permission: string, mode: 'long' | 'short' = 'long'): string {
     // Validation
     if (!permission || typeof permission !== 'string') {
-      return 'Invalid permission format';
+      return 'Invalid permission format'
     }
 
     // Parse permission parts
-    const parts = permission.split(':');
+    const parts = permission.split(':')
     if (parts.length !== 3) {
-      return 'Invalid permission format';
+      return 'Invalid permission format'
     }
 
-    const [resource, action, scope] = parts;
+    const [resource, action, scope] = parts
 
     // Get display names
-    const actionName = this.actionNames[action] || this.capitalizeFirst(action);
-    const resourceName = this.getResourceName(resource, action);
-    const scopeDesc = mode === 'long' ? this.scopeDescriptions[scope] || '' : '';
+    const actionName = this.actionNames[action] || this.capitalizeFirst(action)
+    const resourceName = this.getResourceName(resource, action)
+    const scopeDesc = mode === 'long' ? this.scopeDescriptions[scope] || '' : ''
 
     // Build description
-    let description = `${actionName} ${resourceName}`;
+    let description = `${actionName} ${resourceName}`
 
     // Add scope description if in long mode and scope has description
     if (mode === 'long' && scopeDesc) {
-      description += ` ${scopeDesc}`;
+      description += ` ${scopeDesc}`
     }
 
-    return description.trim();
+    return description.trim()
   }
 
   /**
@@ -125,23 +125,23 @@ export class PermissionFormatPipe implements PipeTransform {
   private getResourceName(resource: string, action: string): string {
     // Read and export actions typically use plural
     // Create, update, delete use singular or context-dependent
-    const usePlural = ['read', 'export', 'assign', 'revoke'].includes(action);
+    const usePlural = ['read', 'export', 'assign', 'revoke'].includes(action)
 
     if (usePlural && this.resourcePlurals[resource]) {
-      return this.resourcePlurals[resource];
+      return this.resourcePlurals[resource]
     }
 
     if (action === 'create' && this.resourcePlurals[resource]) {
-      return this.resourcePlurals[resource];
+      return this.resourcePlurals[resource]
     }
 
-    return this.resourceNames[resource] || resource;
+    return this.resourceNames[resource] || resource
   }
 
   /**
    * Capitalize first letter of string
    */
   private capitalizeFirst(str: string): string {
-    return str.charAt(0).toUpperCase() + str.slice(1);
+    return str.charAt(0).toUpperCase() + str.slice(1)
   }
 }

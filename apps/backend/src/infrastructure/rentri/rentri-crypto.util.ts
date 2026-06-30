@@ -40,8 +40,7 @@ export function decryptSecret(payload: string, secret: string): string {
   const [ivB, tagB, dataB] = parts
   const decipher = createDecipheriv(ALGO, deriveKey(secret), Buffer.from(ivB, 'base64'))
   decipher.setAuthTag(Buffer.from(tagB, 'base64'))
-  return Buffer.concat([
-    decipher.update(Buffer.from(dataB, 'base64')),
-    decipher.final(),
-  ]).toString('utf8')
+  return Buffer.concat([decipher.update(Buffer.from(dataB, 'base64')), decipher.final()]).toString(
+    'utf8'
+  )
 }

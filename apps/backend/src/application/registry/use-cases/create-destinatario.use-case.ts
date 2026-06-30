@@ -36,15 +36,13 @@ export class CreateDestinatarioUseCase {
   constructor(
     @Inject(DESTINATARIO_REPOSITORY)
     private readonly destinatarioRepository: DestinatarioRepository,
-    @Optional() private readonly referenceData?: ReferenceDataService,
+    @Optional() private readonly referenceData?: ReferenceDataService
   ) {}
 
   async execute(command: CreateDestinatarioCommand): Promise<Result<Destinatario>> {
     try {
       // Check if Partita IVA already exists
-      const existingByPIVA = await this.destinatarioRepository.findByPartitaIVA(
-        command.partitaIVA,
-      )
+      const existingByPIVA = await this.destinatarioRepository.findByPartitaIVA(command.partitaIVA)
 
       if (existingByPIVA) {
         return Result.fail('Destinatario with this Partita IVA already exists')
@@ -52,7 +50,7 @@ export class CreateDestinatarioUseCase {
 
       // Check if Numero Autorizzazione already exists
       const existingByNumero = await this.destinatarioRepository.findByNumeroAutorizzazione(
-        command.numeroAutorizzazione,
+        command.numeroAutorizzazione
       )
 
       if (existingByNumero) {
@@ -63,7 +61,7 @@ export class CreateDestinatarioUseCase {
       if (this.referenceData) {
         const v = await this.referenceData.validateLocalita(
           command.sede.citta,
-          command.sede.provincia,
+          command.sede.provincia
         )
         if (!v.ok) return Result.fail(v.error!)
       }

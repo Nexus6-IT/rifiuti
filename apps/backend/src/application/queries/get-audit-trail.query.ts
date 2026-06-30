@@ -18,17 +18,17 @@ export class GetAuditTrailQuery {
   constructor(
     public readonly tenantId: string,
     public readonly filters?: {
-      userId?: string;
-      startDate?: Date;
-      endDate?: Date;
-      decision?: 'ALLOW' | 'DENY';
-      resourceType?: string;
-      resourceId?: string;
-      actionAttempted?: string;
+      userId?: string
+      startDate?: Date
+      endDate?: Date
+      decision?: 'ALLOW' | 'DENY'
+      resourceType?: string
+      resourceId?: string
+      actionAttempted?: string
     },
     public readonly pagination?: {
-      page?: number;
-      pageSize?: number;
-    },
+      page?: number
+      pageSize?: number
+    }
   ) {}
 }

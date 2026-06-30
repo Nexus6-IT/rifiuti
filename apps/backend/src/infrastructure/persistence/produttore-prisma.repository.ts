@@ -74,7 +74,7 @@ export class ProduttorePrismaRepository implements ProduttoreRepository {
     const produttore = await this.prisma.db.produttore.findFirst({
       where: {
         tenantId,
-        partitaIVA
+        partitaIVA,
       },
     })
 

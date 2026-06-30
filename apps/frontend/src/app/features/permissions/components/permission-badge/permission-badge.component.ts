@@ -1,12 +1,12 @@
-import { Component, Input, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { TooltipModule } from 'primeng/tooltip';
-import { PermissionStore } from '../../../../core/state/permission.store';
+import { Component, Input, inject } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { TooltipModule } from 'primeng/tooltip'
+import { PermissionStore } from '../../../../core/state/permission.store'
 
 /**
  * Permission state for visual indicators
  */
-export type PermissionState = 'allowed' | 'view-only' | 'denied' | 'unknown';
+export type PermissionState = 'allowed' | 'view-only' | 'denied' | 'unknown'
 
 /**
  * PermissionBadgeComponent
@@ -36,8 +36,8 @@ export type PermissionState = 'allowed' | 'view-only' | 'denied' | 'unknown';
       [class.small]="size === 'small'"
       [class.large]="size === 'large'"
       [pTooltip]="getTooltipText()"
-      [tooltipPosition]="tooltipPosition">
-
+      [tooltipPosition]="tooltipPosition"
+    >
       <!-- Symbol icons for mobile UX -->
       <span *ngIf="useSymbols" class="symbol-icon">{{ getIconClass() }}</span>
 
@@ -49,203 +49,206 @@ export type PermissionState = 'allowed' | 'view-only' | 'denied' | 'unknown';
       </span>
     </span>
   `,
-  styles: [`
-    .permission-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.375rem;
-      padding: 0.375rem 0.75rem;
-      border-radius: var(--radius-sm);
-      font-size: var(--font-size-sm);
-      font-weight: var(--font-weight-medium);
-      transition: background var(--transition-fast);
-      cursor: default;
-    }
-
-    /* Size variations */
-    .permission-badge.small {
-      padding: 0.25rem 0.5rem;
-      font-size: var(--font-size-xs);
-      gap: 0.25rem;
-    }
-
-    .permission-badge.small i {
-      font-size: var(--font-size-xs);
-    }
-
-    .permission-badge.large {
-      padding: 0.5rem 1rem;
-      font-size: var(--font-size-base);
-      gap: 0.5rem;
-    }
-
-    .permission-badge.large i {
-      font-size: var(--font-size-lg);
-    }
-
-    /* State: Allowed (green) */
-    .permission-badge.allowed {
-      background-color: var(--color-success-bg);
-      color: var(--color-success);
-      border: 1px solid var(--color-success);
-    }
-
-    .permission-badge.allowed:hover {
-      background-color: var(--color-success-bg);
-      filter: brightness(0.97);
-    }
-
-    .permission-badge.allowed i {
-      color: var(--color-success);
-    }
-
-    /* State: View-Only (blue/info) */
-    .permission-badge.view-only {
-      background-color: var(--color-info-bg);
-      color: var(--color-info);
-      border: 1px solid var(--color-info);
-    }
-
-    .permission-badge.view-only:hover {
-      background-color: var(--color-info-bg);
-      filter: brightness(0.97);
-    }
-
-    .permission-badge.view-only i {
-      color: var(--color-info);
-    }
-
-    /* State: Denied (red) */
-    .permission-badge.denied {
-      background-color: var(--color-danger-bg);
-      color: var(--color-danger);
-      border: 1px solid var(--color-danger);
-    }
-
-    .permission-badge.denied:hover {
-      background-color: var(--color-danger-bg);
-      filter: brightness(0.97);
-    }
-
-    .permission-badge.denied i {
-      color: var(--color-danger);
-    }
-
-    /* State: Unknown (gray) */
-    .permission-badge.unknown {
-      background-color: var(--color-gray-100);
-      color: var(--color-gray-700);
-      border: 1px solid var(--surface-border-strong);
-    }
-
-    .permission-badge.unknown:hover {
-      background-color: var(--color-gray-200);
-    }
-
-    .permission-badge.unknown i {
-      color: var(--color-gray-600);
-    }
-
-    /* Icon styles */
-    .permission-badge i {
-      font-size: var(--font-size-sm);
-      font-weight: var(--font-weight-bold);
-      line-height: 1;
-    }
-
-    /* Symbol icon styles (T128: ✓, ○, ✗) */
-    .permission-badge .symbol-icon {
-      font-size: var(--font-size-lg);
-      font-weight: var(--font-weight-bold);
-      line-height: 1;
-      font-family: var(--font-family);
-    }
-
-    .permission-badge.small .symbol-icon {
-      font-size: 0.875rem;
-    }
-
-    .permission-badge.large .symbol-icon {
-      font-size: 1.5rem;
-    }
-
-    /* Label text */
-    .badge-label {
-      line-height: 1;
-    }
-
-    /* Animation */
-    @keyframes pulse {
-      0%, 100% {
-        opacity: 1;
+  styles: [
+    `
+      .permission-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.375rem 0.75rem;
+        border-radius: var(--radius-sm);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        transition: background var(--transition-fast);
+        cursor: default;
       }
-      50% {
-        opacity: 0.7;
-      }
-    }
 
-    .permission-badge.checking {
-      animation: pulse 1.5s ease-in-out infinite;
-    }
-  `]
+      /* Size variations */
+      .permission-badge.small {
+        padding: 0.25rem 0.5rem;
+        font-size: var(--font-size-xs);
+        gap: 0.25rem;
+      }
+
+      .permission-badge.small i {
+        font-size: var(--font-size-xs);
+      }
+
+      .permission-badge.large {
+        padding: 0.5rem 1rem;
+        font-size: var(--font-size-base);
+        gap: 0.5rem;
+      }
+
+      .permission-badge.large i {
+        font-size: var(--font-size-lg);
+      }
+
+      /* State: Allowed (green) */
+      .permission-badge.allowed {
+        background-color: var(--color-success-bg);
+        color: var(--color-success);
+        border: 1px solid var(--color-success);
+      }
+
+      .permission-badge.allowed:hover {
+        background-color: var(--color-success-bg);
+        filter: brightness(0.97);
+      }
+
+      .permission-badge.allowed i {
+        color: var(--color-success);
+      }
+
+      /* State: View-Only (blue/info) */
+      .permission-badge.view-only {
+        background-color: var(--color-info-bg);
+        color: var(--color-info);
+        border: 1px solid var(--color-info);
+      }
+
+      .permission-badge.view-only:hover {
+        background-color: var(--color-info-bg);
+        filter: brightness(0.97);
+      }
+
+      .permission-badge.view-only i {
+        color: var(--color-info);
+      }
+
+      /* State: Denied (red) */
+      .permission-badge.denied {
+        background-color: var(--color-danger-bg);
+        color: var(--color-danger);
+        border: 1px solid var(--color-danger);
+      }
+
+      .permission-badge.denied:hover {
+        background-color: var(--color-danger-bg);
+        filter: brightness(0.97);
+      }
+
+      .permission-badge.denied i {
+        color: var(--color-danger);
+      }
+
+      /* State: Unknown (gray) */
+      .permission-badge.unknown {
+        background-color: var(--color-gray-100);
+        color: var(--color-gray-700);
+        border: 1px solid var(--surface-border-strong);
+      }
+
+      .permission-badge.unknown:hover {
+        background-color: var(--color-gray-200);
+      }
+
+      .permission-badge.unknown i {
+        color: var(--color-gray-600);
+      }
+
+      /* Icon styles */
+      .permission-badge i {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-bold);
+        line-height: 1;
+      }
+
+      /* Symbol icon styles (T128: ✓, ○, ✗) */
+      .permission-badge .symbol-icon {
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-bold);
+        line-height: 1;
+        font-family: var(--font-family);
+      }
+
+      .permission-badge.small .symbol-icon {
+        font-size: 0.875rem;
+      }
+
+      .permission-badge.large .symbol-icon {
+        font-size: 1.5rem;
+      }
+
+      /* Label text */
+      .badge-label {
+        line-height: 1;
+      }
+
+      /* Animation */
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.7;
+        }
+      }
+
+      .permission-badge.checking {
+        animation: pulse 1.5s ease-in-out infinite;
+      }
+    `,
+  ],
 })
 export class PermissionBadgeComponent {
-  private readonly permissionStore = inject(PermissionStore);
+  private readonly permissionStore = inject(PermissionStore)
 
   /**
    * Permission string to check (e.g., 'fir:read:facility')
    */
-  @Input({ required: true }) permission!: string;
+  @Input({ required: true }) permission!: string
 
   /**
    * Explicit state override (if not provided, auto-checks via PermissionStore)
    */
-  @Input() state?: PermissionState;
+  @Input() state?: PermissionState
 
   /**
    * Show text label alongside icon
    */
-  @Input() showLabel: boolean = true;
+  @Input() showLabel: boolean = true
 
   /**
    * Badge size
    */
-  @Input() size: 'small' | 'normal' | 'large' = 'normal';
+  @Input() size: 'small' | 'normal' | 'large' = 'normal'
 
   /**
    * Tooltip position
    */
-  @Input() tooltipPosition: 'top' | 'bottom' | 'left' | 'right' = 'top';
+  @Input() tooltipPosition: 'top' | 'bottom' | 'left' | 'right' = 'top'
 
   /**
    * Custom label text (overrides default)
    */
-  @Input() customLabel?: string;
+  @Input() customLabel?: string
 
   /**
    * Get current permission state
    */
   get currentState(): PermissionState {
     if (this.state) {
-      return this.state;
+      return this.state
     }
 
     // Auto-check permission via store
-    const hasPermission = this.permissionStore.hasPermission()(this.permission);
+    const hasPermission = this.permissionStore.hasPermission()(this.permission)
 
     if (hasPermission) {
       // Check if it's a view-only permission (read action)
-      const [, action] = this.permission.split(':');
-      return action === 'read' ? 'view-only' : 'allowed';
+      const [, action] = this.permission.split(':')
+      return action === 'read' ? 'view-only' : 'allowed'
     }
 
-    return 'denied';
+    return 'denied'
   }
 
   /**
    * Use symbol icons (✓, ○, ✗) instead of PrimeNG icons
    */
-  @Input() useSymbols: boolean = false;
+  @Input() useSymbols: boolean = false
 
   /**
    * Get icon class or symbol based on state
@@ -254,20 +257,20 @@ export class PermissionBadgeComponent {
   getIconClass(): string {
     if (this.useSymbols) {
       // Return symbol directly (will be rendered as text)
-      return this.getSymbolIcon();
+      return this.getSymbolIcon()
     }
 
     // PrimeNG icons (default)
     switch (this.currentState) {
       case 'allowed':
-        return 'pi pi-check-circle';
+        return 'pi pi-check-circle'
       case 'view-only':
-        return 'pi pi-eye';
+        return 'pi pi-eye'
       case 'denied':
-        return 'pi pi-times-circle';
+        return 'pi pi-times-circle'
       case 'unknown':
       default:
-        return 'pi pi-question-circle';
+        return 'pi pi-question-circle'
     }
   }
 
@@ -277,14 +280,14 @@ export class PermissionBadgeComponent {
   private getSymbolIcon(): string {
     switch (this.currentState) {
       case 'allowed':
-        return '✓'; // Check mark (green)
+        return '✓' // Check mark (green)
       case 'view-only':
-        return '○'; // Circle (blue)
+        return '○' // Circle (blue)
       case 'denied':
-        return '✗'; // Cross (gray)
+        return '✗' // Cross (gray)
       case 'unknown':
       default:
-        return '?'; // Question mark
+        return '?' // Question mark
     }
   }
 
@@ -293,19 +296,19 @@ export class PermissionBadgeComponent {
    */
   getLabelText(): string {
     if (this.customLabel) {
-      return this.customLabel;
+      return this.customLabel
     }
 
     switch (this.currentState) {
       case 'allowed':
-        return 'Allowed';
+        return 'Allowed'
       case 'view-only':
-        return 'View Only';
+        return 'View Only'
       case 'denied':
-        return 'Denied';
+        return 'Denied'
       case 'unknown':
       default:
-        return 'Unknown';
+        return 'Unknown'
     }
   }
 
@@ -313,14 +316,14 @@ export class PermissionBadgeComponent {
    * Get tooltip text with permission details
    */
   getTooltipText(): string {
-    const [resource, action, scope] = this.permission.split(':');
+    const [resource, action, scope] = this.permission.split(':')
 
     const stateDescription = {
       allowed: 'You have permission to perform this action',
       'view-only': 'You can view this resource but cannot modify it',
       denied: 'You do not have permission to perform this action',
       unknown: 'Permission status is unknown',
-    }[this.currentState];
+    }[this.currentState]
 
     return `
       ${stateDescription}
@@ -329,7 +332,7 @@ export class PermissionBadgeComponent {
       Resource: ${resource}
       Action: ${action}
       Scope: ${scope}
-    `.trim();
+    `.trim()
   }
 }
 

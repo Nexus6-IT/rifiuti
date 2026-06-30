@@ -10,7 +10,11 @@ describe('ContractService', () => {
 
   beforeEach(async () => {
     const mockLogger = {
-      setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(),
+      setContext: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn(),
     } as any
     prisma = {
       contract: {
@@ -43,7 +47,7 @@ describe('ContractService', () => {
     it('rifiuta una transizione non ammessa (DRAFT → ACTIVE)', async () => {
       prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'DRAFT' })
       await expect(service.changeStatus('t1', 'c1', 'ACTIVE')).rejects.toBeInstanceOf(
-        BadRequestException,
+        BadRequestException
       )
       expect(prisma.contract.update).not.toHaveBeenCalled()
     })
@@ -51,14 +55,14 @@ describe('ContractService', () => {
     it('rifiuta transizioni da stato terminale (TERMINATED)', async () => {
       prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' })
       await expect(service.changeStatus('t1', 'c1', 'ACTIVE')).rejects.toBeInstanceOf(
-        BadRequestException,
+        BadRequestException
       )
     })
 
     it('404 se il contratto non esiste', async () => {
       prisma.contract.findFirst.mockResolvedValue(null)
       await expect(service.changeStatus('t1', 'x', 'ACTIVE')).rejects.toBeInstanceOf(
-        NotFoundException,
+        NotFoundException
       )
     })
   })
@@ -85,7 +89,7 @@ describe('ContractService', () => {
             status: 'ACTIVE',
             cerCodes: { has: '150101' },
           }),
-        }),
+        })
       )
       expect(fill).toMatchObject({
         contractId: 'c1',

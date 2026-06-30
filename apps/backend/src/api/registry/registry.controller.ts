@@ -18,7 +18,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common'
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger'
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { CreateProduttoreUseCase } from '../../application/registry/use-cases/create-produttore.use-case'
 import { CreateTrasportatoreUseCase } from '../../application/registry/use-cases/create-trasportatore.use-case'
@@ -64,7 +64,7 @@ export class RegistryController {
     private readonly updateDestinatarioUseCase: UpdateDestinatarioUseCase,
     private readonly deleteProduttoreUseCase: DeleteProduttoreUseCase,
     private readonly deleteTrasportatoreUseCase: DeleteTrasportatoreUseCase,
-    private readonly deleteDestinatarioUseCase: DeleteDestinatarioUseCase,
+    private readonly deleteDestinatarioUseCase: DeleteDestinatarioUseCase
   ) {}
 
   @Post('produttori')
@@ -168,7 +168,10 @@ export class RegistryController {
 
   @Put('produttori/:id')
   async updateProduttore(@Param('id') id: string, @Body() dto: UpdateProduttoreDto) {
-    const result = await this.updateProduttoreUseCase.execute({ id, ...this.mapUpdateProduttoreDto(dto) })
+    const result = await this.updateProduttoreUseCase.execute({
+      id,
+      ...this.mapUpdateProduttoreDto(dto),
+    })
 
     if (result.isFailure) {
       throw new BadRequestException(result.error)
@@ -241,7 +244,10 @@ export class RegistryController {
 
   @Put('trasportatori/:id')
   async updateTrasportatore(@Param('id') id: string, @Body() dto: UpdateTrasportatoreDto) {
-    const result = await this.updateTrasportatoreUseCase.execute({ id, ...this.mapUpdateTrasportatoreDto(dto) })
+    const result = await this.updateTrasportatoreUseCase.execute({
+      id,
+      ...this.mapUpdateTrasportatoreDto(dto),
+    })
 
     if (result.isFailure) {
       throw new BadRequestException(result.error)
@@ -315,7 +321,10 @@ export class RegistryController {
 
   @Put('destinatari/:id')
   async updateDestinatario(@Param('id') id: string, @Body() dto: UpdateDestinatarioDto) {
-    const result = await this.updateDestinatarioUseCase.execute({ id, ...this.mapUpdateDestinatarioDto(dto) })
+    const result = await this.updateDestinatarioUseCase.execute({
+      id,
+      ...this.mapUpdateDestinatarioDto(dto),
+    })
 
     if (result.isFailure) {
       throw new BadRequestException(result.error)
@@ -459,5 +468,4 @@ export class RegistryController {
       pec: dto.pec,
     }
   }
-
 }

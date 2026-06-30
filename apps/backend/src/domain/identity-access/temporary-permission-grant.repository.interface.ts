@@ -1,4 +1,4 @@
-import { TemporaryPermissionGrant } from './temporary-permission-grant.entity';
+import { TemporaryPermissionGrant } from './temporary-permission-grant.entity'
 
 /**
  * TemporaryPermissionGrant Repository Interface
@@ -23,27 +23,24 @@ export interface TemporaryPermissionGrantRepository {
   /**
    * Save or update temporary permission grant
    */
-  save(grant: TemporaryPermissionGrant): Promise<TemporaryPermissionGrant>;
+  save(grant: TemporaryPermissionGrant): Promise<TemporaryPermissionGrant>
 
   /**
    * Find grant by ID
    */
-  findById(id: string, tenantId: string): Promise<TemporaryPermissionGrant | null>;
+  findById(id: string, tenantId: string): Promise<TemporaryPermissionGrant | null>
 
   /**
    * Find all pending grants for a tenant
    * Used by admins to see what needs approval
    */
-  findPendingByTenant(tenantId: string): Promise<TemporaryPermissionGrant[]>;
+  findPendingByTenant(tenantId: string): Promise<TemporaryPermissionGrant[]>
 
   /**
    * Find all active grants for a user
    * Used for permission checking
    */
-  findActiveByUser(
-    userId: string,
-    tenantId: string,
-  ): Promise<TemporaryPermissionGrant[]>;
+  findActiveByUser(userId: string, tenantId: string): Promise<TemporaryPermissionGrant[]>
 
   /**
    * Find all grants for a user (any status)
@@ -52,17 +49,14 @@ export interface TemporaryPermissionGrantRepository {
   findAllByUser(
     userId: string,
     tenantId: string,
-    limit?: number,
-  ): Promise<TemporaryPermissionGrant[]>;
+    limit?: number
+  ): Promise<TemporaryPermissionGrant[]>
 
   /**
    * Find grants expiring within a timeframe
    * Used for expiration notifications
    */
-  findExpiringGrants(
-    tenantId: string,
-    withinHours: number,
-  ): Promise<TemporaryPermissionGrant[]>;
+  findExpiringGrants(tenantId: string, withinHours: number): Promise<TemporaryPermissionGrant[]>
 
   /**
    * Check if user has overlapping active grant
@@ -73,30 +67,30 @@ export interface TemporaryPermissionGrantRepository {
     tenantId: string,
     permissions: string[],
     startTime: Date,
-    endTime: Date,
-  ): Promise<boolean>;
+    endTime: Date
+  ): Promise<boolean>
 
   /**
    * Get grant statistics for tenant
    * Used for dashboard/reporting
    */
   getGrantStatistics(tenantId: string): Promise<{
-    pending: number;
-    approved: number;
-    rejected: number;
-    active: number;
-    expired: number;
-  }>;
+    pending: number
+    approved: number
+    rejected: number
+    active: number
+    expired: number
+  }>
 
   /**
    * Delete a grant (hard delete)
    * Only used for cleanup
    */
-  delete(id: string, tenantId: string): Promise<void>;
+  delete(id: string, tenantId: string): Promise<void>
 
   /**
    * Find grants that need expiration (past endTime, not auto-revoked)
    * Used by background expiration job
    */
-  findGrantsNeedingExpiration(tenantId?: string): Promise<TemporaryPermissionGrant[]>;
+  findGrantsNeedingExpiration(tenantId?: string): Promise<TemporaryPermissionGrant[]>
 }

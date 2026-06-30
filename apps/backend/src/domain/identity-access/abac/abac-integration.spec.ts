@@ -8,20 +8,20 @@
  * - Expected: 403 Forbidden
  */
 
-import { Test, TestingModule } from '@nestjs/testing';
-import { AbacPolicyEvaluator, EvaluationContext } from './abac-policy-evaluator.service';
-import { AbacPolicy, AbacPolicyEffect, AbacOperator, AbacConditions } from './abac-policy.entity';
+import { Test, TestingModule } from '@nestjs/testing'
+import { AbacPolicyEvaluator, EvaluationContext } from './abac-policy-evaluator.service'
+import { AbacPolicy, AbacPolicyEffect, AbacOperator, AbacConditions } from './abac-policy.entity'
 
 describe('ABAC Integration Tests (T227)', () => {
-  let evaluator: AbacPolicyEvaluator;
+  let evaluator: AbacPolicyEvaluator
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [AbacPolicyEvaluator],
-    }).compile();
+    }).compile()
 
-    evaluator = module.get<AbacPolicyEvaluator>(AbacPolicyEvaluator);
-  });
+    evaluator = module.get<AbacPolicyEvaluator>(AbacPolicyEvaluator)
+  })
 
   describe('Scenario: FIR Facility Scoping', () => {
     it('should DENY access when user facility does not match FIR producer facility', async () => {
@@ -35,7 +35,7 @@ describe('ABAC Integration Tests (T227)', () => {
             value: 'resource.producerFacility',
           },
         ],
-      };
+      }
 
       // Note: This policy denies access when facilities don't match
       // In reality, we'd want a policy that allows when they DO match
@@ -48,7 +48,7 @@ describe('ABAC Integration Tests (T227)', () => {
         priority: 10,
         isActive: true,
         createdBy: 'system',
-      });
+      })
 
       // Create evaluation context
       const context: EvaluationContext = {
@@ -63,18 +63,18 @@ describe('ABAC Integration Tests (T227)', () => {
           producerFacility: 'facility-B', // Different facility!
         },
         action: 'read',
-      };
+      }
 
       // Act: Evaluate policy
-      const result = await evaluator.evaluate([policy], context);
+      const result = await evaluator.evaluate([policy], context)
 
       // Assert: Should DENY because facilities don't match
-      expect(result.decision).toBe('DENY');
-      expect(result.evaluatedPolicies).toHaveLength(1);
-      expect(result.evaluatedPolicies[0].matched).toBe(true);
-      expect(result.evaluatedPolicies[0].effect).toBe(AbacPolicyEffect.DENY);
-      expect(result.totalEvaluationTimeMs).toBeLessThan(5); // <5ms target
-    });
+      expect(result.decision).toBe('DENY')
+      expect(result.evaluatedPolicies).toHaveLength(1)
+      expect(result.evaluatedPolicies[0].matched).toBe(true)
+      expect(result.evaluatedPolicies[0].effect).toBe(AbacPolicyEffect.DENY)
+      expect(result.totalEvaluationTimeMs).toBeLessThan(5) // <5ms target
+    })
 
     it('should ALLOW access when user facility matches FIR producer facility', async () => {
       // Arrange: Create ABAC policy that allows matching facilities
@@ -87,7 +87,7 @@ describe('ABAC Integration Tests (T227)', () => {
             value: 'resource.producerFacility',
           },
         ],
-      };
+      }
 
       const policy = AbacPolicy.create({
         name: 'Allow FIR access for same facility',
@@ -97,7 +97,7 @@ describe('ABAC Integration Tests (T227)', () => {
         priority: 10,
         isActive: true,
         createdBy: 'system',
-      });
+      })
 
       const context: EvaluationContext = {
         user: {
@@ -111,16 +111,16 @@ describe('ABAC Integration Tests (T227)', () => {
           producerFacility: 'facility-A', // Same facility!
         },
         action: 'read',
-      };
+      }
 
       // Act
-      const result = await evaluator.evaluate([policy], context);
+      const result = await evaluator.evaluate([policy], context)
 
       // Assert: Should ALLOW because facilities match
-      expect(result.decision).toBe('ALLOW');
-      expect(result.evaluatedPolicies[0].matched).toBe(true);
-      expect(result.totalEvaluationTimeMs).toBeLessThan(5);
-    });
+      expect(result.decision).toBe('ALLOW')
+      expect(result.evaluatedPolicies[0].matched).toBe(true)
+      expect(result.totalEvaluationTimeMs).toBeLessThan(5)
+    })
 
     it('should handle complex conditions with multiple rules (AND)', async () => {
       // Arrange: Policy with multiple conditions
@@ -138,7 +138,7 @@ describe('ABAC Integration Tests (T227)', () => {
             value: ['waste-management', 'environmental'],
           },
         ],
-      };
+      }
 
       const policy = AbacPolicy.create({
         name: 'Allow FIR access for same facility AND specific departments',
@@ -148,7 +148,7 @@ describe('ABAC Integration Tests (T227)', () => {
         priority: 10,
         isActive: true,
         createdBy: 'system',
-      });
+      })
 
       // Test case 1: Both conditions match
       const context1: EvaluationContext = {
@@ -160,10 +160,10 @@ describe('ABAC Integration Tests (T227)', () => {
           producerFacility: 'facility-A',
         },
         action: 'read',
-      };
+      }
 
-      const result1 = await evaluator.evaluate([policy], context1);
-      expect(result1.decision).toBe('ALLOW');
+      const result1 = await evaluator.evaluate([policy], context1)
+      expect(result1.decision).toBe('ALLOW')
 
       // Test case 2: Only first condition matches
       const context2: EvaluationContext = {
@@ -175,11 +175,11 @@ describe('ABAC Integration Tests (T227)', () => {
           producerFacility: 'facility-A',
         },
         action: 'read',
-      };
+      }
 
-      const result2 = await evaluator.evaluate([policy], context2);
-      expect(result2.decision).toBe('NOT_APPLICABLE'); // AND fails
-    });
+      const result2 = await evaluator.evaluate([policy], context2)
+      expect(result2.decision).toBe('NOT_APPLICABLE') // AND fails
+    })
 
     it('should handle OR conditions', async () => {
       const conditions: AbacConditions = {
@@ -196,7 +196,7 @@ describe('ABAC Integration Tests (T227)', () => {
             value: 'resource.producerFacility',
           },
         ],
-      };
+      }
 
       const policy = AbacPolicy.create({
         name: 'Allow FIR access for admins OR same facility',
@@ -206,7 +206,7 @@ describe('ABAC Integration Tests (T227)', () => {
         priority: 10,
         isActive: true,
         createdBy: 'system',
-      });
+      })
 
       // Test: User is not admin but has matching facility
       const context: EvaluationContext = {
@@ -218,11 +218,11 @@ describe('ABAC Integration Tests (T227)', () => {
           producerFacility: 'facility-A',
         },
         action: 'read',
-      };
+      }
 
-      const result = await evaluator.evaluate([policy], context);
-      expect(result.decision).toBe('ALLOW'); // OR succeeds
-    });
+      const result = await evaluator.evaluate([policy], context)
+      expect(result.decision).toBe('ALLOW') // OR succeeds
+    })
 
     it('should respect priority order (lower number = higher priority)', async () => {
       // Arrange: Two conflicting policies
@@ -243,7 +243,7 @@ describe('ABAC Integration Tests (T227)', () => {
         priority: 1, // Higher priority (lower number)
         isActive: true,
         createdBy: 'system',
-      });
+      })
 
       const allowPolicy = AbacPolicy.create({
         name: 'Allow all FIR access',
@@ -262,21 +262,21 @@ describe('ABAC Integration Tests (T227)', () => {
         priority: 100, // Lower priority (higher number)
         isActive: true,
         createdBy: 'system',
-      });
+      })
 
       const context: EvaluationContext = {
         user: { id: 'user-123' },
         resource: { id: 'fir-456' },
         action: 'read',
-      };
+      }
 
       // Act: Evaluate with DENY policy first (priority 1)
-      const result = await evaluator.evaluate([denyPolicy, allowPolicy], context);
+      const result = await evaluator.evaluate([denyPolicy, allowPolicy], context)
 
       // Assert: DENY should win because it has higher priority
-      expect(result.decision).toBe('DENY');
-      expect(result.evaluatedPolicies[0].policyName).toBe('Deny all FIR access');
-    });
+      expect(result.decision).toBe('DENY')
+      expect(result.evaluatedPolicies[0].policyName).toBe('Deny all FIR access')
+    })
 
     it('should NOT_APPLICABLE when no policies match', async () => {
       const policy = AbacPolicy.create({
@@ -296,17 +296,17 @@ describe('ABAC Integration Tests (T227)', () => {
         priority: 10,
         isActive: true,
         createdBy: 'system',
-      });
+      })
 
       const context: EvaluationContext = {
         user: { id: 'user-123' }, // Different user
         resource: { id: 'fir-456' },
         action: 'read',
-      };
+      }
 
-      const result = await evaluator.evaluate([policy], context);
-      expect(result.decision).toBe('NOT_APPLICABLE');
-    });
+      const result = await evaluator.evaluate([policy], context)
+      expect(result.decision).toBe('NOT_APPLICABLE')
+    })
 
     it('should skip inactive policies', async () => {
       const policy = AbacPolicy.create({
@@ -326,20 +326,20 @@ describe('ABAC Integration Tests (T227)', () => {
         priority: 10,
         isActive: true,
         createdBy: 'system',
-      });
+      })
 
-      policy.deactivate(); // Deactivate
+      policy.deactivate() // Deactivate
 
       const context: EvaluationContext = {
         user: { id: 'user-123' },
         resource: { id: 'fir-456' },
         action: 'read',
-      };
+      }
 
-      const result = await evaluator.evaluate([policy], context);
-      expect(result.decision).toBe('NOT_APPLICABLE');
-      expect(result.evaluatedPolicies).toHaveLength(0);
-    });
+      const result = await evaluator.evaluate([policy], context)
+      expect(result.decision).toBe('NOT_APPLICABLE')
+      expect(result.evaluatedPolicies).toHaveLength(0)
+    })
 
     it('should support all comparison operators', async () => {
       const testCases = [
@@ -367,7 +367,7 @@ describe('ABAC Integration Tests (T227)', () => {
           ruleValue: 'foo',
           expected: true,
         },
-      ];
+      ]
 
       for (const testCase of testCases) {
         const policy = AbacPolicy.create({
@@ -387,18 +387,18 @@ describe('ABAC Integration Tests (T227)', () => {
           priority: 10,
           isActive: true,
           createdBy: 'system',
-        });
+        })
 
         const context: EvaluationContext = {
           user: { value: testCase.userValue },
           resource: {},
           action: 'read',
-        };
+        }
 
-        const result = await evaluator.evaluate([policy], context);
-        expect(result.evaluatedPolicies[0].matched).toBe(testCase.expected);
+        const result = await evaluator.evaluate([policy], context)
+        expect(result.evaluatedPolicies[0].matched).toBe(testCase.expected)
       }
-    });
+    })
 
     it('should maintain performance target of <5ms', async () => {
       // Create 10 policies to evaluate
@@ -420,20 +420,20 @@ describe('ABAC Integration Tests (T227)', () => {
           priority: i,
           isActive: true,
           createdBy: 'system',
-        }),
-      );
+        })
+      )
 
       const context: EvaluationContext = {
         user: { id: 'user-5' },
         resource: {},
         action: 'read',
-      };
+      }
 
-      const result = await evaluator.evaluate(policies, context);
+      const result = await evaluator.evaluate(policies, context)
 
       // Should find match at policy 5
-      expect(result.decision).toBe('ALLOW');
-      expect(result.totalEvaluationTimeMs).toBeLessThan(5); // Performance target
-    });
-  });
-});
+      expect(result.decision).toBe('ALLOW')
+      expect(result.totalEvaluationTimeMs).toBeLessThan(5) // Performance target
+    })
+  })
+})

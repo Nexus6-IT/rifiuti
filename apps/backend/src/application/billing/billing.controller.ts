@@ -23,33 +23,32 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
-  BadRequestException,
   Logger,
-} from '@nestjs/common';
-import { Request, Response } from 'express';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { IsString, IsIn } from 'class-validator';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator';
-import { BillingService } from './billing.service';
-import { StripeService } from './stripe.service';
-import { ConfigService } from '@nestjs/config';
+} from '@nestjs/common'
+import { Request, Response } from 'express'
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger'
+import { IsString, IsIn } from 'class-validator'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { BillingService } from './billing.service'
+import { StripeService } from './stripe.service'
+import { ConfigService } from '@nestjs/config'
 
 export class CheckoutRequestDto {
   @IsString()
   @IsIn(['PROFESSIONAL', 'ENTERPRISE'])
-  plan: 'PROFESSIONAL' | 'ENTERPRISE';
+  plan: 'PROFESSIONAL' | 'ENTERPRISE'
 }
 
 @ApiTags('billing')
 @Controller('billing')
 export class BillingController {
-  private readonly logger = new Logger(BillingController.name);
+  private readonly logger = new Logger(BillingController.name)
 
   constructor(
     private readonly billingService: BillingService,
     private readonly stripeService: StripeService,
-    private readonly config: ConfigService,
+    private readonly config: ConfigService
   ) {}
 
   /**
@@ -61,7 +60,7 @@ export class BillingController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Stato abbonamento corrente' })
   async getStatus(@CurrentUser() user: CurrentUserPayload) {
-    return this.billingService.getStatus(user.tenantId);
+    return this.billingService.getStatus(user.tenantId)
   }
 
   /**
@@ -77,17 +76,17 @@ export class BillingController {
   async createCheckout(
     @CurrentUser() user: CurrentUserPayload,
     @Body() dto: CheckoutRequestDto,
-    @Req() req: Request,
+    @Req() req: Request
   ) {
-    const baseUrl = this.resolveBaseUrl(req);
-    const url = await this.billingService.createCheckoutSession(user.tenantId, dto.plan, baseUrl);
+    const baseUrl = this.resolveBaseUrl(req)
+    const url = await this.billingService.createCheckoutSession(user.tenantId, dto.plan, baseUrl)
     return {
       url,
       testMode: !this.stripeService.isEnabled,
       message: !this.stripeService.isEnabled
         ? 'Stripe non configurato: ATTIVARE impostando STRIPE_SECRET_KEY in .env'
         : undefined,
-    };
+    }
   }
 
   /**
@@ -100,12 +99,12 @@ export class BillingController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crea sessione Billing Portal Stripe' })
   async createPortal(@CurrentUser() user: CurrentUserPayload, @Req() req: Request) {
-    const baseUrl = this.resolveBaseUrl(req);
-    const url = await this.billingService.createBillingPortalSession(user.tenantId, baseUrl);
+    const baseUrl = this.resolveBaseUrl(req)
+    const url = await this.billingService.createBillingPortalSession(user.tenantId, baseUrl)
     return {
       url,
       testMode: !this.stripeService.isEnabled,
-    };
+    }
   }
 
   /**
@@ -122,37 +121,35 @@ export class BillingController {
   async handleWebhook(
     @Req() req: Request,
     @Res() res: Response,
-    @Headers('stripe-signature') signature: string,
+    @Headers('stripe-signature') signature: string
   ) {
     // Il raw body è disponibile grazie a rawBody: true in NestFactory.create.
-    const rawBody: Buffer | undefined = (req as any).rawBody;
+    const rawBody: Buffer | undefined = (req as any).rawBody
 
     if (!rawBody) {
-      this.logger.error(
-        'Webhook: rawBody non disponibile. Verificare rawBody:true in NestFactory.',
-      );
-      return res.status(400).json({ error: 'Raw body non disponibile' });
+      this.logger.error('Webhook: rawBody non disponibile. Verificare rawBody:true in NestFactory.')
+      return res.status(400).json({ error: 'Raw body non disponibile' })
     }
 
     if (!signature) {
-      return res.status(400).json({ error: 'stripe-signature header mancante' });
+      return res.status(400).json({ error: 'stripe-signature header mancante' })
     }
 
-    let event: import('stripe').default.Event;
+    let event: import('stripe').default.Event
     try {
-      event = this.stripeService.constructWebhookEvent(rawBody, signature);
+      event = this.stripeService.constructWebhookEvent(rawBody, signature)
     } catch (err: any) {
-      this.logger.warn(`Webhook firma non valida: ${err.message}`);
-      return res.status(400).json({ error: `Firma non valida: ${err.message}` });
+      this.logger.warn(`Webhook firma non valida: ${err.message}`)
+      return res.status(400).json({ error: `Firma non valida: ${err.message}` })
     }
 
     try {
-      await this.billingService.processWebhookEvent(event);
-      return res.status(200).json({ received: true });
+      await this.billingService.processWebhookEvent(event)
+      return res.status(200).json({ received: true })
     } catch (err: any) {
-      this.logger.error(`Errore processing webhook: ${err.message}`, err);
+      this.logger.error(`Errore processing webhook: ${err.message}`, err)
       // Restituisce 500 → Stripe ritenterà l'evento.
-      return res.status(500).json({ error: 'Errore interno processing evento' });
+      return res.status(500).json({ error: 'Errore interno processing evento' })
     }
   }
 
@@ -162,12 +159,12 @@ export class BillingController {
    */
   private resolveBaseUrl(req: Request): string {
     // Priority: env FRONTEND_URL → Origin header → fallback localhost
-    const envUrl = this.config.get<string>('FRONTEND_URL');
-    if (envUrl) return envUrl.replace(/\/$/, '');
+    const envUrl = this.config.get<string>('FRONTEND_URL')
+    if (envUrl) return envUrl.replace(/\/$/, '')
 
-    const origin = req.headers.origin;
-    if (origin) return origin.replace(/\/$/, '');
+    const origin = req.headers.origin
+    if (origin) return origin.replace(/\/$/, '')
 
-    return 'http://localhost:4200';
+    return 'http://localhost:4200'
   }
 }

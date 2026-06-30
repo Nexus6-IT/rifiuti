@@ -11,16 +11,8 @@
  * può completare l'anagrafica aziendale dopo la prima autenticazione.
  */
 
-import {
-  IsString,
-  IsNotEmpty,
-  IsEmail,
-  IsBoolean,
-  Equals,
-  Length,
-  Matches,
-} from 'class-validator';
-import { Transform } from 'class-transformer';
+import { IsString, IsNotEmpty, IsEmail, IsBoolean, Equals, Length, Matches } from 'class-validator'
+import { Transform } from 'class-transformer'
 
 export class SignupDto {
   // ── Dati azienda ──────────────────────────────────────────────────────────
@@ -28,31 +20,31 @@ export class SignupDto {
   @IsString()
   @IsNotEmpty({ message: 'La ragione sociale è obbligatoria' })
   @Length(1, 255, { message: 'La ragione sociale non può superare 255 caratteri' })
-  ragioneSociale!: string;
+  ragioneSociale!: string
 
   @IsString()
   @IsNotEmpty()
   @Matches(/^[0-9]{11}$/, { message: 'La partita IVA deve contenere esattamente 11 cifre' })
-  partitaIva!: string;
+  partitaIva!: string
 
   // ── Dati responsabile (admin del tenant) ──────────────────────────────────
 
   @IsString()
   @IsNotEmpty({ message: 'Il nome è obbligatorio' })
   @Length(1, 100)
-  firstName!: string;
+  firstName!: string
 
   @IsString()
   @IsNotEmpty({ message: 'Il cognome è obbligatorio' })
   @Length(1, 100)
-  lastName!: string;
+  lastName!: string
 
   @IsEmail({}, { message: 'Inserisci un indirizzo email valido' })
   @IsNotEmpty()
   @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.toLowerCase().trim() : value,
+    typeof value === 'string' ? value.toLowerCase().trim() : value
   )
-  email!: string;
+  email!: string
 
   /**
    * Codice fiscale personale del responsabile (16 caratteri alfanumerici).
@@ -62,17 +54,17 @@ export class SignupDto {
   @IsNotEmpty()
   @Length(16, 16, { message: 'Il codice fiscale deve essere di 16 caratteri' })
   @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.toUpperCase().trim() : value,
+    typeof value === 'string' ? value.toUpperCase().trim() : value
   )
-  fiscalCode!: string;
+  fiscalCode!: string
 
   // ── Consensi legali ───────────────────────────────────────────────────────
 
-  @IsBoolean({ message: 'Indicare l\'accettazione dei Termini di Servizio' })
+  @IsBoolean({ message: "Indicare l'accettazione dei Termini di Servizio" })
   @Equals(true, { message: 'Devi accettare i Termini di Servizio per procedere' })
-  tosAccepted!: boolean;
+  tosAccepted!: boolean
 
-  @IsBoolean({ message: 'Indicare l\'accettazione della Privacy Policy' })
+  @IsBoolean({ message: "Indicare l'accettazione della Privacy Policy" })
   @Equals(true, { message: 'Devi accettare la Privacy Policy per procedere' })
-  privacyAccepted!: boolean;
+  privacyAccepted!: boolean
 }

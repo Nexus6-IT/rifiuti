@@ -54,7 +54,7 @@ export interface MovimentoRegistrato {
 export class RegistraMovimentoUseCase {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
     this.logger.setContext(RegistraMovimentoUseCase.name)
   }
@@ -64,13 +64,13 @@ export class RegistraMovimentoUseCase {
     if (command.type === 'CARICO') {
       if (!CAUSALI_CARICO.includes(command.causale as (typeof CAUSALI_CARICO)[number])) {
         return Result.fail(
-          `Causale non valida per CARICO: ${command.causale}. Valori: ${CAUSALI_CARICO.join(', ')}`,
+          `Causale non valida per CARICO: ${command.causale}. Valori: ${CAUSALI_CARICO.join(', ')}`
         )
       }
     } else {
       if (!CAUSALI_SCARICO.includes(command.causale as (typeof CAUSALI_SCARICO)[number])) {
         return Result.fail(
-          `Causale non valida per SCARICO: ${command.causale}. Valori: ${CAUSALI_SCARICO.join(', ')}`,
+          `Causale non valida per SCARICO: ${command.causale}. Valori: ${CAUSALI_SCARICO.join(', ')}`
         )
       }
     }
@@ -82,7 +82,7 @@ export class RegistraMovimentoUseCase {
         return Result.fail(
           `Giacenza insufficiente per CER ${command.cerCode}: ` +
             `disponibili ${giacenza} ${command.unit}, richiesti ${command.quantity} ${command.unit}. ` +
-            `Verifica i movimenti di carico registrati.`,
+            `Verifica i movimenti di carico registrati.`
         )
       }
     }
@@ -92,7 +92,7 @@ export class RegistraMovimentoUseCase {
 
     let movimento: MovimentoRegistrato
     try {
-      movimento = await this.prisma.$transaction(async (tx) => {
+      movimento = await this.prisma.$transaction(async tx => {
         // Advisory lock per-tenant/anno: serializza le numerazioni dello stesso
         // tenant in transazioni concorrenti senza usare FOR UPDATE su aggregati
         // (PostgreSQL 0A000: "FOR UPDATE is not allowed with aggregate functions").
@@ -194,14 +194,14 @@ export class RegistraMovimentoUseCase {
       this.logger.warn(
         `Movimento ${movimento.progressiveYear}/${movimento.progressiveNumber} ` +
           `registrato con ${movimento.ritardoGg} gg di ritardo sul termine di legge ` +
-          `(${TERMINE_REGISTRAZIONE_PRODUTTORE_GG} gg) per tenant ${command.tenantId}`,
+          `(${TERMINE_REGISTRAZIONE_PRODUTTORE_GG} gg) per tenant ${command.tenantId}`
       )
     }
 
     this.logger.info(
       `Movimento registrato: ${movimento.type} ` +
         `#${movimento.progressiveYear}/${movimento.progressiveNumber} ` +
-        `CER ${movimento.cerCode} qty ${movimento.quantity} ${movimento.unit}`,
+        `CER ${movimento.cerCode} qty ${movimento.quantity} ${movimento.unit}`
     )
 
     return Result.ok(movimento)

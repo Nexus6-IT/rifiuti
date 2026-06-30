@@ -204,9 +204,7 @@ describe('PresaInCaricoFIRUseCase', () => {
       expect(result.value.dataPresaCarico!.getTime()).toBeGreaterThanOrEqual(
         beforeExecution.getTime()
       )
-      expect(result.value.dataPresaCarico!.getTime()).toBeLessThanOrEqual(
-        afterExecution.getTime()
-      )
+      expect(result.value.dataPresaCarico!.getTime()).toBeLessThanOrEqual(afterExecution.getTime())
     })
 
     it('should authorize only trasportatore tenant', async () => {

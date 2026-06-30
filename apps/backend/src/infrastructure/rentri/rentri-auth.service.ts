@@ -34,7 +34,7 @@ export class RentriAuthService {
     private readonly http: HttpService,
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
     private readonly credentialResolver: RentriCredentialResolver,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
     this.logger.setContext('RentriAuthService')
   }
@@ -63,7 +63,7 @@ export class RentriAuthService {
       this.http.post(this.config.tokenUrl, form.toString(), {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         timeout: 30000,
-      }),
+      })
     )
 
     const accessToken: string = response.data.access_token
@@ -78,7 +78,7 @@ export class RentriAuthService {
       expiresAt: now + expiresIn * 1000,
     })
     this.logger.debug(
-      `Access token RENTRI ottenuto per client ${cred.clientId} (source=${cred.source}, scade tra ${expiresIn}s)`,
+      `Access token RENTRI ottenuto per client ${cred.clientId} (source=${cred.source}, scade tra ${expiresIn}s)`
     )
 
     return accessToken

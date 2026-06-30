@@ -10,17 +10,22 @@ import {
   HttpCode,
   HttpStatus,
   UnauthorizedException,
-} from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { Request, Response } from 'express';
-import { AuthGuard } from '@nestjs/passport';
-import { JwtAuthGuard } from '../../core/auth/jwt-auth.guard';
-import { UserId } from '../../core/decorators/user.decorator';
-import { LoggerService } from '../../core/logger/logger.service';
-import { RefreshTokenUseCase } from '../../application/auth/refresh-token.use-case';
-import { GetSessionInfoUseCase } from '../../application/auth/get-session-info.use-case';
-import { CheckSpidAuthStatusUseCase } from '../../application/auth/check-spid-auth-status.use-case';
-import { RefreshTokenDto, LoginResponseDto, SessionInfoDto, SpidAuthStatusDto } from './dto/auth.dto';
+} from '@nestjs/common'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
+import { Request, Response } from 'express'
+import { AuthGuard } from '@nestjs/passport'
+import { JwtAuthGuard } from '../../core/auth/jwt-auth.guard'
+import { UserId } from '../../core/decorators/user.decorator'
+import { LoggerService } from '../../core/logger/logger.service'
+import { RefreshTokenUseCase } from '../../application/auth/refresh-token.use-case'
+import { GetSessionInfoUseCase } from '../../application/auth/get-session-info.use-case'
+import { CheckSpidAuthStatusUseCase } from '../../application/auth/check-spid-auth-status.use-case'
+import {
+  RefreshTokenDto,
+  LoginResponseDto,
+  SessionInfoDto,
+  SpidAuthStatusDto,
+} from './dto/auth.dto'
 
 /**
  * Authentication Controller
@@ -42,9 +47,9 @@ export class AuthController {
     private readonly refreshTokenUseCase: RefreshTokenUseCase,
     private readonly getSessionInfoUseCase: GetSessionInfoUseCase,
     private readonly checkSpidAuthStatusUseCase: CheckSpidAuthStatusUseCase,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext('AuthController');
+    this.logger.setContext('AuthController')
   }
 
   /**
@@ -64,9 +69,9 @@ export class AuthController {
   async login(
     @Res() res: Response,
     @Query('provider') provider: string = 'spid',
-    @Query('returnUrl') returnUrl?: string,
+    @Query('returnUrl') returnUrl?: string
   ): Promise<void> {
-    this.logger.info('Login request received', { provider, returnUrl });
+    this.logger.info('Login request received', { provider, returnUrl })
 
     // Passport SAML strategy will handle the redirect
     // This method exists just to trigger the strategy
@@ -93,26 +98,26 @@ export class AuthController {
     description: 'Invalid SAML assertion',
   })
   async callback(@Req() req: Request): Promise<LoginResponseDto> {
-    this.logger.info('SAML callback received');
+    this.logger.info('SAML callback received')
 
     // User and tokens are attached by SAML strategy
-    const result = (req as any).user;
+    const result = (req as any).user
 
     if (!result) {
-      throw new UnauthorizedException('SAML authentication failed');
+      throw new UnauthorizedException('SAML authentication failed')
     }
 
     this.logger.info('SAML callback processed successfully', {
       userId: result.user.id,
       fiscalCode: result.user.fiscalCode,
-    });
+    })
 
     return {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
       user: result.user,
-    };
+    }
   }
 
   /**
@@ -133,19 +138,19 @@ export class AuthController {
     description: 'Invalid or expired refresh token',
   })
   async refresh(@Body() dto: RefreshTokenDto): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    expiresIn: number;
+    accessToken: string
+    refreshToken: string
+    expiresIn: number
   }> {
-    this.logger.info('Token refresh request received');
+    this.logger.info('Token refresh request received')
 
-    const result = await this.refreshTokenUseCase.execute(dto.refreshToken);
+    const result = await this.refreshTokenUseCase.execute(dto.refreshToken)
 
     return {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
-    };
+    }
   }
 
   /**
@@ -165,7 +170,7 @@ export class AuthController {
     description: 'Logged out successfully',
   })
   async logout(@UserId() userId: string): Promise<{ message: string }> {
-    this.logger.info('Logout request received', { userId });
+    this.logger.info('Logout request received', { userId })
 
     // In a production system, you might:
     // - Add refresh token to blacklist
@@ -175,11 +180,11 @@ export class AuthController {
     // For now, client-side token disposal is sufficient
     // since JWTs are stateless
 
-    this.logger.info('User logged out', { userId });
+    this.logger.info('User logged out', { userId })
 
     return {
       message: 'Logged out successfully',
-    };
+    }
   }
 
   /**
@@ -202,16 +207,16 @@ export class AuthController {
     description: 'Unauthorized',
   })
   async getSession(@UserId() userId: string): Promise<SessionInfoDto> {
-    this.logger.debug('Session info request', { userId });
+    this.logger.debug('Session info request', { userId })
 
-    const sessionInfo = await this.getSessionInfoUseCase.execute(userId);
+    const sessionInfo = await this.getSessionInfoUseCase.execute(userId)
 
     return {
       user: sessionInfo.user,
       spid: sessionInfo.spid,
       authorization: sessionInfo.authorization,
       session: sessionInfo.session,
-    };
+    }
   }
 
   /**
@@ -230,9 +235,9 @@ export class AuthController {
     type: SpidAuthStatusDto,
   })
   async getSpidStatus(@UserId() userId: string): Promise<SpidAuthStatusDto> {
-    this.logger.debug('SPID status request', { userId });
+    this.logger.debug('SPID status request', { userId })
 
-    const status = await this.checkSpidAuthStatusUseCase.execute(userId);
+    const status = await this.checkSpidAuthStatusUseCase.execute(userId)
 
     return {
       hasSpidAuth: status.hasSpidAuth,
@@ -249,6 +254,6 @@ export class AuthController {
       authExpiresAt: status.authExpiresAt,
       minutesRemaining: status.minutesRemaining,
       warningThreshold: status.warningThreshold,
-    };
+    }
   }
 }

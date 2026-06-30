@@ -1,10 +1,10 @@
-import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../infrastructure/persistence/prisma.module';
-import { AuthModule } from '../../auth/auth.module';
-import { MeFeaturesController } from './me-features.controller';
-import { MeFeaturesService } from './me-features.service';
-import { MembershipController } from './membership.controller';
-import { MembershipService } from './membership.service';
+import { Module } from '@nestjs/common'
+import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
+import { AuthModule } from '../../auth/auth.module'
+import { MeFeaturesController } from './me-features.controller'
+import { MeFeaturesService } from './me-features.service'
+import { MembershipController } from './membership.controller'
+import { MembershipService } from './membership.service'
 
 /**
  * MeModule

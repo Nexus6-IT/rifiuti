@@ -146,7 +146,7 @@ describe('EmettiFIRUseCase', () => {
         'user-123'
       )
 
-      const result = await useCase.execute(command)
+      await useCase.execute(command)
 
       const saved = await repository.findById(fir.id)
       expect(saved?.firme.produttore).toBeDefined()
@@ -180,7 +180,7 @@ describe('EmettiFIRUseCase', () => {
 
       const result = await useCase.execute(command)
 
-      expect(result.value.domainEvents.length).toBe(1);
+      expect(result.value.domainEvents.length).toBe(1)
       expect(result.value.domainEvents[0].eventName).toBe('fir.emesso')
     })
 

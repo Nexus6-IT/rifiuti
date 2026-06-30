@@ -1,8 +1,7 @@
-import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
-import { Inject } from '@nestjs/common';
-import { GetAuditTrailQuery } from '../get-audit-trail.query';
-import { PermissionAuditLogRepository } from '../../../domain/identity-access/permission-audit-log.repository.interface';
-import { PermissionAuditLog } from '../../../domain/identity-access/permission-audit-log.entity';
+import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
+import { Inject } from '@nestjs/common'
+import { GetAuditTrailQuery } from '../get-audit-trail.query'
+import { PermissionAuditLogRepository } from '../../../domain/identity-access/permission-audit-log.repository.interface'
 
 /**
  * GetAuditTrailQueryHandler
@@ -19,81 +18,79 @@ import { PermissionAuditLog } from '../../../domain/identity-access/permission-a
  * - Return paginated results
  */
 @QueryHandler(GetAuditTrailQuery)
-export class GetAuditTrailQueryHandler
-  implements IQueryHandler<GetAuditTrailQuery>
-{
+export class GetAuditTrailQueryHandler implements IQueryHandler<GetAuditTrailQuery> {
   constructor(
     @Inject('PermissionAuditLogRepository')
-    private readonly auditLogRepository: PermissionAuditLogRepository,
+    private readonly auditLogRepository: PermissionAuditLogRepository
   ) {}
 
   async execute(query: GetAuditTrailQuery): Promise<{
     logs: Array<{
-      id: string;
-      timestamp: Date;
-      userId: string;
-      spidFiscalCode: string;
-      actionAttempted: string;
-      resourceType: string;
-      resourceId: string | null;
-      decision: 'ALLOW' | 'DENY';
-      evaluatedPolicies: any;
-      contextAttributes: any;
-      sessionId: string;
-      hash: string;
-      previousHash: string | null;
-    }>;
-    total: number;
-    page?: number;
-    pageSize?: number;
+      id: string
+      timestamp: Date
+      userId: string
+      spidFiscalCode: string
+      actionAttempted: string
+      resourceType: string
+      resourceId: string | null
+      decision: 'ALLOW' | 'DENY'
+      evaluatedPolicies: any
+      contextAttributes: any
+      sessionId: string
+      hash: string
+      previousHash: string | null
+    }>
+    total: number
+    page?: number
+    pageSize?: number
   }> {
     // Build filters
     const filters: any = {
       tenantId: query.tenantId,
-    };
+    }
 
     if (query.filters?.userId) {
-      filters.userId = query.filters.userId;
+      filters.userId = query.filters.userId
     }
 
     if (query.filters?.startDate) {
-      filters.startDate = query.filters.startDate;
+      filters.startDate = query.filters.startDate
     }
 
     if (query.filters?.endDate) {
-      filters.endDate = query.filters.endDate;
+      filters.endDate = query.filters.endDate
     }
 
     if (query.filters?.decision) {
-      filters.decision = query.filters.decision;
+      filters.decision = query.filters.decision
     }
 
     if (query.filters?.resourceType) {
-      filters.resourceType = query.filters.resourceType;
+      filters.resourceType = query.filters.resourceType
     }
 
     if (query.filters?.resourceId) {
-      filters.resourceId = query.filters.resourceId;
+      filters.resourceId = query.filters.resourceId
     }
 
     if (query.filters?.actionAttempted) {
-      filters.actionAttempted = query.filters.actionAttempted;
+      filters.actionAttempted = query.filters.actionAttempted
     }
 
     // Add pagination
     if (query.pagination?.page !== undefined) {
-      filters.page = query.pagination.page;
+      filters.page = query.pagination.page
     }
 
     if (query.pagination?.pageSize !== undefined) {
-      filters.pageSize = query.pagination.pageSize;
+      filters.pageSize = query.pagination.pageSize
     }
 
     // Query repository
-    const result = await this.auditLogRepository.findWithFilters(filters);
+    const result = await this.auditLogRepository.findWithFilters(filters)
 
     // Map domain entities to DTOs
-    const logs = result.logs.map((log) => ({
+    const logs = result.logs.map(log => ({
       id: log.id,
       timestamp: log.timestamp,
       userId: log.userId,
@@ -107,13 +104,13 @@ export class GetAuditTrailQueryHandler
       sessionId: log.sessionId ?? '',
       hash: log.hash ?? '',
       previousHash: log.previousHash ?? null,
-    }));
+    }))
 
     return {
       logs,
       total: result.total,
       page: result.page,
       pageSize: result.pageSize,
-    };
+    }
   }
 }

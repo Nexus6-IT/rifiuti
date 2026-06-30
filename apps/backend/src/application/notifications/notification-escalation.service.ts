@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
-import { PrismaService } from '../../infrastructure/database/prisma.service';
-import { EmailService } from '../../infrastructure/email/email.service';
-import { LoggerService } from '../../core/logger/logger.service';
+import { Injectable } from '@nestjs/common'
+import { Cron, CronExpression } from '@nestjs/schedule'
+import { PrismaService } from '../../infrastructure/database/prisma.service'
+import { EmailService } from '../../infrastructure/email/email.service'
+import { LoggerService } from '../../core/logger/logger.service'
 
 /**
  * Notification Escalation Service
@@ -18,14 +18,14 @@ export class NotificationEscalationService {
   private readonly ESCALATION_THRESHOLDS = {
     WARNING: 24, // Escalate warning notifications after 24 hours
     ERROR: 4, // Escalate error notifications after 4 hours
-  };
+  }
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext(NotificationEscalationService.name);
+    this.logger.setContext(NotificationEscalationService.name)
   }
 
   /**
@@ -34,14 +34,14 @@ export class NotificationEscalationService {
    */
   @Cron(CronExpression.EVERY_2_HOURS)
   async checkEscalations(): Promise<void> {
-    this.logger.info('Starting notification escalation check');
+    this.logger.info('Starting notification escalation check')
 
     try {
-      await this.escalateWarnings();
-      await this.escalateErrors();
-      this.logger.info('Notification escalation check completed');
+      await this.escalateWarnings()
+      await this.escalateErrors()
+      this.logger.info('Notification escalation check completed')
     } catch (error) {
-      this.logger.error('Failed to check notification escalations', error);
+      this.logger.error('Failed to check notification escalations', error)
     }
   }
 
@@ -49,7 +49,7 @@ export class NotificationEscalationService {
    * Escalate unread WARNING notifications older than 24 hours
    */
   private async escalateWarnings(): Promise<void> {
-    const threshold = new Date(Date.now() - this.ESCALATION_THRESHOLDS.WARNING * 60 * 60 * 1000);
+    const threshold = new Date(Date.now() - this.ESCALATION_THRESHOLDS.WARNING * 60 * 60 * 1000)
 
     const unreadWarnings = await this.prisma.notification.findMany({
       where: {
@@ -71,12 +71,12 @@ export class NotificationEscalationService {
           },
         },
       },
-    });
+    })
 
-    this.logger.debug(`Found ${unreadWarnings.length} unread warnings to escalate`);
+    this.logger.debug(`Found ${unreadWarnings.length} unread warnings to escalate`)
 
     for (const notification of unreadWarnings) {
-      await this.escalateToAdmins(notification);
+      await this.escalateToAdmins(notification)
     }
   }
 
@@ -84,7 +84,7 @@ export class NotificationEscalationService {
    * Escalate unread ERROR notifications older than 4 hours
    */
   private async escalateErrors(): Promise<void> {
-    const threshold = new Date(Date.now() - this.ESCALATION_THRESHOLDS.ERROR * 60 * 60 * 1000);
+    const threshold = new Date(Date.now() - this.ESCALATION_THRESHOLDS.ERROR * 60 * 60 * 1000)
 
     const unreadErrors = await this.prisma.notification.findMany({
       where: {
@@ -106,12 +106,12 @@ export class NotificationEscalationService {
           },
         },
       },
-    });
+    })
 
-    this.logger.debug(`Found ${unreadErrors.length} unread errors to escalate`);
+    this.logger.debug(`Found ${unreadErrors.length} unread errors to escalate`)
 
     for (const notification of unreadErrors) {
-      await this.escalateToAdmins(notification);
+      await this.escalateToAdmins(notification)
     }
   }
 
@@ -119,27 +119,25 @@ export class NotificationEscalationService {
    * Escalate notification to all admin users
    */
   private async escalateToAdmins(notification: any): Promise<void> {
-    const { tenant, user } = notification;
+    const { tenant, user } = notification
 
     // Skip if already escalated
-    const escalationKey = `escalated:${notification.id}`;
-    const alreadyEscalated = await this.checkEscalationFlag(escalationKey);
+    const escalationKey = `escalated:${notification.id}`
+    const alreadyEscalated = await this.checkEscalationFlag(escalationKey)
 
     if (alreadyEscalated) {
-      this.logger.debug(`Notification ${notification.id} already escalated, skipping`);
-      return;
+      this.logger.debug(`Notification ${notification.id} already escalated, skipping`)
+      return
     }
 
-    this.logger.info(
-      `Escalating notification ${notification.id} for user ${user.email} to admins`,
-    );
+    this.logger.info(`Escalating notification ${notification.id} for user ${user.email} to admins`)
 
     // Send escalation email to all admins
     for (const admin of tenant.users) {
       try {
         const hoursUnread = Math.floor(
-          (Date.now() - notification.createdAt.getTime()) / (1000 * 60 * 60),
-        );
+          (Date.now() - notification.createdAt.getTime()) / (1000 * 60 * 60)
+        )
 
         await this.emailService.sendEmail({
           to: admin.email,
@@ -156,7 +154,7 @@ export class NotificationEscalationService {
               ? `${process.env.PUBLIC_URL || 'https://wasteflow.app'}${notification.actionUrl}`
               : undefined,
           }),
-        });
+        })
 
         // Create escalation notification for admin
         await this.prisma.notification.create({
@@ -170,36 +168,37 @@ export class NotificationEscalationService {
             actionUrl: notification.actionUrl,
             isRead: false,
           },
-        });
+        })
 
-        this.logger.debug(`Escalation sent to admin ${admin.email}`);
+        this.logger.debug(`Escalation sent to admin ${admin.email}`)
       } catch (error) {
-        this.logger.error(`Failed to escalate notification to admin ${admin.email}`, error);
+        this.logger.error(`Failed to escalate notification to admin ${admin.email}`, error)
       }
     }
 
     // Mark as escalated
-    await this.setEscalationFlag(escalationKey);
+    await this.setEscalationFlag(escalationKey)
   }
 
   /**
    * Build escalation email HTML
    */
   private buildEscalationEmail(params: {
-    adminName: string;
-    userName: string;
-    userEmail: string;
-    notificationTitle: string;
-    notificationMessage: string;
-    notificationSeverity: string;
-    hoursUnread: number;
-    actionUrl?: string;
+    adminName: string
+    userName: string
+    userEmail: string
+    notificationTitle: string
+    notificationMessage: string
+    notificationSeverity: string
+    hoursUnread: number
+    actionUrl?: string
   }): string {
-    const severityColor = {
-      INFO: '#3b82f6',
-      WARNING: '#f59e0b',
-      ERROR: '#ef4444',
-    }[params.notificationSeverity] || '#6b7280';
+    const severityColor =
+      {
+        INFO: '#3b82f6',
+        WARNING: '#f59e0b',
+        ERROR: '#ef4444',
+      }[params.notificationSeverity] || '#6b7280'
 
     return `
       <!DOCTYPE html>
@@ -294,7 +293,7 @@ export class NotificationEscalationService {
         </p>
       </body>
       </html>
-    `;
+    `
   }
 
   /**
@@ -313,9 +312,9 @@ export class NotificationEscalationService {
           contains: key.split(':')[1], // Extract notification ID
         },
       },
-    });
+    })
 
-    return !!escalationExists;
+    return !!escalationExists
   }
 
   /**
@@ -324,14 +323,14 @@ export class NotificationEscalationService {
   private async setEscalationFlag(key: string): Promise<void> {
     // TODO: Implement with Redis cache when available
     // For now, escalation is tracked by creating escalation notifications
-    this.logger.debug(`Escalation flag set: ${key}`);
+    this.logger.debug(`Escalation flag set: ${key}`)
   }
 
   /**
    * Manual escalation trigger for specific notification
    */
   async escalateNotification(notificationId: string): Promise<void> {
-    this.logger.info(`Manually escalating notification ${notificationId}`);
+    this.logger.info(`Manually escalating notification ${notificationId}`)
 
     const notification = await this.prisma.notification.findUnique({
       where: {
@@ -349,13 +348,13 @@ export class NotificationEscalationService {
           },
         },
       },
-    });
+    })
 
     if (!notification) {
-      this.logger.warn(`Notification ${notificationId} not found`);
-      return;
+      this.logger.warn(`Notification ${notificationId} not found`)
+      return
     }
 
-    await this.escalateToAdmins(notification);
+    await this.escalateToAdmins(notification)
   }
 }

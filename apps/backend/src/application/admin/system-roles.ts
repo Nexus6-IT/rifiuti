@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client'
 
 /**
  * System roles — definizione canonica dei 5 ruoli di sistema WasteFlow e
@@ -19,16 +19,13 @@ import { PrismaClient } from '@prisma/client';
  * Compatibile sia con `PrismaClient` (seed CLI) sia con `PrismaService`
  * (chiamata runtime dal TenantService).
  */
-export type RoleSeedClient = Pick<
-  PrismaClient,
-  'permission' | 'role' | 'rolePermission'
->;
+export type RoleSeedClient = Pick<PrismaClient, 'permission' | 'role' | 'rolePermission'>
 
 /** Configurazione di un singolo ruolo di sistema (nome + permessi). */
 export interface SystemRoleConfig {
-  name: string;
-  description: string;
-  permissions: string[];
+  name: string
+  description: string
+  permissions: string[]
 }
 
 /**
@@ -123,8 +120,7 @@ export const SYSTEM_ROLES: SystemRoleConfig[] = [
   },
   {
     name: 'VIEWER',
-    description:
-      'Read-only access. Can view FIRs, facilities, and reports but cannot modify data.',
+    description: 'Read-only access. Can view FIRs, facilities, and reports but cannot modify data.',
     permissions: [
       // FIR - Read only
       'fir:read:all',
@@ -224,7 +220,7 @@ export const SYSTEM_ROLES: SystemRoleConfig[] = [
       'system:view-logs:all',
     ],
   },
-];
+]
 
 /**
  * Crea/aggiorna i 5 ruoli di sistema per UN singolo tenant e assegna i relativi
@@ -239,19 +235,19 @@ export const SYSTEM_ROLES: SystemRoleConfig[] = [
 export async function seedRolesForTenant(
   db: RoleSeedClient,
   tenantId: string,
-  createdBy: string,
+  createdBy: string
 ): Promise<number> {
   // Map permessi (resource:action:scope) → id, una sola query.
-  const allPermissions = await db.permission.findMany();
+  const allPermissions = await db.permission.findMany()
   const permissionMap = allPermissions.reduce(
     (acc, p) => {
-      acc[`${p.resource}:${p.action}:${p.scope}`] = p.id;
-      return acc;
+      acc[`${p.resource}:${p.action}:${p.scope}`] = p.id
+      return acc
     },
-    {} as Record<string, string>,
-  );
+    {} as Record<string, string>
+  )
 
-  let rolesCreated = 0;
+  let rolesCreated = 0
 
   for (const roleConfig of SYSTEM_ROLES) {
     // Upsert role
@@ -273,15 +269,15 @@ export async function seedRolesForTenant(
         isSystemRole: true,
         createdBy,
       },
-    });
+    })
 
     // Assign permissions to role
     for (const permissionKey of roleConfig.permissions) {
-      const permissionId = permissionMap[permissionKey];
+      const permissionId = permissionMap[permissionKey]
       if (!permissionId) {
         // eslint-disable-next-line no-console
-        console.warn(`⚠️  Permission not found: ${permissionKey}`);
-        continue;
+        console.warn(`⚠️  Permission not found: ${permissionKey}`)
+        continue
       }
 
       await db.rolePermission.upsert({
@@ -297,11 +293,11 @@ export async function seedRolesForTenant(
           permissionId,
           grantedBy: createdBy,
         },
-      });
+      })
     }
 
-    rolesCreated++;
+    rolesCreated++
   }
 
-  return rolesCreated;
+  return rolesCreated
 }

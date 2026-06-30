@@ -16,7 +16,11 @@
 import { Injectable } from '@nestjs/common'
 import { FIR } from '../../domain/fir/fir.aggregate'
 import { FIRRepository } from '../../domain/fir/fir.repository'
-import { DigitalSignature, SignatureRole, SignatureMethod } from '../../domain/fir/digital-signature.vo'
+import {
+  DigitalSignature,
+  SignatureRole,
+  SignatureMethod,
+} from '../../domain/fir/digital-signature.vo'
 import { PrismaService } from '../persistence/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
 
@@ -32,7 +36,7 @@ const SIGNATURE_INCLUDE = {
 export class SignatureFIRRepository implements FIRRepository {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
     this.logger.setContext(SignatureFIRRepository.name)
   }
@@ -97,8 +101,8 @@ export class SignatureFIRRepository implements FIRRepository {
       // Non blocca il flusso (pronto-ma-non-collegato) ma logga l'anomalia
       this.logger.warn(
         `Utente CF=${signerFiscalCode} non trovato nel tenant ${tenantId}: ` +
-        `firma ${role} per FIR ${firId} NON persistita in fir_signatures. ` +
-        'Assicurarsi che l\'utente sia sincronizzato localmente (provisioning Keycloak).',
+          `firma ${role} per FIR ${firId} NON persistita in fir_signatures. ` +
+          "Assicurarsi che l'utente sia sincronizzato localmente (provisioning Keycloak)."
       )
       return fir
     }
@@ -125,7 +129,7 @@ export class SignatureFIRRepository implements FIRRepository {
 
     this.logger.info(
       `Firma ${role} (${sigData.signatureMethod}) persistita per FIR ${firId} — ` +
-      `firmatario=${signerFiscalCode}`,
+        `firmatario=${signerFiscalCode}`
     )
 
     return fir
@@ -158,8 +162,7 @@ export class SignatureFIRRepository implements FIRRepository {
       try {
         domainSignatures.push(
           DigitalSignature.reconstitute({
-            signerFiscalCode:
-              sig.signerFiscalCode ?? sig.user?.fiscalCode ?? 'ZZZZZZZ00A00A000A',
+            signerFiscalCode: sig.signerFiscalCode ?? sig.user?.fiscalCode ?? 'ZZZZZZZ00A00A000A',
             signerName:
               sig.signerName ??
               (sig.user ? `${sig.user.firstName} ${sig.user.lastName}` : 'Sconosciuto'),
@@ -171,12 +174,10 @@ export class SignatureFIRRepository implements FIRRepository {
             publicKey: sig.publicKey ?? '',
             timestampToken: sig.timestampToken ?? undefined,
             signedAt: sig.signedAt,
-          }),
+          })
         )
       } catch (err: any) {
-        this.logger.warn(
-          `Firma ${sig.id} non ricostruibile (dati legacy?): ${err.message}`,
-        )
+        this.logger.warn(`Firma ${sig.id} non ricostruibile (dati legacy?): ${err.message}`)
       }
     }
 
@@ -187,10 +188,11 @@ export class SignatureFIRRepository implements FIRRepository {
         tenantId: record.tenantId,
         producerPartitaIva: record.producerPartitaIva,
         cerCode: record.cerCode,
-        quantity: typeof record.quantity === 'object' ? record.quantity.toNumber() : record.quantity,
+        quantity:
+          typeof record.quantity === 'object' ? record.quantity.toNumber() : record.quantity,
         unit: record.unit ?? 'KG',
       },
-      domainSignatures,
+      domainSignatures
     )
   }
 }

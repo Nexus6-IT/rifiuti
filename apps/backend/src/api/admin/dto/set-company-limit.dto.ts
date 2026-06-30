@@ -1,4 +1,4 @@
-import { IsInt, Min } from 'class-validator';
+import { IsInt, Min } from 'class-validator'
 
 /**
  * SetCompanyLimitDto
@@ -8,5 +8,5 @@ import { IsInt, Min } from 'class-validator';
 export class SetCompanyLimitDto {
   @IsInt()
   @Min(0)
-  companyLimit!: number;
+  companyLimit!: number
 }

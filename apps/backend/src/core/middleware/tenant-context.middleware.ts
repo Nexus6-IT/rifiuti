@@ -1,8 +1,8 @@
-import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Request, Response, NextFunction } from 'express';
-import * as jwt from 'jsonwebtoken';
-import { TenantContext } from '../context/tenant-context';
+import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { Request, Response, NextFunction } from 'express'
+import * as jwt from 'jsonwebtoken'
+import { TenantContext } from '../context/tenant-context'
 
 /**
  * Tenant Context Middleware
@@ -22,44 +22,41 @@ import { TenantContext } from '../context/tenant-context';
  */
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
-  private readonly jwtSecret: string;
+  private readonly jwtSecret: string
 
   constructor(private readonly configService: ConfigService) {
-    this.jwtSecret = this.configService.get<string>('JWT_SECRET') || '';
+    this.jwtSecret = this.configService.get<string>('JWT_SECRET') || ''
   }
 
   use(req: Request, res: Response, next: NextFunction) {
-    const payload = this.decodeToken(req);
+    const payload = this.decodeToken(req)
 
     // Nessun token valido (rotta pubblica o richiesta non autenticata): si
     // prosegue senza contesto; il JwtAuthGuard della rotta gestira' l'eventuale 401.
     if (!payload) {
-      return next();
+      return next()
     }
 
     // Il SUPER_ADMIN è un amministratore di piattaforma: ricavato SOLO dal ruolo
     // verificato nel token, mai da un header.
-    const isSuperAdmin = payload.role === 'SUPER_ADMIN';
+    const isSuperAdmin = payload.role === 'SUPER_ADMIN'
 
     // Un SUPER_ADMIN può operare su uno specifico tenant via header `X-Tenant-ID`.
     // Per gli utenti normali l'header è IGNORATO (fail-closed): vale il tenant del JWT.
-    const headerTenantId = this.readTenantHeader(req);
+    const headerTenantId = this.readTenantHeader(req)
 
-    let tenantId: string | undefined;
+    let tenantId: string | undefined
     if (isSuperAdmin) {
-      tenantId = headerTenantId ?? payload.tenantId ?? undefined;
-      if (!tenantId) tenantId = undefined; // '' → undefined (no filtro RLS non valido)
+      tenantId = headerTenantId ?? payload.tenantId ?? undefined
+      if (!tenantId) tenantId = undefined // '' → undefined (no filtro RLS non valido)
     } else {
-      tenantId = payload.tenantId || undefined;
+      tenantId = payload.tenantId || undefined
     }
 
-    (req as any).tenantId = tenantId;
-    (req as any).isSuperAdmin = isSuperAdmin;
+    ;(req as any).tenantId = tenantId
+    ;(req as any).isSuperAdmin = isSuperAdmin
 
-    TenantContext.run(
-      { tenantId, userId: payload.sub, isSuperAdmin },
-      () => next(),
-    );
+    TenantContext.run({ tenantId, userId: payload.sub, isSuperAdmin }, () => next())
   }
 
   /**
@@ -67,23 +64,23 @@ export class TenantContextMiddleware implements NestMiddleware {
    * oppure null se assente/non valido (in tal caso il guard gestira' la 401).
    */
   private decodeToken(req: Request): { sub?: string; tenantId?: string; role?: string } | null {
-    const auth = req.headers['authorization'];
+    const auth = req.headers['authorization']
     if (!auth || !auth.startsWith('Bearer ') || !this.jwtSecret) {
-      return null;
+      return null
     }
-    const token = auth.slice(7);
+    const token = auth.slice(7)
     try {
-      const decoded = jwt.verify(token, this.jwtSecret) as Record<string, unknown>;
+      const decoded = jwt.verify(token, this.jwtSecret) as Record<string, unknown>
       if (decoded && decoded['type'] === 'access') {
         return {
           sub: decoded['sub'] as string | undefined,
           tenantId: decoded['tenantId'] as string | undefined,
           role: decoded['role'] as string | undefined,
-        };
+        }
       }
-      return null;
+      return null
     } catch {
-      return null;
+      return null
     }
   }
 
@@ -94,10 +91,10 @@ export class TenantContextMiddleware implements NestMiddleware {
    * in cui arrivi come array (header ripetuto) prendendo il primo valore.
    */
   private readTenantHeader(req: Request): string | undefined {
-    const raw = req.headers['x-tenant-id'];
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    const trimmed = typeof value === 'string' ? value.trim() : '';
-    return trimmed.length > 0 ? trimmed : undefined;
+    const raw = req.headers['x-tenant-id']
+    const value = Array.isArray(raw) ? raw[0] : raw
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    return trimmed.length > 0 ? trimmed : undefined
   }
 }
 
@@ -112,18 +109,18 @@ export class TenantContextMiddleware implements NestMiddleware {
  * }
  * ```
  */
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { createParamDecorator, ExecutionContext } from '@nestjs/common'
 
 export const TenantId = createParamDecorator((data: unknown, ctx: ExecutionContext): string => {
-  const request = ctx.switchToHttp().getRequest();
-  const tenantId = request.tenantId;
+  const request = ctx.switchToHttp().getRequest()
+  const tenantId = request.tenantId
 
   if (!tenantId) {
-    throw new UnauthorizedException('Tenant ID not found in request context');
+    throw new UnauthorizedException('Tenant ID not found in request context')
   }
 
-  return tenantId;
-});
+  return tenantId
+})
 
 /**
  * Decorator to extract user ID from request
@@ -137,15 +134,15 @@ export const TenantId = createParamDecorator((data: unknown, ctx: ExecutionConte
  * ```
  */
 export const UserId = createParamDecorator((data: unknown, ctx: ExecutionContext): string => {
-  const request = ctx.switchToHttp().getRequest();
-  const user = request.user;
+  const request = ctx.switchToHttp().getRequest()
+  const user = request.user
 
   if (!user || !user.userId) {
-    throw new UnauthorizedException('User ID not found in request context');
+    throw new UnauthorizedException('User ID not found in request context')
   }
 
-  return user.userId;
-});
+  return user.userId
+})
 
 /**
  * Decorator to extract full user from request
@@ -159,21 +156,21 @@ export const UserId = createParamDecorator((data: unknown, ctx: ExecutionContext
  * ```
  */
 export interface AuthenticatedUser {
-  userId: string;
-  tenantId: string;
-  fiscalCode: string;
-  email: string;
-  role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
-  keycloakId: string;
+  userId: string
+  tenantId: string
+  fiscalCode: string
+  email: string
+  role: 'ADMIN' | 'OPERATOR' | 'VIEWER'
+  keycloakId: string
 }
 
 export const CurrentUser = createParamDecorator(
   (data: unknown, ctx: ExecutionContext): AuthenticatedUser => {
-    const request = ctx.switchToHttp().getRequest();
-    const user = request.user;
+    const request = ctx.switchToHttp().getRequest()
+    const user = request.user
 
     if (!user) {
-      throw new UnauthorizedException('User not authenticated');
+      throw new UnauthorizedException('User not authenticated')
     }
 
     return {
@@ -183,6 +180,6 @@ export const CurrentUser = createParamDecorator(
       email: user.email,
       role: user.role,
       keycloakId: user.keycloakId,
-    };
-  },
-);
+    }
+  }
+)

@@ -17,7 +17,7 @@ import { ReferenceDataSeederService, ReferenceDataset } from './reference-data-s
 export class ReferenceDataController {
   constructor(
     private readonly referenceData: ReferenceDataService,
-    private readonly seeder: ReferenceDataSeederService,
+    private readonly seeder: ReferenceDataSeederService
   ) {}
 
   @Get('status')
@@ -53,7 +53,8 @@ export class ReferenceDataController {
   @Roles('SUPER_ADMIN', 'ADMIN')
   @ApiOperation({
     summary: 'Ripopola i dati di riferimento dalle sorgenti (admin)',
-    description: 'Avvia il reseed di tutti i dataset o di uno solo (?dataset=ateco|nazioni|province|comuni).',
+    description:
+      'Avvia il reseed di tutti i dataset o di uno solo (?dataset=ateco|nazioni|province|comuni).',
   })
   @ApiQuery({ name: 'dataset', required: false })
   async reseed(@Query('dataset') dataset?: ReferenceDataset) {

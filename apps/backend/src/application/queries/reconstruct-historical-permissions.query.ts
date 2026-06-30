@@ -20,6 +20,6 @@ export class ReconstructHistoricalPermissionsQuery {
   constructor(
     public readonly userId: string,
     public readonly tenantId: string,
-    public readonly timestamp: Date,
+    public readonly timestamp: Date
   ) {}
 }

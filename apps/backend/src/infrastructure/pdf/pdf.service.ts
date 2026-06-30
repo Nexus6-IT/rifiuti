@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { LoggerService } from '../../core/logger/logger.service';
-const PdfPrinter = require('pdfmake/src/printer');
-import { TDocumentDefinitions, Content } from 'pdfmake/interfaces';
+import { Injectable } from '@nestjs/common'
+import { LoggerService } from '../../core/logger/logger.service'
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const PdfPrinter = require('pdfmake/src/printer')
+import { TDocumentDefinitions, Content } from 'pdfmake/interfaces'
 
 /**
  * PDF Service
@@ -15,13 +16,14 @@ import { TDocumentDefinitions, Content } from 'pdfmake/interfaces';
  */
 @Injectable()
 export class PDFService {
-  private printer: any;
+  private printer: any
 
   constructor(private readonly logger: LoggerService) {
-    this.logger.setContext(PDFService.name);
+    this.logger.setContext(PDFService.name)
 
     // Initialize pdfmake with fonts
-    const vfsFonts = require('pdfmake/build/vfs_fonts');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const vfsFonts = require('pdfmake/build/vfs_fonts')
     const fonts = {
       Roboto: {
         normal: Buffer.from(vfsFonts['Roboto-Regular.ttf'], 'base64'),
@@ -29,16 +31,16 @@ export class PDFService {
         italics: Buffer.from(vfsFonts['Roboto-Italic.ttf'], 'base64'),
         bolditalics: Buffer.from(vfsFonts['Roboto-MediumItalic.ttf'], 'base64'),
       },
-    };
+    }
 
-    this.printer = new PdfPrinter(fonts);
+    this.printer = new PdfPrinter(fonts)
   }
 
   /**
    * Generate FIR PDF
    */
   async generateFIRPDF(fir: any, qrCodeDataUrl?: string): Promise<Buffer> {
-    this.logger.info(`Generating FIR PDF: ${fir.firNumber}`);
+    this.logger.info(`Generating FIR PDF: ${fir.firNumber}`)
 
     const docDefinition: TDocumentDefinitions = {
       pageSize: 'A4',
@@ -87,25 +89,25 @@ export class PDFService {
           margin: [0, 4, 0, 4],
         },
       },
-    };
+    }
 
     return new Promise((resolve, reject) => {
-      const pdfDoc = this.printer.createPdfKitDocument(docDefinition);
-      const chunks: Buffer[] = [];
+      const pdfDoc = this.printer.createPdfKitDocument(docDefinition)
+      const chunks: Buffer[] = []
 
-      pdfDoc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
-      pdfDoc.on('error', reject);
+      pdfDoc.on('data', (chunk: Buffer) => chunks.push(chunk))
+      pdfDoc.on('end', () => resolve(Buffer.concat(chunks)))
+      pdfDoc.on('error', reject)
 
-      pdfDoc.end();
-    });
+      pdfDoc.end()
+    })
   }
 
   /**
    * Build FIR PDF content
    */
   private buildFIRContent(fir: any, qrCodeDataUrl?: string): Content[] {
-    const content: Content[] = [];
+    const content: Content[] = []
 
     // FIR Number and Status
     content.push({
@@ -132,22 +134,22 @@ export class PDFService {
           ],
         },
       ],
-    });
+    })
 
     // Producer Section
-    content.push({ text: 'PRODUTTORE', style: 'sectionHeader' });
-    content.push(this.buildCompanyInfo(fir.producer));
+    content.push({ text: 'PRODUTTORE', style: 'sectionHeader' })
+    content.push(this.buildCompanyInfo(fir.producer))
 
     // Carrier Section
-    content.push({ text: 'TRASPORTATORE', style: 'sectionHeader' });
-    content.push(this.buildCompanyInfo(fir.carrier));
+    content.push({ text: 'TRASPORTATORE', style: 'sectionHeader' })
+    content.push(this.buildCompanyInfo(fir.carrier))
 
     // Receiver Section
-    content.push({ text: 'DESTINATARIO', style: 'sectionHeader' });
-    content.push(this.buildCompanyInfo(fir.receiver));
+    content.push({ text: 'DESTINATARIO', style: 'sectionHeader' })
+    content.push(this.buildCompanyInfo(fir.receiver))
 
     // Campo 2 — Dettagli rifiuto (DM 59/2023)
-    content.push({ text: 'CAMPO 2 — DETTAGLI RIFIUTO', style: 'sectionHeader' });
+    content.push({ text: 'CAMPO 2 — DETTAGLI RIFIUTO', style: 'sectionHeader' })
     content.push({
       columns: [
         {
@@ -165,14 +167,21 @@ export class PDFService {
             { text: 'Stato fisico', style: 'label' },
             { text: fir.rifiuto?.statoFisico || fir.wastePhysicalState || 'N/D', style: 'value' },
             { text: 'Numero colli', style: 'label' },
-            { text: (fir.rifiuto?.numeroColli ?? fir.wastePackageCount ?? 'N/D').toString(), style: 'value' },
+            {
+              text: (fir.rifiuto?.numeroColli ?? fir.wastePackageCount ?? 'N/D').toString(),
+              style: 'value',
+            },
           ],
         },
         {
           width: '50%',
           stack: [
             { text: 'Caratteristiche pericolo HP', style: 'label' },
-            { text: fir.rifiuto?.caratteristichePericolo || fir.wasteHazardClasses || 'Non pericoloso', style: 'value' },
+            {
+              text:
+                fir.rifiuto?.caratteristichePericolo || fir.wasteHazardClasses || 'Non pericoloso',
+              style: 'value',
+            },
             { text: 'Campo 3 — Operazione', style: 'label' },
             {
               text: this.buildOperazioneLabel(
@@ -186,18 +195,18 @@ export class PDFService {
           ],
         },
       ],
-    });
+    })
 
     // Campo 17 — Annotazioni (DM 59/2023)
-    const annotazioni = fir.annotazioni || fir.wasteNotes;
+    const annotazioni = fir.annotazioni || fir.wasteNotes
     if (annotazioni) {
-      content.push({ text: 'CAMPO 17 — ANNOTAZIONI', style: 'sectionHeader' });
-      content.push({ text: annotazioni, style: 'value', margin: [0, 0, 0, 8] });
+      content.push({ text: 'CAMPO 17 — ANNOTAZIONI', style: 'sectionHeader' })
+      content.push({ text: annotazioni, style: 'value', margin: [0, 0, 0, 8] })
     }
 
     // 4ª copia — Esito destinatario
     if (fir.fourthCopyReturnedAt || fir.pesoEffettivo) {
-      content.push({ text: '4ª COPIA — ESITO DESTINATARIO', style: 'sectionHeader' });
+      content.push({ text: '4ª COPIA — ESITO DESTINATARIO', style: 'sectionHeader' })
       content.push({
         columns: [
           {
@@ -220,37 +229,37 @@ export class PDFService {
             ],
           },
         ],
-      });
+      })
       if (fir.fourthCopyNotes) {
-        content.push({ text: 'Note destinatario', style: 'label' });
-        content.push({ text: fir.fourthCopyNotes, style: 'value' });
+        content.push({ text: 'Note destinatario', style: 'label' })
+        content.push({ text: fir.fourthCopyNotes, style: 'value' })
       }
     }
 
     // Signatures Section
-    content.push({ text: 'FIRME DIGITALI', style: 'sectionHeader' });
+    content.push({ text: 'FIRME DIGITALI', style: 'sectionHeader' })
     if (fir.signatures && fir.signatures.length > 0) {
       fir.signatures.forEach((sig: any) => {
         content.push({
           text: `✓ ${sig.role}: ${sig.signerName} - ${new Date(sig.signedAt).toLocaleString('it-IT')}`,
           style: 'signature',
-        });
-      });
+        })
+      })
     } else {
-      content.push({ text: 'Nessuna firma presente', style: 'value', color: '#e74c3c' });
+      content.push({ text: 'Nessuna firma presente', style: 'value', color: '#e74c3c' })
     }
 
     // QR Code
     if (qrCodeDataUrl) {
-      content.push({ text: 'CODICE QR VERIFICA', style: 'sectionHeader' });
+      content.push({ text: 'CODICE QR VERIFICA', style: 'sectionHeader' })
       content.push({
         image: qrCodeDataUrl,
         width: 100,
         alignment: 'center',
-      });
+      })
     }
 
-    return content;
+    return content
   }
 
   /**
@@ -258,7 +267,7 @@ export class PDFService {
    */
   private buildCompanyInfo(company: any): Content {
     if (!company) {
-      return { text: 'Informazioni non disponibili', style: 'value', color: '#95a5a6' };
+      return { text: 'Informazioni non disponibili', style: 'value', color: '#95a5a6' }
     }
 
     return {
@@ -278,18 +287,23 @@ export class PDFService {
             { text: 'P.IVA / Codice Fiscale', style: 'label' },
             { text: company.vatNumber || company.fiscalCode || 'N/A', style: 'value' },
             { text: 'Città', style: 'label' },
-            { text: `${company.city || ''} ${company.province ? `(${company.province})` : ''}`.trim() || 'N/A', style: 'value' },
+            {
+              text:
+                `${company.city || ''} ${company.province ? `(${company.province})` : ''}`.trim() ||
+                'N/A',
+              style: 'value',
+            },
           ],
         },
       ],
-    };
+    }
   }
 
   /**
    * Generate MUD Report PDF
    */
   async generateMUDPDF(report: any): Promise<Buffer> {
-    this.logger.info(`Generating MUD PDF for year ${report.year}`);
+    this.logger.info(`Generating MUD PDF for year ${report.year}`)
 
     const docDefinition: TDocumentDefinitions = {
       pageSize: 'A4',
@@ -329,28 +343,28 @@ export class PDFService {
           color: '#27ae60',
         },
       },
-    };
+    }
 
     return new Promise((resolve, reject) => {
-      const pdfDoc = this.printer.createPdfKitDocument(docDefinition);
-      const chunks: Buffer[] = [];
+      const pdfDoc = this.printer.createPdfKitDocument(docDefinition)
+      const chunks: Buffer[] = []
 
-      pdfDoc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
-      pdfDoc.on('error', reject);
+      pdfDoc.on('data', (chunk: Buffer) => chunks.push(chunk))
+      pdfDoc.on('end', () => resolve(Buffer.concat(chunks)))
+      pdfDoc.on('error', reject)
 
-      pdfDoc.end();
-    });
+      pdfDoc.end()
+    })
   }
 
   /**
    * Build MUD PDF content
    */
   private buildMUDContent(report: any): Content[] {
-    const content: Content[] = [];
+    const content: Content[] = []
 
     // Summary
-    content.push({ text: 'RIEPILOGO ANNUALE', style: 'sectionHeader' });
+    content.push({ text: 'RIEPILOGO ANNUALE', style: 'sectionHeader' })
     content.push({
       columns: [
         {
@@ -364,28 +378,40 @@ export class PDFService {
           width: '25%',
           stack: [
             { text: 'Recupero', fontSize: 10, color: '#7f8c8d' },
-            { text: `${report.totals.recovery.toLocaleString('it-IT')} kg`, style: 'summaryValue', color: '#27ae60' },
+            {
+              text: `${report.totals.recovery.toLocaleString('it-IT')} kg`,
+              style: 'summaryValue',
+              color: '#27ae60',
+            },
           ],
         },
         {
           width: '25%',
           stack: [
             { text: 'Smaltimento', fontSize: 10, color: '#7f8c8d' },
-            { text: `${report.totals.disposal.toLocaleString('it-IT')} kg`, style: 'summaryValue', color: '#e67e22' },
+            {
+              text: `${report.totals.disposal.toLocaleString('it-IT')} kg`,
+              style: 'summaryValue',
+              color: '#e67e22',
+            },
           ],
         },
         {
           width: '25%',
           stack: [
             { text: 'Tasso Riciclo', fontSize: 10, color: '#7f8c8d' },
-            { text: `${(report.totals.recyclingRate * 100).toFixed(1)}%`, style: 'summaryValue', color: '#3498db' },
+            {
+              text: `${(report.totals.recyclingRate * 100).toFixed(1)}%`,
+              style: 'summaryValue',
+              color: '#3498db',
+            },
           ],
         },
       ],
-    });
+    })
 
     // Waste breakdown table
-    content.push({ text: 'DETTAGLIO PER CODICE CER', style: 'sectionHeader' });
+    content.push({ text: 'DETTAGLIO PER CODICE CER', style: 'sectionHeader' })
 
     const tableBody: any[] = [
       [
@@ -393,15 +419,15 @@ export class PDFService {
         { text: 'Numero FIR', bold: true, alignment: 'right' },
         { text: 'Quantità Totale (kg)', bold: true, alignment: 'right' },
       ],
-    ];
+    ]
 
     report.wasteProduced?.forEach((w: any) => {
       tableBody.push([
         w.cerCode,
         { text: w.count.toString(), alignment: 'right' },
         { text: w.totalQuantity.toLocaleString('it-IT'), alignment: 'right' },
-      ]);
-    });
+      ])
+    })
 
     content.push({
       table: {
@@ -410,9 +436,9 @@ export class PDFService {
         body: tableBody,
       },
       layout: 'lightHorizontalLines',
-    });
+    })
 
-    return content;
+    return content
   }
 
   /**
@@ -421,12 +447,16 @@ export class PDFService {
    */
   private buildOperazioneLabel(codice?: string, tipo?: string): string {
     if (codice) {
-      const prefix = codice.startsWith('R') ? 'Recupero' : codice.startsWith('D') ? 'Smaltimento' : '';
-      return prefix ? `${prefix} (${codice})` : codice;
+      const prefix = codice.startsWith('R')
+        ? 'Recupero'
+        : codice.startsWith('D')
+          ? 'Smaltimento'
+          : ''
+      return prefix ? `${prefix} (${codice})` : codice
     }
-    if (tipo === 'RECOVERY') return 'Recupero (R)';
-    if (tipo === 'DISPOSAL') return 'Smaltimento (D)';
-    return 'N/D';
+    if (tipo === 'RECOVERY') return 'Recupero (R)'
+    if (tipo === 'DISPOSAL') return 'Smaltimento (D)'
+    return 'N/D'
   }
 
   /**
@@ -440,7 +470,7 @@ export class PDFService {
       SIGNED_BY_CARRIER: '#9b59b6',
       COMPLETED: '#27ae60',
       CANCELLED: '#e74c3c',
-    };
-    return colors[status] || '#34495e';
+    }
+    return colors[status] || '#34495e'
   }
 }

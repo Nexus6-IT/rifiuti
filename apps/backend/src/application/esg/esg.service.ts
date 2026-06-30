@@ -45,7 +45,7 @@ export interface EsgReport {
 export class EsgService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
     this.logger.setContext(EsgService.name)
   }
@@ -99,9 +99,7 @@ export class EsgService {
 
     return {
       period:
-        range.startDate && range.endDate
-          ? { from: range.startDate, to: range.endDate }
-          : null,
+        range.startDate && range.endDate ? { from: range.startDate, to: range.endDate } : null,
       totals: {
         producedKg,
         recoveryKg,

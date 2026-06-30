@@ -1,13 +1,12 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { ToolbarModule } from 'primeng/toolbar';
-import { ButtonModule } from 'primeng/button';
-import { MenuModule } from 'primeng/menu';
-import { AvatarModule } from 'primeng/avatar';
-import { TagModule } from 'primeng/tag';
-import { OverlayPanelModule } from 'primeng/overlaypanel';
-import { MenuItem } from 'primeng/api';
-import { AuthService } from '../../services/auth.service';
+import { Component, OnInit, inject } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { ToolbarModule } from 'primeng/toolbar'
+import { ButtonModule } from 'primeng/button'
+import { MenuModule } from 'primeng/menu'
+import { AvatarModule } from 'primeng/avatar'
+import { TagModule } from 'primeng/tag'
+import { OverlayPanelModule } from 'primeng/overlaypanel'
+import { AuthService } from '../../services/auth.service'
 
 /**
  * Header Component
@@ -44,7 +43,8 @@ import { AuthService } from '../../services/auth.service';
               <p-tag
                 [value]="'SPID L' + currentUser()!.spidLevel"
                 [severity]="getSpidLevelSeverity()"
-                data-cy="spid-level-badge">
+                data-cy="spid-level-badge"
+              >
               </p-tag>
             }
 
@@ -54,16 +54,18 @@ import { AuthService } from '../../services/auth.service';
                 class="pi pi-verified text-green-500 text-xl"
                 pTooltip="Autorizzato a firmare documenti"
                 tooltipPosition="bottom"
-                data-cy="can-sign-indicator">
+                data-cy="can-sign-indicator"
+              >
               </i>
             }
 
             <!-- User Menu -->
-            <div class="flex align-items-center gap-2 cursor-pointer" (click)="userMenu.toggle($event)" data-cy="user-menu">
-              <p-avatar
-                [label]="getUserInitials()"
-                styleClass="bg-primary"
-                shape="circle">
+            <div
+              class="flex align-items-center gap-2 cursor-pointer"
+              (click)="userMenu.toggle($event)"
+              data-cy="user-menu"
+            >
+              <p-avatar [label]="getUserInitials()" styleClass="bg-primary" shape="circle">
               </p-avatar>
               <div class="flex flex-column align-items-start">
                 <span class="font-semibold">{{ currentUser()!.fullName }}</span>
@@ -109,8 +111,8 @@ import { AuthService } from '../../services/auth.service';
                   icon="pi pi-sign-out"
                   class="w-full p-button-danger p-button-outlined"
                   (click)="logout()"
-                  data-cy="logout-button">
-                </button>
+                  data-cy="logout-button"
+                ></button>
               </div>
             </p-overlayPanel>
           </div>
@@ -135,38 +137,38 @@ import { AuthService } from '../../services/auth.service';
   ],
 })
 export class HeaderComponent implements OnInit {
-  private readonly authService = inject(AuthService);
+  private readonly authService = inject(AuthService)
 
-  protected readonly currentUser = this.authService.currentUser;
+  protected readonly currentUser = this.authService.currentUser
 
   ngOnInit(): void {
     // Subscribe to user changes
-    this.authService.getCurrentUser$().subscribe((user) => {
+    this.authService.getCurrentUser$().subscribe(user => {
       if (user) {
-        console.log('User logged in:', user);
+        console.log('User logged in:', user)
       }
-    });
+    })
   }
 
   protected getUserInitials(): string {
-    const user = this.currentUser();
-    if (!user) return '?';
+    const user = this.currentUser()
+    if (!user) return '?'
 
-    const firstInitial = user.firstName?.charAt(0) || '';
-    const lastInitial = user.lastName?.charAt(0) || '';
+    const firstInitial = user.firstName?.charAt(0) || ''
+    const lastInitial = user.lastName?.charAt(0) || ''
 
-    return (firstInitial + lastInitial).toUpperCase();
+    return (firstInitial + lastInitial).toUpperCase()
   }
 
   protected getSpidLevelSeverity(): 'success' | 'warning' | 'info' {
-    const level = this.currentUser()?.spidLevel || 0;
+    const level = this.currentUser()?.spidLevel || 0
 
-    if (level >= 3) return 'success';
-    if (level >= 2) return 'info';
-    return 'warning';
+    if (level >= 3) return 'success'
+    if (level >= 2) return 'info'
+    return 'warning'
   }
 
   protected logout(): void {
-    this.authService.logout().subscribe();
+    this.authService.logout().subscribe()
   }
 }

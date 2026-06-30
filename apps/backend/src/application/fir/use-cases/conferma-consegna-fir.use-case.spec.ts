@@ -283,12 +283,8 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       const afterExecution = new Date()
 
       expect(result.value.dataConsegna).toBeDefined()
-      expect(result.value.dataConsegna!.getTime()).toBeGreaterThanOrEqual(
-        beforeExecution.getTime()
-      )
-      expect(result.value.dataConsegna!.getTime()).toBeLessThanOrEqual(
-        afterExecution.getTime()
-      )
+      expect(result.value.dataConsegna!.getTime()).toBeGreaterThanOrEqual(beforeExecution.getTime())
+      expect(result.value.dataConsegna!.getTime()).toBeLessThanOrEqual(afterExecution.getTime())
     })
   })
 })

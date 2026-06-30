@@ -5,9 +5,9 @@ import {
   CallHandler,
   HttpStatus,
   HttpException,
-} from '@nestjs/common';
-import { Observable } from 'rxjs';
-import { Reflector } from '@nestjs/core';
+} from '@nestjs/common'
+import { Observable } from 'rxjs'
+import { Reflector } from '@nestjs/core'
 
 /**
  * SPID Re-Authentication Interceptor
@@ -25,46 +25,46 @@ IR(@Param('id') id: string) { ... }
  */
 
 // Metadata key for the @RequireSpidReauth decorator
-export const REQUIRE_SPID_REAUTH_KEY = 'requireSpidReauth';
+export const REQUIRE_SPID_REAUTH_KEY = 'requireSpidReauth'
 
 // Decorator to mark endpoints that require fresh SPID authentication
-export const RequireSpidReauth = () =>
-  (target: any, propertyKey: string, descriptor: PropertyDescriptor) => {
-    Reflect.defineMetadata(REQUIRE_SPID_REAUTH_KEY, true, descriptor.value);
-    return descriptor;
-  };
+export const RequireSpidReauth =
+  () => (target: any, propertyKey: string, descriptor: PropertyDescriptor) => {
+    Reflect.defineMetadata(REQUIRE_SPID_REAUTH_KEY, true, descriptor.value)
+    return descriptor
+  }
 
 @Injectable()
 export class SpidReauthInterceptor implements NestInterceptor {
-  private readonly SPID_SESSION_FRESHNESS_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
+  private readonly SPID_SESSION_FRESHNESS_MS = 15 * 60 * 1000 // 15 minutes in milliseconds
 
   constructor(private reflector: Reflector) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const requiresSpidReauth = this.reflector.get<boolean>(
       REQUIRE_SPID_REAUTH_KEY,
-      context.getHandler(),
-    );
+      context.getHandler()
+    )
 
     // If this endpoint doesn't require SPID re-auth, proceed normally
     if (!requiresSpidReauth) {
-      return next.handle();
+      return next.handle()
     }
 
-    const request = context.switchToHttp().getRequest();
-    const user = request.user;
+    const request = context.switchToHttp().getRequest()
+    const user = request.user
 
     // If no authenticated user, let the auth guard handle it
     if (!user) {
-      return next.handle();
+      return next.handle()
     }
 
     // Get last SPID authentication timestamp from user session/JWT
-    const lastSpidAuthTime = user.lastSpidAuthTime || user.iat * 1000; // iat is in seconds, convert to ms
+    const lastSpidAuthTime = user.lastSpidAuthTime || user.iat * 1000 // iat is in seconds, convert to ms
 
     // Check if SPID session is still fresh (< 15 minutes)
-    const now = Date.now();
-    const timeSinceLastAuth = now - lastSpidAuthTime;
+    const now = Date.now()
+    const timeSinceLastAuth = now - lastSpidAuthTime
 
     if (timeSinceLastAuth > this.SPID_SESSION_FRESHNESS_MS) {
       // Session is stale, require re-authentication
@@ -78,11 +78,11 @@ export class SpidReauthInterceptor implements NestInterceptor {
           lastAuthTime: lastSpidAuthTime,
           requiredFreshness: this.SPID_SESSION_FRESHNESS_MS,
         },
-        HttpStatus.PRECONDITION_REQUIRED, // 428 status code
-      );
+        HttpStatus.PRECONDITION_REQUIRED // 428 status code
+      )
     }
 
     // Session is fresh, proceed with the request
-    return next.handle();
+    return next.handle()
   }
 }

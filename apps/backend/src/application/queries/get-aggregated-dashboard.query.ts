@@ -26,7 +26,7 @@
 export class GetAggregatedDashboardQuery {
   constructor(public readonly consultantUserId: string) {
     if (!consultantUserId || consultantUserId.trim() === '') {
-      throw new Error('Consultant user ID is required');
+      throw new Error('Consultant user ID is required')
     }
   }
 }

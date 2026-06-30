@@ -49,7 +49,10 @@ describe('EsgService', () => {
     // kg deviati da discarica = quota a recupero
     expect(report.landfillDivertedKg).toBe(150)
     // CO₂ evitata = 100*1.2 + 50*0.05 = 122.5
-    expect(report.co2AvoidedKg).toBeCloseTo(100 * co2FactorForCer('150101') + 50 * co2FactorForCer('170504'), 5)
+    expect(report.co2AvoidedKg).toBeCloseTo(
+      100 * co2FactorForCer('150101') + 50 * co2FactorForCer('170504'),
+      5
+    )
     expect(report.co2AvoidedKg).toBeCloseTo(122.5, 5)
 
     // breakdown ordinato per CO₂ evitata decrescente

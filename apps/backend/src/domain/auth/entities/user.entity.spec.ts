@@ -3,7 +3,7 @@
  * Cycle: RED → GREEN → REFACTOR
  */
 
-import { User, UserRole, AuthProvider, UserCreatedEvent } from './user.entity'
+import { User, AuthProvider, UserCreatedEvent } from './user.entity'
 import { InvalidEmailError } from '../../../core/domain/errors'
 
 describe('User Entity', () => {
@@ -52,7 +52,7 @@ describe('User Entity', () => {
       })
 
       const events = user.domainEvents
-      expect(events.length).toBe(1);
+      expect(events.length).toBe(1)
       expect(events[0]).toBeInstanceOf(UserCreatedEvent)
       expect((events[0] as UserCreatedEvent).userId).toBe(user.id)
       expect((events[0] as UserCreatedEvent).email).toBe('test@example.com')
@@ -95,7 +95,7 @@ describe('User Entity', () => {
       expect(user.email).toBe('test@example.com')
       expect(user.fiscalNumber).toBe('RSSMRA80A01H501U')
       expect(user.createdAt).toEqual(new Date('2025-01-01'))
-      expect(user.domainEvents.length).toBe(0); // No events on reconstitute
+      expect(user.domainEvents.length).toBe(0) // No events on reconstitute
     })
   })
 
@@ -107,7 +107,7 @@ describe('User Entity', () => {
         lastName: 'OldLast',
       })
 
-      const originalUpdatedAt = user.updatedAt
+      const _originalUpdatedAt = user.updatedAt
 
       // Wait a bit to ensure timestamp changes
       const beforeUpdate = new Date()
@@ -139,7 +139,7 @@ describe('User Entity', () => {
         email: 'test@example.com',
       })
 
-      const originalUpdatedAt = user.updatedAt
+      const _originalUpdatedAt = user.updatedAt
       const beforeDelete = new Date()
 
       user.softDelete()
@@ -185,11 +185,11 @@ describe('User Entity', () => {
         email: 'test@example.com',
       })
 
-      expect(user.domainEvents.length).toBe(1);
+      expect(user.domainEvents.length).toBe(1)
 
       user.clearDomainEvents()
 
-      expect(user.domainEvents.length).toBe(0);
+      expect(user.domainEvents.length).toBe(0)
     })
   })
 })

@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from 'async_hooks';
+import { AsyncLocalStorage } from 'async_hooks'
 
 /**
  * Dati legati al contesto della richiesta corrente.
@@ -12,16 +12,16 @@ export interface TenantStore {
    *   · una stringa vuota / undefined → opera cross-tenant (nessun vincolo);
    *   · il tenant indicato da `X-Tenant-ID` → opera "impersonando" quel tenant.
    */
-  tenantId?: string;
+  tenantId?: string
   /** Utente autenticato (opzionale: assente nei job di sistema). */
-  userId?: string;
+  userId?: string
   /**
    * `true` quando l'utente autenticato ha ruolo SUPER_ADMIN (amministratore di
    * piattaforma cross-tenant). Determinato SOLO dal ruolo verificato nel JWT,
    * mai inferito da header. Quando `true`, l'estensione RLS NON applica il
    * filtro per tenant — a meno che `tenantId` (da `X-Tenant-ID`) sia presente.
    */
-  isSuperAdmin?: boolean;
+  isSuperAdmin?: boolean
 }
 
 /**
@@ -45,7 +45,7 @@ export interface TenantStore {
  * sola dipendenza da PrismaService e non possono ricevere il contesto via costruttore.
  */
 export class TenantContext {
-  private static readonly als = new AsyncLocalStorage<TenantStore>();
+  private static readonly als = new AsyncLocalStorage<TenantStore>()
 
   /**
    * Esegue `callback` (e tutte le continuazioni async che ne derivano) dentro un
@@ -53,30 +53,30 @@ export class TenantContext {
    * dai job di sistema che operano per conto di un tenant specifico.
    */
   static run<T>(store: TenantStore, callback: () => T): T {
-    return TenantContext.als.run(store, callback);
+    return TenantContext.als.run(store, callback)
   }
 
   /** Tenant corrente, oppure `null` se non determinabile. */
   static getTenantId(): string | null {
-    const fromStore = TenantContext.als.getStore()?.tenantId;
+    const fromStore = TenantContext.als.getStore()?.tenantId
     if (fromStore) {
-      return fromStore;
+      return fromStore
     }
-    const fromEnv = process.env.CURRENT_TENANT_ID;
-    return fromEnv && fromEnv.length > 0 ? fromEnv : null;
+    const fromEnv = process.env.CURRENT_TENANT_ID
+    return fromEnv && fromEnv.length > 0 ? fromEnv : null
   }
 
   /** Tenant corrente, oppure lancia (fail-closed). */
   static requireTenantId(): string {
-    const tenantId = TenantContext.getTenantId();
+    const tenantId = TenantContext.getTenantId()
     if (!tenantId) {
       throw new Error(
         'TenantContext: tenant corrente non disponibile. La richiesta deve passare ' +
           'dal TenantContextMiddleware (JWT), oppure il job deve eseguire dentro ' +
-          'TenantContext.run({ tenantId }, ...).',
-      );
+          'TenantContext.run({ tenantId }, ...).'
+      )
     }
-    return tenantId;
+    return tenantId
   }
 
   /**
@@ -86,11 +86,11 @@ export class TenantContext {
    * (job/seed) ritorna `false` (fail-closed: nessun bypass implicito).
    */
   static isSuperAdmin(): boolean {
-    return TenantContext.als.getStore()?.isSuperAdmin === true;
+    return TenantContext.als.getStore()?.isSuperAdmin === true
   }
 
   /** Utente corrente, oppure `null`. */
   static getUserId(): string | null {
-    return TenantContext.als.getStore()?.userId ?? null;
+    return TenantContext.als.getStore()?.userId ?? null
   }
 }

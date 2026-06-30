@@ -1,46 +1,51 @@
-import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { FIR, PaginatedFIRResponse, FIRStato, FirmaApplicativa } from '../../shared/models/fir.model';
-import { AuthService } from '../../core/services/auth.service';
-import { environment } from '../../../environments/environment';
+import { Injectable, inject } from '@angular/core'
+import { HttpClient, HttpParams } from '@angular/common/http'
+import { Observable } from 'rxjs'
+import {
+  FIR,
+  PaginatedFIRResponse,
+  FIRStato,
+  FirmaApplicativa,
+} from '../../shared/models/fir.model'
+import { AuthService } from '../../core/services/auth.service'
+import { environment } from '../../../environments/environment'
 
-export type TipoTratta = 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA';
+export type TipoTratta = 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA'
 
 export interface TrasportatoreAggiuntivoDto {
-  trasportatoreId: string;
-  tipoTratta: TipoTratta;
-  ordine: number;
+  trasportatoreId: string
+  tipoTratta: TipoTratta
+  ordine: number
 }
 
 export interface CreateFIRDto {
-  produttoreId: string;
-  trasportatoreId: string;
-  destinatarioId: string;
-  trasportatoriAggiuntivi?: TrasportatoreAggiuntivoDto[];
+  produttoreId: string
+  trasportatoreId: string
+  destinatarioId: string
+  trasportatoriAggiuntivi?: TrasportatoreAggiuntivoDto[]
   rifiuto: {
-    cerCode: string;
-    quantita: number;
-    unitaMisura: string;
+    cerCode: string
+    quantita: number
+    unitaMisura: string
     /** Campo 2 FIR: stato fisico del rifiuto (DM 59/2023). */
-    statoFisico?: string;
+    statoFisico?: string
     /** Campo 2 FIR: caratteristiche HP (Reg. UE 1357/2014), comma-separated. */
-    caratteristichePericolo?: string;
+    caratteristichePericolo?: string
     /** Campo 2 FIR: numero di colli. */
-    numeroColli?: number;
+    numeroColli?: number
     /** Campo 3 FIR: codice operazione R/D specifico (es. "R13", "D1"). */
-    codiceOperazione?: string;
-  };
+    codiceOperazione?: string
+  }
   /** Campo 17 FIR (DM 59/2023): annotazioni libere. */
-  annotazioni?: string;
+  annotazioni?: string
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class FirService {
-  private readonly API_URL = `${environment.apiUrl}/fir`;
-  private readonly auth = inject(AuthService);
+  private readonly API_URL = `${environment.apiUrl}/fir`
+  private readonly auth = inject(AuthService)
 
   constructor(private http: HttpClient) {}
 
@@ -50,41 +55,37 @@ export class FirService {
    * scope: qui si traccia solo chi ha eseguito la transizione applicativa.
    */
   private buildFirma(): FirmaApplicativa {
-    const user = this.auth.currentUser();
-    const nome = user
-      ? [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
-      : '';
-    const firmatario = nome || user?.email || 'Operatore';
-    return { firmatario, certificato: 'FIRMA-NON-QUALIFICATA' };
+    const user = this.auth.currentUser()
+    const nome = user ? [user.firstName, user.lastName].filter(Boolean).join(' ').trim() : ''
+    const firmatario = nome || user?.email || 'Operatore'
+    return { firmatario, certificato: 'FIRMA-NON-QUALIFICATA' }
   }
 
   /**
    * Ottiene lista paginata di FIR
    */
   getFIRList(page = 1, limit = 10, stato?: FIRStato): Observable<PaginatedFIRResponse> {
-    let params = new HttpParams()
-      .set('page', page.toString())
-      .set('limit', limit.toString());
+    let params = new HttpParams().set('page', page.toString()).set('limit', limit.toString())
 
     if (stato) {
-      params = params.set('stato', stato);
+      params = params.set('stato', stato)
     }
 
-    return this.http.get<PaginatedFIRResponse>(this.API_URL, { params });
+    return this.http.get<PaginatedFIRResponse>(this.API_URL, { params })
   }
 
   /**
    * Ottiene un FIR per ID
    */
   getFIRById(id: string): Observable<FIR> {
-    return this.http.get<FIR>(`${this.API_URL}/${id}`);
+    return this.http.get<FIR>(`${this.API_URL}/${id}`)
   }
 
   /**
    * Crea nuovo FIR (stato BOZZA)
    */
   createFIR(dto: CreateFIRDto): Observable<FIR> {
-    return this.http.post<FIR>(this.API_URL, dto);
+    return this.http.post<FIR>(this.API_URL, dto)
   }
 
   /**
@@ -93,8 +94,8 @@ export class FirService {
    */
   emettiFIR(id: string): Observable<FIR> {
     return this.http.post<FIR>(`${this.API_URL}/${id}/emetti`, {
-      firmaProduttore: this.buildFirma()
-    });
+      firmaProduttore: this.buildFirma(),
+    })
   }
 
   /**
@@ -102,8 +103,8 @@ export class FirService {
    */
   presaInCarico(id: string): Observable<FIR> {
     return this.http.post<FIR>(`${this.API_URL}/${id}/presa-in-carico`, {
-      firmaTrasportatore: this.buildFirma()
-    });
+      firmaTrasportatore: this.buildFirma(),
+    })
   }
 
   /**
@@ -113,15 +114,15 @@ export class FirService {
   confermaConsegna(id: string, pesoEffettivo: number): Observable<FIR> {
     return this.http.post<FIR>(`${this.API_URL}/${id}/conferma-consegna`, {
       pesoEffettivo,
-      firmaDestinatario: this.buildFirma()
-    });
+      firmaDestinatario: this.buildFirma(),
+    })
   }
 
   /**
    * Annulla un FIR: qualsiasi stato tranne CONSEGNATO → ANNULLATO.
    */
   annullaFIR(id: string, motivo: string): Observable<FIR> {
-    return this.http.post<FIR>(`${this.API_URL}/${id}/annulla`, { motivo });
+    return this.http.post<FIR>(`${this.API_URL}/${id}/annulla`, { motivo })
   }
 
   /**
@@ -131,32 +132,40 @@ export class FirService {
     const params = new HttpParams()
       .set('produttoreId', produttoreId)
       .set('page', page.toString())
-      .set('limit', limit.toString());
+      .set('limit', limit.toString())
 
-    return this.http.get<PaginatedFIRResponse>(this.API_URL, { params });
+    return this.http.get<PaginatedFIRResponse>(this.API_URL, { params })
   }
 
   /**
    * Ottiene FIR per trasportatore
    */
-  getFIRByTrasportatore(trasportatoreId: string, page = 1, limit = 10): Observable<PaginatedFIRResponse> {
+  getFIRByTrasportatore(
+    trasportatoreId: string,
+    page = 1,
+    limit = 10
+  ): Observable<PaginatedFIRResponse> {
     const params = new HttpParams()
       .set('trasportatoreId', trasportatoreId)
       .set('page', page.toString())
-      .set('limit', limit.toString());
+      .set('limit', limit.toString())
 
-    return this.http.get<PaginatedFIRResponse>(this.API_URL, { params });
+    return this.http.get<PaginatedFIRResponse>(this.API_URL, { params })
   }
 
   /**
    * Ottiene FIR per destinatario
    */
-  getFIRByDestinatario(destinatarioId: string, page = 1, limit = 10): Observable<PaginatedFIRResponse> {
+  getFIRByDestinatario(
+    destinatarioId: string,
+    page = 1,
+    limit = 10
+  ): Observable<PaginatedFIRResponse> {
     const params = new HttpParams()
       .set('destinatarioId', destinatarioId)
       .set('page', page.toString())
-      .set('limit', limit.toString());
+      .set('limit', limit.toString())
 
-    return this.http.get<PaginatedFIRResponse>(this.API_URL, { params });
+    return this.http.get<PaginatedFIRResponse>(this.API_URL, { params })
   }
 }

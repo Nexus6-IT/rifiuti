@@ -8,19 +8,19 @@ import {
   Logger,
   HttpCode,
   HttpStatus,
-} from '@nestjs/common';
-import { CommandBus } from '@nestjs/cqrs';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { TenantIsolationGuard } from '../guards/tenant-isolation.guard';
-import { PermissionGuard } from '../guards/permission.guard';
-import { RequirePermission } from '../decorators/require-permission.decorator';
-import { CurrentTenant } from '../decorators/current-tenant.decorator';
-import { CurrentUser } from '../decorators/current-user.decorator';
-import { RequestTemporaryPermissionCommand } from '../../application/commands/request-temporary-permission.command';
-import { ApproveTemporaryPermissionCommand } from '../../application/commands/approve-temporary-permission.command';
-import { RejectTemporaryPermissionCommand } from '../../application/commands/reject-temporary-permission.command';
-import { RevokeTemporaryPermissionCommand } from '../../application/commands/revoke-temporary-permission.command';
-import { TemporaryPermissionGrantRepository } from '../../domain/identity-access/temporary-permission-grant.repository.interface';
+} from '@nestjs/common'
+import { CommandBus } from '@nestjs/cqrs'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
+import { PermissionGuard } from '../guards/permission.guard'
+import { RequirePermission } from '../decorators/require-permission.decorator'
+import { CurrentTenant } from '../decorators/current-tenant.decorator'
+import { CurrentUser } from '../decorators/current-user.decorator'
+import { RequestTemporaryPermissionCommand } from '../../application/commands/request-temporary-permission.command'
+import { ApproveTemporaryPermissionCommand } from '../../application/commands/approve-temporary-permission.command'
+import { RejectTemporaryPermissionCommand } from '../../application/commands/reject-temporary-permission.command'
+import { RevokeTemporaryPermissionCommand } from '../../application/commands/revoke-temporary-permission.command'
+import { TemporaryPermissionGrantRepository } from '../../domain/identity-access/temporary-permission-grant.repository.interface'
 
 /**
  * TemporaryPermissionController
@@ -39,11 +39,11 @@ import { TemporaryPermissionGrantRepository } from '../../domain/identity-access
 @Controller('permissions')
 @UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class TemporaryPermissionController {
-  private readonly logger = new Logger(TemporaryPermissionController.name);
+  private readonly logger = new Logger(TemporaryPermissionController.name)
 
   constructor(
     private readonly commandBus: CommandBus,
-    private readonly grantRepository: TemporaryPermissionGrantRepository,
+    private readonly grantRepository: TemporaryPermissionGrantRepository
   ) {}
 
   /**
@@ -58,13 +58,13 @@ export class TemporaryPermissionController {
     @CurrentUser() user: any,
     @Body()
     body: {
-      permissions: string[];
-      startTime: string; // ISO date string
-      endTime: string; // ISO date string
-      justification: string;
-    },
+      permissions: string[]
+      startTime: string // ISO date string
+      endTime: string // ISO date string
+      justification: string
+    }
   ) {
-    this.logger.log(`User ${user.userId} requesting temporary permissions`);
+    this.logger.log(`User ${user.userId} requesting temporary permissions`)
 
     const command = new RequestTemporaryPermissionCommand(
       user.userId,
@@ -72,10 +72,10 @@ export class TemporaryPermissionController {
       body.permissions,
       new Date(body.startTime),
       new Date(body.endTime),
-      body.justification,
-    );
+      body.justification
+    )
 
-    const grant = await this.commandBus.execute(command);
+    const grant = await this.commandBus.execute(command)
 
     return {
       success: true,
@@ -88,7 +88,7 @@ export class TemporaryPermissionController {
         requestedAt: grant.requestedAt.toISOString(),
       },
       message: 'Permission request submitted successfully. Awaiting approval.',
-    };
+    }
   }
 
   /**
@@ -99,14 +99,14 @@ export class TemporaryPermissionController {
   @Get('pending')
   @RequirePermission('role:read:all')
   async listPending(@CurrentTenant() tenantId: string) {
-    this.logger.log(`Fetching pending permission requests for tenant ${tenantId}`);
+    this.logger.log(`Fetching pending permission requests for tenant ${tenantId}`)
 
-    const pendingGrants = await this.grantRepository.findPendingByTenant(tenantId);
+    const pendingGrants = await this.grantRepository.findPendingByTenant(tenantId)
 
     return {
       success: true,
       data: {
-        grants: pendingGrants.map((grant) => ({
+        grants: pendingGrants.map(grant => ({
           id: grant.id,
           userId: grant.userId,
           permissions: grant.permissions,
@@ -119,7 +119,7 @@ export class TemporaryPermissionController {
         total: pendingGrants.length,
       },
       message: `Found ${pendingGrants.length} pending request(s)`,
-    };
+    }
   }
 
   /**
@@ -134,18 +134,18 @@ export class TemporaryPermissionController {
     @Param('id') grantId: string,
     @CurrentTenant() tenantId: string,
     @CurrentUser() user: any,
-    @Body() body: { reason: string },
+    @Body() body: { reason: string }
   ) {
-    this.logger.log(`Admin ${user.userId} approving grant ${grantId}`);
+    this.logger.log(`Admin ${user.userId} approving grant ${grantId}`)
 
     const command = new ApproveTemporaryPermissionCommand(
       grantId,
       tenantId,
       user.userId,
-      body.reason,
-    );
+      body.reason
+    )
 
-    const grant = await this.commandBus.execute(command);
+    const grant = await this.commandBus.execute(command)
 
     return {
       success: true,
@@ -156,7 +156,7 @@ export class TemporaryPermissionController {
         approvedAt: grant.approvedAt?.toISOString(),
       },
       message: 'Permission request approved successfully',
-    };
+    }
   }
 
   /**
@@ -171,18 +171,18 @@ export class TemporaryPermissionController {
     @Param('id') grantId: string,
     @CurrentTenant() tenantId: string,
     @CurrentUser() user: any,
-    @Body() body: { reason: string },
+    @Body() body: { reason: string }
   ) {
-    this.logger.log(`Admin ${user.userId} rejecting grant ${grantId}`);
+    this.logger.log(`Admin ${user.userId} rejecting grant ${grantId}`)
 
     const command = new RejectTemporaryPermissionCommand(
       grantId,
       tenantId,
       user.userId,
-      body.reason,
-    );
+      body.reason
+    )
 
-    const grant = await this.commandBus.execute(command);
+    const grant = await this.commandBus.execute(command)
 
     return {
       success: true,
@@ -194,7 +194,7 @@ export class TemporaryPermissionController {
         approvalReason: grant.approvalReason,
       },
       message: 'Permission request rejected',
-    };
+    }
   }
 
   /**
@@ -209,18 +209,18 @@ export class TemporaryPermissionController {
     @Param('id') grantId: string,
     @CurrentTenant() tenantId: string,
     @CurrentUser() user: any,
-    @Body() body: { reason: string },
+    @Body() body: { reason: string }
   ) {
-    this.logger.log(`Admin ${user.userId} revoking grant ${grantId}`);
+    this.logger.log(`Admin ${user.userId} revoking grant ${grantId}`)
 
     const command = new RevokeTemporaryPermissionCommand(
       grantId,
       tenantId,
       user.userId,
-      body.reason,
-    );
+      body.reason
+    )
 
-    const grant = await this.commandBus.execute(command);
+    const grant = await this.commandBus.execute(command)
 
     return {
       success: true,
@@ -231,7 +231,7 @@ export class TemporaryPermissionController {
         revokedAt: grant.revokedAt?.toISOString(),
       },
       message: 'Permission grant revoked successfully',
-    };
+    }
   }
 
   /**
@@ -240,18 +240,15 @@ export class TemporaryPermissionController {
    * Requires: Authenticated user
    */
   @Get('my-grants')
-  async listMyGrants(
-    @CurrentTenant() tenantId: string,
-    @CurrentUser() user: any,
-  ) {
-    this.logger.log(`User ${user.userId} fetching their grants`);
+  async listMyGrants(@CurrentTenant() tenantId: string, @CurrentUser() user: any) {
+    this.logger.log(`User ${user.userId} fetching their grants`)
 
-    const grants = await this.grantRepository.findAllByUser(user.userId, tenantId, 50);
+    const grants = await this.grantRepository.findAllByUser(user.userId, tenantId, 50)
 
     return {
       success: true,
       data: {
-        grants: grants.map((grant) => ({
+        grants: grants.map(grant => ({
           id: grant.id,
           permissions: grant.permissions,
           startTime: grant.startTime.toISOString(),
@@ -268,6 +265,6 @@ export class TemporaryPermissionController {
         total: grants.length,
       },
       message: 'Your permission grants retrieved successfully',
-    };
+    }
   }
 }

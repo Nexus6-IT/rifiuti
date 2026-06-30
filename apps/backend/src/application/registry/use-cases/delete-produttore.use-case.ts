@@ -18,7 +18,7 @@ export interface DeleteProduttoreCommand {
 export class DeleteProduttoreUseCase {
   constructor(
     @Inject(PRODUTTORE_REPOSITORY)
-    private readonly produttoreRepository: ProduttoreRepository,
+    private readonly produttoreRepository: ProduttoreRepository
   ) {}
 
   async execute(command: DeleteProduttoreCommand): Promise<Result<void>> {

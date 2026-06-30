@@ -70,7 +70,7 @@ describe('parsePkcs12', () => {
     const fixture = makePkcs12(passphrase)
 
     expect(() => parsePkcs12(fixture.pkcs12Base64, 'passphrase-sbagliata')).toThrow(
-      /passphrase|non valido|non leggibile/i,
+      /passphrase|non valido|non leggibile/i
     )
   })
 

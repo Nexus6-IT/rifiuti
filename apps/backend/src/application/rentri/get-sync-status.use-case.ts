@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { LoggerService } from '../../core/logger/logger.service';
+import { Injectable } from '@nestjs/common'
+import { LoggerService } from '../../core/logger/logger.service'
 
 /**
  * Get Sync Status Use Case
@@ -11,9 +11,9 @@ import { LoggerService } from '../../core/logger/logger.service';
 export class GetSyncStatusUseCase {
   constructor(
     private readonly rentriSyncQueue: any, // RENTRISyncQueue
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext('GetSyncStatusUseCase');
+    this.logger.setContext('GetSyncStatusUseCase')
   }
 
   /**
@@ -21,18 +21,18 @@ export class GetSyncStatusUseCase {
    */
   async execute(jobId: string, tenantId: string): Promise<SyncJobStatus> {
     try {
-      const job = await this.rentriSyncQueue.getJob(jobId);
+      const job = await this.rentriSyncQueue.getJob(jobId)
 
       if (!job) {
-        throw new Error('Job not found');
+        throw new Error('Job not found')
       }
 
       // Verify tenant isolation
       if (job.data.tenantId !== tenantId) {
-        throw new Error('Unauthorized access to job');
+        throw new Error('Unauthorized access to job')
       }
 
-      const state = await job.getState();
+      const state = await job.getState()
 
       return {
         jobId: job.id,
@@ -44,10 +44,10 @@ export class GetSyncStatusUseCase {
         attemptsMade: job.attemptsMade,
         processedOn: job.processedOn ? new Date(job.processedOn) : undefined,
         finishedOn: job.finishedOn ? new Date(job.finishedOn) : undefined,
-      };
+      }
     } catch (error: any) {
-      this.logger.error('Failed to get sync status', error, { jobId, tenantId });
-      throw error;
+      this.logger.error('Failed to get sync status', error, { jobId, tenantId })
+      throw error
     }
   }
 
@@ -61,20 +61,20 @@ export class GetSyncStatusUseCase {
       completed: 'completed',
       failed: 'failed',
       delayed: 'delayed',
-    };
+    }
 
-    return stateMap[state] || state;
+    return stateMap[state] || state
   }
 }
 
 export interface SyncJobStatus {
-  jobId: string;
-  status: string;
-  progress: number;
-  data: any;
-  result?: any;
-  failedReason?: string;
-  attemptsMade: number;
-  processedOn?: Date;
-  finishedOn?: Date;
+  jobId: string
+  status: string
+  progress: number
+  data: any
+  result?: any
+  failedReason?: string
+  attemptsMade: number
+  processedOn?: Date
+  finishedOn?: Date
 }

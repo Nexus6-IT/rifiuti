@@ -1,13 +1,13 @@
-import { Component, inject, signal, OnInit, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { CardModule } from 'primeng/card';
-import { ChartModule } from 'primeng/chart';
-import { ButtonModule } from 'primeng/button';
-import { TagModule } from 'primeng/tag';
-import { ProgressBarModule } from 'primeng/progressbar';
-import { SkeletonModule } from 'primeng/skeleton';
-import { DashboardService, DashboardData } from '../../../core/services/dashboard.service';
-import { MessageService } from 'primeng/api';
+import { Component, inject, signal, OnInit, computed } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { CardModule } from 'primeng/card'
+import { ChartModule } from 'primeng/chart'
+import { ButtonModule } from 'primeng/button'
+import { TagModule } from 'primeng/tag'
+import { ProgressBarModule } from 'primeng/progressbar'
+import { SkeletonModule } from 'primeng/skeleton'
+import { DashboardService, DashboardData } from '../../../core/services/dashboard.service'
+import { MessageService } from 'primeng/api'
 
 /**
  * Dashboard Page Component
@@ -123,7 +123,9 @@ import { MessageService } from 'primeng/api';
                 <i class="pi pi-check-circle" aria-hidden="true"></i> FIR completati
               </span>
               <span class="stat-card__value">{{ data.overview.completedFIRs }}</span>
-              <span class="stat-card__hint">{{ (completionRate() * 100).toFixed(0) }}% del totale</span>
+              <span class="stat-card__hint"
+                >{{ (completionRate() * 100).toFixed(0) }}% del totale</span
+              >
             </article>
 
             <article class="stat-card">
@@ -179,12 +181,15 @@ import { MessageService } from 'primeng/api';
             />
             <div class="recycling">
               <p class="recycling__label">
-                Tasso di riciclo: <strong>{{ (data.waste.recyclingRate * 100).toFixed(1) }}%</strong>
+                Tasso di riciclo:
+                <strong>{{ (data.waste.recyclingRate * 100).toFixed(1) }}%</strong>
               </p>
               <p-progressBar
                 [value]="data.waste.recyclingRate * 100"
                 [showValue]="false"
-                [attr.aria-label]="'Tasso di riciclo ' + (data.waste.recyclingRate * 100).toFixed(0) + ' percento'"
+                [attr.aria-label]="
+                  'Tasso di riciclo ' + (data.waste.recyclingRate * 100).toFixed(0) + ' percento'
+                "
               />
             </div>
           </div>
@@ -262,11 +267,15 @@ import { MessageService } from 'primeng/api';
             <div class="metric-pair">
               <div class="metric-pair__item">
                 <span class="metric-pair__label">FIR sincronizzati</span>
-                <span class="metric-pair__value metric-pair__value--success">{{ data.rentri.synced }}</span>
+                <span class="metric-pair__value metric-pair__value--success">{{
+                  data.rentri.synced
+                }}</span>
               </div>
               <div class="metric-pair__item">
                 <span class="metric-pair__label">In attesa</span>
-                <span class="metric-pair__value metric-pair__value--warning">{{ data.rentri.pending }}</span>
+                <span class="metric-pair__value metric-pair__value--warning">{{
+                  data.rentri.pending
+                }}</span>
               </div>
             </div>
           </div>
@@ -285,11 +294,15 @@ import { MessageService } from 'primeng/api';
             <div class="metric-pair">
               <div class="metric-pair__item">
                 <span class="metric-pair__label">Firme complete</span>
-                <span class="metric-pair__value metric-pair__value--success">{{ data.signatures.completed }}</span>
+                <span class="metric-pair__value metric-pair__value--success">{{
+                  data.signatures.completed
+                }}</span>
               </div>
               <div class="metric-pair__item">
                 <span class="metric-pair__label">Tempo medio</span>
-                <span class="metric-pair__value metric-pair__value--accent">{{ data.signatures.averageTimeHours }}h</span>
+                <span class="metric-pair__value metric-pair__value--accent"
+                  >{{ data.signatures.averageTimeHours }}h</span
+                >
               </div>
             </div>
           </div>
@@ -302,7 +315,10 @@ import { MessageService } from 'primeng/api';
           <div class="surface-card">
             <h3 class="card-title">Top 5 produttori</h3>
             <ol class="rank-list" *ngIf="data.top.producers.length; else noProducers">
-              <li class="rank-list__item" *ngFor="let producer of data.top.producers; let i = index">
+              <li
+                class="rank-list__item"
+                *ngFor="let producer of data.top.producers; let i = index"
+              >
                 <span class="rank-list__rank" aria-hidden="true">{{ i + 1 }}</span>
                 <span class="rank-list__label">{{ producer.partitaIva }}</span>
                 <p-tag [value]="producer.count + ' FIR'" severity="info" />
@@ -346,175 +362,205 @@ import { MessageService } from 'primeng/api';
       </div>
     </div>
   `,
-  styles: [`
-    .dashboard-grid {
-      display: grid;
-      /* Allineato al gap delle KPI (.stat-grid) per continuità visiva */
-      gap: var(--spacing-base);
-    }
-    .dashboard-grid--two {
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    }
+  styles: [
+    `
+      .dashboard-grid {
+        display: grid;
+        /* Allineato al gap delle KPI (.stat-grid) per continuità visiva */
+        gap: var(--spacing-base);
+      }
+      .dashboard-grid--two {
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      }
 
-    .card-title {
-      font-family: var(--font-display);
-      font-size: var(--font-size-lg);
-      font-weight: var(--font-weight-semibold);
-      color: var(--text-primary);
-      margin: 0 0 var(--spacing-base);
-    }
+      .card-title {
+        font-family: var(--font-display);
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+        margin: 0 0 var(--spacing-base);
+      }
 
-    .stat-card__label {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--spacing-xs);
-    }
-    .stat-card__label .pi { color: var(--brand-primary); }
+      .stat-card__label {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+      }
+      .stat-card__label .pi {
+        color: var(--brand-primary);
+      }
 
-    /* Riciclo */
-    .recycling {
-      margin-top: var(--spacing-lg);
-      padding-top: var(--spacing-base);
-      border-top: 1px solid var(--surface-border);
-    }
-    .recycling__label {
-      margin: 0 0 var(--spacing-sm);
-      color: var(--text-secondary);
-      font-size: var(--font-size-sm);
-    }
-    .recycling__label strong { color: var(--text-primary); }
+      /* Riciclo */
+      .recycling {
+        margin-top: var(--spacing-lg);
+        padding-top: var(--spacing-base);
+        border-top: 1px solid var(--surface-border);
+      }
+      .recycling__label {
+        margin: 0 0 var(--spacing-sm);
+        color: var(--text-secondary);
+        font-size: var(--font-size-sm);
+      }
+      .recycling__label strong {
+        color: var(--text-primary);
+      }
 
-    /* Andamento */
-    .trend-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: var(--spacing-base);
-      margin: 0;
-    }
-    .trend-item {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-xs);
-      padding: var(--spacing-base);
-      background: var(--color-gray-50);
-      border-radius: var(--radius-md);
-    }
-    .trend-item__label {
-      font-size: var(--font-size-sm);
-      color: var(--text-tertiary);
-      font-weight: var(--font-weight-medium);
-    }
-    .trend-item__value {
-      font-family: var(--font-display);
-      font-size: var(--font-size-2xl);
-      font-weight: var(--font-weight-bold);
-      color: var(--text-primary);
-      margin: 0;
-      line-height: 1.1;
-    }
-    /* Stato reale (direzione crescita): colore semantico mantenuto */
-    .trend-item__value--up { color: var(--color-success); }
-    .trend-item__value--down { color: var(--color-danger); }
-    /* Valore neutro: la previsione non rappresenta uno stato/soglia */
-    .trend-item__value--accent { color: var(--text-primary); }
+      /* Andamento */
+      .trend-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-base);
+        margin: 0;
+      }
+      .trend-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-base);
+        background: var(--color-gray-50);
+        border-radius: var(--radius-md);
+      }
+      .trend-item__label {
+        font-size: var(--font-size-sm);
+        color: var(--text-tertiary);
+        font-weight: var(--font-weight-medium);
+      }
+      .trend-item__value {
+        font-family: var(--font-display);
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-bold);
+        color: var(--text-primary);
+        margin: 0;
+        line-height: 1.1;
+      }
+      /* Stato reale (direzione crescita): colore semantico mantenuto */
+      .trend-item__value--up {
+        color: var(--color-success);
+      }
+      .trend-item__value--down {
+        color: var(--color-danger);
+      }
+      /* Valore neutro: la previsione non rappresenta uno stato/soglia */
+      .trend-item__value--accent {
+        color: var(--text-primary);
+      }
 
-    /* Metriche */
-    .metric-block { margin-bottom: var(--spacing-lg); }
-    .metric-block__label {
-      display: block;
-      margin-bottom: var(--spacing-sm);
-      font-size: var(--font-size-sm);
-      color: var(--text-secondary);
-      font-weight: var(--font-weight-medium);
-    }
-    .metric-pair {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: var(--spacing-base);
-    }
-    .metric-pair__item {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-xs);
-    }
-    .metric-pair__label {
-      font-size: var(--font-size-sm);
-      color: var(--text-tertiary);
-    }
-    .metric-pair__value {
-      font-family: var(--font-display);
-      font-size: var(--font-size-2xl);
-      font-weight: var(--font-weight-bold);
-      color: var(--text-primary);
-      line-height: 1.1;
-    }
-    /* Valori KPI neutri di default: sono conteggi, non stati/soglie */
-    .metric-pair__value--success { color: var(--text-primary); }
-    .metric-pair__value--warning { color: var(--text-primary); }
-    .metric-pair__value--accent { color: var(--text-primary); }
+      /* Metriche */
+      .metric-block {
+        margin-bottom: var(--spacing-lg);
+      }
+      .metric-block__label {
+        display: block;
+        margin-bottom: var(--spacing-sm);
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        font-weight: var(--font-weight-medium);
+      }
+      .metric-pair {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-base);
+      }
+      .metric-pair__item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+      }
+      .metric-pair__label {
+        font-size: var(--font-size-sm);
+        color: var(--text-tertiary);
+      }
+      .metric-pair__value {
+        font-family: var(--font-display);
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-bold);
+        color: var(--text-primary);
+        line-height: 1.1;
+      }
+      /* Valori KPI neutri di default: sono conteggi, non stati/soglie */
+      .metric-pair__value--success {
+        color: var(--text-primary);
+      }
+      .metric-pair__value--warning {
+        color: var(--text-primary);
+      }
+      .metric-pair__value--accent {
+        color: var(--text-primary);
+      }
 
-    /* Liste classifica */
-    .rank-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-sm);
-    }
-    .rank-list__item {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-base);
-      padding: var(--spacing-md);
-      background: var(--color-gray-50);
-      border: 1px solid var(--surface-border);
-      border-radius: var(--radius-md);
-    }
-    .rank-list__rank {
-      flex: 0 0 auto;
-      width: 2rem;
-      height: 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: var(--radius-full);
-      background: var(--brand-primary);
-      color: var(--text-inverse);
-      font-family: var(--font-display);
-      font-weight: var(--font-weight-bold);
-      font-size: var(--font-size-sm);
-    }
-    .rank-list__label {
-      flex: 1 1 auto;
-      min-width: 0;
-      font-family: var(--font-family-mono);
-      font-size: var(--font-size-sm);
-      color: var(--text-primary);
-      overflow-wrap: anywhere;
-    }
+      /* Liste classifica */
+      .rank-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+      }
+      .rank-list__item {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-base);
+        padding: var(--spacing-md);
+        background: var(--color-gray-50);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-md);
+      }
+      .rank-list__rank {
+        flex: 0 0 auto;
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-full);
+        background: var(--brand-primary);
+        color: var(--text-inverse);
+        font-family: var(--font-display);
+        font-weight: var(--font-weight-bold);
+        font-size: var(--font-size-sm);
+      }
+      .rank-list__label {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-sm);
+        color: var(--text-primary);
+        overflow-wrap: anywhere;
+      }
 
-    .mt-4 { margin-top: var(--spacing-lg); }
-    .mb-2 { margin-bottom: var(--spacing-sm); }
-    .mb-3 { margin-bottom: var(--spacing-md); }
+      .mt-4 {
+        margin-top: var(--spacing-lg);
+      }
+      .mb-2 {
+        margin-bottom: var(--spacing-sm);
+      }
+      .mb-3 {
+        margin-bottom: var(--spacing-md);
+      }
 
-    @media (max-width: 576px) {
-      .trend-grid { grid-template-columns: 1fr; }
-      .metric-pair { grid-template-columns: 1fr; }
-    }
-  `]
+      @media (max-width: 576px) {
+        .trend-grid {
+          grid-template-columns: 1fr;
+        }
+        .metric-pair {
+          grid-template-columns: 1fr;
+        }
+      }
+    `,
+  ],
 })
 export class DashboardPageComponent implements OnInit {
-  private readonly dashboardService = inject(DashboardService);
-  private readonly messageService = inject(MessageService);
+  private readonly dashboardService = inject(DashboardService)
+  private readonly messageService = inject(MessageService)
 
-  protected readonly isLoading = signal(false);
-  protected readonly dashboard = signal<DashboardData | null>(null);
-  protected readonly error = signal<string | null>(null);
+  protected readonly isLoading = signal(false)
+  protected readonly dashboard = signal<DashboardData | null>(null)
+  protected readonly error = signal<string | null>(null)
 
   // Colore neutro leggibile (WCAG AA) per tick/legenda/titoli assi -> --text-secondary
-  private readonly axisTextColor = '#475569';
-  private readonly axisGridColor = '#e2e8f0';
+  private readonly axisTextColor = '#475569'
+  private readonly axisGridColor = '#e2e8f0'
 
   protected readonly chartOptions = {
     plugins: {
@@ -525,7 +571,7 @@ export class DashboardPageComponent implements OnInit {
         },
       },
     },
-  };
+  }
 
   protected readonly barChartOptions = {
     ...this.chartOptions,
@@ -542,123 +588,126 @@ export class DashboardPageComponent implements OnInit {
         title: { color: this.axisTextColor },
       },
     },
-  };
+  }
 
   // Computed values
   protected readonly growthPercentage = computed(() => {
-    const data = this.dashboard();
-    return data ? data.trends.monthOverMonth.percentage : 0;
-  });
+    const data = this.dashboard()
+    return data ? data.trends.monthOverMonth.percentage : 0
+  })
 
   protected readonly completionRate = computed(() => {
-    const data = this.dashboard();
-    if (!data || data.overview.totalFIRs === 0) return 0;
-    return data.overview.completedFIRs / data.overview.totalFIRs;
-  });
+    const data = this.dashboard()
+    if (!data || data.overview.totalFIRs === 0) return 0
+    return data.overview.completedFIRs / data.overview.totalFIRs
+  })
 
   protected readonly statusChartData = computed(() => {
-    const data = this.dashboard();
-    if (!data) return {};
+    const data = this.dashboard()
+    if (!data) return {}
 
     return {
       labels: Object.keys(data.status.breakdown),
-      datasets: [{
-        data: Object.values(data.status.breakdown),
-        // Palette semantica: info / success / warning / danger
-        backgroundColor: ['#1d4ed8', '#15803d', '#b45309', '#b91c1c'],
-      }],
-    };
-  });
+      datasets: [
+        {
+          data: Object.values(data.status.breakdown),
+          // Palette semantica: info / success / warning / danger
+          backgroundColor: ['#1d4ed8', '#15803d', '#b45309', '#b91c1c'],
+        },
+      ],
+    }
+  })
 
   // True quando il grafico "Stato dei FIR" ha almeno un valore > 0
   protected readonly hasStatusData = computed(() => {
-    const data = this.dashboard();
-    if (!data) return false;
-    return Object.values(data.status.breakdown).some(v => (v as number) > 0);
-  });
+    const data = this.dashboard()
+    if (!data) return false
+    return Object.values(data.status.breakdown).some(v => (v as number) > 0)
+  })
 
   protected readonly destinationChartData = computed(() => {
-    const data = this.dashboard();
-    if (!data) return {};
+    const data = this.dashboard()
+    if (!data) return {}
 
     return {
       labels: ['Recupero', 'Smaltimento'],
-      datasets: [{
-        data: [
-          data.waste.byDestination.recovery.count,
-          data.waste.byDestination.disposal.count,
-        ],
-        // Palette semantica: success (recupero) / warning (smaltimento)
-        backgroundColor: ['#15803d', '#b45309'],
-      }],
-    };
-  });
+      datasets: [
+        {
+          data: [data.waste.byDestination.recovery.count, data.waste.byDestination.disposal.count],
+          // Palette semantica: success (recupero) / warning (smaltimento)
+          backgroundColor: ['#15803d', '#b45309'],
+        },
+      ],
+    }
+  })
 
   // True quando il grafico "Destinazione rifiuti" ha almeno un valore > 0
   protected readonly hasDestinationData = computed(() => {
-    const data = this.dashboard();
-    if (!data) return false;
-    return (data.waste.byDestination.recovery.count + data.waste.byDestination.disposal.count) > 0;
-  });
+    const data = this.dashboard()
+    if (!data) return false
+    return data.waste.byDestination.recovery.count + data.waste.byDestination.disposal.count > 0
+  })
 
   protected readonly cerChartData = computed(() => {
-    const data = this.dashboard();
-    if (!data) return {};
+    const data = this.dashboard()
+    if (!data) return {}
 
-    const top10 = data.waste.byCERCode.slice(0, 10);
+    const top10 = data.waste.byCERCode.slice(0, 10)
 
     return {
       labels: top10.map(w => w.cerCode),
-      datasets: [{
-        label: 'Quantità (kg)',
-        data: top10.map(w => w.totalQuantity),
-        // Colore brand primario (scuro, contrasto adeguato)
-        backgroundColor: '#0f766e',
-      }],
-    };
-  });
+      datasets: [
+        {
+          label: 'Quantità (kg)',
+          data: top10.map(w => w.totalQuantity),
+          // Colore brand primario (scuro, contrasto adeguato)
+          backgroundColor: '#0f766e',
+        },
+      ],
+    }
+  })
 
   // True quando il grafico "Top 10 codici CER" ha almeno una voce
   protected readonly hasCerData = computed(() => {
-    const data = this.dashboard();
-    return !!data && data.waste.byCERCode.length > 0;
-  });
+    const data = this.dashboard()
+    return !!data && data.waste.byCERCode.length > 0
+  })
 
   ngOnInit(): void {
-    this.loadDashboard();
+    this.loadDashboard()
   }
 
   protected async loadDashboard(): Promise<void> {
-    this.isLoading.set(true);
-    this.error.set(null);
+    this.isLoading.set(true)
+    this.error.set(null)
 
     try {
-      const data = await this.dashboardService.getDashboard().toPromise();
-      this.dashboard.set(data || null);
+      const data = await this.dashboardService.getDashboard().toPromise()
+      this.dashboard.set(data || null)
     } catch (error) {
-      console.error('Failed to load dashboard', error);
-      this.error.set('Impossibile caricare i dati del dashboard. Riprova più tardi.');
+      console.error('Failed to load dashboard', error)
+      this.error.set('Impossibile caricare i dati del dashboard. Riprova più tardi.')
       this.messageService.add({
         severity: 'error',
         summary: 'Errore',
         detail: 'Impossibile caricare i dati del dashboard',
-      });
+      })
     } finally {
-      this.isLoading.set(false);
+      this.isLoading.set(false)
     }
   }
 
   protected exportCSV(): void {
-    this.dashboardService.downloadExport('csv');
+    this.dashboardService.downloadExport('csv')
     this.messageService.add({
       severity: 'success',
       summary: 'Export Avviato',
       detail: 'Il download del CSV inizierà a breve',
-    });
+    })
   }
 
   protected formatWeight(kg: number): string {
-    return (kg / 1000).toFixed(1);
+    return (kg / 1000).toFixed(1)
   }
 
   protected complianceLabel(level: string): string {
@@ -667,8 +716,8 @@ export class DashboardPageComponent implements OnInit {
       GOOD: 'Buona',
       NEEDS_IMPROVEMENT: 'Da migliorare',
       CRITICAL: 'Critica',
-    };
-    return labels[level] || level;
+    }
+    return labels[level] || level
   }
 
   protected getComplianceSeverity(level: string): 'success' | 'info' | 'warning' | 'danger' {
@@ -677,7 +726,7 @@ export class DashboardPageComponent implements OnInit {
       GOOD: 'info',
       NEEDS_IMPROVEMENT: 'warning',
       CRITICAL: 'danger',
-    };
-    return severities[level] || 'info';
+    }
+    return severities[level] || 'info'
   }
 }

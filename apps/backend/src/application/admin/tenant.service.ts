@@ -3,20 +3,14 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
-} from '@nestjs/common';
-import {
-  SubscriptionStatus,
-  SubscriptionTier,
-  UserRole,
-  Prisma,
-} from '@prisma/client';
-import { PrismaService } from '../../infrastructure/persistence/prisma.service';
-import { LoggerService } from '../../core/logger/logger.service';
-import { CreateTenantDto } from '../../api/admin/dto/create-tenant.dto';
-import { UpdateTenantDto } from '../../api/admin/dto/update-tenant.dto';
-import { PLAN_FEATURES } from './feature-catalog';
-import { seedRolesForTenant } from './system-roles';
-import { TenantContext } from '../../core/context/tenant-context';
+} from '@nestjs/common'
+import { SubscriptionStatus, SubscriptionTier, UserRole, Prisma } from '@prisma/client'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { LoggerService } from '../../core/logger/logger.service'
+import { CreateTenantDto } from '../../api/admin/dto/create-tenant.dto'
+import { UpdateTenantDto } from '../../api/admin/dto/update-tenant.dto'
+import { seedRolesForTenant } from './system-roles'
+import { TenantContext } from '../../core/context/tenant-context'
 
 /**
  * TenantService (admin)
@@ -39,22 +33,22 @@ import { TenantContext } from '../../core/context/tenant-context';
  * Allineata a `CurrentUserPayload` della JWT strategy.
  */
 export interface CurrentUser {
-  id: string;
-  tenantId: string;
-  role: string;
+  id: string
+  tenantId: string
+  role: string
 }
 
 @Injectable()
 export class TenantService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext(TenantService.name);
+    this.logger.setContext(TenantService.name)
   }
 
   private isSuperAdmin(currentUser: CurrentUser): boolean {
-    return currentUser.role === UserRole.SUPER_ADMIN;
+    return currentUser.role === UserRole.SUPER_ADMIN
   }
 
   /**
@@ -67,16 +61,13 @@ export class TenantService {
     const where: Prisma.TenantWhereInput = this.isSuperAdmin(currentUser)
       ? {}
       : {
-          OR: [
-            { ownerUserId: currentUser.id },
-            { id: currentUser.tenantId },
-          ],
-        };
+          OR: [{ ownerUserId: currentUser.id }, { id: currentUser.tenantId }],
+        }
 
     this.logger.info('Listing tenants', {
       requestedBy: currentUser.id,
       role: currentUser.role,
-    });
+    })
 
     return this.prisma.tenant.findMany({
       where,
@@ -86,7 +77,7 @@ export class TenantService {
           select: { users: true },
         },
       },
-    });
+    })
   }
 
   /**
@@ -101,13 +92,13 @@ export class TenantService {
           select: { users: true },
         },
       },
-    });
+    })
 
     if (!tenant) {
-      throw new NotFoundException(`Tenant ${id} non trovato`);
+      throw new NotFoundException(`Tenant ${id} non trovato`)
     }
 
-    return tenant;
+    return tenant
   }
 
   /**
@@ -129,36 +120,32 @@ export class TenantService {
    * @throws ForbiddenException se l'ADMIN ha raggiunto la quota aziende.
    */
   async create(currentUser: CurrentUser, dto: CreateTenantDto) {
-    const isSuperAdmin = this.isSuperAdmin(currentUser);
+    const isSuperAdmin = this.isSuperAdmin(currentUser)
 
     const existing = await this.prisma.tenant.findUnique({
       where: { partitaIva: dto.partitaIva },
       select: { id: true },
-    });
+    })
 
     if (existing) {
-      throw new ConflictException(
-        `Partita IVA ${dto.partitaIva} già registrata`,
-      );
+      throw new ConflictException(`Partita IVA ${dto.partitaIva} già registrata`)
     }
 
     // Determina il proprietario (ownerUserId) e applica la quota per gli ADMIN.
-    let ownerUserId: string | null;
+    let ownerUserId: string | null
     if (isSuperAdmin) {
-      ownerUserId = dto.ownerUserId ?? null;
+      ownerUserId = dto.ownerUserId ?? null
     } else {
       // ADMIN self-service: proprietario = se stesso + enforcement quota.
-      ownerUserId = currentUser.id;
+      ownerUserId = currentUser.id
 
-      const limit = await this.getCompanyLimit(currentUser.id);
+      const limit = await this.getCompanyLimit(currentUser.id)
       const owned = await this.prisma.tenant.count({
         where: { ownerUserId: currentUser.id },
-      });
+      })
 
       if (owned >= limit) {
-        throw new ForbiddenException(
-          `Limite aziende raggiunto (${owned}/${limit})`,
-        );
+        throw new ForbiddenException(`Limite aziende raggiunto (${owned}/${limit})`)
       }
     }
 
@@ -173,21 +160,14 @@ export class TenantService {
       | 'firLimitPerMonth'
       | 'userLimitTotal'
       | 'featureFlags'
-    >;
-    let subscriptionData: SubscriptionData;
+    >
+    let subscriptionData: SubscriptionData
     if (isSuperAdmin) {
       subscriptionData = {
-        subscriptionStatus:
-          dto.subscriptionStatus ?? SubscriptionStatus.TRIAL,
-        ...(dto.subscriptionTier
-          ? { subscriptionTier: dto.subscriptionTier }
-          : {}),
-        ...(dto.firLimitPerMonth !== undefined
-          ? { firLimitPerMonth: dto.firLimitPerMonth }
-          : {}),
-        ...(dto.userLimitTotal !== undefined
-          ? { userLimitTotal: dto.userLimitTotal }
-          : {}),
+        subscriptionStatus: dto.subscriptionStatus ?? SubscriptionStatus.TRIAL,
+        ...(dto.subscriptionTier ? { subscriptionTier: dto.subscriptionTier } : {}),
+        ...(dto.firLimitPerMonth !== undefined ? { firLimitPerMonth: dto.firLimitPerMonth } : {}),
+        ...(dto.userLimitTotal !== undefined ? { userLimitTotal: dto.userLimitTotal } : {}),
         // featureFlags: null di default → derivato dal piano (fix WS-F).
         // Solo se il SUPER_ADMIN ha passato un override esplicito nel DTO lo si
         // persiste; altrimenti null garantisce che le nuove feature del piano
@@ -195,7 +175,7 @@ export class TenantService {
         featureFlags: dto.featureFlags
           ? (dto.featureFlags as unknown as Prisma.InputJsonValue)
           : Prisma.DbNull,
-      };
+      }
     } else {
       // Piano di default forzato per le aziende create dagli admin.
       // featureFlags=null → si derivano sempre dal piano (fix WS-F):
@@ -205,7 +185,7 @@ export class TenantService {
         subscriptionStatus: SubscriptionStatus.TRIAL,
         // userLimitTotal/firLimitPerMonth: si lasciano i default di schema.
         featureFlags: Prisma.DbNull,
-      };
+      }
     }
 
     const data: Prisma.TenantCreateInput = {
@@ -227,31 +207,31 @@ export class TenantService {
       country: dto.country ?? 'IT',
       ownerUserId,
       ...subscriptionData,
-    };
+    }
 
-    const tenant = await this.prisma.tenant.create({ data });
+    const tenant = await this.prisma.tenant.create({ data })
 
     this.logger.info('Tenant created', {
       tenantId: tenant.id,
       partitaIva: tenant.partitaIva,
       ownerUserId,
       createdBy: currentUser.id,
-    });
+    })
 
     // Seed dei 5 ruoli di sistema per il nuovo tenant. Senza questo i tenant
     // creati via API resterebbero privi di ruoli (e quindi non assegnabili
     // agli utenti). Best-effort: un fallimento del seeding non deve annullare
     // la creazione del tenant (i ruoli sono ricreabili via `prisma:seed`).
-    await this.seedRoles(tenant.id, currentUser.id);
+    await this.seedRoles(tenant.id, currentUser.id)
 
     // Associa l'admin proprietario al nuovo tenant (ruolo ADMIN) così da poter
     // switchare nell'azienda via /consultant/switch-tenant. Best-effort: un
     // fallimento non deve annullare la creazione.
     if (ownerUserId) {
-      await this.associateOwner(tenant.id, ownerUserId, currentUser.id);
+      await this.associateOwner(tenant.id, ownerUserId, currentUser.id)
     }
 
-    return tenant;
+    return tenant
   }
 
   /**
@@ -261,8 +241,8 @@ export class TenantService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { companyLimit: true },
-    });
-    return user?.companyLimit ?? 0;
+    })
+    return user?.companyLimit ?? 0
   }
 
   /**
@@ -273,20 +253,20 @@ export class TenantService {
   private async associateOwner(
     tenantId: string,
     ownerUserId: string,
-    addedBy: string,
+    addedBy: string
   ): Promise<void> {
     try {
       const adminRole = await this.prisma.role.findUnique({
         where: { tenantId_name: { tenantId, name: 'ADMIN' } },
         select: { id: true },
-      });
+      })
 
       if (!adminRole) {
         this.logger.warn(
           'Ruolo ADMIN non trovato per il nuovo tenant: associazione owner saltata',
-          { tenantId, ownerUserId },
-        );
-        return;
+          { tenantId, ownerUserId }
+        )
+        return
       }
 
       await this.prisma.consultantTenantAssociation.upsert({
@@ -304,18 +284,18 @@ export class TenantService {
           addedBy,
           isActive: true,
         },
-      });
+      })
 
       this.logger.info('Owner associato al nuovo tenant', {
         tenantId,
         ownerUserId,
-      });
+      })
     } catch (error) {
       this.logger.error(
         'Associazione owner↔tenant fallita (tenant comunque creato)',
         error as Error,
-        { tenantId, ownerUserId },
-      );
+        { tenantId, ownerUserId }
+      )
     }
   }
 
@@ -328,35 +308,32 @@ export class TenantService {
    * esiste (es. bootstrap iniziale) il seeding è rimandato al seed globale e si
    * registra solo un warning.
    */
-  private async seedRoles(
-    tenantId: string,
-    requestedBy?: string,
-  ): Promise<void> {
+  private async seedRoles(tenantId: string, requestedBy?: string): Promise<void> {
     try {
       const createdBy =
         requestedBy ??
         TenantContext.getUserId() ??
-        (await this.prisma.user.findFirst({ select: { id: true } }))?.id;
+        (await this.prisma.user.findFirst({ select: { id: true } }))?.id
 
       if (!createdBy) {
         this.logger.warn(
           'Nessun utente disponibile come createdBy: seeding ruoli rimandato al seed globale',
-          { tenantId },
-        );
-        return;
+          { tenantId }
+        )
+        return
       }
 
-      const count = await seedRolesForTenant(this.prisma, tenantId, createdBy);
+      const count = await seedRolesForTenant(this.prisma, tenantId, createdBy)
       this.logger.info('Ruoli di sistema creati per il nuovo tenant', {
         tenantId,
         rolesCreated: count,
-      });
+      })
     } catch (error) {
       this.logger.error(
         'Seeding ruoli per il nuovo tenant fallito (tenant comunque creato)',
         error as Error,
-        { tenantId },
-      );
+        { tenantId }
+      )
     }
   }
 
@@ -373,31 +350,23 @@ export class TenantService {
    */
   async update(currentUser: CurrentUser, id: string, dto: UpdateTenantDto) {
     // Verifica esistenza (getById lancia NotFound se assente).
-    const tenant = await this.getById(id);
+    const tenant = await this.getById(id)
 
-    const isSuperAdmin = this.isSuperAdmin(currentUser);
+    const isSuperAdmin = this.isSuperAdmin(currentUser)
 
     // Scoping ADMIN: deve essere il proprietario dell'azienda.
     if (!isSuperAdmin && tenant.ownerUserId !== currentUser.id) {
-      throw new ForbiddenException(
-        'Non sei autorizzato a modificare questa azienda',
-      );
+      throw new ForbiddenException('Non sei autorizzato a modificare questa azienda')
     }
 
     const data: Prisma.TenantUpdateInput = {
-      ...(dto.ragioneSociale !== undefined
-        ? { ragioneSociale: dto.ragioneSociale }
-        : {}),
-      ...(dto.codiceFiscale !== undefined
-        ? { codiceFiscale: dto.codiceFiscale }
-        : {}),
+      ...(dto.ragioneSociale !== undefined ? { ragioneSociale: dto.ragioneSociale } : {}),
+      ...(dto.codiceFiscale !== undefined ? { codiceFiscale: dto.codiceFiscale } : {}),
       ...(dto.pec !== undefined ? { pec: dto.pec } : {}),
       ...(dto.telefono !== undefined ? { telefono: dto.telefono } : {}),
       ...(dto.atecoCode !== undefined ? { atecoCode: dto.atecoCode } : {}),
       ...(dto.reaNumber !== undefined ? { reaNumber: dto.reaNumber } : {}),
-      ...(dto.numeroAddetti !== undefined
-        ? { numeroAddetti: dto.numeroAddetti }
-        : {}),
+      ...(dto.numeroAddetti !== undefined ? { numeroAddetti: dto.numeroAddetti } : {}),
       ...(dto.legaleRappresentanteNome !== undefined
         ? { legaleRappresentanteNome: dto.legaleRappresentanteNome }
         : {}),
@@ -428,20 +397,19 @@ export class TenantService {
       // Per tornare a derivare dal piano si può inviare un array vuoto o `null`.
       ...(isSuperAdmin && dto.featureFlags !== undefined
         ? {
-            featureFlags:
-              dto.featureFlags as unknown as Prisma.InputJsonValue,
+            featureFlags: dto.featureFlags as unknown as Prisma.InputJsonValue,
           }
         : {}),
-    };
+    }
 
     const updated = await this.prisma.tenant.update({
       where: { id },
       data,
-    });
+    })
 
-    this.logger.info('Tenant updated', { tenantId: id });
+    this.logger.info('Tenant updated', { tenantId: id })
 
-    return updated;
+    return updated
   }
 
   /**
@@ -450,20 +418,18 @@ export class TenantService {
    */
   async setStatus(id: string, status: 'SUSPENDED' | 'ACTIVE') {
     // Verifica esistenza (getById lancia NotFound se assente).
-    await this.getById(id);
+    await this.getById(id)
 
     const tenant = await this.prisma.tenant.update({
       where: { id },
       data: {
         subscriptionStatus:
-          status === 'SUSPENDED'
-            ? SubscriptionStatus.SUSPENDED
-            : SubscriptionStatus.ACTIVE,
+          status === 'SUSPENDED' ? SubscriptionStatus.SUSPENDED : SubscriptionStatus.ACTIVE,
       },
-    });
+    })
 
-    this.logger.info('Tenant status changed', { tenantId: id, status });
+    this.logger.info('Tenant status changed', { tenantId: id, status })
 
-    return tenant;
+    return tenant
   }
 }

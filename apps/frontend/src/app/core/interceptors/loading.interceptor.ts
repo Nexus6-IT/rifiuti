@@ -1,5 +1,5 @@
-import { HttpInterceptorFn } from '@angular/common/http';
-import { finalize } from 'rxjs/operators';
+import { HttpInterceptorFn } from '@angular/common/http'
+import { finalize } from 'rxjs/operators'
 
 /**
  * Loading Interceptor
@@ -9,43 +9,43 @@ import { finalize } from 'rxjs/operators';
  */
 
 // Counter for active requests (module-level state)
-let activeRequests = 0;
-let blocked = false;
+let activeRequests = 0
+let blocked = false
 
 function showLoading(): void {
   // Emit loading start event (handled by app component with BlockUI)
-  window.dispatchEvent(new CustomEvent('loading-start'));
+  window.dispatchEvent(new CustomEvent('loading-start'))
 }
 
 function hideLoading(): void {
   // Emit loading end event
-  window.dispatchEvent(new CustomEvent('loading-end'));
+  window.dispatchEvent(new CustomEvent('loading-end'))
 }
 
 export const loadingInterceptor: HttpInterceptorFn = (req, next) => {
   // Skip loading indicator for specific endpoints
-  const skipLoadingEndpoints = ['/metrics', '/health', '/notifications'];
-  const shouldSkip = skipLoadingEndpoints.some(endpoint => req.url.includes(endpoint));
+  const skipLoadingEndpoints = ['/metrics', '/health', '/notifications']
+  const shouldSkip = skipLoadingEndpoints.some(endpoint => req.url.includes(endpoint))
 
   if (shouldSkip) {
-    return next(req);
+    return next(req)
   }
 
   // Increment active requests and show loading
-  activeRequests++;
+  activeRequests++
   if (!blocked) {
-    blocked = true;
-    showLoading();
+    blocked = true
+    showLoading()
   }
 
   return next(req).pipe(
     finalize(() => {
       // Decrement active requests and hide loading if no more active
-      activeRequests--;
+      activeRequests--
       if (activeRequests === 0) {
-        blocked = false;
-        hideLoading();
+        blocked = false
+        hideLoading()
       }
     })
-  );
-};
+  )
+}

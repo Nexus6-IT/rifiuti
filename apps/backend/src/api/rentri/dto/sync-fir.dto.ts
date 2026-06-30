@@ -1,5 +1,5 @@
-import { IsUUID, IsOptional, IsString, IsEnum, IsArray, IsInt, Min, Max } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsUUID, IsOptional, IsString, IsEnum, IsArray, IsInt, Min, Max } from 'class-validator'
+import { ApiProperty } from '@nestjs/swagger'
 
 /**
  * Sync Single FIR Request DTO
@@ -12,7 +12,7 @@ export class SyncFIRRequestDto {
   })
   @IsOptional()
   @IsString()
-  correlationId?: string;
+  correlationId?: string
 
   @ApiProperty({
     description: 'Job priority',
@@ -22,7 +22,7 @@ export class SyncFIRRequestDto {
   })
   @IsOptional()
   @IsEnum(['high', 'normal', 'low'])
-  priority?: 'high' | 'normal' | 'low';
+  priority?: 'high' | 'normal' | 'low'
 
   @ApiProperty({
     description: 'Delay before job execution (milliseconds)',
@@ -33,7 +33,7 @@ export class SyncFIRRequestDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  delay?: number;
+  delay?: number
 }
 
 /**
@@ -44,26 +44,26 @@ export class SyncFIRResponseDto {
     description: 'Job ID for tracking sync status',
     example: 'sync-abc123-1234567890',
   })
-  jobId: string;
+  jobId: string
 
   @ApiProperty({
     description: 'FIR ID being synced',
     example: '550e8400-e29b-41d4-a716-446655440000',
   })
-  firId: string;
+  firId: string
 
   @ApiProperty({
     description: 'Status of job submission',
     example: 'Job queued successfully',
   })
-  message: string;
+  message: string
 
   @ApiProperty({
     description: 'Estimated start time (if delayed)',
     example: '2025-10-19T14:30:00.000Z',
     required: false,
   })
-  estimatedStartTime?: string;
+  estimatedStartTime?: string
 }
 
 /**
@@ -77,7 +77,7 @@ export class BatchSyncRequestDto {
   })
   @IsArray()
   @IsUUID('4', { each: true })
-  firIds: string[];
+  firIds: string[]
 
   @ApiProperty({
     description: 'Correlation ID for tracking request',
@@ -86,7 +86,7 @@ export class BatchSyncRequestDto {
   })
   @IsOptional()
   @IsString()
-  correlationId?: string;
+  correlationId?: string
 
   @ApiProperty({
     description: 'Job priority',
@@ -96,7 +96,7 @@ export class BatchSyncRequestDto {
   })
   @IsOptional()
   @IsEnum(['high', 'normal', 'low'])
-  priority?: 'high' | 'normal' | 'low';
+  priority?: 'high' | 'normal' | 'low'
 }
 
 /**
@@ -107,25 +107,25 @@ export class BatchSyncResponseDto {
     description: 'Batch job ID for tracking',
     example: 'batch-tenant1-1234567890',
   })
-  batchJobId: string;
+  batchJobId: string
 
   @ApiProperty({
     description: 'Number of FIRs queued for sync',
     example: 15,
   })
-  queuedCount: number;
+  queuedCount: number
 
   @ApiProperty({
     description: 'Number of FIRs skipped (already synced or invalid)',
     example: 2,
   })
-  skippedCount: number;
+  skippedCount: number
 
   @ApiProperty({
     description: 'Status message',
     example: 'Batch sync job queued successfully',
   })
-  message: string;
+  message: string
 }
 
 /**
@@ -136,20 +136,20 @@ export class SyncStatusResponseDto {
     description: 'Job ID',
     example: 'sync-abc123-1234567890',
   })
-  jobId: string;
+  jobId: string
 
   @ApiProperty({
     description: 'Job status',
     enum: ['pending', 'delayed', 'processing', 'completed', 'failed'],
     example: 'processing',
   })
-  status: 'pending' | 'delayed' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'delayed' | 'processing' | 'completed' | 'failed'
 
   @ApiProperty({
     description: 'Job progress (0-100)',
     example: 75,
   })
-  progress: number;
+  progress: number
 
   @ApiProperty({
     description: 'Job data',
@@ -159,40 +159,40 @@ export class SyncStatusResponseDto {
       type: 'single',
     },
   })
-  data: any;
+  data: any
 
   @ApiProperty({
     description: 'Job result (if completed)',
     required: false,
   })
-  result?: any;
+  result?: any
 
   @ApiProperty({
     description: 'Failure reason (if failed)',
     example: 'RENTRI API timeout',
     required: false,
   })
-  failedReason?: string;
+  failedReason?: string
 
   @ApiProperty({
     description: 'Number of attempts made',
     example: 2,
   })
-  attemptsMade: number;
+  attemptsMade: number
 
   @ApiProperty({
     description: 'When job started processing',
     example: '2025-10-19T14:25:00.000Z',
     required: false,
   })
-  processedOn?: Date;
+  processedOn?: Date
 
   @ApiProperty({
     description: 'When job finished',
     example: '2025-10-19T14:27:00.000Z',
     required: false,
   })
-  finishedOn?: Date;
+  finishedOn?: Date
 }
 
 /**
@@ -205,7 +205,7 @@ export class SyncLogsQueryDto {
   })
   @IsOptional()
   @IsUUID('4')
-  firId?: string;
+  firId?: string
 
   @ApiProperty({
     description: 'Sync status filter',
@@ -214,7 +214,7 @@ export class SyncLogsQueryDto {
   })
   @IsOptional()
   @IsEnum(['SUCCESS', 'FAILURE', 'PENDING'])
-  status?: 'SUCCESS' | 'FAILURE' | 'PENDING';
+  status?: 'SUCCESS' | 'FAILURE' | 'PENDING'
 
   @ApiProperty({
     description: 'Filter logs from this date',
@@ -223,7 +223,7 @@ export class SyncLogsQueryDto {
   })
   @IsOptional()
   @IsString()
-  dateFrom?: string;
+  dateFrom?: string
 
   @ApiProperty({
     description: 'Filter logs until this date',
@@ -232,7 +232,7 @@ export class SyncLogsQueryDto {
   })
   @IsOptional()
   @IsString()
-  dateTo?: string;
+  dateTo?: string
 
   @ApiProperty({
     description: 'Page number (starts at 1)',
@@ -243,7 +243,7 @@ export class SyncLogsQueryDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  page?: number;
+  page?: number
 
   @ApiProperty({
     description: 'Items per page',
@@ -255,7 +255,7 @@ export class SyncLogsQueryDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  limit?: number;
+  limit?: number
 }
 
 /**
@@ -266,63 +266,63 @@ export class SyncLogEntryDto {
     description: 'Log entry ID',
     example: '770e8400-e29b-41d4-a716-446655440000',
   })
-  id: string;
+  id: string
 
   @ApiProperty({
     description: 'FIR ID',
     example: '550e8400-e29b-41d4-a716-446655440000',
   })
-  firId: string;
+  firId: string
 
   @ApiProperty({
     description: 'Sync status',
     enum: ['SUCCESS', 'FAILURE', 'PENDING'],
     example: 'SUCCESS',
   })
-  status: 'SUCCESS' | 'FAILURE' | 'PENDING';
+  status: 'SUCCESS' | 'FAILURE' | 'PENDING'
 
   @ApiProperty({
     description: 'Attempt number',
     example: 1,
   })
-  attempt: number;
+  attempt: number
 
   @ApiProperty({
     description: 'Error message (if failed)',
     required: false,
   })
-  errorMessage?: string;
+  errorMessage?: string
 
   @ApiProperty({
     description: 'Error code (if failed)',
     required: false,
   })
-  errorCode?: string;
+  errorCode?: string
 
   @ApiProperty({
     description: 'RENTRI protocol number (if successful)',
     required: false,
   })
-  protocolNumber?: string;
+  protocolNumber?: string
 
   @ApiProperty({
     description: 'When sync completed',
     required: false,
   })
-  syncedAt?: Date;
+  syncedAt?: Date
 
   @ApiProperty({
     description: 'Sync duration in milliseconds',
     example: 1543,
     required: false,
   })
-  durationMs?: number;
+  durationMs?: number
 
   @ApiProperty({
     description: 'When log entry was created',
     example: '2025-10-19T14:25:00.000Z',
   })
-  createdAt: Date;
+  createdAt: Date
 }
 
 /**
@@ -333,31 +333,31 @@ export class SyncLogsResponseDto {
     description: 'Array of sync log entries',
     type: [SyncLogEntryDto],
   })
-  data: SyncLogEntryDto[];
+  data: SyncLogEntryDto[]
 
   @ApiProperty({
     description: 'Total count of logs matching filter',
     example: 142,
   })
-  total: number;
+  total: number
 
   @ApiProperty({
     description: 'Current page number',
     example: 1,
   })
-  page: number;
+  page: number
 
   @ApiProperty({
     description: 'Items per page',
     example: 20,
   })
-  limit: number;
+  limit: number
 
   @ApiProperty({
     description: 'Total number of pages',
     example: 8,
   })
-  totalPages: number;
+  totalPages: number
 }
 
 /**
@@ -368,21 +368,21 @@ export class QueueMetricsResponseDto {
     description: 'Global queue metrics',
   })
   global: {
-    waiting: number;
-    active: number;
-    completed: number;
-    failed: number;
-    delayed: number;
-    total: number;
-  };
+    waiting: number
+    active: number
+    completed: number
+    failed: number
+    delayed: number
+    total: number
+  }
 
   @ApiProperty({
     description: 'Tenant-specific metrics',
     required: false,
   })
   tenant?: {
-    waiting: number;
-    active: number;
-    failed: number;
-  };
+    waiting: number
+    active: number
+    failed: number
+  }
 }

@@ -3,12 +3,7 @@
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import {
-  FIR,
-  FIRStato,
-  ParteFIR,
-  TipoTratta,
-} from '../../../domain/fir/aggregates/fir.aggregate'
+import { FIR, FIRStato, ParteFIR, TipoTratta } from '../../../domain/fir/aggregates/fir.aggregate'
 
 /** Trasportatore aggiuntivo (tratta intermodale) nella risposta del FIR. */
 export class TrasportatoreAggiuntivoResponse {
@@ -27,10 +22,16 @@ export class TrasportatoreAggiuntivoResponse {
   @ApiPropertyOptional({ example: 'RSSMRA80A01H501U', description: 'Codice fiscale (snapshot)' })
   codiceFiscale?: string
 
-  @ApiPropertyOptional({ example: 'MI/000123', description: 'Numero iscrizione Albo gestori (snapshot)' })
+  @ApiPropertyOptional({
+    example: 'MI/000123',
+    description: 'Numero iscrizione Albo gestori (snapshot)',
+  })
   numeroIscrizioneAlbo?: string
 
-  @ApiPropertyOptional({ example: 'AB123CD', description: 'Mezzo/identificativo (targa, treno, nave)' })
+  @ApiPropertyOptional({
+    example: 'AB123CD',
+    description: 'Mezzo/identificativo (targa, treno, nave)',
+  })
   mezzo?: string
 }
 
@@ -40,7 +41,7 @@ export class FIRResponseDto {
 
   @ApiPropertyOptional({
     example: 'FIR-2025-001234',
-    description: 'Numero progressivo (assegnato all\'emissione)',
+    description: "Numero progressivo (assegnato all'emissione)",
   })
   numeroProgressivo: string | null
 
@@ -51,7 +52,13 @@ export class FIRResponseDto {
   produttoreId: string
 
   @ApiProperty({
-    example: { cerCode: '13 02 05*', quantita: 120, unitaMisura: 'kg', statoFisico: 'Liquido', numeroColli: 5 },
+    example: {
+      cerCode: '13 02 05*',
+      quantita: 120,
+      unitaMisura: 'kg',
+      statoFisico: 'Liquido',
+      numeroColli: 5,
+    },
     description: 'Dettagli rifiuto (Campo 2 FIR)',
   })
   rifiuto: {
@@ -81,10 +88,14 @@ export class FIRResponseDto {
   @ApiPropertyOptional({ description: 'Snapshot anagrafico produttore (congelato alla creazione)' })
   produttore?: ParteFIR | null
 
-  @ApiPropertyOptional({ description: 'Snapshot anagrafico trasportatore (congelato alla creazione)' })
+  @ApiPropertyOptional({
+    description: 'Snapshot anagrafico trasportatore (congelato alla creazione)',
+  })
   trasportatore?: ParteFIR | null
 
-  @ApiPropertyOptional({ description: 'Snapshot anagrafico destinatario (congelato alla creazione)' })
+  @ApiPropertyOptional({
+    description: 'Snapshot anagrafico destinatario (congelato alla creazione)',
+  })
   destinatario?: ParteFIR | null
 
   @ApiPropertyOptional({
@@ -99,7 +110,10 @@ export class FIRResponseDto {
   @ApiPropertyOptional({ description: 'Data consegna destinatario' })
   dataConsegna: Date | null
 
-  @ApiPropertyOptional({ example: 118, description: 'Peso effettivo rilevato alla destinazione (4ª copia)' })
+  @ApiPropertyOptional({
+    example: 118,
+    description: 'Peso effettivo rilevato alla destinazione (4ª copia)',
+  })
   pesoEffettivo: number | null
 
   /** Campo 17 FIR (DM 59/2023): annotazioni libere. */

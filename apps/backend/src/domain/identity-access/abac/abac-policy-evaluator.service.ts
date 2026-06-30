@@ -6,62 +6,59 @@
  * Target: <5ms overhead for policy evaluation
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common'
 import {
   AbacPolicy,
   AbacPolicyEffect,
   AbacOperator,
   AbacConditions,
   AbacConditionRule,
-} from './abac-policy.entity';
+} from './abac-policy.entity'
 
 export interface EvaluationContext {
-  user: Record<string, any>;
-  resource: Record<string, any>;
-  action: string;
-  environment?: Record<string, any>;
+  user: Record<string, any>
+  resource: Record<string, any>
+  action: string
+  environment?: Record<string, any>
 }
 
 export interface EvaluationResult {
-  decision: 'ALLOW' | 'DENY' | 'NOT_APPLICABLE';
+  decision: 'ALLOW' | 'DENY' | 'NOT_APPLICABLE'
   evaluatedPolicies: Array<{
-    policyId: string;
-    policyName: string;
-    effect: AbacPolicyEffect;
-    matched: boolean;
-    evaluationTimeMs: number;
-  }>;
-  totalEvaluationTimeMs: number;
+    policyId: string
+    policyName: string
+    effect: AbacPolicyEffect
+    matched: boolean
+    evaluationTimeMs: number
+  }>
+  totalEvaluationTimeMs: number
 }
 
 @Injectable()
 export class AbacPolicyEvaluator {
-  private readonly logger = new Logger(AbacPolicyEvaluator.name);
+  private readonly logger = new Logger(AbacPolicyEvaluator.name)
 
   /**
    * Evaluate all policies for a given context
    * Returns first matching DENY, or first matching ALLOW, or NOT_APPLICABLE
    */
-  async evaluate(
-    policies: AbacPolicy[],
-    context: EvaluationContext,
-  ): Promise<EvaluationResult> {
-    const startTime = performance.now();
-    const evaluatedPolicies: EvaluationResult['evaluatedPolicies'] = [];
+  async evaluate(policies: AbacPolicy[], context: EvaluationContext): Promise<EvaluationResult> {
+    const startTime = performance.now()
+    const evaluatedPolicies: EvaluationResult['evaluatedPolicies'] = []
 
     // Sort by priority (lower number = higher priority)
-    const sortedPolicies = [...policies].sort((a, b) => a.priority - b.priority);
+    const sortedPolicies = [...policies].sort((a, b) => a.priority - b.priority)
 
-    let finalDecision: 'ALLOW' | 'DENY' | 'NOT_APPLICABLE' = 'NOT_APPLICABLE';
+    let finalDecision: 'ALLOW' | 'DENY' | 'NOT_APPLICABLE' = 'NOT_APPLICABLE'
 
     for (const policy of sortedPolicies) {
       if (!policy.isActive) {
-        continue;
+        continue
       }
 
-      const policyStartTime = performance.now();
-      const matched = this.evaluateConditions(policy.conditions, context);
-      const policyEndTime = performance.now();
+      const policyStartTime = performance.now()
+      const matched = this.evaluateConditions(policy.conditions, context)
+      const policyEndTime = performance.now()
 
       evaluatedPolicies.push({
         policyId: policy.id,
@@ -69,17 +66,17 @@ export class AbacPolicyEvaluator {
         effect: policy.effect,
         matched,
         evaluationTimeMs: policyEndTime - policyStartTime,
-      });
+      })
 
       if (matched) {
         // First match wins
-        finalDecision = policy.effect === AbacPolicyEffect.DENY ? 'DENY' : 'ALLOW';
-        break;
+        finalDecision = policy.effect === AbacPolicyEffect.DENY ? 'DENY' : 'ALLOW'
+        break
       }
     }
 
-    const endTime = performance.now();
-    const totalEvaluationTimeMs = endTime - startTime;
+    const endTime = performance.now()
+    const totalEvaluationTimeMs = endTime - startTime
 
     // Log slow evaluations
     if (totalEvaluationTimeMs > 5) {
@@ -89,90 +86,90 @@ export class AbacPolicyEvaluator {
           action: context.action,
           resourceType: context.resource.type,
           policiesEvaluated: evaluatedPolicies.length,
-        },
-      );
+        }
+      )
     }
 
     return {
       decision: finalDecision,
       evaluatedPolicies,
       totalEvaluationTimeMs,
-    };
+    }
   }
 
   /**
    * Evaluate a set of conditions (AND/OR)
    */
   private evaluateConditions(conditions: AbacConditions, context: EvaluationContext): boolean {
-    const { operator, rules } = conditions;
+    const { operator, rules } = conditions
 
     if (operator === 'AND') {
-      return rules.every((rule) => this.evaluateRule(rule, context));
+      return rules.every(rule => this.evaluateRule(rule, context))
     } else if (operator === 'OR') {
-      return rules.some((rule) => this.evaluateRule(rule, context));
+      return rules.some(rule => this.evaluateRule(rule, context))
     }
 
-    return false;
+    return false
   }
 
   /**
    * Evaluate a single rule
    */
   private evaluateRule(rule: AbacConditionRule, context: EvaluationContext): boolean {
-    const attributeValue = this.getAttribute(rule.attribute, context);
+    const attributeValue = this.getAttribute(rule.attribute, context)
 
     // Resolve rule value if it's an attribute reference
-    let ruleValue = rule.value;
+    let ruleValue = rule.value
     if (typeof ruleValue === 'string' && this.isAttributeReference(ruleValue)) {
-      ruleValue = this.getAttribute(ruleValue, context);
+      ruleValue = this.getAttribute(ruleValue, context)
     }
 
     switch (rule.operator) {
       case AbacOperator.EQUALS:
-        return attributeValue === ruleValue;
+        return attributeValue === ruleValue
 
       case AbacOperator.NOT_EQUALS:
-        return attributeValue !== ruleValue;
+        return attributeValue !== ruleValue
 
       case AbacOperator.IN:
-        return Array.isArray(ruleValue) && ruleValue.includes(attributeValue);
+        return Array.isArray(ruleValue) && ruleValue.includes(attributeValue)
 
       case AbacOperator.NOT_IN:
-        return Array.isArray(ruleValue) && !ruleValue.includes(attributeValue);
+        return Array.isArray(ruleValue) && !ruleValue.includes(attributeValue)
 
       case AbacOperator.GREATER_THAN:
-        return attributeValue > ruleValue;
+        return attributeValue > ruleValue
 
       case AbacOperator.GREATER_THAN_EQUAL:
-        return attributeValue >= ruleValue;
+        return attributeValue >= ruleValue
 
       case AbacOperator.LESS_THAN:
-        return attributeValue < ruleValue;
+        return attributeValue < ruleValue
 
       case AbacOperator.LESS_THAN_EQUAL:
-        return attributeValue <= ruleValue;
+        return attributeValue <= ruleValue
 
       case AbacOperator.CONTAINS:
         if (typeof attributeValue === 'string' && typeof ruleValue === 'string') {
-          return attributeValue.includes(ruleValue);
+          return attributeValue.includes(ruleValue)
         }
         if (Array.isArray(attributeValue)) {
-          return attributeValue.includes(ruleValue);
+          return attributeValue.includes(ruleValue)
         }
-        return false;
+        return false
 
       case AbacOperator.NOT_CONTAINS:
         if (typeof attributeValue === 'string' && typeof ruleValue === 'string') {
-          return !attributeValue.includes(ruleValue);
+          return !attributeValue.includes(ruleValue)
         }
         if (Array.isArray(attributeValue)) {
-          return !attributeValue.includes(ruleValue);
+          return !attributeValue.includes(ruleValue)
         }
-        return true;
+        return true
 
       default:
-        this.logger.error(`Unknown operator: ${rule.operator}`);
-        return false;
+        this.logger.error(`Unknown operator: ${rule.operator}`)
+        return false
     }
   }
 
@@ -181,18 +178,18 @@ export class AbacPolicyEvaluator {
    * Example: "user.facility" -> context.user.facility
    */
   private getAttribute(path: string, context: EvaluationContext): any {
-    const parts = path.split('.');
-    let value: any = context;
+    const parts = path.split('.')
+    let value: any = context
 
     for (const part of parts) {
       if (value && typeof value === 'object' && part in value) {
-        value = value[part];
+        value = value[part]
       } else {
-        return undefined;
+        return undefined
       }
     }
 
-    return value;
+    return value
   }
 
   /**
@@ -201,9 +198,7 @@ export class AbacPolicyEvaluator {
    */
   private isAttributeReference(value: string): boolean {
     return (
-      value.startsWith('user.') ||
-      value.startsWith('resource.') ||
-      value.startsWith('environment.')
-    );
+      value.startsWith('user.') || value.startsWith('resource.') || value.startsWith('environment.')
+    )
   }
 }

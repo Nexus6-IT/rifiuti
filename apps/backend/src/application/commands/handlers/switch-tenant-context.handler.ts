@@ -1,11 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { SwitchTenantContextCommand } from '../switch-tenant-context.command';
-import { ConsultantTenantAssociationRepository } from '../../../domain/identity-access/consultant-tenant-association.repository.interface';
-import { PermissionCacheService } from '../../../infrastructure/cache/permission-cache.service';
-import { RoleCacheService } from '../../../infrastructure/cache/role-cache.service';
-import { TenantContextSwitchedEvent } from '../../../domain/events/tenant-context-switched.event';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common'
+import { JwtService } from '@nestjs/jwt'
+import { SwitchTenantContextCommand } from '../switch-tenant-context.command'
+import { ConsultantTenantAssociationRepository } from '../../../domain/identity-access/consultant-tenant-association.repository.interface'
+import { PermissionCacheService } from '../../../infrastructure/cache/permission-cache.service'
+import { RoleCacheService } from '../../../infrastructure/cache/role-cache.service'
+import { TenantContextSwitchedEvent } from '../../../domain/events/tenant-context-switched.event'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 /**
  * SwitchTenantContextCommandHandler
@@ -34,76 +34,68 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
  */
 @Injectable()
 export class SwitchTenantContextCommandHandler {
-  private readonly logger = new Logger(SwitchTenantContextCommandHandler.name);
+  private readonly logger = new Logger(SwitchTenantContextCommandHandler.name)
 
   constructor(
     private readonly consultantAssociationRepository: ConsultantTenantAssociationRepository,
     private readonly permissionCache: PermissionCacheService,
     private readonly roleCache: RoleCacheService,
     private readonly jwtService: JwtService,
-    private readonly eventEmitter: EventEmitter2,
+    private readonly eventEmitter: EventEmitter2
   ) {}
 
   async execute(command: SwitchTenantContextCommand): Promise<{
-    newJwt: string;
-    tenantId: string;
-    roleId: string;
+    newJwt: string
+    tenantId: string
+    roleId: string
   }> {
-    const startTime = Date.now();
+    const startTime = Date.now()
 
     this.logger.log(
-      `Consultant ${command.consultantUserId} switching from ${command.sourceTenantId} to ${command.targetTenantId}`,
-    );
+      `Consultant ${command.consultantUserId} switching from ${command.sourceTenantId} to ${command.targetTenantId}`
+    )
 
     // Step 1: Validate association exists and is active
     const association = await this.consultantAssociationRepository.findActiveByConsultantAndTenant(
       command.consultantUserId,
-      command.targetTenantId,
-    );
+      command.targetTenantId
+    )
 
     if (!association) {
       this.logger.warn(
-        `No active association found for consultant ${command.consultantUserId} with tenant ${command.targetTenantId}`,
-      );
+        `No active association found for consultant ${command.consultantUserId} with tenant ${command.targetTenantId}`
+      )
       throw new NotFoundException(
-        `No active association found for consultant ${command.consultantUserId} with tenant ${command.targetTenantId}`,
-      );
+        `No active association found for consultant ${command.consultantUserId} with tenant ${command.targetTenantId}`
+      )
     }
 
     // Validate association is active and not expired
     if (!association.isActiveAndNotExpired()) {
       this.logger.warn(
-        `Association ${association.id} is inactive or expired for consultant ${command.consultantUserId}`,
-      );
-      throw new ForbiddenException(
-        'Association with target tenant is inactive or expired',
-      );
+        `Association ${association.id} is inactive or expired for consultant ${command.consultantUserId}`
+      )
+      throw new ForbiddenException('Association with target tenant is inactive or expired')
     }
 
     // Step 2: Invalidate permission cache for source tenant
     try {
-      await this.permissionCache.invalidateUser(
-        command.sourceTenantId,
-        command.consultantUserId,
-      );
+      await this.permissionCache.invalidateUser(command.sourceTenantId, command.consultantUserId)
       this.logger.debug(
-        `Invalidated permission cache for user ${command.consultantUserId} in tenant ${command.sourceTenantId}`,
-      );
+        `Invalidated permission cache for user ${command.consultantUserId} in tenant ${command.sourceTenantId}`
+      )
     } catch (error) {
       // Cache invalidation failure is logged but doesn't block the switch
-      this.logger.error(
-        `Failed to invalidate permission cache: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`Failed to invalidate permission cache: ${error.message}`, error.stack)
     }
 
     // Step 3: Warm cache for target tenant (best-effort, non-blocking)
     // Run cache warming in background without awaiting
-    this.warmCacheForTenant(command.targetTenantId).catch((error) => {
+    this.warmCacheForTenant(command.targetTenantId).catch(error => {
       this.logger.warn(
-        `Cache warming failed for tenant ${command.targetTenantId}: ${error.message}`,
-      );
-    });
+        `Cache warming failed for tenant ${command.targetTenantId}: ${error.message}`
+      )
+    })
 
     // Step 4: Generate new JWT with target tenant context
     const jwtPayload = {
@@ -112,13 +104,13 @@ export class SwitchTenantContextCommandHandler {
       roleId: association.roleId,
       isConsultant: true,
       consultantMode: true,
-    };
+    }
 
-    const newJwt = await this.jwtService.signAsync(jwtPayload);
+    const newJwt = await this.jwtService.signAsync(jwtPayload)
 
     this.logger.debug(
-      `Generated new JWT for consultant ${command.consultantUserId} in tenant ${command.targetTenantId}`,
-    );
+      `Generated new JWT for consultant ${command.consultantUserId} in tenant ${command.targetTenantId}`
+    )
 
     // Step 5: Publish TenantContextSwitchedEvent for audit trail
     const event = new TenantContextSwitchedEvent(
@@ -126,28 +118,28 @@ export class SwitchTenantContextCommandHandler {
       command.sourceTenantId,
       command.targetTenantId,
       association.roleId,
-      new Date(),
-    );
+      new Date()
+    )
 
-    this.eventEmitter.emit('tenant.context.switched', event);
+    this.eventEmitter.emit('tenant.context.switched', event)
 
-    const duration = Date.now() - startTime;
+    const duration = Date.now() - startTime
     this.logger.log(
-      `Context switch completed in ${duration}ms for consultant ${command.consultantUserId}`,
-    );
+      `Context switch completed in ${duration}ms for consultant ${command.consultantUserId}`
+    )
 
     // Verify performance target: <2 seconds per plan.md
     if (duration > 2000) {
       this.logger.warn(
-        `Context switch took ${duration}ms, exceeding 2s target for consultant ${command.consultantUserId}`,
-      );
+        `Context switch took ${duration}ms, exceeding 2s target for consultant ${command.consultantUserId}`
+      )
     }
 
     return {
       newJwt,
       tenantId: command.targetTenantId,
       roleId: association.roleId,
-    };
+    }
   }
 
   /**
@@ -158,12 +150,10 @@ export class SwitchTenantContextCommandHandler {
     try {
       // Cache warming is optional and currently not implemented on RoleCacheService
       // await this.roleCache.warmTenantRoles(tenantId);
-      this.logger.debug(`Cache warming skipped for tenant ${tenantId}`);
+      this.logger.debug(`Cache warming skipped for tenant ${tenantId}`)
     } catch (error) {
       // Cache warming is best-effort, failure doesn't affect functionality
-      this.logger.debug(
-        `Cache warming failed for tenant ${tenantId}: ${error.message}`,
-      );
+      this.logger.debug(`Cache warming failed for tenant ${tenantId}: ${error.message}`)
     }
   }
 }

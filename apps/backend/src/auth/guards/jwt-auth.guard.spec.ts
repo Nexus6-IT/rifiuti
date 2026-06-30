@@ -87,7 +87,7 @@ describe('JwtAuthGuard', () => {
     })
 
     it('should call parent AuthGuard(jwt) for protected routes', async () => {
-      const context = createMockExecutionContext(false)
+      const _context = createMockExecutionContext(false)
 
       // The actual implementation will call super.canActivate()
       // which triggers passport JWT strategy validation

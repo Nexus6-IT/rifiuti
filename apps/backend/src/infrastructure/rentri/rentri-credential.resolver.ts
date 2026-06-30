@@ -33,7 +33,7 @@ export interface ResolvedRentriCredential {
 export class RentriCredentialResolver {
   constructor(
     private readonly credentialService: RentriCredentialService,
-    @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
+    @Inject(RENTRI_CONFIG) private readonly config: RentriConfig
   ) {}
 
   async resolve(): Promise<ResolvedRentriCredential> {
@@ -66,7 +66,7 @@ export class RentriCredentialResolver {
     throw new Error(
       tenantId
         ? `RENTRI: nessuna credenziale per il tenant ${tenantId} e nessun fallback da env`
-        : 'RENTRI: nessun TenantContext e nessuna credenziale di fallback da env',
+        : 'RENTRI: nessun TenantContext e nessuna credenziale di fallback da env'
     )
   }
 }

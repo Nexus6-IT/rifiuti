@@ -34,7 +34,7 @@ export class UpdateProduttoreUseCase {
   constructor(
     @Inject(PRODUTTORE_REPOSITORY)
     private readonly produttoreRepository: ProduttoreRepository,
-    @Optional() private readonly referenceData?: ReferenceDataService,
+    @Optional() private readonly referenceData?: ReferenceDataService
   ) {}
 
   async execute(command: UpdateProduttoreCommand): Promise<Result<Produttore>> {
@@ -55,7 +55,7 @@ export class UpdateProduttoreUseCase {
         if (this.referenceData) {
           const v = await this.referenceData.validateLocalita(
             command.sedeLegale.citta,
-            command.sedeLegale.provincia,
+            command.sedeLegale.provincia
           )
           if (!v.ok) return Result.fail(v.error!)
         }
@@ -63,11 +63,15 @@ export class UpdateProduttoreUseCase {
       }
 
       // Update contacts if any field is provided
-      if (command.email !== undefined || command.telefono !== undefined || command.pec !== undefined) {
+      if (
+        command.email !== undefined ||
+        command.telefono !== undefined ||
+        command.pec !== undefined
+      ) {
         produttore.updateContatti(
           command.email !== undefined ? command.email : produttore.email,
           command.telefono !== undefined ? command.telefono : produttore.telefono,
-          command.pec !== undefined ? command.pec : produttore.pec,
+          command.pec !== undefined ? command.pec : produttore.pec
         )
       }
 

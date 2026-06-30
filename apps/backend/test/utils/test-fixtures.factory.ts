@@ -35,7 +35,7 @@ export function createMockUser(overrides: Partial<any> = {}) {
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     deletedAt: null,
     ...overrides,
-  };
+  }
 }
 
 /**
@@ -60,7 +60,7 @@ export function createMockTenant(overrides: Partial<any> = {}) {
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     ...overrides,
-  };
+  }
 }
 
 /**
@@ -76,7 +76,7 @@ export function createMockUserTenant(overrides: Partial<any> = {}) {
     role: 'ADMIN',
     createdAt: new Date('2024-01-01T00:00:00Z'),
     ...overrides,
-  };
+  }
 }
 
 /**
@@ -88,7 +88,7 @@ export const VALID_FISCAL_CODES = {
   LUIGI_VERDI: 'VRDLGI85M01H501X',
   GIUSEPPE_BIANCHI: 'BNCGPP90L01H501K',
   ANNA_RUSSO: 'RSSNNA75D41H501P',
-};
+}
 
 /**
  * Creates a mock SPID user response
@@ -105,7 +105,7 @@ export function createMockSpidUser(overrides: Partial<any> = {}) {
     lastName: 'Rossi',
     isNewUser: false,
     ...overrides,
-  };
+  }
 }
 
 /**
@@ -124,7 +124,7 @@ export function createMockSpidProfile(overrides: Partial<any> = {}) {
     nameIDFormat: 'urn:oasis:names:tc:SAML:2.0:nameid-format:transient',
     spidLevel: 'SpidL2',
     ...overrides,
-  };
+  }
 }
 
 /**
@@ -142,7 +142,7 @@ export function createMockJwtPayload(overrides: Partial<any> = {}) {
     role: 'ADMIN',
     type: 'access' as const,
     ...overrides,
-  };
+  }
 }
 
 /**
@@ -157,5 +157,5 @@ export function createMockTokens(overrides: Partial<any> = {}) {
     refreshToken: 'mock-refresh-token-jwt-string',
     expiresIn: 900, // 15 minutes
     ...overrides,
-  };
+  }
 }

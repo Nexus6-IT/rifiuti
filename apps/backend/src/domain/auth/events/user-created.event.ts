@@ -1,4 +1,4 @@
-import { DomainEvent } from '../../shared/domain-event.interface';
+import { DomainEvent } from '../../shared/domain-event.interface'
 
 /**
  * User Created Domain Event
@@ -15,13 +15,13 @@ import { DomainEvent } from '../../shared/domain-event.interface';
  */
 export class UserCreatedEvent extends DomainEvent {
   constructor(params: {
-    aggregateId: string;
-    userId: string;
-    fiscalCode: string;
-    email: string;
-    tenantId: string;
-    hasSpidAuth: boolean;
-    correlationId?: string;
+    aggregateId: string
+    userId: string
+    fiscalCode: string
+    email: string
+    tenantId: string
+    hasSpidAuth: boolean
+    correlationId?: string
   }) {
     super({
       aggregateId: params.aggregateId,
@@ -36,7 +36,7 @@ export class UserCreatedEvent extends DomainEvent {
         tenantId: params.tenantId,
         hasSpidAuth: params.hasSpidAuth,
       },
-    });
+    })
   }
 }
 
@@ -48,15 +48,15 @@ export class UserCreatedEvent extends DomainEvent {
  */
 export class UserSpidAuthUpdatedEvent extends DomainEvent {
   constructor(params: {
-    aggregateId: string;
-    userId: string;
-    fiscalCode: string;
-    spidLevel: number;
-    issuer: string;
-    sessionId: string;
-    canSignDocuments: boolean;
-    tenantId: string;
-    correlationId?: string;
+    aggregateId: string
+    userId: string
+    fiscalCode: string
+    spidLevel: number
+    issuer: string
+    sessionId: string
+    canSignDocuments: boolean
+    tenantId: string
+    correlationId?: string
   }) {
     super({
       aggregateId: params.aggregateId,
@@ -72,7 +72,7 @@ export class UserSpidAuthUpdatedEvent extends DomainEvent {
         sessionId: params.sessionId,
         canSignDocuments: params.canSignDocuments,
       },
-    });
+    })
   }
 }
 
@@ -83,11 +83,11 @@ export class UserSpidAuthUpdatedEvent extends DomainEvent {
  */
 export class UserLoggedOutEvent extends DomainEvent {
   constructor(params: {
-    aggregateId: string;
-    userId: string;
-    fiscalCode: string;
-    tenantId: string;
-    correlationId?: string;
+    aggregateId: string
+    userId: string
+    fiscalCode: string
+    tenantId: string
+    correlationId?: string
   }) {
     super({
       aggregateId: params.aggregateId,
@@ -100,6 +100,6 @@ export class UserLoggedOutEvent extends DomainEvent {
         fiscalCode: params.fiscalCode,
         tenantId: params.tenantId,
       },
-    });
+    })
   }
 }

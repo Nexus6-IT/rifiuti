@@ -1,6 +1,6 @@
-import { IsEnum, IsNotEmpty } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { SignatureRole } from '../../../domain/fir/digital-signature.vo';
+import { IsEnum, IsNotEmpty } from 'class-validator'
+import { ApiProperty } from '@nestjs/swagger'
+import { SignatureRole } from '../../../domain/fir/digital-signature.vo'
 
 /**
  * Apply Signature Request DTO
@@ -23,7 +23,7 @@ export class ApplySignatureDto {
     message: 'Il ruolo deve essere PRODUCER, CARRIER o RECEIVER',
   })
   @IsNotEmpty()
-  role: SignatureRole;
+  role: SignatureRole
 }
 
 /**
@@ -31,25 +31,25 @@ export class ApplySignatureDto {
  */
 export class ApplySignatureResponseDto {
   @ApiProperty({ description: 'Esito operazione', example: true })
-  success: boolean;
+  success: boolean
 
   @ApiProperty({ description: 'Dettagli firma applicata' })
   signature: {
-    role: SignatureRole;
-    signerFiscalCode: string;
-    signerName: string;
-    signedAt: Date;
-    signatureMethod: string;
+    role: SignatureRole
+    signerFiscalCode: string
+    signerName: string
+    signedAt: Date
+    signatureMethod: string
     /** false = sandbox/non qualificata; true = QES a norma */
-    isQualified: boolean;
-  };
+    isQualified: boolean
+  }
 
   @ApiProperty({ description: 'Nuovo stato FIR dopo la firma', example: 'SIGNED_BY_PRODUCER' })
-  firStatus: string;
+  firStatus: string
 
   @ApiProperty({ description: 'FIR completo (tutte e tre le firme presenti)', example: false })
-  isCompleted: boolean;
+  isCompleted: boolean
 
   @ApiProperty({ description: 'Messaggio operazione', required: false })
-  message?: string;
+  message?: string
 }

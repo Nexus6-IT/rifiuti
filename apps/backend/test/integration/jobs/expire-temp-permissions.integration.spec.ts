@@ -1,6 +1,6 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { ExpireTempPermissionsJob } from '../../../src/infrastructure/jobs/expire-temp-permissions.job';
-import { TemporaryPermissionGrant } from '../../../src/domain/identity-access/temporary-permission-grant.entity';
+import { Test, TestingModule } from '@nestjs/testing'
+import { ExpireTempPermissionsJob } from '../../../src/infrastructure/jobs/expire-temp-permissions.job'
+import { TemporaryPermissionGrant } from '../../../src/domain/identity-access/temporary-permission-grant.entity'
 
 /**
  * Integration tests for ExpireTempPermissionsJob
@@ -15,14 +15,14 @@ import { TemporaryPermissionGrant } from '../../../src/domain/identity-access/te
  * - Audit trail is created for expirations
  */
 describe('ExpireTempPermissionsJob (Integration)', () => {
-  let job: ExpireTempPermissionsJob;
-  let mockGrantRepository: any;
+  let job: ExpireTempPermissionsJob
+  let mockGrantRepository: any
 
   beforeEach(async () => {
     mockGrantRepository = {
       findGrantsNeedingExpiration: jest.fn(),
       save: jest.fn(),
-    };
+    }
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -32,10 +32,10 @@ describe('ExpireTempPermissionsJob (Integration)', () => {
           useValue: mockGrantRepository,
         },
       ],
-    }).compile();
+    }).compile()
 
-    job = module.get<ExpireTempPermissionsJob>(ExpireTempPermissionsJob);
-  });
+    job = module.get<ExpireTempPermissionsJob>(ExpireTempPermissionsJob)
+  })
 
   describe('process', () => {
     it('should expire grants past endTime', async () => {
@@ -48,30 +48,30 @@ describe('ExpireTempPermissionsJob (Integration)', () => {
         endTime: new Date(Date.now() - 3600000), // 1 hour ago (expired)
         justification: 'Audit access',
         requestedBy: 'user-123',
-      });
+      })
 
-      expiredGrant.approve('admin-789', 'Approved');
+      expiredGrant.approve('admin-789', 'Approved')
 
-      mockGrantRepository.findGrantsNeedingExpiration.mockResolvedValue([expiredGrant]);
-      mockGrantRepository.save.mockImplementation((grant) => Promise.resolve(grant));
+      mockGrantRepository.findGrantsNeedingExpiration.mockResolvedValue([expiredGrant])
+      mockGrantRepository.save.mockImplementation(grant => Promise.resolve(grant))
 
       // Act
-      const result: any = await job.process({} as any);
+      const result: any = await job.process({} as any)
 
       // Assert
-      expect(result.expired).toBe(1);
-      expect(result.errors).toBe(0);
-      expect(result.affectedUsers).toBe(1);
-      expect(result.duration).toBeLessThan(30000); // <30 seconds
+      expect(result.expired).toBe(1)
+      expect(result.errors).toBe(0)
+      expect(result.affectedUsers).toBe(1)
+      expect(result.duration).toBeLessThan(30000) // <30 seconds
 
-      expect(mockGrantRepository.findGrantsNeedingExpiration).toHaveBeenCalled();
+      expect(mockGrantRepository.findGrantsNeedingExpiration).toHaveBeenCalled()
       expect(mockGrantRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({
           status: 'revoked',
           revokedBy: 'system',
-        }),
-      );
-    });
+        })
+      )
+    })
 
     it('should skip grants that are not active', async () => {
       // Arrange - Grant not yet started
@@ -83,31 +83,31 @@ describe('ExpireTempPermissionsJob (Integration)', () => {
         endTime: new Date(Date.now() + 7200000), // 2 hours from now
         justification: 'Audit access',
         requestedBy: 'user-123',
-      });
+      })
 
-      futureGrant.approve('admin-789', 'Approved');
+      futureGrant.approve('admin-789', 'Approved')
 
-      mockGrantRepository.findGrantsNeedingExpiration.mockResolvedValue([futureGrant]);
+      mockGrantRepository.findGrantsNeedingExpiration.mockResolvedValue([futureGrant])
 
       // Act
-      const result: any = await job.process({} as any);
+      const result: any = await job.process({} as any)
 
       // Assert
-      expect(result.expired).toBe(0); // Should not expire future grants
-      expect(mockGrantRepository.save).not.toHaveBeenCalled();
-    });
+      expect(result.expired).toBe(0) // Should not expire future grants
+      expect(mockGrantRepository.save).not.toHaveBeenCalled()
+    })
 
     it('should handle no grants to expire', async () => {
       // Arrange
-      mockGrantRepository.findGrantsNeedingExpiration.mockResolvedValue([]);
+      mockGrantRepository.findGrantsNeedingExpiration.mockResolvedValue([])
 
       // Act
-      await job.process({} as any);
+      await job.process({} as any)
 
       // Assert
-      expect(mockGrantRepository.findGrantsNeedingExpiration).toHaveBeenCalled();
-      expect(mockGrantRepository.save).not.toHaveBeenCalled();
-    });
+      expect(mockGrantRepository.findGrantsNeedingExpiration).toHaveBeenCalled()
+      expect(mockGrantRepository.save).not.toHaveBeenCalled()
+    })
 
     it('should process 1000 grants within performance target', async () => {
       // Arrange - Create 1000 expired grants
@@ -120,23 +120,23 @@ describe('ExpireTempPermissionsJob (Integration)', () => {
           endTime: new Date(Date.now() - 3600000),
           justification: 'Audit',
           requestedBy: `user-${i}`,
-        });
-        grant.approve('admin-789', 'Approved');
-        return grant;
-      });
+        })
+        grant.approve('admin-789', 'Approved')
+        return grant
+      })
 
-      mockGrantRepository.findGrantsNeedingExpiration.mockResolvedValue(expiredGrants);
-      mockGrantRepository.save.mockImplementation((grant) => Promise.resolve(grant));
+      mockGrantRepository.findGrantsNeedingExpiration.mockResolvedValue(expiredGrants)
+      mockGrantRepository.save.mockImplementation(grant => Promise.resolve(grant))
 
       // Act
-      const startTime = Date.now();
-      const result: any = await job.process({} as any);
-      const duration = Date.now() - startTime;
+      const startTime = Date.now()
+      const result: any = await job.process({} as any)
+      const duration = Date.now() - startTime
 
       // Assert
-      expect(result.expired).toBe(1000);
-      expect(duration).toBeLessThan(30000); // Must complete in <30 seconds per plan.md
-    }, 35000); // Test timeout at 35 seconds
+      expect(result.expired).toBe(1000)
+      expect(duration).toBeLessThan(30000) // Must complete in <30 seconds per plan.md
+    }, 35000) // Test timeout at 35 seconds
 
     it('should handle errors gracefully and continue processing', async () => {
       // Arrange
@@ -148,8 +148,8 @@ describe('ExpireTempPermissionsJob (Integration)', () => {
         endTime: new Date(Date.now() - 3600000),
         justification: 'Audit',
         requestedBy: 'user-123',
-      });
-      grant1.approve('admin-789', 'Approved');
+      })
+      grant1.approve('admin-789', 'Approved')
 
       const grant2 = TemporaryPermissionGrant.create({
         userId: 'user-456',
@@ -159,20 +159,20 @@ describe('ExpireTempPermissionsJob (Integration)', () => {
         endTime: new Date(Date.now() - 3600000),
         justification: 'Audit',
         requestedBy: 'user-456',
-      });
-      grant2.approve('admin-789', 'Approved');
+      })
+      grant2.approve('admin-789', 'Approved')
 
-      mockGrantRepository.findGrantsNeedingExpiration.mockResolvedValue([grant1, grant2]);
+      mockGrantRepository.findGrantsNeedingExpiration.mockResolvedValue([grant1, grant2])
       mockGrantRepository.save
         .mockRejectedValueOnce(new Error('Database error')) // First save fails
-        .mockResolvedValueOnce(grant2); // Second save succeeds
+        .mockResolvedValueOnce(grant2) // Second save succeeds
 
       // Act
-      const result: any = await job.process({} as any);
+      const result: any = await job.process({} as any)
 
       // Assert
-      expect(result.expired).toBe(1); // One succeeded
-      expect(result.errors).toBe(1); // One failed
-    });
-  });
-});
+      expect(result.expired).toBe(1) // One succeeded
+      expect(result.errors).toBe(1) // One failed
+    })
+  })
+})

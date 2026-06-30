@@ -1,9 +1,13 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../infrastructure/database/prisma.service';
-import { EmailService } from '../../infrastructure/email/email.service';
-import { Notification, NotificationType, NotificationSeverity } from '../../domain/notification/notification.entity';
-import { LoggerService } from '../../core/logger/logger.service';
-import { v4 as uuidv4 } from 'uuid';
+import { Injectable } from '@nestjs/common'
+import { PrismaService } from '../../infrastructure/database/prisma.service'
+import { EmailService } from '../../infrastructure/email/email.service'
+import {
+  Notification,
+  NotificationType,
+  NotificationSeverity,
+} from '../../domain/notification/notification.entity'
+import { LoggerService } from '../../core/logger/logger.service'
+import { v4 as uuidv4 } from 'uuid'
 
 /**
  * Notification Service
@@ -20,28 +24,28 @@ export class NotificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
-    private readonly logger: LoggerService,
+    private readonly logger: LoggerService
   ) {
-    this.logger.setContext(NotificationService.name);
+    this.logger.setContext(NotificationService.name)
   }
 
   /**
    * Create and send notification
    */
   async createNotification(params: {
-    tenantId: string;
-    userId: string;
-    userEmail: string;
-    userName: string;
-    type: NotificationType;
-    title: string;
-    message: string;
-    severity: NotificationSeverity;
-    actionUrl?: string;
-    metadata?: Record<string, any>;
-    sendEmail?: boolean;
+    tenantId: string
+    userId: string
+    userEmail: string
+    userName: string
+    type: NotificationType
+    title: string
+    message: string
+    severity: NotificationSeverity
+    actionUrl?: string
+    metadata?: Record<string, any>
+    sendEmail?: boolean
   }): Promise<Notification> {
-    this.logger.info(`Creating notification for user ${params.userId}: ${params.type}`);
+    this.logger.info(`Creating notification for user ${params.userId}: ${params.type}`)
 
     // Create notification entity
     const notification = Notification.create({
@@ -54,12 +58,12 @@ export class NotificationService {
       severity: params.severity,
       actionUrl: params.actionUrl,
       metadata: params.metadata,
-    });
+    })
 
     // Persist to database
     await this.prisma.notification.create({
       data: notification.toPlainObject(),
-    });
+    })
 
     // Send email if requested
     if (params.sendEmail) {
@@ -67,21 +71,21 @@ export class NotificationService {
         to: params.userEmail,
         recipientName: params.userName,
         notification,
-      });
+      })
     }
 
-    this.logger.info(`Notification created: ${notification.getId()}`);
+    this.logger.info(`Notification created: ${notification.getId()}`)
 
-    return notification;
+    return notification
   }
 
   /**
    * Send notification email
    */
   private async sendNotificationEmail(params: {
-    to: string;
-    recipientName: string;
-    notification: Notification;
+    to: string
+    recipientName: string
+    notification: Notification
   }): Promise<void> {
     try {
       const html = `
@@ -93,15 +97,15 @@ export class NotificationService {
             ? `<p><a href="${params.notification.getActionUrl()}" style="background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Vai al Sistema</a></p>`
             : ''
         }
-      `;
+      `
 
       await this.emailService.sendEmail({
         to: params.to,
         subject: `[WasteFlow] ${params.notification.getTitle()}`,
         html,
-      });
+      })
     } catch (error) {
-      this.logger.error(`Failed to send notification email to ${params.to}`, error);
+      this.logger.error(`Failed to send notification email to ${params.to}`, error)
       // Don't throw - notification still created in-app
     }
   }
@@ -110,10 +114,10 @@ export class NotificationService {
    * Get user notifications
    */
   async getUserNotifications(params: {
-    userId: string;
-    tenantId: string;
-    unreadOnly?: boolean;
-    limit?: number;
+    userId: string
+    tenantId: string
+    unreadOnly?: boolean
+    limit?: number
   }): Promise<Notification[]> {
     const notifications = await this.prisma.notification.findMany({
       where: {
@@ -125,7 +129,7 @@ export class NotificationService {
         createdAt: 'desc',
       },
       take: params.limit || 50,
-    });
+    })
 
     return notifications.map((n: any) =>
       Notification.create({
@@ -138,8 +142,8 @@ export class NotificationService {
         severity: n.severity as NotificationSeverity,
         actionUrl: n.actionUrl || undefined,
         metadata: {}, // Prisma schema does not have metadata field, so pass empty object
-      }),
-    );
+      })
+    )
   }
 
   /**
@@ -152,7 +156,7 @@ export class NotificationService {
         tenantId,
         isRead: false,
       },
-    });
+    })
   }
 
   /**
@@ -168,9 +172,9 @@ export class NotificationService {
         isRead: true,
         readAt: new Date(),
       },
-    });
+    })
 
-    this.logger.debug(`Notification marked as read: ${notificationId}`);
+    this.logger.debug(`Notification marked as read: ${notificationId}`)
   }
 
   /**
@@ -187,9 +191,9 @@ export class NotificationService {
         isRead: true,
         readAt: new Date(),
       },
-    });
+    })
 
-    this.logger.info(`All notifications marked as read for user ${userId}`);
+    this.logger.info(`All notifications marked as read for user ${userId}`)
   }
 
   /**
@@ -201,16 +205,16 @@ export class NotificationService {
         id: notificationId,
         userId,
       },
-    });
+    })
 
-    this.logger.debug(`Notification deleted: ${notificationId}`);
+    this.logger.debug(`Notification deleted: ${notificationId}`)
   }
 
   /**
    * Cleanup old notifications (7 days)
    */
   async cleanupOldNotifications(): Promise<number> {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
     const result = await this.prisma.notification.deleteMany({
       where: {
@@ -219,30 +223,30 @@ export class NotificationService {
         },
         isRead: true,
       },
-    });
+    })
 
-    this.logger.info(`Cleaned up ${result.count} old notifications`);
+    this.logger.info(`Cleaned up ${result.count} old notifications`)
 
-    return result.count;
+    return result.count
   }
 
   /**
    * Notify FIR signature required
    */
   async notifyFIRSignatureRequired(params: {
-    tenantId: string;
-    userId: string;
-    userEmail: string;
-    userName: string;
-    firId: string;
-    firNumber: string;
-    role: 'PRODUCER' | 'CARRIER' | 'RECEIVER';
+    tenantId: string
+    userId: string
+    userEmail: string
+    userName: string
+    firId: string
+    firNumber: string
+    role: 'PRODUCER' | 'CARRIER' | 'RECEIVER'
   }): Promise<void> {
     const roleLabel = {
       PRODUCER: 'Produttore',
       CARRIER: 'Trasportatore',
       RECEIVER: 'Destinatario',
-    }[params.role];
+    }[params.role]
 
     await this.createNotification({
       tenantId: params.tenantId,
@@ -260,7 +264,7 @@ export class NotificationService {
         role: params.role,
       },
       sendEmail: true,
-    });
+    })
 
     // Also send specialized email
     await this.emailService.sendFIRSignatureRequired({
@@ -269,7 +273,7 @@ export class NotificationService {
       firNumber: params.firNumber,
       role: params.role,
       actionUrl: `${process.env.PUBLIC_URL}/fir/${params.firId}`,
-    });
+    })
   }
 
   /**
@@ -278,11 +282,11 @@ export class NotificationService {
    * Consider adding FIR_COMPLETED to NotificationType enum in schema
    */
   async notifyFIRCompleted(params: {
-    tenantId: string;
-    userId: string;
-    userEmail: string;
-    userName: string;
-    firNumber: string;
+    tenantId: string
+    userId: string
+    userEmail: string
+    userName: string
+    firNumber: string
   }): Promise<void> {
     await this.createNotification({
       tenantId: params.tenantId,
@@ -297,25 +301,25 @@ export class NotificationService {
         firNumber: params.firNumber,
       },
       sendEmail: true,
-    });
+    })
 
     await this.emailService.sendFIRCompleted({
       to: params.userEmail,
       recipientName: params.userName,
       firNumber: params.firNumber,
-    });
+    })
   }
 
   /**
    * Notify RENTRI sync failed
    */
   async notifyRENTRISyncFailed(params: {
-    tenantId: string;
-    userId: string;
-    userEmail: string;
-    userName: string;
-    firNumber: string;
-    error: string;
+    tenantId: string
+    userId: string
+    userEmail: string
+    userName: string
+    firNumber: string
+    error: string
   }): Promise<void> {
     await this.createNotification({
       tenantId: params.tenantId,
@@ -331,13 +335,13 @@ export class NotificationService {
         error: params.error,
       },
       sendEmail: true,
-    });
+    })
 
     await this.emailService.sendRENTRISyncFailed({
       to: params.userEmail,
       recipientName: params.userName,
       firNumber: params.firNumber,
       error: params.error,
-    });
+    })
   }
 }

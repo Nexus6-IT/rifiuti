@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { LoggerService } from '../../core/logger/logger.service';
-import * as nodemailer from 'nodemailer';
-import { Transporter } from 'nodemailer';
+import { Injectable } from '@nestjs/common'
+import { LoggerService } from '../../core/logger/logger.service'
+import * as nodemailer from 'nodemailer'
+import { Transporter } from 'nodemailer'
 
 /**
  * Email Service
@@ -14,13 +14,13 @@ import { Transporter } from 'nodemailer';
  */
 @Injectable()
 export class EmailService {
-  private transporter: Transporter;
-  private isDevelopment: boolean;
+  private transporter: Transporter
+  private isDevelopment: boolean
 
   constructor(private readonly logger: LoggerService) {
-    this.logger.setContext(EmailService.name);
-    this.isDevelopment = process.env.NODE_ENV !== 'production';
-    this.initializeTransporter();
+    this.logger.setContext(EmailService.name)
+    this.isDevelopment = process.env.NODE_ENV !== 'production'
+    this.initializeTransporter()
   }
 
   /**
@@ -29,8 +29,8 @@ export class EmailService {
   private async initializeTransporter() {
     if (this.isDevelopment) {
       // Use ethereal for development testing
-      this.logger.info('Email service running in DEVELOPMENT mode (console logging)');
-      return;
+      this.logger.info('Email service running in DEVELOPMENT mode (console logging)')
+      return
     }
 
     const smtpConfig = {
@@ -41,16 +41,16 @@ export class EmailService {
         user: process.env.SMTP_USER || 'apikey',
         pass: process.env.SMTP_PASSWORD || '',
       },
-    };
+    }
 
-    this.transporter = nodemailer.createTransport(smtpConfig);
+    this.transporter = nodemailer.createTransport(smtpConfig)
 
     // Verify connection
     try {
-      await this.transporter.verify();
-      this.logger.info('SMTP server ready to send emails');
+      await this.transporter.verify()
+      this.logger.info('SMTP server ready to send emails')
     } catch (error) {
-      this.logger.error('SMTP connection failed', error);
+      this.logger.error('SMTP connection failed', error)
     }
   }
 
@@ -58,12 +58,12 @@ export class EmailService {
    * Send email
    */
   async sendEmail(params: {
-    to: string;
-    subject: string;
-    html: string;
-    text?: string;
+    to: string
+    subject: string
+    html: string
+    text?: string
   }): Promise<void> {
-    this.logger.info(`Sending email to ${params.to}: ${params.subject}`);
+    this.logger.info(`Sending email to ${params.to}: ${params.subject}`)
 
     try {
       if (this.isDevelopment) {
@@ -75,8 +75,8 @@ Subject: ${params.subject}
 ---
 ${params.text || params.html}
 ================================
-        `);
-        return;
+        `)
+        return
       }
 
       // Production: send real email
@@ -86,13 +86,13 @@ ${params.text || params.html}
         subject: params.subject,
         html: params.html,
         text: params.text,
-      };
+      }
 
-      const info = await this.transporter.sendMail(mailOptions);
-      this.logger.info(`Email sent successfully to ${params.to} - MessageID: ${info.messageId}`);
+      const info = await this.transporter.sendMail(mailOptions)
+      this.logger.info(`Email sent successfully to ${params.to} - MessageID: ${info.messageId}`)
     } catch (error) {
-      this.logger.error(`Failed to send email to ${params.to}`, error);
-      throw error;
+      this.logger.error(`Failed to send email to ${params.to}`, error)
+      throw error
     }
   }
 
@@ -100,17 +100,17 @@ ${params.text || params.html}
    * Send FIR signature required notification
    */
   async sendFIRSignatureRequired(params: {
-    to: string;
-    recipientName: string;
-    firNumber: string;
-    role: 'PRODUCER' | 'CARRIER' | 'RECEIVER';
-    actionUrl: string;
+    to: string
+    recipientName: string
+    firNumber: string
+    role: 'PRODUCER' | 'CARRIER' | 'RECEIVER'
+    actionUrl: string
   }): Promise<void> {
     const roleLabel = {
       PRODUCER: 'Produttore',
       CARRIER: 'Trasportatore',
       RECEIVER: 'Destinatario',
-    }[params.role];
+    }[params.role]
 
     const html = `
       <h2>Firma Digitale Richiesta - FIR ${params.firNumber}</h2>
@@ -127,7 +127,7 @@ ${params.text || params.html}
         Questa email è stata inviata automaticamente dal sistema WasteFlow.<br>
         Per supporto: support@wasteflow.it
       </p>
-    `;
+    `
 
     const text = `
 Firma Digitale Richiesta - FIR ${params.firNumber}
@@ -139,23 +139,23 @@ Gentile ${params.recipientName},
 Accedi al sistema per firmare: ${params.actionUrl}
 
 Ricorda: è richiesta autenticazione SPID Level 2+ per firmare documenti.
-    `;
+    `
 
     await this.sendEmail({
       to: params.to,
       subject: `[WasteFlow] Firma richiesta: FIR ${params.firNumber}`,
       html,
       text,
-    });
+    })
   }
 
   /**
    * Send FIR completed notification
    */
   async sendFIRCompleted(params: {
-    to: string;
-    recipientName: string;
-    firNumber: string;
+    to: string
+    recipientName: string
+    firNumber: string
   }): Promise<void> {
     const html = `
       <h2>FIR Completato - ${params.firNumber}</h2>
@@ -165,23 +165,23 @@ Ricorda: è richiesta autenticazione SPID Level 2+ per firmare documenti.
       <p>✅ Firma Produttore</p>
       <p>✅ Firma Trasportatore</p>
       <p>✅ Firma Destinatario</p>
-    `;
+    `
 
     await this.sendEmail({
       to: params.to,
       subject: `[WasteFlow] FIR completato: ${params.firNumber}`,
       html,
-    });
+    })
   }
 
   /**
    * Send RENTRI sync failed notification
    */
   async sendRENTRISyncFailed(params: {
-    to: string;
-    recipientName: string;
-    firNumber: string;
-    error: string;
+    to: string
+    recipientName: string
+    firNumber: string
+    error: string
   }): Promise<void> {
     const html = `
       <h2>⚠️ Errore Sincronizzazione RENTRI</h2>
@@ -189,25 +189,25 @@ Ricorda: è richiesta autenticazione SPID Level 2+ per firmare documenti.
       <p>La sincronizzazione del FIR <strong>${params.firNumber}</strong> con RENTRI è fallita.</p>
       <p><strong>Errore:</strong> ${params.error}</p>
       <p>Il sistema riproverà automaticamente. Se il problema persiste, contatta il supporto.</p>
-    `;
+    `
 
     await this.sendEmail({
       to: params.to,
       subject: `[WasteFlow] ⚠️ Errore RENTRI: ${params.firNumber}`,
       html,
-    });
+    })
   }
 
   /**
    * Send compliance alert
    */
   async sendComplianceAlert(params: {
-    to: string;
-    recipientName: string;
-    message: string;
-    severity: 'WARNING' | 'CRITICAL';
+    to: string
+    recipientName: string
+    message: string
+    severity: 'WARNING' | 'CRITICAL'
   }): Promise<void> {
-    const emoji = params.severity === 'CRITICAL' ? '🚨' : '⚠️';
+    const emoji = params.severity === 'CRITICAL' ? '🚨' : '⚠️'
 
     const html = `
       <h2>${emoji} Allerta Conformità</h2>
@@ -215,12 +215,12 @@ Ricorda: è richiesta autenticazione SPID Level 2+ per firmare documenti.
       <p>${params.message}</p>
       <p><strong>Livello:</strong> ${params.severity}</p>
       <p>Si prega di verificare e risolvere la situazione al più presto.</p>
-    `;
+    `
 
     await this.sendEmail({
       to: params.to,
       subject: `[WasteFlow] ${emoji} Allerta Conformità`,
       html,
-    });
+    })
   }
 }

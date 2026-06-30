@@ -29,7 +29,7 @@ export interface RentriCredentialInput {
 export class RentriCredentialService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
+    @Inject(RENTRI_CONFIG) private readonly config: RentriConfig
   ) {}
 
   /** Salva (crea o aggiorna) la credenziale RENTRI di un tenant, cifrando la chiave. */

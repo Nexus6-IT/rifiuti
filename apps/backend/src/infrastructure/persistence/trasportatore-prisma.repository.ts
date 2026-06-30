@@ -75,7 +75,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
     const trasportatore = await this.prisma.db.trasportatore.findFirst({
       where: {
         tenantId,
-        partitaIVA
+        partitaIVA,
       },
     })
 
@@ -92,7 +92,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
     const trasportatore = await this.prisma.db.trasportatore.findFirst({
       where: {
         tenantId,
-        numeroIscrizione
+        numeroIscrizione,
       },
     })
 

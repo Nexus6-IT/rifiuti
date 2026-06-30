@@ -1,8 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-import { User } from '../../domain/auth/user.entity';
-import { SPIDAttributes } from '../../domain/auth/spid-attributes.vo';
-import { ITenantRepository } from '../../domain/shared/repository.interface';
+import { Injectable } from '@nestjs/common'
+import { PrismaClient } from '@prisma/client'
+import { User } from '../../domain/auth/user.entity'
+import { ITenantRepository } from '../../domain/shared/repository.interface'
 
 /**
  * User Repository
@@ -20,20 +19,20 @@ import { ITenantRepository } from '../../domain/shared/repository.interface';
 export class UserRepository implements ITenantRepository<User> {
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly tenantId?: string,
+    private readonly tenantId?: string
   ) {}
 
   getTenantId(): string {
-    return this.tenantId || '';
+    return this.tenantId || ''
   }
 
   /**
    * Save new user
    */
   async save(user: User): Promise<User> {
-    const spidAttributes = user.getSpidAttributes();
-    const roles = user.getRoles();
-    const primaryRole = roles && roles.length > 0 ? roles[0] : 'OPERATOR';
+    const _spidAttributes = user.getSpidAttributes()
+    const roles = user.getRoles()
+    const primaryRole = roles && roles.length > 0 ? roles[0] : 'OPERATOR'
 
     const data = {
       id: user.getId(),
@@ -48,20 +47,20 @@ export class UserRepository implements ITenantRepository<User> {
       // TODO: SPID fields don't exist in User model
       createdAt: user.getCreatedAt(),
       updatedAt: user.getUpdatedAt(),
-    };
+    }
 
-    await this.prisma.user.create({ data } as any);
+    await this.prisma.user.create({ data } as any)
 
-    return user;
+    return user
   }
 
   /**
    * Update existing user
    */
   async update(id: string, user: User): Promise<User> {
-    const spidAttributes = user.getSpidAttributes();
-    const roles = user.getRoles();
-    const primaryRole = roles && roles.length > 0 ? roles[0] : 'OPERATOR';
+    const _spidAttributes = user.getSpidAttributes()
+    const roles = user.getRoles()
+    const primaryRole = roles && roles.length > 0 ? roles[0] : 'OPERATOR'
 
     const data = {
       firstName: user.getFirstName(),
@@ -71,29 +70,29 @@ export class UserRepository implements ITenantRepository<User> {
       // TODO: isActive field doesn't exist in User model
       // TODO: SPID fields don't exist in User model
       updatedAt: new Date(),
-    };
+    }
 
     await this.prisma.user.update({
       where: { id },
       data,
-    } as any);
+    } as any)
 
-    return user;
+    return user
   }
 
   /**
    * Find user by ID
    */
   async findById(id: string): Promise<User | null> {
-    const record = await this.prisma.user.findUnique({
+    const record = (await this.prisma.user.findUnique({
       where: { id },
-    }) as any;
+    })) as any
 
     if (!record) {
-      return null;
+      return null
     }
 
-    return this.toDomain(record);
+    return this.toDomain(record)
   }
 
   /**
@@ -101,18 +100,18 @@ export class UserRepository implements ITenantRepository<User> {
    * Note: fiscalCode is not unique globally, only per tenant
    */
   async findByFiscalCode(fiscalCode: string): Promise<User | null> {
-    const record = await this.prisma.user.findFirst({
+    const record = (await this.prisma.user.findFirst({
       where: {
         fiscalCode: fiscalCode.toUpperCase(),
         tenantId: this.tenantId,
       },
-    }) as any;
+    })) as any
 
     if (!record) {
-      return null;
+      return null
     }
 
-    return this.toDomain(record);
+    return this.toDomain(record)
   }
 
   /**
@@ -120,18 +119,18 @@ export class UserRepository implements ITenantRepository<User> {
    * Note: email is not unique globally
    */
   async findByEmail(email: string): Promise<User | null> {
-    const record = await this.prisma.user.findFirst({
+    const record = (await this.prisma.user.findFirst({
       where: {
         email: email.toLowerCase(),
         tenantId: this.tenantId,
       },
-    }) as any;
+    })) as any
 
     if (!record) {
-      return null;
+      return null
     }
 
-    return this.toDomain(record);
+    return this.toDomain(record)
   }
 
   /**
@@ -141,26 +140,26 @@ export class UserRepository implements ITenantRepository<User> {
     const where: any = {
       tenantId: this.tenantId,
       ...criteria,
-    };
+    }
 
-    const records = await this.prisma.user.findMany({
+    const records = (await this.prisma.user.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-    }) as any[];
+    })) as any[]
 
-    return records.map(r => this.toDomain(r));
+    return records.map(r => this.toDomain(r))
   }
 
   /**
    * Find all users (admin only)
    */
   async findAll(criteria?: any): Promise<User[]> {
-    const records = await this.prisma.user.findMany({
+    const records = (await this.prisma.user.findMany({
       where: criteria,
       orderBy: { createdAt: 'desc' },
-    }) as any[];
+    })) as any[]
 
-    return records.map(r => this.toDomain(r));
+    return records.map(r => this.toDomain(r))
   }
 
   /**
@@ -169,9 +168,9 @@ export class UserRepository implements ITenantRepository<User> {
   async findPaginated(
     limit: number,
     offset: number,
-    criteria?: any,
+    criteria?: any
   ): Promise<{ data: User[]; total: number }> {
-    const where = criteria || {};
+    const where = criteria || {}
 
     const [records, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -181,23 +180,23 @@ export class UserRepository implements ITenantRepository<User> {
         orderBy: { createdAt: 'desc' },
       }) as any,
       this.prisma.user.count({ where }) as any,
-    ]);
+    ])
 
     return {
       data: records.map((r: any) => this.toDomain(r)),
       total,
-    };
+    }
   }
 
   /**
    * Check if user exists
    */
   async exists(id: string): Promise<boolean> {
-    const count = await this.prisma.user.count({
+    const count = (await this.prisma.user.count({
       where: { id },
-    }) as any;
+    })) as any
 
-    return count > 0;
+    return count > 0
   }
 
   /**
@@ -206,7 +205,7 @@ export class UserRepository implements ITenantRepository<User> {
   async count(criteria?: any): Promise<number> {
     return this.prisma.user.count({
       where: criteria,
-    }) as any;
+    }) as any
   }
 
   /**
@@ -216,9 +215,9 @@ export class UserRepository implements ITenantRepository<User> {
   async delete(id: string): Promise<boolean> {
     await this.prisma.user.delete({
       where: { id },
-    });
+    })
 
-    return true;
+    return true
   }
 
   /**
@@ -252,6 +251,6 @@ export class UserRepository implements ITenantRepository<User> {
       spidAttributes: undefined,
       roles: record.role ? [record.role] : [], // Convert singular 'role' to 'roles' array
       isActive: true, // TODO: isActive field doesn't exist in User model
-    });
+    })
   }
 }

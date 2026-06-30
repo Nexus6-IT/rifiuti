@@ -1,12 +1,12 @@
-import { Component, Input, inject, signal, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { TimelineModule } from 'primeng/timeline';
-import { CardModule } from 'primeng/card';
-import { TagModule } from 'primeng/tag';
-import { ButtonModule } from 'primeng/button';
-import { DialogService } from 'primeng/dynamicdialog';
-import { SignatureService, SignatureVerification } from '../../../core/services/signature.service';
-import { SignatureDialogComponent } from '../signature-dialog/signature-dialog.component';
+import { Component, Input, inject, signal, OnInit } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { TimelineModule } from 'primeng/timeline'
+import { CardModule } from 'primeng/card'
+import { TagModule } from 'primeng/tag'
+import { ButtonModule } from 'primeng/button'
+import { DialogService } from 'primeng/dynamicdialog'
+import { SignatureService, SignatureVerification } from '../../../core/services/signature.service'
+import { SignatureDialogComponent } from '../signature-dialog/signature-dialog.component'
 
 /**
  * Signature Status Component
@@ -40,11 +40,7 @@ import { SignatureDialogComponent } from '../signature-dialog/signature-dialog.c
       </ng-template>
 
       <!-- Signature Timeline -->
-      <p-timeline
-        [value]="timelineEvents()"
-        align="alternate"
-        styleClass="signature-timeline"
-      >
+      <p-timeline [value]="timelineEvents()" align="alternate" styleClass="signature-timeline">
         <ng-template pTemplate="marker" let-event>
           <div
             class="timeline-marker"
@@ -86,7 +82,7 @@ import { SignatureDialogComponent } from '../signature-dialog/signature-dialog.c
               </p>
               <p class="text-sm mb-1">
                 <i class="pi pi-calendar mr-2"></i>
-                {{ event.signature.signedAt | date : 'dd/MM/yyyy HH:mm' }}
+                {{ event.signature.signedAt | date: 'dd/MM/yyyy HH:mm' }}
               </p>
               <p class="text-sm mb-1">
                 <i class="pi pi-shield mr-2"></i>
@@ -200,26 +196,26 @@ import { SignatureDialogComponent } from '../signature-dialog/signature-dialog.c
   ],
 })
 export class SignatureStatusComponent implements OnInit {
-  private readonly signatureService = inject(SignatureService);
-  private readonly dialogService = inject(DialogService);
+  private readonly signatureService = inject(SignatureService)
+  private readonly dialogService = inject(DialogService)
 
-  @Input() firId!: string;
-  @Input() firNumber!: string;
-  @Input() signatureCount: number = 0;
-  @Input() isCompleted: boolean = false;
+  @Input() firId!: string
+  @Input() firNumber!: string
+  @Input() signatureCount: number = 0
+  @Input() isCompleted: boolean = false
 
-  protected readonly verificationResult = signal<any>(null);
-  protected readonly timelineEvents = signal<any[]>([]);
+  protected readonly verificationResult = signal<any>(null)
+  protected readonly timelineEvents = signal<any[]>([])
 
   protected readonly statusBadge = signal({
     label: 'Non firmato (0/3)',
     severity: 'warning' as const,
     icon: 'pi pi-exclamation-circle',
-  });
+  })
 
   ngOnInit(): void {
-    this.loadSignatureVerification();
-    this.updateStatusBadge();
+    this.loadSignatureVerification()
+    this.updateStatusBadge()
   }
 
   /**
@@ -227,14 +223,12 @@ export class SignatureStatusComponent implements OnInit {
    */
   private async loadSignatureVerification(): Promise<void> {
     try {
-      const result = await this.signatureService
-        .verifySignatures(this.firId)
-        .toPromise();
+      const result = await this.signatureService.verifySignatures(this.firId).toPromise()
 
-      this.verificationResult.set(result);
-      this.buildTimeline(result?.signatures || []);
+      this.verificationResult.set(result)
+      this.buildTimeline(result?.signatures || [])
     } catch (error) {
-      console.error('Failed to verify signatures:', error);
+      console.error('Failed to verify signatures:', error)
     }
   }
 
@@ -242,14 +236,10 @@ export class SignatureStatusComponent implements OnInit {
    * Build timeline events from signatures
    */
   private buildTimeline(signatures: SignatureVerification[]): void {
-    const roles: Array<'PRODUCER' | 'CARRIER' | 'RECEIVER'> = [
-      'PRODUCER',
-      'CARRIER',
-      'RECEIVER',
-    ];
+    const roles: Array<'PRODUCER' | 'CARRIER' | 'RECEIVER'> = ['PRODUCER', 'CARRIER', 'RECEIVER']
 
-    const events = roles.map((role) => {
-      const signature = signatures.find((s) => s.role === role);
+    const events = roles.map(role => {
+      const signature = signatures.find(s => s.role === role)
 
       return {
         role,
@@ -257,10 +247,10 @@ export class SignatureStatusComponent implements OnInit {
         completed: !!signature,
         signature,
         icon: this.getRoleIcon(role),
-      };
-    });
+      }
+    })
 
-    this.timelineEvents.set(events);
+    this.timelineEvents.set(events)
   }
 
   /**
@@ -269,9 +259,9 @@ export class SignatureStatusComponent implements OnInit {
   private updateStatusBadge(): void {
     const badge = this.signatureService.getSignatureStatusBadge(
       this.signatureCount,
-      this.isCompleted,
-    );
-    this.statusBadge.set(badge);
+      this.isCompleted
+    )
+    this.statusBadge.set(badge)
   }
 
   /**
@@ -282,16 +272,16 @@ export class SignatureStatusComponent implements OnInit {
       PRODUCER: 'pi pi-building',
       CARRIER: 'pi pi-truck',
       RECEIVER: 'pi pi-inbox',
-    };
-    return icons[role as keyof typeof icons] || 'pi pi-user';
+    }
+    return icons[role as keyof typeof icons] || 'pi pi-user'
   }
 
   /**
    * Check if user can sign with role
    */
-  protected canUserSign(role: 'PRODUCER' | 'CARRIER' | 'RECEIVER'): boolean {
+  protected canUserSign(_role: 'PRODUCER' | 'CARRIER' | 'RECEIVER'): boolean {
     // Placeholder - in production, check user authorization
-    return true;
+    return true
   }
 
   /**
@@ -306,29 +296,27 @@ export class SignatureStatusComponent implements OnInit {
         firNumber: this.firNumber,
         role,
       },
-    });
+    })
 
-    ref.onClose.subscribe((result) => {
+    ref.onClose.subscribe(result => {
       if (result?.success) {
         // Reload signatures
-        this.loadSignatureVerification();
-        this.signatureCount++;
-        this.isCompleted = this.signatureCount === 3;
-        this.updateStatusBadge();
+        this.loadSignatureVerification()
+        this.signatureCount++
+        this.isCompleted = this.signatureCount === 3
+        this.updateStatusBadge()
       }
-    });
+    })
   }
 
   /**
    * Open public verification page
    */
   protected async openVerificationPage(): Promise<void> {
-    const urlResult = await this.signatureService
-      .getVerificationUrl(this.firId)
-      .toPromise();
+    const urlResult = await this.signatureService.getVerificationUrl(this.firId).toPromise()
 
     if (urlResult?.url) {
-      window.open(urlResult.url, '_blank');
+      window.open(urlResult.url, '_blank')
     }
   }
 }

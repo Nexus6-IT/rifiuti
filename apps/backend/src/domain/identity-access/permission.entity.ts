@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'crypto'
 
 /**
  * Permission Domain Entity
@@ -12,8 +12,8 @@ import { randomUUID } from 'crypto';
  * - Sensitive permissions must be flagged
  */
 export class Permission {
-  private static readonly VALID_SCOPES = ['own', 'facility', 'all'];
-  private static readonly SCOPE_LEVELS = { own: 0, facility: 1, all: 2 };
+  private static readonly VALID_SCOPES = ['own', 'facility', 'all']
+  private static readonly SCOPE_LEVELS = { own: 0, facility: 1, all: 2 }
 
   private constructor(
     public readonly id: string,
@@ -24,36 +24,36 @@ export class Permission {
     public readonly isSensitive: boolean,
     public readonly module: string,
     public readonly createdAt: Date,
-    public updatedAt: Date,
+    public updatedAt: Date
   ) {}
 
   /**
    * Create new permission
    */
   static create(data: {
-    resource: string;
-    action: string;
-    scope: string;
-    description: string;
-    isSensitive: boolean;
-    module: string;
+    resource: string
+    action: string
+    scope: string
+    description: string
+    isSensitive: boolean
+    module: string
   }): Permission {
     // Validate resource
     if (!data.resource || data.resource.trim() === '') {
-      throw new Error('Resource cannot be empty');
+      throw new Error('Resource cannot be empty')
     }
 
     // Validate action
     if (!data.action || data.action.trim() === '') {
-      throw new Error('Action cannot be empty');
+      throw new Error('Action cannot be empty')
     }
 
     // Validate scope
     if (!Permission.VALID_SCOPES.includes(data.scope)) {
-      throw new Error(`Scope must be one of: ${Permission.VALID_SCOPES.join(', ')}`);
+      throw new Error(`Scope must be one of: ${Permission.VALID_SCOPES.join(', ')}`)
     }
 
-    const now = new Date();
+    const now = new Date()
 
     return new Permission(
       randomUUID(),
@@ -64,33 +64,29 @@ export class Permission {
       data.isSensitive,
       data.module,
       now,
-      now,
-    );
+      now
+    )
   }
 
   /**
    * Create permission from string format "resource:action:scope"
    */
-  static fromString(
-    permissionString: string,
-    description: string,
-    module: string,
-  ): Permission {
-    const parts = permissionString.split(':');
+  static fromString(permissionString: string, description: string, module: string): Permission {
+    const parts = permissionString.split(':')
 
     if (parts.length !== 3) {
-      throw new Error('Invalid permission format. Expected: resource:action:scope');
+      throw new Error('Invalid permission format. Expected: resource:action:scope')
     }
 
-    const [resource, action, scope] = parts;
+    const [resource, action, scope] = parts
 
     if (!resource || !action || !scope) {
-      throw new Error('Invalid permission format. Expected: resource:action:scope');
+      throw new Error('Invalid permission format. Expected: resource:action:scope')
     }
 
     // Auto-detect sensitive permissions
-    const sensitiveActions = ['delete', 'approve', 'configure'];
-    const isSensitive = sensitiveActions.includes(action.toLowerCase());
+    const sensitiveActions = ['delete', 'approve', 'configure']
+    const isSensitive = sensitiveActions.includes(action.toLowerCase())
 
     return Permission.create({
       resource,
@@ -99,22 +95,22 @@ export class Permission {
       description,
       isSensitive,
       module,
-    });
+    })
   }
 
   /**
    * Reconstruct permission from persistence
    */
   static fromPersistence(data: {
-    id: string;
-    resource: string;
-    action: string;
-    scope: string;
-    description: string;
-    isSensitive: boolean;
-    module: string;
-    createdAt: Date;
-    updatedAt: Date;
+    id: string
+    resource: string
+    action: string
+    scope: string
+    description: string
+    isSensitive: boolean
+    module: string
+    createdAt: Date
+    updatedAt: Date
   }): Permission {
     return new Permission(
       data.id,
@@ -125,15 +121,15 @@ export class Permission {
       data.isSensitive,
       data.module,
       data.createdAt,
-      data.updatedAt,
-    );
+      data.updatedAt
+    )
   }
 
   /**
    * Convert permission to string format "resource:action:scope"
    */
   toString(): string {
-    return `${this.resource}:${this.action}:${this.scope}`;
+    return `${this.resource}:${this.action}:${this.scope}`
   }
 
   /**
@@ -142,17 +138,15 @@ export class Permission {
    */
   equals(other: Permission): boolean {
     return (
-      this.resource === other.resource &&
-      this.action === other.action &&
-      this.scope === other.scope
-    );
+      this.resource === other.resource && this.action === other.action && this.scope === other.scope
+    )
   }
 
   /**
    * Get scope level (0=own, 1=facility, 2=all)
    */
   getScopeLevel(): number {
-    return Permission.SCOPE_LEVELS[this.scope as keyof typeof Permission.SCOPE_LEVELS] || 0;
+    return Permission.SCOPE_LEVELS[this.scope as keyof typeof Permission.SCOPE_LEVELS] || 0
   }
 
   /**
@@ -164,29 +158,29 @@ export class Permission {
   implies(other: Permission): boolean {
     // Must match resource and action
     if (this.resource !== other.resource || this.action !== other.action) {
-      return false;
+      return false
     }
 
     // Check scope hierarchy
-    const thisScopeLevel = this.getScopeLevel();
-    const otherScopeLevel = other.getScopeLevel();
+    const thisScopeLevel = this.getScopeLevel()
+    const otherScopeLevel = other.getScopeLevel()
 
-    return thisScopeLevel >= otherScopeLevel;
+    return thisScopeLevel >= otherScopeLevel
   }
 
   /**
    * Convert to persistence format
    */
   toPersistence(): {
-    id: string;
-    resource: string;
-    action: string;
-    scope: string;
-    description: string;
-    isSensitive: boolean;
-    module: string;
-    createdAt: Date;
-    updatedAt: Date;
+    id: string
+    resource: string
+    action: string
+    scope: string
+    description: string
+    isSensitive: boolean
+    module: string
+    createdAt: Date
+    updatedAt: Date
   } {
     return {
       id: this.id,
@@ -198,6 +192,6 @@ export class Permission {
       module: this.module,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
-    };
+    }
   }
 }

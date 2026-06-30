@@ -4,12 +4,17 @@
  */
 
 import { SpidStrategy } from './spid.strategy'
-import { ConfigService } from '@nestjs/config'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { UnauthorizedException } from '@nestjs/common'
 import { createPrismaMock, MockPrisma } from '../../../test/utils/prisma-mock'
-import { createConfigServiceMock, MockConfigService } from '../../../test/utils/config-service-mock.factory'
-import { createMockUser, createMockSpidProfile, VALID_FISCAL_CODES } from '../../../test/utils/test-fixtures.factory'
+import {
+  createConfigServiceMock,
+  MockConfigService,
+} from '../../../test/utils/config-service-mock.factory'
+import {
+  createMockUser,
+  createMockSpidProfile,
+  VALID_FISCAL_CODES,
+} from '../../../test/utils/test-fixtures.factory'
 
 describe('SpidStrategy', () => {
   let strategy: SpidStrategy
@@ -121,7 +126,9 @@ describe('SpidStrategy', () => {
       }
 
       await expect(strategy.validate(invalidProfile as any)).rejects.toThrow(UnauthorizedException)
-      await expect(strategy.validate(invalidProfile as any)).rejects.toThrow('Missing required SPID attributes')
+      await expect(strategy.validate(invalidProfile as any)).rejects.toThrow(
+        'Missing required SPID attributes'
+      )
     })
 
     it('should throw UnauthorizedException if email is missing', async () => {
@@ -130,7 +137,9 @@ describe('SpidStrategy', () => {
       }
 
       await expect(strategy.validate(invalidProfile as any)).rejects.toThrow(UnauthorizedException)
-      await expect(strategy.validate(invalidProfile as any)).rejects.toThrow('Missing required SPID attributes')
+      await expect(strategy.validate(invalidProfile as any)).rejects.toThrow(
+        'Missing required SPID attributes'
+      )
     })
 
     it('should handle user with all optional fields', async () => {

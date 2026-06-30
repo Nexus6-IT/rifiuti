@@ -3,9 +3,9 @@
  * T225-226: Phase 10 - ABAC Policy Management API
  */
 
-import { IsString, IsNotEmpty, IsInt, IsBoolean, IsOptional, ValidateNested, IsEnum } from 'class-validator';
-import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsInt, IsOptional, ValidateNested, IsEnum } from 'class-validator'
+import { Type } from 'class-transformer'
+import { ApiProperty } from '@nestjs/swagger'
 
 export enum AbacPolicyEffectDto {
   ALLOW = 'ALLOW',
@@ -29,90 +29,93 @@ export class AbacConditionRuleDto {
   @ApiProperty({ example: 'user.facility', description: 'Attribute path using dot notation' })
   @IsString()
   @IsNotEmpty()
-  attribute: string;
+  attribute: string
 
   @ApiProperty({ enum: AbacOperatorDto, example: 'eq' })
   @IsEnum(AbacOperatorDto)
-  operator: AbacOperatorDto;
+  operator: AbacOperatorDto
 
   @ApiProperty({ example: 'facility-123', description: 'Value to compare against' })
-  value: any;
+  value: any
 }
 
 export class AbacConditionsDto {
   @ApiProperty({ enum: ['AND', 'OR'], example: 'AND' })
   @IsString()
   @IsNotEmpty()
-  operator: 'AND' | 'OR';
+  operator: 'AND' | 'OR'
 
   @ApiProperty({ type: [AbacConditionRuleDto] })
   @ValidateNested({ each: true })
   @Type(() => AbacConditionRuleDto)
-  rules: AbacConditionRuleDto[];
+  rules: AbacConditionRuleDto[]
 }
 
 export class CreatePolicyDto {
   @ApiProperty({ example: 'FIR Facility Scoping', description: 'Policy name' })
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name: string
 
   @ApiProperty({ example: 'fir', description: 'Resource type this policy applies to' })
   @IsString()
   @IsNotEmpty()
-  resourceType: string;
+  resourceType: string
 
   @ApiProperty({ enum: AbacPolicyEffectDto, example: 'ALLOW', description: 'Policy effect' })
   @IsEnum(AbacPolicyEffectDto)
-  effect: AbacPolicyEffectDto;
+  effect: AbacPolicyEffectDto
 
   @ApiProperty({ type: AbacConditionsDto })
   @ValidateNested()
   @Type(() => AbacConditionsDto)
-  conditions: AbacConditionsDto;
+  conditions: AbacConditionsDto
 
   @ApiProperty({ example: 100, description: 'Priority (lower = higher priority)', default: 100 })
   @IsInt()
   @IsOptional()
-  priority?: number;
+  priority?: number
 
-  @ApiProperty({ example: 'Allow FIR read if user facility matches FIR producer facility', required: false })
+  @ApiProperty({
+    example: 'Allow FIR read if user facility matches FIR producer facility',
+    required: false,
+  })
   @IsString()
   @IsOptional()
-  description?: string;
+  description?: string
 }
 
 export class PolicyResponseDto {
   @ApiProperty()
-  id: string;
+  id: string
 
   @ApiProperty()
-  name: string;
+  name: string
 
   @ApiProperty()
-  resourceType: string;
+  resourceType: string
 
   @ApiProperty({ enum: AbacPolicyEffectDto })
-  effect: AbacPolicyEffectDto;
+  effect: AbacPolicyEffectDto
 
   @ApiProperty()
-  conditions: AbacConditionsDto;
+  conditions: AbacConditionsDto
 
   @ApiProperty()
-  priority: number;
+  priority: number
 
   @ApiProperty()
-  isActive: boolean;
+  isActive: boolean
 
   @ApiProperty({ required: false })
-  description?: string;
+  description?: string
 
   @ApiProperty()
-  createdBy: string;
+  createdBy: string
 
   @ApiProperty()
-  createdAt: Date;
+  createdAt: Date
 
   @ApiProperty()
-  updatedAt: Date;
+  updatedAt: Date
 }

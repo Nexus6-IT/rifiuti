@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { GetAggregatedDashboardQuery } from '../get-aggregated-dashboard.query';
-import { ConsultantTenantAssociationRepository } from '../../../domain/identity-access/consultant-tenant-association.repository.interface';
-import { PrismaService } from '../../../infrastructure/persistence/prisma.service';
+import { Injectable, Logger } from '@nestjs/common'
+import { GetAggregatedDashboardQuery } from '../get-aggregated-dashboard.query'
+import { ConsultantTenantAssociationRepository } from '../../../domain/identity-access/consultant-tenant-association.repository.interface'
+import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 
 /**
  * GetAggregatedDashboardQueryHandler
@@ -29,55 +29,51 @@ import { PrismaService } from '../../../infrastructure/persistence/prisma.servic
  */
 @Injectable()
 export class GetAggregatedDashboardQueryHandler {
-  private readonly logger = new Logger(GetAggregatedDashboardQueryHandler.name);
+  private readonly logger = new Logger(GetAggregatedDashboardQueryHandler.name)
 
   constructor(
     private readonly consultantAssociationRepository: ConsultantTenantAssociationRepository,
-    private readonly prisma: PrismaService,
+    private readonly prisma: PrismaService
   ) {}
 
   async execute(query: GetAggregatedDashboardQuery): Promise<{
-    totalTenants: number;
-    totalPendingFirs: number;
-    totalMudDeadlines: number;
-    totalRentriSyncFailures: number;
+    totalTenants: number
+    totalPendingFirs: number
+    totalMudDeadlines: number
+    totalRentriSyncFailures: number
     pendingFirsByClient: Array<{
-      tenantId: string;
-      tenantName: string;
-      pendingCount: number;
-    }>;
+      tenantId: string
+      tenantName: string
+      pendingCount: number
+    }>
     upcomingDeadlines: Array<{
-      tenantId: string;
-      tenantName: string;
-      deadlineType: string;
-      deadlineDate: Date;
-    }>;
+      tenantId: string
+      tenantName: string
+      deadlineType: string
+      deadlineDate: Date
+    }>
     recentActivity: Array<{
-      tenantId: string;
-      tenantName: string;
-      activityType: string;
-      activityDate: Date;
-      description: string;
-    }>;
+      tenantId: string
+      tenantName: string
+      activityType: string
+      activityDate: Date
+      description: string
+    }>
   }> {
-    const startTime = Date.now();
+    const startTime = Date.now()
 
-    this.logger.debug(
-      `Fetching aggregated dashboard for consultant ${query.consultantUserId}`,
-    );
+    this.logger.debug(`Fetching aggregated dashboard for consultant ${query.consultantUserId}`)
 
     // Step 1: Get all active tenant associations
     const activeAssociations = (
-      await this.consultantAssociationRepository.findAllByConsultant(
-        query.consultantUserId,
-      )
-    ).filter((a) => a.isActiveAndNotExpired());
+      await this.consultantAssociationRepository.findAllByConsultant(query.consultantUserId)
+    ).filter(a => a.isActiveAndNotExpired())
 
-    const tenantIds = activeAssociations.map((a) => a.tenantId);
+    const tenantIds = activeAssociations.map(a => a.tenantId)
 
     this.logger.debug(
-      `Aggregating data across ${tenantIds.length} tenants for consultant ${query.consultantUserId}`,
-    );
+      `Aggregating data across ${tenantIds.length} tenants for consultant ${query.consultantUserId}`
+    )
 
     if (tenantIds.length === 0) {
       // No active associations, return empty dashboard
@@ -89,32 +85,28 @@ export class GetAggregatedDashboardQueryHandler {
         pendingFirsByClient: [],
         upcomingDeadlines: [],
         recentActivity: [],
-      };
+      }
     }
 
     // Step 2: Query metrics in parallel for all tenants
-    const [
-      pendingFirsByClient,
-      upcomingDeadlines,
-      rentriSyncFailures,
-      recentActivity,
-    ] = await Promise.all([
-      this.fetchPendingFirsByClient(tenantIds),
-      this.fetchUpcomingMudDeadlines(tenantIds),
-      this.fetchRentriSyncFailures(tenantIds),
-      this.fetchRecentActivity(tenantIds),
-    ]);
+    const [pendingFirsByClient, upcomingDeadlines, rentriSyncFailures, recentActivity] =
+      await Promise.all([
+        this.fetchPendingFirsByClient(tenantIds),
+        this.fetchUpcomingMudDeadlines(tenantIds),
+        this.fetchRentriSyncFailures(tenantIds),
+        this.fetchRecentActivity(tenantIds),
+      ])
 
     // Step 3: Calculate totals
     const totalPendingFirs = pendingFirsByClient.reduce(
       (sum, client) => sum + client.pendingCount,
-      0,
-    );
+      0
+    )
 
-    const duration = Date.now() - startTime;
+    const duration = Date.now() - startTime
     this.logger.debug(
-      `Aggregated dashboard loaded in ${duration}ms for consultant ${query.consultantUserId}`,
-    );
+      `Aggregated dashboard loaded in ${duration}ms for consultant ${query.consultantUserId}`
+    )
 
     return {
       totalTenants: tenantIds.length,
@@ -124,27 +116,25 @@ export class GetAggregatedDashboardQueryHandler {
       pendingFirsByClient,
       upcomingDeadlines,
       recentActivity,
-    };
+    }
   }
 
   /**
    * Fetch pending FIRs grouped by client tenant
    */
-  private async fetchPendingFirsByClient(
-    tenantIds: string[],
-  ): Promise<
+  private async fetchPendingFirsByClient(tenantIds: string[]): Promise<
     Array<{
-      tenantId: string;
-      tenantName: string;
-      pendingCount: number;
+      tenantId: string
+      tenantName: string
+      pendingCount: number
     }>
   > {
     // Query pending FIRs across all tenants
     const results = await this.prisma.$queryRaw<
       Array<{
-        tenant_id: string;
-        tenant_name: string;
-        pending_count: bigint;
+        tenant_id: string
+        tenant_name: string
+        pending_count: bigint
       }>
     >`
       SELECT
@@ -157,38 +147,36 @@ export class GetAggregatedDashboardQueryHandler {
         AND f.status IN ('DRAFT', 'SUBMITTED')
       GROUP BY f.tenant_id, t.name
       ORDER BY pending_count DESC
-    `;
+    `
 
     return results.map((row: any) => ({
       tenantId: row.tenant_id,
       tenantName: row.tenant_name,
       pendingCount: Number(row.pending_count),
-    }));
+    }))
   }
 
   /**
    * Fetch upcoming MUD deadlines across all tenants
    */
-  private async fetchUpcomingMudDeadlines(
-    tenantIds: string[],
-  ): Promise<
+  private async fetchUpcomingMudDeadlines(tenantIds: string[]): Promise<
     Array<{
-      tenantId: string;
-      tenantName: string;
-      deadlineType: string;
-      deadlineDate: Date;
+      tenantId: string
+      tenantName: string
+      deadlineType: string
+      deadlineDate: Date
     }>
   > {
     // Query MUD deadlines within next 30 days
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    const thirtyDaysFromNow = new Date()
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30)
 
     const results = await this.prisma.$queryRaw<
       Array<{
-        tenant_id: string;
-        tenant_name: string;
-        deadline_type: string;
-        deadline_date: Date;
+        tenant_id: string
+        tenant_name: string
+        deadline_type: string
+        deadline_date: Date
       }>
     >`
       SELECT
@@ -204,14 +192,14 @@ export class GetAggregatedDashboardQueryHandler {
         AND m.status != 'SUBMITTED'
       ORDER BY m.deadline_date ASC
       LIMIT 20
-    `;
+    `
 
     return results.map((row: any) => ({
       tenantId: row.tenant_id,
       tenantName: row.tenant_name,
       deadlineType: row.deadline_type,
       deadlineDate: row.deadline_date,
-    }));
+    }))
   }
 
   /**
@@ -225,36 +213,34 @@ export class GetAggregatedDashboardQueryHandler {
         AND status = 'FAILED'
         AND retry_count >= 3
         AND resolved_at IS NULL
-    `;
+    `
 
-    return Number(result[0].count);
+    return Number(result[0].count)
   }
 
   /**
    * Fetch recent activity across all tenants (last 7 days)
    */
-  private async fetchRecentActivity(
-    tenantIds: string[],
-  ): Promise<
+  private async fetchRecentActivity(tenantIds: string[]): Promise<
     Array<{
-      tenantId: string;
-      tenantName: string;
-      activityType: string;
-      activityDate: Date;
-      description: string;
+      tenantId: string
+      tenantName: string
+      activityType: string
+      activityDate: Date
+      description: string
     }>
   > {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
     // Query recent FIR submissions as activity
     const results = await this.prisma.$queryRaw<
       Array<{
-        tenant_id: string;
-        tenant_name: string;
-        activity_type: string;
-        activity_date: Date;
-        description: string;
+        tenant_id: string
+        tenant_name: string
+        activity_type: string
+        activity_date: Date
+        description: string
       }>
     >`
       SELECT
@@ -269,7 +255,7 @@ export class GetAggregatedDashboardQueryHandler {
         AND f.submitted_at >= ${sevenDaysAgo}
       ORDER BY f.submitted_at DESC
       LIMIT 20
-    `;
+    `
 
     return results.map((row: any) => ({
       tenantId: row.tenant_id,
@@ -277,6 +263,6 @@ export class GetAggregatedDashboardQueryHandler {
       activityType: row.activity_type,
       activityDate: row.activity_date,
       description: row.description,
-    }));
+    }))
   }
 }

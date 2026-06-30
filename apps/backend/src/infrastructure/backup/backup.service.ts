@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { LoggerService } from '../../core/logger/logger.service';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { Injectable } from '@nestjs/common'
+import { LoggerService } from '../../core/logger/logger.service'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 
-const execAsync = promisify(exec);
+const execAsync = promisify(exec)
 
 /**
  * Backup Service
@@ -17,45 +17,45 @@ const execAsync = promisify(exec);
 @Injectable()
 export class BackupService {
   constructor(private readonly logger: LoggerService) {
-    this.logger.setContext(BackupService.name);
+    this.logger.setContext(BackupService.name)
   }
 
   /**
    * Create PostgreSQL backup
    */
   async createBackup(): Promise<{ success: boolean; filename: string; size: number }> {
-    this.logger.info('Starting database backup');
+    this.logger.info('Starting database backup')
 
-    const timestamp = new Date().toISOString().replace(/:/g, '-');
-    const filename = `wasteflow-backup-${timestamp}.sql`;
-    const filepath = `/backups/${filename}`;
+    const timestamp = new Date().toISOString().replace(/:/g, '-')
+    const filename = `wasteflow-backup-${timestamp}.sql`
+    const filepath = `/backups/${filename}`
 
     try {
       // pg_dump command
-      const command = `pg_dump -h ${process.env.DB_HOST} -U ${process.env.DB_USER} -d ${process.env.DB_NAME} -F c -b -v -f ${filepath}`;
+      const command = `pg_dump -h ${process.env.DB_HOST} -U ${process.env.DB_USER} -d ${process.env.DB_NAME} -F c -b -v -f ${filepath}`
 
       const { stdout, stderr } = await execAsync(command, {
         env: { ...process.env, PGPASSWORD: process.env.DB_PASSWORD },
-      });
+      })
 
-      this.logger.info(`Backup created: ${filename}`);
-      this.logger.debug(`pg_dump output: ${stdout}`);
+      this.logger.info(`Backup created: ${filename}`)
+      this.logger.debug(`pg_dump output: ${stdout}`)
 
       if (stderr) {
-        this.logger.warn(`pg_dump warnings: ${stderr}`);
+        this.logger.warn(`pg_dump warnings: ${stderr}`)
       }
 
       // Get file size
-      const { stdout: sizeOutput } = await execAsync(`stat -f%z ${filepath}`);
-      const size = parseInt(sizeOutput.trim());
+      const { stdout: sizeOutput } = await execAsync(`stat -f%z ${filepath}`)
+      const size = parseInt(sizeOutput.trim())
 
       // Upload to S3/Azure (placeholder)
       // await this.uploadToCloud(filepath);
 
-      return { success: true, filename, size };
+      return { success: true, filename, size }
     } catch (error) {
-      this.logger.error('Backup failed', error);
-      throw error;
+      this.logger.error('Backup failed', error)
+      throw error
     }
   }
 
@@ -63,26 +63,26 @@ export class BackupService {
    * Restore from backup
    */
   async restoreBackup(filename: string): Promise<{ success: boolean }> {
-    this.logger.warn(`Starting database restore from ${filename}`);
+    this.logger.warn(`Starting database restore from ${filename}`)
 
     try {
-      const command = `pg_restore -h ${process.env.DB_HOST} -U ${process.env.DB_USER} -d ${process.env.DB_NAME} -c -v /backups/${filename}`;
+      const command = `pg_restore -h ${process.env.DB_HOST} -U ${process.env.DB_USER} -d ${process.env.DB_NAME} -c -v /backups/${filename}`
 
       const { stdout, stderr } = await execAsync(command, {
         env: { ...process.env, PGPASSWORD: process.env.DB_PASSWORD },
-      });
+      })
 
-      this.logger.info(`Restore completed: ${filename}`);
-      this.logger.debug(`pg_restore output: ${stdout}`);
+      this.logger.info(`Restore completed: ${filename}`)
+      this.logger.debug(`pg_restore output: ${stdout}`)
 
       if (stderr) {
-        this.logger.warn(`pg_restore warnings: ${stderr}`);
+        this.logger.warn(`pg_restore warnings: ${stderr}`)
       }
 
-      return { success: true };
+      return { success: true }
     } catch (error) {
-      this.logger.error('Restore failed', error);
-      throw error;
+      this.logger.error('Restore failed', error)
+      throw error
     }
   }
 
@@ -91,20 +91,20 @@ export class BackupService {
    */
   async listBackups(): Promise<Array<{ filename: string; size: number; created: Date }>> {
     try {
-      const { stdout } = await execAsync('ls -lh /backups/*.sql');
-      const lines = stdout.trim().split('\n');
+      const { stdout } = await execAsync('ls -lh /backups/*.sql')
+      const lines = stdout.trim().split('\n')
 
       return lines.map(line => {
-        const parts = line.split(/\s+/);
+        const parts = line.split(/\s+/)
         return {
           filename: parts[parts.length - 1],
           size: 0, // Parse from parts[4]
           created: new Date(),
-        };
-      });
+        }
+      })
     } catch (error) {
-      this.logger.error('Failed to list backups', error);
-      return [];
+      this.logger.error('Failed to list backups', error)
+      return []
     }
   }
 
@@ -112,20 +112,18 @@ export class BackupService {
    * Cleanup old backups (keep last 30 days)
    */
   async cleanupOldBackups(): Promise<number> {
-    this.logger.info('Cleaning up old backups');
+    this.logger.info('Cleaning up old backups')
 
     try {
-      const { stdout } = await execAsync(
-        'find /backups -name "*.sql" -mtime +30 -delete'
-      );
+      const { stdout } = await execAsync('find /backups -name "*.sql" -mtime +30 -delete')
 
-      const deletedCount = stdout.split('\n').filter(l => l.trim()).length;
-      this.logger.info(`Deleted ${deletedCount} old backups`);
+      const deletedCount = stdout.split('\n').filter(l => l.trim()).length
+      this.logger.info(`Deleted ${deletedCount} old backups`)
 
-      return deletedCount;
+      return deletedCount
     } catch (error) {
-      this.logger.error('Cleanup failed', error);
-      return 0;
+      this.logger.error('Cleanup failed', error)
+      return 0
     }
   }
 }

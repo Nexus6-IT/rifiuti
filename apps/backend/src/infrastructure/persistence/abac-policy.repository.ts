@@ -3,14 +3,14 @@
  * T222-224: Phase 10 - ABAC Policy Engine
  */
 
-import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
-import { AbacPolicy, AbacPolicyEffect } from '../../domain/identity-access/abac/abac-policy.entity';
-import { AbacPolicyRepository } from '../../domain/identity-access/abac/abac-policy.repository.interface';
+import { Injectable, Logger } from '@nestjs/common'
+import { PrismaService } from './prisma.service'
+import { AbacPolicy, AbacPolicyEffect } from '../../domain/identity-access/abac/abac-policy.entity'
+import { AbacPolicyRepository } from '../../domain/identity-access/abac/abac-policy.repository.interface'
 
 @Injectable()
 export class PrismaAbacPolicyRepository implements AbacPolicyRepository {
-  private readonly logger = new Logger(PrismaAbacPolicyRepository.name);
+  private readonly logger = new Logger(PrismaAbacPolicyRepository.name)
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -23,9 +23,9 @@ export class PrismaAbacPolicyRepository implements AbacPolicyRepository {
       orderBy: {
         priority: 'asc', // Lower number = higher priority
       },
-    });
+    })
 
-    return policies.map(this.toDomain);
+    return policies.map(this.toDomain)
   }
 
   async findAllActive(): Promise<AbacPolicy[]> {
@@ -36,9 +36,9 @@ export class PrismaAbacPolicyRepository implements AbacPolicyRepository {
       orderBy: {
         priority: 'asc',
       },
-    });
+    })
 
-    return policies.map(this.toDomain);
+    return policies.map(this.toDomain)
   }
 
   async save(policy: AbacPolicy): Promise<void> {
@@ -56,17 +56,17 @@ export class PrismaAbacPolicyRepository implements AbacPolicyRepository {
         createdAt: policy.createdAt,
         updatedAt: policy.updatedAt,
       },
-    });
+    })
 
-    this.logger.log(`Created ABAC policy: ${policy.name} (${policy.id})`);
+    this.logger.log(`Created ABAC policy: ${policy.name} (${policy.id})`)
   }
 
   async findById(id: string): Promise<AbacPolicy | null> {
     const policy = await this.prisma.abacPolicy.findUnique({
       where: { id },
-    });
+    })
 
-    return policy ? this.toDomain(policy) : null;
+    return policy ? this.toDomain(policy) : null
   }
 
   async update(policy: AbacPolicy): Promise<void> {
@@ -82,17 +82,17 @@ export class PrismaAbacPolicyRepository implements AbacPolicyRepository {
         description: policy.description,
         updatedAt: policy.updatedAt,
       },
-    });
+    })
 
-    this.logger.log(`Updated ABAC policy: ${policy.name} (${policy.id})`);
+    this.logger.log(`Updated ABAC policy: ${policy.name} (${policy.id})`)
   }
 
   async delete(id: string): Promise<void> {
     await this.prisma.abacPolicy.delete({
       where: { id },
-    });
+    })
 
-    this.logger.log(`Deleted ABAC policy: ${id}`);
+    this.logger.log(`Deleted ABAC policy: ${id}`)
   }
 
   private toDomain(raw: any): AbacPolicy {
@@ -108,6 +108,6 @@ export class PrismaAbacPolicyRepository implements AbacPolicyRepository {
       createdBy: raw.createdBy,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
-    });
+    })
   }
 }

@@ -1,8 +1,8 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator';
-import { MeFeaturesService } from './me-features.service';
+import { Controller, Get, UseGuards } from '@nestjs/common'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { CurrentUser } from '../../auth/decorators/current-user.decorator'
+import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { MeFeaturesService } from './me-features.service'
 
 /**
  * MeFeaturesController
@@ -25,6 +25,6 @@ export class MeFeaturesController {
    */
   @Get('features')
   async getFeatures(@CurrentUser() currentUser: CurrentUserPayload) {
-    return this.meFeaturesService.getFeaturesForUser(currentUser);
+    return this.meFeaturesService.getFeaturesForUser(currentUser)
   }
 }

@@ -1,4 +1,4 @@
-import { DomainException } from '../shared/domain-exception';
+import { DomainException } from '../shared/domain-exception'
 
 /**
  * RENTRI Sync Log Aggregate Root
@@ -20,20 +20,20 @@ export class RENTRISyncLog {
     public readonly protocolNumber: string | null,
     public readonly syncedAt: Date | null,
     public readonly durationMs: number | null,
-    public readonly createdAt: Date,
+    public readonly createdAt: Date
   ) {
-    this.validate();
+    this.validate()
   }
 
   /**
    * Create new sync log for pending attempt
    */
   static createPending(params: {
-    id: string;
-    firId: string;
-    tenantId: string;
-    attempt: number;
-    requestPayload: string;
+    id: string
+    firId: string
+    tenantId: string
+    attempt: number
+    requestPayload: string
   }): RENTRISyncLog {
     return new RENTRISyncLog(
       params.id,
@@ -48,20 +48,24 @@ export class RENTRISyncLog {
       null,
       null,
       null,
-      new Date(),
-    );
+      new Date()
+    )
   }
 
   /**
    * Mark sync as successful
    */
   markAsSuccess(params: {
-    responsePayload: string;
-    protocolNumber: string;
-    durationMs: number;
+    responsePayload: string
+    protocolNumber: string
+    durationMs: number
   }): RENTRISyncLog {
     if (this.status !== 'PENDING') {
-      throw DomainException.invalidState('RENTRISyncLog', this.status, 'Can only mark pending logs as success');
+      throw DomainException.invalidState(
+        'RENTRISyncLog',
+        this.status,
+        'Can only mark pending logs as success'
+      )
     }
 
     return new RENTRISyncLog(
@@ -77,21 +81,25 @@ export class RENTRISyncLog {
       params.protocolNumber,
       new Date(),
       params.durationMs,
-      this.createdAt,
-    );
+      this.createdAt
+    )
   }
 
   /**
    * Mark sync as failed
    */
   markAsFailure(params: {
-    responsePayload?: string;
-    errorMessage: string;
-    errorCode?: string;
-    durationMs: number;
+    responsePayload?: string
+    errorMessage: string
+    errorCode?: string
+    durationMs: number
   }): RENTRISyncLog {
     if (this.status !== 'PENDING') {
-      throw DomainException.invalidState('RENTRISyncLog', this.status, 'Can only mark pending logs as failure');
+      throw DomainException.invalidState(
+        'RENTRISyncLog',
+        this.status,
+        'Can only mark pending logs as failure'
+      )
     }
 
     return new RENTRISyncLog(
@@ -107,8 +115,8 @@ export class RENTRISyncLog {
       null,
       null,
       params.durationMs,
-      this.createdAt,
-    );
+      this.createdAt
+    )
   }
 
   /**
@@ -116,29 +124,29 @@ export class RENTRISyncLog {
    */
   private validate(): void {
     if (!this.id || !this.firId || !this.tenantId) {
-      throw new DomainException('RENTRISyncLog requires id, firId, and tenantId');
+      throw new DomainException('RENTRISyncLog requires id, firId, and tenantId')
     }
 
     if (this.attempt < 1) {
-      throw new DomainException('Attempt must be positive');
+      throw new DomainException('Attempt must be positive')
     }
 
     if (!this.requestPayload) {
-      throw new DomainException('Request payload is required');
+      throw new DomainException('Request payload is required')
     }
 
     if (this.status === 'SUCCESS') {
       if (!this.protocolNumber) {
-        throw new DomainException('Success status requires protocol number');
+        throw new DomainException('Success status requires protocol number')
       }
       if (!this.syncedAt) {
-        throw new DomainException('Success status requires syncedAt timestamp');
+        throw new DomainException('Success status requires syncedAt timestamp')
       }
     }
 
     if (this.status === 'FAILURE') {
       if (!this.errorMessage) {
-        throw new DomainException('Failure status requires error message');
+        throw new DomainException('Failure status requires error message')
       }
     }
   }
@@ -147,14 +155,14 @@ export class RENTRISyncLog {
    * Check if this was a successful sync
    */
   isSuccessful(): boolean {
-    return this.status === 'SUCCESS';
+    return this.status === 'SUCCESS'
   }
 
   /**
    * Check if this was a failed sync
    */
   isFailed(): boolean {
-    return this.status === 'FAILURE';
+    return this.status === 'FAILURE'
   }
 
   /**
@@ -162,11 +170,11 @@ export class RENTRISyncLog {
    */
   getSummary(): string {
     if (this.isSuccessful()) {
-      return `Sync successful - Protocol: ${this.protocolNumber}, Duration: ${this.durationMs}ms`;
+      return `Sync successful - Protocol: ${this.protocolNumber}, Duration: ${this.durationMs}ms`
     } else if (this.isFailed()) {
-      return `Sync failed - Error: ${this.errorMessage}, Attempt: ${this.attempt}`;
+      return `Sync failed - Error: ${this.errorMessage}, Attempt: ${this.attempt}`
     } else {
-      return `Sync pending - Attempt: ${this.attempt}`;
+      return `Sync pending - Attempt: ${this.attempt}`
     }
   }
 }

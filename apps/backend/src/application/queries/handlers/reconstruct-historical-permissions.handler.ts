@@ -1,8 +1,8 @@
-import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
-import { Inject, NotFoundException } from '@nestjs/common';
-import { ReconstructHistoricalPermissionsQuery } from '../reconstruct-historical-permissions.query';
-import { RoleChangeHistoryRepository } from '../../../domain/identity-access/role-change-history.repository.interface';
-import { RoleRepository } from '../../../domain/identity-access/role.repository.interface';
+import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
+import { Inject } from '@nestjs/common'
+import { ReconstructHistoricalPermissionsQuery } from '../reconstruct-historical-permissions.query'
+import { RoleChangeHistoryRepository } from '../../../domain/identity-access/role-change-history.repository.interface'
+import { RoleRepository } from '../../../domain/identity-access/role.repository.interface'
 
 /**
  * ReconstructHistoricalPermissionsQueryHandler
@@ -31,25 +31,24 @@ export class ReconstructHistoricalPermissionsQueryHandler
     @Inject('RoleChangeHistoryRepository')
     private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository,
     @Inject('RoleRepository')
-    private readonly roleRepository: RoleRepository,
+    private readonly roleRepository: RoleRepository
   ) {}
 
   async execute(query: ReconstructHistoricalPermissionsQuery): Promise<{
-    userId: string;
-    tenantId: string;
-    timestamp: Date;
-    roleId: string | null;
-    roleName: string | null;
-    permissions: string[];
-    hadAccess: boolean;
+    userId: string
+    tenantId: string
+    timestamp: Date
+    roleId: string | null
+    roleName: string | null
+    permissions: string[]
+    hadAccess: boolean
   }> {
     // Step 1: Find role at the specified timestamp
-    const roleIdAtTimestamp =
-      await this.roleChangeHistoryRepository.getRoleAtTimestamp(
-        query.userId,
-        query.tenantId,
-        query.timestamp,
-      );
+    const roleIdAtTimestamp = await this.roleChangeHistoryRepository.getRoleAtTimestamp(
+      query.userId,
+      query.tenantId,
+      query.timestamp
+    )
 
     // If no role at that time, user had no access
     if (!roleIdAtTimestamp) {
@@ -61,14 +60,11 @@ export class ReconstructHistoricalPermissionsQueryHandler
         roleName: null,
         permissions: [],
         hadAccess: false,
-      };
+      }
     }
 
     // Step 2: Get role details and permissions
-    const role = await this.roleRepository.findById(
-      roleIdAtTimestamp,
-      query.tenantId,
-    );
+    const role = await this.roleRepository.findById(roleIdAtTimestamp, query.tenantId)
 
     if (!role) {
       // Role has been deleted since then
@@ -81,13 +77,13 @@ export class ReconstructHistoricalPermissionsQueryHandler
         roleName: null,
         permissions: [],
         hadAccess: true, // Had access, but role is now deleted
-      };
+      }
     }
 
     // Extract permissions from role
     // Note: This assumes Role entity has a getPermissions() method
     // If not, you'll need to query PermissionRepository separately
-    const permissions = this.extractPermissions(role);
+    const permissions = this.extractPermissions(role)
 
     return {
       userId: query.userId,
@@ -97,7 +93,7 @@ export class ReconstructHistoricalPermissionsQueryHandler
       roleName: role.name,
       permissions,
       hadAccess: true,
-    };
+    }
   }
 
   /**
@@ -109,17 +105,17 @@ export class ReconstructHistoricalPermissionsQueryHandler
     if (role.permissions && Array.isArray(role.permissions)) {
       return role.permissions.map((p: any) => {
         // Format: resource:action:scope (e.g., "fir:create:facility")
-        return `${p.resource}:${p.action}:${p.scope}`;
-      });
+        return `${p.resource}:${p.action}:${p.scope}`
+      })
     }
 
     // If Role has a getPermissions() method
     if (typeof role.getPermissions === 'function') {
-      const permissions = role.getPermissions();
-      return permissions.map((p: any) => `${p.resource}:${p.action}:${p.scope}`);
+      const permissions = role.getPermissions()
+      return permissions.map((p: any) => `${p.resource}:${p.action}:${p.scope}`)
     }
 
     // Fallback: return empty array
-    return [];
+    return []
   }
 }

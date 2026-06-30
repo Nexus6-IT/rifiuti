@@ -1,5 +1,7 @@
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { INestApplication } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import { INestApplication } from '@nestjs/common'
+import * as fs from 'fs'
+import * as path from 'path'
 
 /**
  * OpenAPI/Swagger Configuration
@@ -19,7 +21,8 @@ export class OpenApiConfig {
   static setup(app: INestApplication): void {
     const config = new DocumentBuilder()
       .setTitle('WasteFlow API')
-      .setDescription(`
+      .setDescription(
+        `
 # WasteFlow Platform API Documentation
 
 WasteFlow is a comprehensive waste management SaaS platform for Italian municipalities and waste management companies.
@@ -143,7 +146,8 @@ Base URL: \`https://api.wasteflow.it/api/v1\`
 - Documentation: https://docs.wasteflow.it
 - Support: support@wasteflow.it
 - Status: https://status.wasteflow.it
-      `)
+      `
+      )
       .setVersion('1.0')
       .setContact('WasteFlow Support', 'https://wasteflow.it', 'support@wasteflow.it')
       .setLicense('Proprietary', 'https://wasteflow.it/license')
@@ -159,7 +163,7 @@ Base URL: \`https://api.wasteflow.it/api/v1\`
           description: 'Enter JWT token',
           in: 'header',
         },
-        'JWT',
+        'JWT'
       )
       .addApiKey(
         {
@@ -168,7 +172,7 @@ Base URL: \`https://api.wasteflow.it/api/v1\`
           in: 'header',
           description: 'CSRF token for state-changing requests',
         },
-        'CSRF',
+        'CSRF'
       )
       .addTag('Authentication', 'Login, logout, SPID/CIE authentication')
       .addTag('FIR', 'Formulario di Identificazione dei Rifiuti (Waste Tracking Forms)')
@@ -181,12 +185,12 @@ Base URL: \`https://api.wasteflow.it/api/v1\`
       .addTag('Analytics', 'Dashboard metrics and reporting')
       .addTag('Admin', 'Administrative operations')
       .addTag('Health', 'System health and monitoring')
-      .build();
+      .build()
 
     const document = SwaggerModule.createDocument(app, config, {
       operationIdFactory: (controllerKey: string, methodKey: string) =>
         `${controllerKey}_${methodKey}`,
-    });
+    })
 
     // Customize Swagger UI
     SwaggerModule.setup('api/docs', app, document, {
@@ -209,24 +213,22 @@ Base URL: \`https://api.wasteflow.it/api/v1\`
         tagsSorter: 'alpha',
         operationsSorter: 'alpha',
       },
-    });
+    })
 
     // Also export JSON/YAML for external tools
-    const documentJson = JSON.stringify(document, null, 2);
-    const fs = require('fs');
-    const path = require('path');
-    const docsDir = path.join(__dirname, '../../docs');
+    const documentJson = JSON.stringify(document, null, 2)
+    const docsDir = path.join(__dirname, '../../docs')
 
     // Create docs directory if doesn't exist
     if (!fs.existsSync(docsDir)) {
-      fs.mkdirSync(docsDir, { recursive: true });
+      fs.mkdirSync(docsDir, { recursive: true })
     }
 
     // Write OpenAPI spec to file
-    fs.writeFileSync(path.join(docsDir, 'openapi.json'), documentJson);
+    fs.writeFileSync(path.join(docsDir, 'openapi.json'), documentJson)
 
-    console.log('✅ OpenAPI documentation available at: /api/docs');
-    console.log('✅ OpenAPI JSON spec exported to: docs/openapi.json');
+    console.log('✅ OpenAPI documentation available at: /api/docs')
+    console.log('✅ OpenAPI JSON spec exported to: docs/openapi.json')
   }
 
   /**
@@ -273,7 +275,7 @@ Base URL: \`https://api.wasteflow.it/api/v1\`
           },
         },
       },
-    };
+    }
   }
 
   /**
@@ -309,7 +311,7 @@ Base URL: \`https://api.wasteflow.it/api/v1\`
         description: 'Internal Server Error',
         schema: { $ref: '#/components/schemas/ErrorResponse' },
       },
-    };
+    }
   }
 }
 
@@ -317,11 +319,11 @@ Base URL: \`https://api.wasteflow.it/api/v1\`
  * Decorator helpers for controllers
  */
 export const ApiCommonResponses = () => {
-  return (target: any, propertyKey: string, descriptor: PropertyDescriptor) => {
+  return (_target: any, _propertyKey: string, _descriptor: PropertyDescriptor) => {
     // This would be implemented with @nestjs/swagger decorators
     // Applied to all controller methods
-  };
-};
+  }
+}
 
 /**
  * Example DTO decorators for auto-documentation
@@ -337,7 +339,7 @@ export class SwaggerExamples {
     transportDate: '2025-11-01T08:00:00Z',
     vehicleId: 'vehicle-789',
     driverId: 'driver-101',
-  };
+  }
 
   static USER_CREATE = {
     email: 'mario.rossi@example.com',
@@ -346,18 +348,18 @@ export class SwaggerExamples {
     role: 'operator',
     facilityId: 'facility-123',
     permissions: ['fir:read:own', 'fir:create:own'],
-  };
+  }
 
   static PERMISSION_REQUEST = {
     permissions: ['fir:export:all', 'report:read:all'],
     startTime: '2025-11-01T09:00:00Z',
     endTime: '2025-11-01T17:00:00Z',
     justification: 'Quarterly audit - need to export all FIRs for compliance report',
-  };
+  }
 
   static TASK_ASSIGNMENT = {
     firId: 'fir-123',
     driverId: 'driver-456', // Optional - omit for automatic assignment
     reason: 'Driver has experience with this waste type',
-  };
+  }
 }

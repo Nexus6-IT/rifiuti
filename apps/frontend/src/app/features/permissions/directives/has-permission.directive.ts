@@ -7,9 +7,9 @@ import {
   OnDestroy,
   inject,
   effect,
-} from '@angular/core';
-import { PermissionStore } from '../../../core/state/permission.store';
-import { TempPermissionStore } from '../../../core/state/temp-permission.store';
+} from '@angular/core'
+import { PermissionStore } from '../../../core/state/permission.store'
+import { TempPermissionStore } from '../../../core/state/temp-permission.store'
 
 /**
  * *hasPermission Structural Directive
@@ -40,93 +40,84 @@ import { TempPermissionStore } from '../../../core/state/temp-permission.store';
   standalone: true,
 })
 export class HasPermissionDirective implements OnInit, OnDestroy {
-  private readonly permissionStore = inject(PermissionStore);
-  private readonly tempPermissionStore = inject(TempPermissionStore);
-  private readonly templateRef = inject(TemplateRef<any>);
-  private readonly viewContainer = inject(ViewContainerRef);
+  private readonly permissionStore = inject(PermissionStore)
+  private readonly tempPermissionStore = inject(TempPermissionStore)
+  private readonly templateRef = inject(TemplateRef<any>)
+  private readonly viewContainer = inject(ViewContainerRef)
 
-  @Input('hasPermission') requiredPermission!: string | string[];
-  @Input('hasPermissionRequireAll') requireAll = false; // If true, all permissions must match (AND logic)
-  @Input('hasPermissionIncludeTemp') includeTemp = false; // If true, check temp permissions too
+  @Input('hasPermission') requiredPermission!: string | string[]
+  @Input('hasPermissionRequireAll') requireAll = false // If true, all permissions must match (AND logic)
+  @Input('hasPermissionIncludeTemp') includeTemp = false // If true, check temp permissions too
 
-  private hasView = false;
+  private hasView = false
 
   constructor() {
     // React to permission changes using effect
     effect(() => {
-      this.updateView();
-    });
+      this.updateView()
+    })
   }
 
   ngOnInit(): void {
     // Ensure permissions are loaded
-    this.permissionStore.ensurePermissionsLoaded();
+    this.permissionStore.ensurePermissionsLoaded()
 
     if (this.includeTemp) {
       // Load temp permissions if requested
-      this.tempPermissionStore.loadGrants();
+      this.tempPermissionStore.loadGrants()
     }
 
-    this.updateView();
+    this.updateView()
   }
 
   ngOnDestroy(): void {
-    this.viewContainer.clear();
+    this.viewContainer.clear()
   }
 
   private updateView(): void {
-    const hasPermission = this.checkPermission();
+    const hasPermission = this.checkPermission()
 
     if (hasPermission && !this.hasView) {
       // User has permission and view is not created - create it
-      this.viewContainer.createEmbeddedView(this.templateRef);
-      this.hasView = true;
+      this.viewContainer.createEmbeddedView(this.templateRef)
+      this.hasView = true
     } else if (!hasPermission && this.hasView) {
       // User lacks permission and view exists - remove it
-      this.viewContainer.clear();
-      this.hasView = false;
+      this.viewContainer.clear()
+      this.hasView = false
     }
   }
 
   private checkPermission(): boolean {
     const permissions = Array.isArray(this.requiredPermission)
       ? this.requiredPermission
-      : [this.requiredPermission];
+      : [this.requiredPermission]
 
     // Get permission checker from store
-    const hasPermissionFn = this.permissionStore.hasPermission();
+    const hasPermissionFn = this.permissionStore.hasPermission()
 
     if (this.requireAll) {
       // AND logic: user must have ALL permissions
-      const hasPermanentPermissions = permissions.every((perm) =>
-        hasPermissionFn(perm),
-      );
+      const hasPermanentPermissions = permissions.every(perm => hasPermissionFn(perm))
 
       if (!this.includeTemp) {
-        return hasPermanentPermissions;
+        return hasPermanentPermissions
       }
 
       // Check temp permissions too
-      const hasTempPermissionFn = this.tempPermissionStore.hasTempPermission();
-      return (
-        hasPermanentPermissions ||
-        permissions.every((perm) => hasTempPermissionFn(perm))
-      );
+      const hasTempPermissionFn = this.tempPermissionStore.hasTempPermission()
+      return hasPermanentPermissions || permissions.every(perm => hasTempPermissionFn(perm))
     } else {
       // OR logic: user must have ANY permission
-      const hasPermanentPermission = permissions.some((perm) =>
-        hasPermissionFn(perm),
-      );
+      const hasPermanentPermission = permissions.some(perm => hasPermissionFn(perm))
 
       if (!this.includeTemp) {
-        return hasPermanentPermission;
+        return hasPermanentPermission
       }
 
       // Check temp permissions too
-      const hasTempPermissionFn = this.tempPermissionStore.hasTempPermission();
-      return (
-        hasPermanentPermission || permissions.some((perm) => hasTempPermissionFn(perm))
-      );
+      const hasTempPermissionFn = this.tempPermissionStore.hasTempPermission()
+      return hasPermanentPermission || permissions.some(perm => hasTempPermissionFn(perm))
     }
   }
 }

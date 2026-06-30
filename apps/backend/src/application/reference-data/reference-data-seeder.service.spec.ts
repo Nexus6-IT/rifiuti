@@ -23,9 +23,18 @@ describe('ReferenceDataSeederService', () => {
     http = { get: jest.fn() }
     prisma = {
       atecoCode: { upsert: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
-      istatNazione: { upsert: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
-      istatProvincia: { upsert: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
-      istatComune: { upsert: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
+      istatNazione: {
+        upsert: jest.fn().mockResolvedValue({}),
+        count: jest.fn().mockResolvedValue(0),
+      },
+      istatProvincia: {
+        upsert: jest.fn().mockResolvedValue({}),
+        count: jest.fn().mockResolvedValue(0),
+      },
+      istatComune: {
+        upsert: jest.fn().mockResolvedValue({}),
+        count: jest.fn().mockResolvedValue(0),
+      },
       cERCode: { upsert: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
     }
     logger = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
@@ -48,7 +57,7 @@ describe('ReferenceDataSeederService', () => {
     http.get.mockReturnValue(
       of({
         data: 'codice;nome;sigla;catastale;cap\n058091;Roma;RM;H501;00100\n015146;Milano;MI;F205;20100\n',
-      }),
+      })
     )
 
     const n = await make().seedComuni()
@@ -57,7 +66,13 @@ describe('ReferenceDataSeederService', () => {
     expect(prisma.istatComune.upsert).toHaveBeenCalledTimes(2)
     const firstArg = prisma.istatComune.upsert.mock.calls[0][0]
     expect(firstArg.where).toEqual({ code: '058091' })
-    expect(firstArg.create).toMatchObject({ code: '058091', name: 'Roma', provinciaSigla: 'RM', codiceCatastale: 'H501', cap: '00100' })
+    expect(firstArg.create).toMatchObject({
+      code: '058091',
+      name: 'Roma',
+      provinciaSigla: 'RM',
+      codiceCatastale: 'H501',
+      cap: '00100',
+    })
   })
 
   it('salta il dataset se la sorgente non è configurata (nessun errore)', async () => {

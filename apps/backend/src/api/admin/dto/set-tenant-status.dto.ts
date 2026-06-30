@@ -1,4 +1,4 @@
-import { IsIn } from 'class-validator';
+import { IsIn } from 'class-validator'
 
 /**
  * SetTenantStatusDto
@@ -10,5 +10,5 @@ export class SetTenantStatusDto {
   @IsIn(['SUSPENDED', 'ACTIVE'], {
     message: 'status deve essere SUSPENDED o ACTIVE',
   })
-  status!: 'SUSPENDED' | 'ACTIVE';
+  status!: 'SUSPENDED' | 'ACTIVE'
 }

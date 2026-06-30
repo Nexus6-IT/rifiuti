@@ -1,4 +1,4 @@
-import { UserRole } from './user-role.entity';
+import { UserRole } from './user-role.entity'
 
 /**
  * UserRoleRepository Interface
@@ -14,41 +14,33 @@ export interface UserRoleRepository {
    * Find user role assignment by ID
    * @returns UserRole or null if not found
    */
-  findById(userRoleId: string, tenantId: string): Promise<UserRole | null>;
+  findById(userRoleId: string, tenantId: string): Promise<UserRole | null>
 
   /**
    * Find all active roles for user
    * Active = not expired AND not revoked
    * @returns Array of active user roles
    */
-  findActiveByUserId(userId: string, tenantId: string): Promise<UserRole[]>;
+  findActiveByUserId(userId: string, tenantId: string): Promise<UserRole[]>
 
   /**
    * Find all roles for user (including inactive)
    * @returns Array of all user roles
    */
-  findAllByUserId(userId: string, tenantId: string): Promise<UserRole[]>;
+  findAllByUserId(userId: string, tenantId: string): Promise<UserRole[]>
 
   /**
    * Find specific role assignment for user
    * @returns UserRole or null if not found
    */
-  findByUserIdAndRoleId(
-    userId: string,
-    roleId: string,
-    tenantId: string,
-  ): Promise<UserRole | null>;
+  findByUserIdAndRoleId(userId: string, roleId: string, tenantId: string): Promise<UserRole | null>
 
   /**
    * Find all users assigned to role
    * @param includeInactive Whether to include expired/revoked assignments
    * @returns Array of user roles
    */
-  findByRoleId(
-    roleId: string,
-    tenantId: string,
-    includeInactive?: boolean,
-  ): Promise<UserRole[]>;
+  findByRoleId(roleId: string, tenantId: string, includeInactive?: boolean): Promise<UserRole[]>
 
   /**
    * Find facility-scoped roles for user and facility
@@ -60,8 +52,8 @@ export interface UserRoleRepository {
   findByUserIdAndFacilityId(
     userId: string,
     facilityId: string,
-    tenantId: string,
-  ): Promise<UserRole[]>;
+    tenantId: string
+  ): Promise<UserRole[]>
 
   /**
    * Find expiring roles (expiring within specified hours)
@@ -70,14 +62,14 @@ export interface UserRoleRepository {
    * @param tenantId Optional tenant ID to filter by
    * @returns Array of expiring user roles
    */
-  findExpiringSoon(hoursAhead: number, tenantId?: string): Promise<UserRole[]>;
+  findExpiringSoon(hoursAhead: number, tenantId?: string): Promise<UserRole[]>
 
   /**
    * Find expired roles that haven't been auto-revoked
    * Used by background job to auto-revoke
    * @returns Array of expired user roles
    */
-  findExpiredNotRevoked(): Promise<UserRole[]>;
+  findExpiredNotRevoked(): Promise<UserRole[]>
 
   /**
    * Count active users with specific role in tenant
@@ -86,20 +78,20 @@ export interface UserRoleRepository {
    * @param tenantId Tenant ID
    * @returns Number of active users with role
    */
-  countActiveAdmins(roleId: string, tenantId: string): Promise<number>;
+  countActiveAdmins(roleId: string, tenantId: string): Promise<number>
 
   /**
    * Save user role (create or update)
    * @returns Saved user role
    */
-  save(userRole: UserRole): Promise<UserRole>;
+  save(userRole: UserRole): Promise<UserRole>
 
   /**
    * Revoke user role assignment
    * @param userRoleId User role ID
    * @param tenantId Tenant ID
    */
-  revoke(userRoleId: string, tenantId: string): Promise<void>;
+  revoke(userRoleId: string, tenantId: string): Promise<void>
 
   /**
    * Delete user role assignment (hard delete)
@@ -107,7 +99,7 @@ export interface UserRoleRepository {
    * @param userRoleId User role ID
    * @param tenantId Tenant ID
    */
-  delete(userRoleId: string, tenantId: string): Promise<void>;
+  delete(userRoleId: string, tenantId: string): Promise<void>
 
   /**
    * Bulk revoke all role assignments for user
@@ -116,5 +108,5 @@ export interface UserRoleRepository {
    * @param tenantId Tenant ID
    * @returns Number of revoked assignments
    */
-  revokeAllForUser(userId: string, tenantId: string): Promise<number>;
+  revokeAllForUser(userId: string, tenantId: string): Promise<number>
 }

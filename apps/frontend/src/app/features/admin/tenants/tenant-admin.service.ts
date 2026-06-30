@@ -1,10 +1,10 @@
-import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { Injectable, inject } from '@angular/core'
+import { HttpClient } from '@angular/common/http'
+import { Observable } from 'rxjs'
+import { environment } from '../../../../environments/environment'
 
 /** Livello di abbonamento del tenant. Allineato al backend. */
-export type SubscriptionTier = 'TRIAL' | 'PROFESSIONAL' | 'ENTERPRISE' | string;
+export type SubscriptionTier = 'TRIAL' | 'PROFESSIONAL' | 'ENTERPRISE' | string
 
 /** Chiavi delle feature attivabili per tenant. Allineate al catalogo backend. */
 export type FeatureFlag =
@@ -17,75 +17,69 @@ export type FeatureFlag =
   | 'esg'
   | 'anomalie'
   | 'rentri'
-  | 'reference_data';
+  | 'reference_data'
 
 /** Stato dell'abbonamento del tenant. */
-export type SubscriptionStatus =
-  | 'TRIAL'
-  | 'ACTIVE'
-  | 'SUSPENDED'
-  | 'CANCELLED'
-  | 'EXPIRED'
-  | string;
+export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED' | string
 
 /** Tenant come restituito dal backend (modello Prisma `Tenant`). */
 export interface Tenant {
-  id: string;
-  partitaIva: string;
-  ragioneSociale: string;
-  codiceFiscale?: string | null;
-  pec?: string | null;
-  telefono?: string | null;
-  atecoCode?: string | null;
-  address: string;
-  civico?: string | null;
-  city: string;
-  province: string;
-  postalCode: string;
-  country?: string | null;
-  subscriptionTier: SubscriptionTier;
-  subscriptionStatus: SubscriptionStatus;
-  firLimitPerMonth: number;
-  userLimitTotal: number;
+  id: string
+  partitaIva: string
+  ragioneSociale: string
+  codiceFiscale?: string | null
+  pec?: string | null
+  telefono?: string | null
+  atecoCode?: string | null
+  address: string
+  civico?: string | null
+  city: string
+  province: string
+  postalCode: string
+  country?: string | null
+  subscriptionTier: SubscriptionTier
+  subscriptionStatus: SubscriptionStatus
+  firLimitPerMonth: number
+  userLimitTotal: number
   /** Feature abilitate; `null` = derivate dal piano. */
-  featureFlags?: FeatureFlag[] | string[] | null;
+  featureFlags?: FeatureFlag[] | string[] | null
   /**
    * Id dell'utente ADMIN che ha creato l'azienda in self-service.
    * Valorizzato per le aziende create da un tenant admin; assente per i tenant
    * "di appartenenza". Usato lato client per contare le aziende create
    * dall'admin corrente ai fini della quota.
    */
-  ownerUserId?: string | null;
-  createdAt: string;
+  ownerUserId?: string | null
+  createdAt: string
   _count?: {
-    users: number;
-  };
+    users: number
+  }
 }
 
 /** Payload di creazione tenant. Allineato a `CreateTenantDto` del backend. */
 export interface CreateTenantDto {
-  partitaIva: string;
-  ragioneSociale: string;
-  address: string;
-  city: string;
-  province: string;
-  postalCode: string;
-  codiceFiscale?: string;
-  pec?: string;
-  telefono?: string;
-  atecoCode?: string;
-  civico?: string;
-  country?: string;
-  subscriptionTier?: SubscriptionTier;
-  subscriptionStatus?: SubscriptionStatus;
-  firLimitPerMonth?: number;
-  userLimitTotal?: number;
+  partitaIva: string
+  ragioneSociale: string
+  address: string
+  city: string
+  province: string
+  postalCode: string
+  codiceFiscale?: string
+  pec?: string
+  telefono?: string
+  atecoCode?: string
+  civico?: string
+  country?: string
+  subscriptionTier?: SubscriptionTier
+  subscriptionStatus?: SubscriptionStatus
+  firLimitPerMonth?: number
+  userLimitTotal?: number
   /** Feature abilitate; ometterlo = il backend deriva dal piano. */
-  featureFlags?: FeatureFlag[] | string[];
+  featureFlags?: FeatureFlag[] | string[]
 }
 
 /** Payload di aggiornamento parziale (partitaIva non modificabile). */
-export type UpdateTenantDto = Partial<Omit<CreateTenantDto, 'partitaIva'>>;
+export type UpdateTenantDto = Partial<Omit<CreateTenantDto, 'partitaIva'>>
 
 /**
  * Client per l'amministrazione dei tenant (solo SUPER_ADMIN).
@@ -93,31 +87,31 @@ export type UpdateTenantDto = Partial<Omit<CreateTenantDto, 'partitaIva'>>;
  */
 @Injectable({ providedIn: 'root' })
 export class TenantAdminService {
-  private readonly http = inject(HttpClient);
-  private readonly API_URL = `${environment.apiUrl}/admin/tenants`;
+  private readonly http = inject(HttpClient)
+  private readonly API_URL = `${environment.apiUrl}/admin/tenants`
 
   /** Elenco di tutti i tenant, con conteggio utenti. */
   list(): Observable<Tenant[]> {
-    return this.http.get<Tenant[]>(this.API_URL);
+    return this.http.get<Tenant[]>(this.API_URL)
   }
 
   /** Dettaglio di un tenant. */
   get(id: string): Observable<Tenant> {
-    return this.http.get<Tenant>(`${this.API_URL}/${id}`);
+    return this.http.get<Tenant>(`${this.API_URL}/${id}`)
   }
 
   /** Crea un nuovo tenant (409 se partitaIva duplicata). */
   create(dto: CreateTenantDto): Observable<Tenant> {
-    return this.http.post<Tenant>(this.API_URL, dto);
+    return this.http.post<Tenant>(this.API_URL, dto)
   }
 
   /** Aggiorna parzialmente un tenant (partitaIva non modificabile). */
   update(id: string, dto: UpdateTenantDto): Observable<Tenant> {
-    return this.http.put<Tenant>(`${this.API_URL}/${id}`, dto);
+    return this.http.put<Tenant>(`${this.API_URL}/${id}`, dto)
   }
 
   /** Sospende o riattiva un tenant. */
   setStatus(id: string, status: 'SUSPENDED' | 'ACTIVE'): Observable<Tenant> {
-    return this.http.patch<Tenant>(`${this.API_URL}/${id}/status`, { status });
+    return this.http.patch<Tenant>(`${this.API_URL}/${id}/status`, { status })
   }
 }

@@ -1,6 +1,6 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
-import { Request, Response, NextFunction } from 'express';
-import { v4 as uuidv4 } from 'uuid';
+import { Injectable, NestMiddleware } from '@nestjs/common'
+import { Request, Response, NextFunction } from 'express'
+import { v4 as uuidv4 } from 'uuid'
 
 /**
  * Correlation ID Middleware
@@ -25,15 +25,15 @@ export class CorrelationIdMiddleware implements NestMiddleware {
     const correlationId =
       (req.headers['x-correlation-id'] as string) ||
       (req.headers['x-request-id'] as string) ||
-      uuidv4();
+      uuidv4()
 
     // Attach to request object
-    (req as any).correlationId = correlationId;
+    ;(req as any).correlationId = correlationId
 
     // Add to response headers
-    res.setHeader('X-Correlation-ID', correlationId);
+    res.setHeader('X-Correlation-ID', correlationId)
 
-    next();
+    next()
   }
 }
 
@@ -48,9 +48,11 @@ export class CorrelationIdMiddleware implements NestMiddleware {
  * }
  * ```
  */
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { createParamDecorator, ExecutionContext } from '@nestjs/common'
 
-export const CorrelationId = createParamDecorator((data: unknown, ctx: ExecutionContext): string => {
-  const request = ctx.switchToHttp().getRequest();
-  return request.correlationId || 'unknown';
-});
+export const CorrelationId = createParamDecorator(
+  (data: unknown, ctx: ExecutionContext): string => {
+    const request = ctx.switchToHttp().getRequest()
+    return request.correlationId || 'unknown'
+  }
+)
