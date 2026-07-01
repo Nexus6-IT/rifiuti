@@ -94,7 +94,16 @@ Eseguito lo swarm `docs/planning/PRODUCTION_READY_SWARM_PROMPT.md` (target: SaaS
 
 **Fatto in chiusura:** **CI gate ATTIVO** — `deploy.yml` ha un job `quality` (lint backend+frontend + nest build) da cui dipende il build/deploy: un deploy si blocca se lint o build falliscono. ESLint errori azzerati (0 errori; ~830 warning `no-explicit-any` tollerati). Aggiunti `timeout-minutes` a tutti i job (nessun deploy può restare appeso). NB: i **test unitari NON sono nel gate di deploy** (alcune spec aprono connessioni Redis/DB eager → si appendono in CI senza infra; la suite gira in `ci.yml`); riportarli nel gate richiede hardening jest (no connessioni eager + `--forceExit`).
 
-**Coda residua (non bloccante):** **bonifica PII dalla git history** (`backup_*.sql` con CF/P.IVA — distruttiva, RINVIATA su decisione del committente); riportare i test nel gate di deploy (hardening jest); polish billing (banner test-mode/guard upgrade senza Stripe); link footer `/login`; `GET /fir/:id/verify` → 404 invece di 500 su id inesistente; refresh token silenzioso (logout su scadenza); aggiornare passport-saml; export PDF registro; tenant pre-esistenti con override featureFlags da aggiornare dall'admin per le nuove feature.
+**Rifinitura UX + coda production (2026-07-01) — FATTO:**
+- Validazione **per-campo** (form FIR + dialog anagrafica) con mappatura errori backend 400/409 sul campo pertinente; **refresh token silenzioso** (usa `/auth/refresh` esistente: niente più logout dopo pochi minuti); **billing** banner "modalità test" + guard upgrade senza Stripe; link legali nel footer `/login`; `GET /fir/:id/verify` → 400/404 (non più 500).
+- **Test riportati nel CI gate**: hardening jest (`--forceExit`+`testTimeout`; causa hang = client ioredis eager con handle residui) → i test bloccano di nuovo il deploy senza appenderlo.
+- **Export PDF/Excel del registro** cronologico (client-side, riusa ExportService).
+- **Create/Edit inline anagrafiche dal form FIR** + restyle grafico WCAG AA (vedi `docs/planning/UI_RESTYLE_FIR_SWARM_PROMPT.md`).
+
+**Coda residua:**
+- **passport-saml**: aggiornamento a `@node-saml/passport-saml@5` = migrazione breaking sul login SPID/Keycloak → da fare in **sessione dedicata e monitorata** (non batchare), rischio lockout auth.
+- **bonifica PII dalla git history** (`backup_*.sql` con CF/P.IVA — distruttiva, force-push Gitea+mirror GitHub): RINVIATA, richiede conferma esplicita.
+- **Attivazioni esterne (azioni del committente)**: certificato+iscrizione RENTRI; provider firma qualificata QES/SPID-CIE + TSA; chiavi Stripe live + SMTP; validazione legale dei documenti + compilazione segnaposto/dati fornitore.
 
 ## Target realistico oggi
 Singolo **consulente ambientale pilota seguito a mano** (white-glove, fattura offline). Micro-azienda
