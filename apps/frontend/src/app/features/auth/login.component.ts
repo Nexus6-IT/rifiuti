@@ -104,9 +104,13 @@ import { AuthService } from '../../core/services/auth.service'
         <footer class="auth__footer">
           <span>&copy; {{ currentYear }} WasteFlow</span>
           <span class="auth__footer-sep" aria-hidden="true">·</span>
-          <a href="#" class="auth__footer-link">Privacy</a>
+          <a routerLink="/legal/privacy" target="_blank" rel="noopener" class="auth__footer-link"
+            >Privacy</a
+          >
           <span class="auth__footer-sep" aria-hidden="true">·</span>
-          <a href="#" class="auth__footer-link">Termini di servizio</a>
+          <a routerLink="/legal/termini" target="_blank" rel="noopener" class="auth__footer-link"
+            >Termini di servizio</a
+          >
         </footer>
       </main>
     </div>
