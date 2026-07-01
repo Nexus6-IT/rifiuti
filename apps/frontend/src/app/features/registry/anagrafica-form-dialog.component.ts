@@ -102,12 +102,23 @@ function indirizzoFrom(f: FormData): Indirizzo {
               [id]="pfx + '-ragione'"
               name="ragioneSociale"
               [(ngModel)]="form.ragioneSociale"
+              (ngModelChange)="clearError('ragioneSociale')"
               placeholder="es. Azienda S.r.l."
               required
               aria-required="true"
+              [attr.aria-invalid]="errors.ragioneSociale ? true : null"
+              [attr.aria-describedby]="errors.ragioneSociale ? pfx + '-ragione-err' : null"
               autocomplete="organization"
               class="w-full"
+              [class.input-error]="errors.ragioneSociale"
             />
+            <small
+              *ngIf="errors.ragioneSociale"
+              [id]="pfx + '-ragione-err'"
+              class="field-error"
+              role="alert"
+              >{{ errors.ragioneSociale }}</small
+            >
           </div>
 
           <div class="ana-row">
@@ -120,13 +131,24 @@ function indirizzoFrom(f: FormData): Indirizzo {
                 [id]="pfx + '-piva'"
                 name="partitaIVA"
                 [(ngModel)]="form.partitaIVA"
+                (ngModelChange)="clearError('partitaIVA')"
                 placeholder="11 cifre"
                 maxlength="11"
                 inputmode="numeric"
                 required
                 aria-required="true"
+                [attr.aria-invalid]="errors.partitaIVA ? true : null"
+                [attr.aria-describedby]="errors.partitaIVA ? pfx + '-piva-err' : null"
                 class="w-full"
+                [class.input-error]="errors.partitaIVA"
               />
+              <small
+                *ngIf="errors.partitaIVA"
+                [id]="pfx + '-piva-err'"
+                class="field-error"
+                role="alert"
+                >{{ errors.partitaIVA }}</small
+              >
             </div>
 
             <!-- Numero iscrizione Albo — solo trasportatore -->
@@ -139,11 +161,22 @@ function indirizzoFrom(f: FormData): Indirizzo {
                 [id]="pfx + '-iscrizione'"
                 name="numeroIscrizione"
                 [(ngModel)]="form.numeroIscrizione"
+                (ngModelChange)="clearError('numeroIscrizione')"
                 placeholder="es. MI/000123"
                 required
                 aria-required="true"
+                [attr.aria-invalid]="errors.numeroIscrizione ? true : null"
+                [attr.aria-describedby]="errors.numeroIscrizione ? pfx + '-iscrizione-err' : null"
                 class="w-full"
+                [class.input-error]="errors.numeroIscrizione"
               />
+              <small
+                *ngIf="errors.numeroIscrizione"
+                [id]="pfx + '-iscrizione-err'"
+                class="field-error"
+                role="alert"
+                >{{ errors.numeroIscrizione }}</small
+              >
             </div>
 
             <!-- Numero autorizzazione — solo destinatario -->
@@ -156,11 +189,24 @@ function indirizzoFrom(f: FormData): Indirizzo {
                 [id]="pfx + '-autorizzazione'"
                 name="numeroAutorizzazione"
                 [(ngModel)]="form.numeroAutorizzazione"
+                (ngModelChange)="clearError('numeroAutorizzazione')"
                 placeholder="es. AUT/2024/001"
                 required
                 aria-required="true"
+                [attr.aria-invalid]="errors.numeroAutorizzazione ? true : null"
+                [attr.aria-describedby]="
+                  errors.numeroAutorizzazione ? pfx + '-autorizzazione-err' : null
+                "
                 class="w-full"
+                [class.input-error]="errors.numeroAutorizzazione"
               />
+              <small
+                *ngIf="errors.numeroAutorizzazione"
+                [id]="pfx + '-autorizzazione-err'"
+                class="field-error"
+                role="alert"
+                >{{ errors.numeroAutorizzazione }}</small
+              >
             </div>
           </div>
 
@@ -172,10 +218,17 @@ function indirizzoFrom(f: FormData): Indirizzo {
               name="pec"
               type="email"
               [(ngModel)]="form.pec"
+              (ngModelChange)="clearError('pec')"
               placeholder="pec@esempio.it"
               autocomplete="email"
+              [attr.aria-invalid]="errors.pec ? true : null"
+              [attr.aria-describedby]="errors.pec ? pfx + '-pec-err' : null"
               class="w-full"
+              [class.input-error]="errors.pec"
             />
+            <small *ngIf="errors.pec" [id]="pfx + '-pec-err'" class="field-error" role="alert">{{
+              errors.pec
+            }}</small>
           </div>
         </fieldset>
 
@@ -195,12 +248,19 @@ function indirizzoFrom(f: FormData): Indirizzo {
                 [id]="pfx + '-via'"
                 name="via"
                 [(ngModel)]="form.via"
+                (ngModelChange)="clearError('via')"
                 placeholder="es. Via Roma"
                 required
                 aria-required="true"
+                [attr.aria-invalid]="errors.via ? true : null"
+                [attr.aria-describedby]="errors.via ? pfx + '-via-err' : null"
                 autocomplete="address-line1"
                 class="w-full"
+                [class.input-error]="errors.via"
               />
+              <small *ngIf="errors.via" [id]="pfx + '-via-err'" class="field-error" role="alert">{{
+                errors.via
+              }}</small>
             </div>
             <div class="field ana-row__third">
               <label [for]="pfx + '-civico'">
@@ -211,11 +271,22 @@ function indirizzoFrom(f: FormData): Indirizzo {
                 [id]="pfx + '-civico'"
                 name="civico"
                 [(ngModel)]="form.civico"
+                (ngModelChange)="clearError('civico')"
                 placeholder="es. 12"
                 required
                 aria-required="true"
+                [attr.aria-invalid]="errors.civico ? true : null"
+                [attr.aria-describedby]="errors.civico ? pfx + '-civico-err' : null"
                 class="w-full"
+                [class.input-error]="errors.civico"
               />
+              <small
+                *ngIf="errors.civico"
+                [id]="pfx + '-civico-err'"
+                class="field-error"
+                role="alert"
+                >{{ errors.civico }}</small
+              >
             </div>
           </div>
 
@@ -229,14 +300,21 @@ function indirizzoFrom(f: FormData): Indirizzo {
                 [id]="pfx + '-cap'"
                 name="cap"
                 [(ngModel)]="form.cap"
+                (ngModelChange)="clearError('cap')"
                 placeholder="5 cifre"
                 maxlength="5"
                 inputmode="numeric"
                 required
                 aria-required="true"
+                [attr.aria-invalid]="errors.cap ? true : null"
+                [attr.aria-describedby]="errors.cap ? pfx + '-cap-err' : null"
                 autocomplete="postal-code"
                 class="w-full"
+                [class.input-error]="errors.cap"
               />
+              <small *ngIf="errors.cap" [id]="pfx + '-cap-err'" class="field-error" role="alert">{{
+                errors.cap
+              }}</small>
             </div>
             <div class="field ana-row__third">
               <label [for]="pfx + '-comune'">
@@ -247,12 +325,23 @@ function indirizzoFrom(f: FormData): Indirizzo {
                 [id]="pfx + '-comune'"
                 name="comune"
                 [(ngModel)]="form.comune"
+                (ngModelChange)="clearError('comune')"
                 placeholder="es. Milano"
                 required
                 aria-required="true"
+                [attr.aria-invalid]="errors.comune ? true : null"
+                [attr.aria-describedby]="errors.comune ? pfx + '-comune-err' : null"
                 autocomplete="address-level2"
                 class="w-full"
+                [class.input-error]="errors.comune"
               />
+              <small
+                *ngIf="errors.comune"
+                [id]="pfx + '-comune-err'"
+                class="field-error"
+                role="alert"
+                >{{ errors.comune }}</small
+              >
             </div>
             <div class="field ana-row__third">
               <label [for]="pfx + '-prov'">
@@ -263,12 +352,23 @@ function indirizzoFrom(f: FormData): Indirizzo {
                 [id]="pfx + '-prov'"
                 name="provincia"
                 [(ngModel)]="form.provincia"
+                (ngModelChange)="clearError('provincia')"
                 placeholder="es. MI"
                 maxlength="2"
                 required
                 aria-required="true"
+                [attr.aria-invalid]="errors.provincia ? true : null"
+                [attr.aria-describedby]="errors.provincia ? pfx + '-prov-err' : null"
                 class="w-full prov-input"
+                [class.input-error]="errors.provincia"
               />
+              <small
+                *ngIf="errors.provincia"
+                [id]="pfx + '-prov-err'"
+                class="field-error"
+                role="alert"
+                >{{ errors.provincia }}</small
+              >
             </div>
           </div>
         </fieldset>
@@ -362,6 +462,20 @@ function indirizzoFrom(f: FormData): Indirizzo {
         text-transform: uppercase;
       }
 
+      /* Errore inline per-campo — rosso WCAG AA (color-danger su sfondo chiaro). */
+      .field-error {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-medium);
+        color: var(--color-danger);
+        line-height: 1.3;
+      }
+      /* Bordo rosso sul controllo non valido (feedback visivo, non solo colore testo). */
+      .input-error,
+      .input-error:enabled:focus {
+        border-color: var(--color-danger) !important;
+        box-shadow: 0 0 0 1px var(--color-danger) !important;
+      }
+
       @media (max-width: 480px) {
         .ana-row__half,
         .ana-row__third,
@@ -384,8 +498,18 @@ export class AnagraficaFormDialogComponent implements OnChanges {
   form: FormData = emptyForm()
   saving = false
 
+  /** Messaggi di errore per-campo mostrati inline accanto al controllo. */
+  errors: Partial<Record<keyof FormData, string>> = {}
+
   get pfx(): string {
     return `ana-${this.tipo}`
+  }
+
+  /** Pulisce l'errore di un campo mentre l'utente lo corregge. */
+  clearError(field: keyof FormData): void {
+    if (this.errors[field]) {
+      delete this.errors[field]
+    }
   }
 
   get dialogHeader(): string {
@@ -406,6 +530,7 @@ export class AnagraficaFormDialogComponent implements OnChanges {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['visible'] && changes['visible'].currentValue === true) {
       this.form = emptyForm()
+      this.errors = {}
       if (this.modalita === 'edit' && this.entityData) {
         this.prefill(this.entityData)
       }
@@ -439,20 +564,49 @@ export class AnagraficaFormDialogComponent implements OnChanges {
     }
   }
 
+  /**
+   * Valida i campi obbligatori popolando `errors` (messaggio inline per campo).
+   * Ritorna true se non ci sono errori.
+   */
   private validate(): boolean {
     const f = this.form
-    const base =
-      !!f.ragioneSociale.trim() &&
-      !!f.partitaIVA.trim() &&
-      !!f.via.trim() &&
-      !!f.civico.trim() &&
-      !!f.cap.trim() &&
-      !!f.comune.trim() &&
-      !!f.provincia.trim()
-    if (!base) return false
-    if (this.tipo === 'trasportatore' && !f.numeroIscrizione.trim()) return false
-    if (this.tipo === 'destinatario' && !f.numeroAutorizzazione.trim()) return false
-    return true
+    const errors: Partial<Record<keyof FormData, string>> = {}
+
+    if (!f.ragioneSociale.trim()) errors.ragioneSociale = 'La ragione sociale è obbligatoria.'
+    if (!f.partitaIVA.trim()) errors.partitaIVA = 'La partita IVA è obbligatoria.'
+    if (!f.via.trim()) errors.via = 'La via è obbligatoria.'
+    if (!f.civico.trim()) errors.civico = 'Il civico è obbligatorio.'
+    if (!f.cap.trim()) errors.cap = 'Il CAP è obbligatorio.'
+    if (!f.comune.trim()) errors.comune = 'Il comune è obbligatorio.'
+    if (!f.provincia.trim()) errors.provincia = 'La provincia è obbligatoria.'
+    if (this.tipo === 'trasportatore' && !f.numeroIscrizione.trim()) {
+      errors.numeroIscrizione = "Il numero di iscrizione all'Albo è obbligatorio."
+    }
+    if (this.tipo === 'destinatario' && !f.numeroAutorizzazione.trim()) {
+      errors.numeroAutorizzazione = 'Il numero di autorizzazione è obbligatorio.'
+    }
+
+    this.errors = errors
+    return Object.keys(errors).length === 0
+  }
+
+  /**
+   * Mappa un messaggio d'errore del backend (400/409) al campo pertinente,
+   * così l'errore compare anche accanto al controllo e non solo nel toast.
+   */
+  private mapBackendError(message: string): void {
+    const m = message.toLowerCase()
+    if (m.includes('iscrizione') || m.includes('albo')) {
+      this.errors = { ...this.errors, numeroIscrizione: message }
+    } else if (m.includes('autorizzazione')) {
+      this.errors = { ...this.errors, numeroAutorizzazione: message }
+    } else if (m.includes('partita iva') || m.includes('p.iva') || m.includes('piva')) {
+      this.errors = { ...this.errors, partitaIVA: message }
+    } else if (m.includes('pec') || m.includes('e-mail') || m.includes('email')) {
+      this.errors = { ...this.errors, pec: message }
+    } else if (m.includes('ragione sociale')) {
+      this.errors = { ...this.errors, ragioneSociale: message }
+    }
   }
 
   save(): void {
@@ -488,9 +642,12 @@ export class AnagraficaFormDialogComponent implements OnChanges {
 
     const onError = (err: unknown): void => {
       this.saving = false
-      const msg =
-        (err as { error?: { message?: string } })?.error?.message ??
-        'Errore durante il salvataggio. Riprova.'
+      const raw = (err as { error?: { message?: string | string[] } })?.error?.message
+      const msg = Array.isArray(raw)
+        ? raw.join(', ')
+        : (raw ?? 'Errore durante il salvataggio. Riprova.')
+      // Conflitto/validazione backend: evidenzia il campo pertinente, oltre al toast.
+      this.mapBackendError(msg)
       this.messageService.add({ severity: 'error', summary: 'Errore', detail: msg })
     }
 

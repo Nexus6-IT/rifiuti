@@ -253,6 +253,7 @@ import {
                   inputId="new-produttore"
                   [options]="produttori()"
                   [(ngModel)]="newFIR.produttoreId"
+                  (onChange)="clearFirError('produttoreId')"
                   optionLabel="ragioneSociale"
                   optionValue="id"
                   [required]="true"
@@ -261,7 +262,9 @@ import {
                   [showClear]="true"
                   placeholder="Cerca produttore…"
                   [loading]="loadingAnagrafiche"
-                  styleClass="w-full"
+                  [styleClass]="firErrors['produttoreId'] ? 'w-full p-invalid' : 'w-full'"
+                  [attr.aria-invalid]="firErrors['produttoreId'] ? true : null"
+                  [attr.aria-describedby]="firErrors['produttoreId'] ? 'new-produttore-err' : null"
                 >
                   <ng-template let-opt pTemplate="item">
                     <div class="opt">
@@ -292,6 +295,13 @@ import {
                   (onClick)="openAnagraficaDialog('produttore', 'edit', newFIR.produttoreId)"
                 />
               </div>
+              <small
+                *ngIf="firErrors['produttoreId']"
+                id="new-produttore-err"
+                class="field-error"
+                role="alert"
+                >{{ firErrors['produttoreId'] }}</small
+              >
             </div>
 
             <div class="field">
@@ -303,6 +313,7 @@ import {
                   inputId="new-trasportatore"
                   [options]="trasportatori()"
                   [(ngModel)]="newFIR.trasportatoreId"
+                  (onChange)="clearFirError('trasportatoreId')"
                   optionLabel="ragioneSociale"
                   optionValue="id"
                   [required]="true"
@@ -311,7 +322,11 @@ import {
                   [showClear]="true"
                   placeholder="Cerca trasportatore…"
                   [loading]="loadingAnagrafiche"
-                  styleClass="w-full"
+                  [styleClass]="firErrors['trasportatoreId'] ? 'w-full p-invalid' : 'w-full'"
+                  [attr.aria-invalid]="firErrors['trasportatoreId'] ? true : null"
+                  [attr.aria-describedby]="
+                    firErrors['trasportatoreId'] ? 'new-trasportatore-err' : null
+                  "
                 >
                   <ng-template let-opt pTemplate="item">
                     <div class="opt">
@@ -342,6 +357,13 @@ import {
                   (onClick)="openAnagraficaDialog('trasportatore', 'edit', newFIR.trasportatoreId)"
                 />
               </div>
+              <small
+                *ngIf="firErrors['trasportatoreId']"
+                id="new-trasportatore-err"
+                class="field-error"
+                role="alert"
+                >{{ firErrors['trasportatoreId'] }}</small
+              >
             </div>
 
             <div class="field">
@@ -353,6 +375,7 @@ import {
                   inputId="new-destinatario"
                   [options]="destinatari()"
                   [(ngModel)]="newFIR.destinatarioId"
+                  (onChange)="clearFirError('destinatarioId')"
                   optionLabel="ragioneSociale"
                   optionValue="id"
                   [required]="true"
@@ -361,7 +384,11 @@ import {
                   [showClear]="true"
                   placeholder="Cerca destinatario…"
                   [loading]="loadingAnagrafiche"
-                  styleClass="w-full"
+                  [styleClass]="firErrors['destinatarioId'] ? 'w-full p-invalid' : 'w-full'"
+                  [attr.aria-invalid]="firErrors['destinatarioId'] ? true : null"
+                  [attr.aria-describedby]="
+                    firErrors['destinatarioId'] ? 'new-destinatario-err' : null
+                  "
                 >
                   <ng-template let-opt pTemplate="item">
                     <div class="opt">
@@ -392,6 +419,13 @@ import {
                   (onClick)="openAnagraficaDialog('destinatario', 'edit', newFIR.destinatarioId)"
                 />
               </div>
+              <small
+                *ngIf="firErrors['destinatarioId']"
+                id="new-destinatario-err"
+                class="field-error"
+                role="alert"
+                >{{ firErrors['destinatarioId'] }}</small
+              >
             </div>
 
             <!-- Trasportatori aggiuntivi (trasporto intermodale) -->
@@ -484,11 +518,22 @@ import {
                     id="new-cer"
                     pInputText
                     [(ngModel)]="newFIR.rifiuto.cerCode"
+                    (ngModelChange)="clearFirError('cerCode')"
                     placeholder="es. 150101"
                     required
                     aria-required="true"
+                    [attr.aria-invalid]="firErrors['cerCode'] ? true : null"
+                    [attr.aria-describedby]="firErrors['cerCode'] ? 'new-cer-err' : null"
                     class="w-full"
+                    [class.input-error]="firErrors['cerCode']"
                   />
+                  <small
+                    *ngIf="firErrors['cerCode']"
+                    id="new-cer-err"
+                    class="field-error"
+                    role="alert"
+                    >{{ firErrors['cerCode'] }}</small
+                  >
                 </div>
               </div>
 
@@ -500,11 +545,21 @@ import {
                   <p-inputNumber
                     inputId="new-qta"
                     [(ngModel)]="newFIR.rifiuto.quantita"
+                    (ngModelChange)="clearFirError('quantita')"
                     [minFractionDigits]="2"
                     [required]="true"
                     ariaRequired="true"
-                    styleClass="w-full"
+                    [styleClass]="firErrors['quantita'] ? 'w-full p-invalid' : 'w-full'"
+                    [attr.aria-invalid]="firErrors['quantita'] ? true : null"
+                    [attr.aria-describedby]="firErrors['quantita'] ? 'new-qta-err' : null"
                   />
+                  <small
+                    *ngIf="firErrors['quantita']"
+                    id="new-qta-err"
+                    class="field-error"
+                    role="alert"
+                    >{{ firErrors['quantita'] }}</small
+                  >
                 </div>
               </div>
               <div class="col-12 sm:col-6">
@@ -780,6 +835,21 @@ import {
         color: var(--color-danger);
         font-weight: var(--font-weight-bold);
       }
+
+      /* Errore inline per-campo — rosso WCAG AA. */
+      .field-error {
+        margin-top: 4px;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-medium);
+        color: var(--color-danger);
+        line-height: 1.3;
+      }
+      /* Bordo rosso sul controllo (input testuale) non valido. */
+      .input-error,
+      .input-error:enabled:focus {
+        border-color: var(--color-danger) !important;
+        box-shadow: 0 0 0 1px var(--color-danger) !important;
+      }
       /* Riga controllo + azioni: dropdown + pulsanti Nuovo/Modifica (WS-4) */
       .field__control {
         display: flex;
@@ -923,6 +993,9 @@ export class FirListComponent implements OnInit {
   displayConsegnaDialog = false
   selectedFIR: FIR | null = null
   pesoEffettivo = 0
+
+  /** Errori di validazione per-campo del form "Nuovo FIR" (mostrati inline). */
+  firErrors: Record<string, string> = {}
 
   // Anagrafiche per i dropdown ricercabili
   produttori = signal<Produttore[]>([])
@@ -1263,15 +1336,53 @@ export class FirListComponent implements OnInit {
     }
     this.trasportatoriAggiuntivi = []
     this.showTrasportatoriAggiuntivi = false
+    this.firErrors = {}
     this.displayCreateDialog = true
   }
 
+  /** Pulisce l'errore inline di un campo del form FIR mentre l'utente lo corregge. */
+  clearFirError(field: string): void {
+    if (this.firErrors[field]) {
+      delete this.firErrors[field]
+    }
+  }
+
+  /** Valida i campi obbligatori del form FIR popolando `firErrors`. */
+  private validateFir(): boolean {
+    const errors: Record<string, string> = {}
+    if (!this.newFIR.produttoreId) errors['produttoreId'] = 'Seleziona un produttore.'
+    if (!this.newFIR.trasportatoreId) errors['trasportatoreId'] = 'Seleziona un trasportatore.'
+    if (!this.newFIR.destinatarioId) errors['destinatarioId'] = 'Seleziona un destinatario.'
+    if (!this.newFIR.rifiuto.cerCode?.trim()) errors['cerCode'] = 'Il codice CER è obbligatorio.'
+    if (!this.newFIR.rifiuto.quantita || this.newFIR.rifiuto.quantita <= 0) {
+      errors['quantita'] = 'Indica una quantità maggiore di zero.'
+    }
+    this.firErrors = errors
+    return Object.keys(errors).length === 0
+  }
+
+  /** Mappa un errore backend (400/409) al campo pertinente del form FIR. */
+  private mapFirBackendError(message: string): void {
+    const m = message.toLowerCase()
+    if (m.includes('cer')) {
+      this.firErrors = { ...this.firErrors, cerCode: message }
+    } else if (m.includes('quantit')) {
+      this.firErrors = { ...this.firErrors, quantita: message }
+    } else if (m.includes('produttore')) {
+      this.firErrors = { ...this.firErrors, produttoreId: message }
+    } else if (m.includes('trasportatore')) {
+      this.firErrors = { ...this.firErrors, trasportatoreId: message }
+    } else if (m.includes('destinatario')) {
+      this.firErrors = { ...this.firErrors, destinatarioId: message }
+    }
+  }
+
   createFIR(): void {
-    if (!this.newFIR.produttoreId || !this.newFIR.trasportatoreId || !this.newFIR.destinatarioId) {
+    if (!this.validateFir()) {
       this.messageService.add({
         severity: 'warn',
         summary: 'Campi obbligatori',
-        detail: 'Seleziona produttore, trasportatore e destinatario',
+        detail: 'Controlla i campi evidenziati e riprova.',
       })
       return
     }
@@ -1301,12 +1412,14 @@ export class FirListComponent implements OnInit {
         this.saving = false
         this.loadFIRList({ first: 0, rows: this.pageSize })
       },
-      error: () => {
+      error: err => {
         this.saving = false
+        const detail = this.extractError(err, 'Errore nella creazione del FIR')
+        this.mapFirBackendError(detail)
         this.messageService.add({
           severity: 'error',
           summary: 'Errore',
-          detail: 'Errore nella creazione del FIR',
+          detail,
         })
       },
     })
