@@ -6,12 +6,7 @@ import { DialogModule } from 'primeng/dialog'
 import { ButtonModule } from 'primeng/button'
 import { InputTextModule } from 'primeng/inputtext'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
-import {
-  RegistryService,
-  CreateProduttoreDto,
-  CreateTrasportatoreDto,
-  CreateDestinatarioDto,
-} from './registry.service'
+import { RegistryService } from './registry.service'
 import {
   Produttore,
   Trasportatore,
@@ -499,40 +494,40 @@ export class AnagraficaFormDialogComponent implements OnChanges {
       this.messageService.add({ severity: 'error', summary: 'Errore', detail: msg })
     }
 
+    // In update la P.IVA è immutabile: il DTO di update del backend NON accetta
+    // `partitaIVA` (whitelist + forbidNonWhitelisted) → la si invia solo in create.
+    const partitaIVA = this.form.partitaIVA.trim()
     if (this.tipo === 'produttore') {
-      const dto: CreateProduttoreDto = {
+      const base = {
         ragioneSociale: this.form.ragioneSociale.trim(),
-        partitaIVA: this.form.partitaIVA.trim(),
         sedeLegale: indirizzo,
         pec: this.form.pec.trim() || undefined,
       }
       const op$ = isEdit
-        ? this.registryService.updateProduttore(this.entityData!.id, dto)
-        : this.registryService.createProduttore(dto)
+        ? this.registryService.updateProduttore(this.entityData!.id, base)
+        : this.registryService.createProduttore({ ...base, partitaIVA })
       op$.subscribe({ next: onSuccess, error: onError })
     } else if (this.tipo === 'trasportatore') {
-      const dto: CreateTrasportatoreDto = {
+      const base = {
         ragioneSociale: this.form.ragioneSociale.trim(),
-        partitaIVA: this.form.partitaIVA.trim(),
         sedeLegale: indirizzo,
         numeroIscrizione: this.form.numeroIscrizione.trim(),
         pec: this.form.pec.trim() || undefined,
       }
       const op$ = isEdit
-        ? this.registryService.updateTrasportatore(this.entityData!.id, dto)
-        : this.registryService.createTrasportatore(dto)
+        ? this.registryService.updateTrasportatore(this.entityData!.id, base)
+        : this.registryService.createTrasportatore({ ...base, partitaIVA })
       op$.subscribe({ next: onSuccess, error: onError })
     } else {
-      const dto: CreateDestinatarioDto = {
+      const base = {
         ragioneSociale: this.form.ragioneSociale.trim(),
-        partitaIVA: this.form.partitaIVA.trim(),
         sede: indirizzo,
         numeroAutorizzazione: this.form.numeroAutorizzazione.trim(),
         pec: this.form.pec.trim() || undefined,
       }
       const op$ = isEdit
-        ? this.registryService.updateDestinatario(this.entityData!.id, dto)
-        : this.registryService.createDestinatario(dto)
+        ? this.registryService.updateDestinatario(this.entityData!.id, base)
+        : this.registryService.createDestinatario({ ...base, partitaIVA })
       op$.subscribe({ next: onSuccess, error: onError })
     }
   }
