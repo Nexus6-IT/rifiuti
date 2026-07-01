@@ -15,6 +15,12 @@ module.exports = {
   ],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  // Timeout per singolo test: un test bloccato (es. attesa di una connessione
+  // Redis/DB che non si risolve in CI senza infra) FALLISCE dopo 30s invece di
+  // restare appeso a tempo indefinito. Combinato con `--forceExit` nel gate,
+  // garantisce che jest termini sempre (mai deploy appeso). Vedi memory
+  // rifiuti-build-deploy-gotchas.
+  testTimeout: 30000,
   moduleNameMapper: {
     '^@domain/(.*)$': '<rootDir>/domain/$1',
     '^@application/(.*)$': '<rootDir>/application/$1',

@@ -30,7 +30,7 @@ jobs:
   # QUALITY GATE — lint + test + build (blocca il deploy se fallisce)
   # ==========================================================================
   quality:
-    name: Quality gate (lint, build)
+    name: Quality gate (lint, test, build)
     runs-on: ubuntu-latest
     # Timeout di sicurezza: nessun deploy può restare appeso a tempo indefinito.
     timeout-minutes: 20
@@ -69,11 +69,17 @@ jobs:
         working-directory: apps/frontend
         run: npx eslint "src/**/*.ts" --max-warnings=-1
 
-      # NB: i test unitari NON girano nel gate di deploy: alcune spec aprono
-      # connessioni Redis/DB "eager" e senza infra in CI restano appese
-      # (rischio di bloccare ogni deploy). La suite test gira in ci.yml.
-      # Il gate di deploy verifica lint + build (i deploy-breaker più comuni).
-      # TODO: hardening jest CI (no connessioni eager, --forceExit) per riportare i test nel gate.
+      # Test unitari backend (hardened per CI): `--forceExit` garantisce che il
+      # processo termini anche se qualche client (Redis/Bull/Prisma) lascia un
+      # handle aperto post-run; `--runInBand` evita worker orfani; `--ci`
+      # disabilita comportamenti interattivi. Un `testTimeout` (jest.config.js,
+      # 30s) fa FALLIRE — non appendere — un test bloccato in attesa di infra.
+      # Con `timeout-minutes: 20` sul job, un eventuale hang è comunque coperto.
+      # Un test rosso blocca il deploy. Verificato che termina da solo (exit 0)
+      # anche simulando l'assenza di Redis/DB. Vedi memory rifiuti-build-deploy-gotchas.
+      - name: Test unitari backend
+        working-directory: apps/backend
+        run: npx jest --testPathPattern="src" --forceExit --ci --runInBand
 
       # Build backend (stesso percorso usato dal Dockerfile.prod).
       - name: Build backend (nest build)
