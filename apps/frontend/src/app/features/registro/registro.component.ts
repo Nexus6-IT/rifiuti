@@ -18,6 +18,8 @@ import {
   Validators,
 } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
+import { SplitButtonModule } from 'primeng/splitbutton'
+import { MenuItem } from 'primeng/api'
 import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
@@ -31,6 +33,9 @@ import { DropdownModule } from 'primeng/dropdown'
 import { TooltipModule } from 'primeng/tooltip'
 import { PaginatorModule } from 'primeng/paginator'
 import { ToastService } from '../../core/services/toast.service'
+import { ExportService } from '../../core/services/export.service'
+import { AuthService } from '../../core/services/auth.service'
+import { AdminTenantContextService } from '../../core/services/admin-tenant-context.service'
 import {
   RegistroService,
   Movimento,
@@ -56,6 +61,7 @@ interface DropdownOption<T> {
     FormsModule,
     ReactiveFormsModule,
     ButtonModule,
+    SplitButtonModule,
     TableModule,
     TagModule,
     ProgressSpinnerModule,
@@ -81,6 +87,16 @@ interface DropdownOption<T> {
           </p>
         </div>
         <div class="page-actions">
+          <p-splitButton
+            label="Esporta"
+            icon="pi pi-download"
+            [model]="exportMenuItems"
+            [outlined]="true"
+            [disabled]="loading() || exporting() || paginazione().total === 0"
+            (onClick)="esportaPdf()"
+            ariaLabel="Esporta il registro filtrato"
+            pTooltip="Esporta il registro cronologico filtrato"
+          ></p-splitButton>
           <p-button
             label="Registra movimento"
             icon="pi pi-plus"
@@ -650,6 +666,9 @@ export class RegistroComponent implements OnInit {
   private readonly toast = inject(ToastService)
   private readonly fb = inject(FormBuilder)
   private readonly datePipe = inject(DatePipe)
+  private readonly exportService = inject(ExportService)
+  private readonly auth = inject(AuthService)
+  private readonly tenantContext = inject(AdminTenantContextService)
 
   // ─── Stato ────────────────────────────────────────────────────────────────
 
@@ -657,6 +676,7 @@ export class RegistroComponent implements OnInit {
   readonly paginazione = signal({ total: 0, page: 1, limit: 20, totalPages: 0 })
   readonly loading = signal(false)
   readonly saving = signal(false)
+  readonly exporting = signal(false)
   readonly error = signal<string | null>(null)
 
   formVisible = false
@@ -664,6 +684,12 @@ export class RegistroComponent implements OnInit {
   filtroCer = ''
 
   readonly oggi = new Date()
+
+  /** Voci del menu di export (allineate al pattern del FIR). */
+  readonly exportMenuItems: MenuItem[] = [
+    { label: 'Esporta PDF', icon: 'pi pi-file-pdf', command: () => this.esportaPdf() },
+    { label: 'Esporta Excel', icon: 'pi pi-file-excel', command: () => this.esportaExcel() },
+  ]
 
   // ─── Form ─────────────────────────────────────────────────────────────────
 
@@ -868,6 +894,69 @@ export class RegistroComponent implements OnInit {
 
   onPageChange(event: { page?: number }): void {
     this.ricarica((event.page ?? 0) + 1)
+  }
+
+  // ─── Export ─────────────────────────────────────────────────────────────────
+
+  esportaPdf(): void {
+    this.esporta('pdf')
+  }
+
+  esportaExcel(): void {
+    this.esporta('excel')
+  }
+
+  /**
+   * Esporta la lista movimenti attualmente filtrata (per tipo/CER), NON solo la
+   * pagina visibile: recupera l'intero set filtrato dal backend e delega la
+   * generazione del file (PDF/Excel) all'ExportService condiviso.
+   */
+  private esporta(formato: 'pdf' | 'excel'): void {
+    if (this.paginazione().total === 0) {
+      this.toast.error('Nessun movimento da esportare')
+      return
+    }
+
+    this.exporting.set(true)
+
+    this.registroService
+      .lista({
+        type: this.filtroTipo ?? undefined,
+        cerCode: this.filtroCer || undefined,
+        page: 1,
+        limit: Math.max(this.paginazione().total, 1),
+      })
+      .subscribe({
+        next: (data: PaginatedMovimenti) => {
+          const meta = {
+            companyName: this.tenantContext.selectedTenantName(),
+            operatore: this.nomeOperatore(),
+            filtroTipo: this.filtroTipo,
+            filtroCer: this.filtroCer || null,
+          }
+          if (formato === 'pdf') {
+            this.exportService.exportRegistroToPDF(data.items, meta)
+          } else {
+            this.exportService.exportRegistroToExcel(data.items, meta)
+          }
+          this.exporting.set(false)
+          this.toast.success(
+            `Registro esportato (${data.items.length} movimenti) in ${formato.toUpperCase()}`
+          )
+        },
+        error: () => {
+          this.exporting.set(false)
+          this.toast.error("Errore durante l'export del registro")
+        },
+      })
+  }
+
+  /** Nome leggibile dell'operatore corrente per l'intestazione dell'export. */
+  private nomeOperatore(): string | null {
+    const u = this.auth.currentUser()
+    if (!u) return null
+    const nome = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
+    return nome || u.email || null
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
