@@ -21,6 +21,12 @@ import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { ExportService } from '../../core/services/export.service'
 import { RegistryService } from '../registry/registry.service'
 import { Produttore, Trasportatore, Destinatario } from '../../shared/models/registry.model'
+import {
+  AnagraficaFormDialogComponent,
+  TipoAnagrafica,
+  ModalitaAnagrafica,
+  AnagraficaSavedEvent,
+} from '../registry/anagrafica-form-dialog.component'
 
 @Component({
   selector: 'app-fir-list',
@@ -40,6 +46,7 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
     CardModule,
     TooltipModule,
     InputTextareaModule,
+    AnagraficaFormDialogComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -263,7 +270,27 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
                     </div>
                   </ng-template>
                 </p-dropdown>
-                <!-- Slot azioni anagrafica (Nuovo/Modifica) — WS-4 -->
+                <p-button
+                  icon="pi pi-plus"
+                  [rounded]="true"
+                  [text]="true"
+                  severity="secondary"
+                  pTooltip="Nuovo produttore"
+                  tooltipPosition="top"
+                  aria-label="Nuovo produttore"
+                  (onClick)="openAnagraficaDialog('produttore', 'create')"
+                />
+                <p-button
+                  icon="pi pi-pencil"
+                  [rounded]="true"
+                  [text]="true"
+                  severity="secondary"
+                  pTooltip="Modifica produttore selezionato"
+                  tooltipPosition="top"
+                  aria-label="Modifica produttore selezionato"
+                  [disabled]="!newFIR.produttoreId"
+                  (onClick)="openAnagraficaDialog('produttore', 'edit', newFIR.produttoreId)"
+                />
               </div>
             </div>
 
@@ -293,7 +320,27 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
                     </div>
                   </ng-template>
                 </p-dropdown>
-                <!-- Slot azioni anagrafica (Nuovo/Modifica) — WS-4 -->
+                <p-button
+                  icon="pi pi-plus"
+                  [rounded]="true"
+                  [text]="true"
+                  severity="secondary"
+                  pTooltip="Nuovo trasportatore"
+                  tooltipPosition="top"
+                  aria-label="Nuovo trasportatore"
+                  (onClick)="openAnagraficaDialog('trasportatore', 'create')"
+                />
+                <p-button
+                  icon="pi pi-pencil"
+                  [rounded]="true"
+                  [text]="true"
+                  severity="secondary"
+                  pTooltip="Modifica trasportatore selezionato"
+                  tooltipPosition="top"
+                  aria-label="Modifica trasportatore selezionato"
+                  [disabled]="!newFIR.trasportatoreId"
+                  (onClick)="openAnagraficaDialog('trasportatore', 'edit', newFIR.trasportatoreId)"
+                />
               </div>
             </div>
 
@@ -323,7 +370,27 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
                     </div>
                   </ng-template>
                 </p-dropdown>
-                <!-- Slot azioni anagrafica (Nuovo/Modifica) — WS-4 -->
+                <p-button
+                  icon="pi pi-plus"
+                  [rounded]="true"
+                  [text]="true"
+                  severity="secondary"
+                  pTooltip="Nuovo destinatario"
+                  tooltipPosition="top"
+                  aria-label="Nuovo destinatario"
+                  (onClick)="openAnagraficaDialog('destinatario', 'create')"
+                />
+                <p-button
+                  icon="pi pi-pencil"
+                  [rounded]="true"
+                  [text]="true"
+                  severity="secondary"
+                  pTooltip="Modifica destinatario selezionato"
+                  tooltipPosition="top"
+                  aria-label="Modifica destinatario selezionato"
+                  [disabled]="!newFIR.destinatarioId"
+                  (onClick)="openAnagraficaDialog('destinatario', 'edit', newFIR.destinatarioId)"
+                />
               </div>
             </div>
 
@@ -567,6 +634,15 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
         </ng-template>
       </p-dialog>
 
+      <!-- Sub-dialog crea/modifica anagrafica (aperto dalla form FIR) -->
+      <app-anagrafica-form-dialog
+        [(visible)]="showAnagraficaDialog"
+        [tipo]="anagraficaTipo"
+        [modalita]="anagraficaModalita"
+        [entityData]="anagraficaEntityData"
+        (saved)="onAnagraficaSaved($event)"
+      />
+
       <!-- Consegna Dialog -->
       <p-dialog
         [(visible)]="displayConsegnaDialog"
@@ -703,15 +779,20 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
         color: var(--color-danger);
         font-weight: var(--font-weight-bold);
       }
-      /* Riga controllo + azioni: pronta per i pulsanti anagrafica (WS-4) */
+      /* Riga controllo + azioni: dropdown + pulsanti Nuovo/Modifica (WS-4) */
       .field__control {
         display: flex;
-        align-items: stretch;
+        align-items: center;
         gap: var(--spacing-sm);
       }
       .field__control > p-dropdown {
         flex: 1 1 auto;
         min-width: 0;
+      }
+      /* I pulsanti azione non si espandono e rimangono allineati al centro */
+      .field__control > p-button {
+        flex: 0 0 auto;
+        align-self: center;
       }
 
       /* Griglia PrimeFlex: annulla il margin-top negativo di default (allineamento sezione) */
@@ -847,6 +928,12 @@ export class FirListComponent implements OnInit {
   trasportatori = signal<Trasportatore[]>([])
   destinatari = signal<Destinatario[]>([])
   loadingAnagrafiche = false
+
+  // Sub-dialog crea/modifica anagrafica dalla form FIR (WS-4)
+  showAnagraficaDialog = false
+  anagraficaTipo: TipoAnagrafica = 'produttore'
+  anagraficaModalita: ModalitaAnagrafica = 'create'
+  anagraficaEntityData: Produttore | Trasportatore | Destinatario | null = null
 
   // Trasporto intermodale: trasportatori aggiuntivi
   showTrasportatoriAggiuntivi = false
@@ -1003,6 +1090,65 @@ export class FirListComponent implements OnInit {
       error: () => done(),
       complete: () => done(),
     })
+  }
+
+  /**
+   * Apre il sub-dialog anagrafica in modalità create o edit.
+   * In modalità edit recupera i dati dall'array già caricato in memoria.
+   */
+  openAnagraficaDialog(
+    tipo: TipoAnagrafica,
+    modalita: ModalitaAnagrafica,
+    entityId?: string
+  ): void {
+    this.anagraficaTipo = tipo
+    this.anagraficaModalita = modalita
+    this.anagraficaEntityData = null
+
+    if (modalita === 'edit' && entityId) {
+      // Recupera i dati dall'array in memoria (già caricato da loadAnagrafiche)
+      if (tipo === 'produttore') {
+        this.anagraficaEntityData = this.produttori().find(p => p.id === entityId) ?? null
+      } else if (tipo === 'trasportatore') {
+        this.anagraficaEntityData = this.trasportatori().find(t => t.id === entityId) ?? null
+      } else {
+        this.anagraficaEntityData = this.destinatari().find(d => d.id === entityId) ?? null
+      }
+    }
+
+    this.showAnagraficaDialog = true
+  }
+
+  /**
+   * Callback al salvataggio del sub-dialog:
+   * ricarica la lista anagrafica interessata e seleziona l'entità salvata.
+   */
+  onAnagraficaSaved(event: AnagraficaSavedEvent): void {
+    const { tipo, entity } = event
+    const limit = 200
+
+    if (tipo === 'produttore') {
+      this.registryService.getProduttori(1, limit).subscribe({
+        next: res => {
+          this.produttori.set(res.items)
+          this.newFIR.produttoreId = entity.id
+        },
+      })
+    } else if (tipo === 'trasportatore') {
+      this.registryService.getTrasportatori(1, limit).subscribe({
+        next: res => {
+          this.trasportatori.set(res.items)
+          this.newFIR.trasportatoreId = entity.id
+        },
+      })
+    } else {
+      this.registryService.getDestinatari(1, limit).subscribe({
+        next: res => {
+          this.destinatari.set(res.items)
+          this.newFIR.destinatarioId = entity.id
+        },
+      })
+    }
   }
 
   addTrasportatoreAggiuntivo(): void {
