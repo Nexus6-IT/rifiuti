@@ -28,14 +28,20 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { SpidLevelGuard } from '../../auth/guards/spid-level.guard'
 import { ApplySignatureUseCase } from '../../application/signatures/apply-signature.use-case'
 import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case'
+import { DomainException } from '../../domain/shared/domain-exception'
 import { ApplySignatureDto, ApplySignatureResponseDto } from './dto/apply-signature.dto'
 import { VerifySignaturesResponseDto } from './dto/verify-signatures.dto'
+
+/** UUID v1-v5 — l'id FIR è una colonna Postgres `uuid`. */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 @ApiTags('Signatures')
 @Controller('fir/:firId')
@@ -137,9 +143,24 @@ export class SignaturesController {
     description: 'Verifica completata',
     type: VerifySignaturesResponseDto,
   })
+  @ApiResponse({ status: 400, description: 'ID FIR malformato' })
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
   async verifySignatures(@Param('firId') firId: string): Promise<VerifySignaturesResponseDto> {
-    return this.verifySignaturesUseCase.execute({ firId })
+    // ID malformato → 400 (evita il Prisma error P2023 che degenererebbe in 500).
+    if (!UUID_REGEX.test(firId)) {
+      throw new BadRequestException('ID FIR non valido')
+    }
+
+    try {
+      return await this.verifySignaturesUseCase.execute({ firId })
+    } catch (error) {
+      // FIR inesistente: il use-case lancia una DomainException NOT_FOUND che
+      // altrimenti finirebbe nel ramo "unknown" del GlobalExceptionFilter → 500.
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      throw error
+    }
   }
 
   /**
