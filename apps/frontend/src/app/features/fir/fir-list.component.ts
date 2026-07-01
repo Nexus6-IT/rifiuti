@@ -502,6 +502,7 @@ import {
                     [(ngModel)]="newFIR.rifiuto.quantita"
                     [minFractionDigits]="2"
                     [required]="true"
+                    ariaRequired="true"
                     styleClass="w-full"
                   />
                 </div>

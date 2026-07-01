@@ -313,6 +313,11 @@ kbd {
 }
 textarea.p-inputtext { height: auto; min-height: calc(var(--control-md) * 2); padding: 0.5rem 0.75rem !important; }
 
+/* p-inputnumber deve riempire il contenitore: l'input interno ha una larghezza
+   di default che sfora nelle griglie responsive (es. "N° colli" a 375px). */
+.p-inputnumber { width: 100%; }
+.p-inputnumber .p-inputnumber-input { width: 100%; }
+
 /* Wrapper (dropdown/multiselect/chips): il bordo/altezza stanno sul wrapper,
    l'etichetta interna NON deve avere bordo/sfondo propri (bug "bordo al centro"). */
 .p-dropdown, .p-multiselect, .p-chips .p-chips-multiple-container {

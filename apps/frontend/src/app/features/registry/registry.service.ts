@@ -58,7 +58,7 @@ export class RegistryService {
   }
 
   updateProduttore(id: string, dto: Partial<CreateProduttoreDto>): Observable<Produttore> {
-    return this.http.patch<Produttore>(`${this.API_URL}/produttori/${id}`, dto)
+    return this.http.put<Produttore>(`${this.API_URL}/produttori/${id}`, dto)
   }
 
   deleteProduttore(id: string): Observable<void> {
@@ -84,7 +84,7 @@ export class RegistryService {
   }
 
   updateTrasportatore(id: string, dto: Partial<CreateTrasportatoreDto>): Observable<Trasportatore> {
-    return this.http.patch<Trasportatore>(`${this.API_URL}/trasportatori/${id}`, dto)
+    return this.http.put<Trasportatore>(`${this.API_URL}/trasportatori/${id}`, dto)
   }
 
   deleteTrasportatore(id: string): Observable<void> {
@@ -108,7 +108,7 @@ export class RegistryService {
   }
 
   updateDestinatario(id: string, dto: Partial<CreateDestinatarioDto>): Observable<Destinatario> {
-    return this.http.patch<Destinatario>(`${this.API_URL}/destinatari/${id}`, dto)
+    return this.http.put<Destinatario>(`${this.API_URL}/destinatari/${id}`, dto)
   }
 
   deleteDestinatario(id: string): Observable<void> {
