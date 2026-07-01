@@ -224,266 +224,342 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
       <p-dialog
         [(visible)]="displayCreateDialog"
         [modal]="true"
-        styleClass="w-full max-w-30rem"
+        styleClass="w-full max-w-40rem fir-dialog"
         header="Nuovo FIR"
+        closeAriaLabel="Chiudi la finestra Nuovo FIR"
       >
-        <div class="dialog-form">
-          <div class="dialog-form__field">
-            <label for="new-cer">Codice CER</label>
-            <input
-              id="new-cer"
-              pInputText
-              [(ngModel)]="newFIR.rifiuto.cerCode"
-              placeholder="es. 150101"
-              class="w-full"
-            />
-          </div>
-          <div class="dialog-form__row">
-            <div class="dialog-form__field">
-              <label for="new-qta">Quantità dichiarata</label>
-              <p-inputNumber
-                inputId="new-qta"
-                [(ngModel)]="newFIR.rifiuto.quantita"
-                [minFractionDigits]="2"
-                styleClass="w-full"
-              />
-            </div>
-            <div class="dialog-form__field">
-              <label for="new-um">Unità di misura</label>
-              <p-dropdown
-                inputId="new-um"
-                [options]="unitaMisuraOptions"
-                [(ngModel)]="newFIR.rifiuto.unitaMisura"
-                placeholder="Seleziona"
-                styleClass="w-full"
-              />
-            </div>
-          </div>
+        <div class="fir-form p-fluid">
+          <p class="fir-form__legend">
+            I campi contrassegnati con <span class="req">*</span> sono obbligatori.
+          </p>
 
-          <!-- Campo 2: stato fisico + numero colli -->
-          <div class="dialog-form__row">
-            <div class="dialog-form__field">
-              <label for="new-stato-fisico">
-                Stato fisico
-                <abbr title="Campo 2 FIR — DM 59/2023" class="field-norm">¹</abbr>
-              </label>
-              <p-dropdown
-                inputId="new-stato-fisico"
-                [options]="statoFisicoOptions"
-                [(ngModel)]="newFIR.rifiuto.statoFisico"
-                placeholder="Seleziona…"
-                [showClear]="true"
-                styleClass="w-full"
-                ariaLabel="Stato fisico del rifiuto (Campo 2 FIR)"
-              />
+          <!-- ===== Sezione 1: Parti coinvolte ===== -->
+          <section class="fir-section" aria-labelledby="fir-sec-parti">
+            <h3 id="fir-sec-parti" class="fir-section__title">Parti coinvolte</h3>
+
+            <div class="field">
+              <label for="new-produttore"
+                >Produttore <span class="req" aria-hidden="true">*</span></label
+              >
+              <div class="field__control">
+                <p-dropdown
+                  inputId="new-produttore"
+                  [options]="produttori()"
+                  [(ngModel)]="newFIR.produttoreId"
+                  optionLabel="ragioneSociale"
+                  optionValue="id"
+                  [required]="true"
+                  [filter]="true"
+                  filterBy="ragioneSociale,partitaIVA"
+                  [showClear]="true"
+                  placeholder="Cerca produttore…"
+                  [loading]="loadingAnagrafiche"
+                  styleClass="w-full"
+                >
+                  <ng-template let-opt pTemplate="item">
+                    <div class="opt">
+                      <span class="opt__name">{{ opt.ragioneSociale }}</span>
+                      <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                    </div>
+                  </ng-template>
+                </p-dropdown>
+                <!-- Slot azioni anagrafica (Nuovo/Modifica) — WS-4 -->
+              </div>
             </div>
-            <div class="dialog-form__field dialog-form__field--sm">
-              <label for="new-colli">N° colli</label>
-              <p-inputNumber
-                inputId="new-colli"
-                [(ngModel)]="newFIR.rifiuto.numeroColli"
-                [min]="1"
-                [useGrouping]="false"
-                styleClass="w-full"
-                ariaLabel="Numero colli"
-              />
+
+            <div class="field">
+              <label for="new-trasportatore"
+                >Trasportatore <span class="req" aria-hidden="true">*</span></label
+              >
+              <div class="field__control">
+                <p-dropdown
+                  inputId="new-trasportatore"
+                  [options]="trasportatori()"
+                  [(ngModel)]="newFIR.trasportatoreId"
+                  optionLabel="ragioneSociale"
+                  optionValue="id"
+                  [required]="true"
+                  [filter]="true"
+                  filterBy="ragioneSociale,partitaIVA"
+                  [showClear]="true"
+                  placeholder="Cerca trasportatore…"
+                  [loading]="loadingAnagrafiche"
+                  styleClass="w-full"
+                >
+                  <ng-template let-opt pTemplate="item">
+                    <div class="opt">
+                      <span class="opt__name">{{ opt.ragioneSociale }}</span>
+                      <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                    </div>
+                  </ng-template>
+                </p-dropdown>
+                <!-- Slot azioni anagrafica (Nuovo/Modifica) — WS-4 -->
+              </div>
             </div>
-          </div>
 
-          <!-- Campo 2: caratteristiche HP -->
-          <div class="dialog-form__field">
-            <label for="new-hp">
-              Caratteristiche pericolo HP
-              <abbr title="Reg. UE 1357/2014, Campo 2 FIR" class="field-norm">¹</abbr>
-            </label>
-            <p-dropdown
-              inputId="new-hp"
-              [options]="hpOptions"
-              [(ngModel)]="newFIR.rifiuto.caratteristichePericolo"
-              placeholder="Seleziona (se rifiuto pericoloso)…"
-              [showClear]="true"
-              styleClass="w-full"
-              ariaLabel="Caratteristiche di pericolo HP"
-            />
-          </div>
+            <div class="field">
+              <label for="new-destinatario"
+                >Destinatario <span class="req" aria-hidden="true">*</span></label
+              >
+              <div class="field__control">
+                <p-dropdown
+                  inputId="new-destinatario"
+                  [options]="destinatari()"
+                  [(ngModel)]="newFIR.destinatarioId"
+                  optionLabel="ragioneSociale"
+                  optionValue="id"
+                  [required]="true"
+                  [filter]="true"
+                  filterBy="ragioneSociale,partitaIVA"
+                  [showClear]="true"
+                  placeholder="Cerca destinatario…"
+                  [loading]="loadingAnagrafiche"
+                  styleClass="w-full"
+                >
+                  <ng-template let-opt pTemplate="item">
+                    <div class="opt">
+                      <span class="opt__name">{{ opt.ragioneSociale }}</span>
+                      <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                    </div>
+                  </ng-template>
+                </p-dropdown>
+                <!-- Slot azioni anagrafica (Nuovo/Modifica) — WS-4 -->
+              </div>
+            </div>
 
-          <!-- Campo 3: codice operazione R/D -->
-          <div class="dialog-form__field">
-            <label for="new-op-code">
-              Operazione destinatario R/D
-              <abbr title="Campo 3 FIR — Allegati B e C D.Lgs 152/2006" class="field-norm">¹</abbr>
-            </label>
-            <p-dropdown
-              inputId="new-op-code"
-              [options]="operazioneRDOptions"
-              [(ngModel)]="newFIR.rifiuto.codiceOperazione"
-              placeholder="Seleziona operazione…"
-              [showClear]="true"
-              [filter]="true"
-              styleClass="w-full"
-              ariaLabel="Codice operazione di recupero o smaltimento"
-            />
-          </div>
+            <!-- Trasportatori aggiuntivi (trasporto intermodale) -->
+            <div class="trasporti-extra">
+              <button
+                type="button"
+                class="trasporti-extra__toggle"
+                (click)="showTrasportatoriAggiuntivi = !showTrasportatoriAggiuntivi"
+                [attr.aria-expanded]="showTrasportatoriAggiuntivi"
+              >
+                <i
+                  class="pi"
+                  [ngClass]="showTrasportatoriAggiuntivi ? 'pi-chevron-down' : 'pi-chevron-right'"
+                  aria-hidden="true"
+                ></i>
+                <span>Trasportatori aggiuntivi (trasporto intermodale)</span>
+                <span *ngIf="trasportatoriAggiuntivi.length > 0" class="trasporti-extra__count">
+                  {{ trasportatoriAggiuntivi.length }}
+                </span>
+              </button>
 
-          <div class="dialog-form__field">
-            <label for="new-produttore">Produttore</label>
-            <p-dropdown
-              inputId="new-produttore"
-              [options]="produttori()"
-              [(ngModel)]="newFIR.produttoreId"
-              optionLabel="ragioneSociale"
-              optionValue="id"
-              [filter]="true"
-              filterBy="ragioneSociale,partitaIVA"
-              [showClear]="true"
-              placeholder="Cerca produttore…"
-              [loading]="loadingAnagrafiche"
-              styleClass="w-full"
-            >
-              <ng-template let-opt pTemplate="item">
-                <div class="opt">
-                  <span class="opt__name">{{ opt.ragioneSociale }}</span>
-                  <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+              <div *ngIf="showTrasportatoriAggiuntivi" class="trasporti-extra__body">
+                <div *ngFor="let t of trasportatoriAggiuntivi; let i = index" class="trasporto-row">
+                  <div class="trasporto-row__field trasporto-row__field--tratta">
+                    <p-dropdown
+                      [options]="tipoTrattaOptions"
+                      [(ngModel)]="t.tipoTratta"
+                      optionLabel="label"
+                      optionValue="value"
+                      [attr.aria-label]="'Tipo tratta trasportatore ' + (i + 2)"
+                      styleClass="w-full"
+                    />
+                  </div>
+                  <div class="trasporto-row__field trasporto-row__field--trasp">
+                    <p-dropdown
+                      [options]="trasportatori()"
+                      [(ngModel)]="t.trasportatoreId"
+                      optionLabel="ragioneSociale"
+                      optionValue="id"
+                      [filter]="true"
+                      filterBy="ragioneSociale,partitaIVA"
+                      [showClear]="true"
+                      placeholder="Cerca trasportatore…"
+                      [attr.aria-label]="'Trasportatore aggiuntivo ' + (i + 2)"
+                      styleClass="w-full"
+                    >
+                      <ng-template let-opt pTemplate="item">
+                        <div class="opt">
+                          <span class="opt__name">{{ opt.ragioneSociale }}</span>
+                          <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                        </div>
+                      </ng-template>
+                    </p-dropdown>
+                  </div>
+                  <p-button
+                    icon="pi pi-times"
+                    [rounded]="true"
+                    [text]="true"
+                    severity="danger"
+                    (onClick)="removeTrasportatoreAggiuntivo(i)"
+                    pTooltip="Rimuovi"
+                    [attr.aria-label]="'Rimuovi trasportatore aggiuntivo ' + (i + 2)"
+                  />
                 </div>
-              </ng-template>
-            </p-dropdown>
-          </div>
-          <div class="dialog-form__field">
-            <label for="new-trasportatore">Trasportatore</label>
-            <p-dropdown
-              inputId="new-trasportatore"
-              [options]="trasportatori()"
-              [(ngModel)]="newFIR.trasportatoreId"
-              optionLabel="ragioneSociale"
-              optionValue="id"
-              [filter]="true"
-              filterBy="ragioneSociale,partitaIVA"
-              [showClear]="true"
-              placeholder="Cerca trasportatore…"
-              [loading]="loadingAnagrafiche"
-              styleClass="w-full"
-            >
-              <ng-template let-opt pTemplate="item">
-                <div class="opt">
-                  <span class="opt__name">{{ opt.ragioneSociale }}</span>
-                  <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+
+                <p-button
+                  label="Aggiungi trasportatore"
+                  icon="pi pi-plus"
+                  [text]="true"
+                  severity="secondary"
+                  (onClick)="addTrasportatoreAggiuntivo()"
+                />
+              </div>
+            </div>
+          </section>
+
+          <hr class="fir-divider" aria-hidden="true" />
+
+          <!-- ===== Sezione 2: Dati rifiuto ===== -->
+          <section class="fir-section" aria-labelledby="fir-sec-rifiuto">
+            <h3 id="fir-sec-rifiuto" class="fir-section__title">Dati rifiuto</h3>
+
+            <div class="grid">
+              <div class="col-12">
+                <div class="field">
+                  <label for="new-cer"
+                    >Codice CER <span class="req" aria-hidden="true">*</span></label
+                  >
+                  <input
+                    id="new-cer"
+                    pInputText
+                    [(ngModel)]="newFIR.rifiuto.cerCode"
+                    placeholder="es. 150101"
+                    required
+                    aria-required="true"
+                    class="w-full"
+                  />
                 </div>
-              </ng-template>
-            </p-dropdown>
-          </div>
-          <div class="dialog-form__field">
-            <label for="new-destinatario">Destinatario</label>
-            <p-dropdown
-              inputId="new-destinatario"
-              [options]="destinatari()"
-              [(ngModel)]="newFIR.destinatarioId"
-              optionLabel="ragioneSociale"
-              optionValue="id"
-              [filter]="true"
-              filterBy="ragioneSociale,partitaIVA"
-              [showClear]="true"
-              placeholder="Cerca destinatario…"
-              [loading]="loadingAnagrafiche"
-              styleClass="w-full"
-            >
-              <ng-template let-opt pTemplate="item">
-                <div class="opt">
-                  <span class="opt__name">{{ opt.ragioneSociale }}</span>
-                  <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
-                </div>
-              </ng-template>
-            </p-dropdown>
-          </div>
+              </div>
 
-          <!-- Campo 17: annotazioni libere -->
-          <div class="dialog-form__field">
-            <label for="new-annotazioni">
-              Annotazioni
-              <abbr title="Campo 17 FIR — DM 59/2023" class="field-norm">¹</abbr>
-            </label>
-            <textarea
-              id="new-annotazioni"
-              pTextarea
-              [(ngModel)]="newFIR.annotazioni"
-              rows="3"
-              placeholder="Note libere, es. provenienza rifiuto, condizioni trasporto…"
-              class="w-full"
-              aria-label="Campo 17 FIR: annotazioni libere"
-            ></textarea>
-          </div>
-
-          <!-- Trasportatori aggiuntivi (trasporto intermodale) -->
-          <div class="trasporti-extra">
-            <button
-              type="button"
-              class="trasporti-extra__toggle"
-              (click)="showTrasportatoriAggiuntivi = !showTrasportatoriAggiuntivi"
-              [attr.aria-expanded]="showTrasportatoriAggiuntivi"
-            >
-              <i
-                class="pi"
-                [ngClass]="showTrasportatoriAggiuntivi ? 'pi-chevron-down' : 'pi-chevron-right'"
-                aria-hidden="true"
-              ></i>
-              <span>Trasportatori aggiuntivi (trasporto intermodale)</span>
-              <span *ngIf="trasportatoriAggiuntivi.length > 0" class="trasporti-extra__count">
-                {{ trasportatoriAggiuntivi.length }}
-              </span>
-            </button>
-
-            <div *ngIf="showTrasportatoriAggiuntivi" class="trasporti-extra__body">
-              <div *ngFor="let t of trasportatoriAggiuntivi; let i = index" class="trasporto-row">
-                <div class="trasporto-row__field trasporto-row__field--tratta">
-                  <p-dropdown
-                    [options]="tipoTrattaOptions"
-                    [(ngModel)]="t.tipoTratta"
-                    optionLabel="label"
-                    optionValue="value"
-                    [attr.aria-label]="'Tipo tratta trasportatore ' + (i + 2)"
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="new-qta"
+                    >Quantità dichiarata <span class="req" aria-hidden="true">*</span></label
+                  >
+                  <p-inputNumber
+                    inputId="new-qta"
+                    [(ngModel)]="newFIR.rifiuto.quantita"
+                    [minFractionDigits]="2"
+                    [required]="true"
                     styleClass="w-full"
                   />
                 </div>
-                <div class="trasporto-row__field trasporto-row__field--trasp">
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="new-um">Unità di misura</label>
                   <p-dropdown
-                    [options]="trasportatori()"
-                    [(ngModel)]="t.trasportatoreId"
-                    optionLabel="ragioneSociale"
-                    optionValue="id"
-                    [filter]="true"
-                    filterBy="ragioneSociale,partitaIVA"
-                    [showClear]="true"
-                    placeholder="Cerca trasportatore…"
-                    [attr.aria-label]="'Trasportatore aggiuntivo ' + (i + 2)"
+                    inputId="new-um"
+                    [options]="unitaMisuraOptions"
+                    [(ngModel)]="newFIR.rifiuto.unitaMisura"
+                    placeholder="Seleziona"
                     styleClass="w-full"
-                  >
-                    <ng-template let-opt pTemplate="item">
-                      <div class="opt">
-                        <span class="opt__name">{{ opt.ragioneSociale }}</span>
-                        <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
-                      </div>
-                    </ng-template>
-                  </p-dropdown>
+                  />
                 </div>
-                <p-button
-                  icon="pi pi-times"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="danger"
-                  (onClick)="removeTrasportatoreAggiuntivo(i)"
-                  pTooltip="Rimuovi"
-                  [attr.aria-label]="'Rimuovi trasportatore aggiuntivo ' + (i + 2)"
-                />
               </div>
 
-              <p-button
-                label="Aggiungi trasportatore"
-                icon="pi pi-plus"
-                [text]="true"
-                severity="secondary"
-                (onClick)="addTrasportatoreAggiuntivo()"
-              />
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="new-stato-fisico">
+                    Stato fisico
+                    <i
+                      class="pi pi-info-circle field-norm"
+                      title="Campo 2 FIR — DM 59/2023"
+                      aria-hidden="true"
+                    ></i>
+                  </label>
+                  <p-dropdown
+                    inputId="new-stato-fisico"
+                    [options]="statoFisicoOptions"
+                    [(ngModel)]="newFIR.rifiuto.statoFisico"
+                    placeholder="Seleziona…"
+                    [showClear]="true"
+                    styleClass="w-full"
+                    ariaLabel="Stato fisico del rifiuto (Campo 2 FIR)"
+                  />
+                </div>
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="new-colli">N° colli</label>
+                  <p-inputNumber
+                    inputId="new-colli"
+                    [(ngModel)]="newFIR.rifiuto.numeroColli"
+                    [min]="1"
+                    [useGrouping]="false"
+                    styleClass="w-full"
+                    ariaLabel="Numero colli"
+                  />
+                </div>
+              </div>
+
+              <div class="col-12">
+                <div class="field">
+                  <label for="new-hp">
+                    Caratteristiche pericolo HP
+                    <i
+                      class="pi pi-info-circle field-norm"
+                      title="Reg. UE 1357/2014, Campo 2 FIR"
+                      aria-hidden="true"
+                    ></i>
+                  </label>
+                  <p-dropdown
+                    inputId="new-hp"
+                    [options]="hpOptions"
+                    [(ngModel)]="newFIR.rifiuto.caratteristichePericolo"
+                    placeholder="Seleziona (se rifiuto pericoloso)…"
+                    [showClear]="true"
+                    styleClass="w-full"
+                    ariaLabel="Caratteristiche di pericolo HP"
+                  />
+                </div>
+              </div>
+
+              <div class="col-12">
+                <div class="field">
+                  <label for="new-op-code">
+                    Operazione destinatario R/D
+                    <i
+                      class="pi pi-info-circle field-norm"
+                      title="Campo 3 FIR — Allegati B e C D.Lgs 152/2006"
+                      aria-hidden="true"
+                    ></i>
+                  </label>
+                  <p-dropdown
+                    inputId="new-op-code"
+                    [options]="operazioneRDOptions"
+                    [(ngModel)]="newFIR.rifiuto.codiceOperazione"
+                    placeholder="Seleziona operazione…"
+                    [showClear]="true"
+                    [filter]="true"
+                    styleClass="w-full"
+                    ariaLabel="Codice operazione di recupero o smaltimento"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
+
+          <hr class="fir-divider" aria-hidden="true" />
+
+          <!-- ===== Sezione 3: Dati aggiuntivi ===== -->
+          <section class="fir-section" aria-labelledby="fir-sec-extra">
+            <h3 id="fir-sec-extra" class="fir-section__title">Dati aggiuntivi</h3>
+
+            <div class="field">
+              <label for="new-annotazioni">
+                Annotazioni
+                <i
+                  class="pi pi-info-circle field-norm"
+                  title="Campo 17 FIR — DM 59/2023"
+                  aria-hidden="true"
+                ></i>
+              </label>
+              <textarea
+                id="new-annotazioni"
+                pInputTextarea
+                [(ngModel)]="newFIR.annotazioni"
+                rows="3"
+                placeholder="Note libere, es. provenienza rifiuto, condizioni trasporto…"
+                class="w-full fir-textarea"
+                aria-label="Campo 17 FIR: annotazioni libere"
+              ></textarea>
+            </div>
+          </section>
         </div>
         <ng-template pTemplate="footer">
           <p-button label="Annulla" [text]="true" (onClick)="displayCreateDialog = false" />
@@ -574,11 +650,90 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
         color: var(--text-primary);
       }
 
-      .dialog-form {
+      /* ===== Form FIR — sezioni logiche (griglia 8pt) ===== */
+      .fir-form {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-base);
+        gap: var(--spacing-lg); /* 24px tra sezioni */
       }
+      .fir-form__legend {
+        margin: 0;
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+      }
+      .fir-form__legend .req {
+        color: var(--color-danger);
+        font-weight: var(--font-weight-bold);
+      }
+      .fir-section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-base); /* 16px intra-sezione */
+      }
+      .fir-section__title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-tertiary);
+      }
+      .fir-divider {
+        border: 0;
+        border-top: 1px solid var(--surface-border);
+        margin: 0; /* la spaziatura la dà il gap di .fir-form (24px) */
+      }
+
+      /* Campo: label (8px) sopra il controllo */
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+      }
+      .field > label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-secondary);
+      }
+      .req {
+        color: var(--color-danger);
+        font-weight: var(--font-weight-bold);
+      }
+      /* Riga controllo + azioni: pronta per i pulsanti anagrafica (WS-4) */
+      .field__control {
+        display: flex;
+        align-items: stretch;
+        gap: var(--spacing-sm);
+      }
+      .field__control > p-dropdown {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      /* Griglia PrimeFlex: annulla il margin-top negativo di default (allineamento sezione) */
+      .fir-form .grid {
+        margin: 0 calc(-1 * var(--spacing-sm));
+      }
+
+      /* Nota normativa (facoltativa) accanto alla label */
+      .field-norm {
+        font-size: var(--font-size-sm);
+        color: var(--text-tertiary);
+        cursor: help;
+      }
+
+      /* Textarea annotazioni (Campo 17): min 80px, resize verticale, bordo DS */
+      .fir-textarea {
+        min-height: 80px;
+        font-size: var(--font-size-sm);
+        resize: vertical;
+      }
+
+      /* Dialog Consegna (campo singolo) */
       .dialog-form__field {
         display: flex;
         flex-direction: column;
@@ -586,25 +741,6 @@ import { Produttore, Trasportatore, Destinatario } from '../../shared/models/reg
       }
       .dialog-form__field label {
         font-size: var(--font-size-sm);
-      }
-      .dialog-form__row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--spacing-base);
-      }
-      .dialog-form__row .dialog-form__field {
-        flex: 1 1 160px;
-      }
-      .dialog-form__field--sm {
-        flex: 0 0 100px !important;
-        min-width: 80px;
-      }
-      .field-norm {
-        font-size: var(--font-size-xs);
-        color: var(--text-tertiary);
-        cursor: help;
-        margin-left: 2px;
-        text-decoration: none;
       }
 
       /* Dropdown option (ragione sociale + P.IVA) */
