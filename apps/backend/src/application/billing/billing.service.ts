@@ -40,6 +40,10 @@ export interface BillingStatusDto {
   stripeSubscriptionId: string | null
   /** URL del Billing Portal Stripe per gestione self-service. Null se Stripe non abilitato. */
   portalUrl?: string | null
+  /** true se STRIPE_SECRET_KEY è configurata lato backend (pagamenti attivi). */
+  stripeConfigured: boolean
+  /** true se Stripe NON è configurato: la UI mostra il banner "modalità test" e disabilita gli upgrade. */
+  testMode: boolean
 }
 
 @Injectable()
@@ -103,6 +107,8 @@ export class BillingService {
       userLimitTotal: tenant.userLimitTotal,
       stripeCustomerId: tenant.stripeCustomerId,
       stripeSubscriptionId: tenant.stripeSubscriptionId,
+      stripeConfigured: this.stripeService.isEnabled,
+      testMode: !this.stripeService.isEnabled,
     }
   }
 

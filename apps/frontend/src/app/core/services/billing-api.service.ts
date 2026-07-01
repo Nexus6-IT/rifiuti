@@ -28,6 +28,10 @@ export interface BillingStatus {
   userLimitTotal: number
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null
+  /** true se STRIPE_SECRET_KEY è configurata lato backend (pagamenti attivi). */
+  stripeConfigured?: boolean
+  /** true se Stripe NON è configurato (modalità test: upgrade/portale disabilitati). */
+  testMode?: boolean
 }
 
 export interface CheckoutResponse {

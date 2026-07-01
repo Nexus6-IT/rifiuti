@@ -18,6 +18,7 @@ import { ButtonModule } from 'primeng/button'
 import { TagModule } from 'primeng/tag'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { MessageModule } from 'primeng/message'
+import { TooltipModule } from 'primeng/tooltip'
 import {
   BillingApiService,
   BillingStatus,
@@ -88,7 +89,15 @@ const PIANI: PianoInfo[] = [
 @Component({
   selector: 'app-billing-page',
   standalone: true,
-  imports: [CommonModule, ButtonModule, TagModule, ProgressSpinnerModule, MessageModule, DatePipe],
+  imports: [
+    CommonModule,
+    ButtonModule,
+    TagModule,
+    ProgressSpinnerModule,
+    MessageModule,
+    TooltipModule,
+    DatePipe,
+  ],
   template: `
     <div class="page">
       <!-- Intestazione -->
@@ -136,6 +145,11 @@ const PIANI: PianoInfo[] = [
                   icon="pi pi-credit-card"
                   class="p-button-danger p-button-sm mt-3"
                   [loading]="portalLoading()"
+                  [disabled]="testMode()"
+                  [pTooltip]="
+                    testMode() ? 'Non disponibile in modalità test (Stripe non configurato)' : ''
+                  "
+                  tooltipPosition="top"
                   (click)="apriPortale()"
                 ></button>
               }
@@ -234,6 +248,11 @@ const PIANI: PianoInfo[] = [
                 icon="pi pi-external-link"
                 class="p-button-outlined p-button-sm"
                 [loading]="portalLoading()"
+                [disabled]="testMode()"
+                [pTooltip]="
+                  testMode() ? 'Non disponibile in modalità test (Stripe non configurato)' : ''
+                "
+                tooltipPosition="top"
                 (click)="apriPortale()"
                 aria-label="Apri il Billing Portal Stripe per gestire il tuo abbonamento"
               ></button>
@@ -327,7 +346,13 @@ const PIANI: PianoInfo[] = [
                         piano.evidenziato ? 'p-button-primary w-full' : 'p-button-outlined w-full'
                       "
                       [loading]="checkoutLoading() === piano.tier"
-                      [disabled]="billingStatus()!.status === 'SUSPENDED'"
+                      [disabled]="billingStatus()!.status === 'SUSPENDED' || testMode()"
+                      [pTooltip]="
+                        testMode()
+                          ? 'Non disponibile in modalità test (Stripe non configurato)'
+                          : ''
+                      "
+                      tooltipPosition="top"
                       (click)="avviaCheckout(piano.tier)"
                       [attr.aria-label]="
                         'Esegui upgrade al piano ' +
@@ -784,6 +809,8 @@ export class BillingPageComponent implements OnInit {
     this.billingApi.getStatus().subscribe({
       next: status => {
         this.billingStatus.set(status)
+        // Stripe non configurato lato backend → modalità test: banner + upgrade/portale disabilitati.
+        this.testMode.set(status.testMode ?? !status.stripeConfigured)
         this.loading.set(false)
       },
       error: err => {
