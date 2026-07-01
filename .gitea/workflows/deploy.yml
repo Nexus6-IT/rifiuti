@@ -79,6 +79,12 @@ jobs:
       # anche simulando l'assenza di Redis/DB. Vedi memory rifiuti-build-deploy-gotchas.
       - name: Test unitari backend
         working-directory: apps/backend
+        # Env fittizie richieste alla COSTRUZIONE di alcuni moduli in test (es.
+        # JwtStrategy esige un secret): valori DUMMY solo per CI, mai in prod.
+        # I test sono unit (mock), non serve infra reale (Redis/DB assenti = ok).
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
         run: npx jest --testPathPattern="src" --forceExit --ci --runInBand
 
       # Build backend (stesso percorso usato dal Dockerfile.prod).
