@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Router } from '@angular/router'
-import { Observable, tap, catchError, of, map } from 'rxjs'
+import { Observable, tap, catchError, of, map, throwError, finalize, shareReplay } from 'rxjs'
 import { environment } from '../../../environments/environment'
 
 export interface User {
@@ -18,6 +18,11 @@ interface AuthResponse {
   user: User
 }
 
+interface RefreshResponse {
+  accessToken: string
+  expiresIn: number
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -27,6 +32,9 @@ export class AuthService {
   private readonly apiUrl = environment.apiUrl
   readonly currentUser = signal<User | null>(null)
   readonly isAuthenticated = signal<boolean>(false)
+
+  /** Rinnovo in corso: condiviso tra richieste concorrenti per evitare N refresh paralleli. */
+  private refreshInFlight$: Observable<string> | null = null
 
   constructor() {
     this.initializeAuth()
@@ -115,6 +123,38 @@ export class AuthService {
         return of(void 0)
       })
     )
+  }
+
+  /**
+   * Rinnova l'access token usando il refresh token (endpoint pubblico /auth/refresh).
+   * Le richieste concorrenti condividono la STESSA chiamata (`shareReplay`) così un
+   * burst di 401 genera un solo refresh. Emette il nuovo access token, oppure erra
+   * se non c'è un refresh token o il backend lo rifiuta (→ il chiamante fa logout).
+   */
+  refreshAccessToken(): Observable<string> {
+    if (this.refreshInFlight$) {
+      return this.refreshInFlight$
+    }
+
+    const refreshToken = this.getRefreshToken()
+    if (!refreshToken) {
+      return throwError(() => new Error('Nessun refresh token disponibile'))
+    }
+
+    this.refreshInFlight$ = this.http
+      .post<RefreshResponse>(`${this.apiUrl}/auth/refresh`, { refreshToken })
+      .pipe(
+        map(res => {
+          localStorage.setItem('accessToken', res.accessToken)
+          return res.accessToken
+        }),
+        finalize(() => {
+          this.refreshInFlight$ = null
+        }),
+        shareReplay(1)
+      )
+
+    return this.refreshInFlight$
   }
 
   getSession(): Observable<{ user: User }> {
