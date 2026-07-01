@@ -716,7 +716,8 @@ import { SignupService, SignupPayload } from './signup.service'
         cursor: pointer;
       }
       .consent-item__link {
-        color: var(--brand-primary);
+        /* Link come testo: teal-700 = 5.47:1 su bianco (AA). */
+        color: var(--brand-primary-dark);
         font-weight: var(--font-weight-semibold);
         text-decoration: underline;
         text-underline-offset: 2px;
@@ -758,8 +759,8 @@ import { SignupService, SignupPayload } from './signup.service'
         font-size: var(--font-size-base);
         font-weight: var(--font-weight-semibold);
         text-decoration: none;
-        border: 1.5px solid var(--brand-primary);
-        color: var(--brand-primary);
+        border: 1.5px solid var(--brand-primary-dark);
+        color: var(--brand-primary-dark);
         transition: all var(--transition-fast);
       }
       .goto-login:hover {

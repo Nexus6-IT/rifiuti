@@ -117,7 +117,8 @@ import { FormsModule } from '@angular/forms'
         align-items: center;
         gap: var(--spacing-md);
         padding: var(--spacing-md) var(--spacing-lg);
-        background: var(--brand-primary);
+        /* teal-700 per 5.47:1 col testo bianco (AA). */
+        background: var(--brand-primary-dark);
         border-radius: var(--radius-lg);
         font-size: var(--font-size-sm);
         box-shadow: var(--shadow-sm);

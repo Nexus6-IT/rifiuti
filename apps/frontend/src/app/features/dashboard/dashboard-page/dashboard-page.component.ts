@@ -514,7 +514,8 @@ import { MessageService } from 'primeng/api'
         align-items: center;
         justify-content: center;
         border-radius: var(--radius-full);
-        background: var(--brand-primary);
+        /* teal-700 per 5.47:1 col numero bianco (AA). */
+        background: var(--brand-primary-dark);
         color: var(--text-inverse);
         font-family: var(--font-display);
         font-weight: var(--font-weight-bold);

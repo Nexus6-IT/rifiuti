@@ -48,14 +48,15 @@
   --surface-overlay: #ffffff;
   --surface-border: #e2e8f0;
   --surface-border-strong: #cbd5e1;
-  /* Bordo dei controlli editabili (input/select): ~3:1 su bianco (WCAG 1.4.11). */
-  --control-border: #8b97a8;
+  /* Bordo dei controlli editabili (input/select): slate-500 = 4.76:1 su bianco (WCAG 1.4.11 richiede ≥3:1). */
+  --control-border: #64748b;
   --surface-hover: #f8fafc;
 
   /* ===== Testo ===== */
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-tertiary: #64748b;
+  /* Testo terziario/muted: slate-600 = 6.92:1 su slate-100 (era slate-500 #64748b = 4.34:1 = fail AA). */
+  --text-tertiary: #475569;
   --text-disabled: #94a3b8;
   --text-inverse: #ffffff;
 
@@ -137,7 +138,8 @@
   /* ===== Accessibilità ===== */
   --touch-target-min: 44px;
   --focus-ring-width: 3px;
-  --focus-ring-color: #0d9488;
+  /* teal-700 = 5.47:1 su bianco (l'indicatore di focus resta ben visibile). */
+  --focus-ring-color: #0f766e;
   --focus-ring-offset: 2px;
 
   /* ===== Allineamento tema PrimeNG (Aura) ===== */
@@ -346,10 +348,21 @@ textarea.p-inputtext::placeholder,
 .p-multiselect:not(.p-disabled).p-focus,
 .p-calendar:not(.p-disabled).p-focus .p-inputtext,
 .p-inputnumber:not(.p-disabled).p-focus .p-inputnumber-input,
-.p-password:not(.p-disabled).p-focus input {
+.p-password:not(.p-disabled).p-focus input,
+textarea.p-inputtext:enabled:focus {
   border-color: var(--brand-primary) !important;
   box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.18) !important;
+  /* Focus visibile anche in forced-colors / oltre al glow (WCAG 2.4.7). */
+  outline: 2px solid var(--brand-primary-dark);
+  outline-offset: 2px;
 }
+/* Focus visibile sui bottoni (oltre allo stato hover). */
+.p-button:focus-visible {
+  outline: 2px solid var(--brand-primary-dark);
+  outline-offset: 2px;
+}
+.p-button.p-button-outlined:focus-visible,
+.p-button.p-button-text:focus-visible { outline-color: var(--brand-primary-dark); }
 label { font-weight: var(--font-weight-medium); color: var(--text-secondary); font-size: var(--font-size-sm); }
 
 /* Checkbox / Radio / Switch */
@@ -371,11 +384,11 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 .p-datatable.p-datatable-sm .p-datatable-tbody > tr > td { padding: var(--spacing-xs) var(--spacing-md); }
 .p-datatable .p-sortable-column.p-highlight, .p-datatable .p-sortable-column.p-highlight .p-sortable-column-icon { color: var(--brand-primary-dark); }
 .p-paginator { background: var(--surface-section); border: none; padding: var(--spacing-md); }
-.p-paginator .p-paginator-pages .p-paginator-page.p-highlight { background: var(--brand-primary); color: #fff; border-radius: var(--radius-base); }
+.p-paginator .p-paginator-pages .p-paginator-page.p-highlight { background: var(--brand-primary-dark); color: #fff; border-radius: var(--radius-base); }
 
 /* Dialog */
 .p-dialog { border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-xl) !important; overflow: hidden; }
-.p-dialog .p-dialog-header { background: var(--surface-section); padding: var(--spacing-lg); border-bottom: 1px solid var(--surface-border); }
+.p-dialog .p-dialog-header { background: var(--surface-section); padding: var(--spacing-base) var(--spacing-lg); border-bottom: 1px solid var(--surface-border); }
 /* Titolo dialog un gradino sotto il titolo pagina (gerarchia). */
 .p-dialog .p-dialog-header .p-dialog-title { font-family: var(--font-display); font-weight: var(--font-weight-semibold); font-size: var(--font-size-lg); }
 /* X di chiusura: icona ghost neutra (NON teal pieno), hover tenue. */
@@ -390,16 +403,16 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 .p-dialog .p-dialog-header-icon:hover { background: var(--color-gray-100) !important; color: var(--text-primary) !important; }
 .p-dialog .p-dialog-content { padding: var(--spacing-lg); }
 /* Footer simmetrico (24px) + azioni allineate a destra con gap coerente. */
-.p-dialog .p-dialog-footer { padding: var(--spacing-lg); border-top: 1px solid var(--surface-border); display: flex; justify-content: flex-end; gap: var(--spacing-md); }
+.p-dialog .p-dialog-footer { padding: var(--spacing-base) var(--spacing-lg); border-top: 1px solid var(--surface-border); display: flex; justify-content: flex-end; gap: var(--spacing-md); }
 .p-overlay-mask { background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(2px); }
 
 /* Tag / Badge — colore + soft bg (mai solo colore: il testo è nel value) */
-.p-tag { border-radius: var(--radius-full); font-weight: var(--font-weight-semibold); font-size: var(--font-size-xs); padding: 0.2rem 0.6rem; letter-spacing: 0.02em; }
+.p-tag { border-radius: var(--radius-full); font-weight: var(--font-weight-semibold); font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); letter-spacing: 0.02em; }
 .p-tag.p-tag-success { background: var(--color-success-bg); color: var(--color-success); }
 .p-tag.p-tag-warning { background: var(--color-warning-bg); color: var(--color-warning); }
 .p-tag.p-tag-danger { background: var(--color-danger-bg); color: var(--color-danger); }
 .p-tag.p-tag-info { background: var(--color-info-bg); color: var(--color-info); }
-.p-badge { border-radius: var(--radius-full); font-weight: var(--font-weight-semibold); background: var(--brand-primary); }
+.p-badge { border-radius: var(--radius-full); font-weight: var(--font-weight-semibold); background: var(--brand-primary-dark); color: #fff; }
 
 /* Overlay / dropdown panel */
 .p-dropdown-panel, .p-multiselect-panel, .p-menu, .p-overlaypanel { border-radius: var(--radius-md) !important; box-shadow: var(--shadow-md) !important; border: 1px solid var(--surface-border); }
@@ -421,7 +434,7 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 
 /* Progress */
 .p-progress-spinner-circle { stroke: var(--brand-primary) !important; }
-.p-progressbar .p-progressbar-value { background: var(--brand-primary); }
+.p-progressbar .p-progressbar-value { background: var(--brand-primary-dark); }
 
 /* ===== Responsive ===== */
 @media (max-width: 768px) {

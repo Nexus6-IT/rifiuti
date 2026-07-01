@@ -583,13 +583,14 @@ const PIANI: PianoInfo[] = [
         position: absolute;
         top: -1px;
         right: 1.5rem;
-        background: var(--brand-primary);
+        /* teal-700 su bianco = 5.47:1 col testo bianco (era teal-600 = 3.74:1 = fail AA). */
+        background: var(--brand-primary-dark);
         color: var(--text-inverse);
-        font-size: 0.7rem;
+        font-size: var(--font-size-xs);
         font-weight: var(--font-weight-bold);
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        padding: 0.25rem 0.625rem;
+        padding: var(--spacing-xs) var(--spacing-sm);
         border-radius: 0 0 var(--radius-md, 0.5rem) var(--radius-md, 0.5rem);
       }
       /* Badge "Piano attivo" */
@@ -625,7 +626,7 @@ const PIANI: PianoInfo[] = [
         font-family: var(--font-display);
         font-size: 2rem;
         font-weight: var(--font-weight-bold);
-        color: var(--brand-primary);
+        color: var(--brand-primary-dark);
         line-height: 1;
       }
       .piano-card__periodicita {
@@ -699,7 +700,8 @@ const PIANI: PianoInfo[] = [
         line-height: 1.6;
       }
       .billing-footer__link {
-        color: var(--brand-primary);
+        /* Link come testo: teal-700 = 5.47:1 su bianco (teal-600 = 3.74:1 = fail AA). */
+        color: var(--brand-primary-dark);
         text-decoration: none;
       }
       .billing-footer__link:hover {

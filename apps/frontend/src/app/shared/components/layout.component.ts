@@ -803,9 +803,9 @@ interface UserTenant {
         color: #fca5a5;
       }
 
-      /* L'avatar usa il brand (override styleClass PrimeNG) */
+      /* L'avatar usa il brand (override styleClass PrimeNG); teal-700 per 5.47:1 con le iniziali bianche (AA). */
       :host ::ng-deep .user-card__avatar {
-        background: var(--brand-primary) !important;
+        background: var(--brand-primary-dark) !important;
         color: var(--text-inverse) !important;
         font-weight: var(--font-weight-semibold);
         font-family: var(--font-display);

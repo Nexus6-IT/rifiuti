@@ -446,7 +446,8 @@ import { ErrorStateComponent } from '../../shared/components/error-state.compone
       }
 
       .piva-badge {
-        background: var(--brand-primary);
+        /* teal-700 per 5.47:1 col testo bianco (teal-600 = 3.74:1 = fail AA). */
+        background: var(--brand-primary-dark);
         color: var(--text-inverse);
         padding: 4px 12px;
         border-radius: var(--radius-full);
