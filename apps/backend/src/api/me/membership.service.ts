@@ -15,6 +15,32 @@ export class MembershipService {
     private readonly jwtTokens: JwtTokensService
   ) {}
 
+  /**
+   * Identità anagrafica della società attiva (tenant effettivo della richiesta).
+   *
+   * Serve al frontend (registro C/S) per determinare, dato un FIR, se il
+   * movimento è un CARICO (la società è il DESTINATARIO del FIR) o uno SCARICO
+   * (la società è il PRODUTTORE), confrontando la partita IVA / ragione sociale
+   * della società con lo snapshot delle parti del FIR.
+   *
+   * `tenantId` deve essere il tenant EFFETTIVO della richiesta (`req.tenantId`,
+   * eventualmente sovrascritto dal `TenantSwitchInterceptor`), non il tenant
+   * primario del JWT: così riflette la società selezionata nel tenant switcher.
+   */
+  async getActiveCompany(tenantId: string | null | undefined) {
+    if (!tenantId) return null
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, ragioneSociale: true, partitaIva: true },
+    })
+    if (!tenant) return null
+    return {
+      id: tenant.id,
+      ragioneSociale: tenant.ragioneSociale,
+      partitaIva: tenant.partitaIva,
+    }
+  }
+
   /** Tenant a cui l'utente ha accesso. */
   async listTenants(user: CurrentUserPayload) {
     const ids = new Set<string>()
