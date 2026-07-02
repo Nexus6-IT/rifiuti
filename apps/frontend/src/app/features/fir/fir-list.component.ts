@@ -233,7 +233,10 @@ import { CerSelectComponent } from '../cer/cer-select.component'
       <p-dialog
         [(visible)]="displayCreateDialog"
         [modal]="true"
-        styleClass="w-full max-w-40rem fir-dialog"
+        styleClass="fir-dialog"
+        [style]="{ width: '48rem', maxHeight: '90vh' }"
+        [breakpoints]="{ '960px': '90vw', '640px': '100vw' }"
+        [contentStyle]="{ overflow: 'auto' }"
         header="Nuovo FIR"
         closeAriaLabel="Chiudi la finestra Nuovo FIR"
       >
@@ -277,9 +280,8 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                 </p-dropdown>
                 <p-button
                   icon="pi pi-plus"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="secondary"
+                  [outlined]="true"
+                  styleClass="fir-icon-btn"
                   pTooltip="Nuovo produttore"
                   tooltipPosition="top"
                   aria-label="Nuovo produttore"
@@ -287,9 +289,8 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                 />
                 <p-button
                   icon="pi pi-pencil"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="secondary"
+                  [outlined]="true"
+                  styleClass="fir-icon-btn"
                   pTooltip="Modifica produttore selezionato"
                   tooltipPosition="top"
                   aria-label="Modifica produttore selezionato"
@@ -339,9 +340,8 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                 </p-dropdown>
                 <p-button
                   icon="pi pi-plus"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="secondary"
+                  [outlined]="true"
+                  styleClass="fir-icon-btn"
                   pTooltip="Nuovo trasportatore"
                   tooltipPosition="top"
                   aria-label="Nuovo trasportatore"
@@ -349,9 +349,8 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                 />
                 <p-button
                   icon="pi pi-pencil"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="secondary"
+                  [outlined]="true"
+                  styleClass="fir-icon-btn"
                   pTooltip="Modifica trasportatore selezionato"
                   tooltipPosition="top"
                   aria-label="Modifica trasportatore selezionato"
@@ -401,9 +400,8 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                 </p-dropdown>
                 <p-button
                   icon="pi pi-plus"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="secondary"
+                  [outlined]="true"
+                  styleClass="fir-icon-btn"
                   pTooltip="Nuovo destinatario"
                   tooltipPosition="top"
                   aria-label="Nuovo destinatario"
@@ -411,9 +409,8 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                 />
                 <p-button
                   icon="pi pi-pencil"
-                  [rounded]="true"
-                  [text]="true"
-                  severity="secondary"
+                  [outlined]="true"
+                  styleClass="fir-icon-btn"
                   pTooltip="Modifica destinatario selezionato"
                   tooltipPosition="top"
                   aria-label="Modifica destinatario selezionato"
@@ -497,7 +494,8 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                   label="Aggiungi trasportatore"
                   icon="pi pi-plus"
                   [text]="true"
-                  severity="secondary"
+                  size="small"
+                  styleClass="trasporti-extra__add"
                   (onClick)="addTrasportatoreAggiuntivo()"
                 />
               </div>
@@ -609,7 +607,7 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                 </div>
               </div>
 
-              <div class="col-12">
+              <div class="col-12 sm:col-6">
                 <div class="field">
                   <label for="new-hp">
                     Caratteristiche pericolo HP
@@ -631,7 +629,7 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                 </div>
               </div>
 
-              <div class="col-12">
+              <div class="col-12 sm:col-6">
                 <div class="field">
                   <label for="new-op-code">
                     Operazione destinatario R/D
@@ -684,8 +682,20 @@ import { CerSelectComponent } from '../cer/cer-select.component'
           </section>
         </div>
         <ng-template pTemplate="footer">
-          <p-button label="Annulla" [text]="true" (onClick)="displayCreateDialog = false" />
-          <p-button label="Salva" (onClick)="createFIR()" [loading]="saving" />
+          <div class="fir-dialog-footer">
+            <p-button
+              label="Annulla"
+              icon="pi pi-times"
+              [outlined]="true"
+              (onClick)="displayCreateDialog = false"
+            />
+            <p-button
+              label="Crea FIR"
+              icon="pi pi-check"
+              (onClick)="createFIR()"
+              [loading]="saving"
+            />
+          </div>
         </ng-template>
       </p-dialog>
 
@@ -781,11 +791,11 @@ import { CerSelectComponent } from '../cer/cer-select.component'
         color: var(--text-primary);
       }
 
-      /* ===== Form FIR — sezioni logiche (griglia 8pt) ===== */
+      /* ===== Form FIR — sezioni logiche (griglia 8pt, densità operativa) ===== */
       .fir-form {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-lg); /* 24px tra sezioni */
+        gap: var(--spacing-base); /* 16px tra sezioni (era 24px) */
       }
       .fir-form__legend {
         margin: 0;
@@ -799,7 +809,7 @@ import { CerSelectComponent } from '../cer/cer-select.component'
       .fir-section {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-base); /* 16px intra-sezione */
+        gap: var(--spacing-md); /* 12px intra-sezione (era 16px) */
       }
       .fir-section__title {
         margin: 0;
@@ -816,11 +826,16 @@ import { CerSelectComponent } from '../cer/cer-select.component'
         margin: 0; /* la spaziatura la dà il gap di .fir-form (24px) */
       }
 
-      /* Campo: label (8px) sopra il controllo */
+      /* Campo: label (6px) sopra il controllo — densità operativa */
       .field {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-sm);
+        gap: 6px;
+      }
+      /* Le celle della griglia PrimeFlex compattano il gutter verticale (8px) */
+      .fir-form .grid > [class*='col'] {
+        padding-top: var(--spacing-xs);
+        padding-bottom: var(--spacing-xs);
       }
       .field > label {
         display: inline-flex;
@@ -862,7 +877,27 @@ import { CerSelectComponent } from '../cer/cer-select.component'
       /* I pulsanti azione non si espandono e rimangono allineati al centro */
       .field__control > p-button {
         flex: 0 0 auto;
-        align-self: center;
+        align-self: stretch;
+        display: flex;
+      }
+      /* Pulsanti icona Nuovo/Modifica: quadrati 40px, bordo neutro, icona teal-700.
+         Coerenti con l'altezza del control (griglia 8pt), contrasto WCAG AA. */
+      .field__control ::ng-deep .p-button.fir-icon-btn {
+        width: var(--control-md);
+        height: var(--control-md);
+        padding: 0 !important;
+        color: var(--brand-primary-dark); /* teal-700 su superficie chiara: AA */
+        border-color: var(--surface-border-strong);
+        background: var(--surface-section);
+      }
+      .field__control ::ng-deep .p-button.fir-icon-btn:not(:disabled):hover {
+        color: var(--brand-primary-dark);
+        border-color: var(--brand-primary-dark);
+        background: var(--brand-primary-50);
+      }
+      .field__control ::ng-deep .p-button.fir-icon-btn:disabled,
+      .field__control ::ng-deep .p-button.fir-icon-btn.p-disabled {
+        color: var(--text-disabled);
       }
 
       /* Griglia PrimeFlex: annulla il margin-top negativo di default (allineamento sezione) */
@@ -882,6 +917,38 @@ import { CerSelectComponent } from '../cer/cer-select.component'
         min-height: 80px;
         font-size: var(--font-size-sm);
         resize: vertical;
+      }
+
+      /* ===== Dialog FIR: altezza limitata, body scrollabile, footer sticky ===== */
+      :host ::ng-deep .fir-dialog.p-dialog {
+        display: flex;
+        flex-direction: column;
+        max-height: 90vh;
+      }
+      :host ::ng-deep .fir-dialog .p-dialog-content {
+        flex: 1 1 auto;
+        overflow-y: auto;
+      }
+      /* Header e footer non scorrono (restano visibili) */
+      :host ::ng-deep .fir-dialog .p-dialog-header,
+      :host ::ng-deep .fir-dialog .p-dialog-footer {
+        flex: 0 0 auto;
+      }
+      /* Footer: azioni allineate a destra con spaziatura coerente */
+      .fir-dialog-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: var(--spacing-sm);
+      }
+      /* Il bottone "Aggiungi trasportatore" non deve ingombrare */
+      :host ::ng-deep .trasporti-extra__add.p-button {
+        align-self: flex-start;
+        padding-left: 0 !important;
+        color: var(--brand-primary-dark);
+      }
+      :host ::ng-deep .trasporti-extra__add.p-button:not(:disabled):hover {
+        background: var(--brand-primary-50);
+        color: var(--brand-primary-dark);
       }
 
       /* Dialog Consegna (campo singolo) */
