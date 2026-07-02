@@ -3,9 +3,9 @@
  *
  * Pagina del registro operativo: mostra la lista dei movimenti e permette
  * la registrazione di un nuovo movimento (CARICO o SCARICO) tramite un
- * pannello laterale/dialog con form validato.
+ * dialog con form validato, raggruppato in sezioni logiche.
  *
- * Design system "B": slate + teal #0d9488, IBM Plex, griglia 8pt, WCAG 2.1 AA.
+ * Design system "B": slate + teal-700 #0f766e, IBM Plex, griglia 8pt, WCAG 2.1 AA.
  */
 
 import { Component, OnInit, inject, signal, computed } from '@angular/core'
@@ -24,7 +24,6 @@ import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { DialogModule } from 'primeng/dialog'
-import { SelectButtonModule } from 'primeng/selectbutton'
 import { CalendarModule } from 'primeng/calendar'
 import { InputNumberModule } from 'primeng/inputnumber'
 import { InputTextModule } from 'primeng/inputtext'
@@ -66,7 +65,6 @@ interface DropdownOption<T> {
     TagModule,
     ProgressSpinnerModule,
     DialogModule,
-    SelectButtonModule,
     CalendarModule,
     InputNumberModule,
     InputTextModule,
@@ -107,61 +105,70 @@ interface DropdownOption<T> {
       </header>
 
       <!-- Filtri rapidi -------------------------------------------------------->
-      <section class="surface-card mb-4" aria-label="Filtri registro">
-        <div class="filtri-row">
-          <p-selectButton
+      <section class="surface-card filters" aria-label="Filtri registro">
+        <div class="filters__field filters__field--tipo">
+          <label class="filters__label" for="filtro-tipo">Tipo movimento</label>
+          <p-dropdown
+            inputId="filtro-tipo"
             [options]="tipoOptions"
             [(ngModel)]="filtroTipo"
-            (ngModelChange)="onFiltroTipoChange()"
+            [ngModelOptions]="{ standalone: true }"
+            (onChange)="onFiltroTipoChange()"
             optionLabel="label"
             optionValue="value"
-            [ngModelOptions]="{ standalone: true }"
+            placeholder="Tutti i movimenti"
+            styleClass="w-full"
             ariaLabel="Filtra per tipo movimento"
-          ></p-selectButton>
+          ></p-dropdown>
+        </div>
 
-          <input
-            pInputText
-            class="filtro-cer"
-            placeholder="Filtra per CER (es. 20 03 01)"
-            [(ngModel)]="filtroCer"
-            [ngModelOptions]="{ standalone: true }"
-            (keyup.enter)="ricarica()"
-            ariaLabel="Filtra per codice CER"
-          />
+        <div class="filters__field filters__field--cer">
+          <label class="filters__label" for="filtro-cer">Codice CER</label>
+          <span class="p-input-icon-left filters__search">
+            <i class="pi pi-search" aria-hidden="true"></i>
+            <input
+              id="filtro-cer"
+              pInputText
+              type="search"
+              class="filtro-cer"
+              placeholder="Es. 20 03 01"
+              [(ngModel)]="filtroCer"
+              [ngModelOptions]="{ standalone: true }"
+              (keyup.enter)="ricarica()"
+              aria-label="Filtra per codice CER"
+            />
+          </span>
+        </div>
 
+        <div class="filters__actions">
           <p-button
+            label="Filtra"
             icon="pi pi-search"
-            [outlined]="true"
-            (onClick)="ricarica()"
-            ariaLabel="Applica filtri"
-            pTooltip="Applica filtri"
-          ></p-button>
-
-          <p-button
-            icon="pi pi-times"
-            severity="secondary"
-            [outlined]="true"
-            (onClick)="resetFiltri()"
-            ariaLabel="Reset filtri"
-            pTooltip="Reset filtri"
-          ></p-button>
-
-          <p-button
-            icon="pi pi-refresh"
             [outlined]="true"
             [loading]="loading()"
             (onClick)="ricarica()"
-            ariaLabel="Aggiorna lista"
-            pTooltip="Aggiorna"
+            ariaLabel="Applica filtri"
+          ></p-button>
+          <p-button
+            label="Azzera"
+            icon="pi pi-times"
+            [text]="true"
+            (onClick)="resetFiltri()"
+            ariaLabel="Azzera filtri"
           ></p-button>
         </div>
       </section>
 
       <!-- Errore ---------------------------------------------------------------->
-      <section *ngIf="error()" class="surface-card mb-4">
+      <section *ngIf="error()" class="surface-card" role="alert">
         <div class="empty-state">
-          <i class="pi pi-exclamation-triangle empty-state__icon empty-state__icon--danger"></i>
-          <span class="empty-state__title">{{ error() }}</span>
+          <i
+            class="pi pi-exclamation-triangle empty-state__icon"
+            style="color: var(--color-danger);"
+            aria-hidden="true"
+          ></i>
+          <p class="empty-state__title">{{ error() }}</p>
+          <p>Si è verificato un errore durante il recupero del registro. Riprova.</p>
           <p-button
             label="Riprova"
             icon="pi pi-refresh"
@@ -183,94 +190,106 @@ interface DropdownOption<T> {
       </section>
 
       <!-- Tabella --------------------------------------------------------------->
-      <section class="surface-card" *ngIf="!loading() && !error()">
-        <p-table
-          [value]="movimenti()"
-          styleClass="p-datatable-sm"
-          [rowHover]="true"
-          [responsiveLayout]="'scroll'"
-          aria-label="Registro cronologico carico e scarico"
-        >
-          <ng-template pTemplate="header">
-            <tr>
-              <th scope="col" style="width: 100px">N° Prog.</th>
-              <th scope="col" style="width: 90px">Tipo</th>
-              <th scope="col" style="width: 120px">Data op.</th>
-              <th scope="col" style="width: 120px">CER</th>
-              <th scope="col">Causale</th>
-              <th scope="col" class="text-right" style="width: 110px">Quantità</th>
-              <th scope="col">Controparte</th>
-              <th scope="col" style="width: 80px">FIR</th>
-              <th scope="col" style="width: 60px" aria-label="Stato registrazione">Stato</th>
-            </tr>
-          </ng-template>
+      <section class="surface-card table-card" *ngIf="!loading() && !error()">
+        <div class="table-responsive">
+          <p-table
+            [value]="movimenti()"
+            styleClass="p-datatable-sm"
+            [rowHover]="true"
+            [responsiveLayout]="'scroll'"
+            [tableStyle]="{ 'min-width': '64rem' }"
+            aria-label="Registro cronologico carico e scarico"
+          >
+            <ng-template pTemplate="caption">
+              <span class="sr-only">Elenco cronologico dei movimenti di carico e scarico</span>
+            </ng-template>
 
-          <ng-template pTemplate="body" let-m>
-            <tr>
-              <td>
-                <span class="prog-badge">{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span>
-              </td>
-              <td>
-                <p-tag
-                  [value]="m.type"
-                  [severity]="m.type === 'CARICO' ? 'success' : 'info'"
-                  [icon]="m.type === 'CARICO' ? 'pi pi-arrow-down' : 'pi pi-arrow-up'"
-                ></p-tag>
-              </td>
-              <td>{{ m.movementDate | date: 'dd/MM/yyyy' }}</td>
-              <td>
-                <strong>{{ m.cerCode }}</strong>
-              </td>
-              <td>
-                {{ causaleLabel(m.causale) }}
-                <span *ngIf="m.wasteDescription" class="waste-desc"
-                  >· {{ m.wasteDescription }}</span
-                >
-              </td>
-              <td class="text-right">{{ m.quantity | number: '1.0-2' }} {{ m.unit }}</td>
-              <td>
-                <span *ngIf="m.counterpartName; else nessuno">{{ m.counterpartName }}</span>
-                <ng-template #nessuno><span class="text-muted">—</span></ng-template>
-              </td>
-              <td>
-                <span *ngIf="m.firId" class="fir-ref" [pTooltip]="m.firId">FIR</span>
-                <span *ngIf="!m.firId" class="text-muted">—</span>
-              </td>
-              <td>
-                <span
-                  *ngIf="m.fuoriTermine"
-                  class="fuori-termine-badge"
-                  [pTooltip]="
-                    'Registrato con ' + m.ritardoGg + ' gg di ritardo sul termine di legge'
-                  "
-                  aria-label="Fuori termine"
-                >
-                  <i class="pi pi-clock"></i>
-                </span>
-                <span
-                  *ngIf="!m.fuoriTermine"
-                  class="nei-termini-badge"
-                  pTooltip="Nei termini di legge"
-                  aria-label="Nei termini"
-                >
-                  <i class="pi pi-check"></i>
-                </span>
-              </td>
-            </tr>
-          </ng-template>
+            <ng-template pTemplate="header">
+              <tr>
+                <th scope="col" style="width: 96px">N° prog.</th>
+                <th scope="col" style="width: 104px">Tipo</th>
+                <th scope="col" style="width: 116px">Data op.</th>
+                <th scope="col" style="width: 96px">CER</th>
+                <th scope="col">Causale</th>
+                <th scope="col" class="num-col" style="width: 128px">Quantità</th>
+                <th scope="col">Controparte</th>
+                <th scope="col" style="width: 72px">FIR</th>
+                <th scope="col" style="width: 132px">Stato</th>
+              </tr>
+            </ng-template>
 
-          <ng-template pTemplate="emptymessage">
-            <tr>
-              <td colspan="9">
-                <div class="empty-state">
-                  <i class="pi pi-book empty-state__icon" aria-hidden="true"></i>
-                  <span class="empty-state__title">Nessun movimento registrato</span>
-                  <p>Usa il tasto "Registra movimento" per aggiungere il primo carico o scarico.</p>
-                </div>
-              </td>
-            </tr>
-          </ng-template>
-        </p-table>
+            <ng-template pTemplate="body" let-m>
+              <tr>
+                <td>
+                  <span class="prog-badge">{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span>
+                </td>
+                <td>
+                  <p-tag
+                    [value]="m.type"
+                    [severity]="m.type === 'CARICO' ? 'success' : 'info'"
+                    [icon]="m.type === 'CARICO' ? 'pi pi-arrow-down' : 'pi pi-arrow-up'"
+                  ></p-tag>
+                </td>
+                <td>{{ m.movementDate | date: 'dd/MM/yyyy' }}</td>
+                <td>
+                  <span class="cell-mono">{{ m.cerCode }}</span>
+                </td>
+                <td>
+                  <span class="causale-label">{{ causaleLabel(m.causale) }}</span>
+                  <span *ngIf="m.wasteDescription" class="waste-desc">{{
+                    m.wasteDescription
+                  }}</span>
+                </td>
+                <td class="num-col">
+                  <span class="num">{{ m.quantity | number: '1.0-2' }}</span>
+                  <span class="unit">{{ m.unit }}</span>
+                </td>
+                <td>
+                  <span *ngIf="m.counterpartName; else nessuno">{{ m.counterpartName }}</span>
+                  <ng-template #nessuno><span class="text-muted">—</span></ng-template>
+                </td>
+                <td>
+                  <span *ngIf="m.firId" class="fir-ref" [pTooltip]="m.firId">FIR</span>
+                  <span *ngIf="!m.firId" class="text-muted">—</span>
+                </td>
+                <td>
+                  <p-tag
+                    *ngIf="!m.fuoriTermine"
+                    value="Nei termini"
+                    severity="success"
+                    icon="pi pi-check"
+                    styleClass="stato-tag"
+                    pTooltip="Registrato entro il termine di legge"
+                  ></p-tag>
+                  <p-tag
+                    *ngIf="m.fuoriTermine"
+                    [value]="'Fuori termine' + (m.ritardoGg ? ' · +' + m.ritardoGg + ' gg' : '')"
+                    severity="warning"
+                    icon="pi pi-clock"
+                    styleClass="stato-tag"
+                    [pTooltip]="
+                      'Registrato con ' + (m.ritardoGg ?? 0) + ' gg di ritardo sul termine di legge'
+                    "
+                  ></p-tag>
+                </td>
+              </tr>
+            </ng-template>
+
+            <ng-template pTemplate="emptymessage">
+              <tr>
+                <td colspan="9">
+                  <div class="empty-state">
+                    <i class="pi pi-book empty-state__icon" aria-hidden="true"></i>
+                    <p class="empty-state__title">Nessun movimento registrato</p>
+                    <p>
+                      Usa il tasto "Registra movimento" per aggiungere il primo carico o scarico.
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
 
         <!-- Paginazione -------------------------------------------------------->
         <p-paginator
@@ -280,7 +299,6 @@ interface DropdownOption<T> {
           [first]="(paginazione().page - 1) * paginazione().limit"
           (onPageChange)="onPageChange($event)"
           [rowsPerPageOptions]="[20, 50, 100]"
-          styleClass="mt-2"
         ></p-paginator>
       </section>
 
@@ -292,371 +310,557 @@ interface DropdownOption<T> {
         [closable]="true"
         [style]="{ width: '640px', maxWidth: '95vw' }"
         (onHide)="chiudiForm()"
-        aria-labelledby="dialog-title"
+        closeAriaLabel="Chiudi la finestra di registrazione movimento"
       >
-        <form [formGroup]="form" class="form-grid" (ngSubmit)="salva()">
-          <!-- Tipo ------------------------------------------------------------->
-          <div class="form-row">
-            <label class="form-label" id="tipo-label">Tipo movimento *</label>
-            <p-selectButton
-              formControlName="type"
-              [options]="tipoFormOptions"
-              optionLabel="label"
-              optionValue="value"
-              (onChange)="onTipoChange()"
-              ariaLabelledBy="tipo-label"
-            ></p-selectButton>
-          </div>
+        <form [formGroup]="form" class="mov-form">
+          <p class="form-legend">
+            I campi contrassegnati con <span class="req">*</span> sono obbligatori.
+          </p>
 
-          <!-- Date ------------------------------------------------------------->
-          <div class="form-cols-2">
-            <div class="form-field">
-              <label class="form-label" for="movementDate">Data operazione *</label>
-              <p-calendar
-                formControlName="movementDate"
-                [showIcon]="true"
-                dateFormat="dd/mm/yy"
-                [maxDate]="oggi"
-                inputId="movementDate"
-                ariaLabel="Data effettiva dell'operazione"
-                styleClass="w-full"
-              ></p-calendar>
-              <small class="form-hint">Data effettiva del carico o scarico</small>
-            </div>
-            <div class="form-field">
-              <label class="form-label" for="registrationDate">Data registrazione *</label>
-              <p-calendar
-                formControlName="registrationDate"
-                [showIcon]="true"
-                dateFormat="dd/mm/yy"
-                [maxDate]="oggi"
-                inputId="registrationDate"
-                ariaLabel="Data di annotazione nel registro"
-                styleClass="w-full"
-              ></p-calendar>
-              <small class="form-hint"
-                >Termine: 10 gg lav. per produttori (art. 190 D.Lgs 152/2006)</small
+          <!-- ===== Sezione 1: Movimento ===== -->
+          <section class="form-section" aria-labelledby="mov-sec-movimento">
+            <h3 id="mov-sec-movimento" class="form-section__title">Movimento</h3>
+
+            <div class="field">
+              <label id="tipo-label"
+                >Tipo movimento <span class="req" aria-hidden="true">*</span></label
               >
+              <div class="type-toggle" role="group" aria-labelledby="tipo-label">
+                <p-button
+                  label="Carico"
+                  icon="pi pi-arrow-down"
+                  [outlined]="tipoCorrente() !== 'CARICO'"
+                  (onClick)="setTipo('CARICO')"
+                  styleClass="type-toggle__btn"
+                  [attr.aria-pressed]="tipoCorrente() === 'CARICO'"
+                ></p-button>
+                <p-button
+                  label="Scarico"
+                  icon="pi pi-arrow-up"
+                  [outlined]="tipoCorrente() !== 'SCARICO'"
+                  (onClick)="setTipo('SCARICO')"
+                  styleClass="type-toggle__btn"
+                  [attr.aria-pressed]="tipoCorrente() === 'SCARICO'"
+                ></p-button>
+              </div>
             </div>
-          </div>
 
-          <!-- Causale ---------------------------------------------------------->
-          <div class="form-field">
-            <label class="form-label" for="causale">Causale *</label>
-            <p-dropdown
-              formControlName="causale"
-              [options]="causaliOptions()"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="Seleziona causale"
-              inputId="causale"
-              styleClass="w-full"
-            ></p-dropdown>
-          </div>
-
-          <!-- CER e descrizione ---------------------------------------------->
-          <div class="form-cols-2">
-            <div class="form-field">
-              <label class="form-label" for="cerCode">Codice CER *</label>
-              <input
-                pInputText
-                formControlName="cerCode"
-                id="cerCode"
-                placeholder="es. 20 03 01"
-                ariaLabel="Codice CER"
-              />
-              <small
-                *ngIf="form.get('cerCode')?.invalid && form.get('cerCode')?.touched"
-                class="form-error"
-                >Campo obbligatorio</small
-              >
-            </div>
-            <div class="form-field">
-              <label class="form-label" for="quantity"
-                >Quantità ({{ form.get('unit')?.value ?? 'KG' }}) *</label
-              >
-              <p-inputNumber
-                formControlName="quantity"
-                id="quantity"
-                [minFractionDigits]="0"
-                [maxFractionDigits]="2"
-                [min]="0.01"
-                mode="decimal"
-                locale="it-IT"
-                ariaLabel="Quantità"
-                styleClass="w-full"
-              ></p-inputNumber>
-            </div>
-          </div>
-
-          <div class="form-field">
-            <label class="form-label" for="wasteDescription">Descrizione rifiuto</label>
-            <input
-              pInputText
-              formControlName="wasteDescription"
-              id="wasteDescription"
-              placeholder="Descrizione del rifiuto"
-            />
-          </div>
-
-          <!-- Stato fisico e HP ---------------------------------------------->
-          <div class="form-cols-2">
-            <div class="form-field">
-              <label class="form-label" for="wastePhysicalState">Stato fisico</label>
+            <div class="field">
+              <label for="causale">Causale <span class="req" aria-hidden="true">*</span></label>
               <p-dropdown
-                formControlName="wastePhysicalState"
-                [options]="statiFisiciOptions"
-                placeholder="Seleziona stato"
-                inputId="wastePhysicalState"
-                styleClass="w-full"
-                [showClear]="true"
+                formControlName="causale"
+                [options]="causaliOptions()"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Seleziona causale"
+                inputId="causale"
+                aria-required="true"
+                [styleClass]="hasError('causale') ? 'w-full p-invalid' : 'w-full'"
+                [attr.aria-invalid]="hasError('causale') ? true : null"
+                [attr.aria-describedby]="hasError('causale') ? 'causale-err' : null"
               ></p-dropdown>
+              <small *ngIf="hasError('causale')" id="causale-err" class="field-error" role="alert"
+                >Seleziona una causale.</small
+              >
             </div>
-            <div class="form-field">
-              <label class="form-label" for="wasteHazardClasses">
-                Classi pericolo HP
-                <i
-                  class="pi pi-info-circle"
-                  pTooltip="Obbligatorio per rifiuti pericolosi (es. HP4,HP14)"
-                  aria-hidden="true"
-                ></i>
-              </label>
-              <input
-                pInputText
-                formControlName="wasteHazardClasses"
-                id="wasteHazardClasses"
-                placeholder="es. HP4,HP14"
-              />
-            </div>
-          </div>
 
-          <!-- Operazione R/D e FIR ------------------------------------------>
-          <div class="form-cols-2">
-            <div class="form-field">
-              <label class="form-label" for="operationCode">Codice operazione R/D</label>
-              <input
-                pInputText
-                formControlName="operationCode"
-                id="operationCode"
-                placeholder="es. R1, D13"
-              />
+            <div class="grid">
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="movementDate"
+                    >Data operazione <span class="req" aria-hidden="true">*</span></label
+                  >
+                  <p-calendar
+                    formControlName="movementDate"
+                    [showIcon]="true"
+                    dateFormat="dd/mm/yy"
+                    [maxDate]="oggi"
+                    inputId="movementDate"
+                    aria-required="true"
+                    ariaLabel="Data effettiva dell'operazione"
+                    styleClass="w-full"
+                  ></p-calendar>
+                  <small class="field-hint">Data effettiva del carico o scarico.</small>
+                </div>
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="registrationDate"
+                    >Data registrazione <span class="req" aria-hidden="true">*</span></label
+                  >
+                  <p-calendar
+                    formControlName="registrationDate"
+                    [showIcon]="true"
+                    dateFormat="dd/mm/yy"
+                    [maxDate]="oggi"
+                    inputId="registrationDate"
+                    aria-required="true"
+                    ariaLabel="Data di annotazione nel registro"
+                    styleClass="w-full"
+                  ></p-calendar>
+                  <small class="field-hint">Termine: 10 gg lav. per produttori (art. 190).</small>
+                </div>
+              </div>
             </div>
-            <div class="form-field">
-              <label class="form-label" for="firId"
-                >ID FIR collegato
-                <span
-                  *ngIf="
-                    form.get('type')?.value === 'SCARICO' &&
-                    form.get('causale')?.value === 'CONFERIMENTO_TRASPORTATORE'
-                  "
-                  class="required-mark"
-                  >*</span
-                >
-              </label>
-              <input pInputText formControlName="firId" id="firId" placeholder="UUID del FIR" />
+
+            <!-- Alert ritardo -->
+            <div *ngIf="ritardoAvvertimento()" class="avvertimento-ritardo" role="alert">
+              <i class="pi pi-clock" aria-hidden="true"></i>
+              <span>
+                Attenzione: sono trascorsi {{ ritardoGgCalcolato() }} gg dalla data dell'operazione.
+                Il termine di legge per i produttori è di 10 giorni lavorativi (≈ 14 gg di
+                calendario).
+              </span>
             </div>
-          </div>
+          </section>
 
-          <!-- Controparte -------------------------------------------------->
-          <div class="form-cols-2">
-            <div class="form-field">
-              <label class="form-label" for="counterpartName">
-                {{ form.get('type')?.value === 'CARICO' ? 'Cedente/Produttore' : 'Destinatario' }}
-              </label>
-              <input
-                pInputText
-                formControlName="counterpartName"
-                id="counterpartName"
-                placeholder="Denominazione"
-              />
+          <hr class="form-divider" aria-hidden="true" />
+
+          <!-- ===== Sezione 2: Rifiuto ===== -->
+          <section class="form-section" aria-labelledby="mov-sec-rifiuto">
+            <h3 id="mov-sec-rifiuto" class="form-section__title">Rifiuto</h3>
+
+            <div class="grid">
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="cerCode"
+                    >Codice CER <span class="req" aria-hidden="true">*</span></label
+                  >
+                  <input
+                    pInputText
+                    formControlName="cerCode"
+                    id="cerCode"
+                    placeholder="es. 20 03 01"
+                    aria-required="true"
+                    class="w-full"
+                    [class.input-error]="hasError('cerCode')"
+                    [attr.aria-invalid]="hasError('cerCode') ? true : null"
+                    [attr.aria-describedby]="hasError('cerCode') ? 'cer-err' : null"
+                  />
+                  <small *ngIf="hasError('cerCode')" id="cer-err" class="field-error" role="alert"
+                    >Il codice CER è obbligatorio.</small
+                  >
+                </div>
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="quantity"
+                    >Quantità ({{ form.get('unit')?.value ?? 'KG' }})
+                    <span class="req" aria-hidden="true">*</span></label
+                  >
+                  <p-inputNumber
+                    formControlName="quantity"
+                    inputId="quantity"
+                    [minFractionDigits]="0"
+                    [maxFractionDigits]="2"
+                    [min]="0.01"
+                    mode="decimal"
+                    locale="it-IT"
+                    ariaRequired="true"
+                    [styleClass]="hasError('quantity') ? 'w-full p-invalid' : 'w-full'"
+                    [attr.aria-invalid]="hasError('quantity') ? true : null"
+                    [attr.aria-describedby]="hasError('quantity') ? 'qta-err' : null"
+                  ></p-inputNumber>
+                  <small *ngIf="hasError('quantity')" id="qta-err" class="field-error" role="alert"
+                    >Indica una quantità maggiore di zero.</small
+                  >
+                </div>
+              </div>
+
+              <div class="col-12">
+                <div class="field">
+                  <label for="wasteDescription">Descrizione rifiuto</label>
+                  <input
+                    pInputText
+                    formControlName="wasteDescription"
+                    id="wasteDescription"
+                    class="w-full"
+                    placeholder="Descrizione del rifiuto"
+                  />
+                </div>
+              </div>
+
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="wastePhysicalState">Stato fisico</label>
+                  <p-dropdown
+                    formControlName="wastePhysicalState"
+                    [options]="statiFisiciOptions"
+                    placeholder="Seleziona stato"
+                    inputId="wastePhysicalState"
+                    styleClass="w-full"
+                    [showClear]="true"
+                  ></p-dropdown>
+                </div>
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="wasteHazardClasses">
+                    Classi pericolo HP
+                    <i
+                      class="pi pi-info-circle field-norm"
+                      pTooltip="Obbligatorio per rifiuti pericolosi (es. HP4,HP14)"
+                      aria-hidden="true"
+                    ></i>
+                  </label>
+                  <input
+                    pInputText
+                    formControlName="wasteHazardClasses"
+                    id="wasteHazardClasses"
+                    class="w-full"
+                    placeholder="es. HP4,HP14"
+                  />
+                </div>
+              </div>
+
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="operationCode">
+                    Codice operazione R/D
+                    <i
+                      class="pi pi-info-circle field-norm"
+                      pTooltip="Allegati B e C D.Lgs 152/2006 (es. R13, D15)"
+                      aria-hidden="true"
+                    ></i>
+                  </label>
+                  <input
+                    pInputText
+                    formControlName="operationCode"
+                    id="operationCode"
+                    class="w-full"
+                    placeholder="es. R1, D13"
+                  />
+                </div>
+              </div>
             </div>
-            <div class="form-field">
-              <label class="form-label" for="counterpartAddress">Indirizzo impianto/sede</label>
-              <input
-                pInputText
-                formControlName="counterpartAddress"
-                id="counterpartAddress"
-                placeholder="Via, Comune, Provincia"
-              />
+          </section>
+
+          <hr class="form-divider" aria-hidden="true" />
+
+          <!-- ===== Sezione 3: Controparte e note ===== -->
+          <section class="form-section" aria-labelledby="mov-sec-controparte">
+            <h3 id="mov-sec-controparte" class="form-section__title">Controparte e note</h3>
+
+            <div class="grid">
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="counterpartName">
+                    {{
+                      form.get('type')?.value === 'CARICO' ? 'Cedente / Produttore' : 'Destinatario'
+                    }}
+                  </label>
+                  <input
+                    pInputText
+                    formControlName="counterpartName"
+                    id="counterpartName"
+                    class="w-full"
+                    placeholder="Denominazione"
+                  />
+                </div>
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="counterpartAddress">Indirizzo impianto / sede</label>
+                  <input
+                    pInputText
+                    formControlName="counterpartAddress"
+                    id="counterpartAddress"
+                    class="w-full"
+                    placeholder="Via, Comune, Provincia"
+                  />
+                </div>
+              </div>
+
+              <div class="col-12">
+                <div class="field">
+                  <label for="firId">
+                    ID FIR collegato
+                    <span
+                      *ngIf="
+                        form.get('type')?.value === 'SCARICO' &&
+                        form.get('causale')?.value === 'CONFERIMENTO_TRASPORTATORE'
+                      "
+                      class="req"
+                      aria-hidden="true"
+                      >*</span
+                    >
+                  </label>
+                  <input
+                    pInputText
+                    formControlName="firId"
+                    id="firId"
+                    class="w-full"
+                    placeholder="UUID del FIR"
+                  />
+                  <small class="field-hint"
+                    >Obbligatorio per lo scarico con conferimento a trasportatore.</small
+                  >
+                </div>
+              </div>
+
+              <div class="col-12">
+                <div class="field">
+                  <label for="notes">Note</label>
+                  <textarea
+                    pInputTextarea
+                    formControlName="notes"
+                    id="notes"
+                    rows="2"
+                    placeholder="Annotazioni libere"
+                    class="w-full mov-textarea"
+                  ></textarea>
+                </div>
+              </div>
             </div>
-          </div>
-
-          <!-- Note --------------------------------------------------------->
-          <div class="form-field">
-            <label class="form-label" for="notes">Note</label>
-            <textarea
-              pTextarea
-              formControlName="notes"
-              id="notes"
-              rows="2"
-              placeholder="Annotazioni libere"
-              class="w-full"
-            ></textarea>
-          </div>
-
-          <!-- Alert ritardo ------------------------------------------------->
-          <div *ngIf="ritardoAvvertimento()" class="avvertimento-ritardo" role="alert">
-            <i class="pi pi-clock" aria-hidden="true"></i>
-            Attenzione: sono trascorsi {{ ritardoGgCalcolato() }} gg dalla data dell'operazione. Il
-            termine di legge per i produttori è di 10 giorni lavorativi (≈ 14 gg di calendario).
-          </div>
-
-          <!-- Azioni form --------------------------------------------------->
-          <div class="form-actions">
-            <p-button
-              type="button"
-              label="Annulla"
-              severity="secondary"
-              [outlined]="true"
-              (onClick)="chiudiForm()"
-            ></p-button>
-            <p-button
-              type="submit"
-              label="Registra"
-              icon="pi pi-check"
-              [loading]="saving()"
-              [disabled]="form.invalid"
-            ></p-button>
-          </div>
+          </section>
         </form>
+
+        <ng-template pTemplate="footer">
+          <p-button
+            label="Annulla"
+            [text]="true"
+            (onClick)="chiudiForm()"
+            ariaLabel="Annulla e chiudi"
+          ></p-button>
+          <p-button
+            label="Registra"
+            icon="pi pi-check"
+            [loading]="saving()"
+            (onClick)="salva()"
+            ariaLabel="Registra il movimento"
+          ></p-button>
+        </ng-template>
       </p-dialog>
     </div>
   `,
   styles: [
     `
-      /* ─── Layout ──────────────────────────────────────────────────────────── */
-      .filtri-row {
+      /* ─── Filtri ──────────────────────────────────────────────────────────── */
+      .filters {
         display: flex;
-        align-items: center;
         flex-wrap: wrap;
+        align-items: flex-end;
+        gap: var(--spacing-base);
+        margin-bottom: var(--spacing-lg);
+      }
+      .filters__field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        min-width: 0;
+      }
+      .filters__field--tipo {
+        flex: 0 1 200px;
+      }
+      .filters__field--cer {
+        flex: 0 1 260px;
+      }
+      .filters__label {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-secondary);
+      }
+      .filters__search {
+        display: block;
+        width: 100%;
+      }
+      .filters__search .filtro-cer {
+        width: 100%;
+      }
+      .filters__actions {
+        display: flex;
         gap: var(--spacing-sm);
-        padding: var(--spacing-base);
+        align-items: flex-end;
+        margin-left: auto;
       }
 
-      .filtro-cer {
-        width: 200px;
+      /* Toggle Carico/Scarico nel form: due p-button (selezionato = teal pieno,
+         non selezionato = outlined). Evita il SelectButton di PrimeNG, il cui
+         pseudo-elemento ::before (tema Aura) copre lo sfondo del segmento
+         attivo rendendolo bianco su bianco con le override globali del DS. */
+      .type-toggle {
+        display: flex;
+        gap: var(--spacing-sm);
+      }
+      :host ::ng-deep .type-toggle .type-toggle__btn {
+        flex: 1 1 0;
       }
 
       /* ─── Tabella ─────────────────────────────────────────────────────────── */
+      .table-card {
+        padding: 0;
+        overflow: hidden;
+      }
       .prog-badge {
-        font-family: var(--font-mono, monospace);
-        font-size: var(--font-size-sm);
-        color: var(--text-secondary);
-        background: var(--color-gray-100);
-        padding: 2px 6px;
-        border-radius: var(--radius-sm);
+        font-family: var(--font-family-mono);
+        font-variant-numeric: tabular-nums;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-medium);
+        color: var(--brand-primary-dark);
+        background: var(--brand-primary-50);
+        border: 1px solid var(--brand-primary-100);
+        padding: 2px 8px;
+        border-radius: var(--radius-full);
+        white-space: nowrap;
       }
-
+      .cell-mono {
+        font-family: var(--font-family-mono);
+        font-variant-numeric: tabular-nums;
+        font-weight: var(--font-weight-medium);
+        color: var(--text-primary);
+      }
+      .causale-label {
+        color: var(--text-primary);
+      }
       .waste-desc {
-        font-size: var(--font-size-sm);
-        color: var(--text-secondary);
+        display: block;
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
       }
-
+      /* Colonne numeriche: allineate a destra, cifre tabellari. */
+      .num-col {
+        text-align: right;
+      }
+      .num {
+        font-variant-numeric: tabular-nums;
+        font-weight: var(--font-weight-medium);
+        color: var(--text-primary);
+      }
+      .unit {
+        margin-left: 4px;
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+      }
       .fir-ref {
         font-size: var(--font-size-xs);
-        background: var(--color-teal-50, #f0fdfa);
-        color: var(--color-teal-700, #0f766e);
-        border: 1px solid var(--color-teal-200, #99f6e4);
+        font-weight: var(--font-weight-medium);
+        background: var(--brand-primary-50);
+        color: var(--brand-primary-dark);
+        border: 1px solid var(--brand-primary-100);
         border-radius: var(--radius-sm);
         padding: 2px 6px;
         cursor: default;
       }
-
-      .fuori-termine-badge {
-        color: var(--color-warning, #f59e0b);
-        cursor: help;
+      :host ::ng-deep .stato-tag {
+        white-space: nowrap;
       }
-      .nei-termini-badge {
-        color: var(--color-success, #10b981);
-      }
-
       .text-muted {
         color: var(--text-tertiary);
       }
-      .text-right {
-        text-align: right;
-      }
-      .mb-4 {
-        margin-bottom: var(--spacing-xl);
-      }
-      .mt-2 {
-        margin-top: var(--spacing-sm);
-      }
 
       /* ─── Form dialog ─────────────────────────────────────────────────────── */
-      .form-grid {
+      .mov-form {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-base);
-        padding: var(--spacing-sm) 0;
+        gap: var(--spacing-lg);
       }
-
-      .form-row {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-xs);
-      }
-
-      .form-cols-2 {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: var(--spacing-base);
-      }
-
-      @media (max-width: 480px) {
-        .form-cols-2 {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .form-field {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-xs);
-      }
-
-      .form-label {
-        font-size: var(--font-size-sm);
-        font-weight: 500;
-        color: var(--text-primary);
-      }
-
-      .form-hint {
+      .form-legend {
+        margin: 0;
         font-size: var(--font-size-xs);
         color: var(--text-tertiary);
       }
-
-      .form-error {
-        font-size: var(--font-size-xs);
+      .form-legend .req {
         color: var(--color-danger);
+        font-weight: var(--font-weight-bold);
+      }
+      .form-section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-base);
+      }
+      .form-section__title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-tertiary);
+      }
+      .form-divider {
+        border: 0;
+        border-top: 1px solid var(--surface-border);
+        margin: 0;
+      }
+      /* Griglia PrimeFlex: annulla il gutter negativo di default per allineare
+         i campi al titolo di sezione. */
+      .mov-form .grid {
+        margin: 0 calc(-1 * var(--spacing-sm));
       }
 
-      .required-mark {
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+      }
+      .field > label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-secondary);
+      }
+      .req {
         color: var(--color-danger);
+        font-weight: var(--font-weight-bold);
+      }
+      .field-hint {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        line-height: 1.3;
+      }
+      .field-error {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-medium);
+        color: var(--color-danger);
+        line-height: 1.3;
+      }
+      .input-error,
+      .input-error:enabled:focus {
+        border-color: var(--color-danger) !important;
+        box-shadow: 0 0 0 1px var(--color-danger) !important;
+      }
+      .field-norm {
+        font-size: var(--font-size-sm);
+        color: var(--text-tertiary);
+        cursor: help;
+      }
+      .mov-textarea {
+        min-height: 64px;
+        resize: vertical;
       }
 
       .avvertimento-ritardo {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: var(--spacing-sm);
         padding: var(--spacing-sm) var(--spacing-base);
-        background: var(--color-warning-bg, #fefce8);
-        border: 1px solid var(--color-warning, #f59e0b);
+        background: var(--color-warning-bg);
+        border: 1px solid var(--color-warning);
         border-radius: var(--radius-md);
         font-size: var(--font-size-sm);
-        color: var(--color-warning-dark, #b45309);
+        color: var(--color-warning);
       }
-
-      .form-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: var(--spacing-sm);
-        padding-top: var(--spacing-sm);
-        border-top: 1px solid var(--surface-border);
+      .avvertimento-ritardo i {
+        margin-top: 2px;
       }
 
       .w-full {
         width: 100%;
+      }
+
+      @media (max-width: 576px) {
+        .filters__field,
+        .filters__field--tipo,
+        .filters__field--cer,
+        .filters__actions {
+          flex: 1 1 100%;
+          margin-left: 0;
+        }
+        .filters__actions .p-button {
+          flex: 1 1 auto;
+        }
       }
     `,
   ],
@@ -703,18 +907,13 @@ export class RegistroComponent implements OnInit {
     { label: 'Scarico', value: 'SCARICO' },
   ]
 
-  readonly tipoFormOptions: DropdownOption<TipoMovimento>[] = [
-    { label: 'Carico', value: 'CARICO' },
-    { label: 'Scarico', value: 'SCARICO' },
-  ]
-
   /**
    * Signal reattivo che rispecchia il valore del controllo "type" nel form.
    * Necessario perché computed() non traccia le proprietà di un FormControl
-   * (non sono signal): senza questo, causaliOptions e formTitolo non si
-   * aggiornerebbero al cambio di CARICO/SCARICO.
+   * (non sono signal): senza questo, causaliOptions/formTitolo e lo stato attivo
+   * del toggle Carico/Scarico non si aggiornerebbero al cambio di tipo.
    */
-  private readonly tipoCorrente = signal<TipoMovimento>('CARICO')
+  readonly tipoCorrente = signal<TipoMovimento>('CARICO')
 
   readonly causaliOptions = computed<DropdownOption<CausaleMovimento>[]>(() => {
     const tipo = this.tipoCorrente()
@@ -786,12 +985,24 @@ export class RegistroComponent implements OnInit {
     this.formVisible = false
   }
 
+  /** Imposta il tipo movimento dal toggle Carico/Scarico e aggiorna lo stato. */
+  setTipo(tipo: TipoMovimento): void {
+    this.form.get('type')?.setValue(tipo)
+    this.onTipoChange()
+  }
+
   onTipoChange(): void {
-    // Aggiorna il signal reattivo (per causaliOptions/formTitolo) e azzera la
-    // causale perché il set valido è diverso tra CARICO e SCARICO.
+    // Aggiorna il signal reattivo (per causaliOptions/formTitolo/toggle) e azzera
+    // la causale perché il set valido è diverso tra CARICO e SCARICO.
     const tipo: TipoMovimento = this.form?.get('type')?.value ?? 'CARICO'
     this.tipoCorrente.set(tipo)
     this.form.get('causale')?.reset(null)
+  }
+
+  /** True se un controllo è invalido ed è stato toccato (per mostrare l'errore inline). */
+  hasError(controlName: string): boolean {
+    const control = this.form?.get(controlName)
+    return !!(control && control.invalid && control.touched)
   }
 
   // ─── Salvataggio ─────────────────────────────────────────────────────────
@@ -799,6 +1010,7 @@ export class RegistroComponent implements OnInit {
   salva(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched()
+      this.toast.error('Controlla i campi evidenziati e riprova.')
       return
     }
 
