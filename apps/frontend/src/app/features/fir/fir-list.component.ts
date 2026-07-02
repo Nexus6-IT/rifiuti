@@ -27,6 +27,7 @@ import {
   ModalitaAnagrafica,
   AnagraficaSavedEvent,
 } from '../registry/anagrafica-form-dialog.component'
+import { CerSelectComponent } from '../cer/cer-select.component'
 
 @Component({
   selector: 'app-fir-list',
@@ -47,6 +48,7 @@ import {
     TooltipModule,
     InputTextareaModule,
     AnagraficaFormDialogComponent,
+    CerSelectComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -514,18 +516,15 @@ import {
                   <label for="new-cer"
                     >Codice CER <span class="req" aria-hidden="true">*</span></label
                   >
-                  <input
-                    id="new-cer"
-                    pInputText
+                  <app-cer-select
+                    inputId="new-cer"
                     [(ngModel)]="newFIR.rifiuto.cerCode"
                     (ngModelChange)="clearFirError('cerCode')"
-                    placeholder="es. 150101"
-                    required
-                    aria-required="true"
-                    [attr.aria-invalid]="firErrors['cerCode'] ? true : null"
-                    [attr.aria-describedby]="firErrors['cerCode'] ? 'new-cer-err' : null"
-                    class="w-full"
-                    [class.input-error]="firErrors['cerCode']"
+                    ariaLabel="Codice CER del rifiuto"
+                    placeholder="Cerca per codice o descrizione…"
+                    [required]="true"
+                    [invalid]="!!firErrors['cerCode']"
+                    [ariaDescribedBy]="firErrors['cerCode'] ? 'new-cer-err' : null"
                   />
                   <small
                     *ngIf="firErrors['cerCode']"

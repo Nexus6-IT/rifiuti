@@ -46,6 +46,7 @@ import {
   STATI_FISICI,
   CausaleMovimento,
 } from './registro.service'
+import { CerSelectComponent } from '../cer/cer-select.component'
 
 interface DropdownOption<T> {
   label: string
@@ -72,6 +73,7 @@ interface DropdownOption<T> {
     DropdownModule,
     TooltipModule,
     PaginatorModule,
+    CerSelectComponent,
   ],
   providers: [DatePipe],
   template: `
@@ -426,16 +428,14 @@ interface DropdownOption<T> {
                   <label for="cerCode"
                     >Codice CER <span class="req" aria-hidden="true">*</span></label
                   >
-                  <input
-                    pInputText
+                  <app-cer-select
+                    inputId="cerCode"
                     formControlName="cerCode"
-                    id="cerCode"
-                    placeholder="es. 20 03 01"
-                    aria-required="true"
-                    class="w-full"
-                    [class.input-error]="hasError('cerCode')"
-                    [attr.aria-invalid]="hasError('cerCode') ? true : null"
-                    [attr.aria-describedby]="hasError('cerCode') ? 'cer-err' : null"
+                    ariaLabel="Codice CER del rifiuto"
+                    placeholder="Cerca per codice o descrizione…"
+                    [required]="true"
+                    [invalid]="hasError('cerCode')"
+                    [ariaDescribedBy]="hasError('cerCode') ? 'cer-err' : null"
                   />
                   <small *ngIf="hasError('cerCode')" id="cer-err" class="field-error" role="alert"
                     >Il codice CER è obbligatorio.</small
