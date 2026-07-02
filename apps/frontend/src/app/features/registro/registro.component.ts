@@ -29,12 +29,22 @@ import { InputNumberModule } from 'primeng/inputnumber'
 import { InputTextModule } from 'primeng/inputtext'
 import { InputTextareaModule } from 'primeng/inputtextarea'
 import { DropdownModule } from 'primeng/dropdown'
+import {
+  AutoCompleteModule,
+  AutoCompleteCompleteEvent,
+  AutoCompleteSelectEvent,
+} from 'primeng/autocomplete'
 import { TooltipModule } from 'primeng/tooltip'
 import { PaginatorModule } from 'primeng/paginator'
 import { ToastService } from '../../core/services/toast.service'
 import { ExportService } from '../../core/services/export.service'
 import { AuthService } from '../../core/services/auth.service'
 import { AdminTenantContextService } from '../../core/services/admin-tenant-context.service'
+import { CompanyService } from '../../core/services/company.service'
+import { FirService } from '../fir/fir.service'
+import { RegistryService } from '../registry/registry.service'
+import { FIR, ParteFIR } from '../../shared/models/fir.model'
+import { Produttore } from '../../shared/models/registry.model'
 import {
   RegistroService,
   Movimento,
@@ -51,6 +61,12 @@ import { CerSelectComponent } from '../cer/cer-select.component'
 interface DropdownOption<T> {
   label: string
   value: T
+}
+
+/** Opzione dell'autocomplete FIR: il FIR + l'etichetta mostrata nel menu. */
+interface FirOption {
+  fir: FIR
+  label: string
 }
 
 @Component({
@@ -71,6 +87,7 @@ interface DropdownOption<T> {
     InputTextModule,
     InputTextareaModule,
     DropdownModule,
+    AutoCompleteModule,
     TooltipModule,
     PaginatorModule,
     CerSelectComponent,
@@ -323,6 +340,56 @@ interface DropdownOption<T> {
           <section class="form-section" aria-labelledby="mov-sec-movimento">
             <h3 id="mov-sec-movimento" class="form-section__title">Movimento</h3>
 
+            <!-- Collegamento a un FIR (opzionale): auto-compila rifiuto e controparte -->
+            <div class="field">
+              <label for="firSelect">FIR collegato</label>
+              <p-autoComplete
+                inputId="firSelect"
+                [(ngModel)]="selectedFir"
+                [ngModelOptions]="{ standalone: true }"
+                [suggestions]="firSuggestions"
+                (completeMethod)="cercaFir($event)"
+                (onSelect)="onFirSelect($event)"
+                (onClear)="onFirClear()"
+                field="label"
+                [dropdown]="true"
+                [forceSelection]="true"
+                [showClear]="true"
+                [delay]="200"
+                [scrollHeight]="'260px'"
+                placeholder="Cerca per numero, produttore, destinatario o CER…"
+                ariaLabel="Formulario (FIR) da collegare al movimento"
+                styleClass="w-full"
+                inputStyleClass="w-full"
+              >
+                <ng-template let-opt pTemplate="item">
+                  <div class="fir-opt">
+                    <span class="fir-opt__num">{{ firNumeroLabel(opt.fir) }}</span>
+                    <span class="fir-opt__parti"
+                      >{{ parteLabel(opt.fir.produttore) }} →
+                      {{ parteLabel(opt.fir.destinatario) }}</span
+                    >
+                    <span class="fir-opt__rifiuto"
+                      >{{ opt.fir.rifiuto.cerCode }} ·
+                      {{ opt.fir.rifiuto.quantita | number: '1.0-2' }}
+                      {{ opt.fir.rifiuto.unitaMisura }}</span
+                    >
+                  </div>
+                </ng-template>
+                <ng-template pTemplate="empty">
+                  <div class="fir-empty">Nessun FIR trovato.</div>
+                </ng-template>
+              </p-autoComplete>
+              <small class="field-hint">
+                Opzionale. Collegando un FIR i dati del rifiuto e la controparte vengono
+                precompilati (restano modificabili).
+              </small>
+              <div *ngIf="ruoloHint()" class="ruolo-hint" role="status">
+                <i class="pi pi-info-circle" aria-hidden="true"></i>
+                <span>{{ ruoloHint() }}</span>
+              </div>
+            </div>
+
             <div class="field">
               <label id="tipo-label"
                 >Tipo movimento <span class="req" aria-hidden="true">*</span></label
@@ -542,6 +609,43 @@ interface DropdownOption<T> {
             <h3 id="mov-sec-controparte" class="form-section__title">Controparte e note</h3>
 
             <div class="grid">
+              <div class="col-12">
+                <div class="field">
+                  <label for="produttoreSelect">Seleziona da anagrafica produttori</label>
+                  <p-autoComplete
+                    inputId="produttoreSelect"
+                    [(ngModel)]="selectedProduttore"
+                    [ngModelOptions]="{ standalone: true }"
+                    [suggestions]="produttoreSuggestions"
+                    (completeMethod)="cercaProduttore($event)"
+                    (onSelect)="onProduttoreSelect($event)"
+                    field="ragioneSociale"
+                    [dropdown]="true"
+                    [forceSelection]="true"
+                    [showClear]="true"
+                    [delay]="200"
+                    [scrollHeight]="'240px'"
+                    placeholder="Cerca per ragione sociale o partita IVA…"
+                    ariaLabel="Seleziona la controparte dall'anagrafica produttori"
+                    styleClass="w-full"
+                    inputStyleClass="w-full"
+                  >
+                    <ng-template let-p pTemplate="item">
+                      <div class="prod-opt">
+                        <span class="prod-opt__nome">{{ p.ragioneSociale }}</span>
+                        <span class="prod-opt__piva">P.IVA {{ p.partitaIVA }}</span>
+                      </div>
+                    </ng-template>
+                    <ng-template pTemplate="empty">
+                      <div class="fir-empty">Nessun produttore trovato.</div>
+                    </ng-template>
+                  </p-autoComplete>
+                  <small class="field-hint"
+                    >Compila i campi controparte sottostanti (restano modificabili).</small
+                  >
+                </div>
+              </div>
+
               <div class="col-12 sm:col-6">
                 <div class="field">
                   <label for="counterpartName">
@@ -568,33 +672,6 @@ interface DropdownOption<T> {
                     class="w-full"
                     placeholder="Via, Comune, Provincia"
                   />
-                </div>
-              </div>
-
-              <div class="col-12">
-                <div class="field">
-                  <label for="firId">
-                    ID FIR collegato
-                    <span
-                      *ngIf="
-                        form.get('type')?.value === 'SCARICO' &&
-                        form.get('causale')?.value === 'CONFERIMENTO_TRASPORTATORE'
-                      "
-                      class="req"
-                      aria-hidden="true"
-                      >*</span
-                    >
-                  </label>
-                  <input
-                    pInputText
-                    formControlName="firId"
-                    id="firId"
-                    class="w-full"
-                    placeholder="UUID del FIR"
-                  />
-                  <small class="field-hint"
-                    >Obbligatorio per lo scarico con conferimento a trasportatore.</small
-                  >
                 </div>
               </div>
 
@@ -831,6 +908,73 @@ interface DropdownOption<T> {
         resize: vertical;
       }
 
+      /* ─── Autocomplete FIR / Produttore ───────────────────────────────────── */
+      .fir-opt {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        line-height: 1.3;
+        min-width: 0;
+      }
+      .fir-opt__num {
+        font-family: var(--font-family-mono);
+        font-variant-numeric: tabular-nums;
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+      }
+      .fir-opt__parti {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .fir-opt__rifiuto {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+      }
+      .prod-opt {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        line-height: 1.3;
+        min-width: 0;
+      }
+      .prod-opt__nome {
+        font-weight: var(--font-weight-medium);
+        color: var(--text-primary);
+      }
+      .prod-opt__piva {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        font-variant-numeric: tabular-nums;
+      }
+      .fir-empty {
+        padding: var(--spacing-sm) var(--spacing-base);
+        font-size: var(--font-size-sm);
+        color: var(--text-tertiary);
+      }
+      .ruolo-hint {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-base);
+        background: var(--brand-primary-50);
+        border: 1px solid var(--brand-primary-100);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-sm);
+        color: var(--brand-primary-dark);
+      }
+      .ruolo-hint i {
+        margin-top: 2px;
+      }
+      :host ::ng-deep .p-autocomplete {
+        width: 100%;
+      }
+      :host ::ng-deep .p-autocomplete .p-inputtext {
+        width: 100%;
+      }
+
       .avvertimento-ritardo {
         display: flex;
         align-items: flex-start;
@@ -873,6 +1017,9 @@ export class RegistroComponent implements OnInit {
   private readonly exportService = inject(ExportService)
   private readonly auth = inject(AuthService)
   private readonly tenantContext = inject(AdminTenantContextService)
+  private readonly company = inject(CompanyService)
+  private readonly firService = inject(FirService)
+  private readonly registryService = inject(RegistryService)
 
   // ─── Stato ────────────────────────────────────────────────────────────────
 
@@ -886,6 +1033,27 @@ export class RegistroComponent implements OnInit {
   formVisible = false
   filtroTipo: TipoMovimento | null = null
   filtroCer = ''
+
+  // ─── Collegamento FIR / anagrafica (autocomplete) ──────────────────────────
+
+  /** Opzione FIR attualmente selezionata nell'autocomplete (null se nessuna). */
+  selectedFir: FirOption | null = null
+  /** Suggerimenti mostrati nel menu FIR (filtrati client-side sul catalogo). */
+  firSuggestions: FirOption[] = []
+  /** Opzione produttore selezionata (o testo digitato) nell'autocomplete controparte. */
+  selectedProduttore: Produttore | string | null = null
+  /** Suggerimenti produttori (filtrati client-side sull'anagrafica del tenant). */
+  produttoreSuggestions: Produttore[] = []
+
+  /** Messaggio informativo sul ruolo determinato per la società attiva. */
+  readonly ruoloHint = signal<string | null>(null)
+
+  /** Cache in memoria dei FIR del tenant (caricata all'apertura del form). */
+  private tuttiFir: FIR[] = []
+  /** Cache in memoria dei produttori del tenant. */
+  private tuttiProduttori: Produttore[] = []
+  /** FIR attualmente collegato (per ricalcolare la controparte al cambio tipo). */
+  private firCollegato: FIR | null = null
 
   readonly oggi = new Date()
 
@@ -945,6 +1113,8 @@ export class RegistroComponent implements OnInit {
   ngOnInit(): void {
     this.initForm()
     this.ricarica()
+    // Identità della società attiva: serve all'auto-tipo carico/scarico dal FIR.
+    this.company.loadActiveCompany().subscribe()
   }
 
   // ─── Form ─────────────────────────────────────────────────────────────────
@@ -978,6 +1148,15 @@ export class RegistroComponent implements OnInit {
       causale: null,
       unit: 'KG',
     })
+    // Azzera lo stato del collegamento FIR / anagrafica.
+    this.selectedFir = null
+    this.selectedProduttore = null
+    this.firCollegato = null
+    this.ruoloHint.set(null)
+    // Precarica i cataloghi per gli autocomplete (best-effort, non bloccante).
+    this.caricaFir()
+    this.caricaProduttori()
+    this.company.loadActiveCompany().subscribe()
     this.formVisible = true
   }
 
@@ -997,6 +1176,212 @@ export class RegistroComponent implements OnInit {
     const tipo: TipoMovimento = this.form?.get('type')?.value ?? 'CARICO'
     this.tipoCorrente.set(tipo)
     this.form.get('causale')?.reset(null)
+    // Se è collegato un FIR, la controparte dipende dalla direzione: per un
+    // CARICO è il produttore/cedente, per uno SCARICO è il destinatario.
+    if (this.firCollegato) {
+      this.applicaControparteDaFir(this.firCollegato, tipo)
+    }
+  }
+
+  // ─── Collegamento FIR (autocomplete ricercabile + auto-compilazione) ────────
+
+  /** Carica (una volta) i FIR del tenant per l'autocomplete. */
+  private caricaFir(): void {
+    if (this.tuttiFir.length > 0) return
+    this.firService.getFIRList(1, 200).subscribe({
+      next: res => {
+        this.tuttiFir = res.items ?? []
+      },
+      error: () => {
+        this.tuttiFir = []
+      },
+    })
+  }
+
+  /** Carica (una volta) i produttori del tenant per l'autocomplete controparte. */
+  private caricaProduttori(): void {
+    if (this.tuttiProduttori.length > 0) return
+    this.registryService.getProduttori(1, 1000).subscribe({
+      next: res => {
+        this.tuttiProduttori = res.items ?? []
+      },
+      error: () => {
+        this.tuttiProduttori = []
+      },
+    })
+  }
+
+  /** Filtra i FIR in cache in base alla query digitata (o li mostra tutti). */
+  cercaFir(event: AutoCompleteCompleteEvent): void {
+    const q = (event.query || '').trim().toLowerCase()
+    const options = this.tuttiFir.map(fir => ({ fir, label: this.firLabel(fir) }))
+    if (!q) {
+      this.firSuggestions = options.slice(0, 50)
+      return
+    }
+    this.firSuggestions = options.filter(o => o.label.toLowerCase().includes(q)).slice(0, 50)
+  }
+
+  /** Filtra i produttori in cache in base alla query digitata. */
+  cercaProduttore(event: AutoCompleteCompleteEvent): void {
+    const q = (event.query || '').trim().toLowerCase()
+    if (!q) {
+      this.produttoreSuggestions = this.tuttiProduttori.slice(0, 50)
+      return
+    }
+    this.produttoreSuggestions = this.tuttiProduttori
+      .filter(
+        p =>
+          p.ragioneSociale.toLowerCase().includes(q) ||
+          (p.partitaIVA ?? '').toLowerCase().includes(q)
+      )
+      .slice(0, 50)
+  }
+
+  /** Selezione di un FIR: imposta tipo/causale (se determinabile) e auto-compila. */
+  onFirSelect(event: AutoCompleteSelectEvent): void {
+    const fir = (event.value as FirOption)?.fir
+    if (!fir) return
+    this.firCollegato = fir
+
+    // Determina il ruolo della società attiva rispetto alle parti del FIR.
+    const ruolo = this.determinaRuolo(fir)
+    let tipo: TipoMovimento = this.form.get('type')?.value ?? 'CARICO'
+    if (ruolo === 'PRODUTTORE') tipo = 'SCARICO'
+    else if (ruolo === 'DESTINATARIO') tipo = 'CARICO'
+
+    this.form.get('type')?.setValue(tipo)
+    this.tipoCorrente.set(tipo)
+
+    // Causale di default coerente: la impostiamo se il ruolo è determinato
+    // oppure se l'utente non ne ha ancora scelta una (resta modificabile).
+    const causaleDefault: CausaleMovimento =
+      tipo === 'SCARICO' ? 'CONFERIMENTO_TRASPORTATORE' : 'INGRESSO_ESTERNO'
+    if (ruolo || !this.form.get('causale')?.value) {
+      this.form.get('causale')?.setValue(causaleDefault)
+    }
+
+    // Auto-compilazione dei dati del rifiuto dal FIR (campi modificabili).
+    const r = fir.rifiuto
+    this.form.patchValue({
+      firId: fir.id,
+      cerCode: r.cerCode,
+      quantity: r.quantita,
+      unit: (r.unitaMisura || 'KG').toUpperCase(),
+      wasteDescription: r.descrizione ?? '',
+      wastePhysicalState: this.matchStatoFisico(r.statoFisico),
+      wasteHazardClasses: r.caratteristichePericolo ?? '',
+      operationCode: r.codiceOperazione ?? '',
+    })
+
+    // Controparte in base alla direzione del movimento.
+    this.applicaControparteDaFir(fir, tipo)
+
+    // Hint sul ruolo determinato.
+    if (ruolo === 'PRODUTTORE') {
+      this.ruoloHint.set(
+        'La società attiva risulta PRODUTTORE del FIR: movimento impostato come SCARICO.'
+      )
+    } else if (ruolo === 'DESTINATARIO') {
+      this.ruoloHint.set(
+        'La società attiva risulta DESTINATARIO del FIR: movimento impostato come CARICO.'
+      )
+    } else {
+      this.ruoloHint.set(
+        'Ruolo della società non determinabile dal FIR: verifica il tipo (carico/scarico). ' +
+          'I dati del rifiuto sono stati comunque precompilati.'
+      )
+    }
+  }
+
+  /** Rimozione del FIR collegato: azzera il riferimento e l'hint. */
+  onFirClear(): void {
+    this.selectedFir = null
+    this.firCollegato = null
+    this.ruoloHint.set(null)
+    this.form.get('firId')?.setValue('')
+  }
+
+  /** Selezione di un produttore dall'anagrafica: compila i campi controparte. */
+  onProduttoreSelect(event: AutoCompleteSelectEvent): void {
+    const p = event.value as Produttore
+    if (!p) return
+    this.form.patchValue({
+      counterpartName: p.ragioneSociale,
+      counterpartAddress: this.indirizzoProduttore(p),
+    })
+  }
+
+  /** Imposta la controparte (nome + indirizzo) dallo snapshot del FIR. */
+  private applicaControparteDaFir(fir: FIR, tipo: TipoMovimento): void {
+    const parte = tipo === 'CARICO' ? fir.produttore : fir.destinatario
+    this.form.patchValue({
+      counterpartName: parte?.ragioneSociale ?? '',
+      counterpartAddress: parte?.indirizzo ?? '',
+    })
+  }
+
+  /**
+   * Determina se la società attiva è il PRODUTTORE o il DESTINATARIO del FIR,
+   * confrontando (per prima) la partita IVA e (in fallback) la ragione sociale
+   * dello snapshot con l'identità della società attiva. `null` se non
+   * determinabile in modo affidabile.
+   */
+  private determinaRuolo(fir: FIR): 'PRODUTTORE' | 'DESTINATARIO' | null {
+    const azienda = this.company.activeCompany()
+    if (!azienda) return null
+    const piva = this.normalizza(azienda.partitaIva)
+    const rag = this.normalizza(azienda.ragioneSociale)
+    const combacia = (parte?: ParteFIR | null): boolean => {
+      if (!parte) return false
+      if (piva && this.normalizza(parte.partitaIva) === piva) return true
+      if (rag && this.normalizza(parte.ragioneSociale) === rag) return true
+      return false
+    }
+    if (combacia(fir.produttore)) return 'PRODUTTORE'
+    if (combacia(fir.destinatario)) return 'DESTINATARIO'
+    return null
+  }
+
+  /** Normalizza un identificativo per il confronto (senza spazi, maiuscolo). */
+  private normalizza(v?: string | null): string {
+    return (v ?? '').replace(/\s+/g, '').toUpperCase()
+  }
+
+  /** Mappa lo stato fisico del FIR su una delle opzioni valide (o null). */
+  private matchStatoFisico(stato?: string): string | null {
+    if (!stato) return null
+    const norm = stato.trim().toLowerCase()
+    return STATI_FISICI.find(s => s.toLowerCase() === norm) ?? null
+  }
+
+  /** Etichetta compatta del FIR per input e ricerca dell'autocomplete. */
+  private firLabel(fir: FIR): string {
+    const num = this.firNumeroLabel(fir)
+    const prod = this.parteLabel(fir.produttore)
+    const dest = this.parteLabel(fir.destinatario)
+    const r = fir.rifiuto
+    return `${num} · ${prod} → ${dest} · ${r.cerCode} · ${r.quantita} ${r.unitaMisura}`
+  }
+
+  /** Numero progressivo del FIR o, in mancanza, un id breve leggibile. */
+  firNumeroLabel(fir: FIR): string {
+    return fir.numeroProgressivo || `Bozza ${fir.id.slice(0, 8)}`
+  }
+
+  /** Ragione sociale di una parte del FIR (o segnaposto). */
+  parteLabel(parte?: ParteFIR | null): string {
+    return parte?.ragioneSociale?.trim() || '—'
+  }
+
+  /** Compone l'indirizzo di un produttore in stringa unica per la controparte. */
+  private indirizzoProduttore(p: Produttore): string {
+    const s = p.sedeLegale
+    if (!s) return ''
+    const via = [s.via, s.civico].filter(Boolean).join(' ').trim()
+    const comune = [s.cap, s.comune].filter(Boolean).join(' ').trim()
+    const prov = s.provincia ? `(${s.provincia})` : ''
+    return [via, comune, prov].filter(Boolean).join(', ').replace(', (', ' (')
   }
 
   /** True se un controllo è invalido ed è stato toccato (per mostrare l'errore inline). */

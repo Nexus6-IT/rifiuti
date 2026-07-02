@@ -15,6 +15,20 @@ export interface FirmaApplicativa {
   certificato: string
 }
 
+/**
+ * Snapshot anagrafico immutabile di una parte del FIR (produttore, trasportatore
+ * o destinatario), "congelato" alla creazione a partire dai registri. NON è un
+ * riferimento vivo: conserva i dati così com'erano (documento legale).
+ */
+export interface ParteFIR {
+  registroId?: string
+  ragioneSociale: string
+  partitaIva: string
+  indirizzo?: string
+  targaVeicolo?: string
+  contatto?: string
+}
+
 export interface FIR {
   id: string
   numeroProgressivo?: string | null
@@ -24,6 +38,12 @@ export interface FIR {
   produttoreId: string
   trasportatoreId: string
   destinatarioId: string
+  /** Snapshot anagrafico del produttore (congelato alla creazione). */
+  produttore?: ParteFIR | null
+  /** Snapshot anagrafico del trasportatore (congelato alla creazione). */
+  trasportatore?: ParteFIR | null
+  /** Snapshot anagrafico del destinatario (congelato alla creazione). */
+  destinatario?: ParteFIR | null
   rifiuto: {
     cerCode: string
     quantita: number
