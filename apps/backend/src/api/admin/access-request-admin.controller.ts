@@ -50,10 +50,7 @@ export class AccessRequestAdminController {
    * Aggiorna lo stato di lavorazione (e l'eventuale nota interna).
    */
   @Patch(':id')
-  async update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateAccessRequestDto
-  ) {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAccessRequestDto) {
     return this.accessRequestService.updateStatus(id, dto.status, dto.handledNote)
   }
 }

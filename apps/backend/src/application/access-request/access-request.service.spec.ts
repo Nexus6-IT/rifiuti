@@ -133,7 +133,7 @@ describe('AccessRequestService', () => {
     expect(mockLogger.warn).toHaveBeenCalled()
   })
 
-  it('salta la notifica se non c\'è alcun destinatario configurato', async () => {
+  it("salta la notifica se non c'è alcun destinatario configurato", async () => {
     delete process.env.ACCESS_REQUEST_NOTIFY_EMAIL
     delete process.env.EMAIL_FROM
     ;(mockPrisma.accessRequest.create as jest.Mock).mockResolvedValueOnce(makeRequestFixture())
