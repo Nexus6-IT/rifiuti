@@ -160,6 +160,44 @@ enum UserRole {
 }
 
 // ============================================================================
+// ACCESS REQUEST (lead capture — richiesta di accesso / prova guidata)
+// ============================================================================
+
+/// Richiesta di accesso inviata dal form pubblico (/richiedi-accesso).
+/// NON crea alcun tenant/utente: è un lead che il commerciale/consulente lavora
+/// manualmente (attivazione white-glove del TRIAL via admin). Non tenant-scoped.
+model AccessRequest {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  ragioneSociale String  @map("ragione_sociale") @db.VarChar(255)
+  partitaIva     String? @map("partita_iva") @db.VarChar(11)
+  firstName      String  @map("first_name") @db.VarChar(100)
+  lastName       String  @map("last_name") @db.VarChar(100)
+  email          String  @db.VarChar(255)
+  phone          String? @db.VarChar(30)
+  message        String? @db.Text
+
+  status AccessRequestStatus @default(PENDING)
+  /// Nota interna del consulente (esito contatto, follow-up).
+  handledNote String? @map("handled_note") @db.Text
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("access_requests")
+}
+
+enum AccessRequestStatus {
+  PENDING
+  CONTACTED
+  CONVERTED
+  REJECTED
+
+  @@map("access_request_status")
+}
+
+// ============================================================================
 // FIR (Formulario Identificazione Rifiuti) - Core Domain
 // ============================================================================
 

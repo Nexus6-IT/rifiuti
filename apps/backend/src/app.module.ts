@@ -47,8 +47,9 @@ import { SignaturesModule } from './application/signatures/signatures.module'
 import { RegistroModule } from './api/registro/registro.module'
 // Billing SaaS (WS-F): Stripe + enforcement limiti di piano
 import { BillingModule } from './application/billing/billing.module'
-// Onboarding self-service (WS-G): registrazione autonoma azienda + utente ADMIN
-import { SignupModule } from './application/signup/signup.module'
+// Richiesta di accesso (lead capture): il form pubblico NON crea più un tenant.
+// La prova guidata (TRIAL) è attivata dal commerciale via provisioning admin.
+import { AccessRequestModule } from './application/access-request/access-request.module'
 
 @Module({
   imports: [
@@ -147,8 +148,9 @@ import { SignupModule } from './application/signup/signup.module'
     // Billing SaaS (WS-F): Stripe checkout/webhook/portal + enforcement limiti piano
     BillingModule,
 
-    // Onboarding self-service (WS-G): POST /auth/signup pubblico
-    SignupModule,
+    // Richiesta di accesso (lead capture): POST /auth/access-request pubblico +
+    // GET/PATCH /admin/access-requests (SUPER_ADMIN). Nessun tenant creato qui.
+    AccessRequestModule,
   ],
   controllers: [HealthController],
   providers: [
