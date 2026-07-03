@@ -79,6 +79,6 @@ Prima di pubblicare i documenti, sostituire tutti i segnaposto tra parentesi qua
 | `[EVENTUALE DPO]` | Responsabile Protezione Dati (se nominato) |
 | `[FORO COMPETENTE]` | Tribunale esclusivamente competente |
 | `[LISTINO PREZZI]` | Importi piani PROFESSIONAL/ENTERPRISE |
-| `[PERIODO TRIAL]` | Durata trial gratuito (es. 30 giorni) |
+| `[PERIODO TRIAL]` | Durata della prova guidata attivata dal Fornitore su richiesta (es. 30 giorni) |
 | `[DATA VERSIONE]` | Data di entrata in vigore del documento |
 | `[CONSERVATORE AGID]` | Nome del conservatore accreditato AgID scelto |

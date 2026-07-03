@@ -41,7 +41,7 @@ _Ultima revisione: [DATA VERSIONE] — In vigore dalla stessa data_
 
 ## 3. Registrazione, account e utenti
 
-**3.1** Per utilizzare il Servizio, il Cliente deve completare la registrazione su [URL piattaforma], fornendo dati veritieri, completi e aggiornati (ragione sociale, P.IVA, dati del responsabile account). Registrazioni fraudolente o incomplete possono comportare la sospensione immediata dell'account.
+**3.1** L'accesso al Servizio **non avviene tramite registrazione self-service**: non è previsto alcun piano gratuito attivabile autonomamente dal pubblico. Il potenziale Cliente invia una **richiesta di accesso** su [URL piattaforma] fornendo dati veritieri, completi e aggiornati (ragione sociale, dati del referente e, se disponibile, P.IVA). L'account (tenant) e le relative utenze sono **predisposti dal Fornitore** a seguito della richiesta, previa valutazione ed eventuale attivazione di una prova guidata. Richieste fraudolente o incomplete possono comportare il rifiuto o la sospensione immediata dell'attivazione.
 
 **3.2** A ogni Cliente è associato un **account aziendale (tenant)** con un utente amministratore ("Admin"). L'Admin può creare ulteriori utenti interni nei limiti del piano sottoscritto.
 
@@ -59,13 +59,14 @@ _Ultima revisione: [DATA VERSIONE] — In vigore dalla stessa data_
 
 | Piano | Descrizione | Prezzo |
 |-------|-------------|--------|
-| **TRIAL** | Periodo di prova gratuito di [PERIODO TRIAL] giorni; limiti FIR mensili e utenti ridotti; nessun metodo di pagamento richiesto | Gratuito |
 | **PROFESSIONAL** | Uso professionale per PMI; limiti FIR e utenti elevati; accesso a tutte le funzionalità core | [LISTINO PREZZI] / mese |
 | **ENTERPRISE** | Per grandi organizzazioni o gruppi; nessun limite FIR/utenti; SLA dedicato; supporto prioritario | Su preventivo |
 
 I dettagli aggiornati dei piani (limiti, funzionalità, prezzi) sono disponibili nella pagina di abbonamento in-app e sul sito web del Fornitore.
 
-**4.2** Al termine del piano TRIAL, il Servizio viene sospeso salvo upgade a un piano a pagamento. Il Cliente riceverà notifica con anticipo di [X] giorni prima della scadenza del trial.
+**Prova guidata (TRIAL).** Non esiste un piano gratuito attivabile in self-service. Su richiesta di accesso, il Fornitore può attivare a propria discrezione una **prova guidata** a tempo determinato ("TRIAL"), con limiti FIR/utenti ridotti e con affiancamento di un consulente. La prova non comporta alcun obbligo di acquisto per il Cliente né di attivazione per il Fornitore.
+
+**4.2** Al termine dell'eventuale prova guidata (TRIAL), il Servizio viene sospeso salvo passaggio a un piano a pagamento. Il Cliente riceverà notifica con anticipo di [X] giorni prima della scadenza della prova.
 
 **4.3** I pagamenti per i piani a pagamento sono processati tramite il provider di pagamento [NOME PROVIDER — es. Stripe]. Il Cliente accetta i termini del provider di pagamento. Il Fornitore non conserva i dati delle carte di credito.
 
