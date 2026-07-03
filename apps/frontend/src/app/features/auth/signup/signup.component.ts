@@ -1,17 +1,13 @@
 /**
- * SignupComponent — pagina di registrazione self-service (WS-G).
+ * AccessRequestComponent — pagina pubblica "Richiedi accesso" (lead capture).
  *
- * Percorso: /signup (pubblico, non richiede autenticazione)
+ * Percorso: /richiedi-accesso (alias storico /signup) — pubblico.
  * Design system "B": slate + teal (#0d9488), IBM Plex, griglia 8pt, WCAG 2.1 AA.
  *
- * Flusso:
- *  1. Utente compila form (ragione sociale, P.IVA, nome/cognome, email, CF, ToS/privacy)
- *  2. POST /api/v1/auth/signup
- *  3. Successo → schermata di conferma "controlla la tua email"
- *  4. Errore → toast PrimeNG con messaggio dal backend
- *
- * Dopo la verifica email (click link Keycloak), l'utente può fare login
- * tramite il pulsante "Accedi" sulla pagina /login.
+ * NON crea alcun account: raccoglie i dati di contatto dell'azienda e li invia
+ * al backend (POST /auth/access-request). Un consulente ricontatta l'azienda per
+ * attivare eventualmente una prova guidata (TRIAL). Nessun piano gratuito è
+ * ottenibile in self-service.
  */
 
 import { Component } from '@angular/core'
@@ -21,14 +17,15 @@ import { RouterModule } from '@angular/router'
 import { MessageService } from 'primeng/api'
 import { CardModule } from 'primeng/card'
 import { InputTextModule } from 'primeng/inputtext'
+import { InputTextareaModule } from 'primeng/inputtextarea'
 import { ButtonModule } from 'primeng/button'
 import { CheckboxModule } from 'primeng/checkbox'
 import { DividerModule } from 'primeng/divider'
 import { ToastModule } from 'primeng/toast'
-import { SignupService, SignupPayload } from './signup.service'
+import { AccessRequestService, AccessRequestPayload } from './signup.service'
 
 @Component({
-  selector: 'app-signup',
+  selector: 'app-access-request',
   standalone: true,
   imports: [
     CommonModule,
@@ -36,6 +33,7 @@ import { SignupService, SignupPayload } from './signup.service'
     RouterModule,
     CardModule,
     InputTextModule,
+    InputTextareaModule,
     ButtonModule,
     CheckboxModule,
     DividerModule,
@@ -55,26 +53,26 @@ import { SignupService, SignupPayload } from './signup.service'
           </div>
 
           <div class="brand-hero">
-            <p class="brand-hero__eyebrow">Registrazione azienda</p>
-            <h2 class="brand-hero__title">Inizia con WasteFlow in pochi minuti.</h2>
+            <p class="brand-hero__eyebrow">Prova guidata</p>
+            <h2 class="brand-hero__title">Scopri WasteFlow con un consulente dedicato.</h2>
             <p class="brand-hero__lede">
-              Attiva il tuo account gratuito e accedi subito a formulari FIR, anagrafiche e
-              conformità normativa in un'unica piattaforma.
+              Raccontaci della tua azienda: un nostro consulente ti ricontatta per configurare una
+              prova guidata su misura, con affiancamento in ogni fase.
             </p>
           </div>
 
           <ul class="brand-list">
             <li class="brand-list__item">
-              <i class="pi pi-check-circle" aria-hidden="true"></i>
-              <span>Piano TRIAL gratuito, nessuna carta richiesta</span>
+              <i class="pi pi-user" aria-hidden="true"></i>
+              <span>Affiancamento di un consulente dedicato</span>
+            </li>
+            <li class="brand-list__item">
+              <i class="pi pi-file-edit" aria-hidden="true"></i>
+              <span>Formulari FIR, registri e anagrafiche</span>
             </li>
             <li class="brand-list__item">
               <i class="pi pi-shield" aria-hidden="true"></i>
               <span>Dati isolati e protetti per la tua azienda</span>
-            </li>
-            <li class="brand-list__item">
-              <i class="pi pi-file-edit" aria-hidden="true"></i>
-              <span>FIR, CER e anagrafiche disponibili subito</span>
             </li>
             <li class="brand-list__item">
               <i class="pi pi-sync" aria-hidden="true"></i>
@@ -87,10 +85,10 @@ import { SignupService, SignupPayload } from './signup.service'
       </aside>
 
       <!-- ===== Pannello form (destra) ===== -->
-      <main class="auth__main" id="contenuto-signup">
+      <main class="auth__main" id="contenuto-richiesta">
         <!-- Schermata di successo -->
         <div
-          *ngIf="registrationComplete"
+          *ngIf="requestComplete"
           class="auth__panel auth__success"
           role="status"
           aria-live="polite"
@@ -101,24 +99,25 @@ import { SignupService, SignupPayload } from './signup.service'
           </div>
 
           <div class="success-icon" aria-hidden="true">
-            <i class="pi pi-envelope"></i>
+            <i class="pi pi-check"></i>
           </div>
-          <h1 class="auth__title">Controlla la tua email</h1>
+          <h1 class="auth__title">Richiesta ricevuta</h1>
           <p class="auth__subtitle">
-            Abbiamo inviato un link di verifica a <strong>{{ submittedEmail }}</strong
-            >. Clicca il link per attivare il tuo account e accedere a WasteFlow.
+            Grazie <strong>{{ submittedName }}</strong
+            >. Un nostro consulente ti contatterà a breve all'indirizzo
+            <strong>{{ submittedEmail }}</strong> per attivare la prova guidata.
           </p>
           <p class="auth__hint">
-            Non ricevi l'email? Controlla la cartella spam o
-            <a href="mailto:supporto@wasteflow.it" class="auth__help-link">contatta il supporto</a>.
+            Hai bisogno di assistenza immediata?
+            <a href="mailto:supporto@wasteflow.it" class="auth__help-link">Contatta il supporto</a>.
           </p>
           <a routerLink="/login" class="p-button p-button-outlined goto-login">
-            Vai alla pagina di accesso
+            Torna alla pagina di accesso
           </a>
         </div>
 
-        <!-- Form di registrazione -->
-        <div *ngIf="!registrationComplete" class="auth__panel">
+        <!-- Form di richiesta accesso -->
+        <div *ngIf="!requestComplete" class="auth__panel">
           <!-- Logo mobile -->
           <div class="auth__logo-mobile">
             <span class="brand-mark__glyph"><i class="pi pi-sync" aria-hidden="true"></i></span>
@@ -126,13 +125,14 @@ import { SignupService, SignupPayload } from './signup.service'
           </div>
 
           <header class="auth__head">
-            <h1 class="auth__title">Registra la tua azienda</h1>
+            <h1 class="auth__title">Richiedi accesso</h1>
             <p class="auth__subtitle">
-              Crea un account TRIAL gratuito per iniziare a usare WasteFlow.
+              Compila il modulo: un nostro consulente ti contatterà per attivare la prova guidata.
+              Nessun addebito e nessuna carta richiesta.
             </p>
           </header>
 
-          <form (ngSubmit)="onSubmit()" #signupForm="ngForm" novalidate>
+          <form (ngSubmit)="onSubmit()" #accessForm="ngForm" novalidate>
             <!-- ─── Sezione azienda ─────────────────────────────────────── -->
             <section aria-labelledby="sec-azienda" class="form-section">
               <h2 id="sec-azienda" class="form-section__title">Dati azienda</h2>
@@ -160,29 +160,22 @@ import { SignupService, SignupPayload } from './signup.service'
               </div>
 
               <div class="field">
-                <label for="partitaIva" class="field__label">
-                  Partita IVA <span class="field__req" aria-hidden="true">*</span>
-                </label>
+                <label for="partitaIva" class="field__label">Partita IVA</label>
                 <input
                   pInputText
                   id="partitaIva"
                   name="partitaIva"
                   [(ngModel)]="model.partitaIva"
-                  required
                   pattern="[0-9]{11}"
                   maxlength="11"
                   inputmode="numeric"
                   autocomplete="off"
-                  [class.p-invalid]="submitted && (!model.partitaIva || !isValidPartitaIva)"
-                  aria-required="true"
-                  placeholder="11 cifre senza spazi"
+                  [class.p-invalid]="submitted && !!model.partitaIva && !isValidPartitaIva"
+                  placeholder="11 cifre (facoltativo)"
                   class="w-full"
                 />
-                <small *ngIf="submitted && !model.partitaIva" class="field__error" role="alert">
-                  La partita IVA è obbligatoria.
-                </small>
                 <small
-                  *ngIf="submitted && model.partitaIva && !isValidPartitaIva"
+                  *ngIf="submitted && !!model.partitaIva && !isValidPartitaIva"
                   class="field__error"
                   role="alert"
                 >
@@ -191,9 +184,9 @@ import { SignupService, SignupPayload } from './signup.service'
               </div>
             </section>
 
-            <!-- ─── Sezione responsabile ──────────────────────────────────── -->
-            <section aria-labelledby="sec-resp" class="form-section">
-              <h2 id="sec-resp" class="form-section__title">Responsabile account</h2>
+            <!-- ─── Sezione contatto ──────────────────────────────────────── -->
+            <section aria-labelledby="sec-contatto" class="form-section">
+              <h2 id="sec-contatto" class="form-section__title">Referente</h2>
 
               <div class="field-row">
                 <div class="field">
@@ -269,78 +262,41 @@ import { SignupService, SignupPayload } from './signup.service'
                 >
                   Inserisci un indirizzo email valido.
                 </small>
-                <p class="field__hint">
-                  <i class="pi pi-info-circle" aria-hidden="true"></i>
-                  Riceverai qui il link di verifica per attivare l'account.
-                </p>
               </div>
 
               <div class="field">
-                <label for="fiscalCode" class="field__label">
-                  Codice fiscale <span class="field__req" aria-hidden="true">*</span>
-                </label>
+                <label for="phone" class="field__label">Telefono</label>
                 <input
                   pInputText
-                  id="fiscalCode"
-                  name="fiscalCode"
-                  [(ngModel)]="model.fiscalCode"
-                  required
-                  maxlength="16"
-                  autocomplete="off"
-                  [class.p-invalid]="submitted && (!model.fiscalCode || !isValidFiscalCode)"
-                  aria-required="true"
-                  placeholder="RSSMRA80A01H501U"
+                  id="phone"
+                  name="phone"
+                  [(ngModel)]="model.phone"
+                  maxlength="30"
+                  autocomplete="tel"
+                  inputmode="tel"
+                  placeholder="Numero per il ricontatto (facoltativo)"
                   class="w-full"
-                  style="text-transform: uppercase"
                 />
-                <small *ngIf="submitted && !model.fiscalCode" class="field__error" role="alert">
-                  Il codice fiscale è obbligatorio.
-                </small>
-                <small
-                  *ngIf="submitted && model.fiscalCode && !isValidFiscalCode"
-                  class="field__error"
-                  role="alert"
-                >
-                  Il codice fiscale deve essere di 16 caratteri alfanumerici.
-                </small>
-                <p class="field__hint">
-                  <i class="pi pi-info-circle" aria-hidden="true"></i>
-                  Utilizzato come identificativo di accesso (codice fiscale personale).
-                </p>
+              </div>
+
+              <div class="field">
+                <label for="message" class="field__label">Messaggio</label>
+                <textarea
+                  pInputTextarea
+                  id="message"
+                  name="message"
+                  [(ngModel)]="model.message"
+                  rows="3"
+                  maxlength="2000"
+                  placeholder="Raccontaci le tue esigenze (facoltativo)"
+                  class="w-full"
+                ></textarea>
               </div>
             </section>
 
             <!-- ─── Sezione consensi ───────────────────────────────────────── -->
             <section aria-labelledby="sec-consensi" class="form-section form-section--condensed">
-              <h2 id="sec-consensi" class="form-section__title">Consensi</h2>
-
-              <div
-                class="consent-item"
-                [class.consent-item--error]="submitted && !model.tosAccepted"
-              >
-                <p-checkbox
-                  [(ngModel)]="model.tosAccepted"
-                  name="tosAccepted"
-                  [binary]="true"
-                  inputId="tosAccepted"
-                  ariaLabel="Accetto i Termini di Servizio"
-                />
-                <label for="tosAccepted" class="consent-item__label">
-                  Ho letto e accetto i
-                  <a
-                    routerLink="/legal/termini"
-                    target="_blank"
-                    rel="noopener"
-                    class="consent-item__link"
-                  >
-                    Termini di Servizio
-                  </a>
-                  <span class="field__req" aria-hidden="true"> *</span>
-                </label>
-              </div>
-              <small *ngIf="submitted && !model.tosAccepted" class="field__error" role="alert">
-                Devi accettare i Termini di Servizio per procedere.
-              </small>
+              <h2 id="sec-consensi" class="form-section__title">Consenso</h2>
 
               <div
                 class="consent-item"
@@ -351,7 +307,7 @@ import { SignupService, SignupPayload } from './signup.service'
                   name="privacyAccepted"
                   [binary]="true"
                   inputId="privacyAccepted"
-                  ariaLabel="Accetto la Privacy Policy"
+                  ariaLabel="Accetto l'informativa privacy"
                 />
                 <label for="privacyAccepted" class="consent-item__label">
                   Ho letto e accetto la
@@ -363,28 +319,20 @@ import { SignupService, SignupPayload } from './signup.service'
                   >
                     Privacy Policy
                   </a>
-                  e il
-                  <a
-                    routerLink="/legal/dpa"
-                    target="_blank"
-                    rel="noopener"
-                    class="consent-item__link"
-                  >
-                    DPA
-                  </a>
+                  e acconsento a essere ricontattato
                   <span class="field__req" aria-hidden="true"> *</span>
                 </label>
               </div>
               <small *ngIf="submitted && !model.privacyAccepted" class="field__error" role="alert">
-                Devi accettare la Privacy Policy per procedere.
+                Devi accettare il trattamento dei dati per procedere.
               </small>
             </section>
 
             <!-- ─── Submit ──────────────────────────────────────────────────── -->
             <p-button
               type="submit"
-              label="Registra la tua azienda"
-              icon="pi pi-user-plus"
+              label="Invia richiesta"
+              icon="pi pi-send"
               [loading]="loading"
               styleClass="w-full submit-button"
               [attr.aria-busy]="loading"
@@ -684,19 +632,6 @@ import { SignupService, SignupPayload } from './signup.service'
         align-items: center;
         gap: 0.3rem;
       }
-      .field__hint {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.4rem;
-        margin: 0;
-        font-size: var(--font-size-xs);
-        color: var(--text-tertiary);
-        line-height: 1.45;
-      }
-      .field__hint i {
-        margin-top: 1px;
-        color: var(--color-info);
-      }
 
       /* ============ Consensi ============ */
       .consent-item {
@@ -812,26 +747,27 @@ import { SignupService, SignupPayload } from './signup.service'
     `,
   ],
 })
-export class SignupComponent {
-  model: SignupPayload = {
+export class AccessRequestComponent {
+  model: AccessRequestPayload = {
     ragioneSociale: '',
     partitaIva: '',
     firstName: '',
     lastName: '',
     email: '',
-    fiscalCode: '',
-    tosAccepted: false,
+    phone: '',
+    message: '',
     privacyAccepted: false,
   }
 
   loading = false
   submitted = false
-  registrationComplete = false
+  requestComplete = false
   submittedEmail = ''
+  submittedName = ''
   readonly currentYear = new Date().getFullYear()
 
   constructor(
-    private readonly signupService: SignupService,
+    private readonly accessRequestService: AccessRequestService,
     private readonly messageService: MessageService
   ) {}
 
@@ -845,20 +781,13 @@ export class SignupComponent {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.model.email ?? '')
   }
 
-  get isValidFiscalCode(): boolean {
-    const cf = (this.model.fiscalCode ?? '').trim().toUpperCase()
-    return cf.length === 16
-  }
-
   private get isFormValid(): boolean {
     return (
       !!this.model.ragioneSociale &&
-      this.isValidPartitaIva &&
+      (!this.model.partitaIva || this.isValidPartitaIva) &&
       !!this.model.firstName &&
       !!this.model.lastName &&
       this.isValidEmail &&
-      this.isValidFiscalCode &&
-      this.model.tosAccepted &&
       this.model.privacyAccepted
     )
   }
@@ -874,29 +803,31 @@ export class SignupComponent {
 
     this.loading = true
 
-    const payload: SignupPayload = {
-      ...this.model,
-      fiscalCode: this.model.fiscalCode.toUpperCase().trim(),
+    const payload: AccessRequestPayload = {
+      ragioneSociale: this.model.ragioneSociale.trim(),
+      firstName: this.model.firstName.trim(),
+      lastName: this.model.lastName.trim(),
       email: this.model.email.toLowerCase().trim(),
+      privacyAccepted: this.model.privacyAccepted,
+      ...(this.model.partitaIva?.trim() ? { partitaIva: this.model.partitaIva.trim() } : {}),
+      ...(this.model.phone?.trim() ? { phone: this.model.phone.trim() } : {}),
+      ...(this.model.message?.trim() ? { message: this.model.message.trim() } : {}),
     }
 
-    this.signupService.register(payload).subscribe({
+    this.accessRequestService.submit(payload).subscribe({
       next: _res => {
         this.loading = false
-        this.registrationComplete = true
+        this.requestComplete = true
         this.submittedEmail = payload.email
+        this.submittedName = payload.firstName
       },
       error: err => {
         this.loading = false
-        const status: number = err.status ?? 0
         const message: string =
-          err.error?.message ??
-          (status === 409
-            ? 'Partita IVA, email o codice fiscale già registrati.'
-            : 'Registrazione non completata. Riprova più tardi.')
+          err.error?.message ?? 'Invio della richiesta non riuscito. Riprova più tardi.'
         this.messageService.add({
           severity: 'error',
-          summary: 'Errore nella registrazione',
+          summary: "Errore nell'invio",
           detail: message,
           life: 8000,
         })

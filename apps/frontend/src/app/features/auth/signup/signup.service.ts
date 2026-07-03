@@ -1,6 +1,9 @@
 /**
- * SignupService (frontend) — chiama POST /api/v1/auth/signup per la
- * registrazione self-service di una nuova azienda (WS-G).
+ * AccessRequestService (frontend) — invia il form pubblico "Richiedi accesso".
+ *
+ * Chiama POST /api/v1/auth/access-request: registra una richiesta di contatto
+ * (lead) e notifica il commerciale. NON crea alcun account: la prova guidata
+ * (TRIAL) viene attivata manualmente da un consulente.
  */
 
 import { Injectable, inject } from '@angular/core'
@@ -8,32 +11,32 @@ import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { environment } from '../../../../environments/environment'
 
-export interface SignupPayload {
+export interface AccessRequestPayload {
   ragioneSociale: string
-  partitaIva: string
+  partitaIva?: string
   firstName: string
   lastName: string
   email: string
-  fiscalCode: string
-  tosAccepted: boolean
+  phone?: string
+  message?: string
   privacyAccepted: boolean
 }
 
-export interface SignupResponse {
+export interface AccessRequestResponse {
   message: string
-  tenantId: string
+  requestId: string
 }
 
 @Injectable({ providedIn: 'root' })
-export class SignupService {
+export class AccessRequestService {
   private readonly http = inject(HttpClient)
   private readonly apiUrl = environment.apiUrl
 
   /**
-   * Invia la richiesta di registrazione al backend.
+   * Invia la richiesta di accesso al backend.
    * Endpoint pubblico: nessun token JWT richiesto.
    */
-  register(payload: SignupPayload): Observable<SignupResponse> {
-    return this.http.post<SignupResponse>(`${this.apiUrl}/auth/signup`, payload)
+  submit(payload: AccessRequestPayload): Observable<AccessRequestResponse> {
+    return this.http.post<AccessRequestResponse>(`${this.apiUrl}/auth/access-request`, payload)
   }
 }

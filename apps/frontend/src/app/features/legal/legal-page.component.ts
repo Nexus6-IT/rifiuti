@@ -288,8 +288,8 @@ const DOCS: Record<string, LegalDoc> = {
     <div class="legal-page" *ngIf="doc; else notFound">
       <!-- Intestazione documento -->
       <header class="legal-header">
-        <a routerLink="/signup" class="legal-back">
-          <i class="pi pi-arrow-left" aria-hidden="true"></i> Torna alla registrazione
+        <a routerLink="/richiedi-accesso" class="legal-back">
+          <i class="pi pi-arrow-left" aria-hidden="true"></i> Torna alla richiesta di accesso
         </a>
         <p class="legal-version">
           {{ doc.version }} &nbsp;·&nbsp; Aggiornato al {{ doc.updatedAt }}

@@ -14,6 +14,7 @@
 
 import { Component, OnInit, inject, signal, computed } from '@angular/core'
 import { CommonModule, DatePipe } from '@angular/common'
+import { RouterModule } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
 import { TagModule } from 'primeng/tag'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
@@ -26,7 +27,8 @@ import {
 } from '../../core/services/billing-api.service'
 
 interface PianoInfo {
-  tier: SubscriptionTier
+  // Solo piani a pagamento self-service (il TRIAL non è più elencato/scegliibile).
+  tier: Exclude<SubscriptionTier, 'TRIAL'>
   nome: string
   prezzo: string
   periodicita: string
@@ -36,17 +38,11 @@ interface PianoInfo {
   evidenziato: boolean
 }
 
+// NB: il piano TRIAL NON è più elencato qui: non è ottenibile in self-service.
+// La prova guidata viene attivata dal commerciale (white-glove) su richiesta.
+// Il TRIAL resta un tier valido a livello di sistema (enforcement/feature/admin)
+// e lo stato del piano corrente viene comunque mostrato se il tenant è in TRIAL.
 const PIANI: PianoInfo[] = [
-  {
-    tier: 'TRIAL',
-    nome: 'Trial',
-    prezzo: '€0',
-    periodicita: '30 giorni',
-    firMese: '10 FIR/mese',
-    utenti: '2 utenti',
-    feature: ['Creazione e firma FIR', 'Catalogo CER', 'Dashboard operativa', 'Supporto via email'],
-    evidenziato: false,
-  },
   {
     tier: 'PROFESSIONAL',
     nome: 'Professional',
@@ -55,7 +51,8 @@ const PIANI: PianoInfo[] = [
     firMese: '200 FIR/mese',
     utenti: '5 utenti',
     feature: [
-      'Tutto del Trial',
+      'Creazione e firma FIR',
+      'Catalogo CER e dashboard operativa',
       'Registro C/S (art. 190)',
       'Anagrafiche produttori/trasportatori',
       'Export MUD',
@@ -91,6 +88,7 @@ const PIANI: PianoInfo[] = [
   standalone: true,
   imports: [
     CommonModule,
+    RouterModule,
     ButtonModule,
     TagModule,
     ProgressSpinnerModule,
@@ -263,6 +261,20 @@ const PIANI: PianoInfo[] = [
         <!-- ===== Confronto piani ===== -->
         <section aria-label="Piani disponibili">
           <h2 class="section-title mb-4">Scegli il piano</h2>
+
+          <!-- Prova guidata su richiesta (nessun piano gratuito self-service) -->
+          <div class="alert alert--trial mb-4" role="note">
+            <i class="pi pi-user alert__icon" aria-hidden="true"></i>
+            <div class="alert__body">
+              <strong class="alert__title">Vuoi provare prima di acquistare?</strong>
+              <p class="alert__text">
+                La prova guidata è attivata da un nostro consulente, con affiancamento dedicato.
+                <a routerLink="/richiedi-accesso" class="alert__link">Richiedi una prova guidata</a>
+                e ti ricontatteremo.
+              </p>
+            </div>
+          </div>
+
           <div class="piani-grid">
             @for (piano of piani; track piano.tier) {
               <article
@@ -323,18 +335,6 @@ const PIANI: PianoInfo[] = [
                       class="p-button-outlined p-button-secondary w-full"
                       disabled
                       aria-disabled="true"
-                    ></button>
-                  } @else if (piano.tier === 'TRIAL') {
-                    <!-- Non si torna al trial manualmente -->
-                    <button
-                      pButton
-                      type="button"
-                      label="Non disponibile"
-                      class="p-button-text p-button-secondary w-full"
-                      disabled
-                      aria-disabled="true"
-                      pTooltip="Il piano Trial è disponibile solo all'iscrizione"
-                      tooltipPosition="top"
                     ></button>
                   } @else {
                     <button
@@ -450,6 +450,22 @@ const PIANI: PianoInfo[] = [
         background: var(--color-info-bg);
         border-left-color: var(--color-info);
         color: var(--color-info);
+      }
+      /* Callout prova guidata (accento brand teal) */
+      .alert--trial {
+        background: var(--brand-primary-50);
+        border-left-color: var(--brand-primary-dark);
+        color: var(--brand-primary-dark);
+      }
+      .alert__link {
+        /* teal-700 su bianco/teal-50 = contrasto AA */
+        color: var(--brand-primary-dark);
+        font-weight: var(--font-weight-semibold);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .alert__link:hover {
+        color: var(--brand-primary-dark);
       }
       .alert__icon {
         font-size: 1.25rem;

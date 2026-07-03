@@ -7,10 +7,17 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/login.component').then(m => m.LoginComponent),
   },
   {
-    // Registrazione self-service azienda + utente admin (WS-G)
-    path: 'signup',
+    // Richiesta di accesso (lead capture): il form pubblico NON crea più un
+    // tenant/utente. Un consulente attiva la prova guidata (TRIAL) via admin.
+    path: 'richiedi-accesso',
     loadComponent: () =>
-      import('./features/auth/signup/signup.component').then(m => m.SignupComponent),
+      import('./features/auth/signup/signup.component').then(m => m.AccessRequestComponent),
+  },
+  {
+    // Alias storico: /signup → /richiedi-accesso
+    path: 'signup',
+    redirectTo: 'richiedi-accesso',
+    pathMatch: 'full',
   },
   {
     // Riceve i token dopo il login SAML/Keycloak (rotta pubblica)

@@ -23,7 +23,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     '/auth/callback',
     '/auth/refresh',
     '/health',
-    '/auth/signup',
+    '/auth/access-request',
   ]
   const isPublicEndpoint = publicEndpoints.some(endpoint => req.url.includes(endpoint))
 

@@ -93,7 +93,7 @@ import { AuthService } from '../../core/services/auth.service'
 
           <p class="auth__help">
             Non hai ancora un account?
-            <a routerLink="/signup" class="auth__help-link">Registra la tua azienda</a>
+            <a routerLink="/richiedi-accesso" class="auth__help-link">Richiedi accesso</a>
           </p>
           <p class="auth__help" style="margin-top: 0.5rem">
             Hai bisogno di assistenza?
