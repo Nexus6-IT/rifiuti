@@ -306,9 +306,7 @@ export class RENTRISyncLogsComponent implements OnInit {
       },
       error: error => {
         console.error('Error loading sync logs:', error)
-        this.errorMessage.set(
-          'Impossibile caricare i log di sincronizzazione. Riprova.'
-        )
+        this.errorMessage.set('Impossibile caricare i log di sincronizzazione. Riprova.')
         this.loading.set(false)
       },
     })

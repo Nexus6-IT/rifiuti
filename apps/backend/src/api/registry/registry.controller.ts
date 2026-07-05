@@ -377,7 +377,6 @@ export class RegistryController {
     throw new BadRequestException(error)
   }
 
-
   /**
    * Converte il value object Indirizzo in un oggetto piano compatibile con il
    * modello frontend (Indirizzo: via/civico/cap/comune/provincia). Il dominio

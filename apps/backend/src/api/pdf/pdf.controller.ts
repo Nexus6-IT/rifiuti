@@ -74,9 +74,7 @@ export class PdfController {
       throw new BadRequestException('Anno non valido')
     }
     if (reportYear < 2000 || reportYear > currentYear + 1) {
-      throw new BadRequestException(
-        `Anno fuori intervallo consentito (2000-${currentYear + 1})`
-      )
+      throw new BadRequestException(`Anno fuori intervallo consentito (2000-${currentYear + 1})`)
     }
 
     // Usa il tenant reale dell'utente autenticato (mai un placeholder).

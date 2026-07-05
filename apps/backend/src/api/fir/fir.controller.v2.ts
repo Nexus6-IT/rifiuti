@@ -17,14 +17,7 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
-import {
-  IsString,
-  IsNotEmpty,
-  IsNumber,
-  IsObject,
-  Min,
-  ValidateNested,
-} from 'class-validator'
+import { IsString, IsNotEmpty, IsNumber, IsObject, Min, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
 import { CreateFIRDto } from './dtos/create-fir.dto'
 import { ListFIRsDto } from './dtos/list-firs.dto'

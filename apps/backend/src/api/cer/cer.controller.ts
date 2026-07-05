@@ -3,7 +3,15 @@
  * Gestione Catalogo Codici Europei Rifiuti
  */
 
-import { Controller, Get, Param, Query, HttpCode, HttpStatus, NotFoundException } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  HttpCode,
+  HttpStatus,
+  NotFoundException,
+} from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger'
 import { CERCatalogService } from '../../domain/cer/services/cer-catalog.service'
 
