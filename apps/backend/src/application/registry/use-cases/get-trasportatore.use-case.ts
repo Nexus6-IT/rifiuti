@@ -23,16 +23,16 @@ export class GetTrasportatoreUseCase {
   ) {}
 
   async execute(command: GetTrasportatoreCommand): Promise<Result<Trasportatore>> {
-    try {
-      const trasportatore = await this.trasportatoreRepository.findById(command.id)
+    // Gli errori Prisma (es. P2023 su id non-UUID) NON vengono catturati qui:
+    // propagano al filtro globale delle eccezioni che li mappa (400) senza
+    // esporre dettagli interni. Catturarli e reinserire error.message nel
+    // Result causerebbe information disclosure.
+    const trasportatore = await this.trasportatoreRepository.findById(command.id)
 
-      if (!trasportatore) {
-        return Result.fail('Trasportatore not found')
-      }
-
-      return Result.ok(trasportatore)
-    } catch (error: any) {
-      return Result.fail(error.message)
+    if (!trasportatore) {
+      return Result.fail('Trasportatore not found')
     }
+
+    return Result.ok(trasportatore)
   }
 }

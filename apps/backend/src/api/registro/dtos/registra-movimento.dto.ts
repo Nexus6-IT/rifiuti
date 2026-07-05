@@ -19,12 +19,22 @@ import {
 
 const ALL_CAUSALI = [...CAUSALI_CARICO, ...CAUSALI_SCARICO] as const
 
+/**
+ * Enum dei tipi di movimento. Definito come enum (non array-literal) così che
+ * `@IsEnum` produca un messaggio d'errore con l'elenco dei valori validi
+ * ("must be one of the following values: CARICO, SCARICO").
+ */
+export enum WasteMovementTypeEnum {
+  CARICO = 'CARICO',
+  SCARICO = 'SCARICO',
+}
+
 export class RegistraMovimentoDto {
   @ApiProperty({
-    enum: ['CARICO', 'SCARICO'],
+    enum: WasteMovementTypeEnum,
     description: 'Tipo di movimento (art. 190 D.Lgs 152/2006)',
   })
-  @IsEnum(['CARICO', 'SCARICO'])
+  @IsEnum(WasteMovementTypeEnum)
   type: 'CARICO' | 'SCARICO'
 
   @ApiProperty({
@@ -135,8 +145,8 @@ export class RegistraMovimentoDto {
 }
 
 export class ListMovimentiDto {
-  @ApiPropertyOptional({ enum: ['CARICO', 'SCARICO'] })
-  @IsEnum(['CARICO', 'SCARICO'])
+  @ApiPropertyOptional({ enum: WasteMovementTypeEnum })
+  @IsEnum(WasteMovementTypeEnum)
   @IsOptional()
   type?: 'CARICO' | 'SCARICO'
 

@@ -20,6 +20,8 @@ import {
 } from '@nestjs/common'
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { CreateProduttoreUseCase } from '../../application/registry/use-cases/create-produttore.use-case'
 import { CreateTrasportatoreUseCase } from '../../application/registry/use-cases/create-trasportatore.use-case'
 import { CreateDestinatarioUseCase } from '../../application/registry/use-cases/create-destinatario.use-case'
@@ -47,7 +49,7 @@ import {
 @ApiTags('registry')
 @ApiBearerAuth()
 @Controller('registry')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class RegistryController {
   constructor(
     private readonly createProduttoreUseCase: CreateProduttoreUseCase,
@@ -68,6 +70,7 @@ export class RegistryController {
   ) {}
 
   @Post('produttori')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
   async createProduttore(@Body() dto: CreateProduttoreDto) {
     const result = await this.createProduttoreUseCase.execute(this.mapProduttoreDto(dto))
@@ -85,6 +88,7 @@ export class RegistryController {
   }
 
   @Post('trasportatori')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
   async createTrasportatore(@Body() dto: CreateTrasportatoreDto) {
     const result = await this.createTrasportatoreUseCase.execute(this.mapTrasportatoreDto(dto))
@@ -103,6 +107,7 @@ export class RegistryController {
   }
 
   @Post('destinatari')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
   async createDestinatario(@Body() dto: CreateDestinatarioDto) {
     const result = await this.createDestinatarioUseCase.execute(this.mapDestinatarioDto(dto))
@@ -167,6 +172,7 @@ export class RegistryController {
   }
 
   @Put('produttori/:id')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   async updateProduttore(@Param('id') id: string, @Body() dto: UpdateProduttoreDto) {
     const result = await this.updateProduttoreUseCase.execute({
       id,
@@ -174,7 +180,7 @@ export class RegistryController {
     })
 
     if (result.isFailure) {
-      throw new BadRequestException(result.error)
+      this.throwUpdateFailure(result.error)
     }
 
     return {
@@ -189,6 +195,7 @@ export class RegistryController {
   }
 
   @Delete('produttori/:id')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteProduttore(@Param('id') id: string) {
     const result = await this.deleteProduttoreUseCase.execute({ id })
@@ -243,6 +250,7 @@ export class RegistryController {
   }
 
   @Put('trasportatori/:id')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   async updateTrasportatore(@Param('id') id: string, @Body() dto: UpdateTrasportatoreDto) {
     const result = await this.updateTrasportatoreUseCase.execute({
       id,
@@ -250,7 +258,7 @@ export class RegistryController {
     })
 
     if (result.isFailure) {
-      throw new BadRequestException(result.error)
+      this.throwUpdateFailure(result.error)
     }
 
     return {
@@ -266,6 +274,7 @@ export class RegistryController {
   }
 
   @Delete('trasportatori/:id')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteTrasportatore(@Param('id') id: string) {
     const result = await this.deleteTrasportatoreUseCase.execute({ id })
@@ -320,6 +329,7 @@ export class RegistryController {
   }
 
   @Put('destinatari/:id')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   async updateDestinatario(@Param('id') id: string, @Body() dto: UpdateDestinatarioDto) {
     const result = await this.updateDestinatarioUseCase.execute({
       id,
@@ -327,7 +337,7 @@ export class RegistryController {
     })
 
     if (result.isFailure) {
-      throw new BadRequestException(result.error)
+      this.throwUpdateFailure(result.error)
     }
 
     return {
@@ -343,6 +353,7 @@ export class RegistryController {
   }
 
   @Delete('destinatari/:id')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteDestinatario(@Param('id') id: string) {
     const result = await this.deleteDestinatarioUseCase.execute({ id })
@@ -352,7 +363,20 @@ export class RegistryController {
     }
   }
 
-  // ============= RESPONSE HELPERS =============
+  // ============= ERROR / RESPONSE HELPERS =============
+
+  /**
+   * Mappa il fallimento di un update allo status HTTP corretto: una risorsa
+   * inesistente diventa 404 (coerente con GET/DELETE), mentre gli errori di
+   * validazione di dominio restano 400.
+   */
+  private throwUpdateFailure(error?: string): never {
+    if (typeof error === 'string' && error.toLowerCase().includes('not found')) {
+      throw new NotFoundException(error)
+    }
+    throw new BadRequestException(error)
+  }
+
 
   /**
    * Converte il value object Indirizzo in un oggetto piano compatibile con il

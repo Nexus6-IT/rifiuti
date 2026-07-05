@@ -1,6 +1,8 @@
 import { Controller, Post, Get, Delete, Query, UseGuards, HttpCode } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { BackupService } from '../../infrastructure/backup/backup.service'
 
 /**
@@ -10,13 +12,14 @@ import { BackupService } from '../../infrastructure/backup/backup.service'
  * Note: Automated backups run via cron jobs in production.
  */
 @Controller('backup')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('Backup')
 @ApiBearerAuth()
 export class BackupController {
   constructor(private readonly backupService: BackupService) {}
 
   @Post('create')
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @ApiOperation({ summary: 'Create a manual database backup' })
   @HttpCode(200)
   async createBackup() {
@@ -24,12 +27,14 @@ export class BackupController {
   }
 
   @Get('list')
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @ApiOperation({ summary: 'List all available backups' })
   async listBackups() {
     return await this.backupService.listBackups()
   }
 
   @Post('restore')
+  @Roles('SUPER_ADMIN')
   @ApiOperation({ summary: 'Restore database from a backup file' })
   @ApiQuery({ name: 'filename', required: true, type: String })
   @HttpCode(200)
@@ -38,6 +43,7 @@ export class BackupController {
   }
 
   @Delete('cleanup')
+  @Roles('SUPER_ADMIN')
   @ApiOperation({ summary: 'Cleanup old backups (older than 30 days)' })
   @HttpCode(200)
   async cleanupOldBackups() {

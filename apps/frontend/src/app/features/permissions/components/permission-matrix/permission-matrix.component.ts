@@ -44,9 +44,9 @@ import { TooltipModule } from 'primeng/tooltip'
       <!-- Header with search -->
       <div class="matrix-header">
         <div class="header-info">
-          <h3>Permission Matrix</h3>
+          <h3>Matrice permessi</h3>
           <p class="selected-count">
-            {{ selectedPermissions.length }} of {{ availablePermissions.length }} selected
+            {{ selectedPermissions.length }} di {{ availablePermissions.length }} selezionati
           </p>
         </div>
 
@@ -58,14 +58,14 @@ import { TooltipModule } from 'primeng/tooltip'
               type="text"
               [(ngModel)]="searchTerm"
               (ngModelChange)="onSearchChange()"
-              placeholder="Search permissions..."
+              placeholder="Cerca permessi..."
             />
           </span>
 
           <button
             pButton
             type="button"
-            label="Select All"
+            label="Seleziona tutti"
             icon="pi pi-check"
             class="p-button-sm p-button-outlined"
             (click)="selectAll()"
@@ -75,7 +75,7 @@ import { TooltipModule } from 'primeng/tooltip'
           <button
             pButton
             type="button"
-            label="Clear All"
+            label="Deseleziona tutti"
             icon="pi pi-times"
             class="p-button-sm p-button-outlined p-button-danger"
             (click)="clearAll()"
@@ -103,11 +103,11 @@ import { TooltipModule } from 'primeng/tooltip'
                 binary="true"
               ></p-checkbox>
             </th>
-            <th>Permission</th>
-            <th>Resource</th>
-            <th>Action</th>
-            <th>Scope</th>
-            <th style="width: 120px">Actions</th>
+            <th>Permesso</th>
+            <th>Risorsa</th>
+            <th>Azione</th>
+            <th>Ambito</th>
+            <th style="width: 120px">Azioni</th>
           </tr>
         </ng-template>
 
@@ -159,7 +159,8 @@ import { TooltipModule } from 'primeng/tooltip'
                 type="button"
                 icon="pi pi-info-circle"
                 class="p-button-sm p-button-text p-button-rounded"
-                pTooltip="View permission details"
+                pTooltip="Visualizza dettagli permesso"
+                aria-label="Visualizza dettagli permesso"
                 (click)="showPermissionDetails(permission); $event.stopPropagation()"
               ></button>
             </td>
@@ -172,12 +173,12 @@ import { TooltipModule } from 'primeng/tooltip'
               @if (searchTerm) {
                 <div class="empty-state">
                   <i class="pi pi-search"></i>
-                  <p>No permissions found matching "{{ searchTerm }}"</p>
+                  <p>Nessun permesso trovato per "{{ searchTerm }}"</p>
                 </div>
               } @else {
                 <div class="empty-state">
                   <i class="pi pi-info-circle"></i>
-                  <p>No permissions available</p>
+                  <p>Nessun permesso disponibile</p>
                 </div>
               }
             </td>
@@ -190,15 +191,15 @@ import { TooltipModule } from 'primeng/tooltip'
         <div class="footer-stats">
           <div class="stat">
             <i class="pi pi-shield"></i>
-            <span>{{ getSelectedByScope('all') }} All Scope</span>
+            <span>{{ getSelectedByScope('all') }} Ambito Tutti</span>
           </div>
           <div class="stat">
             <i class="pi pi-building"></i>
-            <span>{{ getSelectedByScope('facility') }} Facility Scope</span>
+            <span>{{ getSelectedByScope('facility') }} Ambito Struttura</span>
           </div>
           <div class="stat">
             <i class="pi pi-user"></i>
-            <span>{{ getSelectedByScope('own') }} Own Scope</span>
+            <span>{{ getSelectedByScope('own') }} Ambito Proprio</span>
           </div>
         </div>
       </div>
@@ -509,27 +510,27 @@ export class PermissionMatrixComponent {
 
     const resourceNames: Record<string, string> = {
       fir: 'Formulario Identificazione Rifiuti',
-      company: 'Company',
-      user: 'User',
-      vehicle: 'Vehicle',
+      company: 'Azienda',
+      user: 'Utente',
+      vehicle: 'Veicolo',
       mud: 'Modello Unico Dichiarazione',
-      audit: 'Audit Logs',
-      role: 'Roles',
+      audit: 'Log di audit',
+      role: 'Ruoli',
     }
 
     const actionNames: Record<string, string> = {
-      create: 'Create',
-      read: 'View',
-      update: 'Edit',
-      delete: 'Delete',
-      export: 'Export',
-      approve: 'Approve',
+      create: 'Crea',
+      read: 'Visualizza',
+      update: 'Modifica',
+      delete: 'Elimina',
+      export: 'Esporta',
+      approve: 'Approva',
     }
 
     const scopeDescriptions: Record<string, string> = {
-      own: 'only own records',
-      facility: 'within assigned facilities',
-      all: 'all records',
+      own: 'solo i propri record',
+      facility: 'nelle strutture assegnate',
+      all: 'tutti i record',
     }
 
     const resourceName = resourceNames[resource] || resource

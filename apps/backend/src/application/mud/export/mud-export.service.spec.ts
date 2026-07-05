@@ -105,7 +105,9 @@ describe('MudExportService', () => {
   })
 
   it('propaga errore per anno non supportato (prima di toccare il DB)', async () => {
-    await expect(service.exportTelematico('tenant-1', 1999)).rejects.toThrow('nessun tracciato')
+    await expect(service.exportTelematico('tenant-1', 1999)).rejects.toThrow(
+      'Versione tracciato MUD non disponibile'
+    )
     expect(prisma.tenant.findUnique).not.toHaveBeenCalled()
   })
 

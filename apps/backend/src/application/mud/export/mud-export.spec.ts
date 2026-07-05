@@ -43,7 +43,7 @@ describe('MudVersionRegistry (versionamento per anno)', () => {
   })
 
   it('lancia per un anno non supportato', () => {
-    expect(() => registry.getForYear(1999)).toThrow('nessun tracciato')
+    expect(() => registry.getForYear(1999)).toThrow('Versione tracciato MUD non disponibile')
   })
 
   it('elenca anni e versioni supportate', () => {

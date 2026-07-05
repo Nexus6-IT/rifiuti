@@ -8,7 +8,7 @@ import { AvatarModule } from 'primeng/avatar'
 import { TooltipModule } from 'primeng/tooltip'
 import { SidebarModule } from 'primeng/sidebar'
 import { DropdownModule } from 'primeng/dropdown'
-import { MenuItem } from 'primeng/api'
+import { MenuItem, MessageService } from 'primeng/api'
 import { AuthService } from '../../core/services/auth.service'
 import { AdminTenantContextService } from '../../core/services/admin-tenant-context.service'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
@@ -1083,12 +1083,21 @@ export class LayoutComponent implements OnInit {
     { label: 'Trasportatori', route: '/trasportatori', icon: 'pi pi-truck' },
     { label: 'Destinatari', route: '/destinatari', icon: 'pi pi-inbox' },
   ]
-  readonly navImpostazioni: { label: string; route: string; icon: string; feature: string }[] = [
+  readonly navImpostazioni: {
+    label: string
+    route: string
+    icon: string
+    feature: string
+    adminOnly?: boolean
+  }[] = [
     {
       label: 'Certificato RENTRI',
       route: '/rentri/certificato',
       icon: 'pi pi-key',
       feature: 'rentri',
+      // La pagina del certificato RENTRI è riservata agli amministratori
+      // (il backend risponde 403 ai non-admin): nascondiamo la voce di menu.
+      adminOnly: true,
     },
     {
       label: 'Dati di riferimento',
@@ -1098,9 +1107,14 @@ export class LayoutComponent implements OnInit {
     },
   ]
 
-  /** Voci Impostazioni effettivamente visibili in base alle feature attive. */
+  /**
+   * Voci Impostazioni effettivamente visibili: filtrate per feature attiva e,
+   * per le voci `adminOnly`, per ruolo amministrativo (SUPER_ADMIN/ADMIN).
+   */
   readonly visibleImpostazioni = computed(() =>
-    this.navImpostazioni.filter(item => this.ff.has(item.feature))
+    this.navImpostazioni.filter(
+      item => this.ff.has(item.feature) && (!item.adminOnly || this.canSeeAdminSection())
+    )
   )
 
   /** Tenant accessibili dall'utente standard (GET /consultant/tenants). */
@@ -1156,7 +1170,8 @@ export class LayoutComponent implements OnInit {
 
   constructor(
     readonly authService: AuthService,
-    private readonly router: Router
+    private readonly router: Router,
+    private readonly messageService: MessageService
   ) {}
 
   ngOnInit(): void {
@@ -1232,7 +1247,14 @@ export class LayoutComponent implements OnInit {
           if (res?.refreshToken) localStorage.setItem('refreshToken', res.refreshToken)
           window.location.reload()
         },
-        error: () => console.error('Cambio azienda non riuscito'),
+        error: () => {
+          console.error('Cambio azienda non riuscito')
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Cambio azienda non riuscito',
+            detail: 'Impossibile cambiare azienda. Riprova più tardi.',
+          })
+        },
       })
   }
 

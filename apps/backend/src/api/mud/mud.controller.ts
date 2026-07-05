@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards, Req, Res } from '@nestjs/common'
+import { Controller, Get, Query, UseGuards, Req, Res, BadRequestException } from '@nestjs/common'
 import { Response } from 'express'
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -26,7 +26,7 @@ export class MudController {
   @ApiQuery({ name: 'year', required: true, type: Number, example: 2024 })
   async generateReport(@Req() req: any, @Query('year') year: string) {
     const tenantId = req.user.tenantId
-    const reportYear = parseInt(year, 10)
+    const reportYear = this.parseYear(year)
 
     return await this.mudGenerator.generateMUDReport(tenantId, reportYear)
   }
@@ -46,7 +46,7 @@ export class MudController {
     @Query('year') year: string
   ): Promise<void> {
     const tenantId = req.user.tenantId
-    const result = await this.mudExport.exportTelematico(tenantId, parseInt(year, 10))
+    const result = await this.mudExport.exportTelematico(tenantId, this.parseYear(year))
 
     res.setHeader('Content-Type', 'text/plain; charset=us-ascii')
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`)
@@ -58,6 +58,20 @@ export class MudController {
   @ApiOperation({ summary: 'Versioni tracciato MUD supportate (per anno)' })
   async exportVersions() {
     return { versions: this.mudExport.supportedVersions() }
+  }
+
+  /**
+   * Valida e converte il parametro `year`: obbligatorio e numerico.
+   * Manca o non numerico → 400.
+   */
+  private parseYear(year: string): number {
+    if (year === undefined || year === null || year === '') {
+      throw new BadRequestException('Parametro year obbligatorio')
+    }
+    if (!/^\d+$/.test(String(year).trim())) {
+      throw new BadRequestException(`Parametro year non valido: "${year}"`)
+    }
+    return parseInt(year, 10)
   }
 
   @Get('years')

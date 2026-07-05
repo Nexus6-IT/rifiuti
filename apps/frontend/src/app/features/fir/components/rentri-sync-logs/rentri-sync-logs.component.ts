@@ -46,14 +46,15 @@ import {
     <p-card>
       <ng-template pTemplate="header">
         <div class="flex justify-content-between align-items-center p-3">
-          <h3 class="m-0">RENTRI Sync Logs</h3>
+          <h3 class="m-0">Log sincronizzazione RENTRI</h3>
           <p-button
             icon="pi pi-refresh"
             [text]="true"
             [rounded]="true"
             (onClick)="loadLogs()"
             [loading]="loading()"
-            pTooltip="Refresh logs"
+            pTooltip="Aggiorna log"
+            ariaLabel="Aggiorna log"
           >
           </p-button>
         </div>
@@ -62,14 +63,14 @@ import {
       <!-- Filters -->
       <div class="grid mb-3">
         <div class="col-12 md:col-3">
-          <label for="status-filter" class="block mb-2">Status</label>
+          <label for="status-filter" class="block mb-2">Stato</label>
           <p-dropdown
             id="status-filter"
             [(ngModel)]="filters.status"
             [options]="statusOptions"
             optionLabel="label"
             optionValue="value"
-            placeholder="All statuses"
+            placeholder="Tutti gli stati"
             [showClear]="true"
             (onChange)="onFilterChange()"
             styleClass="w-full"
@@ -78,7 +79,7 @@ import {
         </div>
 
         <div class="col-12 md:col-3">
-          <label for="date-from" class="block mb-2">From Date</label>
+          <label for="date-from" class="block mb-2">Data da</label>
           <p-calendar
             id="date-from"
             [(ngModel)]="filters.dateFrom"
@@ -93,7 +94,7 @@ import {
         </div>
 
         <div class="col-12 md:col-3">
-          <label for="date-to" class="block mb-2">To Date</label>
+          <label for="date-to" class="block mb-2">Data a</label>
           <p-calendar
             id="date-to"
             [(ngModel)]="filters.dateTo"
@@ -109,7 +110,7 @@ import {
 
         <div class="col-12 md:col-3 flex align-items-end">
           <p-button
-            label="Reset Filters"
+            label="Azzera filtri"
             icon="pi pi-filter-slash"
             [text]="true"
             (onClick)="resetFilters()"
@@ -139,17 +140,17 @@ import {
         <ng-template pTemplate="header">
           <tr>
             <th pSortableColumn="createdAt">
-              Date
+              Data
               <p-sortIcon field="createdAt"></p-sortIcon>
             </th>
             @if (!firId) {
-              <th>FIR ID</th>
+              <th>ID FIR</th>
             }
-            <th>Status</th>
-            <th>Attempt</th>
-            <th>Protocol #</th>
-            <th>Duration</th>
-            <th>Error</th>
+            <th>Stato</th>
+            <th>Tentativo</th>
+            <th>N. protocollo</th>
+            <th>Durata</th>
+            <th>Errore</th>
           </tr>
         </ng-template>
 
@@ -201,7 +202,7 @@ import {
           <tr>
             <td [attr.colspan]="firId ? 6 : 7" class="text-center py-4">
               <i class="pi pi-info-circle text-2xl text-tertiary mb-2"></i>
-              <p class="text-tertiary m-0">No sync logs found</p>
+              <p class="text-tertiary m-0">Nessun log di sincronizzazione trovato</p>
             </td>
           </tr>
         </ng-template>
@@ -257,9 +258,9 @@ export class RENTRISyncLogsComponent implements OnInit {
 
   // Status filter options
   protected readonly statusOptions = [
-    { label: 'Success', value: 'SUCCESS' },
-    { label: 'Failure', value: 'FAILURE' },
-    { label: 'Pending', value: 'PENDING' },
+    { label: 'Successo', value: 'SUCCESS' },
+    { label: 'Fallito', value: 'FAILURE' },
+    { label: 'In attesa', value: 'PENDING' },
   ]
 
   ngOnInit(): void {
@@ -305,7 +306,9 @@ export class RENTRISyncLogsComponent implements OnInit {
       },
       error: error => {
         console.error('Error loading sync logs:', error)
-        this.errorMessage.set('Failed to load sync logs. Please try again.')
+        this.errorMessage.set(
+          'Impossibile caricare i log di sincronizzazione. Riprova.'
+        )
         this.loading.set(false)
       },
     })

@@ -34,6 +34,8 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { SpidLevelGuard } from '../../auth/guards/spid-level.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { ApplySignatureUseCase } from '../../application/signatures/apply-signature.use-case'
 import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case'
 import { DomainException } from '../../domain/shared/domain-exception'
@@ -68,7 +70,10 @@ export class SignaturesController {
    */
   @Post('sign')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard, SpidLevelGuard)
+  // Scrittura: solo ruoli operativi possono firmare (blocca VIEWER). RolesGuard
+  // legge user.role dal JWT; verify/verify-url restano pubblici (nessun guard).
+  @UseGuards(JwtAuthGuard, RolesGuard, SpidLevelGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Applica firma digitale al FIR',
@@ -101,21 +106,35 @@ export class SignaturesController {
     const spidLevel: number = user.spidLevel ?? acrLevel ?? 2
     const authenticatedAt: Date = user.authenticatedAt ? new Date(user.authenticatedAt) : new Date() // Sandbox: ora corrente come fallback
 
-    const result = await this.applySignatureUseCase.execute({
-      firId,
-      tenantId: user.tenantId,
-      userId: user.id, // UUID utente (per fir_signatures.user_id)
-      role: dto.role,
-      signerFiscalCode: user.fiscalCode ?? user.sub ?? 'SANDBOX000A00A000A',
-      signerName:
-        user.name ?? (`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Utente Sandbox'),
-      spidLevel,
-      authenticatedAt,
-    })
+    try {
+      const result = await this.applySignatureUseCase.execute({
+        firId,
+        tenantId: user.tenantId,
+        userId: user.id, // UUID utente (per fir_signatures.user_id)
+        role: dto.role,
+        signerFiscalCode: user.fiscalCode ?? user.sub ?? 'SANDBOX000A00A000A',
+        signerName:
+          user.name ??
+          (`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Utente Sandbox'),
+        spidLevel,
+        authenticatedAt,
+      })
 
-    return {
-      ...result,
-      message: `Firma ${dto.role} applicata (${result.signature.isQualified ? 'QUALIFICATA' : 'SANDBOX-NON-QUALIFICATA'})`,
+      return {
+        ...result,
+        message: `Firma ${dto.role} applicata (${result.signature.isQualified ? 'QUALIFICATA' : 'SANDBOX-NON-QUALIFICATA'})`,
+      }
+    } catch (error) {
+      // Le violazioni di dominio (FIR non trovato, ordine firma, firma duplicata,
+      // livello SPID) sono DomainException: senza mappatura degenererebbero in 500.
+      // NOT_FOUND → 404; ogni altra regola di business/validazione → 400.
+      if (error instanceof DomainException) {
+        if (error.code === 'NOT_FOUND') {
+          throw new NotFoundException(error.message)
+        }
+        throw new BadRequestException(error.message)
+      }
+      throw error
     }
   }
 

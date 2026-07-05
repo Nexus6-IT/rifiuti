@@ -23,16 +23,16 @@ export class GetProduttoreUseCase {
   ) {}
 
   async execute(command: GetProduttoreCommand): Promise<Result<Produttore>> {
-    try {
-      const produttore = await this.produttoreRepository.findById(command.id)
+    // Gli errori Prisma (es. P2023 su id non-UUID) NON vengono catturati qui:
+    // propagano al filtro globale delle eccezioni che li mappa (400) senza
+    // esporre dettagli interni. Catturarli e reinserire error.message nel
+    // Result causerebbe information disclosure.
+    const produttore = await this.produttoreRepository.findById(command.id)
 
-      if (!produttore) {
-        return Result.fail('Produttore not found')
-      }
-
-      return Result.ok(produttore)
-    } catch (error: any) {
-      return Result.fail(error.message)
+    if (!produttore) {
+      return Result.fail('Produttore not found')
     }
+
+    return Result.ok(produttore)
   }
 }

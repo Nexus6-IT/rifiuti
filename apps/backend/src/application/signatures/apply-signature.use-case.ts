@@ -24,7 +24,11 @@
 import { Injectable, Inject } from '@nestjs/common'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { FIRRepository, FIR_REPOSITORY } from '../../domain/fir/fir.repository'
-import { DigitalSignature, SignatureRole } from '../../domain/fir/digital-signature.vo'
+import {
+  DigitalSignature,
+  SignatureRole,
+  SignatureMethod,
+} from '../../domain/fir/digital-signature.vo'
 import { DigitalSignatureService } from './digital-signature.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { EventEmitter2 } from '@nestjs/event-emitter'
@@ -108,12 +112,17 @@ export class ApplySignatureUseCase {
     const signatureData = await this.signatureService.createSignature(firDocument, params.userId)
 
     // 6. Crea il Value Object DigitalSignature
+    //    Il DigitalSignature VO accetta solo l'algoritmo crittografico
+    //    ('ECDSA-SHA256'/'RSA-SHA256'). Il provider sandbox etichetta invece il
+    //    metodo come 'FIRMA-NON-QUALIFICATA' (label di qualificazione, non
+    //    algoritmo): normalizziamo all'algoritmo effettivo così il VO non rigetta
+    //    la firma. La non-qualificazione resta tracciata da isQualified=false.
     const signature = DigitalSignature.create({
       signerFiscalCode: params.signerFiscalCode,
       signerName: params.signerName,
       role: params.role,
       signatureValue: signatureData.signatureValue,
-      signatureMethod: signatureData.signatureMethod as any,
+      signatureMethod: this.toDomainSignatureMethod(signatureData.signatureMethod),
       certificateHash: signatureData.certificateHash,
       documentHash: signatureData.documentHash,
       publicKey: signatureData.publicKey,
@@ -152,5 +161,18 @@ export class ApplySignatureUseCase {
       firStatus: fir.getStatus(),
       isCompleted: fir.isImmutable(),
     }
+  }
+
+  /**
+   * Normalizza il metodo firma restituito dal provider all'algoritmo
+   * crittografico accettato dal DigitalSignature VO. Il sandbox restituisce
+   * 'FIRMA-NON-QUALIFICATA' (label di qualificazione): il suo algoritmo effettivo
+   * è ECDSA-SHA256, quindi è il default di fallback.
+   */
+  private toDomainSignatureMethod(providerMethod: string): SignatureMethod {
+    if (providerMethod === 'ECDSA-SHA256' || providerMethod === 'RSA-SHA256') {
+      return providerMethod
+    }
+    return 'ECDSA-SHA256'
   }
 }

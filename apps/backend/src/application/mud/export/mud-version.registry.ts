@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { MudTracciatoVersion } from './mud-export.types'
 import { MudTracciatoV604_2024 } from './versions/mud-tracciato-v604-2024'
 
@@ -21,8 +21,8 @@ export class MudVersionRegistry {
   getForYear(year: number): MudTracciatoVersion {
     const version = this.versions.find(v => v.year === year)
     if (!version) {
-      throw new Error(
-        `MUD: nessun tracciato disponibile per l'anno ${year}. Anni supportati: ${this.supportedYears().join(', ')}`
+      throw new NotFoundException(
+        `Versione tracciato MUD non disponibile per l'anno ${year}. Anni supportati: ${this.supportedYears().join(', ')}`
       )
     }
     return version

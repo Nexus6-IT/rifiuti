@@ -21,7 +21,6 @@ import {
   IsString,
   IsNotEmpty,
   IsNumber,
-  IsOptional,
   IsObject,
   Min,
   ValidateNested,
@@ -46,6 +45,8 @@ import { AnnullaFIRCommand } from '../../application/fir/commands/annulla-fir.co
 import { GetFIRByIdQuery } from '../../application/fir/queries/get-fir-by-id.query'
 import { ListFIRsQuery } from '../../application/fir/queries/list-firs.query'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { SubscriptionEnforcementService } from '../../application/billing/subscription-enforcement.service'
 
@@ -91,14 +92,20 @@ export class ConfermaConsegnaFIRDto {
 }
 
 export class AnnullaFIRDto {
+  // Un FIR è un documento legale: l'annullamento richiede sempre una motivazione
+  // (tracciabilità/audit). Campo obbligatorio non vuoto.
   @IsString()
-  @IsOptional()
-  motivo?: string
+  @IsNotEmpty()
+  motivo: string
 }
 
 @ApiTags('fir')
 @Controller('fir')
-@UseGuards(JwtAuthGuard)
+// RolesGuard oltre a JwtAuthGuard: le scritture (create/emetti/presa-in-carico/
+// conferma-consegna/annulla) richiedono un ruolo operativo tramite @Roles; le
+// letture (list/get) restano accessibili a qualsiasi utente autenticato (il
+// RolesGuard lascia passare i metodi privi di @Roles).
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class FIRControllerV2 {
   constructor(
@@ -113,6 +120,7 @@ export class FIRControllerV2 {
   ) {}
 
   @Post()
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Crea nuovo FIR in stato BOZZA',
@@ -237,6 +245,7 @@ export class FIRControllerV2 {
   }
 
   @Post(':id/emetti')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Emetti FIR',
@@ -266,6 +275,7 @@ export class FIRControllerV2 {
   }
 
   @Post(':id/presa-in-carico')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Presa in carico FIR',
@@ -299,6 +309,7 @@ export class FIRControllerV2 {
   }
 
   @Post(':id/conferma-consegna')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Conferma consegna FIR',
@@ -340,6 +351,7 @@ export class FIRControllerV2 {
   }
 
   @Post(':id/annulla')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Annulla FIR',
@@ -355,7 +367,7 @@ export class FIRControllerV2 {
     @Body() dto: AnnullaFIRDto,
     @CurrentUser() user: CurrentUserPayload
   ): Promise<FIRResponseDto> {
-    const command = new AnnullaFIRCommand(id, dto?.motivo ?? '', user.id)
+    const command = new AnnullaFIRCommand(id, dto.motivo, user.id)
 
     const result = await this.annullaFIRUseCase.execute(command)
 

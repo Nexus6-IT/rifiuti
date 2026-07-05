@@ -23,16 +23,16 @@ export class GetDestinatarioUseCase {
   ) {}
 
   async execute(command: GetDestinatarioCommand): Promise<Result<Destinatario>> {
-    try {
-      const destinatario = await this.destinatarioRepository.findById(command.id)
+    // Gli errori Prisma (es. P2023 su id non-UUID) NON vengono catturati qui:
+    // propagano al filtro globale delle eccezioni che li mappa (400) senza
+    // esporre dettagli interni. Catturarli e reinserire error.message nel
+    // Result causerebbe information disclosure.
+    const destinatario = await this.destinatarioRepository.findById(command.id)
 
-      if (!destinatario) {
-        return Result.fail('Destinatario not found')
-      }
-
-      return Result.ok(destinatario)
-    } catch (error: any) {
-      return Result.fail(error.message)
+    if (!destinatario) {
+      return Result.fail('Destinatario not found')
     }
+
+    return Result.ok(destinatario)
   }
 }

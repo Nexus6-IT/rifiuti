@@ -1,5 +1,9 @@
 import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common'
 import { Request, Response } from 'express'
+import {
+  PrismaClientKnownRequestError,
+  PrismaClientValidationError,
+} from '@prisma/client/runtime/library'
 import { LoggerService } from '../logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 
@@ -10,7 +14,12 @@ import { DomainException } from '../../domain/shared/domain-exception'
  * Handles:
  * - HTTP exceptions from NestJS
  * - Domain exceptions from business logic
+ * - Errori Prisma/database (mappati su status corretti, senza esporre dettagli interni)
  * - Unexpected errors
+ *
+ * Sicurezza (info-disclosure): il body di risposta NON contiene mai messaggi Prisma
+ * grezzi, stack trace o path assoluti di file. Gli errori non gestiti/DB restituiscono
+ * un messaggio generico in italiano; i dettagli restano solo nei log lato server.
  *
  * Response format:
  * ```json
@@ -65,10 +74,25 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = exception.message
       details = exception.metadata
     }
-    // Handle unexpected errors
+    // Handle Prisma known request errors (mapping su status corretti).
+    // NON esporre error.message (contiene dettagli interni di query/colonne).
+    else if (exception instanceof PrismaClientKnownRequestError) {
+      const mapped = this.mapPrismaKnownError(exception)
+      statusCode = mapped.statusCode
+      errorCode = mapped.errorCode
+      message = mapped.message
+    }
+    // Prisma validation error (es. argomenti/tipi non validi) → 400 generico.
+    else if (exception instanceof PrismaClientValidationError) {
+      statusCode = HttpStatus.BAD_REQUEST
+      errorCode = 'BAD_REQUEST'
+      message = 'Richiesta non valida: dati o formato non corretti.'
+    }
+    // Handle unexpected errors — messaggio generico, nessun leak di dettagli interni.
     else if (exception instanceof Error) {
-      message = exception.message
+      statusCode = HttpStatus.INTERNAL_SERVER_ERROR
       errorCode = 'INTERNAL_SERVER_ERROR'
+      message = 'Si è verificato un errore imprevisto. Riprova più tardi.'
     }
 
     // Log the error
@@ -98,6 +122,56 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     response.status(statusCode).json(errorResponse)
+  }
+
+  /**
+   * Mappa i codici errore Prisma noti su status HTTP corretti con messaggi
+   * generici in italiano (nessun dettaglio interno esposto al client).
+   */
+  private mapPrismaKnownError(error: PrismaClientKnownRequestError): {
+    statusCode: number
+    errorCode: string
+    message: string
+  } {
+    switch (error.code) {
+      case 'P2023': // Identificativo/colonna malformata (es. UUID non valido)
+        return {
+          statusCode: HttpStatus.BAD_REQUEST,
+          errorCode: 'BAD_REQUEST',
+          message: 'Identificativo o formato non valido.',
+        }
+      case 'P2025': // Record non trovato
+        return {
+          statusCode: HttpStatus.NOT_FOUND,
+          errorCode: 'NOT_FOUND',
+          message: 'Risorsa non trovata.',
+        }
+      case 'P2002': // Violazione vincolo di unicità
+        return {
+          statusCode: HttpStatus.CONFLICT,
+          errorCode: 'CONFLICT',
+          message: 'Esiste già un record con questi dati.',
+        }
+      case 'P2003': // Violazione vincolo di chiave esterna
+        return {
+          statusCode: HttpStatus.BAD_REQUEST,
+          errorCode: 'BAD_REQUEST',
+          message: 'Operazione non consentita: esistono record collegati.',
+        }
+      case 'P2014': // Violazione di relazione richiesta
+        return {
+          statusCode: HttpStatus.BAD_REQUEST,
+          errorCode: 'BAD_REQUEST',
+          message: 'Relazione non valida nella richiesta.',
+        }
+      default:
+        // Qualsiasi altro errore DB → 500 generico, dettagli solo nei log.
+        return {
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          errorCode: 'INTERNAL_SERVER_ERROR',
+          message: 'Si è verificato un errore del database.',
+        }
+    }
   }
 
   /**

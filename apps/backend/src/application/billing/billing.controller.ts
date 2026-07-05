@@ -29,6 +29,8 @@ import { Request, Response } from 'express'
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger'
 import { IsString, IsIn } from 'class-validator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { BillingService } from './billing.service'
 import { StripeService } from './stripe.service'
@@ -69,7 +71,8 @@ export class BillingController {
    * Restituisce l'URL di pagamento Stripe (null se Stripe non è abilitato → test mode).
    */
   @Post('checkout')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crea sessione checkout Stripe per upgrade piano' })
@@ -94,7 +97,8 @@ export class BillingController {
    * Crea una Stripe Billing Portal Session per la gestione self-service.
    */
   @Post('portal')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crea sessione Billing Portal Stripe' })

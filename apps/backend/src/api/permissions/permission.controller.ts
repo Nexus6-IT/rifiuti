@@ -28,7 +28,7 @@ export class PermissionController {
   @Get('my-permissions')
   async getMyPermissions(
     @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser('id') userId: string,
     @Query('includeTemp') includeTemp?: string
   ) {
     this.logger.debug(`Fetching permissions for user ${userId} in tenant ${tenantId}`)
@@ -52,7 +52,7 @@ export class PermissionController {
   @Get('me')
   async getPermissionsMe(
     @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser('id') userId: string,
     @Query('includeTemp') includeTemp?: string
   ) {
     return this.getMyPermissions(tenantId, userId, includeTemp)

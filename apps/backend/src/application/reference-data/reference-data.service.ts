@@ -33,12 +33,23 @@ export class ReferenceDataService {
   }
 
   searchNazioni(query: string, limit = 20) {
+    // Senza termine di ricerca ritorna l'elenco completo (come ateco/comuni),
+    // evitando il crash su query.toUpperCase() con q assente.
+    const q = query?.trim()
+    if (!q) {
+      return this.prisma.istatNazione.findMany({
+        take: limit,
+        orderBy: { name: 'asc' },
+      })
+    }
+
+    const upper = q.toUpperCase()
     return this.prisma.istatNazione.findMany({
       where: {
         OR: [
-          { code: { startsWith: query.toUpperCase() } },
-          { iso3: { startsWith: query.toUpperCase() } },
-          { name: { contains: query, mode: 'insensitive' } },
+          { code: { startsWith: upper } },
+          { iso3: { startsWith: upper } },
+          { name: { contains: q, mode: 'insensitive' } },
         ],
       },
       take: limit,
