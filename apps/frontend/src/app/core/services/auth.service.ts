@@ -22,7 +22,7 @@ export interface User {
   role?: string
 }
 
-interface AuthResponse {
+export interface AuthResponse {
   accessToken: string
   refreshToken: string
   user: User
