@@ -81,3 +81,11 @@ export function hasRoleCredentials(role: Role): boolean {
 export function hasAnyCredentials(): boolean {
   return (['admin', 'operator', 'viewer', 'superAdmin'] as Role[]).some(hasRoleCredentials)
 }
+
+/**
+ * URL della fake API RENTRI. Default locale: la fake non deve mai essere
+ * cercata su un host di produzione.
+ */
+export function getRentriFakeUrl(): string {
+  return process.env.E2E_RENTRI_FAKE_URL ?? 'http://localhost:4010'
+}
