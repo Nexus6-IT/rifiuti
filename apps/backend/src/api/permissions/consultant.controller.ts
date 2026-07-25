@@ -9,6 +9,7 @@ import {
   HttpStatus,
   UseGuards,
   Logger,
+  Inject,
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
@@ -52,6 +53,7 @@ export class ConsultantController {
     private readonly switchTenantContextHandler: SwitchTenantContextCommandHandler,
     private readonly getConsultantTenantsHandler: GetConsultantTenantsQueryHandler,
     private readonly getAggregatedDashboardHandler: GetAggregatedDashboardQueryHandler,
+    @Inject('ConsultantTenantAssociationRepository')
     private readonly consultantAssociationRepository: ConsultantTenantAssociationRepository
   ) {}
 
@@ -68,7 +70,7 @@ export class ConsultantController {
   @Get('tenants')
   @HttpCode(HttpStatus.OK)
   @AuditAction('list_consultant_tenants')
-  async listTenants(@CurrentUser('userId') userId: string) {
+  async listTenants(@CurrentUser('id') userId: string) {
     this.logger.log(`Consultant ${userId} fetching accessible tenants`)
 
     const query = new GetConsultantTenantsQuery(userId)
@@ -102,7 +104,7 @@ export class ConsultantController {
   @HttpCode(HttpStatus.OK)
   @AuditAction('switch_tenant_context')
   async switchTenant(
-    @CurrentUser('userId') userId: string,
+    @CurrentUser('id') userId: string,
     @CurrentTenant() sourceTenantId: string,
     @Body('targetTenantId') targetTenantId: string
   ) {
@@ -137,7 +139,7 @@ export class ConsultantController {
   @Get('dashboard')
   @HttpCode(HttpStatus.OK)
   @AuditAction('view_consultant_dashboard')
-  async getDashboard(@CurrentUser('userId') userId: string) {
+  async getDashboard(@CurrentUser('id') userId: string) {
     this.logger.log(`Consultant ${userId} fetching aggregated dashboard`)
 
     const query = new GetAggregatedDashboardQuery(userId)
@@ -165,7 +167,7 @@ export class ConsultantController {
   @AuditAction('associate_consultant_with_tenant')
   async associateConsultant(
     @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') adminUserId: string,
+    @CurrentUser('id') adminUserId: string,
     @Body('consultantUserId') consultantUserId: string,
     @Body('roleId') roleId: string,
     @Body('expiresAt') expiresAt?: string
@@ -217,7 +219,7 @@ export class ConsultantController {
   async removeAssociation(
     @Param('id') associationId: string,
     @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') adminUserId: string
+    @CurrentUser('id') adminUserId: string
   ) {
     this.logger.log(`Admin ${adminUserId} removing consultant association ${associationId}`)
 

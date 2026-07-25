@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Inject,
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
@@ -22,6 +23,60 @@ import { RevokeRoleCommandHandler } from '../../application/commands/handlers/re
 import { AssignRoleCommand } from '../../application/commands/assign-role.command'
 import { RevokeRoleCommand } from '../../application/commands/revoke-role.command'
 import { UserRoleRepository } from '../../domain/identity-access/user-role.repository.interface'
+import { IsUUID, IsOptional, IsISO8601, IsArray, IsBoolean, IsString } from 'class-validator'
+
+/**
+ * DTO per l'assegnazione di un ruolo.
+ *
+ * NOTA (corretto in P4, 2026-07-25): il global `ValidationPipe` in main.ts usa
+ * `whitelist: true, forbidNonWhitelisted: true`. Per una classe DTO reale (a
+ * differenza dei body tipizzati come oggetto letterale, ignorati dalla
+ * validazione perché privi di metadata di classe), class-validator considera
+ * "sconosciuta" ogni proprietà priva di un decoratore — e la STRIPPA. Prima di
+ * questa correzione `AssignRoleDto` non aveva NESSUN decoratore: ogni body
+ * arrivava svuotato di userId/roleId/etc. e la richiesta falliva con 400
+ * "property X should not exist" per ogni campo, indipendentemente da chi la
+ * chiamasse. Aggiunti i decoratori minimi coerenti con l'uso già fatto nel
+ * resto del backend (vedi api/admin/dto/create-user.dto.ts).
+ *
+ * NOTA sull'ordine: deve restare dichiarata PRIMA di UserRoleController.
+ * `emitDecoratorMetadata` genera un riferimento runtime a questa classe per
+ * la firma di `assignRole` (`design:paramtypes`), valutato quando i
+ * decoratori del metodo vengono applicati — cioè durante l'esecuzione del
+ * corpo della classe controller. Se `AssignRoleDto` fosse dichiarata dopo
+ * (come lo era in origine), quel riferimento cadrebbe nella temporal dead
+ * zone della `class` (hoisted ma non inizializzata) e il modulo lancerebbe
+ * `ReferenceError: Cannot access 'AssignRoleDto' before initialization` al
+ * bootstrap — impedendo la registrazione dell'intero controller.
+ */
+export class AssignRoleDto {
+  @IsUUID()
+  userId: string
+
+  @IsUUID()
+  roleId: string
+
+  @IsOptional()
+  @IsISO8601()
+  expiresAt?: string // ISO 8601 date string
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  facilityIds?: string[]
+
+  @IsOptional()
+  @IsBoolean()
+  isDelegated?: boolean
+
+  @IsOptional()
+  @IsString()
+  delegationReason?: string
+
+  @IsOptional()
+  @IsBoolean()
+  replaceExisting?: boolean
+}
 
 /**
  * UserRoleController
@@ -41,22 +96,29 @@ export class UserRoleController {
   constructor(
     private readonly assignRoleHandler: AssignRoleCommandHandler,
     private readonly revokeRoleHandler: RevokeRoleCommandHandler,
-    private readonly userRoleRepository: UserRoleRepository
+    @Inject('UserRoleRepository') private readonly userRoleRepository: UserRoleRepository
   ) {}
 
   /**
    * POST /api/v1/user-roles/assign
    * Assign a role to a user
-   * Requires: user:manage permission
+   * Requires: user:manage-roles:all permission
+   *
+   * NOTA (corretto in P4, 2026-07-25): il decoratore richiedeva
+   * 'user:manage:all', stringa che non esiste nel catalogo permessi seedato
+   * (prisma/seeds/permissions.seed.ts definisce 'user:manage-roles:all' —
+   * "Assign and revoke user roles" — mai 'user:manage:all'). Nessun ruolo
+   * poteva quindi mai soddisfare il controllo: l'endpoint era irraggiungibile
+   * per chiunque, ADMIN incluso, indipendentemente dal wiring del modulo.
    */
   @Post('assign')
   @HttpCode(HttpStatus.CREATED)
-  @RequirePermission('user:manage:all')
+  @RequirePermission('user:manage-roles:all')
   @AuditAction('assign_role')
   async assignRole(
     @Body() dto: AssignRoleDto,
     @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') currentUserId: string
+    @CurrentUser('id') currentUserId: string
   ) {
     this.logger.log(`Assigning role ${dto.roleId} to user ${dto.userId} in tenant ${tenantId}`)
 
@@ -95,12 +157,12 @@ export class UserRoleController {
    */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermission('user:manage:all')
+  @RequirePermission('user:manage-roles:all')
   @AuditAction('revoke_role')
   async revokeRole(
     @Param('id') userRoleId: string,
     @CurrentTenant() tenantId: string,
-    @CurrentUser('userId') currentUserId: string
+    @CurrentUser('id') currentUserId: string
   ) {
     this.logger.log(`Revoking user role assignment ${userRoleId} in tenant ${tenantId}`)
 
@@ -137,17 +199,4 @@ export class UserRoleController {
       })),
     }
   }
-}
-
-/**
- * DTO for role assignment
- */
-export class AssignRoleDto {
-  userId: string
-  roleId: string
-  expiresAt?: string // ISO 8601 date string
-  facilityIds?: string[]
-  isDelegated?: boolean
-  delegationReason?: string
-  replaceExisting?: boolean
 }

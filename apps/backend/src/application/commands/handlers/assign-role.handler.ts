@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Inject,
   Logger,
   NotFoundException,
   ForbiddenException,
@@ -34,8 +35,8 @@ export class AssignRoleCommandHandler {
   private readonly logger = new Logger(AssignRoleCommandHandler.name)
 
   constructor(
-    private readonly roleRepository: RoleRepository,
-    private readonly userRoleRepository: UserRoleRepository,
+    @Inject('RoleRepository') private readonly roleRepository: RoleRepository,
+    @Inject('UserRoleRepository') private readonly userRoleRepository: UserRoleRepository,
     private readonly permissionCache: PermissionCacheService,
     private readonly redisPubSub: RedisPubSubService,
     private readonly prisma: PrismaService,

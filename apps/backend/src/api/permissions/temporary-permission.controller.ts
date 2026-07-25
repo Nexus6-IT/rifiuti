@@ -8,6 +8,7 @@ import {
   Logger,
   HttpCode,
   HttpStatus,
+  Inject,
 } from '@nestjs/common'
 import { CommandBus } from '@nestjs/cqrs'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -43,6 +44,7 @@ export class TemporaryPermissionController {
 
   constructor(
     private readonly commandBus: CommandBus,
+    @Inject('TemporaryPermissionGrantRepository')
     private readonly grantRepository: TemporaryPermissionGrantRepository
   ) {}
 
@@ -64,10 +66,10 @@ export class TemporaryPermissionController {
       justification: string
     }
   ) {
-    this.logger.log(`User ${user.userId} requesting temporary permissions`)
+    this.logger.log(`User ${user.id} requesting temporary permissions`)
 
     const command = new RequestTemporaryPermissionCommand(
-      user.userId,
+      user.id,
       tenantId,
       body.permissions,
       new Date(body.startTime),
@@ -136,14 +138,9 @@ export class TemporaryPermissionController {
     @CurrentUser() user: any,
     @Body() body: { reason: string }
   ) {
-    this.logger.log(`Admin ${user.userId} approving grant ${grantId}`)
+    this.logger.log(`Admin ${user.id} approving grant ${grantId}`)
 
-    const command = new ApproveTemporaryPermissionCommand(
-      grantId,
-      tenantId,
-      user.userId,
-      body.reason
-    )
+    const command = new ApproveTemporaryPermissionCommand(grantId, tenantId, user.id, body.reason)
 
     const grant = await this.commandBus.execute(command)
 
@@ -173,14 +170,9 @@ export class TemporaryPermissionController {
     @CurrentUser() user: any,
     @Body() body: { reason: string }
   ) {
-    this.logger.log(`Admin ${user.userId} rejecting grant ${grantId}`)
+    this.logger.log(`Admin ${user.id} rejecting grant ${grantId}`)
 
-    const command = new RejectTemporaryPermissionCommand(
-      grantId,
-      tenantId,
-      user.userId,
-      body.reason
-    )
+    const command = new RejectTemporaryPermissionCommand(grantId, tenantId, user.id, body.reason)
 
     const grant = await this.commandBus.execute(command)
 
@@ -211,14 +203,9 @@ export class TemporaryPermissionController {
     @CurrentUser() user: any,
     @Body() body: { reason: string }
   ) {
-    this.logger.log(`Admin ${user.userId} revoking grant ${grantId}`)
+    this.logger.log(`Admin ${user.id} revoking grant ${grantId}`)
 
-    const command = new RevokeTemporaryPermissionCommand(
-      grantId,
-      tenantId,
-      user.userId,
-      body.reason
-    )
+    const command = new RevokeTemporaryPermissionCommand(grantId, tenantId, user.id, body.reason)
 
     const grant = await this.commandBus.execute(command)
 
@@ -241,9 +228,9 @@ export class TemporaryPermissionController {
    */
   @Get('my-grants')
   async listMyGrants(@CurrentTenant() tenantId: string, @CurrentUser() user: any) {
-    this.logger.log(`User ${user.userId} fetching their grants`)
+    this.logger.log(`User ${user.id} fetching their grants`)
 
-    const grants = await this.grantRepository.findAllByUser(user.userId, tenantId, 50)
+    const grants = await this.grantRepository.findAllByUser(user.id, tenantId, 50)
 
     return {
       success: true,

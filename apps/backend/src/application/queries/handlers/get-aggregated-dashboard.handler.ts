@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Inject, Logger } from '@nestjs/common'
 import { GetAggregatedDashboardQuery } from '../get-aggregated-dashboard.query'
 import { ConsultantTenantAssociationRepository } from '../../../domain/identity-access/consultant-tenant-association.repository.interface'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
@@ -32,6 +32,7 @@ export class GetAggregatedDashboardQueryHandler {
   private readonly logger = new Logger(GetAggregatedDashboardQueryHandler.name)
 
   constructor(
+    @Inject('ConsultantTenantAssociationRepository')
     private readonly consultantAssociationRepository: ConsultantTenantAssociationRepository,
     private readonly prisma: PrismaService
   ) {}

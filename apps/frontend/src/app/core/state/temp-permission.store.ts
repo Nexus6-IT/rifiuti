@@ -116,52 +116,102 @@ export const TempPermissionStore = signalStore(
   withMethods((store, http = inject(HttpClient)) => ({
     /**
      * Load temporary permission grants for current user
+     *
+     * NOTA (corretto in P4, 2026-07-25): chiamava `GET /api/v1/temp-permissions/me`,
+     * rotta che il backend non ha mai servito (TemporaryPermissionController è
+     * montato su `/api/v1/permissions` con endpoint `my-grants`, non
+     * `temp-permissions/me`) — 404 costante. La forma della risposta del
+     * backend differisce inoltre da `TempPermissionGrant` (es. `justification`
+     * invece di `businessJustification`, `approvedBy` invece di `grantedBy`,
+     * nessun campo `autoRevoked`): qui si adatta la risposta reale al modello
+     * di store esistente invece di inventare nuovi endpoint o cambiare la
+     * shape lato backend.
      */
     loadGrants: rxMethod<void>(
       pipe(
         tap(() => patchState(store, { isLoading: true, error: null })),
         switchMap(() =>
-          http.get<{ grants: TempPermissionGrant[] }>('/api/v1/temp-permissions/me').pipe(
-            tapResponse({
-              next: response => {
-                // Enrich grants with computed properties
-                const now = new Date()
-                const enrichedGrants = response.grants.map(grant => {
-                  const endTime = new Date(grant.endTime)
-                  const isActive = !grant.revokedAt && endTime.getTime() > now.getTime()
-                  const remainingMinutes = isActive
-                    ? Math.floor((endTime.getTime() - now.getTime()) / 60000)
-                    : 0
+          http
+            .get<{
+              success: boolean
+              data: {
+                grants: Array<{
+                  id: string
+                  permissions: string[]
+                  startTime: string
+                  endTime: string
+                  justification: string
+                  status: 'pending' | 'approved' | 'rejected' | 'revoked'
+                  requestedAt: string
+                  approvedBy?: string
+                  approvedAt?: string
+                  approvalReason?: string
+                  isActive: boolean
+                  isExpired: boolean
+                }>
+                total: number
+              }
+            }>('/api/v1/permissions/my-grants')
+            .pipe(
+              tapResponse({
+                next: response => {
+                  // Adatta la shape del backend (TemporaryPermissionController)
+                  // al modello TempPermissionGrant usato dallo store/direttive.
+                  const now = new Date()
+                  const enrichedGrants: TempPermissionGrant[] = response.data.grants.map(grant => {
+                    const endTime = new Date(grant.endTime)
+                    const isActive = grant.status === 'approved' && !grant.isExpired
+                    const remainingMinutes = isActive
+                      ? Math.max(0, Math.floor((endTime.getTime() - now.getTime()) / 60000))
+                      : 0
 
-                  return {
-                    ...grant,
-                    isActive,
-                    remainingMinutes,
-                  }
-                })
+                    return {
+                      id: grant.id,
+                      userId: '', // non presente nella risposta di /my-grants (implicito: utente corrente)
+                      permissions: grant.permissions,
+                      startTime: grant.startTime,
+                      endTime: grant.endTime,
+                      grantedBy: grant.approvedBy || '',
+                      businessJustification: grant.justification,
+                      autoRevoked: grant.status === 'revoked',
+                      revokedAt: grant.status === 'revoked' ? grant.approvedAt || null : null,
+                      isActive,
+                      remainingMinutes,
+                    }
+                  })
 
-                patchState(store, {
-                  grants: enrichedGrants,
-                  isLoading: false,
-                  error: null,
-                  lastFetchedAt: Date.now(),
-                })
-              },
-              error: (error: Error) => {
-                console.error('Failed to load temp permissions:', error)
-                patchState(store, {
-                  isLoading: false,
-                  error: error.message || 'Failed to load temp permissions',
-                })
-              },
-            })
-          )
+                  patchState(store, {
+                    grants: enrichedGrants,
+                    isLoading: false,
+                    error: null,
+                    lastFetchedAt: Date.now(),
+                  })
+                },
+                error: (error: Error) => {
+                  console.error('Failed to load temp permissions:', error)
+                  patchState(store, {
+                    isLoading: false,
+                    error: error.message || 'Failed to load temp permissions',
+                  })
+                },
+              })
+            )
         )
       )
     ),
 
     /**
      * Request new temporary permission grant
+     *
+     * NOTA (diagnosi P4, 2026-07-25, NON corretto qui): chiama ancora
+     * `/api/v1/temp-permissions/request`, rotta inesistente lato backend
+     * (l'endpoint reale è `POST /api/v1/permissions/request`). Non ha
+     * consumer nel codice attuale (nessun componente chiama
+     * `store.requestGrant(...)` — verificato via grep), quindi non è
+     * raggiungibile da nessuna pagina instradata: lasciato inalterato per
+     * restare nel perimetro "cablaggio", ma segnalato perché se in futuro
+     * qualcuno lo richiama si romperà. Il percorso corretto già funzionante è
+     * `TemporaryPermissionApiService` (usato da `my-grants.component.ts`).
      */
     requestGrant: rxMethod<{
       permissions: string[]

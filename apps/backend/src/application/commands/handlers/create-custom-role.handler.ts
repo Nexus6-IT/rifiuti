@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common'
+import { Injectable, Inject, Logger, BadRequestException } from '@nestjs/common'
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 import { CreateCustomRoleCommand } from '../create-custom-role.command'
 import { RoleRepository } from '../../../domain/identity-access/role.repository.interface'
@@ -44,7 +44,7 @@ export class CreateCustomRoleCommandHandler implements ICommandHandler<CreateCus
   private readonly VALID_SCOPES = ['own', 'facility', 'all']
 
   constructor(
-    private readonly roleRepository: RoleRepository,
+    @Inject('RoleRepository') private readonly roleRepository: RoleRepository,
     private readonly permissionCache: PermissionCacheService,
     private readonly redisPubSub: RedisPubSubService
   ) {}

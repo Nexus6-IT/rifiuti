@@ -11,6 +11,7 @@ import {
   NotFoundException,
   HttpCode,
   HttpStatus,
+  Inject,
 } from '@nestjs/common'
 import { CommandBus } from '@nestjs/cqrs'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -39,8 +40,8 @@ export class RoleController {
   private readonly logger = new Logger(RoleController.name)
 
   constructor(
-    private readonly roleRepository: RoleRepository,
-    private readonly permissionRepository: PermissionRepository,
+    @Inject('RoleRepository') private readonly roleRepository: RoleRepository,
+    @Inject('PermissionRepository') private readonly permissionRepository: PermissionRepository,
     private readonly commandBus: CommandBus,
     private readonly prisma: PrismaService
   ) {}
@@ -146,7 +147,7 @@ export class RoleController {
       body.name,
       body.description,
       body.permissions,
-      user.userId
+      user.id
     )
 
     const role = await this.commandBus.execute(command)
@@ -195,7 +196,7 @@ export class RoleController {
       body.name,
       body.description,
       body.permissions,
-      user.userId
+      user.id
     )
 
     const role = await this.commandBus.execute(command)
@@ -231,7 +232,7 @@ export class RoleController {
   ) {
     this.logger.log(`Deleting custom role ${roleId} for tenant ${tenantId}`)
 
-    const command = new DeleteCustomRoleCommand(roleId, tenantId, user.userId)
+    const command = new DeleteCustomRoleCommand(roleId, tenantId, user.id)
 
     await this.commandBus.execute(command)
 
@@ -274,7 +275,7 @@ export class RoleController {
       undefined,
       undefined,
       mergedPermissions,
-      user.userId
+      user.id
     )
 
     const updatedRole = await this.commandBus.execute(command)
@@ -328,7 +329,7 @@ export class RoleController {
       undefined,
       undefined,
       filteredPermissions,
-      user.userId
+      user.id
     )
 
     const updatedRole = await this.commandBus.execute(command)
