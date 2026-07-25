@@ -93,6 +93,24 @@ jobs:
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
         run: npm run test:cov
 
+      # Test di CONFORMITA' contro la fake API RENTRI (tools/rentri-fake).
+      # Sono l'unica prova che il client parli davvero il protocollo dell'ente
+      # (auth ID_AUTH_REST_02, ciclo 202/200/303, 403 non ritentato): senza
+      # questo passo resterebbero scritti e mai eseguiti.
+      # `tools/*` NON e' un workspace npm, quindi `npm ci` alla radice non
+      # installa le dipendenze della fake: vanno installate qui, altrimenti le
+      # suite non partono affatto ("Test suite failed to run").
+      - name: Install dipendenze fake RENTRI (oracolo di conformita')
+        working-directory: tools/rentri-fake
+        run: npm ci
+
+      - name: Test di conformita' RENTRI contro l'oracolo
+        working-directory: apps/backend
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
+        run: npm run test:oracolo
+
       # Build backend (stesso percorso usato dal Dockerfile.prod).
       - name: Build backend (nest build)
         working-directory: apps/backend
