@@ -2,6 +2,17 @@ module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: 'src',
   testRegex: '.*\\.spec\\.ts$',
+  // Le spec `*.oracolo.spec.ts` sono test di INTEGRAZIONE contro la fake API
+  // RENTRI (`tools/rentri-fake`): fanno require del sorgente della fake, quindi
+  // richiedono le sue dipendenze (fastify, jose, node-forge, jszip...).
+  // `tools/*` NON e' un workspace npm, percio' `npm ci` alla radice non le
+  // installa e in CI quelle suite non partono affatto ("Test suite failed to
+  // run") — mentre in locale passano se qualcuno ha installato la fake a mano.
+  // Restano ESCLUSE dalla suite unitaria ed ESEGUITE da `npm run test:oracolo`,
+  // che la CI lancia in un passo dedicato dopo aver installato la fake: la
+  // prova di conformita' non va persa, va solo eseguita dove ha le sue
+  // dipendenze.
+  testPathIgnorePatterns: ['\\.oracolo\\.spec\\.ts$'],
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
