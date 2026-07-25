@@ -1,6 +1,21 @@
-import { RENTRIApiClient } from './rentri-api.client'
+import { RENTRIApiClient, RentriApiError } from './rentri-api.client'
 import { of, throwError } from 'rxjs'
 import { AxiosResponse } from 'axios'
+
+/** Costruisce un errore axios-like con corpo `application/problem+json`. */
+function erroreProblemDetails(
+  status: number,
+  problema: { title?: string; detail?: string } = {},
+  headers: Record<string, string> = {}
+) {
+  return {
+    response: {
+      status,
+      data: { status, ...problema },
+      headers,
+    },
+  }
+}
 
 /**
  * Integration tests for RENTRI API Client
@@ -719,6 +734,144 @@ describe('RENTRIApiClient', () => {
   })
 
   /**
+   * Task 4 (P2): gestione degli errori RENTRI dichiarati dal contratto per
+   * `creaFormulario`/`leggiFormulario` (403/429/423/5xx, `ProblemDetails`).
+   * Le attese di backoff usano i fake timers di Jest: nessun test aspetta
+   * realmente secondi di wall-clock.
+   */
+  describe('resilienza — creaFormulario/leggiFormulario', () => {
+    beforeEach(() => {
+      mockConfig.mode = 'live'
+      mockConfig.baseUrl = 'https://demoapi.rentri.gov.it'
+      jest.useFakeTimers()
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('403 — non ritenta: un solo tentativo, errore definitivo con title/detail dal ProblemDetails', async () => {
+      mockHttpService.post.mockReturnValue(
+        throwError(() =>
+          erroreProblemDetails(403, {
+            title: 'Operazione non consentita',
+            detail: 'Certificato non riconosciuto',
+          })
+        )
+      )
+
+      const promessa = client.creaFormulario('tenant-1', { dati: 'x' })
+      await expect(promessa).rejects.toThrow(RentriApiError)
+      await promessa.catch((errore: RentriApiError) => {
+        expect(errore.status).toBe(403)
+        expect(errore.retryable).toBe(false)
+        expect(errore.problemTitle).toBe('Operazione non consentita')
+        expect(errore.problemDetail).toBe('Certificato non riconosciuto')
+      })
+
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
+    it("429 con Retry-After: ritenta rispettando l'header e alla fine riesce", async () => {
+      const successResponse: AxiosResponse = {
+        data: { transazione_id: 'tx-429' },
+        status: 202,
+        statusText: 'Accepted',
+        headers: { location: '/formulari/v1.0/tx-429/status' },
+        config: {} as any,
+      }
+
+      mockHttpService.post
+        .mockReturnValueOnce(
+          throwError(() =>
+            erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+          )
+        )
+        .mockReturnValueOnce(
+          throwError(() =>
+            erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+          )
+        )
+        .mockReturnValueOnce(of(successResponse))
+
+      const promessa = client.creaFormulario('tenant-1', { dati: 'x' })
+      // Due attese da 5s (Retry-After) prima del successo al 3° tentativo.
+      await jest.advanceTimersByTimeAsync(5000)
+      await jest.advanceTimersByTimeAsync(5000)
+
+      const risultato = await promessa
+      expect(risultato.transazioneId).toBe('tx-429')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(3)
+    })
+
+    it('423 (risorsa bloccata): ritenta con backoff esponenziale e alla fine riesce', async () => {
+      const successResponse: AxiosResponse = {
+        data: { transazione_id: 'tx-423' },
+        status: 202,
+        statusText: 'Accepted',
+        headers: { location: '/formulari/v1.0/tx-423/status' },
+        config: {} as any,
+      }
+
+      mockHttpService.post
+        .mockReturnValueOnce(
+          throwError(() => erroreProblemDetails(423, { title: 'Risorsa bloccata' }))
+        )
+        .mockReturnValueOnce(of(successResponse))
+
+      const promessa = client.creaFormulario('tenant-1', { dati: 'x' })
+      await jest.advanceTimersByTimeAsync(1000) // backoff esponenziale, 1° tentativo: base 1000ms
+
+      const risultato = await promessa
+      expect(risultato.transazioneId).toBe('tx-423')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(2)
+    })
+
+    it('5xx: ritenta con backoff esponenziale e alla fine riesce', async () => {
+      const successResponse: AxiosResponse = {
+        data: { stato_formulario: 'InserimentoQuantita' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
+      }
+
+      mockHttpService.get
+        .mockReturnValueOnce(
+          throwError(() => erroreProblemDetails(503, { title: 'Servizio non disponibile' }))
+        )
+        .mockReturnValueOnce(of(successResponse))
+
+      const promessa = client.leggiFormulario('tenant-1', 'BCDFGH00001JK')
+      await jest.advanceTimersByTimeAsync(1000)
+
+      const risultato = await promessa
+      expect((risultato as any).stato_formulario).toBe('InserimentoQuantita')
+      expect(mockHttpService.get).toHaveBeenCalledTimes(2)
+    })
+
+    it('esaurisce i tentativi su un 429 persistente: solleva RentriApiError retryable', async () => {
+      mockHttpService.post.mockReturnValue(
+        throwError(() =>
+          erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '0' })
+        )
+      )
+
+      const promessa = client.creaFormulario('tenant-1', { dati: 'x' })
+      const assertion = expect(promessa).rejects.toThrow(RentriApiError)
+      await jest.runAllTimersAsync()
+      await assertion
+
+      await promessa.catch((errore: RentriApiError) => {
+        expect(errore.retryable).toBe(true)
+        expect(errore.status).toBe(429)
+      })
+
+      expect(mockHttpService.post).toHaveBeenCalledTimes(5) // MAX_TENTATIVI_RESILIENZA
+    })
+  })
+
+  /**
    * Ciclo NONBLOCK_PULL (formulari.yaml righe 2801-2897): `GET /status`
    * risponde 200 senza corpo finché l'elaborazione è in corso e 303 con
    * header `Location` quando l'esito è pronto; `GET /result` risponde 400
@@ -748,6 +901,21 @@ describe('RENTRIApiClient', () => {
         status,
         statusText: '',
         headers: {},
+        config: {} as any,
+      }
+    }
+
+    /** Risposta di errore RENTRI (`ProblemDetails`) con header opzionali (es. `Retry-After`). */
+    function resultResponseConHeader(
+      status: number,
+      problema: { title?: string; detail?: string },
+      headers: Record<string, string> = {}
+    ): AxiosResponse {
+      return {
+        data: { status, ...problema },
+        status,
+        statusText: '',
+        headers,
         config: {} as any,
       }
     }
@@ -835,6 +1003,78 @@ describe('RENTRIApiClient', () => {
       const esito = await client.attendiEsito('tenant-1', 'tx-5')
 
       expect(esito).toEqual({ errore: false, validazione: [] })
+    })
+
+    /**
+     * Task 4 (P2): 403/429/423/5xx durante il polling `/status`/`/result`.
+     * Qui `httpService.get` risolve (mai un errore axios) perché il client
+     * usa `validateStatus: () => true`: la classificazione avviene quindi
+     * sullo `status` della risposta, non su un'eccezione.
+     */
+    describe('resilienza — 403/429/423/5xx durante il polling', () => {
+      beforeEach(() => {
+        jest.useFakeTimers()
+      })
+
+      afterEach(() => {
+        jest.useRealTimers()
+      })
+
+      it('403 su /status: non ritenta, errore definitivo', async () => {
+        mockHttpService.get.mockReturnValue(
+          of(resultResponseConHeader(403, { title: 'Operazione non consentita' }))
+        )
+
+        const promessa = client.attendiEsito('tenant-1', 'tx-403', {
+          intervalloMs: 0,
+          maxTentativi: 5,
+        })
+        await expect(promessa).rejects.toThrow(RentriApiError)
+        await promessa.catch((errore: RentriApiError) => {
+          expect(errore.retryable).toBe(false)
+          expect(errore.status).toBe(403)
+        })
+
+        expect(mockHttpService.get).toHaveBeenCalledTimes(1)
+      })
+
+      it('429 su /status con Retry-After: ritenta e alla fine legge lo stato pronto', async () => {
+        mockHttpService.get
+          .mockReturnValueOnce(
+            of(resultResponseConHeader(429, { title: 'Troppe richieste' }, { 'retry-after': '5' }))
+          )
+          .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-429/result')))
+          .mockReturnValueOnce(of(resultResponse(200, { errore: false, validazione: [] })))
+
+        const promessa = client.attendiEsito('tenant-1', 'tx-429', {
+          intervalloMs: 0,
+          maxTentativi: 5,
+        })
+        await jest.advanceTimersByTimeAsync(5000)
+
+        const esito = await promessa
+        expect(esito).toEqual({ errore: false, validazione: [] })
+        expect(mockHttpService.get).toHaveBeenCalledTimes(3)
+      })
+
+      it("503 su /result: ritenta con backoff esponenziale e alla fine legge l'esito", async () => {
+        mockHttpService.get
+          .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-503/result')))
+          .mockReturnValueOnce(
+            of(resultResponseConHeader(503, { title: 'Servizio non disponibile' }))
+          )
+          .mockReturnValueOnce(of(resultResponse(200, { errore: false, validazione: [] })))
+
+        const promessa = client.attendiEsito('tenant-1', 'tx-503', {
+          intervalloMs: 0,
+          maxTentativi: 5,
+        })
+        await jest.advanceTimersByTimeAsync(1000)
+
+        const esito = await promessa
+        expect(esito).toEqual({ errore: false, validazione: [] })
+        expect(mockHttpService.get).toHaveBeenCalledTimes(3)
+      })
     })
   })
 

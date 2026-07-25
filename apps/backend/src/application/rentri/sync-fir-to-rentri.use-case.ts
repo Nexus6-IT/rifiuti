@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainEventsService } from '../../core/domain-events.service'
 import { DomainException } from '../../domain/shared/domain-exception'
+import { RentriApiError } from '../../infrastructure/rentri/rentri-api.client'
 
 /**
  * Sync FIR to RENTRI Use Case
@@ -158,15 +159,30 @@ export class SyncFIRToRENTRIUseCase {
           }
         }
       } catch (apiError: any) {
-        // API error - will retry
-        const errorMessage = apiError.message || 'RENTRI API error'
+        // 403 (RentriApiError.retryable === false): credenziale non valida o
+        // operazione non consentita. Ritentare non ha senso — la credenziale
+        // resterà invalida al tentativo successivo — quindi l'esito è
+        // SEMPRE definitivo, indipendentemente da fir.needsRENTRIRetry().
+        // Per ogni altro errore (rete/timeout, o un RentriApiError con
+        // retryable === true dopo l'esaurimento dei tentativi di resilienza
+        // del client) resta valida la semantica precedente: retry-abile.
+        const nonRitentabile = apiError instanceof RentriApiError && !apiError.retryable
 
-        fir.markRENTRISyncFailed(errorMessage, 'RENTRI_API_ERROR', correlationId)
+        // Solo title/detail del ProblemDetails finiscono nel messaggio (log +
+        // log di sincronizzazione): mai il corpo grezzo della risposta RENTRI.
+        const errorMessage =
+          apiError instanceof RentriApiError
+            ? (apiError.problemDetail ?? apiError.problemTitle ?? apiError.message)
+            : apiError.message || 'RENTRI API error'
+
+        const errorCode = nonRitentabile ? 'RENTRI_FORBIDDEN' : 'RENTRI_API_ERROR'
+
+        fir.markRENTRISyncFailed(errorMessage, errorCode, correlationId)
 
         const duration = Date.now() - startTime
         const failureLog = syncLog.markAsFailure({
           errorMessage,
-          errorCode: 'RENTRI_API_ERROR',
+          errorCode,
           durationMs: duration,
         })
 
@@ -174,11 +190,12 @@ export class SyncFIRToRENTRIUseCase {
         await this.syncLogRepository.save(failureLog)
         await this.publishDomainEvents(fir)
 
-        const willRetry = fir.needsRENTRIRetry()
+        const willRetry = nonRitentabile ? false : fir.needsRENTRIRetry()
 
         this.logger.warn(`FIR sync to RENTRI failed`, {
           firId,
           error: errorMessage,
+          errorCode,
           attempt: fir.rentriSyncStatus.getAttempts(),
           willRetry,
         })

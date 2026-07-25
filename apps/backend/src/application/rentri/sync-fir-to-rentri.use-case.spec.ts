@@ -1,4 +1,5 @@
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
+import { RentriApiError } from '../../infrastructure/rentri/rentri-api.client'
 
 /**
  * Unit tests for SyncFIRToRENTRI Use Case
@@ -382,6 +383,67 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(result.success).toBe(false)
       expect(result.willRetry).toBe(false)
       expect(result.attempts).toBe(4)
+    })
+
+    /**
+     * Task 4 (P2): un RentriApiError 403 (credenziale non valida/operazione
+     * non consentita) è SEMPRE un fallimento definitivo, anche se
+     * `fir.needsRENTRIRetry()` direbbe "ritenta pure" — ritentare con una
+     * credenziale che non funzionerà mai non ha senso. Il messaggio riportato
+     * è `detail`/`title` del ProblemDetails (mai il corpo grezzo).
+     */
+    it('403 (RentriApiError non-retryable): esito SEMPRE definitivo, indipendentemente da needsRENTRIRetry', async () => {
+      const firId = 'fir-123'
+      const tenantId = 'tenant-456'
+      const mockFIR = {
+        id: firId,
+        tenantId,
+        status: 'COMPLETED',
+        firNumber: 'FIR-2025-403',
+        rentriSyncStatus: {
+          getStatus: jest.fn().mockReturnValue('PENDING'),
+          getAttempts: jest.fn().mockReturnValue(0),
+        },
+        canSyncToRENTRI: jest.fn().mockReturnValue(true),
+        startRENTRISync: jest.fn(),
+        markRENTRISyncFailed: jest.fn(),
+        // Anche se il dominio direbbe "ritenta pure", il 403 deve prevalere.
+        needsRENTRIRetry: jest.fn().mockReturnValue(true),
+        getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
+        getDomainEvents: jest
+          .fn()
+          .mockReturnValue([{ eventType: 'FIRSyncFailed', aggregateId: firId }]),
+        clearDomainEvents: jest.fn(),
+      }
+
+      const mockSyncLog = {
+        markAsFailure: jest.fn().mockReturnValue({ id: 'log-1', status: 'FAILURE' }),
+      }
+
+      const apiError = new RentriApiError(
+        403,
+        'Operazione non consentita',
+        'Certificato non riconosciuto',
+        false
+      )
+
+      mockFIRRepository.findById.mockResolvedValue(mockFIR)
+      mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
+      mockRENTRIApiClient.creaFormulario.mockRejectedValue(apiError)
+      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockSyncLogRepository.save.mockResolvedValue(undefined)
+
+      const result = await useCase.execute(firId, tenantId)
+
+      expect(result.success).toBe(false)
+      expect(result.willRetry).toBe(false)
+      expect(result.error).toBe('Certificato non riconosciuto')
+      expect(mockFIR.markRENTRISyncFailed).toHaveBeenCalledWith(
+        'Certificato non riconosciuto',
+        'RENTRI_FORBIDDEN',
+        undefined
+      )
+      // needsRENTRIRetry non deve nemmeno influenzare l'esito: il 403 prevale.
     })
 
     it('should handle validation errors from RENTRI (esito.errore = true)', async () => {

@@ -1,5 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
+import type { AxiosResponse } from 'axios'
 import { LoggerService } from '../../core/logger/logger.service'
 import { MetricsService } from '../../core/metrics/metrics.service'
 import { firstValueFrom } from 'rxjs'
@@ -246,16 +247,17 @@ export class RENTRIApiClient {
    * transazione è task successivo: questo metodo si limita a restituire
    * l'identificativo e l'URL di stato così come li legge dalla risposta,
    * senza attendere l'esito dell'elaborazione.
+   *
+   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza}
+   * (v. commento lì per il dettaglio della politica di retry).
    */
   async creaFormulario(
     tenantId: string,
     dati: NuovoFormularioPayload
   ): Promise<{ transazioneId: string; urlStato: string }> {
-    const response = await this.post(
-      `${RENTRIApiClient.FORMULARI_PATH}/`,
-      dati,
-      '/formulari (crea)',
-      tenantId
+    const response = await this.eseguiRichiestaConResilienza(
+      () => this.post(`${RENTRIApiClient.FORMULARI_PATH}/`, dati, '/formulari (crea)', tenantId),
+      '/formulari (crea)'
     )
 
     const transazioneId = response.data?.transazione_id
@@ -267,9 +269,14 @@ export class RENTRIApiClient {
   /**
    * Legge il dettaglio di un FIR (`GET /{numero_fir}` — formulari.yaml righe
    * 283-334). Risposta 200 con corpo `DettaglioFormulario`.
+   *
+   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza}.
    */
   async leggiFormulario(tenantId: string, numeroFir: string): Promise<FormularioModel> {
-    const response = await this.get(`${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}`, tenantId)
+    const response = await this.eseguiRichiestaConResilienza(
+      () => this.get(`${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}`, tenantId),
+      `/formulari/${numeroFir}`
+    )
     return response.data
   }
 
@@ -338,41 +345,56 @@ export class RENTRIApiClient {
   /**
    * Interroga `GET /{transazione_id}/status` senza lasciare che il client
    * HTTP segua da solo un eventuale redirect (v. {@link attendiEsito}).
+   *
+   * La richiesta usa `validateStatus: () => true` (necessario per distinguere
+   * 200 da 303 senza che axios sollevi un errore): 403/429/423/5xx arrivano
+   * quindi come risposta normale, non come eccezione, e vanno riconosciuti
+   * esplicitamente — v. {@link gestisciRispostaNonPrevista}.
    */
   private async interrogaStatoTransazione(
     tenantId: string,
     transazioneId: string
   ): Promise<{ pronto: boolean; urlEsito?: string }> {
     const url = `${this.config.baseUrl}${RENTRIApiClient.FORMULARI_PATH}/${transazioneId}/status`
-    const headers = await this.buildAuthHeaders(tenantId)
 
-    const response = await firstValueFrom(
-      this.httpService.get(url, {
-        headers,
-        timeout: this.timeout,
-        maxRedirects: 0,
-        validateStatus: () => true,
-      })
-    )
+    for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
+      const headers = await this.buildAuthHeaders(tenantId)
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers,
+          timeout: this.timeout,
+          maxRedirects: 0,
+          validateStatus: () => true,
+        })
+      )
 
-    if (response.status === 200) {
-      return { pronto: false }
-    }
+      if (response.status === 200) {
+        return { pronto: false }
+      }
 
-    if (response.status === 303) {
-      const urlEsito = (response.headers?.location ?? response.headers?.Location) as string
-      return { pronto: true, urlEsito }
+      if (response.status === 303) {
+        const urlEsito = (response.headers?.location ?? response.headers?.Location) as string
+        return { pronto: true, urlEsito }
+      }
+
+      await this.gestisciRispostaNonPrevista(
+        response,
+        `/status (transazione ${transazioneId})`,
+        tentativo
+      )
+      // 'ritenta': si riprova il ciclo (l'attesa è già stata eseguita sopra).
     }
 
     throw new Error(
-      `Risposta inattesa da /status per la transazione ${transazioneId}: HTTP ${response.status}`
+      `Superato il numero massimo di tentativi (${RENTRIApiClient.MAX_TENTATIVI_RESILIENZA}) interrogando /status per la transazione ${transazioneId}.`
     )
   }
 
   /**
    * Segue il `Location` ricevuto da `/status` e legge l'esito da `/result`.
    * Restituisce `null` se il risultato non è ancora disponibile (400 —
-   * "richiesta anticipata", non un errore definitivo).
+   * "richiesta anticipata", non un errore definitivo — comportamento
+   * preesistente, non toccato). 403/429/423/5xx v. {@link gestisciRispostaNonPrevista}.
    */
   private async leggiEsitoTransazione(
     tenantId: string,
@@ -383,30 +405,181 @@ export class RENTRIApiClient {
     }
 
     const url = urlEsito.startsWith('http') ? urlEsito : `${this.config.baseUrl}${urlEsito}`
-    const headers = await this.buildAuthHeaders(tenantId)
 
-    const response = await firstValueFrom(
-      this.httpService.get(url, {
-        headers,
-        timeout: this.timeout,
-        validateStatus: () => true,
-      })
+    for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
+      const headers = await this.buildAuthHeaders(tenantId)
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers,
+          timeout: this.timeout,
+          validateStatus: () => true,
+        })
+      )
+
+      if (response.status === 400) {
+        return null
+      }
+
+      if (response.status === 200) {
+        return response.data
+      }
+
+      await this.gestisciRispostaNonPrevista(response, '/result', tentativo)
+      // 'ritenta': si riprova il ciclo (l'attesa è già stata eseguita sopra).
+    }
+
+    throw new Error(
+      `Superato il numero massimo di tentativi (${RENTRIApiClient.MAX_TENTATIVI_RESILIENZA}) leggendo /result (${url}).`
     )
-
-    if (response.status === 400) {
-      return null
-    }
-
-    if (response.status !== 200) {
-      throw new Error(`Risposta inattesa da /result: HTTP ${response.status}`)
-    }
-
-    return response.data
   }
 
-  /** Attesa non bloccante tra un tentativo e l'altro del polling. */
+  /** Attesa non bloccante tra un tentativo e l'altro del polling/retry. */
   private attendi(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  /** Numero massimo di tentativi per gli errori transitori (429/423/5xx). */
+  private static readonly MAX_TENTATIVI_RESILIENZA = 5
+
+  /** Base (ms) del backoff esponenziale quando l'ente non indica `Retry-After`. */
+  private static readonly BACKOFF_BASE_MS = 1000
+
+  /** Tetto (ms) del backoff esponenziale, per non attendere indefinitamente. */
+  private static readonly BACKOFF_MAX_MS = 30000
+
+  /**
+   * Estrae `title`/`detail` da un corpo `application/problem+json`
+   * (`ProblemDetails`, contratto ufficiale). Sono gli UNICI campi del corpo
+   * di errore che il client riporta nei log/nel log di sincronizzazione: il
+   * contenuto grezzo della risposta non va mai esposto al tenant.
+   */
+  private estraiProblemDetails(data: unknown): { title?: string; detail?: string } {
+    if (data && typeof data === 'object') {
+      const problema = data as { title?: unknown; detail?: unknown }
+      return {
+        title: typeof problema.title === 'string' ? problema.title : undefined,
+        detail: typeof problema.detail === 'string' ? problema.detail : undefined,
+      }
+    }
+    return {}
+  }
+
+  /**
+   * Calcola l'attesa (ms) prima del prossimo tentativo: rispetta l'header
+   * `Retry-After` (in secondi) se presente e valido, altrimenti applica un
+   * backoff esponenziale (`BACKOFF_BASE_MS * 2^(tentativo-1)`, tetto
+   * `BACKOFF_MAX_MS`).
+   */
+  private calcolaAttesaMs(tentativo: number, retryAfterHeader?: string): number {
+    if (retryAfterHeader !== undefined) {
+      const secondi = Number(retryAfterHeader)
+      if (!Number.isNaN(secondi) && secondi >= 0) {
+        return secondi * 1000
+      }
+    }
+    return Math.min(
+      RENTRIApiClient.BACKOFF_BASE_MS * 2 ** (tentativo - 1),
+      RENTRIApiClient.BACKOFF_MAX_MS
+    )
+  }
+
+  /**
+   * Classifica una risposta di errore RENTRI e, se transitoria, attende
+   * prima del prossimo tentativo. Politica (contratto ufficiale,
+   * formulari.yaml — `ProblemDetails` su ogni risposta di errore):
+   *
+   * - **403** "Operazione non consentita" → credenziale non valida o
+   *   operazione vietata: MAI ritentare (martellare l'ente con una
+   *   credenziale che non funzionerà mai non ha senso). Solleva subito
+   *   {@link RentriApiError} con `retryable: false`.
+   * - **429** → rispetta `Retry-After` se presente, altrimenti backoff
+   *   esponenziale.
+   * - **423** (risorsa bloccata) e **5xx** → backoff esponenziale.
+   * - Esauriti i tentativi per un codice transitorio → solleva
+   *   {@link RentriApiError} con `retryable: true` (fallimento dopo aver
+   *   provato: il chiamante può ancora decidere un retry a un livello più
+   *   alto, es. un nuovo job in coda).
+   * - Qualunque altro codice non atteso in questo punto del ciclo → errore
+   *   generico invariato rispetto al comportamento preesistente.
+   *
+   * Usata sia dal ramo "risposta con status arbitrario" (polling, dove
+   * `validateStatus` impedisce ad axios di sollevare un'eccezione), sia —
+   * tramite {@link eseguiRichiestaConResilienza} — dal ramo "eccezione axios".
+   */
+  private async gestisciRispostaNonPrevista(
+    risposta: { status: number; headers?: Record<string, unknown>; data?: unknown },
+    contesto: string,
+    tentativo: number
+  ): Promise<'ritenta'> {
+    const { status } = risposta
+    const problema = this.estraiProblemDetails(risposta.data)
+
+    if (status === 403) {
+      this.logger.warn(
+        `RENTRI ha rifiutato la richiesta a ${contesto} (403): credenziale non valida o operazione non consentita, nessun nuovo tentativo`,
+        { title: problema.title, detail: problema.detail }
+      )
+      this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'FORBIDDEN' })
+      throw new RentriApiError(403, problema.title, problema.detail, false)
+    }
+
+    const ritentabile = status === 429 || status === 423 || status >= 500
+
+    if (!ritentabile) {
+      throw new Error(`Risposta inattesa da ${contesto}: HTTP ${status}`)
+    }
+
+    if (tentativo >= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA) {
+      this.logger.error(
+        `RENTRI continua a rispondere ${status} a ${contesto}: esauriti i ${RENTRIApiClient.MAX_TENTATIVI_RESILIENZA} tentativi`,
+        undefined,
+        { title: problema.title, detail: problema.detail }
+      )
+      this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
+      throw new RentriApiError(status, problema.title, problema.detail, true)
+    }
+
+    const retryAfter = risposta.headers?.['retry-after'] ?? risposta.headers?.['Retry-After']
+    const attesaMs = this.calcolaAttesaMs(tentativo, retryAfter as string | undefined)
+
+    this.logger.warn(
+      `RENTRI ha risposto ${status} a ${contesto}: nuovo tentativo (${tentativo}/${RENTRIApiClient.MAX_TENTATIVI_RESILIENZA}) dopo ${attesaMs}ms`,
+      { title: problema.title, detail: problema.detail }
+    )
+    this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
+    await this.attendi(attesaMs)
+    return 'ritenta'
+  }
+
+  /**
+   * Esegue `azione` (una chiamata `post()`/`get()` che solleva un'eccezione
+   * axios-like su risposta non-2xx) applicando la stessa politica di
+   * {@link gestisciRispostaNonPrevista} al ramo di eccezione. `azione` viene
+   * rieseguita per intero a ogni tentativo, quindi ogni ritentativo costruisce
+   * una nuova autenticazione (nuovo JWT self-issued/`jti`, nuova firma di
+   * integrità) invece di riusare quella del tentativo precedente.
+   */
+  private async eseguiRichiestaConResilienza(
+    azione: () => Promise<AxiosResponse>,
+    contesto: string
+  ): Promise<AxiosResponse> {
+    for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
+      try {
+        return await azione()
+      } catch (error: any) {
+        const risposta = error?.response
+        if (!risposta || typeof risposta.status !== 'number') {
+          // Nessuna risposta HTTP riconoscibile (es. timeout, errore di rete):
+          // comportamento preesistente, invariato.
+          throw error
+        }
+
+        await this.gestisciRispostaNonPrevista(risposta, contesto, tentativo)
+        // 'ritenta': si riprova il ciclo (l'attesa è già stata eseguita sopra).
+      }
+    }
+
+    throw new Error(`Superato il numero massimo di tentativi verso ${contesto}.`)
   }
 
   /**
@@ -625,6 +798,41 @@ export class RENTRIApiClient {
       hashDocumento: sig.documentHash,
       timestampToken: sig.timestampToken,
     }))
+  }
+}
+
+/**
+ * Errore che rappresenta una risposta di errore RENTRI (`ProblemDetails`,
+ * `application/problem+json`) dopo l'eventuale esaurimento dei tentativi di
+ * resilienza (v. {@link RENTRIApiClient.eseguiRichiestaConResilienza} /
+ * {@link RENTRIApiClient['gestisciRispostaNonPrevista']}).
+ *
+ * `retryable` distingue:
+ * - `false` — **403**, fallimento definitivo: credenziale non valida o
+ *   operazione non consentita. Ritentare non avrebbe senso (la credenziale
+ *   non funzionerà al tentativo successivo), quindi il client non lo fa MAI.
+ * - `true` — **429/423/5xx**, fallimento dopo aver esaurito i tentativi di
+ *   resilienza del client stesso. Resta un errore transitorio: chi chiama
+ *   può ancora decidere un nuovo tentativo a un livello più alto (es. un
+ *   nuovo job in coda).
+ *
+ * `problemTitle`/`problemDetail` sono gli UNICI campi del corpo di errore
+ * riportati nei log/nel log di sincronizzazione: il corpo grezzo della
+ * risposta RENTRI non va mai esposto al tenant.
+ */
+export class RentriApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly problemTitle: string | undefined,
+    readonly problemDetail: string | undefined,
+    readonly retryable: boolean
+  ) {
+    super(
+      retryable
+        ? `RENTRI ha risposto ${status} (${problemTitle ?? 'errore transitorio'}): tentativi di resilienza esauriti`
+        : `RENTRI ha rifiutato la richiesta (${status}): ${problemTitle ?? 'operazione non consentita'}`
+    )
+    this.name = 'RentriApiError'
   }
 }
 
