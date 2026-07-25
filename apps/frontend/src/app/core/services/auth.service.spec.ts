@@ -24,7 +24,12 @@ describe('AuthService', () => {
   const futureExp = (): number => Math.floor(Date.now() / 1000) + 3600
   const pastExp = (): number => Math.floor(Date.now() / 1000) - 3600
 
-  const mockUser: User = { id: 'user-1', email: 'admin@test.com', firstName: 'Admin', role: 'ADMIN' }
+  const mockUser: User = {
+    id: 'user-1',
+    email: 'admin@test.com',
+    firstName: 'Admin',
+    role: 'ADMIN',
+  }
 
   beforeEach(() => {
     localStorage.clear()
