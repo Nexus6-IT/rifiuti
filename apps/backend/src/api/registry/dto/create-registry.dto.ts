@@ -3,7 +3,15 @@
  * Data Transfer Objects for Registry API
  */
 
-import { IsString, IsNotEmpty, IsOptional, IsEmail, ValidateNested } from 'class-validator'
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEmail,
+  ValidateNested,
+  IsDefined,
+  IsNotEmptyObject,
+} from 'class-validator'
 import { Type } from 'class-transformer'
 
 export class IndirizzoDto {
@@ -41,6 +49,8 @@ export class CreateProduttoreDto {
   @IsNotEmpty()
   partitaIVA: string
 
+  @IsDefined()
+  @IsNotEmptyObject()
   @ValidateNested()
   @Type(() => IndirizzoDto)
   sedeLegale: IndirizzoDto
@@ -67,6 +77,8 @@ export class CreateTrasportatoreDto {
   @IsNotEmpty()
   partitaIVA: string
 
+  @IsDefined()
+  @IsNotEmptyObject()
   @ValidateNested()
   @Type(() => IndirizzoDto)
   sedeLegale: IndirizzoDto
@@ -97,6 +109,8 @@ export class CreateDestinatarioDto {
   @IsNotEmpty()
   partitaIVA: string
 
+  @IsDefined()
+  @IsNotEmptyObject()
   @ValidateNested()
   @Type(() => IndirizzoDto)
   sede: IndirizzoDto

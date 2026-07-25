@@ -3,7 +3,15 @@
  * Gestione Catalogo Codici Europei Rifiuti
  */
 
-import { Controller, Get, Query, HttpCode, HttpStatus } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  HttpCode,
+  HttpStatus,
+  NotFoundException,
+} from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger'
 import { CERCatalogService } from '../../domain/cer/services/cer-catalog.service'
 
@@ -124,10 +132,14 @@ export class CERController {
   })
   @ApiResponse({ status: 200, description: 'Codice CER trovato', type: CERResponseDto })
   @ApiResponse({ status: 404, description: 'Codice CER non trovato' })
-  async getByCode(@Query('code') code: string): Promise<CERResponseDto | null> {
-    const cer = await this.cerCatalogService.getByCode(code)
+  async getByCode(@Param('code') code: string): Promise<CERResponseDto> {
+    // Normalizza al formato canonico "NN NN NN" così "150106" trova "15 01 06"
+    // (coerente con la ricerca). I codici non a 6 cifre restano invariati.
+    const cer = await this.cerCatalogService.getByCode(this.normalizeCerCode(code))
 
-    if (!cer) return null
+    if (!cer) {
+      throw new NotFoundException(`Codice CER non trovato: ${code}`)
+    }
 
     return {
       id: cer.id,
@@ -137,6 +149,17 @@ export class CERController {
       category: cer.category,
       subcategory: cer.subcategory,
     }
+  }
+
+  /** Riformatta un codice CER a 6 cifre nel formato canonico "NN NN NN". */
+  private normalizeCerCode(input: string): string {
+    const raw = (input ?? '').trim()
+    const digits = raw.replace(/[^0-9]/g, '')
+    if (digits.length === 6) {
+      const spaced = digits.match(/.{1,2}/g)!.join(' ')
+      return raw.endsWith('*') ? `${spaced}*` : spaced
+    }
+    return raw
   }
 
   @Get('statistics')

@@ -62,25 +62,29 @@ describe('GetFIRByIdQueryHandler', () => {
     handler = new GetFIRByIdQueryHandler(repository)
   })
 
-  const createFIR = (produttoreId: string): FIR => {
+  // L'autorizzazione si fonda sul TENANT proprietario del FIR (tenantId), non
+  // sugli id delle parti (produttore/trasportatore/destinatario = riferimenti ai
+  // registri). Il FIR viene creato con un tenantId esplicito.
+  const createFIR = (tenantId: string): FIR => {
     return FIR.create({
-      produttoreId,
+      produttoreId: 'registro-produttore-123',
+      tenantId,
       rifiuto: {
         cerCode: '13 02 05*',
         quantita: 120,
         unitaMisura: UnitaMisura.KG,
       },
-      trasportatoreId: 'tenant-transporter-456',
-      destinatarioId: 'tenant-destination-789',
+      trasportatoreId: 'registro-trasportatore-456',
+      destinatarioId: 'registro-destinatario-789',
     })
   }
 
   describe('execute', () => {
     it('should retrieve FIR by ID', async () => {
-      const fir = createFIR('tenant-producer-123')
+      const fir = createFIR('tenant-abc')
       repository.addFIR(fir)
 
-      const query = new GetFIRByIdQuery(fir.id, 'user-123', 'tenant-producer-123')
+      const query = new GetFIRByIdQuery(fir.id, 'user-123', 'tenant-abc')
 
       const result = await handler.execute(query)
 
@@ -98,49 +102,28 @@ describe('GetFIRByIdQueryHandler', () => {
       expect(result.error).toContain('FIR not found')
     })
 
-    it('should authorize produttore tenant', async () => {
-      const fir = createFIR('tenant-producer-123')
+    it('should authorize a user of the owning tenant', async () => {
+      const fir = createFIR('tenant-abc')
       repository.addFIR(fir)
 
-      const query = new GetFIRByIdQuery(fir.id, 'user-123', 'tenant-producer-123')
+      const query = new GetFIRByIdQuery(fir.id, 'user-123', 'tenant-abc')
 
       const result = await handler.execute(query)
 
       expect(result.isSuccess).toBe(true)
     })
 
-    it('should authorize trasportatore tenant', async () => {
-      const fir = createFIR('tenant-producer-123')
-      repository.addFIR(fir)
-
-      const query = new GetFIRByIdQuery(fir.id, 'user-456', 'tenant-transporter-456')
-
-      const result = await handler.execute(query)
-
-      expect(result.isSuccess).toBe(true)
-    })
-
-    it('should authorize destinatario tenant', async () => {
-      const fir = createFIR('tenant-producer-123')
-      repository.addFIR(fir)
-
-      const query = new GetFIRByIdQuery(fir.id, 'user-789', 'tenant-destination-789')
-
-      const result = await handler.execute(query)
-
-      expect(result.isSuccess).toBe(true)
-    })
-
-    it('should fail if user not authorized (different tenant)', async () => {
-      const fir = createFIR('tenant-producer-123')
+    it('should NOT leak a FIR of another tenant (treated as not found)', async () => {
+      const fir = createFIR('tenant-abc')
       repository.addFIR(fir)
 
       const query = new GetFIRByIdQuery(fir.id, 'user-999', 'tenant-other-999')
 
       const result = await handler.execute(query)
 
+      // Cross-tenant: non deve rivelare l'esistenza del FIR → "not found" (404)
       expect(result.isFailure).toBe(true)
-      expect(result.error).toContain('not authorized')
+      expect(result.error).toContain('FIR not found')
     })
   })
 })

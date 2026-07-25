@@ -9,6 +9,10 @@ import {
   MudRifiutoLine,
   MudAllegatoDR,
   MudAllegatoTE,
+  MudAutorizzazione,
+  MudEnteAutorizzante,
+  MudTipoAutorizzazione,
+  MudClassificazioneDiscarica,
 } from './mud-export.types'
 
 /**
@@ -73,6 +77,10 @@ export class MudExportService {
         legaleRappresentanteCognome: tenant.legaleRappresentanteCognome ?? undefined,
       },
       rifiuti: await this.aggregaRifiuti(tenantId, year),
+      // Schede SA-AUT: emesse solo se l'impianto ha autorizzazioni registrate.
+      // Per i soggetti estranei alla gestione rifiuti la lista è vuota e il
+      // record AU non viene prodotto, come richiede il tracciato.
+      autorizzazioni: await this.caricaAutorizzazioni(tenantId),
     }
 
     const content = tracciato.generate(data)
@@ -86,6 +94,50 @@ export class MudExportService {
       version: tracciato.version,
       year,
     }
+  }
+
+  /**
+   * Carica le schede SA-AUT (record AU) del dichiarante.
+   *
+   * Il tracciato prevede una scheda per ogni autorizzazione o certificazione
+   * posseduta dall'impianto che effettua la gestione dei rifiuti; in assenza,
+   * nessun record AU va trasmesso e `AB` riporta `00` schede AUT.
+   */
+  private async caricaAutorizzazioni(tenantId: string): Promise<MudAutorizzazione[]> {
+    const righe = await this.prisma.autorizzazioneImpianto.findMany({
+      where: { tenantId },
+      include: { discariche: true },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    return righe.map(a => ({
+      estremi: a.estremi,
+      dataRilascio: a.dataRilascio ?? undefined,
+      dataScadenza: a.dataScadenza ?? undefined,
+      enteAutorizzante: a.enteAutorizzante as MudEnteAutorizzante,
+      tipoAutorizzazione: a.tipoAutorizzazione as MudTipoAutorizzazione,
+      rinnovoAutocertificazione: a.rinnovoAutocertificazione,
+      operazioniRecupero: a.operazioniRecupero,
+      operazioniSmaltimento: a.operazioniSmaltimento,
+      gestisceVFU: a.gestisceVfu,
+      gestisceRAEE: a.gestisceRaee,
+      autorizzazioneEoW: a.autorizzazioneEow,
+      impiantoIncenerimento: a.impiantoIncenerimento,
+      capacitaComplessivaTa: a.capacitaComplessivaTa,
+      capacitaPericolosiTa: a.capacitaPericolosiTa,
+      capacitaNonPericolosiTa: a.capacitaNonPericolosiTa,
+      impiantoCoincenerimento: a.impiantoCoincenerimento,
+      capacitaCoincComplessivaTa: a.capacitaCoincComplessivaTa,
+      capacitaCoincPericolosiTa: a.capacitaCoincPericolosiTa,
+      capacitaCoincNonPericolosiTa: a.capacitaCoincNonPericolosiTa,
+      discariche: a.discariche.map(d => ({
+        classificazione: d.classificazione as MudClassificazioneDiscarica,
+        capacitaResiduaMc: d.capacitaResiduaMc,
+      })),
+      emasPrimaRegistrazione: a.emasPrimaRegistrazione ?? undefined,
+      emasNumeroRegistrazione: a.emasNumeroRegistrazione ?? undefined,
+      iso14001Emissione: a.iso14001Emissione ?? undefined,
+    }))
   }
 
   /**
@@ -197,8 +249,22 @@ export class MudExportService {
     if (ids.length === 0) return info
 
     const destinatari = await this.prisma.destinatario.findMany({ where: { id: { in: ids } } })
+
+    // Risolve i comuni una sola volta per coppia (comune, provincia) distinta:
+    // con N destinatari nello stesso comune si faceva una lookup per ciascuno.
+    const comuni = new Map<
+      string,
+      Awaited<ReturnType<typeof this.referenceData.findComuneByName>>
+    >()
     for (const d of destinatari) {
-      const comune = await this.referenceData.findComuneByName(d.comune, d.provincia)
+      const chiave = `${d.comune}|${d.provincia}`
+      if (!comuni.has(chiave)) {
+        comuni.set(chiave, await this.referenceData.findComuneByName(d.comune, d.provincia))
+      }
+    }
+
+    for (const d of destinatari) {
+      const comune = comuni.get(`${d.comune}|${d.provincia}`)
       info.set(d.id, {
         ragioneSociale: d.ragioneSociale,
         partitaIVA: d.partitaIVA,

@@ -15,7 +15,12 @@
     "backend:test:e2e": "cd apps/backend && npm run test:e2e",
     "lint": "eslint \"{apps,libs}/**/*.ts\" --fix",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "e2e": "playwright test -c e2e/playwright.config.ts --project=chromium",
+    "e2e:ui": "playwright test -c e2e/playwright.config.ts --ui",
+    "e2e:headed": "playwright test -c e2e/playwright.config.ts --project=chromium --headed",
+    "e2e:report": "playwright show-report e2e-report",
+    "e2e:prod": "node e2e/scripts/run-against-prod.js"
   },
   "dependencies": {
     "idb": "^8.0.3",
@@ -25,6 +30,7 @@
     "rxjs": "$rxjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.42.0",

@@ -72,16 +72,22 @@ export class SignatureVerificationDto {
   role: SignatureRole
 
   @ApiProperty({
-    description: 'Signer Italian fiscal code',
+    description:
+      "Codice fiscale del firmatario. Presente SOLO sull'endpoint autenticato " +
+      '`GET /fir/:firId/verify/dettaglio`; omesso nella verifica pubblica (GDPR).',
     example: 'RSSMRA80A01H501U',
+    required: false,
   })
-  signerFiscalCode: string
+  signerFiscalCode?: string
 
   @ApiProperty({
-    description: 'Signer full name',
+    description:
+      "Nome e cognome del firmatario. Presente SOLO sull'endpoint autenticato; " +
+      'omesso nella verifica pubblica (GDPR).',
     example: 'Mario Rossi',
+    required: false,
   })
-  signerName: string
+  signerName?: string
 
   @ApiProperty({
     description: 'Signature timestamp',

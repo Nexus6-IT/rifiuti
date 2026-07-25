@@ -3,7 +3,7 @@
  * Business logic per gestione catalogo CER
  */
 
-import { Injectable, Inject } from '@nestjs/common'
+import { Injectable, Inject, BadRequestException } from '@nestjs/common'
 import { CERCode } from '../entities/cer-code.entity'
 import { ICERRepository, CERSearchFilters } from '../repositories/cer-repository.interface'
 
@@ -21,11 +21,21 @@ export class CERCatalogService {
    * Search CER codes by keyword
    */
   async search(keyword: string, filters?: CERSearchFilters): Promise<CERCode[]> {
-    if (!keyword || keyword.trim().length === 0) {
-      throw new Error('Search keyword cannot be empty')
+    const trimmed = keyword?.trim()
+    if (!trimmed) {
+      throw new BadRequestException('Il parametro di ricerca "q" è obbligatorio')
     }
 
-    return this.repository.search(keyword.trim(), filters)
+    // Ricerca per codice: gli spazi nel catalogo sono canonici ("15 01 06"),
+    // ma l'utente può digitare "150106", "1501" o "15 01 06". Se il termine è
+    // puramente numerico, lo riformattiamo nel formato a coppie separate da
+    // spazi così che il "contains" del repository trovi comunque la voce.
+    const digitsOnly = trimmed.replace(/\s+/g, '')
+    const searchTerm = /^\d+$/.test(digitsOnly)
+      ? (digitsOnly.match(/.{1,2}/g)?.join(' ') ?? digitsOnly)
+      : trimmed
+
+    return this.repository.search(searchTerm, filters)
   }
 
   /**

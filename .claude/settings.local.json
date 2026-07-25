@@ -95,7 +95,10 @@
       "Bash(npm start)",
       "Bash(git reset:*)",
       "Bash(git rm:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(docker version *)",
+      "Bash(npm -v)",
+      "WebFetch(domain:www.rentri.gov.it)"
     ],
     "deny": [],
     "ask": []

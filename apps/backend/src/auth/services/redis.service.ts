@@ -70,6 +70,23 @@ export class RedisService implements OnModuleDestroy {
   }
 
   /**
+   * Sessione singola: registra l'istante dell'ultimo accesso dell'utente.
+   * Gli access token emessi PRIMA di questo istante vanno considerati non
+   * piu' validi, altrimenti la sessione precedente sopravvivrebbe fino alla
+   * scadenza naturale del token (15 minuti).
+   */
+  async impostaEpocaSessione(userId: string): Promise<number> {
+    const epoca = Math.floor(Date.now() / 1000)
+    await this.client.set(`session_epoch:${userId}`, String(epoca), 'EX', 7 * 24 * 60 * 60)
+    return epoca
+  }
+
+  async leggiEpocaSessione(userId: string): Promise<number | null> {
+    const valore = await this.client.get(`session_epoch:${userId}`)
+    return valore === null ? null : Number(valore)
+  }
+
+  /**
    * Store access token in revocation list (for logout)
    */
   async revokeAccessToken(token: string, ttlSeconds: number): Promise<void> {

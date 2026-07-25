@@ -2,6 +2,7 @@
  * CER Controller - TDD Tests
  */
 
+import { NotFoundException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { CERController } from './cer.controller'
 import { CERCatalogService } from '../../domain/cer/services/cer-catalog.service'
@@ -113,12 +114,10 @@ describe('CERController', () => {
       expect(service.getByCode).toHaveBeenCalledWith('13 02 05*')
     })
 
-    it('should return null if code not found', async () => {
+    it('should throw NotFoundException if code not found', async () => {
       service.getByCode.mockResolvedValue(null)
 
-      const result = await controller.getByCode('99 99 99')
-
-      expect(result).toBeNull()
+      await expect(controller.getByCode('99 99 99')).rejects.toThrow(NotFoundException)
     })
   })
 

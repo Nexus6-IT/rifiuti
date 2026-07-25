@@ -32,10 +32,13 @@ RUN rm -rf /usr/share/nginx/html/*
 COPY --from=builder /repo/apps/frontend/dist/frontend /usr/share/nginx/html
 COPY apps/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
+# Installa curl per l'healthcheck (lightweight, ~2MB aggiunto)
+RUN apk add --no-cache curl
+
 EXPOSE 80
 
-# Healthcheck robusto: wget --spider fa una richiesta HEAD senza scaricare il corpo,
+# Healthcheck robusto: curl -fsSI fa una HEAD request senza scaricare il corpo,
 # exit 0 se nginx risponde (2xx/3xx), exit 1 altrimenti.
 # start-period=15s dà tempo a nginx di inizializzare prima del primo controllo.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+  CMD curl -fsSI http://localhost/ > /dev/null || exit 1

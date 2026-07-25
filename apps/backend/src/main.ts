@@ -96,8 +96,17 @@ async function bootstrap() {
     .addTag('cer', 'Catalogo Codici CER')
     .build()
 
-  const document = SwaggerModule.createDocument(app, config)
-  SwaggerModule.setup('api/docs', app, document)
+  // La spec OpenAPI completa (moduli admin, billing e rentri inclusi) abbassa
+  // drasticamente il costo di ricognizione per un attaccante se pubblicata
+  // senza autenticazione: in produzione non va esposta né su /api/docs né su
+  // /api/docs-json. Riattivabile con SWAGGER_ENABLED=true per diagnosi mirata.
+  const swaggerAbilitato =
+    process.env.NODE_ENV !== 'production' || process.env.SWAGGER_ENABLED === 'true'
+
+  if (swaggerAbilitato) {
+    const document = SwaggerModule.createDocument(app, config)
+    SwaggerModule.setup('api/docs', app, document)
+  }
 
   const port = process.env.PORT || 3000
   await app.listen(port)

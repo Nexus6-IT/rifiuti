@@ -1,7 +1,17 @@
 import { Injectable, inject, signal } from '@angular/core'
-import { HttpClient } from '@angular/common/http'
+import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import { Router } from '@angular/router'
-import { Observable, tap, catchError, of, map, throwError, finalize, shareReplay } from 'rxjs'
+import {
+  Observable,
+  tap,
+  catchError,
+  of,
+  map,
+  throwError,
+  finalize,
+  shareReplay,
+  switchMap,
+} from 'rxjs'
 import { environment } from '../../../environments/environment'
 
 export interface User {
@@ -12,7 +22,7 @@ export interface User {
   role?: string
 }
 
-interface AuthResponse {
+export interface AuthResponse {
   accessToken: string
   refreshToken: string
   user: User
@@ -40,16 +50,81 @@ export class AuthService {
     this.initializeAuth()
   }
 
+  /**
+   * Bootstrap della sessione al load dell'app — deve essere RESILIENTE al refresh
+   * e ai deep-link: un access token valido in localStorage NON deve mai portare a
+   * un logout forzato per via di un errore transitorio di rete.
+   *
+   * Strategia:
+   *  - Se non c'è nessun token, non c'è sessione: nulla da fare.
+   *  - Se il token è valido (claim `exp` non scaduto) consideriamo l'utente
+   *    autenticato SUBITO (ottimisticamente, dal token decodificato), così il
+   *    guard non fallisce nemmeno prima che /auth/profile risponda.
+   *  - Proviamo comunque a idratare la sessione con getSession():
+   *      · su 401 tentiamo un refresh; solo se ANCHE il refresh fallisce facciamo
+   *        logout pulito (clearSession, NON localStorage.clear()).
+   *      · su errori NON-401 (rete/5xx transitori) NON tocchiamo la sessione:
+   *        i token restano, si riproverà al prossimo giro.
+   */
   private initializeAuth(): void {
     const accessToken = this.getAccessToken()
-    if (accessToken) {
-      this.getSession().subscribe({
-        next: session => {
-          this.currentUser.set(session.user)
-          this.isAuthenticated.set(true)
-        },
-        error: () => localStorage.clear(),
-      })
+    if (!accessToken) {
+      return
+    }
+
+    // Autenticazione ottimistica: se il token è ancora valido, l'utente è dentro.
+    if (this.isTokenValid()) {
+      this.isAuthenticated.set(true)
+      const userFromToken = this.decodeUserFromToken()
+      if (userFromToken) {
+        this.currentUser.set(userFromToken)
+      }
+    }
+
+    this.getSession().subscribe({
+      next: session => {
+        this.currentUser.set(session.user)
+        this.isAuthenticated.set(true)
+      },
+      error: (error: HttpErrorResponse) => {
+        // Errori transitori (rete/5xx): conserva i token, riprova più tardi.
+        if (error.status !== 401) {
+          return
+        }
+        // 401: prova UNA volta il refresh; solo se fallisce anche quello, logout pulito.
+        this.refreshAccessToken()
+          .pipe(switchMap(() => this.getSession()))
+          .subscribe({
+            next: session => {
+              this.currentUser.set(session.user)
+              this.isAuthenticated.set(true)
+            },
+            error: () => this.clearSession(),
+          })
+      },
+    })
+  }
+
+  /**
+   * Ricostruisce un User "best-effort" dai claim dell'access token, per popolare
+   * lo stato in memoria prima che /auth/profile risponda. Token malformato => null.
+   */
+  private decodeUserFromToken(): User | null {
+    const token = this.getAccessToken()
+    if (!token) return null
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      const id = payload.id ?? payload.sub
+      if (!id) return null
+      return {
+        id,
+        email: payload.email ?? '',
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        role: payload.role,
+      }
+    } catch {
+      return null
     }
   }
 
@@ -110,15 +185,11 @@ export class AuthService {
   logout(): Observable<void> {
     return this.http.post<void>(`${this.apiUrl}/auth/logout`, {}).pipe(
       tap(() => {
-        localStorage.clear()
-        this.currentUser.set(null)
-        this.isAuthenticated.set(false)
+        this.clearSession()
         this.router.navigate(['/login'])
       }),
       catchError(() => {
-        localStorage.clear()
-        this.currentUser.set(null)
-        this.isAuthenticated.set(false)
+        this.clearSession()
         this.router.navigate(['/login'])
         return of(void 0)
       })

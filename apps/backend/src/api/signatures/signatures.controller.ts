@@ -34,6 +34,8 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { SpidLevelGuard } from '../../auth/guards/spid-level.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { ApplySignatureUseCase } from '../../application/signatures/apply-signature.use-case'
 import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case'
 import { DomainException } from '../../domain/shared/domain-exception'
@@ -68,7 +70,10 @@ export class SignaturesController {
    */
   @Post('sign')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard, SpidLevelGuard)
+  // Scrittura: solo ruoli operativi possono firmare (blocca VIEWER). RolesGuard
+  // legge user.role dal JWT; verify/verify-url restano pubblici (nessun guard).
+  @UseGuards(JwtAuthGuard, RolesGuard, SpidLevelGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Applica firma digitale al FIR',
@@ -101,21 +106,35 @@ export class SignaturesController {
     const spidLevel: number = user.spidLevel ?? acrLevel ?? 2
     const authenticatedAt: Date = user.authenticatedAt ? new Date(user.authenticatedAt) : new Date() // Sandbox: ora corrente come fallback
 
-    const result = await this.applySignatureUseCase.execute({
-      firId,
-      tenantId: user.tenantId,
-      userId: user.id, // UUID utente (per fir_signatures.user_id)
-      role: dto.role,
-      signerFiscalCode: user.fiscalCode ?? user.sub ?? 'SANDBOX000A00A000A',
-      signerName:
-        user.name ?? (`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Utente Sandbox'),
-      spidLevel,
-      authenticatedAt,
-    })
+    try {
+      const result = await this.applySignatureUseCase.execute({
+        firId,
+        tenantId: user.tenantId,
+        userId: user.id, // UUID utente (per fir_signatures.user_id)
+        role: dto.role,
+        signerFiscalCode: user.fiscalCode ?? user.sub ?? 'SANDBOX000A00A000A',
+        signerName:
+          user.name ??
+          (`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Utente Sandbox'),
+        spidLevel,
+        authenticatedAt,
+      })
 
-    return {
-      ...result,
-      message: `Firma ${dto.role} applicata (${result.signature.isQualified ? 'QUALIFICATA' : 'SANDBOX-NON-QUALIFICATA'})`,
+      return {
+        ...result,
+        message: `Firma ${dto.role} applicata (${result.signature.isQualified ? 'QUALIFICATA' : 'SANDBOX-NON-QUALIFICATA'})`,
+      }
+    } catch (error) {
+      // Le violazioni di dominio (FIR non trovato, ordine firma, firma duplicata,
+      // livello SPID) sono DomainException: senza mappatura degenererebbero in 500.
+      // NOT_FOUND → 404; ogni altra regola di business/validazione → 400.
+      if (error instanceof DomainException) {
+        if (error.code === 'NOT_FOUND') {
+          throw new NotFoundException(error.message)
+        }
+        throw new BadRequestException(error.message)
+      }
+      throw error
     }
   }
 
@@ -127,20 +146,28 @@ export class SignaturesController {
    * Endpoint pubblico — nessuna autenticazione richiesta.
    * Verifica crittograficamente tutte le firme presenti sul FIR.
    * Usato per la scansione QR code sulle copie cartacee.
+   *
+   * PRIVACY (GDPR): la risposta è ANONIMA. Codice fiscale e nome dei firmatari
+   * NON vengono restituiti: l'endpoint è pubblico e enumerabile per id, quindi
+   * esporli significherebbe pubblicare dati personali di qualunque tenant.
+   * Per il dettaglio completo esiste `GET /fir/:firId/verify/dettaglio`,
+   * autenticato e limitato al proprio tenant.
    */
   @Get('verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Verifica firme FIR (endpoint pubblico)',
+    summary: 'Verifica firme FIR (endpoint pubblico, risposta anonima)',
     description:
       'Verifica crittograficamente tutte le firme sul FIR.\n\n' +
       '**Endpoint pubblico** — nessuna autenticazione richiesta.\n' +
-      'Utilizzabile per scansione QR code e verifica di terzi.',
+      'Utilizzabile per scansione QR code e verifica di terzi.\n\n' +
+      '**I dati personali dei firmatari (codice fiscale, nome) NON sono inclusi.** ' +
+      'Per ottenerli usare `GET /fir/:firId/verify/dettaglio` da utente autenticato.',
   })
   @ApiParam({ name: 'firId', description: 'ID FIR', example: 'fir-uuid-123' })
   @ApiResponse({
     status: 200,
-    description: 'Verifica completata',
+    description: 'Verifica completata (senza dati personali)',
     type: VerifySignaturesResponseDto,
   })
   @ApiResponse({ status: 400, description: 'ID FIR malformato' })
@@ -152,10 +179,63 @@ export class SignaturesController {
     }
 
     try {
+      // disclosePersonalData omesso → default false: risposta anonima.
       return await this.verifySignaturesUseCase.execute({ firId })
     } catch (error) {
       // FIR inesistente: il use-case lancia una DomainException NOT_FOUND che
       // altrimenti finirebbe nel ramo "unknown" del GlobalExceptionFilter → 500.
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Verifica firme con dati identificativi dei firmatari.
+   *
+   * GET /fir/:firId/verify/dettaglio
+   *
+   * Variante autenticata di `/verify`: include codice fiscale e nome dei
+   * firmatari. Il use-case verifica che il FIR appartenga al tenant
+   * dell'utente e, in caso contrario, risponde 404 (non 403: confermare
+   * l'esistenza di un id altrui sarebbe già una fuga di informazione).
+   */
+  @Get('verify/dettaglio')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Verifica firme FIR con anagrafica firmatari (autenticato, tenant-scoped)',
+    description:
+      'Come `/verify`, ma include codice fiscale e nome dei firmatari.\n\n' +
+      'Richiede autenticazione; il FIR deve appartenere al tenant dell utente.',
+  })
+  @ApiParam({ name: 'firId', description: 'ID FIR', example: 'fir-uuid-123' })
+  @ApiResponse({
+    status: 200,
+    description: 'Verifica completata',
+    type: VerifySignaturesResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'ID FIR malformato' })
+  @ApiResponse({ status: 401, description: 'Non autenticato' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato o non appartenente al tenant' })
+  async verifySignaturesDettaglio(
+    @Param('firId') firId: string,
+    @Req() req: any
+  ): Promise<VerifySignaturesResponseDto> {
+    if (!UUID_REGEX.test(firId)) {
+      throw new BadRequestException('ID FIR non valido')
+    }
+
+    try {
+      return await this.verifySignaturesUseCase.execute({
+        firId,
+        tenantId: req.user.tenantId,
+        disclosePersonalData: true,
+      })
+    } catch (error) {
       if (error instanceof DomainException && error.code === 'NOT_FOUND') {
         throw new NotFoundException(error.message)
       }

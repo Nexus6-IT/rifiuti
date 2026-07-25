@@ -48,12 +48,12 @@ import {
     <div class="driver-assignment-dialog">
       <!-- Header -->
       <div class="dialog-header">
-        <h2>{{ isReassignment() ? 'Reassign Task' : 'Assign Task' }}</h2>
+        <h2>{{ isReassignment() ? 'Riassegna task' : 'Assegna task' }}</h2>
         <p class="header-subtitle">
           {{
             isReassignment()
-              ? 'Select a new driver for this pickup task'
-              : 'Select the best driver or let the system choose automatically'
+              ? 'Seleziona un nuovo autista per questo ritiro'
+              : 'Seleziona il miglior autista o lascia che il sistema scelga automaticamente'
           }}
         </p>
       </div>
@@ -62,7 +62,7 @@ import {
       @if (isLoading()) {
         <div class="loading-container">
           <p-progressSpinner></p-progressSpinner>
-          <p>Loading qualified drivers...</p>
+          <p>Caricamento autisti qualificati...</p>
         </div>
       }
 
@@ -75,7 +75,7 @@ import {
       @if (!isLoading() && qualifiedDrivers().length === 0) {
         <p-message
           severity="warn"
-          text="No qualified drivers available for this task. Check certifications and zone assignments."
+          text="Nessun autista qualificato disponibile per questo task. Verifica certificazioni e assegnazioni di zona."
         ></p-message>
       }
 
@@ -83,13 +83,13 @@ import {
       @if (!isLoading() && qualifiedDrivers().length > 0) {
         <div class="drivers-section">
           <div class="section-header">
-            <h3>Qualified Drivers ({{ qualifiedDrivers().length }})</h3>
+            <h3>Autisti qualificati ({{ qualifiedDrivers().length }})</h3>
 
             @if (!isReassignment()) {
               <button
                 pButton
                 type="button"
-                label="Auto-Assign Best Driver"
+                label="Assegna automaticamente il migliore"
                 icon="pi pi-bolt"
                 class="p-button-success"
                 (click)="autoAssign()"
@@ -108,13 +108,13 @@ import {
             <ng-template pTemplate="header">
               <tr>
                 <th style="width: 50px"></th>
-                <th>Driver</th>
-                <th>Certifications</th>
-                <th>Zone</th>
-                <th>Capacity</th>
-                <th>Current Load</th>
-                <th>Available</th>
-                <th>Score</th>
+                <th>Autista</th>
+                <th>Certificazioni</th>
+                <th>Zona</th>
+                <th>Capacità</th>
+                <th>Carico attuale</th>
+                <th>Disponibile</th>
+                <th>Punteggio</th>
               </tr>
             </ng-template>
 
@@ -136,7 +136,7 @@ import {
                   <div class="driver-cell">
                     <strong>{{ driver.userId }}</strong>
                     @if (rowIndex === 0) {
-                      <p-tag value="Recommended" severity="success" styleClass="ml-2"></p-tag>
+                      <p-tag value="Consigliato" severity="success" styleClass="ml-2"></p-tag>
                     }
                   </div>
                 </td>
@@ -147,7 +147,7 @@ import {
                       <p-tag [value]="cert" severity="info"></p-tag>
                     }
                     @if (driver.certifications.length === 0) {
-                      <span class="text-muted">No certifications</span>
+                      <span class="text-muted">Nessuna certificazione</span>
                     }
                   </div>
                 </td>
@@ -177,7 +177,8 @@ import {
                     <strong>{{ driver.score.toFixed(0) }}</strong>
                     <i
                       class="pi pi-info-circle ml-2"
-                      pTooltip="Higher score = better match based on certifications, workload, and capacity"
+                      pTooltip="Punteggio più alto = miglior corrispondenza per certificazioni, carico di lavoro e capacità"
+                      aria-label="Informazioni sul punteggio"
                     ></i>
                   </div>
                 </td>
@@ -190,17 +191,17 @@ import {
       <!-- Reason Input (for reassignment) -->
       @if (isReassignment() && selectedDriver()) {
         <div class="reason-section">
-          <label for="reason">Reason for Reassignment *</label>
+          <label for="reason">Motivo della riassegnazione *</label>
           <textarea
             pInputTextarea
             id="reason"
             [(ngModel)]="reassignmentReason"
             rows="3"
-            placeholder="Explain why this task is being reassigned..."
+            placeholder="Spiega perché questo task viene riassegnato..."
             [class.ng-invalid]="!reassignmentReason"
           ></textarea>
           @if (!reassignmentReason) {
-            <small class="p-error">Reason is required for reassignment</small>
+            <small class="p-error">Il motivo è obbligatorio per la riassegnazione</small>
           }
         </div>
       }
@@ -210,7 +211,7 @@ import {
         <button
           pButton
           type="button"
-          label="Cancel"
+          label="Annulla"
           icon="pi pi-times"
           class="p-button-outlined"
           (click)="cancel()"
@@ -220,7 +221,7 @@ import {
         <button
           pButton
           type="button"
-          [label]="isReassignment() ? 'Reassign' : 'Assign Selected Driver'"
+          [label]="isReassignment() ? 'Riassegna' : 'Assegna autista selezionato'"
           icon="pi pi-check"
           (click)="manualAssign()"
           [disabled]="
@@ -373,13 +374,13 @@ export class DriverAssignmentDialogComponent implements OnInit {
         if (response.data.totalQualified === 0) {
           this.messageService.add({
             severity: 'warn',
-            summary: 'No Qualified Drivers',
+            summary: 'Nessun autista qualificato',
             detail: response.message,
           })
         }
       },
       error: error => {
-        this.error.set(`Failed to load qualified drivers: ${error.message}`)
+        this.error.set(`Impossibile caricare gli autisti qualificati: ${error.message}`)
         this.isLoading.set(false)
       },
     })
@@ -397,7 +398,7 @@ export class DriverAssignmentDialogComponent implements OnInit {
       next: response => {
         this.messageService.add({
           severity: 'success',
-          summary: 'Task Assigned',
+          summary: 'Task assegnato',
           detail: response.message,
         })
 
@@ -407,7 +408,7 @@ export class DriverAssignmentDialogComponent implements OnInit {
       error: error => {
         this.messageService.add({
           severity: 'error',
-          summary: 'Assignment Failed',
+          summary: 'Assegnazione fallita',
           detail: error.error?.message || error.message,
         })
 
@@ -424,8 +425,8 @@ export class DriverAssignmentDialogComponent implements OnInit {
     if (this.isReassignment() && !this.reassignmentReason) {
       this.messageService.add({
         severity: 'warn',
-        summary: 'Reason Required',
-        detail: 'Please provide a reason for reassignment',
+        summary: 'Motivo obbligatorio',
+        detail: 'Fornisci un motivo per la riassegnazione',
       })
       return
     }
@@ -444,7 +445,7 @@ export class DriverAssignmentDialogComponent implements OnInit {
       next: response => {
         this.messageService.add({
           severity: 'success',
-          summary: this.isReassignment() ? 'Task Reassigned' : 'Task Assigned',
+          summary: this.isReassignment() ? 'Task riassegnato' : 'Task assegnato',
           detail: response.message,
         })
 
@@ -453,7 +454,7 @@ export class DriverAssignmentDialogComponent implements OnInit {
           response.data.warnings.forEach(warning => {
             this.messageService.add({
               severity: 'warn',
-              summary: 'Warning',
+              summary: 'Avviso',
               detail: warning,
               life: 5000,
             })
@@ -466,7 +467,7 @@ export class DriverAssignmentDialogComponent implements OnInit {
       error: error => {
         this.messageService.add({
           severity: 'error',
-          summary: this.isReassignment() ? 'Reassignment Failed' : 'Assignment Failed',
+          summary: this.isReassignment() ? 'Riassegnazione fallita' : 'Assegnazione fallita',
           detail: error.error?.message || error.message,
         })
 

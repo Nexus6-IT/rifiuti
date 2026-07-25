@@ -140,6 +140,13 @@ export class ContractService {
     cerCode: string,
     now: Date = new Date()
   ): Promise<FirAutoFill | null> {
+    if (!producerId?.trim()) {
+      throw new BadRequestException('Parametro obbligatorio mancante: producerId')
+    }
+    if (!cerCode?.trim()) {
+      throw new BadRequestException('Parametro obbligatorio mancante: cerCode')
+    }
+
     const contract = await this.prisma.contract.findFirst({
       where: {
         tenantId,

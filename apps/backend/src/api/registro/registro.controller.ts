@@ -16,6 +16,8 @@ import {
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { ListMovimentiHandler } from '../../application/registro/queries/list-movimenti.handler'
@@ -25,7 +27,7 @@ import { RegistraMovimentoDto, ListMovimentiDto } from './dtos/registra-moviment
 
 @ApiTags('registro')
 @Controller('registro')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class RegistroController {
   constructor(
@@ -42,6 +44,7 @@ export class RegistroController {
    * sufficiente (anomaly detection: "scarico > carico" bloccante).
    */
   @Post()
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Registra movimento di carico/scarico nel registro cronologico',

@@ -12,6 +12,8 @@ describe('MudExportService', () => {
       tenant: { findUnique: jest.fn() },
       fIR: { findMany: jest.fn().mockResolvedValue([]) },
       destinatario: { findMany: jest.fn().mockResolvedValue([]) },
+      // Schede SA-AUT: senza autorizzazioni registrate nessun record AU è emesso.
+      autorizzazioneImpianto: { findMany: jest.fn().mockResolvedValue([]) },
     }
     referenceData = { findComuneByName: jest.fn().mockResolvedValue({ code: '058091' }) }
     service = new MudExportService(prisma, new MudVersionRegistry(), referenceData, logger)
@@ -105,7 +107,9 @@ describe('MudExportService', () => {
   })
 
   it('propaga errore per anno non supportato (prima di toccare il DB)', async () => {
-    await expect(service.exportTelematico('tenant-1', 1999)).rejects.toThrow('nessun tracciato')
+    await expect(service.exportTelematico('tenant-1', 1999)).rejects.toThrow(
+      'Versione tracciato MUD non disponibile'
+    )
     expect(prisma.tenant.findUnique).not.toHaveBeenCalled()
   })
 

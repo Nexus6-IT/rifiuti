@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { ContractService, ContractStatus } from './contract.service'
 import { CreateContractDto, ChangeContractStatusDto } from './dto/create-contract.dto'
@@ -21,13 +23,14 @@ import { CreateContractDto, ChangeContractStatusDto } from './dto/create-contrac
  */
 @ApiTags('contracts')
 @Controller('contracts')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class ContractController {
   constructor(private readonly contractService: ContractService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @ApiOperation({ summary: 'Crea un contratto (stato iniziale DRAFT)' })
   @ApiResponse({ status: 201, description: 'Contratto creato' })
   async create(@Body() dto: CreateContractDto, @CurrentUser() user: CurrentUserPayload) {
@@ -68,6 +71,7 @@ export class ContractController {
 
   @Patch(':id/status')
   @HttpCode(HttpStatus.OK)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @ApiOperation({ summary: 'Cambia stato del contratto (workflow di approvazione)' })
   @ApiResponse({ status: 400, description: 'Transizione di stato non ammessa' })
   async changeStatus(

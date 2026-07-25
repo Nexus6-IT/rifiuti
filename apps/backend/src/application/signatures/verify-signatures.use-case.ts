@@ -14,8 +14,16 @@ import { SignatureRole } from '../../domain/fir/digital-signature.vo'
  * 3. Check signature order and completeness
  * 4. Return verification report
  *
- * Public endpoint - no authentication required.
  * Supports QR code verification for regulatory compliance.
+ *
+ * PRIVACY (GDPR): la verifica pubblica via QR code NON deve esporre i dati
+ * personali dei firmatari. Chi scansiona il QR ha diritto di sapere *se* il
+ * documento è integro e firmato, non *chi* lo ha firmato: il codice fiscale è
+ * un dato personale e l'endpoint pubblico è enumerabile per id.
+ * `disclosePersonalData` va passato a `true` SOLO da un chiamante autenticato
+ * che abbia già verificato l'appartenenza del FIR al tenant dell'utente.
+ * Stesso principio del servizio pubblico RENTRI `GET /verifica/{numero_fir}`,
+ * che restituisce esistenza e validità, non l'anagrafica delle parti.
  */
 @Injectable()
 export class VerifySignaturesUseCase {
@@ -36,7 +44,16 @@ export class VerifySignaturesUseCase {
    */
   async execute(params: {
     firId: string
-    tenantId?: string // Optional for public verification
+    /**
+     * Se valorizzato, il FIR deve appartenere a questo tenant: altrimenti
+     * NOT_FOUND (non FORBIDDEN, per non confermare l'esistenza dell'id).
+     */
+    tenantId?: string
+    /**
+     * Include codice fiscale e nome dei firmatari nella risposta.
+     * Default `false`: la verifica pubblica resta anonima (GDPR).
+     */
+    disclosePersonalData?: boolean
   }): Promise<{
     firId: string
     firNumber: string
@@ -45,8 +62,8 @@ export class VerifySignaturesUseCase {
     signatureCount: number
     signatures: Array<{
       role: SignatureRole
-      signerFiscalCode: string
-      signerName: string
+      signerFiscalCode?: string
+      signerName?: string
       signedAt: Date
       signatureMethod: string
       certificateHash: string
@@ -58,12 +75,27 @@ export class VerifySignaturesUseCase {
     documentHash: string
     verifiedAt: Date
   }> {
-    this.logger.info(`Verifying signatures for FIR ${params.firId}`)
+    const disclose = params.disclosePersonalData === true
+    this.logger.info(
+      `Verifying signatures for FIR ${params.firId} (disclosePersonalData=${disclose})`
+    )
 
     // 1. Load FIR (without tenant filter for public verification)
     const fir = await this.firRepository.findByIdPublic(params.firId)
     if (!fir) {
       throw DomainException.notFound('FIR', params.firId)
+    }
+
+    // Il bypass RLS di findByIdPublic è accettabile solo per la verifica anonima.
+    // Se il chiamante è autenticato, il FIR deve essere del suo tenant: senza
+    // questo controllo l'endpoint di dettaglio leggerebbe i FIR di chiunque.
+    if (params.tenantId && fir.getTenantId() !== params.tenantId) {
+      throw DomainException.notFound('FIR', params.firId)
+    }
+    if (disclose && !params.tenantId) {
+      throw new Error(
+        'disclosePersonalData richiede un tenantId: rifiuto di esporre dati personali senza contesto tenant'
+      )
     }
 
     // 2. Get signable document representation
@@ -114,8 +146,14 @@ export class VerifySignaturesUseCase {
 
           return {
             role: verificationInfo.role,
-            signerFiscalCode: verificationInfo.signerFiscalCode,
-            signerName: verificationInfo.signerName,
+            // Omessi del tutto (non mascherati) quando la verifica è anonima:
+            // una maschera parziale del CF resta un dato personale.
+            ...(disclose
+              ? {
+                  signerFiscalCode: verificationInfo.signerFiscalCode,
+                  signerName: verificationInfo.signerName,
+                }
+              : {}),
             signedAt: verificationInfo.signedAt,
             signatureMethod: verificationInfo.signatureMethod,
             certificateHash: verificationInfo.certificateHash,
@@ -156,11 +194,16 @@ export class VerifySignaturesUseCase {
    * @param params - Verification parameters
    * @returns Verification result for specific role
    */
-  async verifyByRole(params: { firId: string; role: SignatureRole; tenantId?: string }): Promise<{
+  async verifyByRole(params: {
+    firId: string
+    role: SignatureRole
+    tenantId?: string
+    disclosePersonalData?: boolean
+  }): Promise<{
     isValid: boolean
     signature?: {
-      signerFiscalCode: string
-      signerName: string
+      signerFiscalCode?: string
+      signerName?: string
       signedAt: Date
       verifiedAt: Date
     }
@@ -172,6 +215,7 @@ export class VerifySignaturesUseCase {
       const verificationResult = await this.execute({
         firId: params.firId,
         tenantId: params.tenantId,
+        disclosePersonalData: params.disclosePersonalData,
       })
 
       const signatureResult = verificationResult.signatures.find(sig => sig.role === params.role)

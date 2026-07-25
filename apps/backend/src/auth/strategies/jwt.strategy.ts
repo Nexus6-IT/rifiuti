@@ -7,7 +7,9 @@ import { Injectable, UnauthorizedException } from '@nestjs/common'
 import { PassportStrategy } from '@nestjs/passport'
 import { ExtractJwt, Strategy } from 'passport-jwt'
 import { ConfigService } from '@nestjs/config'
+import { Request } from 'express'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { RedisService } from '../services/redis.service'
 import { JwtPayload } from '../services/jwt-tokens.service'
 
 export interface CurrentUserPayload {
@@ -25,19 +27,43 @@ export interface CurrentUserPayload {
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
     private readonly configService: ConfigService,
-    private readonly prismaService: PrismaService
+    private readonly prismaService: PrismaService,
+    private readonly redisService: RedisService
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: configService.get<string>('JWT_SECRET'),
+      passReqToCallback: true,
     })
   }
 
   /**
-   * Validate JWT payload and enrich with user data from database
+   * Valida il payload del JWT e lo arricchisce con i dati utente dal database.
+   *
+   * La lista di revoca va consultata QUI: e' l'unico punto attraversato da
+   * ogni richiesta autenticata. Senza questo controllo il logout scrive la
+   * revoca ma nessuno la legge, e il token resta valido fino a scadenza.
    */
-  async validate(payload: JwtPayload): Promise<CurrentUserPayload> {
+  async validate(req: Request, payload: JwtPayload): Promise<CurrentUserPayload> {
+    // 0. Un token nella lista di revoca (es. dopo logout) non deve nemmeno
+    // arrivare a interrogare il database: si rifiuta subito.
+    const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req)
+
+    if (token && (await this.redisService.isAccessTokenRevoked(token))) {
+      throw new UnauthorizedException('Token revocato')
+    }
+
+    // 0bis. Sessione singola: un token emesso PRIMA dell'ultimo accesso
+    // dell'utente (epoca di sessione) appartiene a una sessione superata da
+    // un login successivo. Senza questo controllo l'access token resterebbe
+    // valido fino alla sua scadenza naturale (15 minuti) anche dopo che
+    // l'utente ha effettuato un nuovo accesso altrove.
+    const epoca = await this.redisService.leggiEpocaSessione(payload.sub)
+    if (epoca !== null && typeof payload.iat === 'number' && payload.iat < epoca) {
+      throw new UnauthorizedException("Sessione superata da un accesso piu' recente")
+    }
+
     // 1. Fetch user from database
     const user = await this.prismaService.user.findUnique({
       where: { id: payload.sub },

@@ -10,7 +10,21 @@ import { INestApplication } from '@nestjs/common'
 import * as fs from 'fs'
 import * as path from 'path'
 
+// NOTA: questa funzione non risulta invocata da nessun bootstrap (grep su
+// apps/backend/src non trova chiamate a setupSwagger) — codice orfano rispetto
+// a apps/backend/src/main.ts, che registra Swagger inline. Manteniamo comunque
+// la stessa guardia di produzione per difesa in profondità, nel caso venga
+// ricollegata in futuro senza che ci si ricordi del requisito di sicurezza.
 export function setupSwagger(app: INestApplication): void {
+  // La spec OpenAPI completa abbassa il costo di ricognizione per un
+  // attaccante: in produzione non va esposta. Riattivabile con
+  // SWAGGER_ENABLED=true per diagnosi.
+  const swaggerAbilitato =
+    process.env.NODE_ENV !== 'production' || process.env.SWAGGER_ENABLED === 'true'
+  if (!swaggerAbilitato) {
+    return
+  }
+
   const config = new DocumentBuilder()
     .setTitle('WasteFlow API - Roles & Permissions System')
     .setDescription(

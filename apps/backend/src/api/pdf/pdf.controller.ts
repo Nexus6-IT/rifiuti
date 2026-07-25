@@ -1,4 +1,14 @@
-import { Controller, Get, Param, Res, UseGuards, HttpException, HttpStatus } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Param,
+  Req,
+  Res,
+  UseGuards,
+  HttpException,
+  HttpStatus,
+  BadRequestException,
+} from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { Response } from 'express'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -25,9 +35,16 @@ export class PdfController {
   @Get('fir/:id')
   @ApiOperation({ summary: 'Download FIR as PDF' })
   @ApiParam({ name: 'id', type: String, description: 'FIR ID' })
-  async downloadFIR(@Param('id') id: string, @Res() res: Response) {
-    const fir = await this.prisma.fIR.findUnique({
-      where: { id },
+  async downloadFIR(@Param('id') id: string, @Req() req: any, @Res() res: Response) {
+    // Il tenant DEVE essere quello dell'utente autenticato: senza questo vincolo
+    // qualsiasi utente scaricherebbe il FIR di qualsiasi tenant conoscendone l'id.
+    const tenantId = req.user?.tenantId
+    if (!tenantId) {
+      throw new BadRequestException('Tenant non disponibile per l’utente corrente')
+    }
+
+    const fir = await this.prisma.fIR.findFirst({
+      where: { id, tenantId },
       include: {
         producerUser: true,
         carrierUser: true,
@@ -37,6 +54,7 @@ export class PdfController {
       },
     })
 
+    // FIR di un altro tenant → 404 e non 403: un 403 confermerebbe che l'id esiste.
     if (!fir) {
       throw new HttpException('FIR not found', HttpStatus.NOT_FOUND)
     }
@@ -55,11 +73,26 @@ export class PdfController {
   @Get('mud/:year')
   @ApiOperation({ summary: 'Download MUD report as PDF' })
   @ApiParam({ name: 'year', type: Number, description: 'Report year' })
-  async downloadMUD(@Param('year') year: string, @Res() res: Response) {
+  async downloadMUD(@Param('year') year: string, @Req() req: any, @Res() res: Response) {
     const reportYear = parseInt(year, 10)
 
+    // Valida l'anno: deve essere numerico e in un intervallo plausibile.
+    const currentYear = new Date().getFullYear()
+    if (!/^\d+$/.test(year) || Number.isNaN(reportYear)) {
+      throw new BadRequestException('Anno non valido')
+    }
+    if (reportYear < 2000 || reportYear > currentYear + 1) {
+      throw new BadRequestException(`Anno fuori intervallo consentito (2000-${currentYear + 1})`)
+    }
+
+    // Usa il tenant reale dell'utente autenticato (mai un placeholder).
+    const tenantId = req.user?.tenantId
+    if (!tenantId) {
+      throw new BadRequestException('Tenant non disponibile per l’utente corrente')
+    }
+
     // Generate MUD report data
-    const mudReport = await this.mudGenerator.generateMUDReport('tenant-id-placeholder', reportYear)
+    const mudReport = await this.mudGenerator.generateMUDReport(tenantId, reportYear)
 
     // Generate PDF
     const pdfBuffer = await this.pdfService.generateMUDPDF(mudReport)

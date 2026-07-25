@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import {
@@ -163,16 +164,24 @@ export class NotificationService {
    * Mark notification as read
    */
   async markAsRead(notificationId: string, userId: string): Promise<void> {
-    await this.prisma.notification.update({
-      where: {
-        id: notificationId,
-        userId, // Ensure user owns notification
-      },
-      data: {
-        isRead: true,
-        readAt: new Date(),
-      },
-    })
+    try {
+      await this.prisma.notification.update({
+        where: {
+          id: notificationId,
+          userId, // Ensure user owns notification
+        },
+        data: {
+          isRead: true,
+          readAt: new Date(),
+        },
+      })
+    } catch (error) {
+      // P2025: record da aggiornare non trovato (id inesistente o non di proprietà dell'utente)
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new NotFoundException('Notifica non trovata')
+      }
+      throw error
+    }
 
     this.logger.debug(`Notification marked as read: ${notificationId}`)
   }
@@ -200,12 +209,20 @@ export class NotificationService {
    * Delete notification
    */
   async deleteNotification(notificationId: string, userId: string): Promise<void> {
-    await this.prisma.notification.delete({
-      where: {
-        id: notificationId,
-        userId,
-      },
-    })
+    try {
+      await this.prisma.notification.delete({
+        where: {
+          id: notificationId,
+          userId,
+        },
+      })
+    } catch (error) {
+      // P2025: record da eliminare non trovato (id inesistente o non di proprietà dell'utente)
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new NotFoundException('Notifica non trovata')
+      }
+      throw error
+    }
 
     this.logger.debug(`Notification deleted: ${notificationId}`)
   }

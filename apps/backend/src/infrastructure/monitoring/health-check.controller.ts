@@ -1,11 +1,21 @@
-import { Controller, Get } from '@nestjs/common'
-import { ApiTags, ApiOperation } from '@nestjs/swagger'
+import { Controller, Get, UseGuards } from '@nestjs/common'
+import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger'
 import { PrismaService } from '../database/prisma.service'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 
 /**
  * Health Check Controller
  *
  * Provides system health status for monitoring.
+ *
+ * Unico controller sulla rotta `/health` (in precedenza duplicato con
+ * `api/health/health.controller.ts`, rimosso: la doppia registrazione su
+ * `@Controller('health')` rendeva la risposta dipendente dall'ordine di
+ * init dei moduli). Il contratto di `/health` semplice è quello osservato
+ * in produzione — usato dallo smoke test di deploy e dall'healthcheck
+ * Docker — e NON va alterato.
  */
 @Controller('health')
 @ApiTags('Health')
@@ -18,8 +28,8 @@ export class HealthCheckController {
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      memory: process.memoryUsage(),
+      service: 'wasteflow-backend',
+      version: '0.1.0',
     }
   }
 
@@ -35,7 +45,10 @@ export class HealthCheckController {
   }
 
   @Get('detailed')
-  @ApiOperation({ summary: 'Detailed health metrics' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Detailed health metrics (SUPER_ADMIN/ADMIN only)' })
   async detailedHealth() {
     const dbHealth = await this.databaseHealth()
 

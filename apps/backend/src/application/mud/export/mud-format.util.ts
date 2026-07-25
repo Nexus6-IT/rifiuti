@@ -88,6 +88,38 @@ export function mudCodiceFiscale(cf: string): string {
 /** Unità di misura MUD: kg=1, t=2 (default kg). */
 export const MUD_UM_KG = 1
 
+/**
+ * Campo ISTAT a lunghezza fissa (provincia/comune, `num 3` nel tracciato).
+ *
+ * I codici ISTAT hanno gli zeri a sinistra significativi e il tracciato li
+ * tipizza come **numerici**: vanno quindi zero-paddati, non spazio-paddati.
+ * Un valore assente diventa `000` ("non dichiarato"), mai tre spazi: un campo
+ * `num` riempito di spazi fa scartare il file in fase di acquisizione.
+ */
+export function mudIstat(value: string | null | undefined, width = 3): string {
+  const digits = (value ?? '').replace(/\D/g, '')
+  if (!digits) return '0'.repeat(width)
+  return digits.slice(-width).padStart(width, '0')
+}
+
+/**
+ * Elenco di operazioni R/D come stringa separata da virgole (campo `alfa 50`
+ * del record AU), es. `['R1','R5','R13']` → `"R1,R5,R13"`.
+ */
+export function mudOperazioni(ops: string[] | undefined, width = 50): string {
+  return mudAlfa((ops ?? []).join(','), width)
+}
+
+/** Flag booleano MUD: NO=0, SI=1. */
+export function mudFlag(value: boolean | undefined): string {
+  return value ? '1' : '0'
+}
+
+/** Data MUD opzionale: `AAAAMMGG`, oppure 8 zeri se assente. */
+export function mudDateOrZero(d: Date | null | undefined): string {
+  return d ? mudDate(d) : '00000000'
+}
+
 /** Data in formato MUD "AAAAMMGG". */
 export function mudDate(d: Date): string {
   const y = d.getFullYear().toString().padStart(4, '0')

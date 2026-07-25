@@ -5,7 +5,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing'
 import { INestApplication, ValidationPipe } from '@nestjs/common'
-import * as request from 'supertest'
+import request from 'supertest'
 import { AppModule } from '../src/app.module'
 import { PrismaService } from '../src/infrastructure/persistence/prisma.service'
 
@@ -120,12 +120,14 @@ describe('FIR Workflow (E2E)', () => {
             description: 'oli minerali per motori',
             isPericoloso: true,
             category: '13',
+            subcategory: '13 02',
           },
           {
             code: '15 01 01',
             description: 'imballaggi in carta e cartone',
             isPericoloso: false,
             category: '15',
+            subcategory: '15 01',
           },
         ],
       })
@@ -189,6 +191,7 @@ describe('FIR Workflow (E2E)', () => {
           description: 'test',
           isPericoloso: false,
           category: '15',
+          subcategory: '15 01',
         },
       })
 

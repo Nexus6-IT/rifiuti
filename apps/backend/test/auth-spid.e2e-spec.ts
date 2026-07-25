@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { INestApplication, ValidationPipe } from '@nestjs/common'
-import * as request from 'supertest'
+import request from 'supertest'
 import { PrismaClient } from '@prisma/client'
 import { AppModule } from '../src/app.module'
 
@@ -108,7 +108,7 @@ describe('SPID Authentication (E2E)', () => {
       expect(response.body.user.spidLevel).toBe(2)
 
       // Verify user was created in database
-      const user = await prisma.user.findUnique({
+      const user = await prisma.user.findFirst({
         where: { fiscalCode: 'RSSMRA80A01H501U' },
       })
 
@@ -123,6 +123,7 @@ describe('SPID Authentication (E2E)', () => {
       await prisma.user.create({
         data: {
           id: 'user-123',
+          keycloakId: 'keycloak-user-123',
           fiscalCode: 'RSSMRA80A01H501U',
           firstName: 'Mario',
           lastName: 'Rossi',
@@ -150,7 +151,7 @@ describe('SPID Authentication (E2E)', () => {
       expect(response.body.user.spidLevel).toBe(3)
 
       // Verify user was updated
-      const user = await prisma.user.findUnique({
+      const user = await prisma.user.findFirst({
         where: { fiscalCode: 'RSSMRA80A01H501U' },
       })
 
@@ -388,7 +389,10 @@ async function authenticateUser(attrs: {
 }): Promise<{ accessToken: string; refreshToken: string; userId: string }> {
   // Mock authentication - in real implementation would go through SAML flow
   // For tests, we directly create user and generate tokens
-  const app = global.app
+  // NOTA: questo helper presuppone che il test scriva `(global as any).app`
+  // prima di chiamarlo (non avviene in questo file): resta un placeholder
+  // funzionale, ma deve compilare — da qui il cast esplicito.
+  const app = (global as any).app
   const samlResponse = createMockSamlResponse({
     ...attrs,
     issuer: 'https://identity.infocert.it',

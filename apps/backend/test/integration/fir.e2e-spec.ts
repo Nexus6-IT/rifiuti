@@ -50,7 +50,7 @@ describe('FIR API (e2e)', () => {
           '/api/v1/fir',
           testData.users.operator.id,
           testData.tenant.id,
-          ['fir:create:facility']
+          'OPERATOR'
         )
         .send(firData)
 
@@ -78,7 +78,7 @@ describe('FIR API (e2e)', () => {
           '/api/v1/fir',
           testData.users.driver.id,
           testData.tenant.id,
-          ['fir:read:own'] // No create permission
+          'VIEWER' // No create permission
         )
         .send(firData)
 
@@ -101,7 +101,7 @@ describe('FIR API (e2e)', () => {
           '/api/v1/fir',
           testData.users.operator.id,
           testData.tenant.id,
-          ['fir:create:facility']
+          'OPERATOR'
         )
         .send(firData)
 
@@ -141,7 +141,7 @@ describe('FIR API (e2e)', () => {
           '/api/v1/fir?limit=10',
           testData.users.admin.id,
           testData.tenant.id,
-          ['fir:read:all']
+          'ADMIN'
         )
         .send()
 
@@ -158,7 +158,7 @@ describe('FIR API (e2e)', () => {
           '/api/v1/fir?status=pending',
           testData.users.admin.id,
           testData.tenant.id,
-          ['fir:read:all']
+          'ADMIN'
         )
         .send()
 
@@ -190,9 +190,13 @@ describe('FIR API (e2e)', () => {
         })
 
       const response = await testSetup
-        .authenticatedRequest('get', '/api/v1/fir', testData.users.admin.id, testData.tenant.id, [
-          'fir:read:all',
-        ])
+        .authenticatedRequest(
+          'get',
+          '/api/v1/fir',
+          testData.users.admin.id,
+          testData.tenant.id,
+          'ADMIN'
+        )
         .send()
 
       expect(response.status).toBe(HttpStatus.OK)
@@ -233,7 +237,7 @@ describe('FIR API (e2e)', () => {
           `/api/v1/fir/${testFir.id}`,
           testData.users.admin.id,
           testData.tenant.id,
-          ['fir:read:all']
+          'ADMIN'
         )
         .send()
 
@@ -250,7 +254,7 @@ describe('FIR API (e2e)', () => {
           '/api/v1/fir/non-existent-id',
           testData.users.admin.id,
           testData.tenant.id,
-          ['fir:read:all']
+          'ADMIN'
         )
         .send()
 
@@ -294,7 +298,7 @@ describe('FIR API (e2e)', () => {
           `/api/v1/fir/${testFir.id}`,
           testData.users.operator.id,
           testData.tenant.id,
-          ['fir:update:facility']
+          'OPERATOR'
         )
         .send(updateData)
 
@@ -315,7 +319,7 @@ describe('FIR API (e2e)', () => {
           `/api/v1/fir/${testFir.id}`,
           testData.users.driver.id,
           testData.tenant.id,
-          ['fir:read:own']
+          'VIEWER'
         )
         .send(updateData)
 

@@ -19,14 +19,14 @@ export class GetFIRByIdQueryHandler {
       return Result.fail<FIR>(`FIR not found: ${query.firId}`)
     }
 
-    // 2. Check authorization (user must belong to one of the involved tenants)
-    const isAuthorized =
-      fir.produttoreId === query.tenantId ||
-      fir.trasportatoreId === query.tenantId ||
-      fir.destinatarioId === query.tenantId
-
-    if (!isAuthorized) {
-      return Result.fail<FIR>('User not authorized to access this FIR')
+    // 2. Autorizzazione su base TENANT.
+    //    L'autorizzazione si fonda sul tenant proprietario del FIR, NON sugli id
+    //    delle parti (produttore/trasportatore/destinatario), che sono riferimenti
+    //    ai registri e NON tenant. Il repository è già tenant-scoped (RLS), ma
+    //    verifichiamo esplicitamente l'appartenenza: un FIR di un altro tenant non
+    //    deve rivelare la propria esistenza → trattato come "non trovato" (404).
+    if (fir.tenantId !== query.tenantId) {
+      return Result.fail<FIR>(`FIR not found: ${query.firId}`)
     }
 
     // 3. Return FIR

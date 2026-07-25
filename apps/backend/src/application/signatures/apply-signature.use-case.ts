@@ -24,10 +24,15 @@
 import { Injectable, Inject } from '@nestjs/common'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { FIRRepository, FIR_REPOSITORY } from '../../domain/fir/fir.repository'
-import { DigitalSignature, SignatureRole } from '../../domain/fir/digital-signature.vo'
+import {
+  DigitalSignature,
+  SignatureRole,
+  SignatureMethod,
+} from '../../domain/fir/digital-signature.vo'
 import { DigitalSignatureService } from './digital-signature.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { FIRPartyResolver } from '../../infrastructure/signatures/fir-party.resolver'
 
 @Injectable()
 export class ApplySignatureUseCase {
@@ -36,7 +41,8 @@ export class ApplySignatureUseCase {
     private readonly firRepository: FIRRepository,
     private readonly signatureService: DigitalSignatureService,
     private readonly logger: LoggerService,
-    private readonly eventEmitter: EventEmitter2
+    private readonly eventEmitter: EventEmitter2,
+    private readonly partyResolver: FIRPartyResolver
   ) {
     this.logger.setContext(ApplySignatureUseCase.name)
   }
@@ -102,18 +108,51 @@ export class ApplySignatureUseCase {
       throw DomainException.notFound('FIR', params.firId)
     }
 
+    // 4-bis. Autorizzazione di ruolo-parte: chi firma DEVE essere la parte che
+    //        quel ruolo designa sul FIR. Senza questo controllo un qualsiasi
+    //        operatore del tenant potrebbe apporre tutte e tre le firme,
+    //        vanificando la separazione dei ruoli del formulario (DM 59/2023).
+    const parties = await this.partyResolver.findParties(params.firId)
+    if (!parties) {
+      throw DomainException.notFound('FIR', params.firId)
+    }
+    const expectedUserId = FIRPartyResolver.expectedUserIdFor(parties, params.role)
+    if (!expectedUserId) {
+      throw DomainException.businessRuleViolation(
+        'ROLE_NOT_ASSIGNED',
+        `Il ruolo ${params.role} non è ancora assegnato su questo FIR: ` +
+          'designare la parte prima di firmare.'
+      )
+    }
+    if (expectedUserId !== params.userId) {
+      this.logger.warn(
+        `Tentativo di firma ${params.role} su FIR ${params.firId} da utente ${params.userId} ` +
+          `non designato per quel ruolo (atteso ${expectedUserId})`
+      )
+      throw DomainException.businessRuleViolation(
+        'SIGNER_NOT_AUTHORIZED_FOR_ROLE',
+        `Non sei la parte designata come ${params.role} su questo FIR: ` +
+          'ogni ruolo può essere firmato solo dalla parte corrispondente.'
+      )
+    }
+
     // 5. Genera firma crittografica via provider configurato
     //    Il provider gestisce internamente la chiave privata (mai esposta)
     const firDocument = fir.toSignableDocument()
     const signatureData = await this.signatureService.createSignature(firDocument, params.userId)
 
     // 6. Crea il Value Object DigitalSignature
+    //    Il DigitalSignature VO accetta solo l'algoritmo crittografico
+    //    ('ECDSA-SHA256'/'RSA-SHA256'). Il provider sandbox etichetta invece il
+    //    metodo come 'FIRMA-NON-QUALIFICATA' (label di qualificazione, non
+    //    algoritmo): normalizziamo all'algoritmo effettivo così il VO non rigetta
+    //    la firma. La non-qualificazione resta tracciata da isQualified=false.
     const signature = DigitalSignature.create({
       signerFiscalCode: params.signerFiscalCode,
       signerName: params.signerName,
       role: params.role,
       signatureValue: signatureData.signatureValue,
-      signatureMethod: signatureData.signatureMethod as any,
+      signatureMethod: this.toDomainSignatureMethod(signatureData.signatureMethod),
       certificateHash: signatureData.certificateHash,
       documentHash: signatureData.documentHash,
       publicKey: signatureData.publicKey,
@@ -152,5 +191,18 @@ export class ApplySignatureUseCase {
       firStatus: fir.getStatus(),
       isCompleted: fir.isImmutable(),
     }
+  }
+
+  /**
+   * Normalizza il metodo firma restituito dal provider all'algoritmo
+   * crittografico accettato dal DigitalSignature VO. Il sandbox restituisce
+   * 'FIRMA-NON-QUALIFICATA' (label di qualificazione): il suo algoritmo effettivo
+   * è ECDSA-SHA256, quindi è il default di fallback.
+   */
+  private toDomainSignatureMethod(providerMethod: string): SignatureMethod {
+    if (providerMethod === 'ECDSA-SHA256' || providerMethod === 'RSA-SHA256') {
+      return providerMethod
+    }
+    return 'ECDSA-SHA256'
   }
 }

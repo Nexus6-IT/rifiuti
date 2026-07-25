@@ -139,7 +139,7 @@ describe('CERCatalogService', () => {
     })
 
     it('should throw error for empty keyword', async () => {
-      ;(await expect(service.search('')).rejects.toThrow('Search keyword cannot be empty')) as any
+      ;(await expect(service.search('')).rejects.toThrow('obbligatorio')) as any
     })
 
     it('should trim whitespace from keyword', async () => {

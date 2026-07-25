@@ -8,11 +8,11 @@ import { ConfigModule } from '@nestjs/config'
 import { EventEmitterModule } from '@nestjs/event-emitter'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { ScheduleModule } from '@nestjs/schedule'
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
+import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core'
 import { PrometheusModule } from '@willsoto/nestjs-prometheus'
+import { HttpExceptionFilter } from './core/filters/http-exception.filter'
 import { TenantContextMiddleware } from './core/middleware/tenant-context.middleware'
 import { TenantSwitchInterceptor } from './core/interceptors/tenant-switch.interceptor'
-import { HealthController } from './api/health/health.controller'
 import { AuthModule } from './auth/auth.module'
 import { PrismaModule } from './infrastructure/persistence/prisma.module'
 import { RegistryModule } from './api/registry/registry.module'
@@ -152,8 +152,16 @@ import { AccessRequestModule } from './application/access-request/access-request
     // GET/PATCH /admin/access-requests (SUPER_ADMIN). Nessun tenant creato qui.
     AccessRequestModule,
   ],
-  controllers: [HealthController],
   providers: [
+    // Filtro eccezioni globale: mappa errori Prisma su status corretti
+    // (P2023→400, P2025→404, P2002→409, P2003/P2014→400, ValidationError→400) e
+    // impedisce il leak di dettagli interni (Prisma/stack/path) nel body di risposta.
+    // Shape flat { statusCode, error, message, correlationId, timestamp, path } —
+    // invariata rispetto a quella consumata dal frontend (err.error.message).
+    {
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
+    },
     // Apply rate limiting globally (T254)
     {
       provide: APP_GUARD,

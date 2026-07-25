@@ -75,12 +75,50 @@ export class RegistraMovimentoUseCase {
       }
     }
 
+    // 0b. Validazione codice CER contro il catalogo ufficiale.
+    // Normalizza al formato canonico "NN NN NN" (con "*" per i pericolosi) e
+    // verifica che esista in catalogo: un CER inesistente non è registrabile.
+    const cerCode = this.normalizeCerCode(command.cerCode)
+    const cerEsiste = await this.cerCodeExists(cerCode)
+    if (!cerEsiste) {
+      return Result.fail(`Codice CER non valido: ${command.cerCode}`)
+    }
+
+    // 0c. Le date di operazione/registrazione non possono essere nel futuro.
+    const now = new Date()
+    if (command.movementDate.getTime() > now.getTime()) {
+      return Result.fail(
+        `La data dell'operazione non può essere nel futuro: ` +
+          `${command.movementDate.toISOString().slice(0, 10)}`
+      )
+    }
+    if (command.registrationDate.getTime() > now.getTime()) {
+      return Result.fail(
+        `La data di registrazione non può essere nel futuro: ` +
+          `${command.registrationDate.toISOString().slice(0, 10)}`
+      )
+    }
+
+    // 0d. Se è indicato un FIR collegato, deve esistere e appartenere al tenant.
+    // Evita movimenti con FK penzolante verso un formulario inesistente.
+    if (command.firId) {
+      const fir = await this.prisma.fIR.findFirst({
+        where: { id: command.firId, tenantId: command.tenantId },
+        select: { id: true },
+      })
+      if (!fir) {
+        return Result.fail(
+          `FIR collegato non trovato o non appartenente al tenant: ${command.firId}`
+        )
+      }
+    }
+
     // 1. Validazione preventiva giacenza per SCARICO
     if (command.type === 'SCARICO') {
-      const giacenza = await this.getGiacenzaCer(command.tenantId, command.cerCode)
+      const giacenza = await this.getGiacenzaCer(command.tenantId, cerCode)
       if (giacenza < command.quantity) {
         return Result.fail(
-          `Giacenza insufficiente per CER ${command.cerCode}: ` +
+          `Giacenza insufficiente per CER ${cerCode}: ` +
             `disponibili ${giacenza} ${command.unit}, richiesti ${command.quantity} ${command.unit}. ` +
             `Verifica i movimenti di carico registrati.`
         )
@@ -117,7 +155,7 @@ export class RegistraMovimentoUseCase {
           movementDate: command.movementDate,
           registrationDate: command.registrationDate,
           causale: command.causale,
-          cerCode: command.cerCode,
+          cerCode: cerCode,
           wasteDescription: command.wasteDescription,
           quantity: command.quantity,
           unit: command.unit,
@@ -205,6 +243,36 @@ export class RegistraMovimentoUseCase {
     )
 
     return Result.ok(movimento)
+  }
+
+  /**
+   * Normalizza un codice CER al formato canonico del catalogo "NN NN NN"
+   * (con "*" finale per i pericolosi). Accetta input senza spazi ("200301")
+   * o con spaziatura irregolare; se il formato non è 6 cifre lascia invariato
+   * (la validazione di esistenza fallirà con messaggio chiaro).
+   */
+  private normalizeCerCode(raw: string): string {
+    if (!raw) return raw
+    const trimmed = raw.trim().toUpperCase()
+    const hazardous = trimmed.includes('*')
+    const digits = trimmed.replace(/[^0-9]/g, '')
+    if (digits.length !== 6) return trimmed
+    const spaced = `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 6)}`
+    return hazardous ? `${spaced}*` : spaced
+  }
+
+  /**
+   * Verifica che il codice CER esista nel catalogo ufficiale. Il catalogo
+   * memorizza i pericolosi con "*" finale: l'operatore potrebbe ometterlo,
+   * quindi accetta il match sia con sia senza asterisco.
+   */
+  private async cerCodeExists(cerCode: string): Promise<boolean> {
+    const withoutStar = cerCode.replace(/\*$/, '')
+    const withStar = `${withoutStar}*`
+    const count = await this.prisma.cERCode.count({
+      where: { code: { in: [withoutStar, withStar] } },
+    })
+    return count > 0
   }
 
   /** Calcola la giacenza corrente per un CER del tenant (carico - scarico). */

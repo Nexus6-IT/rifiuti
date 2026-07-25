@@ -26,6 +26,14 @@ describe('RegistraMovimentoUseCase', () => {
         groupBy: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
       },
+      // Catalogo CER: per default il codice usato nei test ("20 03 01") esiste.
+      cERCode: {
+        count: jest.fn().mockResolvedValue(1),
+      },
+      // FIR collegato: per default esiste e appartiene al tenant.
+      fIR: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'fir-id-001' }),
+      },
       $transaction: jest.fn(),
       ...overrides,
     }
@@ -485,6 +493,96 @@ describe('RegistraMovimentoUseCase', () => {
     // Il dominio lancia un'eccezione che la use-case cattura come Result.fail
     expect(result.isFailure).toBe(true)
     expect(result.error).toContain('Causale non valida per CARICO')
+  })
+
+  // ─── Codice CER inesistente ──────────────────────────────────────────────────
+
+  it('rifiuta un movimento con codice CER non presente nel catalogo', async () => {
+    prisma.cERCode.count.mockResolvedValue(0)
+
+    const cmd = new RegistraMovimentoCommand(
+      TENANT,
+      USER,
+      'CARICO',
+      TODAY,
+      TODAY,
+      'PRODUZIONE_INTERNA',
+      '99 99 99',
+      undefined,
+      100,
+      'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    )
+    const result = await useCase.execute(cmd)
+
+    expect(result.isFailure).toBe(true)
+    expect(result.error).toContain('Codice CER non valido')
+  })
+
+  // ─── FIR collegato inesistente ───────────────────────────────────────────────
+
+  it('rifiuta un movimento con firId inesistente (no FK penzolante)', async () => {
+    prisma.fIR.findFirst.mockResolvedValue(null)
+
+    const cmd = new RegistraMovimentoCommand(
+      TENANT,
+      USER,
+      'CARICO',
+      TODAY,
+      TODAY,
+      'PRODUZIONE_INTERNA',
+      '20 03 01',
+      undefined,
+      100,
+      'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'fir-inesistente',
+      undefined
+    )
+    const result = await useCase.execute(cmd)
+
+    expect(result.isFailure).toBe(true)
+    expect(result.error).toContain('FIR collegato non trovato')
+  })
+
+  // ─── Data nel futuro ─────────────────────────────────────────────────────────
+
+  it("rifiuta un movimento con data dell'operazione nel futuro", async () => {
+    const futuro = new Date('2099-01-01T00:00:00.000Z')
+
+    const cmd = new RegistraMovimentoCommand(
+      TENANT,
+      USER,
+      'CARICO',
+      futuro,
+      futuro,
+      'PRODUZIONE_INTERNA',
+      '20 03 01',
+      undefined,
+      100,
+      'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    )
+    const result = await useCase.execute(cmd)
+
+    expect(result.isFailure).toBe(true)
+    expect(result.error).toContain('non può essere nel futuro')
   })
 
   // ─── Due movimenti consecutivi ───────────────────────────────────────────────

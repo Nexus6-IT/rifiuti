@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { INestApplication } from '@nestjs/common'
-import * as request from 'supertest'
+import request from 'supertest'
 import { PrismaClient } from '@prisma/client'
 import { TestDataSeeder, getTestPrismaClient } from './helpers/seed-test-data'
 
@@ -147,9 +147,10 @@ describe('RENTRI Sync E2E', () => {
           where: { id: firId },
         })
 
-        expect(syncedFIR.rentriSyncStatus).toBe('SYNCED')
-        expect(syncedFIR.rentriProtocolNumber).toBeDefined()
-        expect(syncedFIR.rentriSyncedAt).toBeDefined()
+        expect(syncedFIR).not.toBeNull()
+        expect(syncedFIR!.rentriSyncStatus).toBe('SYNCED')
+        expect(syncedFIR!.rentriProtocolNumber).toBeDefined()
+        expect(syncedFIR!.rentriSyncedAt).toBeDefined()
 
         // Step 6: Verify in RENTRI mock API
         const rentriResponse = await request('http://localhost:3001')
@@ -158,7 +159,7 @@ describe('RENTRI Sync E2E', () => {
 
         expect(rentriResponse.body.firId).toBe(firId)
         expect(rentriResponse.body.status).toBe('ACCEPTED')
-        expect(rentriResponse.body.protocolNumber).toBe(syncedFIR.rentriProtocolNumber)
+        expect(rentriResponse.body.protocolNumber).toBe(syncedFIR!.rentriProtocolNumber)
 
         // Step 7: Check sync logs
         const logsResponse = await request(app.getHttpServer())
@@ -290,9 +291,9 @@ describe('RENTRI Sync E2E', () => {
       const fir2Synced = await prisma.fIR.findUnique({ where: { id: fir2.id } })
       const fir3Synced = await prisma.fIR.findUnique({ where: { id: fir3.id } })
 
-      expect(fir1Synced.rentriSyncStatus).toBe('SYNCED')
-      expect(fir2Synced.rentriSyncStatus).toBe('SYNCED')
-      expect(fir3Synced.rentriSyncStatus).toBe('SYNCED')
+      expect(fir1Synced!.rentriSyncStatus).toBe('SYNCED')
+      expect(fir2Synced!.rentriSyncStatus).toBe('SYNCED')
+      expect(fir3Synced!.rentriSyncStatus).toBe('SYNCED')
     })
   })
 })

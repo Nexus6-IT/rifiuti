@@ -23,6 +23,7 @@ import {
 } from '../../domain/fir/digital-signature.vo'
 import { PrismaService } from '../persistence/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { DomainException } from '../../domain/shared/domain-exception'
 
 // Include per le query firma: signatures + user (per fiscal code legacy)
 const SIGNATURE_INCLUDE = {
@@ -98,13 +99,20 @@ export class SignatureFIRRepository implements FIRRepository {
     })
 
     if (!user) {
-      // Non blocca il flusso (pronto-ma-non-collegato) ma logga l'anomalia
-      this.logger.warn(
+      // NON si può proseguire silenziosamente: il chiamante risponderebbe
+      // `success: true` all'utente mentre in `fir_signatures` non resta nulla,
+      // cioè una firma creduta apposta e in realtà inesistente. Meglio un
+      // errore esplicito che una prova documentale fantasma.
+      this.logger.error(
         `Utente CF=${signerFiscalCode} non trovato nel tenant ${tenantId}: ` +
-          `firma ${role} per FIR ${firId} NON persistita in fir_signatures. ` +
+          `firma ${role} per FIR ${firId} NON persistibile in fir_signatures. ` +
           "Assicurarsi che l'utente sia sincronizzato localmente (provisioning Keycloak)."
       )
-      return fir
+      throw DomainException.businessRuleViolation(
+        'SIGNER_NOT_PROVISIONED',
+        `Firmatario con codice fiscale ${signerFiscalCode} non presente nel tenant: ` +
+          'la firma non può essere registrata. Sincronizzare l’utente e riprovare.'
+      )
     }
 
     const sigData = lastSignature.toPlainObject()
