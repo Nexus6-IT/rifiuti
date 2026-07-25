@@ -1,6 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify'
 import { registraRotteToken } from './routes/token'
 import { registraRotteFormulari } from './routes/formulari'
+import { registraRotteTransazioni } from './routes/transazioni'
 import { Archivio } from './stato/archivio'
 
 // Module augmentation: dichiara la decorazione `archivio` sull'istanza
@@ -25,6 +26,7 @@ export function creaApp(): FastifyInstance {
   const archivio = new Archivio()
   app.decorate('archivio', archivio)
   registraRotteFormulari(app, archivio)
+  registraRotteTransazioni(app, archivio)
 
   return app
 }

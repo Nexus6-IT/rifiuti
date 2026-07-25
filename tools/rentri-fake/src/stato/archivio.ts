@@ -4,15 +4,27 @@ export interface Formulario {
   produttore: string
 }
 
+export type StatoTransazione = 'in_elaborazione' | 'completata' | 'fallita'
+
+export interface Transazione {
+  id: string
+  stato: StatoTransazione
+  risultato?: unknown
+}
+
 /**
  * Stato in memoria della fake. Volutamente non persistente: ogni avvio
  * riparte pulito, così i test non dipendono dall'ordine di esecuzione.
  */
 export class Archivio {
   private formulari = new Map<string, Formulario>()
+  private transazioni = new Map<string, Transazione>()
+  private contatore = 0
 
   azzera(): void {
     this.formulari.clear()
+    this.transazioni.clear()
+    this.contatore = 0
   }
 
   salvaFormulario(formulario: Formulario): void {
@@ -25,5 +37,28 @@ export class Archivio {
 
   elencaFormulari(): Formulario[] {
     return [...this.formulari.values()]
+  }
+
+  /**
+   * NONBLOCK_PULL: crea una transazione in stato `in_elaborazione` e ne
+   * restituisce l'identificativo. La fake non la completa da sola: il
+   * completamento arriva solo dal canale di controllo (Task 8).
+   */
+  creaTransazione(): string {
+    this.contatore += 1
+    const id = `TRX-${String(this.contatore).padStart(6, '0')}`
+    this.transazioni.set(id, { id, stato: 'in_elaborazione' })
+    return id
+  }
+
+  leggiTransazione(id: string): Transazione | undefined {
+    return this.transazioni.get(id)
+  }
+
+  completaTransazione(id: string, risultato: unknown): void {
+    const transazione = this.transazioni.get(id)
+    if (!transazione) return
+    transazione.stato = 'completata'
+    transazione.risultato = risultato
   }
 }

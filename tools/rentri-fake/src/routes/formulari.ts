@@ -22,12 +22,20 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
     return archivio.elencaFormulari()
   })
 
-  app.get<{ Params: { numero_fir: string } }>(
-    `${PREFISSO}/:numero_fir`,
+  // Nome del parametro `:identificativo` (non `:numero_fir`): questa rotta
+  // condivide la posizione nel path con le rotte di transazione registrate
+  // da `registraRotteTransazioni` (`/status`, `/result`, `/trasmissione`).
+  // find-my-way (router di Fastify) ammette un solo nome di parametro per
+  // posizione nell'albero delle rotte: nomi diversi qui e in
+  // `transazioni.ts` causano un errore alla registrazione. Il path esterno
+  // resta invariato, cambia solo il nome interno del parametro.
+  app.get<{ Params: { identificativo: string } }>(
+    `${PREFISSO}/:identificativo`,
     async (richiesta, risposta) => {
       if (!(await autentica(richiesta, risposta))) return
 
-      const formulario = archivio.leggiFormulario(richiesta.params.numero_fir)
+      const numeroFir = richiesta.params.identificativo
+      const formulario = archivio.leggiFormulario(numeroFir)
       if (!formulario) {
         return risposta.status(404).send({ titolo: 'Formulario non trovato' })
       }
