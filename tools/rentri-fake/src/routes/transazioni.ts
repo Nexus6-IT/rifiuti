@@ -6,8 +6,15 @@ import { inviaProblemDetails } from '../errori/problem-details'
 const AUDIENCE = process.env.RENTRI_AUDIENCE ?? 'rentrigov.demo.api'
 const PREFISSO = '/formulari/v1.0'
 
-async function autentica(richiesta: FastifyRequest, risposta: FastifyReply): Promise<boolean> {
-  const esito = await verificaJwt(richiesta.headers.authorization, { audienceAttesa: AUDIENCE })
+async function autentica(
+  richiesta: FastifyRequest,
+  risposta: FastifyReply,
+  archivio: Archivio
+): Promise<boolean> {
+  const esito = await verificaJwt(richiesta.headers.authorization, {
+    audienceAttesa: AUDIENCE,
+    registroReplay: archivio.registroReplay,
+  })
 
   if (!esito.valido) {
     // V. formulari.ts: il contratto documenta 403, mai 401.
@@ -53,7 +60,7 @@ async function autentica(richiesta: FastifyRequest, risposta: FastifyReply): Pro
  */
 export function registraRotteTransazioni(app: FastifyInstance, archivio: Archivio): void {
   app.post(`${PREFISSO}/`, async (richiesta, risposta) => {
-    if (!(await autentica(richiesta, risposta))) return
+    if (!(await autentica(richiesta, risposta, archivio))) return
 
     const id = archivio.creaTransazione()
     return risposta
@@ -65,7 +72,7 @@ export function registraRotteTransazioni(app: FastifyInstance, archivio: Archivi
   app.get<{ Params: { identificativo: string } }>(
     `${PREFISSO}/:identificativo/status`,
     async (richiesta, risposta) => {
-      if (!(await autentica(richiesta, risposta))) return
+      if (!(await autentica(richiesta, risposta, archivio))) return
 
       const transazioneId = richiesta.params.identificativo
       const transazione = archivio.leggiTransazione(transazioneId)
@@ -87,7 +94,7 @@ export function registraRotteTransazioni(app: FastifyInstance, archivio: Archivi
   app.get<{ Params: { identificativo: string } }>(
     `${PREFISSO}/:identificativo/result`,
     async (richiesta, risposta) => {
-      if (!(await autentica(richiesta, risposta))) return
+      if (!(await autentica(richiesta, risposta, archivio))) return
 
       const transazioneId = richiesta.params.identificativo
       const transazione = archivio.leggiTransazione(transazioneId)

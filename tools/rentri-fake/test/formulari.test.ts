@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { importPKCS8, SignJWT } from 'jose'
 import { creaApp } from '../src/app'
 import { creaCertificatoDiTest } from './aiuti/certificati'
@@ -6,6 +7,8 @@ import { creaCertificatoDiTest } from './aiuti/certificati'
 // 4-6 consonanti ammesse, cifre, 1-2 consonanti finali. Nessuna vocale.
 const NUMERO_FIR_VALIDO = 'TSTB12345XY'
 
+// Un jti diverso ad ogni chiamata (FEDELTA.md §5.2 punto 3, anti-replay):
+// non va mai riutilizzato lo stesso token per piu' di una richiesta.
 async function tokenValido(): Promise<string> {
   const { chiavePrivataPem, certificatoBase64Der } = creaCertificatoDiTest()
   const chiave = await importPKCS8(chiavePrivataPem, 'RS256')
@@ -17,6 +20,7 @@ async function tokenValido(): Promise<string> {
     .setAudience('rentrigov.demo.api')
     .setIssuedAt()
     .setExpirationTime('300s')
+    .setJti(randomUUID())
     .sign(chiave)
 }
 

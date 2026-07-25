@@ -1,7 +1,11 @@
+import { randomUUID } from 'crypto'
 import { importPKCS8, SignJWT } from 'jose'
 import { creaApp } from '../src/app'
 import { creaCertificatoDiTest } from './aiuti/certificati'
 
+// Un jti diverso ad ogni chiamata (FEDELTA.md §5.2 punto 3, anti-replay): un
+// token self-issued non va mai riutilizzato per piu' di una richiesta HTTP,
+// quindi ogni chiamata a app.inject() deve avere le proprie intestazioni.
 async function tokenValido(): Promise<string> {
   const { chiavePrivataPem, certificatoBase64Der } = creaCertificatoDiTest()
   const chiave = await importPKCS8(chiavePrivataPem, 'RS256')
@@ -13,7 +17,12 @@ async function tokenValido(): Promise<string> {
     .setAudience('rentrigov.demo.api')
     .setIssuedAt()
     .setExpirationTime('300s')
+    .setJti(randomUUID())
     .sign(chiave)
+}
+
+async function intestazioni(): Promise<{ authorization: string }> {
+  return { authorization: `Bearer ${await tokenValido()}` }
 }
 
 // Ciclo NONBLOCK_PULL come dichiarato dal contratto ufficiale:
@@ -64,12 +73,11 @@ describe('Asincronia NONBLOCK_PULL', () => {
 
   it('lo status e 200 senza corpo (e senza campo stato) finche non si completa', async () => {
     const app = creaApp()
-    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
 
     const creazione = await app.inject({
       method: 'POST',
       url: '/formulari/v1.0/',
-      headers: intestazioni,
+      headers: await intestazioni(),
       payload: {},
     })
     const id = creazione.json().transazione_id
@@ -77,7 +85,7 @@ describe('Asincronia NONBLOCK_PULL', () => {
     const stato = await app.inject({
       method: 'GET',
       url: `/formulari/v1.0/${id}/status`,
-      headers: intestazioni,
+      headers: await intestazioni(),
     })
 
     expect(stato.statusCode).toBe(200)
@@ -89,12 +97,11 @@ describe('Asincronia NONBLOCK_PULL', () => {
 
   it('lo status risponde 303 con header Location verso /result quando la transazione e completata', async () => {
     const app = creaApp()
-    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
 
     const creazione = await app.inject({
       method: 'POST',
       url: '/formulari/v1.0/',
-      headers: intestazioni,
+      headers: await intestazioni(),
       payload: {},
     })
     const id = creazione.json().transazione_id
@@ -108,7 +115,7 @@ describe('Asincronia NONBLOCK_PULL', () => {
     const stato = await app.inject({
       method: 'GET',
       url: `/formulari/v1.0/${id}/status`,
-      headers: intestazioni,
+      headers: await intestazioni(),
     })
 
     expect(stato.statusCode).toBe(303)
@@ -119,12 +126,11 @@ describe('Asincronia NONBLOCK_PULL', () => {
 
   it('il risultato risponde 400 problem+json finche la transazione e in corso', async () => {
     const app = creaApp()
-    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
 
     const creazione = await app.inject({
       method: 'POST',
       url: '/formulari/v1.0/',
-      headers: intestazioni,
+      headers: await intestazioni(),
       payload: {},
     })
     const id = creazione.json().transazione_id
@@ -132,7 +138,7 @@ describe('Asincronia NONBLOCK_PULL', () => {
     const risultato = await app.inject({
       method: 'GET',
       url: `/formulari/v1.0/${id}/result`,
-      headers: intestazioni,
+      headers: await intestazioni(),
     })
 
     expect(risultato.statusCode).toBe(400)
@@ -143,12 +149,11 @@ describe('Asincronia NONBLOCK_PULL', () => {
 
   it('il risultato completato espone EsitoFormularioModel con errore e validazione', async () => {
     const app = creaApp()
-    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
 
     const creazione = await app.inject({
       method: 'POST',
       url: '/formulari/v1.0/',
-      headers: intestazioni,
+      headers: await intestazioni(),
       payload: {},
     })
     const id = creazione.json().transazione_id
@@ -166,7 +171,7 @@ describe('Asincronia NONBLOCK_PULL', () => {
     const risultato = await app.inject({
       method: 'GET',
       url: `/formulari/v1.0/${id}/result`,
-      headers: intestazioni,
+      headers: await intestazioni(),
     })
 
     expect(risultato.statusCode).toBe(200)

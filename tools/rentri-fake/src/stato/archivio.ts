@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { RegistroReplayMemoria } from '../auth/jwt-verifier'
 
 export interface Formulario {
   numero_fir: string
@@ -54,10 +55,18 @@ export class Archivio {
   private transazioni = new Map<string, Transazione>()
   private guasto: Guasto | null = null
 
+  /**
+   * Registro anti-replay dei `jti` gia' visti (FEDELTA.md §5.2 punto 3):
+   * condiviso da tutte le rotte autenticate tramite `verificaJwt`, azzerato
+   * insieme al resto dello stato da `__controllo/azzera`.
+   */
+  readonly registroReplay = new RegistroReplayMemoria()
+
   azzera(): void {
     this.formulari.clear()
     this.transazioni.clear()
     this.guasto = null
+    this.registroReplay.azzera()
   }
 
   impostaGuasto(guasto: Guasto | null): void {

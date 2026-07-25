@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { importPKCS8, SignJWT } from 'jose'
 import { creaApp } from '../src/app'
 import { creaCertificatoDiTest } from './aiuti/certificati'
@@ -13,6 +14,7 @@ async function tokenValido(): Promise<string> {
     .setAudience('rentrigov.demo.api')
     .setIssuedAt()
     .setExpirationTime('300s')
+    .setJti(randomUUID())
     .sign(chiave)
 }
 

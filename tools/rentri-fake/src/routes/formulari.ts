@@ -7,8 +7,15 @@ import { inviaProblemDetails } from '../errori/problem-details'
 const AUDIENCE = process.env.RENTRI_AUDIENCE ?? 'rentrigov.demo.api'
 const PREFISSO = '/formulari/v1.0'
 
-async function autentica(richiesta: FastifyRequest, risposta: FastifyReply): Promise<boolean> {
-  const esito = await verificaJwt(richiesta.headers.authorization, { audienceAttesa: AUDIENCE })
+async function autentica(
+  richiesta: FastifyRequest,
+  risposta: FastifyReply,
+  archivio: Archivio
+): Promise<boolean> {
+  const esito = await verificaJwt(richiesta.headers.authorization, {
+    audienceAttesa: AUDIENCE,
+    registroReplay: archivio.registroReplay,
+  })
 
   if (!esito.valido) {
     // Il contratto documenta 403 "Operazione non consentita" su ogni
@@ -32,7 +39,7 @@ interface QueryElenco {
 
 export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio): void {
   app.get<{ Querystring: QueryElenco }>(`${PREFISSO}/`, async (richiesta, risposta) => {
-    if (!(await autentica(richiesta, risposta))) return
+    if (!(await autentica(richiesta, risposta, archivio))) return
 
     // formulari.yaml righe 22-47: uno tra num_iscr_sito e
     // identificativo_soggetto deve essere valorizzato, altrimenti 400. La
@@ -68,7 +75,7 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
   // lacuna che si traveste da comportamento di dominio, invece di essere
   // dichiarata. Qui rispondono 501, riconoscibili come non implementati.
   app.get(`${PREFISSO}/count`, async (richiesta, risposta) => {
-    if (!(await autentica(richiesta, risposta))) return
+    if (!(await autentica(richiesta, risposta, archivio))) return
     return inviaProblemDetails(risposta, 501, {
       title: 'Non implementato nella fake',
       detail: `GET ${PREFISSO}/count e' un path ufficiale del contratto ma non e' implementato in questa fake (v. FEDELTA.md).`,
@@ -97,7 +104,7 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
   app.get<{ Params: { identificativo: string } }>(
     `${PREFISSO}/:identificativo`,
     async (richiesta, risposta) => {
-      if (!(await autentica(richiesta, risposta))) return
+      if (!(await autentica(richiesta, risposta, archivio))) return
 
       const numeroFir = richiesta.params.identificativo
 

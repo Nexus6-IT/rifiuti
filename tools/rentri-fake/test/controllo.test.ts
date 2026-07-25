@@ -1,7 +1,10 @@
+import { randomUUID } from 'crypto'
 import { importPKCS8, SignJWT } from 'jose'
 import { creaApp } from '../src/app'
 import { creaCertificatoDiTest } from './aiuti/certificati'
 
+// Un jti diverso ad ogni chiamata (FEDELTA.md §5.2 punto 3, anti-replay): un
+// token self-issued non va mai riutilizzato per piu' di una richiesta HTTP.
 async function tokenValido(): Promise<string> {
   const { chiavePrivataPem, certificatoBase64Der } = creaCertificatoDiTest()
   const chiave = await importPKCS8(chiavePrivataPem, 'RS256')
@@ -13,13 +16,17 @@ async function tokenValido(): Promise<string> {
     .setAudience('rentrigov.demo.api')
     .setIssuedAt()
     .setExpirationTime('300s')
+    .setJti(randomUUID())
     .sign(chiave)
+}
+
+async function intestazioni(): Promise<{ authorization: string }> {
+  return { authorization: `Bearer ${await tokenValido()}` }
 }
 
 describe('Canale di controllo', () => {
   it('forza un 503 per il numero di volte richiesto, poi torna normale', async () => {
     const app = creaApp()
-    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
 
     await app.inject({
       method: 'POST',
@@ -30,14 +37,14 @@ describe('Canale di controllo', () => {
     const primaChiamata = await app.inject({
       method: 'GET',
       url: '/formulari/v1.0/?num_iscr_sito=UL0001',
-      headers: intestazioni,
+      headers: await intestazioni(),
     })
     expect(primaChiamata.statusCode).toBe(503)
 
     const secondaChiamata = await app.inject({
       method: 'GET',
       url: '/formulari/v1.0/?num_iscr_sito=UL0001',
-      headers: intestazioni,
+      headers: await intestazioni(),
     })
     expect(secondaChiamata.statusCode).toBe(200)
 
@@ -93,12 +100,11 @@ describe('Canale di controllo', () => {
 
   it('completa una transazione su richiesta e ne rende disponibile il risultato', async () => {
     const app = creaApp()
-    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
 
     const creazione = await app.inject({
       method: 'POST',
       url: '/formulari/v1.0/',
-      headers: intestazioni,
+      headers: await intestazioni(),
       payload: {},
     })
     const id = creazione.json().transazione_id
@@ -112,7 +118,7 @@ describe('Canale di controllo', () => {
     const risultato = await app.inject({
       method: 'GET',
       url: `/formulari/v1.0/${id}/result`,
-      headers: intestazioni,
+      headers: await intestazioni(),
     })
 
     expect(risultato.statusCode).toBe(200)
