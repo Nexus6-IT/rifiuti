@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios'
 import { LoggerService } from '../../core/logger/logger.service'
 import { MetricsService } from '../../core/metrics/metrics.service'
 import { firstValueFrom } from 'rxjs'
+import { TenantContext } from '../../core/context/tenant-context'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
@@ -12,10 +13,10 @@ import { RentriSignatureService } from './rentri-signature.service'
  *
  * Comunica con l'API RENTRI in due modalità (vedi {@link RentriConfig}):
  * - `mock` → mock locale (`tools/rentri-mock`), autenticazione con X-API-Key.
- * - `live` → ambiente reale RENTRI (demo/prod) con autenticazione del Modello
- *   di Interoperabilità AgID: access token Bearer (vedi {@link RentriAuthService})
- *   e firma di integrità `Agid-JWT-Signature` su ogni richiesta con body
- *   (vedi {@link RentriSignatureService}).
+ * - `live` → ambiente reale RENTRI (demo/prod) con autenticazione ID_AUTH_REST_02
+ *   del Modello di Interoperabilità AgID: JWT self-issued Bearer, firmato ad
+ *   ogni chiamata (vedi {@link RentriAuthService}), e firma di integrità
+ *   `Agid-JWT-Signature` su ogni richiesta con body (vedi {@link RentriSignatureService}).
  *
  * Formato dati: xFIR secondo le specifiche tecniche D.M. 59/2023 (Decreto
  * Ministeriale, allegato tecnico RENTRI). Il corpo della richiesta segue la
@@ -122,11 +123,6 @@ export class RENTRIApiClient {
         }
       }
 
-      // Expired/invalid token → invalidate cache so the next attempt re-auths
-      if (error.response?.status === 401) {
-        this.auth.invalidate()
-      }
-
       // Handle service unavailable
       if (error.response?.status === 503) {
         this.metrics.rentriApiErrors.inc({
@@ -189,9 +185,6 @@ export class RENTRIApiClient {
         warnings: response.data.warnings || [],
       }
     } catch (error: any) {
-      if (error.response?.status === 401) {
-        this.auth.invalidate()
-      }
       this.logger.error('RENTRI validation error', error, { firId: fir.id })
       throw error
     }
@@ -210,9 +203,6 @@ export class RENTRIApiClient {
       if (error.response?.status === 404) {
         throw new Error('FIR non trovato in RENTRI')
       }
-      if (error.response?.status === 401) {
-        this.auth.invalidate()
-      }
       throw error
     }
   }
@@ -230,11 +220,11 @@ export class RENTRIApiClient {
     }
 
     if (this.isLive) {
-      const token = await this.auth.getAccessToken()
+      const authorization = await this.auth.creaAuthorizationHeader(this.tenantIdCorrente())
       const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody)
       headers = {
         ...headers,
-        Authorization: `Bearer ${token}`,
+        Authorization: authorization,
         ...integrityHeaders,
       }
     } else {
@@ -257,13 +247,21 @@ export class RENTRIApiClient {
     const headers: Record<string, string> = {}
 
     if (this.isLive) {
-      const token = await this.auth.getAccessToken()
-      headers.Authorization = `Bearer ${token}`
+      headers.Authorization = await this.auth.creaAuthorizationHeader(this.tenantIdCorrente())
     } else {
       headers['X-API-Key'] = this.config.mockApiKey
     }
 
     return firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }))
+  }
+
+  /**
+   * Tenant per cui firmare il JWT self-issued: quello del contesto della
+   * richiesta corrente, oppure stringa vuota (fa scattare il fallback da env
+   * dentro {@link RentriAuthService} per il pilota single-operator).
+   */
+  private tenantIdCorrente(): string {
+    return TenantContext.getTenantId() ?? ''
   }
 
   /**

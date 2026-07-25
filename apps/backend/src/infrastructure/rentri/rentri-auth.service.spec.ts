@@ -1,107 +1,180 @@
 import * as jwt from 'jsonwebtoken'
-import { of } from 'rxjs'
+import { HttpService } from '@nestjs/axios'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriConfig } from './rentri-config'
 import { generateTestCert, TestCert } from '../../../test/utils/rentri-test-cert'
 
 /**
- * Verifica il flusso OAuth2 ModI (client_assertion firmata X.509 →
- * access token Bearer) e la cache del token.
+ * Verifica l'autenticazione RENTRI ID_AUTH_REST_02 in direct trust: il JWT è
+ * self-issued, firmato localmente con il certificato dell'operatore (nessuna
+ * chiamata di rete, nessun token da mettere in cache).
  */
 describe('RentriAuthService', () => {
   let cert: TestCert
   let service: RentriAuthService
-  let http: { post: jest.Mock }
+  let credentialService: { getForTenant: jest.Mock }
   let logger: any
 
   beforeAll(() => {
     cert = generateTestCert()
   })
 
-  const baseConfig = (): RentriConfig => ({
+  const baseConfig = (overrides: Partial<RentriConfig> = {}): RentriConfig => ({
     mode: 'live',
     baseUrl: 'https://demoapi.rentri.gov.it',
-    tokenUrl: 'https://demoapi.rentri.gov.it/token',
-    clientId: 'operator-123',
-    tokenAudience: 'https://demoapi.rentri.gov.it/token',
+    clientId: 'env-operator',
+    audience: 'rentrigov.demo.api',
     signatureAudience: 'https://demoapi.rentri.gov.it',
-    certificatePem: cert.certificatePem,
-    privateKeyPem: cert.privateKeyPem,
+    certificatePem: '',
+    privateKeyPem: '',
     algorithm: 'RS256',
     mockApiKey: 'demo-key',
     jwtTtlSeconds: 300,
     credentialEncKey: 'test-enc-key',
+    ...overrides,
   })
 
-  let resolver: any
-
   beforeEach(() => {
-    http = { post: jest.fn() }
     logger = { setContext: jest.fn(), debug: jest.fn(), info: jest.fn(), error: jest.fn() }
-    // Il resolver fornisce la credenziale del tenant corrente (qui: cert di test).
-    resolver = {
-      resolve: jest.fn().mockResolvedValue({
-        clientId: 'operator-123',
+    credentialService = { getForTenant: jest.fn() }
+  })
+
+  function makeService(config: RentriConfig = baseConfig()) {
+    return new RentriAuthService(credentialService as any, config, logger)
+  }
+
+  describe('JWT self-issued (ID_AUTH_REST_02)', () => {
+    beforeEach(() => {
+      credentialService.getForTenant.mockResolvedValue({
+        clientId: 'operatore-test',
         certificatePem: cert.certificatePem,
         privateKeyPem: cert.privateKeyPem,
         algorithm: 'RS256',
-        source: 'env',
-      }),
-    }
-    service = new RentriAuthService(http as any, baseConfig(), resolver, logger)
+        environment: 'demo',
+      })
+      service = makeService()
+    })
+
+    it('produce un header Authorization Bearer con un JWT firmato RS256 e x5c del certificato', async () => {
+      const header = await service.creaAuthorizationHeader('tenant-1')
+
+      expect(header.startsWith('Bearer ')).toBe(true)
+      const token = header.replace('Bearer ', '')
+
+      const decodedComplete: any = jwt.decode(token, { complete: true })
+      expect(decodedComplete.header.alg).toBe('RS256')
+      expect(decodedComplete.header.x5c).toBeDefined()
+      expect(decodedComplete.header.x5c.length).toBeGreaterThan(0)
+
+      // Verificabile con la chiave pubblica del certificato del tenant
+      const decoded: any = jwt.verify(token, cert.publicKeyPem, { algorithms: ['RS256'] })
+      expect(decoded).toBeDefined()
+    })
+
+    it("l'aud è esattamente il valore configurato", async () => {
+      const header = await service.creaAuthorizationHeader('tenant-1')
+      const token = header.replace('Bearer ', '')
+      const decoded: any = jwt.verify(token, cert.publicKeyPem, { algorithms: ['RS256'] })
+
+      expect(decoded.aud).toBe('rentrigov.demo.api')
+    })
+
+    it("iss e sub corrispondono all'identificativo operatore della credenziale del tenant", async () => {
+      const header = await service.creaAuthorizationHeader('tenant-1')
+      const token = header.replace('Bearer ', '')
+      const decoded: any = jwt.verify(token, cert.publicKeyPem, { algorithms: ['RS256'] })
+
+      expect(decoded.iss).toBe('operatore-test')
+      expect(decoded.sub).toBe('operatore-test')
+    })
+
+    it('include iat, exp (finestra non superiore a 5 minuti) e jti', async () => {
+      const header = await service.creaAuthorizationHeader('tenant-1')
+      const token = header.replace('Bearer ', '')
+      const decoded: any = jwt.verify(token, cert.publicKeyPem, { algorithms: ['RS256'] })
+
+      expect(decoded.iat).toBeDefined()
+      expect(decoded.exp).toBeDefined()
+      expect(decoded.exp - decoded.iat).toBeLessThanOrEqual(300)
+      expect(decoded.jti).toBeDefined()
+    })
+
+    it('il jti è diverso ad ogni chiamata', async () => {
+      const header1 = await service.creaAuthorizationHeader('tenant-1')
+      const header2 = await service.creaAuthorizationHeader('tenant-1')
+
+      const decoded1: any = jwt.verify(header1.replace('Bearer ', ''), cert.publicKeyPem, {
+        algorithms: ['RS256'],
+      })
+      const decoded2: any = jwt.verify(header2.replace('Bearer ', ''), cert.publicKeyPem, {
+        algorithms: ['RS256'],
+      })
+
+      expect(decoded1.jti).not.toBe(decoded2.jti)
+    })
+
+    it('non effettua alcuna richiesta HTTP per produrre il token', async () => {
+      // Finta HTTP: se il servizio provasse a contattare la rete (es. un
+      // endpoint /token) il test fallisce, perché il JWT è self-issued.
+      const postSpy = jest.spyOn(HttpService.prototype, 'post').mockImplementation(() => {
+        throw new Error('non deve essere effettuata alcuna richiesta HTTP')
+      })
+      const getSpy = jest.spyOn(HttpService.prototype, 'get').mockImplementation(() => {
+        throw new Error('non deve essere effettuata alcuna richiesta HTTP')
+      })
+
+      try {
+        await expect(service.creaAuthorizationHeader('tenant-1')).resolves.toBeDefined()
+      } finally {
+        postSpy.mockRestore()
+        getSpy.mockRestore()
+      }
+
+      expect(postSpy).not.toHaveBeenCalled()
+      expect(getSpy).not.toHaveBeenCalled()
+    })
   })
 
-  it('ottiene un access token inviando una client_assertion valida', async () => {
-    http.post.mockReturnValue(of({ data: { access_token: 'AT-1', expires_in: 300 } }))
+  describe('risoluzione della credenziale', () => {
+    it('usa il certificato di fallback da env se il tenant non ha una credenziale configurata', async () => {
+      credentialService.getForTenant.mockResolvedValue(null)
+      const config = baseConfig({
+        clientId: 'env-operator',
+        certificatePem: cert.certificatePem,
+        privateKeyPem: cert.privateKeyPem,
+      })
+      service = makeService(config)
 
-    const token = await service.getAccessToken()
-    expect(token).toBe('AT-1')
+      const header = await service.creaAuthorizationHeader('tenant-senza-credenziale')
+      const token = header.replace('Bearer ', '')
+      const decoded: any = jwt.verify(token, cert.publicKeyPem, { algorithms: ['RS256'] })
 
-    // Verifica i parametri del POST OAuth2
-    const [url, bodyStr, opts] = http.post.mock.calls[0]
-    expect(url).toBe('https://demoapi.rentri.gov.it/token')
-    expect(opts.headers['Content-Type']).toBe('application/x-www-form-urlencoded')
+      expect(decoded.iss).toBe('env-operator')
+    })
 
-    const form = new URLSearchParams(bodyStr)
-    expect(form.get('grant_type')).toBe('client_credentials')
-    expect(form.get('client_assertion_type')).toBe(
-      'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
-    )
+    it('lancia se non c’è né credenziale del tenant né fallback da env', async () => {
+      credentialService.getForTenant.mockResolvedValue(null)
+      service = makeService(baseConfig({ certificatePem: '', privateKeyPem: '' }))
 
-    // La client_assertion è un JWT firmato e verificabile col certificato
-    const assertion = form.get('client_assertion') as string
-    const decoded: any = jwt.verify(assertion, cert.publicKeyPem, { algorithms: ['RS256'] })
-    expect(decoded.iss).toBe('operator-123')
-    expect(decoded.sub).toBe('operator-123')
-    expect(decoded.aud).toBe('https://demoapi.rentri.gov.it/token')
-    expect(decoded.jti).toBeDefined()
+      await expect(service.creaAuthorizationHeader('tenant-senza-nulla')).rejects.toThrow(
+        'nessuna credenziale'
+      )
+    })
   })
 
-  it('riusa il token in cache senza richiamare il token endpoint', async () => {
-    http.post.mockReturnValue(of({ data: { access_token: 'AT-1', expires_in: 300 } }))
+  describe('cambio di modello: nessun endpoint /token', () => {
+    it('non espone più alcun metodo che contatti un token endpoint (getAccessToken/invalidate rimossi)', () => {
+      credentialService.getForTenant.mockResolvedValue({
+        clientId: 'operatore-test',
+        certificatePem: cert.certificatePem,
+        privateKeyPem: cert.privateKeyPem,
+        algorithm: 'RS256',
+        environment: 'demo',
+      })
+      service = makeService()
 
-    await service.getAccessToken()
-    await service.getAccessToken()
-
-    expect(http.post).toHaveBeenCalledTimes(1)
-  })
-
-  it('dopo invalidate() richiede un nuovo token', async () => {
-    http.post
-      .mockReturnValueOnce(of({ data: { access_token: 'AT-1', expires_in: 300 } }))
-      .mockReturnValueOnce(of({ data: { access_token: 'AT-2', expires_in: 300 } }))
-
-    const first = await service.getAccessToken()
-    service.invalidate()
-    const second = await service.getAccessToken()
-
-    expect(first).toBe('AT-1')
-    expect(second).toBe('AT-2')
-    expect(http.post).toHaveBeenCalledTimes(2)
-  })
-
-  it('fallisce se il token endpoint non restituisce access_token', async () => {
-    http.post.mockReturnValue(of({ data: {} }))
-    await expect(service.getAccessToken()).rejects.toThrow('access_token')
+      expect((service as any).getAccessToken).toBeUndefined()
+      expect((service as any).invalidate).toBeUndefined()
+    })
   })
 })

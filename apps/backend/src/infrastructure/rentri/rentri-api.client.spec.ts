@@ -31,8 +31,7 @@ describe('RENTRIApiClient', () => {
     }
 
     mockAuth = {
-      getAccessToken: jest.fn().mockResolvedValue('test-token'),
-      invalidate: jest.fn(),
+      creaAuthorizationHeader: jest.fn().mockResolvedValue('Bearer test-token'),
     }
 
     mockSignature = {

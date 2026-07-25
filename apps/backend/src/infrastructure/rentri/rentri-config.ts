@@ -7,9 +7,11 @@ import { ConfigService } from '@nestjs/config'
  * - `mock`  → usa il mock locale (`tools/rentri-mock`) con header `X-API-Key`.
  *   È la modalità di default per sviluppo e test automatici.
  * - `live`  → si collega all'ambiente reale RENTRI (demo o produzione) usando
- *   l'autenticazione del Modello di Interoperabilità AgID (OAuth2 con
- *   `client_assertion` JWT firmato X.509 → access token Bearer) e la firma di
- *   integrità `Agid-JWT-Signature` su ogni richiesta con body.
+ *   l'autenticazione ID_AUTH_REST_02 del Modello di Interoperabilità AgID in
+ *   *direct trust*: un JWT self-issued, firmato localmente col certificato
+ *   X.509 dell'operatore (header `x5c`), passato direttamente come Bearer
+ *   (RENTRI non espone alcun token endpoint) — e la firma di integrità
+ *   `Agid-JWT-Signature` su ogni richiesta con body.
  *
  * NB: la modalità `live` richiede un certificato (qualificato personale/sigillo
  * o certificato di interoperabilità RENTRI) con la relativa chiave privata,
@@ -29,12 +31,14 @@ export interface RentriConfig {
   mode: RentriMode
   /** Base URL del servizio (es. https://demoapi.rentri.gov.it). */
   baseUrl: string
-  /** Endpoint OAuth2 per l'access token (ModI). */
-  tokenUrl: string
-  /** Identificativo client/operatore (iss/sub della client_assertion). */
+  /** Identificativo operatore (iss/sub del JWT self-issued ID_AUTH_REST_02). */
   clientId: string
-  /** Audience attesa dal token endpoint nella client_assertion. */
-  tokenAudience: string
+  /**
+   * Audience (`aud`) attesa dal JWT self-issued ID_AUTH_REST_02 (RENTRI non
+   * espone un token endpoint: il JWT è firmato localmente e passato
+   * direttamente come Bearer). Default demo: `rentrigov.demo.api`.
+   */
+  audience: string
   /** Audience attesa dal provider nella firma di integrità Agid-JWT-Signature. */
   signatureAudience: string
   /** Certificato X.509 in PEM (per x5c) usato per firmare i JWT. */
@@ -45,7 +49,7 @@ export interface RentriConfig {
   algorithm: 'RS256' | 'ES256'
   /** API key usata SOLO in modalità mock. */
   mockApiKey: string
-  /** Validità (secondi) dei JWT generati (client_assertion / signature). */
+  /** Validità (secondi) dei JWT generati (autenticazione self-issued / firma di integrità). */
   jwtTtlSeconds: number
   /** Secret per cifrare a riposo le chiavi private RENTRI per-tenant (AES-256-GCM). */
   credentialEncKey: string
@@ -68,9 +72,8 @@ export function loadRentriConfig(config: ConfigService): RentriConfig {
   return {
     mode,
     baseUrl,
-    tokenUrl: config.get<string>('RENTRI_TOKEN_URL') || `${baseUrl}/token`,
     clientId: config.get<string>('RENTRI_CLIENT_ID') || '',
-    tokenAudience: config.get<string>('RENTRI_TOKEN_AUDIENCE') || `${baseUrl}/token`,
+    audience: config.get<string>('RENTRI_AUDIENCE') || 'rentrigov.demo.api',
     signatureAudience: config.get<string>('RENTRI_SIGNATURE_AUDIENCE') || baseUrl,
     certificatePem: normalizePem(config.get<string>('RENTRI_CERTIFICATE_PEM')),
     privateKeyPem: normalizePem(config.get<string>('RENTRI_PRIVATE_KEY_PEM')),
