@@ -355,8 +355,13 @@ export class RENTRIApiClient {
    * precedenza, il flat DTO serve da fallback per retrocompatibilità.
    *
    * I nomi dei campi nel payload xFIR sono in italiano, coerenti con le
-   * specifiche tecniche RENTRI (D.M. 59/2023) e con la struttura dell'API
-   * `vidimazione-formulari`. DA CONFERMARE sull'OpenAPI ufficiale prima del go-live.
+   * specifiche tecniche RENTRI (D.M. 59/2023).
+   *
+   * NON ANCORA ALLINEATO al contratto: la mappatura verso `NuovoFormularioModel`
+   * di `docs/contracts/rentri/formulari.yaml` e' fuori dall'ambito di P2 task 2,
+   * ed e' comunque una delle attivita' che l'oracolo NON puo' validare (la fake
+   * accetta qualunque corpo: vedi le riserve in docs/contracts/rentri/FEDELTA.md).
+   * Va verificata contro l'ambiente demo reale.
    */
   private convertToXFIRFormat(fir: any): XFIRPayload {
     // Snapshot anagrafici (FIR aggregate) — null se non popolati.
