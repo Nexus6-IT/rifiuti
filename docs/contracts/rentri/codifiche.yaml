@@ -1,0 +1,1048 @@
+openapi: 3.0.4
+info:
+  title: codifiche
+  description: Servizio codifiche RENTRI
+  termsOfService: https://www.rentri.gov.it
+  contact:
+    email: techref@rentri.it
+  version: 1.0.20260707-976
+  x-summary: Servizio codifiche RENTRI
+  x-api-id: rentrigov.base
+servers:
+- url: https://demoapi.rentri.gov.it/codifiche/v1.0
+  description: Demo
+paths:
+  /lookup/adr-classi:
+    get:
+      tags:
+      - Rifiuto
+      summary: Classi ADR
+      description: Ottiene la lista delle classe ADR.
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/attivita:
+    get:
+      tags:
+      - Rifiuto
+      summary: Attività
+      description: Ottiene la lista delle attività.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista delle attività.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StringLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/attivita-rs:
+    get:
+      tags:
+      - Rifiuto
+      summary: Attività recupero/smaltimento
+      description: Ottiene la lista delle attività di recupero/smaltimento.
+      parameters:
+      - name: code_in_name
+        in: query
+        description: True per ottenere nel nome anche il relativo codice
+        schema:
+          type: boolean
+          default: false
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista delle attività recupero/smaltimento.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/caratteristiche-pericolo:
+    get:
+      tags:
+      - Rifiuto
+      summary: Caratteristiche pericolo
+      description: Ottiene la lista delle caratteristiche di pericolo.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista delle caratteristiche pericolo.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/categorie-raee:
+    get:
+      tags:
+      - Rifiuto
+      summary: Categorie RAEE
+      description: Ottiene la lista delle categorie RAEE.
+      parameters:
+      - name: code_in_name
+        in: query
+        description: True per ottenere nel nome anche il relativo codice
+        schema:
+          type: boolean
+          default: false
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista delle categorie RAEE.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/causali-operazione:
+    get:
+      tags:
+      - FIR/Registro
+      summary: Causali operazione
+      description: Ottiene la lista delle operazioni possibili per una registrazione di carico/scarico.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista delle causali operazione.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/causali-respingimento:
+    get:
+      tags:
+      - FIR/Registro
+      summary: Causali respingimento
+      description: Ottiene la lista delle causali di respingimento.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista delle causali respingimento.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/codici-eer:
+    get:
+      tags:
+      - Rifiuto
+      summary: Codici EER
+      description: Ottiene la lista dei codici EER.
+      parameters:
+      - name: pericoloso
+        in: query
+        description: True o false per ottenere solo i codici pericolosi o non pericolosi
+        schema:
+          type: boolean
+      - name: code_in_name
+        in: query
+        description: True per ottenere nel nome anche il relativo codice
+        schema:
+          type: boolean
+          default: false
+      - name: escludi00
+        in: query
+        description: True per escludere i codici 00
+        schema:
+          type: boolean
+          default: false
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista dei codici EER.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Int16LookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/codici-errore:
+    get:
+      summary: Codici errore
+      description: Ottiene la lista dei codici di errore e relativa descrizione.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista dei codici di errore.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StringLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/comuni:
+    get:
+      tags:
+      - Territoriali
+      summary: Comuni
+      description: >-
+        Ottiene la lista dei comuni identificati dal codice ISTAT.
+
+        Nelle properties vengono esposte:
+
+        - cciaa: codice della camera di commercio
+
+        - latitudine: latitudine del comune
+
+        - longitudine: longitudine del comune
+
+        - attivo: indica se il comune è attivo in RENTRI
+
+        - nuovo-id: nuovo identificativo del comune
+
+        - fine-validita: indica la data di fine validità del comune in RENTRI
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista dei comuni identificati dal codice ISTAT.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StringLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/comuni/{provincia_id}:
+    get:
+      tags:
+      - Territoriali
+      summary: Comuni per provincia
+      description: >-
+        Ottiene la lista dei comuni, identificati dal codice ISTAT, relativi al codice ISTAT della provincia specificato.
+
+        Nelle properties vengono esposte:
+
+        - cciaa: codice della camera di commercio
+
+        - latitudine: latitudine del comune
+
+        - longitudine: longitudine del comune
+
+        - attivo: indica se il comune è attivo in RENTRI
+
+        - nuovo-id: nuovo identificativo del comune
+
+        - fine-validita: indica la data di fine validità del comune in RENTRI
+      parameters:
+      - name: provincia_id
+        in: path
+        description: Codice ISTAT provincia
+        required: true
+        schema:
+          type: string
+      - name: comune_id
+        in: query
+        description: Codice ISTAT comune
+        schema:
+          type: string
+      - name: comune
+        in: query
+        description: Nome comune
+        schema:
+          type: string
+      - name: cod_catasto
+        in: query
+        description: Codice catastale
+        schema:
+          type: string
+      - name: attivi
+        in: query
+        description: Filtra solo i comuni attivi
+        schema:
+          type: boolean
+          default: true
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista dei comuni, identificati dal codice ISTAT, relativi al codice ISTAT della provincia specificato.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StringLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/materiali:
+    get:
+      tags:
+      - Rifiuto
+      summary: Materiali
+      description: Ottiene la lista dei materiali.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista dei materiali.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/nazioni:
+    get:
+      tags:
+      - Territoriali
+      summary: Nazioni
+      description: Ottiene la lista delle nazioni identificate dal codice ISO 3166-1 alpha-2 (nella proprietà "code" è possibile trovare il codice ISO 3166-1 numerico della nazione).
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista delle nazioni identificate dal codice ISO 3166-1 alpha-2.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StringLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/provenienza:
+    get:
+      tags:
+      - Rifiuto
+      summary: Provenienza
+      description: Ottiene la lista della provenienza del rifiuto.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista della provenienza del rifiuto.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/province:
+    get:
+      tags:
+      - Territoriali
+      summary: Province
+      description: >-
+        Ottiene la lista delle province identificate dal codice ISTAT.
+
+        Nelle properties vengono esposte:
+
+        - regione-id: codice ISTAT della regione di appartenenza
+
+        - attivo: indica se la provincia è attiva in RENTRI
+
+        - fine-validita: indica la data di fine validità della provincia in RENTRI
+      parameters:
+      - name: provincia_id
+        in: query
+        description: Codice ISTAT provincia
+        schema:
+          type: string
+      - name: sigla
+        in: query
+        description: Sigla provincia
+        schema:
+          type: string
+      - name: regione_id
+        in: query
+        description: Codice ISTAT regione
+        schema:
+          type: integer
+          format: int32
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista delle province identificati dal codice ISTAT.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StringLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/regioni:
+    get:
+      tags:
+      - Territoriali
+      summary: Regioni
+      description: Ottiene la lista delle regioni identificate dal codice ISTAT.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista delle regioni identificate dal codice ISTAT.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Int32LookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/stati-fisici:
+    get:
+      tags:
+      - Rifiuto
+      summary: Stati fisici
+      description: Ottiene la lista degli stati fisici.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista degli stati fisici.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/stati-formulario:
+    get:
+      tags:
+      - FIR/Registro
+      summary: Stati formulario
+      description: Ottiene la lista degli stati del formulario.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista degli stati del formulario.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StringLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/tipi-accettazione:
+    get:
+      tags:
+      - FIR/Registro
+      summary: Tipi accettazione
+      description: Ottiene la lista dei tipi di accettazione del formulario.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista dei tipi di accettazione.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/tipi-autorizzazione:
+    get:
+      tags:
+      - FIR/Registro
+      summary: Tipi autorizzazione
+      description: Ottiene la lista dei tipi di autorizzazioni.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista dei tipi autorizzazione.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/tipi-respingimento:
+    get:
+      tags:
+      - FIR/Registro
+      summary: Tipi respingimento
+      description: Ottiene la lista dei tipi di respingimento.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista dei tipi respingimento.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/tipi-trasporto-transfrontaliero:
+    get:
+      tags:
+      - FIR/Registro
+      summary: Documenti trasporto transfrontaliero
+      description: Ottiene la lista dei documenti per il trasporto transfrontaliero.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista dei documenti trasporto transfrontaliero.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/tipi-tratte:
+    get:
+      tags:
+      - FIR/Registro
+      summary: Tipi tratte
+      description: Ottiene la lista dei tipi di tratte.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista dei tipi di tratte.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /lookup/unita-misura:
+    get:
+      tags:
+      - Rifiuto
+      summary: Unità di misura
+      description: Ottiene la lista delle unità di misura.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lista delle unità di misura.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ByteLookupModel'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /status:
+    get:
+      summary: Stato API
+      description: Verifica dello stato dell'API.
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        500:
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+components:
+  schemas:
+    ByteLookupModel:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        code:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        properties:
+          type: object
+          additionalProperties:
+            nullable: true
+          nullable: true
+      additionalProperties: false
+    Int16LookupModel:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        code:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        properties:
+          type: object
+          additionalProperties:
+            nullable: true
+          nullable: true
+      additionalProperties: false
+    Int32LookupModel:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        code:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        properties:
+          type: object
+          additionalProperties:
+            nullable: true
+          nullable: true
+      additionalProperties: false
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: integer
+          format: int32
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+      additionalProperties: {}
+    StatusResponse:
+      type: object
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusResponseEnum'
+        warnings:
+          type: array
+          items:
+            type: string
+          nullable: true
+        planned_notices:
+          type: array
+          items:
+            type: string
+          nullable: true
+      additionalProperties: false
+    StatusResponseEnum:
+      enum:
+      - Ok
+      - Warning
+      - Planned
+      type: string
+    StringLookupModel:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+        code:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        properties:
+          type: object
+          additionalProperties:
+            nullable: true
+          nullable: true
+      additionalProperties: false
+  securitySchemes:
+    Bearer:
+      type: http
+      description: Bearer JWT
+      scheme: bearer
+      bearerFormat: JWT
+security:
+- Bearer: []
+tags:
+- name: Territoriali
+- name: Rifiuto
+- name: FIR/Registro
