@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { DigitalSignatureService } from './digital-signature.service'
+import {
+  DigitalSignatureService,
+  resolveSignatureProviderType,
+  resolveTsaProviderType,
+} from './digital-signature.service'
 import { LoggerService } from '../../core/logger/logger.service'
 
 /**
@@ -295,6 +299,81 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
         result.publicKey
       )
       expect(isValid).toBe(true)
+    })
+  })
+
+  describe('resolveSignatureProviderType — fail-closed in produzione', () => {
+    it('fuori produzione usa sandbox come default quando SIGNATURE_PROVIDER non è impostata', () => {
+      expect(resolveSignatureProviderType(undefined, 'development')).toBe('sandbox')
+      expect(resolveSignatureProviderType(undefined, 'test')).toBe('sandbox')
+      expect(resolveSignatureProviderType(undefined, undefined)).toBe('sandbox')
+    })
+
+    it('in produzione senza SIGNATURE_PROVIDER solleva un errore che nomina la variabile e i valori accettati', () => {
+      expect(() => resolveSignatureProviderType(undefined, 'production')).toThrow(
+        /SIGNATURE_PROVIDER/
+      )
+      expect(() => resolveSignatureProviderType(undefined, 'production')).toThrow(/sandbox/)
+      expect(() => resolveSignatureProviderType(undefined, 'production')).toThrow(/qes/)
+    })
+
+    it('in produzione accetta un valore esplicito (sandbox o qes)', () => {
+      expect(resolveSignatureProviderType('qes', 'production')).toBe('qes')
+      expect(resolveSignatureProviderType('sandbox', 'production')).toBe('sandbox')
+    })
+
+    it('rifiuta un valore non valido indipendentemente dall’ambiente', () => {
+      expect(() => resolveSignatureProviderType('bogus', 'development')).toThrow(/non valido/)
+      expect(() => resolveSignatureProviderType('bogus', 'development')).toThrow(
+        /SIGNATURE_PROVIDER/
+      )
+    })
+  })
+
+  describe('resolveTsaProviderType — fail-closed in produzione', () => {
+    it('fuori produzione usa mock come default quando TSA_PROVIDER non è impostata', () => {
+      expect(resolveTsaProviderType(undefined, 'development')).toBe('mock')
+      expect(resolveTsaProviderType(undefined, 'test')).toBe('mock')
+      expect(resolveTsaProviderType(undefined, undefined)).toBe('mock')
+    })
+
+    it('in produzione senza TSA_PROVIDER solleva un errore che nomina la variabile e i valori accettati', () => {
+      expect(() => resolveTsaProviderType(undefined, 'production')).toThrow(/TSA_PROVIDER/)
+      expect(() => resolveTsaProviderType(undefined, 'production')).toThrow(/mock/)
+      expect(() => resolveTsaProviderType(undefined, 'production')).toThrow(/rfc3161/)
+    })
+
+    it('in produzione accetta un valore esplicito (mock o rfc3161)', () => {
+      expect(resolveTsaProviderType('rfc3161', 'production')).toBe('rfc3161')
+      expect(resolveTsaProviderType('mock', 'production')).toBe('mock')
+    })
+
+    it('rifiuta un valore non valido indipendentemente dall’ambiente', () => {
+      expect(() => resolveTsaProviderType('bogus', 'development')).toThrow(/non valido/)
+      expect(() => resolveTsaProviderType('bogus', 'development')).toThrow(/TSA_PROVIDER/)
+    })
+  })
+
+  describe('createSignature — difesa in profondità senza provider iniettato in produzione', () => {
+    const originalNodeEnv = process.env.NODE_ENV
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalNodeEnv
+    })
+
+    it('lancia un errore esplicito invece di firmare con la chiave effimera sandbox', async () => {
+      process.env.NODE_ENV = 'production'
+
+      await expect(service.createSignature({ test: 'doc' }, 'user-1')).rejects.toThrow(
+        /SIGNATURE_PROVIDER/
+      )
+    })
+
+    it('generateTimestampToken lancia un errore esplicito invece di generare un token mock', async () => {
+      process.env.NODE_ENV = 'production'
+      const hash = service.hashDocument({ a: 1 })
+
+      await expect(service.generateTimestampToken(hash)).rejects.toThrow(/TSA_PROVIDER/)
     })
   })
 

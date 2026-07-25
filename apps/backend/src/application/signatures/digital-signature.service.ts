@@ -29,6 +29,74 @@ import {
   SignatureProviderResult,
 } from './providers/signature-provider.interface'
 
+/**
+ * Determina il provider di firma da usare, applicando la regola "fail-closed":
+ * in produzione (NODE_ENV=production) NON esiste un default. Se SIGNATURE_PROVIDER
+ * non è impostata, viene sollevato un errore esplicito invece di ripiegare
+ * silenziosamente su sandbox (chiave ECDSA effimera, senza certificato, priva
+ * di qualunque valore probatorio).
+ *
+ * Fuori produzione (sviluppo/test) il default sandbox resta lecito.
+ *
+ * @param configuredValue - valore letto da env/config per SIGNATURE_PROVIDER (può essere undefined)
+ * @param nodeEnv - valore di NODE_ENV (può essere undefined)
+ * @throws Error se in produzione la variabile non è impostata, o se il valore non è tra quelli accettati
+ */
+export function resolveSignatureProviderType(
+  configuredValue: string | undefined,
+  nodeEnv: string | undefined
+): 'sandbox' | 'qes' {
+  if (!configuredValue) {
+    if (nodeEnv === 'production') {
+      throw new Error(
+        'SIGNATURE_PROVIDER non impostata. In produzione non esiste un default per il provider ' +
+          "di firma digitale: impostare esplicitamente la variabile d'ambiente SIGNATURE_PROVIDER. " +
+          "Valori accettati: 'sandbox' (firma NON qualificata, ammessa solo fuori produzione) oppure " +
+          "'qes' (firma qualificata QES via QTSP AgID, richiede credenziali)."
+      )
+    }
+    return 'sandbox'
+  }
+  if (configuredValue !== 'sandbox' && configuredValue !== 'qes') {
+    throw new Error(
+      `SIGNATURE_PROVIDER="${configuredValue}" non valido. Valori accettati: 'sandbox', 'qes'.`
+    )
+  }
+  return configuredValue
+}
+
+/**
+ * Determina il provider TSA (marca temporale) da usare, stessa regola "fail-closed"
+ * di {@link resolveSignatureProviderType}: in produzione TSA_PROVIDER non impostata
+ * è un errore, non un ripiego silenzioso su mock.
+ *
+ * @param configuredValue - valore letto da env/config per TSA_PROVIDER (può essere undefined)
+ * @param nodeEnv - valore di NODE_ENV (può essere undefined)
+ * @throws Error se in produzione la variabile non è impostata, o se il valore non è tra quelli accettati
+ */
+export function resolveTsaProviderType(
+  configuredValue: string | undefined,
+  nodeEnv: string | undefined
+): 'mock' | 'rfc3161' {
+  if (!configuredValue) {
+    if (nodeEnv === 'production') {
+      throw new Error(
+        'TSA_PROVIDER non impostata. In produzione non esiste un default per il provider di marca ' +
+          "temporale: impostare esplicitamente la variabile d'ambiente TSA_PROVIDER. Valori accettati: " +
+          "'mock' (marca temporale NON qualificata, ammessa solo fuori produzione) oppure 'rfc3161' " +
+          '(TSA accreditata AgID, richiede TSA_URL e credenziali QTSP).'
+      )
+    }
+    return 'mock'
+  }
+  if (configuredValue !== 'mock' && configuredValue !== 'rfc3161') {
+    throw new Error(
+      `TSA_PROVIDER="${configuredValue}" non valido. Valori accettati: 'mock', 'rfc3161'.`
+    )
+  }
+  return configuredValue
+}
+
 export interface SignatureResult {
   signatureValue: string
   documentHash: string
@@ -71,7 +139,12 @@ export class DigitalSignatureService {
       // Modalità provider: sandbox o QES
       sigResult = await this.signatureProvider.sign(document, userId)
     } else {
-      // Fallback interno (retrocompatibilità con test che non iniettano il provider)
+      // Fallback interno (retrocompatibilità con test che non iniettano il provider).
+      // Difesa in profondità: SignaturesModule inietta sempre un provider tramite
+      // resolveSignatureProviderType, quindi questo ramo è raggiungibile solo se il
+      // servizio è istanziato fuori dal modulo (es. in test). Non deve comunque
+      // firmare in silenzio in produzione.
+      resolveSignatureProviderType(undefined, process.env.NODE_ENV)
       sigResult = await this.internalSign(document)
     }
 
@@ -86,6 +159,8 @@ export class DigitalSignatureService {
       tsaType = tsaResult.providerType
       tsaQualified = tsaResult.isQualified
     } else {
+      // Stessa difesa in profondità del ramo firma, per il provider TSA.
+      resolveTsaProviderType(undefined, process.env.NODE_ENV)
       timestampToken = await this.internalGenerateTimestampToken(sigResult.documentHash)
     }
 
@@ -185,6 +260,7 @@ export class DigitalSignatureService {
       const result = await this.tsaProvider.generateToken(documentHash)
       return result.token
     }
+    resolveTsaProviderType(undefined, process.env.NODE_ENV)
     return this.internalGenerateTimestampToken(documentHash)
   }
 
