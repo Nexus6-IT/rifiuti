@@ -6,6 +6,11 @@ export interface Formulario {
 
 export type StatoTransazione = 'in_elaborazione' | 'completata' | 'fallita'
 
+export interface Guasto {
+  stato: number
+  volte: number
+}
+
 export interface Transazione {
   id: string
   stato: StatoTransazione
@@ -20,11 +25,29 @@ export class Archivio {
   private formulari = new Map<string, Formulario>()
   private transazioni = new Map<string, Transazione>()
   private contatore = 0
+  private guasto: Guasto | null = null
 
   azzera(): void {
     this.formulari.clear()
     this.transazioni.clear()
     this.contatore = 0
+    this.guasto = null
+  }
+
+  impostaGuasto(guasto: Guasto | null): void {
+    this.guasto = guasto
+  }
+
+  /**
+   * Restituisce il guasto se ancora attivo e ne consuma un'occorrenza.
+   */
+  guastoAttivo(): Guasto | null {
+    if (!this.guasto || this.guasto.volte <= 0) {
+      return null
+    }
+
+    this.guasto.volte -= 1
+    return this.guasto
   }
 
   salvaFormulario(formulario: Formulario): void {
