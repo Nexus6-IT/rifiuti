@@ -1,4 +1,6 @@
 import { BadRequestException, HttpException } from '@nestjs/common'
+import { PNG } from 'pngjs'
+import jsQR from 'jsqr'
 import { PdfController } from './pdf.controller'
 import { PDFService } from '../../infrastructure/pdf/pdf.service'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
@@ -76,8 +78,6 @@ describe('PdfController — QR verifica su downloadFIR', () => {
     // Il PNG deve essere decodificabile come QR e ricondurre esattamente
     // all'URL di verifica: se il controller incollasse per errore il firId
     // nudo, un hash sbagliato o un URL diverso, questa asserzione fallirebbe.
-    const { PNG } = require('pngjs')
-    const jsQR = require('jsqr')
     const png = PNG.sync.read(Buffer.from(qrArg.replace(/^data:image\/png;base64,/, ''), 'base64'))
     const decoded = jsQR(new Uint8ClampedArray(png.data), png.width, png.height)
     expect(decoded?.data).toBe(VERIFICATION_URL)
