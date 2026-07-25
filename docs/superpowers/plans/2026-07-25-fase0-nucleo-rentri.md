@@ -23,7 +23,7 @@
 Verificato il 2026-07-25 direttamente contro l'ente:
 
 - `GET https://demoapi.rentri.gov.it/docs/{api}/v1.0/openapi.json` → **200**, documento **YAML** (nonostante l'estensione `.json`). API disponibili: `formulari`, `anagrafiche`, `codifiche`. `registri` non risponde su quel path e va cercato.
-- `formulari` v`1.0.20260723-1089`, `x-api-id: rentrigov.formulari`, **29 path**, server `https://demoapi.rentri.gov.it/formulari/v1.0`.
+- `formulari` v`1.0.20260723-1089`, `x-api-id: rentrigov.formulari`, **65 path**, server `https://demoapi.rentri.gov.it/formulari/v1.0`. Fra questi **`/xfir/valida`**: l'ente espone un proprio endpoint di validazione dell'xFIR, di cui la fake deve replicare il comportamento (rilevante per il Task 7).
 - `securitySchemes` dichiara **unicamente** `Bearer` (`type: http`, `bearerFormat: JWT`). **Non esiste alcun endpoint `/token`** in tutta la specifica: conferma diretta del difetto centrale dell'integrazione attuale.
 - `GET /formulari/v1.0/` senza token → **401** (il path esiste ed è protetto).
 - Endpoint asincroni presenti: `/{transazione_id}/status` e `/{transazione_id}/result` → il pattern NONBLOCK_PULL è reale.
@@ -109,7 +109,7 @@ head -3 docs/contracts/rentri/formulari.yaml
 grep -c '^  /' docs/contracts/rentri/formulari.yaml
 ```
 
-Atteso: la prima riga è `openapi: 3.0.4`; il conteggio dei path è **29**.
+Atteso: la prima riga è `openapi: 3.0.4`; il conteggio dei path è **65**.
 
 - [ ] **Step 3: Accertare la questione aperta sull'integrità**
 
@@ -1749,7 +1749,7 @@ Esegui:
 grep -nE "^  /" docs/contracts/rentri/formulari.yaml
 ```
 
-Atteso: 29 path. Costruisci da qui la colonna di sinistra della tabella di fedeltà.
+Atteso: 65 path. Costruisci da qui la colonna di sinistra della tabella di fedeltà.
 
 - [ ] **Step 2: Estrarre gli endpoint effettivamente implementati**
 
@@ -1761,7 +1761,7 @@ grep -rnE "app\.(get|post|put|patch|delete)" tools/rentri-fake/src/routes/
 
 - [ ] **Step 3: Scrivere la tabella di fedeltà**
 
-Crea `docs/contracts/rentri/FEDELTA.md` con questa struttura, una riga per **ciascuno** dei 29 path ufficiali:
+Crea `docs/contracts/rentri/FEDELTA.md` con questa struttura, una riga per **ciascuno** dei 65 path ufficiali:
 
 ```markdown
 # Fedeltà della fake API rispetto ai contratti ufficiali
@@ -1785,7 +1785,7 @@ Aggiungi in coda al documento:
 ```markdown
 ## Verdetto
 
-**Copertura:** N path su 29 implementati.
+**Copertura:** N path su 65 implementati.
 
 **Divergenze in direzione permissiva** (la fake accetta ciò che RENTRI rifiuterebbe) — sono le uniche che invalidano il valore probatorio della fake:
 
