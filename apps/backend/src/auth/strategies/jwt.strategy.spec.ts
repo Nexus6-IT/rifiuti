@@ -21,12 +21,15 @@ describe('JwtStrategy', () => {
   let strategy: JwtStrategy
   let configService: MockConfigService
   let prismaService: MockPrisma
-  let redisService: { isAccessTokenRevoked: jest.Mock }
+  let redisService: { isAccessTokenRevoked: jest.Mock; leggiEpocaSessione: jest.Mock }
 
   beforeEach(() => {
     configService = createConfigServiceMock()
     prismaService = createPrismaMock()
-    redisService = { isAccessTokenRevoked: jest.fn().mockResolvedValue(false) }
+    redisService = {
+      isAccessTokenRevoked: jest.fn().mockResolvedValue(false),
+      leggiEpocaSessione: jest.fn().mockResolvedValue(null),
+    }
 
     // Default: no role assignments → empty permissions. Individual tests
     // override this to exercise permission resolution.
@@ -232,6 +235,34 @@ describe('JwtStrategy', () => {
 
       expect(result.id).toBe('user-123')
       expect(redisService.isAccessTokenRevoked).toHaveBeenCalledWith('token-buono')
+    })
+  })
+
+  describe('epoca di sessione (sessione singola)', () => {
+    it("rifiuta un token emesso prima dell'ultimo accesso dell'utente", async () => {
+      const mockUser = createMockUser({ id: 'user-123' })
+      prismaService.user.findUnique.mockResolvedValue(mockUser as any)
+      redisService.leggiEpocaSessione.mockResolvedValue(2000)
+
+      await expect(
+        strategy.validate(
+          richiestaCon('token-vecchio'),
+          createMockJwtPayload({ sub: 'user-123', iat: 1000 })
+        )
+      ).rejects.toThrow(UnauthorizedException)
+    })
+
+    it("accetta un token emesso dopo l'ultimo accesso", async () => {
+      const mockUser = createMockUser({ id: 'user-123' })
+      prismaService.user.findUnique.mockResolvedValue(mockUser as any)
+      redisService.leggiEpocaSessione.mockResolvedValue(2000)
+
+      const result = await strategy.validate(
+        richiestaCon('token-nuovo'),
+        createMockJwtPayload({ sub: 'user-123', iat: 3000 })
+      )
+
+      expect(result.id).toBe('user-123')
     })
   })
 

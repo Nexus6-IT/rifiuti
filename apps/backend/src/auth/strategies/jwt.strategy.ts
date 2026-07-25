@@ -54,6 +54,16 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Token revocato')
     }
 
+    // 0bis. Sessione singola: un token emesso PRIMA dell'ultimo accesso
+    // dell'utente (epoca di sessione) appartiene a una sessione superata da
+    // un login successivo. Senza questo controllo l'access token resterebbe
+    // valido fino alla sua scadenza naturale (15 minuti) anche dopo che
+    // l'utente ha effettuato un nuovo accesso altrove.
+    const epoca = await this.redisService.leggiEpocaSessione(payload.sub)
+    if (epoca !== null && typeof payload.iat === 'number' && payload.iat < epoca) {
+      throw new UnauthorizedException("Sessione superata da un accesso piu' recente")
+    }
+
     // 1. Fetch user from database
     const user = await this.prismaService.user.findUnique({
       where: { id: payload.sub },

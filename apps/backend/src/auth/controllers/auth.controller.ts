@@ -80,6 +80,13 @@ export class AuthController {
       role,
     })
 
+    // Sessione singola (regola trasversale): un nuovo accesso invalida il
+    // precedente. Si revocano i refresh token gia' emessi e si sposta in
+    // avanti l'epoca di sessione, che rende non validi anche gli access
+    // token ancora vivi della sessione precedente.
+    await this.redisService.revokeAllRefreshTokens(spidUser.id)
+    await this.redisService.impostaEpocaSessione(spidUser.id)
+
     // Store refresh token in Redis (7 days TTL)
     await this.redisService.storeRefreshToken(
       spidUser.id,

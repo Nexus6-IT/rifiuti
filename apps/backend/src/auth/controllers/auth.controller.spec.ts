@@ -42,6 +42,8 @@ describe('AuthController', () => {
       isRefreshTokenValid: jest.fn(),
       revokeRefreshToken: jest.fn(),
       revokeAccessToken: jest.fn(),
+      revokeAllRefreshTokens: jest.fn(),
+      impostaEpocaSessione: jest.fn(),
     }
 
     prismaService = createPrismaMock()
