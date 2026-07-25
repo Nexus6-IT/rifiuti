@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Inject,
   Logger,
   BadRequestException,
   NotFoundException,
@@ -48,7 +49,7 @@ export class UpdateCustomRoleCommandHandler implements ICommandHandler<UpdateCus
   private readonly VALID_SCOPES = ['own', 'facility', 'all']
 
   constructor(
-    private readonly roleRepository: RoleRepository,
+    @Inject('RoleRepository') private readonly roleRepository: RoleRepository,
     private readonly permissionCache: PermissionCacheService,
     private readonly redisPubSub: RedisPubSubService
   ) {}

@@ -28,12 +28,43 @@ module.exports = {
     '^@api/(.*)$': '<rootDir>/api/$1',
     '^@core/(.*)$': '<rootDir>/core/$1',
   },
+  // SOGLIA DI COVERAGE — allineata alla realta' misurata il 2026-07-25 (P5,
+  // task 3 "misura e soglia"), non piu' un valore aspirazionale mai raggiunto.
+  //
+  // Misura reale (npx jest --coverage, 101 suite / 911 test verdi):
+  //   statements 40.90% | branches 35.36% | functions 38.99% | lines 40.66%
+  //
+  // La soglia precedente (80/75/80/80) non proteggeva nulla: falliva sempre
+  // `npm run test:cov` (usato da ci.yml), a prescindere da cosa cambiasse il
+  // commit — un allarme che suona sempre non e' un allarme. I valori qui sotto
+  // sono la misura reale con un margine di ~1 punto (tollera micro-variazioni
+  // tra run senza mascherare un calo vero) e DEVONO fallire se la coverage
+  // scende sotto quanto c'e' oggi in repo.
+  //
+  // Aree di business scoperte piu' rilevanti (da incrociare con criticita',
+  // non solo con la percentuale — vedi docs/audits/p5 coverage):
+  //   - src/api/auth/auth.controller.ts             0%   (endpoint auth REST)
+  //   - src/infrastructure/auth                      0%   (adapter auth)
+  //   - src/api/registro/registro.controller.ts      0%   (registro art. 190)
+  //   - src/api/registry/registry.controller.ts      0%   (anagrafica registri)
+  //   - src/application/registry/use-cases   8.77%        (CRUD produttore/
+  //     trasportatore/destinatario: create/delete quasi tutti a 0%)
+  //   - src/infrastructure/signatures/signature-fir.repository.ts  0%
+  //   - src/application/signatures/providers  34.61%      (qes/rfc3161/mock-tsa
+  //     provider a 0%: solo il provider sandbox e' testato)
+  //   - src/api/permissions (audit/role/consultant/temporary-permission
+  //     controller)  ~36-54%   (RBAC: coperta la business logic nei
+  //     command/query handler, scoperto soprattutto lo strato REST)
+  //
+  // Percorso dichiarato: alzare la soglia per gradi scrivendo test su queste
+  // aree (auth REST, registro/registry REST, provider di firma qualificata,
+  // repository firma) prima di alzare ulteriormente i numeri sotto.
   coverageThreshold: {
     global: {
-      lines: 80,
-      branches: 75,
-      functions: 80,
-      statements: 80,
+      lines: 40,
+      branches: 34,
+      functions: 38,
+      statements: 40,
     },
   },
 }

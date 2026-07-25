@@ -106,6 +106,56 @@ describe('RENTRISyncJobProcessor', () => {
 
       expect(mockMetrics.firSyncDuration.observe).toHaveBeenCalled()
     })
+
+    /**
+     * Task 4 (P2): il use case non rilancia mai per un errore RENTRI — resta
+     * sempre un risultato con `willRetry` esplicito. Il job deve tradurre
+     * `willRetry: true` in un rilancio, così BullMQ applica il backoff
+     * esponenziale della coda; `willRetry: false` (es. 403, esito negativo
+     * della transazione) NON deve far ritentare il job.
+     */
+    it('willRetry: true (errore transitorio) — rilancia perché BullMQ ritenti il job', async () => {
+      const mockJob = {
+        id: 'job-403',
+        name: 'rentri-sync',
+        data: { type: 'single', firId: 'fir-456', tenantId: 'tenant-789' },
+        attemptsMade: 0,
+        updateProgress: jest.fn(),
+      } as unknown as Job
+
+      mockSyncUseCase.execute.mockResolvedValue({
+        success: false,
+        error: 'RENTRI ha risposto 503: tentativi di resilienza esauriti',
+        willRetry: true,
+        attempts: 1,
+      })
+
+      await expect(processor['processSingleSync'](mockJob)).rejects.toThrow(
+        'RENTRI ha risposto 503'
+      )
+    })
+
+    it('willRetry: false (fallimento definitivo, es. 403) — NON rilancia: il job si considera concluso', async () => {
+      const mockJob = {
+        id: 'job-forbidden',
+        name: 'rentri-sync',
+        data: { type: 'single', firId: 'fir-456', tenantId: 'tenant-789' },
+        attemptsMade: 0,
+        updateProgress: jest.fn(),
+      } as unknown as Job
+
+      mockSyncUseCase.execute.mockResolvedValue({
+        success: false,
+        error: 'Certificato non riconosciuto',
+        willRetry: false,
+        attempts: 1,
+      })
+
+      const result = await processor['processSingleSync'](mockJob)
+
+      expect(result.success).toBe(false)
+      expect(mockJob.updateProgress).toHaveBeenCalledWith(100)
+    })
   })
 
   // Removed tests for private methods (calculateBackoff, getRetryOptions, onCompleted, onFailed)

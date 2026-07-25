@@ -68,7 +68,17 @@ export class PermissionGuard implements CanActivate {
       throw new ForbiddenException('Authentication required')
     }
 
-    const { userId, tenantId } = user
+    // BUG CRITICO (trovato durante la verifica dal vivo P4, 2026-07-25):
+    // `request.user` è popolato da JwtStrategy con la proprietà `id` (vedi
+    // `CurrentUserPayload`), MAI `userId`. Il precedente `const { userId,
+    // tenantId } = user` risolveva quindi sempre `userId === undefined`,
+    // rendendo la cache dei permessi chiave su `(tenantId, undefined)` —
+    // CONDIVISA da tutti gli utenti dello stesso tenant. Il primo utente che
+    // popolava la cache (es. un ADMIN) "regalava" i propri permessi a
+    // qualunque altro utente dello stesso tenant fino a scadenza/invalidazione
+    // della cache: escalation di privilegi cross-utente all'interno del
+    // tenant. Corretto leggendo `user.id`.
+    const { id: userId, tenantId } = user
 
     try {
       // Step 1: Check cache for user permissions

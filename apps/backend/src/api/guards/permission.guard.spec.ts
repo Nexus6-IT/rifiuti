@@ -33,7 +33,12 @@ describe('PermissionGuard', () => {
 
   const buildContext = (overrides: Partial<any> = {}): ExecutionContext => {
     const request = {
-      user: { userId: USER_ID, tenantId: TENANT_ID, role: 'OPERATOR' },
+      // `request.user` è popolato da JwtStrategy con la proprietà `id` (vedi
+      // `CurrentUserPayload`), MAI `userId` — bug trovato durante la verifica
+      // dal vivo P4 (2026-07-25): il guard leggeva `user.userId` (sempre
+      // undefined), rendendo la cache dei permessi condivisa fra tutti gli
+      // utenti di uno stesso tenant. Il mock qui rispecchia la forma reale.
+      user: { id: USER_ID, tenantId: TENANT_ID, role: 'OPERATOR' },
       body: {},
       params: {},
       headers: {},

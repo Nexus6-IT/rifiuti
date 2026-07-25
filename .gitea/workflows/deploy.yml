@@ -69,15 +69,21 @@ jobs:
         working-directory: apps/frontend
         run: npx eslint "src/**/*.ts" --max-warnings=-1
 
-      # Test unitari backend (hardened per CI): `--forceExit` garantisce che il
-      # processo termini anche se qualche client (Redis/Bull/Prisma) lascia un
-      # handle aperto post-run; `--runInBand` evita worker orfani; `--ci`
-      # disabilita comportamenti interattivi. Un `testTimeout` (jest.config.js,
+      # Test unitari backend CON coverage: lo script npm "test:cov" incorpora
+      # `--forceExit` (chiude il processo anche se un client Redis/Bull/Prisma
+      # lascia un handle aperto), `--runInBand` (niente worker orfani) e `--ci`
+      # (nessun comportamento interattivo). Un `testTimeout` (jest.config.js,
       # 30s) fa FALLIRE — non appendere — un test bloccato in attesa di infra.
       # Con `timeout-minutes: 20` sul job, un eventuale hang è comunque coperto.
-      # Un test rosso blocca il deploy. Verificato che termina da solo (exit 0)
-      # anche simulando l'assenza di Redis/DB. Vedi memory rifiuti-build-deploy-gotchas.
-      - name: Test unitari backend
+      #
+      # STESSO comando di ci.yml (npm run test:cov): un solo segnale di
+      # coverage, verificato in ENTRAMBI i gate, niente piu' divergenza tra
+      # "cosa dice ci.yml" e "cosa blocca davvero il rilascio". La soglia in
+      # jest.config.js e' stata allineata alla coverage reale (P5 task 3): un
+      # test rosso O sotto soglia blocca il deploy. Verificato che termina da
+      # solo (exit 0) anche simulando l'assenza di Redis/DB. Vedi memory
+      # rifiuti-build-deploy-gotchas.
+      - name: Test unitari backend (Jest + coverage)
         working-directory: apps/backend
         # Env fittizie richieste alla COSTRUZIONE di alcuni moduli in test (es.
         # JwtStrategy esige un secret): valori DUMMY solo per CI, mai in prod.
@@ -85,11 +91,34 @@ jobs:
         env:
           NODE_ENV: test
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
-        run: npx jest --testPathPattern="src" --forceExit --ci --runInBand
+        run: npm run test:cov
 
       # Build backend (stesso percorso usato dal Dockerfile.prod).
       - name: Build backend (nest build)
         working-directory: apps/backend
+        run: npm run build
+
+      # ------------------------------------------------------------------
+      # FRONTEND — promosso nel gate bloccante (era assente: un frontend
+      # rotto poteva raggiungere la produzione senza che nulla lo impedisse).
+      # Stessi step di ci.yml: se hanno valore per la CI, lo hanno anche qui.
+      # ------------------------------------------------------------------
+      - name: Setup Google Chrome (per ChromeHeadless)
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      # GAP NOTO (stesso di ci.yml): pochissimi test frontend (2 file .spec.ts).
+      # Nessuna soglia di coverage frontend: eseguiamo cio' che c'e'.
+      - name: Test frontend (Karma + ChromeHeadless)
+        working-directory: apps/frontend
+        env:
+          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: npm run test -- --watch=false --browsers=ChromeHeadless
+
+      - name: Build frontend (ng build)
+        working-directory: apps/frontend
         run: npm run build
 
   # ==========================================================================
@@ -191,3 +220,41 @@ jobs:
       - name: Smoke test pubblico (se PRODUCTION_URL impostata)
         if: vars.PRODUCTION_URL != ''
         run: curl -fsS "${{ vars.PRODUCTION_URL }}" >/dev/null && echo "URL pubblico OK"
+
+  # ==========================================================================
+  # ESITO RILASCIO — gira SEMPRE (anche se quality/build/deploy falliscono),
+  # dichiara esplicitamente se il deploy in produzione e' avvenuto.
+  #
+  # Perche' serve: su push a master, se il gate "quality" fallisce (es. un
+  # errore Prettier), "build" e "deploy" risultano "skipped" per effetto della
+  # catena needs — non "failure". Un job skipped non somiglia a un fallimento:
+  # il 25/07/2026 e' passato inosservato ("il push e' andato a buon fine")
+  # mentre la produzione restava indietro. Questo job rende l'esito
+  # inequivocabile: fallisce (rosso, visibile) ogni volta che un push su
+  # master non si traduce in un deploy riuscito.
+  # ==========================================================================
+  release-status:
+    name: Esito rilascio
+    runs-on: ubuntu-latest
+    needs: [quality, build, deploy]
+    if: always()
+    steps:
+      - name: Dichiara se il deploy e' avvenuto
+        run: |
+          echo "Ref:            ${{ github.ref }}"
+          echo "Quality gate:   ${{ needs.quality.result }}"
+          echo "Build & push:   ${{ needs.build.result }}"
+          echo "Deploy prod.:   ${{ needs.deploy.result }}"
+
+          if [ "${{ github.ref }}" != "refs/heads/master" ]; then
+            echo "::notice::Ramo diverso da master: nessun deploy in produzione atteso per questo push (deploy 'skipped' e' normale qui)."
+            exit 0
+          fi
+
+          if [ "${{ needs.deploy.result }}" = "success" ]; then
+            echo "::notice::DEPLOY IN PRODUZIONE AVVENUTO CON SUCCESSO."
+            exit 0
+          fi
+
+          echo "::error::DEPLOY IN PRODUZIONE NON AVVENUTO (quality=${{ needs.quality.result }}, build=${{ needs.build.result }}, deploy=${{ needs.deploy.result }}). La produzione NON e' stata aggiornata da questo push su master."
+          exit 1

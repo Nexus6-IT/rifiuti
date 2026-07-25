@@ -17,8 +17,7 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
-import { IsString, IsNotEmpty, IsNumber, IsObject, Min, ValidateNested } from 'class-validator'
-import { Type } from 'class-transformer'
+import { IsString, IsNotEmpty, IsNumber, Min } from 'class-validator'
 import { CreateFIRDto } from './dtos/create-fir.dto'
 import { ListFIRsDto } from './dtos/list-firs.dto'
 import { FIRResponseDto } from './dtos/fir-response.dto'
@@ -43,45 +42,18 @@ import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { SubscriptionEnforcementService } from '../../application/billing/subscription-enforcement.service'
 
-// Firma "applicativa" (firmatario + certificato): NON è la firma qualificata a
-// norma (blocco separato). Le proprietà richiedono decoratori class-validator,
-// altrimenti il ValidationPipe (whitelist + forbidNonWhitelisted) le rifiuta
-// ("property ... should not exist").
-export class FirmaDto {
-  @IsString()
-  @IsNotEmpty()
-  firmatario: string
+// La firma (produttore/trasportatore/destinatario) NON è più fornita dal
+// client (Task 4, pipeline P3): il frontend non costruisce firme, chiede al
+// backend di firmare e riceve l'esito. Emetti/PresaInCarico non richiedono
+// più alcun body; ConfermaConsegna richiede solo il peso effettivo rilevato.
+export class EmettiFIRDto {}
 
-  @IsString()
-  @IsNotEmpty()
-  certificato: string
-}
-
-export class EmettiFIRDto {
-  // @IsObject garantisce che la proprietà superi il whitelist del ValidationPipe
-  // (il solo @ValidateNested non basta in questa versione di class-validator).
-  @IsObject()
-  @ValidateNested()
-  @Type(() => FirmaDto)
-  firmaProduttore: FirmaDto
-}
-
-export class PresaInCaricoFIRDto {
-  @IsObject()
-  @ValidateNested()
-  @Type(() => FirmaDto)
-  firmaTrasportatore: FirmaDto
-}
+export class PresaInCaricoFIRDto {}
 
 export class ConfermaConsegnaFIRDto {
   @IsNumber()
   @Min(0.01)
   pesoEffettivo: number
-
-  @IsObject()
-  @ValidateNested()
-  @Type(() => FirmaDto)
-  firmaDestinatario: FirmaDto
 }
 
 export class AnnullaFIRDto {
@@ -250,10 +222,13 @@ export class FIRControllerV2 {
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
   async emetti(
     @Param('id') id: string,
-    @Body() dto: EmettiFIRDto,
+    @Body() _dto: EmettiFIRDto,
     @CurrentUser() user: CurrentUserPayload
   ): Promise<FIRResponseDto> {
-    const command = new EmettiFIRCommand(id, dto.firmaProduttore, user.id)
+    // La firma del produttore è prodotta dal sottosistema crittografico
+    // dentro lo use-case (Task 4): qui si passa solo l'identità di chi esegue
+    // l'operazione (tracciabilità), non un valore costruito dal client.
+    const command = new EmettiFIRCommand(id, user.id, user.email)
 
     const result = await this.emettiFIRUseCase.execute(command)
 
@@ -284,10 +259,12 @@ export class FIRControllerV2 {
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
   async presaInCarico(
     @Param('id') id: string,
-    @Body() dto: PresaInCaricoFIRDto,
+    @Body() _dto: PresaInCaricoFIRDto,
     @CurrentUser() user: CurrentUserPayload
   ): Promise<FIRResponseDto> {
-    const command = new PresaInCaricoFIRCommand(id, dto.firmaTrasportatore, user.id)
+    // La firma del trasportatore è prodotta dal sottosistema crittografico
+    // dentro lo use-case (Task 4).
+    const command = new PresaInCaricoFIRCommand(id, user.id, user.email)
 
     const result = await this.presaInCaricoFIRUseCase.execute(command)
 
@@ -324,12 +301,9 @@ export class FIRControllerV2 {
     @Body() dto: ConfermaConsegnaFIRDto,
     @CurrentUser() user: CurrentUserPayload
   ): Promise<FIRResponseDto> {
-    const command = new ConfermaConsegnaFIRCommand(
-      id,
-      dto.pesoEffettivo,
-      dto.firmaDestinatario,
-      user.id
-    )
+    // La firma del destinatario è prodotta dal sottosistema crittografico
+    // dentro lo use-case (Task 4).
+    const command = new ConfermaConsegnaFIRCommand(id, dto.pesoEffettivo, user.id, user.email)
 
     const result = await this.confermaConsegnaFIRUseCase.execute(command)
 

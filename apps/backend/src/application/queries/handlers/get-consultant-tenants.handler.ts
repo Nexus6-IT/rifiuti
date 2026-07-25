@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Inject, Logger } from '@nestjs/common'
 import { GetConsultantTenantsQuery } from '../get-consultant-tenants.query'
 import { ConsultantTenantAssociationRepository } from '../../../domain/identity-access/consultant-tenant-association.repository.interface'
 
@@ -24,6 +24,7 @@ export class GetConsultantTenantsQueryHandler {
   private readonly logger = new Logger(GetConsultantTenantsQueryHandler.name)
 
   constructor(
+    @Inject('ConsultantTenantAssociationRepository')
     private readonly consultantAssociationRepository: ConsultantTenantAssociationRepository
   ) {}
 

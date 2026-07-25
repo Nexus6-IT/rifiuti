@@ -145,6 +145,22 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
 
       const duration = Date.now() - startTime
 
+      // Il use case non rilancia mai per un errore RENTRI (rete/timeout,
+      // 403/429/423/5xx dal client): restituisce sempre un risultato con
+      // `willRetry` esplicito. Un fallimento retry-abile (willRetry: true —
+      // es. tentativi di resilienza del client esauriti su un errore
+      // transitorio) deve però far ritentare anche il JOB con il backoff
+      // esponenziale della coda (v. RENTRISyncQueue): per questo si rilancia
+      // qui, così il catch di processJob lo tratta come errore "da BullMQ".
+      // Un fallimento definitivo (willRetry: false — es. 403, o esito
+      // negativo della transazione) NON viene rilanciato: il job si
+      // considera concluso, senza nuovi tentativi.
+      if (!result.success && result.willRetry) {
+        // Il catch sottostante registra già la metrica di durata e logga
+        // l'errore prima di rilanciare verso BullMQ.
+        throw new Error(result.error || 'RENTRI sync fallita, in attesa di un nuovo tentativo')
+      }
+
       await job.updateProgress(100)
 
       // Record success metric using firSyncDuration

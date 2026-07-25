@@ -70,18 +70,25 @@ jobs:
       # non auto-correggerli. Lo script npm "lint" del repo usa --fix, quindi
       # qui invochiamo eslint direttamente in modalita' check.
       #
-      # IMPORTANTE: la config ESLint e' UNICA e condivisa alla ROOT
-      # (.eslintrc.json, root:true) con parserOptions.project relativo alla root
-      # ("./apps/*/tsconfig.json"). Quindi eslint DEVE girare dalla root del
-      # monorepo, altrimenti i path del "project" type-aware non risolvono.
-      # --max-warnings=-1 = solo gli ERRORI bloccano la pipeline; i warning
-      # (es. no-explicit-any) sono attesi e non devono impedire la build.
+      # NOTA (allineato a deploy.yml, commit 96747e6): eslint DEVE girare dalla
+      # working-directory del workspace (apps/backend), non dalla root del
+      # monorepo. Da root, parserOptions.project ("./apps/*/tsconfig.json",
+      # definito in .eslintrc.json alla root) non risolve per i file sotto
+      # test/ e produce ~104 falsi "Parsing error" che non hanno nulla a che
+      # fare con la qualita' del codice. Questo gate girava dalla root ed era
+      # quindi rosso per un motivo sbagliato (ci.yml non aveva mai ricevuto il
+      # fix applicato a deploy.yml). --max-warnings=-1 = solo gli ERRORI
+      # bloccano la pipeline; i warning (es. no-explicit-any) sono attesi.
       - name: Lint backend (check-only, config ESLint root)
-        working-directory: ${{ github.workspace }}
-        run: npx eslint "apps/backend/{src,test}/**/*.ts" --max-warnings=-1
+        run: npx eslint "{src,test}/**/*.ts" --max-warnings=-1
 
-      # Test unitari Jest con coverage (lo script test:cov esiste nel package.json).
+      # Test unitari Jest con coverage (lo script test:cov esiste nel
+      # package.json e incorpora gli stessi flag di hardening usati dal gate
+      # bloccante in deploy.yml: --forceExit --ci --runInBand).
       - name: Test (Jest + coverage)
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
         run: npm run test:cov
 
       # Build di produzione NestJS.

@@ -24,7 +24,11 @@ import { EventEmitterModule } from '@nestjs/event-emitter'
 import { SignaturesController } from '../../api/signatures/signatures.controller'
 import { ApplySignatureUseCase } from './apply-signature.use-case'
 import { VerifySignaturesUseCase } from './verify-signatures.use-case'
-import { DigitalSignatureService } from './digital-signature.service'
+import {
+  DigitalSignatureService,
+  resolveSignatureProviderType,
+  resolveTsaProviderType,
+} from './digital-signature.service'
 import { SignatureAuditHandler } from './signature-audit.handler'
 import { SignatureFIRRepository } from '../../infrastructure/signatures/signature-fir.repository'
 import { FIRPartyResolver } from '../../infrastructure/signatures/fir-party.resolver'
@@ -65,32 +69,40 @@ import { Rfc3161TsaProvider } from './providers/rfc3161-tsa.provider'
     FIRPartyResolver,
 
     // ===== Provider firma — configurabile via SIGNATURE_PROVIDER env =====
-    // SANDBOX (default): ECDSA effimera, NON qualificata.
+    // SANDBOX (default fuori produzione): ECDSA effimera, NON qualificata.
     // QES (stub): firma qualificata — ATTIVARE con credenziali QTSP AgID.
+    // Fail-closed: in produzione (NODE_ENV=production) SIGNATURE_PROVIDER non impostata
+    // è un errore all'avvio, non un ripiego silenzioso su sandbox (resolveSignatureProviderType).
     {
       provide: SIGNATURE_PROVIDER,
       useFactory: (config: ConfigService, logger: LoggerService): ISignatureProvider => {
-        const providerType = config.get<string>('SIGNATURE_PROVIDER', 'sandbox')
+        const providerType = resolveSignatureProviderType(
+          config.get<string>('SIGNATURE_PROVIDER'),
+          config.get<string>('NODE_ENV', 'development')
+        )
         if (providerType === 'qes') {
           return new QesSignatureProvider(config)
         }
-        // Default: sandbox
         return new SandboxSignatureProvider(logger)
       },
       inject: [ConfigService, LoggerService],
     },
 
     // ===== Provider TSA — configurabile via TSA_PROVIDER env =====
-    // MOCK (default): token JSON non qualificato.
+    // MOCK (default fuori produzione): token JSON non qualificato.
     // RFC3161 (stub): TSA accreditata AgID — ATTIVARE con TSA_URL.
+    // Fail-closed: in produzione TSA_PROVIDER non impostata è un errore all'avvio
+    // (resolveTsaProviderType), non un ripiego silenzioso su mock.
     {
       provide: TSA_PROVIDER,
       useFactory: (config: ConfigService, logger: LoggerService): ITsaProvider => {
-        const providerType = config.get<string>('TSA_PROVIDER', 'mock')
+        const providerType = resolveTsaProviderType(
+          config.get<string>('TSA_PROVIDER'),
+          config.get<string>('NODE_ENV', 'development')
+        )
         if (providerType === 'rfc3161') {
           return new Rfc3161TsaProvider(config)
         }
-        // Default: mock
         return new MockTsaProvider(logger)
       },
       inject: [ConfigService, LoggerService],
@@ -104,6 +116,17 @@ import { Rfc3161TsaProvider } from './providers/rfc3161-tsa.provider'
     // ===== Audit trail firma (eventi dominio → ActivityLog) =====
     SignatureAuditHandler,
   ],
-  exports: [DigitalSignatureService, ApplySignatureUseCase, VerifySignaturesUseCase],
+  // FIR_REPOSITORY esportato perché il ciclo di vita (FIRModule) collega le
+  // proprie transizioni (emetti/presaInCarico/confermaConsegna) al sottosistema
+  // crittografico: legge la stessa riga fisica FIR tramite l'aggregate
+  // crittografico per ottenere toSignableDocument() da firmare (Task 4,
+  // pipeline P3). I due aggregate restano separati — si collegano, non si
+  // fondono — ma condividono repository/servizio di firma.
+  exports: [
+    DigitalSignatureService,
+    ApplySignatureUseCase,
+    VerifySignaturesUseCase,
+    FIR_REPOSITORY,
+  ],
 })
 export class SignaturesModule {}

@@ -3,9 +3,15 @@
  * Implementazione concreta del repository FIR con Prisma ORM
  */
 
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
+import { createHash } from 'crypto'
 import { FIRStatus as PrismaFIRStatus } from '@prisma/client'
-import { FIR, FIRStato } from '../../domain/fir/aggregates/fir.aggregate'
+import {
+  FIR,
+  FIRStato,
+  FirmaDigitale,
+  FirmeDigitali,
+} from '../../domain/fir/aggregates/fir.aggregate'
 import {
   IFIRRepository,
   FIRSearchFilters,
@@ -15,14 +21,37 @@ import { PrismaService } from './prisma.service'
 
 @Injectable()
 export class FIRPrismaRepository implements IFIRRepository {
+  private static readonly logger = new Logger(FIRPrismaRepository.name)
+
   constructor(private readonly prisma: PrismaService) {}
+
+  // Ruoli usati dalle firme del CICLO DI VITA (questo repository), in italiano
+  // e volutamente distinti dai ruoli inglesi ('PRODUCER'/'CARRIER'/'RECEIVER')
+  // usati dal sottosistema crittografico (SignatureFIRRepository / QES): le due
+  // famiglie di firme condividono la tabella `fir_signatures` ma NON devono
+  // collidere sullo stesso (firId, role), altrimenti il controllo di idempotenza
+  // dell'altro repository salterebbe la firma qualificata reale.
+  private static readonly RUOLO_PRODUTTORE = 'PRODUTTORE'
+  private static readonly RUOLO_TRASPORTATORE = 'TRASPORTATORE'
+  private static readonly RUOLO_DESTINATARIO = 'DESTINATARIO'
+
+  // Metodo dichiarato per le firme "applicative" del ciclo di vita: NON è una
+  // firma digitale qualificata a norma (nessun valore legale probatorio) — è
+  // solo un'attestazione firmatario+certificato inserita a mano dall'operatore.
+  // Valore volutamente diverso da 'ECDSA-SHA256'/'RSA-SHA256' (quelli sono
+  // riservati alle firme crittografiche reali del sottosistema QES).
+  private static readonly LIFECYCLE_SIGNATURE_METHOD = 'APPLICATIVA-NON-QUALIFICATA'
 
   // Carica sempre i trasportatori aggiuntivi (tratte intermodali) ordinati, così
   // che lo snapshot del FIR sia completo ovunque venga ricostruito l'aggregate.
+  // Include anche `signatures`: senza questa relazione le firme del ciclo di
+  // vita (_firme) tornerebbero sempre vuote al reload, anche se scritte
+  // correttamente da `save` (era esattamente il difetto — vedi persistSignatures).
   // Cast ad any: la relazione è disponibile dopo `prisma generate` sullo schema
-  // aggiornato (modello FIRTransporter).
+  // aggiornato (modello FIRTransporter/FIRSignature).
   private static readonly FIR_INCLUDE: any = {
     transportersAggiuntivi: { orderBy: { ordine: 'asc' } },
+    signatures: { orderBy: { signedAt: 'asc' } },
   }
 
   // Mappatura stato dominio (italiano) <-> enum Prisma `FIRStatus` (inglese).
@@ -168,6 +197,90 @@ export class FIRPrismaRepository implements IFIRRepository {
       create: createData,
       update: scalars,
     })
+
+    await this.persistSignatures(fir)
+  }
+
+  /**
+   * Persiste le firme del ciclo di vita presenti sull'aggregate in
+   * `fir_signatures`. Senza questo passaggio le firme applicate da
+   * `emetti`/`presaInCarico`/`confermaConsegna` restano solo in memoria e
+   * spariscono al primo reload (il difetto che questo repository doveva
+   * risolvere).
+   *
+   * Idempotente: se per quel (firId, role) esiste già una riga non la
+   * ricrea/sovrascrive — una firma, una volta apposta, è un fatto storico
+   * immutabile.
+   *
+   * NON sono firme digitali QUALIFICATE a norma (nessun contratto QTSP): ma
+   * dal Task 4 (pipeline P3) i campi `signatureValue`/`certificateHash`/
+   * `documentHash`/`publicKey` sono valorizzati con l'esito REALE del
+   * sottosistema crittografico (DigitalSignatureService, invocato dagli
+   * use-case emetti/presaInCarico/confermaConsegna PRIMA della transizione,
+   * fail-closed) — non più segnaposto SHA-256 su dati arbitrari. Il fallback
+   * sotto (hash calcolato qui) resta solo per retrocompatibilità con
+   * FirmaDigitale costruite a mano (es. fixture di test) che non passano dal
+   * provider di firma.
+   */
+  private async persistSignatures(fir: FIR): Promise<void> {
+    const candidati: Array<{ role: string; firma?: FirmaDigitale }> = [
+      { role: FIRPrismaRepository.RUOLO_PRODUTTORE, firma: fir.firme.produttore },
+      { role: FIRPrismaRepository.RUOLO_TRASPORTATORE, firma: fir.firme.trasportatore },
+      { role: FIRPrismaRepository.RUOLO_DESTINATARIO, firma: fir.firme.destinatario },
+    ]
+
+    for (const { role, firma } of candidati) {
+      if (!firma) continue
+      // Senza userId non si può valorizzare la FK obbligatoria
+      // fir_signatures.user_id. Non dovrebbe accadere nel flusso reale (i tre
+      // use-case lifecycle valorizzano sempre userId dal comando). Non si fa
+      // fallire la transizione di stato del FIR, ma NON si scarta in silenzio:
+      // una firma persa senza traccia e' esattamente il difetto che questa
+      // pipeline sta correggendo — chi legge i log deve poterlo scoprire.
+      if (!firma.userId) {
+        FIRPrismaRepository.logger.warn(
+          `Firma ${role} del FIR ${fir.id} NON persistita: userId assente. ` +
+            "La transizione di stato prosegue, ma la firma non sara' rileggibile."
+        )
+        continue
+      }
+
+      const existing = await this.prisma.fIRSignature.findFirst({ where: { firId: fir.id, role } })
+      if (existing) continue
+
+      // Firma crittografica reale (Task 4): gli use-case lifecycle valorizzano
+      // sempre questi campi prima di arrivare qui. Il ramo di fallback serve
+      // solo a fixture/test che costruiscono FirmaDigitale senza provider.
+      const signatureValue = firma.certificato
+      const documentHash =
+        firma.documentHash ??
+        createHash('sha256')
+          .update(`${fir.id}|${role}|${firma.timestamp.toISOString()}`)
+          .digest('hex')
+      const certificateHash =
+        firma.certificateHash ?? createHash('sha256').update(signatureValue).digest('hex')
+      // Il metodo dichiarato riflette ora l'algoritmo crittografico reale
+      // (es. 'ECDSA-SHA256') quando disponibile; la qualificazione legale
+      // (sandbox vs QES) resta tracciata separatamente e NON in questo campo.
+      const signatureMethod =
+        firma.signatureMethod ?? FIRPrismaRepository.LIFECYCLE_SIGNATURE_METHOD
+
+      await this.prisma.fIRSignature.create({
+        data: {
+          firId: fir.id,
+          userId: firma.userId,
+          role,
+          signedAt: firma.timestamp,
+          signatureMethod,
+          signatureValue,
+          certificateHash,
+          documentHash,
+          signerName: firma.firmatario,
+          publicKey: firma.publicKey,
+          timestampToken: firma.timestampToken,
+        },
+      })
+    }
   }
 
   /** Mappa i trasportatori aggiuntivi dell'aggregate in righe `FIRTransporter`. */
@@ -315,7 +428,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       _dataPresaCarico: record.transportDate,
       _dataConsegna: record.actualArrivalDate,
       _pesoEffettivo: record.effectiveWeight ? Number(record.effectiveWeight) : null,
-      _firme: {}, // Would come from signatures relation
+      _firme: this.firmeFromRecord(record.signatures),
       _createdAt: record.createdAt,
       _annotazioni: record.wasteNotes || null,
       _fourthCopyReturnedAt: record.fourthCopyReturnedAt || null,
@@ -323,6 +436,48 @@ export class FIRPrismaRepository implements IFIRRepository {
     })
 
     return fir
+  }
+
+  /**
+   * Ricostruisce le firme del ciclo di vita (_firme) dalle righe `fir_signatures`
+   * incluse nella query. Filtra deliberatamente sui soli ruoli lifecycle
+   * (PRODUTTORE/TRASPORTATORE/DESTINATARIO): righe con ruoli del sottosistema
+   * crittografico (PRODUCER/CARRIER/RECEIVER) vengono ignorate qui — sono
+   * ricostruite dal FIR aggregate crittografico separato (fir.aggregate.ts),
+   * non da questo.
+   */
+  private firmeFromRecord(signatures: any[] | undefined): FirmeDigitali {
+    const firme: FirmeDigitali = {}
+
+    for (const sig of signatures ?? []) {
+      const firma: FirmaDigitale = {
+        firmatario: sig.signerName || '',
+        timestamp: sig.signedAt,
+        certificato: sig.signatureValue,
+        userId: sig.userId,
+        documentHash: sig.documentHash,
+        certificateHash: sig.certificateHash,
+        publicKey: sig.publicKey ?? undefined,
+        timestampToken: sig.timestampToken ?? undefined,
+        signatureMethod: sig.signatureMethod,
+      }
+
+      switch (sig.role) {
+        case FIRPrismaRepository.RUOLO_PRODUTTORE:
+          firme.produttore = firma
+          break
+        case FIRPrismaRepository.RUOLO_TRASPORTATORE:
+          firme.trasportatore = firma
+          break
+        case FIRPrismaRepository.RUOLO_DESTINATARIO:
+          firme.destinatario = firma
+          break
+        default:
+        // Ruolo non riconosciuto (es. firme crittografiche QES): ignorato.
+      }
+    }
+
+    return firme
   }
 
   /** Ricostruisce uno snapshot di parte FIR dai campi persistiti, o null se vuoto. */

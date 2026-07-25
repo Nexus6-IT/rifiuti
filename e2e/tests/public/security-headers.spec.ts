@@ -29,14 +29,8 @@ test.describe('Header di sicurezza HTTP', () => {
   test('[F2] il documento HTML principale espone gli header di sicurezza (nginx frontend)', async ({
     page,
   }) => {
-    // Il fix è in `apps/frontend/nginx.conf` ma NON è ancora in produzione:
-    // richiede rebuild dell'immagine frontend e promozione develop -> master.
-    // Fino ad allora il test resta atteso-rosso, non silenziosamente verde.
-    test.fixme(
-      true,
-      'F2: header aggiunti in apps/frontend/nginx.conf, in attesa di rilascio in produzione'
-    )
-
+    // Fix rilasciato in produzione il 2026-07-25 (`apps/frontend/nginx.conf`):
+    // il test e' tornato un controllo attivo, non piu' atteso-rosso.
     const response = await page.goto('/')
     expect(response).not.toBeNull()
     const headers = response!.headers()

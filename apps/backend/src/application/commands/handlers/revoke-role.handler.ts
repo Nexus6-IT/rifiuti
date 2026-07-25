@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common'
+import { Injectable, Inject, Logger, NotFoundException, ForbiddenException } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import { RevokeRoleCommand } from '../revoke-role.command'
@@ -25,8 +25,8 @@ export class RevokeRoleCommandHandler {
   private readonly logger = new Logger(RevokeRoleCommandHandler.name)
 
   constructor(
-    private readonly roleRepository: RoleRepository,
-    private readonly userRoleRepository: UserRoleRepository,
+    @Inject('RoleRepository') private readonly roleRepository: RoleRepository,
+    @Inject('UserRoleRepository') private readonly userRoleRepository: UserRoleRepository,
     private readonly permissionCache: PermissionCacheService,
     private readonly redisPubSub: RedisPubSubService,
     @InjectQueue('audit-logging') private readonly auditQueue: Queue

@@ -1,0 +1,28 @@
+{
+  // Compilazione dedicata per gli script di seed CLI (prisma/seeds/*).
+  //
+  // Perché un tsconfig separato invece di aggiungere "prisma/seeds" a
+  // tsconfig.json: `nest build` (tsconfig.json, include "src/**/*") ha
+  // rootDir implicito "src", quindi produce dist/main.js, dist/application/...
+  // ecc. senza il prefisso "src/". Se aggiungessimo prisma/seeds
+  // all'"include" di quel tsconfig, il rootDir comune diventerebbe la root
+  // del progetto e SPOSTEREBBE l'output di build a dist/src/main.js,
+  // rompendo `CMD ["node", "dist/main.js"]` nel Dockerfile e lo script
+  // `start:prod`. Un secondo progetto tsc isolato evita l'effetto collaterale:
+  // compila prisma/seeds/*.ts (+ l'unica dipendenza in src/, system-roles.ts)
+  // in dist/prisma/seeds/*.js e dist/src/application/admin/system-roles.js,
+  // senza toccare l'output del build principale.
+  //
+  // Eseguito come "postbuild" (package.json) subito dopo `npm run build`,
+  // così `npm run build` da solo produce già tutto ciò che serve in produzione.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "declaration": false,
+    "incremental": false,
+    "noEmit": false
+  },
+  "include": ["prisma/seeds/**/*.ts", "src/application/admin/system-roles.ts"],
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
+}

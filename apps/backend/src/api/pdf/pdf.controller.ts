@@ -11,10 +11,12 @@ import {
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { Response } from 'express'
+import * as QRCode from 'qrcode'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { PDFService } from '../../infrastructure/pdf/pdf.service'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { MUDGeneratorService } from '../../application/mud/mud-generator.service'
+import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case'
 
 /**
  * PDF Controller
@@ -29,7 +31,8 @@ export class PdfController {
   constructor(
     private readonly pdfService: PDFService,
     private readonly prisma: PrismaService,
-    private readonly mudGenerator: MUDGeneratorService
+    private readonly mudGenerator: MUDGeneratorService,
+    private readonly verifySignaturesUseCase: VerifySignaturesUseCase
   ) {}
 
   @Get('fir/:id')
@@ -59,7 +62,17 @@ export class PdfController {
       throw new HttpException('FIR not found', HttpStatus.NOT_FOUND)
     }
 
-    const pdfBuffer = await this.pdfService.generateFIRPDF(fir)
+    // QR ISO/IEC 18004 verso la verifica pubblica firme: RENTRI prevede solo
+    // codici bidimensionali (nessun barcode 1D). L'URL è la stessa generata
+    // per GET /fir/:id/verify-url — unica fonte di verità, non un valore
+    // ricostruito qui a mano.
+    const verificationUrl = this.verifySignaturesUseCase.generateVerificationUrl(fir.id)
+    const qrCodeDataUrl = await QRCode.toDataURL(verificationUrl, {
+      errorCorrectionLevel: 'M',
+      type: 'image/png',
+    })
+
+    const pdfBuffer = await this.pdfService.generateFIRPDF(fir, qrCodeDataUrl)
 
     res.set({
       'Content-Type': 'application/pdf',

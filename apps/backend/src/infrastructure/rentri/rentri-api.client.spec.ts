@@ -1,12 +1,28 @@
-import { RENTRIApiClient } from './rentri-api.client'
+import { RENTRIApiClient, RentriApiError } from './rentri-api.client'
 import { of, throwError } from 'rxjs'
 import { AxiosResponse } from 'axios'
 
+/** Costruisce un errore axios-like con corpo `application/problem+json`. */
+function erroreProblemDetails(
+  status: number,
+  problema: { title?: string; detail?: string } = {},
+  headers: Record<string, string> = {}
+) {
+  return {
+    response: {
+      status,
+      data: { status, ...problema },
+      headers,
+    },
+  }
+}
+
 /**
- * Integration tests for RENTRI API Client
- *
- * Tests HTTP communication with RENTRI API (mock server).
- * Verifies xFIR format conversion and error handling.
+ * Unit test del client RENTRI: comunicazione HTTP coi doppi (mock di
+ * `httpService`/`auth`/`signature`), path/verbi del contratto ufficiale,
+ * ciclo NONBLOCK_PULL e resilienza (403/429/423/5xx). La verifica REALE
+ * (non mockata) contro la fake fedele al contratto è nei file
+ * `*.oracolo.spec.ts` accanto a questo.
  */
 describe('RENTRIApiClient', () => {
   let client: RENTRIApiClient
@@ -23,16 +39,13 @@ describe('RENTRIApiClient', () => {
       get: jest.fn(),
     }
 
-    // Modalità mock: autenticazione X-API-Key verso il mock locale.
+    // Il client opera sempre in modalità live (autenticazione Bearer self-issued).
     mockConfig = {
-      mode: 'mock',
-      baseUrl: 'http://localhost:3001',
-      mockApiKey: 'demo-key',
+      baseUrl: 'https://demoapi.rentri.gov.it',
     }
 
     mockAuth = {
-      getAccessToken: jest.fn().mockResolvedValue('test-token'),
-      invalidate: jest.fn(),
+      creaAuthorizationHeader: jest.fn().mockResolvedValue('Bearer test-token'),
     }
 
     mockSignature = {
@@ -67,567 +80,418 @@ describe('RENTRIApiClient', () => {
     )
   })
 
-  describe('submitFIR', () => {
-    it('should submit FIR successfully and return protocol number', async () => {
-      const mockFIR = {
-        id: 'fir-123',
-        firNumber: 'FIR-2025-00042',
-        producerPartitaIva: '12345678901',
-        producerName: 'Producer SRL',
-        producerAddress: 'Via Test 1',
-        carrierPartitaIva: '98765432109',
-        carrierName: 'Carrier SRL',
-        carrierVehiclePlate: 'AB123CD',
-        receiverPartitaIva: '11223344556',
-        receiverName: 'Receiver SRL',
-        receiverAddress: 'Via Dest 1',
-        cerCode: '150102',
-        wasteDescription: 'Plastic packaging',
-        wasteCategory: 'NON PERICOLOSO',
-        quantity: 100,
-        unit: 'KG',
-        transportDate: new Date('2025-01-18'),
-      }
-
+  /**
+   * Metodi allineati al contratto ufficiale RENTRI (docs/contracts/rentri/formulari.yaml):
+   * autenticazione Bearer self-issued + firma di integrità su ogni chiamata.
+   */
+  describe('creaFormulario', () => {
+    it('invia POST sulla radice del servizio (non /formulari) e legge transazione_id e Location da una risposta 202', async () => {
       const mockResponse: AxiosResponse = {
-        data: {
-          success: true,
-          rentriId: 'RENTRI-2025-123456',
-          protocolNumber: 'PROT-1705583400000',
-          receivedAt: '2025-01-18T10:30:00Z',
+        data: { transazione_id: '9f8b3c1a-1234-4abc-8def-0123456789ab' },
+        status: 202,
+        statusText: 'Accepted',
+        headers: {
+          location: '/formulari/v1.0/9f8b3c1a-1234-4abc-8def-0123456789ab/status',
         },
-        status: 201,
-        statusText: 'Created',
-        headers: {},
         config: {} as any,
       }
-
       mockHttpService.post.mockReturnValue(of(mockResponse))
 
-      const result = await client.submitFIR(mockFIR)
+      const dati = { numero_fir: null }
+      const risultato = await client.creaFormulario('tenant-1', dati)
 
-      expect(result.success).toBe(true)
-      expect(result.protocolNumber).toBe('PROT-1705583400000')
       expect(mockHttpService.post).toHaveBeenCalledWith(
-        'http://localhost:3001/api/v1/fir/submit',
-        (expect as any).objectContaining({
-          firId: 'fir-123',
-          // xFIR format fields
-          numeroFormulario: 'FIR-2025-00042',
-          produttore: (expect as any).objectContaining({
-            partitaIva: '12345678901',
-          }),
-          trasportatore: (expect as any).objectContaining({
-            partitaIva: '98765432109',
-          }),
-          destinatario: (expect as any).objectContaining({
-            partitaIva: '11223344556',
-          }),
-          rifiuto: (expect as any).objectContaining({
-            codiceEER: '150102',
-            quantita: 100,
-          }),
-        }),
+        'https://demoapi.rentri.gov.it/formulari/v1.0/',
+        dati,
         (expect as any).objectContaining({
           headers: (expect as any).objectContaining({
-            'X-API-Key': 'demo-key',
+            Authorization: 'Bearer test-token',
           }),
         })
       )
-    })
-
-    it('should handle RENTRI validation errors', async () => {
-      const mockFIR = {
-        id: 'fir-123',
-        firNumber: 'FIR-2025-00099',
-        producerPartitaIva: '12345678901',
-        producerName: 'Producer SRL',
-        producerAddress: 'Via Test 1',
-        carrierPartitaIva: '98765432109',
-        carrierName: 'Carrier SRL',
-        carrierVehiclePlate: 'AB123CD',
-        receiverPartitaIva: '11223344556',
-        receiverName: 'Receiver SRL',
-        receiverAddress: 'Via Dest 1',
-        cerCode: 'INVALID', // Invalid CER code
-        wasteDescription: 'Test',
-        wasteCategory: 'NON PERICOLOSO',
-        quantity: 100,
-        unit: 'KG',
-        transportDate: new Date('2025-01-18'),
-      }
-
-      // Mock a 400 error response
-      mockHttpService.post.mockReturnValue(
-        throwError(() => ({
-          response: {
-            status: 400,
-            data: {
-              errors: [
-                {
-                  code: 'E001',
-                  field: 'rifiuto.codiceEER',
-                  message: 'Codice CER non valido',
-                },
-              ],
-            },
-          },
-        }))
+      // Mai /formulari né /trasmissione: la creazione è sulla radice del servizio.
+      expect(mockHttpService.post).not.toHaveBeenCalledWith(
+        (expect as any).stringContaining('/formulari/v1.0/formulari'),
+        (expect as any).anything(),
+        (expect as any).anything()
+      )
+      expect(mockHttpService.post).not.toHaveBeenCalledWith(
+        (expect as any).stringContaining('/trasmissione'),
+        (expect as any).anything(),
+        (expect as any).anything()
       )
 
-      const result = await client.submitFIR(mockFIR as any)
-
-      expect(result.success).toBe(false)
-      expect(result.errors).toBeDefined()
-      expect(result.errors!.length).toBe(1)
-      expect(result.errors![0].code).toBe('E001')
-      expect(result.errors![0].field).toBe('rifiuto.codiceEER')
-    })
-
-    it('should handle RENTRI service unavailable (503)', async () => {
-      const mockFIR = {
-        id: 'fir-123',
-        firNumber: 'FIR-2025-00098',
-        producerPartitaIva: '12345678901',
-        producerName: 'Producer SRL',
-        producerAddress: 'Via Test 1',
-        carrierPartitaIva: '98765432109',
-        carrierName: 'Carrier SRL',
-        carrierVehiclePlate: 'AB123CD',
-        receiverPartitaIva: '11223344556',
-        receiverName: 'Receiver SRL',
-        receiverAddress: 'Via Dest 1',
-        cerCode: '150102',
-        wasteDescription: 'Plastic packaging',
-        wasteCategory: 'NON PERICOLOSO',
-        quantity: 100,
-        unit: 'KG',
-        transportDate: new Date('2025-01-18'),
-      }
-
-      mockHttpService.post.mockReturnValue(
-        throwError(() => ({
-          response: {
-            status: 503,
-            data: {
-              error: 'SERVICE_UNAVAILABLE',
-              message: 'RENTRI service temporarily unavailable',
-              retryAfter: 300,
-            },
-          },
-        }))
-      )
-
-      await expect(client.submitFIR(mockFIR as any)).rejects.toThrow(
-        'RENTRI service temporarily unavailable'
-      )
-    })
-
-    it('should handle network timeout', async () => {
-      const mockFIR = {
-        id: 'fir-123',
-        firNumber: 'FIR-2025-00043',
-        producerPartitaIva: '12345678901',
-        producerName: 'Producer SRL',
-        producerAddress: 'Via Test 1',
-        carrierPartitaIva: '98765432109',
-        carrierName: 'Carrier SRL',
-        carrierVehiclePlate: 'AB123CD',
-        receiverPartitaIva: '11223344556',
-        receiverName: 'Receiver SRL',
-        receiverAddress: 'Via Dest 1',
-        cerCode: '150102',
-        wasteDescription: 'Plastic packaging',
-        wasteCategory: 'NON PERICOLOSO',
-        quantity: 100,
-        unit: 'KG',
-        transportDate: new Date('2025-01-18'),
-      }
-
-      mockHttpService.post.mockReturnValue(
-        throwError(() => ({
-          code: 'ECONNABORTED',
-          message: 'timeout of 30000ms exceeded',
-        }))
-      )
-
-      await expect(client.submitFIR(mockFIR as any)).rejects.toThrow('timeout')
+      expect(risultato.transazioneId).toBe('9f8b3c1a-1234-4abc-8def-0123456789ab')
+      expect(risultato.urlStato).toBe('/formulari/v1.0/9f8b3c1a-1234-4abc-8def-0123456789ab/status')
+      expect(mockAuth.creaAuthorizationHeader).toHaveBeenCalledWith('tenant-1')
     })
   })
 
-  describe('xFIR Format Conversion', () => {
-    it('should convert FIR to xFIR format correctly', () => {
-      const fir = {
-        id: 'fir-123',
-        firNumber: 'FIR-2025-00042',
-        producerPartitaIva: '12345678901',
-        producerName: 'Producer SRL',
-        producerAddress: 'Via Producer 1, Milano',
-        producerContact: 'producer@example.com',
-        carrierPartitaIva: '98765432109',
-        carrierName: 'Carrier SRL',
-        carrierVehiclePlate: 'AB123CD',
-        carrierContact: 'carrier@example.com',
-        receiverPartitaIva: '11223344556',
-        receiverName: 'Receiver SRL',
-        receiverAddress: 'Via Receiver 1, Roma',
-        receiverContact: 'receiver@example.com',
-        cerCode: '150102',
-        wasteDescription: 'Plastic packaging',
-        wasteCategory: 'NON PERICOLOSO',
-        quantity: 100.5,
-        unit: 'KG',
-        transportDate: new Date('2025-01-18T08:00:00Z'),
-        estimatedArrivalDate: new Date('2025-01-18T14:00:00Z'),
-        transportNotes: 'Handle with care',
+  describe('leggiFormulario', () => {
+    it('invia GET su /{numero_fir} e restituisce il DettaglioFormulario', async () => {
+      const mockResponse: AxiosResponse = {
+        data: {
+          stato_formulario: 'InserimentoQuantita',
+          versione: 1,
+          data_creazione: '2026-07-25T10:00:00Z',
+        },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
       }
+      mockHttpService.get.mockReturnValue(of(mockResponse))
 
-      const xFIR = client['convertToXFIRFormat'](fir)
+      const risultato = await client.leggiFormulario('tenant-1', 'BCDFGH00001JK')
 
-      expect(xFIR).toEqual({
-        firId: 'fir-123',
-        // flat DTO usa `firNumber`, aggregate usa `numeroProgressivo`
-        numeroFormulario: 'FIR-2025-00042',
-        dataEmissione: (expect as any).any(String),
-        produttore: {
-          partitaIva: '12345678901',
-          ragioneSociale: 'Producer SRL',
-          indirizzo: 'Via Producer 1, Milano',
-          contatto: 'producer@example.com',
-        },
-        trasportatore: {
-          partitaIva: '98765432109',
-          ragioneSociale: 'Carrier SRL',
-          targaVeicolo: 'AB123CD',
-          contatto: 'carrier@example.com',
-        },
-        destinatario: {
-          partitaIva: '11223344556',
-          ragioneSociale: 'Receiver SRL',
-          indirizzo: 'Via Receiver 1, Roma',
-          contatto: 'receiver@example.com',
-        },
-        rifiuto: {
-          codiceEER: '150102',
-          descrizione: 'Plastic packaging',
-          categoria: 'NON PERICOLOSO',
-          quantita: 100.5,
-          unita: 'KG',
-          // Campi aggiuntivi DM 59/2023: undefined su flat DTO (rifiuto=null)
-          statoFisico: undefined,
-          caratteristichePericolo: undefined,
-          numeroColli: undefined,
-          codiceOperazione: undefined,
-        },
-        trasporto: {
-          dataPartenza: (expect as any).any(String),
-          dataArrivoPrevista: (expect as any).any(String),
-          note: 'Handle with care',
-          // dataArrivo undefined su flat DTO (nessun dataConsegna)
-        },
-        firmeDigitali: (expect as any).any(Array),
-      })
+      expect(mockHttpService.get).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK',
+        (expect as any).objectContaining({
+          headers: (expect as any).objectContaining({
+            Authorization: 'Bearer test-token',
+          }),
+        })
+      )
+      expect(risultato.stato_formulario).toBe('InserimentoQuantita')
+      expect(mockAuth.creaAuthorizationHeader).toHaveBeenCalledWith('tenant-1')
+    })
+  })
+
+  /**
+   * Task 4 (P2): gestione degli errori RENTRI dichiarati dal contratto per
+   * `creaFormulario`/`leggiFormulario` (403/429/423/5xx, `ProblemDetails`).
+   * Le attese di backoff usano i fake timers di Jest: nessun test aspetta
+   * realmente secondi di wall-clock.
+   */
+  describe('resilienza — creaFormulario/leggiFormulario', () => {
+    beforeEach(() => {
+      jest.useFakeTimers()
     })
 
-    it('should handle optional fields correctly', () => {
-      const minimalFIR = {
-        id: 'fir-123',
-        firNumber: 'FIR-2025-00042',
-        producerPartitaIva: '12345678901',
-        producerName: 'Producer SRL',
-        producerAddress: 'Via Producer 1',
-        carrierPartitaIva: '98765432109',
-        carrierName: 'Carrier SRL',
-        carrierVehiclePlate: 'AB123CD',
-        receiverPartitaIva: '11223344556',
-        receiverName: 'Receiver SRL',
-        receiverAddress: 'Via Receiver 1',
-        cerCode: '150102',
-        wasteDescription: 'Plastic',
-        wasteCategory: 'NON PERICOLOSO',
-        quantity: 100,
-        unit: 'KG',
-        transportDate: new Date(),
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('403 — non ritenta: un solo tentativo, errore definitivo con title/detail dal ProblemDetails', async () => {
+      mockHttpService.post.mockReturnValue(
+        throwError(() =>
+          erroreProblemDetails(403, {
+            title: 'Operazione non consentita',
+            detail: 'Certificato non riconosciuto',
+          })
+        )
+      )
+
+      const promessa = client.creaFormulario('tenant-1', { dati: 'x' })
+      await expect(promessa).rejects.toThrow(RentriApiError)
+      await promessa.catch((errore: RentriApiError) => {
+        expect(errore.status).toBe(403)
+        expect(errore.retryable).toBe(false)
+        expect(errore.problemTitle).toBe('Operazione non consentita')
+        expect(errore.problemDetail).toBe('Certificato non riconosciuto')
+      })
+
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
+    it("429 con Retry-After: ritenta rispettando l'header e alla fine riesce", async () => {
+      const successResponse: AxiosResponse = {
+        data: { transazione_id: 'tx-429' },
+        status: 202,
+        statusText: 'Accepted',
+        headers: { location: '/formulari/v1.0/tx-429/status' },
+        config: {} as any,
       }
 
-      const xFIR = client['convertToXFIRFormat'](minimalFIR)
+      mockHttpService.post
+        .mockReturnValueOnce(
+          throwError(() =>
+            erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+          )
+        )
+        .mockReturnValueOnce(
+          throwError(() =>
+            erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+          )
+        )
+        .mockReturnValueOnce(of(successResponse))
 
-      expect(xFIR.produttore.contatto).toBeUndefined()
-      expect(xFIR.trasporto.note).toBeUndefined()
+      const promessa = client.creaFormulario('tenant-1', { dati: 'x' })
+      // Due attese da 5s (Retry-After) prima del successo al 3° tentativo.
+      await jest.advanceTimersByTimeAsync(5000)
+      await jest.advanceTimersByTimeAsync(5000)
+
+      const risultato = await promessa
+      expect(risultato.transazioneId).toBe('tx-429')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(3)
+    })
+
+    it('423 (risorsa bloccata): ritenta con backoff esponenziale e alla fine riesce', async () => {
+      const successResponse: AxiosResponse = {
+        data: { transazione_id: 'tx-423' },
+        status: 202,
+        statusText: 'Accepted',
+        headers: { location: '/formulari/v1.0/tx-423/status' },
+        config: {} as any,
+      }
+
+      mockHttpService.post
+        .mockReturnValueOnce(
+          throwError(() => erroreProblemDetails(423, { title: 'Risorsa bloccata' }))
+        )
+        .mockReturnValueOnce(of(successResponse))
+
+      const promessa = client.creaFormulario('tenant-1', { dati: 'x' })
+      await jest.advanceTimersByTimeAsync(1000) // backoff esponenziale, 1° tentativo: base 1000ms
+
+      const risultato = await promessa
+      expect(risultato.transazioneId).toBe('tx-423')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(2)
+    })
+
+    it('5xx: ritenta con backoff esponenziale e alla fine riesce', async () => {
+      const successResponse: AxiosResponse = {
+        data: { stato_formulario: 'InserimentoQuantita' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
+      }
+
+      mockHttpService.get
+        .mockReturnValueOnce(
+          throwError(() => erroreProblemDetails(503, { title: 'Servizio non disponibile' }))
+        )
+        .mockReturnValueOnce(of(successResponse))
+
+      const promessa = client.leggiFormulario('tenant-1', 'BCDFGH00001JK')
+      await jest.advanceTimersByTimeAsync(1000)
+
+      const risultato = await promessa
+      expect((risultato as any).stato_formulario).toBe('InserimentoQuantita')
+      expect(mockHttpService.get).toHaveBeenCalledTimes(2)
+    })
+
+    it('esaurisce i tentativi su un 429 persistente: solleva RentriApiError retryable', async () => {
+      mockHttpService.post.mockReturnValue(
+        throwError(() =>
+          erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '0' })
+        )
+      )
+
+      const promessa = client.creaFormulario('tenant-1', { dati: 'x' })
+      const assertion = expect(promessa).rejects.toThrow(RentriApiError)
+      await jest.runAllTimersAsync()
+      await assertion
+
+      await promessa.catch((errore: RentriApiError) => {
+        expect(errore.retryable).toBe(true)
+        expect(errore.status).toBe(429)
+      })
+
+      expect(mockHttpService.post).toHaveBeenCalledTimes(5) // MAX_TENTATIVI_RESILIENZA
+    })
+  })
+
+  /**
+   * Ciclo NONBLOCK_PULL (formulari.yaml righe 2801-2897): `GET /status`
+   * risponde 200 senza corpo finché l'elaborazione è in corso e 303 con
+   * header `Location` quando l'esito è pronto; `GET /result` risponde 400
+   * se interrogato in anticipo. Il client NON deve delegare il follow del
+   * redirect all'HTTP client (altrimenti 200 e 303 sarebbero indistinguibili):
+   * per questo ogni chiamata a /status verifica esplicitamente `maxRedirects: 0`.
+   */
+  describe('attendiEsito', () => {
+    function statusResponse(status: number, location?: string): AxiosResponse {
+      return {
+        data: undefined,
+        status,
+        statusText: '',
+        headers: location ? { location } : {},
+        config: {} as any,
+      }
+    }
+
+    function resultResponse(status: number, data?: unknown): AxiosResponse {
+      return {
+        data,
+        status,
+        statusText: '',
+        headers: {},
+        config: {} as any,
+      }
+    }
+
+    /** Risposta di errore RENTRI (`ProblemDetails`) con header opzionali (es. `Retry-After`). */
+    function resultResponseConHeader(
+      status: number,
+      problema: { title?: string; detail?: string },
+      headers: Record<string, string> = {}
+    ): AxiosResponse {
+      return {
+        data: { status, ...problema },
+        status,
+        statusText: '',
+        headers,
+        config: {} as any,
+      }
+    }
+
+    it('200 su /status significa "ancora in elaborazione": riprova senza seguire redirect automaticamente', async () => {
+      mockHttpService.get
+        .mockReturnValueOnce(of(statusResponse(200))) // 1° tentativo: ancora in corso
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-1/result'))) // 2° tentativo: pronto
+        .mockReturnValueOnce(of(resultResponse(200, { errore: false, validazione: [] })))
+
+      const esito = await client.attendiEsito('tenant-1', 'tx-1', {
+        intervalloMs: 0,
+        maxTentativi: 5,
+      })
+
+      expect(esito).toEqual({ errore: false, validazione: [] })
+      expect(mockHttpService.get).toHaveBeenCalledTimes(3)
+
+      // La richiesta di stato non deve delegare il follow del redirect al
+      // client HTTP: deve poter osservare 200 e 303 come stati distinti.
+      expect(mockHttpService.get).toHaveBeenNthCalledWith(
+        1,
+        'https://demoapi.rentri.gov.it/formulari/v1.0/tx-1/status',
+        (expect as any).objectContaining({ maxRedirects: 0 })
+      )
+      expect(mockHttpService.get).toHaveBeenNthCalledWith(
+        2,
+        'https://demoapi.rentri.gov.it/formulari/v1.0/tx-1/status',
+        (expect as any).objectContaining({ maxRedirects: 0 })
+      )
+    })
+
+    it("303 su /status: segue l'header Location e restituisce l'esito letto da /result", async () => {
+      mockHttpService.get
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-2/result')))
+        .mockReturnValueOnce(
+          of(resultResponse(200, { errore: true, validazione: [{ tipo: 'Errore' }] }))
+        )
+
+      const esito = await client.attendiEsito('tenant-1', 'tx-2', {
+        intervalloMs: 0,
+        maxTentativi: 3,
+      })
+
+      expect(esito).toEqual({ errore: true, validazione: [{ tipo: 'Errore' }] })
+      expect(mockHttpService.get).toHaveBeenNthCalledWith(
+        2,
+        'https://demoapi.rentri.gov.it/formulari/v1.0/tx-2/result',
+        (expect as any).anything()
+      )
+      expect(mockAuth.creaAuthorizationHeader).toHaveBeenCalledWith('tenant-1')
+    })
+
+    it("400 su /result e' trattato come richiesta anticipata (non errore definitivo): il polling continua", async () => {
+      mockHttpService.get
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-3/result')))
+        .mockReturnValueOnce(of(resultResponse(400, { title: 'Richiesta non ancora elaborata' })))
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-3/result')))
+        .mockReturnValueOnce(of(resultResponse(200, { errore: false, validazione: [] })))
+
+      const esito = await client.attendiEsito('tenant-1', 'tx-3', {
+        intervalloMs: 0,
+        maxTentativi: 5,
+      })
+
+      expect(esito).toEqual({ errore: false, validazione: [] })
+      expect(mockHttpService.get).toHaveBeenCalledTimes(4)
+    })
+
+    it('supera il numero massimo di tentativi: solleva un errore esplicito (mai un polling infinito)', async () => {
+      mockHttpService.get.mockReturnValue(of(statusResponse(200))) // sempre "in elaborazione"
+
+      await expect(
+        client.attendiEsito('tenant-1', 'tx-4', { intervalloMs: 0, maxTentativi: 3 })
+      ).rejects.toThrow(/tentativi/i)
+
+      expect(mockHttpService.get).toHaveBeenCalledTimes(3)
+    })
+
+    it('usa i default di intervallo/tentativi quando le opzioni non sono indicate', async () => {
+      mockHttpService.get
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-5/result')))
+        .mockReturnValueOnce(of(resultResponse(200, { errore: false, validazione: [] })))
+
+      const esito = await client.attendiEsito('tenant-1', 'tx-5')
+
+      expect(esito).toEqual({ errore: false, validazione: [] })
     })
 
     /**
-     * Test del mapping dall'aggregate FIR reale (con snapshot ParteFIR annidati
-     * e value object Quantita), come restituito da FIRPrismaRepository.toDomain().
+     * Task 4 (P2): 403/429/423/5xx durante il polling `/status`/`/result`.
+     * Qui `httpService.get` risolve (mai un errore axios) perché il client
+     * usa `validateStatus: () => true`: la classificazione avviene quindi
+     * sullo `status` della risposta, non su un'eccezione.
      */
-    it('dovrebbe mappare correttamente il FIR aggregate (snapshot ParteFIR annidati)', () => {
-      // Simula la shape dell'aggregate FIR (aggregates/fir.aggregate.ts)
-      // con le anagrafiche come snapshot ParteFIR e il rifiuto come FIRRifiuto
-      // con value object Quantita ({ valore, unitaMisura }).
-      const firAggregate = {
-        id: 'agg-fir-001',
-        // Aggregate usa `numeroProgressivo`, non `firNumber`
-        numeroProgressivo: 'FIR-2026-000001',
-        // Snapshot anagrafici — shape ParteFIR
-        produttore: {
-          registroId: 'prod-reg-123',
-          ragioneSociale: 'Azienda Produttrice SRL',
-          partitaIva: '01234567890',
-          indirizzo: 'Via Roma 1, 20100 Milano',
-          contatto: 'produttore@test.it',
-        },
-        trasportatore: {
-          registroId: 'carr-reg-456',
-          ragioneSociale: 'Trasporti Rifiuti SpA',
-          partitaIva: '09876543210',
-          targaVeicolo: 'AB 123 CD',
-          contatto: 'carrier@test.it',
-        },
-        destinatario: {
-          registroId: 'recv-reg-789',
-          ragioneSociale: 'Impianto Ricevente Srl',
-          partitaIva: '11122233344',
-          indirizzo: 'Via Verdi 5, 00100 Roma',
-        },
-        // FIRRifiuto con value object Quantita
-        rifiuto: {
-          cerCode: '200301',
-          quantita: { valore: 250.75, unitaMisura: 'KG' },
-          descrizione: 'Rifiuti solidi urbani',
-          categoria: 'NON PERICOLOSO',
-          statoFisico: 'SOLIDO',
-          caratteristichePericolo: undefined,
-          numeroColli: 5,
-          tipoOperazione: 'RECOVERY',
-          codiceOperazione: 'R1',
-        },
-        // Date dell'aggregate (non del flat DTO)
-        dataPresaCarico: new Date('2026-06-15T08:00:00Z'),
-        dataConsegna: new Date('2026-06-15T14:30:00Z'),
-        annotazioni: 'Rifiuti speciali — trasporto urgente',
-        // Firme nell'aggregate come { produttore?, trasportatore?, destinatario? }
-        firme: {
-          produttore: {
-            firmatario: 'Mario Rossi',
-            timestamp: new Date('2026-06-15T07:55:00Z'),
-            certificato: 'sha256:certproduttore',
-          },
-          trasportatore: undefined,
-          destinatario: undefined,
-        },
-      }
+    describe('resilienza — 403/429/423/5xx durante il polling', () => {
+      beforeEach(() => {
+        jest.useFakeTimers()
+      })
 
-      const xFIR = client['convertToXFIRFormat'](firAggregate)
+      afterEach(() => {
+        jest.useRealTimers()
+      })
 
-      // Identifiers
-      expect(xFIR.firId).toBe('agg-fir-001')
-      expect(xFIR.numeroFormulario).toBe('FIR-2026-000001') // da numeroProgressivo
+      it('403 su /status: non ritenta, errore definitivo', async () => {
+        mockHttpService.get.mockReturnValue(
+          of(resultResponseConHeader(403, { title: 'Operazione non consentita' }))
+        )
 
-      // Produttore — dal snapshot ParteFIR
-      expect(xFIR.produttore.partitaIva).toBe('01234567890')
-      expect(xFIR.produttore.ragioneSociale).toBe('Azienda Produttrice SRL')
-      expect(xFIR.produttore.indirizzo).toBe('Via Roma 1, 20100 Milano')
-      expect(xFIR.produttore.contatto).toBe('produttore@test.it')
+        const promessa = client.attendiEsito('tenant-1', 'tx-403', {
+          intervalloMs: 0,
+          maxTentativi: 5,
+        })
+        await expect(promessa).rejects.toThrow(RentriApiError)
+        await promessa.catch((errore: RentriApiError) => {
+          expect(errore.retryable).toBe(false)
+          expect(errore.status).toBe(403)
+        })
 
-      // Trasportatore — dal snapshot ParteFIR
-      expect(xFIR.trasportatore.partitaIva).toBe('09876543210')
-      expect(xFIR.trasportatore.ragioneSociale).toBe('Trasporti Rifiuti SpA')
-      expect(xFIR.trasportatore.targaVeicolo).toBe('AB 123 CD')
+        expect(mockHttpService.get).toHaveBeenCalledTimes(1)
+      })
 
-      // Destinatario — dal snapshot ParteFIR
-      expect(xFIR.destinatario.partitaIva).toBe('11122233344')
-      expect(xFIR.destinatario.ragioneSociale).toBe('Impianto Ricevente Srl')
+      it('429 su /status con Retry-After: ritenta e alla fine legge lo stato pronto', async () => {
+        mockHttpService.get
+          .mockReturnValueOnce(
+            of(resultResponseConHeader(429, { title: 'Troppe richieste' }, { 'retry-after': '5' }))
+          )
+          .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-429/result')))
+          .mockReturnValueOnce(of(resultResponse(200, { errore: false, validazione: [] })))
 
-      // Rifiuto — da FIRRifiuto + Quantita value object
-      expect(xFIR.rifiuto.codiceEER).toBe('200301')
-      expect(xFIR.rifiuto.quantita).toBe(250.75) // da Quantita.valore
-      expect(xFIR.rifiuto.unita).toBe('KG') // da Quantita.unitaMisura
-      expect(xFIR.rifiuto.statoFisico).toBe('SOLIDO')
-      expect(xFIR.rifiuto.numeroColli).toBe(5)
-      expect(xFIR.rifiuto.codiceOperazione).toBe('R1')
+        const promessa = client.attendiEsito('tenant-1', 'tx-429', {
+          intervalloMs: 0,
+          maxTentativi: 5,
+        })
+        await jest.advanceTimersByTimeAsync(5000)
 
-      // Trasporto — da dataPresaCarico (non transportDate)
-      expect(xFIR.trasporto.dataPartenza).toBe('2026-06-15T08:00:00.000Z')
-      // dataConsegna → dataArrivo
-      expect(xFIR.trasporto.dataArrivo).toBe('2026-06-15T14:30:00.000Z')
-      // Campo 17 FIR — da annotazioni (non transportNotes)
-      expect(xFIR.trasporto.note).toBe('Rifiuti speciali — trasporto urgente')
+        const esito = await promessa
+        expect(esito).toEqual({ errore: false, validazione: [] })
+        expect(mockHttpService.get).toHaveBeenCalledTimes(3)
+      })
 
-      // Firme digitali — da fir.firme (aggregate shape), solo la firma produttore
-      expect(xFIR.firmeDigitali).toHaveLength(1)
-      expect(xFIR.firmeDigitali[0].ruolo).toBe('PRODUTTORE')
-      expect(xFIR.firmeDigitali[0].firmatario).toBe('Mario Rossi')
-      expect(xFIR.firmeDigitali[0].dataFirma).toBe('2026-06-15T07:55:00.000Z')
-    })
+      it("503 su /result: ritenta con backoff esponenziale e alla fine legge l'esito", async () => {
+        mockHttpService.get
+          .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-503/result')))
+          .mockReturnValueOnce(
+            of(resultResponseConHeader(503, { title: 'Servizio non disponibile' }))
+          )
+          .mockReturnValueOnce(of(resultResponse(200, { errore: false, validazione: [] })))
 
-    it('non deve esporre la chiave privata RENTRI nel risultato xFIR', () => {
-      // Verifica che convertToXFIRFormat non includa MAI dati sensibili
-      // anche se per errore vengono passati nell'oggetto FIR.
-      const firConDatiSensibili = {
-        id: 'fir-sec-001',
-        firNumber: 'FIR-2026-000002',
-        producerPartitaIva: '12345678901',
-        producerName: 'Test SRL',
-        producerAddress: 'Via Test 1',
-        carrierPartitaIva: '98765432109',
-        carrierName: 'Carrier SRL',
-        carrierVehiclePlate: 'XY999YZ',
-        receiverPartitaIva: '11223344556',
-        receiverName: 'Receiver SRL',
-        receiverAddress: 'Via Dest 1',
-        cerCode: '150102',
-        wasteDescription: 'Test',
-        wasteCategory: 'NON PERICOLOSO',
-        quantity: 10,
-        unit: 'KG',
-        // Dati sensibili che NON devono apparire nel payload xFIR
-        privateKeyPem: '-----BEGIN PRIVATE KEY-----\nSECRET\n-----END PRIVATE KEY-----',
-        password: 'secret123',
-        apiKey: 'rentri-api-key-segreto',
-      }
+        const promessa = client.attendiEsito('tenant-1', 'tx-503', {
+          intervalloMs: 0,
+          maxTentativi: 5,
+        })
+        await jest.advanceTimersByTimeAsync(1000)
 
-      const xFIR = client['convertToXFIRFormat'](firConDatiSensibili)
-      const xFIRJson = JSON.stringify(xFIR)
-
-      // La chiave privata, password o API key non deve MAI comparire nel payload
-      expect(xFIRJson).not.toContain('PRIVATE KEY')
-      expect(xFIRJson).not.toContain('secret123')
-      expect(xFIRJson).not.toContain('rentri-api-key-segreto')
-    })
-  })
-
-  describe('validateFIR', () => {
-    it('should validate FIR before submission', async () => {
-      const mockFIR = {
-        id: 'fir-123',
-        firNumber: 'FIR-2025-00044',
-        producerPartitaIva: '12345678901',
-        producerName: 'Producer SRL',
-        producerAddress: 'Via Test 1',
-        carrierPartitaIva: '98765432109',
-        carrierName: 'Carrier SRL',
-        carrierVehiclePlate: 'AB123CD',
-        receiverPartitaIva: '11223344556',
-        receiverName: 'Receiver SRL',
-        receiverAddress: 'Via Dest 1',
-        cerCode: '150102',
-        wasteDescription: 'Plastic packaging',
-        wasteCategory: 'NON PERICOLOSO',
-        quantity: 100,
-        unit: 'KG',
-        transportDate: new Date('2025-01-18'),
-      }
-
-      const mockResponse: AxiosResponse = {
-        data: {
-          valid: true,
-          errors: [],
-          warnings: [],
-        },
-        status: 200,
-        statusText: 'OK',
-        headers: {},
-        config: {} as any,
-      }
-
-      mockHttpService.post.mockReturnValue(of(mockResponse))
-
-      const result = await client.validateFIR(mockFIR as any)
-
-      expect(result.valid).toBe(true)
-      expect(result.errors.length).toBe(0)
-    })
-
-    it('should return validation warnings', async () => {
-      const mockFIR = {
-        id: 'fir-123',
-        firNumber: 'FIR-2025-00045',
-        producerPartitaIva: '12345678901',
-        producerName: 'Producer SRL',
-        producerAddress: 'Via Test 1',
-        carrierPartitaIva: '98765432109',
-        carrierName: 'Carrier SRL',
-        carrierVehiclePlate: 'AB123CD',
-        receiverPartitaIva: '11223344556',
-        receiverName: 'Receiver SRL',
-        receiverAddress: 'Via Dest 1',
-        cerCode: '150102',
-        wasteDescription: 'Plastic packaging',
-        wasteCategory: 'NON PERICOLOSO',
-        quantity: 15000, // Very high quantity
-        unit: 'KG',
-        transportDate: new Date('2025-01-18'),
-      }
-
-      const mockResponse: AxiosResponse = {
-        data: {
-          valid: true,
-          errors: [],
-          warnings: ['Quantità elevata - verificare correttezza'],
-        },
-        status: 200,
-        statusText: 'OK',
-        headers: {},
-        config: {} as any,
-      }
-
-      mockHttpService.post.mockReturnValue(of(mockResponse))
-
-      const result = await client.validateFIR(mockFIR as any)
-
-      expect(result.valid).toBe(true)
-      expect(result.warnings.length).toBe(1)
-    })
-  })
-
-  describe('getFIRStatus', () => {
-    it('should retrieve FIR status from RENTRI', async () => {
-      const firId = 'fir-123'
-
-      const mockResponse: AxiosResponse = {
-        data: {
-          success: true,
-          data: {
-            firId,
-            rentriId: 'RENTRI-2025-123456',
-            protocolNumber: 'PROT-123',
-            status: 'ACCEPTED',
-            submittedAt: '2025-01-18T10:30:00Z',
-          },
-        },
-        status: 200,
-        statusText: 'OK',
-        headers: {},
-        config: {} as any,
-      }
-
-      mockHttpService.get.mockReturnValue(of(mockResponse))
-
-      const result = await client.getFIRStatus(firId)
-
-      expect(result.firId).toBe(firId)
-      expect(result.status).toBe('ACCEPTED')
-      expect(mockHttpService.get).toHaveBeenCalledWith(
-        `http://localhost:3001/api/v1/fir/${firId}`,
-        (expect as any).any(Object)
-      )
-    })
-
-    it('should handle FIR not found in RENTRI', async () => {
-      const firId = 'nonexistent-fir'
-
-      mockHttpService.get.mockReturnValue(
-        throwError(() => ({
-          response: {
-            status: 404,
-            data: {
-              success: false,
-              error: 'FIR non trovato in RENTRI',
-            },
-          },
-        }))
-      )
-      ;(await expect(client.getFIRStatus(firId)).rejects.toThrow('FIR non trovato')) as any
+        const esito = await promessa
+        expect(esito).toEqual({ errore: false, validazione: [] })
+        expect(mockHttpService.get).toHaveBeenCalledTimes(3)
+      })
     })
   })
 })

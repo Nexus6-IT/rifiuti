@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Inject, Logger } from '@nestjs/common'
 import { GetUserPermissionsQuery } from '../get-user-permissions.query'
 import { UserRoleRepository } from '../../../domain/identity-access/user-role.repository.interface'
 import { RoleRepository } from '../../../domain/identity-access/role.repository.interface'
@@ -19,10 +19,11 @@ export class GetUserPermissionsQueryHandler {
   private readonly CACHE_TTL = 300 // 5 minutes
 
   constructor(
-    private readonly userRoleRepository: UserRoleRepository,
-    private readonly roleRepository: RoleRepository,
-    private readonly permissionRepository: PermissionRepository,
+    @Inject('UserRoleRepository') private readonly userRoleRepository: UserRoleRepository,
+    @Inject('RoleRepository') private readonly roleRepository: RoleRepository,
+    @Inject('PermissionRepository') private readonly permissionRepository: PermissionRepository,
     private readonly permissionCache: PermissionCacheService,
+    @Inject('TemporaryPermissionGrantRepository')
     private readonly temporaryPermissionGrantRepository: TemporaryPermissionGrantRepository
   ) {}
 

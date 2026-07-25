@@ -87,6 +87,19 @@ export const SYSTEM_ROLES: SystemRoleConfig[] = [
       'system:manage-integrations:all',
       'system:manage-backups:all',
       'system:view-logs:all',
+      // Role - Gestione ruoli custom del tenant (decisione PO 2026-07-25:
+      // l'ADMIN gestisce i ruoli custom della propria azienda; il SUPER_ADMIN
+      // ovunque tramite impersonificazione dell'ADMIN del tenant target).
+      'role:create:all',
+      'role:update:all',
+      'role:delete:all',
+      // Audit - Audit trail dei permessi, limitato al proprio tenant
+      // (decisione PO 2026-07-25: l'ADMIN è responsabile del trattamento).
+      'audit:read:all',
+      'audit:export:all',
+      // Consultant - Associare/revocare l'accesso di un consulente al tenant
+      // (decisione PO 2026-07-25).
+      'consultant:manage:all',
     ],
   },
   {

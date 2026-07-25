@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common'
+import { Injectable, Inject, NotFoundException, ForbiddenException, Logger } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { SwitchTenantContextCommand } from '../switch-tenant-context.command'
 import { ConsultantTenantAssociationRepository } from '../../../domain/identity-access/consultant-tenant-association.repository.interface'
@@ -37,6 +37,7 @@ export class SwitchTenantContextCommandHandler {
   private readonly logger = new Logger(SwitchTenantContextCommandHandler.name)
 
   constructor(
+    @Inject('ConsultantTenantAssociationRepository')
     private readonly consultantAssociationRepository: ConsultantTenantAssociationRepository,
     private readonly permissionCache: PermissionCacheService,
     private readonly roleCache: RoleCacheService,

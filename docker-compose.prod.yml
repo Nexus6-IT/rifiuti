@@ -76,6 +76,13 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET richiesta}
       # Cifratura a riposo dei certificati RENTRI per-tenant
       RENTRI_CREDENTIAL_ENC_KEY: ${RENTRI_CREDENTIAL_ENC_KEY:?RENTRI_CREDENTIAL_ENC_KEY richiesta}
+      # Firma: scelta ESPLICITA obbligatoria (fail-closed, P3 task 1). In
+      # produzione non esiste un default: senza queste il backend rifiuta di
+      # avviarsi invece di ripiegare in silenzio su una chiave effimera senza
+      # certificato. 'sandbox'/'mock' = si accetta che le firme NON siano
+      # qualificate (nessun valore legale finche' non c'e' un contratto QTSP).
+      SIGNATURE_PROVIDER: ${SIGNATURE_PROVIDER:?SIGNATURE_PROVIDER richiesta (sandbox|qes)}
+      TSA_PROVIDER: ${TSA_PROVIDER:?TSA_PROVIDER richiesta (mock|rfc3161)}
       # Autenticazione: Keycloak come IdP SAML (realm condiviso ignicraft).
       # La SpidStrategy (passport-saml) legge le variabili SPID_*.
       KEYCLOAK_URL: ${KEYCLOAK_URL:-https://auth.ignicraft.com}

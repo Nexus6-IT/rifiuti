@@ -9,9 +9,12 @@ import {
   HttpStatus,
   UseGuards,
   Req,
+  Inject,
 } from '@nestjs/common'
 import { QueryBus } from '@nestjs/cqrs'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
+import { PermissionGuard } from '../guards/permission.guard'
 import { RequirePermission } from '../decorators/require-permission.decorator'
 import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.query'
 import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query'
@@ -34,13 +37,24 @@ import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-c
  * - GET /api/v1/audit/permissions/export - Export audit trail as CSV
  * - GET /api/v1/audit/role-changes - Get role change history
  * - POST /api/v1/audit/reconstruct-permissions - Reconstruct permissions at timestamp
+ *
+ * NOTA (pipeline P4, 2026-07-25): il controller dichiarava già @RequirePermission
+ * su ogni handler ma NON applicava `PermissionGuard` a livello di classe (solo
+ * `JwtAuthGuard`) — il decoratore era quindi inerte e qualunque utente
+ * autenticato del tenant poteva leggere l'audit trail dei permessi, a
+ * prescindere dal ruolo. Aggiunto `TenantIsolationGuard` + `PermissionGuard`
+ * per allinearsi agli altri controller del sottosistema (RoleController,
+ * UserRoleController, TemporaryPermissionController) ed enforce-are davvero
+ * la decisione "audit trail → solo ADMIN del proprio tenant".
  */
 @Controller('audit')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class AuditController {
   constructor(
     private readonly queryBus: QueryBus,
+    @Inject('PermissionAuditLogRepository')
     private readonly auditLogRepository: PermissionAuditLogRepository,
+    @Inject('RoleChangeHistoryRepository')
     private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository
   ) {}
 
@@ -94,6 +108,54 @@ export class AuditController {
     )
 
     return await this.queryBus.execute(query)
+  }
+
+  /**
+   * T153: GET /api/v1/audit/permissions/export
+   * Export audit trail as CSV for ARPA inspection
+   *
+   * NOTA (bug di routing corretto in P4, 2026-07-25): questo endpoint DEVE
+   * essere dichiarato prima di `permissions/:userId` (T151). Nest registra le
+   * rotte nell'ordine di dichiarazione dei metodi: con `:userId` dichiarato
+   * per primo, una richiesta a `/audit/permissions/export` veniva instradata
+   * a `getAuditTrailForUser` trattando la stringa "export" come `userId`
+   * (poi rigettata a valle perché non è uno UUID valido) — l'endpoint di
+   * export non era mai raggiungibile.
+   *
+   * Response:
+   * - Content-Type: text/csv
+   * - Content-Disposition: attachment; filename="audit-trail-{tenantId}-{date}.csv"
+   */
+  @Get('permissions/export')
+  @RequirePermission('audit:export:all')
+  @HttpCode(HttpStatus.OK)
+  async exportAuditTrail(
+    @Req() request: any,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('userId') userId?: string
+  ) {
+    const tenantId = request.user.tenantId
+
+    const csv = await this.auditLogRepository.exportToCsv({
+      tenantId,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      userId,
+    })
+
+    // Set response headers for CSV download
+    const filename = `audit-trail-${tenantId}-${new Date().toISOString().split('T')[0]}.csv`
+
+    return {
+      data: csv,
+      filename,
+      contentType: 'text/csv',
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
+    }
   }
 
   /**
@@ -162,46 +224,6 @@ export class AuditController {
     )
 
     return await this.queryBus.execute(query)
-  }
-
-  /**
-   * T153: GET /api/v1/audit/permissions/export
-   * Export audit trail as CSV for ARPA inspection
-   *
-   * Response:
-   * - Content-Type: text/csv
-   * - Content-Disposition: attachment; filename="audit-trail-{tenantId}-{date}.csv"
-   */
-  @Get('permissions/export')
-  @RequirePermission('audit:export:all')
-  @HttpCode(HttpStatus.OK)
-  async exportAuditTrail(
-    @Req() request: any,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('userId') userId?: string
-  ) {
-    const tenantId = request.user.tenantId
-
-    const csv = await this.auditLogRepository.exportToCsv({
-      tenantId,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
-      userId,
-    })
-
-    // Set response headers for CSV download
-    const filename = `audit-trail-${tenantId}-${new Date().toISOString().split('T')[0]}.csv`
-
-    return {
-      data: csv,
-      filename,
-      contentType: 'text/csv',
-      headers: {
-        'Content-Type': 'text/csv',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-      },
-    }
   }
 
   /**
