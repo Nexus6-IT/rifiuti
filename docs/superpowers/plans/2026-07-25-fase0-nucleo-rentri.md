@@ -470,8 +470,15 @@ export function creaCertificatoDiTest(commonName = 'operatore-test'): {
 
   const der = forge.asn1.toDer(forge.pki.certificateToAsn1(certificato)).getBytes()
 
+  // node-forge esporta in PKCS#1, mentre jose.importPKCS8 pretende PKCS#8:
+  // senza questo avvolgimento la chiave viene rifiutata con
+  // «"pkcs8" must be PKCS#8 formatted string» prima ancora di firmare.
+  const chiavePkcs8 = forge.pki.privateKeyInfoToPem(forge.pki.wrapRsaPrivateKey(
+    forge.pki.privateKeyToAsn1(coppia.privateKey)
+  ))
+
   return {
-    chiavePrivataPem: forge.pki.privateKeyToPem(coppia.privateKey),
+    chiavePrivataPem: chiavePkcs8,
     certificatoBase64Der: forge.util.encode64(der),
   }
 }
