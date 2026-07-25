@@ -49,6 +49,7 @@ chmod +x scripts/dev-start.sh
 ```
 
 Lo script automatico:
+
 - ✅ Crea il file `.env` da `.env.example`
 - ✅ Avvia tutti i servizi Docker
 - ✅ Installa dipendenze backend e frontend
@@ -96,7 +97,7 @@ wasteflow-redis           Up       0.0.0.0:6379->6379/tcp
 wasteflow-keycloak        Up       0.0.0.0:8080->8080/tcp
 wasteflow-mailhog         Up       0.0.0.0:1025->1025/tcp, 0.0.0.0:8025->8025/tcp
 wasteflow-localstack      Up       0.0.0.0:4566->4566/tcp
-wasteflow-rentri-mock     Up       0.0.0.0:3001->3000/tcp
+wasteflow-rentri-fake     Up       0.0.0.0:4010->4010/tcp
 wasteflow-pgadmin         Up       0.0.0.0:5050->80/tcp
 ```
 
@@ -132,12 +133,14 @@ npm install
 **Opzione A: Due terminali separati**
 
 Terminal 1 (Backend):
+
 ```bash
 cd apps/backend
 npm run start:dev
 ```
 
 Terminal 2 (Frontend):
+
 ```bash
 cd apps/frontend
 npm start
@@ -156,30 +159,33 @@ npm run dev
 
 Una volta avviati tutti i servizi:
 
-| Servizio | URL | Credenziali |
-|----------|-----|-------------|
-| **Frontend** | http://localhost:4200 | - |
-| **Backend API** | http://localhost:3000 | - |
-| **Swagger Docs** | http://localhost:3000/api | - |
-| **Keycloak** | http://localhost:8080 | admin / admin |
-| **MailHog** | http://localhost:8025 | - |
-| **pgAdmin** | http://localhost:5050 | admin@wasteflow.local / admin |
-| **RENTRI Mock** | http://localhost:3001 | - |
-| **LocalStack S3** | http://localhost:4566 | - |
+| Servizio          | URL                       | Credenziali                   |
+| ----------------- | ------------------------- | ----------------------------- |
+| **Frontend**      | http://localhost:4200     | -                             |
+| **Backend API**   | http://localhost:3000     | -                             |
+| **Swagger Docs**  | http://localhost:3000/api | -                             |
+| **Keycloak**      | http://localhost:8080     | admin / admin                 |
+| **MailHog**       | http://localhost:8025     | -                             |
+| **pgAdmin**       | http://localhost:5050     | admin@wasteflow.local / admin |
+| **RENTRI Fake**   | http://localhost:4010     | -                             |
+| **LocalStack S3** | http://localhost:4566     | -                             |
 
 ### Dettagli Servizi
 
 #### 🔐 Keycloak (SPID/CIE Mock)
+
 - **Admin Console:** http://localhost:8080/admin
 - **Realm:** `wasteflow`
 - Usato per autenticazione SPID/CIE in sviluppo
 
 #### 📧 MailHog (Email Testing)
+
 - **Web UI:** http://localhost:8025
 - Cattura tutte le email inviate dall'applicazione
 - Nessuna email viene inviata realmente
 
 #### 🗄️ pgAdmin (Database UI)
+
 - **URL:** http://localhost:5050
 - Al primo accesso, aggiungi server:
   - **Host:** `postgres` (nome servizio Docker)
@@ -188,10 +194,14 @@ Una volta avviati tutti i servizi:
   - **Username:** `wasteflow`
   - **Password:** `wasteflow123`
 
-#### 📨 RENTRI Mock API
-- **URL:** http://localhost:3001
-- Simula API RENTRI per sviluppo
-- Endpoints: `/api/fir/submit`, `/api/fir/status`
+#### 📨 RENTRI Fake (`tools/rentri-fake`)
+
+- **URL:** http://localhost:4010 (`/__salute` per verificare lo stato)
+- Fake fedele al contratto ufficiale RENTRI (servizio `formulari` v1.0):
+  autenticazione ID_AUTH_REST_02 reale (JWT self-issued), ciclo NONBLOCK_PULL
+  (`POST /formulari/v1.0/` → 202, poi `/status` → `/result`). Non è un mock a
+  risposte precotte: la suite di test la usa come oracolo (v.
+  `docs/audits/rentri-conformita-2026-07-25/README.md`).
 
 ---
 
@@ -322,11 +332,13 @@ npm run lint
 ### Problema: "Port already in use"
 
 **Sintomo:**
+
 ```
 Error: bind: address already in use
 ```
 
 **Soluzione:**
+
 ```bash
 # Trova processo che usa la porta (es. 5432)
 # Windows
@@ -341,11 +353,13 @@ lsof -i :5432
 ### Problema: "Keycloak non si avvia"
 
 **Sintomo:**
+
 ```
 Keycloak exited with code 1
 ```
 
 **Soluzione:**
+
 ```bash
 # Keycloak richiede tempo per avviarsi (30-60 secondi)
 # Verifica logs
@@ -359,11 +373,13 @@ docker-compose up -d
 ### Problema: "Cannot connect to database"
 
 **Sintomo:**
+
 ```
 Error: P1001: Can't reach database server
 ```
 
 **Soluzione:**
+
 ```bash
 # Verifica che PostgreSQL sia running
 docker-compose ps postgres
@@ -379,11 +395,13 @@ docker-compose up -d
 ### Problema: "Prisma Client not generated"
 
 **Sintomo:**
+
 ```
 Error: @prisma/client did not initialize yet
 ```
 
 **Soluzione:**
+
 ```bash
 cd apps/backend
 
@@ -397,11 +415,13 @@ npm run start:dev
 ### Problema: "npm install fails"
 
 **Sintomo:**
+
 ```
 npm ERR! code ERESOLVE
 ```
 
 **Soluzione:**
+
 ```bash
 # Pulisci cache npm
 npm cache clean --force
@@ -442,6 +462,7 @@ npx prisma db seed
 ## 🔄 Workflow Sviluppo Tipico
 
 1. **Mattina - Avvio ambiente:**
+
    ```bash
    docker-compose up -d
    cd apps/backend && npm run start:dev
@@ -463,6 +484,7 @@ npx prisma db seed
    - Oppure usa Postman/Insomnia
 
 5. **Fine giornata:**
+
    ```bash
    # Ferma solo app (lascia Docker running)
    Ctrl+C nei terminali

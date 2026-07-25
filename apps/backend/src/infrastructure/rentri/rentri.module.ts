@@ -15,10 +15,12 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
 /**
  * RentriModule — sottosistema di interoperabilità RENTRI (client + auth + firma).
  *
- * Pronto a connettersi: in modalità `mock` (default) usa il mock locale; in
- * modalità `live` (`RENTRI_MODE=live`) si collega all'ambiente reale con
- * autenticazione ModI (Bearer + Agid-JWT-Signature). La modalità `live`
- * richiede certificato + chiave privata negli env (vedi `.env.example`).
+ * Pronto a connettersi: si collega all'ambiente reale RENTRI (demo/prod) con
+ * autenticazione ModI (Bearer self-issued + Agid-JWT-Signature). Richiede
+ * certificato + chiave privata negli env (vedi `.env.example`); senza,
+ * l'handshake reale non può avvenire (il codice resta comunque completo).
+ * Nei test automatici l'ambiente reale è sostituito dalla fake fedele al
+ * contratto in `tools/rentri-fake` (v. `docs/audits/rentri-conformita-2026-07-25/README.md`).
  */
 @Module({
   imports: [ConfigModule, HttpModule, LoggerModule, MetricsModule, PrismaModule],

@@ -38,10 +38,12 @@ KEYCLOAK_REALM=wasteflow
 KEYCLOAK_CLIENT_ID=wasteflow-backend
 KEYCLOAK_CLIENT_SECRET=<FROM_KEYCLOAK>
 
-# RENTRI
+# RENTRI (autenticazione ID_AUTH_REST_02: JWT self-issued, no API key/mock —
+# vedi apps/backend/.env.example per l'elenco completo delle variabili)
 RENTRI_API_URL=https://api.rentri.gov.it
-RENTRI_API_KEY=<FROM_RENTRI>
-RENTRI_TIMEOUT=30000
+RENTRI_CLIENT_ID=<FROM_RENTRI>
+RENTRI_CERTIFICATE_PEM=<FROM_RENTRI>
+RENTRI_PRIVATE_KEY_PEM=<FROM_RENTRI>
 
 # Email (SendGrid/AWS SES)
 SMTP_HOST=smtp.sendgrid.net
@@ -213,7 +215,7 @@ services:
     networks:
       - wasteflow
     ports:
-      - "3000:3000"
+      - '3000:3000'
 
   nginx:
     image: nginx:alpine
@@ -223,8 +225,8 @@ services:
       - ./apps/frontend/dist:/usr/share/nginx/html:ro
       - ./certs:/etc/nginx/certs:ro
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
     depends_on:
       - backend
     networks:
@@ -341,6 +343,7 @@ scrape_configs:
 ```
 
 **Grafana Dashboards**:
+
 - System health
 - API performance
 - Database metrics
@@ -370,6 +373,7 @@ docker run --security-opt=no-new-privileges --read-only ...
 ### 12. Application Optimization
 
 **Backend**:
+
 - Enable Prisma query caching
 - Redis caching for analytics
 - BullMQ queue optimization
@@ -377,6 +381,7 @@ docker run --security-opt=no-new-privileges --read-only ...
 - Rate limiting
 
 **Frontend**:
+
 - Lazy loading all routes
 - Tree-shaking optimizations
 - CDN for static assets
@@ -417,18 +422,21 @@ k6 run --vus 100 --duration 5m load-test.js
 ### Monitoring Checklist
 
 Daily:
+
 - Check error logs (Sentry)
 - Monitor API response times
 - Verify backup completion
 - Review RENTRI sync status
 
 Weekly:
+
 - Review performance metrics
 - Check backup restoration
 - Update dependencies
 - Security patch review
 
 Monthly:
+
 - Generate compliance reports
 - Review user analytics
 - Capacity planning

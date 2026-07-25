@@ -41,7 +41,6 @@ describe('RENTRIApiClient — verifica reale contro la fake RENTRI (in-process)'
     const cert = creaCertificatoDiTest('operatore-test')
 
     const config: RentriConfig = {
-      mode: 'live',
       // Solo host: RENTRIApiClient vi concatena `/formulari/v1.0`. Il valore
       // non è mai risolto in rete: httpService è cablato su app.inject().
       baseUrl: 'https://demoapi.rentri.gov.it',
@@ -51,7 +50,6 @@ describe('RENTRIApiClient — verifica reale contro la fake RENTRI (in-process)'
       certificatePem: `-----BEGIN CERTIFICATE-----\n${cert.certificatoBase64Der}\n-----END CERTIFICATE-----`,
       privateKeyPem: cert.chiavePrivataPem,
       algorithm: 'RS256',
-      mockApiKey: 'non-usata-in-questo-test',
       jwtTtlSeconds: 300,
       credentialEncKey: 'test-enc-key',
     }

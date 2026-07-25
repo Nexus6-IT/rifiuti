@@ -66,6 +66,7 @@ terraform output -json > ../outputs.json
 ```
 
 **Key Resources Created**:
+
 - VPC (10.0.0.0/16)
 - RDS PostgreSQL (db.r6g.xlarge, Multi-AZ)
 - ElastiCache Redis (cache.r6g.large)
@@ -117,14 +118,16 @@ aws secretsmanager create-secret \
     "refreshExpiresIn": "7d"
   }'
 
-# RENTRI API credentials
+# RENTRI API credentials (autenticazione ID_AUTH_REST_02: JWT self-issued
+# firmato col certificato dell'operatore — nessuna API key, nessun mock)
 aws secretsmanager create-secret \
   --name wasteflow/prod/rentri \
   --description "RENTRI API credentials" \
   --secret-string '{
-    "apiUrl": "https://api.rentri.gov.it/v1",
-    "apiKey": "<RENTRI_API_KEY>",
-    "certificatePath": "/app/certs/rentri-cert.pem"
+    "apiUrl": "https://api.rentri.gov.it",
+    "clientId": "<RENTRI_CLIENT_ID>",
+    "certificatePath": "/app/certs/rentri-cert.pem",
+    "privateKeyPath": "/app/certs/rentri-key.pem"
   }'
 
 # SPID/CIE certificates
@@ -552,6 +555,7 @@ npm run test:smoke -- --env production
 **Symptoms**: ECS service fails to stabilize
 
 **Check**:
+
 ```bash
 # View recent ECS events
 aws ecs describe-services \
@@ -574,6 +578,7 @@ aws logs tail /aws/ecs/wasteflow-backend --follow --since 10m
 **Symptoms**: Migration hangs or errors
 
 **Check**:
+
 ```bash
 # Check migration status
 npm run prisma:migrate status
@@ -598,6 +603,7 @@ psql $DATABASE_URL -c "SELECT pg_terminate_backend(<PID>);"
 **Symptoms**: Error rate > 5%
 
 **Immediate Actions**:
+
 ```bash
 # 1. Check error logs
 aws logs tail /aws/ecs/wasteflow-backend --follow | grep ERROR
@@ -636,9 +642,11 @@ REDIS_URL=<redis-endpoint>:6379
 JWT_SECRET=<from-secret>
 JWT_EXPIRES_IN=1d
 
-# RENTRI (from Secrets Manager)
+# RENTRI (from Secrets Manager — ID_AUTH_REST_02, no API key/mock)
 RENTRI_API_URL=<from-secret>
-RENTRI_API_KEY=<from-secret>
+RENTRI_CLIENT_ID=<from-secret>
+RENTRI_CERTIFICATE_PEM=<from-secret>
+RENTRI_PRIVATE_KEY_PEM=<from-secret>
 
 # AWS
 AWS_REGION=eu-south-1
@@ -687,6 +695,7 @@ aws ecs update-service \
 ---
 
 **Document Maintenance**:
+
 - Review quarterly
 - Update after major changes
 - Keep rollback procedures tested

@@ -47,7 +47,6 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
     const cert = creaCertificatoDiTest('operatore-test')
 
     const config: RentriConfig = {
-      mode: 'live',
       baseUrl: 'https://demoapi.rentri.gov.it',
       clientId: 'operatore-test',
       audience: 'rentrigov.demo.api',
@@ -55,7 +54,6 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
       certificatePem: `-----BEGIN CERTIFICATE-----\n${cert.certificatoBase64Der}\n-----END CERTIFICATE-----`,
       privateKeyPem: cert.chiavePrivataPem,
       algorithm: 'RS256',
-      mockApiKey: 'non-usata-in-questo-test',
       jwtTtlSeconds: 300,
       credentialEncKey: 'test-enc-key',
     }

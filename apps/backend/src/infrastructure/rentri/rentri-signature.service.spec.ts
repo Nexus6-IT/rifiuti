@@ -19,7 +19,6 @@ describe('RentriSignatureService', () => {
 
   beforeEach(() => {
     const config: RentriConfig = {
-      mode: 'live',
       baseUrl: 'https://demoapi.rentri.gov.it',
       clientId: 'operator-123',
       audience: 'rentrigov.demo.api',
@@ -27,7 +26,6 @@ describe('RentriSignatureService', () => {
       certificatePem: cert.certificatePem,
       privateKeyPem: cert.privateKeyPem,
       algorithm: 'RS256',
-      mockApiKey: 'demo-key',
       jwtTtlSeconds: 300,
       credentialEncKey: 'test-enc-key',
     }

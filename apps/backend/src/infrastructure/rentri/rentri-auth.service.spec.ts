@@ -20,7 +20,6 @@ describe('RentriAuthService', () => {
   })
 
   const baseConfig = (overrides: Partial<RentriConfig> = {}): RentriConfig => ({
-    mode: 'live',
     baseUrl: 'https://demoapi.rentri.gov.it',
     clientId: 'env-operator',
     audience: 'rentrigov.demo.api',
@@ -28,7 +27,6 @@ describe('RentriAuthService', () => {
     certificatePem: '',
     privateKeyPem: '',
     algorithm: 'RS256',
-    mockApiKey: 'demo-key',
     jwtTtlSeconds: 300,
     credentialEncKey: 'test-enc-key',
     ...overrides,
