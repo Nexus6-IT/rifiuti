@@ -1,13 +1,7 @@
-import { Injectable, inject } from '@angular/core'
+import { Injectable } from '@angular/core'
 import { HttpClient, HttpParams } from '@angular/common/http'
 import { Observable } from 'rxjs'
-import {
-  FIR,
-  PaginatedFIRResponse,
-  FIRStato,
-  FirmaApplicativa,
-} from '../../shared/models/fir.model'
-import { AuthService } from '../../core/services/auth.service'
+import { FIR, PaginatedFIRResponse, FIRStato } from '../../shared/models/fir.model'
 import { environment } from '../../../environments/environment'
 
 export type TipoTratta = 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA'
@@ -45,21 +39,8 @@ export interface CreateFIRDto {
 })
 export class FirService {
   private readonly API_URL = `${environment.apiUrl}/fir`
-  private readonly auth = inject(AuthService)
 
   constructor(private http: HttpClient) {}
-
-  /**
-   * Costruisce la firma applicativa (NON qualificata) a partire dall'utente
-   * loggato. La firma digitale qualificata è un sottosistema separato e fuori
-   * scope: qui si traccia solo chi ha eseguito la transizione applicativa.
-   */
-  private buildFirma(): FirmaApplicativa {
-    const user = this.auth.currentUser()
-    const nome = user ? [user.firstName, user.lastName].filter(Boolean).join(' ').trim() : ''
-    const firmatario = nome || user?.email || 'Operatore'
-    return { firmatario, certificato: 'FIRMA-NON-QUALIFICATA' }
-  }
 
   /**
    * Ottiene lista paginata di FIR
@@ -90,31 +71,30 @@ export class FirService {
 
   /**
    * Emette un FIR: BOZZA → EMESSO (assegna il numero progressivo).
-   * Allega la firma applicativa del produttore.
+   * La firma del produttore NON è costruita dal frontend: il backend la
+   * produce invocando il sottosistema crittografico e la persiste (task 4,
+   * pipeline P3). Il frontend chiede solo di firmare, non firma da sé.
    */
   emettiFIR(id: string): Observable<FIR> {
-    return this.http.post<FIR>(`${this.API_URL}/${id}/emetti`, {
-      firmaProduttore: this.buildFirma(),
-    })
+    return this.http.post<FIR>(`${this.API_URL}/${id}/emetti`, {})
   }
 
   /**
    * Presa in carico (trasportatore): EMESSO → IN_TRANSITO.
+   * La firma del trasportatore è prodotta dal backend (vedi emettiFIR).
    */
   presaInCarico(id: string): Observable<FIR> {
-    return this.http.post<FIR>(`${this.API_URL}/${id}/presa-in-carico`, {
-      firmaTrasportatore: this.buildFirma(),
-    })
+    return this.http.post<FIR>(`${this.API_URL}/${id}/presa-in-carico`, {})
   }
 
   /**
    * Conferma consegna (destinatario): IN_TRANSITO → CONSEGNATO.
    * Richiede il peso effettivo (kg) rilevato a destinazione.
+   * La firma del destinatario è prodotta dal backend (vedi emettiFIR).
    */
   confermaConsegna(id: string, pesoEffettivo: number): Observable<FIR> {
     return this.http.post<FIR>(`${this.API_URL}/${id}/conferma-consegna`, {
       pesoEffettivo,
-      firmaDestinatario: this.buildFirma(),
     })
   }
 

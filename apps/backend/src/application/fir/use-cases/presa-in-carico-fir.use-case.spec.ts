@@ -1,5 +1,10 @@
 /**
  * Presa In Carico FIR Use Case - TDD Tests
+ *
+ * Task 4 (pipeline P3): la firma del trasportatore non è più una costante
+ * ('FIRMA-NON-QUALIFICATA') passata dal chiamante, ma prodotta invocando il
+ * sottosistema crittografico (DigitalSignatureService) sul documento canonico
+ * dell'aggregate FIR crittografico (stessa riga fisica, aggregate separato).
  */
 
 import { PresaInCaricoFIRUseCase } from './presa-in-carico-fir.use-case'
@@ -7,8 +12,12 @@ import { PresaInCaricoFIRCommand } from '../commands/presa-in-carico-fir.command
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
+import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
+import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
+import { DigitalSignatureService } from '../../signatures/digital-signature.service'
+import { LoggerService } from '../../../core/logger/logger.service'
 
-// Mock Repository
+// Mock Repository (ciclo di vita)
 class MockFIRRepository implements IFIRRepository {
   private firs: Map<string, FIR> = new Map()
 
@@ -55,13 +64,69 @@ class MockFIRRepository implements IFIRRepository {
   }
 }
 
+/** Fake del repository crittografico: risponde per qualsiasi id richiesto. */
+class FakeCryptoFIRRepository implements CryptoFIRRepository {
+  private buildCryptoFir(id: string): CryptoFIR {
+    return CryptoFIR.create({
+      id,
+      firNumber: 'FIR-2025-000001',
+      tenantId: 'tenant-uuid-1',
+      producerPartitaIva: '12345678901',
+      producerName: 'Produttore SRL',
+      cerCode: '13 02 05*',
+      quantity: 120,
+      unit: 'KG',
+    })
+  }
+
+  async findById(id: string): Promise<CryptoFIR | null> {
+    return this.buildCryptoFir(id)
+  }
+
+  async findByIdPublic(id: string): Promise<CryptoFIR | null> {
+    return this.findById(id)
+  }
+
+  async findByNumeroProgressivo(): Promise<CryptoFIR | null> {
+    return null
+  }
+
+  async save(fir: CryptoFIR): Promise<CryptoFIR> {
+    return fir
+  }
+
+  async update(fir: CryptoFIR): Promise<CryptoFIR> {
+    return fir
+  }
+
+  async delete(): Promise<void> {}
+
+  async getCurrentWorkloadByDriver(): Promise<number> {
+    return 0
+  }
+}
+
+function buildMockLogger(): jest.Mocked<LoggerService> {
+  return {
+    setContext: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  } as any
+}
+
 describe('PresaInCaricoFIRUseCase', () => {
   let useCase: PresaInCaricoFIRUseCase
   let repository: MockFIRRepository
+  let cryptoRepository: FakeCryptoFIRRepository
+  let signatureService: DigitalSignatureService
 
   beforeEach(() => {
     repository = new MockFIRRepository()
-    useCase = new PresaInCaricoFIRUseCase(repository)
+    cryptoRepository = new FakeCryptoFIRRepository()
+    signatureService = new DigitalSignatureService(buildMockLogger())
+    useCase = new PresaInCaricoFIRUseCase(repository, cryptoRepository, signatureService)
   })
 
   const createEmessoFIR = (): FIR => {
@@ -76,7 +141,6 @@ describe('PresaInCaricoFIRUseCase', () => {
       destinatarioId: 'tenant-destination-789',
     })
 
-    // Emit FIR to move to EMESSO state
     fir.emetti('FIR-2025-000001', {
       firmatario: 'Produttore',
       timestamp: new Date(),
@@ -91,14 +155,7 @@ describe('PresaInCaricoFIRUseCase', () => {
       const fir = createEmessoFIR()
       repository.addFIR(fir)
 
-      const command = new PresaInCaricoFIRCommand(
-        fir.id,
-        {
-          firmatario: 'Trasportatore Rossi',
-          certificato: 'cert-trans-123',
-        },
-        'user-trans-456'
-      )
+      const command = new PresaInCaricoFIRCommand(fir.id, 'user-trans-456', 'Trasportatore Rossi')
 
       const result = await useCase.execute(command)
 
@@ -107,34 +164,25 @@ describe('PresaInCaricoFIRUseCase', () => {
       expect(result.value.dataPresaCarico).toBeInstanceOf(Date)
     })
 
-    it('should persist FIR with firma trasportatore', async () => {
+    it('should persist FIR with firma trasportatore (firma crittografica reale)', async () => {
       const fir = createEmessoFIR()
       repository.addFIR(fir)
 
-      const command = new PresaInCaricoFIRCommand(
-        fir.id,
-        {
-          firmatario: 'Trasportatore Rossi',
-          certificato: 'cert-trans-123',
-        },
-        'user-trans-456'
-      )
+      const command = new PresaInCaricoFIRCommand(fir.id, 'user-trans-456', 'Trasportatore Rossi')
 
       await useCase.execute(command)
 
       const saved = await repository.findById(fir.id)
       expect(saved?.firme.trasportatore).toBeDefined()
       expect(saved?.firme.trasportatore?.firmatario).toBe('Trasportatore Rossi')
-      expect(saved?.firme.trasportatore?.certificato).toBe('cert-trans-123')
       expect(saved?.firme.trasportatore?.timestamp).toBeInstanceOf(Date)
+      expect(saved?.firme.trasportatore?.certificato).not.toBe('FIRMA-NON-QUALIFICATA')
+      expect(saved?.firme.trasportatore?.documentHash).toBeTruthy()
+      expect(saved?.firme.trasportatore?.publicKey).toContain('BEGIN PUBLIC KEY')
     })
 
     it('should fail if FIR not found', async () => {
-      const command = new PresaInCaricoFIRCommand(
-        'non-existent-id',
-        { firmatario: 'Test', certificato: 'cert' },
-        'user-123'
-      )
+      const command = new PresaInCaricoFIRCommand('non-existent-id', 'user-123', 'Test')
 
       const result = await useCase.execute(command)
 
@@ -155,11 +203,7 @@ describe('PresaInCaricoFIRUseCase', () => {
       })
       repository.addFIR(fir)
 
-      const command = new PresaInCaricoFIRCommand(
-        fir.id,
-        { firmatario: 'Test', certificato: 'cert' },
-        'user-123'
-      )
+      const command = new PresaInCaricoFIRCommand(fir.id, 'user-123', 'Test')
 
       const result = await useCase.execute(command)
 
@@ -171,11 +215,7 @@ describe('PresaInCaricoFIRUseCase', () => {
       const fir = createEmessoFIR()
       repository.addFIR(fir)
 
-      const command = new PresaInCaricoFIRCommand(
-        fir.id,
-        { firmatario: 'Trasportatore', certificato: 'cert' },
-        'user-456'
-      )
+      const command = new PresaInCaricoFIRCommand(fir.id, 'user-456', 'Trasportatore')
 
       const result = await useCase.execute(command)
 
@@ -190,11 +230,7 @@ describe('PresaInCaricoFIRUseCase', () => {
 
       const beforeExecution = new Date()
 
-      const command = new PresaInCaricoFIRCommand(
-        fir.id,
-        { firmatario: 'Trasportatore', certificato: 'cert' },
-        'user-456'
-      )
+      const command = new PresaInCaricoFIRCommand(fir.id, 'user-456', 'Trasportatore')
 
       const result = await useCase.execute(command)
 
@@ -207,21 +243,59 @@ describe('PresaInCaricoFIRUseCase', () => {
       expect(result.value.dataPresaCarico!.getTime()).toBeLessThanOrEqual(afterExecution.getTime())
     })
 
-    it('should authorize only trasportatore tenant', async () => {
-      // This test verifies authorization logic if implemented
-      // For now, we test that the use case executes successfully
+    it('should verify the persisted signature cryptographically after reload', async () => {
       const fir = createEmessoFIR()
       repository.addFIR(fir)
 
-      const command = new PresaInCaricoFIRCommand(
-        fir.id,
-        { firmatario: 'Trasportatore', certificato: 'cert' },
-        'user-trans-456'
+      const command = new PresaInCaricoFIRCommand(fir.id, 'user-trans-456', 'Trasportatore Rossi')
+      await useCase.execute(command)
+
+      const reloaded = await repository.findById(fir.id)
+      const firma = reloaded!.firme.trasportatore!
+
+      const isValid = await signatureService.verify(
+        firma.documentHash!,
+        firma.certificato,
+        firma.publicKey!
       )
-
-      const result = await useCase.execute(command)
-
-      expect(result.isSuccess).toBe(true)
+      expect(isValid).toBe(true)
     })
+
+    it(
+      'fail-closed: se il provider di firma non è configurato la transizione ' +
+        'NON avviene e il FIR resta EMESSO',
+      async () => {
+        const fir = createEmessoFIR()
+        repository.addFIR(fir)
+
+        const unconfiguredSignatureService = new DigitalSignatureService(buildMockLogger())
+        useCase = new PresaInCaricoFIRUseCase(
+          repository,
+          cryptoRepository,
+          unconfiguredSignatureService
+        )
+
+        const originalEnv = process.env.NODE_ENV
+        process.env.NODE_ENV = 'production'
+        try {
+          const command = new PresaInCaricoFIRCommand(
+            fir.id,
+            'user-trans-456',
+            'Trasportatore Rossi'
+          )
+          const result = await useCase.execute(command)
+
+          expect(result.isFailure).toBe(true)
+          expect(result.error).toContain('Firma trasportatore non riuscita')
+
+          const stillEmesso = await repository.findById(fir.id)
+          expect(stillEmesso?.stato).toBe(FIRStato.EMESSO)
+          expect(stillEmesso?.dataPresaCarico).toBeNull()
+          expect(stillEmesso?.firme.trasportatore).toBeUndefined()
+        } finally {
+          process.env.NODE_ENV = originalEnv
+        }
+      }
+    )
   })
 })

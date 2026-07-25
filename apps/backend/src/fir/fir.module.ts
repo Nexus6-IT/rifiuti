@@ -21,9 +21,17 @@ import { TrasportatorePrismaRepository } from '../infrastructure/persistence/tra
 import { DestinatarioPrismaRepository } from '../infrastructure/persistence/destinatario-prisma.repository'
 import { PrismaModule } from '../infrastructure/persistence/prisma.module'
 import { BillingModule } from '../application/billing/billing.module'
+import { SignaturesModule } from '../application/signatures/signatures.module'
+import { FIR_REPOSITORY, FIRRepository as CryptoFIRRepository } from '../domain/fir/fir.repository'
+import { DigitalSignatureService } from '../application/signatures/digital-signature.service'
 
 @Module({
-  imports: [PrismaModule, BillingModule],
+  // SignaturesModule: collega il ciclo di vita (emetti/presaInCarico/
+  // confermaConsegna) al sottosistema crittografico. FIR_REPOSITORY e
+  // DigitalSignatureService sono esportati da SignaturesModule (Task 4,
+  // pipeline P3) — i due aggregate FIR restano separati, si collegano solo
+  // tramite questi due servizi condivisi.
+  imports: [PrismaModule, BillingModule, SignaturesModule],
   controllers: [FIRControllerV2],
   providers: [
     // Repositories (provide as concrete classes)
@@ -61,24 +69,36 @@ import { BillingModule } from '../application/billing/billing.module'
     },
     {
       provide: EmettiFIRUseCase,
-      useFactory: (firRepo: FIRPrismaRepository) => {
-        return new EmettiFIRUseCase(firRepo)
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        cryptoFirRepo: CryptoFIRRepository,
+        signatureService: DigitalSignatureService
+      ) => {
+        return new EmettiFIRUseCase(firRepo, cryptoFirRepo, signatureService)
       },
-      inject: [FIRPrismaRepository],
+      inject: [FIRPrismaRepository, FIR_REPOSITORY, DigitalSignatureService],
     },
     {
       provide: PresaInCaricoFIRUseCase,
-      useFactory: (firRepo: FIRPrismaRepository) => {
-        return new PresaInCaricoFIRUseCase(firRepo)
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        cryptoFirRepo: CryptoFIRRepository,
+        signatureService: DigitalSignatureService
+      ) => {
+        return new PresaInCaricoFIRUseCase(firRepo, cryptoFirRepo, signatureService)
       },
-      inject: [FIRPrismaRepository],
+      inject: [FIRPrismaRepository, FIR_REPOSITORY, DigitalSignatureService],
     },
     {
       provide: ConfermaConsegnaFIRUseCase,
-      useFactory: (firRepo: FIRPrismaRepository) => {
-        return new ConfermaConsegnaFIRUseCase(firRepo)
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        cryptoFirRepo: CryptoFIRRepository,
+        signatureService: DigitalSignatureService
+      ) => {
+        return new ConfermaConsegnaFIRUseCase(firRepo, cryptoFirRepo, signatureService)
       },
-      inject: [FIRPrismaRepository],
+      inject: [FIRPrismaRepository, FIR_REPOSITORY, DigitalSignatureService],
     },
     {
       provide: AnnullaFIRUseCase,

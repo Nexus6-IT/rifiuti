@@ -1,5 +1,10 @@
 /**
  * Conferma Consegna FIR Use Case - TDD Tests
+ *
+ * Task 4 (pipeline P3): la firma del destinatario non è più una costante
+ * ('FIRMA-NON-QUALIFICATA') passata dal chiamante, ma prodotta invocando il
+ * sottosistema crittografico (DigitalSignatureService) sul documento canonico
+ * dell'aggregate FIR crittografico (stessa riga fisica, aggregate separato).
  */
 
 import { ConfermaConsegnaFIRUseCase } from './conferma-consegna-fir.use-case'
@@ -7,8 +12,12 @@ import { ConfermaConsegnaFIRCommand } from '../commands/conferma-consegna-fir.co
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
+import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
+import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
+import { DigitalSignatureService } from '../../signatures/digital-signature.service'
+import { LoggerService } from '../../../core/logger/logger.service'
 
-// Mock Repository
+// Mock Repository (ciclo di vita)
 class MockFIRRepository implements IFIRRepository {
   private firs: Map<string, FIR> = new Map()
 
@@ -55,13 +64,69 @@ class MockFIRRepository implements IFIRRepository {
   }
 }
 
+/** Fake del repository crittografico: risponde per qualsiasi id richiesto. */
+class FakeCryptoFIRRepository implements CryptoFIRRepository {
+  private buildCryptoFir(id: string): CryptoFIR {
+    return CryptoFIR.create({
+      id,
+      firNumber: 'FIR-2025-000001',
+      tenantId: 'tenant-uuid-1',
+      producerPartitaIva: '12345678901',
+      producerName: 'Produttore SRL',
+      cerCode: '13 02 05*',
+      quantity: 120,
+      unit: 'KG',
+    })
+  }
+
+  async findById(id: string): Promise<CryptoFIR | null> {
+    return this.buildCryptoFir(id)
+  }
+
+  async findByIdPublic(id: string): Promise<CryptoFIR | null> {
+    return this.findById(id)
+  }
+
+  async findByNumeroProgressivo(): Promise<CryptoFIR | null> {
+    return null
+  }
+
+  async save(fir: CryptoFIR): Promise<CryptoFIR> {
+    return fir
+  }
+
+  async update(fir: CryptoFIR): Promise<CryptoFIR> {
+    return fir
+  }
+
+  async delete(): Promise<void> {}
+
+  async getCurrentWorkloadByDriver(): Promise<number> {
+    return 0
+  }
+}
+
+function buildMockLogger(): jest.Mocked<LoggerService> {
+  return {
+    setContext: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  } as any
+}
+
 describe('ConfermaConsegnaFIRUseCase', () => {
   let useCase: ConfermaConsegnaFIRUseCase
   let repository: MockFIRRepository
+  let cryptoRepository: FakeCryptoFIRRepository
+  let signatureService: DigitalSignatureService
 
   beforeEach(() => {
     repository = new MockFIRRepository()
-    useCase = new ConfermaConsegnaFIRUseCase(repository)
+    cryptoRepository = new FakeCryptoFIRRepository()
+    signatureService = new DigitalSignatureService(buildMockLogger())
+    useCase = new ConfermaConsegnaFIRUseCase(repository, cryptoRepository, signatureService)
   })
 
   const createInTransitoFIR = (): FIR => {
@@ -76,14 +141,12 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       destinatarioId: 'tenant-destination-789',
     })
 
-    // Emit FIR to move to EMESSO state
     fir.emetti('FIR-2025-000001', {
       firmatario: 'Produttore',
       timestamp: new Date(),
       certificato: 'cert-prod',
     })
 
-    // Take charge to move to IN_TRANSITO state
     fir.presaInCarico(new Date(), {
       firmatario: 'Trasportatore',
       timestamp: new Date(),
@@ -100,12 +163,9 @@ describe('ConfermaConsegnaFIRUseCase', () => {
 
       const command = new ConfermaConsegnaFIRCommand(
         fir.id,
-        120, // Peso effettivo matches quantità dichiarata
-        {
-          firmatario: 'Destinatario Bianchi',
-          certificato: 'cert-dest-789',
-        },
-        'user-dest-789'
+        120,
+        'user-dest-789',
+        'Destinatario Bianchi'
       )
 
       const result = await useCase.execute(command)
@@ -116,18 +176,15 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       expect(result.value.dataConsegna).toBeInstanceOf(Date)
     })
 
-    it('should persist FIR with firma destinatario', async () => {
+    it('should persist FIR with firma destinatario (firma crittografica reale)', async () => {
       const fir = createInTransitoFIR()
       repository.addFIR(fir)
 
       const command = new ConfermaConsegnaFIRCommand(
         fir.id,
         120,
-        {
-          firmatario: 'Destinatario Bianchi',
-          certificato: 'cert-dest-789',
-        },
-        'user-dest-789'
+        'user-dest-789',
+        'Destinatario Bianchi'
       )
 
       await useCase.execute(command)
@@ -135,20 +192,17 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       const saved = await repository.findById(fir.id)
       expect(saved?.firme.destinatario).toBeDefined()
       expect(saved?.firme.destinatario?.firmatario).toBe('Destinatario Bianchi')
-      expect(saved?.firme.destinatario?.certificato).toBe('cert-dest-789')
       expect(saved?.firme.destinatario?.timestamp).toBeInstanceOf(Date)
+      expect(saved?.firme.destinatario?.certificato).not.toBe('FIRMA-NON-QUALIFICATA')
+      expect(saved?.firme.destinatario?.documentHash).toBeTruthy()
+      expect(saved?.firme.destinatario?.publicKey).toContain('BEGIN PUBLIC KEY')
     })
 
     it('should accept peso within +10% tolerance', async () => {
       const fir = createInTransitoFIR() // quantità dichiarata: 120
       repository.addFIR(fir)
 
-      const command = new ConfermaConsegnaFIRCommand(
-        fir.id,
-        132, // +10% = 132 kg (boundary)
-        { firmatario: 'Destinatario', certificato: 'cert' },
-        'user-789'
-      )
+      const command = new ConfermaConsegnaFIRCommand(fir.id, 132, 'user-789', 'Destinatario')
 
       const result = await useCase.execute(command)
 
@@ -160,12 +214,7 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       const fir = createInTransitoFIR() // quantità dichiarata: 120
       repository.addFIR(fir)
 
-      const command = new ConfermaConsegnaFIRCommand(
-        fir.id,
-        108, // -10% = 108 kg (boundary)
-        { firmatario: 'Destinatario', certificato: 'cert' },
-        'user-789'
-      )
+      const command = new ConfermaConsegnaFIRCommand(fir.id, 108, 'user-789', 'Destinatario')
 
       const result = await useCase.execute(command)
 
@@ -177,12 +226,7 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       const fir = createInTransitoFIR() // quantità dichiarata: 120
       repository.addFIR(fir)
 
-      const command = new ConfermaConsegnaFIRCommand(
-        fir.id,
-        135, // Exceeds +10%
-        { firmatario: 'Destinatario', certificato: 'cert' },
-        'user-789'
-      )
+      const command = new ConfermaConsegnaFIRCommand(fir.id, 135, 'user-789', 'Destinatario')
 
       const result = await useCase.execute(command)
 
@@ -194,12 +238,7 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       const fir = createInTransitoFIR() // quantità dichiarata: 120
       repository.addFIR(fir)
 
-      const command = new ConfermaConsegnaFIRCommand(
-        fir.id,
-        105, // Exceeds -10%
-        { firmatario: 'Destinatario', certificato: 'cert' },
-        'user-789'
-      )
+      const command = new ConfermaConsegnaFIRCommand(fir.id, 105, 'user-789', 'Destinatario')
 
       const result = await useCase.execute(command)
 
@@ -208,12 +247,7 @@ describe('ConfermaConsegnaFIRUseCase', () => {
     })
 
     it('should fail if FIR not found', async () => {
-      const command = new ConfermaConsegnaFIRCommand(
-        'non-existent-id',
-        120,
-        { firmatario: 'Test', certificato: 'cert' },
-        'user-123'
-      )
+      const command = new ConfermaConsegnaFIRCommand('non-existent-id', 120, 'user-123', 'Test')
 
       const result = await useCase.execute(command)
 
@@ -234,12 +268,7 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       })
       repository.addFIR(fir)
 
-      const command = new ConfermaConsegnaFIRCommand(
-        fir.id,
-        120,
-        { firmatario: 'Test', certificato: 'cert' },
-        'user-123'
-      )
+      const command = new ConfermaConsegnaFIRCommand(fir.id, 120, 'user-123', 'Test')
 
       const result = await useCase.execute(command)
 
@@ -251,12 +280,7 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       const fir = createInTransitoFIR()
       repository.addFIR(fir)
 
-      const command = new ConfermaConsegnaFIRCommand(
-        fir.id,
-        120,
-        { firmatario: 'Destinatario', certificato: 'cert' },
-        'user-789'
-      )
+      const command = new ConfermaConsegnaFIRCommand(fir.id, 120, 'user-789', 'Destinatario')
 
       const result = await useCase.execute(command)
 
@@ -271,12 +295,7 @@ describe('ConfermaConsegnaFIRUseCase', () => {
 
       const beforeExecution = new Date()
 
-      const command = new ConfermaConsegnaFIRCommand(
-        fir.id,
-        120,
-        { firmatario: 'Destinatario', certificato: 'cert' },
-        'user-789'
-      )
+      const command = new ConfermaConsegnaFIRCommand(fir.id, 120, 'user-789', 'Destinatario')
 
       const result = await useCase.execute(command)
 
@@ -286,5 +305,67 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       expect(result.value.dataConsegna!.getTime()).toBeGreaterThanOrEqual(beforeExecution.getTime())
       expect(result.value.dataConsegna!.getTime()).toBeLessThanOrEqual(afterExecution.getTime())
     })
+
+    it('should verify the persisted signature cryptographically after reload', async () => {
+      const fir = createInTransitoFIR()
+      repository.addFIR(fir)
+
+      const command = new ConfermaConsegnaFIRCommand(
+        fir.id,
+        120,
+        'user-dest-789',
+        'Destinatario Bianchi'
+      )
+      await useCase.execute(command)
+
+      const reloaded = await repository.findById(fir.id)
+      const firma = reloaded!.firme.destinatario!
+
+      const isValid = await signatureService.verify(
+        firma.documentHash!,
+        firma.certificato,
+        firma.publicKey!
+      )
+      expect(isValid).toBe(true)
+    })
+
+    it(
+      'fail-closed: se il provider di firma non è configurato la transizione ' +
+        'NON avviene e il FIR resta IN_TRANSITO',
+      async () => {
+        const fir = createInTransitoFIR()
+        repository.addFIR(fir)
+
+        const unconfiguredSignatureService = new DigitalSignatureService(buildMockLogger())
+        useCase = new ConfermaConsegnaFIRUseCase(
+          repository,
+          cryptoRepository,
+          unconfiguredSignatureService
+        )
+
+        const originalEnv = process.env.NODE_ENV
+        process.env.NODE_ENV = 'production'
+        try {
+          const command = new ConfermaConsegnaFIRCommand(
+            fir.id,
+            120,
+            'user-dest-789',
+            'Destinatario Bianchi'
+          )
+          const result = await useCase.execute(command)
+
+          expect(result.isFailure).toBe(true)
+          expect(result.error).toContain('Firma destinatario non riuscita')
+
+          const stillInTransito = await repository.findById(fir.id)
+          expect(stillInTransito?.stato).toBe(FIRStato.IN_TRANSITO)
+          expect(stillInTransito?.dataConsegna).toBeNull()
+          expect(stillInTransito?.pesoEffettivo).toBeNull()
+          expect(stillInTransito?.firme.destinatario).toBeUndefined()
+        } finally {
+          process.env.NODE_ENV = originalEnv
+        }
+      }
+    )
   })
 })

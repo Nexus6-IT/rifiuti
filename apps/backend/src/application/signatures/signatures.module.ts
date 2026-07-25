@@ -116,6 +116,17 @@ import { Rfc3161TsaProvider } from './providers/rfc3161-tsa.provider'
     // ===== Audit trail firma (eventi dominio → ActivityLog) =====
     SignatureAuditHandler,
   ],
-  exports: [DigitalSignatureService, ApplySignatureUseCase, VerifySignaturesUseCase],
+  // FIR_REPOSITORY esportato perché il ciclo di vita (FIRModule) collega le
+  // proprie transizioni (emetti/presaInCarico/confermaConsegna) al sottosistema
+  // crittografico: legge la stessa riga fisica FIR tramite l'aggregate
+  // crittografico per ottenere toSignableDocument() da firmare (Task 4,
+  // pipeline P3). I due aggregate restano separati — si collegano, non si
+  // fondono — ma condividono repository/servizio di firma.
+  exports: [
+    DigitalSignatureService,
+    ApplySignatureUseCase,
+    VerifySignaturesUseCase,
+    FIR_REPOSITORY,
+  ],
 })
 export class SignaturesModule {}

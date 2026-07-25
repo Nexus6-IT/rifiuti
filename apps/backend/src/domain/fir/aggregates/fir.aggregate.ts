@@ -92,6 +92,22 @@ export interface FirmaDigitale {
    * deve valorizzare la FK obbligatoria `fir_signatures.user_id`.
    */
   userId?: string
+  /**
+   * Campi del sottosistema crittografico (Task 4, pipeline P3): la firma del
+   * ciclo di vita non è più una costante ('FIRMA-NON-QUALIFICATA') ma una
+   * firma ECDSA reale prodotta da DigitalSignatureService sul documento
+   * canonico del FIR (fir.aggregate.ts, toSignableDocument()). Opzionali per
+   * retrocompatibilità con i test/fixture che costruiscono FirmaDigitale a
+   * mano senza passare dal provider di firma.
+   */
+  documentHash?: string
+  certificateHash?: string
+  publicKey?: string
+  timestampToken?: string
+  /** Algoritmo crittografico effettivo (es. 'ECDSA-SHA256'), non il metodo legacy. */
+  signatureMethod?: string
+  /** false = sandbox/non qualificata (default finché non c'è un contratto QTSP). */
+  isQualified?: boolean
 }
 
 export interface FirmeDigitali {

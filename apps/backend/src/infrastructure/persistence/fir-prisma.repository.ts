@@ -212,12 +212,15 @@ export class FIRPrismaRepository implements IFIRRepository {
    * ricrea/sovrascrive — una firma, una volta apposta, è un fatto storico
    * immutabile.
    *
-   * NON sono firme digitali qualificate a norma: solo un'attestazione
-   * applicativa (firmatario + certificato inseriti dall'operatore). I campi
-   * `signatureValue`/`certificateHash`/`documentHash` dello schema — pensati
-   * per il sottosistema crittografico separato — vengono valorizzati con hash
-   * SHA-256 dei dati disponibili, solo per soddisfare i vincoli NOT NULL dello
-   * schema condiviso, senza alcuna pretesa di validità crittografica.
+   * NON sono firme digitali QUALIFICATE a norma (nessun contratto QTSP): ma
+   * dal Task 4 (pipeline P3) i campi `signatureValue`/`certificateHash`/
+   * `documentHash`/`publicKey` sono valorizzati con l'esito REALE del
+   * sottosistema crittografico (DigitalSignatureService, invocato dagli
+   * use-case emetti/presaInCarico/confermaConsegna PRIMA della transizione,
+   * fail-closed) — non più segnaposto SHA-256 su dati arbitrari. Il fallback
+   * sotto (hash calcolato qui) resta solo per retrocompatibilità con
+   * FirmaDigitale costruite a mano (es. fixture di test) che non passano dal
+   * provider di firma.
    */
   private async persistSignatures(fir: FIR): Promise<void> {
     const candidati: Array<{ role: string; firma?: FirmaDigitale }> = [
@@ -245,11 +248,22 @@ export class FIRPrismaRepository implements IFIRRepository {
       const existing = await this.prisma.fIRSignature.findFirst({ where: { firId: fir.id, role } })
       if (existing) continue
 
+      // Firma crittografica reale (Task 4): gli use-case lifecycle valorizzano
+      // sempre questi campi prima di arrivare qui. Il ramo di fallback serve
+      // solo a fixture/test che costruiscono FirmaDigitale senza provider.
       const signatureValue = firma.certificato
-      const documentHash = createHash('sha256')
-        .update(`${fir.id}|${role}|${firma.timestamp.toISOString()}`)
-        .digest('hex')
-      const certificateHash = createHash('sha256').update(signatureValue).digest('hex')
+      const documentHash =
+        firma.documentHash ??
+        createHash('sha256')
+          .update(`${fir.id}|${role}|${firma.timestamp.toISOString()}`)
+          .digest('hex')
+      const certificateHash =
+        firma.certificateHash ?? createHash('sha256').update(signatureValue).digest('hex')
+      // Il metodo dichiarato riflette ora l'algoritmo crittografico reale
+      // (es. 'ECDSA-SHA256') quando disponibile; la qualificazione legale
+      // (sandbox vs QES) resta tracciata separatamente e NON in questo campo.
+      const signatureMethod =
+        firma.signatureMethod ?? FIRPrismaRepository.LIFECYCLE_SIGNATURE_METHOD
 
       await this.prisma.fIRSignature.create({
         data: {
@@ -257,11 +271,13 @@ export class FIRPrismaRepository implements IFIRRepository {
           userId: firma.userId,
           role,
           signedAt: firma.timestamp,
-          signatureMethod: FIRPrismaRepository.LIFECYCLE_SIGNATURE_METHOD,
+          signatureMethod,
           signatureValue,
           certificateHash,
           documentHash,
           signerName: firma.firmatario,
+          publicKey: firma.publicKey,
+          timestampToken: firma.timestampToken,
         },
       })
     }
@@ -439,6 +455,11 @@ export class FIRPrismaRepository implements IFIRRepository {
         timestamp: sig.signedAt,
         certificato: sig.signatureValue,
         userId: sig.userId,
+        documentHash: sig.documentHash,
+        certificateHash: sig.certificateHash,
+        publicKey: sig.publicKey ?? undefined,
+        timestampToken: sig.timestampToken ?? undefined,
+        signatureMethod: sig.signatureMethod,
       }
 
       switch (sig.role) {

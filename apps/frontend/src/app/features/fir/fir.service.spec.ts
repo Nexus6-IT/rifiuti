@@ -1,9 +1,7 @@
 import { TestBed } from '@angular/core/testing'
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing'
-import { signal } from '@angular/core'
 import { FirService, CreateFIRDto } from './fir.service'
 import { FIR, FIRStato, PaginatedFIRResponse } from '../../shared/models/fir.model'
-import { AuthService, User } from '../../core/services/auth.service'
 import { environment } from '../../../environments/environment'
 
 // Il service risolve le rotte su `${environment.apiUrl}/fir` (es. /api/v1/fir),
@@ -14,17 +12,6 @@ const FIR_API_URL = `${environment.apiUrl}/fir`
 describe('FirService', () => {
   let service: FirService
   let httpMock: HttpTestingController
-
-  const mockUser: User = {
-    id: 'user-1',
-    email: 'operatore@example.com',
-    firstName: 'Mario',
-    lastName: 'Rossi',
-  }
-
-  const authStub = {
-    currentUser: signal<User | null>(mockUser),
-  }
 
   const mockFIR: FIR = {
     id: 'fir-1',
@@ -45,7 +32,7 @@ describe('FirService', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule],
-      providers: [FirService, { provide: AuthService, useValue: authStub }],
+      providers: [FirService],
     })
 
     service = TestBed.inject(FirService)
@@ -154,7 +141,7 @@ describe('FirService', () => {
   })
 
   describe('emettiFIR', () => {
-    it('should emit FIR with firmaProduttore', done => {
+    it('non costruisce alcuna firma: chiede solo al backend di emettere e firmare', done => {
       const emessoFIR = { ...mockFIR, stato: FIRStato.EMESSO }
 
       service.emettiFIR('fir-1').subscribe({
@@ -166,16 +153,15 @@ describe('FirService', () => {
 
       const req = httpMock.expectOne(`${FIR_API_URL}/fir-1/emetti`)
       expect(req.request.method).toBe('POST')
-      expect(req.request.body.firmaProduttore).toEqual({
-        firmatario: 'Mario Rossi',
-        certificato: 'FIRMA-NON-QUALIFICATA',
-      })
+      // Il frontend non deve costruire firme: il body non porta alcuna firma,
+      // la produce e la persiste il backend (sottosistema crittografico).
+      expect(req.request.body).toEqual({})
       req.flush(emessoFIR)
     })
   })
 
   describe('presaInCarico', () => {
-    it('should take FIR in charge with firmaTrasportatore', done => {
+    it('non costruisce alcuna firma: chiede solo al backend di prendere in carico e firmare', done => {
       const inTransitoFIR = {
         ...mockFIR,
         stato: FIRStato.IN_TRANSITO,
@@ -192,13 +178,13 @@ describe('FirService', () => {
 
       const req = httpMock.expectOne(`${FIR_API_URL}/fir-1/presa-in-carico`)
       expect(req.request.method).toBe('POST')
-      expect(req.request.body.firmaTrasportatore.certificato).toBe('FIRMA-NON-QUALIFICATA')
+      expect(req.request.body).toEqual({})
       req.flush(inTransitoFIR)
     })
   })
 
   describe('confermaConsegna', () => {
-    it('should confirm delivery on /conferma-consegna with peso and firmaDestinatario', done => {
+    it('invia solo il peso effettivo: la firma del destinatario la produce il backend', done => {
       const consegnatoFIR = {
         ...mockFIR,
         stato: FIRStato.CONSEGNATO,
@@ -216,8 +202,7 @@ describe('FirService', () => {
 
       const req = httpMock.expectOne(`${FIR_API_URL}/fir-1/conferma-consegna`)
       expect(req.request.method).toBe('POST')
-      expect(req.request.body.pesoEffettivo).toBe(95)
-      expect(req.request.body.firmaDestinatario.certificato).toBe('FIRMA-NON-QUALIFICATA')
+      expect(req.request.body).toEqual({ pesoEffettivo: 95 })
       req.flush(consegnatoFIR)
     })
   })
