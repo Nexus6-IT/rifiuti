@@ -194,11 +194,46 @@ export class SignatureFIRRepository implements FIRRepository {
         id: record.id,
         firNumber: record.firNumber ?? '',
         tenantId: record.tenantId,
+
         producerPartitaIva: record.producerPartitaIva,
+        producerName: record.producerName ?? null,
+        producerAddress: record.producerAddress ?? null,
+        producerContact: record.producerContact ?? null,
+
+        carrierPartitaIva: record.carrierPartitaIva ?? null,
+        carrierName: record.carrierName ?? null,
+        carrierVehiclePlate: record.carrierVehiclePlate ?? null,
+        carrierContact: record.carrierContact ?? null,
+
+        receiverPartitaIva: record.receiverPartitaIva ?? null,
+        receiverName: record.receiverName ?? null,
+        receiverAddress: record.receiverAddress ?? null,
+        receiverContact: record.receiverContact ?? null,
+
         cerCode: record.cerCode,
+        wasteDescription: record.wasteDescription ?? null,
+        wasteCategory: record.wasteCategory ?? null,
         quantity:
           typeof record.quantity === 'object' ? record.quantity.toNumber() : record.quantity,
         unit: record.unit ?? 'KG',
+        wasteOperationType: record.wasteOperationType ?? null,
+        wastePhysicalState: record.wastePhysicalState ?? null,
+        wasteHazardClasses: record.wasteHazardClasses ?? null,
+        wastePackageCount: record.wastePackageCount ?? null,
+        wasteOperationCode: record.wasteOperationCode ?? null,
+        wasteNotes: record.wasteNotes ?? null,
+
+        transportDate: record.transportDate ?? null,
+        estimatedArrivalDate: record.estimatedArrivalDate ?? null,
+        transportNotes: record.transportNotes ?? null,
+
+        // Non persistito (nessuna colonna dedicata finché esiste una sola
+        // versione dello schema): tutti i FIR ricostituiti da DB usano la
+        // versione corrente. Se in futuro il documento canonico cambia forma,
+        // occorrerà una colonna `document_schema_version` per far sì che i
+        // FIR creati sotto lo schema precedente continuino a rigenerare quella
+        // stessa forma (vedi commento su FIR.toSignableDocument).
+        schemaVersion: FIR.CURRENT_SCHEMA_VERSION,
       },
       domainSignatures
     )
