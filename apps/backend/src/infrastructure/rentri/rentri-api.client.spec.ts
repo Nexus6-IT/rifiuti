@@ -629,4 +629,116 @@ describe('RENTRIApiClient', () => {
       ;(await expect(client.getFIRStatus(firId)).rejects.toThrow('FIR non trovato')) as any
     })
   })
+
+  /**
+   * Metodi allineati al contratto ufficiale RENTRI (docs/contracts/rentri/formulari.yaml).
+   * A differenza di submitFIR/validateFIR/getFIRStatus (legacy, solo modalità mock),
+   * questi operano SEMPRE in modalità `live` (Bearer + firma di integrità).
+   */
+  describe('creaFormulario', () => {
+    beforeEach(() => {
+      mockConfig.mode = 'live'
+      mockConfig.baseUrl = 'https://demoapi.rentri.gov.it'
+    })
+
+    it('invia POST sulla radice del servizio (non /formulari) e legge transazione_id e Location da una risposta 202', async () => {
+      const mockResponse: AxiosResponse = {
+        data: { transazione_id: '9f8b3c1a-1234-4abc-8def-0123456789ab' },
+        status: 202,
+        statusText: 'Accepted',
+        headers: {
+          location: '/formulari/v1.0/9f8b3c1a-1234-4abc-8def-0123456789ab/status',
+        },
+        config: {} as any,
+      }
+      mockHttpService.post.mockReturnValue(of(mockResponse))
+
+      const dati = { numero_fir: null }
+      const risultato = await client.creaFormulario('tenant-1', dati)
+
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/',
+        dati,
+        (expect as any).objectContaining({
+          headers: (expect as any).objectContaining({
+            Authorization: 'Bearer test-token',
+          }),
+        })
+      )
+      // Mai /formulari né /trasmissione: la creazione è sulla radice del servizio.
+      expect(mockHttpService.post).not.toHaveBeenCalledWith(
+        (expect as any).stringContaining('/formulari/v1.0/formulari'),
+        (expect as any).anything(),
+        (expect as any).anything()
+      )
+      expect(mockHttpService.post).not.toHaveBeenCalledWith(
+        (expect as any).stringContaining('/trasmissione'),
+        (expect as any).anything(),
+        (expect as any).anything()
+      )
+
+      expect(risultato.transazioneId).toBe('9f8b3c1a-1234-4abc-8def-0123456789ab')
+      expect(risultato.urlStato).toBe('/formulari/v1.0/9f8b3c1a-1234-4abc-8def-0123456789ab/status')
+      expect(mockAuth.creaAuthorizationHeader).toHaveBeenCalledWith('tenant-1')
+    })
+  })
+
+  describe('leggiFormulario', () => {
+    beforeEach(() => {
+      mockConfig.mode = 'live'
+      mockConfig.baseUrl = 'https://demoapi.rentri.gov.it'
+    })
+
+    it('invia GET su /{numero_fir} e restituisce il DettaglioFormulario', async () => {
+      const mockResponse: AxiosResponse = {
+        data: {
+          stato_formulario: 'InserimentoQuantita',
+          versione: 1,
+          data_creazione: '2026-07-25T10:00:00Z',
+        },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
+      }
+      mockHttpService.get.mockReturnValue(of(mockResponse))
+
+      const risultato = await client.leggiFormulario('tenant-1', 'BCDFGH00001JK')
+
+      expect(mockHttpService.get).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK',
+        (expect as any).objectContaining({
+          headers: (expect as any).objectContaining({
+            Authorization: 'Bearer test-token',
+          }),
+        })
+      )
+      expect(risultato.stato_formulario).toBe('InserimentoQuantita')
+      expect(mockAuth.creaAuthorizationHeader).toHaveBeenCalledWith('tenant-1')
+    })
+  })
+
+  describe('metodi legacy non disponibili in modalità live', () => {
+    beforeEach(() => {
+      mockConfig.mode = 'live'
+    })
+
+    it('submitFIR lancia in modalità live (nessun endpoint sincrono nel contratto)', async () => {
+      await expect(client.submitFIR({} as any)).rejects.toThrow(
+        /non è disponibile in modalità live/
+      )
+    })
+
+    it('validateFIR lancia in modalità live', async () => {
+      await expect(client.validateFIR({} as any)).rejects.toThrow(
+        /non è disponibile in modalità live/
+      )
+    })
+
+    it('getFIRStatus lancia in modalità live', async () => {
+      await expect(client.getFIRStatus('fir-1')).rejects.toThrow(
+        /non è disponibile in modalità live/
+      )
+    })
+  })
 })

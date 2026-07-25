@@ -21,37 +21,33 @@ import { RentriSignatureService } from './rentri-signature.service'
  * Formato dati: xFIR secondo le specifiche tecniche D.M. 59/2023 (Decreto
  * Ministeriale, allegato tecnico RENTRI). Il corpo della richiesta segue la
  * struttura xFIR: `produttore`, `trasportatore`, `destinatario`, `rifiuto`,
- * `trasporto`, `firmeDigitali`.
+ * `trasporto`, `firmeDigitali`. Questo formato "flat" resta usato SOLO dai
+ * metodi legacy in modalità `mock` (verso `tools/rentri-mock`); i metodi
+ * allineati al contratto ufficiale (`creaFormulario`, `leggiFormulario`)
+ * parlano invece i modelli del contratto (`NuovoFormularioModel`,
+ * `DettaglioFormulario`).
  *
- * Servizio API RENTRI confermato: `vidimazione-formulari` v1.0.
- * Documentazione ufficiale: https://demoapi.rentri.gov.it/docs?api=vidimazione-formulari&v=v1.0
- *                           https://api.rentri.gov.it/docs
+ * Servizio API RENTRI confermato dal contratto ufficiale
+ * (`docs/contracts/rentri/formulari.yaml`, `servers[0].url`): `formulari`
+ * v1.0, base `https://demoapi.rentri.gov.it/formulari/v1.0` (demo) /
+ * `https://api.rentri.gov.it/formulari/v1.0` (prod). La creazione di un FIR
+ * è `POST /` (radice del servizio, non `/formulari`): risposta 202 con
+ * `TransazioneModel.transazione_id` e header `Location` verso lo stato della
+ * transazione — v. `creaFormulario`. Il polling della transazione è task
+ * successivo.
  *
- * ATTIVARE: caricare certificato + completare iscrizione RENTRI (area operatori)
- * e verificare i path OpenAPI di seguito su Swagger ufficiale prima del go-live.
- *
- * I path del servizio sono isolati nelle costanti FORMULARI_* per facilitare
- * la correzione una volta confermati sull'OpenAPI ufficiale RENTRI.
+ * ATTIVARE: caricare certificato + completare iscrizione RENTRI (area operatori).
  */
 @Injectable()
 export class RENTRIApiClient {
   private readonly timeout = 30000 // 30s
 
-  // =========================================================================
-  // Path del servizio `vidimazione-formulari` v1.0 — DA CONFERMARE sull'OpenAPI
-  // ufficiale disponibile su https://demoapi.rentri.gov.it (Swagger UI).
-  //
-  // Fonte: documentazione RENTRI, incontri tecnici SH (2025-10-22).
-  //   POST  <base>/vidimazione-formulari/v1.0/formulari          → vidima/crea FIR
-  //   GET   <base>/vidimazione-formulari/v1.0/formulari/{id}     → stato FIR
-  //   PUT   <base>/vidimazione-formulari/v1.0/formulari/{id}     → modifica FIR
-  //   POST  <base>/vidimazione-formulari/v1.0/formulari/{id}/annulla-fir → annulla
-  // =========================================================================
-  private static readonly FORMULARI_BASE = '/vidimazione-formulari/v1.0' // DA CONFERMARE
-  private static readonly PATH_SUBMIT = `${RENTRIApiClient.FORMULARI_BASE}/formulari` // DA CONFERMARE
-  private static readonly PATH_VALIDATE = `${RENTRIApiClient.FORMULARI_BASE}/formulari/validazione` // DA CONFERMARE (potrebbe non esistere)
-  private static readonly PATH_STATUS = (id: string) =>
-    `${RENTRIApiClient.FORMULARI_BASE}/formulari/${id}` // DA CONFERMARE
+  /**
+   * Path base del servizio `formulari` v1.0, confermato da
+   * `docs/contracts/rentri/formulari.yaml` (`servers[0].url`). Va concatenato
+   * a `config.baseUrl` (solo host, es. `https://demoapi.rentri.gov.it`).
+   */
+  private static readonly FORMULARI_PATH = '/formulari/v1.0'
 
   constructor(
     private readonly httpService: HttpService,
@@ -70,11 +66,22 @@ export class RENTRIApiClient {
 
   /**
    * Submit FIR to RENTRI
+   *
+   * Disponibile SOLO in modalità `mock` (verso `tools/rentri-mock`, endpoint
+   * REST sincrono legacy). Il contratto ufficiale RENTRI non espone alcuna
+   * sottomissione sincrona: la creazione reale di un FIR è asincrona
+   * (`POST /` → 202 + polling) — v. {@link creaFormulario}.
    */
   async submitFIR(fir: any): Promise<RENTRISubmitResponse> {
+    if (this.isLive) {
+      throw new Error(
+        'submitFIR non è disponibile in modalità live: il contratto ufficiale RENTRI (formulari.yaml) non espone un endpoint di sottomissione sincrona. Usare creaFormulario (POST asincrono, 202 + transazione_id) seguito dal polling dello stato della transazione.'
+      )
+    }
+
     const startTime = Date.now()
     const xFIR = this.convertToXFIRFormat(fir)
-    const path = this.isLive ? RENTRIApiClient.PATH_SUBMIT : '/api/v1/fir/submit'
+    const path = '/api/v1/fir/submit'
 
     try {
       this.logger.info('Submitting FIR to RENTRI', {
@@ -171,10 +178,22 @@ export class RENTRIApiClient {
 
   /**
    * Validate FIR before submission
+   *
+   * Disponibile SOLO in modalità `mock`. Il contratto ufficiale non espone
+   * un endpoint di validazione sincrona dedicato a questo flusso (esiste
+   * `/xfir/valida`, ma per un caso d'uso diverso — validazione di un xFIR
+   * cartaceo caricato). Gli errori di un FIR digitale emergono dall'esito
+   * della transazione creata con {@link creaFormulario}.
    */
   async validateFIR(fir: any): Promise<RENTRIValidationResponse> {
+    if (this.isLive) {
+      throw new Error(
+        "validateFIR non è disponibile in modalità live: il contratto ufficiale non espone un endpoint di validazione sincrona per questo flusso. Usare creaFormulario e leggere gli errori dall'esito della transazione."
+      )
+    }
+
     const xFIR = this.convertToXFIRFormat(fir)
-    const path = this.isLive ? RENTRIApiClient.PATH_VALIDATE : '/api/v1/fir/validate'
+    const path = '/api/v1/fir/validate'
 
     try {
       const response = await this.post(path, xFIR, '/fir/validate')
@@ -192,9 +211,19 @@ export class RENTRIApiClient {
 
   /**
    * Get FIR status from RENTRI
+   *
+   * Disponibile SOLO in modalità `mock`. Per il dettaglio reale di un FIR
+   * secondo il contratto ufficiale usare {@link leggiFormulario}
+   * (`GET /{numero_fir}`).
    */
   async getFIRStatus(firId: string): Promise<RENTRIFIRStatus> {
-    const path = this.isLive ? RENTRIApiClient.PATH_STATUS(firId) : `/api/v1/fir/${firId}`
+    if (this.isLive) {
+      throw new Error(
+        'getFIRStatus non è disponibile in modalità live: usare leggiFormulario(tenantId, numeroFir) per il dettaglio del FIR secondo il contratto ufficiale (GET /{numero_fir}).'
+      )
+    }
+
+    const path = `/api/v1/fir/${firId}`
 
     try {
       const response = await this.get(path)
@@ -208,10 +237,51 @@ export class RENTRIApiClient {
   }
 
   /**
+   * Crea un nuovo FIR (`POST /` — radice del servizio `formulari`,
+   * formulari.yaml righe 187-265, NON `/formulari`).
+   *
+   * L'operazione è asincrona: la risposta è sempre 202 con corpo
+   * `TransazioneModel` (`{ transazione_id: <uuid> }`) e un header `Location`
+   * che punta a `/{transazione_id}/status`. Il polling dello stato della
+   * transazione è task successivo: questo metodo si limita a restituire
+   * l'identificativo e l'URL di stato così come li legge dalla risposta,
+   * senza attendere l'esito dell'elaborazione.
+   */
+  async creaFormulario(
+    tenantId: string,
+    dati: NuovoFormularioPayload
+  ): Promise<{ transazioneId: string; urlStato: string }> {
+    const response = await this.post(
+      `${RENTRIApiClient.FORMULARI_PATH}/`,
+      dati,
+      '/formulari (crea)',
+      tenantId
+    )
+
+    const transazioneId = response.data?.transazione_id
+    const urlStato = (response.headers?.location ?? response.headers?.Location) as string
+
+    return { transazioneId, urlStato }
+  }
+
+  /**
+   * Legge il dettaglio di un FIR (`GET /{numero_fir}` — formulari.yaml righe
+   * 283-334). Risposta 200 con corpo `DettaglioFormulario`.
+   */
+  async leggiFormulario(tenantId: string, numeroFir: string): Promise<FormularioModel> {
+    const response = await this.get(`${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}`, tenantId)
+    return response.data
+  }
+
+  /**
    * POST con autenticazione adeguata alla modalità (mock: X-API-Key;
    * live: Bearer + firma di integrità Agid-JWT-Signature sul body).
+   *
+   * `tenantId`, se indicato, individua l'operatore per cui firmare il JWT
+   * self-issued; in assenza si ricade sul tenant del contesto corrente
+   * ({@link tenantIdCorrente}).
    */
-  private async post(path: string, body: unknown, metricEndpoint: string) {
+  private async post(path: string, body: unknown, metricEndpoint: string, tenantId?: string) {
     const url = `${this.config.baseUrl}${path}`
     const rawBody = JSON.stringify(body)
 
@@ -220,7 +290,9 @@ export class RENTRIApiClient {
     }
 
     if (this.isLive) {
-      const authorization = await this.auth.creaAuthorizationHeader(this.tenantIdCorrente())
+      const authorization = await this.auth.creaAuthorizationHeader(
+        tenantId ?? this.tenantIdCorrente()
+      )
       const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody)
       headers = {
         ...headers,
@@ -241,13 +313,15 @@ export class RENTRIApiClient {
     }
   }
 
-  /** GET con Bearer (live) o X-API-Key (mock). */
-  private async get(path: string) {
+  /** GET con Bearer (live) o X-API-Key (mock). V. {@link post} per `tenantId`. */
+  private async get(path: string, tenantId?: string) {
     const url = `${this.config.baseUrl}${path}`
     const headers: Record<string, string> = {}
 
     if (this.isLive) {
-      headers.Authorization = await this.auth.creaAuthorizationHeader(this.tenantIdCorrente())
+      headers.Authorization = await this.auth.creaAuthorizationHeader(
+        tenantId ?? this.tenantIdCorrente()
+      )
     } else {
       headers['X-API-Key'] = this.config.mockApiKey
     }
@@ -407,8 +481,10 @@ export class RENTRIApiClient {
 }
 
 /**
- * Payload xFIR nel formato del servizio `vidimazione-formulari` RENTRI.
- * DA CONFERMARE la struttura esatta sull'OpenAPI ufficiale prima del go-live.
+ * Payload xFIR "flat" usato SOLO dal flusso legacy `mock` (`submitFIR`,
+ * `validateFIR` verso `tools/rentri-mock`). Non è un modello del contratto
+ * ufficiale RENTRI: la creazione reale di un FIR usa `NuovoFormularioPayload`
+ * (contratto) tramite {@link RENTRIApiClient.creaFormulario}.
  */
 export interface XFIRPayload {
   firId: string
@@ -453,6 +529,42 @@ export interface XFIRPayload {
     note?: string
   }
   firmeDigitali: any[]
+}
+
+/**
+ * Corpo della richiesta `POST /` (`NuovoFormularioModel`, contratto
+ * ufficiale, formulari.yaml righe 9907+). La mappatura completa dei campi
+ * xFIR → `NuovoFormularioModel` non è oggetto di questo task (allineamento
+ * dei path/verbi): il payload viaggia così com'è passato dal chiamante.
+ */
+export type NuovoFormularioPayload = Record<string, unknown>
+
+/**
+ * Corpo della risposta 200 di `GET /{numero_fir}` (`DettaglioFormulario`,
+ * contratto ufficiale, formulari.yaml righe 9032-9139). I campi di primo
+ * livello sono elencati per nome dal contratto; gli oggetti/array annidati
+ * (dati di partenza, trasporto, accettazione, ecc.) non sono modellati in
+ * dettaglio qui — non serve a questo task, che riguarda solo l'allineamento
+ * del path/verbo di lettura.
+ */
+export interface FormularioModel {
+  stato_formulario?: string
+  versione?: number | null
+  data_creazione?: string | null
+  provenienza_upload?: boolean | null
+  trasformato_in_cartaceo?: boolean | null
+  num_iscr_sito?: string | null
+  dati_vidimazione?: unknown
+  dati_partenza?: unknown
+  dati_trasporto?: unknown[] | null
+  dati_accettazione?: unknown
+  dati_annotazioni?: unknown[] | null
+  dati_allegati?: unknown[] | null
+  dati_annullamento?: unknown
+  dati_trasbordo_totale?: unknown
+  dati_trasbordi_parziali?: unknown[] | null
+  dati_soste_tecniche?: unknown[] | null
+  dati_destinazioni_successive?: unknown[] | null
 }
 
 /**
