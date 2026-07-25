@@ -29,17 +29,64 @@ describe('Canale di controllo', () => {
 
     const primaChiamata = await app.inject({
       method: 'GET',
-      url: '/formulari/v1.0/',
+      url: '/formulari/v1.0/?num_iscr_sito=UL0001',
       headers: intestazioni,
     })
     expect(primaChiamata.statusCode).toBe(503)
 
     const secondaChiamata = await app.inject({
       method: 'GET',
-      url: '/formulari/v1.0/',
+      url: '/formulari/v1.0/?num_iscr_sito=UL0001',
       headers: intestazioni,
     })
     expect(secondaChiamata.statusCode).toBe(200)
+
+    await app.close()
+  })
+
+  // Punto 8 della correzione: 429/423 devono essere pilotabili dal canale
+  // di controllo, e il 429 deve portare l'header Retry-After dichiarato dal
+  // contratto (formulari.yaml righe 176-180 e analoghi).
+  it('pilota un 429 con header Retry-After', async () => {
+    const app = creaApp()
+    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
+
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/guasto',
+      payload: { stato: 429, volte: 1 },
+    })
+
+    const risposta = await app.inject({
+      method: 'GET',
+      url: '/formulari/v1.0/?num_iscr_sito=UL0001',
+      headers: intestazioni,
+    })
+
+    expect(risposta.statusCode).toBe(429)
+    expect(risposta.headers['retry-after']).toBeDefined()
+    expect(risposta.headers['content-type']).toContain('application/problem+json')
+
+    await app.close()
+  })
+
+  it('pilota un 423 (ban del chiamante)', async () => {
+    const app = creaApp()
+    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
+
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/guasto',
+      payload: { stato: 423, volte: 1 },
+    })
+
+    const risposta = await app.inject({
+      method: 'GET',
+      url: '/formulari/v1.0/?num_iscr_sito=UL0001',
+      headers: intestazioni,
+    })
+
+    expect(risposta.statusCode).toBe(423)
 
     await app.close()
   })
@@ -50,7 +97,7 @@ describe('Canale di controllo', () => {
 
     const creazione = await app.inject({
       method: 'POST',
-      url: '/formulari/v1.0/FIR-0009/trasmissione',
+      url: '/formulari/v1.0/',
       headers: intestazioni,
       payload: {},
     })
@@ -59,7 +106,7 @@ describe('Canale di controllo', () => {
     await app.inject({
       method: 'POST',
       url: '/__controllo/completa-transazione',
-      payload: { transazione_id: id, risultato: { esito: 'accettato' } },
+      payload: { transazione_id: id, errore: false, validazione: [], esito: { accettato: true } },
     })
 
     const risultato = await app.inject({
@@ -69,7 +116,25 @@ describe('Canale di controllo', () => {
     })
 
     expect(risultato.statusCode).toBe(200)
-    expect(risultato.json().risultato).toEqual({ esito: 'accettato' })
+    expect(risultato.json().esito).toEqual({ accettato: true })
+    expect(risultato.json().errore).toBe(false)
+
+    await app.close()
+  })
+
+  // Punto 7 della correzione: l'archivio deve poter essere popolato, non
+  // deve restare vuoto per sempre.
+  it('popola un formulario tramite il canale di controllo', async () => {
+    const app = creaApp()
+
+    const risposta = await app.inject({
+      method: 'POST',
+      url: '/__controllo/formulario',
+      payload: { numero_fir: 'TSTB12345XY', stato: 'Emesso', produttore: 'ACME SRL' },
+    })
+
+    expect(risposta.statusCode).toBe(200)
+    expect(risposta.json()).toEqual({ salvato: true })
 
     await app.close()
   })

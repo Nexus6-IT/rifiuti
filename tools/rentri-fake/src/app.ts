@@ -4,6 +4,7 @@ import { registraRotteFormulari } from './routes/formulari'
 import { registraRotteTransazioni } from './routes/transazioni'
 import { registraRotteControllo } from './routes/controllo'
 import { Archivio } from './stato/archivio'
+import { inviaProblemDetails } from './errori/problem-details'
 
 // Module augmentation: dichiara la decorazione `archivio` sull'istanza
 // Fastify, così `app.decorate('archivio', ...)` e un futuro `app.archivio`
@@ -38,9 +39,17 @@ export function creaApp(): FastifyInstance {
 
     const guasto = archivio.guastoAttivo()
     if (guasto) {
-      await risposta.status(guasto.stato).send({
-        titolo: 'Guasto simulato',
-        dettaglio: `Guasto iniettato dal canale di controllo (stato ${guasto.stato}).`,
+      // Punto 8 della correzione: il 429 dichiarato dal contratto porta
+      // sempre l'header Retry-After (formulari.yaml righe 176-180 e
+      // analoghi), pilotabile qui perché il canale di controllo consente di
+      // iniettare qualunque codice di stato, incluso 429/423/403.
+      if (guasto.stato === 429) {
+        risposta.header('Retry-After', '5')
+      }
+
+      await inviaProblemDetails(risposta, guasto.stato, {
+        title: 'Guasto simulato',
+        detail: `Guasto iniettato dal canale di controllo (stato ${guasto.stato}).`,
       })
     }
   })
