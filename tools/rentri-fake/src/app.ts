@@ -28,9 +28,11 @@ export function creaApp(): FastifyInstance {
 
   // Aggancio globale: applica il guasto impostato dal canale di controllo a
   // tutte le richieste, tranne quelle dirette al canale stesso (altrimenti un
-  // guasto attivo renderebbe impossibile disattivarlo).
+  // guasto attivo renderebbe impossibile disattivarlo) e quelle all'endpoint
+  // di salute (quest'ultimo è usato dall'healthcheck del container e non deve
+  // riportare lo stato simulato del guasto).
   app.addHook('onRequest', async (richiesta, risposta) => {
-    if (richiesta.url.startsWith('/__controllo')) {
+    if (richiesta.url.startsWith('/__controllo') || richiesta.url === '/__salute') {
       return
     }
 

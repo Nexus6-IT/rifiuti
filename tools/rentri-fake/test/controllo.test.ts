@@ -73,4 +73,20 @@ describe('Canale di controllo', () => {
 
     await app.close()
   })
+
+  it("un guasto attivo non deve compromettere /__salute (ci dipende l'healthcheck del container)", async () => {
+    const app = creaApp()
+
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/guasto',
+      payload: { stato: 503, volte: 999 },
+    })
+
+    const salute = await app.inject({ method: 'GET', url: '/__salute' })
+
+    expect(salute.statusCode).toBe(200)
+
+    await app.close()
+  })
 })
