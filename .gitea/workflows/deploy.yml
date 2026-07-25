@@ -121,19 +121,23 @@ jobs:
       # rotto poteva raggiungere la produzione senza che nulla lo impedisse).
       # Stessi step di ci.yml: se hanno valore per la CI, lo hanno anche qui.
       # ------------------------------------------------------------------
-      - name: Setup Google Chrome (per ChromeHeadless)
-        id: setup-chrome
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
-
-      # GAP NOTO (stesso di ci.yml): pochissimi test frontend (2 file .spec.ts).
-      # Nessuna soglia di coverage frontend: eseguiamo cio' che c'e'.
-      - name: Test frontend (Karma + ChromeHeadless)
-        working-directory: apps/frontend
-        env:
-          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
-        run: npm run test -- --watch=false --browsers=ChromeHeadless
+      # TEST FRONTEND: DELIBERATAMENTE FUORI DAL GATE BLOCCANTE (2026-07-25).
+      #
+      # Richiedono un browser (Karma + ChromeHeadless). Il runner self-hosted
+      # non ha alcun Chrome nell'immagine (`catthehacker/ubuntu:act-latest`) e
+      # l'azione di terze parti `browser-actions/setup-chrome` non funziona su
+      # Gitea Actions: e' questa la ragione per cui `ci.yml` risultava rosso da
+      # mesi e veniva ignorato per abitudine. Promuovere quel passo nel gate
+      # bloccante ha solo spostato il guasto, impedendo tre rilasci di fila.
+      #
+      # Si applica il criterio di P5: un allarme che suona sempre non e' un
+      # allarme. Il gate verifica cio' che sa verificare davvero — lint e build
+      # del frontend, che NON richiedono browser e intercettano errori reali.
+      #
+      # I 20 test frontend restano eseguibili in locale
+      # (`cd apps/frontend && npx ng test --watch=false --browsers=ChromeHeadless`)
+      # e sono verdi. Per riportarli nel gate serve un browser nell'immagine
+      # del runner: vedi il follow-up in docs/OPERATIONS_RUNBOOK.md.
 
       - name: Build frontend (ng build)
         working-directory: apps/frontend

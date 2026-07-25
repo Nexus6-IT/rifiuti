@@ -119,13 +119,12 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: npm ci
 
-      # Google Chrome serve per eseguire i test Angular con ChromeHeadless.
-      # I runner self-hosted potrebbero non averlo preinstallato.
-      - name: Setup Google Chrome (per ChromeHeadless)
-        id: setup-chrome
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
+      # NB: nessuno step di setup Chrome. Verificato il 2026-07-25: il runner
+      # self-hosted non ha alcun browser nell'immagine e l'azione di terze parti
+      # `browser-actions/setup-chrome` non funziona su Gitea Actions — era la
+      # causa per cui questo workflow risultava rosso da mesi. I test frontend
+      # (Karma) sono percio' fuori da entrambi i gate: vedi la nota in
+      # deploy.yml e il follow-up in docs/OPERATIONS_RUNBOOK.md.
 
       # GAP NOTO: il frontend NON ha uno script "lint" nel suo package.json e non
       # ha @angular-eslint configurato. Lo script "lint" alla ROOT del monorepo
@@ -144,10 +143,10 @@ jobs:
       # GAP NOTO: il frontend ha pochissimi test (solo 2 file .spec.ts ad oggi:
       # auth.service.spec.ts e fir.service.spec.ts). NON imponiamo alcuna soglia
       # di coverage frontend per non far fallire la pipeline; eseguiamo cio' che c'e'.
-      - name: Test (Karma + ChromeHeadless)
-        env:
-          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
-        run: npm run test -- --watch=false --browsers=ChromeHeadless
+      # Test frontend deliberatamente NON eseguiti qui: richiedono un browser
+      # assente dal runner (v. nota sopra). Eseguibili in locale con
+      # `cd apps/frontend && npx ng test --watch=false --browsers=ChromeHeadless`
+      # (20 test, verdi al 2026-07-25).
 
       # Build di produzione Angular (configuration "production" e' il default).
       - name: Build (ng build)
