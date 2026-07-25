@@ -108,3 +108,24 @@ p.permission.count().then(n => console.log('permessi:', n))
   seconda esecuzione (upsert, nessun duplicato, nessuna assegnazione persa).
 
 **Last Updated**: 2026-07-25
+
+## Follow-up: test frontend fuori dai gate CI (2026-07-25)
+
+I 20 test Angular (Karma + ChromeHeadless) **non sono eseguiti da nessun gate
+CI**. Motivo verificato: l'immagine del runner self-hosted
+(`catthehacker/ubuntu:act-latest`) non contiene alcun browser, e l'azione di
+terze parti `browser-actions/setup-chrome` non funziona su Gitea Actions. È
+questa la ragione per cui `ci.yml` risultava rosso da mesi e veniva ignorato.
+
+Sono verdi e vanno eseguiti in locale prima di un rilascio che tocchi il
+frontend:
+
+```bash
+cd apps/frontend && npx ng test --watch=false --browsers=ChromeHeadless
+```
+
+**Per riportarli nel gate** serve un browser nell'immagine del runner. Due
+strade: costruire un'immagine runner derivata con `chromium` preinstallato, o
+aggiungere al job un passo di installazione da repository della distribuzione
+(più lento a ogni esecuzione). Finché non è fatto, il gate verifica del
+frontend solo lint e build, che non richiedono browser.
