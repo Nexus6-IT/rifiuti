@@ -350,3 +350,139 @@ GET  .../TRX-000001/result  (completa)   -> 200 {"transazione_id","risultato"}  
 POST /formulari/v1.0/xfir/valida         -> 404 di rotta
 GET  /formulari/v1.0/ senza Authorization -> 401 application/json {"titolo","dettaglio"}
 ```
+
+---
+
+## 6. Secondo giro di audit
+
+**Auditor:** secondo agente indipendente (non ha implementato la fake, non ha partecipato al primo
+giro) · **Data:** 2026-07-25 · **Oggetto:** verificare se il verdetto **NON IDONEA** di §5 può
+essere ribaltato dopo il giro correttivo (commit `16c940c`…`3cd0d75`).
+
+Criterio invariato: non «la fake funziona», ma **«dove la fake è più permissiva del contratto»**.
+Ogni riga della tabella è stata verificata contro `formulari.yaml` e contro il comportamento reale
+del servizio (`creaApp()` + `app.inject()`, script di sonda eliminato dopo l'uso), non contro i
+test né contro i messaggi di commit.
+
+### 6.1 Esito dei 15 punti bloccanti
+
+#### §5.1 — pipeline P2 (riscrittura integrazione RENTRI)
+
+| # | Correzione richiesta | Esito | Evidenza |
+|---|---|---|---|
+| 1 | Rimuovere `POST /{numero_fir}/trasmissione`, sostituirla con `POST /` (202, `transazione_id` uuid, `Location`) | **chiuso** | `POST /formulari/v1.0/TSTB12345XY/trasmissione` → **404 di rotta**; `POST /formulari/v1.0/` → **202**, `transazione_id` uuid, `Location: /formulari/v1.0/{id}/status`. Conforme a `formulari.yaml` righe 187-265. |
+| 2 | `/status`: 200 senza corpo, **303 + `Location`** a esito pronto, nessun campo `stato` | **chiuso** | in elaborazione → `200`, corpo vuoto, nessun `Location`; dopo `__controllo/completa-transazione` → `303` + `Location: …/result`. Conforme a righe 2847-2897. |
+| 3 | `/result`: **400** `problem+json` se non elaborata; corpo con `errore` e `validazione` | **chiuso** | in corso → `400 application/problem+json`; completata → `200 {transazione_id, esito, tipo, validazione, errore, tempo_elaborazione}`. Conforme a righe 2801-2846 e a `EsitoFormularioModel`. |
+| 4 | `ProblemDetails` + `application/problem+json` su **tutti** gli errori | **parziale** | Vero per tutti gli errori di dominio. **Non** per quelli generati da Fastify: `404` di rotta → `{"message":…,"error":"Not Found","statusCode":404}`; JSON malformato → `400 {"statusCode":400,"error":"Bad Request",…}`; corpo oltre il limite → `413 {"code":"FST_ERR_CTP_BODY_TOO_LARGE"}` — tutti `application/json`. `GET/POST /token` risponde tuttora `{titolo, dettaglio}`, le chiavi italiane che il punto 4 chiedeva di abbandonare (qui è fuori contratto, ma è l'unico residuo). |
+| 5 | Applicare i vincoli: `pattern` di `numero_fir` (→400), `num_iscr_sito` **o** `identificativo_soggetto` (→400), header `Paging-*` | **parziale** | Pattern applicato (`NON-UN-FIR-VALIDO!!` → **400**, non più 404); obbligo dei due parametri applicato; header `Paging-*` emessi **ma cosmetici**: con `Paging-Page: 2`, `Paging-PageSize: 2` su 5 formulari la fake dichiara `Paging-PageCount: 3` e **restituisce tutti e 5 gli elementi**. Gli altri filtri di query dichiarati dal contratto (`numero_fir`, `stato`, date…) non sono letti: `?numero_fir=INESISTENTE` restituisce comunque l'elenco intero. |
+| 6 | Registrare `/count` e `/status` esplicitamente, non mascherati dal segmento generico | **chiuso** | entrambi → **501** `problem+json` con `title: "Non implementato nella fake"`, distinguibile da un 404 di dominio. |
+| 7 | Rendere popolabile l'archivio | **chiuso** | `POST /__controllo/formulario` popola; `GET /{numero_fir}` restituisce **200** con il formulario. Lo scenario di lettura positiva è ora verificabile. |
+| 8 | Emettere 403/429/423, allineare il codice della credenziale non valida | **chiuso (nella lettera)** | credenziale assente/non valida → **403** `problem+json` (mai più 401); 429 iniettabile **con `Retry-After`**; 423 iniettabile. Riserva: il 403 copre solo l'autenticazione — la dimensione **autorizzativa** (incarichi, visibilità per unità locale) resta inesistente, e 429/423 esistono solo se iniettati. |
+
+#### §5.2 — pipeline P3 (firma)
+
+| # | Correzione richiesta | Esito | Evidenza |
+|---|---|---|---|
+| 1 | Verificare la catena dell'`x5c` verso una CA di prova fissa, e la scadenza | **chiuso** | `src/auth/ca-test.ts` introduce una CA di prova memoizzata; `verificaCatenaCertificato` rifiuta l'autofirmato, il certificato di **altra CA** (caso distinto, corretto) e quello scaduto da 300 giorni — tutti casi che §3.4 documentava come accettati. |
+| 2 | Vincolare l'algoritmo a RS256 | **chiuso** | `jwtVerify(..., algorithms: ['RS256'])`: `alg: none` e `PS256` rifiutati per controllo, non per effetto del parsing. |
+| 3 | Claim ModI (`iss`,`aud`,`iat`,`exp`, finestra breve) e `jti` anti-replay | **chiuso** | `requiredClaims: ['sub','iss','iat','exp','jti']`, finestra massima 300 s, registro `jti` condiviso via `Archivio`. Verificato **via HTTP**: stesso token su due richieste → `200` poi `403`. |
+| 4 | Legare **`sub`/`iss`** a un elenco di soggetti accreditati | **parziale** | Solo `sub` è confrontato con `soggetti-accreditati.ts`. `iss` è **richiesto ma mai verificato**: un token con `iss: "chiunque-mai-visto"` e `sub: "operatore-test"` è accettato (`{valido:true}`). In ModI l'`iss` è l'identità del fruitore ed è la chiave su cui l'ente applica il ban 423: resta una stringa libera. |
+| 5 | Copertura xFIR nei due versi (riferimento pendente, copertura vacua) | **chiuso** | `verificaCopertura` rifiuta i `Reference` verso file assenti e i container privi di XML; entrambi i casi di §3.5 sono ora invalidi. |
+| 6 | Verificare `DigestValue` e la firma crittografica | **parziale** | Digest e `SignatureValue` sono ora verificati davvero (casi negativi riprodotti). Restano tre buchi: (a) la firma è calcolata sui **byte grezzi** della sottostringa `<ds:SignedInfo>` — limite dichiarato, ma implica che qualunque differenza di serializzazione XML rispetto a un firmatario reale produca un falso negativo, e che la fake non sia confrontabile con un validatore ETSI; (b) **nessuna ancora di fiducia per il firmatario**: un certificato autofirmato a 1024 bit generato al momento produce `{valido:true}` — è lo stesso difetto di §3.4, spostato dal livello di autenticazione a quello della firma, cioè esattamente l'oggetto di P3; (c) `CanonicalizationMethod`/`SignatureMethod`/`DigestMethod` non sono né richiesti né letti: SHA-256 è assunto, e un `SignedInfo` che non li dichiara affatto (come quello prodotto dall'aiuto di test) è accettato. |
+| 7 | Esporre `POST /xfir/valida` e `/{numero_fir}/xfir` | **chiuso** | entrambe registrate: 202 + `TransazioneModel` uuid + `Location`; 400 `problem+json` su corpo non conforme a `ValidaXfirModel`/`UploadXfirModel`; esito consultabile via `/result` con `errore`/`validazione`. Restano fuori: `GET /{numero_fir}/xfir` (Download xFIR, **404 di rotta**) e la coerenza fra `numero_fir` del path e contenuto del container, richiesta dal contratto. |
+
+**Conteggio: 11 punti chiusi su 15, 4 parziali, 0 non chiusi.** Nessuno dei 15 è risultato «solo
+dichiarato»: ogni correzione ha un riscontro comportamentale, non solo un test verde.
+
+### 6.2 Regressioni introdotte dal giro correttivo
+
+1. **La suite di prova è diventata non deterministica.** L'anti-replay ha imposto un token fresco
+   per ogni richiesta HTTP, e `tokenValido()` genera **una nuova coppia RSA a 2048 bit di
+   `node-forge` (JS puro, sincrono) ad ogni chiamata**. `jest.setTimeout(30000)` è stato aggiunto
+   a `jwt-verifier.test.ts` e `xfir.test.ts`, ma **non** a `transazioni.test.ts`,
+   `controllo.test.ts`, `formulari.test.ts`, `rotte-xfir.test.ts`, che pure creano 2-3 token per
+   test. Prima esecuzione di `npx jest --runInBand`: **3 fallimenti su 62** (`transazioni.test.ts`,
+   «Exceeded timeout of 5000 ms»); esecuzione successiva: 62/62 verdi. Un oracolo la cui suite
+   passa o fallisce secondo il carico della macchina non può essere usato come gate: il verde non
+   è prova. Correzione minima: `jest.setTimeout` uniforme e riuso di un certificato per suite,
+   variando solo il `jti`.
+2. **Il principio «la transazione non si completa da sola» (§5.3) è stato eroso.** Le rotte xFIR
+   completano la transazione **dentro la richiesta stessa**: il primo `GET …/status` risponde
+   subito `303`, e il ramo «200 senza corpo, non ancora pronto» non è mai esercitato su quel
+   percorso. La scelta è documentata nel codice e argomentata, ma il risultato è che un client che
+   **non** implementi l'attesa supera comunque le prove sull'unico percorso che P3 userà davvero.
+3. Nessuna regressione riscontrata nelle asserzioni dei test preesistenti: gli aggiornamenti per
+   l'anti-replay (`controllo`, `formulari`, `transazioni`) si limitano a rigenerare le
+   intestazioni ad ogni `inject()`; nessuna asserzione è stata rilassata, indebolita o rimossa, e
+   i casi negativi aggiunti sono genuini (certificato di altra CA distinto dall'autofirmato,
+   `SignatureValue` alterato di un solo byte senza toccare i digest).
+
+### 6.3 Nuove divergenze permissive scoperte in questo giro
+
+| # | Divergenza | Peso |
+|---|---|---|
+| N1 | **`POST /` accetta qualunque corpo.** `{}`, `{pippo:1}`, **nessun corpo**, perfino `Content-Type: text/plain` → **202**. Il contratto dichiara `requestBody: required: true` con `NuovoFormularioModel` e un **400** «modello dati non valido». Poiché inoltre la transazione non si completa da sola, **la fake non valida mai il FIR inviato**: l'intero percorso di scrittura di P2 è privo di oracolo. Il ramo 400 di validazione del modello non è raggiungibile su nessuna rotta di creazione. | **alto (P2)** |
+| N2 | **Nessuna ancora di fiducia per il firmatario xFIR** (v. §6.1 P3-6b). «xFIR valido» significa oggi «internamente coerente», non «firmato da un certificato riferibile a un firmatario riconosciuto». | **alto (P3)** |
+| N3 | **Il limite dimensionale è sbagliato in entrambi i sensi.** Il contratto ammette xFIR fino a **3 MB**; la fake non lo applica, ma eredita il `bodyLimit` di default di Fastify (**1 MB**): un `xfir` da 1,4 MB → **413** `FST_ERR_CTP_BODY_TOO_LARGE` in `application/json`. È insieme **più restrittiva** (rifiuta a 1 MB ciò che l'ente accetta fino a 3 MB) e **non conforme** nel formato d'errore. Un xFIR realistico è facilmente sopra il megabyte: è un falso allarme che colpirà P3 al primo container vero. | **medio-alto (P3)** |
+| N4 | **`Paging-*` dichiara una paginazione che non esiste** (v. §6.1 P2-5). Header presenti ma non onorati: peggiore di header assenti, perché un client che li implementi correttamente vede dati coerenti solo per caso. | **medio (P2)** |
+| N5 | **`iss` mai verificato** (v. §6.1 P3-4). | **medio** |
+| N6 | **`codice_blocco` non validato**: il contratto lo vincola a `^[BCDFGHJKLMNPQRSTVWXYZ]{4,6}$`; `?codice_blocco=AEIOU123` → 202. Analogamente `X-ReplyTo` è accettato e ignorato, mentre nel contratto la sua presenza **sopprime** l'header `Location` sulla 202: un client che lo usi impara qui un comportamento che l'ente non ha. | basso-medio |
+| N7 | **`transazione_id` non validato come uuid** in `/status` e `/result` (il contratto lo dichiara `format: uuid`, con 400 documentato): `GET /pippo/status` → 404 di dominio invece di 400 di validazione. È lo stesso errore di categoria che §5.1 punto 5 aveva corretto su `numero_fir`, rimasto sulle rotte di transazione. | basso |
+| N8 | **§4.4 non corretto**: l'hook `onRequest` è ancora globale e consuma il guasto anche su richieste che non arrivano ad alcun gestore. Verificato: con `volte: 1`, una `GET /rotta/inesistente` si prende il 503 e la successiva richiesta di dominio risponde 200. I test di guasto restano fragili sotto concorrenza. | basso |
+
+### 6.4 Cosa §5.3 chiedeva di conservare — verifica
+
+| Elemento da conservare | Stato |
+|---|---|
+| `/token` risponde 404 con motivazione esplicita | **conservato** (corpo tuttora `{titolo, dettaglio}`, unico residuo delle chiavi italiane) |
+| Prefisso riconoscibile dell'apparato di prova (`__controllo`, `__salute`) | **conservato**, ed esteso con `__controllo/formulario` — coerente |
+| La transazione non si completa da sola | **conservato per `POST /`, perso per le rotte xFIR** (v. §6.2 punto 2) |
+| Decisioni documentate nel codice con riferimento al contratto; `ACCERTAMENTI.md` onesto su ciò che i contratti non dicono | **conservato e migliorato**: ogni correzione cita riga e componente di `formulari.yaml`, e i limiti (C14N, 3 MB) sono dichiarati nel codice invece che taciuti |
+
+### 6.5 Verdetto aggiornato
+
+**IDONEA CON RISERVE** per P2 e P3.
+
+Il verdetto **si ribalta** perché le tre ragioni che rendevano la fake disqualificante non
+sussistono più, e non per dichiarazione ma per riscontro:
+
+- il ciclo asincrono è ora quello dell'ente (202+`Location` → 200/303+`Location` → 400 sul
+  `/result` non pronto → `EsitoFormularioModel` con `errore` e `validazione`);
+- l'endpoint immaginato è stato rimosso e sostituito dal `POST /` del contratto;
+- **la fake ora sa dire di no**: rifiuta certificati autofirmati, di altra CA, scaduti; rifiuta
+  `alg` diversi da RS256, token senza claim ModI, finestre lunghe, `jti` rigiocati, soggetti non
+  accreditati; rifiuta xFIR con riferimenti pendenti, copertura vacua, digest non corrispondente,
+  firma crittografica alterata.
+
+Restano però riserve che ne limitano il valore probatorio:
+
+1. **Il payload non è mai validato** (N1): `POST /` accetta qualunque cosa e nessuna rotta produce
+   il 400 «modello dati non valido».
+2. **La firma xFIR non ha ancora di fiducia** (N2) e non è canonicalizzata C14N: la fake certifica
+   coerenza interna, non validità della firma.
+3. **Il limite di 1 MB ereditato da Fastify** (N3) rifiuterà container realistici con un errore
+   fuori contratto.
+4. **Paginazione e filtri di `GET /` sono finti** (N4); `iss`, `codice_blocco`, `X-ReplyTo`,
+   `transazione_id` non sono validati (N5-N7).
+5. **La suite non è deterministica** (§6.2 punto 1): finché non lo è, «test verdi» non è una prova
+   utilizzabile come gate di P2/P3.
+
+**Attività non validabili con questo oracolo — P2:** costruzione e validazione del
+`NuovoFormularioModel` e di ogni altro modello di scrittura (nessun 400 di modello esiste);
+paginazione e filtri dell'elenco formulari; qualunque logica autorizzativa (incarichi, visibilità
+per unità locale: il 403 della fake è solo autenticazione); comportamento reale sotto 429/423
+(esiste solo se iniettato); tutte le operazioni non implementate — in particolare
+`PUT /{numero_fir}`, `/accettazione`, `/trasporto`, `/annulla`, l'intero albero `/trasmissioni/*`
+e `/copia-cartacea|digitale/*`.
+
+**Attività non validabili con questo oracolo — P3:** conformità della firma a XAdES/ETSI EN 319
+132 (C14N, algoritmi dichiarati, proprietà firmate qualificate); riferibilità del firmatario a un
+certificato di firma qualificata; `POST /{numero_fir}/acquisizione-firma` e `/{numero_fir}/hash`
+(i due endpoint del contratto che espongono `digest_to_sign`, tuttora assenti), `/rollback-firma`;
+`GET /{numero_fir}/xfir` (download); il vincolo dei 3 MB e il comportamento con container di
+dimensione realistica; la coerenza fra `numero_fir` del path e contenuto dell'xFIR.
+
+Con queste riserve esplicitate, la fake può essere adottata come oracolo di P2 e P3 **per il
+protocollo e per l'autenticazione**, non per la validazione dei modelli dati né per il valore
+giuridico della firma. Le riserve 1, 3 e 5 sono a basso costo di chiusura e andrebbero chiuse
+prima che P2 e P3 comincino a produrre codice contro questo oracolo.
