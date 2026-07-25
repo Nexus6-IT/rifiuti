@@ -255,8 +255,11 @@ export class VerifySignaturesUseCase {
    * @returns Public verification URL
    */
   generateVerificationUrl(firId: string): string {
-    // In production, use configured public domain
-    const publicDomain = process.env.PUBLIC_DOMAIN || 'https://wasteflow.it'
+    // FRONTEND_URL è la variabile realmente configurata in produzione (vedi
+    // .env.example, docker-compose.prod.yml, auth.controller.ts): il vecchio
+    // PUBLIC_DOMAIN/wasteflow.it non corrispondeva a nessuna configurazione
+    // reale e avrebbe prodotto un QR che punta a un dominio inesistente.
+    const publicDomain = process.env.FRONTEND_URL || 'https://rifiuti.ignicraft.com'
     return `${publicDomain}/verify/${firId}`
   }
 }
