@@ -1,12 +1,13 @@
 # COSTS.md — Registro costi sessioni (rifiuti)
 
-<!-- costs-total-usd:225.67 -->
-**Totale cumulato: $225.67**
+<!-- costs-total-usd:269.43 -->
+**Totale cumulato: $269.43**
 
 Costo registrato automaticamente a fine sessione (hook SessionEnd) e leggibile via `~/.claude/bin/session-cost.sh`.
 
 | Data | Sessione | Lavoro svolto | Costo |
 |------|----------|---------------|-------|
+| 2026-07-25 | `d6edc90a` | P3 firma (crittografica, persistita, fail-closed, QR), P4 RBAC granulare in esercizio + cache poisoning evitato, P5 qualita e rilascio: P2/P3/P4 in produzione dopo 4 tentativi, seed RBAC applicati. Suite 101/911. | $43.76 |
 | 2026-07-25 | `d2aea025-c` | P1 rilasciata in produzione (3 difetti critici chiusi, sessione singola, logout funzionante, Swagger chiuso) + P2 riscrittura integrazione RENTRI contro il contratto ufficiale, validata dall oracolo (auth ID_AUTH_REST_02, ciclo 202/200/303, resilienza ai guasti). Suite 95/837. | $22.48 |
 | 2026-07-25 | `d2aea025-b` | Design + piano + esecuzione Fase 0 del programma production-ready: workflow di agenti iperspecializzati, fake API RENTRI containerizzata come oracolo di conformita (62 test), contratti ufficiali versionati, due audit di fedelta indipendenti (NON IDONEA -> IDONEA CON RISERVE dopo giro correttivo). | $128.93 |
 | 2026-07-25 | `fb63b866` | Audit di conformità RENTRI + MUD con swarm di 4 agenti (Opus coordinatore/revisore): ricognizione normativa su fonti ufficiali (DM 59/2023, OpenAPI RENTRI, DPCM MUD), inventario del codice, audit approfondito della firma digitale. Esito: 2/35 funzionalità RENTRI conformi; l'auth implementata (OAuth2 `/token`) non esiste in RENTRI; nessuna firma con valore legale. Chiusi 4 difetti P0 di sicurezza (verify pubblico con CF cross-tenant, PDF senza filtro tenant, firma senza autorizzazione di ruolo, firme scartate in silenzio). MUD: base `V604Base` estratta, fix bug ISTAT, aggiunto tracciato 6.04/25 e 7 nuovi tipi di record (AU/AR/BC/BD/BE/DA/DB + RT), modello `AutorizzazioneImpianto`. 812 test verdi. | $43.11 |
