@@ -1,0 +1,2272 @@
+openapi: 3.0.4
+info:
+  title: anagrafiche
+  description: Servizio Anagrafica RENTRI
+  termsOfService: https://www.rentri.gov.it
+  contact:
+    email: techref@rentri.it
+  version: 1.0.20260723-1036
+  x-summary: Servizio Anagrafica RENTRI
+  x-api-id: rentrigov.registro
+servers:
+- url: https://demoapi.rentri.gov.it/anagrafiche/v1.0
+  description: Demo
+paths:
+  /operatore:
+    get:
+      tags:
+      - Operatore
+      summary: Elenco degli operatori
+      description: Ritorna l'elenco degli operatori.
+      parameters:
+      - name: num_iscr_ass
+        in: query
+        description: Filtra l'elenco estraendo gli operatori delegati dal soggetto delegato identificato dal numero iscrizione indicato.
+        schema:
+          type: string
+      responses:
+        200:
+          description: Elenco degli operatori.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OperatoreModel'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/{identificativo}/controllo-autorizzazione-albo:
+    get:
+      tags:
+      - Operatore
+      summary: Consultazione autorizzazioni Albo
+      description: Restituisce se un operatore, identificato dal codice fiscale, è autorizzato oppure no all'Albo Nazionale Gestori Ambientali secondo quanto comunicato dall'operatore al momento dell’iscrizione al RENTRI.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Codice fiscale dell'operatore
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: True se esistono autorizzazioni, false altrimenti
+          content:
+            application/json:
+              schema:
+                type: boolean
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/{identificativo}/controllo-iscrizione:
+    get:
+      tags:
+      - Operatore
+      summary: Consultazione iscrizioni
+      description: Restituisce se un operatore, identificato dal codice fiscale, è iscritto o no al RENTRI
+      parameters:
+      - name: identificativo
+        in: path
+        description: Codice fiscale dell'operatore
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: True se l'operatore con il codice fiscale indicato risulta iscritto, false altrimenti
+          content:
+            application/json:
+              schema:
+                type: boolean
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/{identificativo}/siti/{comune_id}/controllo-autorizzazioni:
+    get:
+      tags:
+      - Operatore
+      summary: Consultazione autorizzazioni unità locali
+      description: Restituisce se un operatore, identificato dal codice fiscale, è autorizzato oppure no, relativamente alle unità locali di un comune, secondo quanto comunicato dall'operatore al momento dell’iscrizione al RENTRI.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Codice fiscale dell'operatore
+        required: true
+        schema:
+          type: string
+      - name: comune_id
+        in: path
+        description: ISTAT comune dell'unità locale
+        required: true
+        schema:
+          type: string
+      - name: attivita
+        in: query
+        description: Attività di recupero/smaltimento
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/OperazioniRecuperoSmaltimento'
+      responses:
+        200:
+          description: True se esistono autorizzazioni, false altrimenti
+          content:
+            application/json:
+              schema:
+                type: boolean
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/{num_iscr}/autorizzazione-albo:
+    get:
+      tags:
+      - Operatore
+      summary: Informazioni autorizzazione Albo
+      description: Restituisce le informazioni sull'autorizzazione all'Albo Nazionale Gestori Ambientali comunicata dall'operatore al momento dell'iscrizione al RENTRI.
+      parameters:
+      - name: num_iscr
+        in: path
+        description: >-
+          Numero iscrizione operatore rilasciato all'iscrizione. 
+                      Per recuperare i numeri iscrizione attribuiti agli operatori è possibile utilizzare /anagrafiche/v1.0/operatore.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Dati dell'autorizzazione all'Albo Nazionale Gestori Ambientali.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutAlboModel'
+        403:
+          description: Operazione non consentita.
+        404:
+          description: Operatore o unità locale non trovata.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/{num_iscr}/siti:
+    get:
+      tags:
+      - Operatore
+      summary: Elenco unità locali
+      description: Ottiene l'elenco delle unità locali di un operatore.
+      parameters:
+      - name: num_iscr
+        in: path
+        description: >-
+          Numero iscrizione operatore rilasciato all'iscrizione. 
+                      Per recuperare i numeri iscrizione attribuiti agli operatori è possibile utilizzare /anagrafiche/v1.0/operatore.
+        required: true
+        schema:
+          type: string
+      - name: provincia_id
+        in: query
+        description: Ricerca per provincia
+        schema:
+          type: string
+      - name: comune_id
+        in: query
+        description: Ricerca per comune
+        schema:
+          type: string
+      - name: num_iscr_sito
+        in: query
+        description: >-
+          Ricerca per Numero iscrizione unità locale rilasciato all'iscrizione.
+
+
+          Per recuperare i numeri di iscrizione attribuiti alle unità locali è possibile utilizzare /anagrafiche/v1.0/operatore/{num_iscr}/siti oppure /anagrafiche/v1.0/soggetto-delegato/{num_iscr_ass}/siti nel caso di unità locali di un soggetto delegante.
+        schema:
+          type: string
+      - name: num_iscr_siti
+        in: query
+        description: Ricerca per Numero iscrizione unità locali
+        schema:
+          type: array
+          items:
+            type: string
+      - name: nome_sito
+        in: query
+        description: Ricerca per nome unità locale
+        schema:
+          type: string
+      - name: stato_delega_da_confermare
+        in: query
+        description: Stato delega da confermare
+        schema:
+          type: boolean
+      - name: delega_da_associazione
+        in: query
+        description: Filtra le unità locali iscritte dal soggetto delegato
+        schema:
+          type: boolean
+      - name: stato_delega
+        in: query
+        description: Stato della delega
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/Stati'
+      - name: Paging-Page
+        in: header
+        description: Valore per l'header Paging-Page.
+        schema:
+          maximum: 2147483647
+          minimum: 1
+          type: integer
+          format: int32
+          default: 1
+      - name: Paging-PageSize
+        in: header
+        description: Valore per l'header Paging-PageSize.
+        schema:
+          maximum: 1000
+          minimum: 1
+          type: integer
+          format: int32
+          default: 100
+      responses:
+        200:
+          description: Elenco delle unità locali
+          headers:
+            Paging-PageCount:
+              description: Numero totale di pagine.
+              schema:
+                type: integer
+                description: Numero totale di pagine.
+                format: $int32
+            Paging-Page:
+              description: Numero di pagina.
+              schema:
+                type: integer
+                description: Numero di pagina.
+                format: $int32
+            Paging-PageSize:
+              description: Dimensione della pagina.
+              schema:
+                type: integer
+                description: Dimensione della pagina.
+                format: $int32
+            Paging-TotalRecordCount:
+              description: Numero totale di record.
+              schema:
+                type: integer
+                description: Numero totale di record.
+                format: $int32
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SitoModel'
+        403:
+          description: Operazione non consentita.
+        404:
+          description: Operatore o unità locale non trovata.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/{num_iscr}/siti/{num_iscr_sito}:
+    get:
+      tags:
+      - Operatore
+      summary: Dati dell'unità locale
+      description: Ottiene il dettaglio dell'unità locale.
+      parameters:
+      - name: num_iscr
+        in: path
+        description: >-
+          Numero iscrizione operatore rilasciato all'iscrizione. 
+                      Per recuperare i numeri iscrizione attribuiti agli operatori è possibile utilizzare /anagrafiche/v1.0/operatore.
+        required: true
+        schema:
+          type: string
+      - name: num_iscr_sito
+        in: path
+        description: >-
+          Numero iscrizione unità locale rilasciato all'iscrizione.
+                      Per recuperare i numeri di iscrizione attribuiti alle unità locali è possibile utilizzare /anagrafiche/v1.0/operatore/{num_iscr}/siti.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Dati dell'unità locale.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SitoModel'
+        403:
+          description: Operazione non consentita.
+        404:
+          description: Operatore o unità locale non trovata.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/{num_iscr}/siti/{num_iscr_sito}/autorizzazioni:
+    get:
+      tags:
+      - Operatore
+      summary: Informazioni sulle autorizzazioni dell'unità locale
+      description: Restituisce le informazioni sull'autorizzazione comunicate dall'operatore al momento dell'iscrizione al RENTRI relativamente l'unità locale.
+      parameters:
+      - name: num_iscr
+        in: path
+        description: >-
+          Numero iscrizione operatore rilasciato all'iscrizione. 
+                      Per recuperare i numeri iscrizione attribuiti agli operatori è possibile utilizzare /anagrafiche/v1.0/operatore.
+        required: true
+        schema:
+          type: string
+      - name: num_iscr_sito
+        in: path
+        description: >-
+          Numero iscrizione unità locale rilasciato all'iscrizione.
+                      Per recuperare i numeri di iscrizione attribuiti alle unità locali è possibile utilizzare /anagrafiche/v1.0/operatore/{num_iscr}/siti.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Dati delle autorizzazioni relativamente all'unità locale.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AutRecerModel'
+        403:
+          description: Operazione non consentita.
+        404:
+          description: Operatore o unità locale non trovata.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/{num_iscr}/siti/{num_iscr_sito}/registri:
+    get:
+      tags:
+      - Operatore
+      summary: Elenco registri
+      description: Ottiene l'elenco dei registri, filtrati in base ai criteri specificati.
+      parameters:
+      - name: num_iscr
+        in: path
+        description: >-
+          Numero iscrizione operatore rilasciato all'iscrizione. 
+                      Per recuperare i numeri iscrizione attribuito agli operatori è possibile utilizzare /anagrafiche/v1.0/operatore.
+        required: true
+        schema:
+          type: string
+      - name: num_iscr_sito
+        in: path
+        description: >-
+          Numero iscrizione unità locale rilasciato all'iscrizione.
+                      Per recuperare i numeri di iscrizione attribuiti alle unità locali è possibile utilizzare /anagrafiche/v1.0/operatore/{num_iscr}/siti.
+        required: true
+        schema:
+          type: string
+      - name: identificativo_operatore
+        in: query
+        description: Codice fiscale dell'operatore.
+        schema:
+          type: string
+      - name: identificativo
+        in: query
+        description: Identificativo del registro.
+        schema:
+          type: string
+      - name: chiuso
+        in: query
+        description: Flag di chiusura del registro.
+        schema:
+          type: boolean
+      - name: Paging-Page
+        in: header
+        description: Valore per l'header Paging-Page.
+        schema:
+          maximum: 2147483647
+          minimum: 1
+          type: integer
+          format: int32
+          default: 1
+      - name: Paging-PageSize
+        in: header
+        description: Valore per l'header Paging-PageSize.
+        schema:
+          maximum: 1000
+          minimum: 1
+          type: integer
+          format: int32
+          default: 100
+      responses:
+        200:
+          description: Lista dei registri.
+          headers:
+            Paging-PageCount:
+              description: Numero totale di pagine.
+              schema:
+                type: integer
+                description: Numero totale di pagine.
+                format: $int32
+            Paging-Page:
+              description: Numero di pagina.
+              schema:
+                type: integer
+                description: Numero di pagina.
+                format: $int32
+            Paging-PageSize:
+              description: Dimensione della pagina.
+              schema:
+                type: integer
+                description: Dimensione della pagina.
+                format: $int32
+            Paging-TotalRecordCount:
+              description: Numero totale di record.
+              schema:
+                type: integer
+                description: Numero totale di record.
+                format: $int32
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RegistroModel'
+        403:
+          description: Operazione non consentita.
+        404:
+          description: Operatore o unità locale non trovata.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/registri:
+    post:
+      tags:
+      - Operatore
+      summary: Apertura nuovo registro
+      description: Apre un nuovo registro.
+      requestBody:
+        description: Richiesta.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/CreateRegistroRequest'
+      responses:
+        201:
+          description: Identificativo del registro aperto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRegistroResponse'
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita sull'Operatore.
+        404:
+          description: Sito non trovato a registro.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/registri/{identificativo}:
+    get:
+      tags:
+      - Operatore
+      summary: Dati registro
+      description: Ottiene il dettaglio di un registro.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Dati del registro.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistroModel'
+        403:
+          description: Operazione non consentita sul registro.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+    put:
+      tags:
+      - Operatore
+      summary: Modifica registro
+      description: Modifica di un registro.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Dati di modifica del registro
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/UpdateRegistroOperatoreRequest'
+      responses:
+        200:
+          description: Identificativo del registro aggiornato.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateRegistroResponse'
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita sul registro.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+    delete:
+      tags:
+      - Operatore
+      summary: Chiudi registro
+      description: >-
+        Chiude un registro identificato da identificativo.
+
+
+        Attenzione! Chiudendo il registro non sarà più possibile trasmettere al RENTRI i dati delle registrazioni annotate su tale registro. L'operazione è irreversibile.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Registro chiuso correttamente.
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita sul registro.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /operatore/registri/{identificativo}/xml:
+    get:
+      tags:
+      - Operatore
+      summary: Vidimazione virtuale registro in formato XML
+      description: >-
+        Ottiene la vidimazione virtuale del Registro in formato XML.
+
+
+        Rif. MODALITÀ OPERATIVA (8): Vidimazione digitale del registro cronologico di carico e scarico.
+
+
+        Nella fase di creazione di un nuovo registro, la piattaforma telematica RENTRI accede al servizio 
+
+        per la vidimazione digitale messo a disposizione dalle Camere di Commercio e restituisce l'identificativo 
+
+        unico nazionale del registro cronologico di carico e scarico.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: >-
+            Nel campo "content" viene restituito il file XML firmato digitalmente nel formato Base64, che 
+
+            risponde alla definizione del "element = eREGI" definito nello schema XSD consultabile nella sezione "Risorse > Schemi di validazione XSD" nel file “rentri-registri-1.0.xsd”.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadableBaseResponse'
+        403:
+          description: Operazione non consentita sull'Operatore.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /registri:
+    post:
+      tags:
+      - Operatore
+      summary: ⚠️[DEPRECATO] - utilizzare /operatore/registri - Apertura nuovo registro
+      description: Apre un nuovo registro.
+      requestBody:
+        description: Richiesta.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/CreateRegistroRequest'
+      responses:
+        201:
+          description: Identificativo del registro aperto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRegistroResponse'
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita sull'Operatore.
+        404:
+          description: Sito non trovato a registro.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+      deprecated: true
+  /registri/{identificativo}:
+    get:
+      tags:
+      - Operatore
+      summary: ⚠️[DEPRECATO] - utilizzare /operatore/registri/{identificativo} - Dati registro
+      description: Ottiene il dettaglio di un registro.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Dati del registro.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistroModel'
+        403:
+          description: Operazione non consentita sul registro.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+      deprecated: true
+    put:
+      tags:
+      - Operatore
+      summary: ⚠️[DEPRECATO] - utilizzare /operatore/registri/{identificativo} - Modifica registro
+      description: Modifica di un registro.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Dati di modifica del registro
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/UpdateRegistroOperatoreRequest'
+      responses:
+        200:
+          description: Identificativo del registro aggiornato.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateRegistroResponse'
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita sul registro.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+      deprecated: true
+    delete:
+      tags:
+      - Operatore
+      summary: ⚠️[DEPRECATO] - utilizzare /operatore/registri/{identificativo} - Chiudi registro
+      description: >-
+        Chiude un registro identificato da identificativo.
+
+
+        Attenzione! Chiudendo il registro non sarà più possibile trasmettere al RENTRI i dati delle registrazioni annotate su tale registro. L'operazione è irreversibile.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Registro chiuso correttamente.
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita sul registro.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+      deprecated: true
+  /registri/{identificativo}/xml:
+    get:
+      tags:
+      - Operatore
+      summary: ⚠️[DEPRECATO] - utilizzare /operatore/registri/{identificativo}/xml - Vidimazione virtuale registro in formato XML
+      description: >-
+        Ottiene la vidimazione virtuale del Registro in formato XML.
+
+
+        Rif. MODALITÀ OPERATIVA (8): Vidimazione digitale del registro cronologico di carico e scarico.
+
+
+        Nella fase di creazione di un nuovo registro, la piattaforma telematica RENTRI accede al servizio 
+
+        per la vidimazione digitale messo a disposizione dalle Camere di Commercio e restituisce l'identificativo 
+
+        unico nazionale del registro cronologico di carico e scarico.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: >-
+            Nel campo "content" viene restituito il file XML firmato digitalmente nel formato Base64, che 
+
+            risponde alla definizione del "element = eREGI" definito nello schema XSD consultabile nella sezione "Risorse > Schemi di validazione XSD" nel file “rentri-registri-1.0.xsd”.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadableBaseResponse'
+        403:
+          description: Operazione non consentita sull'Operatore.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+      deprecated: true
+  /soggetto-delegato:
+    get:
+      tags:
+      - Soggetto delegato
+      summary: Elenco dei soggetti delegati
+      description: Ritorna l'elenco dei soggetti delegati.
+      responses:
+        200:
+          description: Elenco dei soggetti delegati.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OperatoreModel'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /soggetto-delegato/{num_iscr_ass}/registri:
+    get:
+      tags:
+      - Soggetto delegato
+      summary: Elenco registri
+      description: Ottiene l'elenco dei registri gestiti da un soggetto delegato, filtrati in base ai criteri specificati.
+      parameters:
+      - name: num_iscr_ass
+        in: path
+        description: >-
+          Numero iscrizione soggetto delegato rilasciato all'iscrizione. 
+                      Per recuperare i numeri iscrizione attribuito ai soggetti delegati è possibile utilizzare /anagrafiche/v1.0/soggetto-delegato.
+        required: true
+        schema:
+          type: string
+      - name: num_iscr_sito
+        in: query
+        description: >-
+          Numero iscrizione unità locale rilasciato all'iscrizione da ricercare.
+                      Per recuperare i numeri di iscrizione attribuiti alle unità locali è possibile utilizzare /anagrafiche/v1.0/soggetto-delegato/{num_iscr_ass}/siti.
+        schema:
+          type: string
+      - name: identificativo_operatore
+        in: query
+        description: Codice fiscale dell'operatore.
+        schema:
+          type: string
+      - name: identificativo
+        in: query
+        description: Identificativo del registro.
+        schema:
+          type: string
+      - name: chiuso
+        in: query
+        description: Flag di chiusura del registro.
+        schema:
+          type: boolean
+      - name: Paging-Page
+        in: header
+        description: Valore per l'header Paging-Page.
+        schema:
+          maximum: 2147483647
+          minimum: 1
+          type: integer
+          format: int32
+          default: 1
+      - name: Paging-PageSize
+        in: header
+        description: Valore per l'header Paging-PageSize.
+        schema:
+          maximum: 1000
+          minimum: 1
+          type: integer
+          format: int32
+          default: 100
+      responses:
+        200:
+          description: Elenco dei registri.
+          headers:
+            Paging-PageCount:
+              description: Numero totale di pagine.
+              schema:
+                type: integer
+                description: Numero totale di pagine.
+                format: $int32
+            Paging-Page:
+              description: Numero di pagina.
+              schema:
+                type: integer
+                description: Numero di pagina.
+                format: $int32
+            Paging-PageSize:
+              description: Dimensione della pagina.
+              schema:
+                type: integer
+                description: Dimensione della pagina.
+                format: $int32
+            Paging-TotalRecordCount:
+              description: Numero totale di record.
+              schema:
+                type: integer
+                description: Numero totale di record.
+                format: $int32
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RegistroModel'
+        403:
+          description: Operazione non consentita.
+        404:
+          description: Operatore o unità locale non trovata.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /soggetto-delegato/{num_iscr_ass}/siti:
+    get:
+      tags:
+      - Soggetto delegato
+      summary: Elenco unità locali
+      description: Ottiene l'elenco delle unità locali per cui ha delega il soggetto delegato.
+      parameters:
+      - name: num_iscr_ass
+        in: path
+        description: >-
+          Numero iscrizione soggetto delegato rilasciato all'iscrizione. 
+                      Per recuperare i numeri iscrizione attribuiti ai soggetti delegati è possibile utilizzare /anagrafiche/v1.0/soggetto-delegato.
+        required: true
+        schema:
+          type: string
+      - name: provincia_id
+        in: query
+        description: Ricerca per provincia
+        schema:
+          type: string
+      - name: comune_id
+        in: query
+        description: Ricerca per comune
+        schema:
+          type: string
+      - name: num_iscr_sito
+        in: query
+        description: >-
+          Ricerca per Numero iscrizione unità locale rilasciato all'iscrizione.
+
+
+          Per recuperare i numeri di iscrizione attribuiti alle unità locali è possibile utilizzare /anagrafiche/v1.0/operatore/{num_iscr}/siti oppure /anagrafiche/v1.0/soggetto-delegato/{num_iscr_ass}/siti nel caso di unità locali di un soggetto delegante.
+        schema:
+          type: string
+      - name: num_iscr_siti
+        in: query
+        description: Ricerca per Numero iscrizione unità locali
+        schema:
+          type: array
+          items:
+            type: string
+      - name: nome_sito
+        in: query
+        description: Ricerca per nome unità locale
+        schema:
+          type: string
+      - name: stato_delega_da_confermare
+        in: query
+        description: Stato delega da confermare
+        schema:
+          type: boolean
+      - name: delega_da_associazione
+        in: query
+        description: Filtra le unità locali iscritte dal soggetto delegato
+        schema:
+          type: boolean
+      - name: stato_delega
+        in: query
+        description: Stato della delega
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/Stati'
+      - name: Paging-Page
+        in: header
+        description: Valore per l'header Paging-Page.
+        schema:
+          maximum: 2147483647
+          minimum: 1
+          type: integer
+          format: int32
+          default: 1
+      - name: Paging-PageSize
+        in: header
+        description: Valore per l'header Paging-PageSize.
+        schema:
+          maximum: 1000
+          minimum: 1
+          type: integer
+          format: int32
+          default: 100
+      responses:
+        200:
+          description: Elenco delle unità locali.
+          headers:
+            Paging-PageCount:
+              description: Numero totale di pagine.
+              schema:
+                type: integer
+                description: Numero totale di pagine.
+                format: $int32
+            Paging-Page:
+              description: Numero di pagina.
+              schema:
+                type: integer
+                description: Numero di pagina.
+                format: $int32
+            Paging-PageSize:
+              description: Dimensione della pagina.
+              schema:
+                type: integer
+                description: Dimensione della pagina.
+                format: $int32
+            Paging-TotalRecordCount:
+              description: Numero totale di record.
+              schema:
+                type: integer
+                description: Numero totale di record.
+                format: $int32
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SitoModel'
+        403:
+          description: Operazione non consentita.
+        404:
+          description: Operatore o unità locale non trovata.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /soggetto-delegato/{num_iscr_ass}/siti/{num_iscr_sito}:
+    get:
+      tags:
+      - Soggetto delegato
+      summary: Ottiene il dettaglio dell'unità locale per cui ha delega il soggetto delegato.
+      description: Ottiene il dettaglio dell'unità locale per cui ha delega il soggetto delegato.
+      parameters:
+      - name: num_iscr_ass
+        in: path
+        description: >-
+          Numero iscrizione soggetto delegato rilasciato all'iscrizione. 
+                      Per recuperare i numeri iscrizione attribuiti ai soggetti delegati è possibile utilizzare /anagrafiche/v1.0/soggetto-delegato.
+        required: true
+        schema:
+          type: string
+      - name: num_iscr_sito
+        in: path
+        description: >-
+          Numero iscrizione unità locale rilasciato all'iscrizione.
+                      Per recuperare i numeri di iscrizione attribuiti alle unità locali è possibile utilizzare /anagrafiche/v1.0/soggetto-delegato/{num_iscr_ass}/siti.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Dati delle autorizzazioni relativamente all'unità locale.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SitoModel'
+        403:
+          description: Operazione non consentita.
+        404:
+          description: Operatore o unità locale non trovata.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /soggetto-delegato/registri:
+    post:
+      tags:
+      - Soggetto delegato
+      summary: Apertura nuovo registro
+      description: Apre un nuovo registro gestito da un soggetto delegato.
+      requestBody:
+        description: Richiesta.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/CreateRegistroSoggettoDelegatoRequest'
+      responses:
+        201:
+          description: Identificativo del registro aperto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRegistroResponse'
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita sull'Operatore.
+        404:
+          description: Sito non trovato a registro.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /soggetto-delegato/registri/{identificativo}:
+    get:
+      tags:
+      - Soggetto delegato
+      summary: Dati registro
+      description: Ottiene il dettaglio di un registro gestito da un soggetto delegato.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Dati del registro.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistroModel'
+        403:
+          description: Operazione non consentita sul registro.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+    put:
+      tags:
+      - Soggetto delegato
+      summary: Modifica registro
+      description: Modifica un registro gestito da un soggetto delegato.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Dati di modifica del registro.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/UpdateRegistroRequest'
+      responses:
+        200:
+          description: Identificativo del registro aggiornato.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateRegistroResponse'
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita sul registro.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+    delete:
+      tags:
+      - Soggetto delegato
+      summary: Chiudi registro
+      description: >-
+        Chiude un registro identificato da identificativo.
+
+
+        Attenzione! Chiudendo il registro non sarà più possibile trasmettere al RENTRI i dati delle registrazioni annotate su tale registro. L'operazione è irreversibile.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Registro chiuso correttamente.
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita sul registro.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /soggetto-delegato/registri/{identificativo}/xml:
+    get:
+      tags:
+      - Soggetto delegato
+      summary: Vidimazione virtuale registro in formato XML
+      description: >-
+        Ottiene la vidimazione virtuale del Registro in formato XML.
+
+
+        Rif. MODALITÀ OPERATIVA (8): Vidimazione digitale del registro cronologico di carico e scarico.
+
+
+        Nella fase di creazione di un nuovo registro, la piattaforma telematica RENTRI accede al servizio 
+
+        per la vidimazione digitale messo a disposizione dalle Camere di Commercio e restituisce l'identificativo 
+
+        unico nazionale del registro cronologico di carico e scarico.
+      parameters:
+      - name: identificativo
+        in: path
+        description: Identificativo del registro.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: >-
+            Nel campo "content" viene restituito il file XML firmato digitalmente nel formato Base64, che 
+
+            risponde alla definizione del "element = eREGI" definito nello schema XSD consultabile nella sezione "Risorse > Schemi di validazione XSD" nel file “rentri-registri-1.0.xsd”.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadableBaseResponse'
+        403:
+          description: Operazione non consentita sull'Operatore.
+        404:
+          description: Registro non trovato.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+  /status:
+    get:
+      summary: Stato API
+      description: Verifica dello stato dell'API.
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        500:
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: Troppe richieste. Questa risposta viene restituita quando vengono rilevate più di 100 richieste in 5 secondi.
+          headers:
+            Retry-After:
+              description: Indica quanto tempo il fruitore deve attendere prima di effettuare una nuova richiesta.
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide. 
+            						Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide. 
+            						In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di "ban" a livello di chiamante (Issuer). 
+            						Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+components:
+  schemas:
+    Attivita:
+      enum:
+      - CentroRaccolta
+      - Produzione
+      - Recupero
+      - Smaltimento
+      - Trasporto
+      - IntermediazioneSenzaDetenzione
+      type: string
+    AutAlboCategoriaModel:
+      type: object
+      properties:
+        categoria:
+          type: string
+          nullable: true
+        classe:
+          type: string
+          nullable: true
+        stato:
+          allOf:
+          - $ref: '#/components/schemas/StatiCatAlbo'
+      additionalProperties: false
+    AutAlboModel:
+      type: object
+      properties:
+        sezione:
+          type: string
+          nullable: true
+        numero_iscrizione:
+          type: integer
+          format: int32
+        attiva:
+          type: boolean
+        data_iscrizione:
+          type: string
+          format: date-time
+          nullable: true
+        categorie:
+          type: array
+          items:
+            $ref: '#/components/schemas/AutAlboCategoriaModel'
+          nullable: true
+      additionalProperties: false
+    AutRecerModel:
+      type: object
+      properties:
+        tipo_autorizzazione:
+          allOf:
+          - $ref: '#/components/schemas/TipiAutorizzazione'
+          description: <p>Valori ammessi:<ul style="margin:0"><li><i>RecSmalArt208</i> - Autorizzazione unica per i nuovi impianti di recupero/smaltimento - art. 208 decreto legislativo 3 aprile 2006, n. 152.</li><li><i>RecSmalImpMobiliArt208</i> - Autorizzazione all'esercizio di operazioni di recupero e/o smaltimento dei rifiuti con impianti mobili - art.208, comma 15 del decreto legislativo 3 aprile 2006, n. 152.</li><li><i>RicercaSperimentazione</i> - Autorizzazione alla realizzazione di impianti di ricerca e sperimentazione - art. 211 del decreto legislativo 3 aprile 2006, n. 152.</li><li><i>AIA</i> - Autorizzazione Integrata Ambientale - artt. 29-ter e 213 del decreto legislativo 3 aprile 2006, n. 152.</li><li><i>RecProcSemplificata</i> - Operazioni di recupero mediante Comunicazione in "Procedura Semplificata" - artt.214 e 216 del decreto legislativo 3 aprile 2006, n. 152e autorizzazione unica ambientale (AUA) - Decreto Presidente Repubblica n. 59 del 13 marzo 2013.</li><li><i>OpBonifica</i> - Provvedimenti che autorizzano le operazioni di bonifica, ai sensi del comma 7 dell’art. 242 del decreto legislativo 3 aprile 2006, n. 152.</li><li><i>Straordinario</i> - Autorizzazioni “straordinarie” art. 191 del decreto legislativo 3 aprile 2006, n. 152 (attività svolte in regime di ordinanza contingibile e urgente)</li><li><i>ComTrattamentoAcqueReflue</i> - Comunicazione al trattamento di rifiuti e materiali in impianti di trattamento di acque reflue urbane - art. 110 c.3 del D.Lgs. 152/2006</li><li><i>AutTrattamentoAcqueReflue</i> - Autorizzazione  al trattamento di rifiuti liquidi in impianti di trattamento di acque reflue urbane - artt. 110 c.2 con provvedimento secondo artt. 208 oppure 29-ter e 213 del D.Lgs. 152/2006</li></ul></p>
+          nullable: true
+        autorizzazione_rif:
+          type: string
+          nullable: true
+        data_rilascio:
+          type: string
+          format: date-time
+          nullable: true
+        data_scadenza:
+          type: string
+          format: date-time
+          nullable: true
+        attivita_recupero_smaltimento:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperazioniRecuperoSmaltimento'
+          description: <p>Valori ammessi:<ul style="margin:0"><li><i>R1</i> - Utilizzazione principale come combustibile o come altro mezzo per produrre energia</li><li><i>R2</i> - Rigenerazione/recupero di solventi</li><li><i>R3</i> - Riciclo/recupero delle sostanze organiche non utilizzate come solventi</li><li><i>R4</i> - Riciclo/recupero dei metalli e dei composti metallici</li><li><i>R5</i> - Riciclo/recupero di altre sostanze inorganiche</li><li><i>R6</i> - Rigenerazione degli acidi o delle basi</li><li><i>R7</i> - Recupero dei prodotti che servono a captare gli inquinanti</li><li><i>R8</i> - Recupero dei prodotti provenienti dai catalizzatori</li><li><i>R9</i> - Rigenerazione o altri reimpieghi degli oli</li><li><i>R10</i> - Spandimento sul suolo a beneficio dell'agricoltura o dell'ecologia</li><li><i>R11</i> - Utilizzazione di rifiuti ottenuti da una delle operazioni indicate da R1 a R10</li><li><i>R12</i> - Scambio di rifiuti per sottoporli a una delle operazioni indicate da R1 a R11</li><li><i>R13</i> - Messa in riserva di rifiuti per sottoporli a una delle operazioni indicate nei punti da R1 a R12</li><li><i>D1</i> - Deposito sul o nel suolo</li><li><i>D2</i> - Trattamento in ambiente terrestre</li><li><i>D3</i> - Iniezioni in profondità</li><li><i>D4</i> - Lagunaggio</li><li><i>D5</i> - Messa in discarica specialmente allestita</li><li><i>D6</i> - Scarico dei rifiuti solidi nell'ambiente idrico eccetto l'immersione</li><li><i>D7</i> - Immersione, compreso il seppellimento nel sottosuolo marino</li><li><i>D8</i> - Trattamento biologico non specificato altrove nel presente allegato</li><li><i>D9</i> - Trattamento fisico-chimico non specificato altrove nel presente allegato</li><li><i>D10</i> - Incenerimento a terra</li><li><i>D11</i> - Incenerimento in mare</li><li><i>D12</i> - Deposito permanente</li><li><i>D13</i> - Raggruppamento preliminare prima di una delle operazioni di cui ai punti da D1 a D12</li><li><i>D14</i> - Ricondizionamento preliminare prima di una delle operazioni di cui ai punti da D1 a D13</li><li><i>D15</i> - Deposito preliminare prima di una delle operazioni di cui ai punti da D1 a D14</li></ul></p>
+          nullable: true
+      additionalProperties: false
+    CreateRegistroRequest:
+      required:
+      - attivita
+      - num_iscr_sito
+      type: object
+      properties:
+        num_iscr_sito:
+          minLength: 1
+          type: string
+          description: >-
+            Numero iscrizione unità locale rilasciato all'iscrizione. 
+
+
+            Per recuperare i numeri di iscrizione attribuiti alle unità locali è possibile utilizzare /anagrafiche/v1.0/operatore/{num_iscr}/siti.
+        attivita:
+          minItems: 1
+          type: array
+          items:
+            $ref: '#/components/schemas/Attivita'
+          description: >-
+            Attività legate al registro.
+
+
+            Deve contenere almeno un'attività coerente con quelle previste dall'unità locale indicata in num_iscr_sito, secondo quanto dichiarato in fase di iscrizione o a seguito dell'ultima variazione.<p>Valori ammessi:<ul style="margin:0"><li><i>CentroRaccolta</i> - Centro di raccolta</li><li><i>Produzione</i> - Produzione di rifiuti</li><li><i>Recupero</i> - Recupero di rifiuti</li><li><i>Smaltimento</i> - Smaltimento di rifiuti</li><li><i>Trasporto</i> - Trasporto di rifiuti</li><li><i>IntermediazioneSenzaDetenzione</i> - Intermediazione e commercio di rifiuti senza detenzione</li></ul></p>
+        descrizione:
+          maxLength: 250
+          type: string
+          description: Descrizione del registro
+          nullable: true
+        attivita_rec_smalt:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperazioniRecuperoSmaltimento'
+          description: >-
+            Attività recupero smaltimento.
+
+
+            Richiesto solamente se attivita contiene "Recupero" e/o "Smaltimento". In tal caso deve contenere i codici di recupero/smaltimento 
+
+            che sono stati dichiarati per l'unità locale in fase di iscrizione o a seguito dell'ultima variazione.<p>Valori ammessi:<ul style="margin:0"><li><i>R1</i> - Utilizzazione principale come combustibile o come altro mezzo per produrre energia</li><li><i>R2</i> - Rigenerazione/recupero di solventi</li><li><i>R3</i> - Riciclo/recupero delle sostanze organiche non utilizzate come solventi</li><li><i>R4</i> - Riciclo/recupero dei metalli e dei composti metallici</li><li><i>R5</i> - Riciclo/recupero di altre sostanze inorganiche</li><li><i>R6</i> - Rigenerazione degli acidi o delle basi</li><li><i>R7</i> - Recupero dei prodotti che servono a captare gli inquinanti</li><li><i>R8</i> - Recupero dei prodotti provenienti dai catalizzatori</li><li><i>R9</i> - Rigenerazione o altri reimpieghi degli oli</li><li><i>R10</i> - Spandimento sul suolo a beneficio dell'agricoltura o dell'ecologia</li><li><i>R11</i> - Utilizzazione di rifiuti ottenuti da una delle operazioni indicate da R1 a R10</li><li><i>R12</i> - Scambio di rifiuti per sottoporli a una delle operazioni indicate da R1 a R11</li><li><i>R13</i> - Messa in riserva di rifiuti per sottoporli a una delle operazioni indicate nei punti da R1 a R12</li><li><i>D1</i> - Deposito sul o nel suolo</li><li><i>D2</i> - Trattamento in ambiente terrestre</li><li><i>D3</i> - Iniezioni in profondità</li><li><i>D4</i> - Lagunaggio</li><li><i>D5</i> - Messa in discarica specialmente allestita</li><li><i>D6</i> - Scarico dei rifiuti solidi nell'ambiente idrico eccetto l'immersione</li><li><i>D7</i> - Immersione, compreso il seppellimento nel sottosuolo marino</li><li><i>D8</i> - Trattamento biologico non specificato altrove nel presente allegato</li><li><i>D9</i> - Trattamento fisico-chimico non specificato altrove nel presente allegato</li><li><i>D10</i> - Incenerimento a terra</li><li><i>D11</i> - Incenerimento in mare</li><li><i>D12</i> - Deposito permanente</li><li><i>D13</i> - Raggruppamento preliminare prima di una delle operazioni di cui ai punti da D1 a D12</li><li><i>D14</i> - Ricondizionamento preliminare prima di una delle operazioni di cui ai punti da D1 a D13</li><li><i>D15</i> - Deposito preliminare prima di una delle operazioni di cui ai punti da D1 a D14</li></ul></p>
+          nullable: true
+      additionalProperties: false
+    CreateRegistroResponse:
+      type: object
+      properties:
+        identificativo:
+          type: string
+          nullable: true
+      additionalProperties: false
+    CreateRegistroSoggettoDelegatoRequest:
+      required:
+      - descrizione
+      - num_iscr_ass
+      - num_iscr_sito
+      type: object
+      properties:
+        num_iscr_sito:
+          minLength: 1
+          type: string
+          description: >-
+            Numero iscrizione unità locale rilasciato all'iscrizione. 
+
+
+            Per recuperare i numeri di iscrizione attribuiti alle unità locali è possibile utilizzare /anagrafiche/v1.0/soggetto-delegato/{num_iscr_ass}/siti.
+        num_iscr_ass:
+          minLength: 1
+          type: string
+          description: >-
+            Numero iscrizione soggetto delegato rilasciato all'iscrizione. 
+
+
+            Per recuperare il numero iscrizione soggetto delegato è possibile utilizzare h/anagrafiche/v1.0/soggetto-delegato.
+        descrizione:
+          maxLength: 250
+          minLength: 1
+          type: string
+          description: Descrizione del registro
+      additionalProperties: false
+    DownloadableBaseResponse:
+      type: object
+      properties:
+        nome_file:
+          type: string
+          description: Nome del file
+          nullable: true
+        mime:
+          type: string
+          description: Tipo MIME del file
+          nullable: true
+        content:
+          type: string
+          description: Contenuto del file
+          format: byte
+          nullable: true
+      additionalProperties: false
+    OperatoreModel:
+      type: object
+      properties:
+        num_iscr:
+          type: string
+          nullable: true
+        profilo_soggetto:
+          allOf:
+          - $ref: '#/components/schemas/ProfiliSoggetto'
+        data_iscrizione:
+          type: string
+          format: date-time
+          nullable: true
+        identificativo:
+          type: string
+          nullable: true
+        ipa:
+          type: string
+          nullable: true
+        denominazione:
+          type: string
+          nullable: true
+        forma_giuridica_id:
+          type: string
+          nullable: true
+        piva:
+          type: string
+          nullable: true
+        cciaarea:
+          type: string
+          nullable: true
+        nrea:
+          type: string
+          nullable: true
+        data_iscrizione_ri:
+          type: string
+          format: date-time
+          nullable: true
+        stato_impresa_ri:
+          type: string
+          nullable: true
+        dipendenti_ri:
+          type: integer
+          format: int32
+          nullable: true
+        data_rilevazione_dipendenti_ri:
+          type: string
+          format: date-time
+          nullable: true
+        nazione_slid:
+          type: string
+          nullable: true
+        provincia_slid:
+          type: string
+          nullable: true
+        comune_slid:
+          type: string
+          nullable: true
+        citta_sl:
+          type: string
+          nullable: true
+        indirizzo_sl:
+          type: string
+          nullable: true
+        civico_sl:
+          type: string
+          nullable: true
+        capsl:
+          type: string
+          nullable: true
+        pec:
+          type: string
+          nullable: true
+        cod_fisc_lr:
+          type: string
+          nullable: true
+        cognome_lr:
+          type: string
+          nullable: true
+        nome_lr:
+          type: string
+          nullable: true
+        dipendenti:
+          type: integer
+          format: int32
+          nullable: true
+        data_ultima_visura:
+          type: string
+          format: date-time
+          nullable: true
+        flag_esonerato_iscr_albo:
+          type: integer
+          format: int32
+          nullable: true
+        stato:
+          allOf:
+          - $ref: '#/components/schemas/Stati'
+      additionalProperties: false
+      description: Operatore
+    OperazioniRecuperoSmaltimento:
+      enum:
+      - R1
+      - R2
+      - R3
+      - R4
+      - R5
+      - R6
+      - R7
+      - R8
+      - R9
+      - R10
+      - R11
+      - R12
+      - R13
+      - D1
+      - D2
+      - D3
+      - D4
+      - D5
+      - D6
+      - D7
+      - D8
+      - D9
+      - D10
+      - D11
+      - D12
+      - D13
+      - D14
+      - D15
+      type: string
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: integer
+          format: int32
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+      additionalProperties: {}
+    ProfiliSoggetto:
+      enum:
+      - Impresa
+      - Ente
+      - Altro
+      - AssociazioneCategoria
+      - Amministrazione
+      type: string
+    RegistroModel:
+      type: object
+      properties:
+        identificativo:
+          type: string
+          nullable: true
+        descrizione:
+          type: string
+          nullable: true
+        data_creazione:
+          type: string
+          format: date-time
+        data_chiusura:
+          type: string
+          format: date-time
+          nullable: true
+        data_modifica:
+          type: string
+          format: date-time
+          nullable: true
+        num_iscr_associazione:
+          type: string
+          nullable: true
+          readOnly: true
+          deprecated: true
+        num_iscr_associazioni:
+          type: array
+          items:
+            type: string
+          nullable: true
+        identificativo_associazione:
+          type: string
+          nullable: true
+          readOnly: true
+          deprecated: true
+        identificativo_associazioni:
+          type: array
+          items:
+            type: string
+          nullable: true
+        num_iscr_sito:
+          type: string
+          nullable: true
+        identificativo_operatore_sito:
+          type: string
+          nullable: true
+        operatore_sito:
+          type: string
+          nullable: true
+        ipa_operatore_sito:
+          type: string
+          nullable: true
+        cu_aoo_sito:
+          type: string
+          nullable: true
+        cuu_sito:
+          type: string
+          nullable: true
+        attivita:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attivita'
+          description: <p>Valori ammessi:<ul style="margin:0"><li><i>CentroRaccolta</i> - Centro di raccolta</li><li><i>Produzione</i> - Produzione di rifiuti</li><li><i>Recupero</i> - Recupero di rifiuti</li><li><i>Smaltimento</i> - Smaltimento di rifiuti</li><li><i>Trasporto</i> - Trasporto di rifiuti</li><li><i>IntermediazioneSenzaDetenzione</i> - Intermediazione e commercio di rifiuti senza detenzione</li></ul></p>
+          nullable: true
+        attivita_rec_smalt:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperazioniRecuperoSmaltimento'
+          description: <p>Valori ammessi:<ul style="margin:0"><li><i>R1</i> - Utilizzazione principale come combustibile o come altro mezzo per produrre energia</li><li><i>R2</i> - Rigenerazione/recupero di solventi</li><li><i>R3</i> - Riciclo/recupero delle sostanze organiche non utilizzate come solventi</li><li><i>R4</i> - Riciclo/recupero dei metalli e dei composti metallici</li><li><i>R5</i> - Riciclo/recupero di altre sostanze inorganiche</li><li><i>R6</i> - Rigenerazione degli acidi o delle basi</li><li><i>R7</i> - Recupero dei prodotti che servono a captare gli inquinanti</li><li><i>R8</i> - Recupero dei prodotti provenienti dai catalizzatori</li><li><i>R9</i> - Rigenerazione o altri reimpieghi degli oli</li><li><i>R10</i> - Spandimento sul suolo a beneficio dell'agricoltura o dell'ecologia</li><li><i>R11</i> - Utilizzazione di rifiuti ottenuti da una delle operazioni indicate da R1 a R10</li><li><i>R12</i> - Scambio di rifiuti per sottoporli a una delle operazioni indicate da R1 a R11</li><li><i>R13</i> - Messa in riserva di rifiuti per sottoporli a una delle operazioni indicate nei punti da R1 a R12</li><li><i>D1</i> - Deposito sul o nel suolo</li><li><i>D2</i> - Trattamento in ambiente terrestre</li><li><i>D3</i> - Iniezioni in profondità</li><li><i>D4</i> - Lagunaggio</li><li><i>D5</i> - Messa in discarica specialmente allestita</li><li><i>D6</i> - Scarico dei rifiuti solidi nell'ambiente idrico eccetto l'immersione</li><li><i>D7</i> - Immersione, compreso il seppellimento nel sottosuolo marino</li><li><i>D8</i> - Trattamento biologico non specificato altrove nel presente allegato</li><li><i>D9</i> - Trattamento fisico-chimico non specificato altrove nel presente allegato</li><li><i>D10</i> - Incenerimento a terra</li><li><i>D11</i> - Incenerimento in mare</li><li><i>D12</i> - Deposito permanente</li><li><i>D13</i> - Raggruppamento preliminare prima di una delle operazioni di cui ai punti da D1 a D12</li><li><i>D14</i> - Ricondizionamento preliminare prima di una delle operazioni di cui ai punti da D1 a D13</li><li><i>D15</i> - Deposito preliminare prima di una delle operazioni di cui ai punti da D1 a D14</li></ul></p>
+          nullable: true
+        stato:
+          allOf:
+          - $ref: '#/components/schemas/Stati'
+        uso_locale:
+          type: boolean
+          nullable: true
+        progressivo_inziale_locale:
+          type: integer
+          format: int32
+          nullable: true
+      additionalProperties: false
+      description: Registro
+    SitoDelegaAssModel:
+      type: object
+      properties:
+        num_iscr_associazione:
+          type: string
+          nullable: true
+        stato_delega_ass:
+          allOf:
+          - $ref: '#/components/schemas/Stati'
+        data_conferma:
+          type: string
+          format: date-time
+          nullable: true
+        data_revoca:
+          type: string
+          format: date-time
+          nullable: true
+        da_associazione:
+          type: boolean
+          nullable: true
+      additionalProperties: false
+      description: Stato delega soggetto delegato
+    SitoModel:
+      type: object
+      properties:
+        num_iscr_sito:
+          type: string
+          nullable: true
+        num_iscr_operatore:
+          type: string
+          nullable: true
+        denominazione_operatore:
+          type: string
+          nullable: true
+        identificativo_operatore:
+          type: string
+          nullable: true
+        ipa_operatore:
+          type: string
+          nullable: true
+        nome:
+          type: string
+          nullable: true
+        is_sede_legale:
+          type: boolean
+        comune_id:
+          type: string
+          nullable: true
+        provincia_id:
+          type: string
+          nullable: true
+        indirizzo:
+          type: string
+          nullable: true
+        civico:
+          type: string
+          nullable: true
+        cciaari:
+          type: string
+          nullable: true
+        progressivo_ri:
+          type: integer
+          format: int32
+          nullable: true
+        cu_aoo:
+          type: string
+          nullable: true
+        cuu:
+          type: string
+          nullable: true
+        deleghe_ass:
+          type: array
+          items:
+            $ref: '#/components/schemas/SitoDelegaAssModel'
+          nullable: true
+        attivita:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attivita'
+          description: <p>Valori ammessi:<ul style="margin:0"><li><i>CentroRaccolta</i> - Centro di raccolta</li><li><i>Produzione</i> - Produzione di rifiuti</li><li><i>Recupero</i> - Recupero di rifiuti</li><li><i>Smaltimento</i> - Smaltimento di rifiuti</li><li><i>Trasporto</i> - Trasporto di rifiuti</li><li><i>IntermediazioneSenzaDetenzione</i> - Intermediazione e commercio di rifiuti senza detenzione</li></ul></p>
+          nullable: true
+        data_iscrizione:
+          type: string
+          format: date-time
+        data_cancellazione:
+          type: string
+          format: date-time
+          nullable: true
+        stato:
+          allOf:
+          - $ref: '#/components/schemas/Stati'
+      additionalProperties: false
+      description: Unità locale
+    Stati:
+      enum:
+      - Attivo
+      - Eliminato
+      - Sospeso
+      - Chiuso
+      - DaConfermare
+      type: string
+    StatiCatAlbo:
+      enum:
+      - Iscritta
+      - Sospesa
+      - Cancellata
+      type: string
+    StatusResponse:
+      type: object
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusResponseEnum'
+          description: Stato corrente dell'API<p>Valori ammessi:<ul style="margin:0"><li><i>Ok</i> - L'API è pienamente operativa e non sono presenti segnalazioni</li><li><i>Warning</i> - L'API è operativa, ma sono presenti avvisi relativi a potenziali disservizi o anomalie</li><li><i>Planned</i> - L'API è operativa, ma sono previsti interventi o disservizi programmati</li></ul></p>
+        warnings:
+          type: array
+          items:
+            type: string
+          description: >-
+            Elenco degli avvisi relativi a potenziali disservizi,
+
+            anomalie o situazioni che potrebbero influire sul servizio.
+          nullable: true
+        planned_notices:
+          type: array
+          items:
+            type: string
+          description: >-
+            Elenco delle comunicazioni relative a interventi,
+
+            manutenzioni o disservizi programmati.
+          nullable: true
+      additionalProperties: false
+      description: Informazioni sullo stato operativo dell'API
+    StatusResponseEnum:
+      enum:
+      - Ok
+      - Warning
+      - Planned
+      type: string
+      description: Enumerazione che rappresenta lo stato operativo dell'API
+    TipiAutorizzazione:
+      enum:
+      - RecSmalArt208
+      - RecSmalImpMobiliArt208
+      - RicercaSperimentazione
+      - AIA
+      - RecProcSemplificata
+      - OpBonifica
+      - Straordinario
+      - ComTrattamentoAcqueReflue
+      - AutTrattamentoAcqueReflue
+      type: string
+    UpdateRegistroOperatoreRequest:
+      type: object
+      properties:
+        attivita_rec_smalt:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperazioniRecuperoSmaltimento'
+          description: >-
+            Attività recupero smaltimento.
+
+
+            Richiesto solamente se attivita contiene "Recupero" e/o "Smaltimento". In tal caso deve contenere i codici di recupero/smaltimento 
+
+            che sono stati dichiarati per l'unità locale in fase di iscrizione o a seguito dell'ultima variazione.<p>Valori ammessi:<ul style="margin:0"><li><i>R1</i> - Utilizzazione principale come combustibile o come altro mezzo per produrre energia</li><li><i>R2</i> - Rigenerazione/recupero di solventi</li><li><i>R3</i> - Riciclo/recupero delle sostanze organiche non utilizzate come solventi</li><li><i>R4</i> - Riciclo/recupero dei metalli e dei composti metallici</li><li><i>R5</i> - Riciclo/recupero di altre sostanze inorganiche</li><li><i>R6</i> - Rigenerazione degli acidi o delle basi</li><li><i>R7</i> - Recupero dei prodotti che servono a captare gli inquinanti</li><li><i>R8</i> - Recupero dei prodotti provenienti dai catalizzatori</li><li><i>R9</i> - Rigenerazione o altri reimpieghi degli oli</li><li><i>R10</i> - Spandimento sul suolo a beneficio dell'agricoltura o dell'ecologia</li><li><i>R11</i> - Utilizzazione di rifiuti ottenuti da una delle operazioni indicate da R1 a R10</li><li><i>R12</i> - Scambio di rifiuti per sottoporli a una delle operazioni indicate da R1 a R11</li><li><i>R13</i> - Messa in riserva di rifiuti per sottoporli a una delle operazioni indicate nei punti da R1 a R12</li><li><i>D1</i> - Deposito sul o nel suolo</li><li><i>D2</i> - Trattamento in ambiente terrestre</li><li><i>D3</i> - Iniezioni in profondità</li><li><i>D4</i> - Lagunaggio</li><li><i>D5</i> - Messa in discarica specialmente allestita</li><li><i>D6</i> - Scarico dei rifiuti solidi nell'ambiente idrico eccetto l'immersione</li><li><i>D7</i> - Immersione, compreso il seppellimento nel sottosuolo marino</li><li><i>D8</i> - Trattamento biologico non specificato altrove nel presente allegato</li><li><i>D9</i> - Trattamento fisico-chimico non specificato altrove nel presente allegato</li><li><i>D10</i> - Incenerimento a terra</li><li><i>D11</i> - Incenerimento in mare</li><li><i>D12</i> - Deposito permanente</li><li><i>D13</i> - Raggruppamento preliminare prima di una delle operazioni di cui ai punti da D1 a D12</li><li><i>D14</i> - Ricondizionamento preliminare prima di una delle operazioni di cui ai punti da D1 a D13</li><li><i>D15</i> - Deposito preliminare prima di una delle operazioni di cui ai punti da D1 a D14</li></ul></p>
+          nullable: true
+        forza_salvataggio_attivita_rec_smalt:
+          type: boolean
+          description: Evita i controlli delle attività di recupero/smaltimento sulle autorizzazioni comunicate in fase di iscrizione dell'unità locale o a seguito dell'ultima variazione
+          nullable: true
+        descrizione:
+          maxLength: 250
+          type: string
+          description: Descrizione del registro
+          nullable: true
+      additionalProperties: false
+    UpdateRegistroRequest:
+      type: object
+      properties:
+        descrizione:
+          maxLength: 250
+          type: string
+          description: Descrizione del registro
+          nullable: true
+      additionalProperties: false
+    UpdateRegistroResponse:
+      type: object
+      properties:
+        identificativo:
+          type: string
+          nullable: true
+      additionalProperties: false
+  securitySchemes:
+    Bearer:
+      type: http
+      description: Bearer JWT
+      scheme: bearer
+      bearerFormat: JWT
+security:
+- Bearer: []
+tags:
+- name: Operatore
+- name: Soggetto delegato

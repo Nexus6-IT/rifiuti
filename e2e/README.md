@@ -165,6 +165,23 @@ credenziali assenti).
    `verify-signatures.component.ts`) — impatta quali Page Object sono
    effettivamente utili.
 
+## Fake API RENTRI
+
+I test in `tests/rentri/` richiedono il servizio `rentri-fake`:
+
+```bash
+docker compose up -d rentri-fake
+```
+
+URL configurabile con `E2E_RENTRI_FAKE_URL` (default `http://localhost:4010`).
+La fake è l'oracolo di conformità: rifiuta ciò che RENTRI rifiuterebbe. Il suo
+verdetto di fedeltà è in `docs/contracts/rentri/FEDELTA.md`.
+
+Nota: il test sul rifiuto di una chiamata non autenticata verifica **403**,
+non 401 — il contratto ufficiale documenta 403 "Operazione non consentita"
+per credenziale mancante o non valida (mai 401); la fake è stata corretta
+di conseguenza dopo l'irrigidimento della verifica JWT.
+
 ## Stato di verifica (2026-07-25)
 
 La suite `tests/public/` è stata eseguita contro `https://rifiuti.ignicraft.com`

@@ -94,23 +94,21 @@ services:
   #   networks:
   #     - wasteflow-network
 
-  rentri-mock:
+  rentri-fake:
     build:
-      context: ./tools/rentri-mock
-      dockerfile: Dockerfile
-    container_name: wasteflow-rentri-mock
-    ports:
-      - "3001:3000"
+      context: ./tools/rentri-fake
+    container_name: wasteflow-rentri-fake
     environment:
-      PORT: 3000
-      LOG_LEVEL: info
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      RENTRI_AUDIENCE: rentrigov.demo.api
+    ports:
+      - "4010:4010"
     networks:
       - wasteflow-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4010/__salute"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   pgadmin:
     image: dpage/pgadmin4:latest
