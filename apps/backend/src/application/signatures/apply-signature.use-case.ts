@@ -32,6 +32,7 @@ import {
 import { DigitalSignatureService } from './digital-signature.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { FIRPartyResolver } from '../../infrastructure/signatures/fir-party.resolver'
 
 @Injectable()
 export class ApplySignatureUseCase {
@@ -40,7 +41,8 @@ export class ApplySignatureUseCase {
     private readonly firRepository: FIRRepository,
     private readonly signatureService: DigitalSignatureService,
     private readonly logger: LoggerService,
-    private readonly eventEmitter: EventEmitter2
+    private readonly eventEmitter: EventEmitter2,
+    private readonly partyResolver: FIRPartyResolver
   ) {
     this.logger.setContext(ApplySignatureUseCase.name)
   }
@@ -104,6 +106,34 @@ export class ApplySignatureUseCase {
     // 4. Verifica isolamento tenant
     if (fir.getTenantId && fir.getTenantId() !== params.tenantId) {
       throw DomainException.notFound('FIR', params.firId)
+    }
+
+    // 4-bis. Autorizzazione di ruolo-parte: chi firma DEVE essere la parte che
+    //        quel ruolo designa sul FIR. Senza questo controllo un qualsiasi
+    //        operatore del tenant potrebbe apporre tutte e tre le firme,
+    //        vanificando la separazione dei ruoli del formulario (DM 59/2023).
+    const parties = await this.partyResolver.findParties(params.firId)
+    if (!parties) {
+      throw DomainException.notFound('FIR', params.firId)
+    }
+    const expectedUserId = FIRPartyResolver.expectedUserIdFor(parties, params.role)
+    if (!expectedUserId) {
+      throw DomainException.businessRuleViolation(
+        'ROLE_NOT_ASSIGNED',
+        `Il ruolo ${params.role} non è ancora assegnato su questo FIR: ` +
+          'designare la parte prima di firmare.'
+      )
+    }
+    if (expectedUserId !== params.userId) {
+      this.logger.warn(
+        `Tentativo di firma ${params.role} su FIR ${params.firId} da utente ${params.userId} ` +
+          `non designato per quel ruolo (atteso ${expectedUserId})`
+      )
+      throw DomainException.businessRuleViolation(
+        'SIGNER_NOT_AUTHORIZED_FOR_ROLE',
+        `Non sei la parte designata come ${params.role} su questo FIR: ` +
+          'ogni ruolo può essere firmato solo dalla parte corrispondente.'
+      )
     }
 
     // 5. Genera firma crittografica via provider configurato

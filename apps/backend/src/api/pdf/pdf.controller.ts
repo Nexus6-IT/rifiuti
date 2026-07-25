@@ -35,9 +35,16 @@ export class PdfController {
   @Get('fir/:id')
   @ApiOperation({ summary: 'Download FIR as PDF' })
   @ApiParam({ name: 'id', type: String, description: 'FIR ID' })
-  async downloadFIR(@Param('id') id: string, @Res() res: Response) {
-    const fir = await this.prisma.fIR.findUnique({
-      where: { id },
+  async downloadFIR(@Param('id') id: string, @Req() req: any, @Res() res: Response) {
+    // Il tenant DEVE essere quello dell'utente autenticato: senza questo vincolo
+    // qualsiasi utente scaricherebbe il FIR di qualsiasi tenant conoscendone l'id.
+    const tenantId = req.user?.tenantId
+    if (!tenantId) {
+      throw new BadRequestException('Tenant non disponibile per l’utente corrente')
+    }
+
+    const fir = await this.prisma.fIR.findFirst({
+      where: { id, tenantId },
       include: {
         producerUser: true,
         carrierUser: true,
@@ -47,6 +54,7 @@ export class PdfController {
       },
     })
 
+    // FIR di un altro tenant → 404 e non 403: un 403 confermerebbe che l'id esiste.
     if (!fir) {
       throw new HttpException('FIR not found', HttpStatus.NOT_FOUND)
     }

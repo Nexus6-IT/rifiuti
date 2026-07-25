@@ -146,20 +146,28 @@ export class SignaturesController {
    * Endpoint pubblico — nessuna autenticazione richiesta.
    * Verifica crittograficamente tutte le firme presenti sul FIR.
    * Usato per la scansione QR code sulle copie cartacee.
+   *
+   * PRIVACY (GDPR): la risposta è ANONIMA. Codice fiscale e nome dei firmatari
+   * NON vengono restituiti: l'endpoint è pubblico e enumerabile per id, quindi
+   * esporli significherebbe pubblicare dati personali di qualunque tenant.
+   * Per il dettaglio completo esiste `GET /fir/:firId/verify/dettaglio`,
+   * autenticato e limitato al proprio tenant.
    */
   @Get('verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Verifica firme FIR (endpoint pubblico)',
+    summary: 'Verifica firme FIR (endpoint pubblico, risposta anonima)',
     description:
       'Verifica crittograficamente tutte le firme sul FIR.\n\n' +
       '**Endpoint pubblico** — nessuna autenticazione richiesta.\n' +
-      'Utilizzabile per scansione QR code e verifica di terzi.',
+      'Utilizzabile per scansione QR code e verifica di terzi.\n\n' +
+      '**I dati personali dei firmatari (codice fiscale, nome) NON sono inclusi.** ' +
+      'Per ottenerli usare `GET /fir/:firId/verify/dettaglio` da utente autenticato.',
   })
   @ApiParam({ name: 'firId', description: 'ID FIR', example: 'fir-uuid-123' })
   @ApiResponse({
     status: 200,
-    description: 'Verifica completata',
+    description: 'Verifica completata (senza dati personali)',
     type: VerifySignaturesResponseDto,
   })
   @ApiResponse({ status: 400, description: 'ID FIR malformato' })
@@ -171,10 +179,63 @@ export class SignaturesController {
     }
 
     try {
+      // disclosePersonalData omesso → default false: risposta anonima.
       return await this.verifySignaturesUseCase.execute({ firId })
     } catch (error) {
       // FIR inesistente: il use-case lancia una DomainException NOT_FOUND che
       // altrimenti finirebbe nel ramo "unknown" del GlobalExceptionFilter → 500.
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Verifica firme con dati identificativi dei firmatari.
+   *
+   * GET /fir/:firId/verify/dettaglio
+   *
+   * Variante autenticata di `/verify`: include codice fiscale e nome dei
+   * firmatari. Il use-case verifica che il FIR appartenga al tenant
+   * dell'utente e, in caso contrario, risponde 404 (non 403: confermare
+   * l'esistenza di un id altrui sarebbe già una fuga di informazione).
+   */
+  @Get('verify/dettaglio')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Verifica firme FIR con anagrafica firmatari (autenticato, tenant-scoped)',
+    description:
+      'Come `/verify`, ma include codice fiscale e nome dei firmatari.\n\n' +
+      'Richiede autenticazione; il FIR deve appartenere al tenant dell utente.',
+  })
+  @ApiParam({ name: 'firId', description: 'ID FIR', example: 'fir-uuid-123' })
+  @ApiResponse({
+    status: 200,
+    description: 'Verifica completata',
+    type: VerifySignaturesResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'ID FIR malformato' })
+  @ApiResponse({ status: 401, description: 'Non autenticato' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato o non appartenente al tenant' })
+  async verifySignaturesDettaglio(
+    @Param('firId') firId: string,
+    @Req() req: any
+  ): Promise<VerifySignaturesResponseDto> {
+    if (!UUID_REGEX.test(firId)) {
+      throw new BadRequestException('ID FIR non valido')
+    }
+
+    try {
+      return await this.verifySignaturesUseCase.execute({
+        firId,
+        tenantId: req.user.tenantId,
+        disclosePersonalData: true,
+      })
+    } catch (error) {
       if (error instanceof DomainException && error.code === 'NOT_FOUND') {
         throw new NotFoundException(error.message)
       }

@@ -27,6 +27,7 @@ import { VerifySignaturesUseCase } from './verify-signatures.use-case'
 import { DigitalSignatureService } from './digital-signature.service'
 import { SignatureAuditHandler } from './signature-audit.handler'
 import { SignatureFIRRepository } from '../../infrastructure/signatures/signature-fir.repository'
+import { FIRPartyResolver } from '../../infrastructure/signatures/fir-party.resolver'
 import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
 import { LoggerService } from '../../core/logger/logger.service'
 import { FIR_REPOSITORY } from '../../domain/fir/fir.repository'
@@ -58,6 +59,10 @@ import { Rfc3161TsaProvider } from './providers/rfc3161-tsa.provider'
       provide: FIR_REPOSITORY,
       useExisting: SignatureFIRRepository,
     },
+
+    // Autorizzazione di ruolo-parte sulla firma: verifica che chi firma sia
+    // effettivamente il produttore/trasportatore/destinatario designato sul FIR.
+    FIRPartyResolver,
 
     // ===== Provider firma — configurabile via SIGNATURE_PROVIDER env =====
     // SANDBOX (default): ECDSA effimera, NON qualificata.
