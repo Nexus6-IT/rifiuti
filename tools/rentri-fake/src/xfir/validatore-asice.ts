@@ -1,5 +1,11 @@
 import JSZip from 'jszip'
-import { estraiRiferimenti, verificaCopertura, FirmaXades } from './validatore-xades'
+import {
+  estraiRiferimenti,
+  verificaCopertura,
+  verificaDigest,
+  verificaFirmaCrittografica,
+  FirmaXades,
+} from './validatore-xades'
 
 export type EsitoValidazione =
   | { valido: true; xmlPresenti: string[]; firme: string[] }
@@ -46,6 +52,26 @@ export async function validaAsicE(contenuto: Buffer): Promise<EsitoValidazione> 
   const copertura = verificaCopertura(firme, xmlPresenti)
   if (!copertura.valido) {
     return { valido: false, motivo: copertura.motivo }
+  }
+
+  // FEDELTA.md §5.2 punto 6: prima di questa correzione ne' il DigestValue
+  // ne' la firma crittografica venivano mai verificati, cosi' un container
+  // in cui nessun byte era realmente firmato risultava "valido".
+  const contenutiPerUri = new Map<string, Buffer>()
+  for (const nome of xmlPresenti) {
+    contenutiPerUri.set(nome, Buffer.from(await zip.files[nome].async('nodebuffer')))
+  }
+
+  for (const firma of firme) {
+    const esitoDigest = verificaDigest(firma, contenutiPerUri)
+    if (!esitoDigest.valido) {
+      return { valido: false, motivo: esitoDigest.motivo }
+    }
+
+    const esitoFirma = verificaFirmaCrittografica(firma)
+    if (!esitoFirma.valido) {
+      return { valido: false, motivo: esitoFirma.motivo }
+    }
   }
 
   return { valido: true, xmlPresenti, firme: nomiFirme }

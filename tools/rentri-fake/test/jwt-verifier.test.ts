@@ -9,6 +9,11 @@ import {
 import { verificaJwt, RegistroReplayMemoria } from '../src/auth/jwt-verifier'
 import { accreditaSoggetto } from '../src/auth/soggetti-accreditati'
 
+// La generazione RSA a 2048 bit di node-forge (pura JS, sincrona) usata per
+// ogni certificato di test puo' superare il timeout di default di Jest su
+// macchine lente: qui si generano piu' certificati per test suite.
+jest.setTimeout(30000)
+
 const AUDIENCE = 'rentrigov.demo.api'
 
 async function creaToken(opzioni: {
