@@ -1,20 +1,48 @@
+import { randomUUID } from 'crypto'
+
 export interface Formulario {
   numero_fir: string
   stato: string
   produttore: string
 }
 
-export type StatoTransazione = 'in_elaborazione' | 'completata' | 'fallita'
+export type StatoTransazione = 'in_elaborazione' | 'completata'
 
 export interface Guasto {
   stato: number
   volte: number
 }
 
+/**
+ * `EsitoMessaggioModel` (formulari.yaml righe 9446-9472): messaggio di
+ * validazione allegato all'esito di una transazione.
+ */
+export interface EsitoMessaggio {
+  indice?: number
+  campo?: string
+  tipo: 'Errore' | 'Avvertimento'
+  codice_messaggio?: string
+  parametri?: unknown[]
+}
+
+/**
+ * Sottoinsieme di `EsitoFormularioModel` (formulari.yaml righe 9378-9414)
+ * prodotto dal completamento di una transazione: conserva sempre `errore`
+ * e `validazione`, i campi con cui il client distingue un esito negativo
+ * da un successo. La fake precedente li ignorava del tutto.
+ */
+export interface EsitoTransazione {
+  esito?: unknown
+  tipo?: string
+  validazione: EsitoMessaggio[]
+  errore: boolean
+  tempo_elaborazione?: string
+}
+
 export interface Transazione {
   id: string
   stato: StatoTransazione
-  risultato?: unknown
+  esito?: EsitoTransazione
 }
 
 /**
@@ -24,13 +52,11 @@ export interface Transazione {
 export class Archivio {
   private formulari = new Map<string, Formulario>()
   private transazioni = new Map<string, Transazione>()
-  private contatore = 0
   private guasto: Guasto | null = null
 
   azzera(): void {
     this.formulari.clear()
     this.transazioni.clear()
-    this.contatore = 0
     this.guasto = null
   }
 
@@ -63,13 +89,14 @@ export class Archivio {
   }
 
   /**
-   * NONBLOCK_PULL: crea una transazione in stato `in_elaborazione` e ne
-   * restituisce l'identificativo. La fake non la completa da sola: il
-   * completamento arriva solo dal canale di controllo (Task 8).
+   * NONBLOCK_PULL: crea una transazione in stato `in_elaborazione` con
+   * identificativo in formato uuid — `TransazioneModel.transazione_id` è
+   * `format: uuid` (formulari.yaml righe 10276-10278), non un contatore
+   * `TRX-000001` come nella fake precedente. La fake non la completa da
+   * sola: il completamento arriva solo dal canale di controllo.
    */
   creaTransazione(): string {
-    this.contatore += 1
-    const id = `TRX-${String(this.contatore).padStart(6, '0')}`
+    const id = randomUUID()
     this.transazioni.set(id, { id, stato: 'in_elaborazione' })
     return id
   }
@@ -78,10 +105,10 @@ export class Archivio {
     return this.transazioni.get(id)
   }
 
-  completaTransazione(id: string, risultato: unknown): void {
+  completaTransazione(id: string, esito: EsitoTransazione): void {
     const transazione = this.transazioni.get(id)
     if (!transazione) return
     transazione.stato = 'completata'
-    transazione.risultato = risultato
+    transazione.esito = esito
   }
 }

@@ -16,30 +16,59 @@ async function tokenValido(): Promise<string> {
     .sign(chiave)
 }
 
+// Ciclo NONBLOCK_PULL come dichiarato dal contratto ufficiale:
+// - POST / (Crea FIR): formulari.yaml righe 187-265 -> 202, TransazioneModel,
+//   header Location.
+// - GET /{transazione_id}/status: formulari.yaml righe 2847-2897 -> 200
+//   senza corpo se non ancora elaborata, 303 + Location quando pronta.
+// - GET /{transazione_id}/result: formulari.yaml righe 2801-2846 -> 400
+//   problem+json se non ancora elaborata, altrimenti 200 EsitoFormularioModel.
 describe('Asincronia NONBLOCK_PULL', () => {
-  it('la trasmissione restituisce 202 con un transazione_id, non il risultato', async () => {
+  it('POST / crea il FIR: 202, TransazioneModel con transazione_id uuid, header Location', async () => {
     const app = creaApp()
     const risposta = await app.inject({
       method: 'POST',
-      url: '/formulari/v1.0/FIR-0001/trasmissione',
+      url: '/formulari/v1.0/',
       headers: { authorization: `Bearer ${await tokenValido()}` },
       payload: { dati: 'qualsiasi' },
     })
 
     expect(risposta.statusCode).toBe(202)
-    expect(risposta.json()).toHaveProperty('transazione_id')
-    expect(risposta.json()).not.toHaveProperty('risultato')
+    const corpo = risposta.json()
+    expect(corpo).toHaveProperty('transazione_id')
+    // TransazioneModel.transazione_id e' `format: uuid` (formulari.yaml
+    // righe 10276-10278), non un contatore tipo TRX-000001.
+    expect(corpo.transazione_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    )
+    expect(risposta.headers.location).toBe(`/formulari/v1.0/${corpo.transazione_id}/status`)
 
     await app.close()
   })
 
-  it('lo stato è in_elaborazione finché non si completa', async () => {
+  it('non esiste piu la rotta inventata POST /{numero_fir}/trasmissione', async () => {
+    const app = creaApp()
+    const risposta = await app.inject({
+      method: 'POST',
+      url: '/formulari/v1.0/TSTB12345XY/trasmissione',
+      headers: { authorization: `Bearer ${await tokenValido()}` },
+      payload: {},
+    })
+
+    // Nessun path del contratto ha questa forma: deve tornare un 404 di
+    // rotta, non un 202 come nella fake precedente.
+    expect(risposta.statusCode).toBe(404)
+
+    await app.close()
+  })
+
+  it('lo status e 200 senza corpo (e senza campo stato) finche non si completa', async () => {
     const app = creaApp()
     const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
 
     const creazione = await app.inject({
       method: 'POST',
-      url: '/formulari/v1.0/FIR-0002/trasmissione',
+      url: '/formulari/v1.0/',
       headers: intestazioni,
       payload: {},
     })
@@ -52,18 +81,49 @@ describe('Asincronia NONBLOCK_PULL', () => {
     })
 
     expect(stato.statusCode).toBe(200)
-    expect(stato.json().stato).toBe('in_elaborazione')
+    expect(stato.body).toBe('')
+    expect(stato.headers.location).toBeUndefined()
 
     await app.close()
   })
 
-  it('il risultato non è disponibile finché la transazione è in corso', async () => {
+  it('lo status risponde 303 con header Location verso /result quando la transazione e completata', async () => {
     const app = creaApp()
     const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
 
     const creazione = await app.inject({
       method: 'POST',
-      url: '/formulari/v1.0/FIR-0003/trasmissione',
+      url: '/formulari/v1.0/',
+      headers: intestazioni,
+      payload: {},
+    })
+    const id = creazione.json().transazione_id
+
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: id, errore: false, validazione: [] },
+    })
+
+    const stato = await app.inject({
+      method: 'GET',
+      url: `/formulari/v1.0/${id}/status`,
+      headers: intestazioni,
+    })
+
+    expect(stato.statusCode).toBe(303)
+    expect(stato.headers.location).toBe(`/formulari/v1.0/${id}/result`)
+
+    await app.close()
+  })
+
+  it('il risultato risponde 400 problem+json finche la transazione e in corso', async () => {
+    const app = creaApp()
+    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
+
+    const creazione = await app.inject({
+      method: 'POST',
+      url: '/formulari/v1.0/',
       headers: intestazioni,
       payload: {},
     })
@@ -75,7 +135,50 @@ describe('Asincronia NONBLOCK_PULL', () => {
       headers: intestazioni,
     })
 
-    expect(risultato.statusCode).toBe(409)
+    expect(risultato.statusCode).toBe(400)
+    expect(risultato.headers['content-type']).toContain('application/problem+json')
+
+    await app.close()
+  })
+
+  it('il risultato completato espone EsitoFormularioModel con errore e validazione', async () => {
+    const app = creaApp()
+    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
+
+    const creazione = await app.inject({
+      method: 'POST',
+      url: '/formulari/v1.0/',
+      headers: intestazioni,
+      payload: {},
+    })
+    const id = creazione.json().transazione_id
+
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: {
+        transazione_id: id,
+        errore: true,
+        validazione: [{ campo: 'numero_fir', tipo: 'Errore', codice_messaggio: 'FIR_DUPLICATO' }],
+      },
+    })
+
+    const risultato = await app.inject({
+      method: 'GET',
+      url: `/formulari/v1.0/${id}/result`,
+      headers: intestazioni,
+    })
+
+    expect(risultato.statusCode).toBe(200)
+    const corpo = risultato.json()
+    expect(corpo.transazione_id).toBe(id)
+    // Sono esattamente i campi con cui il client distingue un esito
+    // negativo (formulari.yaml righe 9402-9409): la fake precedente non li
+    // esponeva affatto.
+    expect(corpo.errore).toBe(true)
+    expect(corpo.validazione).toEqual([
+      { campo: 'numero_fir', tipo: 'Errore', codice_messaggio: 'FIR_DUPLICATO' },
+    ])
 
     await app.close()
   })
@@ -84,7 +187,20 @@ describe('Asincronia NONBLOCK_PULL', () => {
     const app = creaApp()
     const risposta = await app.inject({
       method: 'GET',
-      url: '/formulari/v1.0/transazione-inesistente/status',
+      url: '/formulari/v1.0/00000000-0000-0000-0000-000000000000/status',
+      headers: { authorization: `Bearer ${await tokenValido()}` },
+    })
+
+    expect(risposta.statusCode).toBe(404)
+
+    await app.close()
+  })
+
+  it('result di una transazione inesistente risponde 404', async () => {
+    const app = creaApp()
+    const risposta = await app.inject({
+      method: 'GET',
+      url: '/formulari/v1.0/00000000-0000-0000-0000-000000000000/result',
       headers: { authorization: `Bearer ${await tokenValido()}` },
     })
 

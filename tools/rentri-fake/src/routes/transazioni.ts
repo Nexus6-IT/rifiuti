@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { verificaJwt } from '../auth/jwt-verifier'
 import { Archivio } from '../stato/archivio'
+import { inviaProblemDetails } from '../errori/problem-details'
 
 const AUDIENCE = process.env.RENTRI_AUDIENCE ?? 'rentrigov.demo.api'
 const PREFISSO = '/formulari/v1.0'
@@ -9,7 +10,11 @@ async function autentica(richiesta: FastifyRequest, risposta: FastifyReply): Pro
   const esito = await verificaJwt(richiesta.headers.authorization, { audienceAttesa: AUDIENCE })
 
   if (!esito.valido) {
-    await risposta.status(401).send({ titolo: 'Non autorizzato', dettaglio: esito.motivo })
+    // V. formulari.ts: il contratto documenta 403, mai 401.
+    await inviaProblemDetails(risposta, 403, {
+      title: 'Operazione non consentita',
+      detail: esito.motivo,
+    })
     return false
   }
 
@@ -17,32 +22,45 @@ async function autentica(richiesta: FastifyRequest, risposta: FastifyReply): Pro
 }
 
 /**
- * NONBLOCK_PULL: l'operazione non restituisce il risultato ma un
- * identificativo da interrogare. La fake NON completa automaticamente la
- * transazione: il completamento avviene solo tramite il canale di controllo
- * (Task 8), così i test decidono quando e come l'elaborazione termina.
+ * NONBLOCK_PULL secondo il contratto ufficiale:
+ * - `POST /` (Crea FIR, formulari.yaml righe 187-265): 202, corpo
+ *   `TransazioneModel` (transazione_id uuid), header `Location`. Sostituisce
+ *   la rotta inventata `POST /{numero_fir}/trasmissione`, che non esiste in
+ *   alcun path del contratto ed e' stata rimossa.
+ * - `GET /{transazione_id}/status` (formulari.yaml righe 2847-2897): 200
+ *   senza corpo se non ancora elaborata, 303 con header `Location` verso
+ *   `/result` quando l'esito e' disponibile. Nessun campo `stato`: non
+ *   esiste nello schema di risposta del contratto.
+ * - `GET /{transazione_id}/result` (formulari.yaml righe 2801-2846): 400
+ *   `application/problem+json` se non ancora elaborata (non 409), corpo di
+ *   successo aderente a `EsitoFormularioModel` con almeno `errore` e
+ *   `validazione`.
+ *
+ * La fake NON completa automaticamente la transazione: il completamento
+ * avviene solo tramite il canale di controllo, così i test decidono quando
+ * e come l'elaborazione termina.
  *
  * Nota sul nome del parametro: questa rotta condivide la posizione nel path
  * (`/formulari/v1.0/:xxx`) con `GET /formulari/v1.0/:numero_fir` registrata
- * da `registraRotteFormulari`. Il router di Fastify (find-my-way) richiede
+ * da `registraRotteFormulari`. Il router di Fastify (find-my-way) ammette
  * un unico nome di parametro per ciascuna posizione nell'albero delle
- * rotte: usare qui `:numero_fir` per la POST di trasmissione e
- * `:transazione_id` per le GET di status/result avrebbe causato un errore
- * alla registrazione. Si usa quindi un unico nome di segmento,
+ * rotte: usare qui `:numero_fir` per una rotta e `:transazione_id` per
+ * un'altra alla stessa posizione avrebbe causato un errore alla
+ * registrazione. Si usa quindi un unico nome di segmento,
  * `:identificativo`, per tutte le rotte a questo livello (in questo file e
  * in `formulari.ts`); ciascun gestore lo rinomina localmente secondo il
  * proprio dominio. I path esterni restano identici al contratto ufficiale.
  */
 export function registraRotteTransazioni(app: FastifyInstance, archivio: Archivio): void {
-  app.post<{ Params: { identificativo: string } }>(
-    `${PREFISSO}/:identificativo/trasmissione`,
-    async (richiesta, risposta) => {
-      if (!(await autentica(richiesta, risposta))) return
+  app.post(`${PREFISSO}/`, async (richiesta, risposta) => {
+    if (!(await autentica(richiesta, risposta))) return
 
-      const id = archivio.creaTransazione()
-      return risposta.status(202).send({ transazione_id: id })
-    }
-  )
+    const id = archivio.creaTransazione()
+    return risposta
+      .status(202)
+      .header('Location', `${PREFISSO}/${id}/status`)
+      .send({ transazione_id: id })
+  })
 
   app.get<{ Params: { identificativo: string } }>(
     `${PREFISSO}/:identificativo/status`,
@@ -52,10 +70,17 @@ export function registraRotteTransazioni(app: FastifyInstance, archivio: Archivi
       const transazioneId = richiesta.params.identificativo
       const transazione = archivio.leggiTransazione(transazioneId)
       if (!transazione) {
-        return risposta.status(404).send({ titolo: 'Transazione non trovata' })
+        return inviaProblemDetails(risposta, 404, { title: 'Transazione non trovata' })
       }
 
-      return { transazione_id: transazione.id, stato: transazione.stato }
+      if (transazione.stato === 'in_elaborazione') {
+        return risposta.status(200).send()
+      }
+
+      return risposta
+        .status(303)
+        .header('Location', `${PREFISSO}/${transazioneId}/result`)
+        .send()
     }
   )
 
@@ -67,17 +92,17 @@ export function registraRotteTransazioni(app: FastifyInstance, archivio: Archivi
       const transazioneId = richiesta.params.identificativo
       const transazione = archivio.leggiTransazione(transazioneId)
       if (!transazione) {
-        return risposta.status(404).send({ titolo: 'Transazione non trovata' })
+        return inviaProblemDetails(risposta, 404, { title: 'Transazione non trovata' })
       }
 
       if (transazione.stato === 'in_elaborazione') {
-        return risposta.status(409).send({
-          titolo: 'Elaborazione in corso',
-          dettaglio: "Interrogare /status finche' lo stato non e' completata.",
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Richiesta non ancora elaborata',
+          detail: "Interrogare /status finche' non risponde 303.",
         })
       }
 
-      return { transazione_id: transazione.id, risultato: transazione.risultato ?? null }
+      return { transazione_id: transazione.id, ...transazione.esito }
     }
   )
 }

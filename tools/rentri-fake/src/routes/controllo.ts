@@ -1,10 +1,12 @@
 import { FastifyInstance } from 'fastify'
-import { Archivio } from '../stato/archivio'
+import { Archivio, EsitoMessaggio, Formulario } from '../stato/archivio'
+import { inviaProblemDetails } from '../errori/problem-details'
 
 /**
  * Apparato di prova: prefisso __controllo, inesistente in RENTRI e
  * deliberatamente riconoscibile. Non richiede autenticazione perche' serve
- * ai test per pilotare guasti e completamenti asincroni.
+ * ai test per pilotare guasti, popolare l'archivio e completare
+ * l'elaborazione asincrona.
  */
 export function registraRotteControllo(app: FastifyInstance, archivio: Archivio): void {
   app.post<{ Body: { stato: number; volte: number } }>(
@@ -15,18 +17,39 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
     }
   )
 
-  app.post<{ Body: { transazione_id: string; risultato: unknown } }>(
-    '/__controllo/completa-transazione',
-    async (richiesta, risposta) => {
-      const transazione = archivio.leggiTransazione(richiesta.body.transazione_id)
-      if (!transazione) {
-        return risposta.status(404).send({ titolo: 'Transazione non trovata' })
-      }
-
-      archivio.completaTransazione(richiesta.body.transazione_id, richiesta.body.risultato)
-      return { completata: true }
+  app.post<{
+    Body: {
+      transazione_id: string
+      errore?: boolean
+      validazione?: EsitoMessaggio[]
+      esito?: unknown
+      tipo?: string
+      tempo_elaborazione?: string
     }
-  )
+  }>('/__controllo/completa-transazione', async (richiesta, risposta) => {
+    const transazione = archivio.leggiTransazione(richiesta.body.transazione_id)
+    if (!transazione) {
+      return inviaProblemDetails(risposta, 404, { title: 'Transazione non trovata' })
+    }
+
+    archivio.completaTransazione(richiesta.body.transazione_id, {
+      esito: richiesta.body.esito,
+      tipo: richiesta.body.tipo,
+      validazione: richiesta.body.validazione ?? [],
+      errore: richiesta.body.errore ?? false,
+      tempo_elaborazione: richiesta.body.tempo_elaborazione,
+    })
+    return { completata: true }
+  })
+
+  // Punto 7 della correzione di fedeltà: senza un modo di popolare
+  // l'archivio, nessuno scenario di lettura positiva è verificabile
+  // (`Archivio` nasce vuoto e nessuna rotta di dominio scrive un
+  // formulario).
+  app.post<{ Body: Formulario }>('/__controllo/formulario', async (richiesta) => {
+    archivio.salvaFormulario(richiesta.body)
+    return { salvato: true }
+  })
 
   app.post('/__controllo/azzera', async () => {
     archivio.azzera()
