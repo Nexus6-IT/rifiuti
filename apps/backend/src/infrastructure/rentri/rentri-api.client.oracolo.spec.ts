@@ -138,4 +138,82 @@ describe('RENTRIApiClient — verifica reale contro la fake RENTRI (in-process)'
     expect((formulario as any).numero_fir).toBe('BCDFGH00001JK')
     expect((formulario as any).stato).toBe('InserimentoQuantita')
   })
+
+  /**
+   * Ciclo NONBLOCK_PULL reale, punto per punto: crea (202 + Location),
+   * interroga /status e ottiene 200 (ancora in elaborazione), completa la
+   * transazione dal canale di controllo, interroga di nuovo /status e
+   * ottiene 303 + Location, segue il Location e legge l'esito da /result.
+   *
+   * La sequenza di codici HTTP osservata è verificata passo per passo con
+   * `app.inject()` diretto (senza passare dal client), poi lo stesso ciclo
+   * è ripetuto tramite `client.attendiEsito` per dimostrare che il client
+   * produce lo stesso risultato senza delegare il follow del redirect
+   * all'HTTP client (v. `maxRedirects: 0` in `RENTRIApiClient`).
+   */
+  it('attendiEsito: ciclo NONBLOCK_PULL reale — 202 crea, 200 in elaborazione, completamento, 303 pronto, esito da /result', async () => {
+    const client = creaClient()
+
+    // 1) Crea il formulario: 202 + transazione_id + Location.
+    const { transazioneId, urlStato } = await client.creaFormulario('', { dati: 'qualsiasi' })
+    expect(urlStato).toBe(`/formulari/v1.0/${transazioneId}/status`)
+
+    // Per interrogare /status e /result "a mano" (senza passare dal client)
+    // serve un Authorization Bearer come quello usato da creaFormulario. Il
+    // registro anti-replay della fake rifiuta un `jti` già visto: ogni
+    // richiesta ha bisogno del proprio JWT, mai lo stesso riusato due volte.
+    const auth = new RentriAuthService(
+      { getForTenant: jest.fn().mockResolvedValue(null) } as any,
+      (client as any).config,
+      { setContext: jest.fn(), debug: jest.fn(), info: jest.fn(), error: jest.fn() } as any
+    )
+
+    // 2) /status PRIMA del completamento: 200 senza corpo ("ancora in elaborazione").
+    const statusPrima = await app.inject({
+      method: 'GET',
+      url: urlStato,
+      headers: { authorization: await auth.creaAuthorizationHeader('') },
+    })
+    expect(statusPrima.statusCode).toBe(200)
+    expect(statusPrima.payload).toBe('')
+
+    // 3) Completa la transazione dal canale di controllo (nessuna autenticazione richiesta).
+    const completamento = await app.inject({
+      method: 'POST',
+      url: '/__controllo/completa-transazione',
+      payload: { transazione_id: transazioneId, errore: false, validazione: [] },
+    })
+    expect(completamento.statusCode).toBe(200)
+
+    // 4) /status DOPO il completamento: 303 + Location verso /result.
+    const statusDopo = await app.inject({
+      method: 'GET',
+      url: urlStato,
+      headers: { authorization: await auth.creaAuthorizationHeader('') },
+    })
+    expect(statusDopo.statusCode).toBe(303)
+    const urlEsito = statusDopo.headers.location as string
+    expect(urlEsito).toBe(`/formulari/v1.0/${transazioneId}/result`)
+
+    // 5) Segue il Location e legge l'esito da /result: 200 con EsitoFormularioModel.
+    const risultato = await app.inject({
+      method: 'GET',
+      url: urlEsito,
+      headers: { authorization: await auth.creaAuthorizationHeader('') },
+    })
+    expect(risultato.statusCode).toBe(200)
+    expect(risultato.json()).toEqual({
+      transazione_id: transazioneId,
+      errore: false,
+      validazione: [],
+    })
+
+    // 6) Stessa sequenza tramite il client: la transazione è già completata,
+    // quindi un solo tentativo basta a ottenere l'esito (nessuna attesa).
+    const esito = await client.attendiEsito('', transazioneId, {
+      intervalloMs: 0,
+      maxTentativi: 1,
+    })
+    expect(esito).toEqual({ transazione_id: transazioneId, errore: false, validazione: [] })
+  })
 })

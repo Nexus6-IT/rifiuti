@@ -5,6 +5,12 @@ import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
  *
  * Tests the application logic for synchronizing a single FIR to RENTRI.
  * Uses mocks for dependencies (repository, API client, event bus).
+ *
+ * Il client RENTRI non espone alcun endpoint sincrono di sottomissione (il
+ * contratto ufficiale è asincrono): questi test mockano perciò la coppia
+ * `creaFormulario` (crea la transazione, 202 + transazione_id) +
+ * `attendiEsito` (polling NONBLOCK_PULL fino all'esito), non il vecchio
+ * `submitFIR`.
  */
 describe('SyncFIRToRENTRIUseCase', () => {
   let useCase: SyncFIRToRENTRIUseCase
@@ -22,8 +28,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
     }
 
     mockRENTRIApiClient = {
-      submitFIR: jest.fn(),
-      validateFIR: jest.fn(),
+      creaFormulario: jest.fn(),
+      attendiEsito: jest.fn(),
     }
 
     mockSyncLogRepository = {
@@ -81,13 +87,17 @@ describe('SyncFIRToRENTRIUseCase', () => {
         }),
       }
 
-      const protocolNumber = 'RENTRI-2025-123456'
+      const transazioneId = '9f8b3c1a-1234-4abc-8def-0123456789ab'
 
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
-      mockRENTRIApiClient.submitFIR.mockResolvedValue({
-        success: true,
-        protocolNumber,
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({
+        transazioneId,
+        urlStato: `/formulari/v1.0/${transazioneId}/status`,
+      })
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+        errore: false,
+        validazione: [],
       })
       mockFIRRepository.update.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
@@ -95,12 +105,16 @@ describe('SyncFIRToRENTRIUseCase', () => {
       const result = await useCase.execute(firId, tenantId)
 
       expect(result.success).toBe(true)
-      expect(result.protocolNumber).toBe(protocolNumber)
+      expect(result.protocolNumber).toBe(transazioneId)
       expect(mockFIRRepository.findById).toHaveBeenCalledWith(firId)
       expect(mockFIR.canSyncToRENTRI).toHaveBeenCalled()
       expect(mockFIR.startRENTRISync).toHaveBeenCalled()
-      expect(mockRENTRIApiClient.submitFIR).toHaveBeenCalledWith(mockFIR)
-      expect(mockFIR.markRENTRISynced).toHaveBeenCalledWith(protocolNumber, undefined)
+      expect(mockRENTRIApiClient.creaFormulario).toHaveBeenCalledWith(
+        tenantId,
+        (expect as any).anything()
+      )
+      expect(mockRENTRIApiClient.attendiEsito).toHaveBeenCalledWith(tenantId, transazioneId)
+      expect(mockFIR.markRENTRISynced).toHaveBeenCalledWith(transazioneId, undefined)
       expect(mockFIRRepository.update).toHaveBeenCalledWith(firId, mockFIR)
       expect(mockSyncLogRepository.save).toHaveBeenCalled()
       expect(mockDomainEvents.publish).toHaveBeenCalled()
@@ -134,13 +148,17 @@ describe('SyncFIRToRENTRIUseCase', () => {
         }),
       }
 
-      const protocolNumber = 'RENTRI-2025-789'
+      const transazioneId = 'tx-retry-789'
 
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
-      mockRENTRIApiClient.submitFIR.mockResolvedValue({
-        success: true,
-        protocolNumber,
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({
+        transazioneId,
+        urlStato: `/formulari/v1.0/${transazioneId}/status`,
+      })
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+        errore: false,
+        validazione: [],
       })
       mockFIRRepository.update.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
@@ -215,7 +233,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
   })
 
   describe('Sync Failures', () => {
-    it('should handle RENTRI API errors with retry', async () => {
+    it('should handle RENTRI API errors with retry (fallimento di creaFormulario)', async () => {
       const firId = 'fir-123'
       const tenantId = 'tenant-456'
       const mockFIR = {
@@ -249,7 +267,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
 
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
-      mockRENTRIApiClient.submitFIR.mockRejectedValue(apiError)
+      mockRENTRIApiClient.creaFormulario.mockRejectedValue(apiError)
       mockFIRRepository.update.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
@@ -264,6 +282,64 @@ describe('SyncFIRToRENTRIUseCase', () => {
         undefined
       )
       expect(mockDomainEvents.publish).toHaveBeenCalled() // FIRSyncFailedEvent
+    })
+
+    it('should handle RENTRI API errors with retry (superamento tentativi di attendiEsito)', async () => {
+      const firId = 'fir-123'
+      const tenantId = 'tenant-456'
+      const mockFIR = {
+        id: firId,
+        tenantId,
+        status: 'COMPLETED',
+        firNumber: 'FIR-2025-003b',
+        rentriSyncStatus: {
+          getStatus: jest.fn().mockReturnValue('PENDING'),
+          getAttempts: jest.fn().mockReturnValue(0),
+        },
+        canSyncToRENTRI: jest.fn().mockReturnValue(true),
+        startRENTRISync: jest.fn(),
+        markRENTRISyncFailed: jest.fn(),
+        needsRENTRIRetry: jest.fn().mockReturnValue(true),
+        getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
+        getDomainEvents: jest
+          .fn()
+          .mockReturnValue([{ eventType: 'FIRSyncFailed', aggregateId: firId }]),
+        clearDomainEvents: jest.fn(),
+      }
+
+      const mockSyncLog = {
+        markAsFailure: jest.fn().mockReturnValue({
+          id: 'log-1',
+          status: 'FAILURE',
+        }),
+      }
+
+      const transazioneId = 'tx-timeout'
+
+      mockFIRRepository.findById.mockResolvedValue(mockFIR)
+      mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({
+        transazioneId,
+        urlStato: `/formulari/v1.0/${transazioneId}/status`,
+      })
+      // Simula il superamento del numero massimo di tentativi di polling:
+      // attendiEsito solleva un errore esplicito invece di restare bloccato.
+      mockRENTRIApiClient.attendiEsito.mockRejectedValue(
+        new Error(`Superato il numero massimo di tentativi (30) in attesa dell'esito.`)
+      )
+      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockSyncLogRepository.save.mockResolvedValue(undefined)
+
+      const result = await useCase.execute(firId, tenantId)
+
+      expect(result.success).toBe(false)
+      expect(result.willRetry).toBe(true)
+      expect(result.error).toContain('tentativi')
+      expect(mockFIR.markRENTRISyncFailed).toHaveBeenCalledWith(
+        (expect as any).stringContaining('tentativi'),
+        'RENTRI_API_ERROR',
+        undefined
+      )
     })
 
     it('should mark as permanently failed after max retries', async () => {
@@ -297,7 +373,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
 
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
-      mockRENTRIApiClient.submitFIR.mockRejectedValue(new Error('Persistent error'))
+      mockRENTRIApiClient.creaFormulario.mockRejectedValue(new Error('Persistent error'))
       mockFIRRepository.update.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
@@ -308,7 +384,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(result.attempts).toBe(4)
     })
 
-    it('should handle validation errors from RENTRI', async () => {
+    it('should handle validation errors from RENTRI (esito.errore = true)', async () => {
       const firId = 'fir-123'
       const tenantId = 'tenant-456'
       const mockFIR = {
@@ -336,11 +412,17 @@ describe('SyncFIRToRENTRIUseCase', () => {
         }),
       }
 
+      const transazioneId = 'tx-esito-negativo'
+
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
-      mockRENTRIApiClient.submitFIR.mockResolvedValue({
-        success: false,
-        errors: [{ code: 'E001', field: 'cerCode', message: 'Invalid CER code' }],
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({
+        transazioneId,
+        urlStato: `/formulari/v1.0/${transazioneId}/status`,
+      })
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+        errore: true,
+        validazione: [{ campo: 'cerCode', codice_messaggio: 'Invalid CER code' }],
       })
       mockFIRRepository.update.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
@@ -351,7 +433,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(result.willRetry).toBe(false) // Validation errors don't retry
       expect(result.error).toContain('Invalid CER code')
       expect(mockFIR.markRENTRISyncFailed).toHaveBeenCalledWith(
-        expect.stringContaining('Invalid CER code'),
+        (expect as any).stringContaining('Invalid CER code'),
         'RENTRI_VALIDATION_ERROR',
         undefined
       )
@@ -389,9 +471,13 @@ describe('SyncFIRToRENTRIUseCase', () => {
 
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
-      mockRENTRIApiClient.submitFIR.mockResolvedValue({
-        success: true,
-        protocolNumber: 'RENTRI-123',
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({
+        transazioneId: 'tx-123',
+        urlStato: '/formulari/v1.0/tx-123/status',
+      })
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+        errore: false,
+        validazione: [],
       })
       mockFIRRepository.update.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
@@ -437,7 +523,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
 
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
-      mockRENTRIApiClient.submitFIR.mockRejectedValue(new Error('API Error'))
+      mockRENTRIApiClient.creaFormulario.mockRejectedValue(new Error('API Error'))
       mockFIRRepository.update.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 

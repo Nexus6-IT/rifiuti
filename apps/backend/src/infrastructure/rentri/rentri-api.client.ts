@@ -273,6 +273,142 @@ export class RENTRIApiClient {
     return response.data
   }
 
+  /** Intervallo di default (ms) tra un tentativo e l'altro del polling NONBLOCK_PULL. */
+  private static readonly INTERVALLO_POLLING_DEFAULT_MS = 2000
+
+  /** Numero massimo di default di tentativi prima di sollevare un errore esplicito. */
+  private static readonly MAX_TENTATIVI_POLLING_DEFAULT = 30
+
+  /**
+   * Attende l'esito di una transazione creata con {@link creaFormulario},
+   * seguendo il ciclo NONBLOCK_PULL del contratto ufficiale
+   * (formulari.yaml righe 2801-2897):
+   *
+   * - `GET /{transazione_id}/status`: **200 senza corpo** finché
+   *   l'elaborazione è in corso (si riprova dopo `intervalloMs`); **303**
+   *   con header `Location` quando l'esito è pronto.
+   * - Segue il `Location` ricevuto ed esegue `GET` su `/result`: **400**
+   *   significa "richiesta anticipata" (non è un errore definitivo — il
+   *   ciclo continua), altrimenti il corpo è l'`EsitoFormularioModel`.
+   *
+   * ATTENZIONE: la richiesta a `/status` è fatta con `maxRedirects: 0` e
+   * `validateStatus` permissivo. Un client HTTP che seguisse il redirect da
+   * solo trasformerebbe ogni 303 in un 200 (quello finale di `/result`),
+   * rendendo impossibile distinguere "in elaborazione" da "pronto".
+   *
+   * `opzioni.maxTentativi` impone un limite esplicito: superato, si
+   * solleva un errore invece di eseguire un polling potenzialmente
+   * infinito (bloccherebbe un worker della coda).
+   */
+  async attendiEsito(
+    tenantId: string,
+    transazioneId: string,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    const intervalloMs = opzioni?.intervalloMs ?? RENTRIApiClient.INTERVALLO_POLLING_DEFAULT_MS
+    const maxTentativi = opzioni?.maxTentativi ?? RENTRIApiClient.MAX_TENTATIVI_POLLING_DEFAULT
+
+    if (maxTentativi < 1) {
+      throw new Error('maxTentativi deve essere almeno 1')
+    }
+
+    for (let tentativo = 1; tentativo <= maxTentativi; tentativo++) {
+      const stato = await this.interrogaStatoTransazione(tenantId, transazioneId)
+
+      if (stato.pronto) {
+        const esito = await this.leggiEsitoTransazione(tenantId, stato.urlEsito)
+        // `null` = /result ha risposto 400 ("richiesta anticipata"): non è un
+        // errore definitivo, si continua il polling come se fosse ancora in
+        // elaborazione.
+        if (esito !== null) {
+          return esito
+        }
+      }
+
+      if (tentativo < maxTentativi) {
+        await this.attendi(intervalloMs)
+      }
+    }
+
+    throw new Error(
+      `Superato il numero massimo di tentativi (${maxTentativi}) in attesa dell'esito della transazione RENTRI ${transazioneId}.`
+    )
+  }
+
+  /**
+   * Interroga `GET /{transazione_id}/status` senza lasciare che il client
+   * HTTP segua da solo un eventuale redirect (v. {@link attendiEsito}).
+   */
+  private async interrogaStatoTransazione(
+    tenantId: string,
+    transazioneId: string
+  ): Promise<{ pronto: boolean; urlEsito?: string }> {
+    const url = `${this.config.baseUrl}${RENTRIApiClient.FORMULARI_PATH}/${transazioneId}/status`
+    const headers = await this.buildAuthHeaders(tenantId)
+
+    const response = await firstValueFrom(
+      this.httpService.get(url, {
+        headers,
+        timeout: this.timeout,
+        maxRedirects: 0,
+        validateStatus: () => true,
+      })
+    )
+
+    if (response.status === 200) {
+      return { pronto: false }
+    }
+
+    if (response.status === 303) {
+      const urlEsito = (response.headers?.location ?? response.headers?.Location) as string
+      return { pronto: true, urlEsito }
+    }
+
+    throw new Error(
+      `Risposta inattesa da /status per la transazione ${transazioneId}: HTTP ${response.status}`
+    )
+  }
+
+  /**
+   * Segue il `Location` ricevuto da `/status` e legge l'esito da `/result`.
+   * Restituisce `null` se il risultato non è ancora disponibile (400 —
+   * "richiesta anticipata", non un errore definitivo).
+   */
+  private async leggiEsitoTransazione(
+    tenantId: string,
+    urlEsito?: string
+  ): Promise<EsitoFormulario | null> {
+    if (!urlEsito) {
+      throw new Error('Risposta 303 da /status priva di header Location')
+    }
+
+    const url = urlEsito.startsWith('http') ? urlEsito : `${this.config.baseUrl}${urlEsito}`
+    const headers = await this.buildAuthHeaders(tenantId)
+
+    const response = await firstValueFrom(
+      this.httpService.get(url, {
+        headers,
+        timeout: this.timeout,
+        validateStatus: () => true,
+      })
+    )
+
+    if (response.status === 400) {
+      return null
+    }
+
+    if (response.status !== 200) {
+      throw new Error(`Risposta inattesa da /result: HTTP ${response.status}`)
+    }
+
+    return response.data
+  }
+
+  /** Attesa non bloccante tra un tentativo e l'altro del polling. */
+  private attendi(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
   /**
    * POST con autenticazione adeguata alla modalità (mock: X-API-Key;
    * live: Bearer + firma di integrità Agid-JWT-Signature sul body).
@@ -316,17 +452,24 @@ export class RENTRIApiClient {
   /** GET con Bearer (live) o X-API-Key (mock). V. {@link post} per `tenantId`. */
   private async get(path: string, tenantId?: string) {
     const url = `${this.config.baseUrl}${path}`
-    const headers: Record<string, string> = {}
-
-    if (this.isLive) {
-      headers.Authorization = await this.auth.creaAuthorizationHeader(
-        tenantId ?? this.tenantIdCorrente()
-      )
-    } else {
-      headers['X-API-Key'] = this.config.mockApiKey
-    }
+    const headers = await this.buildAuthHeaders(tenantId)
 
     return firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }))
+  }
+
+  /**
+   * Header di autenticazione adeguati alla modalità: Bearer self-issued
+   * (live) o `X-API-Key` (mock). Condiviso da {@link get} e dai metodi di
+   * polling del ciclo NONBLOCK_PULL ({@link interrogaStatoTransazione},
+   * {@link leggiEsitoTransazione}).
+   */
+  private async buildAuthHeaders(tenantId?: string): Promise<Record<string, string>> {
+    if (this.isLive) {
+      return {
+        Authorization: await this.auth.creaAuthorizationHeader(tenantId ?? this.tenantIdCorrente()),
+      }
+    }
+    return { 'X-API-Key': this.config.mockApiKey }
   }
 
   /**
@@ -534,6 +677,33 @@ export interface XFIRPayload {
     note?: string
   }
   firmeDigitali: any[]
+}
+
+/**
+ * Opzioni configurabili del polling NONBLOCK_PULL di {@link RENTRIApiClient.attendiEsito}.
+ */
+export interface OpzioniPollingEsito {
+  /** Intervallo (ms) tra un tentativo e l'altro. Default 2000. */
+  intervalloMs?: number
+  /**
+   * Numero massimo di tentativi prima di sollevare un errore esplicito.
+   * Default 30. Un limite è obbligatorio: senza, un worker della coda
+   * resterebbe bloccato in un polling potenzialmente infinito.
+   */
+  maxTentativi?: number
+}
+
+/**
+ * Esito di una transazione completata (`EsitoFormularioModel`, contratto
+ * ufficiale, formulari.yaml righe 9378-9414). Sono garantiti sempre
+ * presenti `errore` e `validazione`; gli altri campi del modello
+ * (`transazione_id`, `tipo`, `esito`, `tempo_elaborazione`) arrivano così
+ * come restituiti da `/result`.
+ */
+export interface EsitoFormulario {
+  errore: boolean
+  validazione: unknown[]
+  [key: string]: unknown
 }
 
 /**

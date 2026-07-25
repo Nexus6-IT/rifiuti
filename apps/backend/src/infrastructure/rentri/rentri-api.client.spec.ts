@@ -718,6 +718,126 @@ describe('RENTRIApiClient', () => {
     })
   })
 
+  /**
+   * Ciclo NONBLOCK_PULL (formulari.yaml righe 2801-2897): `GET /status`
+   * risponde 200 senza corpo finché l'elaborazione è in corso e 303 con
+   * header `Location` quando l'esito è pronto; `GET /result` risponde 400
+   * se interrogato in anticipo. Il client NON deve delegare il follow del
+   * redirect all'HTTP client (altrimenti 200 e 303 sarebbero indistinguibili):
+   * per questo ogni chiamata a /status verifica esplicitamente `maxRedirects: 0`.
+   */
+  describe('attendiEsito', () => {
+    beforeEach(() => {
+      mockConfig.mode = 'live'
+      mockConfig.baseUrl = 'https://demoapi.rentri.gov.it'
+    })
+
+    function statusResponse(status: number, location?: string): AxiosResponse {
+      return {
+        data: undefined,
+        status,
+        statusText: '',
+        headers: location ? { location } : {},
+        config: {} as any,
+      }
+    }
+
+    function resultResponse(status: number, data?: unknown): AxiosResponse {
+      return {
+        data,
+        status,
+        statusText: '',
+        headers: {},
+        config: {} as any,
+      }
+    }
+
+    it('200 su /status significa "ancora in elaborazione": riprova senza seguire redirect automaticamente', async () => {
+      mockHttpService.get
+        .mockReturnValueOnce(of(statusResponse(200))) // 1° tentativo: ancora in corso
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-1/result'))) // 2° tentativo: pronto
+        .mockReturnValueOnce(of(resultResponse(200, { errore: false, validazione: [] })))
+
+      const esito = await client.attendiEsito('tenant-1', 'tx-1', {
+        intervalloMs: 0,
+        maxTentativi: 5,
+      })
+
+      expect(esito).toEqual({ errore: false, validazione: [] })
+      expect(mockHttpService.get).toHaveBeenCalledTimes(3)
+
+      // La richiesta di stato non deve delegare il follow del redirect al
+      // client HTTP: deve poter osservare 200 e 303 come stati distinti.
+      expect(mockHttpService.get).toHaveBeenNthCalledWith(
+        1,
+        'https://demoapi.rentri.gov.it/formulari/v1.0/tx-1/status',
+        (expect as any).objectContaining({ maxRedirects: 0 })
+      )
+      expect(mockHttpService.get).toHaveBeenNthCalledWith(
+        2,
+        'https://demoapi.rentri.gov.it/formulari/v1.0/tx-1/status',
+        (expect as any).objectContaining({ maxRedirects: 0 })
+      )
+    })
+
+    it("303 su /status: segue l'header Location e restituisce l'esito letto da /result", async () => {
+      mockHttpService.get
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-2/result')))
+        .mockReturnValueOnce(
+          of(resultResponse(200, { errore: true, validazione: [{ tipo: 'Errore' }] }))
+        )
+
+      const esito = await client.attendiEsito('tenant-1', 'tx-2', {
+        intervalloMs: 0,
+        maxTentativi: 3,
+      })
+
+      expect(esito).toEqual({ errore: true, validazione: [{ tipo: 'Errore' }] })
+      expect(mockHttpService.get).toHaveBeenNthCalledWith(
+        2,
+        'https://demoapi.rentri.gov.it/formulari/v1.0/tx-2/result',
+        (expect as any).anything()
+      )
+      expect(mockAuth.creaAuthorizationHeader).toHaveBeenCalledWith('tenant-1')
+    })
+
+    it("400 su /result e' trattato come richiesta anticipata (non errore definitivo): il polling continua", async () => {
+      mockHttpService.get
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-3/result')))
+        .mockReturnValueOnce(of(resultResponse(400, { title: 'Richiesta non ancora elaborata' })))
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-3/result')))
+        .mockReturnValueOnce(of(resultResponse(200, { errore: false, validazione: [] })))
+
+      const esito = await client.attendiEsito('tenant-1', 'tx-3', {
+        intervalloMs: 0,
+        maxTentativi: 5,
+      })
+
+      expect(esito).toEqual({ errore: false, validazione: [] })
+      expect(mockHttpService.get).toHaveBeenCalledTimes(4)
+    })
+
+    it('supera il numero massimo di tentativi: solleva un errore esplicito (mai un polling infinito)', async () => {
+      mockHttpService.get.mockReturnValue(of(statusResponse(200))) // sempre "in elaborazione"
+
+      await expect(
+        client.attendiEsito('tenant-1', 'tx-4', { intervalloMs: 0, maxTentativi: 3 })
+      ).rejects.toThrow(/tentativi/i)
+
+      expect(mockHttpService.get).toHaveBeenCalledTimes(3)
+    })
+
+    it('usa i default di intervallo/tentativi quando le opzioni non sono indicate', async () => {
+      mockHttpService.get
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-5/result')))
+        .mockReturnValueOnce(of(resultResponse(200, { errore: false, validazione: [] })))
+
+      const esito = await client.attendiEsito('tenant-1', 'tx-5')
+
+      expect(esito).toEqual({ errore: false, validazione: [] })
+    })
+  })
+
   describe('metodi legacy non disponibili in modalità live', () => {
     beforeEach(() => {
       mockConfig.mode = 'live'

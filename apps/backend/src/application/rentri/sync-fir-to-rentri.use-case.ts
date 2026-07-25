@@ -17,6 +17,19 @@ import { DomainException } from '../../domain/shared/domain-exception'
  * - Publish domain events
  *
  * Follows: Command pattern, Transaction script
+ *
+ * Ciclo di trasmissione: il contratto ufficiale RENTRI non ha alcun
+ * endpoint sincrono di sottomissione — la creazione di un FIR è asincrona
+ * (`RENTRIApiClient.creaFormulario`, `POST /` → 202 + `transazione_id`)
+ * seguita dal polling NONBLOCK_PULL dell'esito
+ * (`RENTRIApiClient.attendiEsito`, ciclo `/status` → `/result`). Questo use
+ * case orchestra le due chiamate come un'unica operazione logica di sync:
+ * dal punto di vista del chiamante resta un solo `execute()` che attende
+ * il risultato finale, ma sotto usa la coppia creazione+polling invece
+ * del vecchio `submitFIR` sincrono (mai esposto realmente da RENTRI).
+ * Un errore di rete o il superamento del numero massimo di tentativi di
+ * polling (v. `RENTRIApiClient.attendiEsito`) sono trattati come lo erano
+ * gli errori di rete del vecchio `submitFIR`: retry-abili, non permanenti.
  */
 @Injectable()
 export class SyncFIRToRENTRIUseCase {
@@ -74,17 +87,28 @@ export class SyncFIRToRENTRIUseCase {
           attempt: fir.rentriSyncStatus.getAttempts() + 1,
         })
 
-        const rentriResponse = await this.rentriApiClient.submitFIR(fir)
+        // Crea il formulario (POST asincrono → 202 + transazione_id) e
+        // attende l'esito col polling NONBLOCK_PULL (/status → /result).
+        // Un errore qui (rete, timeout, superamento tentativi di polling)
+        // finisce nel catch sottostante: stessa semantica retry-abile che
+        // aveva un errore di rete del vecchio submitFIR.
+        const { transazioneId } = await this.rentriApiClient.creaFormulario(
+          tenantId,
+          this.convertFIRToPayload(fir)
+        )
+        const esito = await this.rentriApiClient.attendiEsito(tenantId, transazioneId)
 
-        if (rentriResponse.success) {
-          // Success - mark FIR as synced
-          fir.markRENTRISynced(rentriResponse.protocolNumber, correlationId)
+        if (!esito.errore) {
+          // Successo - il contratto non restituisce un "protocolNumber"
+          // dedicato per questo sottoinsieme di EsitoFormularioModel: si usa
+          // la transazione_id come riferimento della trasmissione riuscita.
+          fir.markRENTRISynced(transazioneId, correlationId)
 
           // Update sync log
           const duration = Date.now() - startTime
           const successLog = syncLog.markAsSuccess({
-            responsePayload: JSON.stringify(rentriResponse),
-            protocolNumber: rentriResponse.protocolNumber,
+            responsePayload: JSON.stringify(esito),
+            protocolNumber: transazioneId,
             durationMs: duration,
           })
 
@@ -97,24 +121,26 @@ export class SyncFIRToRENTRIUseCase {
 
           this.logger.info(`FIR synced to RENTRI successfully`, {
             firId,
-            protocolNumber: rentriResponse.protocolNumber,
+            protocolNumber: transazioneId,
             duration,
           })
 
           return {
             success: true,
-            protocolNumber: rentriResponse.protocolNumber,
+            protocolNumber: transazioneId,
             attempts: fir.rentriSyncStatus.getAttempts(),
           }
         } else {
-          // Validation error from RENTRI - permanent failure
-          const errorMessage = this.formatRENTRIErrors(rentriResponse.errors)
+          // Esito negativo della transazione RENTRI - fallimento permanente
+          // (non è un errore di trasporto: la transazione è stata elaborata
+          // e ha rifiutato il contenuto del formulario).
+          const errorMessage = this.formatEsitoErrors(esito.validazione)
 
           fir.markRENTRISyncFailed(errorMessage, 'RENTRI_VALIDATION_ERROR', correlationId)
 
           const duration = Date.now() - startTime
           const failureLog = syncLog.markAsFailure({
-            responsePayload: JSON.stringify(rentriResponse),
+            responsePayload: JSON.stringify(esito),
             errorMessage,
             errorCode: 'RENTRI_VALIDATION_ERROR',
             durationMs: duration,
@@ -221,14 +247,20 @@ export class SyncFIRToRENTRIUseCase {
   }
 
   /**
-   * Format RENTRI validation errors
+   * Formatta i messaggi di validazione di un esito RENTRI negativo
+   * (`EsitoFormularioModel.validazione`, contratto ufficiale — ciascun
+   * elemento è un `EsitoMessaggioModel` con `campo`/`codice_messaggio`).
+   * Accetta anche la forma legacy `{field, message}` per retrocompatibilità
+   * con chiamanti che non parlano ancora il contratto ufficiale.
    */
-  private formatRENTRIErrors(errors: any[]): string {
-    if (!errors || errors.length === 0) {
+  private formatEsitoErrors(validazione: any[]): string {
+    if (!validazione || validazione.length === 0) {
       return 'Unknown RENTRI error'
     }
 
-    return errors.map(e => `${e.field}: ${e.message}`).join('; ')
+    return validazione
+      .map(v => `${v.campo ?? v.field ?? '?'}: ${v.codice_messaggio ?? v.message ?? 'errore'}`)
+      .join('; ')
   }
 
   /**
