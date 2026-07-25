@@ -30,6 +30,7 @@ export class EmettiFIRUseCase {
       firmatario: command.firmaProduttore.firmatario,
       timestamp: new Date(),
       certificato: command.firmaProduttore.certificato,
+      userId: command.userId,
     }
 
     // 4. Execute domain method (business logic)

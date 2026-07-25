@@ -85,6 +85,13 @@ export interface FirmaDigitale {
   firmatario: string
   timestamp: Date
   certificato: string
+  /**
+   * Utente (operatore autenticato) che ha apposto la firma applicativa.
+   * Opzionale per retrocompatibilità con i test che costruiscono FirmaDigitale
+   * senza contesto di persistenza; necessario a runtime perché il repository
+   * deve valorizzare la FK obbligatoria `fir_signatures.user_id`.
+   */
+  userId?: string
 }
 
 export interface FirmeDigitali {

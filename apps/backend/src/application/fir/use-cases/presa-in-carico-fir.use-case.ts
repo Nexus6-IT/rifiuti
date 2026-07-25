@@ -23,6 +23,7 @@ export class PresaInCaricoFIRUseCase {
       firmatario: command.firmaTrasportatore.firmatario,
       timestamp: new Date(),
       certificato: command.firmaTrasportatore.certificato,
+      userId: command.userId,
     }
 
     // 3. Execute domain method (business logic)

@@ -23,6 +23,7 @@ export class ConfermaConsegnaFIRUseCase {
       firmatario: command.firmaDestinatario.firmatario,
       timestamp: new Date(),
       certificato: command.firmaDestinatario.certificato,
+      userId: command.userId,
     }
 
     // 3. Execute domain method (business logic)
