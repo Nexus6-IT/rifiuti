@@ -12,7 +12,7 @@ mkdir -p "$DEST"
 {
   echo "# Contratti ufficiali RENTRI"
   echo
-  echo "Scaricati da \`$BASE\`. NON modificare a mano: rieseguire lo script."
+  echo "Scaricati da \`$BASE\`. NON modificare a mano: rieseguire lo script. Accertamenti redatti a mano sui contratti sono in \`ACCERTAMENTI.md\` (non rigenerati da questo script)."
   echo
   echo "| API | URL | Versione | SHA-256 | Scaricato il |"
   echo "|-----|-----|----------|---------|--------------|"
