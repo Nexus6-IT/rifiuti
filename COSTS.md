@@ -1,7 +1,7 @@
 # COSTS.md — Registro costi sessioni (rifiuti)
 
-<!-- costs-total-usd:74.26 -->
-**Totale cumulato: $74.26**
+<!-- costs-total-usd:203.19 -->
+**Totale cumulato: $203.19**
 
 Costo registrato automaticamente a fine sessione (hook SessionEnd) e leggibile via `~/.claude/bin/session-cost.sh`.
 
