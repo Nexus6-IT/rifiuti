@@ -12,20 +12,27 @@ import {
 } from '../../../test/utils/config-service-mock.factory'
 import { createMockUser, createMockJwtPayload } from '../../../test/utils/test-fixtures.factory'
 
+/** Costruisce una richiesta Express minima con l'header Authorization valorizzato. */
+function richiestaCon(token: string) {
+  return { headers: { authorization: `Bearer ${token}` } } as never
+}
+
 describe('JwtStrategy', () => {
   let strategy: JwtStrategy
   let configService: MockConfigService
   let prismaService: MockPrisma
+  let redisService: { isAccessTokenRevoked: jest.Mock }
 
   beforeEach(() => {
     configService = createConfigServiceMock()
     prismaService = createPrismaMock()
+    redisService = { isAccessTokenRevoked: jest.fn().mockResolvedValue(false) }
 
     // Default: no role assignments → empty permissions. Individual tests
     // override this to exercise permission resolution.
     prismaService.userRoleAssignment.findMany.mockResolvedValue([] as any)
 
-    strategy = new JwtStrategy(configService, prismaService as any)
+    strategy = new JwtStrategy(configService, prismaService as any, redisService as never)
   })
 
   describe('validate', () => {
@@ -47,7 +54,7 @@ describe('JwtStrategy', () => {
 
       prismaService.user.findUnique.mockResolvedValue(mockUser as any)
 
-      const result = await strategy.validate(mockPayload)
+      const result = await strategy.validate(richiestaCon('token-buono'), mockPayload)
 
       expect(result).toEqual({
         id: 'user-123',
@@ -84,7 +91,7 @@ describe('JwtStrategy', () => {
         },
       ] as any)
 
-      const result = await strategy.validate(mockPayload)
+      const result = await strategy.validate(richiestaCon('token-buono'), mockPayload)
 
       expect(result.permissions).toEqual(
         expect.arrayContaining(['fir:read:all', 'fir:create:own', 'report:read:all'])
@@ -104,7 +111,7 @@ describe('JwtStrategy', () => {
 
       prismaService.user.findUnique.mockResolvedValue(mockUser as any)
 
-      const result = await strategy.validate(mockPayload)
+      const result = await strategy.validate(richiestaCon('token-buono'), mockPayload)
 
       expect(result.permissions).toEqual([])
       expect(prismaService.userRoleAssignment.findMany).not.toHaveBeenCalled()
@@ -116,7 +123,7 @@ describe('JwtStrategy', () => {
 
       prismaService.user.findUnique.mockResolvedValue(mockUser as any)
 
-      await strategy.validate(mockPayload)
+      await strategy.validate(richiestaCon('token-buono'), mockPayload)
 
       expect(prismaService.user.findUnique).toHaveBeenCalledWith({
         where: { id: 'user-123' },
@@ -128,8 +135,12 @@ describe('JwtStrategy', () => {
 
       prismaService.user.findUnique.mockResolvedValue(null)
 
-      await expect(strategy.validate(mockPayload)).rejects.toThrow(UnauthorizedException)
-      await expect(strategy.validate(mockPayload)).rejects.toThrow('User not found')
+      await expect(strategy.validate(richiestaCon('token-buono'), mockPayload)).rejects.toThrow(
+        UnauthorizedException
+      )
+      await expect(strategy.validate(richiestaCon('token-buono'), mockPayload)).rejects.toThrow(
+        'User not found'
+      )
     })
 
     it('should use tenantId from user record', async () => {
@@ -140,7 +151,7 @@ describe('JwtStrategy', () => {
 
       prismaService.user.findUnique.mockResolvedValue(mockUser as any)
 
-      const result = await strategy.validate(mockPayload)
+      const result = await strategy.validate(richiestaCon('token-buono'), mockPayload)
 
       expect(result.tenantId).toBe('tenant-456')
     })
@@ -153,7 +164,7 @@ describe('JwtStrategy', () => {
 
       prismaService.user.findUnique.mockResolvedValue(mockUser as any)
 
-      const result = await strategy.validate(mockPayload)
+      const result = await strategy.validate(richiestaCon('token-buono'), mockPayload)
 
       // Should return empty string if no tenant
       expect(result.tenantId).toBe('')
@@ -167,7 +178,7 @@ describe('JwtStrategy', () => {
 
       prismaService.user.findUnique.mockResolvedValue(mockUser as any)
 
-      const result = await strategy.validate(mockPayload)
+      const result = await strategy.validate(richiestaCon('token-buono'), mockPayload)
 
       expect(result.role).toBe('OPERATOR')
     })
@@ -180,7 +191,7 @@ describe('JwtStrategy', () => {
 
       prismaService.user.findUnique.mockResolvedValue(mockUser as any)
 
-      const result = await strategy.validate(mockPayload)
+      const result = await strategy.validate(richiestaCon('token-buono'), mockPayload)
 
       expect(result.role).toBe('VIEWER')
     })
@@ -193,9 +204,34 @@ describe('JwtStrategy', () => {
 
       prismaService.user.findUnique.mockResolvedValue(mockUser as any)
 
-      const result = await strategy.validate(mockPayload)
+      const result = await strategy.validate(richiestaCon('token-buono'), mockPayload)
 
       expect(result.fiscalCode).toBeUndefined()
+    })
+  })
+
+  describe('lista di revoca', () => {
+    it('rifiuta un access token presente nella lista di revoca', async () => {
+      const mockPayload = createMockJwtPayload()
+      redisService.isAccessTokenRevoked.mockResolvedValue(true)
+
+      await expect(strategy.validate(richiestaCon('token-revocato'), mockPayload)).rejects.toThrow(
+        UnauthorizedException
+      )
+      // Un token revocato non deve costare una query: niente lookup utente.
+      expect(prismaService.user.findUnique).not.toHaveBeenCalled()
+    })
+
+    it('accetta un access token non revocato', async () => {
+      const mockPayload = createMockJwtPayload({ sub: 'user-123' })
+      const mockUser = createMockUser({ id: 'user-123' })
+      redisService.isAccessTokenRevoked.mockResolvedValue(false)
+      prismaService.user.findUnique.mockResolvedValue(mockUser as any)
+
+      const result = await strategy.validate(richiestaCon('token-buono'), mockPayload)
+
+      expect(result.id).toBe('user-123')
+      expect(redisService.isAccessTokenRevoked).toHaveBeenCalledWith('token-buono')
     })
   })
 
