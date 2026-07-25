@@ -13,6 +13,8 @@ import {
 } from '@nestjs/common'
 import { QueryBus } from '@nestjs/cqrs'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
+import { PermissionGuard } from '../guards/permission.guard'
 import { RequirePermission } from '../decorators/require-permission.decorator'
 import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.query'
 import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query'
@@ -35,9 +37,18 @@ import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-c
  * - GET /api/v1/audit/permissions/export - Export audit trail as CSV
  * - GET /api/v1/audit/role-changes - Get role change history
  * - POST /api/v1/audit/reconstruct-permissions - Reconstruct permissions at timestamp
+ *
+ * NOTA (pipeline P4, 2026-07-25): il controller dichiarava già @RequirePermission
+ * su ogni handler ma NON applicava `PermissionGuard` a livello di classe (solo
+ * `JwtAuthGuard`) — il decoratore era quindi inerte e qualunque utente
+ * autenticato del tenant poteva leggere l'audit trail dei permessi, a
+ * prescindere dal ruolo. Aggiunto `TenantIsolationGuard` + `PermissionGuard`
+ * per allinearsi agli altri controller del sottosistema (RoleController,
+ * UserRoleController, TemporaryPermissionController) ed enforce-are davvero
+ * la decisione "audit trail → solo ADMIN del proprio tenant".
  */
 @Controller('audit')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class AuditController {
   constructor(
     private readonly queryBus: QueryBus,

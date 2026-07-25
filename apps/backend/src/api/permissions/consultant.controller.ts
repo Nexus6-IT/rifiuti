@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
+import { PermissionGuard } from '../guards/permission.guard'
 import { RequirePermission } from '../decorators/require-permission.decorator'
 import { CurrentUser } from '../decorators/current-user.decorator'
 import { CurrentTenant } from '../decorators/current-tenant.decorator'
@@ -41,11 +42,21 @@ import { ConsultantTenantAssociation } from '../../domain/identity-access/consul
  * Security:
  * - All endpoints require JWT authentication
  * - Tenant isolation enforced (consultant can only switch to associated tenants)
- * - Admin endpoints require 'consultant:manage' permission
+ * - Admin endpoints require 'consultant:manage:all' permission
  * - All operations logged for audit trail
+ *
+ * NOTA (pipeline P4, 2026-07-25): `associateConsultant`/`removeAssociation`
+ * dichiaravano già @RequirePermission('consultant:manage:all') ma il
+ * controller non applicava `PermissionGuard` a livello di classe — il
+ * decoratore era inerte. Aggiunto qui per enforce-are davvero la decisione
+ * "gestione associazioni consulente → ADMIN del tenant". Le rotte
+ * listTenants/switchTenant/getDashboard NON usano @RequirePermission apposta
+ * (decisione PO: la dashboard consulente è determinata dall'esistenza di
+ * associazioni ConsultantTenantAssociation, non da un ruolo fisso) —
+ * `PermissionGuard` è no-op sugli handler privi del decoratore.
  */
 @Controller('consultant')
-@UseGuards(JwtAuthGuard, TenantIsolationGuard)
+@UseGuards(JwtAuthGuard, TenantIsolationGuard, PermissionGuard)
 export class ConsultantController {
   private readonly logger = new Logger(ConsultantController.name)
 
