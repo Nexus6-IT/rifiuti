@@ -3,7 +3,7 @@
  * Implementazione concreta del repository FIR con Prisma ORM
  */
 
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { createHash } from 'crypto'
 import { FIRStatus as PrismaFIRStatus } from '@prisma/client'
 import {
@@ -21,6 +21,8 @@ import { PrismaService } from './prisma.service'
 
 @Injectable()
 export class FIRPrismaRepository implements IFIRRepository {
+  private static readonly logger = new Logger(FIRPrismaRepository.name)
+
   constructor(private readonly prisma: PrismaService) {}
 
   // Ruoli usati dalle firme del CICLO DI VITA (questo repository), in italiano
@@ -226,12 +228,19 @@ export class FIRPrismaRepository implements IFIRRepository {
 
     for (const { role, firma } of candidati) {
       if (!firma) continue
-      // Difensivo: senza userId non c'è modo di valorizzare la FK obbligatoria
+      // Senza userId non si può valorizzare la FK obbligatoria
       // fir_signatures.user_id. Non dovrebbe accadere nel flusso reale (i tre
-      // use-case lifecycle valorizzano sempre userId dal comando), ma se
-      // capitasse è meglio perdere silenziosamente la persistenza extra che
-      // far fallire l'intera transizione di stato del FIR.
-      if (!firma.userId) continue
+      // use-case lifecycle valorizzano sempre userId dal comando). Non si fa
+      // fallire la transizione di stato del FIR, ma NON si scarta in silenzio:
+      // una firma persa senza traccia e' esattamente il difetto che questa
+      // pipeline sta correggendo — chi legge i log deve poterlo scoprire.
+      if (!firma.userId) {
+        FIRPrismaRepository.logger.warn(
+          `Firma ${role} del FIR ${fir.id} NON persistita: userId assente. ` +
+            "La transizione di stato prosegue, ma la firma non sara' rileggibile."
+        )
+        continue
+      }
 
       const existing = await this.prisma.fIRSignature.findFirst({ where: { firId: fir.id, role } })
       if (existing) continue
