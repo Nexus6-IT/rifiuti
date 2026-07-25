@@ -4,6 +4,12 @@ import { signal } from '@angular/core'
 import { FirService, CreateFIRDto } from './fir.service'
 import { FIR, FIRStato, PaginatedFIRResponse } from '../../shared/models/fir.model'
 import { AuthService, User } from '../../core/services/auth.service'
+import { environment } from '../../../environments/environment'
+
+// Il service risolve le rotte su `${environment.apiUrl}/fir` (es. /api/v1/fir),
+// non su '/api/fir': manteniamo il matcher allineato per non seguire un drift
+// di URL che nasconderebbe rotte realmente sbagliate.
+const FIR_API_URL = `${environment.apiUrl}/fir`
 
 describe('FirService', () => {
   let service: FirService
@@ -74,7 +80,7 @@ describe('FirService', () => {
 
       const req = httpMock.expectOne(
         req =>
-          req.url === '/api/fir' &&
+          req.url === FIR_API_URL &&
           req.params.get('page') === '1' &&
           req.params.get('limit') === '10'
       )
@@ -99,7 +105,7 @@ describe('FirService', () => {
       })
 
       const req = httpMock.expectOne(
-        req => req.url === '/api/fir' && req.params.get('stato') === FIRStato.BOZZA
+        req => req.url === FIR_API_URL && req.params.get('stato') === FIRStato.BOZZA
       )
       req.flush(mockResponse)
     })
@@ -114,7 +120,7 @@ describe('FirService', () => {
         },
       })
 
-      const req = httpMock.expectOne('/api/fir/fir-1')
+      const req = httpMock.expectOne(`${FIR_API_URL}/fir-1`)
       expect(req.request.method).toBe('GET')
       req.flush(mockFIR)
     })
@@ -140,7 +146,7 @@ describe('FirService', () => {
         },
       })
 
-      const req = httpMock.expectOne('/api/fir')
+      const req = httpMock.expectOne(FIR_API_URL)
       expect(req.request.method).toBe('POST')
       expect(req.request.body).toEqual(createDto)
       req.flush(mockFIR)
@@ -158,7 +164,7 @@ describe('FirService', () => {
         },
       })
 
-      const req = httpMock.expectOne('/api/fir/fir-1/emetti')
+      const req = httpMock.expectOne(`${FIR_API_URL}/fir-1/emetti`)
       expect(req.request.method).toBe('POST')
       expect(req.request.body.firmaProduttore).toEqual({
         firmatario: 'Mario Rossi',
@@ -184,7 +190,7 @@ describe('FirService', () => {
         },
       })
 
-      const req = httpMock.expectOne('/api/fir/fir-1/presa-in-carico')
+      const req = httpMock.expectOne(`${FIR_API_URL}/fir-1/presa-in-carico`)
       expect(req.request.method).toBe('POST')
       expect(req.request.body.firmaTrasportatore.certificato).toBe('FIRMA-NON-QUALIFICATA')
       req.flush(inTransitoFIR)
@@ -208,7 +214,7 @@ describe('FirService', () => {
         },
       })
 
-      const req = httpMock.expectOne('/api/fir/fir-1/conferma-consegna')
+      const req = httpMock.expectOne(`${FIR_API_URL}/fir-1/conferma-consegna`)
       expect(req.request.method).toBe('POST')
       expect(req.request.body.pesoEffettivo).toBe(95)
       expect(req.request.body.firmaDestinatario.certificato).toBe('FIRMA-NON-QUALIFICATA')
@@ -227,7 +233,7 @@ describe('FirService', () => {
         },
       })
 
-      const req = httpMock.expectOne('/api/fir/fir-1/annulla')
+      const req = httpMock.expectOne(`${FIR_API_URL}/fir-1/annulla`)
       expect(req.request.method).toBe('POST')
       expect(req.request.body).toEqual({ motivo: "Annullato dall'operatore" })
       req.flush(annullatoFIR)

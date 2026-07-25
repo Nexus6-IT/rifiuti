@@ -71,3 +71,12 @@ ruvector.db
 .eslint-boundaries-out.json
 .eslintrc.boundaries-test.json
 .extract-boundaries.cjs
+
+# Playwright E2E (e2e/)
+/e2e-report/
+/test-results/
+/e2e/.auth/
+/e2e/playwright-report/
+/e2e/test-results/
+/e2e/blob-report/
+/e2e/playwright/.cache/

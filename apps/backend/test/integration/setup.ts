@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { INestApplication, ValidationPipe } from '@nestjs/common'
 import { PrismaService } from '../../src/infrastructure/database/prisma.service'
-import * as request from 'supertest'
+import request from 'supertest'
+import { Produttore, Trasportatore, Tenant, User } from '@prisma/client'
 
 /**
  * Integration Test Setup
@@ -11,9 +12,18 @@ import * as request from 'supertest'
  *
  * Features:
  * - Database seeding and cleanup
- * - JWT token generation for authenticated tests
+ * - JWT-like token generation for authenticated tests
  * - Common test utilities
  * - Mock external services (RENTRI, email, S3)
+ *
+ * Allineato allo schema Prisma corrente (2026-07-25): il modello di autorizzazione
+ * di produzione è `User.role` (enum UserRole: SUPER_ADMIN/ADMIN/OPERATOR/VIEWER)
+ * verificato da RolesGuard — NON esiste più un modello `Facility`/`UserPermission`
+ * con permessi puntuali in stringa: l'anagrafica delle controparti FIR vive ora
+ * su `Produttore`/`Trasportatore`/`Destinatario` (snapshot immutabile, vedi
+ * data-model FIR) e i ruoli/permessi RBAC granulari passano da `Role` +
+ * `UserRoleAssignment` (non popolati qui perché non servono a testare gli
+ * endpoint FIR, che si autorizzano solo su `User.role`).
  */
 
 export class IntegrationTestSetup {
@@ -66,18 +76,23 @@ export class IntegrationTestSetup {
 
   /**
    * Clean database between tests
+   *
+   * Ordine di cancellazione compatibile con i vincoli FK dello schema
+   * attuale (Produttore/Trasportatore/Destinatario sostituiscono il vecchio
+   * modello Facility; niente più AuditLog/UserPermission).
    */
   async cleanDatabase(): Promise<void> {
-    // Delete in order to respect foreign keys
-    await this.prisma.auditLog.deleteMany()
+    await this.prisma.activityLog.deleteMany()
     await this.prisma.temporaryPermissionGrant.deleteMany()
     await this.prisma.resourceOwnership.deleteMany()
     await this.prisma.fIR.deleteMany()
     await this.prisma.notification.deleteMany()
-    await this.prisma.userPermission.deleteMany()
-    await this.prisma.user.deleteMany()
+    await this.prisma.userRoleAssignment.deleteMany()
     await this.prisma.role.deleteMany()
-    await this.prisma.facility.deleteMany()
+    await this.prisma.user.deleteMany()
+    await this.prisma.produttore.deleteMany()
+    await this.prisma.trasportatore.deleteMany()
+    await this.prisma.destinatario.deleteMany()
     await this.prisma.tenant.deleteMany()
   }
 
@@ -89,80 +104,54 @@ export class IntegrationTestSetup {
     const tenant = await this.prisma.tenant.create({
       data: {
         id: 'test-tenant-1',
-        name: 'Test Municipality',
-        subdomain: 'test-municipality',
-        isActive: true,
+        ragioneSociale: 'Test Municipality',
+        partitaIva: '00000000001',
       },
     })
 
-    // Create facilities
-    const producerFacility = await this.prisma.facility.create({
+    // Anagrafiche controparti FIR (sostituiscono il vecchio modello Facility)
+    const produttore = await this.prisma.produttore.create({
       data: {
-        id: 'test-facility-producer',
+        id: 'test-produttore-1',
         tenantId: tenant.id,
-        name: 'Test Producer Facility',
-        type: 'PRODUCER',
-        address: 'Via Test 1, Milano',
-        isActive: true,
+        ragioneSociale: 'Test Producer Facility',
+        partitaIVA: '00000000002',
+        via: 'Via Test',
+        civico: '1',
+        cap: '20100',
+        comune: 'Milano',
+        provincia: 'MI',
       },
     })
 
-    const transporterFacility = await this.prisma.facility.create({
+    const trasportatore = await this.prisma.trasportatore.create({
       data: {
-        id: 'test-facility-transporter',
+        id: 'test-trasportatore-1',
         tenantId: tenant.id,
-        name: 'Test Transporter',
-        type: 'TRANSPORTER',
-        address: 'Via Test 2, Milano',
-        isActive: true,
+        ragioneSociale: 'Test Transporter',
+        partitaIVA: '00000000003',
+        numeroIscrizione: 'ISC-TEST-001',
+        via: 'Via Test',
+        civico: '2',
+        cap: '20100',
+        comune: 'Milano',
+        provincia: 'MI',
       },
     })
 
-    // Create roles
-    const adminRole = await this.prisma.role.create({
-      data: {
-        id: 'test-role-admin',
-        tenantId: tenant.id,
-        name: 'Admin',
-        description: 'Administrator role',
-        permissions: ['*:*:*'],
-        isSystem: true,
-      },
-    })
-
-    const operatorRole = await this.prisma.role.create({
-      data: {
-        id: 'test-role-operator',
-        tenantId: tenant.id,
-        name: 'Operator',
-        description: 'Operator role',
-        permissions: ['fir:read:facility', 'fir:create:facility'],
-        isSystem: false,
-      },
-    })
-
-    const driverRole = await this.prisma.role.create({
-      data: {
-        id: 'test-role-driver',
-        tenantId: tenant.id,
-        name: 'Driver',
-        description: 'Driver role',
-        permissions: ['fir:read:own', 'fir:update:own'],
-        isSystem: false,
-      },
-    })
-
-    // Create users
+    // Utenti applicativi. L'autorizzazione RolesGuard/@Roles verifica
+    // esclusivamente `User.role` (UserRole enum) — non il sistema
+    // Role/UserRoleAssignment, quindi qui basta impostare il ruolo giusto.
     const adminUser = await this.prisma.user.create({
       data: {
         id: 'test-user-admin',
         tenantId: tenant.id,
+        keycloakId: 'keycloak-test-admin',
+        fiscalCode: 'ADMTST80A01H501U',
         email: 'admin@test.com',
         firstName: 'Admin',
         lastName: 'User',
-        passwordHash: 'hashed_password',
-        isActive: true,
-        emailVerified: true,
+        role: 'ADMIN',
       },
     })
 
@@ -170,12 +159,12 @@ export class IntegrationTestSetup {
       data: {
         id: 'test-user-operator',
         tenantId: tenant.id,
+        keycloakId: 'keycloak-test-operator',
+        fiscalCode: 'OPRTST80A01H501U',
         email: 'operator@test.com',
         firstName: 'Operator',
         lastName: 'User',
-        passwordHash: 'hashed_password',
-        isActive: true,
-        emailVerified: true,
+        role: 'OPERATOR',
       },
     })
 
@@ -183,54 +172,23 @@ export class IntegrationTestSetup {
       data: {
         id: 'test-user-driver',
         tenantId: tenant.id,
+        keycloakId: 'keycloak-test-driver',
+        fiscalCode: 'DRVTST80A01H501U',
         email: 'driver@test.com',
         firstName: 'Driver',
         lastName: 'User',
-        passwordHash: 'hashed_password',
-        isActive: true,
-        emailVerified: true,
-      },
-    })
-
-    // Assign roles
-    await this.prisma.userPermission.create({
-      data: {
-        userId: adminUser.id,
-        roleId: adminRole.id,
-        tenantId: tenant.id,
-        scope: 'all',
-      },
-    })
-
-    await this.prisma.userPermission.create({
-      data: {
-        userId: operatorUser.id,
-        roleId: operatorRole.id,
-        tenantId: tenant.id,
-        scope: 'facility',
-        facilityId: producerFacility.id,
-      },
-    })
-
-    await this.prisma.userPermission.create({
-      data: {
-        userId: driverUser.id,
-        roleId: driverRole.id,
-        tenantId: tenant.id,
-        scope: 'own',
+        role: 'VIEWER',
       },
     })
 
     return {
       tenant,
+      // Alias mantenuto per compatibilità con gli spec esistenti (in origine
+      // "facility" = sede Produttore/Trasportatore): backed ora da Produttore
+      // e Trasportatore, non più da un modello Facility (rimosso dallo schema).
       facilities: {
-        producer: producerFacility,
-        transporter: transporterFacility,
-      },
-      roles: {
-        admin: adminRole,
-        operator: operatorRole,
-        driver: driverRole,
+        producer: produttore,
+        transporter: trasportatore,
       },
       users: {
         admin: adminUser,
@@ -241,20 +199,24 @@ export class IntegrationTestSetup {
   }
 
   /**
-   * Generate JWT token for authenticated requests
+   * Generate a mock token for authenticated requests.
+   *
+   * NOTA: non è un JWT firmato — JwtAuthGuard/passport-jwt lo rifiuterà
+   * a runtime (401) contro un'istanza reale della strategy JWT. Serve solo
+   * a far compilare/eseguire l'infrastruttura di test quando non è
+   * disponibile un database/ambiente completo per generare un token reale
+   * tramite JwtTokensService. Se in futuro serve un e2e autenticato reale,
+   * sostituire con `app.get(JwtTokensService).generateAccessToken(...)`.
    */
-  generateAuthToken(userId: string, tenantId: string, permissions: string[]): string {
-    // In real implementation, use JwtService
-    // For tests, create a simple token or mock the JwtService
+  generateAuthToken(userId: string, tenantId: string, role = 'OPERATOR'): string {
     const payload = {
       sub: userId,
       tenantId,
-      permissions,
+      role,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour
     }
 
-    // Return mock token for testing
     return Buffer.from(JSON.stringify(payload)).toString('base64')
   }
 
@@ -266,9 +228,9 @@ export class IntegrationTestSetup {
     path: string,
     userId: string,
     tenantId: string,
-    permissions: string[]
+    role = 'OPERATOR'
   ): request.Test {
-    const token = this.generateAuthToken(userId, tenantId, permissions)
+    const token = this.generateAuthToken(userId, tenantId, role)
     const req = request(this.getHttpServer())
 
     return req[method](path)
@@ -393,19 +355,14 @@ export class MockExternalServices {
 
 // Test data types
 interface TestData {
-  tenant: any
+  tenant: Tenant
   facilities: {
-    producer: any
-    transporter: any
-  }
-  roles: {
-    admin: any
-    operator: any
-    driver: any
+    producer: Produttore
+    transporter: Trasportatore
   }
   users: {
-    admin: any
-    operator: any
-    driver: any
+    admin: User
+    operator: User
+    driver: User
   }
 }

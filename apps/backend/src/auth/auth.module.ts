@@ -14,7 +14,14 @@ import { RedisService } from './services/redis.service'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { RolesGuard } from './guards/roles.guard'
 import { AuthController } from './controllers/auth.controller'
+import { DevAuthController } from './controllers/dev-auth.controller'
 import { PrismaModule } from '../infrastructure/persistence/prisma.module'
+
+// Difesa in profondità (2026-07-25): POST /auth/dev/login non deve nemmeno
+// esistere come rotta in produzione. Il controller mantiene comunque il
+// proprio check runtime su NODE_ENV, ma qui evitiamo che dipenda solo da
+// quello — se NODE_ENV === 'production' il controller non viene registrato.
+const devOnlyControllers = process.env.NODE_ENV === 'production' ? [] : [DevAuthController]
 
 @Module({
   imports: [
@@ -33,7 +40,7 @@ import { PrismaModule } from '../infrastructure/persistence/prisma.module'
     }),
     PrismaModule,
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, ...devOnlyControllers],
   providers: [
     // Strategies
     SpidStrategy,
