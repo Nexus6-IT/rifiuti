@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify'
 import { registraRotteToken } from './routes/token'
 import { registraRotteFormulari } from './routes/formulari'
 import { registraRotteTransazioni } from './routes/transazioni'
+import { registraRotteXfir } from './routes/xfir'
 import { registraRotteControllo } from './routes/controllo'
 import { Archivio } from './stato/archivio'
 import { inviaProblemDetails } from './errori/problem-details'
@@ -58,6 +59,7 @@ export function creaApp(): FastifyInstance {
   registraRotteToken(app)
   registraRotteFormulari(app, archivio)
   registraRotteTransazioni(app, archivio)
+  registraRotteXfir(app, archivio)
 
   return app
 }
