@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router'
 import { authGuard } from './core/guards/auth.guard'
+import { superAdminGuard } from './core/guards/super-admin.guard'
 
 export const routes: Routes = [
   {
@@ -145,8 +146,13 @@ export const routes: Routes = [
           ),
       },
       {
-        // Gestione abbonamento SaaS (pagamento, upgrade piano, Billing Portal Stripe)
+        // Gestione abbonamento SaaS (pagamento, upgrade piano, Billing Portal Stripe).
+        // Riservata al SUPER_ADMIN per decisione del committente (2026-07-26):
+        // nemmeno gli ADMIN dei tenant devono potervi accedere. Il guard evita
+        // l'accesso via URL; l'autorizzazione reale resta sul backend
+        // (billing.controller.ts, @Roles('SUPER_ADMIN')).
         path: 'abbonamento',
+        canActivate: [superAdminGuard],
         loadComponent: () =>
           import('./features/billing/billing-page.component').then(m => m.BillingPageComponent),
       },
