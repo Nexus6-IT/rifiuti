@@ -553,5 +553,129 @@ describe('FIR Aggregate', () => {
         expect(() => fir.rifiutaLegameRENTRI()).toThrow(DomainError)
       })
     })
+
+    /**
+     * R2 Task 3 — i due modi (distinti) di legare un FIR interno a un
+     * formulario RENTRI nato altrove:
+     * - agganciaFormularioAcquisito: il FIR locale è appena stato creato da
+     *   zero a partire dal dettaglio RENTRI (Task 5), su un formulario di cui
+     *   si è appena acquisita la visibilità (creato da un'altra controparte).
+     * - agganciaManualmente: un FIR locale preesistente (tipicamente una
+     *   bozza) viene riconciliato a mano dall'operatore con un numero_fir
+     *   che l'operatore riconosce essere lo stesso movimento.
+     * Entrambi condividono la stessa precondizione (nessun legame già
+     * presente) e la stessa forma di rifiuto.
+     */
+    describe('agganciaFormularioAcquisito / agganciaManualmente — aggancio a un formulario altrui', () => {
+      it('agganciaFormularioAcquisito lega un FIR (anche in BOZZA) senza legame preesistente', () => {
+        const fir = FIR.create(createValidFIRProps()) // ancora in BOZZA: nasce dal dettaglio RENTRI
+
+        fir.agganciaFormularioAcquisito('RENTRI-NUM-ACQ-001')
+
+        expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-ACQ-001')
+        expect(fir.rentriOrigineLegame).toBe('ACQUISITO_DA_TERZI')
+      })
+
+      it('agganciaManualmente lega un FIR preesistente (tipicamente una bozza incompleta)', () => {
+        const fir = FIR.create(createValidFIRProps())
+
+        fir.agganciaManualmente('RENTRI-NUM-MAN-002')
+
+        expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-MAN-002')
+        expect(fir.rentriOrigineLegame).toBe('AGGANCIO_MANUALE')
+      })
+
+      it('agganciaFormularioAcquisito rifiuta un numero FIR mancante/vuoto', () => {
+        const fir = FIR.create(createValidFIRProps())
+        expect(() => fir.agganciaFormularioAcquisito('')).toThrow(DomainError)
+      })
+
+      it('agganciaManualmente rifiuta un numero FIR mancante/vuoto', () => {
+        const fir = FIR.create(createValidFIRProps())
+        expect(() => fir.agganciaManualmente('  ')).toThrow(DomainError)
+      })
+
+      it("agganciaFormularioAcquisito rifiuta un FIR già legato, citando l'origine esistente nel messaggio", () => {
+        const fir = FIR.create(createValidFIRProps())
+        fir.agganciaManualmente('RENTRI-NUM-GIA-LEGATO')
+
+        expect(() => fir.agganciaFormularioAcquisito('RENTRI-NUM-ALTRO')).toThrow(
+          /RENTRI-NUM-GIA-LEGATO/
+        )
+      })
+
+      it("agganciaManualmente rifiuta un FIR già legato (anche da TRASMESSO_DA_NOI), citando l'origine esistente", () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-NOSTRO')
+
+        expect(() => fir.agganciaManualmente('RENTRI-NUM-ALTRO')).toThrow(/TRASMESSO_DA_NOI/)
+      })
+
+      it('un FIR agganciato (acquisito o manuale) non è più trasmissibile a RENTRI (anti-duplicazione)', () => {
+        const fir = emettiFIR()
+        fir.agganciaFormularioAcquisito('RENTRI-NUM-ACQ-003')
+
+        expect(fir.canSyncToRENTRI()).toBe(false)
+      })
+    })
+
+    /**
+     * Lo sgancio (rilascio-visibilità): l'operazione inversa dell'aggancio.
+     * Riporta il FIR a "non legato" (rentriNumeroFir = null) SOLO se il
+     * legame non è nato da una nostra trasmissione — un formulario che
+     * abbiamo creato noi non si "rilascia", si annullerebbe con gli
+     * endpoint del ciclo di vita (R3): confondere le due cose lascerebbe
+     * pensare a un utente di poter far perdere la codifica ufficiale a un
+     * documento che invece resta un formulario reale creato da questo
+     * gestionale.
+     */
+    describe('rilasciaLegameRENTRI — lo sgancio', () => {
+      it('rilascia un legame ACQUISITO_DA_TERZI: torna a rentriNumeroFir null', () => {
+        const fir = FIR.create(createValidFIRProps())
+        fir.agganciaFormularioAcquisito('RENTRI-NUM-ACQ-004')
+
+        fir.rilasciaLegameRENTRI()
+
+        expect(fir.rentriNumeroFir).toBeNull()
+        expect(fir.rentriOrigineLegame).toBeNull()
+      })
+
+      it('rilascia un legame AGGANCIO_MANUALE: torna a rentriNumeroFir null', () => {
+        const fir = FIR.create(createValidFIRProps())
+        fir.agganciaManualmente('RENTRI-NUM-MAN-005')
+
+        fir.rilasciaLegameRENTRI()
+
+        expect(fir.rentriNumeroFir).toBeNull()
+        expect(fir.rentriOrigineLegame).toBeNull()
+      })
+
+      it('rifiuta il rilascio di un legame TRASMESSO_DA_NOI', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-NOSTRO-006')
+
+        expect(() => fir.rilasciaLegameRENTRI()).toThrow(DomainError)
+        // Il legame non deve essere stato toccato dal tentativo rifiutato.
+        expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-NOSTRO-006')
+      })
+
+      it('rifiuta il rilascio su un FIR senza alcun legame (niente da rilasciare)', () => {
+        const fir = FIR.create(createValidFIRProps())
+        expect(() => fir.rilasciaLegameRENTRI()).toThrow(DomainError)
+      })
+
+      it('dopo il rilascio, il FIR può essere agganciato di nuovo (nessuna traccia bloccante)', () => {
+        const fir = FIR.create(createValidFIRProps())
+        fir.agganciaFormularioAcquisito('RENTRI-NUM-ACQ-007')
+        fir.rilasciaLegameRENTRI()
+
+        fir.agganciaManualmente('RENTRI-NUM-MAN-008')
+
+        expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-MAN-008')
+        expect(fir.rentriOrigineLegame).toBe('AGGANCIO_MANUALE')
+      })
+    })
   })
 })
