@@ -186,6 +186,14 @@ export const routes: Routes = [
             m => m.RentriModalitaLegameComponent
           ),
       },
+      {
+        // Sedi RENTRI / unità locali del tenant, R2 multi-sede (solo admin — enforcement lato componente + backend)
+        path: 'rentri/sedi',
+        loadComponent: () =>
+          import('./features/rentri/rentri-unita-locale.component').then(
+            m => m.RentriUnitaLocaleComponent
+          ),
+      },
       // T179: Custom Role Management Routes
       {
         path: 'permissions',

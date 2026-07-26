@@ -8,8 +8,10 @@ import { RentriSignatureService } from './rentri-signature.service'
 import { RentriCredentialService } from './rentri-credential.service'
 import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriModalitaLegameService } from './rentri-modalita-legame.service'
+import { RentriUnitaLocaleService } from './rentri-unita-locale.service'
 import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
+import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
 
 /**
  * DI smoke test per RentriModule (cablato in AppModule).
@@ -33,6 +35,8 @@ describe('RentriModule (DI wiring)', () => {
     expect(moduleRef.get(RentriCredentialController)).toBeDefined()
     expect(moduleRef.get(RentriModalitaLegameService)).toBeDefined()
     expect(moduleRef.get(RentriModalitaLegameController)).toBeDefined()
+    expect(moduleRef.get(RentriUnitaLocaleService)).toBeDefined()
+    expect(moduleRef.get(RentriUnitaLocaleController)).toBeDefined()
 
     await moduleRef.close()
   })

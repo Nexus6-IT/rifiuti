@@ -31,9 +31,10 @@ export interface RentriCredentialInput {
   algorithm?: 'RS256' | 'ES256'
   environment?: string
   /**
-   * Numero di iscrizione dell'unità locale RENTRI (opzionale in R2: inserito a
-   * mano dall'amministratore; R4 potrà proporlo/precompilarlo dalle
-   * anagrafiche senza cambiare questo contratto).
+   * DEPRECATO (R2 multi-sede): il modello attuale è `RentriUnitaLocaleService`
+   * (tabella figlia del tenant, supporta più sedi). Mantenuto qui solo per
+   * compatibilità col dato già scritto finché la migrazione non è verificata
+   * in produzione. Non scrivere più nuovi valori qui.
    */
   numIscrSito?: string | null
 }

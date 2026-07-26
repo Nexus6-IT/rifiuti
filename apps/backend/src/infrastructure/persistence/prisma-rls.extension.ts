@@ -63,6 +63,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'ConsultantTenantAssociation',
   'PermissionRequest',
   'RentriCredential',
+  'RentriUnitaLocale',
   'WasteMovement',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
