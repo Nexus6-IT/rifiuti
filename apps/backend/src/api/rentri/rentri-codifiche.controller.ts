@@ -18,8 +18,17 @@
  * funzionare in modo prevedibile — il chiamante sa, dalla risposta HTTP
  * stessa, se il proprio giro è effettivamente partito (200) o è stato
  * rifiutato perché un altro allineamento era già in corso, schedulato o
- * manuale (423 Locked). Un endpoint fire-and-forget renderebbe il lock
+ * manuale (409 Conflict). Un endpoint fire-and-forget renderebbe il lock
  * invisibile al chiamante e quindi non diagnosticabile.
+ *
+ * PERCHÉ 409 E NON 423: in questo progetto il 423 ha un significato preciso e
+ * già cablato — è RENTRI che ha BANDITO il chiamante, e da quel codice
+ * dipendono la politica di ritentativo (`rentri-http-resilienza.ts`), lo stato
+ * del formulario (`rentri-sync-status.vo.ts`) e gli allarmi previsti da R5.
+ * Riusare lo stesso numero per «un nostro giro è già in corso» farebbe leggere
+ * a un operatore, o a un monitor, «l'ente ci ha bandito» in un caso in cui
+ * verso l'ente non è partita NESSUNA richiesta. Il conflitto è con lo stato
+ * della nostra risorsa, non con l'ente: 409.
  *
  * Ruoli: SUPER_ADMIN/ADMIN — stesso principio del Task 1 di R1 e di
  * `RentriSitiController`: allineare le codifiche RENTRI impegna l'azienda
@@ -52,11 +61,11 @@ export class RentriCodificheController {
   @ApiOperation({
     summary: 'Allinea ora le codifiche RENTRI (CER, unità/stati/pericolo/R-D, territoriali)',
     description:
-      "Esegue subito, in sequenza, i tre sotto-servizi orchestrati da RentriCodificheSyncService (stesso ciclo del cron mensile). Sincrono: risponde solo a ciclo concluso. Protetto da un lock in memoria che impedisce due giri paralleli verso RENTRI (schedulato + manuale, o due chiamate manuali sovrapposte) — se un altro giro è già in corso risponde 423 senza contattare l'ente.",
+      "Esegue subito, in sequenza, i tre sotto-servizi orchestrati da RentriCodificheSyncService (stesso ciclo del cron mensile). Sincrono: risponde solo a ciclo concluso. Protetto da un lock in memoria che impedisce due giri paralleli verso RENTRI (schedulato + manuale, o due chiamate manuali sovrapposte) — se un altro giro è già in corso risponde 409 senza contattare l'ente.",
   })
   @ApiResponse({ status: 200, description: 'Ciclo di allineamento concluso' })
   @ApiResponse({
-    status: 423,
+    status: 409,
     description: 'Un allineamento è già in corso (schedulato o avviato da un altro amministratore)',
   })
   async allinea(@CurrentUser() user: CurrentUserPayload): Promise<{ eseguito: true }> {
@@ -65,9 +74,9 @@ export class RentriCodificheController {
       return { eseguito: true }
     } catch (e) {
       if (e instanceof AllineamentoRentriGiaInCorsoError) {
-        // HttpStatus di questa versione di @nestjs/common non definisce
-        // LOCKED (423 WebDAV, RFC 4918 §11.3): letterale, stesso codice.
-        throw new HttpException(e.message, 423)
+        // 409, non 423: v. il commento di testata — il 423 in questo progetto
+        // significa «RENTRI ci ha bandito» ed è già cablato altrove.
+        throw new HttpException(e.message, HttpStatus.CONFLICT)
       }
       throw e
     }

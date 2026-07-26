@@ -139,7 +139,10 @@ describe('RentriCodificheController', () => {
     expect(risposta).toEqual({ eseguito: true })
   })
 
-  it('traduce AllineamentoRentriGiaInCorsoError in HttpException 423 con lo stesso messaggio', async () => {
+  // 409 e NON 423: nel resto del progetto il 423 significa «RENTRI ha bandito
+  // il chiamante» e da quel codice dipendono ritentativi, stato del formulario
+  // e allarmi. Qui verso l'ente non è partita alcuna richiesta.
+  it('traduce AllineamentoRentriGiaInCorsoError in HttpException 409 con lo stesso messaggio', async () => {
     const erroreOriginale = new AllineamentoRentriGiaInCorsoError()
     const sync = { allineaTutto: jest.fn().mockRejectedValue(erroreOriginale) }
     const controller = new RentriCodificheController(sync as any)
@@ -152,7 +155,7 @@ describe('RentriCodificheController', () => {
     }
 
     expect(errore).toBeInstanceOf(HttpException)
-    expect((errore as HttpException).getStatus()).toBe(423)
+    expect((errore as HttpException).getStatus()).toBe(409)
     expect((errore as HttpException).message).toBe(erroreOriginale.message)
   })
 
