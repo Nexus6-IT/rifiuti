@@ -62,6 +62,12 @@ const RICHIEDONO_CERTIFICATO: RentriModalitaLegame[] = ['AUTOMATICA', 'IBRIDA']
             Come i formulari emessi vengono legati e trasmessi ai formulari RENTRI
           </p>
         </div>
+        <a
+          routerLink="/rentri/sedi"
+          class="rentri-cross-link"
+          data-testid="rentri-modalita-legame-sedi-link"
+          >Sedi RENTRI</a
+        >
       </header>
 
       <!-- Non-admin -->
@@ -170,6 +176,10 @@ const RICHIEDONO_CERTIFICATO: RentriModalitaLegame[] = ['AUTOMATICA', 'IBRIDA']
   `,
   styles: [
     `
+      .rentri-cross-link {
+        align-self: center;
+        font-size: var(--font-size-sm);
+      }
       .rentri-cert-warning {
         display: flex;
         align-items: flex-start;

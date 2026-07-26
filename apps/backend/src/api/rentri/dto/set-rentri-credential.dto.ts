@@ -88,9 +88,10 @@ export class SetRentriCredentialDto {
   environment?: string
 
   @ApiPropertyOptional({
+    deprecated: true,
     example: 'OP1234ABC123456-RM1234',
     description:
-      "Numero di iscrizione dell'unità locale RENTRI del tenant (num_iscr_sito), lo trovi sul certificato di iscrizione. Necessario per l'aggancio ai formulari altrui e per la ricerca per unità locale.",
+      "DEPRECATO (R2 multi-sede): usare invece POST /rentri/unita-locali. Mantenuto solo per compatibilità finché la migrazione del dato esistente non è verificata in produzione (stessa cautela di rentriProtocolNumber). Numero di iscrizione dell'unità locale RENTRI del tenant (num_iscr_sito).",
   })
   @IsOptional()
   @IsString()

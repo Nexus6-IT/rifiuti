@@ -92,6 +92,7 @@ model Tenant {
   destinatari            Destinatario[]
   autorizzazioniImpianto AutorizzazioneImpianto[]
   wasteMovements         WasteMovement[]
+  rentriUnitaLocali      RentriUnitaLocale[]
 
   @@map("tenants")
 }
@@ -302,7 +303,7 @@ model FIR {
   actualArrivalDate    DateTime? @map("actual_arrival_date")
   transportNotes       String?   @map("transport_notes") @db.Text
 
-  rentriSyncStatus     RENTRISyncStatus @default(PENDING) @map("rentri_sync_status")
+  rentriSyncStatus        RENTRISyncStatus @default(PENDING) @map("rentri_sync_status")
   // DEPRECATO: nonostante il nome, in pratica avrebbe dovuto contenere il
   // transazione_id della trasmissione (identificativo tecnico della singola
   // chiamata REST), non il numero ufficiale del formulario. Nessun punto del
@@ -310,17 +311,17 @@ model FIR {
   // produzione): sostituito da rentriNumeroFir/rentriTransazioneId qui sotto,
   // che separano correttamente le due cose. Da rimuovere in una migrazione
   // futura dedicata, dopo aver verificato che sia effettivamente vuoto ovunque.
-  rentriProtocolNumber String?          @map("rentri_protocol_number") @db.VarChar(100)
-  rentriSyncedAt       DateTime?        @map("rentri_synced_at")
-  rentriSyncAttempts   Int              @default(0) @map("rentri_sync_attempts")
-  rentriLastSyncError  String?          @map("rentri_last_sync_error") @db.Text
+  rentriProtocolNumber    String?          @map("rentri_protocol_number") @db.VarChar(100)
+  rentriSyncedAt          DateTime?        @map("rentri_synced_at")
+  rentriSyncAttempts      Int              @default(0) @map("rentri_sync_attempts")
+  rentriLastSyncError     String?          @map("rentri_last_sync_error") @db.Text
   // Codice macchina dell'ultimo fallimento (RENTRI_FORBIDDEN/RENTRI_RATE_LIMITED/
   // RENTRI_VALIDATION_ERROR/RENTRI_MISSING_NUMERO_FIR/RENTRI_API_ERROR — v.
   // SyncFIRToRENTRIUseCase). Distinto da rentriLastSyncError (testo libero):
   // senza un codice stabile l'interfaccia non può decidere in modo affidabile
   // se offrire «Riprova» (R1 Task 5, rentri-error-presentation.ts).
-  rentriLastSyncErrorCode String?       @map("rentri_last_sync_error_code") @db.VarChar(100)
-  rentriNextRetryAt    DateTime?        @map("rentri_next_retry_at")
+  rentriLastSyncErrorCode String?          @map("rentri_last_sync_error_code") @db.VarChar(100)
+  rentriNextRetryAt       DateTime?        @map("rentri_next_retry_at")
 
   // Numero ufficiale assegnato da RENTRI al formulario (numero_fir dell'ente):
   // è la chiave stabile del legame FIR interno ↔ formulario RENTRI, non cambia
@@ -1422,27 +1423,72 @@ model RentriCredential {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   /// Identificativo operatore/client (iss/sub della client_assertion).
-  clientId       String @map("client_id") @db.VarChar(255)
+  clientId       String  @map("client_id") @db.VarChar(255)
   /// Certificato X.509 in PEM (per x5c). Non sensibile come la chiave.
-  certificatePem String @map("certificate_pem") @db.Text
+  certificatePem String  @map("certificate_pem") @db.Text
   /// Chiave privata PEM CIFRATA (formato iv:tag:ciphertext base64).
-  privateKeyEnc  String @map("private_key_enc") @db.Text
+  privateKeyEnc  String  @map("private_key_enc") @db.Text
   /// Algoritmo di firma JOSE: RS256 (cert RSA) | ES256 (cert EC).
-  algorithm      String @default("RS256") @db.VarChar(10)
+  algorithm      String  @default("RS256") @db.VarChar(10)
   /// Ambiente RENTRI dichiarato per la credenziale: demo | live.
-  environment    String @default("demo") @db.VarChar(10)
-  /// Numero di iscrizione dell'unità locale RENTRI del tenant (formato
-  /// ^OP[0-9]{4}[A-Z0-9]{3}[0-9]{6}-[A-Z]{2}[0-9]{4}$, vedi formulari.yaml
-  /// riga 684). Nullable: i tenant esistenti non ce l'hanno ancora. In R2 è
-  /// inserito a mano dall'amministratore del tenant (lo trova sul certificato
-  /// di iscrizione); R4 (client anagrafiche, GET /operatore/{num_iscr}/siti)
-  /// potrà proporlo/precompilarlo senza cambiare questo campo. Un tenant con
-  /// più unità locali operative su RENTRI resta fuori da questa fase: qui c'è
-  /// un solo valore per tenant, coerente con la cardinalità 1:1 già scelta
-  /// per RentriCredential (tenantId @unique).
+  environment    String  @default("demo") @db.VarChar(10)
+  /// DEPRECATO (2026-07-26, R2 multi-sede): un'azienda con più unità locali
+  /// operative su RENTRI non trova posto in un singolo valore per tenant.
+  /// Il modello attuale è `RentriUnitaLocale` (figlia del tenant, con flag
+  /// `principale`). Questo campo resta per compatibilità finché la
+  /// migrazione del dato esistente (prima unità locale = principale) non è
+  /// verificata in produzione — stessa cautela già adottata con
+  /// `rentriProtocolNumber`. Non scrivere più qui: nuove sedi vanno create
+  /// in `RentriUnitaLocale`. Formato storico (se presente):
+  /// ^OP[0-9]{4}[A-Z0-9]{3}[0-9]{6}-[A-Z]{2}[0-9]{4}$ (formulari.yaml riga 684).
   numIscrSito    String? @map("num_iscr_sito") @db.VarChar(30)
 
   @@map("rentri_credentials")
+}
+
+/// Unità locale RENTRI di un tenant (figlia del tenant, non del certificato:
+/// un'azienda può avere più sedi operative iscritte a RENTRI, ciascuna col
+/// proprio `numIscrSito`, mentre il certificato di interoperabilità
+/// (RentriCredential) resta uno per tenant).
+///
+/// `principale`: chi ha una sola sede non deve scegliere nulla — il
+/// comportamento resta quello di prima del multi-sede; chi ne ha più d'una
+/// sceglie esplicitamente quale usare di default. Vincolo di esattamente una
+/// principale per tenant enforced a livello applicativo + indice unico
+/// parziale (vedi migrazione `WHERE principale = true`).
+///
+/// `attiva`: una sede può cessare l'attività senza che spariscano i
+/// formulari già agganciati che la referenziano (mai cancellazione fisica
+/// per una sede con storico).
+///
+/// Popolamento: in R2 è inserimento manuale dall'amministratore; il client
+/// anagrafiche di R4 (`GET /operatore/{num_iscr}/siti`) potrà popolare questa
+/// tabella automaticamente senza cambiarne la forma.
+model RentriUnitaLocale {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Numero di iscrizione dell'unità locale RENTRI (formato
+  /// ^OP[0-9]{4}[A-Z0-9]{3}[0-9]{6}-[A-Z]{2}[0-9]{4}$, formulari.yaml riga 684).
+  numIscrSito   String  @map("num_iscr_sito") @db.VarChar(30)
+  /// Denominazione leggibile scelta dall'operatore (es. "Sede di Milano"),
+  /// per farla scegliere senza dover riconoscere il codice numIscrSito.
+  denominazione String  @db.VarChar(255)
+  /// Sede di default per il tenant. Esattamente una per tenant (vedi indice
+  /// unico parziale nella migrazione).
+  principale    Boolean @default(false)
+  /// Sede operativa. false quando la sede ha cessato l'attività: i formulari
+  /// già agganciati alla sede restano validi, la sede esce solo dalle scelte
+  /// per nuovi agganci.
+  attiva        Boolean @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, numIscrSito])
+  @@index([tenantId])
+  @@map("rentri_unita_locali")
 }
 
 /// Log di sincronizzazione RENTRI: un record per ogni tentativo di

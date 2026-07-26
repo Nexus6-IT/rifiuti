@@ -10,10 +10,12 @@ import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
 import { RentriModalitaLegameService } from './rentri-modalita-legame.service'
+import { RentriUnitaLocaleService } from './rentri-unita-locale.service'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriCodificheClient } from './codifiche/rentri-codifiche.client'
 import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
+import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
 
 /**
  * RentriModule — sottosistema di interoperabilità RENTRI (client + auth + firma).
@@ -27,7 +29,11 @@ import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita
  */
 @Module({
   imports: [ConfigModule, HttpModule, LoggerModule, MetricsModule, PrismaModule],
-  controllers: [RentriCredentialController, RentriModalitaLegameController],
+  controllers: [
+    RentriCredentialController,
+    RentriModalitaLegameController,
+    RentriUnitaLocaleController,
+  ],
   providers: [
     {
       provide: RENTRI_CONFIG,
@@ -39,6 +45,7 @@ import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita
     RentriAuthService,
     RentriSignatureService,
     RentriModalitaLegameService,
+    RentriUnitaLocaleService,
     RENTRIApiClient,
     RentriCodificheClient,
   ],
@@ -50,6 +57,7 @@ import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita
     RentriCredentialService,
     RentriCredentialResolver,
     RentriModalitaLegameService,
+    RentriUnitaLocaleService,
     RENTRI_CONFIG,
   ],
 })
