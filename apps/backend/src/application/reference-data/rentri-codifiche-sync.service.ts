@@ -6,6 +6,16 @@ import { RentriCodificheSempliciSyncService } from './rentri-codifiche-semplici-
 import { RentriTerritorialiSyncService } from './rentri-territoriali-sync.service'
 import { attendiMs } from '../../infrastructure/rentri/rentri-http-resilienza'
 
+/** Sollevato quando un allineamento è già in corso (lock in memoria, v. commento di classe). */
+export class AllineamentoRentriGiaInCorsoError extends Error {
+  constructor() {
+    super(
+      'Un allineamento delle codifiche RENTRI è già in corso (schedulato o avviato da un altro amministratore): riprova tra qualche minuto.'
+    )
+    this.name = 'AllineamentoRentriGiaInCorsoError'
+  }
+}
+
 /**
  * Orchestratore UNICO di tutta la sincronizzazione delle codifiche RENTRI
  * "allinea ora" (R4 Task 5, Step 4) — v. l'audit
@@ -36,10 +46,24 @@ import { attendiMs } from '../../infrastructure/rentri/rentri-http-resilienza'
  * non blocca gli altri: ogni passo è avvolto nel proprio try/catch, loggato
  * e il ciclo prosegue — un guasto transitorio su `comuni` non deve impedire
  * l'allineamento (già scaricato) di CER o delle tabelle semplici.
+ *
+ * **Lock di concorrenza (R4 Task 6, in memoria).** Il servizio Nest è un
+ * singleton per processo (provider di default): un semplice booleano
+ * sull'istanza basta a impedire che due giri (il cron mensile e una
+ * chiamata manuale dall'endpoint admin, o due chiamate manuali sovrapposte)
+ * partano in parallelo verso RENTRI. Non serve un lock distribuito
+ * (Redis): l'intero sottosistema RENTRI di questo progetto (cron,
+ * credenziali, rate limiting) assume già un singolo processo Node per
+ * l'app, e introdurre una dipendenza nuova per un'operazione
+ * mensile/amministrativa sarebbe sproporzionato. Due giri paralleli
+ * sarebbero esattamente il rischio per cui l'ente RENTRI banderebbe (423)
+ * il chiamante — v. {@link AllineamentoRentriGiaInCorsoError}.
  */
 @Injectable()
 export class RentriCodificheSyncService {
   private static readonly PAUSA_TRA_PASSI_MS = 250
+
+  private inCorso = false
 
   constructor(
     private readonly cerSync: RentriCerSyncService,
@@ -50,26 +74,56 @@ export class RentriCodificheSyncService {
     this.logger.setContext(RentriCodificheSyncService.name)
   }
 
-  /** Cron mensile (primo del mese, mezzanotte) — stessa cadenza prudente di `reference-data`/Task 4. */
+  /**
+   * Cron mensile (primo del mese, mezzanotte) — stessa cadenza prudente di
+   * `reference-data`/Task 4. Se un allineamento è già in corso (lock in
+   * memoria: un'altra esecuzione del cron ancora in volo, o una chiamata
+   * manuale dall'endpoint admin), il ciclo schedulato viene saltato con un
+   * warning: uno scheduler NestJS che lancia un'eccezione non gestita non
+   * deve mai propagare.
+   */
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async allineamentoSchedulato(): Promise<void> {
-    await this.allineaTutto()
+    try {
+      await this.allineaTutto()
+    } catch (e) {
+      if (e instanceof AllineamentoRentriGiaInCorsoError) {
+        this.logger.warn(
+          'Ciclo schedulato di allineamento codifiche RENTRI saltato: un allineamento è già in corso.'
+        )
+        return
+      }
+      throw e
+    }
   }
 
-  /** Eseguibile anche manualmente (senza attendere il cron), stessa logica del ciclo schedulato. */
+  /**
+   * Eseguibile anche manualmente (senza attendere il cron), stessa logica
+   * del ciclo schedulato. Protetto dal lock in memoria: se un altro giro è
+   * già in corso, rigetta immediatamente con
+   * {@link AllineamentoRentriGiaInCorsoError} senza contattare RENTRI.
+   */
   async allineaTutto(tenantId?: string): Promise<void> {
-    await this.eseguiPasso('CER', () => this.cerSync.allinea(tenantId))
-    await attendiMs(RentriCodificheSyncService.PAUSA_TRA_PASSI_MS)
+    if (this.inCorso) {
+      throw new AllineamentoRentriGiaInCorsoError()
+    }
+    this.inCorso = true
+    try {
+      await this.eseguiPasso('CER', () => this.cerSync.allinea(tenantId))
+      await attendiMs(RentriCodificheSyncService.PAUSA_TRA_PASSI_MS)
 
-    await this.eseguiPasso(
-      'codifiche semplici (unità di misura, stati fisici, caratteristiche di pericolo, attività R/D)',
-      () => this.codificheSempliciSync.allinea(tenantId)
-    )
-    await attendiMs(RentriCodificheSyncService.PAUSA_TRA_PASSI_MS)
+      await this.eseguiPasso(
+        'codifiche semplici (unità di misura, stati fisici, caratteristiche di pericolo, attività R/D)',
+        () => this.codificheSempliciSync.allinea(tenantId)
+      )
+      await attendiMs(RentriCodificheSyncService.PAUSA_TRA_PASSI_MS)
 
-    await this.eseguiPasso('territoriali (province, nazioni, comuni)', () =>
-      this.territorialiSync.allinea(tenantId)
-    )
+      await this.eseguiPasso('territoriali (province, nazioni, comuni)', () =>
+        this.territorialiSync.allinea(tenantId)
+      )
+    } finally {
+      this.inCorso = false
+    }
   }
 
   private async eseguiPasso<T>(nome: string, passo: () => Promise<T>): Promise<void> {
