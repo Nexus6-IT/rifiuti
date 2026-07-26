@@ -100,4 +100,15 @@ export class SetRentriCredentialDto {
       "numIscrSito non valido: formato atteso dell'unità locale RENTRI (es. OP1234ABC123456-RM1234)",
   })
   numIscrSito?: string
+
+  @ApiPropertyOptional({
+    example: 'MI00001234',
+    description:
+      "Numero di iscrizione dell'OPERATORE (R4 Task 3), necessario per leggere le unità locali dall'ente " +
+      '(GET /anagrafiche/v1.0/operatore/{num_iscr}/siti). Nessun vincolo di formato: anagrafiche.yaml lo dichiara stringa semplice.',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  numIscrOperatore?: string
 }

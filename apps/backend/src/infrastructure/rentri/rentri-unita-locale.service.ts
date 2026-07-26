@@ -179,6 +179,66 @@ export class RentriUnitaLocaleService {
     await this.prisma.db.rentriUnitaLocale.deleteMany({ where: { id, tenantId } })
   }
 
+  /**
+   * Upsert delle unità locali lette dall'ente (R4 Task 3,
+   * `SincronizzaSitiUseCase`): a differenza di {@link create} NON valida
+   * `numIscrSito` contro {@link NUM_ISCR_SITO_PATTERN}. Quel pattern proviene
+   * da `formulari.yaml` (vincolo sull'input DIGITATO da un operatore per
+   * l'acquisizione di visibilità): `anagrafiche.yaml` dichiara lo stesso
+   * campo come stringa semplice, senza formato imposto, e il valore qui
+   * arriva dall'ente stesso — validarlo con la regex di un contratto diverso
+   * rischierebbe di scartare unità locali realmente iscritte solo perché il
+   * loro formato non coincide con quello atteso da un altro servizio.
+   *
+   * Non cancella MAI righe assenti dall'elenco ricevuto: un'unità locale che
+   * l'ente non restituisce più in un ciclo di allineamento (delega revocata,
+   * errore temporaneo, filtro) non deve sparire da sotto un FIR che la
+   * referenzia. Marcare esplicitamente le assenti come "non più presenti"
+   * (come per i CER, Task 4) non è nello scope di questo task: le unità
+   * locali sono per-tenant e a bassa cardinalità, senza il segnale
+   * `presente/rimosso` che il contratto territoriale/CER offre invece
+   * esplicitamente — restano quindi semplicemente quelle già note, invariate
+   * finché un ciclo futuro non le riconferma o un amministratore non
+   * interviene manualmente (`PUT/DELETE /rentri/unita-locali`).
+   */
+  async upsertFromRentri(
+    tenantId: string,
+    siti: { numIscrSito: string; denominazione: string; attiva: boolean }[]
+  ): Promise<RentriUnitaLocale[]> {
+    const risultato: RentriUnitaLocale[] = []
+
+    for (const sito of siti) {
+      const esistente = await this.prisma.db.rentriUnitaLocale.findFirst({
+        where: { tenantId, numIscrSito: sito.numIscrSito },
+      })
+
+      if (esistente) {
+        const row = await this.prisma.db.rentriUnitaLocale.update({
+          where: { id: esistente.id },
+          data: { denominazione: sito.denominazione, attiva: sito.attiva },
+        })
+        risultato.push(this.toPlain(row))
+        continue
+      }
+
+      // Prima sede del tenant (anche qui): nessuna scelta da fare, diventa
+      // principale a prescindere — stessa regola di {@link create}.
+      const count = await this.prisma.db.rentriUnitaLocale.count({ where: { tenantId } })
+      const row = await this.prisma.db.rentriUnitaLocale.create({
+        data: {
+          tenantId,
+          numIscrSito: sito.numIscrSito,
+          denominazione: sito.denominazione,
+          principale: count === 0,
+          attiva: sito.attiva,
+        },
+      })
+      risultato.push(this.toPlain(row))
+    }
+
+    return risultato
+  }
+
   private validatePattern(numIscrSito: string): void {
     if (!NUM_ISCR_SITO_PATTERN.test(numIscrSito)) {
       throw new BadRequestException(

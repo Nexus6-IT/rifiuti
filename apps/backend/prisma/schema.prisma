@@ -1443,6 +1443,23 @@ model RentriCredential {
   /// ^OP[0-9]{4}[A-Z0-9]{3}[0-9]{6}-[A-Z]{2}[0-9]{4}$ (formulari.yaml riga 684).
   numIscrSito    String? @map("num_iscr_sito") @db.VarChar(30)
 
+  /// Numero di iscrizione dell'OPERATORE (non dell'unità locale), rilasciato
+  /// da RENTRI all'iscrizione: parametro `num_iscr` di
+  /// `GET /anagrafiche/v1.0/operatore/{num_iscr}/siti` (R4 Task 3). Nessun
+  /// pattern impostato: `anagrafiche.yaml` lo dichiara `string` semplice,
+  /// senza vincoli di formato (a differenza di `num_iscr_sito`, che
+  /// `formulari.yaml` vincola con una regex — un vincolo specifico di quel
+  /// contratto, non di questo campo).
+  numIscrOperatore    String?   @map("num_iscr_operatore") @db.VarChar(30)
+  /// Ultimo allineamento riuscito delle unità locali del tenant da
+  /// `GET /operatore/{num_iscr}/siti` (R4 Task 3). Cache TTL: l'apertura
+  /// della sezione «Unità locali» non richiama l'ente se questo timestamp è
+  /// più recente di un'ora (v. `SincronizzaSitiUseCase`) — evita di
+  /// contattare RENTRI a ogni apertura pagina per un dato che cambia solo per
+  /// iniziativa dell'azienda (nuova sede, variazione), non per un ciclo
+  /// dell'ente.
+  sitiSincronizzatiAl DateTime? @map("siti_sincronizzati_al")
+
   @@map("rentri_credentials")
 }
 

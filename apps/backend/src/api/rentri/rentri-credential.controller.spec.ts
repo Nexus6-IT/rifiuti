@@ -65,6 +65,7 @@ describe('RentriCredentialController', () => {
         algorithm: 'RS256',
         environment: 'demo',
         numIscrSito: undefined,
+        numIscrOperatore: undefined,
       })
     })
 
@@ -81,6 +82,22 @@ describe('RentriCredentialController', () => {
       expect(service.upsertForTenant).toHaveBeenCalledWith(
         'tenant-1',
         expect.objectContaining({ numIscrSito: 'OP1234ABC123456-RM1234' })
+      )
+    })
+
+    it('salva anche il numIscrOperatore (R4 Task 3) quando fornito', async () => {
+      const dto: SetRentriCredentialDto = {
+        clientId: 'client-1',
+        certificatePem: '-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----',
+        privateKeyPem: '-----BEGIN RSA PRIVATE KEY-----\nxyz\n-----END RSA PRIVATE KEY-----',
+        numIscrOperatore: 'MI00001234',
+      }
+
+      await controller.set(dto, user)
+
+      expect(service.upsertForTenant).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.objectContaining({ numIscrOperatore: 'MI00001234' })
       )
     })
 
@@ -139,6 +156,7 @@ describe('RentriCredentialController', () => {
         algorithm: 'RS256',
         environment: 'produzione',
         numIscrSito: 'OP1234ABC123456-RM1234',
+        numIscrOperatore: 'MI00001234',
       })
 
       const res = await controller.status(user)
@@ -148,6 +166,7 @@ describe('RentriCredentialController', () => {
         clientId: 'client-5',
         environment: 'produzione',
         numIscrSito: 'OP1234ABC123456-RM1234',
+        numIscrOperatore: 'MI00001234',
       })
       const serialized = JSON.stringify(res)
       expect(serialized).not.toContain('SECRET-CERT')

@@ -9,9 +9,12 @@ import { RentriCredentialService } from './rentri-credential.service'
 import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriModalitaLegameService } from './rentri-modalita-legame.service'
 import { RentriUnitaLocaleService } from './rentri-unita-locale.service'
+import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
+import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
 import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
 import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
+import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
 
 /**
  * DI smoke test per RentriModule (cablato in AppModule).
@@ -37,6 +40,9 @@ describe('RentriModule (DI wiring)', () => {
     expect(moduleRef.get(RentriModalitaLegameController)).toBeDefined()
     expect(moduleRef.get(RentriUnitaLocaleService)).toBeDefined()
     expect(moduleRef.get(RentriUnitaLocaleController)).toBeDefined()
+    expect(moduleRef.get(RentriAnagraficheClient)).toBeDefined()
+    expect(moduleRef.get(SincronizzaSitiUseCase)).toBeDefined()
+    expect(moduleRef.get(RentriSitiController)).toBeDefined()
 
     await moduleRef.close()
   })
