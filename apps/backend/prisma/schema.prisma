@@ -94,6 +94,14 @@ model Tenant {
   wasteMovements         WasteMovement[]
   rentriUnitaLocali      RentriUnitaLocale[]
 
+  // Indici presenti in produzione ma non piu' dichiarati nel modello: la
+  // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
+  // criterio di lookup dei webhook Stripe (percorso caldo, chiamato dall'esterno
+  // a ogni evento di fatturazione); `owner_user_id` serve la risoluzione del
+  // tenant a partire dall'utente proprietario. Ridichiararli qui evita che il
+  // prossimo `prisma migrate dev` proponga di cancellarli.
+  @@index([ownerUserId])
+  @@index([stripeCustomerId])
   @@map("tenants")
 }
 
@@ -581,6 +589,19 @@ model Notification {
 
   isRead    Boolean   @default(false) @map("is_read")
   readAt    DateTime? @map("read_at")
+  // ATTENZIONE — falso positivo noto del differ di Prisma, l'UNICO rimasto
+  // dopo la bonifica del 26/07/2026 (v. la migrazione
+  // `..._allinea_storia_migrazioni_alla_realta`). `prisma migrate dev`
+  // proporra' SEMPRE in coda un
+  //   ALTER TABLE "notifications" ALTER COLUMN "expires_at" SET DEFAULT ...
+  // anche quando il database ha gia' esattamente questo default. Verificato:
+  // ricostruendo il database dalla sola storia delle migrazioni il default
+  // risulta presente e identico, e il differ lo ripropone lo stesso; riscriverlo
+  // nella forma normalizzata da PostgreSQL (`now() + '30 days'::interval`) non
+  // cambia nulla.
+  // REGOLA PRATICA: quella singola riga nell'output di `migrate dev` va
+  // cancellata a mano. Se ne compare anche solo UNA in piu', NON e' questo caso
+  // noto: fermati e verifica, perche' il drift era tornato.
   expiresAt DateTime  @default(dbgenerated("now() + interval '30 days'")) @map("expires_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1064,8 +1085,12 @@ model AutorizzazioneImpianto {
   rinnovoAutocertificazione Boolean   @default(false) @map("rinnovo_autocertificazione")
 
   /// Operazioni autorizzate, es. ["R3","R4","R13"] / ["D4","D5","D12"].
-  operazioniRecupero    String[] @map("operazioni_recupero")
-  operazioniSmaltimento String[] @map("operazioni_smaltimento")
+  // `@default([])` dichiara il default che esiste gia' in produzione
+  // (`ARRAY[]::text[]`): un'autorizzazione senza operazioni dichiarate e' un
+  // caso legittimo (impianto autorizzato al solo stoccaggio), e l'assenza va
+  // rappresentata come lista vuota, mai come NULL.
+  operazioniRecupero    String[] @default([]) @map("operazioni_recupero")
+  operazioniSmaltimento String[] @default([]) @map("operazioni_smaltimento")
 
   gestisceVfu       Boolean @default(false) @map("gestisce_vfu")
   gestisceRaee      Boolean @default(false) @map("gestisce_raee")
