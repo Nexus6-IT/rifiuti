@@ -15,6 +15,7 @@ import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncJobProcessor } from '../../infrastructure/queue/jobs/rentri-sync.job'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import { RENTRISyncController } from '../../api/rentri/rentri-sync.controller'
+import { RentriFormulariController } from '../../api/rentri/rentri-formulari.controller'
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
 import { AppModule } from '../../app.module'
 
@@ -68,6 +69,12 @@ describe('RentriSyncModule (DI wiring)', () => {
     // comunque risolversi, con l'adapter placeholder — altrimenti
     // AcquisisciFormularioRENTRIUseCase stesso non si costruirebbe.
     expect(moduleRef.get(CREA_FIR_DA_FORMULARIO_RENTRI_PORT)).toBeDefined()
+
+    // R2 Task 6: il controller REST dell'aggancio deve risolversi (stesso
+    // errore già commesso una volta con RENTRISyncController, v. sopra — un
+    // provider/controller dichiarato ma mai importato da AppModule non
+    // basta).
+    expect(moduleRef.get(RentriFormulariController)).toBeDefined()
 
     // Nessun moduleRef.close(): onModuleInit non è mai stato invocato
     // (niente connessioni reali aperte), quindi non c'è nulla da chiudere.
