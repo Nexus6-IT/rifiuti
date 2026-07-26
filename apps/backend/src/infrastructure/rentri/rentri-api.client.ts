@@ -9,6 +9,7 @@ import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
 import { gestisciRispostaErroreRentri, attendiMs } from './rentri-http-resilienza'
+import type { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
 
 /**
  * RENTRI API Client
@@ -95,6 +96,67 @@ export class RENTRIApiClient {
     const response = await this.eseguiRichiestaConResilienza(
       () => this.get(`${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}`, tenantId),
       `/formulari/${numeroFir}`
+    )
+    return response.data
+  }
+
+  /**
+   * Legge lo stato corrente del formulario (`GET /{numero_fir}/stato` —
+   * formulari.yaml riga 2265, "Consultazione dello stato del formulario").
+   * Risposta 200 con corpo `InfoFormulario` (`{versione, stato_formulario}`).
+   * Nessun parametro oltre al path — a differenza di
+   * {@link leggiAzioniDisponibili}, che richiede `identificativo_soggetto`.
+   *
+   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza};
+   * qualunque altro status (es. 400/404) propaga come eccezione non
+   * catturata qui — il chiamante (v. `GetAzioniDisponibiliUseCase`) non deve
+   * MAI trattare una risposta non-200 come se fosse un aggiornamento di
+   * stato valido.
+   */
+  async leggiStato(tenantId: string, numeroFir: string): Promise<InfoFormularioResult> {
+    const response = await this.eseguiRichiestaConResilienza(
+      () => this.get(`${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/stato`, tenantId),
+      `/formulari/${numeroFir}/stato`
+    )
+    return response.data
+  }
+
+  /**
+   * Legge le operazioni RENTRI disponibili ORA su questo formulario
+   * (`GET /{numero_fir}/azioni` — formulari.yaml riga 1330, "Azioni
+   * disponibili sul formulario"). Risposta 200 con corpo `AzioniResult`
+   * (`{versione, stato, azioni}`).
+   *
+   * `identificativoSoggetto` (query `identificativo_soggetto`) è
+   * OBBLIGATORIO dal contratto (righe 1348-1353): il codice fiscale del
+   * soggetto per cui si chiedono le azioni, non un filtro opzionale — senza,
+   * l'ente risponde 400 prima ancora di valutare lo stato del formulario.
+   * `num_iscr_sito` (opzionale, acquisisce automaticamente la visibilità) è
+   * fuori scope di questo metodo: non viene mai inviato.
+   *
+   * Ogni chiamata a questo metodo È la difesa contro il 423 dell'ente
+   * (operazione tentata fuori sequenza): il chiamante deve verificare che
+   * l'operazione desiderata compaia in `azioni` PRIMA di invocarla, non
+   * fidarsi di una lista letta in precedenza — v. commento di classe di
+   * `GetAzioniDisponibiliUseCase`.
+   *
+   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza};
+   * un 400 (es. `identificativo_soggetto` rifiutato) propaga come eccezione
+   * non catturata qui, mai come lista vuota silenziosa.
+   */
+  async leggiAzioniDisponibili(
+    tenantId: string,
+    numeroFir: string,
+    identificativoSoggetto: string
+  ): Promise<AzioniDisponibiliResult> {
+    const query = new URLSearchParams({ identificativo_soggetto: identificativoSoggetto })
+    const response = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.get(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/azioni?${query.toString()}`,
+          tenantId
+        ),
+      `/formulari/${numeroFir}/azioni`
     )
     return response.data
   }
@@ -750,6 +812,58 @@ export interface FormularioModel {
   dati_trasbordi_parziali?: unknown[] | null
   dati_soste_tecniche?: unknown[] | null
   dati_destinazioni_successive?: unknown[] | null
+}
+
+/**
+ * `Operazione` (`docs/contracts/rentri/formulari.yaml`, riga 9935): le 28
+ * operazioni ammesse sul ciclo di vita di un formulario, restituite da
+ * `GET /{numero_fir}/azioni` (`AzioniResult.azioni`). Copiate 1:1 dal
+ * contratto — non un sottoinsieme — stesso vincolo di fedeltà già applicato
+ * a {@link StatoFormulario} (`fir.aggregate.ts`).
+ */
+export type Operazione =
+  | 'Trasporto'
+  | 'TrasportoUpdate'
+  | 'DatiQuantita'
+  | 'DatiQuantitaUpdate'
+  | 'Accettazione'
+  | 'Allegato'
+  | 'Annotazione'
+  | 'Reset'
+  | 'Rilascia'
+  | 'Annulla'
+  | 'NoteAnnullamento'
+  | 'Hash'
+  | 'TrasbordoTotale'
+  | 'TrasbordoParziale'
+  | 'SostaTecnica'
+  | 'NuovoDestinatario'
+  | 'AcquisizioneFirma'
+  | 'AcquisizioneFirmaAnnullamento'
+  | 'AcquisizioneFirmaTrasportatore'
+  | 'AcquisizioneFirmaProduttore'
+  | 'AcquisizioneFirmaProduttoreTrasportatore'
+  | 'AcquisizioneFirmaDestinatario'
+  | 'AcquisizioneFirmaAnnotazione'
+  | 'AcquisizioneFirmaTrasbordoTotale'
+  | 'AcquisizioneFirmaSostaTecnica'
+  | 'AcquisizioneFirmaTrasbordoParziale'
+  | 'AcquisizioneFirmaDestinatarioSuccessivo'
+  | 'AcquisizioneFirmaAccettazioneSuccessiva'
+  | 'RollbackFirma'
+  | 'Modifica'
+
+/** Corpo della risposta 200 di `GET /{numero_fir}/stato` (`InfoFormulario`, formulari.yaml riga 2265). */
+export interface InfoFormularioResult {
+  versione: number | null
+  stato_formulario: StatoFormulario
+}
+
+/** Corpo della risposta 200 di `GET /{numero_fir}/azioni` (`AzioniResult`, formulari.yaml riga 1330). */
+export interface AzioniDisponibiliResult {
+  versione: number | null
+  stato: StatoFormulario
+  azioni: Operazione[] | null
 }
 
 /**

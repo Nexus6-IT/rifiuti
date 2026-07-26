@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { verificaJwt } from '../auth/jwt-verifier'
 import { Archivio } from '../stato/archivio'
 import { numeroFirValido } from '../dominio/numero-fir'
+import { operazioniPerStato } from '../dominio/operazione'
 import { inviaProblemDetails } from '../errori/problem-details'
 
 const AUDIENCE = process.env.RENTRI_AUDIENCE ?? 'rentrigov.demo.api'
@@ -105,6 +106,74 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
       title: 'Non implementato nella fake',
       detail: `GET ${PREFISSO}/status e' un path ufficiale del contratto ma non e' implementato in questa fake (v. FEDELTA.md).`,
     })
+  })
+
+  // GET /{numero_fir}/stato (formulari.yaml riga 2265, "Consultazione dello
+  // stato del formulario"): risposta 200 = InfoFormulario
+  // ({versione, stato_formulario}). Nessun parametro oltre al path — a
+  // differenza di /azioni sotto, che richiede identificativo_soggetto.
+  app.get<{ Params: { identificativo: string } }>(
+    `${PREFISSO}/:identificativo/stato`,
+    async (richiesta, risposta) => {
+      if (!(await autentica(richiesta, risposta, archivio))) return
+
+      const numeroFir = richiesta.params.identificativo
+      if (!numeroFirValido(numeroFir)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Numero FIR non valido',
+          detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+        })
+      }
+
+      const formulario = archivio.leggiFormulario(numeroFir)
+      if (!formulario) {
+        return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+      }
+
+      return {
+        versione: formulario.versione ?? null,
+        stato_formulario: formulario.stato,
+      }
+    }
+  )
+
+  // GET /{numero_fir}/azioni (formulari.yaml riga 1330, "Azioni disponibili
+  // sul formulario"): risposta 200 = AzioniResult ({versione, stato, azioni}).
+  // `identificativo_soggetto` e' OBBLIGATORIO (righe 1348-1353, il CF del
+  // soggetto per cui si chiedono le azioni) — a differenza di GET /{numero_fir}
+  // e di /stato sopra. `num_iscr_sito` opzionale non e' gestito da questa fake
+  // (fuori scope Task 2 R3: acquisirebbe automaticamente la visibilita').
+  app.get<{
+    Params: { identificativo: string }
+    Querystring: { identificativo_soggetto?: string }
+  }>(`${PREFISSO}/:identificativo/azioni`, async (richiesta, risposta) => {
+    if (!(await autentica(richiesta, risposta, archivio))) return
+
+    const numeroFir = richiesta.params.identificativo
+    if (!numeroFirValido(numeroFir)) {
+      return inviaProblemDetails(risposta, 400, {
+        title: 'Numero FIR non valido',
+        detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+      })
+    }
+
+    if (!richiesta.query.identificativo_soggetto) {
+      return inviaProblemDetails(risposta, 400, {
+        title: 'Parametro richiesto non specificato',
+        detail: "'identificativo_soggetto' e' obbligatorio.",
+      })
+    }
+
+    const formulario = archivio.leggiFormulario(numeroFir)
+    if (!formulario) {
+      return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+    }
+
+    return {
+      versione: formulario.versione ?? null,
+      stato: formulario.stato,
+      azioni: operazioniPerStato(formulario.stato),
+    }
   })
 
   // Nome del parametro `:identificativo` (non `:numero_fir`): questa rotta

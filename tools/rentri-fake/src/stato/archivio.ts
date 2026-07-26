@@ -26,6 +26,14 @@ export interface Formulario {
    * risposta di `GET /`.
    */
   sitiConVisibilita?: string[]
+  /**
+   * Versione del formulario (`InfoFormulario.versione`/`AzioniResult.versione`,
+   * formulari.yaml righe 2265/1330): incrementata a ogni operazione di
+   * scrittura reale sull'ente. La fake non la incrementa da sola (nessuna
+   * operazione di scrittura esiste ancora, Task 2 R3) — resta il valore
+   * impostato dal canale di controllo o `null` di default.
+   */
+  versione?: number | null
 }
 
 export type StatoTransazione = 'in_elaborazione' | 'completata'
