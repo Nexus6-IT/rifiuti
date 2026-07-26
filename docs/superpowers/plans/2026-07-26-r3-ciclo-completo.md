@@ -134,27 +134,74 @@ Unitario sull'use case (mock del client); oracolo sul ciclo reale contro la fake
 
 ### Task 3: Orchestrazione scrittura + firma — l'infrastruttura comune
 
+> **RISCRITTO il 2026-07-26 dopo una decisione del committente.** La versione
+> precedente di questo task faceva firmare a noi il `digest_to_sign` con il
+> meccanismo interno di P3. Quella strada è stata **scartata**: v. l'ADR
+> `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`. In sintesi — una
+> firma è qualificata solo se la chiave resta sotto controllo esclusivo del
+> firmatario; se firmiamo noi, non lo è, e su un documento che vale in
+> contestazione una firma non qualificata è peggio di nessuna firma.
+>
+> **Si usa la firma remota RENTRI**: `POST /{numero_fir}/invia-a-dispositivo`
+> con un `credentials_id`. La chiave privata non passa mai da noi.
+
 Senza questo, ogni operazione successiva si ferma nello stato `Firma*` e l'utente torna sul portale. È il task che rende reali i Task 4-7 (e, in futuro, R3-bis).
 
+**PREREQUISITO BLOCCANTE — non iniziare senza:** il contratto versionato cita
+le «API Firma remota RENTRI» **per nome, senza URL né documentazione**, e non
+contiene alcun endpoint per creare o interrogare un `credentials_id`. Inoltre
+`invia-a-dispositivo` risponde **200 senza corpo**: nessun id di transazione,
+nessun webhook — quindi il contratto **non dice come sapere se l'utente ha poi
+autorizzato sul dispositivo**. Prima di implementare serve la risposta
+dell'ente su: (a) dove sono documentate quelle API e come si ottiene un
+`credentials_id`; (b) come si conosce l'esito di un invio a dispositivo.
+Ipotesi plausibile ma **non accertata**: l'esito si manifesta come
+valorizzazione di `dati_firma.credentials_id` leggibile da `GET /{numero_fir}`.
+Non costruire su questa ipotesi senza conferma.
+
 **Files:**
-- `apps/backend/src/infrastructure/rentri/rentri-api.client.ts` (metodi `calcolaHash`, `acquisisciFirma`, `rollbackFirma`)
-- `apps/backend/src/application/rentri/completa-operazione-con-firma.use-case.ts` (nuovo, generico — prende in input il `numero_fir` e il tipo di operazione, orchestra hash→firma, non conosce i dettagli di accettazione/trasbordo/ecc.)
-- `apps/backend/src/domain/rentri/firma-non-legale.ts` (riuso esplicito del meccanismo P3 — **stessa cautela**: la firma qui non ha valore legale, va loggata come tale)
+- `apps/backend/src/infrastructure/rentri/rentri-api.client.ts` (metodo `inviaADispositivo`; `rollbackFirma` resta utile per annullare una firma già apposta)
+- `apps/backend/src/application/rentri/completa-operazione-con-firma.use-case.ts` (nuovo, generico — prende `numero_fir` e tipo di operazione, non conosce i dettagli di accettazione/trasbordo/ecc.)
 - Test oracolo: `apps/backend/src/infrastructure/rentri/rentri-firma-operazione.oracolo.spec.ts`
 
-- [ ] **Step 1: Verificare cosa espone già P3 e cosa manca**
+- [ ] **Step 1: Chiarire i due punti del prerequisito**
 
-P3 (`docs/superpowers/plans` corrispondente, memoria `rifiuti-p3-firma`) ha già un meccanismo di firma persistita fail-closed per il ciclo interno. Verificare se `POST /{numero_fir}/hash` + `POST /{numero_fir}/acquisizione-firma` sono già wrappati da quel lavoro o vanno scritti ex novo per il ciclo RENTRI — **non duplicare** se esiste già un client per l'hash, altrimenti scriverlo qui seguendo lo stesso pattern di resilienza di `RENTRIApiClient`.
+Se la risposta dell'ente non è disponibile, **fermarsi e riferire**: non
+inventare un meccanismo di attesa dell'esito. Un finto polling su un endpoint
+che non esiste è esattamente il tipo di sottosistema che questo progetto ha già
+scritto e mai cablato cinque volte.
 
 - [ ] **Step 2: Scrivere `CompletaOperazioneConFirmaUseCase`**
 
-Sequenza: (1) l'operazione specifica (Task 4-7) ha già fatto la sua `POST` e il formulario è in uno stato `Firma*`; (2) `POST /{numero_fir}/hash` → ottiene `digest_to_sign`; (3) firma il digest con il meccanismo non-legale esistente; (4) `POST /{numero_fir}/acquisizione-firma` con l'esito; (5) attende il risultato asincrono; (6) richiama `applyRentriStato` con lo stato finale. **Fail-closed**: se un passaggio fallisce, l'operazione resta visibilmente "in sospeso" (non finta come completata) e l'utente vede quale passaggio si è fermato — mai un silenzioso stato incoerente.
+Sequenza: (1) l'operazione specifica (Task 4-7) ha già fatto la sua `POST` e il
+formulario è in uno stato `Firma*`; (2) `POST /{numero_fir}/invia-a-dispositivo`
+con il `credentials_id` del firmatario; (3) l'utente autorizza **sul proprio
+dispositivo**, fuori dalla nostra applicazione; (4) si rileva l'esito con il
+meccanismo chiarito allo Step 1; (5) si richiama `applyRentriStato` con lo stato
+finale.
 
-- [ ] **Step 3: Test**
+**Fail-closed**: se un passaggio fallisce, o se l'utente non autorizza,
+l'operazione resta visibilmente «in attesa di firma» — mai finta come
+completata, mai uno stato incoerente silenzioso. L'attesa dell'autorizzazione
+non è un errore: è uno stato legittimo e va mostrato come tale, con l'indicazione
+di cosa deve fare l'utente sul proprio dispositivo.
 
-Un test per ogni tipo di fallimento a metà sequenza (hash ok, firma rifiutata; firma ok, esito in errore) — deve rimanere leggibile all'utente (collegamento con Task 9) e non deve corrompere `rentriStatoFormulario` con uno stato mai confermato dall'ente.
+- [ ] **Step 3: Il provider `qes` non deve più mentire**
 
-- [ ] **Step 4: Commit**
+`qes-signature.provider.ts` oggi è uno stub che lancia sempre eccezione. Con
+questa decisione non è più la strada principale: va **rimosso** oppure marcato
+esplicitamente come ramo futuro (l'opzione 2 dell'ADR, integrazione QTSP via
+API CSC). Non lasciarlo a suggerire una capacità che non esiste — è il difetto
+che questo progetto ripete.
+
+- [ ] **Step 4: Test**
+
+Un test per ogni fallimento: invio a dispositivo rifiutato; utente che non
+autorizza (o autorizzazione non ancora arrivata); esito in errore. Nessuno di
+questi deve corrompere `rentriStatoFormulario` con uno stato mai confermato
+dall'ente.
+
+- [ ] **Step 5: Commit**
 
 ---
 
