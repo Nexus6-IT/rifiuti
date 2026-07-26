@@ -7,6 +7,7 @@
 import { AggregateRoot, DomainEvent } from '../../../core/domain/aggregate-root'
 import { DomainError, InvalidStateTransitionError } from '../../../core/domain/errors'
 import { Quantita, UnitaMisura } from '../value-objects/quantita'
+import { RENTRISyncStatus } from '../rentri-sync-status.vo'
 
 export enum FIRStato {
   BOZZA = 'BOZZA',
@@ -17,6 +18,21 @@ export enum FIRStato {
 }
 
 export type TipoOperazioneRifiuto = 'RECOVERY' | 'DISPOSAL'
+
+/**
+ * Origine del legame tra il FIR interno e il numero_fir RENTRI (v. Task 1,
+ * `schema.prisma` — `RentriOrigineLegame`). Replicato qui come union/enum di
+ * dominio perché l'aggregate del ciclo di vita non dipende dal client Prisma
+ * generato.
+ */
+export enum RentriOrigineLegame {
+  /** Il formulario è stato creato da una nostra trasmissione (questo aggregate, markRENTRISynced). */
+  TRASMESSO_DA_NOI = 'TRASMESSO_DA_NOI',
+  /** Il formulario esiste già su RENTRI (creato da un'altra controparte): legame da acquisizione di visibilità. */
+  ACQUISITO_DA_TERZI = 'ACQUISITO_DA_TERZI',
+  /** Legame impostato manualmente da un operatore (es. correzione/riconciliazione). */
+  AGGANCIO_MANUALE = 'AGGANCIO_MANUALE',
+}
 
 export interface FIRRifiuto {
   cerCode: string
@@ -171,6 +187,31 @@ export class FIRConsegnatoEvent implements DomainEvent {
   ) {}
 }
 
+export class FIRRENTRISincronizzatoEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_sincronizzato'
+  constructor(
+    public readonly firId: string,
+    public readonly numeroFir: string,
+    public readonly attempts: number,
+    public readonly correlationId?: string
+  ) {}
+}
+
+export class FIRRENTRISyncFallitoEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_sync_fallito'
+  constructor(
+    public readonly firId: string,
+    public readonly errorMessage: string,
+    public readonly errorCode: string | undefined,
+    public readonly attempts: number,
+    public readonly willRetry: boolean,
+    public readonly nextRetryAt: Date | undefined,
+    public readonly correlationId?: string
+  ) {}
+}
+
 export class FIR extends AggregateRoot {
   private constructor(
     private readonly _id: string,
@@ -196,7 +237,15 @@ export class FIR extends AggregateRoot {
     /** Data restituzione 4ª copia dal destinatario al produttore. */
     private _fourthCopyReturnedAt: Date | null = null,
     /** Note/esito del destinatario (4ª copia FIR). */
-    private _fourthCopyNotes: string | null = null
+    private _fourthCopyNotes: string | null = null,
+    /** Stato di sincronizzazione RENTRI (tentativi, backoff, ultimo errore). */
+    private _rentriSyncStatus: RENTRISyncStatus = RENTRISyncStatus.pending(),
+    /** Numero ufficiale RENTRI (numero_fir): chiave stabile del legame, valorizzata solo dopo l'aggancio. */
+    private _rentriNumeroFir: string | null = null,
+    /** Identificativo tecnico dell'ultima trasmissione REST (cambia ad ogni tentativo). */
+    private _rentriTransazioneId: string | null = null,
+    /** Come è nato il legame con rentriNumeroFir. */
+    private _rentriOrigineLegame: RentriOrigineLegame | null = null
   ) {
     super()
   }
@@ -310,6 +359,137 @@ export class FIR extends AggregateRoot {
     // In production, store motivo in a separate field or event
   }
 
+  // RENTRI sync — business methods
+  //
+  // Regole di dominio (decise per questo task, v. report R0 Task 2):
+  // 1. Trasmissibilità: solo un FIR emesso (EMESSO/IN_TRANSITO/CONSEGNATO)
+  //    può essere trasmesso a RENTRI. Una BOZZA non è ancora un documento
+  //    definitivo (l'operatore può ancora modificarla o scartarla), quindi
+  //    non genera alcun adempimento verso l'ente. Un FIR ANNULLATO, per lo
+  //    stesso motivo, non va notificato.
+  // 2. Anti-duplicazione: un FIR già legato a un numero_fir RENTRI (in
+  //    qualunque modo l'aggancio sia nato: nostra trasmissione, acquisizione
+  //    da terzi, aggancio manuale) non è ritrasmissibile. Ritrasmettere
+  //    creerebbe un secondo formulario duplicato presso l'ente — un
+  //    problema normativo, non un semplice errore tecnico da poter
+  //    ritentare.
+  // 3. Tentativi e backoff: delegati a RENTRISyncStatus (già esistente),
+  //    che implementa max 5 tentativi con backoff esponenziale 60s→60min.
+  //    È deliberatamente più conservativo del backoff del client HTTP
+  //    (1s→30s, per singola richiesta con Retry-After): qui si parla del
+  //    ritentativo dell'INTERA operazione di sync (un nuovo job), non della
+  //    singola chiamata REST. Un backoff troppo aggressivo a questo livello
+  //    rischierebbe di martellare un ente che risponde 423 bandendo il
+  //    chiamante per troppe richieste non valide.
+  // 4. markRENTRISynced registra il numero ufficiale (rentriNumeroFir,
+  //    chiave stabile del legame) e, se disponibile, l'identificativo
+  //    tecnico dell'ultima trasmissione (rentriTransazioneId) separatamente:
+  //    è il punto del Task 1 (i due campi hanno semantica diversa e non
+  //    vanno confusi).
+
+  /**
+   * Verifica se il FIR può essere trasmesso a RENTRI ora (v. regole 1 e 2
+   * sopra), incluso lo stato di sincronizzazione (RENTRISyncStatus.canRetry():
+   * esclude un sync già in corso e un fallimento permanente).
+   */
+  canSyncToRENTRI(): boolean {
+    const statoEmesso =
+      this._stato === FIRStato.EMESSO ||
+      this._stato === FIRStato.IN_TRANSITO ||
+      this._stato === FIRStato.CONSEGNATO
+    const nonGiaLegato = this._rentriNumeroFir === null
+
+    return statoEmesso && nonGiaLegato && this._rentriSyncStatus.canRetry()
+  }
+
+  /**
+   * Segna l'avvio di un tentativo di trasmissione a RENTRI.
+   */
+  startRENTRISync(): void {
+    if (!this.canSyncToRENTRI()) {
+      throw new DomainError('FIR non trasmissibile a RENTRI nello stato corrente')
+    }
+    this._rentriSyncStatus = this._rentriSyncStatus.markAsSyncing()
+  }
+
+  /**
+   * Registra l'esito positivo della trasmissione. `numeroFir` è il numero
+   * ufficiale assegnato dall'ente (obbligatorio, v. regola 4); `transazioneId`
+   * è l'identificativo tecnico dell'ultima chiamata REST (opzionale, utile
+   * per correlazione/supporto ma non è la chiave del legame). L'origine del
+   * legame è sempre TRASMESSO_DA_NOI: questo metodo modella solo l'esito di
+   * una trasmissione partita da qui.
+   */
+  markRENTRISynced(numeroFir: string, transazioneId?: string, correlationId?: string): void {
+    if (!numeroFir || numeroFir.trim() === '') {
+      throw new DomainError(
+        'Numero FIR RENTRI mancante: impossibile registrare la sincronizzazione'
+      )
+    }
+
+    this._rentriSyncStatus = this._rentriSyncStatus.markAsSynced(numeroFir)
+    this._rentriNumeroFir = numeroFir
+    if (transazioneId) {
+      this._rentriTransazioneId = transazioneId
+    }
+    this._rentriOrigineLegame = RentriOrigineLegame.TRASMESSO_DA_NOI
+
+    this.addDomainEvent(
+      new FIRRENTRISincronizzatoEvent(
+        this._id,
+        numeroFir,
+        this._rentriSyncStatus.getAttempts(),
+        correlationId
+      )
+    )
+  }
+
+  /**
+   * Registra un fallimento di trasmissione (v. regola 3 per tentativi/backoff).
+   */
+  markRENTRISyncFailed(errorMessage: string, errorCode?: string, correlationId?: string): void {
+    this._rentriSyncStatus = this._rentriSyncStatus.markAsFailed(errorMessage)
+
+    const willRetry = this._rentriSyncStatus.canRetry()
+
+    this.addDomainEvent(
+      new FIRRENTRISyncFallitoEvent(
+        this._id,
+        errorMessage,
+        errorCode,
+        this._rentriSyncStatus.getAttempts(),
+        willRetry,
+        willRetry ? this._rentriSyncStatus.getNextRetryAt() : undefined,
+        correlationId
+      )
+    )
+  }
+
+  /**
+   * Indica se il FIR è idoneo per un nuovo tentativo automatico dopo un
+   * fallimento (delega a RENTRISyncStatus.canRetry()).
+   */
+  needsRENTRIRetry(): boolean {
+    return this._rentriSyncStatus.canRetry()
+  }
+
+  /**
+   * Prossimo istante utile per ritentare, secondo il backoff esponenziale di
+   * RENTRISyncStatus.
+   */
+  getNextRENTRIRetryAt(): Date {
+    return this._rentriSyncStatus.getNextRetryAt()
+  }
+
+  /**
+   * Alias esplicito su AggregateRoot.domainEvents: alcuni chiamanti
+   * applicativi (es. SyncFIRToRENTRIUseCase) invocano un metodo invece di
+   * leggere la proprietà.
+   */
+  getDomainEvents(): DomainEvent[] {
+    return this.domainEvents
+  }
+
   // Getters
   get id(): string {
     return this._id
@@ -405,6 +585,26 @@ export class FIR extends AggregateRoot {
   /** Note/esito del destinatario (4ª copia FIR). */
   get fourthCopyNotes(): string | null {
     return this._fourthCopyNotes
+  }
+
+  /** Stato di sincronizzazione RENTRI (tentativi, backoff, ultimo errore). */
+  get rentriSyncStatus(): RENTRISyncStatus {
+    return this._rentriSyncStatus
+  }
+
+  /** Numero ufficiale RENTRI (numero_fir): chiave stabile del legame. */
+  get rentriNumeroFir(): string | null {
+    return this._rentriNumeroFir
+  }
+
+  /** Identificativo tecnico dell'ultima trasmissione REST verso RENTRI. */
+  get rentriTransazioneId(): string | null {
+    return this._rentriTransazioneId
+  }
+
+  /** Come è nato il legame con rentriNumeroFir. */
+  get rentriOrigineLegame(): RentriOrigineLegame | null {
+    return this._rentriOrigineLegame
   }
 
   private static generateId(): string {

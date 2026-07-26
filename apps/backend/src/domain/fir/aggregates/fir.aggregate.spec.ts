@@ -326,4 +326,140 @@ describe('FIR Aggregate', () => {
       expect(events[2]).toBeInstanceOf(FIRConsegnatoEvent)
     })
   })
+
+  describe('RENTRI sync', () => {
+    const emettiFIR = (): FIR => {
+      const fir = FIR.create(createValidFIRProps())
+      fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
+      return fir
+    }
+
+    describe('canSyncToRENTRI — regola 1: solo un FIR emesso è trasmissibile', () => {
+      it('should reject a FIR still in BOZZA', () => {
+        const fir = FIR.create(createValidFIRProps())
+        expect(fir.canSyncToRENTRI()).toBe(false)
+      })
+
+      it('should allow a FIR in EMESSO', () => {
+        const fir = emettiFIR()
+        expect(fir.canSyncToRENTRI()).toBe(true)
+      })
+
+      it('should allow a FIR in IN_TRANSITO', () => {
+        const fir = emettiFIR()
+        fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
+        expect(fir.canSyncToRENTRI()).toBe(true)
+      })
+
+      it('should allow a FIR in CONSEGNATO', () => {
+        const fir = emettiFIR()
+        fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
+        fir.confermaConsegna(120, createMockFirma('Destinatario'))
+        expect(fir.canSyncToRENTRI()).toBe(true)
+      })
+
+      it('should reject a FIR that has been annullato', () => {
+        const fir = emettiFIR()
+        fir.annulla('errore di compilazione')
+        expect(fir.canSyncToRENTRI()).toBe(false)
+      })
+    })
+
+    describe('startRENTRISync', () => {
+      it('should transition sync status to SYNCING when allowed', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        expect(fir.rentriSyncStatus.getStatus()).toBe('SYNCING')
+      })
+
+      it('should throw when the FIR cannot be synced (still in BOZZA)', () => {
+        const fir = FIR.create(createValidFIRProps())
+        expect(() => fir.startRENTRISync()).toThrow(DomainError)
+      })
+    })
+
+    describe('markRENTRISynced — regola 4: registra il numero ufficiale', () => {
+      it('should store the numero ufficiale (rentriNumeroFir), not only the transazioneId', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+
+        fir.markRENTRISynced('RENTRI-NUM-000123', 'tx-abc-789')
+
+        expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-000123')
+        expect(fir.rentriTransazioneId).toBe('tx-abc-789')
+        expect(fir.rentriNumeroFir).not.toBe(fir.rentriTransazioneId)
+        expect(fir.rentriSyncStatus.getStatus()).toBe('SYNCED')
+        expect(fir.rentriOrigineLegame).toBe('TRASMESSO_DA_NOI')
+      })
+
+      it('should throw if numero ufficiale is missing/empty', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+
+        expect(() => fir.markRENTRISynced('')).toThrow(DomainError)
+      })
+
+      it('should work without a transazioneId (optional)', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+
+        fir.markRENTRISynced('RENTRI-NUM-000999')
+
+        expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-000999')
+        expect(fir.rentriTransazioneId).toBeNull()
+      })
+    })
+
+    describe('regola 2: un FIR già legato non è ritrasmissibile (anti-duplicazione)', () => {
+      it('should reject a second sync attempt after a successful markRENTRISynced', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123', 'tx-1')
+
+        expect(fir.canSyncToRENTRI()).toBe(false)
+        expect(() => fir.startRENTRISync()).toThrow(DomainError)
+      })
+    })
+
+    describe('markRENTRISyncFailed / needsRENTRIRetry / getNextRENTRIRetryAt — regola 3: tentativi e backoff', () => {
+      it('should allow retry after a first failure (attempts below the max)', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+
+        fir.markRENTRISyncFailed('Errore di rete', 'RENTRI_API_ERROR')
+
+        expect(fir.rentriSyncStatus.getStatus()).toBe('FAILED')
+        expect(fir.needsRENTRIRetry()).toBe(true)
+        expect(fir.canSyncToRENTRI()).toBe(true) // non ancora legato, può ritentare
+      })
+
+      it('should schedule the next retry strictly in the future using exponential backoff', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        const before = Date.now()
+
+        fir.markRENTRISyncFailed('Errore di rete', 'RENTRI_API_ERROR')
+
+        const nextRetryAt = fir.getNextRENTRIRetryAt()
+        // Backoff conservativo (base 60s): non deve essere un ritentativo immediato,
+        // altrimenti si rischia di martellare l'ente e farsi bannare con un 423.
+        expect(nextRetryAt.getTime()).toBeGreaterThan(before + 30_000)
+      })
+
+      it('should stop allowing retries after exhausting the maximum number of attempts', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+
+        // RENTRISyncStatus.MAX_ATTEMPTS = 5: il quinto fallimento consecutivo
+        // porta a PERMANENTLY_FAILED (richiede intervento manuale).
+        for (let i = 0; i < 5; i++) {
+          fir.markRENTRISyncFailed('Errore persistente', 'RENTRI_API_ERROR')
+        }
+
+        expect(fir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+        expect(fir.needsRENTRIRetry()).toBe(false)
+        expect(fir.canSyncToRENTRI()).toBe(false)
+      })
+    })
+  })
 })
