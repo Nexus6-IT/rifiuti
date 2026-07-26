@@ -1,5 +1,6 @@
-import { randomUUID } from 'crypto'
+import { createSign, randomUUID } from 'crypto'
 import { RegistroReplayMemoria } from '../auth/jwt-verifier'
+import { emettiCertificatoAccreditato } from '../auth/ca-test'
 import * as codifiche from './fixture-codifiche'
 import { LookupItem } from './fixture-codifiche'
 import * as anagrafiche from './fixture-anagrafiche'
@@ -82,6 +83,39 @@ export interface Transazione {
   richiestaCreazione?: Record<string, unknown>
 }
 
+/** Stato di una sessione di autorizzazione alla firma remota (`ca-rentri`). */
+export type StatoSessioneFirma = 'IN_ATTESA' | 'AUTORIZZATA' | 'RIFIUTATA'
+
+/**
+ * Sessione di autorizzazione creata da `POST /ca-rentri/v1.0/credentials/authorize`
+ * e interrogata da `GET /credentials/authorize-check/{handle}`.
+ *
+ * La fake NON passa da sola a `AUTORIZZATA`: la conferma dell'utente avviene
+ * sul dispositivo con l'app ufficiale RENTRI, un gesto che il nostro backend
+ * non compie mai. Nella fake lo compie il canale di controllo
+ * (`POST /__controllo/ca-rentri/autorizza/{handle}`) — se la fake si
+ * autorizzasse da sola, nessun test potrebbe distinguere «l'utente ha
+ * confermato» da «l'utente non ha ancora confermato», cioè esattamente la
+ * distinzione che questo ciclo esiste per gestire.
+ */
+export interface SessioneFirma {
+  handle: string
+  sad: string
+  credentialsId: string
+  hashes: string[]
+  stato: StatoSessioneFirma
+  /** Istante (ms epoch) oltre il quale l'autorizzazione non è più valida. */
+  scadenzaMs: number
+}
+
+/**
+ * Valore di default di `expires_in` (secondi) restituito da
+ * `POST /credentials/authorize`. Il tempo reale concesso da RENTRI non è
+ * documentato da alcuna fonte (v. ADR, «Lacune ancora aperte»): questo
+ * valore è una scelta della fake, non un dato dell'ente.
+ */
+export const EXPIRES_IN_DEFAULT_SECONDI = 120
+
 /**
  * Stato in memoria della fake. Volutamente non persistente: ogni avvio
  * riparte pulito, così i test non dipendono dall'ordine di esecuzione.
@@ -90,6 +124,22 @@ export class Archivio {
   private formulari = new Map<string, Formulario>()
   private transazioni = new Map<string, Transazione>()
   private guasto: Guasto | null = null
+  private sessioniFirma = new Map<string, SessioneFirma>()
+
+  /**
+   * Materiale crittografico di test della "CA RENTRI" simulata: il
+   * certificato restituito da `GET /credentials/info` e la chiave con cui
+   * `POST /credentials/sign-hash` firma DAVVERO.
+   *
+   * Generato una volta sola per istanza di `Archivio` (pigro: la generazione
+   * di una coppia RSA 2048 costa ~centinaia di ms, e la maggior parte dei
+   * test non tocca la firma remota). NON viene azzerato da {@link azzera}:
+   * è materiale di infrastruttura, non stato di scenario, e rigenerarlo a
+   * ogni test renderebbe la suite molto più lenta senza alcun guadagno di
+   * isolamento.
+   */
+  private materialeFirmaRemota: { certificatoBase64Der: string; chiavePrivataPem: string } | null =
+    null
 
   /**
    * Copia per-istanza del catalogo `codici-eer`, `null` finché nessun test
@@ -113,7 +163,123 @@ export class Archivio {
     this.transazioni.clear()
     this.guasto = null
     this.codiciEerOverride = null
+    this.sessioniFirma.clear()
     this.registroReplay.azzera()
+    // `materialeFirmaRemota` NON si azzera: v. il commento del campo.
+  }
+
+  // --- Firma remota (`ca-rentri`, R3 Task 3) --------------------------------
+
+  /**
+   * Certificato X.509 (base64 DER) della credenziale di firma remota
+   * simulata, servito da `GET /credentials/info?cert_info=true`. È lo stesso
+   * certificato la cui chiave privata firma in {@link firmaHash}: un test può
+   * quindi verificare DAVVERO la firma con la chiave pubblica estratta da qui.
+   */
+  certificatoFirmaRemota(): string {
+    return this.materiale().certificatoBase64Der
+  }
+
+  private materiale(): { certificatoBase64Der: string; chiavePrivataPem: string } {
+    if (!this.materialeFirmaRemota) {
+      this.materialeFirmaRemota = emettiCertificatoAccreditato('CREDENZIALE-FIRMA-REMOTA-TEST')
+    }
+    return this.materialeFirmaRemota
+  }
+
+  /**
+   * `POST /ca-rentri/v1.0/credentials/authorize`: crea una sessione in stato
+   * `IN_ATTESA`. Restituisce la sessione creata (`sad`, `handle`, scadenza).
+   */
+  creaSessioneFirma(
+    credentialsId: string,
+    hashes: string[],
+    expiresInSecondi: number
+  ): SessioneFirma {
+    const sessione: SessioneFirma = {
+      handle: randomUUID(),
+      sad: randomUUID(),
+      credentialsId,
+      hashes,
+      stato: 'IN_ATTESA',
+      scadenzaMs: Date.now() + expiresInSecondi * 1000,
+    }
+    this.sessioniFirma.set(sessione.handle, sessione)
+    return sessione
+  }
+
+  leggiSessioneFirma(handle: string): SessioneFirma | undefined {
+    return this.sessioniFirma.get(handle)
+  }
+
+  /** Tutte le sessioni note: serve a `sign-hash` per risalire dalla `sad` alla sessione. */
+  elencaSessioniFirma(): SessioneFirma[] {
+    return [...this.sessioniFirma.values()]
+  }
+
+  /**
+   * Canale di controllo: simula la conferma dell'utente sul proprio
+   * dispositivo (che nella realtà chiama `PUT /credentials/authorize-confirmation`
+   * — mai il nostro backend). `false` se la sessione non esiste.
+   */
+  autorizzaSessioneFirma(handle: string): boolean {
+    const sessione = this.sessioniFirma.get(handle)
+    if (!sessione) return false
+    sessione.stato = 'AUTORIZZATA'
+    return true
+  }
+
+  /**
+   * Canale di controllo: simula l'utente che RIFIUTA la firma sul proprio
+   * dispositivo. Senza di questo lo stato `RIFIUTATA` sarebbe irraggiungibile
+   * e il ramo corrispondente di `authorize-check` resterebbe codice morto —
+   * la stessa categoria di difetto (un comportamento dichiarato che nulla può
+   * esercitare) che questa fake esiste per evitare.
+   */
+  rifiutaSessioneFirma(handle: string): boolean {
+    const sessione = this.sessioniFirma.get(handle)
+    if (!sessione) return false
+    sessione.stato = 'RIFIUTATA'
+    return true
+  }
+
+  /**
+   * Canale di controllo: porta la scadenza nel passato, così un test può
+   * verificare il ramo «scaduta» senza attendere `expires_in` reale (che
+   * renderebbe la suite oracolo lunga minuti per nessun guadagno di fedeltà).
+   */
+  scadiSessioneFirma(handle: string): boolean {
+    const sessione = this.sessioniFirma.get(handle)
+    if (!sessione) return false
+    sessione.scadenzaMs = Date.now() - 1
+    return true
+  }
+
+  /** `true` se la sessione è oltre la propria scadenza (calcolata dal tempo, non da un contatore). */
+  sessioneFirmaScaduta(sessione: SessioneFirma): boolean {
+    return Date.now() > sessione.scadenzaMs
+  }
+
+  /**
+   * `POST /ca-rentri/v1.0/credentials/sign-hash`: firma DAVVERO il digest con
+   * la chiave privata di test.
+   *
+   * **Divergenza dichiarata dall'ente reale**: RENTRI dichiara `sign_algo`
+   * ECDSA-SHA256 su un digest già calcolato (firma «prehash»). Qui si firma
+   * con RSA-SHA256 sui byte del digest (`createSign('sha256')`), perché è la
+   * combinazione che il verificatore lato backend
+   * (`rentri-firma-verifica.util.ts`) può effettivamente verificare con la
+   * sola API pubblica di Node — v. il commento di quella funzione per il
+   * perché la verifica prehash EC non è realizzabile senza dipendenze nuove.
+   * La fake resta quindi utile a provare il CICLO (202 → 200 → firma →
+   * acquisizione) e a far passare la verifica locale nel caso positivo, NON a
+   * dimostrare la conformità crittografica all'algoritmo dell'ente.
+   */
+  firmaHash(digestBase64: string): string {
+    const firmatore = createSign('sha256')
+    firmatore.update(Buffer.from(digestBase64, 'base64'))
+    firmatore.end()
+    return firmatore.sign(this.materiale().chiavePrivataPem, 'base64')
   }
 
   impostaGuasto(guasto: Guasto | null): void {

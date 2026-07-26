@@ -7,6 +7,7 @@ import { registraRotteXfir } from './routes/xfir'
 import { registraRotteControllo } from './routes/controllo'
 import { registraRotteCodifiche } from './routes/codifiche'
 import { registraRotteAnagrafiche } from './routes/anagrafiche'
+import { registraRotteCaRentri } from './routes/ca-rentri'
 import { Archivio } from './stato/archivio'
 import { inviaProblemDetails } from './errori/problem-details'
 
@@ -66,6 +67,7 @@ export function creaApp(): FastifyInstance {
   registraRotteXfir(app, archivio)
   registraRotteCodifiche(app, archivio)
   registraRotteAnagrafiche(app, archivio)
+  registraRotteCaRentri(app, archivio)
 
   return app
 }

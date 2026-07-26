@@ -1,4 +1,34 @@
 /**
+ * ⚠️ NON È LA STRADA PRINCIPALE PER LA FIRMA DEL FIR VERSO RENTRI.
+ *
+ * Decisione del 2026-07-26, ADR `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`:
+ * la via **principale** per la sottoscrizione del formulario verso l'ente è
+ * la **firma remota RENTRI** — `CompletaOperazioneConFirmaUseCase`
+ * (`src/application/rentri/completa-operazione-con-firma.use-case.ts`, R3
+ * Task 3), che orchestra la sequenza `ca-rentri` (`credentials/authorize` →
+ * conferma dell'utente sull'app ufficiale *RENTRI FIR Digitale* →
+ * `sign-hash` → `acquisizione-firma`). In quella via **la chiave privata non
+ * passa mai da noi**: è custodita dal sistema RENTRI. È esattamente il
+ * motivo per cui è stata scelta (eIDAS art. 3 p. 12: una firma è qualificata
+ * solo se la chiave resta sotto controllo esclusivo del firmatario).
+ *
+ * Questo provider resta come **opzione 2 dell'ADR — ramo futuro/opzionale**:
+ * integrazione con un QTSP terzo via API CSC (Cloud Signature Consortium),
+ * utile SOLO all'azienda che ha già un proprio contratto QTSP e vuole usarlo.
+ * Non è la strada primaria e **non deve essere selezionato come default in
+ * produzione**.
+ *
+ * Verificato al momento di scrivere questa nota: `resolveSignatureProviderType`
+ * (`../digital-signature.service.ts`) NON rende mai `qes` un default — fuori
+ * produzione il default è `sandbox`, in produzione non esiste alcun default e
+ * `SIGNATURE_PROVIDER` va impostata esplicitamente. Questo provider è quindi
+ * raggiungibile solo su opt-in esplicito `SIGNATURE_PROVIDER=qes`, e in quel
+ * caso fallisce subito con un messaggio chiaro (v. sotto): nessun codice
+ * aggiuntivo serve a proteggerlo, solo questa nota, la cui assenza era il
+ * difetto segnalato dal piano (uno stub che sembra una capacità disponibile).
+ *
+ * ---
+ *
  * QES Signature Provider — STUB FIRMA QUALIFICATA (non operativo)
  *
  * Stub dell'implementazione QES (Qualified Electronic Signature) / SPID-CIE.

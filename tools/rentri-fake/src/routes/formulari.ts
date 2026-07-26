@@ -176,6 +176,77 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
     }
   })
 
+  // POST /{numero_fir}/hash (formulari.yaml riga 1498) e
+  // POST /{numero_fir}/acquisizione-firma (riga 531) — R3 Task 3.
+  //
+  // Entrambe ASYNC: rispondono 202 + TransazioneModel, esattamente come
+  // `POST /` in transazioni.ts, e si completano SOLO dal canale di controllo
+  // (`/__controllo/completa-transazione`, riusato tale e quale). La fake non
+  // decide da sola l'esito di una scrittura: e' il test a stabilire se
+  // l'ente accetta o rifiuta, che e' il punto dell'oracolo.
+  //
+  // Come le altre rotte di dominio, si validano PRIMA il numero FIR (400 di
+  // validazione) e l'esistenza del formulario (404), altrimenti un errore di
+  // dominio si travestirebbe da transazione accettata.
+  const registraOperazioneAsincrona = (
+    segmento: string,
+    validaCorpo: (corpo: Record<string, unknown>) => string | null
+  ): void => {
+    app.post<{ Params: { identificativo: string }; Body: Record<string, unknown> }>(
+      `${PREFISSO}/:identificativo/${segmento}`,
+      async (richiesta, risposta) => {
+        if (!(await autentica(richiesta, risposta, archivio))) return
+
+        const numeroFir = richiesta.params.identificativo
+        if (!numeroFirValido(numeroFir)) {
+          return inviaProblemDetails(risposta, 400, {
+            title: 'Numero FIR non valido',
+            detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+          })
+        }
+
+        if (!archivio.leggiFormulario(numeroFir)) {
+          return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+        }
+
+        const motivo = validaCorpo(richiesta.body ?? {})
+        if (motivo) {
+          return inviaProblemDetails(risposta, 400, {
+            title: 'Corpo della richiesta non valido',
+            detail: motivo,
+          })
+        }
+
+        const id = archivio.creaTransazione()
+        return risposta
+          .status(202)
+          .header('Location', `${PREFISSO}/${id}/status`)
+          .send({ transazione_id: id })
+      }
+    )
+  }
+
+  // DatiPerFirmaModel (formulari.yaml riga 7614): `certificato` obbligatorio,
+  // `tipo_firma` opzionale (non inviato dal nostro client, v. il commento di
+  // `RENTRIApiClient.richiediHashPerFirma`).
+  registraOperazioneAsincrona('hash', corpo =>
+    typeof corpo.certificato === 'string' && corpo.certificato.trim() !== ''
+      ? null
+      : "'certificato' e' obbligatorio (DatiPerFirmaModel)."
+  )
+
+  // FirmaModel (formulari.yaml riga 9646): certificato + token + firma, tutti
+  // obbligatori. Un client che dimenticasse il `token` ricevuto da /hash se ne
+  // accorgerebbe qui, non in produzione.
+  registraOperazioneAsincrona('acquisizione-firma', corpo => {
+    const mancanti = ['certificato', 'token', 'firma'].filter(
+      campo => typeof corpo[campo] !== 'string' || (corpo[campo] as string).trim() === ''
+    )
+    return mancanti.length === 0
+      ? null
+      : `Campi obbligatori mancanti (FirmaModel): ${mancanti.join(', ')}.`
+  })
+
   // Nome del parametro `:identificativo` (non `:numero_fir`): questa rotta
   // condivide la posizione nel path con le rotte di transazione registrate
   // da `registraRotteTransazioni` (`/status`, `/result`). find-my-way

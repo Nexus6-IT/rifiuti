@@ -157,6 +157,12 @@ describe('RentriCredentialController', () => {
         environment: 'produzione',
         numIscrSito: 'OP1234ABC123456-RM1234',
         numIscrOperatore: 'MI00001234',
+        // R3 Task 3: identificativo delle credenziali di firma remota. NON è
+        // un segreto (la chiave privata resta custodita da RENTRI e non
+        // transita mai da noi), quindi è legittimo esporlo — le due
+        // asserzioni sotto continuano comunque a garantire che certificato e
+        // chiave privata non escano mai da questo endpoint.
+        credentialsIdFirmaRemota: 'cred-firma-remota-1',
       })
 
       const res = await controller.status(user)
@@ -167,6 +173,7 @@ describe('RentriCredentialController', () => {
         environment: 'produzione',
         numIscrSito: 'OP1234ABC123456-RM1234',
         numIscrOperatore: 'MI00001234',
+        credentialsIdFirmaRemota: 'cred-firma-remota-1',
       })
       const serialized = JSON.stringify(res)
       expect(serialized).not.toContain('SECRET-CERT')

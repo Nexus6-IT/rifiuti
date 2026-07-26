@@ -1,0 +1,28 @@
+-- Identificativo delle credenziali di firma remota RENTRI dell'unita' locale
+-- (`credentials_id`), ottenuto dall'azienda con la procedura di abbinamento del
+-- dispositivo sul portale dell'ente (QR Code + PIN): e' un'operazione umana, non
+-- automatizzabile, e il nostro compito comincia quando questo valore esiste.
+--
+-- Nullable di proposito: un tenant che non ha ancora abbinato un dispositivo non
+-- ce l'ha, e nullable e' l'unico modo onesto di dirlo. Nessun DROP, nessuna
+-- colonna obbligatoria su dati esistenti.
+--
+-- Sta accanto alla credenziale di INTEROPERABILITA' ma resta un oggetto
+-- DISTINTO: quella autentica le chiamate REST, questo autorizza la firma. La
+-- documentazione dell'ente insiste sulla distinzione, e confonderli
+-- significherebbe usare il certificato sbagliato in uno dei due percorsi.
+-- AlterTable
+ALTER TABLE "rentri_credentials" ADD COLUMN     "credentials_id_firma_remota" VARCHAR(255);
+
+-- NOTA: `prisma migrate dev` aveva accodato qui, come sempre, un
+--   ALTER TABLE "notifications" ALTER COLUMN "expires_at" SET DEFAULT ...
+-- non richiesto da questa modifica. E' il falso positivo noto del differ di
+-- Prisma, l'unico rimasto dopo la bonifica del drift (v. il commento sopra quel
+-- campo in schema.prisma), ed e' stato rimosso a mano.
+--
+-- Era innocuo nell'effetto (idempotente: il default esiste gia' in produzione)
+-- ma lasciarlo avrebbe tolto senso alla regola. Se una migrazione puo' contenere
+-- righe che nessuno ha chiesto, nessuno sa piu' distinguere il rumore noto da
+-- una modifica vera — ed e' esattamente cosi' che un DROP INDEX non deciso da
+-- nessuno arriva in produzione. Se in una prossima migrazione ne compare piu' di
+-- una, NON e' questo caso noto: il drift e' tornato.

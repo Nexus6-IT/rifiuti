@@ -60,4 +60,49 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
     const rimosso = archivio.rimuoviCodiceEer(richiesta.body.code)
     return { rimosso }
   })
+
+  // R3 Task 3 — firma remota (`ca-rentri`). Simula la conferma dell'utente
+  // sul PROPRIO dispositivo con l'app ufficiale RENTRI: e' l'unico modo per
+  // far passare una sessione a `AUTORIZZATA`, perche' quel gesto e' per
+  // definizione fuori dal nostro backend (che infatti non chiama mai
+  // `PUT /credentials/authorize-confirmation`). Se la fake si autorizzasse da
+  // sola, nessun test potrebbe distinguere «confermato» da «non ancora
+  // confermato».
+  app.post<{ Params: { handle: string } }>(
+    '/__controllo/ca-rentri/autorizza/:handle',
+    async (richiesta, risposta) => {
+      const autorizzata = archivio.autorizzaSessioneFirma(richiesta.params.handle)
+      if (!autorizzata) {
+        return inviaProblemDetails(risposta, 404, { title: 'Autorizzazione non trovata' })
+      }
+      return { autorizzata: true }
+    }
+  )
+
+  // Simula l'utente che RIFIUTA la firma sul dispositivo: rende raggiungibile
+  // lo stato RIFIUTATA, che senza questo canale resterebbe irraggiungibile e
+  // lascerebbe il ramo corrispondente di `authorize-check` come codice morto.
+  app.post<{ Params: { handle: string } }>(
+    '/__controllo/ca-rentri/rifiuta/:handle',
+    async (richiesta, risposta) => {
+      const rifiutata = archivio.rifiutaSessioneFirma(richiesta.params.handle)
+      if (!rifiutata) {
+        return inviaProblemDetails(risposta, 404, { title: 'Autorizzazione non trovata' })
+      }
+      return { rifiutata: true }
+    }
+  )
+
+  // Porta la scadenza nel passato: verifica il ramo «autorizzazione scaduta»
+  // senza far attendere alla suite il tempo reale di `expires_in`.
+  app.post<{ Params: { handle: string } }>(
+    '/__controllo/ca-rentri/scadi/:handle',
+    async (richiesta, risposta) => {
+      const scaduta = archivio.scadiSessioneFirma(richiesta.params.handle)
+      if (!scaduta) {
+        return inviaProblemDetails(risposta, 404, { title: 'Autorizzazione non trovata' })
+      }
+      return { scaduta: true }
+    }
+  )
 }
