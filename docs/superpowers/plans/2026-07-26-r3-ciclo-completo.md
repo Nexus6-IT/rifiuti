@@ -147,24 +147,72 @@ Unitario sull'use case (mock del client); oracolo sul ciclo reale contro la fake
 
 Senza questo, ogni operazione successiva si ferma nello stato `Firma*` e l'utente torna sul portale. È il task che rende reali i Task 4-7 (e, in futuro, R3-bis).
 
-**PREREQUISITO BLOCCANTE — non iniziare senza:** il contratto versionato cita
-le «API Firma remota RENTRI» **per nome, senza URL né documentazione**, e non
-contiene alcun endpoint per creare o interrogare un `credentials_id`. Inoltre
-`invia-a-dispositivo` risponde **200 senza corpo**: nessun id di transazione,
-nessun webhook — quindi il contratto **non dice come sapere se l'utente ha poi
-autorizzato sul dispositivo**. Prima di implementare serve la risposta
-dell'ente su: (a) dove sono documentate quelle API e come si ottiene un
-`credentials_id`; (b) come si conosce l'esito di un invio a dispositivo.
-Ipotesi plausibile ma **non accertata**: l'esito si manifesta come
-valorizzazione di `dati_firma.credentials_id` leggibile da `GET /{numero_fir}`.
-Non costruire su questa ipotesi senza conferma.
+**PREREQUISITO — RISOLTO il 2026-07-26.** La documentazione ufficiale è stata
+letta direttamente da `demoapi.rentri.gov.it/docs?page=api-flussi-operativi-mobile`
+(pagina applicativa JavaScript: si legge con un browser vero, non con un
+recupero automatico). Ecco cosa dice, ed è tutto ciò che serviva.
+
+**Il nostro backend può essere il «canale primario».** Testuale: «La richiesta
+di autorizzazione alla firma tramite le credenziali deve essere invocata dal
+canale primario, che può essere un'app mobile **oppure un'applicazione desktop
+o un servizio Web**». Non serve costruire un'app mobile: l'utente conferma
+sulla app ufficiale *RENTRI FIR Digitale* che già possiede.
+
+**La chiave privata è custodita da RENTRI** — testuale: «Le funzionalità di
+firma fanno uso dello specifico certificato digitale di firma remota rilasciato
+dal servizio di CA RENTRI all'operatore, **la cui chiave privata viene custodita
+dal sistema RENTRI**». È il motivo per cui questa via è stata scelta.
+
+**Sequenza completa** (`<ambiente>/ca-rentri/v1.0`):
+
+1. `POST /formulari/v1.0/{numero_fir}/hash` → `digest_to_sign`
+2. `POST /credentials/authorize` — corpo: `credentials_id`, `num_signatures`,
+   `hashes[]`, `hash_algo`, `description`, `auth_data`, `client_data`.
+   Risponde: **`sad`** (Signature Activation Data, lega l'autorizzazione a
+   quello specifico hash), **`handle`**, **`expires_in`** (secondi di validità
+   del `sad` — è la risposta alla domanda «quanto tempo ha l'utente»).
+3. RENTRI invia una notifica alla **`notification_callback_uri`** registrata in
+   fase di abbinamento del dispositivo, con `handle` e `otp`.
+4. L'utente conferma sul proprio dispositivo; l'app chiama
+   `PUT /credentials/authorize-confirmation`. **Non lo facciamo noi.**
+5. **`GET /credentials/authorize-check/{handle}`** — polling: **202** finché è
+   in attesa, **200** quando autorizzata. Testuale: «Se l'applicazione
+   richiedente l'autorizzazione non è la stessa a cui si prevede di recapitare
+   il messaggio, si potrà utilizzare l'endpoint per il controllo dello stato
+   dell'autorizzazione in modalità polling». **È esattamente il nostro caso.**
+6. `POST /signatures/sign-hash` — corpo: `credentials_id`, `sad`, `hashes[]`,
+   `sign_algo`. **Massimo un hash per richiesta.** Algoritmi fissi, da usare
+   come costanti: hash `2.16.840.1.101.3.4.2.1` (SHA-256), firma
+   `1.2.840.10045.4.3.2` (ECDSA con SHA-256).
+7. `POST /formulari/v1.0/{numero_fir}/acquisizione-firma` con la firma ottenuta.
+
+**Verifica locale possibile**: `GET /credentials/info?cert_info=true` restituisce
+il certificato; con la chiave pubblica si verifica che la firma corrisponda
+all'hash. Da fare — è la prova che ciò che abbiamo trasmesso è ciò che l'ente ha
+firmato.
+
+**Attenzione all'autenticazione**: anche queste API usano `ID_AUTH_REST_02` per
+il JWT e `INTEGRITY_REST_01` per la firma del corpo, cioè lo stesso meccanismo
+già implementato in `RENTRIApiClient` — **riusarlo, non riscriverlo**. Il
+certificato di *interoperabilità* resta distinto da quello di *firma remota*.
+
+**Resta fuori portata di questo task**: l'abbinamento del dispositivo (QR Code
+e PIN dall'area Operatori del portale) è un'operazione umana dell'azienda, non
+automatizzabile. Il nostro compito comincia quando il `credentials_id` esiste.
+Va però previsto **dove l'amministratore lo inserisce** — presumibilmente
+accanto alla credenziale di interoperabilità già esistente.
+
+**Nota su `invia-a-dispositivo`**: l'endpoint del contratto formulari non
+compare in questa documentazione, e la sua relazione con la sequenza `ca-rentri`
+resta non chiarita. **Usare la sequenza `ca-rentri` documentata sopra**, non
+`invia-a-dispositivo`, finché l'ente non chiarisce.
 
 **Files:**
 - `apps/backend/src/infrastructure/rentri/rentri-api.client.ts` (metodo `inviaADispositivo`; `rollbackFirma` resta utile per annullare una firma già apposta)
 - `apps/backend/src/application/rentri/completa-operazione-con-firma.use-case.ts` (nuovo, generico — prende `numero_fir` e tipo di operazione, non conosce i dettagli di accettazione/trasbordo/ecc.)
 - Test oracolo: `apps/backend/src/infrastructure/rentri/rentri-firma-operazione.oracolo.spec.ts`
 
-- [ ] **Step 1: Chiarire i due punti del prerequisito**
+- [x] **Step 1: prerequisito RISOLTO** — v. la sezione sopra: endpoint, sequenza e tempi sono documentati e verificati sulla fonte ufficiale.
 
 Se la risposta dell'ente non è disponibile, **fermarsi e riferire**: non
 inventare un meccanismo di attesa dell'esito. Un finto polling su un endpoint
