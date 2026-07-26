@@ -13,9 +13,12 @@ import { RentriModalitaLegameService } from './rentri-modalita-legame.service'
 import { RentriUnitaLocaleService } from './rentri-unita-locale.service'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriCodificheClient } from './codifiche/rentri-codifiche.client'
+import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
+import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
 import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
 import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
+import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
 
 /**
  * RentriModule — sottosistema di interoperabilità RENTRI (client + auth + firma).
@@ -33,6 +36,7 @@ import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-local
     RentriCredentialController,
     RentriModalitaLegameController,
     RentriUnitaLocaleController,
+    RentriSitiController,
   ],
   providers: [
     {
@@ -48,16 +52,20 @@ import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-local
     RentriUnitaLocaleService,
     RENTRIApiClient,
     RentriCodificheClient,
+    RentriAnagraficheClient,
+    SincronizzaSitiUseCase,
   ],
   exports: [
     RENTRIApiClient,
     RentriCodificheClient,
+    RentriAnagraficheClient,
     RentriAuthService,
     RentriSignatureService,
     RentriCredentialService,
     RentriCredentialResolver,
     RentriModalitaLegameService,
     RentriUnitaLocaleService,
+    SincronizzaSitiUseCase,
     RENTRI_CONFIG,
   ],
 })

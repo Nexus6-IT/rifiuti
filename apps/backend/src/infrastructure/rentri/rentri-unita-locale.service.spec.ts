@@ -243,6 +243,78 @@ describe('RentriUnitaLocaleService', () => {
     })
   })
 
+  describe('upsertFromRentri (R4 Task 3 — popolamento automatico da anagrafiche)', () => {
+    const NUM_ISCR_SITO_REALE = 'MI00001234-001' // formato ANAGRAFICHE reale, NON conforme a NUM_ISCR_SITO_PATTERN
+
+    it('accetta un num_iscr_sito che NON rispetta il pattern di formulari.yaml (fonte fidata: l’ente)', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(null)
+      db.rentriUnitaLocale.count.mockResolvedValue(0)
+      db.rentriUnitaLocale.create.mockResolvedValue(
+        makeRow({ numIscrSito: NUM_ISCR_SITO_REALE, principale: true })
+      )
+
+      const risultato = await service.upsertFromRentri('tenant-1', [
+        { numIscrSito: NUM_ISCR_SITO_REALE, denominazione: 'Sede legale - Milano', attiva: true },
+      ])
+
+      expect(risultato).toHaveLength(1)
+      expect(db.rentriUnitaLocale.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          tenantId: 'tenant-1',
+          numIscrSito: NUM_ISCR_SITO_REALE,
+          principale: true,
+        }),
+      })
+    })
+
+    it('crea una nuova riga per un numIscrSito non ancora noto, la prima diventa principale', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(null)
+      db.rentriUnitaLocale.count.mockResolvedValue(0)
+      db.rentriUnitaLocale.create.mockResolvedValue(makeRow({ principale: true }))
+
+      await service.upsertFromRentri('tenant-1', [
+        { numIscrSito: VALID, denominazione: 'Sede principale', attiva: true },
+      ])
+
+      expect(db.rentriUnitaLocale.create).toHaveBeenCalledWith({
+        data: {
+          tenantId: 'tenant-1',
+          numIscrSito: VALID,
+          denominazione: 'Sede principale',
+          principale: true,
+          attiva: true,
+        },
+      })
+    })
+
+    it('aggiorna denominazione/attiva di una riga già nota, SENZA toccare il flag principale', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ principale: true }))
+      db.rentriUnitaLocale.update.mockResolvedValue(
+        makeRow({ denominazione: 'Nuovo nome ente', attiva: false, principale: true })
+      )
+
+      const risultato = await service.upsertFromRentri('tenant-1', [
+        { numIscrSito: VALID, denominazione: 'Nuovo nome ente', attiva: false },
+      ])
+
+      expect(db.rentriUnitaLocale.update).toHaveBeenCalledWith({
+        where: { id: 'ul-1' },
+        data: { denominazione: 'Nuovo nome ente', attiva: false },
+      })
+      expect(db.rentriUnitaLocale.create).not.toHaveBeenCalled()
+      expect(risultato[0].principale).toBe(true)
+    })
+
+    it('non cancella mai righe: un elenco vuoto non tocca le sedi già presenti', async () => {
+      const risultato = await service.upsertFromRentri('tenant-1', [])
+
+      expect(risultato).toEqual([])
+      expect(db.rentriUnitaLocale.deleteMany).not.toHaveBeenCalled()
+      expect(db.rentriUnitaLocale.update).not.toHaveBeenCalled()
+      expect(db.rentriUnitaLocale.create).not.toHaveBeenCalled()
+    })
+  })
+
   describe('remove', () => {
     it('404 se la sede non esiste o appartiene a un altro tenant', async () => {
       db.rentriUnitaLocale.findFirst.mockResolvedValue(null)

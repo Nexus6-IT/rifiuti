@@ -41,6 +41,7 @@ interface CredentialStatusResponse {
   clientId?: string
   environment?: string
   numIscrSito?: string | null
+  numIscrOperatore?: string | null
 }
 
 @ApiTags('rentri')
@@ -101,6 +102,7 @@ export class RentriCredentialController {
       algorithm: dto.algorithm,
       environment: dto.environment,
       numIscrSito: dto.numIscrSito,
+      numIscrOperatore: dto.numIscrOperatore,
     })
 
     // NON restituire mai chiave/cert.
@@ -127,6 +129,7 @@ export class RentriCredentialController {
       clientId: cred.clientId,
       environment: cred.environment,
       numIscrSito: cred.numIscrSito ?? null,
+      numIscrOperatore: cred.numIscrOperatore ?? null,
     }
   }
 
