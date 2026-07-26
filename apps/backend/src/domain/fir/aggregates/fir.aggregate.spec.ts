@@ -11,12 +11,16 @@ import {
   FIREmessoEvent,
   FIRPresaInCaricoEvent,
   FIRConsegnatoEvent,
+  StatoFormulario,
+  RentriStatoRiconciliato,
 } from './fir.aggregate'
 import { UnitaMisura } from '../value-objects/quantita'
 import {
   DomainError,
   InvalidStateTransitionError,
   InvalidQuantityError,
+  FIRNonLegatoRentriError,
+  MetodoLocaleNonConsentitoSuFirLegatoError,
 } from '../../../core/domain/errors'
 
 // Test Fixtures
@@ -675,6 +679,226 @@ describe('FIR Aggregate', () => {
 
         expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-MAN-008')
         expect(fir.rentriOrigineLegame).toBe('AGGANCIO_MANUALE')
+      })
+    })
+
+    /**
+     * Task 1 (R3) — riconciliazione dello stato ente. `FIRStato` (interno) e
+     * `StatoFormulario` (RENTRI) sono due cicli di vita distinti: finché il
+     * FIR non è legato comanda WasteFlow; da quando è legato, `applyRentriStato`
+     * rispecchia l'esito dell'ente. Tabella di mappatura completa dei 21
+     * valori del contratto (formulari.yaml, schema StatoFormulario).
+     */
+    describe('applyRentriStato — riconciliazione StatoFormulario → FIRStato', () => {
+      const statiIntermedi: StatoFormulario[] = [
+        'InserimentoQuantita',
+        'InserimentoQuantitaTrasportoIniziale',
+        'InserimentoTrasportoIniziale',
+        'FirmaProduttoreTrasportatoreIniziale',
+        'FirmaTrasportatoreIniziale',
+        'FirmaProduttore',
+        'InserimentoTrasportoSuccessivo',
+        'FirmaTrasportatoreSuccessivo',
+        'FirmaAnnotazione',
+        'FirmaTrasbordoParziale',
+        'FirmaTrasbordoTotale',
+        'FirmaSostaTecnica',
+        'FirmaAllegato',
+        'InserimentoAccettazione',
+        'FirmaAccettazione',
+        'FirmaDestinatarioSuccessivo',
+        'FirmaAccettazioneSuccessiva',
+        'FirmaAnnullamento',
+        'Indeterminato',
+      ]
+
+      it('conta esattamente 19 stati intermedi (21 totali - 2 stati finali)', () => {
+        expect(statiIntermedi).toHaveLength(19)
+      })
+
+      it.each(statiIntermedi)(
+        "'%s' → FIRStato.IN_TRANSITO (il FIR è in lavorazione presso l'ente)",
+        statoRentri => {
+          const fir = emettiFIR()
+          fir.startRENTRISync()
+          fir.markRENTRISynced('RENTRI-NUM-000123')
+
+          fir.applyRentriStato(statoRentri)
+
+          expect(fir.stato).toBe(FIRStato.IN_TRANSITO)
+          expect(fir.rentriStatoFormulario).toBe(statoRentri)
+        }
+      )
+
+      it.each<StatoFormulario>(['Accettato', 'RespintoAccettatoParzialmente'])(
+        "'%s' → FIRStato.CONSEGNATO (esito finale di accettazione)",
+        statoRentri => {
+          const fir = emettiFIR()
+          fir.startRENTRISync()
+          fir.markRENTRISynced('RENTRI-NUM-000123')
+
+          fir.applyRentriStato(statoRentri)
+
+          expect(fir.stato).toBe(FIRStato.CONSEGNATO)
+          expect(fir.rentriStatoFormulario).toBe(statoRentri)
+        }
+      )
+
+      it("'Annullato' → FIRStato.ANNULLATO", () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+
+        fir.applyRentriStato('Annullato')
+
+        expect(fir.stato).toBe(FIRStato.ANNULLATO)
+        expect(fir.rentriStatoFormulario).toBe('Annullato')
+      })
+
+      it('rifiuta la riconciliazione su un FIR non legato a RENTRI (rentriNumeroFir assente)', () => {
+        const fir = emettiFIR()
+
+        expect(() => fir.applyRentriStato('FirmaAnnotazione')).toThrow(FIRNonLegatoRentriError)
+      })
+
+      it('emette RentriStatoRiconciliato con il payload atteso', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+        fir.clearDomainEvents() // pulizia eventi pregressi (emissione, sync, ecc.)
+
+        fir.applyRentriStato('FirmaAnnotazione', 'corr-1')
+
+        const eventi = fir
+          .getDomainEvents()
+          .filter((e): e is RentriStatoRiconciliato => e instanceof RentriStatoRiconciliato)
+        const evento = eventi[eventi.length - 1]
+        expect(evento).toBeDefined()
+        expect(evento.numeroFir).toBe('RENTRI-NUM-000123')
+        expect(evento.statoRentriPrecedente).toBeNull()
+        expect(evento.statoRentriNuovo).toBe('FirmaAnnotazione')
+        expect(evento.statoInternoRisultante).toBe(FIRStato.IN_TRANSITO)
+        expect(evento.correlationId).toBe('corr-1')
+      })
+
+      it('registra sempre statoRentriPrecedente = valore precedente su una seconda riconciliazione', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+        fir.applyRentriStato('FirmaAnnotazione')
+
+        fir.applyRentriStato('FirmaTrasbordoParziale')
+
+        const eventi = fir
+          .getDomainEvents()
+          .filter((e): e is RentriStatoRiconciliato => e instanceof RentriStatoRiconciliato)
+        const ultimo = eventi[eventi.length - 1]
+        expect(ultimo.statoRentriPrecedente).toBe('FirmaAnnotazione')
+        expect(ultimo.statoRentriNuovo).toBe('FirmaTrasbordoParziale')
+      })
+
+      /**
+       * Il nodo della regressione: una race fra polling (risposta obsoleta
+       * arrivata dopo una più recente) non deve far tornare indietro
+       * `FIRStato` da uno stato terminale (CONSEGNATO/ANNULLATO) a
+       * IN_TRANSITO. `rentriStatoFormulario`, invece, è "l'ultimo stato noto
+       * dell'ente" — non un derivato monotono — e si aggiorna comunque.
+       */
+      it('non fa regredire FIRStato da CONSEGNATO a IN_TRANSITO per una risposta di polling obsoleta', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+        fir.applyRentriStato('Accettato') // FIRStato → CONSEGNATO (terminale)
+
+        fir.applyRentriStato('FirmaAnnotazione') // race: risposta vecchia, mapperebbe a IN_TRANSITO
+
+        expect(fir.stato).toBe(FIRStato.CONSEGNATO) // FIRStato NON regredisce
+        expect(fir.rentriStatoFormulario).toBe('FirmaAnnotazione') // ma l'ultimo stato noto SI aggiorna
+      })
+
+      it('non fa regredire FIRStato da ANNULLATO a IN_TRANSITO per una risposta di polling obsoleta', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+        fir.applyRentriStato('Annullato') // FIRStato → ANNULLATO (terminale)
+
+        fir.applyRentriStato('InserimentoAccettazione')
+
+        expect(fir.stato).toBe(FIRStato.ANNULLATO)
+        expect(fir.rentriStatoFormulario).toBe('InserimentoAccettazione')
+      })
+
+      /**
+       * Il rovescio della protezione: fra DUE stati terminali il passaggio
+       * deve avvenire. `Accettato` → `Annullato` non è una risposta obsoleta,
+       * è l'ente che annulla un formulario già accettato — un evento
+       * legittimo. Bloccarlo lascerebbe il gestionale su CONSEGNATO mentre
+       * l'ente dice Annullato: le due verità divergenti che questo disegno
+       * esiste per impedire.
+       */
+      it('accetta il passaggio fra due stati terminali: un formulario accettato che l’ente annulla diventa ANNULLATO', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+        fir.applyRentriStato('Accettato')
+        expect(fir.stato).toBe(FIRStato.CONSEGNATO)
+
+        fir.applyRentriStato('Annullato')
+
+        expect(fir.stato).toBe(FIRStato.ANNULLATO)
+        expect(fir.rentriStatoFormulario).toBe('Annullato')
+      })
+
+      it('accetta anche il passaggio inverso fra terminali (annullato poi accettato dall’ente)', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+        fir.applyRentriStato('Annullato')
+
+        fir.applyRentriStato('RespintoAccettatoParzialmente')
+
+        expect(fir.stato).toBe(FIRStato.CONSEGNATO)
+        expect(fir.rentriStatoFormulario).toBe('RespintoAccettatoParzialmente')
+      })
+    })
+
+    /**
+     * Task 1 (R3) — i vecchi metodi locali del ciclo di vita non hanno più
+     * l'ultima parola una volta che il FIR è legato a RENTRI: da quel momento
+     * comanda l'ente (v. applyRentriStato). Un click locale indipendente
+     * (presaInCarico/confermaConsegna/annulla) deve essere rifiutato, non
+     * ignorato silenziosamente.
+     */
+    describe('metodi locali bloccati su un FIR legato a RENTRI', () => {
+      it('presaInCarico rifiuta un FIR legato', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+
+        expect(() => fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))).toThrow(
+          MetodoLocaleNonConsentitoSuFirLegatoError
+        )
+      })
+
+      it('confermaConsegna rifiuta un FIR legato', () => {
+        const fir = emettiFIR()
+        fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+
+        expect(() => fir.confermaConsegna(120, createMockFirma('Destinatario'))).toThrow(
+          MetodoLocaleNonConsentitoSuFirLegatoError
+        )
+      })
+
+      it('annulla rifiuta un FIR legato', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+
+        expect(() => fir.annulla('tentativo locale')).toThrow(
+          MetodoLocaleNonConsentitoSuFirLegatoError
+        )
       })
     })
   })

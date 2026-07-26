@@ -349,6 +349,13 @@ model FIR {
   // finché è valorizzato, rentriNumeroFir resta null — il FIR non è "legato"
   // a tutti gli effetti (R1 Task 2, FIR.proporreLegameRENTRI/confermaLegameRENTRI).
   rentriNumeroFirProposto String?              @map("rentri_numero_fir_proposto") @db.VarChar(50)
+  // Ultimo stato noto del formulario presso l'ente (StatoFormulario del
+  // contratto RENTRI). Copia locale in SOLA LETTURA: si aggiorna SOLO
+  // leggendo dall'ente (polling/webhook, mai da un'azione locale isolata —
+  // v. FIR.applyRentriStato, R3 Task 1). Nullable: un FIR non legato non ce
+  // l'ha, e anche un FIR appena legato può non avere ancora ricevuto alcuna
+  // lettura.
+  rentriStatoFormulario   RentriStatoFormulario? @map("rentri_stato_formulario")
 
   attachmentUrls Json? @map("attachment_urls")
 
@@ -425,6 +432,44 @@ enum RentriOrigineLegame {
   AGGANCIO_MANUALE
 
   @@map("rentri_origine_legame")
+}
+
+/// Stato del formulario secondo l'ente RENTRI (contratto OpenAPI,
+/// docs/contracts/rentri/formulari.yaml, schema StatoFormulario). 21 valori
+/// ESATTI copiati dal contratto — non tradotti (sono già in italiano nel
+/// contratto stesso), non un sottoinsieme. Rispecchia FIR.rentriStatoFormulario
+/// (TypeScript, v. fir.aggregate.ts, StatoFormulario) — le due liste devono
+/// restare identiche a ogni evoluzione del contratto.
+///
+/// Distinto da FIRStatus/FIRStato (il ciclo di vita interno WasteFlow):
+/// finché un FIR non è legato a RENTRI comanda il ciclo interno come oggi;
+/// da quando è legato questo stato ente "vince" e viene rispecchiato tramite
+/// FIR.applyRentriStato (R3 Task 1).
+enum RentriStatoFormulario {
+  InserimentoQuantita
+  InserimentoQuantitaTrasportoIniziale
+  InserimentoTrasportoIniziale
+  FirmaProduttoreTrasportatoreIniziale
+  FirmaTrasportatoreIniziale
+  FirmaProduttore
+  InserimentoTrasportoSuccessivo
+  FirmaTrasportatoreSuccessivo
+  FirmaAnnotazione
+  FirmaTrasbordoParziale
+  FirmaTrasbordoTotale
+  FirmaSostaTecnica
+  FirmaAllegato
+  InserimentoAccettazione
+  FirmaAccettazione
+  Accettato
+  RespintoAccettatoParzialmente
+  FirmaDestinatarioSuccessivo
+  FirmaAccettazioneSuccessiva
+  FirmaAnnullamento
+  Annullato
+  Indeterminato
+
+  @@map("rentri_stato_formulario")
 }
 
 /// Tipo di operazione di destinazione del rifiuto (D.Lgs 152/2006):
