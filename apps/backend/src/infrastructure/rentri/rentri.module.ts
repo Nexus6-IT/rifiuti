@@ -11,6 +11,7 @@ import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
 import { RentriModalitaLegameService } from './rentri-modalita-legame.service'
 import { RENTRIApiClient } from './rentri-api.client'
+import { RentriCodificheClient } from './codifiche/rentri-codifiche.client'
 import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
 
@@ -39,9 +40,11 @@ import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita
     RentriSignatureService,
     RentriModalitaLegameService,
     RENTRIApiClient,
+    RentriCodificheClient,
   ],
   exports: [
     RENTRIApiClient,
+    RentriCodificheClient,
     RentriAuthService,
     RentriSignatureService,
     RentriCredentialService,
