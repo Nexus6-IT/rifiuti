@@ -84,6 +84,16 @@ export class Archivio {
   private guasto: Guasto | null = null
 
   /**
+   * Copia per-istanza del catalogo `codici-eer`, `null` finché nessun test
+   * la richiede (in quel caso `codiciEer()` serve ancora l'array statico
+   * condiviso `fixture-codifiche.codiciEer`, invariato). Popolata solo da
+   * {@link rimuoviCodiceEer} — simula l'ente che smette di confermare un
+   * codice tra due allineamenti (R4 Task 8), senza mutare l'array statico
+   * condiviso tra tutte le istanze di `Archivio` del processo.
+   */
+  private codiciEerOverride: LookupItem[] | null = null
+
+  /**
    * Registro anti-replay dei `jti` gia' visti (FEDELTA.md §5.2 punto 3):
    * condiviso da tutte le rotte autenticate tramite `verificaJwt`, azzerato
    * insieme al resto dello stato da `__controllo/azzera`.
@@ -94,6 +104,7 @@ export class Archivio {
     this.formulari.clear()
     this.transazioni.clear()
     this.guasto = null
+    this.codiciEerOverride = null
     this.registroReplay.azzera()
   }
 
@@ -256,7 +267,25 @@ export class Archivio {
   // di aggiornamento su questo servizio.
 
   codiciEer(): LookupItem[] {
-    return codifiche.codiciEer
+    return this.codiciEerOverride ?? codifiche.codiciEer
+  }
+
+  /**
+   * Rimuove un codice EER dal catalogo restituito da `GET /lookup/codici-eer`
+   * per QUESTA istanza di `Archivio` (canale di controllo
+   * `/__controllo/rimuovi-codice-eer`, R4 Task 8): simula l'ente che smette
+   * di confermare un codice tra due cicli di allineamento, senza mutare
+   * l'array statico condiviso `fixture-codifiche.codiciEer` (copiato al
+   * primo utilizzo). Restituisce `true` se il codice era presente ed è stato
+   * rimosso, `false` se non era (mai) nel catalogo — idempotente, azzerato
+   * da {@link azzera}.
+   */
+  rimuoviCodiceEer(code: string): boolean {
+    const base = this.codiciEerOverride ?? [...codifiche.codiciEer]
+    const rimane = base.filter(v => v.code !== code)
+    const rimosso = rimane.length !== base.length
+    this.codiciEerOverride = rimane
+    return rimosso
   }
 
   attivitaRs(): LookupItem[] {
