@@ -14,6 +14,8 @@ import { RentriUnitaLocaleService } from './rentri-unita-locale.service'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriCodificheClient } from './codifiche/rentri-codifiche.client'
 import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
+import { RentriRateLimiterService } from './rentri-rate-limiter.service'
+import { RedisConfig } from '../cache/redis.config'
 import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
 import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
@@ -54,6 +56,13 @@ import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
     RentriCodificheClient,
     RentriAnagraficheClient,
     SincronizzaSitiUseCase,
+    // Terzo strato di resilienza (R5, task 1): rate limiter preventivo
+    // per tenant. `RedisConfig` non ha un modulo dedicato che lo esporti
+    // (v. `infrastructure/cache/redis.config.ts`) — dipende solo da
+    // `ConfigService`, già disponibile qui tramite `ConfigModule` — quindi
+    // è dichiarato come provider diretto, come già fa `PermissionsModule`.
+    RedisConfig,
+    RentriRateLimiterService,
   ],
   exports: [
     RENTRIApiClient,
@@ -66,6 +75,7 @@ import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
     RentriModalitaLegameService,
     RentriUnitaLocaleService,
     SincronizzaSitiUseCase,
+    RentriRateLimiterService,
     RENTRI_CONFIG,
   ],
 })
