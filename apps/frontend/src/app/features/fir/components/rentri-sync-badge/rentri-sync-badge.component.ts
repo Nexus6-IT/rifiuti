@@ -2,42 +2,51 @@ import { Component, Input, OnInit, OnDestroy, inject, signal } from '@angular/co
 import { CommonModule } from '@angular/common'
 import { TagModule } from 'primeng/tag'
 import { TooltipModule } from 'primeng/tooltip'
-import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { Subject, takeUntil, timer, switchMap } from 'rxjs'
 import { RENTRISyncService, SyncJobStatus } from '../../services/rentri-sync.service'
+import { RENTRISyncStatusValue } from '../../../../shared/models/fir.model'
 
 /**
- * RENTRI Sync Status Badge Component
+ * Badge di stato RENTRI per la riga di un FIR (R1 Task 3).
  *
- * Displays current RENTRI sync status for a FIR.
- * Shows badges with different colors based on sync status.
- * Automatically polls status for in-progress syncs.
+ * Comunica UNA cosa sola a colpo d'occhio: il formulario è a posto con
+ * l'ente (verde), sta andando (blu/grigio) o richiede attenzione
+ * (arancio/rosso) — vive nella lista FIR, non in un pannello tecnico
+ * separato (criterio di valore del task).
  *
- * Usage:
+ * Stati reali (v. backend `RENTRISyncStatus`): PENDING, SYNCING, SYNCED,
+ * FAILED, PERMANENTLY_FAILED. In modalità IBRIDA un esito tecnicamente
+ * riuscito può restare "proposto" (`rentriNumeroFirProposto`) finché
+ * l'operatore non conferma esplicitamente il legame: un numero proposto
+ * NON è il numero ufficiale e va mostrato in modo distinto.
+ *
+ * Uso:
  * ```html
  * <app-rentri-sync-badge
+ *   [numeroFir]="fir.numeroProgressivo || fir.id"
  *   [rentriSyncStatus]="fir.rentriSyncStatus"
- *   [syncJobId]="fir.syncJobId"
- *   [protocolNumber]="fir.rentriProtocolNumber">
+ *   [rentriNumeroFir]="fir.rentriNumeroFir"
+ *   [rentriNumeroFirProposto]="fir.rentriNumeroFirProposto"
+ *   [syncAttempts]="fir.rentriSyncAttempts"
+ *   [lastSyncError]="fir.rentriLastSyncError">
  * </app-rentri-sync-badge>
  * ```
  */
 @Component({
   selector: 'app-rentri-sync-badge',
   standalone: true,
-  imports: [CommonModule, TagModule, TooltipModule, ProgressSpinnerModule],
+  imports: [CommonModule, TagModule, TooltipModule],
   template: `
-    <div class="rentri-sync-badge">
+    <div class="rentri-sync-badge" [attr.data-testid]="'rentri-sync-badge-' + numeroFir">
       @if (isPolling()) {
         <p-tag
           [severity]="'info'"
-          [value]="pollingStatus()?.status || 'Processing'"
+          [value]="'In corso: ' + (pollingStatus()?.progress ?? 0) + '%'"
           [pTooltip]="getTooltipText()"
           tooltipPosition="top"
           styleClass="sync-status-badge"
         >
           <i class="pi pi-spin pi-spinner mr-1"></i>
-          {{ pollingStatus()?.progress }}%
         </p-tag>
       } @else {
         <p-tag
@@ -73,49 +82,48 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
   private readonly rentriSyncService = inject(RENTRISyncService)
   private readonly destroy$ = new Subject<void>()
 
-  /**
-   * Current RENTRI sync status from FIR
-   * Values: PENDING, SYNCED, FAILED
-   */
-  @Input({ required: true }) rentriSyncStatus!: string
+  /** Numero FIR (o id) del formulario — identifica il badge nella riga (testid). */
+  @Input({ required: true }) numeroFir!: string
 
-  /**
-   * Job ID for active sync (if any)
-   */
+  /** Stato di sincronizzazione RENTRI del FIR. */
+  @Input({ required: true }) rentriSyncStatus!: RENTRISyncStatusValue
+
+  /** Job ID per una sincronizzazione in corso (facoltativo). */
   @Input() syncJobId?: string
 
-  /**
-   * RENTRI protocol number (if synced)
-   */
-  @Input() protocolNumber?: string
+  /** Numero FIR ufficiale RENTRI (legame confermato). */
+  @Input() rentriNumeroFir?: string | null
 
   /**
-   * Sync attempt count
+   * Numero FIR proposto in modalità ibrida, in attesa di conferma esplicita:
+   * finché è valorizzato e `rentriNumeroFir` è nullo, il legame NON è
+   * ufficiale.
    */
+  @Input() rentriNumeroFirProposto?: string | null
+
+  /** Numero di tentativi di trasmissione effettuati. */
   @Input() syncAttempts: number = 0
 
-  /**
-   * Last sync error message
-   */
-  @Input() lastSyncError?: string
+  /** Ultimo messaggio di errore dell'ultima trasmissione fallita. */
+  @Input() lastSyncError?: string | null
 
-  /**
-   * Enable auto-polling for in-progress syncs
-   */
+  /** Abilita il polling automatico per sincronizzazioni in corso. */
   @Input() autoPoll: boolean = true
 
-  /**
-   * Polling interval in milliseconds
-   */
+  /** Intervallo di polling in millisecondi. */
   @Input() pollInterval: number = 3000
 
   // Signals
   protected readonly isPolling = signal(false)
   protected readonly pollingStatus = signal<SyncJobStatus | null>(null)
 
+  /** Legame proposto in attesa di conferma (modalità ibrida): non ancora ufficiale. */
+  private get hasProposalPending(): boolean {
+    return !!this.rentriNumeroFirProposto && !this.rentriNumeroFir
+  }
+
   ngOnInit(): void {
-    // Start polling if there's an active job
-    if (this.autoPoll && this.syncJobId && this.isInProgress()) {
+    if (this.autoPoll && this.syncJobId && this.rentriSyncStatus === 'SYNCING') {
       this.startPolling()
     }
   }
@@ -125,16 +133,6 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
     this.destroy$.complete()
   }
 
-  /**
-   * Check if sync is in progress
-   */
-  private isInProgress(): boolean {
-    return this.rentriSyncStatus === 'PENDING' || this.rentriSyncStatus === 'IN_PROGRESS'
-  }
-
-  /**
-   * Start polling job status
-   */
   private startPolling(): void {
     if (!this.syncJobId) return
 
@@ -149,69 +147,65 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
         next: status => {
           this.pollingStatus.set(status)
 
-          // Stop polling if job is done
           if (status.status === 'completed' || status.status === 'failed') {
             this.isPolling.set(false)
             this.destroy$.next()
           }
         },
-        error: error => {
-          console.error('Error polling sync status:', error)
+        error: () => {
           this.isPolling.set(false)
         },
       })
   }
 
-  /**
-   * Get badge severity (color)
-   */
-  protected getSeverity(): 'success' | 'info' | 'warning' | 'danger' {
-    if (this.isPolling()) {
-      return 'info'
+  /** Severità del badge: verde = a posto, blu/grigio = in corso, arancio/rosso = attenzione. */
+  protected getSeverity(): 'success' | 'info' | 'warning' | 'danger' | 'secondary' {
+    if (this.hasProposalPending) {
+      return 'warning'
     }
 
     switch (this.rentriSyncStatus) {
       case 'SYNCED':
         return 'success'
       case 'PENDING':
-      case 'IN_PROGRESS':
+        return 'secondary'
+      case 'SYNCING':
         return 'info'
       case 'FAILED':
-        return this.syncAttempts >= 5 ? 'danger' : 'warning'
+        return 'warning'
+      case 'PERMANENTLY_FAILED':
+        return 'danger'
       default:
-        return 'info'
+        return 'secondary'
     }
   }
 
-  /**
-   * Get display text for badge
-   */
+  /** Testo del badge in italiano, coerente con gli stati reali di RENTRISyncStatus. */
   protected getDisplayText(): string {
-    if (this.isPolling()) {
-      const status = this.pollingStatus()
-      return status ? `Syncing ${status.progress}%` : 'Syncing...'
+    if (this.hasProposalPending) {
+      return `Da confermare: ${this.rentriNumeroFirProposto}`
     }
 
     switch (this.rentriSyncStatus) {
       case 'SYNCED':
-        return 'Synced'
+        return this.rentriNumeroFir ? `A posto — ${this.rentriNumeroFir}` : 'A posto con RENTRI'
       case 'PENDING':
-        return 'Pending'
-      case 'IN_PROGRESS':
-        return 'Syncing'
+        return 'Da trasmettere'
+      case 'SYNCING':
+        return 'Trasmissione in corso'
       case 'FAILED':
-        return this.syncAttempts >= 5 ? 'Failed' : `Retry ${this.syncAttempts}/5`
+        return `Riprova ${this.syncAttempts}/5`
+      case 'PERMANENTLY_FAILED':
+        return 'Richiede intervento'
       default:
-        return 'Unknown'
+        return 'Stato sconosciuto'
     }
   }
 
-  /**
-   * Get icon class
-   */
+  /** Icona coerente con lo stato mostrato. */
   protected getIcon(): string {
-    if (this.isPolling()) {
-      return 'pi pi-spin pi-spinner'
+    if (this.hasProposalPending) {
+      return 'pi pi-question-circle'
     }
 
     switch (this.rentriSyncStatus) {
@@ -219,52 +213,56 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
         return 'pi pi-check-circle'
       case 'PENDING':
         return 'pi pi-clock'
-      case 'IN_PROGRESS':
+      case 'SYNCING':
         return 'pi pi-spin pi-spinner'
       case 'FAILED':
         return 'pi pi-exclamation-triangle'
+      case 'PERMANENTLY_FAILED':
+        return 'pi pi-times-circle'
       default:
         return 'pi pi-question-circle'
     }
   }
 
-  /**
-   * Get tooltip text
-   */
+  /** Testo del tooltip, con dettaglio dell'errore quando disponibile. */
   protected getTooltipText(): string {
     if (this.isPolling()) {
       const status = this.pollingStatus()
-      if (status) {
-        return `Sync in progress (${status.progress}% complete) - Attempt ${status.attemptsMade}`
-      }
-      return 'Sync in progress...'
+      return status
+        ? `Trasmissione in corso (${status.progress}% completato) — tentativo ${status.attemptsMade}`
+        : 'Trasmissione in corso...'
+    }
+
+    if (this.hasProposalPending) {
+      return `Numero FIR ${this.rentriNumeroFirProposto} proposto da RENTRI: conferma il legame per renderlo ufficiale`
     }
 
     switch (this.rentriSyncStatus) {
       case 'SYNCED':
-        return this.protocolNumber
-          ? `Synced to RENTRI - Protocol: ${this.protocolNumber}`
-          : 'Successfully synced to RENTRI'
+        return this.rentriNumeroFir
+          ? `Sincronizzato con RENTRI — numero ufficiale ${this.rentriNumeroFir}`
+          : 'Sincronizzato con RENTRI'
 
       case 'PENDING':
-        return 'Waiting for sync to RENTRI'
+        return 'In attesa di essere trasmesso a RENTRI'
 
-      case 'IN_PROGRESS':
-        return 'Sync to RENTRI in progress...'
+      case 'SYNCING':
+        return 'Trasmissione a RENTRI in corso...'
 
       case 'FAILED': {
-        const attemptsText =
-          this.syncAttempts >= 5
-            ? 'Max retries reached'
-            : `Will retry (${this.syncAttempts}/5 attempts)`
-
+        const attemptsText = `Verrà ritentato automaticamente (${this.syncAttempts}/5 tentativi)`
         return this.lastSyncError
-          ? `Sync failed: ${this.lastSyncError}\n${attemptsText}`
-          : `Sync failed - ${attemptsText}`
+          ? `Trasmissione non riuscita: ${this.lastSyncError}\n${attemptsText}`
+          : `Trasmissione non riuscita — ${attemptsText}`
+      }
+
+      case 'PERMANENTLY_FAILED': {
+        const detail = this.lastSyncError ? `: ${this.lastSyncError}` : ''
+        return `Numero massimo di tentativi raggiunto${detail}. Richiede intervento manuale.`
       }
 
       default:
-        return 'RENTRI sync status unknown'
+        return 'Stato di sincronizzazione RENTRI sconosciuto'
     }
   }
 }

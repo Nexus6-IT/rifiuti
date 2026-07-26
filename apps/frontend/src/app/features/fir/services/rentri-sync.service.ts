@@ -41,6 +41,14 @@ export class RENTRISyncService {
   }
 
   /**
+   * Conferma il legame RENTRI proposto in modalità ibrida, promuovendolo a
+   * legame ufficiale (v. FIR.confermaLegameRENTRI nel dominio).
+   */
+  confermaLegame(firId: string): Observable<{ numeroFir: string }> {
+    return this.http.post<{ numeroFir: string }>(`${this.baseUrl}/fir/${firId}/conferma-legame`, {})
+  }
+
+  /**
    * Batch sync multiple FIRs to RENTRI
    */
   batchSync(

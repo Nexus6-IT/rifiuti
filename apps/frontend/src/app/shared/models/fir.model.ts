@@ -73,7 +73,38 @@ export interface FIR {
   fourthCopyNotes?: string | null
   createdAt: string
   updatedAt?: string
+
+  /**
+   * Stato RENTRI (R1 Task 3): mostrato nella lista formulari, non in un
+   * pannello separato — è il dato che l'operatore cerca senza cambiare
+   * pagina. Valori reali: PENDING | SYNCING | SYNCED | FAILED |
+   * PERMANENTLY_FAILED (v. backend RENTRISyncStatus).
+   */
+  rentriSyncStatus?: RENTRISyncStatusValue
+  /** Numero FIR ufficiale RENTRI (legame confermato). */
+  rentriNumeroFir?: string | null
+  /**
+   * Numero FIR proposto in modalità ibrida, in attesa di conferma esplicita
+   * dell'operatore: NON è ancora il legame ufficiale (v. rentriNumeroFir).
+   */
+  rentriNumeroFirProposto?: string | null
+  /** Come è nato il legame con rentriNumeroFir. */
+  rentriOrigineLegame?: 'TRASMESSO_DA_NOI' | 'ACQUISITO_DA_TERZI' | 'AGGANCIO_MANUALE' | null
+  /** Ultimo messaggio di errore dell'ultima trasmissione fallita. */
+  rentriLastSyncError?: string | null
+  /** Numero di tentativi di trasmissione effettuati. */
+  rentriSyncAttempts?: number
+  /** Se true, il FIR è trasmissibile ora a RENTRI (stato + non già legato + nessun fallimento permanente). */
+  canSyncToRENTRI?: boolean
 }
+
+/** Stati reali di sincronizzazione RENTRI (v. backend RENTRISyncStatus). */
+export type RENTRISyncStatusValue =
+  | 'PENDING'
+  | 'SYNCING'
+  | 'SYNCED'
+  | 'FAILED'
+  | 'PERMANENTLY_FAILED'
 
 export interface PaginatedFIRResponse {
   items: FIR[]

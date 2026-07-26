@@ -131,6 +131,52 @@ export class FIRResponseDto {
   @ApiProperty({ description: 'Data creazione' })
   createdAt: Date
 
+  /**
+   * Stato RENTRI esposto nella lista formulari (R1 Task 3): senza questo
+   * gruppo di campi l'operatore dovrebbe uscire dall'applicativo per sapere
+   * se un FIR è a posto con l'ente — esattamente ciò che il criterio di
+   * valore del task vieta.
+   */
+  @ApiProperty({
+    enum: ['PENDING', 'SYNCING', 'SYNCED', 'FAILED', 'PERMANENTLY_FAILED'],
+    example: 'PENDING',
+    description: 'Stato di sincronizzazione RENTRI',
+  })
+  rentriSyncStatus: string
+
+  @ApiPropertyOptional({
+    example: 'RENTRI-000123',
+    description: 'Numero FIR ufficiale RENTRI (legame confermato)',
+  })
+  rentriNumeroFir: string | null
+
+  @ApiPropertyOptional({
+    example: 'RENTRI-000123',
+    description:
+      'Numero FIR proposto in modalità ibrida, in attesa di conferma esplicita: NON è ancora il legame ufficiale',
+  })
+  rentriNumeroFirProposto: string | null
+
+  @ApiPropertyOptional({
+    enum: ['TRASMESSO_DA_NOI', 'ACQUISITO_DA_TERZI', 'AGGANCIO_MANUALE'],
+    description: 'Come è nato il legame con rentriNumeroFir',
+  })
+  rentriOrigineLegame: string | null
+
+  @ApiPropertyOptional({
+    description: "Ultimo messaggio di errore dell'ultima trasmissione fallita",
+  })
+  rentriLastSyncError: string | null
+
+  @ApiProperty({ example: 0, description: 'Numero di tentativi di trasmissione effettuati' })
+  rentriSyncAttempts: number
+
+  @ApiProperty({
+    description:
+      'Se true, il FIR può essere trasmesso ora a RENTRI (stato emesso, non già legato, nessun fallimento permanente)',
+  })
+  canSyncToRENTRI: boolean
+
   static fromDomain(fir: FIR): FIRResponseDto {
     return {
       id: fir.id,
@@ -170,6 +216,13 @@ export class FIRResponseDto {
       fourthCopyReturnedAt: fir.fourthCopyReturnedAt,
       fourthCopyNotes: fir.fourthCopyNotes,
       createdAt: fir.createdAt,
+      rentriSyncStatus: fir.rentriSyncStatus.getStatus(),
+      rentriNumeroFir: fir.rentriNumeroFir,
+      rentriNumeroFirProposto: fir.rentriNumeroFirProposto,
+      rentriOrigineLegame: fir.rentriOrigineLegame,
+      rentriLastSyncError: fir.rentriSyncStatus.getLastError() ?? null,
+      rentriSyncAttempts: fir.rentriSyncStatus.getAttempts(),
+      canSyncToRENTRI: fir.canSyncToRENTRI(),
     }
   }
 }
