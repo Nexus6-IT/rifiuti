@@ -170,6 +170,14 @@ export class FIRPrismaRepository implements IFIRRepository {
     return records.map((r: any) => this.toDomain(r))
   }
 
+  async findByRentriNumeroFir(tenantId: string, numeroFir: string): Promise<FIR | null> {
+    const record = await this.prisma.fIR.findFirst({
+      where: { tenantId, rentriNumeroFir: numeroFir },
+      include: FIRPrismaRepository.FIR_INCLUDE,
+    })
+    return record ? this.toDomain(record) : null
+  }
+
   async findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]> {
     const where: any = {
       status: this.statoToDb(stato),

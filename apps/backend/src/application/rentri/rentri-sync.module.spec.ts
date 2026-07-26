@@ -1,16 +1,22 @@
 import { Test } from '@nestjs/testing'
 import { ConfigModule } from '@nestjs/config'
+import { MODULE_METADATA } from '@nestjs/common/constants'
 import { RentriSyncModule } from './rentri-sync.module'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
 import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
 import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
+import { CercaFormulariRENTRIUseCase } from './cerca-formulari-rentri.use-case'
+import { AcquisisciFormularioRENTRIUseCase } from './acquisisci-formulario-rentri.use-case'
+import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.use-case'
+import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncJobProcessor } from '../../infrastructure/queue/jobs/rentri-sync.job'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import { RENTRISyncController } from '../../api/rentri/rentri-sync.controller'
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
+import { AppModule } from '../../app.module'
 
 /**
  * DI smoke test per RentriSyncModule (R0 Task 4).
@@ -54,7 +60,32 @@ describe('RentriSyncModule (DI wiring)', () => {
     // risolva in isolamento.
     expect(moduleRef.get(RENTRIApiClient)).toBeDefined()
 
+    // R2 Task 4: cercare/acquisire/rilasciare un formulario esistente.
+    expect(moduleRef.get(CercaFormulariRENTRIUseCase)).toBeDefined()
+    expect(moduleRef.get(AcquisisciFormularioRENTRIUseCase)).toBeDefined()
+    expect(moduleRef.get(RilasciaFormularioRENTRIUseCase)).toBeDefined()
+    // Il token della porta verso il Task 5 (non ancora implementato) deve
+    // comunque risolversi, con l'adapter placeholder — altrimenti
+    // AcquisisciFormularioRENTRIUseCase stesso non si costruirebbe.
+    expect(moduleRef.get(CREA_FIR_DA_FORMULARIO_RENTRI_PORT)).toBeDefined()
+
     // Nessun moduleRef.close(): onModuleInit non è mai stato invocato
     // (niente connessioni reali aperte), quindi non c'è nulla da chiudere.
+  })
+
+  /**
+   * R0 Task 4 aveva scoperto otto pezzi cablati in DI ma MAI importati da
+   * `AppModule` (dichiarare un provider in questo modulo non basta: se
+   * `RentriSyncModule` stesso non è nell'array `imports` di `AppModule`,
+   * l'intero sottosistema resta irraggiungibile a runtime). Questo test
+   * verifica la METADATA del decoratore `@Module` di `AppModule` (via
+   * `Reflect`, nessuna istanza creata, nessuna connessione aperta) invece di
+   * fidarsi di una lettura a occhio del sorgente — non ripete l'errore.
+   */
+  it('RentriSyncModule è importato da AppModule (non basta dichiararlo)', () => {
+    const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, AppModule) as unknown[]
+
+    expect(imports).toBeDefined()
+    expect(imports).toContain(RentriSyncModule)
   })
 })

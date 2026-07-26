@@ -19,6 +19,12 @@ import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
 import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
 import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
+import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
+import { CercaFormulariRENTRIUseCase } from './cerca-formulari-rentri.use-case'
+import { AcquisisciFormularioRENTRIUseCase } from './acquisisci-formulario-rentri.use-case'
+import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.use-case'
+import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
+import { CreaFIRDaFormularioRENTRINonImplementatoAdapter } from './crea-fir-da-formulario-rentri.non-implementato.adapter'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -93,6 +99,21 @@ import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
  * certificato manca. `ConfermaLegameRENTRIUseCase` chiude il ciclo aperto
  * dalla modalità IBRIDA (`FIR.proporreLegameRENTRI`): senza di esso l'IBRIDA
  * sarebbe un aggancio che parte ma non si conclude mai.
+ *
+ * **R2 Task 4 — orchestrazione cercare→verificare→acquisire un formulario
+ * esistente.** `CercaFormulariRENTRIUseCase`, `AcquisisciFormularioRENTRIUseCase`
+ * e `RilasciaFormularioRENTRIUseCase` chiudono il caso complementare a
+ * quello sopra: un formulario che ESISTE GIÀ su RENTRI (creato da un'altra
+ * controparte), da trovare e agganciare senza ri-agganciarlo due volte (v. i
+ * commenti di classe di ciascun use case per l'ordine delle scritture RENTRI
+ * ↔ locale e come si ripara un'eventuale incoerenza). `RentriUnitaLocaleService`
+ * (da `RentriModule`, già importato) serve al prerequisito fail-closed della
+ * ricerca. `AcquisisciFormularioRENTRIUseCase` dipende dalla porta
+ * `CREA_FIR_DA_FORMULARIO_RENTRI_PORT` (Task 5, non ancora implementato in
+ * questo worktree): registrata con l'adapter placeholder
+ * `CreaFIRDaFormularioRENTRINonImplementatoAdapter`, che rifiuta con un
+ * errore di dominio leggibile invece di un errore di risoluzione DI opaco —
+ * da sostituire quando il Task 5 sarà pronto, senza altre modifiche qui.
  */
 @Module({
   imports: [ConfigModule, LoggerModule, MetricsModule, PrismaModule, RentriModule],
@@ -149,6 +170,68 @@ import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
         new ConfermaLegameRENTRIUseCase(firRepo, logger),
       inject: [FIRPrismaRepository, LoggerService],
     },
+    {
+      provide: CercaFormulariRENTRIUseCase,
+      useFactory: (
+        prisma: PrismaService,
+        unitaLocaleService: RentriUnitaLocaleService,
+        rentriApiClient: RENTRIApiClient,
+        firRepo: FIRPrismaRepository,
+        logger: LoggerService
+      ) =>
+        new CercaFormulariRENTRIUseCase(
+          prisma,
+          unitaLocaleService,
+          rentriApiClient,
+          firRepo,
+          logger
+        ),
+      inject: [
+        PrismaService,
+        RentriUnitaLocaleService,
+        RENTRIApiClient,
+        FIRPrismaRepository,
+        LoggerService,
+      ],
+    },
+    {
+      provide: CREA_FIR_DA_FORMULARIO_RENTRI_PORT,
+      useClass: CreaFIRDaFormularioRENTRINonImplementatoAdapter,
+    },
+    {
+      provide: AcquisisciFormularioRENTRIUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        rentriApiClient: RENTRIApiClient,
+        prisma: PrismaService,
+        creaFirPort: CreaFIRDaFormularioRENTRINonImplementatoAdapter,
+        logger: LoggerService
+      ) =>
+        new AcquisisciFormularioRENTRIUseCase(
+          firRepo,
+          rentriApiClient,
+          prisma,
+          creaFirPort,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        RENTRIApiClient,
+        PrismaService,
+        CREA_FIR_DA_FORMULARIO_RENTRI_PORT,
+        LoggerService,
+      ],
+    },
+    {
+      provide: RilasciaFormularioRENTRIUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        rentriApiClient: RENTRIApiClient,
+        prisma: PrismaService,
+        logger: LoggerService
+      ) => new RilasciaFormularioRENTRIUseCase(firRepo, rentriApiClient, prisma, logger),
+      inject: [FIRPrismaRepository, RENTRIApiClient, PrismaService, LoggerService],
+    },
   ],
   exports: [
     SyncFIRToRENTRIUseCase,
@@ -158,6 +241,9 @@ import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
     RENTRISyncLogRepository,
     TrasmettiFIRSecondoModalitaUseCase,
     ConfermaLegameRENTRIUseCase,
+    CercaFormulariRENTRIUseCase,
+    AcquisisciFormularioRENTRIUseCase,
+    RilasciaFormularioRENTRIUseCase,
   ],
 })
 export class RentriSyncModule {}
