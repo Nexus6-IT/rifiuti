@@ -9,13 +9,10 @@ import { inviaProblemDetails } from '../errori/problem-details'
  * l'elaborazione asincrona.
  */
 export function registraRotteControllo(app: FastifyInstance, archivio: Archivio): void {
-  app.post<{ Body: { stato: number; volte: number } }>(
-    '/__controllo/guasto',
-    async (richiesta) => {
-      archivio.impostaGuasto({ stato: richiesta.body.stato, volte: richiesta.body.volte })
-      return { impostato: true }
-    }
-  )
+  app.post<{ Body: { stato: number; volte: number } }>('/__controllo/guasto', async richiesta => {
+    archivio.impostaGuasto({ stato: richiesta.body.stato, volte: richiesta.body.volte })
+    return { impostato: true }
+  })
 
   app.post<{
     Body: {
@@ -46,7 +43,7 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
   // l'archivio, nessuno scenario di lettura positiva è verificabile
   // (`Archivio` nasce vuoto e nessuna rotta di dominio scrive un
   // formulario).
-  app.post<{ Body: Formulario }>('/__controllo/formulario', async (richiesta) => {
+  app.post<{ Body: Formulario }>('/__controllo/formulario', async richiesta => {
     archivio.salvaFormulario(richiesta.body)
     return { salvato: true }
   })
@@ -54,5 +51,13 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
   app.post('/__controllo/azzera', async () => {
     archivio.azzera()
     return { azzerato: true }
+  })
+
+  // R4 Task 8: simula l'ente che smette di confermare un codice EER tra due
+  // cicli di allineamento (v. `Archivio.rimuoviCodiceEer`), stesso motivo e
+  // stesso pattern di `/__controllo/formulario`.
+  app.post<{ Body: { code: string } }>('/__controllo/rimuovi-codice-eer', async richiesta => {
+    const rimosso = archivio.rimuoviCodiceEer(richiesta.body.code)
+    return { rimosso }
   })
 }
