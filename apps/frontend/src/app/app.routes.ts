@@ -68,6 +68,12 @@ export const routes: Routes = [
           import('./features/fir/fir-list.component').then(m => m.FirListComponent),
       },
       {
+        // Dettaglio di un singolo formulario: dati, stato RENTRI, cronologia trasmissioni, azioni.
+        path: 'fir/:id',
+        loadComponent: () =>
+          import('./features/fir/fir-detail.component').then(m => m.FirDetailComponent),
+      },
+      {
         path: 'cer',
         loadComponent: () =>
           import('./features/cer/cer-search.component').then(m => m.CerSearchComponent),
