@@ -88,6 +88,79 @@ describe('Rotte formulari', () => {
     await app.close()
   })
 
+  // formulari.yaml riga 9794: identificativo_soggetto filtra sui FIR in cui
+  // quel codice fiscale compare come soggetto, indipendentemente da chi ha
+  // creato il FIR — non solo su quelli con visibilità acquisita dall'unità
+  // locale chiamante (quel filtro e' num_iscr_sito, mutuamente esclusivo).
+  it('filtra per identificativo_soggetto: un formulario di un altro soggetto non compare', async () => {
+    const app = creaApp()
+    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
+
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/formulario',
+      payload: {
+        numero_fir: 'BCDFGH00004QR',
+        stato: 'InserimentoQuantita',
+        produttore: 'Produttore A',
+        identificativo_soggetto: 'RSSMRA80A01H501U',
+      },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/formulario',
+      payload: {
+        numero_fir: 'BCDFGH00005ST',
+        stato: 'InserimentoQuantita',
+        produttore: 'Produttore B',
+        identificativo_soggetto: 'VRDGPP75B02H501X',
+      },
+    })
+
+    const risposta = await app.inject({
+      method: 'GET',
+      url: '/formulari/v1.0/?identificativo_soggetto=RSSMRA80A01H501U',
+      headers: intestazioni,
+    })
+
+    expect(risposta.statusCode).toBe(200)
+    const corpo = risposta.json()
+    expect(corpo).toHaveLength(1)
+    expect(corpo[0].numero_fir).toBe('BCDFGH00004QR')
+
+    await app.close()
+  })
+
+  // Un formulario appena creato/popolato non ha ancora alcuna unità locale
+  // che ne abbia acquisito la visibilità: il flag deve essere false, non
+  // assente/undefined (il chiamante lo usa per decidere se proporre
+  // l'acquisizione).
+  it('un formulario senza acquisizioni ha visibilita_sito_acquisita=false', async () => {
+    const app = creaApp()
+    const intestazioni = { authorization: `Bearer ${await tokenValido()}` }
+
+    await app.inject({
+      method: 'POST',
+      url: '/__controllo/formulario',
+      payload: {
+        numero_fir: 'BCDFGH00006TU',
+        stato: 'InserimentoQuantita',
+        produttore: 'Produttore C',
+        identificativo_soggetto: 'BNCLGU70C03H501Y',
+      },
+    })
+
+    const risposta = await app.inject({
+      method: 'GET',
+      url: '/formulari/v1.0/?identificativo_soggetto=BNCLGU70C03H501Y',
+      headers: intestazioni,
+    })
+
+    expect(risposta.json()).toEqual([expect.objectContaining({ visibilita_sito_acquisita: false })])
+
+    await app.close()
+  })
+
   // formulari.yaml riga 299: pattern del numero_fir. Un valore mal formato
   // e' un 400 di validazione, non un 404 di dominio.
   it('rifiuta con 400 un numero_fir che non rispetta il pattern del contratto', async () => {

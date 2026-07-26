@@ -127,6 +127,222 @@ describe('RENTRIApiClient', () => {
     })
   })
 
+  /**
+   * `cercaFormulari` (`GET /`, formulari.yaml righe 15-172): i due filtri
+   * sono mutuamente esclusivi (righe 29, 45), la paginazione è dichiarata
+   * come header di richiesta/risposta.
+   */
+  describe('cercaFormulari', () => {
+    it('rifiuta la chiamata (errore locale, nessuna richiesta HTTP) se non è indicato alcun filtro', async () => {
+      await expect(client.cercaFormulari('tenant-1', {})).rejects.toThrow(
+        /identificativoSoggetto.*numIscrSito|numIscrSito.*identificativoSoggetto/
+      )
+      expect(mockHttpService.get).not.toHaveBeenCalled()
+    })
+
+    it('rifiuta la chiamata (errore locale) se sono indicati entrambi i filtri', async () => {
+      await expect(
+        client.cercaFormulari('tenant-1', {
+          identificativoSoggetto: 'RSSMRA80A01H501U',
+          numIscrSito: 'OP1234ABC123456-RM1234',
+        })
+      ).rejects.toThrow(/mutuamente esclusivi/)
+      expect(mockHttpService.get).not.toHaveBeenCalled()
+    })
+
+    it('invia GET su / con identificativo_soggetto e la paginazione di default (Paging-Page=1, Paging-PageSize=100)', async () => {
+      const mockResponse: AxiosResponse = {
+        data: [{ numero_fir: 'BCDFGH00001JK', visibilita_sito_acquisita: false }],
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          'paging-page': '1',
+          'paging-pagesize': '100',
+          'paging-pagecount': '1',
+          'paging-totalrecordcount': '1',
+        },
+        config: {} as any,
+      }
+      mockHttpService.get.mockReturnValue(of(mockResponse))
+
+      const risultato = await client.cercaFormulari('tenant-1', {
+        identificativoSoggetto: 'RSSMRA80A01H501U',
+      })
+
+      expect(mockHttpService.get).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/?identificativo_soggetto=RSSMRA80A01H501U',
+        (expect as any).objectContaining({
+          headers: (expect as any).objectContaining({
+            'Paging-Page': '1',
+            'Paging-PageSize': '100',
+          }),
+        })
+      )
+      expect(risultato.risultati).toEqual([
+        { numero_fir: 'BCDFGH00001JK', visibilita_sito_acquisita: false },
+      ])
+      expect(risultato.paging).toEqual({
+        page: 1,
+        pageSize: 100,
+        pageCount: 1,
+        totalRecordCount: 1,
+      })
+    })
+
+    it('invia GET su / con num_iscr_sito e la paginazione esplicita indicata dal chiamante', async () => {
+      const mockResponse: AxiosResponse = {
+        data: [],
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          'paging-page': '2',
+          'paging-pagesize': '50',
+          'paging-pagecount': '3',
+          'paging-totalrecordcount': '120',
+        },
+        config: {} as any,
+      }
+      mockHttpService.get.mockReturnValue(of(mockResponse))
+
+      const risultato = await client.cercaFormulari('tenant-1', {
+        numIscrSito: 'OP1234ABC123456-RM1234',
+        paging: { page: 2, pageSize: 50 },
+      })
+
+      expect(mockHttpService.get).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/?num_iscr_sito=OP1234ABC123456-RM1234',
+        (expect as any).objectContaining({
+          headers: (expect as any).objectContaining({
+            'Paging-Page': '2',
+            'Paging-PageSize': '50',
+          }),
+        })
+      )
+      expect(risultato.paging).toEqual({
+        page: 2,
+        pageSize: 50,
+        pageCount: 3,
+        totalRecordCount: 120,
+      })
+    })
+  })
+
+  /**
+   * `acquisisciVisibilita`/`rilasciaVisibilita`: il contratto dichiara SOLO
+   * `200` immediato per queste due operazioni (formulari.yaml righe 657-703
+   * e 2030-2075) — nessun `202`/NONBLOCK_PULL come per `creaFormulario`
+   * (l'unica marcata "🔁[ASYNC]" nel `summary`). Verificato qui che il
+   * client non tenti alcun polling: una singola risposta 200 basta.
+   */
+  describe('acquisisciVisibilita', () => {
+    it('invia POST su /{numero_fir}/acquisizione-visibilita/{num_iscr_sito} (non /acquisizione/, deprecato) e si risolve su 200 sincrono', async () => {
+      const mockResponse: AxiosResponse = {
+        data: undefined,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
+      }
+      mockHttpService.post.mockReturnValue(of(mockResponse))
+
+      await client.acquisisciVisibilita(
+        'tenant-1',
+        'BCDFGH00001JK',
+        'OP1234ABC123456-RM1234',
+        'correlazione-1'
+      )
+
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK/acquisizione-visibilita/OP1234ABC123456-RM1234',
+        {},
+        (expect as any).objectContaining({
+          headers: (expect as any).objectContaining({ Authorization: 'Bearer test-token' }),
+        })
+      )
+      expect(mockHttpService.post).not.toHaveBeenCalledWith(
+        (expect as any).stringContaining('/acquisizione/'),
+        (expect as any).anything(),
+        (expect as any).anything()
+      )
+    })
+
+    it('403: non ritenta, errore definitivo (nessun incarico sul soggetto/unità locale)', async () => {
+      jest.useFakeTimers()
+      mockHttpService.post.mockReturnValue(
+        throwError(() => erroreProblemDetails(403, { title: 'Operazione non consentita' }))
+      )
+
+      const promessa = client.acquisisciVisibilita(
+        'tenant-1',
+        'BCDFGH00001JK',
+        'OP1234ABC123456-RM1234'
+      )
+      await expect(promessa).rejects.toThrow(RentriApiError)
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+      jest.useRealTimers()
+    })
+  })
+
+  describe('rilasciaVisibilita', () => {
+    it('invia POST su /{numero_fir}/rilascio-visibilita/{num_iscr_sito} (non /respingi, deprecato) e si risolve su 200 sincrono', async () => {
+      const mockResponse: AxiosResponse = {
+        data: undefined,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
+      }
+      mockHttpService.post.mockReturnValue(of(mockResponse))
+
+      await client.rilasciaVisibilita(
+        'tenant-1',
+        'BCDFGH00001JK',
+        'OP1234ABC123456-RM1234',
+        'correlazione-2'
+      )
+
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK/rilascio-visibilita/OP1234ABC123456-RM1234',
+        {},
+        (expect as any).objectContaining({
+          headers: (expect as any).objectContaining({ Authorization: 'Bearer test-token' }),
+        })
+      )
+      expect(mockHttpService.post).not.toHaveBeenCalledWith(
+        (expect as any).stringContaining('/respingi'),
+        (expect as any).anything(),
+        (expect as any).anything()
+      )
+    })
+
+    it('423: non ritenta subito ma applica backoff esponenziale come le altre scritture', async () => {
+      jest.useFakeTimers()
+      const successResponse: AxiosResponse = {
+        data: undefined,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
+      }
+      mockHttpService.post
+        .mockReturnValueOnce(
+          throwError(() => erroreProblemDetails(423, { title: 'Risorsa bloccata' }))
+        )
+        .mockReturnValueOnce(of(successResponse))
+
+      const promessa = client.rilasciaVisibilita(
+        'tenant-1',
+        'BCDFGH00001JK',
+        'OP1234ABC123456-RM1234'
+      )
+      await jest.advanceTimersByTimeAsync(1000)
+
+      await expect(promessa).resolves.toBeUndefined()
+      expect(mockHttpService.post).toHaveBeenCalledTimes(2)
+      jest.useRealTimers()
+    })
+  })
+
   describe('leggiFormulario', () => {
     it('invia GET su /{numero_fir} e restituisce il DettaglioFormulario', async () => {
       const mockResponse: AxiosResponse = {

@@ -54,7 +54,13 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
 
     const pagingPage = Number(richiesta.headers['paging-page'] ?? 1)
     const pagingPageSize = Number(richiesta.headers['paging-pagesize'] ?? 100)
-    const elenco = archivio.elencaFormulari()
+    // Filtro secondo il contratto: identificativo_soggetto e num_iscr_sito
+    // sono mutuamente esclusivi lato client (v. RENTRIApiClient.cercaFormulari);
+    // qui si applica quello effettivamente presente in query.
+    const elenco = archivio.elencaFormulari({
+      identificativoSoggetto: identificativo_soggetto,
+      numIscrSito: num_iscr_sito,
+    })
     const totale = elenco.length
     const pageCount = Math.max(1, Math.ceil(totale / pagingPageSize))
 
@@ -65,7 +71,16 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
     risposta.header('Paging-PageCount', pageCount)
     risposta.header('Paging-TotalRecordCount', totale)
 
-    return elenco
+    // FormularioItemResult (formulari.yaml righe 9686-9800): qui solo i
+    // campi che questo task verifica — visibilita_sito_acquisita è quello
+    // decisivo, calcolato da `sitiConVisibilita` (v. Archivio).
+    return elenco.map(f => ({
+      numero_fir: f.numero_fir,
+      identificativo_soggetto: f.identificativo_soggetto ?? null,
+      num_iscr_sito: f.num_iscr_sito ?? null,
+      stato: f.stato,
+      visibilita_sito_acquisita: (f.sitiConVisibilita?.length ?? 0) > 0,
+    }))
   })
 
   // /count e /status sono path ufficiali distinti da /{numero_fir}

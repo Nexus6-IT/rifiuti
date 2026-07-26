@@ -99,6 +99,172 @@ export class RENTRIApiClient {
     return response.data
   }
 
+  /** Valore di default dell'header `Paging-Page` (formulari.yaml righe 112-120). */
+  private static readonly PAGING_PAGE_DEFAULT = 1
+
+  /** Valore di default dell'header `Paging-PageSize` (formulari.yaml righe 121-129). */
+  private static readonly PAGING_PAGE_SIZE_DEFAULT = 100
+
+  /**
+   * Cerca i formulari (`GET /` — formulari.yaml righe 15-172, "Elenco
+   * formulari"). Uno tra `identificativoSoggetto` (il codice fiscale di un
+   * soggetto coinvolto, indipendentemente da chi ha creato il FIR) e
+   * `numIscrSito` (l'unità locale per cui è già stata acquisita la
+   * visibilità) DEVE essere valorizzato — il contratto li dichiara
+   * mutuamente esclusivi (righe 29 e 45: ciascuno "deve essere valorizzato
+   * in assenza" dell'altro). Passare zero o due filtri è un errore di
+   * programmazione del chiamante: viene rifiutato qui, PRIMA di contattare
+   * RENTRI, per non trasformarlo in un 400 rumoroso dell'ente.
+   *
+   * La paginazione dichiarata dal contratto (`Paging-Page`/`Paging-PageSize`
+   * in richiesta, righe 112-129; `Paging-PageCount`/`Paging-TotalRecordCount`
+   * in risposta, righe 137-157) è gestita esplicitamente: senza, un tenant
+   * con centinaia di formulari vedrebbe solo i primi 100 (default RENTRI) e
+   * nessun modo di sapere che ce ne sono altri.
+   *
+   * Ogni elemento della risposta porta `visibilita_sito_acquisita`
+   * (`FormularioItemResult`, formulari.yaml riga 9794): è il modo corretto
+   * di sapere se un formulario trovato va ancora agganciato, non un secondo
+   * giro di ricerca.
+   *
+   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza}.
+   */
+  async cercaFormulari(
+    tenantId: string,
+    filtri: FiltriRicercaFormulari
+  ): Promise<RisultatoRicercaFormulari> {
+    const haIdentificativoSoggetto = Boolean(filtri.identificativoSoggetto)
+    const haNumIscrSito = Boolean(filtri.numIscrSito)
+
+    if (haIdentificativoSoggetto === haNumIscrSito) {
+      throw new Error(
+        "cercaFormulari richiede esattamente uno tra 'identificativoSoggetto' e 'numIscrSito' " +
+          '(formulari.yaml righe 29 e 45: mutuamente esclusivi, mai nessuno dei due, mai entrambi).'
+      )
+    }
+
+    const query = new URLSearchParams()
+    if (filtri.identificativoSoggetto) {
+      query.set('identificativo_soggetto', filtri.identificativoSoggetto)
+    }
+    if (filtri.numIscrSito) {
+      query.set('num_iscr_sito', filtri.numIscrSito)
+    }
+
+    const page = filtri.paging?.page ?? RENTRIApiClient.PAGING_PAGE_DEFAULT
+    const pageSize = filtri.paging?.pageSize ?? RENTRIApiClient.PAGING_PAGE_SIZE_DEFAULT
+
+    const response = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.get(`${RENTRIApiClient.FORMULARI_PATH}/?${query.toString()}`, tenantId, {
+          'Paging-Page': String(page),
+          'Paging-PageSize': String(pageSize),
+        }),
+      '/formulari (ricerca)'
+    )
+
+    const headers = response.headers ?? {}
+    const leggiHeaderNumerico = (nome: string, fallback: number): number => {
+      const valore = headers[nome.toLowerCase()] ?? headers[nome]
+      const numero = Number(valore)
+      return Number.isFinite(numero) ? numero : fallback
+    }
+
+    return {
+      risultati: Array.isArray(response.data) ? (response.data as FormularioItemResult[]) : [],
+      paging: {
+        page: leggiHeaderNumerico('Paging-Page', page),
+        pageSize: leggiHeaderNumerico('Paging-PageSize', pageSize),
+        pageCount: leggiHeaderNumerico('Paging-PageCount', 1),
+        totalRecordCount: leggiHeaderNumerico('Paging-TotalRecordCount', 0),
+      },
+    }
+  }
+
+  /**
+   * Acquisisce la visibilità in ricerca di un FIR digitale creato da terzi
+   * su una propria unità locale (`POST /{numero_fir}/acquisizione-visibilita/{num_iscr_sito}`
+   * — formulari.yaml riga 657, **non** `/acquisizione/{num_iscr_sito}`,
+   * deprecato — righe 716-745).
+   *
+   * **Sincrona, non NONBLOCK_PULL**: a differenza di `creaFormulario`
+   * (esplicitamente etichettata "🔁[ASYNC]" dal contratto, risposta SEMPRE
+   * 202 + polling), questa operazione dichiara come unico esito positivo
+   * `200` immediato ("L'acquisizione di visibilità è avvenuta con
+   * successo") — nessun `202`, nessun `TransazioneModel`, nessuna voce
+   * `[ASYNC]` nel `summary`. Non c'è quindi alcuna transazione da attendere
+   * con {@link attendiEsito}: il verificarlo contro il contratto (non
+   * assumerlo) era esplicitamente richiesto dal piano di questo task.
+   *
+   * Nessun corpo richiesto dal contratto: si invia un corpo vuoto solo
+   * perché {@link post} calcola sempre la firma di integrità su una stringa
+   * (un body `undefined` romperebbe il calcolo del digest).
+   *
+   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza}
+   * (403 qui ha un significato di dominio specifico: l'utenza non ha
+   * incarichi su alcun soggetto coinvolto nel FIR, o l'unità locale indicata
+   * non le è riferibile — v. `rentri-error-presentation.ts`, Task 7).
+   */
+  async acquisisciVisibilita(
+    tenantId: string,
+    numeroFir: string,
+    numIscrSito: string,
+    correlationId?: string
+  ): Promise<void> {
+    this.logger.debug('Acquisizione visibilità FIR avviata', {
+      numeroFir,
+      numIscrSito,
+      correlationId,
+    })
+
+    await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/acquisizione-visibilita/${numIscrSito}`,
+          {},
+          '/formulari (acquisizione-visibilita)',
+          tenantId
+        ),
+      '/formulari (acquisizione-visibilita)'
+    )
+  }
+
+  /**
+   * Rilascia la visibilità in ricerca precedentemente acquisita su un FIR
+   * digitale creato da terzi (`POST /{numero_fir}/rilascio-visibilita/{num_iscr_sito}`
+   * — formulari.yaml riga 2030, **non** `/respingi`, deprecato). Operazione
+   * inversa di {@link acquisisciVisibilita}: "abbandona" la visibilità senza
+   * cancellare il formulario dall'ente.
+   *
+   * **Sincrona**, stessa verifica di {@link acquisisciVisibilita}: il
+   * contratto dichiara solo `200` immediato, nessun `202`/NONBLOCK_PULL.
+   *
+   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza}.
+   */
+  async rilasciaVisibilita(
+    tenantId: string,
+    numeroFir: string,
+    numIscrSito: string,
+    correlationId?: string
+  ): Promise<void> {
+    this.logger.debug('Rilascio visibilità FIR avviato', {
+      numeroFir,
+      numIscrSito,
+      correlationId,
+    })
+
+    await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/rilascio-visibilita/${numIscrSito}`,
+          {},
+          '/formulari (rilascio-visibilita)',
+          tenantId
+        ),
+      '/formulari (rilascio-visibilita)'
+    )
+  }
+
   /** Intervallo di default (ms) tra un tentativo e l'altro del polling NONBLOCK_PULL. */
   private static readonly INTERVALLO_POLLING_DEFAULT_MS = 2000
 
@@ -357,10 +523,14 @@ export class RENTRIApiClient {
     }
   }
 
-  /** GET con Bearer self-issued. V. {@link post} per `tenantId`. */
-  private async get(path: string, tenantId?: string) {
+  /**
+   * GET con Bearer self-issued. V. {@link post} per `tenantId`.
+   * `extraHeaders` (es. `Paging-Page`/`Paging-PageSize` di {@link cercaFormulari})
+   * si aggiunge all'header di autenticazione, senza sostituirlo.
+   */
+  private async get(path: string, tenantId?: string, extraHeaders?: Record<string, string>) {
     const url = `${this.config.baseUrl}${path}`
-    const headers = await this.buildAuthHeaders(tenantId)
+    const headers = { ...(await this.buildAuthHeaders(tenantId)), ...extraHeaders }
 
     return firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }))
   }
@@ -502,4 +672,66 @@ export interface FormularioModel {
   dati_trasbordi_parziali?: unknown[] | null
   dati_soste_tecniche?: unknown[] | null
   dati_destinazioni_successive?: unknown[] | null
+}
+
+/**
+ * Filtri di {@link RENTRIApiClient.cercaFormulari} (`GET /`, formulari.yaml
+ * righe 15-172). `identificativoSoggetto` e `numIscrSito` sono mutuamente
+ * esclusivi: esattamente uno dei due deve essere valorizzato (righe 29 e
+ * 45) — il client lo verifica prima di contattare RENTRI.
+ */
+export interface FiltriRicercaFormulari {
+  /** Codice fiscale di un soggetto coinvolto nel FIR, indipendentemente dal ruolo o da chi l'ha creato. */
+  identificativoSoggetto?: string
+  /** Numero di iscrizione dell'unità locale per cui è stata acquisita la visibilità. */
+  numIscrSito?: string
+  /** Paginazione (`Paging-Page`/`Paging-PageSize`): default page=1, pageSize=100, max pageSize=1000 (righe 112-129). */
+  paging?: {
+    page?: number
+    pageSize?: number
+  }
+}
+
+/**
+ * Elemento della lista restituita da `GET /` (`FormularioItemResult`,
+ * formulari.yaml righe 9686-9800). Solo i campi di primo livello utili alla
+ * ricerca/aggancio sono modellati qui: gli oggetti anagrafici annidati
+ * (produttore, destinatari, trasportatori, ecc.) non servono a questo task.
+ */
+export interface FormularioItemResult {
+  numero_fir?: string | null
+  data_emissione?: string | null
+  num_iscr_sito?: string | null
+  identificativo_soggetto?: string | null
+  data_creazione?: string | null
+  codice_eer?: string | null
+  quantita?: number | null
+  unita_misura?: string | null
+  stato_fisico?: string | null
+  caratteristiche_pericolo?: string | null
+  descrizione_rifiuto?: string | null
+  stato?: string | null
+  is_upload?: boolean | null
+  trasformato_in_cartaceo?: boolean | null
+  versione?: number | null
+  /**
+   * Indica se il formulario è già stato acquisito in visibilità da almeno
+   * un'unità locale diversa da quella che l'ha creato, riconducibile al
+   * soggetto per cui viene fatta la richiesta (formulari.yaml riga 9794).
+   * È il modo corretto di sapere se un formulario trovato va ancora
+   * agganciato: non richiede una seconda chiamata.
+   */
+  visibilita_sito_acquisita?: boolean | null
+  [key: string]: unknown
+}
+
+/** Esito paginato di {@link RENTRIApiClient.cercaFormulari}, header `Paging-*` della risposta (righe 137-157). */
+export interface RisultatoRicercaFormulari {
+  risultati: FormularioItemResult[]
+  paging: {
+    page: number
+    pageSize: number
+    pageCount: number
+    totalRecordCount: number
+  }
 }

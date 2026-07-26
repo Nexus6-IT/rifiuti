@@ -64,7 +64,24 @@ describe('RentriCredentialController', () => {
         privateKeyPem: dto.privateKeyPem,
         algorithm: 'RS256',
         environment: 'demo',
+        numIscrSito: undefined,
       })
+    })
+
+    it('salva anche il numIscrSito (unità locale RENTRI) quando fornito', async () => {
+      const dto: SetRentriCredentialDto = {
+        clientId: 'client-1',
+        certificatePem: '-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----',
+        privateKeyPem: '-----BEGIN RSA PRIVATE KEY-----\nxyz\n-----END RSA PRIVATE KEY-----',
+        numIscrSito: 'OP1234ABC123456-RM1234',
+      }
+
+      await controller.set(dto, user)
+
+      expect(service.upsertForTenant).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.objectContaining({ numIscrSito: 'OP1234ABC123456-RM1234' })
+      )
     })
 
     it('salva la credenziale da PKCS#12 (convertito in PEM)', async () => {
@@ -121,6 +138,7 @@ describe('RentriCredentialController', () => {
         privateKeyPem: 'SECRET-KEY',
         algorithm: 'RS256',
         environment: 'produzione',
+        numIscrSito: 'OP1234ABC123456-RM1234',
       })
 
       const res = await controller.status(user)
@@ -129,6 +147,7 @@ describe('RentriCredentialController', () => {
         configured: true,
         clientId: 'client-5',
         environment: 'produzione',
+        numIscrSito: 'OP1234ABC123456-RM1234',
       })
       const serialized = JSON.stringify(res)
       expect(serialized).not.toContain('SECRET-CERT')
