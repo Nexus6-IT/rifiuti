@@ -12,7 +12,10 @@ export class CERCode {
     private readonly _category: string,
     private readonly _subcategory: string | null,
     private readonly _createdAt: Date,
-    private readonly _updatedAt: Date
+    private readonly _updatedAt: Date,
+    private readonly _presenteInRentri: boolean = true,
+    private readonly _rimossoDaRentriAl: Date | null = null,
+    private readonly _fonte: string = 'locale'
   ) {}
 
   static create(props: {
@@ -21,6 +24,8 @@ export class CERCode {
     isPericoloso: boolean
     category: string
     subcategory?: string
+    presenteInRentri?: boolean
+    fonte?: string
   }): CERCode {
     // Validate code format: "XX XX XX" or "XX XX XX*"
     if (!this.isValidCodeFormat(props.code)) {
@@ -36,7 +41,10 @@ export class CERCode {
       props.category,
       props.subcategory || null,
       now,
-      now
+      now,
+      props.presenteInRentri ?? true,
+      null,
+      props.fonte ?? 'locale'
     )
   }
 
@@ -49,6 +57,9 @@ export class CERCode {
     subcategory?: string
     createdAt: Date
     updatedAt: Date
+    presenteInRentri?: boolean
+    rimossoDaRentriAl?: Date | null
+    fonte?: string
   }): CERCode {
     return new CERCode(
       props.id,
@@ -58,7 +69,10 @@ export class CERCode {
       props.category,
       props.subcategory || null,
       props.createdAt,
-      props.updatedAt
+      props.updatedAt,
+      props.presenteInRentri ?? true,
+      props.rimossoDaRentriAl ?? null,
+      props.fonte ?? 'locale'
     )
   }
 
@@ -98,6 +112,26 @@ export class CERCode {
 
   get updatedAt(): Date {
     return this._updatedAt
+  }
+
+  /**
+   * True finché l'ente (RENTRI) conferma il codice nel catalogo ufficiale.
+   * Default `true` per compatibilità con lo stato preesistente (righe da CSV
+   * mai toccate da un allineamento RENTRI restano usabili). V.
+   * `CERCatalogService.isUtilizzabilePerNuovoFormulario`.
+   */
+  get presenteInRentri(): boolean {
+    return this._presenteInRentri
+  }
+
+  /** Valorizzato quando `presenteInRentri` passa a `false`; `null` altrimenti. */
+  get rimossoDaRentriAl(): Date | null {
+    return this._rimossoDaRentriAl
+  }
+
+  /** `"locale"` (seed CSV bundled) o `"rentri"` (confermato/allineato dall'ente). */
+  get fonte(): string {
+    return this._fonte
   }
 
   // Helper methods

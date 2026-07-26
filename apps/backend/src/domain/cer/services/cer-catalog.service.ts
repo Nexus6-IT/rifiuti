@@ -46,10 +46,22 @@ export class CERCatalogService {
   }
 
   /**
-   * Validate if CER code exists
+   * Validate if CER code exists (riferimento STORICO, v.
+   * `ICERRepository.exists`): usare per le letture di un FIR esistente, mai
+   * per decidere se un codice è selezionabile in un FIR nuovo.
    */
   async validateCode(code: string): Promise<boolean> {
     return this.repository.exists(code)
+  }
+
+  /**
+   * True se il codice è UTILIZZABILE per un FIR NUOVO (esiste E
+   * `presenteInRentri=true`). Distinta da `validateCode`: un codice che
+   * l'ente ha smesso di confermare resta storicamente valido ma non
+   * selezionabile qui — v. `CreateFIRUseCase` e piano R4 Task 4.
+   */
+  async isUtilizzabilePerNuovoFormulario(code: string): Promise<boolean> {
+    return this.repository.isUtilizzabilePerNuovoFormulario(code)
   }
 
   /**

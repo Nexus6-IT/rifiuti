@@ -720,6 +720,23 @@ model CERCode {
   category     String  @db.VarChar(255)
   subcategory  String  @db.VarChar(255)
 
+  /// Campi additivi R4 Task 4: l'allineamento con RENTRI non cancella mai
+  /// una riga (un FIR esistente referenzia il codice per sempre), marca solo
+  /// la sua attualità presso l'ente.
+  /// True finché l'ente conferma il codice nel catalogo ufficiale; passa a
+  /// false quando RENTRI smette di restituirlo in un ciclo di allineamento —
+  /// la riga resta, resta leggibile/stampabile per i FIR storici, ma non è
+  /// più selezionabile per un FIR nuovo (v. CERCatalogService).
+  presenteInRentri Boolean @default(true) @map("presente_in_rentri")
+  /// Valorizzato quando presenteInRentri passa a false: quando l'ente ha
+  /// smesso di confermare il codice. Azzerato se il codice torna a comparire
+  /// in un ciclo successivo.
+  rimossoDaRentriAl DateTime? @map("rimosso_da_rentri_al")
+  /// "locale" per lo stato preesistente (seed da CSV bundled) o "rentri" per
+  /// i codici allineati/confermati dall'ente — diagnostica di provenienza
+  /// durante la transizione, i due sottosistemi restano paralleli.
+  fonte String @default("locale") @db.VarChar(20) @map("fonte")
+
   @@index([code])
   @@index([category])
   @@map("cer_codes")

@@ -72,9 +72,17 @@ class MockFIRRepository implements IFIRRepository {
 
 class MockCERRepository implements ICERRepository {
   private existingCodes = new Set<string>()
+  /** Codici storici ma non più utilizzabili per un FIR nuovo (v. test dedicati). */
+  private nonUtilizzabili = new Set<string>()
 
   addCode(code: string) {
     this.existingCodes.add(code)
+  }
+
+  /** Simula un codice rimosso da RENTRI: esiste ancora (storico) ma non è più selezionabile. */
+  marcaComeNonUtilizzabile(code: string) {
+    this.existingCodes.add(code)
+    this.nonUtilizzabili.add(code)
   }
 
   async findByCode(code: string): Promise<any> {
@@ -111,6 +119,20 @@ class MockCERRepository implements ICERRepository {
 
   async exists(code: string): Promise<boolean> {
     return this.existingCodes.has(code)
+  }
+
+  async isUtilizzabilePerNuovoFormulario(code: string): Promise<boolean> {
+    return this.existingCodes.has(code) && !this.nonUtilizzabili.has(code)
+  }
+
+  async upsertFromRentri(): Promise<void> {}
+
+  async marcaRimossoDaRentriSeAttivo(): Promise<boolean> {
+    return false
+  }
+
+  async listTuttiICodici(): Promise<string[]> {
+    return Array.from(this.existingCodes)
   }
 }
 
@@ -312,6 +334,25 @@ describe('CreateFIRUseCase', () => {
       expect(result.isFailure).toBe(true)
       expect(result.error).toContain('CER code not found')
       expect(result.error).toContain('13 02 05*')
+    })
+
+    it('should fail with a readable message if the CER code was removed by RENTRI (rimosso, ma storicamente esistente)', async () => {
+      // Un codice noto (es. seedato localmente) che l'ente ha smesso di
+      // confermare: esiste ancora nel catalogo (findByCode/exists = true),
+      // ma non è più utilizzabile per un FIR NUOVO — il rischio centrale del
+      // piano R4 Task 4.
+      cerRepository.marcaComeNonUtilizzabile('13 02 05*')
+      const command = createValidCommand()
+
+      const result = await useCase.execute(command)
+
+      expect(result.isFailure).toBe(true)
+      expect(result.error).toContain(
+        "Questo codice CER non è più valido secondo il registro dell'ente"
+      )
+      // Non deve MAI confondersi col messaggio "non trovato": il codice esiste,
+      // solo non è più selezionabile per un formulario nuovo.
+      expect(result.error).not.toContain('CER code not found')
     })
 
     it('should fail if produttoreId is missing', async () => {
