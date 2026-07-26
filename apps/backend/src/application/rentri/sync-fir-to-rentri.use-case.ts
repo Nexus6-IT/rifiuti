@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainEventsService } from '../../core/domain-events.service'
 import { DomainException } from '../../domain/shared/domain-exception'
-import { RentriApiError } from '../../infrastructure/rentri/rentri-api.client'
+import {
+  RentriApiError,
+  estraiNumeroFirDaEsito,
+} from '../../infrastructure/rentri/rentri-api.client'
 
 /**
  * Sync FIR to RENTRI Use Case
@@ -100,16 +103,59 @@ export class SyncFIRToRENTRIUseCase {
         const esito = await this.rentriApiClient.attendiEsito(tenantId, transazioneId)
 
         if (!esito.errore) {
-          // Successo - il contratto non restituisce un "protocolNumber"
-          // dedicato per questo sottoinsieme di EsitoFormularioModel: si usa
-          // la transazione_id come riferimento della trasmissione riuscita.
-          fir.markRENTRISynced(transazioneId, correlationId)
+          // Il numero ufficiale RENTRI vive annidato in `esito.esito`
+          // (`EsitoNuovoFormularioModel.numero_fir`, v.
+          // `estraiNumeroFirDaEsito`): la `transazione_id` è solo
+          // l'identificativo tecnico della chiamata, non il numero del FIR.
+          const numeroFir = estraiNumeroFirDaEsito(esito)
+
+          if (!numeroFir) {
+            // La transazione RENTRI è stata elaborata senza errori
+            // dichiarati, ma l'esito non porta il numero ufficiale: meglio
+            // nessun legame che uno inventato sulla transazione tecnica.
+            // Senza il numero ufficiale il FIR non soddisfa il criterio di
+            // uscita di R0 (rilettura con numero ufficiale) — trattato come
+            // fallimento, non come successo silenzioso.
+            const errorMessage =
+              'Esito RENTRI privo del numero ufficiale (numero_fir): impossibile registrare il legame'
+
+            fir.markRENTRISyncFailed(errorMessage, 'RENTRI_MISSING_NUMERO_FIR', correlationId)
+
+            const duration = Date.now() - startTime
+            const failureLog = syncLog.markAsFailure({
+              responsePayload: JSON.stringify(esito),
+              errorMessage,
+              errorCode: 'RENTRI_MISSING_NUMERO_FIR',
+              durationMs: duration,
+            })
+
+            await this.firRepository.update(firId, fir)
+            await this.syncLogRepository.save(failureLog)
+            await this.publishDomainEvents(fir)
+
+            this.logger.warn(`FIR sync a RENTRI senza numero ufficiale nell'esito`, {
+              firId,
+              transazioneId,
+            })
+
+            const willRetry = fir.needsRENTRIRetry()
+
+            return {
+              success: false,
+              error: errorMessage,
+              willRetry,
+              attempts: fir.rentriSyncStatus.getAttempts(),
+              nextRetryAt: willRetry ? fir.getNextRENTRIRetryAt() : undefined,
+            }
+          }
+
+          fir.markRENTRISynced(numeroFir, transazioneId, correlationId)
 
           // Update sync log
           const duration = Date.now() - startTime
           const successLog = syncLog.markAsSuccess({
             responsePayload: JSON.stringify(esito),
-            protocolNumber: transazioneId,
+            protocolNumber: numeroFir,
             durationMs: duration,
           })
 
@@ -122,13 +168,13 @@ export class SyncFIRToRENTRIUseCase {
 
           this.logger.info(`FIR synced to RENTRI successfully`, {
             firId,
-            protocolNumber: transazioneId,
+            protocolNumber: numeroFir,
             duration,
           })
 
           return {
             success: true,
-            protocolNumber: transazioneId,
+            protocolNumber: numeroFir,
             attempts: fir.rentriSyncStatus.getAttempts(),
           }
         } else {

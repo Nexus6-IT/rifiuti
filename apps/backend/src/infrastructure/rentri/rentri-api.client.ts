@@ -511,16 +511,64 @@ export interface OpzioniPollingEsito {
 }
 
 /**
+ * Esito di creazione di un nuovo FIR (`EsitoNuovoFormularioModel`, contratto
+ * ufficiale, formulari.yaml righe 9503-9512). È una delle nove varianti del
+ * `oneOf` di `EsitoFormularioModel.esito` (formulari.yaml righe 9381-9392,
+ * `EsitoCommonModel | EsitoNuovoFormularioModel | EsitoGetHashPerFirmaModel |
+ * EsitoAddAllegatoModel | EsitoValidaXfirModel | EsitoUploadXfirModel |
+ * EsitoCaricaCopiaCartaceaModel | EsitoCaricaCopiaDigitaleModel |
+ * EsitoEstraiDatiXfirModel`): il numero ufficiale RENTRI esiste SOLO in
+ * questa variante (l'esito di una creazione), non al primo livello di
+ * `EsitoFormularioModel` e non nelle altre otto varianti.
+ */
+export interface EsitoNuovoFormularioModel {
+  numero_fir?: string | null
+}
+
+/**
  * Esito di una transazione completata (`EsitoFormularioModel`, contratto
  * ufficiale, formulari.yaml righe 9378-9414). Sono garantiti sempre
  * presenti `errore` e `validazione`; gli altri campi del modello
- * (`transazione_id`, `tipo`, `esito`, `tempo_elaborazione`) arrivano così
- * come restituiti da `/result`.
+ * (`transazione_id`, `tipo`, `tempo_elaborazione`) arrivano così come
+ * restituiti da `/result`.
+ *
+ * `esito` è il campo polimorfo (`oneOf`) del contratto: per la creazione di
+ * un formulario risolve in {@link EsitoNuovoFormularioModel} (che porta
+ * `numero_fir`); per le altre operazioni assume una forma diversa, non
+ * modellata qui perché non serve a questo client. Non va MAI assunto che
+ * `numero_fir` sia presente — usare {@link estraiNumeroFirDaEsito}, che
+ * verifica esplicitamente la forma prima di leggerlo.
  */
 export interface EsitoFormulario {
   errore: boolean
   validazione: unknown[]
+  esito?: EsitoNuovoFormularioModel | Record<string, unknown> | null
   [key: string]: unknown
+}
+
+/**
+ * Estrae il numero ufficiale RENTRI (`numero_fir`) da un esito di
+ * transazione, se e solo se l'esito è quello di una creazione di formulario
+ * e il campo è valorizzato con una stringa non vuota. Restituisce
+ * `undefined` in ogni altro caso (altra variante del `oneOf`, `esito`
+ * assente, `numero_fir` assente/vuoto): il chiamante non deve MAI sostituire
+ * un numero mancante con un altro identificativo (es. `transazione_id`, che
+ * è tecnico e non il numero ufficiale — v. Task 3-bis, R0).
+ *
+ * **Limite dichiarato**: la fake RENTRI usata per i test contro l'oracolo
+ * accetta qualunque corpo di controllo (riserva nota in
+ * `docs/contracts/rentri/FEDELTA.md`) — questa funzione dimostra che il
+ * client legge correttamente `numero_fir` quando è presente nella forma
+ * prevista dal contratto, non che l'ente lo restituisca davvero in quella
+ * forma.
+ */
+export function estraiNumeroFirDaEsito(esito: EsitoFormulario): string | undefined {
+  const payload = esito.esito
+  if (!payload || typeof payload !== 'object' || !('numero_fir' in payload)) {
+    return undefined
+  }
+  const numeroFir = (payload as EsitoNuovoFormularioModel).numero_fir
+  return typeof numeroFir === 'string' && numeroFir.trim() !== '' ? numeroFir : undefined
 }
 
 /**

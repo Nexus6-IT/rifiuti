@@ -96,9 +96,12 @@ describe('SyncFIRToRENTRIUseCase', () => {
         transazioneId,
         urlStato: `/formulari/v1.0/${transazioneId}/status`,
       })
+      const numeroFir = 'RENTRI-NUM-000123'
+
       mockRENTRIApiClient.attendiEsito.mockResolvedValue({
         errore: false,
         validazione: [],
+        esito: { numero_fir: numeroFir },
       })
       mockFIRRepository.update.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
@@ -106,7 +109,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       const result = await useCase.execute(firId, tenantId)
 
       expect(result.success).toBe(true)
-      expect(result.protocolNumber).toBe(transazioneId)
+      expect(result.protocolNumber).toBe(numeroFir)
       expect(mockFIRRepository.findById).toHaveBeenCalledWith(firId)
       expect(mockFIR.canSyncToRENTRI).toHaveBeenCalled()
       expect(mockFIR.startRENTRISync).toHaveBeenCalled()
@@ -115,7 +118,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
         (expect as any).anything()
       )
       expect(mockRENTRIApiClient.attendiEsito).toHaveBeenCalledWith(tenantId, transazioneId)
-      expect(mockFIR.markRENTRISynced).toHaveBeenCalledWith(transazioneId, undefined)
+      expect(mockFIR.markRENTRISynced).toHaveBeenCalledWith(numeroFir, transazioneId, undefined)
       expect(mockFIRRepository.update).toHaveBeenCalledWith(firId, mockFIR)
       expect(mockSyncLogRepository.save).toHaveBeenCalled()
       expect(mockDomainEvents.publish).toHaveBeenCalled()
@@ -160,6 +163,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       mockRENTRIApiClient.attendiEsito.mockResolvedValue({
         errore: false,
         validazione: [],
+        esito: { numero_fir: 'RENTRI-NUM-000456' },
       })
       mockFIRRepository.update.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
@@ -446,6 +450,72 @@ describe('SyncFIRToRENTRIUseCase', () => {
       // needsRENTRIRetry non deve nemmeno influenzare l'esito: il 403 prevale.
     })
 
+    /**
+     * Task 3-bis (R0): l'esito può dichiarare `errore: false` ed essere
+     * comunque privo del numero ufficiale (`esito.esito.numero_fir`, v.
+     * `estraiNumeroFirDaEsito`). In quel caso NON va chiamato
+     * `markRENTRISynced` con un identificativo inventato (es. la
+     * `transazione_id`): meglio nessun legame che uno inventato.
+     */
+    it('should NOT link the FIR when esito.errore=false but numero_fir is missing', async () => {
+      const firId = 'fir-123'
+      const tenantId = 'tenant-456'
+      const mockFIR = {
+        id: firId,
+        tenantId,
+        status: 'COMPLETED',
+        firNumber: 'FIR-2025-008',
+        rentriSyncStatus: {
+          getStatus: jest.fn().mockReturnValue('PENDING'),
+          getAttempts: jest.fn().mockReturnValue(0),
+        },
+        canSyncToRENTRI: jest.fn().mockReturnValue(true),
+        startRENTRISync: jest.fn(),
+        markRENTRISynced: jest.fn(),
+        markRENTRISyncFailed: jest.fn(),
+        needsRENTRIRetry: jest.fn().mockReturnValue(true),
+        getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
+        getDomainEvents: jest
+          .fn()
+          .mockReturnValue([{ eventType: 'FIRSyncFailed', aggregateId: firId }]),
+        clearDomainEvents: jest.fn(),
+      }
+
+      const mockSyncLog = {
+        markAsFailure: jest.fn().mockReturnValue({
+          id: 'log-1',
+          status: 'FAILURE',
+        }),
+      }
+
+      const transazioneId = 'tx-senza-numero-fir'
+
+      mockFIRRepository.findById.mockResolvedValue(mockFIR)
+      mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({
+        transazioneId,
+        urlStato: `/formulari/v1.0/${transazioneId}/status`,
+      })
+      // errore: false, ma l'esito non è quello di una creazione di
+      // formulario (nessun campo `esito.numero_fir`).
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+        errore: false,
+        validazione: [],
+      })
+      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockSyncLogRepository.save.mockResolvedValue(undefined)
+
+      const result = await useCase.execute(firId, tenantId)
+
+      expect(mockFIR.markRENTRISynced).not.toHaveBeenCalled()
+      expect(mockFIR.markRENTRISyncFailed).toHaveBeenCalledWith(
+        (expect as any).stringContaining('numero ufficiale'),
+        'RENTRI_MISSING_NUMERO_FIR',
+        undefined
+      )
+      expect(result.success).toBe(false)
+    })
+
     it('should handle validation errors from RENTRI (esito.errore = true)', async () => {
       const firId = 'fir-123'
       const tenantId = 'tenant-456'
@@ -540,6 +610,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       mockRENTRIApiClient.attendiEsito.mockResolvedValue({
         errore: false,
         validazione: [],
+        esito: { numero_fir: 'RENTRI-NUM-000789' },
       })
       mockFIRRepository.update.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
