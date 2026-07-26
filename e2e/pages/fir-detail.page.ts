@@ -39,6 +39,9 @@ export class FirDetailPage {
   readonly rentriRiprova: Locator
   readonly rentriVediCertificato: Locator
   readonly rentriConfermaLegame: Locator
+  /** R2 Task 8 — rilascio del legame con un formulario agganciato (aggancio manuale/da terzi). */
+  readonly rentriRilasciaLegame: Locator
+  readonly rentriRilasciaLegameConfirmDialog: Locator
 
   readonly syncLogs: Locator
   readonly syncLogsTable: Locator
@@ -72,6 +75,10 @@ export class FirDetailPage {
     this.rentriRiprova = page.getByTestId('fir-detail-rentri-riprova')
     this.rentriVediCertificato = page.getByTestId('fir-detail-rentri-vedi-certificato')
     this.rentriConfermaLegame = page.getByTestId('fir-detail-rentri-conferma-legame')
+    this.rentriRilasciaLegame = page.getByTestId('fir-detail-rentri-rilascia-legame')
+    this.rentriRilasciaLegameConfirmDialog = page.getByTestId(
+      'fir-detail-rentri-rilascia-legame-confirm-dialog'
+    )
 
     this.syncLogs = page.getByTestId('rentri-sync-logs')
     this.syncLogsTable = page.getByTestId('rentri-sync-logs-table')
