@@ -32,6 +32,10 @@ class MockFIRRepository implements IFIRRepository {
     return []
   }
 
+  async findByIds(): Promise<FIR[]> {
+    return []
+  }
+
   async save(): Promise<void> {}
 
   async delete(): Promise<void> {}

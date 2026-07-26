@@ -130,6 +130,69 @@ describe('RENTRISyncStatus', () => {
     })
   })
 
+  /**
+   * Il difetto R1: un errore non ritentabile (403 → RENTRI_FORBIDDEN,
+   * validazione formulario → RENTRI_VALIDATION_ERROR) NON deve consumare
+   * tentativi fino ad esaurimento — deve fermare il ciclo al primo colpo,
+   * indipendentemente da quanti tentativi restano.
+   */
+  describe('Errori non ritentabili — il codice errore ferma il ciclo, non solo il conteggio', () => {
+    it('RENTRI_FORBIDDEN (403) diventa PERMANENTLY_FAILED al primo fallimento, non al quinto', () => {
+      const status = RENTRISyncStatus.failed(1, 'Certificato non valido', 'RENTRI_FORBIDDEN')
+
+      expect(status.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(status.canRetry()).toBe(false)
+      expect(status.getAttempts()).toBe(1) // un solo tentativo consumato, non 5
+    })
+
+    it('RENTRI_VALIDATION_ERROR diventa PERMANENTLY_FAILED al primo fallimento', () => {
+      const status = RENTRISyncStatus.failed(1, 'Dati non validi', 'RENTRI_VALIDATION_ERROR')
+
+      expect(status.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(status.canRetry()).toBe(false)
+    })
+
+    it('un errore transitorio (RENTRI_API_ERROR) continua a ritentare come prima', () => {
+      const status = RENTRISyncStatus.failed(1, 'Errore di rete', 'RENTRI_API_ERROR')
+
+      expect(status.getStatus()).toBe('FAILED')
+      expect(status.canRetry()).toBe(true)
+    })
+
+    it('RENTRI_RATE_LIMITED (429/423) continua a ritentare col backoff, non blocca subito', () => {
+      const status = RENTRISyncStatus.failed(1, 'Troppe richieste', 'RENTRI_RATE_LIMITED')
+
+      expect(status.getStatus()).toBe('FAILED')
+      expect(status.canRetry()).toBe(true)
+    })
+
+    it('nessun errorCode (comportamento storico) continua a ritentare in base al solo conteggio', () => {
+      const status = RENTRISyncStatus.failed(1, 'Errore generico')
+
+      expect(status.canRetry()).toBe(true)
+    })
+
+    it('il conteggio resta il limite superiore anche per un codice ritentabile', () => {
+      const status = RENTRISyncStatus.failed(5, 'Errore persistente', 'RENTRI_API_ERROR')
+
+      expect(status.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(status.canRetry()).toBe(false)
+    })
+
+    it('canRetry() blocca anche uno stato FAILED ricostruito da dati persistiti con codice non ritentabile (difesa in profondità)', () => {
+      // Simula una riga persistita PRIMA di questa correzione: status FAILED,
+      // tentativi ancora disponibili, ma con un lastErrorCode non ritentabile.
+      const status = RENTRISyncStatus.reconstitute({
+        status: 'FAILED',
+        attempts: 1,
+        lastError: 'Certificato non valido',
+        lastErrorCode: 'RENTRI_FORBIDDEN',
+      })
+
+      expect(status.canRetry()).toBe(false)
+    })
+  })
+
   describe('Value Object Equality', () => {
     it('should be equal if same status and attempts', () => {
       const status1 = RENTRISyncStatus.failed(2, 'Error')

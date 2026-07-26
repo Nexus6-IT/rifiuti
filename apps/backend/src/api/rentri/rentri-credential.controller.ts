@@ -40,6 +40,7 @@ interface CredentialStatusResponse {
   configured: boolean
   clientId?: string
   environment?: string
+  numIscrSito?: string | null
 }
 
 @ApiTags('rentri')
@@ -99,6 +100,7 @@ export class RentriCredentialController {
       privateKeyPem,
       algorithm: dto.algorithm,
       environment: dto.environment,
+      numIscrSito: dto.numIscrSito,
     })
 
     // NON restituire mai chiave/cert.
@@ -124,6 +126,7 @@ export class RentriCredentialController {
       configured: true,
       clientId: cred.clientId,
       environment: cred.environment,
+      numIscrSito: cred.numIscrSito ?? null,
     }
   }
 

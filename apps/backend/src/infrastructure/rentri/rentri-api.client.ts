@@ -8,6 +8,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
+import { gestisciRispostaErroreRentri, attendiMs } from './rentri-http-resilienza'
 
 /**
  * RENTRI API Client
@@ -96,6 +97,172 @@ export class RENTRIApiClient {
       `/formulari/${numeroFir}`
     )
     return response.data
+  }
+
+  /** Valore di default dell'header `Paging-Page` (formulari.yaml righe 112-120). */
+  private static readonly PAGING_PAGE_DEFAULT = 1
+
+  /** Valore di default dell'header `Paging-PageSize` (formulari.yaml righe 121-129). */
+  private static readonly PAGING_PAGE_SIZE_DEFAULT = 100
+
+  /**
+   * Cerca i formulari (`GET /` — formulari.yaml righe 15-172, "Elenco
+   * formulari"). Uno tra `identificativoSoggetto` (il codice fiscale di un
+   * soggetto coinvolto, indipendentemente da chi ha creato il FIR) e
+   * `numIscrSito` (l'unità locale per cui è già stata acquisita la
+   * visibilità) DEVE essere valorizzato — il contratto li dichiara
+   * mutuamente esclusivi (righe 29 e 45: ciascuno "deve essere valorizzato
+   * in assenza" dell'altro). Passare zero o due filtri è un errore di
+   * programmazione del chiamante: viene rifiutato qui, PRIMA di contattare
+   * RENTRI, per non trasformarlo in un 400 rumoroso dell'ente.
+   *
+   * La paginazione dichiarata dal contratto (`Paging-Page`/`Paging-PageSize`
+   * in richiesta, righe 112-129; `Paging-PageCount`/`Paging-TotalRecordCount`
+   * in risposta, righe 137-157) è gestita esplicitamente: senza, un tenant
+   * con centinaia di formulari vedrebbe solo i primi 100 (default RENTRI) e
+   * nessun modo di sapere che ce ne sono altri.
+   *
+   * Ogni elemento della risposta porta `visibilita_sito_acquisita`
+   * (`FormularioItemResult`, formulari.yaml riga 9794): è il modo corretto
+   * di sapere se un formulario trovato va ancora agganciato, non un secondo
+   * giro di ricerca.
+   *
+   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza}.
+   */
+  async cercaFormulari(
+    tenantId: string,
+    filtri: FiltriRicercaFormulari
+  ): Promise<RisultatoRicercaFormulari> {
+    const haIdentificativoSoggetto = Boolean(filtri.identificativoSoggetto)
+    const haNumIscrSito = Boolean(filtri.numIscrSito)
+
+    if (haIdentificativoSoggetto === haNumIscrSito) {
+      throw new Error(
+        "cercaFormulari richiede esattamente uno tra 'identificativoSoggetto' e 'numIscrSito' " +
+          '(formulari.yaml righe 29 e 45: mutuamente esclusivi, mai nessuno dei due, mai entrambi).'
+      )
+    }
+
+    const query = new URLSearchParams()
+    if (filtri.identificativoSoggetto) {
+      query.set('identificativo_soggetto', filtri.identificativoSoggetto)
+    }
+    if (filtri.numIscrSito) {
+      query.set('num_iscr_sito', filtri.numIscrSito)
+    }
+
+    const page = filtri.paging?.page ?? RENTRIApiClient.PAGING_PAGE_DEFAULT
+    const pageSize = filtri.paging?.pageSize ?? RENTRIApiClient.PAGING_PAGE_SIZE_DEFAULT
+
+    const response = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.get(`${RENTRIApiClient.FORMULARI_PATH}/?${query.toString()}`, tenantId, {
+          'Paging-Page': String(page),
+          'Paging-PageSize': String(pageSize),
+        }),
+      '/formulari (ricerca)'
+    )
+
+    const headers = response.headers ?? {}
+    const leggiHeaderNumerico = (nome: string, fallback: number): number => {
+      const valore = headers[nome.toLowerCase()] ?? headers[nome]
+      const numero = Number(valore)
+      return Number.isFinite(numero) ? numero : fallback
+    }
+
+    return {
+      risultati: Array.isArray(response.data) ? (response.data as FormularioItemResult[]) : [],
+      paging: {
+        page: leggiHeaderNumerico('Paging-Page', page),
+        pageSize: leggiHeaderNumerico('Paging-PageSize', pageSize),
+        pageCount: leggiHeaderNumerico('Paging-PageCount', 1),
+        totalRecordCount: leggiHeaderNumerico('Paging-TotalRecordCount', 0),
+      },
+    }
+  }
+
+  /**
+   * Acquisisce la visibilità in ricerca di un FIR digitale creato da terzi
+   * su una propria unità locale (`POST /{numero_fir}/acquisizione-visibilita/{num_iscr_sito}`
+   * — formulari.yaml riga 657, **non** `/acquisizione/{num_iscr_sito}`,
+   * deprecato — righe 716-745).
+   *
+   * **Sincrona, non NONBLOCK_PULL**: a differenza di `creaFormulario`
+   * (esplicitamente etichettata "🔁[ASYNC]" dal contratto, risposta SEMPRE
+   * 202 + polling), questa operazione dichiara come unico esito positivo
+   * `200` immediato ("L'acquisizione di visibilità è avvenuta con
+   * successo") — nessun `202`, nessun `TransazioneModel`, nessuna voce
+   * `[ASYNC]` nel `summary`. Non c'è quindi alcuna transazione da attendere
+   * con {@link attendiEsito}: il verificarlo contro il contratto (non
+   * assumerlo) era esplicitamente richiesto dal piano di questo task.
+   *
+   * Nessun corpo richiesto dal contratto: si invia un corpo vuoto solo
+   * perché {@link post} calcola sempre la firma di integrità su una stringa
+   * (un body `undefined` romperebbe il calcolo del digest).
+   *
+   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza}
+   * (403 qui ha un significato di dominio specifico: l'utenza non ha
+   * incarichi su alcun soggetto coinvolto nel FIR, o l'unità locale indicata
+   * non le è riferibile — v. `rentri-error-presentation.ts`, Task 7).
+   */
+  async acquisisciVisibilita(
+    tenantId: string,
+    numeroFir: string,
+    numIscrSito: string,
+    correlationId?: string
+  ): Promise<void> {
+    this.logger.debug('Acquisizione visibilità FIR avviata', {
+      numeroFir,
+      numIscrSito,
+      correlationId,
+    })
+
+    await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/acquisizione-visibilita/${numIscrSito}`,
+          {},
+          '/formulari (acquisizione-visibilita)',
+          tenantId
+        ),
+      '/formulari (acquisizione-visibilita)'
+    )
+  }
+
+  /**
+   * Rilascia la visibilità in ricerca precedentemente acquisita su un FIR
+   * digitale creato da terzi (`POST /{numero_fir}/rilascio-visibilita/{num_iscr_sito}`
+   * — formulari.yaml riga 2030, **non** `/respingi`, deprecato). Operazione
+   * inversa di {@link acquisisciVisibilita}: "abbandona" la visibilità senza
+   * cancellare il formulario dall'ente.
+   *
+   * **Sincrona**, stessa verifica di {@link acquisisciVisibilita}: il
+   * contratto dichiara solo `200` immediato, nessun `202`/NONBLOCK_PULL.
+   *
+   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza}.
+   */
+  async rilasciaVisibilita(
+    tenantId: string,
+    numeroFir: string,
+    numIscrSito: string,
+    correlationId?: string
+  ): Promise<void> {
+    this.logger.debug('Rilascio visibilità FIR avviato', {
+      numeroFir,
+      numIscrSito,
+      correlationId,
+    })
+
+    await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/rilascio-visibilita/${numIscrSito}`,
+          {},
+          '/formulari (rilascio-visibilita)',
+          tenantId
+        ),
+      '/formulari (rilascio-visibilita)'
+    )
   }
 
   /** Intervallo di default (ms) tra un tentativo e l'altro del polling NONBLOCK_PULL. */
@@ -253,7 +420,7 @@ export class RENTRIApiClient {
 
   /** Attesa non bloccante tra un tentativo e l'altro del polling/retry. */
   private attendi(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms))
+    return attendiMs(ms)
   }
 
   /** Numero massimo di tentativi per gli errori transitori (429/423/5xx). */
@@ -266,59 +433,11 @@ export class RENTRIApiClient {
   private static readonly BACKOFF_MAX_MS = 30000
 
   /**
-   * Estrae `title`/`detail` da un corpo `application/problem+json`
-   * (`ProblemDetails`, contratto ufficiale). Sono gli UNICI campi del corpo
-   * di errore che il client riporta nei log/nel log di sincronizzazione: il
-   * contenuto grezzo della risposta non va mai esposto al tenant.
-   */
-  private estraiProblemDetails(data: unknown): { title?: string; detail?: string } {
-    if (data && typeof data === 'object') {
-      const problema = data as { title?: unknown; detail?: unknown }
-      return {
-        title: typeof problema.title === 'string' ? problema.title : undefined,
-        detail: typeof problema.detail === 'string' ? problema.detail : undefined,
-      }
-    }
-    return {}
-  }
-
-  /**
-   * Calcola l'attesa (ms) prima del prossimo tentativo: rispetta l'header
-   * `Retry-After` (in secondi) se presente e valido, altrimenti applica un
-   * backoff esponenziale (`BACKOFF_BASE_MS * 2^(tentativo-1)`, tetto
-   * `BACKOFF_MAX_MS`).
-   */
-  private calcolaAttesaMs(tentativo: number, retryAfterHeader?: string): number {
-    if (retryAfterHeader !== undefined) {
-      const secondi = Number(retryAfterHeader)
-      if (!Number.isNaN(secondi) && secondi >= 0) {
-        return secondi * 1000
-      }
-    }
-    return Math.min(
-      RENTRIApiClient.BACKOFF_BASE_MS * 2 ** (tentativo - 1),
-      RENTRIApiClient.BACKOFF_MAX_MS
-    )
-  }
-
-  /**
    * Classifica una risposta di errore RENTRI e, se transitoria, attende
-   * prima del prossimo tentativo. Politica (contratto ufficiale,
-   * formulari.yaml — `ProblemDetails` su ogni risposta di errore):
-   *
-   * - **403** "Operazione non consentita" → credenziale non valida o
-   *   operazione vietata: MAI ritentare (martellare l'ente con una
-   *   credenziale che non funzionerà mai non ha senso). Solleva subito
-   *   {@link RentriApiError} con `retryable: false`.
-   * - **429** → rispetta `Retry-After` se presente, altrimenti backoff
-   *   esponenziale.
-   * - **423** (risorsa bloccata) e **5xx** → backoff esponenziale.
-   * - Esauriti i tentativi per un codice transitorio → solleva
-   *   {@link RentriApiError} con `retryable: true` (fallimento dopo aver
-   *   provato: il chiamante può ancora decidere un retry a un livello più
-   *   alto, es. un nuovo job in coda).
-   * - Qualunque altro codice non atteso in questo punto del ciclo → errore
-   *   generico invariato rispetto al comportamento preesistente.
+   * prima del prossimo tentativo. Delegata a {@link gestisciRispostaErroreRentri}
+   * (`rentri-http-resilienza.ts`), condivisa con il client delle codifiche:
+   * stessa politica (403 mai ritentato, 429/423/5xx con backoff/`Retry-After`),
+   * un solo posto dove è scritta.
    *
    * Usata sia dal ramo "risposta con status arbitrario" (polling, dove
    * `validateStatus` impedisce ad axios di sollevare un'eccezione), sia —
@@ -329,44 +448,16 @@ export class RENTRIApiClient {
     contesto: string,
     tentativo: number
   ): Promise<'ritenta'> {
-    const { status } = risposta
-    const problema = this.estraiProblemDetails(risposta.data)
-
-    if (status === 403) {
-      this.logger.warn(
-        `RENTRI ha rifiutato la richiesta a ${contesto} (403): credenziale non valida o operazione non consentita, nessun nuovo tentativo`,
-        { title: problema.title, detail: problema.detail }
-      )
-      this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'FORBIDDEN' })
-      throw new RentriApiError(403, problema.title, problema.detail, false)
-    }
-
-    const ritentabile = status === 429 || status === 423 || status >= 500
-
-    if (!ritentabile) {
-      throw new Error(`Risposta inattesa da ${contesto}: HTTP ${status}`)
-    }
-
-    if (tentativo >= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA) {
-      this.logger.error(
-        `RENTRI continua a rispondere ${status} a ${contesto}: esauriti i ${RENTRIApiClient.MAX_TENTATIVI_RESILIENZA} tentativi`,
-        undefined,
-        { title: problema.title, detail: problema.detail }
-      )
-      this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
-      throw new RentriApiError(status, problema.title, problema.detail, true)
-    }
-
-    const retryAfter = risposta.headers?.['retry-after'] ?? risposta.headers?.['Retry-After']
-    const attesaMs = this.calcolaAttesaMs(tentativo, retryAfter as string | undefined)
-
-    this.logger.warn(
-      `RENTRI ha risposto ${status} a ${contesto}: nuovo tentativo (${tentativo}/${RENTRIApiClient.MAX_TENTATIVI_RESILIENZA}) dopo ${attesaMs}ms`,
-      { title: problema.title, detail: problema.detail }
+    return gestisciRispostaErroreRentri(
+      risposta,
+      contesto,
+      tentativo,
+      RENTRIApiClient.MAX_TENTATIVI_RESILIENZA,
+      this.logger,
+      this.metrics,
+      ms => this.attendi(ms),
+      { baseMs: RENTRIApiClient.BACKOFF_BASE_MS, maxMs: RENTRIApiClient.BACKOFF_MAX_MS }
     )
-    this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
-    await this.attendi(attesaMs)
-    return 'ritenta'
   }
 
   /**
@@ -432,10 +523,14 @@ export class RENTRIApiClient {
     }
   }
 
-  /** GET con Bearer self-issued. V. {@link post} per `tenantId`. */
-  private async get(path: string, tenantId?: string) {
+  /**
+   * GET con Bearer self-issued. V. {@link post} per `tenantId`.
+   * `extraHeaders` (es. `Paging-Page`/`Paging-PageSize` di {@link cercaFormulari})
+   * si aggiunge all'header di autenticazione, senza sostituirlo.
+   */
+  private async get(path: string, tenantId?: string, extraHeaders?: Record<string, string>) {
     const url = `${this.config.baseUrl}${path}`
-    const headers = await this.buildAuthHeaders(tenantId)
+    const headers = { ...(await this.buildAuthHeaders(tenantId)), ...extraHeaders }
 
     return firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }))
   }
@@ -462,39 +557,11 @@ export class RENTRIApiClient {
 }
 
 /**
- * Errore che rappresenta una risposta di errore RENTRI (`ProblemDetails`,
- * `application/problem+json`) dopo l'eventuale esaurimento dei tentativi di
- * resilienza (v. {@link RENTRIApiClient.eseguiRichiestaConResilienza} /
- * {@link RENTRIApiClient['gestisciRispostaNonPrevista']}).
- *
- * `retryable` distingue:
- * - `false` — **403**, fallimento definitivo: credenziale non valida o
- *   operazione non consentita. Ritentare non avrebbe senso (la credenziale
- *   non funzionerà al tentativo successivo), quindi il client non lo fa MAI.
- * - `true` — **429/423/5xx**, fallimento dopo aver esaurito i tentativi di
- *   resilienza del client stesso. Resta un errore transitorio: chi chiama
- *   può ancora decidere un nuovo tentativo a un livello più alto (es. un
- *   nuovo job in coda).
- *
- * `problemTitle`/`problemDetail` sono gli UNICI campi del corpo di errore
- * riportati nei log/nel log di sincronizzazione: il corpo grezzo della
- * risposta RENTRI non va mai esposto al tenant.
+ * `RentriApiError` è ora definita in `rentri-http-resilienza.ts` (condivisa
+ * col client delle codifiche): ri-esportata qui per non rompere gli import
+ * esistenti (`import { RentriApiError } from './rentri-api.client'`).
  */
-export class RentriApiError extends Error {
-  constructor(
-    readonly status: number,
-    readonly problemTitle: string | undefined,
-    readonly problemDetail: string | undefined,
-    readonly retryable: boolean
-  ) {
-    super(
-      retryable
-        ? `RENTRI ha risposto ${status} (${problemTitle ?? 'errore transitorio'}): tentativi di resilienza esauriti`
-        : `RENTRI ha rifiutato la richiesta (${status}): ${problemTitle ?? 'operazione non consentita'}`
-    )
-    this.name = 'RentriApiError'
-  }
-}
+export { RentriApiError } from './rentri-http-resilienza'
 
 /**
  * Opzioni configurabili del polling NONBLOCK_PULL di {@link RENTRIApiClient.attendiEsito}.
@@ -511,16 +578,64 @@ export interface OpzioniPollingEsito {
 }
 
 /**
+ * Esito di creazione di un nuovo FIR (`EsitoNuovoFormularioModel`, contratto
+ * ufficiale, formulari.yaml righe 9503-9512). È una delle nove varianti del
+ * `oneOf` di `EsitoFormularioModel.esito` (formulari.yaml righe 9381-9392,
+ * `EsitoCommonModel | EsitoNuovoFormularioModel | EsitoGetHashPerFirmaModel |
+ * EsitoAddAllegatoModel | EsitoValidaXfirModel | EsitoUploadXfirModel |
+ * EsitoCaricaCopiaCartaceaModel | EsitoCaricaCopiaDigitaleModel |
+ * EsitoEstraiDatiXfirModel`): il numero ufficiale RENTRI esiste SOLO in
+ * questa variante (l'esito di una creazione), non al primo livello di
+ * `EsitoFormularioModel` e non nelle altre otto varianti.
+ */
+export interface EsitoNuovoFormularioModel {
+  numero_fir?: string | null
+}
+
+/**
  * Esito di una transazione completata (`EsitoFormularioModel`, contratto
  * ufficiale, formulari.yaml righe 9378-9414). Sono garantiti sempre
  * presenti `errore` e `validazione`; gli altri campi del modello
- * (`transazione_id`, `tipo`, `esito`, `tempo_elaborazione`) arrivano così
- * come restituiti da `/result`.
+ * (`transazione_id`, `tipo`, `tempo_elaborazione`) arrivano così come
+ * restituiti da `/result`.
+ *
+ * `esito` è il campo polimorfo (`oneOf`) del contratto: per la creazione di
+ * un formulario risolve in {@link EsitoNuovoFormularioModel} (che porta
+ * `numero_fir`); per le altre operazioni assume una forma diversa, non
+ * modellata qui perché non serve a questo client. Non va MAI assunto che
+ * `numero_fir` sia presente — usare {@link estraiNumeroFirDaEsito}, che
+ * verifica esplicitamente la forma prima di leggerlo.
  */
 export interface EsitoFormulario {
   errore: boolean
   validazione: unknown[]
+  esito?: EsitoNuovoFormularioModel | Record<string, unknown> | null
   [key: string]: unknown
+}
+
+/**
+ * Estrae il numero ufficiale RENTRI (`numero_fir`) da un esito di
+ * transazione, se e solo se l'esito è quello di una creazione di formulario
+ * e il campo è valorizzato con una stringa non vuota. Restituisce
+ * `undefined` in ogni altro caso (altra variante del `oneOf`, `esito`
+ * assente, `numero_fir` assente/vuoto): il chiamante non deve MAI sostituire
+ * un numero mancante con un altro identificativo (es. `transazione_id`, che
+ * è tecnico e non il numero ufficiale — v. Task 3-bis, R0).
+ *
+ * **Limite dichiarato**: la fake RENTRI usata per i test contro l'oracolo
+ * accetta qualunque corpo di controllo (riserva nota in
+ * `docs/contracts/rentri/FEDELTA.md`) — questa funzione dimostra che il
+ * client legge correttamente `numero_fir` quando è presente nella forma
+ * prevista dal contratto, non che l'ente lo restituisca davvero in quella
+ * forma.
+ */
+export function estraiNumeroFirDaEsito(esito: EsitoFormulario): string | undefined {
+  const payload = esito.esito
+  if (!payload || typeof payload !== 'object' || !('numero_fir' in payload)) {
+    return undefined
+  }
+  const numeroFir = (payload as EsitoNuovoFormularioModel).numero_fir
+  return typeof numeroFir === 'string' && numeroFir.trim() !== '' ? numeroFir : undefined
 }
 
 /**
@@ -557,4 +672,66 @@ export interface FormularioModel {
   dati_trasbordi_parziali?: unknown[] | null
   dati_soste_tecniche?: unknown[] | null
   dati_destinazioni_successive?: unknown[] | null
+}
+
+/**
+ * Filtri di {@link RENTRIApiClient.cercaFormulari} (`GET /`, formulari.yaml
+ * righe 15-172). `identificativoSoggetto` e `numIscrSito` sono mutuamente
+ * esclusivi: esattamente uno dei due deve essere valorizzato (righe 29 e
+ * 45) — il client lo verifica prima di contattare RENTRI.
+ */
+export interface FiltriRicercaFormulari {
+  /** Codice fiscale di un soggetto coinvolto nel FIR, indipendentemente dal ruolo o da chi l'ha creato. */
+  identificativoSoggetto?: string
+  /** Numero di iscrizione dell'unità locale per cui è stata acquisita la visibilità. */
+  numIscrSito?: string
+  /** Paginazione (`Paging-Page`/`Paging-PageSize`): default page=1, pageSize=100, max pageSize=1000 (righe 112-129). */
+  paging?: {
+    page?: number
+    pageSize?: number
+  }
+}
+
+/**
+ * Elemento della lista restituita da `GET /` (`FormularioItemResult`,
+ * formulari.yaml righe 9686-9800). Solo i campi di primo livello utili alla
+ * ricerca/aggancio sono modellati qui: gli oggetti anagrafici annidati
+ * (produttore, destinatari, trasportatori, ecc.) non servono a questo task.
+ */
+export interface FormularioItemResult {
+  numero_fir?: string | null
+  data_emissione?: string | null
+  num_iscr_sito?: string | null
+  identificativo_soggetto?: string | null
+  data_creazione?: string | null
+  codice_eer?: string | null
+  quantita?: number | null
+  unita_misura?: string | null
+  stato_fisico?: string | null
+  caratteristiche_pericolo?: string | null
+  descrizione_rifiuto?: string | null
+  stato?: string | null
+  is_upload?: boolean | null
+  trasformato_in_cartaceo?: boolean | null
+  versione?: number | null
+  /**
+   * Indica se il formulario è già stato acquisito in visibilità da almeno
+   * un'unità locale diversa da quella che l'ha creato, riconducibile al
+   * soggetto per cui viene fatta la richiesta (formulari.yaml riga 9794).
+   * È il modo corretto di sapere se un formulario trovato va ancora
+   * agganciato: non richiede una seconda chiamata.
+   */
+  visibilita_sito_acquisita?: boolean | null
+  [key: string]: unknown
+}
+
+/** Esito paginato di {@link RENTRIApiClient.cercaFormulari}, header `Paging-*` della risposta (righe 137-157). */
+export interface RisultatoRicercaFormulari {
+  risultati: FormularioItemResult[]
+  paging: {
+    page: number
+    pageSize: number
+    pageCount: number
+    totalRecordCount: number
+  }
 }

@@ -41,6 +41,14 @@ export class RENTRISyncService {
   }
 
   /**
+   * Conferma il legame RENTRI proposto in modalità ibrida, promuovendolo a
+   * legame ufficiale (v. FIR.confermaLegameRENTRI nel dominio).
+   */
+  confermaLegame(firId: string): Observable<{ numeroFir: string }> {
+    return this.http.post<{ numeroFir: string }>(`${this.baseUrl}/fir/${firId}/conferma-legame`, {})
+  }
+
+  /**
    * Batch sync multiple FIRs to RENTRI
    */
   batchSync(
@@ -195,8 +203,23 @@ export interface SyncLogEntry {
   firId: string
   status: 'SUCCESS' | 'FAILURE' | 'PENDING'
   attempt: number
+  /** Messaggio tecnico (title/detail del ProblemDetails, o esito di validazione): log tecnico, non per l'utente. */
   errorMessage?: string
   errorCode?: string
+  /**
+   * Messaggio azionabile pronto per l'utente (R1 Task 5) — traduzione di
+   * errorCode/errorMessage. Da mostrare al posto di errorMessage; errorMessage
+   * resta disponibile solo per diagnosi tecnica (es. in un tooltip).
+   */
+  messaggio?: string
+  /**
+   * Azione proposta per questo fallimento: RIPROVA abilita un pulsante
+   * «Riprova», VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA
+   * nasconde qualunque azione manuale (v. backend rentri-error-presentation.ts).
+   */
+  azione?: 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA'
+  /** Campo del formulario indicato da RENTRI come causa del rifiuto (solo errori di validazione). */
+  campo?: string
   protocolNumber?: string
   syncedAt?: Date
   durationMs?: number

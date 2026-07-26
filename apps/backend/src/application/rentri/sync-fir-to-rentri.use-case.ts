@@ -2,7 +2,15 @@ import { Injectable } from '@nestjs/common'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainEventsService } from '../../core/domain-events.service'
 import { DomainException } from '../../domain/shared/domain-exception'
-import { RentriApiError } from '../../infrastructure/rentri/rentri-api.client'
+import { FIR, FIRStato } from '../../domain/fir/aggregates/fir.aggregate'
+import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
+import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
+import { IDomainEvent } from '../../domain/shared/domain-event.interface'
+import {
+  RENTRIApiClient,
+  RentriApiError,
+  estraiNumeroFirDaEsito,
+} from '../../infrastructure/rentri/rentri-api.client'
 
 /**
  * Sync FIR to RENTRI Use Case
@@ -35,9 +43,16 @@ import { RentriApiError } from '../../infrastructure/rentri/rentri-api.client'
 @Injectable()
 export class SyncFIRToRENTRIUseCase {
   constructor(
-    private readonly firRepository: any, // IFIRRepository - will be injected
-    private readonly rentriApiClient: any, // RENTRIApiClient - will be injected
-    private readonly syncLogRepository: any, // IRENTRISyncLogRepository - will be injected
+    // Interfaccia di dominio: iniettata in produzione tramite la useFactory di
+    // RentriSyncModule (vedi rentri-sync.module.ts), che risolve il token
+    // esplicitamente — un'interfaccia TS sparisce a runtime e Nest non può
+    // risolverla da un tipo di parametro senza un token o senza una factory
+    // che la costruisca a mano (il difetto ricorrente in questo progetto:
+    // repository iniettati per interfaccia senza @Inject/useFactory falliscono
+    // solo a runtime, mai a compile time).
+    private readonly firRepository: IFIRRepository,
+    private readonly rentriApiClient: RENTRIApiClient,
+    private readonly syncLogRepository: RENTRISyncLogRepository,
     private readonly domainEvents: DomainEventsService,
     private readonly logger: LoggerService
   ) {
@@ -50,7 +65,8 @@ export class SyncFIRToRENTRIUseCase {
   async execute(
     firId: string,
     tenantId: string,
-    correlationId?: string
+    correlationId?: string,
+    opzioni?: SyncFIRToRENTRIOpzioni
   ): Promise<SyncFIRToRENTRIResult> {
     const startTime = Date.now()
 
@@ -100,36 +116,95 @@ export class SyncFIRToRENTRIUseCase {
         const esito = await this.rentriApiClient.attendiEsito(tenantId, transazioneId)
 
         if (!esito.errore) {
-          // Successo - il contratto non restituisce un "protocolNumber"
-          // dedicato per questo sottoinsieme di EsitoFormularioModel: si usa
-          // la transazione_id come riferimento della trasmissione riuscita.
-          fir.markRENTRISynced(transazioneId, correlationId)
+          // Il numero ufficiale RENTRI vive annidato in `esito.esito`
+          // (`EsitoNuovoFormularioModel.numero_fir`, v.
+          // `estraiNumeroFirDaEsito`): la `transazione_id` è solo
+          // l'identificativo tecnico della chiamata, non il numero del FIR.
+          const numeroFir = estraiNumeroFirDaEsito(esito)
+
+          if (!numeroFir) {
+            // La transazione RENTRI è stata elaborata senza errori
+            // dichiarati, ma l'esito non porta il numero ufficiale: meglio
+            // nessun legame che uno inventato sulla transazione tecnica.
+            // Senza il numero ufficiale il FIR non soddisfa il criterio di
+            // uscita di R0 (rilettura con numero ufficiale) — trattato come
+            // fallimento, non come successo silenzioso.
+            const errorMessage =
+              'Esito RENTRI privo del numero ufficiale (numero_fir): impossibile registrare il legame'
+
+            fir.markRENTRISyncFailed(errorMessage, 'RENTRI_MISSING_NUMERO_FIR', correlationId)
+
+            const duration = Date.now() - startTime
+            const failureLog = syncLog.markAsFailure({
+              responsePayload: JSON.stringify(esito),
+              errorMessage,
+              errorCode: 'RENTRI_MISSING_NUMERO_FIR',
+              durationMs: duration,
+            })
+
+            await this.firRepository.save(fir)
+            await this.syncLogRepository.save(failureLog)
+            await this.publishDomainEvents(fir)
+
+            this.logger.warn(`FIR sync a RENTRI senza numero ufficiale nell'esito`, {
+              firId,
+              transazioneId,
+            })
+
+            const willRetry = fir.needsRENTRIRetry()
+
+            return {
+              success: false,
+              error: errorMessage,
+              willRetry,
+              attempts: fir.rentriSyncStatus.getAttempts(),
+              nextRetryAt: willRetry ? fir.getNextRENTRIRetryAt() : undefined,
+            }
+          }
+
+          // Modalità IBRIDA (opzioni.richiedeConferma): la trasmissione è
+          // partita da sola ma il legame NON diventa ufficiale finché un
+          // utente non lo conferma esplicitamente (v.
+          // `FIR.proporreLegameRENTRI`/`ConfermaLegameRENTRIUseCase`). Ogni
+          // altro caso (manuale, batch, automatica) chiude subito il legame
+          // come sempre.
+          if (opzioni?.richiedeConferma) {
+            fir.proporreLegameRENTRI(numeroFir, transazioneId, correlationId)
+          } else {
+            fir.markRENTRISynced(numeroFir, transazioneId, correlationId)
+          }
 
           // Update sync log
           const duration = Date.now() - startTime
           const successLog = syncLog.markAsSuccess({
             responsePayload: JSON.stringify(esito),
-            protocolNumber: transazioneId,
+            protocolNumber: numeroFir,
             durationMs: duration,
           })
 
           // Persist changes
-          await this.firRepository.update(firId, fir)
+          await this.firRepository.save(fir)
           await this.syncLogRepository.save(successLog)
 
           // Publish domain events
           await this.publishDomainEvents(fir)
 
-          this.logger.info(`FIR synced to RENTRI successfully`, {
-            firId,
-            protocolNumber: transazioneId,
-            duration,
-          })
+          this.logger.info(
+            opzioni?.richiedeConferma
+              ? `FIR trasmesso a RENTRI, in attesa di conferma esplicita (modalità IBRIDA)`
+              : `FIR synced to RENTRI successfully`,
+            {
+              firId,
+              protocolNumber: numeroFir,
+              duration,
+            }
+          )
 
           return {
             success: true,
-            protocolNumber: transazioneId,
+            protocolNumber: numeroFir,
             attempts: fir.rentriSyncStatus.getAttempts(),
+            inAttesaDiConferma: opzioni?.richiedeConferma ?? false,
           }
         } else {
           // Esito negativo della transazione RENTRI - fallimento permanente
@@ -147,7 +222,7 @@ export class SyncFIRToRENTRIUseCase {
             durationMs: duration,
           })
 
-          await this.firRepository.update(firId, fir)
+          await this.firRepository.save(fir)
           await this.syncLogRepository.save(failureLog)
           await this.publishDomainEvents(fir)
 
@@ -175,7 +250,21 @@ export class SyncFIRToRENTRIUseCase {
             ? (apiError.problemDetail ?? apiError.problemTitle ?? apiError.message)
             : apiError.message || 'RENTRI API error'
 
-        const errorCode = nonRitentabile ? 'RENTRI_FORBIDDEN' : 'RENTRI_API_ERROR'
+        // 429/423 sono una famiglia a parte rispetto a 5xx/rete (R1 Task 5):
+        // l'ente ha sospeso le richieste (423 = ha bandito il chiamante per
+        // troppe richieste non valide), il messaggio all'utente deve dirlo
+        // esplicitamente e MAI offrire un «Riprova» manuale — un ritentativo
+        // qui peggiora la situazione, a differenza di un 5xx/timeout dove
+        // ritentare più tardi è normale. `apiError.status` esiste solo se
+        // l'errore è un RentriApiError (v. RENTRIApiClient); un errore di
+        // rete/timeout puro non ha uno status HTTP e ricade in
+        // RENTRI_API_ERROR come sempre.
+        const status = apiError instanceof RentriApiError ? apiError.status : undefined
+        const errorCode = nonRitentabile
+          ? 'RENTRI_FORBIDDEN'
+          : status === 429 || status === 423
+            ? 'RENTRI_RATE_LIMITED'
+            : 'RENTRI_API_ERROR'
 
         fir.markRENTRISyncFailed(errorMessage, errorCode, correlationId)
 
@@ -186,7 +275,7 @@ export class SyncFIRToRENTRIUseCase {
           durationMs: duration,
         })
 
-        await this.firRepository.update(firId, fir)
+        await this.firRepository.save(fir)
         await this.syncLogRepository.save(failureLog)
         await this.publishDomainEvents(fir)
 
@@ -221,11 +310,11 @@ export class SyncFIRToRENTRIUseCase {
   /**
    * Create sync log entry
    */
-  private async createSyncLog(fir: any, _startTime: number): Promise<any> {
+  private async createSyncLog(fir: FIR, _startTime: number) {
     const syncLog = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       firId: fir.id,
-      tenantId: fir.tenantId,
+      tenantId: fir.tenantId ?? '',
       attempt: fir.rentriSyncStatus.getAttempts() + 1,
       requestPayload: JSON.stringify(this.convertFIRToPayload(fir)),
     }
@@ -235,32 +324,51 @@ export class SyncFIRToRENTRIUseCase {
 
   /**
    * Publish domain events from FIR aggregate
+   *
+   * NOTA: gli eventi emessi dall'aggregate FIR (`FIREmessoEvent`,
+   * `FIRConsegnatoEvent`, ecc., v. `domain/fir/aggregates/fir.aggregate.ts`)
+   * implementano `DomainEvent` (`{occurredOn, eventName}`, da
+   * `core/domain/aggregate-root.ts`) — un'interfaccia diversa da `IDomainEvent`
+   * (`{eventId, aggregateId, eventType, tenantId, payload, ...}`, da
+   * `domain/shared/domain-event.interface.ts`) attesa da
+   * `DomainEventsService.publish`. Le due famiglie di eventi sono rimaste
+   * incompatibili (nessun `.register(...)` esiste ancora nel progetto): il
+   * cast sotto rende il codice compilabile con i tipi reali (niente più
+   * `any`) ma NON risolve la disallineanza — finché non esiste un adattatore
+   * tra le due forme, `DomainEventsService` non troverà mai un handler per
+   * questi eventi (vedi report R0 Task 4).
    */
-  private async publishDomainEvents(fir: any): Promise<void> {
+  private async publishDomainEvents(fir: FIR): Promise<void> {
     const events = fir.getDomainEvents()
     for (const event of events) {
-      await this.domainEvents.publish(event)
+      await this.domainEvents.publish(event as unknown as IDomainEvent)
     }
     fir.clearDomainEvents()
   }
 
   /**
-   * Get reason why FIR cannot be synced
+   * Get reason why FIR cannot be synced (v. `FIR.canSyncToRENTRI` per le
+   * regole di dominio: stato emesso, non già legato, tentativi disponibili).
    */
-  private getSyncBlockReason(fir: any): string {
-    if (fir.status !== 'COMPLETED') {
-      return `FIR must be completed before sync. Current status: ${fir.status}`
+  private getSyncBlockReason(fir: FIR): string {
+    const statoEmesso =
+      fir.stato === FIRStato.EMESSO ||
+      fir.stato === FIRStato.IN_TRANSITO ||
+      fir.stato === FIRStato.CONSEGNATO
+
+    if (!statoEmesso) {
+      return `FIR deve essere emesso prima della trasmissione a RENTRI. Stato attuale: ${fir.stato}`
     }
 
-    if (fir.rentriSyncStatus.getStatus() === 'SYNCED') {
-      return `FIR already synced with protocol: ${fir.rentriSyncStatus.getProtocolNumber()}`
+    if (fir.rentriNumeroFir) {
+      return `FIR già legato al numero RENTRI: ${fir.rentriNumeroFir}`
     }
 
     if (fir.rentriSyncStatus.getStatus() === 'PERMANENTLY_FAILED') {
-      return 'FIR sync permanently failed. Manual intervention required.'
+      return 'Sincronizzazione RENTRI fallita definitivamente. Richiesto intervento manuale.'
     }
 
-    return 'FIR cannot be synced'
+    return 'FIR non trasmissibile a RENTRI in questo momento'
   }
 
   /**
@@ -283,10 +391,10 @@ export class SyncFIRToRENTRIUseCase {
   /**
    * Convert FIR to RENTRI payload (simplified - actual conversion in API client)
    */
-  private convertFIRToPayload(fir: any): any {
+  private convertFIRToPayload(fir: FIR): any {
     return {
       firId: fir.id,
-      firNumber: fir.firNumber,
+      firNumber: fir.numeroProgressivo,
       // ... other fields
     }
   }
@@ -302,4 +410,19 @@ export interface SyncFIRToRENTRIResult {
   willRetry?: boolean
   attempts: number
   nextRetryAt?: Date | null
+  /** true se il successo NON ha ancora legato il FIR: in attesa di conferma esplicita (modalità IBRIDA). */
+  inAttesaDiConferma?: boolean
+}
+
+/**
+ * Opzioni di esecuzione della sync, decise dalla modalità del tenant
+ * (v. `TrasmettiFIRSecondoModalitaUseCase`).
+ */
+export interface SyncFIRToRENTRIOpzioni {
+  /**
+   * Modalità IBRIDA: un esito positivo non chiude subito il legame
+   * (`FIR.proporreLegameRENTRI` invece di `FIR.markRENTRISynced`) — resta in
+   * attesa di conferma esplicita dell'utente.
+   */
+  richiedeConferma?: boolean
 }

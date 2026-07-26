@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core'
+import { Component, OnInit, inject, signal } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MessageService } from 'primeng/api'
@@ -28,6 +28,12 @@ import {
   AnagraficaSavedEvent,
 } from '../registry/anagrafica-form-dialog.component'
 import { CerSelectComponent } from '../cer/cer-select.component'
+import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
+import { RENTRISyncService } from './services/rentri-sync.service'
+import { AuthService } from '../../core/services/auth.service'
+
+/** Ruoli autorizzati a trasmettere/confermare verso RENTRI (v. RENTRISyncController backend). */
+const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
 
 @Component({
   selector: 'app-fir-list',
@@ -49,6 +55,7 @@ import { CerSelectComponent } from '../cer/cer-select.component'
     InputTextareaModule,
     AnagraficaFormDialogComponent,
     CerSelectComponent,
+    RENTRISyncBadgeComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -143,6 +150,7 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                 <th scope="col">CER</th>
                 <th scope="col">Quantità</th>
                 <th scope="col">Stato</th>
+                <th scope="col">RENTRI</th>
                 <th scope="col">Data creazione</th>
                 <th scope="col" class="col-actions">Azioni</th>
               </tr>
@@ -161,6 +169,19 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                     [value]="getStatoLabel(fir.stato)"
                     [severity]="getStatoSeverity(fir.stato)"
                   />
+                </td>
+                <td>
+                  <app-rentri-sync-badge
+                    *ngIf="mostraStatoRentri(fir)"
+                    [numeroFir]="fir.numeroProgressivo || fir.id"
+                    [rentriSyncStatus]="fir.rentriSyncStatus || 'PENDING'"
+                    [rentriNumeroFir]="fir.rentriNumeroFir"
+                    [rentriNumeroFirProposto]="fir.rentriNumeroFirProposto"
+                    [syncAttempts]="fir.rentriSyncAttempts || 0"
+                    [lastSyncError]="fir.rentriLastSyncError"
+                    [messaggioErrore]="fir.rentriMessaggioErrore"
+                  />
+                  <span *ngIf="!mostraStatoRentri(fir)" class="row-actions__none">—</span>
                 </td>
                 <td>{{ fir.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
                 <td>
@@ -205,18 +226,58 @@ import { CerSelectComponent } from '../cer/cer-select.component'
                       (onClick)="annullaFIR(fir)"
                       [attr.aria-label]="'Annulla FIR ' + (fir.numeroProgressivo || fir.id)"
                     />
-                    <span
-                      *ngIf="fir.stato === 'CONSEGNATO' || fir.stato === 'ANNULLATO'"
-                      class="row-actions__none"
-                      >—</span
-                    >
+                    <!-- Azioni RENTRI: verbi del mestiere, solo quando hanno senso (canManageRENTRI + regole di dominio). -->
+                    <p-button
+                      *ngIf="canTrasmettereRentri(fir)"
+                      label="Trasmetti a RENTRI"
+                      icon="pi pi-send"
+                      size="small"
+                      [outlined]="true"
+                      (onClick)="trasmettiRENTRI(fir)"
+                      [attr.data-testid]="
+                        'fir-rentri-trasmetti-' + (fir.numeroProgressivo || fir.id)
+                      "
+                      [attr.aria-label]="
+                        'Trasmetti a RENTRI il FIR ' + (fir.numeroProgressivo || fir.id)
+                      "
+                    />
+                    <p-button
+                      *ngIf="canRiprovareRentri(fir)"
+                      label="Riprova"
+                      icon="pi pi-refresh"
+                      size="small"
+                      severity="warning"
+                      [outlined]="true"
+                      (onClick)="trasmettiRENTRI(fir)"
+                      [attr.data-testid]="'fir-rentri-riprova-' + (fir.numeroProgressivo || fir.id)"
+                      [attr.aria-label]="
+                        'Riprova la trasmissione RENTRI del FIR ' +
+                        (fir.numeroProgressivo || fir.id)
+                      "
+                    />
+                    <p-button
+                      *ngIf="canConfermareLegameRentri(fir)"
+                      label="Conferma il legame"
+                      icon="pi pi-check-circle"
+                      size="small"
+                      severity="info"
+                      [outlined]="true"
+                      (onClick)="confermaLegameRENTRI(fir)"
+                      [attr.data-testid]="
+                        'fir-rentri-conferma-legame-' + (fir.numeroProgressivo || fir.id)
+                      "
+                      [attr.aria-label]="
+                        'Conferma il legame RENTRI del FIR ' + (fir.numeroProgressivo || fir.id)
+                      "
+                    />
+                    <span *ngIf="isRigaSenzaAzioni(fir)" class="row-actions__none">—</span>
                   </div>
                 </td>
               </tr>
             </ng-template>
             <ng-template pTemplate="emptymessage">
               <tr>
-                <td colspan="6">
+                <td colspan="7">
                   <div class="empty-state">
                     <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
                     <p class="empty-state__title">Nessun FIR trovato</p>
@@ -768,7 +829,7 @@ import { CerSelectComponent } from '../cer/cer-select.component'
       }
 
       .col-actions {
-        width: 18rem;
+        width: 22rem;
       }
       .row-actions {
         display: flex;
@@ -1188,6 +1249,9 @@ export class FirListComponent implements OnInit {
 
   exportMenuItems: MenuItem[] = []
   private lastLoadEvent: any = { first: 0, rows: this.pageSize }
+
+  private readonly rentriSyncService = inject(RENTRISyncService)
+  private readonly authService = inject(AuthService)
 
   constructor(
     private firService: FirService,
@@ -1650,5 +1714,99 @@ export class FirListComponent implements OnInit {
       [FIRStato.ANNULLATO]: 'danger',
     }
     return severityMap[stato]
+  }
+
+  /**
+   * Lo stato RENTRI non ha senso per un FIR mai emesso (BOZZA) o annullato:
+   * mostrare "Da trasmettere" prima ancora dell'emissione confonderebbe
+   * l'operatore. La colonna resta muta (—) in questi due stati.
+   */
+  mostraStatoRentri(fir: FIR): boolean {
+    return fir.stato !== FIRStato.BOZZA && fir.stato !== FIRStato.ANNULLATO
+  }
+
+  /** Ruoli SUPER_ADMIN/ADMIN/OPERATOR: stessi ruoli richiesti dal backend su RENTRISyncController. */
+  private canManageRENTRI(): boolean {
+    const role = this.authService.currentUser()?.role
+    return !!role && RENTRI_ROLES.includes(role)
+  }
+
+  /** Prima trasmissione: nessun tentativo ancora effettuato. */
+  canTrasmettereRentri(fir: FIR): boolean {
+    return !!fir.canSyncToRENTRI && fir.rentriSyncStatus === 'PENDING' && this.canManageRENTRI()
+  }
+
+  /** Un tentativo precedente è fallito ma ce ne sono ancora a disposizione. */
+  canRiprovareRentri(fir: FIR): boolean {
+    return !!fir.canSyncToRENTRI && fir.rentriSyncStatus === 'FAILED' && this.canManageRENTRI()
+  }
+
+  /** Modalità ibrida: c'è una proposta di legame in attesa di conferma esplicita. */
+  canConfermareLegameRentri(fir: FIR): boolean {
+    return !!fir.rentriNumeroFirProposto && !fir.rentriNumeroFir && this.canManageRENTRI()
+  }
+
+  /** Nessuna azione di ciclo vita né RENTRI applicabile: la riga mostra solo il trattino. */
+  isRigaSenzaAzioni(fir: FIR): boolean {
+    const haAzioneCiclo =
+      fir.stato === FIRStato.BOZZA ||
+      fir.stato === FIRStato.EMESSO ||
+      fir.stato === FIRStato.IN_TRANSITO
+    const haAzioneRentri =
+      this.canTrasmettereRentri(fir) ||
+      this.canRiprovareRentri(fir) ||
+      this.canConfermareLegameRentri(fir)
+    return !haAzioneCiclo && !haAzioneRentri
+  }
+
+  /** Trasmette (o ritrasmette) il FIR a RENTRI: verbo del mestiere, non del protocollo. */
+  trasmettiRENTRI(fir: FIR): void {
+    this.rentriSyncService.syncFIR(fir.id).subscribe({
+      next: () => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Trasmissione avviata',
+          detail: 'Il FIR è stato messo in coda per la trasmissione a RENTRI',
+        })
+        this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
+      },
+      error: err => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, 'Errore nella trasmissione a RENTRI'),
+        })
+      },
+    })
+  }
+
+  /** Conferma il legame RENTRI proposto in modalità ibrida, promuovendolo a legame ufficiale. */
+  confermaLegameRENTRI(fir: FIR): void {
+    this.confirmationService.confirm({
+      header: 'Conferma legame RENTRI',
+      message: `Confermi il legame con il numero FIR RENTRI ${fir.rentriNumeroFirProposto}?`,
+      icon: 'pi pi-check-circle',
+      acceptLabel: 'Conferma',
+      rejectLabel: 'Annulla',
+      accept: () => {
+        this.rentriSyncService.confermaLegame(fir.id).subscribe({
+          next: () => {
+            this.messageService.add({
+              severity: 'success',
+              summary: 'Legame confermato',
+              detail: 'Il numero FIR RENTRI è ora il legame ufficiale',
+            })
+            this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
+          },
+          error: err => {
+            this.messageService.add({
+              severity: 'error',
+              summary: 'Errore',
+              detail: this.extractError(err, 'Errore nella conferma del legame RENTRI'),
+            })
+          },
+        })
+      },
+    })
   }
 }

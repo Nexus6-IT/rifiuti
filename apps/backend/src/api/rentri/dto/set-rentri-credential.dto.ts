@@ -1,5 +1,14 @@
-import { IsString, IsNotEmpty, IsOptional, IsIn, ValidateIf, IsBase64 } from 'class-validator'
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsIn,
+  ValidateIf,
+  IsBase64,
+  Matches,
+} from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { NUM_ISCR_SITO_PATTERN } from '../../../infrastructure/rentri/rentri-credential.service'
 
 /**
  * DTO per impostare/aggiornare la credenziale RENTRI del tenant corrente.
@@ -77,4 +86,18 @@ export class SetRentriCredentialDto {
   @IsString()
   @IsNotEmpty()
   environment?: string
+
+  @ApiPropertyOptional({
+    deprecated: true,
+    example: 'OP1234ABC123456-RM1234',
+    description:
+      "DEPRECATO (R2 multi-sede): usare invece POST /rentri/unita-locali. Mantenuto solo per compatibilità finché la migrazione del dato esistente non è verificata in produzione (stessa cautela di rentriProtocolNumber). Numero di iscrizione dell'unità locale RENTRI del tenant (num_iscr_sito).",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(NUM_ISCR_SITO_PATTERN, {
+    message:
+      "numIscrSito non valido: formato atteso dell'unità locale RENTRI (es. OP1234ABC123456-RM1234)",
+  })
+  numIscrSito?: string
 }

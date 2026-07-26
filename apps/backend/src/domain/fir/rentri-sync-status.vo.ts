@@ -10,24 +10,62 @@ import { DomainException } from '../shared/domain-exception'
  * - SYNCING: Sync in progress
  * - SYNCED: Successfully synced to RENTRI
  * - FAILED: Sync failed, will retry
- * - PERMANENTLY_FAILED: Max retries exceeded, manual intervention required
+ * - PERMANENTLY_FAILED: Max retries exceeded, OR last error non-retryable
+ *   (manual intervention required)
  *
  * Retry Strategy:
  * - Max attempts: 5
  * - Exponential backoff: 2^attempt * 60 seconds
  * - Backoff cap: 60 minutes
+ * - Un `lastErrorCode` non ritentabile (v. `NON_RETRYABLE_ERROR_CODES`) ferma
+ *   il ciclo subito, indipendentemente dal conteggio dei tentativi: il
+ *   conteggio resta il limite SUPERIORE del numero di tentativi, non l'unico
+ *   criterio per decidere se ritentare.
  */
 export class RENTRISyncStatus {
   private static readonly MAX_ATTEMPTS = 5
   private static readonly BASE_BACKOFF_SECONDS = 60
   private static readonly MAX_BACKOFF_SECONDS = 3600 // 60 minutes
 
+  /**
+   * Codici errore per cui ritentare non ha alcun senso, indipendentemente dai
+   * tentativi residui: la causa non è transitoria e un nuovo tentativo
+   * fallirebbe allo stesso modo.
+   *
+   * - `RENTRI_FORBIDDEN`: 403, credenziale/certificato non valido o
+   *   operazione non consentita (v. `RentriApiError.retryable === false` in
+   *   `RENTRIApiClient`). Il contratto RENTRI tratta il 423 come ban del
+   *   chiamante per troppe richieste non valide: insistere su un 403 con lo
+   *   stesso payload è esattamente il comportamento che porta al ban.
+   * - `RENTRI_VALIDATION_ERROR`: l'ente ha elaborato la transazione e ha
+   *   rifiutato il contenuto del formulario — serve una correzione dei dati,
+   *   non un nuovo tentativo automatico (v. `SyncFIRToRENTRIUseCase`, ramo
+   *   esito negativo).
+   *
+   * Elenco chiuso e mantenuto qui perché la decisione "questo fallimento
+   * ferma il ciclo" è una politica di dominio, non un dettaglio di trasporto:
+   * si applica sia al tentativo appena eseguito (via `failed()`) sia a un
+   * qualunque lettore futuro dello stato persistito (job/scheduler che
+   * ricostruisce da `reconstitute()` e chiama `canRetry()`), non solo al
+   * percorso che ha appena osservato l'errore in diretta.
+   */
+  private static readonly NON_RETRYABLE_ERROR_CODES: ReadonlySet<string> = new Set([
+    'RENTRI_FORBIDDEN',
+    'RENTRI_VALIDATION_ERROR',
+  ])
+
   private constructor(
     private readonly status: 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED' | 'PERMANENTLY_FAILED',
     private readonly attempts: number = 0,
     private readonly lastError?: string,
     private readonly protocolNumber?: string,
-    private readonly syncedAt?: Date
+    private readonly syncedAt?: Date,
+    // Codice macchina dell'ultimo fallimento (v. SyncFIRToRENTRIUseCase,
+    // es. RENTRI_FORBIDDEN/RENTRI_RATE_LIMITED/RENTRI_VALIDATION_ERROR):
+    // senza distinguerlo da `lastError` (testo libero) non è possibile
+    // decidere in modo affidabile se offrire «Riprova» — v. R1 Task 5,
+    // rentri-error-presentation.ts.
+    private readonly lastErrorCode?: string
   ) {
     this.validate()
   }
@@ -57,9 +95,36 @@ export class RENTRISyncStatus {
   }
 
   /**
+   * Ricostruisce lo stato da valori già persistiti (righe `firs.rentri_*`),
+   * senza passare dalle transizioni di dominio (markAsSyncing/Synced/Failed):
+   * quelle producono un NUOVO stato da uno stato corrente, mentre qui si
+   * riparte da zero con i valori così come sono in DB. Necessario perché il
+   * costruttore è privato — senza questa fabbrica il repository non avrebbe
+   * modo di ricostruire l'aggregate al reload (esattamente il tranello della
+   * lettura dimenticata: vedi persistSignatures/firmeFromRecord).
+   */
+  static reconstitute(params: {
+    status: 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED' | 'PERMANENTLY_FAILED'
+    attempts: number
+    lastError?: string
+    protocolNumber?: string
+    syncedAt?: Date
+    lastErrorCode?: string
+  }): RENTRISyncStatus {
+    return new RENTRISyncStatus(
+      params.status,
+      params.attempts,
+      params.lastError,
+      params.protocolNumber,
+      params.syncedAt,
+      params.lastErrorCode
+    )
+  }
+
+  /**
    * Create failed status with error
    */
-  static failed(attempts: number, error: string): RENTRISyncStatus {
+  static failed(attempts: number, error: string, errorCode?: string): RENTRISyncStatus {
     if (attempts < 0) {
       throw new DomainException('Attempts must be non-negative')
     }
@@ -67,8 +132,11 @@ export class RENTRISyncStatus {
       throw new DomainException('Error message is required for failed status')
     }
 
-    const status = attempts >= RENTRISyncStatus.MAX_ATTEMPTS ? 'PERMANENTLY_FAILED' : 'FAILED'
-    return new RENTRISyncStatus(status, attempts, error)
+    const status =
+      attempts >= RENTRISyncStatus.MAX_ATTEMPTS || RENTRISyncStatus.isNonRetryable(errorCode)
+        ? 'PERMANENTLY_FAILED'
+        : 'FAILED'
+    return new RENTRISyncStatus(status, attempts, error, undefined, undefined, errorCode)
   }
 
   /**
@@ -94,21 +162,46 @@ export class RENTRISyncStatus {
   /**
    * Transition to failed state (increments attempts)
    */
-  markAsFailed(error: string): RENTRISyncStatus {
+  markAsFailed(error: string, errorCode?: string): RENTRISyncStatus {
     if (this.status === 'SYNCED') {
       throw new DomainException('Cannot mark synced FIR as failed')
     }
-    return RENTRISyncStatus.failed(this.attempts + 1, error)
+    return RENTRISyncStatus.failed(this.attempts + 1, error, errorCode)
   }
 
   /**
-   * Check if retry is allowed
+   * Check if retry is allowed.
+   *
+   * Il conteggio dei tentativi da solo non basta: un `lastErrorCode` non
+   * ritentabile (v. `NON_RETRYABLE_ERROR_CODES`) blocca subito il ciclo,
+   * anche quando `attempts` non ha ancora raggiunto `MAX_ATTEMPTS`. Il
+   * controllo resta qui — non solo in `failed()` — a difesa di uno stato
+   * `FAILED` ricostruito da dati persistiti prima di questa correzione (righe
+   * con `rentri_sync_status = FAILED`, `rentri_last_sync_error_code =
+   * RENTRI_FORBIDDEN` e tentativi ancora disponibili): senza questo secondo
+   * controllo quelle righe risulterebbero ancora ritentabili finché non
+   * vengono corrette da un nuovo fallimento.
    */
   canRetry(): boolean {
+    if (RENTRISyncStatus.isNonRetryable(this.lastErrorCode)) {
+      return false
+    }
+
     return (
       this.status === 'PENDING' ||
       (this.status === 'FAILED' && this.attempts < RENTRISyncStatus.MAX_ATTEMPTS)
     )
+  }
+
+  /**
+   * Vero se il codice errore indica una causa non transitoria (v.
+   * `NON_RETRYABLE_ERROR_CODES`). Un codice assente o sconosciuto è trattato
+   * come ritentabile — stessa scelta prudente di `traduciErroreRentri`
+   * (`rentri-error-presentation.ts`), che tratta un codice non riconosciuto
+   * come la famiglia transitoria.
+   */
+  private static isNonRetryable(errorCode?: string): boolean {
+    return !!errorCode && RENTRISyncStatus.NON_RETRYABLE_ERROR_CODES.has(errorCode)
   }
 
   /**
@@ -145,6 +238,10 @@ export class RENTRISyncStatus {
 
   getLastError(): string | undefined {
     return this.lastError
+  }
+
+  getLastErrorCode(): string | undefined {
+    return this.lastErrorCode
   }
 
   getProtocolNumber(): string | undefined {

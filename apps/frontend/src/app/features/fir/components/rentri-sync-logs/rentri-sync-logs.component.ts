@@ -16,13 +16,13 @@ import {
 } from '../../services/rentri-sync.service'
 
 /**
- * RENTRI Sync Logs Viewer Component
+ * Componente di visualizzazione dei log di sincronizzazione RENTRI.
  *
- * Displays audit logs of all RENTRI sync attempts.
- * Supports filtering by status, date range, and specific FIR.
- * Shows pagination for large result sets.
+ * Mostra la cronologia (audit) di tutti i tentativi di trasmissione a RENTRI.
+ * Supporta il filtro per stato, intervallo di date e FIR specifico.
+ * Gestisce la paginazione per grandi quantità di risultati.
  *
- * Usage:
+ * Uso:
  * ```html
  * <app-rentri-sync-logs [firId]="selectedFirId"></app-rentri-sync-logs>
  * ```
@@ -43,7 +43,7 @@ import {
     MessageModule,
   ],
   template: `
-    <p-card>
+    <p-card data-testid="rentri-sync-logs">
       <ng-template pTemplate="header">
         <div class="flex justify-content-between align-items-center p-3">
           <h3 class="m-0">Log sincronizzazione RENTRI</h3>
@@ -55,12 +55,13 @@ import {
             [loading]="loading()"
             pTooltip="Aggiorna log"
             ariaLabel="Aggiorna log"
+            data-testid="rentri-sync-logs-refresh"
           >
           </p-button>
         </div>
       </ng-template>
 
-      <!-- Filters -->
+      <!-- Filtri -->
       <div class="grid mb-3">
         <div class="col-12 md:col-3">
           <label for="status-filter" class="block mb-2">Stato</label>
@@ -74,6 +75,7 @@ import {
             [showClear]="true"
             (onChange)="onFilterChange()"
             styleClass="w-full"
+            data-testid="rentri-sync-logs-filter-status"
           >
           </p-dropdown>
         </div>
@@ -89,6 +91,7 @@ import {
             (onSelect)="onFilterChange()"
             (onClear)="onFilterChange()"
             styleClass="w-full"
+            data-testid="rentri-sync-logs-filter-date-from"
           >
           </p-calendar>
         </div>
@@ -104,6 +107,7 @@ import {
             (onSelect)="onFilterChange()"
             (onClear)="onFilterChange()"
             styleClass="w-full"
+            data-testid="rentri-sync-logs-filter-date-to"
           >
           </p-calendar>
         </div>
@@ -115,17 +119,24 @@ import {
             [text]="true"
             (onClick)="resetFilters()"
             styleClass="w-full"
+            data-testid="rentri-sync-logs-reset-filters"
           >
           </p-button>
         </div>
       </div>
 
-      <!-- Error Message -->
+      <!-- Messaggio di errore -->
       @if (errorMessage()) {
-        <p-message severity="error" [text]="errorMessage()!" styleClass="w-full mb-3"> </p-message>
+        <p-message
+          severity="error"
+          [text]="errorMessage()!"
+          styleClass="w-full mb-3"
+          data-testid="rentri-sync-logs-error"
+        >
+        </p-message>
       }
 
-      <!-- Logs Table -->
+      <!-- Tabella dei log -->
       <p-table
         [value]="logs()"
         [loading]="loading()"
@@ -136,6 +147,7 @@ import {
         (onLazyLoad)="onPageChange($event)"
         [rowsPerPageOptions]="[10, 20, 50, 100]"
         styleClass="p-datatable-sm"
+        data-testid="rentri-sync-logs-table"
       >
         <ng-template pTemplate="header">
           <tr>
@@ -155,7 +167,7 @@ import {
         </ng-template>
 
         <ng-template pTemplate="body" let-log>
-          <tr>
+          <tr [attr.data-testid]="'rentri-sync-logs-row-' + log.id">
             <td>{{ log.createdAt | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
             @if (!firId) {
               <td>
@@ -183,11 +195,21 @@ import {
               }
             </td>
             <td>
-              @if (log.errorMessage) {
+              @if (log.messaggio) {
+                <span
+                  class="text-sm sync-error"
+                  [pTooltip]="'Dettaglio tecnico: ' + log.errorMessage"
+                  tooltipPosition="left"
+                  [attr.data-testid]="'rentri-sync-logs-error-message-' + log.id"
+                >
+                  {{ truncateError(log.messaggio) }}
+                </span>
+              } @else if (log.errorMessage) {
                 <span
                   class="text-sm sync-error"
                   [pTooltip]="log.errorMessage"
                   tooltipPosition="left"
+                  [attr.data-testid]="'rentri-sync-logs-error-message-' + log.id"
                 >
                   {{ truncateError(log.errorMessage) }}
                 </span>
@@ -200,7 +222,11 @@ import {
 
         <ng-template pTemplate="emptymessage">
           <tr>
-            <td [attr.colspan]="firId ? 6 : 7" class="text-center py-4">
+            <td
+              [attr.colspan]="firId ? 6 : 7"
+              class="text-center py-4"
+              data-testid="rentri-sync-logs-empty"
+            >
               <i class="pi pi-info-circle text-2xl text-tertiary mb-2"></i>
               <p class="text-tertiary m-0">Nessun log di sincronizzazione trovato</p>
             </td>
@@ -230,13 +256,13 @@ export class RENTRISyncLogsComponent implements OnInit {
   private readonly rentriSyncService = inject(RENTRISyncService)
 
   /**
-   * Optional FIR ID to filter logs
-   * If provided, only shows logs for this FIR
+   * ID del FIR per cui filtrare i log.
+   * Se valorizzato, mostra solo i log relativi a questo FIR.
    */
   @Input() firId?: string
 
   /**
-   * Page size for pagination
+   * Dimensione della pagina per la paginazione.
    */
   @Input() pageSize: number = 20
 
@@ -268,7 +294,7 @@ export class RENTRISyncLogsComponent implements OnInit {
   }
 
   /**
-   * Load logs from API
+   * Carica i log dall'API.
    */
   protected loadLogs(): void {
     this.loading.set(true)
@@ -279,17 +305,17 @@ export class RENTRISyncLogsComponent implements OnInit {
       limit: this.pageSize,
     }
 
-    // Add FIR ID filter if provided
+    // Filtro per ID FIR, se fornito
     if (this.firId) {
       params.firId = this.firId
     }
 
-    // Add status filter
+    // Filtro per stato
     if (this.filters.status) {
       params.status = this.filters.status
     }
 
-    // Add date filters
+    // Filtri per data
     if (this.filters.dateFrom) {
       params.dateFrom = this.formatDate(this.filters.dateFrom)
     }
@@ -305,7 +331,7 @@ export class RENTRISyncLogsComponent implements OnInit {
         this.loading.set(false)
       },
       error: error => {
-        console.error('Error loading sync logs:', error)
+        console.error('Errore nel caricamento dei log di sincronizzazione:', error)
         this.errorMessage.set('Impossibile caricare i log di sincronizzazione. Riprova.')
         this.loading.set(false)
       },
@@ -313,7 +339,7 @@ export class RENTRISyncLogsComponent implements OnInit {
   }
 
   /**
-   * Handle page change
+   * Gestisce il cambio pagina.
    */
   protected onPageChange(event: any): void {
     this.currentPage = event.first / event.rows + 1
@@ -322,7 +348,7 @@ export class RENTRISyncLogsComponent implements OnInit {
   }
 
   /**
-   * Handle filter change
+   * Gestisce il cambio filtro.
    */
   protected onFilterChange(): void {
     this.currentPage = 1
@@ -330,7 +356,7 @@ export class RENTRISyncLogsComponent implements OnInit {
   }
 
   /**
-   * Reset all filters
+   * Azzera tutti i filtri.
    */
   protected resetFilters(): void {
     this.filters = {
@@ -343,7 +369,7 @@ export class RENTRISyncLogsComponent implements OnInit {
   }
 
   /**
-   * Get status severity for tag color
+   * Determina la severity del tag colorato in base allo stato.
    */
   protected getStatusSeverity(status: string): 'success' | 'danger' | 'warning' {
     switch (status) {
@@ -359,14 +385,14 @@ export class RENTRISyncLogsComponent implements OnInit {
   }
 
   /**
-   * Format FIR ID for display (show first 8 chars)
+   * Formatta l'ID del FIR per la visualizzazione (primi 8 caratteri).
    */
   protected formatFirId(firId: string): string {
     return firId.substring(0, 8) + '...'
   }
 
   /**
-   * Format duration from milliseconds
+   * Formatta la durata a partire dai millisecondi.
    */
   protected formatDuration(ms: number): string {
     if (ms < 1000) {
@@ -381,14 +407,14 @@ export class RENTRISyncLogsComponent implements OnInit {
   }
 
   /**
-   * Truncate error message for display
+   * Tronca il messaggio di errore per la visualizzazione.
    */
   protected truncateError(error: string, maxLength: number = 50): string {
     return error.length > maxLength ? error.substring(0, maxLength) + '...' : error
   }
 
   /**
-   * Format date to YYYY-MM-DD
+   * Formatta la data in formato YYYY-MM-DD.
    */
   private formatDate(date: Date): string {
     const year = date.getFullYear()

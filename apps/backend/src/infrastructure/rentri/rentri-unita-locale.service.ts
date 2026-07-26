@@ -1,0 +1,216 @@
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
+import { PrismaService } from '../persistence/prisma.service'
+import { NUM_ISCR_SITO_PATTERN } from './rentri-credential.service'
+
+/** Unità locale RENTRI di un tenant (mai segreti: solo dati anagrafici). */
+export interface RentriUnitaLocale {
+  id: string
+  numIscrSito: string
+  denominazione: string
+  principale: boolean
+  attiva: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** Dati per creare una nuova unità locale. */
+export interface CreateRentriUnitaLocaleInput {
+  numIscrSito: string
+  denominazione: string
+  /**
+   * Richiesta esplicita di renderla la sede di default. Ignorata (forzata a
+   * true) per la primissima sede del tenant: chi ha una sola sede non deve
+   * scegliere nulla.
+   */
+  principale?: boolean
+}
+
+/** Dati aggiornabili di un'unità locale esistente (non il numIscrSito: è l'identificativo RENTRI). */
+export interface UpdateRentriUnitaLocaleInput {
+  denominazione?: string
+  attiva?: boolean
+}
+
+/**
+ * Gestisce le unità locali RENTRI di un tenant (R2 multi-sede). A differenza
+ * del certificato (RentriCredential, uno per tenant), un'azienda può avere
+ * più sedi operative iscritte a RENTRI: questo servizio ne gestisce il CRUD
+ * e l'invariante "esattamente una principale per tenant".
+ *
+ * Isolamento multi-tenant: ogni metodo che referenzia un id riceve anche il
+ * tenantId del chiamante e filtra sempre `{ id, tenantId }` — un'unità
+ * locale di un altro tenant risulta "non trovata" (404), mai un 403 che
+ * confermerebbe la sua esistenza. Il model è inoltre in TENANT_SCOPED_MODELS
+ * (difesa in profondità via estensione Prisma RLS).
+ */
+@Injectable()
+export class RentriUnitaLocaleService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async listForTenant(tenantId: string): Promise<RentriUnitaLocale[]> {
+    const rows = await this.prisma.db.rentriUnitaLocale.findMany({
+      where: { tenantId },
+      orderBy: [{ principale: 'desc' }, { denominazione: 'asc' }],
+    })
+    return rows.map(r => this.toPlain(r))
+  }
+
+  /** Ritorna l'unità locale solo se appartiene al tenant, altrimenti null (→ 404 lato controller). */
+  async findById(tenantId: string, id: string): Promise<RentriUnitaLocale | null> {
+    const row = await this.prisma.db.rentriUnitaLocale.findFirst({
+      where: { id, tenantId },
+    })
+    return row ? this.toPlain(row) : null
+  }
+
+  /** Unità locale marcata principale del tenant, o null se non ancora configurata nessuna. */
+  async getPrincipale(tenantId: string): Promise<RentriUnitaLocale | null> {
+    const row = await this.prisma.db.rentriUnitaLocale.findFirst({
+      where: { tenantId, principale: true },
+    })
+    return row ? this.toPlain(row) : null
+  }
+
+  async create(tenantId: string, input: CreateRentriUnitaLocaleInput): Promise<RentriUnitaLocale> {
+    this.validatePattern(input.numIscrSito)
+    if (!input.denominazione?.trim()) {
+      throw new BadRequestException('La denominazione della sede è obbligatoria')
+    }
+
+    const count = await this.prisma.db.rentriUnitaLocale.count({ where: { tenantId } })
+    // Prima sede del tenant: nessuna scelta da fare, diventa principale a
+    // prescindere da cosa è stato richiesto.
+    const principale = count === 0 ? true : Boolean(input.principale)
+
+    try {
+      const row = await this.prisma.db.$transaction(async tx => {
+        if (principale) {
+          await tx.rentriUnitaLocale.updateMany({
+            where: { tenantId, principale: true },
+            data: { principale: false },
+          })
+        }
+        return tx.rentriUnitaLocale.create({
+          data: {
+            tenantId,
+            numIscrSito: input.numIscrSito,
+            denominazione: input.denominazione.trim(),
+            principale,
+            attiva: true,
+          },
+        })
+      })
+      return this.toPlain(row)
+    } catch (error) {
+      throw this.mapPersistenceError(error)
+    }
+  }
+
+  async update(
+    tenantId: string,
+    id: string,
+    input: UpdateRentriUnitaLocaleInput
+  ): Promise<RentriUnitaLocale> {
+    const existing = await this.findById(tenantId, id)
+    if (!existing) {
+      throw new NotFoundException('Unità locale RENTRI non trovata')
+    }
+    if (input.denominazione !== undefined && !input.denominazione.trim()) {
+      throw new BadRequestException('La denominazione della sede è obbligatoria')
+    }
+
+    const row = await this.prisma.db.rentriUnitaLocale.update({
+      where: { id },
+      data: {
+        ...(input.denominazione !== undefined ? { denominazione: input.denominazione.trim() } : {}),
+        ...(input.attiva !== undefined ? { attiva: input.attiva } : {}),
+      },
+    })
+    return this.toPlain(row)
+  }
+
+  /**
+   * Rende `id` la sede principale del tenant, spostando il flag dalla sede
+   * che lo aveva prima (transazione: mai zero e mai due principali).
+   */
+  async setPrincipale(tenantId: string, id: string): Promise<RentriUnitaLocale> {
+    const existing = await this.findById(tenantId, id)
+    if (!existing) {
+      throw new NotFoundException('Unità locale RENTRI non trovata')
+    }
+    if (existing.principale) {
+      return existing
+    }
+
+    const [, row] = await this.prisma.db.$transaction([
+      this.prisma.db.rentriUnitaLocale.updateMany({
+        where: { tenantId, principale: true },
+        data: { principale: false },
+      }),
+      this.prisma.db.rentriUnitaLocale.update({
+        where: { id },
+        data: { principale: true },
+      }),
+    ])
+    return this.toPlain(row)
+  }
+
+  /**
+   * Rimuove un'unità locale. Se è la principale e ne esistono altre, va
+   * prima scelta un'altra principale esplicitamente (mai lasciare il tenant
+   * senza una sede di default finché ne ha almeno una attiva).
+   */
+  async remove(tenantId: string, id: string): Promise<void> {
+    const existing = await this.findById(tenantId, id)
+    if (!existing) {
+      throw new NotFoundException('Unità locale RENTRI non trovata')
+    }
+
+    if (existing.principale) {
+      const totalCount = await this.prisma.db.rentriUnitaLocale.count({ where: { tenantId } })
+      if (totalCount > 1) {
+        throw new BadRequestException(
+          "Imposta prima un'altra sede come principale: non puoi eliminare la sede principale finché il tenant ne ha altre."
+        )
+      }
+    }
+
+    await this.prisma.db.rentriUnitaLocale.deleteMany({ where: { id, tenantId } })
+  }
+
+  private validatePattern(numIscrSito: string): void {
+    if (!NUM_ISCR_SITO_PATTERN.test(numIscrSito)) {
+      throw new BadRequestException(
+        `Numero di iscrizione dell'unità locale RENTRI non valido: deve rispettare il formato ${NUM_ISCR_SITO_PATTERN.source}`
+      )
+    }
+  }
+
+  private mapPersistenceError(error: unknown): Error {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return new BadRequestException('Esiste già una sede del tenant con questo numIscrSito')
+    }
+    return error instanceof Error ? error : new Error(String(error))
+  }
+
+  private toPlain(row: {
+    id: string
+    numIscrSito: string
+    denominazione: string
+    principale: boolean
+    attiva: boolean
+    createdAt: Date
+    updatedAt: Date
+  }): RentriUnitaLocale {
+    return {
+      id: row.id,
+      numIscrSito: row.numIscrSito,
+      denominazione: row.denominazione,
+      principale: row.principale,
+      attiva: row.attiva,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }
+  }
+}

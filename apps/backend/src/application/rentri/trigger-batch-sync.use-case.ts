@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import { LoggerService } from '../../core/logger/logger.service'
+import { FIR, FIRStato } from '../../domain/fir/aggregates/fir.aggregate'
+import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
+import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 
 /**
  * Trigger Batch Sync Use Case
@@ -13,8 +16,10 @@ import { LoggerService } from '../../core/logger/logger.service'
 @Injectable()
 export class TriggerBatchSyncUseCase {
   constructor(
-    private readonly firRepository: any,
-    private readonly rentriSyncQueue: any, // RENTRISyncQueue - will be injected
+    // Interfaccia di dominio: iniettata via useFactory in RentriSyncModule
+    // (v. commento gemello in SyncFIRToRENTRIUseCase).
+    private readonly firRepository: IFIRRepository,
+    private readonly rentriSyncQueue: RENTRISyncQueue,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('TriggerBatchSyncUseCase')
@@ -48,7 +53,7 @@ export class TriggerBatchSyncUseCase {
     const firs = await this.firRepository.findByIds(firIds, tenantId)
 
     if (firs.length !== firIds.length) {
-      const foundIds = firs.map((f: any) => f.id)
+      const foundIds = firs.map((f: FIR) => f.id)
       const missingIds = firIds.filter(id => !foundIds.includes(id))
 
       for (const missingId of missingIds) {
@@ -61,7 +66,7 @@ export class TriggerBatchSyncUseCase {
     }
 
     // Filter FIRs that can be synced
-    const syncableFIRs = []
+    const syncableFIRs: FIR[] = []
     for (const fir of firs) {
       if (fir.canSyncToRENTRI()) {
         syncableFIRs.push(fir)
@@ -77,7 +82,7 @@ export class TriggerBatchSyncUseCase {
     // Queue sync jobs
     if (syncableFIRs.length > 0) {
       const batchJobId = await this.rentriSyncQueue.addBatchJob({
-        firIds: syncableFIRs.map((f: any) => f.id),
+        firIds: syncableFIRs.map((f: FIR) => f.id),
         tenantId,
         priority,
       })
@@ -98,9 +103,18 @@ export class TriggerBatchSyncUseCase {
   /**
    * Get reason why FIR was skipped
    */
-  private getSkipReason(fir: any): string {
-    if (fir.status !== 'COMPLETED') {
-      return `Not completed (status: ${fir.status})`
+  private getSkipReason(fir: FIR): string {
+    const statoEmesso =
+      fir.stato === FIRStato.EMESSO ||
+      fir.stato === FIRStato.IN_TRANSITO ||
+      fir.stato === FIRStato.CONSEGNATO
+
+    if (!statoEmesso) {
+      return `Non ancora emesso (stato: ${fir.stato})`
+    }
+
+    if (fir.rentriNumeroFir) {
+      return 'Already synced'
     }
 
     if (fir.rentriSyncStatus.getStatus() === 'SYNCED') {

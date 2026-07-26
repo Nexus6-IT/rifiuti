@@ -3,7 +3,15 @@ import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { environment } from '../../../environments/environment'
 
-/** Stato della credenziale RENTRI del tenant (mai segreti). */
+/**
+ * Stato della credenziale RENTRI del tenant (mai segreti).
+ *
+ * `numIscrSito` (deprecato, R2 multi-sede): non più gestito da questa
+ * pagina/servizio — le sedi RENTRI del tenant si gestiscono a parte (vedi
+ * RentriUnitaLocaleService, pagina /rentri/sedi). Il campo può ancora
+ * arrivare dal backend per compatibilità col dato storico, ma non viene più
+ * letto né scritto qui.
+ */
 export interface RentriCredentialStatus {
   configured: boolean
   clientId?: string

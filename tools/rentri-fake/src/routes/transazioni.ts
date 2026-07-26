@@ -62,7 +62,7 @@ export function registraRotteTransazioni(app: FastifyInstance, archivio: Archivi
   app.post(`${PREFISSO}/`, async (richiesta, risposta) => {
     if (!(await autentica(richiesta, risposta, archivio))) return
 
-    const id = archivio.creaTransazione()
+    const id = archivio.creaTransazione(richiesta.body as Record<string, unknown>)
     return risposta
       .status(202)
       .header('Location', `${PREFISSO}/${id}/status`)

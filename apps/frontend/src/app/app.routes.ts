@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router'
 import { authGuard } from './core/guards/auth.guard'
+import { superAdminGuard } from './core/guards/super-admin.guard'
 
 export const routes: Routes = [
   {
@@ -66,6 +67,12 @@ export const routes: Routes = [
         path: 'fir',
         loadComponent: () =>
           import('./features/fir/fir-list.component').then(m => m.FirListComponent),
+      },
+      {
+        // Dettaglio di un singolo formulario: dati, stato RENTRI, cronologia trasmissioni, azioni.
+        path: 'fir/:id',
+        loadComponent: () =>
+          import('./features/fir/fir-detail.component').then(m => m.FirDetailComponent),
       },
       {
         path: 'cer',
@@ -139,8 +146,13 @@ export const routes: Routes = [
           ),
       },
       {
-        // Gestione abbonamento SaaS (pagamento, upgrade piano, Billing Portal Stripe)
+        // Gestione abbonamento SaaS (pagamento, upgrade piano, Billing Portal Stripe).
+        // Riservata al SUPER_ADMIN per decisione del committente (2026-07-26):
+        // nemmeno gli ADMIN dei tenant devono potervi accedere. Il guard evita
+        // l'accesso via URL; l'autorizzazione reale resta sul backend
+        // (billing.controller.ts, @Roles('SUPER_ADMIN')).
         path: 'abbonamento',
+        canActivate: [superAdminGuard],
         loadComponent: () =>
           import('./features/billing/billing-page.component').then(m => m.BillingPageComponent),
       },
@@ -164,6 +176,22 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/rentri/rentri-credential.component').then(
             m => m.RentriCredentialComponent
+          ),
+      },
+      {
+        // Modalità di legame RENTRI (solo admin — enforcement lato componente + backend)
+        path: 'rentri/modalita-legame',
+        loadComponent: () =>
+          import('./features/rentri/rentri-modalita-legame.component').then(
+            m => m.RentriModalitaLegameComponent
+          ),
+      },
+      {
+        // Sedi RENTRI / unità locali del tenant, R2 multi-sede (solo admin — enforcement lato componente + backend)
+        path: 'rentri/sedi',
+        loadComponent: () =>
+          import('./features/rentri/rentri-unita-locale.component').then(
+            m => m.RentriUnitaLocaleComponent
           ),
       },
       // T179: Custom Role Management Routes

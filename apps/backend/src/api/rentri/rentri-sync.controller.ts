@@ -15,12 +15,17 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { TenantId } from '../../core/decorators/tenant.decorator'
 import { UserId } from '../../core/decorators/user.decorator'
-import { JwtAuthGuard } from '../../core/auth/jwt-auth.guard'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { LoggerService } from '../../core/logger/logger.service'
 import { TriggerBatchSyncUseCase } from '../../application/rentri/trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from '../../application/rentri/get-sync-status.use-case'
+import { ConfermaLegameRENTRIUseCase } from '../../application/rentri/conferma-legame-rentri.use-case'
+import { DomainException } from '../../domain/shared/domain-exception'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
+import { traduciErroreRentri } from '../../application/rentri/rentri-error-presentation'
 import {
   SyncFIRRequestDto,
   SyncFIRResponseDto,
@@ -46,20 +51,71 @@ import {
  * - GET /rentri/sync/metrics - Get queue metrics
  *
  * All endpoints require JWT authentication and enforce tenant isolation.
+ *
+ * Autorizzazione (R0 Task 4): questi endpoint trasmettono formulari a un ente
+ * pubblico (RENTRI) per conto dell'azienda — una trasmissione indebita è un
+ * adempimento normativo fatto a nome del tenant, non un semplice errore
+ * applicativo. Il controllo di ruolo copre l'INTERO controller (anche le
+ * letture di log/stato/metriche, che rivelano cosa è stato trasmesso): un
+ * VIEWER non deve né avviare una sincronizzazione né vedere l'esito delle
+ * trasmissioni altrui. Stessi ruoli di `registro.controller.ts` (altro
+ * adempimento verso terzi con RLS multi-tenant equivalente).
  */
 @ApiTags('RENTRI Sync')
 @ApiBearerAuth()
 @Controller('rentri/sync')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
 export class RENTRISyncController {
   constructor(
     private readonly triggerBatchSyncUseCase: TriggerBatchSyncUseCase,
     private readonly getSyncStatusUseCase: GetSyncStatusUseCase,
+    private readonly confermaLegameRENTRIUseCase: ConfermaLegameRENTRIUseCase,
     private readonly rentriSyncQueue: RENTRISyncQueue,
     private readonly rentriSyncLogRepository: RENTRISyncLogRepository,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('RENTRISyncController')
+  }
+
+  /**
+   * Conferma esplicita del legame RENTRI proposto in modalità IBRIDA (R1
+   * Task 2): senza questo endpoint un FIR "in attesa di conferma" resterebbe
+   * tale per sempre.
+   */
+  @Post('fir/:id/conferma-legame')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Conferma il legame RENTRI proposto (modalità IBRIDA)',
+    description:
+      'Promuove a legame ufficiale una proposta di aggancio RENTRI in attesa di conferma esplicita',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Legame confermato' })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Nessuna proposta in attesa' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'FIR non trovato' })
+  async confermaLegame(
+    @Param('id') firId: string,
+    @TenantId() tenantId: string,
+    @UserId() userId: string
+  ): Promise<{ numeroFir: string }> {
+    this.logger.info('Conferma legame RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.confermaLegameRENTRIUseCase.execute(firId, tenantId)
+    } catch (error: any) {
+      this.logger.error('Conferma legame RENTRI non riuscita', error, { firId, tenantId })
+
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
+        throw new UnauthorizedException(error.message)
+      }
+      if (error instanceof DomainException) {
+        throw new BadRequestException(error.message)
+      }
+      throw error
+    }
   }
 
   /**
@@ -335,18 +391,35 @@ export class RENTRISyncController {
 
       const totalPages = Math.ceil(result.total / limit)
 
-      const data: SyncLogEntryDto[] = result.data.map(log => ({
-        id: log.id,
-        firId: log.firId,
-        status: log.status,
-        attempt: log.attempt,
-        errorMessage: log.errorMessage || undefined,
-        errorCode: log.errorCode || undefined,
-        protocolNumber: log.protocolNumber || undefined,
-        syncedAt: log.syncedAt || undefined,
-        durationMs: log.durationMs || undefined,
-        createdAt: log.createdAt,
-      }))
+      const data: SyncLogEntryDto[] = result.data.map(log => {
+        // Traduzione azionabile SOLO per i tentativi falliti (R1 Task 5):
+        // il ProblemDetails grezzo/errorMessage tecnico restano nel log
+        // tecnico (errorMessage/errorCode qui sotto), mai il primo testo che
+        // l'utente legge — v. traduciErroreRentri.
+        const errore = log.isFailed()
+          ? traduciErroreRentri({
+              errorCode: log.errorCode,
+              errorMessage: log.errorMessage,
+              responsePayload: log.responsePayload,
+            })
+          : null
+
+        return {
+          id: log.id,
+          firId: log.firId,
+          status: log.status,
+          attempt: log.attempt,
+          errorMessage: log.errorMessage || undefined,
+          errorCode: log.errorCode || undefined,
+          messaggio: errore?.messaggio,
+          azione: errore?.azione,
+          campo: errore?.campo,
+          protocolNumber: log.protocolNumber || undefined,
+          syncedAt: log.syncedAt || undefined,
+          durationMs: log.durationMs || undefined,
+          createdAt: log.createdAt,
+        }
+      })
 
       this.logger.info('Sync logs retrieved', {
         tenantId,

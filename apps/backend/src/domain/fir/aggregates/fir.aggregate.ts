@@ -7,6 +7,7 @@
 import { AggregateRoot, DomainEvent } from '../../../core/domain/aggregate-root'
 import { DomainError, InvalidStateTransitionError } from '../../../core/domain/errors'
 import { Quantita, UnitaMisura } from '../value-objects/quantita'
+import { RENTRISyncStatus } from '../rentri-sync-status.vo'
 
 export enum FIRStato {
   BOZZA = 'BOZZA',
@@ -17,6 +18,21 @@ export enum FIRStato {
 }
 
 export type TipoOperazioneRifiuto = 'RECOVERY' | 'DISPOSAL'
+
+/**
+ * Origine del legame tra il FIR interno e il numero_fir RENTRI (v. Task 1,
+ * `schema.prisma` — `RentriOrigineLegame`). Replicato qui come union/enum di
+ * dominio perché l'aggregate del ciclo di vita non dipende dal client Prisma
+ * generato.
+ */
+export enum RentriOrigineLegame {
+  /** Il formulario è stato creato da una nostra trasmissione (questo aggregate, markRENTRISynced). */
+  TRASMESSO_DA_NOI = 'TRASMESSO_DA_NOI',
+  /** Il formulario esiste già su RENTRI (creato da un'altra controparte): legame da acquisizione di visibilità. */
+  ACQUISITO_DA_TERZI = 'ACQUISITO_DA_TERZI',
+  /** Legame impostato manualmente da un operatore (es. correzione/riconciliazione). */
+  AGGANCIO_MANUALE = 'AGGANCIO_MANUALE',
+}
 
 export interface FIRRifiuto {
   cerCode: string
@@ -171,6 +187,46 @@ export class FIRConsegnatoEvent implements DomainEvent {
   ) {}
 }
 
+export class FIRRENTRISincronizzatoEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_sincronizzato'
+  constructor(
+    public readonly firId: string,
+    public readonly numeroFir: string,
+    public readonly attempts: number,
+    public readonly correlationId?: string
+  ) {}
+}
+
+export class FIRRENTRISyncFallitoEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_sync_fallito'
+  constructor(
+    public readonly firId: string,
+    public readonly errorMessage: string,
+    public readonly errorCode: string | undefined,
+    public readonly attempts: number,
+    public readonly willRetry: boolean,
+    public readonly nextRetryAt: Date | undefined,
+    public readonly correlationId?: string
+  ) {}
+}
+
+/**
+ * Emesso quando una trasmissione automatica (modalità IBRIDA) ottiene un
+ * numero ufficiale RENTRI ma il legame resta in attesa di conferma esplicita
+ * dell'utente (v. `proporreLegameRENTRI`/`confermaLegameRENTRI`).
+ */
+export class FIRRENTRILegameDaConfermareEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_legame_da_confermare'
+  constructor(
+    public readonly firId: string,
+    public readonly numeroFirProposto: string,
+    public readonly correlationId?: string
+  ) {}
+}
+
 export class FIR extends AggregateRoot {
   private constructor(
     private readonly _id: string,
@@ -196,7 +252,23 @@ export class FIR extends AggregateRoot {
     /** Data restituzione 4ª copia dal destinatario al produttore. */
     private _fourthCopyReturnedAt: Date | null = null,
     /** Note/esito del destinatario (4ª copia FIR). */
-    private _fourthCopyNotes: string | null = null
+    private _fourthCopyNotes: string | null = null,
+    /** Stato di sincronizzazione RENTRI (tentativi, backoff, ultimo errore). */
+    private _rentriSyncStatus: RENTRISyncStatus = RENTRISyncStatus.pending(),
+    /** Numero ufficiale RENTRI (numero_fir): chiave stabile del legame, valorizzata solo dopo l'aggancio. */
+    private _rentriNumeroFir: string | null = null,
+    /** Identificativo tecnico dell'ultima trasmissione REST (cambia ad ogni tentativo). */
+    private _rentriTransazioneId: string | null = null,
+    /** Come è nato il legame con rentriNumeroFir. */
+    private _rentriOrigineLegame: RentriOrigineLegame | null = null,
+    /**
+     * Numero ufficiale RENTRI ricevuto ma NON ancora legame confermato
+     * (modalità IBRIDA, v. `proporreLegameRENTRI`): valorizzato dall'esito
+     * positivo di una trasmissione automatica in attesa che un operatore la
+     * confermi esplicitamente. Finché è valorizzato, `rentriNumeroFir` resta
+     * `null` — il FIR non è "legato" a tutti gli effetti.
+     */
+    private _rentriNumeroFirProposto: string | null = null
   ) {
     super()
   }
@@ -310,6 +382,216 @@ export class FIR extends AggregateRoot {
     // In production, store motivo in a separate field or event
   }
 
+  // RENTRI sync — business methods
+  //
+  // Regole di dominio (decise per questo task, v. report R0 Task 2):
+  // 1. Trasmissibilità: solo un FIR emesso (EMESSO/IN_TRANSITO/CONSEGNATO)
+  //    può essere trasmesso a RENTRI. Una BOZZA non è ancora un documento
+  //    definitivo (l'operatore può ancora modificarla o scartarla), quindi
+  //    non genera alcun adempimento verso l'ente. Un FIR ANNULLATO, per lo
+  //    stesso motivo, non va notificato.
+  // 2. Anti-duplicazione: un FIR già legato a un numero_fir RENTRI (in
+  //    qualunque modo l'aggancio sia nato: nostra trasmissione, acquisizione
+  //    da terzi, aggancio manuale) non è ritrasmissibile. Ritrasmettere
+  //    creerebbe un secondo formulario duplicato presso l'ente — un
+  //    problema normativo, non un semplice errore tecnico da poter
+  //    ritentare.
+  // 3. Tentativi e backoff: delegati a RENTRISyncStatus (già esistente),
+  //    che implementa max 5 tentativi con backoff esponenziale 60s→60min.
+  //    È deliberatamente più conservativo del backoff del client HTTP
+  //    (1s→30s, per singola richiesta con Retry-After): qui si parla del
+  //    ritentativo dell'INTERA operazione di sync (un nuovo job), non della
+  //    singola chiamata REST. Un backoff troppo aggressivo a questo livello
+  //    rischierebbe di martellare un ente che risponde 423 bandendo il
+  //    chiamante per troppe richieste non valide.
+  // 4. markRENTRISynced registra il numero ufficiale (rentriNumeroFir,
+  //    chiave stabile del legame) e, se disponibile, l'identificativo
+  //    tecnico dell'ultima trasmissione (rentriTransazioneId) separatamente:
+  //    è il punto del Task 1 (i due campi hanno semantica diversa e non
+  //    vanno confusi).
+
+  /**
+   * Verifica se il FIR può essere trasmesso a RENTRI ora (v. regole 1 e 2
+   * sopra), incluso lo stato di sincronizzazione (RENTRISyncStatus.canRetry():
+   * esclude un sync già in corso e un fallimento permanente).
+   */
+  canSyncToRENTRI(): boolean {
+    const statoEmesso =
+      this._stato === FIRStato.EMESSO ||
+      this._stato === FIRStato.IN_TRANSITO ||
+      this._stato === FIRStato.CONSEGNATO
+    const nonGiaLegato = this._rentriNumeroFir === null
+
+    return statoEmesso && nonGiaLegato && this._rentriSyncStatus.canRetry()
+  }
+
+  /**
+   * Segna l'avvio di un tentativo di trasmissione a RENTRI.
+   */
+  startRENTRISync(): void {
+    if (!this.canSyncToRENTRI()) {
+      throw new DomainError('FIR non trasmissibile a RENTRI nello stato corrente')
+    }
+    this._rentriSyncStatus = this._rentriSyncStatus.markAsSyncing()
+  }
+
+  /**
+   * Registra l'esito positivo della trasmissione. `numeroFir` è il numero
+   * ufficiale assegnato dall'ente (obbligatorio, v. regola 4); `transazioneId`
+   * è l'identificativo tecnico dell'ultima chiamata REST (opzionale, utile
+   * per correlazione/supporto ma non è la chiave del legame). L'origine del
+   * legame è sempre TRASMESSO_DA_NOI: questo metodo modella solo l'esito di
+   * una trasmissione partita da qui.
+   */
+  markRENTRISynced(numeroFir: string, transazioneId?: string, correlationId?: string): void {
+    if (!numeroFir || numeroFir.trim() === '') {
+      throw new DomainError(
+        'Numero FIR RENTRI mancante: impossibile registrare la sincronizzazione'
+      )
+    }
+
+    this._rentriSyncStatus = this._rentriSyncStatus.markAsSynced(numeroFir)
+    this._rentriNumeroFir = numeroFir
+    if (transazioneId) {
+      this._rentriTransazioneId = transazioneId
+    }
+    this._rentriOrigineLegame = RentriOrigineLegame.TRASMESSO_DA_NOI
+
+    this.addDomainEvent(
+      new FIRRENTRISincronizzatoEvent(
+        this._id,
+        numeroFir,
+        this._rentriSyncStatus.getAttempts(),
+        correlationId
+      )
+    )
+  }
+
+  /**
+   * Registra un fallimento di trasmissione (v. regola 3 per tentativi/backoff).
+   */
+  markRENTRISyncFailed(errorMessage: string, errorCode?: string, correlationId?: string): void {
+    this._rentriSyncStatus = this._rentriSyncStatus.markAsFailed(errorMessage, errorCode)
+
+    const willRetry = this._rentriSyncStatus.canRetry()
+
+    this.addDomainEvent(
+      new FIRRENTRISyncFallitoEvent(
+        this._id,
+        errorMessage,
+        errorCode,
+        this._rentriSyncStatus.getAttempts(),
+        willRetry,
+        willRetry ? this._rentriSyncStatus.getNextRetryAt() : undefined,
+        correlationId
+      )
+    )
+  }
+
+  /**
+   * Registra un esito POSITIVO di trasmissione che, a differenza di
+   * `markRENTRISynced`, NON diventa subito il legame ufficiale: è il
+   * comportamento della modalità IBRIDA (v. `TrasmettiFIRSecondoModalitaUseCase`),
+   * dove la trasmissione parte da sola ma l'aggancio richiede una conferma
+   * esplicita dell'utente prima di considerare il FIR legato.
+   *
+   * Perché riusare `RENTRISyncStatus.markAsSynced` invece di uno stato
+   * dedicato: il VO passa a SYNCED (che blocca `canRetry()`), esattamente
+   * l'effetto voluto — nessun nuovo tentativo automatico mentre una proposta
+   * è in attesa — senza introdurre un sesto stato nell'enum persistito
+   * (`rentri_sync_status`, colonna DB) solo per questa sfumatura. La
+   * distinzione "tecnicamente riuscito ma non ancora legato" vive invece nel
+   * nuovo campo `rentriNumeroFirProposto`: finché è valorizzato e
+   * `rentriNumeroFir` resta `null`, il FIR è "in attesa di conferma".
+   */
+  proporreLegameRENTRI(numeroFir: string, transazioneId?: string, correlationId?: string): void {
+    if (!numeroFir || numeroFir.trim() === '') {
+      throw new DomainError('Numero FIR RENTRI mancante: impossibile proporre il legame')
+    }
+
+    this._rentriSyncStatus = this._rentriSyncStatus.markAsSynced(numeroFir)
+    this._rentriNumeroFirProposto = numeroFir
+    if (transazioneId) {
+      // rentriTransazioneId è solo l'identificativo tecnico dell'ultima
+      // trasmissione (non la chiave di aggancio): può essere registrato da
+      // subito, anche prima della conferma, senza implicare alcun legame.
+      this._rentriTransazioneId = transazioneId
+    }
+
+    this.addDomainEvent(new FIRRENTRILegameDaConfermareEvent(this._id, numeroFir, correlationId))
+  }
+
+  /**
+   * Conferma esplicita dell'utente: promuove la proposta in attesa
+   * (`proporreLegameRENTRI`) al legame ufficiale, con la stessa semantica di
+   * `markRENTRISynced` (origine TRASMESSO_DA_NOI, perché la trasmissione è
+   * partita da qui).
+   */
+  confermaLegameRENTRI(correlationId?: string): void {
+    if (!this._rentriNumeroFirProposto) {
+      throw new DomainError('Nessun legame RENTRI in attesa di conferma per questo FIR')
+    }
+
+    const numeroFir = this._rentriNumeroFirProposto
+    this._rentriNumeroFir = numeroFir
+    this._rentriOrigineLegame = RentriOrigineLegame.TRASMESSO_DA_NOI
+    this._rentriNumeroFirProposto = null
+
+    this.addDomainEvent(
+      new FIRRENTRISincronizzatoEvent(
+        this._id,
+        numeroFir,
+        this._rentriSyncStatus.getAttempts(),
+        correlationId
+      )
+    )
+  }
+
+  /**
+   * Rifiuta la proposta di legame in attesa (es. l'operatore riconosce un
+   * errore prima di confermare). Riporta lo stato di sync a PENDING: il FIR
+   * torna trasmissibile per un nuovo tentativo (manuale o automatico).
+   * Non ancora esposta da alcun endpoint (Task 2 di R1 copre solo l'avvio
+   * automatico e la conferma): disponibile per l'interfaccia di conferma
+   * esplicita che R1 Task 3/4 costruiranno lato utente.
+   */
+  rifiutaLegameRENTRI(): void {
+    if (!this._rentriNumeroFirProposto) {
+      throw new DomainError('Nessun legame RENTRI in attesa di conferma per questo FIR')
+    }
+
+    this._rentriNumeroFirProposto = null
+    this._rentriSyncStatus = RENTRISyncStatus.pending()
+  }
+
+  /**
+   * Indica se il FIR è idoneo per un nuovo tentativo automatico dopo un
+   * fallimento (delega a RENTRISyncStatus.canRetry()): tiene conto sia del
+   * conteggio dei tentativi residui sia del codice dell'ultimo errore — un
+   * errore non ritentabile (es. RENTRI_FORBIDDEN, 403) ferma il ciclo subito,
+   * anche con tentativi ancora disponibili.
+   */
+  needsRENTRIRetry(): boolean {
+    return this._rentriSyncStatus.canRetry()
+  }
+
+  /**
+   * Prossimo istante utile per ritentare, secondo il backoff esponenziale di
+   * RENTRISyncStatus.
+   */
+  getNextRENTRIRetryAt(): Date {
+    return this._rentriSyncStatus.getNextRetryAt()
+  }
+
+  /**
+   * Alias esplicito su AggregateRoot.domainEvents: alcuni chiamanti
+   * applicativi (es. SyncFIRToRENTRIUseCase) invocano un metodo invece di
+   * leggere la proprietà.
+   */
+  getDomainEvents(): DomainEvent[] {
+    return this.domainEvents
+  }
+
   // Getters
   get id(): string {
     return this._id
@@ -405,6 +687,36 @@ export class FIR extends AggregateRoot {
   /** Note/esito del destinatario (4ª copia FIR). */
   get fourthCopyNotes(): string | null {
     return this._fourthCopyNotes
+  }
+
+  /** Stato di sincronizzazione RENTRI (tentativi, backoff, ultimo errore). */
+  get rentriSyncStatus(): RENTRISyncStatus {
+    return this._rentriSyncStatus
+  }
+
+  /** Numero ufficiale RENTRI (numero_fir): chiave stabile del legame. */
+  get rentriNumeroFir(): string | null {
+    return this._rentriNumeroFir
+  }
+
+  /** Identificativo tecnico dell'ultima trasmissione REST verso RENTRI. */
+  get rentriTransazioneId(): string | null {
+    return this._rentriTransazioneId
+  }
+
+  /** Come è nato il legame con rentriNumeroFir. */
+  get rentriOrigineLegame(): RentriOrigineLegame | null {
+    return this._rentriOrigineLegame
+  }
+
+  /**
+   * Numero ufficiale RENTRI in attesa di conferma (modalità IBRIDA):
+   * valorizzato da `proporreLegameRENTRI`, azzerato da
+   * `confermaLegameRENTRI`/`rifiutaLegameRENTRI`. `null` se non c'è alcuna
+   * proposta pendente (nessuna trasmissione IBRIDA in corso o già decisa).
+   */
+  get rentriNumeroFirProposto(): string | null {
+    return this._rentriNumeroFirProposto
   }
 
   private static generateId(): string {

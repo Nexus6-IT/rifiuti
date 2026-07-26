@@ -28,16 +28,16 @@ model Tenant {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Company identification
-  partitaIva     String  @unique @map("partita_iva") @db.VarChar(11)
-  codiceFiscale  String? @map("codice_fiscale") @db.VarChar(16)
-  ragioneSociale String  @map("ragione_sociale") @db.VarChar(255)
-  pec            String? @db.VarChar(255)
-  telefono       String? @db.VarChar(20)
+  partitaIva                  String  @unique @map("partita_iva") @db.VarChar(11)
+  codiceFiscale               String? @map("codice_fiscale") @db.VarChar(16)
+  ragioneSociale              String  @map("ragione_sociale") @db.VarChar(255)
+  pec                         String? @db.VarChar(255)
+  telefono                    String? @db.VarChar(20)
   // Codice attività economica ISTAT (ATECO 2007), per il MUD. 6 cifre senza punti.
-  atecoCode      String? @map("ateco_code") @db.VarChar(10)
+  atecoCode                   String? @map("ateco_code") @db.VarChar(10)
   // Dati per il MUD (dichiarante)
-  reaNumber      String? @map("rea_number") @db.VarChar(9)
-  numeroAddetti  Int?    @map("numero_addetti")
+  reaNumber                   String? @map("rea_number") @db.VarChar(9)
+  numeroAddetti               Int?    @map("numero_addetti")
   legaleRappresentanteNome    String? @map("legale_rappresentante_nome") @db.VarChar(25)
   legaleRappresentanteCognome String? @map("legale_rappresentante_cognome") @db.VarChar(25)
 
@@ -73,17 +73,26 @@ model Tenant {
   // dal super admin. Usato per la quota aziende per-admin e per la lista "le mie aziende".
   ownerUserId String? @map("owner_user_id") @db.Uuid
 
+  // Modalità di aggancio dei FIR ai formulari RENTRI per questo tenant.
+  // Default MANUALE: nessun tenant ha oggi un certificato RENTRI valido
+  // configurato, e una trasmissione automatica verso l'ente da parte di
+  // un'azienda che non se l'aspetta è un rischio normativo peggiore di una
+  // mancata trasmissione. Il tenant passa ad AUTOMATICA/IBRIDA solo con
+  // un'azione esplicita, dopo aver configurato la credenziale (RentriCredential).
+  rentriModalitaLegame RentriModalitaLegame @default(MANUALE) @map("rentri_modalita_legame")
+
   // Relationships
-  users            User[]
-  firs             FIR[]
-  mudReports       MUDReport[]
-  companyTemplates CompanyTemplate[]
-  notifications    Notification[]
-  produttori       Produttore[]
-  trasportatori    Trasportatore[]
-  destinatari      Destinatario[]
+  users                  User[]
+  firs                   FIR[]
+  mudReports             MUDReport[]
+  companyTemplates       CompanyTemplate[]
+  notifications          Notification[]
+  produttori             Produttore[]
+  trasportatori          Trasportatore[]
+  destinatari            Destinatario[]
   autorizzazioniImpianto AutorizzazioneImpianto[]
-  wasteMovements   WasteMovement[]
+  wasteMovements         WasteMovement[]
+  rentriUnitaLocali      RentriUnitaLocale[]
 
   @@map("tenants")
 }
@@ -103,6 +112,20 @@ enum SubscriptionStatus {
   SUSPENDED
 
   @@map("subscription_status")
+}
+
+/// Modalità con cui un FIR viene agganciato/trasmesso al formulario RENTRI
+/// corrispondente. AUTOMATICA: il gestionale trasmette e aggancia senza
+/// intervento umano. IBRIDA: il gestionale trasmette automaticamente ma
+/// l'aggancio (numero_fir ↔ FIR interno) va confermato da un operatore.
+/// MANUALE: nessuna trasmissione automatica, l'operatore agisce su RENTRI
+/// e riporta l'aggancio a mano. Default del tenant: vedi Tenant.rentriModalitaLegame.
+enum RentriModalitaLegame {
+  AUTOMATICA
+  IBRIDA
+  MANUALE
+
+  @@map("rentri_modalita_legame")
 }
 
 // ============================================================================
@@ -180,9 +203,9 @@ model AccessRequest {
   phone          String? @db.VarChar(30)
   message        String? @db.Text
 
-  status AccessRequestStatus @default(PENDING)
+  status      AccessRequestStatus @default(PENDING)
   /// Nota interna del consulente (esito contatto, follow-up).
-  handledNote String? @map("handled_note") @db.Text
+  handledNote String?             @map("handled_note") @db.Text
 
   @@index([status])
   @@index([createdAt])
@@ -258,43 +281,76 @@ model FIR {
 
   // ---- Campi obbligatori FIR (DM 59/2023, art. 193 D.Lgs 152/2006) ----
   // Campo 2: stato fisico del rifiuto (Solido/Liquido/Fangoso/Gassoso/Polvere/Misto)
-  wastePhysicalState String? @map("waste_physical_state") @db.VarChar(50)
+  wastePhysicalState   String?   @map("waste_physical_state") @db.VarChar(50)
   // Campo 2: caratteristiche di pericolo HP (Reg. UE 1357/2014, All. III D.Lgs 152/2006)
   // Multi-valore, memorizzato come lista separata da virgole es. "HP4,HP14"
-  wasteHazardClasses String? @map("waste_hazard_classes") @db.Text
+  wasteHazardClasses   String?   @map("waste_hazard_classes") @db.Text
   // Campo 2: numero colli dichiarato dal produttore
-  wastePackageCount Int? @map("waste_package_count")
+  wastePackageCount    Int?      @map("waste_package_count")
   // Campo 3: codice operazione R/D specifico (es. "R1", "D13") - All. B e C D.Lgs 152/2006
-  wasteOperationCode String? @map("waste_operation_code") @db.VarChar(10)
+  wasteOperationCode   String?   @map("waste_operation_code") @db.VarChar(10)
   // Campo 17: annotazioni libere (obbligatorie per alcune tipologie di rifiuto)
-  wasteNotes String? @map("waste_notes") @db.Text
+  wasteNotes           String?   @map("waste_notes") @db.Text
   // Peso effettivo rilevato dal destinatario alla consegna (4ª copia FIR)
-  effectiveWeight Decimal? @map("effective_weight") @db.Decimal(10, 2)
+  effectiveWeight      Decimal?  @map("effective_weight") @db.Decimal(10, 2)
   // 4ª copia: data restituzione da destinatario a produttore
   fourthCopyReturnedAt DateTime? @map("fourth_copy_returned_at")
   // 4ª copia: note/esito del destinatario alla ricezione
-  fourthCopyNotes String? @map("fourth_copy_notes") @db.Text
+  fourthCopyNotes      String?   @map("fourth_copy_notes") @db.Text
 
   transportDate        DateTime  @map("transport_date")
   estimatedArrivalDate DateTime? @map("estimated_arrival_date")
   actualArrivalDate    DateTime? @map("actual_arrival_date")
   transportNotes       String?   @map("transport_notes") @db.Text
 
-  rentriSyncStatus     RENTRISyncStatus @default(PENDING) @map("rentri_sync_status")
-  rentriProtocolNumber String?          @map("rentri_protocol_number") @db.VarChar(100)
-  rentriSyncedAt       DateTime?        @map("rentri_synced_at")
-  rentriSyncAttempts   Int              @default(0) @map("rentri_sync_attempts")
-  rentriLastSyncError  String?          @map("rentri_last_sync_error") @db.Text
-  rentriNextRetryAt    DateTime?        @map("rentri_next_retry_at")
+  rentriSyncStatus        RENTRISyncStatus @default(PENDING) @map("rentri_sync_status")
+  // DEPRECATO: nonostante il nome, in pratica avrebbe dovuto contenere il
+  // transazione_id della trasmissione (identificativo tecnico della singola
+  // chiamata REST), non il numero ufficiale del formulario. Nessun punto del
+  // codice lo valorizza oggi. Non rimosso (nessuna DROP su colonna già in
+  // produzione): sostituito da rentriNumeroFir/rentriTransazioneId qui sotto,
+  // che separano correttamente le due cose. Da rimuovere in una migrazione
+  // futura dedicata, dopo aver verificato che sia effettivamente vuoto ovunque.
+  rentriProtocolNumber    String?          @map("rentri_protocol_number") @db.VarChar(100)
+  rentriSyncedAt          DateTime?        @map("rentri_synced_at")
+  rentriSyncAttempts      Int              @default(0) @map("rentri_sync_attempts")
+  rentriLastSyncError     String?          @map("rentri_last_sync_error") @db.Text
+  // Codice macchina dell'ultimo fallimento (RENTRI_FORBIDDEN/RENTRI_RATE_LIMITED/
+  // RENTRI_VALIDATION_ERROR/RENTRI_MISSING_NUMERO_FIR/RENTRI_API_ERROR — v.
+  // SyncFIRToRENTRIUseCase). Distinto da rentriLastSyncError (testo libero):
+  // senza un codice stabile l'interfaccia non può decidere in modo affidabile
+  // se offrire «Riprova» (R1 Task 5, rentri-error-presentation.ts).
+  rentriLastSyncErrorCode String?          @map("rentri_last_sync_error_code") @db.VarChar(100)
+  rentriNextRetryAt       DateTime?        @map("rentri_next_retry_at")
+
+  // Numero ufficiale assegnato da RENTRI al formulario (numero_fir dell'ente):
+  // è la chiave stabile del legame FIR interno ↔ formulario RENTRI, non cambia
+  // tra una trasmissione e l'altra. Nullable: valorizzato solo dopo l'aggancio.
+  rentriNumeroFir         String?              @map("rentri_numero_fir") @db.VarChar(50)
+  // Identificativo tecnico (transazione_id) restituito dall'ultima chiamata di
+  // trasmissione REST verso RENTRI. Cambia ad ogni tentativo: non è una chiave
+  // di aggancio, serve solo per correlare la trasmissione con il suo esito
+  // (polling GET /{transazione_id}/status) e per il supporto.
+  rentriTransazioneId     String?              @map("rentri_transazione_id") @db.VarChar(100)
+  // Come è nato il legame con rentriNumeroFir: rilevante per cosa l'utente può
+  // fare dopo (es. un legame acquisito da terzi non è ritrasmissibile) e in
+  // caso di contestazione su chi ha originato/confermato l'aggancio.
+  rentriOrigineLegame     RentriOrigineLegame? @map("rentri_origine_legame")
+  // Numero ufficiale ricevuto da una trasmissione automatica in modalità
+  // IBRIDA (Tenant.rentriModalitaLegame) ma NON ancora confermato dall'utente:
+  // finché è valorizzato, rentriNumeroFir resta null — il FIR non è "legato"
+  // a tutti gli effetti (R1 Task 2, FIR.proporreLegameRENTRI/confermaLegameRENTRI).
+  rentriNumeroFirProposto String?              @map("rentri_numero_fir_proposto") @db.VarChar(50)
 
   attachmentUrls Json? @map("attachment_urls")
 
-  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  producerUser User           @relation("ProducerUser", fields: [producerUserId], references: [id])
-  carrierUser  User?          @relation("CarrierUser", fields: [carrierUserId], references: [id])
-  receiverUser User?          @relation("ReceiverUser", fields: [receiverUserId], references: [id])
-  signatures   FIRSignature[]
-  activityLogs ActivityLog[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  producerUser   User            @relation("ProducerUser", fields: [producerUserId], references: [id])
+  carrierUser    User?           @relation("CarrierUser", fields: [carrierUserId], references: [id])
+  receiverUser   User?           @relation("ReceiverUser", fields: [receiverUserId], references: [id])
+  signatures     FIRSignature[]
+  activityLogs   ActivityLog[]
+  rentriSyncLogs RENTRISyncLog[]
 
   // Trasportatori aggiuntivi per trasporto intermodale (oltre al trasportatore
   // principale inline Campo 4): N tratte ordinate (terrestre/ferroviaria/
@@ -308,6 +364,7 @@ model FIR {
   @@index([transportDate])
   @@index([cerCode])
   @@index([tenantId, wasteOperationType])
+  @@index([tenantId, rentriNumeroFir])
   @@map("firs")
 }
 
@@ -331,6 +388,26 @@ enum RENTRISyncStatus {
   PERMANENTLY_FAILED
 
   @@map("rentri_sync_status")
+}
+
+/// Origine del legame tra il FIR interno e il numero_fir RENTRI
+/// (FIR.rentriNumeroFir). Distingue i tre modi in cui l'aggancio può nascere:
+/// - TRASMESSO_DA_NOI: il formulario è stato creato da una nostra trasmissione
+///   (POST di creazione formulario) ed è quindi "nostro" a tutti gli effetti.
+/// - ACQUISITO_DA_TERZI: il formulario esiste già su RENTRI (creato da un'altra
+///   controparte, es. il produttore) e il legame nasce da un'acquisizione di
+///   visibilità (POST /{numero_fir}/acquisizione-visibilita/{num_iscr_sito}) —
+///   non l'abbiamo creato noi, quindi non è ritrasmissibile/modificabile come
+///   se fosse nostro.
+/// - AGGANCIO_MANUALE: un operatore ha associato a mano il FIR interno a un
+///   numero_fir esistente (es. dopo una modalità MANUALE), senza passare né da
+///   una nostra trasmissione né da un'acquisizione di visibilità automatica.
+enum RentriOrigineLegame {
+  TRASMESSO_DA_NOI
+  ACQUISITO_DA_TERZI
+  AGGANCIO_MANUALE
+
+  @@map("rentri_origine_legame")
 }
 
 /// Tipo di operazione di destinazione del rifiuto (D.Lgs 152/2006):
@@ -800,38 +877,38 @@ model AutorizzazioneImpianto {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   /// Estremi dell'autorizzazione, o dell'iscrizione per procedura semplificata (alfa 20).
-  estremi       String    @db.VarChar(20)
-  dataRilascio  DateTime? @map("data_rilascio") @db.Date
-  dataScadenza  DateTime? @map("data_scadenza") @db.Date
+  estremi                   String    @db.VarChar(20)
+  dataRilascio              DateTime? @map("data_rilascio") @db.Date
+  dataScadenza              DateTime? @map("data_scadenza") @db.Date
   /// 0=ND, 1=Provincia, 2=Regione, 3=Ministero.
-  enteAutorizzante Int    @default(0) @map("ente_autorizzante") @db.SmallInt
+  enteAutorizzante          Int       @default(0) @map("ente_autorizzante") @db.SmallInt
   /// 0=ND, 1..6 (6.04/24); 7=bonifiche art.242 c.7, 8=art.191, 9=art.110 c.3 (dal 6.04/25).
-  tipoAutorizzazione Int  @default(0) @map("tipo_autorizzazione") @db.SmallInt
-  rinnovoAutocertificazione Boolean @default(false) @map("rinnovo_autocertificazione")
+  tipoAutorizzazione        Int       @default(0) @map("tipo_autorizzazione") @db.SmallInt
+  rinnovoAutocertificazione Boolean   @default(false) @map("rinnovo_autocertificazione")
 
   /// Operazioni autorizzate, es. ["R3","R4","R13"] / ["D4","D5","D12"].
   operazioniRecupero    String[] @map("operazioni_recupero")
   operazioniSmaltimento String[] @map("operazioni_smaltimento")
 
-  gestisceVfu  Boolean @default(false) @map("gestisce_vfu")
-  gestisceRaee Boolean @default(false) @map("gestisce_raee")
+  gestisceVfu       Boolean @default(false) @map("gestisce_vfu")
+  gestisceRaee      Boolean @default(false) @map("gestisce_raee")
   /// Autorizzazione EoW (art. 184-ter c.3) — significativa solo per tipo 1, 2, 4, 5.
   autorizzazioneEow Boolean @default(false) @map("autorizzazione_eow")
 
   /// Capacità autorizzate in tonnellate/anno (num 9 nel tracciato).
-  impiantoIncenerimento     Boolean @default(false) @map("impianto_incenerimento")
-  capacitaComplessivaTa     Int     @default(0) @map("capacita_complessiva_ta")
-  capacitaPericolosiTa      Int     @default(0) @map("capacita_pericolosi_ta")
-  capacitaNonPericolosiTa   Int     @default(0) @map("capacita_non_pericolosi_ta")
-  impiantoCoincenerimento   Boolean @default(false) @map("impianto_coincenerimento")
-  capacitaCoincComplessivaTa   Int  @default(0) @map("capacita_coinc_complessiva_ta")
-  capacitaCoincPericolosiTa    Int  @default(0) @map("capacita_coinc_pericolosi_ta")
-  capacitaCoincNonPericolosiTa Int  @default(0) @map("capacita_coinc_non_pericolosi_ta")
+  impiantoIncenerimento        Boolean @default(false) @map("impianto_incenerimento")
+  capacitaComplessivaTa        Int     @default(0) @map("capacita_complessiva_ta")
+  capacitaPericolosiTa         Int     @default(0) @map("capacita_pericolosi_ta")
+  capacitaNonPericolosiTa      Int     @default(0) @map("capacita_non_pericolosi_ta")
+  impiantoCoincenerimento      Boolean @default(false) @map("impianto_coincenerimento")
+  capacitaCoincComplessivaTa   Int     @default(0) @map("capacita_coinc_complessiva_ta")
+  capacitaCoincPericolosiTa    Int     @default(0) @map("capacita_coinc_pericolosi_ta")
+  capacitaCoincNonPericolosiTa Int     @default(0) @map("capacita_coinc_non_pericolosi_ta")
 
   /// Certificazioni ambientali.
-  emasPrimaRegistrazione   DateTime? @map("emas_prima_registrazione") @db.Date
-  emasNumeroRegistrazione  String?   @map("emas_numero_registrazione") @db.VarChar(9)
-  iso14001Emissione        DateTime? @map("iso14001_emissione") @db.Date
+  emasPrimaRegistrazione  DateTime? @map("emas_prima_registrazione") @db.Date
+  emasNumeroRegistrazione String?   @map("emas_numero_registrazione") @db.VarChar(9)
+  iso14001Emissione       DateTime? @map("iso14001_emissione") @db.Date
 
   tenant     Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   discariche AutorizzazioneImpiantoDiscarica[]
@@ -843,8 +920,8 @@ model AutorizzazioneImpianto {
 /// Discarica dichiarata in una scheda SA-AUT (max 3 per autorizzazione: il
 /// record AU prevede esattamente tre blocchi classificazione + capacità residua).
 model AutorizzazioneImpiantoDiscarica {
-  id                String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  autorizzazioneId  String @map("autorizzazione_id") @db.Uuid
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  autorizzazioneId String @map("autorizzazione_id") @db.Uuid
 
   /// 0=ND, 6=rifiuti pericolosi, 7=rifiuti non pericolosi, 8=rifiuti inerti.
   classificazione   Int @default(0) @db.SmallInt
@@ -1275,7 +1352,7 @@ model WasteMovement {
   type WasteMovementType
 
   /// Data effettiva dell'operazione di carico/scarico.
-  movementDate DateTime @map("movement_date")
+  movementDate     DateTime @map("movement_date")
   /// Data di annotazione nel registro. Per legge: entro 10 gg lavorativi per
   /// produttori (art. 190 c. 1 lett. a); entro 2 gg lavorativi per gestori
   /// impianti di recupero/smaltimento (art. 190 c. 1 lett. d).
@@ -1346,15 +1423,118 @@ model RentriCredential {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   /// Identificativo operatore/client (iss/sub della client_assertion).
-  clientId       String @map("client_id") @db.VarChar(255)
+  clientId       String  @map("client_id") @db.VarChar(255)
   /// Certificato X.509 in PEM (per x5c). Non sensibile come la chiave.
-  certificatePem String @map("certificate_pem") @db.Text
+  certificatePem String  @map("certificate_pem") @db.Text
   /// Chiave privata PEM CIFRATA (formato iv:tag:ciphertext base64).
-  privateKeyEnc  String @map("private_key_enc") @db.Text
+  privateKeyEnc  String  @map("private_key_enc") @db.Text
   /// Algoritmo di firma JOSE: RS256 (cert RSA) | ES256 (cert EC).
-  algorithm    String @default("RS256") @db.VarChar(10)
+  algorithm      String  @default("RS256") @db.VarChar(10)
   /// Ambiente RENTRI dichiarato per la credenziale: demo | live.
-  environment  String @default("demo") @db.VarChar(10)
+  environment    String  @default("demo") @db.VarChar(10)
+  /// DEPRECATO (2026-07-26, R2 multi-sede): un'azienda con più unità locali
+  /// operative su RENTRI non trova posto in un singolo valore per tenant.
+  /// Il modello attuale è `RentriUnitaLocale` (figlia del tenant, con flag
+  /// `principale`). Questo campo resta per compatibilità finché la
+  /// migrazione del dato esistente (prima unità locale = principale) non è
+  /// verificata in produzione — stessa cautela già adottata con
+  /// `rentriProtocolNumber`. Non scrivere più qui: nuove sedi vanno create
+  /// in `RentriUnitaLocale`. Formato storico (se presente):
+  /// ^OP[0-9]{4}[A-Z0-9]{3}[0-9]{6}-[A-Z]{2}[0-9]{4}$ (formulari.yaml riga 684).
+  numIscrSito    String? @map("num_iscr_sito") @db.VarChar(30)
 
   @@map("rentri_credentials")
+}
+
+/// Unità locale RENTRI di un tenant (figlia del tenant, non del certificato:
+/// un'azienda può avere più sedi operative iscritte a RENTRI, ciascuna col
+/// proprio `numIscrSito`, mentre il certificato di interoperabilità
+/// (RentriCredential) resta uno per tenant).
+///
+/// `principale`: chi ha una sola sede non deve scegliere nulla — il
+/// comportamento resta quello di prima del multi-sede; chi ne ha più d'una
+/// sceglie esplicitamente quale usare di default. Vincolo di esattamente una
+/// principale per tenant enforced a livello applicativo + indice unico
+/// parziale (vedi migrazione `WHERE principale = true`).
+///
+/// `attiva`: una sede può cessare l'attività senza che spariscano i
+/// formulari già agganciati che la referenziano (mai cancellazione fisica
+/// per una sede con storico).
+///
+/// Popolamento: in R2 è inserimento manuale dall'amministratore; il client
+/// anagrafiche di R4 (`GET /operatore/{num_iscr}/siti`) potrà popolare questa
+/// tabella automaticamente senza cambiarne la forma.
+model RentriUnitaLocale {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Numero di iscrizione dell'unità locale RENTRI (formato
+  /// ^OP[0-9]{4}[A-Z0-9]{3}[0-9]{6}-[A-Z]{2}[0-9]{4}$, formulari.yaml riga 684).
+  numIscrSito   String  @map("num_iscr_sito") @db.VarChar(30)
+  /// Denominazione leggibile scelta dall'operatore (es. "Sede di Milano"),
+  /// per farla scegliere senza dover riconoscere il codice numIscrSito.
+  denominazione String  @db.VarChar(255)
+  /// Sede di default per il tenant. Esattamente una per tenant (vedi indice
+  /// unico parziale nella migrazione).
+  principale    Boolean @default(false)
+  /// Sede operativa. false quando la sede ha cessato l'attività: i formulari
+  /// già agganciati alla sede restano validi, la sede esce solo dalle scelte
+  /// per nuovi agganci.
+  attiva        Boolean @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, numIscrSito])
+  @@index([tenantId])
+  @@map("rentri_unita_locali")
+}
+
+/// Log di sincronizzazione RENTRI: un record per ogni tentativo di
+/// trasmissione di un FIR verso l'ente (audit trail immutabile, mai
+/// aggiornato né cancellato — vedi RENTRISyncLogRepository.update/delete).
+/// Nome del modello volutamente `RENTRISyncLog` (non `RentriSyncLog`): Prisma
+/// genera l'accessor del client abbassando solo la prima lettera del nome
+/// modello, quindi `RENTRISyncLog` → `prisma.rENTRISyncLog`, che è esattamente
+/// ciò che rentri-sync-log.repository.ts si aspetta nelle chiamate commentate.
+model RENTRISyncLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firId     String   @map("fir_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  status  RENTRISyncLogStatus
+  attempt Int
+
+  /// Payload della richiesta inviata a RENTRI (JSON xFIR), per audit/debug.
+  requestPayload  String  @map("request_payload") @db.Text
+  responsePayload String? @map("response_payload") @db.Text
+
+  errorMessage String? @map("error_message") @db.Text
+  errorCode    String? @map("error_code") @db.VarChar(100)
+
+  /// Numero/protocollo restituito dall'ente in caso di esito SUCCESS di
+  /// *questo* tentativo (non necessariamente il numero_fir stabile: dipende
+  /// da cosa l'API RENTRI restituisce per l'operazione tentata).
+  protocolNumber String? @map("protocol_number") @db.VarChar(100)
+
+  syncedAt   DateTime? @map("synced_at")
+  durationMs Int?      @map("duration_ms")
+
+  fir FIR @relation(fields: [firId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([firId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("rentri_sync_logs")
+}
+
+enum RENTRISyncLogStatus {
+  PENDING
+  SUCCESS
+  FAILURE
+
+  @@map("rentri_sync_log_status")
 }

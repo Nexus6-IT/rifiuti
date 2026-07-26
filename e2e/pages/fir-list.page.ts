@@ -3,10 +3,11 @@ import { type Page, type Locator, expect } from '@playwright/test'
 /**
  * Page Object per /fir (FirListComponent — features/fir/fir-list.component.ts).
  *
- * Nessun data-testid presente (gap di testabilità documentato in
- * e2e/SELECTORS-DEBT.md). Selettori basati su testo bottoni PrimeNG e ruoli
- * ARIA impliciti delle tabelle. Copre il ciclo di vita
- * BOZZA→EMESSO→IN_TRANSITO→CONSEGNATO descritto nell'audit frontend §2 "FIR".
+ * Le azioni di ciclo di vita (emetti/presa in carico/conferma consegna/annulla)
+ * non hanno `data-testid` (gap di testabilità documentato in
+ * e2e/SELECTORS-DEBT.md) e usano ancora testo bottoni PrimeNG/ARIA. Le azioni
+ * RENTRI (R1) hanno invece `data-testid` stabili — v. metodi
+ * `rentriBadge`/`rentriTrasmetti`/`rentriRiprova`/`rentriConfermaLegame` sotto.
  */
 export class FirListPage {
   readonly page: Page
@@ -60,5 +61,24 @@ export class FirListPage {
    */
   async annulla(row: Locator) {
     await this.actionButtonInRow(row, /annulla/i).click()
+  }
+
+  // --- RENTRI (R1 Task 6) — data-testid stabili, v. fir-list.component.ts riga ~174-272 ---
+
+  /** Badge di stato sincronizzazione RENTRI per riga, `numeroFir` = numeroProgressivo (o id se assente). */
+  rentriBadge(numeroFir: string): Locator {
+    return this.page.locator(`[data-testid="rentri-sync-badge-${numeroFir}"]`)
+  }
+
+  rentriTrasmettiButton(numeroFir: string): Locator {
+    return this.page.locator(`[data-testid="fir-rentri-trasmetti-${numeroFir}"]`)
+  }
+
+  rentriRiprovaButton(numeroFir: string): Locator {
+    return this.page.locator(`[data-testid="fir-rentri-riprova-${numeroFir}"]`)
+  }
+
+  rentriConfermaLegameButton(numeroFir: string): Locator {
+    return this.page.locator(`[data-testid="fir-rentri-conferma-legame-${numeroFir}"]`)
   }
 }

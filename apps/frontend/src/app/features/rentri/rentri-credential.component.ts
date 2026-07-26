@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { CommonModule } from '@angular/common'
+import { RouterModule } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { InputTextModule } from 'primeng/inputtext'
@@ -25,6 +26,7 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
   standalone: true,
   imports: [
     CommonModule,
+    RouterModule,
     FormsModule,
     ButtonModule,
     InputTextModule,
@@ -45,6 +47,20 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
           <p class="page-subtitle">
             Certificato di interoperabilità per la trasmissione RENTRI del tenant
           </p>
+        </div>
+        <div class="rentri-cross-links">
+          <a
+            routerLink="/rentri/sedi"
+            class="rentri-cross-link"
+            data-testid="rentri-credential-sedi-link"
+            >Sedi RENTRI</a
+          >
+          <a
+            routerLink="/rentri/modalita-legame"
+            class="rentri-cross-link"
+            data-testid="rentri-credential-modalita-legame-link"
+            >Modalità di legame RENTRI</a
+          >
         </div>
       </header>
 
@@ -84,6 +100,13 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
                 <dd>{{ s.environment }}</dd>
               </div>
             </dl>
+            <p class="rentri-sedi-note" data-testid="rentri-credential-sedi-note">
+              <i class="pi pi-info-circle" aria-hidden="true"></i>
+              Le unità locali (sedi) RENTRI del tenant si gestiscono a parte:
+              <a routerLink="/rentri/sedi" data-testid="rentri-credential-sedi-note-link"
+                >vai alla pagina Sedi RENTRI</a
+              >.
+            </p>
 
             <p-button
               *ngIf="s.configured"
@@ -231,6 +254,23 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
   `,
   styles: [
     `
+      .rentri-cross-links {
+        display: flex;
+        gap: var(--spacing-base);
+        align-self: center;
+      }
+      .rentri-cross-link {
+        align-self: center;
+        font-size: var(--font-size-sm);
+      }
+      .rentri-sedi-note {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        margin: var(--spacing-sm) 0 0 0;
+      }
       .rentri-section-title {
         font-family: var(--font-display);
         font-size: var(--font-size-lg);
