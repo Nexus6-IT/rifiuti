@@ -240,6 +240,67 @@ describe('FirDetailComponent', () => {
     expect(el.querySelector('[data-testid="rentri-sync-logs"]')).toBeTruthy()
   })
 
+  /**
+   * R1 Task 5: il pulsante «Riprova» deve comparire SOLO quando ritentare ha
+   * senso. Prima di questo cambiamento compariva per qualunque FIR FAILED,
+   * anche dopo un 403 o un 429/423 — dove ritentare non cambia nulla o
+   * peggiora la situazione (l'ente ha già sospeso/bandito il chiamante).
+   */
+  it('NON mostra "Riprova" dopo un 403 (certificato non valido): mostra invece "Vai al certificato"', () => {
+    setup({ role: 'ADMIN' })
+    firService.getFIRById.and.returnValue(
+      of({
+        ...baseFIR,
+        rentriSyncStatus: 'FAILED',
+        rentriAzioneErrore: 'VEDI_CERTIFICATO',
+        rentriMessaggioErrore:
+          'Il certificato della tua azienda non è valido per questa operazione: verifica il certificato nella pagina dedicata. Ritentare non risolve il problema.',
+      })
+    )
+    fixture.detectChanges()
+
+    const el: HTMLElement = fixture.nativeElement
+    expect(el.querySelector('[data-testid="fir-detail-rentri-riprova"]')).toBeFalsy()
+    expect(el.querySelector('[data-testid="fir-detail-rentri-vedi-certificato"]')).toBeTruthy()
+    expect(el.textContent).toContain('certificato')
+  })
+
+  it('NON mostra "Riprova" dopo un 429/423 (RENTRI ha sospeso le richieste)', () => {
+    setup({ role: 'ADMIN' })
+    firService.getFIRById.and.returnValue(
+      of({
+        ...baseFIR,
+        rentriSyncStatus: 'FAILED',
+        rentriAzioneErrore: 'NESSUNA',
+        rentriMessaggioErrore:
+          'RENTRI ha temporaneamente sospeso le richieste per troppi tentativi non validi: la trasmissione riprenderà da sola, senza bisogno di intervenire.',
+      })
+    )
+    fixture.detectChanges()
+
+    const el: HTMLElement = fixture.nativeElement
+    expect(el.querySelector('[data-testid="fir-detail-rentri-riprova"]')).toBeFalsy()
+    expect(el.querySelector('[data-testid="fir-detail-rentri-vedi-certificato"]')).toBeFalsy()
+    expect(el.textContent).toContain('riprenderà')
+  })
+
+  it('mostra "Riprova" quando manca il numero ufficiale nell\'esito (RENTRI_MISSING_NUMERO_FIR)', () => {
+    setup({ role: 'ADMIN' })
+    firService.getFIRById.and.returnValue(
+      of({
+        ...baseFIR,
+        rentriSyncStatus: 'FAILED',
+        rentriAzioneErrore: 'RIPROVA',
+        rentriMessaggioErrore:
+          'RENTRI ha accettato la trasmissione ma non ha restituito il numero ufficiale del formulario: il FIR non risulta ancora legato. Riprova la trasmissione.',
+      })
+    )
+    fixture.detectChanges()
+
+    const el: HTMLElement = fixture.nativeElement
+    expect(el.querySelector('[data-testid="fir-detail-rentri-riprova"]')).toBeTruthy()
+  })
+
   it('trasmette il FIR a RENTRI quando si preme "Trasmetti a RENTRI"', () => {
     setup({ role: 'ADMIN' })
     firService.getFIRById.and.returnValue(of(baseFIR))

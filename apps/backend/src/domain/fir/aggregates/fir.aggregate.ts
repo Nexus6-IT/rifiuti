@@ -471,7 +471,7 @@ export class FIR extends AggregateRoot {
    * Registra un fallimento di trasmissione (v. regola 3 per tentativi/backoff).
    */
   markRENTRISyncFailed(errorMessage: string, errorCode?: string, correlationId?: string): void {
-    this._rentriSyncStatus = this._rentriSyncStatus.markAsFailed(errorMessage)
+    this._rentriSyncStatus = this._rentriSyncStatus.markAsFailed(errorMessage, errorCode)
 
     const willRetry = this._rentriSyncStatus.canRetry()
 

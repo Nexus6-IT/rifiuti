@@ -79,6 +79,19 @@ describe('RENTRISyncBadgeComponent', () => {
     expect(component['getTooltipText']()).toContain('Timeout')
   })
 
+  it('preferisce il messaggio tradotto (R1 Task 5) al testo tecnico grezzo nel tooltip', () => {
+    setInputs({
+      rentriSyncStatus: 'FAILED',
+      syncAttempts: 1,
+      lastSyncError: 'Certificato non riconosciuto',
+      messaggioErrore:
+        'Il certificato della tua azienda non è valido per questa operazione: verifica il certificato nella pagina dedicata. Ritentare non risolve il problema.',
+    })
+
+    expect(component['getTooltipText']()).toContain('certificato')
+    expect(component['getTooltipText']()).not.toContain('Verrà ritentato automaticamente')
+  })
+
   it('segnala il fallimento permanente con severità danger', () => {
     setInputs({ rentriSyncStatus: 'PERMANENTLY_FAILED', syncAttempts: 5 })
 

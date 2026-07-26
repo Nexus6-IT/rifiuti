@@ -4,6 +4,10 @@
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { FIR, FIRStato, ParteFIR, TipoTratta } from '../../../domain/fir/aggregates/fir.aggregate'
+import {
+  traduciErroreRentri,
+  RentriAzioneUtente,
+} from '../../../application/rentri/rentri-error-presentation'
 
 /** Trasportatore aggiuntivo (tratta intermodale) nella risposta del FIR. */
 export class TrasportatoreAggiuntivoResponse {
@@ -164,9 +168,29 @@ export class FIRResponseDto {
   rentriOrigineLegame: string | null
 
   @ApiPropertyOptional({
-    description: "Ultimo messaggio di errore dell'ultima trasmissione fallita",
+    description:
+      "Ultimo messaggio di errore dell'ultima trasmissione fallita (tecnico — v. rentriMessaggioErrore per il testo da mostrare all'utente)",
   })
   rentriLastSyncError: string | null
+
+  /**
+   * Traduzione azionabile dell'ultimo fallimento (R1 Task 5): mai un codice
+   * («403», «RENTRI_MISSING_NUMERO_FIR») o il ProblemDetails grezzo davanti
+   * all'utente — v. `traduciErroreRentri`. `null` se non c'è un fallimento
+   * da mostrare (nessuna trasmissione tentata, o ultimo esito positivo).
+   */
+  @ApiPropertyOptional({
+    description: "Messaggio azionabile dell'ultimo fallimento, pronto per l'utente",
+  })
+  rentriMessaggioErrore: string | null
+
+  @ApiPropertyOptional({
+    enum: ['RIPROVA', 'VEDI_CERTIFICATO', 'NESSUNA'],
+    description:
+      "Azione proposta per l'ultimo fallimento: RIPROVA abilita il pulsante «Riprova», " +
+      'VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA nasconde qualunque azione manuale',
+  })
+  rentriAzioneErrore: RentriAzioneUtente | null
 
   @ApiProperty({ example: 0, description: 'Numero di tentativi di trasmissione effettuati' })
   rentriSyncAttempts: number
@@ -178,6 +202,15 @@ export class FIRResponseDto {
   canSyncToRENTRI: boolean
 
   static fromDomain(fir: FIR): FIRResponseDto {
+    const lastError = fir.rentriSyncStatus.getLastError()
+    // Nessun fallimento da tradurre: niente messaggio, niente azione.
+    const erroreTradotto = lastError
+      ? traduciErroreRentri({
+          errorCode: fir.rentriSyncStatus.getLastErrorCode(),
+          errorMessage: lastError,
+        })
+      : null
+
     return {
       id: fir.id,
       numeroProgressivo: fir.numeroProgressivo,
@@ -220,7 +253,9 @@ export class FIRResponseDto {
       rentriNumeroFir: fir.rentriNumeroFir,
       rentriNumeroFirProposto: fir.rentriNumeroFirProposto,
       rentriOrigineLegame: fir.rentriOrigineLegame,
-      rentriLastSyncError: fir.rentriSyncStatus.getLastError() ?? null,
+      rentriLastSyncError: lastError ?? null,
+      rentriMessaggioErrore: erroreTradotto?.messaggio ?? null,
+      rentriAzioneErrore: erroreTradotto?.azione ?? null,
       rentriSyncAttempts: fir.rentriSyncStatus.getAttempts(),
       canSyncToRENTRI: fir.canSyncToRENTRI(),
     }

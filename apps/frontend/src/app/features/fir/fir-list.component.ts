@@ -179,6 +179,7 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                     [rentriNumeroFirProposto]="fir.rentriNumeroFirProposto"
                     [syncAttempts]="fir.rentriSyncAttempts || 0"
                     [lastSyncError]="fir.rentriLastSyncError"
+                    [messaggioErrore]="fir.rentriMessaggioErrore"
                   />
                   <span *ngIf="!mostraStatoRentri(fir)" class="row-actions__none">—</span>
                 </td>

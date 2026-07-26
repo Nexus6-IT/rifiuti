@@ -250,7 +250,21 @@ export class SyncFIRToRENTRIUseCase {
             ? (apiError.problemDetail ?? apiError.problemTitle ?? apiError.message)
             : apiError.message || 'RENTRI API error'
 
-        const errorCode = nonRitentabile ? 'RENTRI_FORBIDDEN' : 'RENTRI_API_ERROR'
+        // 429/423 sono una famiglia a parte rispetto a 5xx/rete (R1 Task 5):
+        // l'ente ha sospeso le richieste (423 = ha bandito il chiamante per
+        // troppe richieste non valide), il messaggio all'utente deve dirlo
+        // esplicitamente e MAI offrire un «Riprova» manuale — un ritentativo
+        // qui peggiora la situazione, a differenza di un 5xx/timeout dove
+        // ritentare più tardi è normale. `apiError.status` esiste solo se
+        // l'errore è un RentriApiError (v. RENTRIApiClient); un errore di
+        // rete/timeout puro non ha uno status HTTP e ricade in
+        // RENTRI_API_ERROR come sempre.
+        const status = apiError instanceof RentriApiError ? apiError.status : undefined
+        const errorCode = nonRitentabile
+          ? 'RENTRI_FORBIDDEN'
+          : status === 429 || status === 423
+            ? 'RENTRI_RATE_LIMITED'
+            : 'RENTRI_API_ERROR'
 
         fir.markRENTRISyncFailed(errorMessage, errorCode, correlationId)
 

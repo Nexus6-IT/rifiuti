@@ -25,6 +25,7 @@ import { ConfermaLegameRENTRIUseCase } from '../../application/rentri/conferma-l
 import { DomainException } from '../../domain/shared/domain-exception'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
+import { traduciErroreRentri } from '../../application/rentri/rentri-error-presentation'
 import {
   SyncFIRRequestDto,
   SyncFIRResponseDto,
@@ -390,18 +391,35 @@ export class RENTRISyncController {
 
       const totalPages = Math.ceil(result.total / limit)
 
-      const data: SyncLogEntryDto[] = result.data.map(log => ({
-        id: log.id,
-        firId: log.firId,
-        status: log.status,
-        attempt: log.attempt,
-        errorMessage: log.errorMessage || undefined,
-        errorCode: log.errorCode || undefined,
-        protocolNumber: log.protocolNumber || undefined,
-        syncedAt: log.syncedAt || undefined,
-        durationMs: log.durationMs || undefined,
-        createdAt: log.createdAt,
-      }))
+      const data: SyncLogEntryDto[] = result.data.map(log => {
+        // Traduzione azionabile SOLO per i tentativi falliti (R1 Task 5):
+        // il ProblemDetails grezzo/errorMessage tecnico restano nel log
+        // tecnico (errorMessage/errorCode qui sotto), mai il primo testo che
+        // l'utente legge — v. traduciErroreRentri.
+        const errore = log.isFailed()
+          ? traduciErroreRentri({
+              errorCode: log.errorCode,
+              errorMessage: log.errorMessage,
+              responsePayload: log.responsePayload,
+            })
+          : null
+
+        return {
+          id: log.id,
+          firId: log.firId,
+          status: log.status,
+          attempt: log.attempt,
+          errorMessage: log.errorMessage || undefined,
+          errorCode: log.errorCode || undefined,
+          messaggio: errore?.messaggio,
+          azione: errore?.azione,
+          campo: errore?.campo,
+          protocolNumber: log.protocolNumber || undefined,
+          syncedAt: log.syncedAt || undefined,
+          durationMs: log.durationMs || undefined,
+          createdAt: log.createdAt,
+        }
+      })
 
       this.logger.info('Sync logs retrieved', {
         tenantId,

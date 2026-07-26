@@ -90,8 +90,20 @@ export interface FIR {
   rentriNumeroFirProposto?: string | null
   /** Come è nato il legame con rentriNumeroFir. */
   rentriOrigineLegame?: 'TRASMESSO_DA_NOI' | 'ACQUISITO_DA_TERZI' | 'AGGANCIO_MANUALE' | null
-  /** Ultimo messaggio di errore dell'ultima trasmissione fallita. */
+  /** Ultimo messaggio di errore dell'ultima trasmissione fallita (tecnico — v. rentriMessaggioErrore per l'utente). */
   rentriLastSyncError?: string | null
+  /**
+   * Messaggio azionabile dell'ultimo fallimento, già tradotto dal backend
+   * (R1 Task 5): mai un codice o un ProblemDetails grezzo. `null`/assente se
+   * non c'è un fallimento da mostrare.
+   */
+  rentriMessaggioErrore?: string | null
+  /**
+   * Azione proposta per l'ultimo fallimento: RIPROVA abilita il pulsante
+   * «Riprova», VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA
+   * nasconde qualunque azione manuale (v. backend rentri-error-presentation.ts).
+   */
+  rentriAzioneErrore?: 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA' | null
   /** Numero di tentativi di trasmissione effettuati. */
   rentriSyncAttempts?: number
   /** Se true, il FIR è trasmissibile ora a RENTRI (stato + non già legato + nessun fallimento permanente). */

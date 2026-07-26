@@ -498,6 +498,60 @@ describe('SyncFIRToRENTRIUseCase', () => {
     })
 
     /**
+     * R1 Task 5: 429/423 sono una famiglia a parte rispetto a 5xx/rete —
+     * l'utente non deve vedere «Riprova» (peggiorerebbe la situazione, v.
+     * rentri-error-presentation.ts), quindi l'errorCode deve distinguerli
+     * dal generico RENTRI_API_ERROR usato per 5xx/timeout/rete.
+     */
+    it.each([429, 423])(
+      '%i (RentriApiError retryable): errorCode RENTRI_RATE_LIMITED, distinto da RENTRI_API_ERROR',
+      async status => {
+        const firId = 'fir-123'
+        const tenantId = 'tenant-456'
+        const mockFIR = {
+          id: firId,
+          tenantId,
+          status: 'COMPLETED',
+          firNumber: 'FIR-2025-429',
+          rentriSyncStatus: {
+            getStatus: jest.fn().mockReturnValue('PENDING'),
+            getAttempts: jest.fn().mockReturnValue(0),
+          },
+          canSyncToRENTRI: jest.fn().mockReturnValue(true),
+          startRENTRISync: jest.fn(),
+          markRENTRISyncFailed: jest.fn(),
+          needsRENTRIRetry: jest.fn().mockReturnValue(true),
+          getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
+          getDomainEvents: jest
+            .fn()
+            .mockReturnValue([{ eventType: 'FIRSyncFailed', aggregateId: firId }]),
+          clearDomainEvents: jest.fn(),
+        }
+
+        const mockSyncLog = {
+          markAsFailure: jest.fn().mockReturnValue({ id: 'log-1', status: 'FAILURE' }),
+        }
+
+        const apiError = new RentriApiError(status, 'Too Many Requests', undefined, true)
+
+        mockFIRRepository.findById.mockResolvedValue(mockFIR)
+        mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
+        mockRENTRIApiClient.creaFormulario.mockRejectedValue(apiError)
+        mockFIRRepository.save.mockResolvedValue(undefined)
+        mockSyncLogRepository.save.mockResolvedValue(undefined)
+
+        const result = await useCase.execute(firId, tenantId)
+
+        expect(result.success).toBe(false)
+        expect(mockFIR.markRENTRISyncFailed).toHaveBeenCalledWith(
+          expect.any(String),
+          'RENTRI_RATE_LIMITED',
+          undefined
+        )
+      }
+    )
+
+    /**
      * Task 3-bis (R0): l'esito può dichiarare `errore: false` ed essere
      * comunque privo del numero ufficiale (`esito.esito.numero_fir`, v.
      * `estraiNumeroFirDaEsito`). In quel caso NON va chiamato

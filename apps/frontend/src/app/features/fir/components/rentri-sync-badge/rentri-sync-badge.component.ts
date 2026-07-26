@@ -104,8 +104,16 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
   /** Numero di tentativi di trasmissione effettuati. */
   @Input() syncAttempts: number = 0
 
-  /** Ultimo messaggio di errore dell'ultima trasmissione fallita. */
+  /** Ultimo messaggio di errore dell'ultima trasmissione fallita (tecnico — v. messaggioErrore per l'utente). */
   @Input() lastSyncError?: string | null
+
+  /**
+   * Messaggio azionabile dell'ultimo fallimento, già tradotto dal backend
+   * (R1 Task 5, v. `traduciErroreRentri`): quando presente sostituisce
+   * `lastSyncError` nel tooltip — mai un codice o testo tecnico davanti
+   * all'utente.
+   */
+  @Input() messaggioErrore?: string | null
 
   /** Abilita il polling automatico per sincronizzazioni in corso. */
   @Input() autoPoll: boolean = true
@@ -250,6 +258,13 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
         return 'Trasmissione a RENTRI in corso...'
 
       case 'FAILED': {
+        // Il messaggio tradotto (R1 Task 5) spiega già cosa è successo e se
+        // la trasmissione riprenderà da sola: niente promessa generica di
+        // "verrà ritentato automaticamente" quando l'errore è definitivo
+        // (403, dati non validi) — sarebbe falsa.
+        if (this.messaggioErrore) {
+          return this.messaggioErrore
+        }
         const attemptsText = `Verrà ritentato automaticamente (${this.syncAttempts}/5 tentativi)`
         return this.lastSyncError
           ? `Trasmissione non riuscita: ${this.lastSyncError}\n${attemptsText}`
@@ -257,6 +272,9 @@ export class RENTRISyncBadgeComponent implements OnInit, OnDestroy {
       }
 
       case 'PERMANENTLY_FAILED': {
+        if (this.messaggioErrore) {
+          return `${this.messaggioErrore} Nessun ulteriore tentativo automatico: richiede intervento manuale.`
+        }
         const detail = this.lastSyncError ? `: ${this.lastSyncError}` : ''
         return `Numero massimo di tentativi raggiunto${detail}. Richiede intervento manuale.`
       }

@@ -300,6 +300,28 @@ export class SyncLogEntryDto {
   errorCode?: string
 
   @ApiProperty({
+    description:
+      "Messaggio azionabile per l'utente (R1 Task 5) — traduzione di errorCode/errorMessage, mai il ProblemDetails grezzo",
+    required: false,
+  })
+  messaggio?: string
+
+  @ApiProperty({
+    description:
+      'Azione proposta: RIPROVA abilita un pulsante «Riprova», VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA nasconde qualunque azione manuale',
+    enum: ['RIPROVA', 'VEDI_CERTIFICATO', 'NESSUNA'],
+    required: false,
+  })
+  azione?: 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA'
+
+  @ApiProperty({
+    description:
+      'Campo del formulario indicato da RENTRI come causa del rifiuto, quando ricavabile (solo errori di validazione)',
+    required: false,
+  })
+  campo?: string
+
+  @ApiProperty({
     description: 'RENTRI protocol number (if successful)',
     required: false,
   })

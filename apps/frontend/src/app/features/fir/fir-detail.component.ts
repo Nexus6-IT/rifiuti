@@ -233,8 +233,17 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                 [rentriNumeroFirProposto]="f.rentriNumeroFirProposto"
                 [syncAttempts]="f.rentriSyncAttempts || 0"
                 [lastSyncError]="f.rentriLastSyncError"
+                [messaggioErrore]="f.rentriMessaggioErrore"
               />
             </div>
+            @if (f.rentriMessaggioErrore) {
+              <p-message
+                severity="warn"
+                [text]="f.rentriMessaggioErrore"
+                styleClass="w-full mb-3"
+                data-testid="fir-detail-rentri-messaggio-errore"
+              />
+            }
             <div class="detail-grid">
               <div class="detail-field">
                 <span class="detail-label">Numero FIR ufficiale</span>
@@ -312,6 +321,17 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   [attr.aria-label]="
                     'Riprova la trasmissione RENTRI del FIR ' + (f.numeroProgressivo || f.id)
                   "
+                />
+              }
+              @if (mostraVaiAlCertificato(f)) {
+                <p-button
+                  label="Vai al certificato"
+                  icon="pi pi-id-card"
+                  severity="danger"
+                  [outlined]="true"
+                  routerLink="/rentri/certificato"
+                  data-testid="fir-detail-rentri-vedi-certificato"
+                  aria-label="Vai alla pagina del certificato RENTRI"
                 />
               }
               @if (canConfermareLegameRentri(f)) {
@@ -540,8 +560,33 @@ export class FirDetailComponent implements OnInit {
     return !!fir.canSyncToRENTRI && fir.rentriSyncStatus === 'PENDING' && this.canManageRENTRI()
   }
 
+  /**
+   * Mostra «Riprova» SOLO quando l'ultimo fallimento è di una famiglia per
+   * cui ritentare ha senso (R1 Task 5, v. backend `traduciErroreRentri`).
+   * Prima di questo controllo il pulsante compariva per qualunque FIR in
+   * stato FAILED, anche dopo un 403 (credenziale non valida: ritentare non
+   * cambia nulla) o un 429/423 (l'ente ha sospeso/bandito le richieste:
+   * ritentare a mano peggiora la situazione) — esattamente il «tranello» che
+   * il task vuole evitare. `rentriAzioneErrore` assente (FIR senza un
+   * ultimo errore tradotto, es. dati di uno storico precedente a questo
+   * cambiamento) ricade nel comportamento preesistente.
+   */
   canRiprovareRentri(fir: FIR): boolean {
-    return !!fir.canSyncToRENTRI && fir.rentriSyncStatus === 'FAILED' && this.canManageRENTRI()
+    if (!fir.canSyncToRENTRI || fir.rentriSyncStatus !== 'FAILED' || !this.canManageRENTRI()) {
+      return false
+    }
+    return fir.rentriAzioneErrore === undefined || fir.rentriAzioneErrore === null
+      ? true
+      : fir.rentriAzioneErrore === 'RIPROVA'
+  }
+
+  /** «Vai al certificato»: unica azione utile quando RENTRI ha rifiutato per un certificato non valido (403). */
+  mostraVaiAlCertificato(fir: FIR): boolean {
+    return (
+      fir.rentriSyncStatus === 'FAILED' &&
+      fir.rentriAzioneErrore === 'VEDI_CERTIFICATO' &&
+      this.canManageRENTRI()
+    )
   }
 
   canConfermareLegameRentri(fir: FIR): boolean {
@@ -554,6 +599,7 @@ export class FirDetailComponent implements OnInit {
       fir.stato === FIRStato.EMESSO ||
       this.canTrasmettereRentri(fir) ||
       this.canRiprovareRentri(fir) ||
+      this.mostraVaiAlCertificato(fir) ||
       this.canConfermareLegameRentri(fir)
     )
   }

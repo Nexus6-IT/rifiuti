@@ -195,7 +195,16 @@ import {
               }
             </td>
             <td>
-              @if (log.errorMessage) {
+              @if (log.messaggio) {
+                <span
+                  class="text-sm sync-error"
+                  [pTooltip]="'Dettaglio tecnico: ' + log.errorMessage"
+                  tooltipPosition="left"
+                  [attr.data-testid]="'rentri-sync-logs-error-message-' + log.id"
+                >
+                  {{ truncateError(log.messaggio) }}
+                </span>
+              } @else if (log.errorMessage) {
                 <span
                   class="text-sm sync-error"
                   [pTooltip]="log.errorMessage"

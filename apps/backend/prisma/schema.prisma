@@ -314,6 +314,12 @@ model FIR {
   rentriSyncedAt       DateTime?        @map("rentri_synced_at")
   rentriSyncAttempts   Int              @default(0) @map("rentri_sync_attempts")
   rentriLastSyncError  String?          @map("rentri_last_sync_error") @db.Text
+  // Codice macchina dell'ultimo fallimento (RENTRI_FORBIDDEN/RENTRI_RATE_LIMITED/
+  // RENTRI_VALIDATION_ERROR/RENTRI_MISSING_NUMERO_FIR/RENTRI_API_ERROR — v.
+  // SyncFIRToRENTRIUseCase). Distinto da rentriLastSyncError (testo libero):
+  // senza un codice stabile l'interfaccia non può decidere in modo affidabile
+  // se offrire «Riprova» (R1 Task 5, rentri-error-presentation.ts).
+  rentriLastSyncErrorCode String?       @map("rentri_last_sync_error_code") @db.VarChar(100)
   rentriNextRetryAt    DateTime?        @map("rentri_next_retry_at")
 
   // Numero ufficiale assegnato da RENTRI al formulario (numero_fir dell'ente):

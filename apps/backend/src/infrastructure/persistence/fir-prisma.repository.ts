@@ -601,6 +601,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       rentriSyncedAt: syncStatus.getSyncedAt() ?? null,
       rentriSyncAttempts: syncStatus.getAttempts(),
       rentriLastSyncError: syncStatus.getLastError() ?? null,
+      rentriLastSyncErrorCode: syncStatus.getLastErrorCode() ?? null,
       rentriNextRetryAt: fir.needsRENTRIRetry() ? fir.getNextRENTRIRetryAt() : null,
       rentriNumeroFir: fir.rentriNumeroFir ?? null,
       rentriTransazioneId: fir.rentriTransazioneId ?? null,
@@ -627,6 +628,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       lastError: record.rentriLastSyncError ?? undefined,
       protocolNumber: record.rentriNumeroFir ?? undefined,
       syncedAt: record.rentriSyncedAt ?? undefined,
+      lastErrorCode: record.rentriLastSyncErrorCode ?? undefined,
     })
   }
 }

@@ -27,7 +27,13 @@ export class RENTRISyncStatus {
     private readonly attempts: number = 0,
     private readonly lastError?: string,
     private readonly protocolNumber?: string,
-    private readonly syncedAt?: Date
+    private readonly syncedAt?: Date,
+    // Codice macchina dell'ultimo fallimento (v. SyncFIRToRENTRIUseCase,
+    // es. RENTRI_FORBIDDEN/RENTRI_RATE_LIMITED/RENTRI_VALIDATION_ERROR):
+    // senza distinguerlo da `lastError` (testo libero) non è possibile
+    // decidere in modo affidabile se offrire «Riprova» — v. R1 Task 5,
+    // rentri-error-presentation.ts.
+    private readonly lastErrorCode?: string
   ) {
     this.validate()
   }
@@ -71,20 +77,22 @@ export class RENTRISyncStatus {
     lastError?: string
     protocolNumber?: string
     syncedAt?: Date
+    lastErrorCode?: string
   }): RENTRISyncStatus {
     return new RENTRISyncStatus(
       params.status,
       params.attempts,
       params.lastError,
       params.protocolNumber,
-      params.syncedAt
+      params.syncedAt,
+      params.lastErrorCode
     )
   }
 
   /**
    * Create failed status with error
    */
-  static failed(attempts: number, error: string): RENTRISyncStatus {
+  static failed(attempts: number, error: string, errorCode?: string): RENTRISyncStatus {
     if (attempts < 0) {
       throw new DomainException('Attempts must be non-negative')
     }
@@ -93,7 +101,7 @@ export class RENTRISyncStatus {
     }
 
     const status = attempts >= RENTRISyncStatus.MAX_ATTEMPTS ? 'PERMANENTLY_FAILED' : 'FAILED'
-    return new RENTRISyncStatus(status, attempts, error)
+    return new RENTRISyncStatus(status, attempts, error, undefined, undefined, errorCode)
   }
 
   /**
@@ -119,11 +127,11 @@ export class RENTRISyncStatus {
   /**
    * Transition to failed state (increments attempts)
    */
-  markAsFailed(error: string): RENTRISyncStatus {
+  markAsFailed(error: string, errorCode?: string): RENTRISyncStatus {
     if (this.status === 'SYNCED') {
       throw new DomainException('Cannot mark synced FIR as failed')
     }
-    return RENTRISyncStatus.failed(this.attempts + 1, error)
+    return RENTRISyncStatus.failed(this.attempts + 1, error, errorCode)
   }
 
   /**
@@ -170,6 +178,10 @@ export class RENTRISyncStatus {
 
   getLastError(): string | undefined {
     return this.lastError
+  }
+
+  getLastErrorCode(): string | undefined {
+    return this.lastErrorCode
   }
 
   getProtocolNumber(): string | undefined {
