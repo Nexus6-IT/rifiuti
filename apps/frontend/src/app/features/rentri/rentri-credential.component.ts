@@ -91,6 +91,10 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
                 <dt>Ambiente</dt>
                 <dd>{{ s.environment }}</dd>
               </div>
+              <div class="rentri-meta__row">
+                <dt>Unità locale</dt>
+                <dd>{{ s.numIscrSito || 'Non configurata' }}</dd>
+              </div>
             </dl>
 
             <p-button
@@ -129,6 +133,26 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
               placeholder="es. codice operatore RENTRI"
               autocomplete="off"
             />
+          </div>
+
+          <div class="field mb-3">
+            <label for="r-num-iscr-sito" class="block mb-2"
+              >Numero di iscrizione dell'unità locale</label
+            >
+            <input
+              id="r-num-iscr-sito"
+              pInputText
+              [(ngModel)]="numIscrSito"
+              class="w-full"
+              placeholder="es. OP1234ABC123456-RM1234"
+              autocomplete="off"
+              aria-describedby="r-num-iscr-sito-hint"
+            />
+            <small id="r-num-iscr-sito-hint" class="block mt-1 text-tertiary">
+              Numero di iscrizione della tua unità locale su RENTRI (lo trovi sul certificato di
+              iscrizione). Tecnicamente corrisponde al parametro <code>num_iscr_sito</code>,
+              necessario per la ricerca e per l'aggancio ai formulari altrui.
+            </small>
           </div>
 
           <div class="grid formgrid mb-3">
@@ -338,6 +362,7 @@ export class RentriCredentialComponent implements OnInit {
 
   // Form state
   clientId = ''
+  numIscrSito = ''
   environment = 'demo'
   algorithm: 'RS256' | 'ES256' = 'RS256'
   mode: 'pkcs12' | 'pem' = 'pkcs12'
@@ -372,6 +397,7 @@ export class RentriCredentialComponent implements OnInit {
         this.status.set(s)
         if (s.clientId) this.clientId = s.clientId
         if (s.environment) this.environment = s.environment
+        if (s.numIscrSito) this.numIscrSito = s.numIscrSito
         this.loading.set(false)
       },
       error: () => {
@@ -409,6 +435,7 @@ export class RentriCredentialComponent implements OnInit {
       clientId: this.clientId.trim(),
       algorithm: this.algorithm,
       environment: this.environment,
+      ...(this.numIscrSito.trim() ? { numIscrSito: this.numIscrSito.trim() } : {}),
     }
     const payload =
       this.mode === 'pkcs12'

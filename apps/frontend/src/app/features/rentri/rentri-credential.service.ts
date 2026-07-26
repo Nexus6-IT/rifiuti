@@ -8,6 +8,8 @@ export interface RentriCredentialStatus {
   configured: boolean
   clientId?: string
   environment?: string
+  /** Numero di iscrizione dell'unità locale RENTRI del tenant (num_iscr_sito). */
+  numIscrSito?: string | null
 }
 
 /** Payload PEM diretto. */
@@ -17,6 +19,7 @@ export interface SetCredentialPem {
   privateKeyPem: string
   algorithm?: 'RS256' | 'ES256'
   environment?: string
+  numIscrSito?: string
 }
 
 /** Payload PKCS#12 (.p12/.pfx) in base64 + passphrase. */
@@ -26,6 +29,7 @@ export interface SetCredentialPkcs12 {
   pkcs12Passphrase: string
   algorithm?: 'RS256' | 'ES256'
   environment?: string
+  numIscrSito?: string
 }
 
 /**

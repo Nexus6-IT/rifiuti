@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common'
 import { RentriCredentialService } from './rentri-credential.service'
 import { decryptSecret } from './rentri-crypto.util'
 
@@ -70,5 +71,59 @@ describe('RentriCredentialService', () => {
   it('getForTenant ritorna null se non configurato', async () => {
     prisma.rentriCredential.findUnique.mockResolvedValue(null)
     expect(await service.getForTenant('tenant-1')).toBeNull()
+  })
+
+  describe('numIscrSito (unità locale RENTRI)', () => {
+    const VALID = 'OP1234ABC123456-RM1234'
+
+    it('accetta e salva un numIscrSito nel formato valido', async () => {
+      await service.upsertForTenant('tenant-1', {
+        clientId: 'op-1',
+        certificatePem: 'CERT',
+        privateKeyPem: 'KEY',
+        numIscrSito: VALID,
+      })
+
+      const args = prisma.rentriCredential.upsert.mock.calls[0][0]
+      expect(args.create.numIscrSito).toBe(VALID)
+    })
+
+    it('rifiuta un numIscrSito fuori pattern PRIMA di persistere (400 rumoroso in RENTRI altrimenti)', async () => {
+      await expect(
+        service.upsertForTenant('tenant-1', {
+          clientId: 'op-1',
+          certificatePem: 'CERT',
+          privateKeyPem: 'KEY',
+          numIscrSito: 'non-valido',
+        })
+      ).rejects.toBeInstanceOf(BadRequestException)
+
+      expect(prisma.rentriCredential.upsert).not.toHaveBeenCalled()
+    })
+
+    it('permette di non specificare numIscrSito (resta null)', async () => {
+      await service.upsertForTenant('tenant-1', {
+        clientId: 'op-1',
+        certificatePem: 'CERT',
+        privateKeyPem: 'KEY',
+      })
+
+      const args = prisma.rentriCredential.upsert.mock.calls[0][0]
+      expect(args.create.numIscrSito).toBeNull()
+    })
+
+    it('getForTenant restituisce numIscrSito quando presente', async () => {
+      await service.upsertForTenant('tenant-1', {
+        clientId: 'op-1',
+        certificatePem: 'CERT',
+        privateKeyPem: 'KEY',
+        numIscrSito: VALID,
+      })
+      const stored = prisma.rentriCredential.upsert.mock.calls[0][0].create
+      prisma.rentriCredential.findUnique.mockResolvedValue(stored)
+
+      const cred = await service.getForTenant('tenant-1')
+      expect(cred?.numIscrSito).toBe(VALID)
+    })
   })
 })
