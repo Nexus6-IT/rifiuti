@@ -82,11 +82,11 @@ Se il coordinatore preferisce un'unica fase, i Task 8-13 di questo piano sono co
 
 - [ ] **Step 1: Scrivere i test della mappatura prima del codice**
 
-Una tabella di casi: ogni valore di `StatoFormulario` del contratto (21 valori, riga 10174-10197) verso il `FIRStato` interno atteso, più il caso "FIR non legato a RENTRI → `applyRentriStato` rifiuta la chiamata" (non ha senso riconciliare senza legame) e il caso "il nuovo stato ente è più indietro di quello già registrato" (es. per via di una race fra polling — non deve far regredire `FIRStato` da `CONSEGNATO` a `IN_TRANSITO`).
+Una tabella di casi: ogni valore di `StatoFormulario` del contratto (22 valori, righe 10175-10196 — il conteggio "21" scritto qui in origine era sbagliato: verificato contando le voci del contratto) verso il `FIRStato` interno atteso, più il caso "FIR non legato a RENTRI → `applyRentriStato` rifiuta la chiamata" (non ha senso riconciliare senza legame) e il caso "il nuovo stato ente è più indietro di quello già registrato" (es. per via di una race fra polling — non deve far regredire `FIRStato` da `CONSEGNATO` a `IN_TRANSITO`).
 
 - [ ] **Step 2: Migrazione Prisma**
 
-`RentriStatoFormulario` enum con gli stessi 21 valori del contratto, in italiano dove il contratto è già in italiano (lo è: `InserimentoQuantita`, `Accettato`, ecc. — copiare i nomi esatti, non tradurli di nuovo). Campo `FIR.rentriStatoFormulario RentriStatoFormulario?` nullable (un FIR non legato non ce l'ha).
+`RentriStatoFormulario` enum con gli stessi 22 valori del contratto, in italiano dove il contratto è già in italiano (lo è: `InserimentoQuantita`, `Accettato`, ecc. — copiare i nomi esatti, non tradurli di nuovo). Campo `FIR.rentriStatoFormulario RentriStatoFormulario?` nullable (un FIR non legato non ce l'ha).
 
 - [ ] **Step 3: Implementare `applyRentriStato` sull'aggregate**
 
