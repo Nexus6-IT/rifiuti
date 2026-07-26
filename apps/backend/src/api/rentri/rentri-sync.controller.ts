@@ -15,7 +15,9 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { TenantId } from '../../core/decorators/tenant.decorator'
 import { UserId } from '../../core/decorators/user.decorator'
-import { JwtAuthGuard } from '../../core/auth/jwt-auth.guard'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../../auth/guards/roles.guard'
+import { Roles } from '../../auth/decorators/roles.decorator'
 import { LoggerService } from '../../core/logger/logger.service'
 import { TriggerBatchSyncUseCase } from '../../application/rentri/trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from '../../application/rentri/get-sync-status.use-case'
@@ -46,11 +48,21 @@ import {
  * - GET /rentri/sync/metrics - Get queue metrics
  *
  * All endpoints require JWT authentication and enforce tenant isolation.
+ *
+ * Autorizzazione (R0 Task 4): questi endpoint trasmettono formulari a un ente
+ * pubblico (RENTRI) per conto dell'azienda — una trasmissione indebita è un
+ * adempimento normativo fatto a nome del tenant, non un semplice errore
+ * applicativo. Il controllo di ruolo copre l'INTERO controller (anche le
+ * letture di log/stato/metriche, che rivelano cosa è stato trasmesso): un
+ * VIEWER non deve né avviare una sincronizzazione né vedere l'esito delle
+ * trasmissioni altrui. Stessi ruoli di `registro.controller.ts` (altro
+ * adempimento verso terzi con RLS multi-tenant equivalente).
  */
 @ApiTags('RENTRI Sync')
 @ApiBearerAuth()
 @Controller('rentri/sync')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
 export class RENTRISyncController {
   constructor(
     private readonly triggerBatchSyncUseCase: TriggerBatchSyncUseCase,

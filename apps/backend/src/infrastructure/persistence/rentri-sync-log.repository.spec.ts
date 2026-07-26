@@ -9,10 +9,18 @@
  */
 import { RENTRISyncLogRepository } from './rentri-sync-log.repository'
 import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
+import { TenantContext } from '../../core/context/tenant-context'
 
 describe('RENTRISyncLogRepository — persistenza log RENTRI (rentri_sync_logs)', () => {
   let prisma: any
   let repo: RENTRISyncLogRepository
+
+  // Il costruttore non accetta più un tenantId primitivo (rompeva la DI in un
+  // contesto multi-tenant, v. commento nel repository): il tenant corrente
+  // viene risolto da TenantContext, qui simulato con TenantContext.run come
+  // fa già produttore-prisma.repository.spec.ts.
+  const perTenant = (fn: () => Promise<void> | void) =>
+    TenantContext.run({ tenantId: 'tenant-1' }, fn)
 
   beforeEach(() => {
     prisma = {
@@ -23,7 +31,7 @@ describe('RENTRISyncLogRepository — persistenza log RENTRI (rentri_sync_logs)'
         count: jest.fn().mockResolvedValue(0),
       },
     }
-    repo = new RENTRISyncLogRepository(prisma, 'tenant-1')
+    repo = new RENTRISyncLogRepository(prisma)
   })
 
   it('createPending scrive la riga su rentri_sync_logs con status PENDING', async () => {
@@ -100,14 +108,15 @@ describe('RENTRISyncLogRepository — persistenza log RENTRI (rentri_sync_logs)'
     expect(log!.durationMs).toBe(250)
   })
 
-  it('findByFIRId filtra per firId e tenant e ordina per data decrescente', async () => {
-    await repo.findByFIRId('fir-1')
+  it('findByFIRId filtra per firId e tenant e ordina per data decrescente', async () =>
+    perTenant(async () => {
+      await repo.findByFIRId('fir-1')
 
-    expect(prisma.rENTRISyncLog.findMany).toHaveBeenCalledWith({
-      where: { firId: 'fir-1', tenantId: 'tenant-1' },
-      orderBy: { createdAt: 'desc' },
-    })
-  })
+      expect(prisma.rENTRISyncLog.findMany).toHaveBeenCalledWith({
+        where: { firId: 'fir-1', tenantId: 'tenant-1' },
+        orderBy: { createdAt: 'desc' },
+      })
+    }))
 
   it('findById su log inesistente torna null (non uno stub sempre-null indipendente dal dato)', async () => {
     prisma.rENTRISyncLog.findUnique.mockResolvedValue(null)

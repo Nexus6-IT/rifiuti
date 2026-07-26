@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
-import { IDomainEventHandler } from '../../../domain/shared/domain-event.interface'
+import { IDomainEvent, IDomainEventHandler } from '../../../domain/shared/domain-event.interface'
 import { LoggerService } from '../../../core/logger/logger.service'
+import { RENTRISyncQueue } from '../../../infrastructure/queue/rentri-sync.queue'
 
 /**
  * FIR Consegnato Event Handler
@@ -12,11 +13,22 @@ import { LoggerService } from '../../../core/logger/logger.service'
  * - Listen for FIRConsegnatoEvent (FIR completed)
  * - Queue RENTRI sync job with delay
  * - Log sync trigger for audit
+ *
+ * NOTA (R0 Task 4): questo handler è scritto per l'interfaccia `IDomainEvent`
+ * (`eventType`/`aggregateId`/`tenantId`), ma il `FIRConsegnatoEvent` reale
+ * emesso da `FIR.confermaConsegna()` implementa l'altra famiglia di eventi
+ * del progetto (`DomainEvent` con `eventName`/`firId`, v.
+ * `core/domain/aggregate-root.ts`) e NON viene mai pubblicato su
+ * `DomainEventsService` (nessuna chiamata `.register(...)` esiste nel
+ * progetto). Il pezzo è cablato in DI (non più orfano da Nest, v.
+ * `rentri-sync.module.ts`) ma NON scatta ancora automaticamente alla
+ * consegna: farlo richiede prima di risolvere la disallineanza tra le due
+ * famiglie di eventi, fuori dallo scope di questo task (solo cablaggio).
  */
 @Injectable()
 export class FIRConsegnatoHandler implements IDomainEventHandler {
   constructor(
-    private readonly rentriSyncQueue: any, // RENTRISyncQueue
+    private readonly rentriSyncQueue: RENTRISyncQueue,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('FIRConsegnatoHandler')
@@ -25,7 +37,7 @@ export class FIRConsegnatoHandler implements IDomainEventHandler {
   /**
    * Handle FIR Consegnato event
    */
-  async handle(event: any): Promise<void> {
+  async handle(event: IDomainEvent): Promise<void> {
     const { aggregateId: firId, tenantId, correlationId } = event
 
     this.logger.info('FIR consegnato - triggering RENTRI sync', {

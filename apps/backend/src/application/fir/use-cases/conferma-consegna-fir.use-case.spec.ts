@@ -41,6 +41,10 @@ class MockFIRRepository implements IFIRRepository {
     return []
   }
 
+  async findByIds(): Promise<FIR[]> {
+    return []
+  }
+
   async save(fir: FIR): Promise<void> {
     this.firs.set(fir.id, fir)
   }

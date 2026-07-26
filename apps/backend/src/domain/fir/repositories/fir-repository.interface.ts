@@ -38,6 +38,13 @@ export interface IFIRRepository {
   findByTenant(tenantId: string, filters?: FIRSearchFilters): Promise<FIR[]>
 
   /**
+   * Find multiple FIRs by ID, filtrando per tenant (isolamento multi-tenant).
+   * Usato dal sync batch verso RENTRI per validare in un colpo solo che tutti
+   * gli ID richiesti esistano e appartengano al tenant chiamante.
+   */
+  findByIds(ids: string[], tenantId: string): Promise<FIR[]>
+
+  /**
    * Find FIRs by stato
    */
   findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]>

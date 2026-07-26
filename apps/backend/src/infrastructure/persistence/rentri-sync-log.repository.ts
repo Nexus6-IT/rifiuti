@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
 import { ITenantRepository } from '../../domain/shared/repository.interface'
+import { TenantContext } from '../../core/context/tenant-context'
 
 /**
  * RENTRI Sync Log Repository
@@ -14,16 +15,22 @@ import { ITenantRepository } from '../../domain/shared/repository.interface'
  * a queste chiamate — l'accessor generato da Prisma è `prisma.rENTRISyncLog`
  * (prima lettera del nome modello abbassata), vedi commento sul modello in
  * schema.prisma.
+ *
+ * Cablaggio R0 Task 4: il costruttore accettava un `tenantId: string`
+ * primitivo fissato per istanza — incompatibile con un provider Nest
+ * singleton in un contesto multi-tenant (Nest non sa risolvere una stringa
+ * grezza, e un solo tenant "congelato" nell'istanza sarebbe comunque sbagliato
+ * per un repository condiviso da tutte le richieste). Sostituito da
+ * `TenantContext.requireTenantId()`, lo stesso pattern già usato dagli altri
+ * repository del progetto (v. `produttore-prisma.repository.ts`) proprio per
+ * questo motivo: fail-closed, risolto per-richiesta da AsyncLocalStorage.
  */
 @Injectable()
 export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog> {
-  constructor(
-    private readonly prisma: PrismaClient,
-    private readonly tenantId: string
-  ) {}
+  constructor(private readonly prisma: PrismaClient) {}
 
   getTenantId(): string {
-    return this.tenantId
+    return TenantContext.requireTenantId()
   }
 
   /**
@@ -80,7 +87,7 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
    */
   async findByFIRId(firId: string): Promise<RENTRISyncLog[]> {
     const records = await this.prisma.rENTRISyncLog.findMany({
-      where: { firId, tenantId: this.tenantId },
+      where: { firId, tenantId: this.getTenantId() },
       orderBy: { createdAt: 'desc' },
     })
 
@@ -101,7 +108,7 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
     }
   ): Promise<{ data: RENTRISyncLog[]; total: number }> {
     const where: any = {
-      tenantId: this.tenantId,
+      tenantId: this.getTenantId(),
     }
 
     if (criteria?.firId) {
@@ -143,7 +150,7 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
    */
   async findAll(criteria?: any): Promise<RENTRISyncLog[]> {
     const records = await this.prisma.rENTRISyncLog.findMany({
-      where: { tenantId: this.tenantId, ...criteria },
+      where: { tenantId: this.getTenantId(), ...criteria },
       orderBy: { createdAt: 'desc' },
     })
 
@@ -164,7 +171,7 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
 
   async exists(id: string): Promise<boolean> {
     const count = await this.prisma.rENTRISyncLog.count({
-      where: { id, tenantId: this.tenantId },
+      where: { id, tenantId: this.getTenantId() },
     })
 
     return count > 0
@@ -172,7 +179,7 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
 
   async count(criteria?: any): Promise<number> {
     return this.prisma.rENTRISyncLog.count({
-      where: { tenantId: this.tenantId, ...criteria },
+      where: { tenantId: this.getTenantId(), ...criteria },
     })
   }
 

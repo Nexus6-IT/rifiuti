@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { LoggerService } from '../../core/logger/logger.service'
+import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 
 /**
  * Get Sync Status Use Case
@@ -10,7 +11,7 @@ import { LoggerService } from '../../core/logger/logger.service'
 @Injectable()
 export class GetSyncStatusUseCase {
   constructor(
-    private readonly rentriSyncQueue: any, // RENTRISyncQueue
+    private readonly rentriSyncQueue: RENTRISyncQueue,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('GetSyncStatusUseCase')
@@ -35,9 +36,9 @@ export class GetSyncStatusUseCase {
       const state = await job.getState()
 
       return {
-        jobId: job.id,
+        jobId: job.id ?? jobId,
         status: this.mapJobState(state),
-        progress: job.progress || 0,
+        progress: typeof job.progress === 'number' ? job.progress : 0,
         data: job.data,
         result: job.returnvalue,
         failedReason: job.failedReason,

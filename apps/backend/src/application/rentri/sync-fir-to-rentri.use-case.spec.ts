@@ -25,7 +25,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
     // Create mocks
     mockFIRRepository = {
       findById: jest.fn(),
-      update: jest.fn(),
+      save: jest.fn(),
     }
 
     mockRENTRIApiClient = {
@@ -103,7 +103,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
         validazione: [],
         esito: { numero_fir: numeroFir },
       })
-      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockFIRRepository.save.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
       const result = await useCase.execute(firId, tenantId)
@@ -119,7 +119,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       )
       expect(mockRENTRIApiClient.attendiEsito).toHaveBeenCalledWith(tenantId, transazioneId)
       expect(mockFIR.markRENTRISynced).toHaveBeenCalledWith(numeroFir, transazioneId, undefined)
-      expect(mockFIRRepository.update).toHaveBeenCalledWith(firId, mockFIR)
+      expect(mockFIRRepository.save).toHaveBeenCalledWith(mockFIR)
       expect(mockSyncLogRepository.save).toHaveBeenCalled()
       expect(mockDomainEvents.publish).toHaveBeenCalled()
     })
@@ -165,7 +165,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
         validazione: [],
         esito: { numero_fir: 'RENTRI-NUM-000456' },
       })
-      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockFIRRepository.save.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
       const result = await useCase.execute(firId, tenantId)
@@ -273,7 +273,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
       mockRENTRIApiClient.creaFormulario.mockRejectedValue(apiError)
-      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockFIRRepository.save.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
       const result = await useCase.execute(firId, tenantId)
@@ -332,7 +332,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       mockRENTRIApiClient.attendiEsito.mockRejectedValue(
         new Error(`Superato il numero massimo di tentativi (30) in attesa dell'esito.`)
       )
-      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockFIRRepository.save.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
       const result = await useCase.execute(firId, tenantId)
@@ -379,7 +379,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
       mockRENTRIApiClient.creaFormulario.mockRejectedValue(new Error('Persistent error'))
-      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockFIRRepository.save.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
       const result = await useCase.execute(firId, tenantId)
@@ -434,7 +434,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
       mockRENTRIApiClient.creaFormulario.mockRejectedValue(apiError)
-      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockFIRRepository.save.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
       const result = await useCase.execute(firId, tenantId)
@@ -502,7 +502,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
         errore: false,
         validazione: [],
       })
-      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockFIRRepository.save.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
       const result = await useCase.execute(firId, tenantId)
@@ -556,7 +556,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
         errore: true,
         validazione: [{ campo: 'cerCode', codice_messaggio: 'Invalid CER code' }],
       })
-      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockFIRRepository.save.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
       const result = await useCase.execute(firId, tenantId)
@@ -612,7 +612,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
         validazione: [],
         esito: { numero_fir: 'RENTRI-NUM-000789' },
       })
-      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockFIRRepository.save.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
       await useCase.execute(firId, tenantId)
@@ -657,7 +657,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       mockFIRRepository.findById.mockResolvedValue(mockFIR)
       mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
       mockRENTRIApiClient.creaFormulario.mockRejectedValue(new Error('API Error'))
-      mockFIRRepository.update.mockResolvedValue(undefined)
+      mockFIRRepository.save.mockResolvedValue(undefined)
       mockSyncLogRepository.save.mockResolvedValue(undefined)
 
       await useCase.execute(firId, tenantId)
