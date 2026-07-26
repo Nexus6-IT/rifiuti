@@ -66,7 +66,96 @@ utenti eterogenei non è percorribile come modalità primaria. Resta possibile
 come ripiego manuale (scarica, firma in locale, ricarica) per il cliente che ha
 già quel flusso.
 
-## Cosa NON è stato verificato, e va chiarito prima di costruire
+## AGGIORNAMENTO 2026-07-26 (stessa giornata) — fonti autentiche recuperate
+
+Due ricerche successive hanno chiuso gran parte delle lacune. Quanto segue è
+**letto da fonti primarie**, non dedotto.
+
+### Il testo dell'art. 7 c. 3 NON prescrive la firma qualificata
+
+Testo letterale (D.M. 4 aprile 2023 n. 59, pubblicato in G.U. 126 del
+31/05/2023, recuperato da un PDF a testo estraibile e riletto direttamente):
+
+> «Il formulario viene aggiornato da parte degli operatori tramite i sistemi
+> gestionali da essi adottati, in modo da assicurare la progressiva
+> compilazione e la sottoscrizione dello stesso, nelle diverse fasi del
+> trasporto. La sottoscrizione del formulario digitale da parte degli operatori
+> coinvolti nelle diverse fasi del trasporto è effettuata mediante l'utilizzo di
+> **strumenti di sottoscrizione elettronica, conformi alla normativa vigente e
+> secondo le specifiche tecniche di cui all'articolo 8**.»
+
+Il comma **non nomina** firma qualificata, avanzata o sigillo: è una formula
+aperta che rinvia alle specifiche tecniche pubblicate sul portale RENTRI
+(art. 8) e ai decreti direttoriali (art. 21). **Il requisito vincolante non sta
+nel decreto.**
+
+**Attenzione alla citazione del contratto RENTRI** (`formulari.yaml:567-571`):
+«L'art. 7 c.3 ... prevede che il FIR sia sottoscritto da parte degli operatori
+coinvolti nelle diverse fasi del trasporto, **per cui** se il certificato di
+firma è intestato ad una persona giuridica deve riferirsi al soggetto
+firmatario». La prima parte è citazione fedele; la regola sul certificato è
+introdotta da «per cui» ed è una **deduzione operativa di RENTRI**, non testo
+del decreto. Resta vincolante in pratica (l'API la applica), ma non è una
+prescrizione di legge.
+
+### Il flusso di firma remota RENTRI esiste ed è documentato
+
+Fonte: PDF ufficiali degli incontri di formazione RENTRI per Software House
+(11° incontro 25/09/2025, 12° incontro 22/10/2025), scaricabili da
+`demoapi.rentri.gov.it/docs/eventi/`. Gruppo API **`ca-rentri`**, disponibile
+da luglio 2024.
+
+**Boarding** (una volta per unità locale, o alla scadenza del certificato):
+1. Il rappresentante dell'operatore chiede sul **portale** l'abilitazione al
+   boarding → ottiene **QR Code + PIN**. *Passo umano, non automatizzabile.*
+2. `GET /ca-rentri/v1.0/credentials/boarding/{qrcode_token}` — verifica token
+3. `POST /ca-rentri/v1.0/credentials` — crea le credenziali, le associa
+   all'unità locale, registra dispositivo e app per le notifiche
+
+**Firma**:
+1. `POST /formulari/v1.0/{numero_fir}/hash` → hash da firmare
+2. `POST /ca-rentri/v1.0/credentials/authorize`
+3. **Il servizio notifiche RENTRI manda una richiesta di conferma al
+   dispositivo** dell'utilizzatore
+4. `PUT /ca-rentri/v1.0/credentials/authorize-confirmation`
+5. `POST /ca-rentri/v1.0/credentials/sign-hash`
+6. `POST /formulari/v1.0/{numero_fir}/acquisizione-firma`
+
+**La chiave non passa mai da noi**: la firma è apposta da `sign-hash` lato CA
+RENTRI, previa conferma dell'utente sul proprio dispositivo. È esattamente il
+modello scelto.
+
+### Il certificato: correzione a quanto scritto sopra
+
+- È un certificato di **tipo sigillo, «M.O. 16»** (Modalità Operative allegate
+  al D.D. 143/2023), emesso dalla **CA RENTRI**.
+- È **riferito all'Operatore**, non alla singola persona fisica né al
+  dispositivo. Questo **attenua** l'inferenza «serve un certificato di persona
+  fisica» riportata nella versione originale di questo ADR: per la via nativa
+  RENTRI non è così.
+- **Utilizzabile solo in connettività e solo dentro RENTRI**, non per altri usi.
+- Protetto da **2FA**.
+- Da non confondere con il **certificato di interoperabilità**, quello che
+  firma i JWT di autenticazione verso le API — sono due oggetti distinti.
+
+### Lacune ancora aperte
+
+- **Nessun OpenAPI pubblico** per `ca-rentri`: la documentazione vive in una
+  pagina che richiede rendering JavaScript. Va consultata a mano nel browser o
+  richiesta al supporto RENTRI.
+- **Nessun endpoint per elencare o revocare** un `credentials_id`: solo
+  creazione.
+- **Relazione fra `ca-rentri` e `invia-a-dispositivo`**: i documenti letti non
+  menzionano quest'ultimo. Ipotesi plausibile — che sia un involucro che esegue
+  internamente l'intera sequenza — **non confermata da alcuna fonte**.
+- **Tempo concesso all'utente per autorizzare**: non documentato.
+- **Costo e durata del certificato**: non trovati.
+
+Esiste inoltre un **rollback dell'ultima firma**, utilizzabile solo per errore
+materiale, entro pochi minuti e solo se l'xFIR non è stato scaricato: segnale
+che l'ente si aspetta che il chiamante conosca l'esito rapidamente.
+
+## Cosa NON era stato verificato al momento della decisione
 
 Questi due punti sono lacune reali, non dettagli: determinano cosa si
 implementa.
