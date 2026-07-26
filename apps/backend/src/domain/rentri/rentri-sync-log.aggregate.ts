@@ -1,6 +1,17 @@
 import { DomainException } from '../shared/domain-exception'
 
 /**
+ * Origine del tentativo (R5 Task 4): distingue una riga prodotta dal flusso
+ * normale di trasmissione (`TRASMISSIONE`, es. `SyncFIRToRENTRIUseCase`) da
+ * una prodotta dalla riconciliazione periodica
+ * (`RICONCILIAZIONE`, `RiconciliaStatoRentriUseCase`) — un controllo di
+ * allineamento, non un tentativo di scrittura verso l'ente. Senza questa
+ * distinzione un audit/contestazione non potrebbe separare "abbiamo
+ * trasmesso" da "abbiamo solo verificato".
+ */
+export type RENTRISyncLogOrigine = 'TRASMISSIONE' | 'RICONCILIAZIONE'
+
+/**
  * RENTRI Sync Log Aggregate Root
  *
  * Tracks detailed sync history for audit and debugging.
@@ -20,7 +31,13 @@ export class RENTRISyncLog {
     public readonly protocolNumber: string | null,
     public readonly syncedAt: Date | null,
     public readonly durationMs: number | null,
-    public readonly createdAt: Date
+    public readonly createdAt: Date,
+    // Default TRASMISSIONE (non ultimo parametro per compatibilita' con ogni
+    // chiamata preesistente che costruisce l'aggregate posizionalmente senza
+    // valorizzarlo): mantiene invariato ogni sito di chiamata gia' in
+    // produzione (SyncFIRToRENTRIUseCase e affini), che non passa questo
+    // valore.
+    public readonly origine: RENTRISyncLogOrigine = 'TRASMISSIONE'
   ) {
     this.validate()
   }
@@ -34,6 +51,7 @@ export class RENTRISyncLog {
     tenantId: string
     attempt: number
     requestPayload: string
+    origine?: RENTRISyncLogOrigine
   }): RENTRISyncLog {
     return new RENTRISyncLog(
       params.id,
@@ -48,7 +66,8 @@ export class RENTRISyncLog {
       null,
       null,
       null,
-      new Date()
+      new Date(),
+      params.origine ?? 'TRASMISSIONE'
     )
   }
 
@@ -81,7 +100,8 @@ export class RENTRISyncLog {
       params.protocolNumber,
       new Date(),
       params.durationMs,
-      this.createdAt
+      this.createdAt,
+      this.origine
     )
   }
 
@@ -115,7 +135,8 @@ export class RENTRISyncLog {
       null,
       null,
       params.durationMs,
-      this.createdAt
+      this.createdAt,
+      this.origine
     )
   }
 

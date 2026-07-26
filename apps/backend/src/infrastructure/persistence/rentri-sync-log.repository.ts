@@ -51,6 +51,7 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
       syncedAt: syncLog.syncedAt,
       durationMs: syncLog.durationMs,
       createdAt: syncLog.createdAt,
+      origine: syncLog.origine,
     }
 
     // I log sono immutabili (un record per tentativo, mai aggiornato): upsert
@@ -192,6 +193,7 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
     tenantId: string
     attempt: number
     requestPayload: string
+    origine?: 'TRASMISSIONE' | 'RICONCILIAZIONE'
   }): Promise<RENTRISyncLog> {
     const syncLog = RENTRISyncLog.createPending(params)
     return this.save(syncLog)
@@ -214,7 +216,8 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
       record.protocolNumber,
       record.syncedAt,
       record.durationMs,
-      record.createdAt
+      record.createdAt,
+      record.origine
     )
   }
 }
