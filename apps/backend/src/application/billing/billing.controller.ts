@@ -72,7 +72,7 @@ export class BillingController {
    */
   @Post('checkout')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crea sessione checkout Stripe per upgrade piano' })
@@ -98,7 +98,7 @@ export class BillingController {
    */
   @Post('portal')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crea sessione Billing Portal Stripe' })

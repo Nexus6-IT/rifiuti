@@ -1,5 +1,8 @@
 import { randomUUID } from 'crypto'
 import { RegistroReplayMemoria } from '../auth/jwt-verifier'
+import * as codifiche from './fixture-codifiche'
+import { LookupItem } from './fixture-codifiche'
+import * as anagrafiche from './fixture-anagrafiche'
 
 export interface Formulario {
   numero_fir: string
@@ -244,5 +247,169 @@ export class Archivio {
     }
     const numeroFir = (payload as { numero_fir?: unknown }).numero_fir
     return typeof numeroFir === 'string' && numeroFir.trim() !== '' ? numeroFir : undefined
+  }
+
+  // --- Servizio `codifiche` (docs/contracts/rentri/codifiche.yaml) -------
+  //
+  // Tutte e 25 le tabelle sono in sola lettura e statiche: nessun metodo di
+  // scrittura, coerente col fatto che il contratto non offre alcuna rotta
+  // di aggiornamento su questo servizio.
+
+  codiciEer(): LookupItem[] {
+    return codifiche.codiciEer
+  }
+
+  attivitaRs(): LookupItem[] {
+    return codifiche.attivitaRs
+  }
+
+  statiFisici(): LookupItem[] {
+    return codifiche.statiFisici
+  }
+
+  caratteristichePericolo(): LookupItem[] {
+    return codifiche.caratteristichePericolo
+  }
+
+  adrClassi(): LookupItem[] {
+    return codifiche.adrClassi
+  }
+
+  categorieRaee(): LookupItem[] {
+    return codifiche.categorieRaee
+  }
+
+  materiali(): LookupItem[] {
+    return codifiche.materiali
+  }
+
+  provenienza(): LookupItem[] {
+    return codifiche.provenienza
+  }
+
+  unitaMisura(): LookupItem[] {
+    return codifiche.unitaMisura
+  }
+
+  attivita(): LookupItem[] {
+    return codifiche.attivita
+  }
+
+  statiFormulario(): LookupItem[] {
+    return codifiche.statiFormulario
+  }
+
+  tipiAccettazione(): LookupItem[] {
+    return codifiche.tipiAccettazione
+  }
+
+  tipiAutorizzazione(): LookupItem[] {
+    return codifiche.tipiAutorizzazione
+  }
+
+  tipiRespingimento(): LookupItem[] {
+    return codifiche.tipiRespingimento
+  }
+
+  causaliOperazione(): LookupItem[] {
+    return codifiche.causaliOperazione
+  }
+
+  causaliRespingimento(): LookupItem[] {
+    return codifiche.causaliRespingimento
+  }
+
+  tipiTratte(): LookupItem[] {
+    return codifiche.tipiTratte
+  }
+
+  tipiTrasportoTransfrontaliero(): LookupItem[] {
+    return codifiche.tipiTrasportoTransfrontaliero
+  }
+
+  codiciErrore(): LookupItem[] {
+    return codifiche.codiciErrore
+  }
+
+  regioni(): LookupItem[] {
+    return codifiche.regioni
+  }
+
+  nazioni(): LookupItem[] {
+    return codifiche.nazioni
+  }
+
+  province(): LookupItem[] {
+    return codifiche.province.map(codifiche.provinciaALookupItem)
+  }
+
+  /**
+   * Comuni, con filtro opzionale per provincia (path `/lookup/comuni/{provincia_id}`)
+   * e per stato attivo (query `attivi`, default true su quella rotta —
+   * `/lookup/comuni` senza filtro provincia non lo dichiara e restituisce
+   * tutto il catalogo, inclusi i comuni non più attivi).
+   */
+  comuni(filtro?: { provinciaId?: string; comuneId?: string; soloAttivi?: boolean }): LookupItem[] {
+    let elenco = codifiche.comuni
+    if (filtro?.provinciaId) {
+      elenco = elenco.filter(c => c.provinciaId === filtro.provinciaId)
+    }
+    if (filtro?.comuneId) {
+      elenco = elenco.filter(c => c.id === filtro.comuneId)
+    }
+    if (filtro?.soloAttivi) {
+      elenco = elenco.filter(c => c.attivo)
+    }
+    return elenco.map(codifiche.comuneALookupItem)
+  }
+
+  // --- Servizio `anagrafiche` (docs/contracts/rentri/anagrafiche.yaml) ---
+  //
+  // Solo i path di lettura su Operatore/Soggetto delegato: i `/registri`
+  // (apertura/modifica/chiusura registro) sono fuori dall'ambito di R4.
+
+  elencaOperatori(numIscrAss?: string): anagrafiche.OperatoreFixture[] {
+    if (!numIscrAss) return anagrafiche.operatori
+    // num_iscr_ass filtra gli operatori delegati dal soggetto delegato
+    // indicato: nella fixture l'unico legame delega->operatore è espresso
+    // dai siti (`delegatoDaNumIscrAss`), quindi risaliamo da lì.
+    const numIscrOperatoriDelegati = new Set(
+      anagrafiche.siti
+        .filter(s => s.delegatoDaNumIscrAss.includes(numIscrAss))
+        .map(s => s.numIscrOperatore)
+    )
+    return anagrafiche.operatori.filter(o => numIscrOperatoriDelegati.has(o.numIscr))
+  }
+
+  operatorePerNumIscr(numIscr: string): anagrafiche.OperatoreFixture | undefined {
+    return anagrafiche.trovaOperatorePerNumIscr(numIscr)
+  }
+
+  operatorePerIdentificativo(identificativo: string): anagrafiche.OperatoreFixture | undefined {
+    return anagrafiche.trovaOperatorePerIdentificativo(identificativo)
+  }
+
+  elencaSoggettiDelegati(): anagrafiche.SoggettoDelegatoFixture[] {
+    return anagrafiche.soggettiDelegati
+  }
+
+  soggettoDelegato(numIscrAss: string): anagrafiche.SoggettoDelegatoFixture | undefined {
+    return anagrafiche.trovaSoggettoDelegato(numIscrAss)
+  }
+
+  sitiDiOperatore(numIscr: string): anagrafiche.SitoFixture[] {
+    return anagrafiche.sitiDiOperatore(numIscr)
+  }
+
+  sitoDiOperatore(numIscr: string, numIscrSito: string): anagrafiche.SitoFixture | undefined {
+    return anagrafiche.sitoDiOperatore(numIscr, numIscrSito)
+  }
+
+  sitiDelegatiA(numIscrAss: string): anagrafiche.SitoFixture[] {
+    return anagrafiche.sitiDelegatiA(numIscrAss)
+  }
+
+  sitoDelegatoA(numIscrAss: string, numIscrSito: string): anagrafiche.SitoFixture | undefined {
+    return anagrafiche.sitoDelegatoA(numIscrAss, numIscrSito)
   }
 }

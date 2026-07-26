@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing'
 import { ConfigModule } from '@nestjs/config'
 import { RentriModule } from './rentri.module'
 import { RENTRIApiClient } from './rentri-api.client'
+import { RentriCodificheClient } from './codifiche/rentri-codifiche.client'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
 import { RentriCredentialService } from './rentri-credential.service'
@@ -24,6 +25,7 @@ describe('RentriModule (DI wiring)', () => {
     }).compile()
 
     expect(moduleRef.get(RENTRIApiClient)).toBeDefined()
+    expect(moduleRef.get(RentriCodificheClient)).toBeDefined()
     expect(moduleRef.get(RentriAuthService)).toBeDefined()
     expect(moduleRef.get(RentriSignatureService)).toBeDefined()
     expect(moduleRef.get(RentriCredentialService)).toBeDefined()

@@ -5,6 +5,8 @@ import { registraRotteTransazioni } from './routes/transazioni'
 import { registraRotteVisibilita } from './routes/visibilita'
 import { registraRotteXfir } from './routes/xfir'
 import { registraRotteControllo } from './routes/controllo'
+import { registraRotteCodifiche } from './routes/codifiche'
+import { registraRotteAnagrafiche } from './routes/anagrafiche'
 import { Archivio } from './stato/archivio'
 import { inviaProblemDetails } from './errori/problem-details'
 
@@ -62,6 +64,8 @@ export function creaApp(): FastifyInstance {
   registraRotteTransazioni(app, archivio)
   registraRotteVisibilita(app, archivio)
   registraRotteXfir(app, archivio)
+  registraRotteCodifiche(app, archivio)
+  registraRotteAnagrafiche(app, archivio)
 
   return app
 }

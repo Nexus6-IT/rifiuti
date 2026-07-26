@@ -276,22 +276,30 @@ interface UserTenant {
         </ul>
       }
 
-      <!-- ===== Abbonamento (sempre visibile) ===== -->
-      <p class="nav-group__title" id="nav-account">Account</p>
-      <ul class="nav-group" role="list" aria-labelledby="nav-account">
-        <li>
-          <a
-            routerLink="/abbonamento"
-            routerLinkActive="nav-item--active"
-            class="nav-item"
-            [attr.aria-current]="isActiveRoute('/abbonamento') ? 'page' : null"
-            (click)="mobile ? closeMobileSidebar() : null"
-          >
-            <i class="nav-item__icon pi pi-credit-card" aria-hidden="true"></i>
-            <span class="nav-item__label">Abbonamento</span>
-          </a>
-        </li>
-      </ul>
+      <!-- ===== Abbonamento (solo SUPER_ADMIN) =====
+           Decisione del committente (2026-07-26): la voce non deve essere
+           visibile a nessuno tranne il super amministratore — nemmeno agli
+           ADMIN dei tenant. Il backend consente checkout/portal anche ad
+           ADMIN (billing.controller.ts): questo nascondimento e' quindi
+           cosmetico, la rotta resta raggiungibile digitando l'URL. -->
+      @if (isSuperAdmin()) {
+        <p class="nav-group__title" id="nav-account">Account</p>
+        <ul class="nav-group" role="list" aria-labelledby="nav-account">
+          <li>
+            <a
+              routerLink="/abbonamento"
+              routerLinkActive="nav-item--active"
+              class="nav-item"
+              data-testid="nav-abbonamento"
+              [attr.aria-current]="isActiveRoute('/abbonamento') ? 'page' : null"
+              (click)="mobile ? closeMobileSidebar() : null"
+            >
+              <i class="nav-item__icon pi pi-credit-card" aria-hidden="true"></i>
+              <span class="nav-item__label">Abbonamento</span>
+            </a>
+          </li>
+        </ul>
+      }
 
       <!-- ===== Amministrazione (gated per ruolo) ===== -->
       @if (canSeeAdminSection()) {
