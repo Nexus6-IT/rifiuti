@@ -26,7 +26,7 @@ test.describe('Ciclo di vita FIR completo', () => {
       await firList.openNuovoFirDialog()
       // TODO: compilare form creazione FIR (produttore/trasportatore/destinatario/CER/quantità)
       // e salvare — richiede dati di fixture stabili in ambiente di test.
-    },
+    }
   )
 
   test.fixme('emette il FIR appena creato (BOZZA -> EMESSO)', async ({ page, context }) => {
@@ -62,8 +62,13 @@ test.describe('Ciclo di vita FIR completo', () => {
   })
 
   test.fixme('sync RENTRI del FIR (singolo e batch)', async () => {
-    // POST /rentri-sync/fir/:id, POST /rentri-sync/batch — richiede
-    // credenziale RENTRI configurata sul tenant di test.
+    // Sync singolo (stato in lista/dettaglio, cronologia, azione manuale,
+    // messaggio d'errore comprensibile) coperto da scenari REALI (non fixme)
+    // in tests/fir/fir-rentri-status.spec.ts — cercano un FIR nello stato
+    // che serve via API invece di richiedere una fixture nota in anticipo.
+    // Resta fixme SOLO il batch: POST /rentri-sync/batch — richiede
+    // credenziale RENTRI configurata sul tenant di test e più FIR pendenti
+    // simultaneamente, non ancora coperto.
   })
 
   // NON testare mai: POST /fir/:id/annulla è in blacklist (irreversibile su
