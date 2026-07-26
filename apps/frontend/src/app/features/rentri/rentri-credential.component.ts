@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { CommonModule } from '@angular/common'
+import { RouterModule } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { InputTextModule } from 'primeng/inputtext'
@@ -25,6 +26,7 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
   standalone: true,
   imports: [
     CommonModule,
+    RouterModule,
     FormsModule,
     ButtonModule,
     InputTextModule,
@@ -46,6 +48,12 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
             Certificato di interoperabilità per la trasmissione RENTRI del tenant
           </p>
         </div>
+        <a
+          routerLink="/rentri/modalita-legame"
+          class="rentri-cross-link"
+          data-testid="rentri-credential-modalita-legame-link"
+          >Modalità di legame RENTRI</a
+        >
       </header>
 
       <!-- Non-admin -->
@@ -231,6 +239,10 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
   `,
   styles: [
     `
+      .rentri-cross-link {
+        align-self: center;
+        font-size: var(--font-size-sm);
+      }
       .rentri-section-title {
         font-family: var(--font-display);
         font-size: var(--font-size-lg);

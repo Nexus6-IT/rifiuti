@@ -166,6 +166,14 @@ export const routes: Routes = [
             m => m.RentriCredentialComponent
           ),
       },
+      {
+        // Modalità di legame RENTRI (solo admin — enforcement lato componente + backend)
+        path: 'rentri/modalita-legame',
+        loadComponent: () =>
+          import('./features/rentri/rentri-modalita-legame.component').then(
+            m => m.RentriModalitaLegameComponent
+          ),
+      },
       // T179: Custom Role Management Routes
       {
         path: 'permissions',

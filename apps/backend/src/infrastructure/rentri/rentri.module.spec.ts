@@ -6,7 +6,9 @@ import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
 import { RentriCredentialService } from './rentri-credential.service'
 import { RentriCredentialResolver } from './rentri-credential.resolver'
+import { RentriModalitaLegameService } from './rentri-modalita-legame.service'
 import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
+import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
 
 /**
  * DI smoke test per RentriModule (cablato in AppModule).
@@ -16,7 +18,7 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
  * connessione reale. Intercetta errori di wiring senza infrastruttura.
  */
 describe('RentriModule (DI wiring)', () => {
-  it('risolve client, auth, firma, credential service/resolver e controller', async () => {
+  it('risolve client, auth, firma, credential service/resolver, modalità legame e controller', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), RentriModule],
     }).compile()
@@ -27,6 +29,8 @@ describe('RentriModule (DI wiring)', () => {
     expect(moduleRef.get(RentriCredentialService)).toBeDefined()
     expect(moduleRef.get(RentriCredentialResolver)).toBeDefined()
     expect(moduleRef.get(RentriCredentialController)).toBeDefined()
+    expect(moduleRef.get(RentriModalitaLegameService)).toBeDefined()
+    expect(moduleRef.get(RentriModalitaLegameController)).toBeDefined()
 
     await moduleRef.close()
   })
