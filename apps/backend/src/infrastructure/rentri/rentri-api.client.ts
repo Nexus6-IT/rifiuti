@@ -8,6 +8,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
+import { RentriApiError, gestisciRispostaErroreRentri, attendiMs } from './rentri-http-resilienza'
 
 /**
  * RENTRI API Client
@@ -253,7 +254,7 @@ export class RENTRIApiClient {
 
   /** Attesa non bloccante tra un tentativo e l'altro del polling/retry. */
   private attendi(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms))
+    return attendiMs(ms)
   }
 
   /** Numero massimo di tentativi per gli errori transitori (429/423/5xx). */
@@ -266,59 +267,11 @@ export class RENTRIApiClient {
   private static readonly BACKOFF_MAX_MS = 30000
 
   /**
-   * Estrae `title`/`detail` da un corpo `application/problem+json`
-   * (`ProblemDetails`, contratto ufficiale). Sono gli UNICI campi del corpo
-   * di errore che il client riporta nei log/nel log di sincronizzazione: il
-   * contenuto grezzo della risposta non va mai esposto al tenant.
-   */
-  private estraiProblemDetails(data: unknown): { title?: string; detail?: string } {
-    if (data && typeof data === 'object') {
-      const problema = data as { title?: unknown; detail?: unknown }
-      return {
-        title: typeof problema.title === 'string' ? problema.title : undefined,
-        detail: typeof problema.detail === 'string' ? problema.detail : undefined,
-      }
-    }
-    return {}
-  }
-
-  /**
-   * Calcola l'attesa (ms) prima del prossimo tentativo: rispetta l'header
-   * `Retry-After` (in secondi) se presente e valido, altrimenti applica un
-   * backoff esponenziale (`BACKOFF_BASE_MS * 2^(tentativo-1)`, tetto
-   * `BACKOFF_MAX_MS`).
-   */
-  private calcolaAttesaMs(tentativo: number, retryAfterHeader?: string): number {
-    if (retryAfterHeader !== undefined) {
-      const secondi = Number(retryAfterHeader)
-      if (!Number.isNaN(secondi) && secondi >= 0) {
-        return secondi * 1000
-      }
-    }
-    return Math.min(
-      RENTRIApiClient.BACKOFF_BASE_MS * 2 ** (tentativo - 1),
-      RENTRIApiClient.BACKOFF_MAX_MS
-    )
-  }
-
-  /**
    * Classifica una risposta di errore RENTRI e, se transitoria, attende
-   * prima del prossimo tentativo. Politica (contratto ufficiale,
-   * formulari.yaml — `ProblemDetails` su ogni risposta di errore):
-   *
-   * - **403** "Operazione non consentita" → credenziale non valida o
-   *   operazione vietata: MAI ritentare (martellare l'ente con una
-   *   credenziale che non funzionerà mai non ha senso). Solleva subito
-   *   {@link RentriApiError} con `retryable: false`.
-   * - **429** → rispetta `Retry-After` se presente, altrimenti backoff
-   *   esponenziale.
-   * - **423** (risorsa bloccata) e **5xx** → backoff esponenziale.
-   * - Esauriti i tentativi per un codice transitorio → solleva
-   *   {@link RentriApiError} con `retryable: true` (fallimento dopo aver
-   *   provato: il chiamante può ancora decidere un retry a un livello più
-   *   alto, es. un nuovo job in coda).
-   * - Qualunque altro codice non atteso in questo punto del ciclo → errore
-   *   generico invariato rispetto al comportamento preesistente.
+   * prima del prossimo tentativo. Delegata a {@link gestisciRispostaErroreRentri}
+   * (`rentri-http-resilienza.ts`), condivisa con il client delle codifiche:
+   * stessa politica (403 mai ritentato, 429/423/5xx con backoff/`Retry-After`),
+   * un solo posto dove è scritta.
    *
    * Usata sia dal ramo "risposta con status arbitrario" (polling, dove
    * `validateStatus` impedisce ad axios di sollevare un'eccezione), sia —
@@ -329,44 +282,16 @@ export class RENTRIApiClient {
     contesto: string,
     tentativo: number
   ): Promise<'ritenta'> {
-    const { status } = risposta
-    const problema = this.estraiProblemDetails(risposta.data)
-
-    if (status === 403) {
-      this.logger.warn(
-        `RENTRI ha rifiutato la richiesta a ${contesto} (403): credenziale non valida o operazione non consentita, nessun nuovo tentativo`,
-        { title: problema.title, detail: problema.detail }
-      )
-      this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'FORBIDDEN' })
-      throw new RentriApiError(403, problema.title, problema.detail, false)
-    }
-
-    const ritentabile = status === 429 || status === 423 || status >= 500
-
-    if (!ritentabile) {
-      throw new Error(`Risposta inattesa da ${contesto}: HTTP ${status}`)
-    }
-
-    if (tentativo >= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA) {
-      this.logger.error(
-        `RENTRI continua a rispondere ${status} a ${contesto}: esauriti i ${RENTRIApiClient.MAX_TENTATIVI_RESILIENZA} tentativi`,
-        undefined,
-        { title: problema.title, detail: problema.detail }
-      )
-      this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
-      throw new RentriApiError(status, problema.title, problema.detail, true)
-    }
-
-    const retryAfter = risposta.headers?.['retry-after'] ?? risposta.headers?.['Retry-After']
-    const attesaMs = this.calcolaAttesaMs(tentativo, retryAfter as string | undefined)
-
-    this.logger.warn(
-      `RENTRI ha risposto ${status} a ${contesto}: nuovo tentativo (${tentativo}/${RENTRIApiClient.MAX_TENTATIVI_RESILIENZA}) dopo ${attesaMs}ms`,
-      { title: problema.title, detail: problema.detail }
+    return gestisciRispostaErroreRentri(
+      risposta,
+      contesto,
+      tentativo,
+      RENTRIApiClient.MAX_TENTATIVI_RESILIENZA,
+      this.logger,
+      this.metrics,
+      ms => this.attendi(ms),
+      { baseMs: RENTRIApiClient.BACKOFF_BASE_MS, maxMs: RENTRIApiClient.BACKOFF_MAX_MS }
     )
-    this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
-    await this.attendi(attesaMs)
-    return 'ritenta'
   }
 
   /**
@@ -462,39 +387,11 @@ export class RENTRIApiClient {
 }
 
 /**
- * Errore che rappresenta una risposta di errore RENTRI (`ProblemDetails`,
- * `application/problem+json`) dopo l'eventuale esaurimento dei tentativi di
- * resilienza (v. {@link RENTRIApiClient.eseguiRichiestaConResilienza} /
- * {@link RENTRIApiClient['gestisciRispostaNonPrevista']}).
- *
- * `retryable` distingue:
- * - `false` — **403**, fallimento definitivo: credenziale non valida o
- *   operazione non consentita. Ritentare non avrebbe senso (la credenziale
- *   non funzionerà al tentativo successivo), quindi il client non lo fa MAI.
- * - `true` — **429/423/5xx**, fallimento dopo aver esaurito i tentativi di
- *   resilienza del client stesso. Resta un errore transitorio: chi chiama
- *   può ancora decidere un nuovo tentativo a un livello più alto (es. un
- *   nuovo job in coda).
- *
- * `problemTitle`/`problemDetail` sono gli UNICI campi del corpo di errore
- * riportati nei log/nel log di sincronizzazione: il corpo grezzo della
- * risposta RENTRI non va mai esposto al tenant.
+ * `RentriApiError` è ora definita in `rentri-http-resilienza.ts` (condivisa
+ * col client delle codifiche): ri-esportata qui per non rompere gli import
+ * esistenti (`import { RentriApiError } from './rentri-api.client'`).
  */
-export class RentriApiError extends Error {
-  constructor(
-    readonly status: number,
-    readonly problemTitle: string | undefined,
-    readonly problemDetail: string | undefined,
-    readonly retryable: boolean
-  ) {
-    super(
-      retryable
-        ? `RENTRI ha risposto ${status} (${problemTitle ?? 'errore transitorio'}): tentativi di resilienza esauriti`
-        : `RENTRI ha rifiutato la richiesta (${status}): ${problemTitle ?? 'operazione non consentita'}`
-    )
-    this.name = 'RentriApiError'
-  }
-}
+export { RentriApiError } from './rentri-http-resilienza'
 
 /**
  * Opzioni configurabili del polling NONBLOCK_PULL di {@link RENTRIApiClient.attendiEsito}.
