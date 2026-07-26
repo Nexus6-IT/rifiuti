@@ -26,6 +26,8 @@ import { AcquisisciFormularioRENTRIUseCase } from './acquisisci-formulario-rentr
 import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.use-case'
 import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
 import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.use-case'
+import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
+import { RentriRiconciliazioneJob } from '../../infrastructure/jobs/rentri-riconciliazione.job'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -247,6 +249,38 @@ import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.
       ) => new RilasciaFormularioRENTRIUseCase(firRepo, rentriApiClient, prisma, logger),
       inject: [FIRPrismaRepository, RENTRIApiClient, PrismaService, LoggerService],
     },
+    // R5 Task 4 — riconciliazione periodica (v. commento di classe del use
+    // case per la decisione "corregge solo se riempie un buco, altrimenti
+    // segnala"). Stesso pattern di useFactory di sopra: IFIRRepository e'
+    // un'interfaccia, Nest non puo' risolverla da un tipo di parametro.
+    {
+      provide: RiconciliaStatoRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        prisma: PrismaService,
+        rentriApiClient: RENTRIApiClient,
+        syncLogRepo: RENTRISyncLogRepository,
+        domainEvents: DomainEventsService,
+        logger: LoggerService
+      ) =>
+        new RiconciliaStatoRentriUseCase(
+          firRepo,
+          prisma,
+          rentriApiClient,
+          syncLogRepo,
+          domainEvents,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        PrismaService,
+        RENTRIApiClient,
+        RENTRISyncLogRepository,
+        DomainEventsService,
+        LoggerService,
+      ],
+    },
+    RentriRiconciliazioneJob,
   ],
   exports: [
     SyncFIRToRENTRIUseCase,
@@ -259,6 +293,7 @@ import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.
     CercaFormulariRENTRIUseCase,
     AcquisisciFormularioRENTRIUseCase,
     RilasciaFormularioRENTRIUseCase,
+    RiconciliaStatoRentriUseCase,
   ],
 })
 export class RentriSyncModule {}

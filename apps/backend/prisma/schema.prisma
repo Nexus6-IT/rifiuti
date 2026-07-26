@@ -356,6 +356,19 @@ model FIR {
   // l'ha, e anche un FIR appena legato può non avere ancora ricevuto alcuna
   // lettura.
   rentriStatoFormulario   RentriStatoFormulario? @map("rentri_stato_formulario")
+  // Ultima volta che la riconciliazione periodica (R5 Task 4,
+  // RiconciliaStatoRentriUseCase) ha effettivamente interrogato l'ente per
+  // QUESTO FIR. Nullable: mai controllato. Serve a campionare, ad ogni
+  // esecuzione, i FIR SYNCED meno recentemente verificati (ORDER BY questo
+  // campo, NULL prima) invece dei primi N per data di sync o di creazione:
+  // senza, un tenant con centinaia di FIR sincronizzati vedrebbe SEMPRE
+  // controllati gli stessi (es. i più vecchi per rentriSyncedAt) e mai gli
+  // altri, il che vanificherebbe il giro di "controllo di igiene" completo
+  // in ~6,25 giorni descritto nel piano (20 campioni/6h, 500 FIR/tenant).
+  // Aggiornato ad OGNI controllo (con o senza divergenza trovata), mai da
+  // un'altra operazione: un campo dedicato, distinto da updatedAt (che
+  // cambia per qualunque modifica al FIR, non solo per la riconciliazione).
+  rentriLastReconciledAt DateTime? @map("rentri_last_reconciled_at")
 
   attachmentUrls Json? @map("attachment_urls")
 
@@ -389,6 +402,9 @@ model FIR {
   @@index([transportDate])
   @@index([cerCode])
   @@index([tenantId, wasteOperationType])
+  // Supporta la query di campionamento del Task 4 (R5): per tenant, solo i
+  // FIR SYNCED, ordinati per "meno recentemente verificato" (NULL prima).
+  @@index([tenantId, rentriSyncStatus, rentriLastReconciledAt])
   @@map("firs")
 }
 
@@ -1771,6 +1787,15 @@ model RENTRISyncLog {
   status  RENTRISyncLogStatus
   attempt Int
 
+  /// Origine del tentativo registrato da questa riga (R5 Task 4): TRASMISSIONE
+  /// per il flusso normale (SyncFIRToRENTRIUseCase e affini, valore di
+  /// default per non richiedere una migrazione dati sulle righe esistenti),
+  /// RICONCILIAZIONE per un controllo periodico di allineamento
+  /// (RiconciliaStatoRentriUseCase). Senza questo campo un audit/contestazione
+  /// non potrebbe distinguere "abbiamo trasmesso questo FIR" da "abbiamo
+  /// solo verificato che l'ente lo vedesse ancora allineato".
+  origine RENTRISyncLogOrigine @default(TRASMISSIONE) @map("origine")
+
   /// Payload della richiesta inviata a RENTRI (JSON xFIR), per audit/debug.
   requestPayload  String  @map("request_payload") @db.Text
   responsePayload String? @map("response_payload") @db.Text
@@ -1801,4 +1826,12 @@ enum RENTRISyncLogStatus {
   FAILURE
 
   @@map("rentri_sync_log_status")
+}
+
+/// V. commento sul campo RENTRISyncLog.origine.
+enum RENTRISyncLogOrigine {
+  TRASMISSIONE
+  RICONCILIAZIONE
+
+  @@map("rentri_sync_log_origine")
 }
