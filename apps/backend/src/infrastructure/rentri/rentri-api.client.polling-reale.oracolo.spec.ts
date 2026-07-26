@@ -67,6 +67,7 @@ describe('RENTRIApiClient — attendiEsito guida da solo il polling reale contro
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
       rentriApiErrors: { inc: jest.fn() },
+      rentriTenantLocked: { set: jest.fn() },
     }
 
     // Adattatore che risolve SEMPRE l'observable (mai un errore): il client

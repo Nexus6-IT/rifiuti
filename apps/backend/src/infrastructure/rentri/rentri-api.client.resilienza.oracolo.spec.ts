@@ -71,6 +71,7 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
       rentriApiErrors: { inc: jest.fn() },
+      rentriTenantLocked: { set: jest.fn() },
     }
 
     const httpService: any = {

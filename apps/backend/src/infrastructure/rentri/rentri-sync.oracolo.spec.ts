@@ -141,6 +141,7 @@ describe('SyncFIRToRENTRIUseCase — ciclo end-to-end contro la fake RENTRI (in-
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
       rentriApiErrors: { inc: jest.fn() },
+      rentriTenantLocked: { set: jest.fn() },
     }
 
     const sequenza: string[] = []

@@ -87,6 +87,7 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
       rentriApiErrors: { inc: jest.fn() },
+      rentriTenantLocked: { set: jest.fn() },
     }
 
     const httpService: any = {

@@ -29,7 +29,9 @@ import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-ren
 import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.use-case'
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
 import { RentriRiconciliazioneJob } from '../../infrastructure/jobs/rentri-riconciliazione.job'
+import { RentriCertificatoScadenzaJob } from '../../infrastructure/jobs/rentri-certificato-scadenza.job'
 import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
+import { MetricsService } from '../../core/metrics/metrics.service'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -272,7 +274,8 @@ import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
         rentriApiClient: RENTRIApiClient,
         syncLogRepo: RENTRISyncLogRepository,
         domainEvents: DomainEventsService,
-        logger: LoggerService
+        logger: LoggerService,
+        metrics: MetricsService
       ) =>
         new RiconciliaStatoRentriUseCase(
           firRepo,
@@ -280,7 +283,8 @@ import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
           rentriApiClient,
           syncLogRepo,
           domainEvents,
-          logger
+          logger,
+          metrics
         ),
       inject: [
         FIRPrismaRepository,
@@ -289,9 +293,13 @@ import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
         RENTRISyncLogRepository,
         DomainEventsService,
         LoggerService,
+        MetricsService,
       ],
     },
     RentriRiconciliazioneJob,
+    // R5 Task 5 — allarmi: alimenta wasteflow_rentri_certificate_expiry_days
+    // una volta al giorno (v. commento di classe del job).
+    RentriCertificatoScadenzaJob,
     // R3 Task 2 — consultazione di stato e azioni disponibili presso l'ente:
     // e' la fonte di verita' per quali pulsanti mostrare, e la difesa contro il
     // 423 (chiamare un'operazione che l'ente non consente e' precisamente la

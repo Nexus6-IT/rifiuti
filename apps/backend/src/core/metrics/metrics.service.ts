@@ -32,6 +32,11 @@ export class MetricsService implements OnModuleInit {
   public readonly rentriApiRequestDuration: Histogram
   public readonly rentriApiErrors: Counter
 
+  // RENTRI robustezza (R5 Task 5 — allarmi)
+  public readonly rentriCertificateExpiryDays: Gauge
+  public readonly rentriTenantLocked: Gauge
+  public readonly rentriReconciliationDivergences: Counter
+
   // Queue metrics
   public readonly queueDepth: Gauge
   public readonly queueJobDuration: Histogram
@@ -114,6 +119,30 @@ export class MetricsService implements OnModuleInit {
       name: 'wasteflow_rentri_api_errors_total',
       help: 'Total number of RENTRI API errors',
       labelNames: ['endpoint', 'error_type'],
+      registers: [this.registry],
+    })
+
+    // RENTRI robustezza (R5 Task 5): metriche di supporto agli allarmi
+    // Prometheus (monitoring/alerts/rentri.yml) — riusano MetricsService/
+    // Registry esistenti, nessun meccanismo nuovo.
+    this.rentriCertificateExpiryDays = new Gauge({
+      name: 'wasteflow_rentri_certificate_expiry_days',
+      help: 'Giorni mancanti alla scadenza del certificato RENTRI del tenant (calcolati dal campo notAfter del PEM salvato, aggiornati dal job giornaliero rentri-certificato-scadenza.job.ts). Valore negativo = certificato già scaduto.',
+      labelNames: ['tenant_id'],
+      registers: [this.registry],
+    })
+
+    this.rentriTenantLocked = new Gauge({
+      name: 'wasteflow_rentri_tenant_locked',
+      help: "Indica (1) se il tenant ha ricevuto un 423 (risorsa bloccata) confermato dall'ultima risposta RENTRI, tornato a 0 alla prima risposta non-423 successiva (successo o altro errore). Non distingue un singolo 423 transitorio da un pattern persistente: quella distinzione è nella regola di allarme (increase(...) su una finestra di 1h), non in questo gauge.",
+      labelNames: ['tenant_id'],
+      registers: [this.registry],
+    })
+
+    this.rentriReconciliationDivergences = new Counter({
+      name: 'wasteflow_rentri_reconciliation_divergences_total',
+      help: 'Numero di divergenze rilevate dalla riconciliazione periodica dello stato RENTRI (R5 Task 4), per esito: "corretto" (il sistema ha riempito un buco con lo stesso metodo di dominio del flusso normale) o "segnalato" (richiede verifica manuale, nessuna correzione automatica).',
+      labelNames: ['tenant_id', 'esito'],
       registers: [this.registry],
     })
 

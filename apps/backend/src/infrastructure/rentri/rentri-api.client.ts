@@ -77,7 +77,8 @@ export class RENTRIApiClient {
   ): Promise<{ transazioneId: string; urlStato: string }> {
     const response = await this.eseguiRichiestaConResilienza(
       () => this.post(`${RENTRIApiClient.FORMULARI_PATH}/`, dati, '/formulari (crea)', tenantId),
-      '/formulari (crea)'
+      '/formulari (crea)',
+      tenantId
     )
 
     const transazioneId = response.data?.transazione_id
@@ -95,7 +96,8 @@ export class RENTRIApiClient {
   async leggiFormulario(tenantId: string, numeroFir: string): Promise<FormularioModel> {
     const response = await this.eseguiRichiestaConResilienza(
       () => this.get(`${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}`, tenantId),
-      `/formulari/${numeroFir}`
+      `/formulari/${numeroFir}`,
+      tenantId
     )
     return response.data
   }
@@ -116,7 +118,8 @@ export class RENTRIApiClient {
   async leggiStato(tenantId: string, numeroFir: string): Promise<InfoFormularioResult> {
     const response = await this.eseguiRichiestaConResilienza(
       () => this.get(`${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/stato`, tenantId),
-      `/formulari/${numeroFir}/stato`
+      `/formulari/${numeroFir}/stato`,
+      tenantId
     )
     return response.data
   }
@@ -156,7 +159,8 @@ export class RENTRIApiClient {
           `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/azioni?${query.toString()}`,
           tenantId
         ),
-      `/formulari/${numeroFir}/azioni`
+      `/formulari/${numeroFir}/azioni`,
+      tenantId
     )
     return response.data
   }
@@ -222,7 +226,8 @@ export class RENTRIApiClient {
           'Paging-Page': String(page),
           'Paging-PageSize': String(pageSize),
         }),
-      '/formulari (ricerca)'
+      '/formulari (ricerca)',
+      tenantId
     )
 
     const headers = response.headers ?? {}
@@ -287,7 +292,8 @@ export class RENTRIApiClient {
           '/formulari (acquisizione-visibilita)',
           tenantId
         ),
-      '/formulari (acquisizione-visibilita)'
+      '/formulari (acquisizione-visibilita)',
+      tenantId
     )
   }
 
@@ -323,7 +329,8 @@ export class RENTRIApiClient {
           '/formulari (rilascio-visibilita)',
           tenantId
         ),
-      '/formulari (rilascio-visibilita)'
+      '/formulari (rilascio-visibilita)',
+      tenantId
     )
   }
 
@@ -415,11 +422,15 @@ export class RENTRIApiClient {
         })
       )
 
+      const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
+
       if (response.status === 200) {
+        this.metrics.rentriTenantLocked.set({ tenant_id: tenantEffettivo }, 0)
         return { pronto: false }
       }
 
       if (response.status === 303) {
+        this.metrics.rentriTenantLocked.set({ tenant_id: tenantEffettivo }, 0)
         const urlEsito = (response.headers?.location ?? response.headers?.Location) as string
         return { pronto: true, urlEsito }
       }
@@ -427,7 +438,8 @@ export class RENTRIApiClient {
       await this.gestisciRispostaNonPrevista(
         response,
         `/status (transazione ${transazioneId})`,
-        tentativo
+        tentativo,
+        tenantEffettivo
       )
       // 'ritenta': si riprova il ciclo (l'attesa è già stata eseguita sopra).
     }
@@ -463,15 +475,19 @@ export class RENTRIApiClient {
         })
       )
 
+      const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
+
       if (response.status === 400) {
+        this.metrics.rentriTenantLocked.set({ tenant_id: tenantEffettivo }, 0)
         return null
       }
 
       if (response.status === 200) {
+        this.metrics.rentriTenantLocked.set({ tenant_id: tenantEffettivo }, 0)
         return response.data
       }
 
-      await this.gestisciRispostaNonPrevista(response, '/result', tentativo)
+      await this.gestisciRispostaNonPrevista(response, '/result', tentativo, tenantEffettivo)
       // 'ritenta': si riprova il ciclo (l'attesa è già stata eseguita sopra).
     }
 
@@ -508,7 +524,8 @@ export class RENTRIApiClient {
   private async gestisciRispostaNonPrevista(
     risposta: { status: number; headers?: Record<string, unknown>; data?: unknown },
     contesto: string,
-    tentativo: number
+    tentativo: number,
+    tenantId?: string
   ): Promise<'ritenta'> {
     return gestisciRispostaErroreRentri(
       risposta,
@@ -518,7 +535,8 @@ export class RENTRIApiClient {
       this.logger,
       this.metrics,
       ms => this.attendi(ms),
-      { baseMs: RENTRIApiClient.BACKOFF_BASE_MS, maxMs: RENTRIApiClient.BACKOFF_MAX_MS }
+      { baseMs: RENTRIApiClient.BACKOFF_BASE_MS, maxMs: RENTRIApiClient.BACKOFF_MAX_MS },
+      tenantId ?? this.tenantIdCorrente()
     )
   }
 
@@ -532,8 +550,10 @@ export class RENTRIApiClient {
    */
   private async eseguiRichiestaConResilienza(
     azione: () => Promise<AxiosResponse>,
-    contesto: string
+    contesto: string,
+    tenantId?: string
   ): Promise<AxiosResponse> {
+    const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
     for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
       try {
         return await azione()
@@ -545,7 +565,7 @@ export class RENTRIApiClient {
           throw error
         }
 
-        await this.gestisciRispostaNonPrevista(risposta, contesto, tentativo)
+        await this.gestisciRispostaNonPrevista(risposta, contesto, tentativo, tenantEffettivo)
         // 'ritenta': si riprova il ciclo (l'attesa è già stata eseguita sopra).
       }
     }
@@ -576,9 +596,13 @@ export class RENTRIApiClient {
     }
 
     try {
-      return await firstValueFrom(
+      const response = await firstValueFrom(
         this.httpService.post(url, body, { headers, timeout: this.timeout })
       )
+      // Risposta non-423 (successo): riporta a 0 il gauge "tenant bandito"
+      // se era rimasto a 1 da un precedente 423 confermato.
+      this.metrics.rentriTenantLocked.set({ tenant_id: tenantId ?? this.tenantIdCorrente() }, 0)
+      return response
     } catch (error: any) {
       this.metrics.rentriApiErrors.inc({ endpoint: metricEndpoint, error_type: 'HTTP' })
       throw error
@@ -594,7 +618,13 @@ export class RENTRIApiClient {
     const url = `${this.config.baseUrl}${path}`
     const headers = { ...(await this.buildAuthHeaders(tenantId)), ...extraHeaders }
 
-    return firstValueFrom(this.httpService.get(url, { headers, timeout: this.timeout }))
+    const response = await firstValueFrom(
+      this.httpService.get(url, { headers, timeout: this.timeout })
+    )
+    // V. commento in `post()`: risposta non-423 (successo) riporta a 0 il
+    // gauge "tenant bandito".
+    this.metrics.rentriTenantLocked.set({ tenant_id: tenantId ?? this.tenantIdCorrente() }, 0)
+    return response
   }
 
   /**
