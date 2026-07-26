@@ -95,12 +95,22 @@ export class CERController {
     description: 'Filtra solo rifiuti pericolosi',
   })
   @ApiQuery({ name: 'category', required: false, description: 'Filtra per categoria (es. "13")' })
+  @ApiQuery({
+    name: 'presenteInRentri',
+    required: false,
+    type: Boolean,
+    description:
+      "Filtra ai soli codici confermati dall'ultimo allineamento RENTRI (R4 Task 7): usato " +
+      "dall'autocomplete del form di creazione FIR, che non deve proporre un codice storico " +
+      "non più restituito dall'ente. Omesso: nessun filtro (ricerca/storico includono tutto).",
+  })
   @ApiResponse({ status: 200, description: 'Lista codici CER trovati', type: [CERResponseDto] })
   @ApiResponse({ status: 400, description: 'Keyword mancante o non valida' })
   async search(
     @Query('q') keyword: string,
     @Query('pericoloso') pericoloso?: string,
-    @Query('category') category?: string
+    @Query('category') category?: string,
+    @Query('presenteInRentri') presenteInRentri?: string
   ): Promise<CERResponseDto[]> {
     const filters: any = {}
 
@@ -110,6 +120,10 @@ export class CERController {
 
     if (category) {
       filters.category = category
+    }
+
+    if (presenteInRentri !== undefined) {
+      filters.presenteInRentri = presenteInRentri === 'true'
     }
 
     const results = await this.cerCatalogService.search(keyword, filters)

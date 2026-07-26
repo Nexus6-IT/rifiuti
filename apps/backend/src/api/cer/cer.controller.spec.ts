@@ -94,6 +94,22 @@ describe('CERController', () => {
 
       expect(result.length).toBe(0)
     })
+
+    it('applica il filtro presenteInRentri (R4 Task 7: autocomplete del form FIR)', async () => {
+      service.search.mockResolvedValue([])
+
+      await controller.search('olio', undefined, undefined, 'true')
+
+      expect(service.search).toHaveBeenCalledWith('olio', { presenteInRentri: true })
+    })
+
+    it('non applica alcun filtro presenteInRentri se il parametro è assente (storico/ricerca invariati)', async () => {
+      service.search.mockResolvedValue([])
+
+      await controller.search('olio')
+
+      expect(service.search).toHaveBeenCalledWith('olio', {})
+    })
   })
 
   describe('getByCode', () => {

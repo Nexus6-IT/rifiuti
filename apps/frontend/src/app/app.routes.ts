@@ -203,6 +203,20 @@ export const routes: Routes = [
             m => m.RentriFormulariComponent
           ),
       },
+      {
+        // Unità locali lette dall'ente RENTRI, R4 Task 7 (solo admin — enforcement lato componente + backend)
+        path: 'rentri/unita-locali',
+        loadComponent: () =>
+          import('./features/rentri/rentri-siti.component').then(m => m.RentriSitiComponent),
+      },
+      {
+        // Diagnostica allineamento codifiche RENTRI, R4 Task 7 (solo admin — enforcement lato componente + backend)
+        path: 'rentri/codifiche',
+        loadComponent: () =>
+          import('./features/rentri/rentri-codifiche-diagnostica.component').then(
+            m => m.RentriCodificheDiagnosticaComponent
+          ),
+      },
       // T179: Custom Role Management Routes
       {
         path: 'permissions',

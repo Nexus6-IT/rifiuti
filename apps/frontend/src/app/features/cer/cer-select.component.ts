@@ -155,6 +155,15 @@ export class CerSelectComponent implements ControlValueAccessor {
   @Input() required = false
   /** Id dell'elemento che descrive l'errore (per aria-describedby). */
   @Input() ariaDescribedBy: string | null = null
+  /**
+   * Limita i risultati ai codici confermati dall'ultimo allineamento RENTRI
+   * (`presenteInRentri=true`, R4 Task 7 Step 3). Default `true`: le uniche due
+   * pagine che usano questo componente (form di creazione FIR, form del
+   * registro C/S) sono entrambe creazione di un documento NUOVO, che non deve
+   * proporre un codice che l'ente ha smesso di confermare. Un futuro utilizzo
+   * su un form di modifica di un documento storico dovrà passare `false`.
+   */
+  @Input() soloPresentiInRentri = true
 
   /** Valore corrente dell'autocomplete: opzione selezionata o stringa digitata. */
   selected: CerOption | string | null = null
@@ -174,7 +183,7 @@ export class CerSelectComponent implements ControlValueAccessor {
       this.suggestions = []
       return
     }
-    this.cerService.searchCER(query).subscribe({
+    this.cerService.searchCER(query, this.soloPresentiInRentri).subscribe({
       next: results => {
         this.suggestions = results.map(r => this.toOption(r))
       },

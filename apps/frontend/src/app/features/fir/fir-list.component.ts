@@ -577,6 +577,7 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                   >
                   <app-cer-select
                     inputId="new-cer"
+                    data-testid="fir-cer-autocomplete"
                     [(ngModel)]="newFIR.rifiuto.cerCode"
                     (ngModelChange)="clearFirError('cerCode')"
                     ariaLabel="Codice CER del rifiuto"
