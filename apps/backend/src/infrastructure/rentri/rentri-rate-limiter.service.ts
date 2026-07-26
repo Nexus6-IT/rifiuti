@@ -208,6 +208,49 @@ redis.call('ZADD', KEYS[2], now, token)
 return 1
 `
 
+/**
+ * Script Lua di SOLA LETTURA (nessun `ZADD`, nessuna scrittura di un nuovo
+ * slot): usato da `statoAttuale()` per la diagnostica (R5 Task 3) — mostrare
+ * all'utente "RENTRI sta ricevendo molte richieste in questo momento" NON
+ * deve consumare capacità che un'operazione reale userebbe, altrimenti la
+ * sola apertura della pagina di diagnostica renderebbe il limitatore più
+ * severo. La potatura (`ZREMRANGEBYSCORE`) resta necessaria anche qui: senza,
+ * un `ZCARD` letto a freddo conterebbe anche slot già scaduti per finestra
+ * scorsa o età, sovrastimando l'attesa e mostrando un allarme falso.
+ *
+ * KEYS[1] = chiave volume, KEYS[2] = chiave concorrenza
+ * ARGV[1] = now (ms), ARGV[2] = finestra volume (ms), ARGV[3] = soglia età concorrenza (ms)
+ * Ritorna {volumeCorrente, concorrenzaCorrente}.
+ */
+const LUA_STATO_ATTUALE = `
+local now = tonumber(ARGV[1])
+local finestraMs = tonumber(ARGV[2])
+local sogliaEtaConcorrenza = tonumber(ARGV[3])
+
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - finestraMs)
+local volumeCorrente = redis.call('ZCARD', KEYS[1])
+
+redis.call('ZREMRANGEBYSCORE', KEYS[2], 0, now - sogliaEtaConcorrenza)
+local concorrenzaCorrente = redis.call('ZCARD', KEYS[2])
+
+return {volumeCorrente, concorrenzaCorrente}
+`
+
+/**
+ * Stato del limitatore per un tenant, in un dato istante: quante richieste
+ * ha in finestra e quante in volo, e se — in QUESTO momento — un'operazione
+ * nuova dovrebbe attendere. Sola lettura verso Redis (infrastruttura
+ * locale): non genera alcuna chiamata verso RENTRI, adatto ad essere
+ * interrogato ad ogni caricamento di una pagina di diagnostica (R5 Task 3)
+ * senza che questo aggiunga traffico verso l'ente.
+ */
+export interface StatoLimitatoreRentri {
+  volumeCorrente: number
+  concorrenzaCorrente: number
+  /** true se volume o concorrenza sono già alla soglia: una nuova richiesta di questo tenant attenderebbe. */
+  inAttesa: boolean
+}
+
 @Injectable()
 export class RentriRateLimiterService implements OnModuleInit {
   private readonly logger = new Logger(RentriRateLimiterService.name)
@@ -305,5 +348,36 @@ export class RentriRateLimiterService implements OnModuleInit {
 
   private attendi(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  /**
+   * Legge lo stato corrente del limitatore per il tenant, senza acquisire
+   * capacità (nessuna scrittura di un nuovo slot — v. {@link LUA_STATO_ATTUALE}).
+   * Uso previsto: la diagnostica RENTRI (R5 Task 3), per spiegare all'utente
+   * un rallentamento («RENTRI sta ricevendo molte richieste in questo
+   * momento») invece di lasciarlo credere a un guasto.
+   */
+  async statoAttuale(tenantId: string): Promise<StatoLimitatoreRentri> {
+    const now = Date.now()
+    const risultato = (await this.redis.eval(
+      LUA_STATO_ATTUALE,
+      2,
+      this.getChiaveVolume(tenantId),
+      this.getChiaveConcorrenza(tenantId),
+      now,
+      RENTRI_RATE_LIMIT_FINESTRA_MS,
+      RENTRI_RATE_LIMIT_TTL_CONCORRENZA_MS
+    )) as [number | string, number | string]
+
+    const volumeCorrente = Number(risultato[0])
+    const concorrenzaCorrente = Number(risultato[1])
+
+    return {
+      volumeCorrente,
+      concorrenzaCorrente,
+      inAttesa:
+        volumeCorrente >= RENTRI_RATE_LIMIT_SOGLIA_RICHIESTE ||
+        concorrenzaCorrente >= RENTRI_RATE_LIMIT_CONCORRENZA_MASSIMA,
+    }
   }
 }

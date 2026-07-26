@@ -217,6 +217,15 @@ export const routes: Routes = [
             m => m.RentriCodificheDiagnosticaComponent
           ),
       },
+      {
+        // Diagnostica RENTRI — salute del collegamento da dati locali, R5 Task 3
+        // (SUPER_ADMIN/ADMIN/OPERATOR — enforcement lato componente + backend)
+        path: 'rentri/diagnostica',
+        loadComponent: () =>
+          import('./features/rentri/rentri-diagnostica.component').then(
+            m => m.RentriDiagnosticaComponent
+          ),
+      },
       // T179: Custom Role Management Routes
       {
         path: 'permissions',
