@@ -78,6 +78,61 @@ class MockCERRepository implements ICERRepository {
     return this.cers.has(code)
   }
 
+  async isUtilizzabilePerNuovoFormulario(code: string): Promise<boolean> {
+    const cer = this.cers.get(code)
+    return cer !== undefined && cer.presenteInRentri
+  }
+
+  async upsertFromRentri(data: {
+    code: string
+    description: string
+    isPericoloso: boolean
+  }): Promise<void> {
+    const esistente = this.cers.get(data.code)
+    this.cers.set(
+      data.code,
+      CERCode.reconstitute({
+        id: esistente?.id ?? data.code,
+        code: data.code,
+        description: data.description,
+        isPericoloso: data.isPericoloso,
+        category: esistente?.category ?? data.code.slice(0, 2),
+        subcategory: esistente?.subcategory ?? undefined,
+        createdAt: esistente?.createdAt ?? new Date(),
+        updatedAt: new Date(),
+        presenteInRentri: true,
+        rimossoDaRentriAl: null,
+        fonte: 'rentri',
+      })
+    )
+  }
+
+  async marcaRimossoDaRentriSeAttivo(code: string, rimossoAl: Date): Promise<boolean> {
+    const esistente = this.cers.get(code)
+    if (!esistente || !esistente.presenteInRentri) return false
+    this.cers.set(
+      code,
+      CERCode.reconstitute({
+        id: esistente.id,
+        code: esistente.code,
+        description: esistente.description,
+        isPericoloso: esistente.isPericoloso,
+        category: esistente.category,
+        subcategory: esistente.subcategory ?? undefined,
+        createdAt: esistente.createdAt,
+        updatedAt: new Date(),
+        presenteInRentri: false,
+        rimossoDaRentriAl: rimossoAl,
+        fonte: esistente.fonte,
+      })
+    )
+    return true
+  }
+
+  async listTuttiICodici(): Promise<string[]> {
+    return Array.from(this.cers.keys())
+  }
+
   // Test helper
   clear() {
     this.cers.clear()
