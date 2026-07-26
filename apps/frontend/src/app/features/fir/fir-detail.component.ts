@@ -14,6 +14,10 @@ import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-
 import { RENTRISyncLogsComponent } from './components/rentri-sync-logs/rentri-sync-logs.component'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
+import { RentriFormulariService } from '../rentri/rentri-formulari.service'
+
+/** Origini di legame per cui il rilascio è ammesso (R2 Task 3): mai su TRASMESSO_DA_NOI. */
+const ORIGINI_RILASCIABILI = ['ACQUISITO_DA_TERZI', 'AGGANCIO_MANUALE']
 
 /** Ruoli autorizzati a trasmettere/confermare verso RENTRI (v. RENTRISyncController backend). */
 const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
@@ -347,6 +351,19 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   "
                 />
               }
+              @if (canRilasciareLegameRentri(f)) {
+                <p-button
+                  label="Rilascia legame RENTRI"
+                  icon="pi pi-unlink"
+                  severity="danger"
+                  [outlined]="true"
+                  (onClick)="rilasciaLegameRENTRI(f)"
+                  data-testid="fir-detail-rentri-rilascia-legame"
+                  [attr.aria-label]="
+                    'Rilascia il legame RENTRI del FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
             </div>
           </section>
         }
@@ -359,6 +376,10 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
     </div>
 
     <p-confirmDialog></p-confirmDialog>
+    <p-confirmDialog
+      key="rentri-rilascia-legame"
+      data-testid="fir-detail-rentri-rilascia-legame-confirm-dialog"
+    ></p-confirmDialog>
     <p-toast></p-toast>
   `,
   styles: [
@@ -462,6 +483,7 @@ export class FirDetailComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly firService = inject(FirService)
   private readonly rentriSyncService = inject(RENTRISyncService)
+  private readonly rentriFormulariService = inject(RentriFormulariService)
   private readonly authService = inject(AuthService)
   private readonly confirmationService = inject(ConfirmationService)
   private readonly messageService = inject(MessageService)
@@ -593,6 +615,24 @@ export class FirDetailComponent implements OnInit {
     return !!fir.rentriNumeroFirProposto && !fir.rentriNumeroFir && this.canManageRENTRI()
   }
 
+  /**
+   * «Rilascia legame RENTRI» compare SOLO quando l'origine del legame è
+   * ACQUISITO_DA_TERZI o AGGANCIO_MANUALE (R2 Task 3/8) — MAI su
+   * TRASMESSO_DA_NOI: un formulario che abbiamo creato e trasmesso noi non si
+   * "rilascia" da qui (si annullerebbe con gli endpoint del ciclo di vita,
+   * R3). Un pulsante che appare e poi fallisce con un 400 di dominio è peggio
+   * di un pulsante assente: il controllo qui rispecchia esattamente il
+   * vincolo già imposto lato dominio (`FIR.rilasciaLegameRENTRI`).
+   */
+  canRilasciareLegameRentri(fir: FIR): boolean {
+    return (
+      !!fir.rentriNumeroFir &&
+      !!fir.rentriOrigineLegame &&
+      ORIGINI_RILASCIABILI.includes(fir.rentriOrigineLegame) &&
+      this.canManageRENTRI()
+    )
+  }
+
   haAzioni(fir: FIR): boolean {
     return (
       fir.stato === FIRStato.BOZZA ||
@@ -600,7 +640,8 @@ export class FirDetailComponent implements OnInit {
       this.canTrasmettereRentri(fir) ||
       this.canRiprovareRentri(fir) ||
       this.mostraVaiAlCertificato(fir) ||
-      this.canConfermareLegameRentri(fir)
+      this.canConfermareLegameRentri(fir) ||
+      this.canRilasciareLegameRentri(fir)
     )
   }
 
@@ -688,6 +729,44 @@ export class FirDetailComponent implements OnInit {
               severity: 'error',
               summary: 'Errore',
               detail: this.extractError(err, 'Errore nella conferma del legame RENTRI'),
+            })
+          },
+        })
+      },
+    })
+  }
+
+  /**
+   * Rilascia il legame RENTRI di questo FIR: il formulario resta su RENTRI,
+   * smette solo di essere collegato a questo FIR nel gestionale (R2 Task 8,
+   * `RilasciaFormularioRENTRIUseCase`). Il FIR locale NON viene cancellato.
+   */
+  rilasciaLegameRENTRI(fir: FIR): void {
+    this.confirmationService.confirm({
+      key: 'rentri-rilascia-legame',
+      header: 'Rilascia legame RENTRI',
+      message:
+        'Il formulario resterà su RENTRI, ma non sarà più collegato a questo FIR nel gestionale. ' +
+        'Confermi il rilascio del legame con il numero FIR RENTRI ' +
+        `${fir.rentriNumeroFir}?`,
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Rilascia',
+      rejectLabel: 'Annulla',
+      accept: () => {
+        this.rentriFormulariService.rilasciaLegame(fir.id).subscribe({
+          next: () => {
+            this.messageService.add({
+              severity: 'success',
+              summary: 'Legame rilasciato',
+              detail: 'Il legame RENTRI è stato rilasciato: il formulario resta su RENTRI',
+            })
+            this.reload()
+          },
+          error: err => {
+            this.messageService.add({
+              severity: 'error',
+              summary: 'Errore',
+              detail: this.extractError(err, 'Errore nel rilascio del legame RENTRI'),
             })
           },
         })

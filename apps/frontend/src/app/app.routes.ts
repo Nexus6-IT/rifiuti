@@ -194,6 +194,15 @@ export const routes: Routes = [
             m => m.RentriUnitaLocaleComponent
           ),
       },
+      {
+        // Ricerca e aggancio formulari RENTRI (R2 Task 8) — SUPER_ADMIN/ADMIN/OPERATOR,
+        // enforcement lato componente + backend (RentriFormulariController)
+        path: 'rentri/formulari',
+        loadComponent: () =>
+          import('./features/rentri/rentri-formulari.component').then(
+            m => m.RentriFormulariComponent
+          ),
+      },
       // T179: Custom Role Management Routes
       {
         path: 'permissions',
