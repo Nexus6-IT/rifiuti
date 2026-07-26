@@ -647,12 +647,90 @@ export function estraiNumeroFirDaEsito(esito: EsitoFormulario): string | undefin
 export type NuovoFormularioPayload = Record<string, unknown>
 
 /**
+ * `IndirizzoModel` (formulari.yaml righe 9815-9842): `citta` è un `oneOf` fra
+ * `ComuneModel` (comune italiano, solo `comune_id` ISTAT — RENTRI NON
+ * restituisce qui il nome del comune/provincia leggibili: servirebbe una
+ * chiamata separata a `GET /codifiche/v1.0/comuni`, fuori scope di questo
+ * task) e `CittaEsteraModel` (`nazione_id` + `nome_citta` in chiaro).
+ */
+export interface IndirizzoRENTRIResult {
+  citta?:
+    | { comune_id?: string | null }
+    | { nazione_id?: string | null; nome_citta?: string | null }
+    | null
+  indirizzo?: string | null
+  civico?: string | null
+  cap?: string | null
+}
+
+/** `DatiProduttoreFormularioResultModel` (formulari.yaml righe 7706-7772): sottoinsieme usato dalla mappatura Task 5. */
+export interface DatiProduttoreFormularioResult {
+  denominazione: string
+  codice_fiscale: string
+  indirizzo?: IndirizzoRENTRIResult | null
+}
+
+/** `DatiDestinatarioFormularioResultModel` (formulari.yaml righe 7136-7206): sottoinsieme usato dalla mappatura Task 5. */
+export interface DatiDestinatarioFormularioResult {
+  denominazione: string
+  codice_fiscale: string
+  indirizzo?: IndirizzoRENTRIResult | null
+  /** Attività di recupero/smaltimento a destinazione (es. "R13", "D15") — Campo 3 FIR locale (`codiceOperazione`). */
+  attivita?: string | null
+}
+
+/** `DatiTrasportatoreFormularioResultModel` (formulari.yaml righe 8482-8538): sottoinsieme usato dalla mappatura Task 5. */
+export interface DatiTrasportatoreFormularioResult {
+  denominazione: string
+  codice_fiscale: string
+  /** `TipoTrasporto` (formulari.yaml righe 10267-10272): Terrestre | Ferroviario | Marittimo. */
+  tipo_trasporto?: string | null
+  numero_iscrizione_albo?: string | null
+}
+
+/** `QuantitaModel\`1` (formulari.yaml righe 10089-10107): unità ammesse "kg" | "l". */
+export interface QuantitaRENTRIResult {
+  valore: number
+  unita_misura: string
+}
+
+/** `DatiRifiutoModel` (formulari.yaml righe 7892-7971): sottoinsieme usato dalla mappatura Task 5. */
+export interface DatiRifiutoResult {
+  codice_eer: string
+  descrizione?: string | null
+  stato_fisico?: string | null
+  /** `CaratteristichePericolo` (formulari.yaml righe 6167-6184): es. ["HP07", "HP14"]. */
+  caratteristiche_pericolo?: string[] | null
+  /** Nonostante il nome, il contratto lo tipizza `string` (non intero). */
+  numero_colli?: string | null
+  quantita?: QuantitaRENTRIResult | null
+}
+
+/**
+ * `DatiPartenzaResultModel` (formulari.yaml righe 7553-7613): sottoinsieme
+ * usato dalla mappatura Task 5 (produttore/destinatario/trasportatori/rifiuto
+ * necessari a costruire il FIR locale, v. `crea-fir-da-dettaglio-rentri.use-case.ts`).
+ */
+export interface DatiPartenzaResult {
+  produttore?: DatiProduttoreFormularioResult | null
+  destinatario?: DatiDestinatarioFormularioResult | null
+  trasportatori?: DatiTrasportatoreFormularioResult[] | null
+  rifiuto?: DatiRifiutoResult | null
+  /** Campo 17 FIR (DM 59/2023): annotazioni libere — corrisponde 1:1 a `FIR.annotazioni`. */
+  annotazioni?: string | null
+}
+
+/**
  * Corpo della risposta 200 di `GET /{numero_fir}` (`DettaglioFormulario`,
  * contratto ufficiale, formulari.yaml righe 9032-9139). I campi di primo
- * livello sono elencati per nome dal contratto; gli oggetti/array annidati
- * (dati di partenza, trasporto, accettazione, ecc.) non sono modellati in
- * dettaglio qui — non serve a questo task, che riguarda solo l'allineamento
- * del path/verbo di lettura.
+ * livello sono elencati per nome dal contratto; `dati_partenza` è tipizzato
+ * in dettaglio (necessario alla mappatura Task 5, v.
+ * `crea-fir-da-dettaglio-rentri.use-case.ts`); gli altri oggetti/array
+ * annidati (trasporto, accettazione, allegati, trasbordi, soste tecniche,
+ * destinazioni successive, ecc.) restano `unknown` — nessun campo locale
+ * corrispondente in questo giro (nessuna migrazione Prisma consentita), v.
+ * commento di classe del use case Task 5 per la scelta esplicita di non
+ * perderli silenziosamente ma di documentarli come lacuna nota.
  */
 export interface FormularioModel {
   stato_formulario?: string
@@ -662,7 +740,7 @@ export interface FormularioModel {
   trasformato_in_cartaceo?: boolean | null
   num_iscr_sito?: string | null
   dati_vidimazione?: unknown
-  dati_partenza?: unknown
+  dati_partenza?: DatiPartenzaResult | null
   dati_trasporto?: unknown[] | null
   dati_accettazione?: unknown
   dati_annotazioni?: unknown[] | null
