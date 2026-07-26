@@ -70,3 +70,37 @@ export class FormularioGiaAgganciatoError extends DomainError {
     this.name = 'FormularioGiaAgganciatoError'
   }
 }
+
+/**
+ * R3 Task 1 — `FIR.applyRentriStato` riconcilia lo `FIRStato` interno con lo
+ * stato ente (`StatoFormulario`, contratto RENTRI), ma solo se il FIR ha già
+ * un legame (`rentriNumeroFir` valorizzato): senza legame non c'è nulla da
+ * riconciliare, e ignorare la chiamata in silenzio nasconderebbe un bug del
+ * chiamante (use case Task 2-6) invece di segnalarlo subito.
+ */
+export class FIRNonLegatoRentriError extends DomainError {
+  constructor() {
+    super(
+      'Impossibile riconciliare lo stato RENTRI: il FIR non è legato ad alcun formulario RENTRI ' +
+        '(rentriNumeroFir assente) — agganciarlo prima di applicare uno stato ente'
+    )
+    this.name = 'FIRNonLegatoRentriError'
+  }
+}
+
+/**
+ * R3 Task 1 — da quando un FIR è legato a RENTRI, il ciclo di vita è
+ * comandato dall'ente (v. `FIR.applyRentriStato`): i vecchi metodi locali
+ * (`presaInCarico`, `confermaConsegna`, `annulla`) non decidono più da soli.
+ * Un click locale indipendente su un FIR legato non va ignorato: va rifiutato
+ * con un messaggio che indichi quale operazione RENTRI usare al suo posto.
+ */
+export class MetodoLocaleNonConsentitoSuFirLegatoError extends DomainError {
+  constructor(operazioneLocale: string, operazioneRentriSuggerita: string) {
+    super(
+      `Operazione locale '${operazioneLocale}' non consentita su un FIR già legato a RENTRI: ` +
+        `usa ${operazioneRentriSuggerita}`
+    )
+    this.name = 'MetodoLocaleNonConsentitoSuFirLegatoError'
+  }
+}
