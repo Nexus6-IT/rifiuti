@@ -24,7 +24,7 @@ import { CercaFormulariRENTRIUseCase } from './cerca-formulari-rentri.use-case'
 import { AcquisisciFormularioRENTRIUseCase } from './acquisisci-formulario-rentri.use-case'
 import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.use-case'
 import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
-import { CreaFIRDaFormularioRENTRINonImplementatoAdapter } from './crea-fir-da-formulario-rentri.non-implementato.adapter'
+import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.use-case'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -109,11 +109,14 @@ import { CreaFIRDaFormularioRENTRINonImplementatoAdapter } from './crea-fir-da-f
  * ↔ locale e come si ripara un'eventuale incoerenza). `RentriUnitaLocaleService`
  * (da `RentriModule`, già importato) serve al prerequisito fail-closed della
  * ricerca. `AcquisisciFormularioRENTRIUseCase` dipende dalla porta
- * `CREA_FIR_DA_FORMULARIO_RENTRI_PORT` (Task 5, non ancora implementato in
- * questo worktree): registrata con l'adapter placeholder
- * `CreaFIRDaFormularioRENTRINonImplementatoAdapter`, che rifiuta con un
- * errore di dominio leggibile invece di un errore di risoluzione DI opaco —
- * da sostituire quando il Task 5 sarà pronto, senza altre modifiche qui.
+ * `CREA_FIR_DA_FORMULARIO_RENTRI_PORT`: registrata ora con l'implementazione
+ * reale `CreaFIRDaDettaglioRENTRIUseCase` (Task 5) — mappa il dettaglio
+ * RENTRI (`GET /{numero_fir}`) su un FIR locale, v. commento di classe di
+ * quel use case per le decisioni di prodotto (snapshot immutabile, campo
+ * obbligatorio mancante → rifiuto esplicito, nessuna validazione del CER
+ * contro il catalogo). Sostituisce il precedente adapter placeholder
+ * (rimosso, v. `crea-fir-da-formulario-rentri.non-implementato.adapter.ts`,
+ * non più registrato).
  */
 @Module({
   imports: [ConfigModule, LoggerModule, MetricsModule, PrismaModule, RentriModule],
@@ -196,7 +199,7 @@ import { CreaFIRDaFormularioRENTRINonImplementatoAdapter } from './crea-fir-da-f
     },
     {
       provide: CREA_FIR_DA_FORMULARIO_RENTRI_PORT,
-      useClass: CreaFIRDaFormularioRENTRINonImplementatoAdapter,
+      useClass: CreaFIRDaDettaglioRENTRIUseCase,
     },
     {
       provide: AcquisisciFormularioRENTRIUseCase,
@@ -204,7 +207,7 @@ import { CreaFIRDaFormularioRENTRINonImplementatoAdapter } from './crea-fir-da-f
         firRepo: FIRPrismaRepository,
         rentriApiClient: RENTRIApiClient,
         prisma: PrismaService,
-        creaFirPort: CreaFIRDaFormularioRENTRINonImplementatoAdapter,
+        creaFirPort: CreaFIRDaDettaglioRENTRIUseCase,
         logger: LoggerService
       ) =>
         new AcquisisciFormularioRENTRIUseCase(
