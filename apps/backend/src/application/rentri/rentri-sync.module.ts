@@ -13,6 +13,7 @@ import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncJobProcessor } from '../../infrastructure/queue/jobs/rentri-sync.job'
 import { RENTRISyncController } from '../../api/rentri/rentri-sync.controller'
+import { RentriFormulariController } from '../../api/rentri/rentri-formulari.controller'
 import { DomainEventsService } from '../../core/domain-events.service'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
@@ -117,10 +118,21 @@ import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.
  * contro il catalogo). Sostituisce il precedente adapter placeholder
  * (rimosso, v. `crea-fir-da-formulario-rentri.non-implementato.adapter.ts`,
  * non più registrato).
+ *
+ * R2 Task 6 — endpoint REST dell'aggancio. `RentriFormulariController`
+ * espone `CercaFormulariRENTRIUseCase`/`AcquisisciFormularioRENTRIUseCase`/
+ * `RilasciaFormularioRENTRIUseCase` (già cablati sopra per Task 4) come
+ * `GET /rentri/formulari` + `POST /rentri/formulari/:numeroFir/aggancia` +
+ * `POST /rentri/fir/:id/rilascia-legame-rentri`. Controller DEDICATO (non
+ * un'estensione di `RENTRISyncController`, già ~490 righe su un dominio
+ * distinto — trasmissione IN USCITA verso RENTRI): v. commento di testata
+ * di `rentri-formulari.controller.ts` per la motivazione completa. Dipende
+ * anche da `RentriUnitaLocaleService` (già importato da `RentriModule`) per
+ * risolvere la sede su cui acquisire/rilasciare la visibilità.
  */
 @Module({
   imports: [ConfigModule, LoggerModule, MetricsModule, PrismaModule, RentriModule],
-  controllers: [RENTRISyncController],
+  controllers: [RENTRISyncController, RentriFormulariController],
   providers: [
     FIRPrismaRepository,
     RENTRISyncQueue,

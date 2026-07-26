@@ -91,6 +91,43 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
       }
     }
 
+    case 'FORMULARIO_GIA_AGGANCIATO':
+      // Coperto sia dalla precondizione applicativa (AcquisisciFormularioRENTRIUseCase)
+      // sia dal vincolo di unicità a database (repository) — stesso messaggio in
+      // entrambi i casi, per questo va tradotto qui e non lasciato al testo generato
+      // al volo dall'eccezione di dominio (che porta un prefisso tecnico "Business
+      // rule violated: ..." non presentabile all'utente).
+      return {
+        messaggio:
+          'Questo formulario è già collegato a un altro FIR nel gestionale: rilascialo da lì prima di riprovare qui.',
+        azione: 'NESSUNA',
+      }
+
+    case 'UNITA_LOCALE_MANCANTE':
+      // Stessa azione di RENTRI_FORBIDDEN (destinazione: pagina del certificato), ma
+      // causa distinta — qui manca la configurazione della sede, non il certificato è
+      // invalido — e infatti il messaggio è diverso.
+      return {
+        messaggio:
+          'Configura il numero di iscrizione della tua unità locale nella pagina del certificato prima di cercare i formulari.',
+        azione: 'VEDI_CERTIFICATO',
+      }
+
+    case 'RENTRI_FORBIDDEN_ACQUISIZIONE':
+      // RENTRI risponde 403 sia quando il certificato non è valido (RENTRI_FORBIDDEN)
+      // sia quando l'utenza non ha titolo su nessuno dei soggetti coinvolti in
+      // un'acquisizione-visibilità: il contratto ufficiale (ProblemDetails) non
+      // distingue i due casi con un campo diverso, solo testo libero dell'ente non
+      // affidabile per un branching. La distinzione arriva dal CHIAMANTE, che assegna
+      // questo errorCode in base a QUALE operazione ha prodotto il 403 (stessa tecnica
+      // già in uso in SyncFIRToRENTRIUseCase per RENTRI_FORBIDDEN), non dal contenuto
+      // della risposta RENTRI.
+      return {
+        messaggio:
+          'Non risulti tra i soggetti coinvolti in questo formulario: RENTRI non consente di agganciarlo.',
+        azione: 'NESSUNA',
+      }
+
     case 'RENTRI_MISSING_NUMERO_FIR':
       return {
         messaggio:

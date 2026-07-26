@@ -90,4 +90,37 @@ describe('traduciErroreRentri', () => {
     expect(risultato.messaggio).not.toContain('qualcosa di non catalogato')
     expect(risultato.azione).toBe('NESSUNA')
   })
+
+  it('formulario già agganciato (FORMULARIO_GIA_AGGANCIATO): rimanda al FIR che lo ha già collegato, nessuna azione', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'FORMULARIO_GIA_AGGANCIATO',
+    })
+
+    expect(risultato.messaggio).toBe(
+      'Questo formulario è già collegato a un altro FIR nel gestionale: rilascialo da lì prima di riprovare qui.'
+    )
+    expect(risultato.azione).toBe('NESSUNA')
+  })
+
+  it('unità locale non configurata (UNITA_LOCALE_MANCANTE): rimanda alla pagina del certificato', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'UNITA_LOCALE_MANCANTE',
+    })
+
+    expect(risultato.messaggio).toBe(
+      'Configura il numero di iscrizione della tua unità locale nella pagina del certificato prima di cercare i formulari.'
+    )
+    expect(risultato.azione).toBe('VEDI_CERTIFICATO')
+  })
+
+  it('403 su acquisizione-visibilità (RENTRI_FORBIDDEN_ACQUISIZIONE): nessun titolo sul formulario, distinto da RENTRI_FORBIDDEN', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'RENTRI_FORBIDDEN_ACQUISIZIONE',
+    })
+
+    expect(risultato.messaggio).toBe(
+      'Non risulti tra i soggetti coinvolti in questo formulario: RENTRI non consente di agganciarlo.'
+    )
+    expect(risultato.azione).toBe('NESSUNA')
+  })
 })
