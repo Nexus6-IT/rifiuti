@@ -30,6 +30,12 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
  * client, su una singola pagina ragionevolmente ampia. Un tenant con più FIR
  * "liberi" di questo numero è un'estensione futura (paginazione/ricerca nel
  * selettore), non necessaria per il valore che questo task deve consegnare.
+ *
+ * IL LIMITE NON RESTA SILENZIOSO: quando i FIR dell'azienda superano questa
+ * soglia, il selettore lo DICE (`firLiberiTroncati`). Un elenco troncato senza
+ * avviso farebbe concludere all'utente che il formulario cercato non esiste,
+ * quando invece esiste e non è stato caricato — l'errore peggiore, perché porta
+ * a rifare a mano un lavoro già fatto. Dichiararlo costa una riga di testo.
  */
 const FIR_LIBERI_PAGE_SIZE = 200
 
@@ -266,6 +272,15 @@ type StatoRiga = 'GIA_NEL_GESTIONALE' | 'DA_AGGANCIARE' | 'IN_CORSO'
             Non ci sono FIR locali ancora liberi (senza numero RENTRI) a cui collegarlo: crealo come
             nuovo formulario.
           </small>
+          <small
+            *ngIf="!caricandoFirLiberi() && firLiberiTroncati()"
+            class="text-tertiary"
+            data-testid="rentri-formulari-confirm-dialog-fir-locali-troncati"
+          >
+            L'elenco mostra solo i formulari piu' recenti dell'azienda. Se quello che cerchi non
+            compare, potrebbe essere piu' vecchio: agganciarlo come nuovo formulario creerebbe un
+            doppione, quindi verificalo prima nella lista dei FIR.
+          </small>
         </div>
       </div>
 
@@ -360,6 +375,8 @@ export class RentriFormulariComponent implements OnInit {
   firLocaleSelezionato: string | null = null
   readonly caricandoFirLiberi = signal(false)
   readonly firLiberi = signal<{ id: string; label: string }[]>([])
+  /** Vero quando i FIR dell'azienda superano la pagina caricata: il selettore lo dichiara. */
+  readonly firLiberiTroncati = signal(false)
 
   ngOnInit(): void {
     if (this.isAutorizzato()) {
@@ -413,6 +430,7 @@ export class RentriFormulariComponent implements OnInit {
     this.modalitaScelta = null
     this.firLocaleSelezionato = null
     this.firLiberi.set([])
+    this.firLiberiTroncati.set(false)
     this.dialogVisibile.set(true)
   }
 
@@ -426,6 +444,10 @@ export class RentriFormulariComponent implements OnInit {
     this.caricandoFirLiberi.set(true)
     this.firService.getFIRList(1, FIR_LIBERI_PAGE_SIZE).subscribe({
       next: pagina => {
+        // `total` conta TUTTI i FIR dell'azienda, non solo quelli liberi: se
+        // supera la pagina caricata, esistono formulari che questo selettore
+        // non ha visto e non puo' escludere.
+        this.firLiberiTroncati.set((pagina.total ?? 0) > FIR_LIBERI_PAGE_SIZE)
         this.firLiberi.set(
           pagina.items
             .filter((fir: FIR) => !fir.rentriNumeroFir)

@@ -209,6 +209,61 @@ describe('RentriFormulariComponent', () => {
 
     expect(component.firLiberi().map(f => f.id)).toEqual(['fir-libero'])
     expect(component.firLiberi().map(f => f.id)).not.toContain('fir-legato')
+    // L'elenco non e' troncato: `total` sta dentro la pagina caricata.
+    expect(component.firLiberiTroncati()).toBeFalse()
+  })
+
+  // Il selettore carica una sola pagina di FIR e filtra sul client. Se
+  // l'azienda ha piu' formulari di quella pagina, quelli non caricati sono
+  // invisibili: senza avviso l'utente concluderebbe che il FIR cercato non
+  // esiste e lo ricreerebbe come nuovo, cioe' un doppione.
+  it('dichiara che l’elenco dei FIR locali è troncato quando l’azienda ne ha più della pagina caricata', () => {
+    setup('ADMIN')
+    service.cerca.and.returnValue(
+      of({
+        risultati: [formulario()],
+        paging: { page: 1, pageSize: 100, pageCount: 1, totalRecordCount: 1 },
+      })
+    )
+    fixture.detectChanges()
+
+    firService.getFIRList.and.returnValue(
+      of({
+        items: [firLocale({ id: 'fir-libero', rentriNumeroFir: null })],
+        total: 1500,
+        page: 1,
+        limit: 200,
+        totalPages: 8,
+      })
+    )
+
+    component.apriDialogAggancio(formulario())
+    component.modalitaScelta = 'ESISTENTE'
+    component.onModalitaEsistenteScelta()
+
+    expect(component.firLiberiTroncati()).toBeTrue()
+  })
+
+  it('riparte senza avviso di troncamento quando si riapre il dialog', () => {
+    setup('ADMIN')
+    service.cerca.and.returnValue(
+      of({
+        risultati: [formulario()],
+        paging: { page: 1, pageSize: 100, pageCount: 1, totalRecordCount: 1 },
+      })
+    )
+    fixture.detectChanges()
+    firService.getFIRList.and.returnValue(
+      of({ items: [firLocale({ id: 'a' })], total: 1500, page: 1, limit: 200, totalPages: 8 })
+    )
+
+    component.apriDialogAggancio(formulario())
+    component.modalitaScelta = 'ESISTENTE'
+    component.onModalitaEsistenteScelta()
+    expect(component.firLiberiTroncati()).toBeTrue()
+
+    component.apriDialogAggancio(formulario())
+    expect(component.firLiberiTroncati()).toBeFalse()
   })
 
   it('non permette la conferma in modalità ESISTENTE finché non è scelto un FIR locale', () => {
