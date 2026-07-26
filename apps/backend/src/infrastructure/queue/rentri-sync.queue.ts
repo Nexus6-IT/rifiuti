@@ -80,8 +80,22 @@ export class RENTRISyncQueue implements OnModuleInit {
     correlationId?: string
     delay?: number // Delay in milliseconds
     priority?: 'high' | 'normal' | 'low'
+    /**
+     * Modalità IBRIDA (v. `TrasmettiFIRSecondoModalitaUseCase`): un esito
+     * positivo non deve chiudere subito il legame, resta in attesa di
+     * conferma esplicita. Assente/false per tutti gli altri percorsi
+     * (trigger manuale, batch, modalità automatica).
+     */
+    richiedeConferma?: boolean
   }): Promise<string> {
-    const { firId, tenantId, correlationId, delay = 0, priority = 'normal' } = params
+    const {
+      firId,
+      tenantId,
+      correlationId,
+      delay = 0,
+      priority = 'normal',
+      richiedeConferma = false,
+    } = params
 
     const job = await this.queue.add(
       'sync-fir',
@@ -90,6 +104,7 @@ export class RENTRISyncQueue implements OnModuleInit {
         tenantId,
         correlationId: correlationId || this.generateCorrelationId(),
         type: 'single',
+        richiedeConferma,
       },
       {
         delay,

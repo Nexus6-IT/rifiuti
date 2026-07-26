@@ -133,15 +133,20 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
    * Process single FIR sync
    */
   private async processSingleSync(job: Job): Promise<SyncJobResult> {
-    const { firId, tenantId, correlationId } = job.data
+    const { firId, tenantId, correlationId, richiedeConferma } = job.data
     const startTime = Date.now()
 
     try {
       // Update job progress
       await job.updateProgress(10)
 
-      // Execute sync use case
-      const result = await this.syncFIRUseCase.execute(firId, tenantId, correlationId)
+      // Execute sync use case. `richiedeConferma` (modalità IBRIDA, v.
+      // TrasmettiFIRSecondoModalitaUseCase) passa un'opzione esplicita in
+      // più solo quando serve: i job esistenti (trigger manuale/batch, senza
+      // il campo) mantengono l'invocazione a 3 argomenti.
+      const result = richiedeConferma
+        ? await this.syncFIRUseCase.execute(firId, tenantId, correlationId, { richiedeConferma })
+        : await this.syncFIRUseCase.execute(firId, tenantId, correlationId)
 
       const duration = Date.now() - startTime
 

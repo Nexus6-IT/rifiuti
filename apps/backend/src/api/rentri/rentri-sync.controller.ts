@@ -21,6 +21,8 @@ import { Roles } from '../../auth/decorators/roles.decorator'
 import { LoggerService } from '../../core/logger/logger.service'
 import { TriggerBatchSyncUseCase } from '../../application/rentri/trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from '../../application/rentri/get-sync-status.use-case'
+import { ConfermaLegameRENTRIUseCase } from '../../application/rentri/conferma-legame-rentri.use-case'
+import { DomainException } from '../../domain/shared/domain-exception'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import {
@@ -67,11 +69,52 @@ export class RENTRISyncController {
   constructor(
     private readonly triggerBatchSyncUseCase: TriggerBatchSyncUseCase,
     private readonly getSyncStatusUseCase: GetSyncStatusUseCase,
+    private readonly confermaLegameRENTRIUseCase: ConfermaLegameRENTRIUseCase,
     private readonly rentriSyncQueue: RENTRISyncQueue,
     private readonly rentriSyncLogRepository: RENTRISyncLogRepository,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('RENTRISyncController')
+  }
+
+  /**
+   * Conferma esplicita del legame RENTRI proposto in modalità IBRIDA (R1
+   * Task 2): senza questo endpoint un FIR "in attesa di conferma" resterebbe
+   * tale per sempre.
+   */
+  @Post('fir/:id/conferma-legame')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Conferma il legame RENTRI proposto (modalità IBRIDA)',
+    description:
+      'Promuove a legame ufficiale una proposta di aggancio RENTRI in attesa di conferma esplicita',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Legame confermato' })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Nessuna proposta in attesa' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'FIR non trovato' })
+  async confermaLegame(
+    @Param('id') firId: string,
+    @TenantId() tenantId: string,
+    @UserId() userId: string
+  ): Promise<{ numeroFir: string }> {
+    this.logger.info('Conferma legame RENTRI richiesta', { firId, tenantId, userId })
+
+    try {
+      return await this.confermaLegameRENTRIUseCase.execute(firId, tenantId)
+    } catch (error: any) {
+      this.logger.error('Conferma legame RENTRI non riuscita', error, { firId, tenantId })
+
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
+        throw new UnauthorizedException(error.message)
+      }
+      if (error instanceof DomainException) {
+        throw new BadRequestException(error.message)
+      }
+      throw error
+    }
   }
 
   /**

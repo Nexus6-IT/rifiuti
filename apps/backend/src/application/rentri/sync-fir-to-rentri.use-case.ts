@@ -65,7 +65,8 @@ export class SyncFIRToRENTRIUseCase {
   async execute(
     firId: string,
     tenantId: string,
-    correlationId?: string
+    correlationId?: string,
+    opzioni?: SyncFIRToRENTRIOpzioni
   ): Promise<SyncFIRToRENTRIResult> {
     const startTime = Date.now()
 
@@ -161,7 +162,17 @@ export class SyncFIRToRENTRIUseCase {
             }
           }
 
-          fir.markRENTRISynced(numeroFir, transazioneId, correlationId)
+          // Modalità IBRIDA (opzioni.richiedeConferma): la trasmissione è
+          // partita da sola ma il legame NON diventa ufficiale finché un
+          // utente non lo conferma esplicitamente (v.
+          // `FIR.proporreLegameRENTRI`/`ConfermaLegameRENTRIUseCase`). Ogni
+          // altro caso (manuale, batch, automatica) chiude subito il legame
+          // come sempre.
+          if (opzioni?.richiedeConferma) {
+            fir.proporreLegameRENTRI(numeroFir, transazioneId, correlationId)
+          } else {
+            fir.markRENTRISynced(numeroFir, transazioneId, correlationId)
+          }
 
           // Update sync log
           const duration = Date.now() - startTime
@@ -178,16 +189,22 @@ export class SyncFIRToRENTRIUseCase {
           // Publish domain events
           await this.publishDomainEvents(fir)
 
-          this.logger.info(`FIR synced to RENTRI successfully`, {
-            firId,
-            protocolNumber: numeroFir,
-            duration,
-          })
+          this.logger.info(
+            opzioni?.richiedeConferma
+              ? `FIR trasmesso a RENTRI, in attesa di conferma esplicita (modalità IBRIDA)`
+              : `FIR synced to RENTRI successfully`,
+            {
+              firId,
+              protocolNumber: numeroFir,
+              duration,
+            }
+          )
 
           return {
             success: true,
             protocolNumber: numeroFir,
             attempts: fir.rentriSyncStatus.getAttempts(),
+            inAttesaDiConferma: opzioni?.richiedeConferma ?? false,
           }
         } else {
           // Esito negativo della transazione RENTRI - fallimento permanente
@@ -379,4 +396,19 @@ export interface SyncFIRToRENTRIResult {
   willRetry?: boolean
   attempts: number
   nextRetryAt?: Date | null
+  /** true se il successo NON ha ancora legato il FIR: in attesa di conferma esplicita (modalità IBRIDA). */
+  inAttesaDiConferma?: boolean
+}
+
+/**
+ * Opzioni di esecuzione della sync, decise dalla modalità del tenant
+ * (v. `TrasmettiFIRSecondoModalitaUseCase`).
+ */
+export interface SyncFIRToRENTRIOpzioni {
+  /**
+   * Modalità IBRIDA: un esito positivo non chiude subito il legame
+   * (`FIR.proporreLegameRENTRI` invece di `FIR.markRENTRISynced`) — resta in
+   * attesa di conferma esplicita dell'utente.
+   */
+  richiedeConferma?: boolean
 }

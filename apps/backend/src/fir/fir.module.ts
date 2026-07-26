@@ -22,16 +22,22 @@ import { DestinatarioPrismaRepository } from '../infrastructure/persistence/dest
 import { PrismaModule } from '../infrastructure/persistence/prisma.module'
 import { BillingModule } from '../application/billing/billing.module'
 import { SignaturesModule } from '../application/signatures/signatures.module'
+import { RentriSyncModule } from '../application/rentri/rentri-sync.module'
 import { FIR_REPOSITORY, FIRRepository as CryptoFIRRepository } from '../domain/fir/fir.repository'
 import { DigitalSignatureService } from '../application/signatures/digital-signature.service'
+import { TrasmettiFIRSecondoModalitaUseCase } from '../application/rentri/trasmetti-fir-secondo-modalita.use-case'
+import { LoggerService } from '../core/logger/logger.service'
 
 @Module({
   // SignaturesModule: collega il ciclo di vita (emetti/presaInCarico/
   // confermaConsegna) al sottosistema crittografico. FIR_REPOSITORY e
   // DigitalSignatureService sono esportati da SignaturesModule (Task 4,
   // pipeline P3) — i due aggregate FIR restano separati, si collegano solo
-  // tramite questi due servizi condivisi.
-  imports: [PrismaModule, BillingModule, SignaturesModule],
+  // tramite questi due servizi condivisi. RentriSyncModule (R1 Task 2):
+  // fornisce TrasmettiFIRSecondoModalitaUseCase, il punto di aggancio tra
+  // l'emissione del FIR e la trasmissione a RENTRI secondo la modalità del
+  // tenant.
+  imports: [PrismaModule, BillingModule, SignaturesModule, RentriSyncModule],
   controllers: [FIRControllerV2],
   providers: [
     // Repositories (provide as concrete classes)
@@ -72,11 +78,25 @@ import { DigitalSignatureService } from '../application/signatures/digital-signa
       useFactory: (
         firRepo: FIRPrismaRepository,
         cryptoFirRepo: CryptoFIRRepository,
-        signatureService: DigitalSignatureService
+        signatureService: DigitalSignatureService,
+        trasmissioneRentri: TrasmettiFIRSecondoModalitaUseCase,
+        logger: LoggerService
       ) => {
-        return new EmettiFIRUseCase(firRepo, cryptoFirRepo, signatureService)
+        return new EmettiFIRUseCase(
+          firRepo,
+          cryptoFirRepo,
+          signatureService,
+          trasmissioneRentri,
+          logger
+        )
       },
-      inject: [FIRPrismaRepository, FIR_REPOSITORY, DigitalSignatureService],
+      inject: [
+        FIRPrismaRepository,
+        FIR_REPOSITORY,
+        DigitalSignatureService,
+        TrasmettiFIRSecondoModalitaUseCase,
+        LoggerService,
+      ],
     },
     {
       provide: PresaInCaricoFIRUseCase,

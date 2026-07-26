@@ -4,7 +4,8 @@ import { RentriSyncModule } from './rentri-sync.module'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
-import { FIRConsegnatoHandler } from './handlers/fir-consegnato.handler'
+import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
+import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncJobProcessor } from '../../infrastructure/queue/jobs/rentri-sync.job'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
@@ -33,7 +34,7 @@ import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
  * che tocca Redis/Bull.
  */
 describe('RentriSyncModule (DI wiring)', () => {
-  it('risolve i sette pezzi applicativi/infrastrutturali e il controller', async () => {
+  it('risolve gli otto pezzi applicativi/infrastrutturali e il controller (R0 Task 4 + R1 Task 2)', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), RentriSyncModule],
     }).compile()
@@ -44,7 +45,8 @@ describe('RentriSyncModule (DI wiring)', () => {
     expect(moduleRef.get(RENTRISyncQueue)).toBeDefined()
     expect(moduleRef.get(RENTRISyncJobProcessor)).toBeDefined()
     expect(moduleRef.get(RENTRISyncLogRepository)).toBeDefined()
-    expect(moduleRef.get(FIRConsegnatoHandler)).toBeDefined()
+    expect(moduleRef.get(TrasmettiFIRSecondoModalitaUseCase)).toBeDefined()
+    expect(moduleRef.get(ConfermaLegameRENTRIUseCase)).toBeDefined()
     expect(moduleRef.get(RENTRISyncController)).toBeDefined()
 
     // RENTRIApiClient viene da RentriModule (importato): conferma che

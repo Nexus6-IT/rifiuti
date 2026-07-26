@@ -461,5 +461,78 @@ describe('FIR Aggregate', () => {
         expect(fir.canSyncToRENTRI()).toBe(false)
       })
     })
+
+    /**
+     * R1 Task 2 — modalità IBRIDA: la trasmissione parte da sola, ma il
+     * legame ufficiale richiede una conferma esplicita dell'utente. Lo stato
+     * intermedio ("in attesa di conferma") è rappresentato da
+     * `rentriNumeroFirProposto`, distinto da `rentriNumeroFir`: finché è
+     * valorizzato il FIR NON è legato a tutti gli effetti.
+     */
+    describe('proporreLegameRENTRI / confermaLegameRENTRI / rifiutaLegameRENTRI — modalità IBRIDA', () => {
+      it('proporreLegameRENTRI registra il numero proposto senza legare ancora il FIR', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+
+        fir.proporreLegameRENTRI('RENTRI-NUM-000555', 'tx-ibrida-1')
+
+        expect(fir.rentriNumeroFirProposto).toBe('RENTRI-NUM-000555')
+        expect(fir.rentriNumeroFir).toBeNull()
+        expect(fir.rentriOrigineLegame).toBeNull()
+        expect(fir.rentriTransazioneId).toBe('tx-ibrida-1')
+      })
+
+      it('proporreLegameRENTRI blocca nuovi tentativi automatici mentre la proposta è pendente', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+
+        fir.proporreLegameRENTRI('RENTRI-NUM-000555')
+
+        expect(fir.rentriSyncStatus.getStatus()).toBe('SYNCED')
+        expect(fir.canSyncToRENTRI()).toBe(false)
+      })
+
+      it('proporreLegameRENTRI rifiuta un numero ufficiale mancante/vuoto', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+
+        expect(() => fir.proporreLegameRENTRI('')).toThrow(DomainError)
+      })
+
+      it('confermaLegameRENTRI promuove la proposta al legame ufficiale (origine TRASMESSO_DA_NOI)', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.proporreLegameRENTRI('RENTRI-NUM-000555', 'tx-ibrida-1')
+
+        fir.confermaLegameRENTRI()
+
+        expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-000555')
+        expect(fir.rentriOrigineLegame).toBe('TRASMESSO_DA_NOI')
+        expect(fir.rentriNumeroFirProposto).toBeNull()
+      })
+
+      it('confermaLegameRENTRI senza una proposta pendente lancia un errore', () => {
+        const fir = emettiFIR()
+        expect(() => fir.confermaLegameRENTRI()).toThrow(DomainError)
+      })
+
+      it('rifiutaLegameRENTRI cancella la proposta e riporta il FIR a PENDING (ritrasmissibile)', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.proporreLegameRENTRI('RENTRI-NUM-000555')
+
+        fir.rifiutaLegameRENTRI()
+
+        expect(fir.rentriNumeroFirProposto).toBeNull()
+        expect(fir.rentriNumeroFir).toBeNull()
+        expect(fir.rentriSyncStatus.getStatus()).toBe('PENDING')
+        expect(fir.canSyncToRENTRI()).toBe(true)
+      })
+
+      it('rifiutaLegameRENTRI senza una proposta pendente lancia un errore', () => {
+        const fir = emettiFIR()
+        expect(() => fir.rifiutaLegameRENTRI()).toThrow(DomainError)
+      })
+    })
   })
 })

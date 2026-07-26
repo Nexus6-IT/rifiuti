@@ -139,11 +139,25 @@ function buildMockLogger(): jest.Mocked<LoggerService> {
   } as any
 }
 
+/**
+ * Fake dell'orchestrazione RENTRI (R1 Task 2): questa suite copre
+ * l'emissione del ciclo di vita, non la decisione di trasmissione secondo
+ * la modalità (coperta da `trasmetti-fir-secondo-modalita.use-case.spec.ts`).
+ * Qui basta uno spy che registra le invocazioni.
+ */
+function buildMockTrasmissioneRentri(): { eseguiSeAutomatica: jest.Mock } {
+  return {
+    eseguiSeAutomatica: jest.fn().mockResolvedValue({ avviata: false, motivo: 'MANUALE' }),
+  }
+}
+
 describe('EmettiFIRUseCase', () => {
   let useCase: EmettiFIRUseCase
   let repository: MockFIRRepository
   let cryptoRepository: FakeCryptoFIRRepository
   let signatureService: DigitalSignatureService
+  let trasmissioneRentri: ReturnType<typeof buildMockTrasmissioneRentri>
+  let logger: jest.Mocked<LoggerService>
 
   const TENANT_ID = 'tenant-uuid-real-001'
   const PRODUTTORE_ID = 'produttore-uuid-different-999'
@@ -168,7 +182,15 @@ describe('EmettiFIRUseCase', () => {
     repository.addFIR(fir)
     cryptoRepository = new FakeCryptoFIRRepository(fir.id)
     signatureService = new DigitalSignatureService(buildMockLogger())
-    useCase = new EmettiFIRUseCase(repository, cryptoRepository, signatureService)
+    trasmissioneRentri = buildMockTrasmissioneRentri()
+    logger = buildMockLogger()
+    useCase = new EmettiFIRUseCase(
+      repository,
+      cryptoRepository,
+      signatureService,
+      trasmissioneRentri as any,
+      logger
+    )
   })
 
   // Le suite originali usano un FIR diverso creato ad-hoc in ogni test tramite
@@ -180,7 +202,13 @@ describe('EmettiFIRUseCase', () => {
       const fir = createBozzaFIR()
       repository.addFIR(fir)
       cryptoRepository = new FakeCryptoFIRRepository(fir.id)
-      useCase = new EmettiFIRUseCase(repository, cryptoRepository, signatureService)
+      useCase = new EmettiFIRUseCase(
+        repository,
+        cryptoRepository,
+        signatureService,
+        trasmissioneRentri as any,
+        logger
+      )
 
       const command = new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi')
 
@@ -190,6 +218,66 @@ describe('EmettiFIRUseCase', () => {
       expect(result.value.stato).toBe(FIRStato.EMESSO)
       expect(result.value.numeroProgressivo).toBeDefined()
       expect(result.value.numeroProgressivo).toMatch(/^FIR-\d{4}-\d{6}$/)
+    })
+
+    /**
+     * R1 Task 2: il punto di aggancio con la trasmissione RENTRI è
+     * un'invocazione diretta, non un evento — dopo un'emissione riuscita
+     * `TrasmettiFIRSecondoModalitaUseCase.eseguiSeAutomatica` DEVE essere
+     * chiamato senza che il chiamante di `EmettiFIRUseCase` debba fare
+     * nient'altro: è esattamente "senza alcuna chiamata esplicita".
+     */
+    it("chiama l'orchestrazione RENTRI dopo un'emissione riuscita, senza alcuna chiamata esplicita del test", async () => {
+      const fir = createBozzaFIR()
+      repository.addFIR(fir)
+      cryptoRepository = new FakeCryptoFIRRepository(fir.id)
+      useCase = new EmettiFIRUseCase(
+        repository,
+        cryptoRepository,
+        signatureService,
+        trasmissioneRentri as any,
+        logger
+      )
+
+      const command = new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi')
+      const result = await useCase.execute(command)
+
+      expect(result.isSuccess).toBe(true)
+      expect(trasmissioneRentri.eseguiSeAutomatica).toHaveBeenCalledTimes(1)
+      expect(trasmissioneRentri.eseguiSeAutomatica).toHaveBeenCalledWith({
+        firId: fir.id,
+        tenantId: TENANT_ID,
+      })
+    })
+
+    it("NON chiama l'orchestrazione RENTRI se l'emissione fallisce (FIR non trovato)", async () => {
+      const command = new EmettiFIRCommand('non-existent-id', 'user-123', 'Test')
+
+      const result = await useCase.execute(command)
+
+      expect(result.isFailure).toBe(true)
+      expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
+    })
+
+    it("un fallimento imprevisto dell'orchestrazione RENTRI non invalida un'emissione già valida", async () => {
+      const fir = createBozzaFIR()
+      repository.addFIR(fir)
+      cryptoRepository = new FakeCryptoFIRRepository(fir.id)
+      trasmissioneRentri.eseguiSeAutomatica.mockRejectedValue(new Error('boom'))
+      useCase = new EmettiFIRUseCase(
+        repository,
+        cryptoRepository,
+        signatureService,
+        trasmissioneRentri as any,
+        logger
+      )
+
+      const command = new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi')
+      const result = await useCase.execute(command)
+
+      expect(result.isSuccess).toBe(true)
+      expect(result.value.stato).toBe(FIRStato.EMESSO)
+      expect(logger.error).toHaveBeenCalled()
     })
 
     it('should generate sequential numero progressivo', async () => {
@@ -212,7 +300,13 @@ describe('EmettiFIRUseCase', () => {
       const fir = createBozzaFIR()
       repository.addFIR(fir)
       cryptoRepository = new FakeCryptoFIRRepository(fir.id)
-      useCase = new EmettiFIRUseCase(repository, cryptoRepository, signatureService)
+      useCase = new EmettiFIRUseCase(
+        repository,
+        cryptoRepository,
+        signatureService,
+        trasmissioneRentri as any,
+        logger
+      )
 
       const command = new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi')
 
@@ -242,7 +336,13 @@ describe('EmettiFIRUseCase', () => {
       const fir = createBozzaFIR()
       repository.addFIR(fir)
       cryptoRepository = new FakeCryptoFIRRepository(fir.id)
-      useCase = new EmettiFIRUseCase(repository, cryptoRepository, signatureService)
+      useCase = new EmettiFIRUseCase(
+        repository,
+        cryptoRepository,
+        signatureService,
+        trasmissioneRentri as any,
+        logger
+      )
 
       const command = new EmettiFIRCommand(fir.id, 'user-123', 'Test')
 
@@ -283,7 +383,13 @@ describe('EmettiFIRUseCase', () => {
       const fir = createBozzaFIR()
       repository.addFIR(fir)
       cryptoRepository = new FakeCryptoFIRRepository(fir.id)
-      useCase = new EmettiFIRUseCase(repository, cryptoRepository, signatureService)
+      useCase = new EmettiFIRUseCase(
+        repository,
+        cryptoRepository,
+        signatureService,
+        trasmissioneRentri as any,
+        logger
+      )
 
       const command = new EmettiFIRCommand(fir.id, 'user-123', 'Test')
 
@@ -300,7 +406,13 @@ describe('EmettiFIRUseCase', () => {
         const fir = createBozzaFIR()
         repository.addFIR(fir)
         cryptoRepository = new FakeCryptoFIRRepository(fir.id)
-        useCase = new EmettiFIRUseCase(repository, cryptoRepository, signatureService)
+        useCase = new EmettiFIRUseCase(
+          repository,
+          cryptoRepository,
+          signatureService,
+          trasmissioneRentri as any,
+          logger
+        )
 
         const command = new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi')
         const result = await useCase.execute(command)
@@ -352,7 +464,13 @@ describe('EmettiFIRUseCase', () => {
         // Nessun provider iniettato + NODE_ENV=production: createSignature deve
         // rifiutarsi di ripiegare in silenzio su sandbox (Task 1).
         const unconfiguredSignatureService = new DigitalSignatureService(buildMockLogger())
-        useCase = new EmettiFIRUseCase(repository, cryptoRepository, unconfiguredSignatureService)
+        useCase = new EmettiFIRUseCase(
+          repository,
+          cryptoRepository,
+          unconfiguredSignatureService,
+          trasmissioneRentri as any,
+          logger
+        )
 
         const originalEnv = process.env.NODE_ENV
         process.env.NODE_ENV = 'production'

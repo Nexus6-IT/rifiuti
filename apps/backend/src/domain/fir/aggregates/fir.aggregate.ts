@@ -212,6 +212,21 @@ export class FIRRENTRISyncFallitoEvent implements DomainEvent {
   ) {}
 }
 
+/**
+ * Emesso quando una trasmissione automatica (modalità IBRIDA) ottiene un
+ * numero ufficiale RENTRI ma il legame resta in attesa di conferma esplicita
+ * dell'utente (v. `proporreLegameRENTRI`/`confermaLegameRENTRI`).
+ */
+export class FIRRENTRILegameDaConfermareEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_legame_da_confermare'
+  constructor(
+    public readonly firId: string,
+    public readonly numeroFirProposto: string,
+    public readonly correlationId?: string
+  ) {}
+}
+
 export class FIR extends AggregateRoot {
   private constructor(
     private readonly _id: string,
@@ -245,7 +260,15 @@ export class FIR extends AggregateRoot {
     /** Identificativo tecnico dell'ultima trasmissione REST (cambia ad ogni tentativo). */
     private _rentriTransazioneId: string | null = null,
     /** Come è nato il legame con rentriNumeroFir. */
-    private _rentriOrigineLegame: RentriOrigineLegame | null = null
+    private _rentriOrigineLegame: RentriOrigineLegame | null = null,
+    /**
+     * Numero ufficiale RENTRI ricevuto ma NON ancora legame confermato
+     * (modalità IBRIDA, v. `proporreLegameRENTRI`): valorizzato dall'esito
+     * positivo di una trasmissione automatica in attesa che un operatore la
+     * confermi esplicitamente. Finché è valorizzato, `rentriNumeroFir` resta
+     * `null` — il FIR non è "legato" a tutti gli effetti.
+     */
+    private _rentriNumeroFirProposto: string | null = null
   ) {
     super()
   }
@@ -466,6 +489,82 @@ export class FIR extends AggregateRoot {
   }
 
   /**
+   * Registra un esito POSITIVO di trasmissione che, a differenza di
+   * `markRENTRISynced`, NON diventa subito il legame ufficiale: è il
+   * comportamento della modalità IBRIDA (v. `TrasmettiFIRSecondoModalitaUseCase`),
+   * dove la trasmissione parte da sola ma l'aggancio richiede una conferma
+   * esplicita dell'utente prima di considerare il FIR legato.
+   *
+   * Perché riusare `RENTRISyncStatus.markAsSynced` invece di uno stato
+   * dedicato: il VO passa a SYNCED (che blocca `canRetry()`), esattamente
+   * l'effetto voluto — nessun nuovo tentativo automatico mentre una proposta
+   * è in attesa — senza introdurre un sesto stato nell'enum persistito
+   * (`rentri_sync_status`, colonna DB) solo per questa sfumatura. La
+   * distinzione "tecnicamente riuscito ma non ancora legato" vive invece nel
+   * nuovo campo `rentriNumeroFirProposto`: finché è valorizzato e
+   * `rentriNumeroFir` resta `null`, il FIR è "in attesa di conferma".
+   */
+  proporreLegameRENTRI(numeroFir: string, transazioneId?: string, correlationId?: string): void {
+    if (!numeroFir || numeroFir.trim() === '') {
+      throw new DomainError('Numero FIR RENTRI mancante: impossibile proporre il legame')
+    }
+
+    this._rentriSyncStatus = this._rentriSyncStatus.markAsSynced(numeroFir)
+    this._rentriNumeroFirProposto = numeroFir
+    if (transazioneId) {
+      // rentriTransazioneId è solo l'identificativo tecnico dell'ultima
+      // trasmissione (non la chiave di aggancio): può essere registrato da
+      // subito, anche prima della conferma, senza implicare alcun legame.
+      this._rentriTransazioneId = transazioneId
+    }
+
+    this.addDomainEvent(new FIRRENTRILegameDaConfermareEvent(this._id, numeroFir, correlationId))
+  }
+
+  /**
+   * Conferma esplicita dell'utente: promuove la proposta in attesa
+   * (`proporreLegameRENTRI`) al legame ufficiale, con la stessa semantica di
+   * `markRENTRISynced` (origine TRASMESSO_DA_NOI, perché la trasmissione è
+   * partita da qui).
+   */
+  confermaLegameRENTRI(correlationId?: string): void {
+    if (!this._rentriNumeroFirProposto) {
+      throw new DomainError('Nessun legame RENTRI in attesa di conferma per questo FIR')
+    }
+
+    const numeroFir = this._rentriNumeroFirProposto
+    this._rentriNumeroFir = numeroFir
+    this._rentriOrigineLegame = RentriOrigineLegame.TRASMESSO_DA_NOI
+    this._rentriNumeroFirProposto = null
+
+    this.addDomainEvent(
+      new FIRRENTRISincronizzatoEvent(
+        this._id,
+        numeroFir,
+        this._rentriSyncStatus.getAttempts(),
+        correlationId
+      )
+    )
+  }
+
+  /**
+   * Rifiuta la proposta di legame in attesa (es. l'operatore riconosce un
+   * errore prima di confermare). Riporta lo stato di sync a PENDING: il FIR
+   * torna trasmissibile per un nuovo tentativo (manuale o automatico).
+   * Non ancora esposta da alcun endpoint (Task 2 di R1 copre solo l'avvio
+   * automatico e la conferma): disponibile per l'interfaccia di conferma
+   * esplicita che R1 Task 3/4 costruiranno lato utente.
+   */
+  rifiutaLegameRENTRI(): void {
+    if (!this._rentriNumeroFirProposto) {
+      throw new DomainError('Nessun legame RENTRI in attesa di conferma per questo FIR')
+    }
+
+    this._rentriNumeroFirProposto = null
+    this._rentriSyncStatus = RENTRISyncStatus.pending()
+  }
+
+  /**
    * Indica se il FIR è idoneo per un nuovo tentativo automatico dopo un
    * fallimento (delega a RENTRISyncStatus.canRetry()).
    */
@@ -605,6 +704,16 @@ export class FIR extends AggregateRoot {
   /** Come è nato il legame con rentriNumeroFir. */
   get rentriOrigineLegame(): RentriOrigineLegame | null {
     return this._rentriOrigineLegame
+  }
+
+  /**
+   * Numero ufficiale RENTRI in attesa di conferma (modalità IBRIDA):
+   * valorizzato da `proporreLegameRENTRI`, azzerato da
+   * `confermaLegameRENTRI`/`rifiutaLegameRENTRI`. `null` se non c'è alcuna
+   * proposta pendente (nessuna trasmissione IBRIDA in corso o già decisa).
+   */
+  get rentriNumeroFirProposto(): string | null {
+    return this._rentriNumeroFirProposto
   }
 
   private static generateId(): string {

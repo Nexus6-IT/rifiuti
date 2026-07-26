@@ -124,6 +124,53 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(mockDomainEvents.publish).toHaveBeenCalled()
     })
 
+    /**
+     * Modalità IBRIDA (R1 Task 2): un esito positivo non deve legare subito
+     * il FIR (`markRENTRISynced`), ma registrare una proposta in attesa di
+     * conferma esplicita (`proporreLegameRENTRI`).
+     */
+    it('opzioni.richiedeConferma true: propone il legame invece di chiuderlo subito', async () => {
+      const firId = 'fir-ibrida'
+      const tenantId = 'tenant-456'
+      const mockFIR = {
+        id: firId,
+        tenantId,
+        rentriSyncStatus: {
+          getStatus: jest.fn().mockReturnValue('PENDING'),
+          getAttempts: jest.fn().mockReturnValue(0),
+        },
+        canSyncToRENTRI: jest.fn().mockReturnValue(true),
+        startRENTRISync: jest.fn(),
+        markRENTRISynced: jest.fn(),
+        proporreLegameRENTRI: jest.fn(),
+        getDomainEvents: jest.fn().mockReturnValue([]),
+        clearDomainEvents: jest.fn(),
+      }
+
+      const mockSyncLog = {
+        markAsSuccess: jest.fn().mockReturnValue({ id: 'log-ibrida', status: 'SUCCESS' }),
+      }
+
+      const transazioneId = 'tx-ibrida-1'
+      const numeroFir = 'RENTRI-NUM-000777'
+
+      mockFIRRepository.findById.mockResolvedValue(mockFIR)
+      mockSyncLogRepository.createPending.mockResolvedValue(mockSyncLog)
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId })
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+        errore: false,
+        validazione: [],
+        esito: { numero_fir: numeroFir },
+      })
+
+      const result = await useCase.execute(firId, tenantId, undefined, { richiedeConferma: true })
+
+      expect(result.success).toBe(true)
+      expect(result.inAttesaDiConferma).toBe(true)
+      expect(mockFIR.proporreLegameRENTRI).toHaveBeenCalledWith(numeroFir, transazioneId, undefined)
+      expect(mockFIR.markRENTRISynced).not.toHaveBeenCalled()
+    })
+
     it('should handle sync after retries', async () => {
       const firId = 'fir-123'
       const tenantId = 'tenant-456'

@@ -458,6 +458,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       _rentriNumeroFir: record.rentriNumeroFir || null,
       _rentriTransazioneId: record.rentriTransazioneId || null,
       _rentriOrigineLegame: (record.rentriOrigineLegame as RentriOrigineLegame) || null,
+      _rentriNumeroFirProposto: record.rentriNumeroFirProposto || null,
     })
 
     return fir
@@ -606,6 +607,9 @@ export class FIRPrismaRepository implements IFIRRepository {
       rentriOrigineLegame: fir.rentriOrigineLegame
         ? (fir.rentriOrigineLegame as unknown as PrismaRentriOrigineLegame)
         : null,
+      // Legame in attesa di conferma (modalità IBRIDA, R1 Task 2): distinto
+      // da rentriNumeroFir, che resta null finché l'utente non conferma.
+      rentriNumeroFirProposto: fir.rentriNumeroFirProposto ?? null,
     }
   }
 

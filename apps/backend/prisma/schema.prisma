@@ -319,16 +319,21 @@ model FIR {
   // Numero ufficiale assegnato da RENTRI al formulario (numero_fir dell'ente):
   // è la chiave stabile del legame FIR interno ↔ formulario RENTRI, non cambia
   // tra una trasmissione e l'altra. Nullable: valorizzato solo dopo l'aggancio.
-  rentriNumeroFir     String?              @map("rentri_numero_fir") @db.VarChar(50)
+  rentriNumeroFir         String?              @map("rentri_numero_fir") @db.VarChar(50)
   // Identificativo tecnico (transazione_id) restituito dall'ultima chiamata di
   // trasmissione REST verso RENTRI. Cambia ad ogni tentativo: non è una chiave
   // di aggancio, serve solo per correlare la trasmissione con il suo esito
   // (polling GET /{transazione_id}/status) e per il supporto.
-  rentriTransazioneId String?              @map("rentri_transazione_id") @db.VarChar(100)
+  rentriTransazioneId     String?              @map("rentri_transazione_id") @db.VarChar(100)
   // Come è nato il legame con rentriNumeroFir: rilevante per cosa l'utente può
   // fare dopo (es. un legame acquisito da terzi non è ritrasmissibile) e in
   // caso di contestazione su chi ha originato/confermato l'aggancio.
-  rentriOrigineLegame RentriOrigineLegame? @map("rentri_origine_legame")
+  rentriOrigineLegame     RentriOrigineLegame? @map("rentri_origine_legame")
+  // Numero ufficiale ricevuto da una trasmissione automatica in modalità
+  // IBRIDA (Tenant.rentriModalitaLegame) ma NON ancora confermato dall'utente:
+  // finché è valorizzato, rentriNumeroFir resta null — il FIR non è "legato"
+  // a tutti gli effetti (R1 Task 2, FIR.proporreLegameRENTRI/confermaLegameRENTRI).
+  rentriNumeroFirProposto String?              @map("rentri_numero_fir_proposto") @db.VarChar(50)
 
   attachmentUrls Json? @map("attachment_urls")
 

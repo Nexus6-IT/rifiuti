@@ -7,6 +7,7 @@ import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RentriModule } from '../../infrastructure/rentri/rentri.module'
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
+import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-modalita-legame.service'
 import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma.repository'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
@@ -16,7 +17,8 @@ import { DomainEventsService } from '../../core/domain-events.service'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
-import { FIRConsegnatoHandler } from './handlers/fir-consegnato.handler'
+import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
+import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -25,9 +27,9 @@ import { FIRConsegnatoHandler } from './handlers/fir-consegnato.handler'
  * dati, metodi di dominio, persistenza reale) ma non erano registrati in
  * ALCUN `@Module`: `SyncFIRToRENTRIUseCase`, `TriggerBatchSyncUseCase`,
  * `GetSyncStatusUseCase`, `RENTRISyncQueue`, `RENTRISyncJobProcessor`,
- * `RENTRISyncLogRepository`, `FIRConsegnatoHandler`, `RENTRISyncController` —
- * codice morto dal punto di vista di Nest, i cinque endpoint del controller
- * rispondevano 404.
+ * `RENTRISyncLogRepository`, `FIRConsegnatoHandler` (rimosso, v. sotto),
+ * `RENTRISyncController` — codice morto dal punto di vista di Nest, i cinque
+ * endpoint del controller rispondevano 404.
  *
  * Perché un modulo DEDICATO e non un'estensione di `RentriModule`:
  * `RentriModule` è il sottosistema di interoperabilità "a canale singolo"
@@ -67,12 +69,30 @@ import { FIRConsegnatoHandler } from './handlers/fir-consegnato.handler'
  *    `.compile()` risolve il grafo DI ma non invoca `onModuleInit` (v.
  *    `rentri-sync.module.spec.ts`, che verifica proprio questo).
  *
- * `FIRConsegnatoHandler` è cablato in DI (non più orfano) ma NON scatta ancora
- * automaticamente alla consegna di un FIR: l'aggregate FIR emette eventi
- * `DomainEvent` (`eventName`), mentre questo handler/`DomainEventsService`
- * parlano `IDomainEvent` (`eventType`) — due famiglie di eventi incompatibili
- * mai riconciliate nel progetto (nessuna `.register(...)` esiste). Risolverlo
- * è fuori scope per un task di solo cablaggio (v. report R0 Task 4).
+ * **R1 Task 2 — orchestrazione secondo la modalità del tenant, e la fine di
+ * `FIRConsegnatoHandler`.** Quel handler era cablato in DI ma NON scattava
+ * mai: l'aggregate FIR emette eventi `DomainEvent` (`{occurredOn, eventName}`,
+ * v. `core/domain/aggregate-root.ts`), mentre `DomainEventsService`/
+ * `IDomainEventHandler` parlano `IDomainEvent` (`{eventId, aggregateId,
+ * eventType, tenantId, payload}`, v. `domain/shared/domain-event.interface.ts`)
+ * — due famiglie mai riconciliate nel progetto (nessuna `.register(...)`
+ * esiste). Riconciliarle avrebbe richiesto un adattatore generale toccando
+ * ogni evento/handler del progetto: sproporzionato per questo task, e non
+ * necessario, perché il punto di aggancio richiesto (trasmissione secondo
+ * la modalità del tenant all'emissione) ha un solo produttore
+ * (`EmettiFIRUseCase`) e un solo consumatore (`TrasmettiFIRSecondoModalitaUseCase`,
+ * v. commento nel file). Si è scelta l'invocazione diretta, non l'evento.
+ * `FIRConsegnatoHandler` è stato quindi RIMOSSO (non lasciato a sembrare
+ * vivo): oltre a non scattare mai, era anche modalità-agnostico — se un
+ * domani l'inconsistenza fosse stata risolta e l'evento avesse iniziato a
+ * scattare, avrebbe accodato una sincronizzazione a prescindere dalla
+ * modalità del tenant, violando "in MANUALE nulla parte da solo".
+ *
+ * `TrasmettiFIRSecondoModalitaUseCase` (chiamato da `EmettiFIRUseCase` dopo
+ * l'emissione) decide se accodare una trasmissione, fail-closed se il
+ * certificato manca. `ConfermaLegameRENTRIUseCase` chiude il ciclo aperto
+ * dalla modalità IBRIDA (`FIR.proporreLegameRENTRI`): senza di esso l'IBRIDA
+ * sarebbe un aggancio che parte ma non si conclude mai.
  */
 @Module({
   imports: [ConfigModule, LoggerModule, MetricsModule, PrismaModule, RentriModule],
@@ -82,7 +102,6 @@ import { FIRConsegnatoHandler } from './handlers/fir-consegnato.handler'
     RENTRISyncQueue,
     RENTRISyncJobProcessor,
     GetSyncStatusUseCase,
-    FIRConsegnatoHandler,
     DomainEventsService,
     {
       provide: RENTRISyncLogRepository,
@@ -115,6 +134,21 @@ import { FIRConsegnatoHandler } from './handlers/fir-consegnato.handler'
       ) => new TriggerBatchSyncUseCase(firRepo, rentriSyncQueue, logger),
       inject: [FIRPrismaRepository, RENTRISyncQueue, LoggerService],
     },
+    {
+      provide: TrasmettiFIRSecondoModalitaUseCase,
+      useFactory: (
+        modalitaLegameService: RentriModalitaLegameService,
+        rentriSyncQueue: RENTRISyncQueue,
+        logger: LoggerService
+      ) => new TrasmettiFIRSecondoModalitaUseCase(modalitaLegameService, rentriSyncQueue, logger),
+      inject: [RentriModalitaLegameService, RENTRISyncQueue, LoggerService],
+    },
+    {
+      provide: ConfermaLegameRENTRIUseCase,
+      useFactory: (firRepo: FIRPrismaRepository, logger: LoggerService) =>
+        new ConfermaLegameRENTRIUseCase(firRepo, logger),
+      inject: [FIRPrismaRepository, LoggerService],
+    },
   ],
   exports: [
     SyncFIRToRENTRIUseCase,
@@ -122,7 +156,8 @@ import { FIRConsegnatoHandler } from './handlers/fir-consegnato.handler'
     GetSyncStatusUseCase,
     RENTRISyncQueue,
     RENTRISyncLogRepository,
-    FIRConsegnatoHandler,
+    TrasmettiFIRSecondoModalitaUseCase,
+    ConfermaLegameRENTRIUseCase,
   ],
 })
 export class RentriSyncModule {}

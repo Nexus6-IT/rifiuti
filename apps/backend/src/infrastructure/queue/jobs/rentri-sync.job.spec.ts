@@ -135,6 +135,41 @@ describe('RENTRISyncJobProcessor', () => {
       )
     })
 
+    /**
+     * R1 Task 2 (modalità IBRIDA): il job accodato da
+     * `TrasmettiFIRSecondoModalitaUseCase` porta `richiedeConferma: true` nei
+     * dati — deve arrivare come opzione esplicita al use case di sync, senza
+     * intaccare l'invocazione a 3 argomenti dei job esistenti (v. test sopra).
+     */
+    it('richiedeConferma: true — passa l’opzione esplicita al use case di sync', async () => {
+      const mockJob = {
+        id: 'job-ibrida',
+        name: 'rentri-sync',
+        data: {
+          type: 'single',
+          firId: 'fir-456',
+          tenantId: 'tenant-789',
+          richiedeConferma: true,
+        },
+        attemptsMade: 0,
+        updateProgress: jest.fn(),
+      } as unknown as Job
+
+      mockSyncUseCase.execute.mockResolvedValue({
+        success: true,
+        protocolNumber: 'RENTRI-2025-999',
+        attempts: 1,
+        inAttesaDiConferma: true,
+      })
+
+      const result = await processor['processSingleSync'](mockJob)
+
+      expect(result.success).toBe(true)
+      expect(mockSyncUseCase.execute).toHaveBeenCalledWith('fir-456', 'tenant-789', undefined, {
+        richiedeConferma: true,
+      })
+    })
+
     it('willRetry: false (fallimento definitivo, es. 403) — NON rilancia: il job si considera concluso', async () => {
       const mockJob = {
         id: 'job-forbidden',
