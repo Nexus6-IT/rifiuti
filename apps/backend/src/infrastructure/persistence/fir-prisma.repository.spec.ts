@@ -8,10 +8,8 @@
  * `fir_signatures`, con un doppio di Prisma (nessun DB reale: la prova contro
  * Postgres vero è nel test di integrazione dedicato).
  */
-import { PrismaClient } from '@prisma/client'
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
-import { FormularioGiaAgganciatoError } from '../../core/domain/errors'
 
 function buildFirRecord(overrides: Partial<any> = {}) {
   return {
