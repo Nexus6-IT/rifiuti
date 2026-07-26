@@ -5,9 +5,8 @@ import { RentriApiError } from '../rentri-http-resilienza'
 import { RentriAuthService } from '../rentri-auth.service'
 import { RentriConfig } from '../rentri-config'
 import { NOME_TABELLE_CODIFICHE_SEMPLICI } from './rentri-codifiche.model'
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+/* eslint-disable @typescript-eslint/no-var-requires */
 const { creaApp } = require('../../../../../../tools/rentri-fake/src/app')
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   creaCertificatoDiTest,
 } = require('../../../../../../tools/rentri-fake/test/aiuti/certificati')
@@ -196,8 +195,7 @@ describe('RentriCodificheClient — verifica reale contro la fake RENTRI (in-pro
     // /lookup/codici-eer è chiamato con escludi00=false esplicito (v. commento
     // di scaricaTutte): la voce di capitolo deve essere presente.
     expect(tabelle.get('codici-eer')?.some((c: any) => c.code === '130000')).toBe(true)
-  }, // Real wait: 22 pause di 250ms tra le 23 chiamate (~5.5s) + latenza reale.
-  15000)
+  }, 15000) // Real wait: 22 pause di 250ms tra le 23 chiamate (~5.5s) + latenza reale.
 
   it('429 iniettato dal canale di controllo: ritenta rispettando Retry-After e alla fine riesce', async () => {
     const client = creaClient()
@@ -206,8 +204,7 @@ describe('RentriCodificheClient — verifica reale contro la fake RENTRI (in-pro
     const risultato = await client.leggiTabella('regioni', '')
 
     expect(risultato.length).toBeGreaterThan(0)
-  }, // Retry-After fisso della fake = 5s (v. tools/rentri-fake/src/app.ts).
-  15000)
+  }, 15000) // Retry-After fisso della fake = 5s (v. tools/rentri-fake/src/app.ts).
 
   it('423 (ban del chiamante) iniettato: ritenta con backoff esponenziale e alla fine riesce', async () => {
     const client = creaClient()

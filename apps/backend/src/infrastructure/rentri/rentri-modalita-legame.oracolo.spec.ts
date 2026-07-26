@@ -8,7 +8,9 @@ import { TrasmettiFIRSecondoModalitaUseCase } from '../../application/rentri/tra
 import { FIR, FIRStato, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaCertificatoDiTest } = require('../../../../../tools/rentri-fake/test/aiuti/certificati')
 
@@ -269,7 +271,7 @@ describe('TrasmettiFIRSecondoModalitaUseCase — modalità di trasmissione contr
     const rentriSyncQueue: any = {
       addSyncJob: jest.fn(
         async (job: { firId: string; tenantId: string; correlationId?: string }) => {
-          const r = await syncUseCase.execute(job.firId, job.tenantId, job.correlationId)
+          await syncUseCase.execute(job.firId, job.tenantId, job.correlationId)
           return 'job-automatica-oracolo'
         }
       ),

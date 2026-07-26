@@ -8,7 +8,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
-import { RentriApiError, gestisciRispostaErroreRentri, attendiMs } from './rentri-http-resilienza'
+import { gestisciRispostaErroreRentri, attendiMs } from './rentri-http-resilienza'
 
 /**
  * RENTRI API Client
