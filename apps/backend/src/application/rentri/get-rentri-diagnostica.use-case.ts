@@ -6,6 +6,7 @@ import {
   RentriRateLimiterService,
   StatoLimitatoreRentri,
 } from '../../infrastructure/rentri/rentri-rate-limiter.service'
+import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 
 /**
  * Get Rentri Diagnostica — Use Case (R5 Task 3).
@@ -131,7 +132,14 @@ export class GetRentriDiagnosticaUseCase {
       return { configurato: true, scadenza: null, giorniAllaScadenza: null, livelloAvviso: 'ok' }
     }
 
-    const giorniAllaScadenza = Math.floor((scadenza.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+    // Conteggio giorni condiviso col job di scadenza (R5 Task 5,
+    // `rentri-certificato-scadenza.job.ts`): stessa formula, stessa fonte —
+    // un allarme e un avviso in UI con soglie/numeri calcolati diversamente
+    // confonderebbero l'utente. Non può restituire `null` qui: il parsing
+    // sopra è già riuscito, quindi il fallback resta solo teorico.
+    const giorniAllaScadenza =
+      calcolaGiorniAllaScadenzaCertificato(credenziale.certificatePem) ??
+      Math.floor((scadenza.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
 
     return {
       configurato: true,

@@ -23,6 +23,7 @@ describe('RiconciliaStatoRentriUseCase', () => {
   let mockSyncLogRepository: any
   let mockDomainEvents: any
   let mockLogger: any
+  let mockMetrics: any
 
   const tenantId = 'tenant-1'
 
@@ -81,13 +82,18 @@ describe('RiconciliaStatoRentriUseCase', () => {
       debug: jest.fn(),
     }
 
+    mockMetrics = {
+      rentriReconciliationDivergences: { inc: jest.fn() },
+    }
+
     useCase = new RiconciliaStatoRentriUseCase(
       mockFIRRepository,
       mockPrisma,
       mockRentriApiClient,
       mockSyncLogRepository,
       mockDomainEvents,
-      mockLogger
+      mockLogger,
+      mockMetrics
     )
   })
 
@@ -307,6 +313,77 @@ describe('RiconciliaStatoRentriUseCase', () => {
       expect(fir.confermaLegameRENTRI).not.toHaveBeenCalled()
       expect(mockFIRRepository.save).not.toHaveBeenCalled()
       expect(risultato.segnalati).toBe(1)
+    })
+  })
+
+  describe('metrica rentriReconciliationDivergences (R5 Task 5)', () => {
+    it('incrementa con esito "corretto" quando la riconciliazione ripara un FIR SYNCING bloccato', async () => {
+      mockPrisma.fIR.findMany.mockImplementation((args: any) => {
+        if (args.where.rentriSyncStatus === 'SYNCING') {
+          return Promise.resolve([{ id: 'fir-syncing' }])
+        }
+        return Promise.resolve([])
+      })
+
+      const fir = firFake({ id: 'fir-syncing', rentriTransazioneId: 'trans-1' })
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRentriApiClient.attendiEsito.mockResolvedValue({
+        errore: false,
+        validazione: [],
+        esito: { numero_fir: 'NUM-999' },
+      })
+
+      await useCase.execute(tenantId)
+
+      expect(mockMetrics.rentriReconciliationDivergences.inc).toHaveBeenCalledWith({
+        tenant_id: tenantId,
+        esito: 'corretto',
+      })
+    })
+
+    it('incrementa con esito "segnalato" quando la riconciliazione trova una divergenza non correggibile', async () => {
+      mockPrisma.fIR.findMany.mockImplementation((args: any) => {
+        if (args.where.rentriSyncStatus === 'SYNCED') {
+          return Promise.resolve([{ id: 'fir-divergente' }])
+        }
+        return Promise.resolve([])
+      })
+
+      const fir = firFake({
+        id: 'fir-divergente',
+        rentriNumeroFir: 'NUM-2',
+        rentriStatoFormulario: 'Accettato',
+      })
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRentriApiClient.leggiFormulario.mockResolvedValue({ stato_formulario: 'Annullato' })
+
+      await useCase.execute(tenantId)
+
+      expect(mockMetrics.rentriReconciliationDivergences.inc).toHaveBeenCalledWith({
+        tenant_id: tenantId,
+        esito: 'segnalato',
+      })
+    })
+
+    it("NON incrementa la metrica quando non c'è alcuna divergenza", async () => {
+      mockPrisma.fIR.findMany.mockImplementation((args: any) => {
+        if (args.where.rentriSyncStatus === 'SYNCED') {
+          return Promise.resolve([{ id: 'fir-allineato' }])
+        }
+        return Promise.resolve([])
+      })
+
+      const fir = firFake({
+        id: 'fir-allineato',
+        rentriNumeroFir: 'NUM-1',
+        rentriStatoFormulario: 'Accettato',
+      })
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRentriApiClient.leggiFormulario.mockResolvedValue({ stato_formulario: 'Accettato' })
+
+      await useCase.execute(tenantId)
+
+      expect(mockMetrics.rentriReconciliationDivergences.inc).not.toHaveBeenCalled()
     })
   })
 

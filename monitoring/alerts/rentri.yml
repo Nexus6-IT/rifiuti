@@ -1,0 +1,89 @@
+# Allarmi RENTRI (R5, Task 5) — riuso di MetricsService/Prometheus già
+# esistenti, nessun meccanismo nuovo. Le tre soglie sono motivate nel piano
+# (.superpowers/sdd/2026-07-26-r5-robustezza/task-5-brief.md): il commento
+# di ogni regola riporta lo stesso ragionamento, non solo il numero.
+groups:
+  - name: rentri-robustezza
+    rules:
+      # 1. Certificato in scadenza. Soglie IDENTICHE a
+      # RENTRI_DIAGNOSTICA_SOGLIE_AVVISO_GIORNI (get-rentri-diagnostica.use-case.ts)
+      # e a DeadlineCheckerService: un allarme con soglie diverse da quelle
+      # mostrate in UI confonderebbe l'utente. Due livelli di severità sulla
+      # stessa metrica (30gg = margine per organizzare il rinnovo, 7gg =
+      # urgenza reale) invece di un singolo "< 30" indifferenziato.
+      - alert: RentriCertificatoInScadenza
+        expr: wasteflow_rentri_certificate_expiry_days < 30
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Certificato RENTRI del tenant {{ $labels.tenant_id }} in scadenza tra {{ $value }} giorni'
+          description: >-
+            Il certificato X.509 usato per l'autenticazione RENTRI (ID_AUTH_REST_02)
+            scade tra meno di 30 giorni. Sotto questa soglia il rinnovo va
+            pianificato: senza un certificato valido il tenant perde la
+            capacità di trasmettere/interrogare formulari presso l'ente.
+
+      - alert: RentriCertificatoInScadenzaCritico
+        expr: wasteflow_rentri_certificate_expiry_days < 7
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Certificato RENTRI del tenant {{ $labels.tenant_id }} in scadenza tra {{ $value }} giorni (critico)'
+          description: >-
+            Meno di 7 giorni alla scadenza: stessa soglia dell'ultimo avviso
+            mostrato in diagnostica (avviso_7). A questo punto un rinnovo non
+            completato in tempo interrompe l'interoperabilità RENTRI del
+            tenant — richiede intervento immediato, non solo pianificazione.
+
+      # 2. Tenant bandito (423 confermato, non isolato). Un singolo 423 può
+      # essere transitorio (l'ente lo dichiara anche per condizioni
+      # temporanee, non solo per un blocco vero e proprio): l'allarme scatta
+      # solo quando il pattern si ripete — 3 o più 423 nella stessa finestra
+      # di 1 ora per lo stesso tenant — distinguendo un incidente isolato da
+      # un blocco persistente, senza aspettare che l'azienda lo scopra da
+      # sola contattando l'assistenza. `error_type="LOCKED"` è la
+      # classificazione dedicata al 423 (rentri-http-resilienza.ts, R5 Task
+      # 5): prima di questo task era confuso con 429/5xx sotto "HTTP" e
+      # questa distinzione non sarebbe stata possibile.
+      - alert: RentriTenantBandito
+        expr: increase(wasteflow_rentri_api_errors_total{error_type="LOCKED"}[1h]) >= 3
+        # La finestra di aggregazione (1h, nell'espressione increase()) è
+        # già la condizione: un `for` aggiuntivo prolungato ritarderebbe
+        # solo l'allarme senza aggiungere significato — l'evento "3+ 423 in
+        # un'ora" è già di per sé il pattern da segnalare, non un valore
+        # istantaneo che potrebbe essere un rumore da confermare nel tempo.
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Tenant {{ $labels.tenant_id }} bandito da RENTRI (423 ripetuto)'
+          description: >-
+            3 o più risposte 423 (risorsa bloccata) da RENTRI per l'endpoint
+            {{ $labels.endpoint }} nell'ultima ora per lo stesso tenant: non
+            un 423 isolato/transitorio, ma un pattern persistente. Richiede
+            verifica manuale della condizione presso l'ente prima che il
+            tenant se ne accorga da solo.
+
+      # 3. Coda RENTRI che non smaltisce. 50 è già un multiplo della soglia
+      # di rate limiting per-tenant (Task 1: 30 richieste/5s — un tenant
+      # smaltisce quell'ordine di grandezza in pochi secondi in condizioni
+      # normali), quindi una coda ferma sopra 50 non è spiegabile con un
+      # singolo tenant che sta semplicemente usando il proprio budget. 15
+      # minuti consecutivi escludono un picco temporaneo (es. importazione
+      # massiva, che si smaltisce naturalmente) da un blocco reale (worker
+      # fermo, credenziale rotta su più tenant, che invece persiste).
+      - alert: RentriCodaFerma
+        expr: wasteflow_queue_depth{queue_name="rentri-sync"} > 50
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Coda rentri-sync ferma sopra 50 job da più di 15 minuti'
+          description: >-
+            La coda di sincronizzazione RENTRI supera 50 job in attesa da
+            oltre 15 minuti consecutivi: non un picco temporaneo (si sarebbe
+            smaltito), probabile worker fermo o credenziale rotta su più
+            tenant. Richiede verifica immediata del worker
+            (RENTRISyncJobProcessor) e dello stato delle credenziali.

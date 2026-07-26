@@ -67,6 +67,9 @@ describe('RENTRIApiClient', () => {
       rentriApiErrors: {
         inc: jest.fn(),
       },
+      rentriTenantLocked: {
+        set: jest.fn(),
+      },
     }
 
     // Directly instantiate the client with mocks (new constructor order)
@@ -486,6 +489,65 @@ describe('RENTRIApiClient', () => {
       const risultato = await promessa
       expect((risultato as any).stato_formulario).toBe('InserimentoQuantita')
       expect(mockHttpService.get).toHaveBeenCalledTimes(2)
+    })
+
+    it('423 (risorsa bloccata): tagga error_type "LOCKED" (non "HTTP"), imposta rentriTenantLocked=1 e lo riporta a 0 al successo (R5 Task 5)', async () => {
+      const successResponse: AxiosResponse = {
+        data: { transazione_id: 'tx-423-locked' },
+        status: 202,
+        statusText: 'Accepted',
+        headers: { location: '/formulari/v1.0/tx-423-locked/status' },
+        config: {} as any,
+      }
+
+      mockHttpService.post
+        .mockReturnValueOnce(
+          throwError(() => erroreProblemDetails(423, { title: 'Risorsa bloccata' }))
+        )
+        .mockReturnValueOnce(of(successResponse))
+
+      const promessa = client.creaFormulario('tenant-423', { dati: 'x' })
+      await jest.advanceTimersByTimeAsync(1000)
+      await promessa
+
+      // `error_type: 'LOCKED'` viene dalla classificazione in
+      // `gestisciRispostaErroreRentri` (rentri-http-resilienza.ts): è quello
+      // che distingue un 423 da un 429/5xx per la regola di allarme
+      // (monitoring/alerts/rentri.yml). Il catch di `post()` incrementa
+      // separatamente con `error_type: 'HTTP'` PRIMA di propagare l'errore
+      // al ciclo di resilienza — comportamento preesistente, non toccato da
+      // questo task: qui si verifica solo che la classificazione più
+      // specifica sia presente.
+      expect(mockMetrics.rentriApiErrors.inc).toHaveBeenCalledWith({
+        endpoint: '/formulari (crea)',
+        error_type: 'LOCKED',
+      })
+
+      const chiamate = mockMetrics.rentriTenantLocked.set.mock.calls
+      // Prima chiamata (dal ramo 423): a 1.
+      expect(chiamate[0]).toEqual([{ tenant_id: 'tenant-423' }, 1])
+      // Ultima chiamata (dalla risposta di successo che segue): a 0.
+      expect(chiamate[chiamate.length - 1]).toEqual([{ tenant_id: 'tenant-423' }, 0])
+    })
+
+    it('esaurisce i tentativi su un 423 persistente: error_type resta "LOCKED" anche a tentativi esauriti', async () => {
+      mockHttpService.post.mockReturnValue(
+        throwError(() => erroreProblemDetails(423, { title: 'Risorsa bloccata' }))
+      )
+
+      const promessa = client.creaFormulario('tenant-423-persistente', { dati: 'x' })
+      const assertion = expect(promessa).rejects.toThrow(RentriApiError)
+      await jest.runAllTimersAsync()
+      await assertion
+
+      expect(mockMetrics.rentriApiErrors.inc).toHaveBeenCalledWith({
+        endpoint: '/formulari (crea)',
+        error_type: 'LOCKED',
+      })
+      expect(mockMetrics.rentriTenantLocked.set).toHaveBeenCalledWith(
+        { tenant_id: 'tenant-423-persistente' },
+        1
+      )
     })
 
     it('esaurisce i tentativi su un 429 persistente: solleva RentriApiError retryable', async () => {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import { LoggerService } from '../../core/logger/logger.service'
+import { MetricsService } from '../../core/metrics/metrics.service'
 import { DomainEventsService } from '../../core/domain-events.service'
 import { TenantContext } from '../../core/context/tenant-context'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
@@ -89,7 +90,8 @@ export class RiconciliaStatoRentriUseCase {
     private readonly rentriApiClient: RENTRIApiClient,
     private readonly syncLogRepository: RENTRISyncLogRepository,
     private readonly domainEvents: DomainEventsService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly metrics: MetricsService
   ) {
     this.logger.setContext('RiconciliaStatoRentriUseCase')
   }
@@ -522,6 +524,10 @@ export class RiconciliaStatoRentriUseCase {
       nota: log.nota,
     })
 
+    // R5 Task 5: alimenta l'allarme/dashboard sulle divergenze di
+    // riconciliazione (monitoring/alerts/rentri.yml legge questo counter).
+    this.metrics.rentriReconciliationDivergences.inc({ tenant_id: tenantId, esito: 'corretto' })
+
     return { firId, classificazione: 'CORRETTO', dettaglio: log.nota }
   }
 
@@ -574,6 +580,9 @@ export class RiconciliaStatoRentriUseCase {
         errorMessage: log.errorMessage,
       }
     )
+
+    // R5 Task 5: v. commento in `corregge`.
+    this.metrics.rentriReconciliationDivergences.inc({ tenant_id: tenantId, esito: 'segnalato' })
 
     return { firId, classificazione: 'SEGNALATO', dettaglio: log.errorMessage }
   }

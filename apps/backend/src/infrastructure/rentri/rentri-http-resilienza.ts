@@ -101,7 +101,8 @@ export async function gestisciRispostaErroreRentri(
   logger: LoggerService,
   metrics: MetricsService,
   attendi: (ms: number) => Promise<void>,
-  backoff: BackoffConfig
+  backoff: BackoffConfig,
+  tenantId?: string
 ): Promise<'ritenta'> {
   const { status } = risposta
   const problema = estraiProblemDetailsRentri(risposta.data)
@@ -112,6 +113,9 @@ export async function gestisciRispostaErroreRentri(
       { title: problema.title, detail: problema.detail }
     )
     metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'FORBIDDEN' })
+    if (tenantId) {
+      metrics.rentriTenantLocked.set({ tenant_id: tenantId }, 0)
+    }
     throw new RentriApiError(403, problema.title, problema.detail, false)
   }
 
@@ -121,13 +125,23 @@ export async function gestisciRispostaErroreRentri(
     throw new Error(`Risposta inattesa da ${contesto}: HTTP ${status}`)
   }
 
+  // 423 è distinto da 429/5xx nel tipo di errore riportato: la regola di
+  // allarme "tenant bandito" (monitoring/alerts/rentri.yml) conta SOLO i 423
+  // (`error_type="LOCKED"`) su una finestra di 1h — se restasse taggato
+  // 'HTTP' come 429/5xx, l'allarme non potrebbe mai distinguere un blocco
+  // dell'ente da un rate limit transitorio o un 5xx generico.
+  const errorType = status === 423 ? 'LOCKED' : 'HTTP'
+
   if (tentativo >= maxTentativi) {
     logger.error(
       `RENTRI continua a rispondere ${status} a ${contesto}: esauriti i ${maxTentativi} tentativi`,
       undefined,
       { title: problema.title, detail: problema.detail }
     )
-    metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
+    metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: errorType })
+    if (tenantId) {
+      metrics.rentriTenantLocked.set({ tenant_id: tenantId }, status === 423 ? 1 : 0)
+    }
     throw new RentriApiError(status, problema.title, problema.detail, true)
   }
 
@@ -138,7 +152,10 @@ export async function gestisciRispostaErroreRentri(
     `RENTRI ha risposto ${status} a ${contesto}: nuovo tentativo (${tentativo}/${maxTentativi}) dopo ${attesaMs}ms`,
     { title: problema.title, detail: problema.detail }
   )
-  metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
+  metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: errorType })
+  if (tenantId) {
+    metrics.rentriTenantLocked.set({ tenant_id: tenantId }, status === 423 ? 1 : 0)
+  }
   await attendi(attesaMs)
   return 'ritenta'
 }
