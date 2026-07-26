@@ -22,7 +22,8 @@
     "seed:permissions": "node dist/prisma/seeds/permissions.seed.js",
     "seed:roles": "node dist/prisma/seeds/roles.seed.js",
     "seed:rbac": "npm run seed:permissions && npm run seed:roles",
-    "test:oracolo": "jest -c jest.oracolo.config.js --forceExit --ci --runInBand"
+    "test:oracolo": "jest -c jest.oracolo.config.js --forceExit --ci --runInBand",
+    "test:postgres": "jest -c jest.postgres.config.js --forceExit --runInBand"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.921.0",

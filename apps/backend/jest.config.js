@@ -12,7 +12,13 @@ module.exports = {
   // che la CI lancia in un passo dedicato dopo aver installato la fake: la
   // prova di conformita' non va persa, va solo eseguita dove ha le sue
   // dipendenze.
-  testPathIgnorePatterns: ['\\.oracolo\\.spec\\.ts$'],
+  // Le spec `*.postgres.spec.ts` richiedono un PostgreSQL reale (vincoli di
+  // unicita', comportamento dei NULL, traduzione degli errori del driver):
+  // cose che una finta non puo' dimostrare. In CI non esiste un database,
+  // quindi qui fallirebbero per assenza di infrastruttura e bloccherebbero il
+  // gate di rilascio. Si eseguono con `npm run test:postgres` avendo un
+  // Postgres raggiungibile.
+  testPathIgnorePatterns: ['\\.oracolo\\.spec\\.ts$', '\\.postgres\\.spec\\.ts$'],
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
