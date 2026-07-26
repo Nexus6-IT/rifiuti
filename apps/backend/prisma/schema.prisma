@@ -358,13 +358,22 @@ model FIR {
   transportersAggiuntivi FIRTransporter[]
 
   @@unique([tenantId, firNumber])
+  // Vincolo di unicità (non solo indice, v. R2 Task 3): due FIR locali dello
+  // stesso tenant non possono puntare allo stesso numero_fir RENTRI — un
+  // formulario dell'ente non può risultare agganciato due volte. In
+  // PostgreSQL un indice unique tratta i NULL come distinti fra loro, quindi
+  // i FIR non ancora legati (rentriNumeroFir = null) non collidono mai fra
+  // loro: il vincolo blocca solo il caso reale da evitare (due righe con lo
+  // STESSO numero_fir non nullo). Verificato (2026-07-26, DB di test vuoto,
+  // nessun dato reale disponibile in questo ambiente) che non esistono già
+  // duplicati: query di controllo e verdetto nel report del task.
+  @@unique([tenantId, rentriNumeroFir])
   @@index([tenantId])
   @@index([status])
   @@index([rentriSyncStatus])
   @@index([transportDate])
   @@index([cerCode])
   @@index([tenantId, wasteOperationType])
-  @@index([tenantId, rentriNumeroFir])
   @@map("firs")
 }
 

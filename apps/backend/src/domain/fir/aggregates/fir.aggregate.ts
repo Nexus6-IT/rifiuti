@@ -227,6 +227,41 @@ export class FIRRENTRILegameDaConfermareEvent implements DomainEvent {
   ) {}
 }
 
+/**
+ * Emesso quando il FIR viene legato a un formulario RENTRI nato altrove
+ * (Task 3, R2): acquisizione di visibilità o aggancio manuale dell'operatore.
+ * Distinto da FIRRENTRISincronizzatoEvent (che copre solo TRASMESSO_DA_NOI):
+ * qui il formulario esisteva già presso l'ente prima che questo gestionale
+ * se ne accorgesse.
+ */
+export class FIRRENTRIAgganciatoEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_agganciato'
+  constructor(
+    public readonly firId: string,
+    public readonly numeroFir: string,
+    public readonly origine: RentriOrigineLegame,
+    public readonly correlationId?: string
+  ) {}
+}
+
+/**
+ * Emesso dallo sgancio (`rilasciaLegameRENTRI`): il FIR locale resta, ma
+ * perde il legame con il numero_fir RENTRI. Riporta anche l'origine che
+ * aveva il legame appena rilasciato, utile per l'audit (v. Task 4,
+ * `RilasciaFormularioRENTRIUseCase` → ActivityLog).
+ */
+export class FIRRENTRILegameRilasciatoEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_legame_rilasciato'
+  constructor(
+    public readonly firId: string,
+    public readonly numeroFirRilasciato: string,
+    public readonly origineRilasciata: RentriOrigineLegame,
+    public readonly correlationId?: string
+  ) {}
+}
+
 export class FIR extends AggregateRoot {
   private constructor(
     private readonly _id: string,
@@ -562,6 +597,142 @@ export class FIR extends AggregateRoot {
 
     this._rentriNumeroFirProposto = null
     this._rentriSyncStatus = RENTRISyncStatus.pending()
+  }
+
+  // Aggancio a un formulario altrui (R2 Task 3) — due modi distinti di
+  // legare questo FIR a un numero_fir che NON è nato da una nostra
+  // trasmissione (v. markRENTRISynced/confermaLegameRENTRI, sopra):
+  //
+  // 1. agganciaFormularioAcquisito: il FIR locale nasce da zero a partire
+  //    dal dettaglio RENTRI di un formulario di cui si è appena acquisita
+  //    la visibilità (creato da un'altra controparte, es. il produttore).
+  //    Si invoca subito dopo la creazione del FIR (Task 5), mai su un FIR
+  //    preesistente — quello è il caso del metodo successivo.
+  // 2. agganciaManualmente: un FIR locale preesistente (tipicamente una
+  //    bozza o un record incompleto creato prima di conoscere il numero
+  //    ufficiale) viene riconciliato a mano dall'operatore con un
+  //    numero_fir che solo l'operatore può riconoscere come lo stesso
+  //    movimento — non automatizzabile.
+  //
+  // Entrambi condividono la stessa precondizione: il FIR non deve avere già
+  // un legame (in nessuna delle tre origini). Un formulario già legato non
+  // si ri-lega direttamente a un numero diverso: bisogna prima rilasciare
+  // il legame esistente (rilasciaLegameRENTRI). La ragione è di tracciabilità,
+  // non solo tecnica — un secondo aggancio silenzioso su un FIR già legato
+  // cancellerebbe, senza lasciarne evidenza, il fatto che era legato a
+  // *un altro* formulario: un errore di questo tipo va reso visibile ed
+  // esplicito (sgancio, poi nuovo aggancio), non nascosto da una sovrascrittura.
+
+  /**
+   * Lega questo FIR a un formulario RENTRI di cui si è acquisita la
+   * visibilità (creato da un'altra controparte). Vedi nota sopra: si usa
+   * solo sul FIR appena creato dal dettaglio RENTRI (Task 5), non per
+   * riconciliare un FIR preesistente (v. agganciaManualmente).
+   */
+  agganciaFormularioAcquisito(numeroFir: string, correlationId?: string): void {
+    this.assertNonGiaLegatoRENTRI()
+    if (!numeroFir || numeroFir.trim() === '') {
+      throw new DomainError(
+        "Numero FIR RENTRI mancante: impossibile registrare l'acquisizione del formulario"
+      )
+    }
+
+    this._rentriNumeroFir = numeroFir
+    this._rentriOrigineLegame = RentriOrigineLegame.ACQUISITO_DA_TERZI
+
+    this.addDomainEvent(
+      new FIRRENTRIAgganciatoEvent(
+        this._id,
+        numeroFir,
+        RentriOrigineLegame.ACQUISITO_DA_TERZI,
+        correlationId
+      )
+    )
+  }
+
+  /**
+   * Lega manualmente questo FIR (preesistente nel gestionale) a un
+   * numero_fir che l'operatore riconosce essere lo stesso movimento. È una
+   * riconciliazione a giudizio umano: nessuna validazione automatica può
+   * sostituirla, quindi il metodo non verifica altro oltre alla
+   * precondizione comune (nessun legame già presente).
+   */
+  agganciaManualmente(numeroFir: string, correlationId?: string): void {
+    this.assertNonGiaLegatoRENTRI()
+    if (!numeroFir || numeroFir.trim() === '') {
+      throw new DomainError("Numero FIR RENTRI mancante: impossibile registrare l'aggancio manuale")
+    }
+
+    this._rentriNumeroFir = numeroFir
+    this._rentriOrigineLegame = RentriOrigineLegame.AGGANCIO_MANUALE
+
+    this.addDomainEvent(
+      new FIRRENTRIAgganciatoEvent(
+        this._id,
+        numeroFir,
+        RentriOrigineLegame.AGGANCIO_MANUALE,
+        correlationId
+      )
+    )
+  }
+
+  /**
+   * Precondizione comune ai due metodi di aggancio sopra: rifiuta se il FIR
+   * ha già un legame, citando l'origine esistente nel messaggio (utile
+   * all'utente e al log) — un formulario legato non si ri-lega, va prima
+   * rilasciato con `rilasciaLegameRENTRI`.
+   */
+  private assertNonGiaLegatoRENTRI(): void {
+    if (this._rentriNumeroFir) {
+      throw new DomainError(
+        `FIR già legato al numero RENTRI ${this._rentriNumeroFir} (origine: ${this._rentriOrigineLegame}): ` +
+          'rilasciare il legame esistente prima di agganciarne un altro'
+      )
+    }
+  }
+
+  /**
+   * Lo sgancio: operazione inversa dell'aggancio, corrispondente al
+   * rilascio di visibilità verso RENTRI (POST /{numero_fir}/rilascio-
+   * visibilita/{num_iscr_sito}). Riporta il FIR a "non legato"
+   * (rentriNumeroFir/rentriOrigineLegame = null) — il FIR locale NON viene
+   * cancellato, resta come record, coerente con la semantica del contratto
+   * ("abbandona senza cancellare dall'ente": il formulario resta su RENTRI,
+   * smette solo di comparire tra quelli visibili a questa unità locale).
+   *
+   * Consentito SOLO se l'origine corrente è ACQUISITO_DA_TERZI o
+   * AGGANCIO_MANUALE — MAI su TRASMESSO_DA_NOI: un formulario che questo
+   * gestionale ha creato non si "rilascia" (l'ente continuerebbe a
+   * considerarlo nostro), si annullerebbe con gli endpoint del ciclo di
+   * vita (R3). Impedire questa confusione qui, con un messaggio di dominio
+   * esplicito, invece di lasciare che sia solo una convenzione della UI che
+   * un futuro chiamante (script, altro endpoint) potrebbe ignorare.
+   */
+  rilasciaLegameRENTRI(correlationId?: string): void {
+    if (!this._rentriNumeroFir || !this._rentriOrigineLegame) {
+      throw new DomainError('Nessun legame RENTRI da rilasciare per questo FIR')
+    }
+    if (this._rentriOrigineLegame === RentriOrigineLegame.TRASMESSO_DA_NOI) {
+      throw new DomainError(
+        'Un formulario trasmesso da questo gestionale non si rilascia: ' +
+          'per annullarlo usare gli endpoint del ciclo di vita RENTRI (R3)'
+      )
+    }
+
+    const numeroFirRilasciato = this._rentriNumeroFir
+    const origineRilasciata = this._rentriOrigineLegame
+
+    this._rentriNumeroFir = null
+    this._rentriOrigineLegame = null
+
+    this.addDomainEvent(
+      new FIRRENTRILegameRilasciatoEvent(
+        this._id,
+        numeroFirRilasciato,
+        origineRilasciata,
+        correlationId
+      )
+    )
   }
 
   /**
