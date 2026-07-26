@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import { FIRPrismaRepository } from './fir-prisma.repository'
+import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
+import { FormularioGiaAgganciatoError } from '../../core/domain/errors'
 
 /**
  * R2 Task 3, Step 4 — vincolo di unicità (tenant_id, rentri_numero_fir) su
