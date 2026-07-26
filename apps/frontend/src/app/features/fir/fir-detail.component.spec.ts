@@ -6,7 +6,9 @@ import { FirDetailComponent } from './fir-detail.component'
 import { FirService } from './fir.service'
 import { AuthService } from '../../core/services/auth.service'
 import { RENTRISyncService } from './services/rentri-sync.service'
+import { RentriFormulariService } from '../rentri/rentri-formulari.service'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
+import { ConfirmationService } from 'primeng/api'
 
 /**
  * TDD per la pagina di dettaglio del formulario FIR (R1 Task 4).
@@ -25,6 +27,7 @@ describe('FirDetailComponent', () => {
   let component: FirDetailComponent
   let firService: jasmine.SpyObj<FirService>
   let rentriSyncService: jasmine.SpyObj<RENTRISyncService>
+  let rentriFormulariService: jasmine.SpyObj<RentriFormulariService>
   let authService: jasmine.SpyObj<AuthService>
   let httpMock: HttpTestingController
 
@@ -45,7 +48,7 @@ describe('FirDetailComponent', () => {
     canSyncToRENTRI: true,
   }
 
-  function setup(overrides: { role?: string; firId?: string } = {}) {
+  function setup(overrides: { role?: string; firId?: string; autoConfirm?: boolean } = {}) {
     const activatedRouteStub = {
       snapshot: {
         paramMap: convertToParamMap({ id: overrides.firId ?? 'fir-1' }),
@@ -61,23 +64,47 @@ describe('FirDetailComponent', () => {
     rentriSyncService.getSyncLogs.and.returnValue(
       of({ data: [], total: 0, page: 1, limit: 20, totalPages: 0 })
     )
+    rentriFormulariService = jasmine.createSpyObj('RentriFormulariService', [
+      'cerca',
+      'aggancia',
+      'rilasciaLegame',
+    ])
     authService = jasmine.createSpyObj('AuthService', [], {
       currentUser: () => ({ id: 'u1', email: 'u@example.com', role: overrides.role ?? 'ADMIN' }),
     })
 
+    const providers: unknown[] = [
+      { provide: ActivatedRoute, useValue: activatedRouteStub },
+      { provide: FirService, useValue: firService },
+      { provide: RENTRISyncService, useValue: rentriSyncService },
+      { provide: RentriFormulariService, useValue: rentriFormulariService },
+      { provide: AuthService, useValue: authService },
+    ]
+
     TestBed.configureTestingModule({
       imports: [FirDetailComponent, HttpClientTestingModule],
-      providers: [
-        { provide: ActivatedRoute, useValue: activatedRouteStub },
-        { provide: FirService, useValue: firService },
-        { provide: RENTRISyncService, useValue: rentriSyncService },
-        { provide: AuthService, useValue: authService },
-      ],
+      providers,
     })
 
     httpMock = TestBed.inject(HttpTestingController)
     fixture = TestBed.createComponent(FirDetailComponent)
     component = fixture.componentInstance
+
+    // FirDetailComponent dichiara ConfirmationService fra i provider a
+    // livello di componente (scope proprio, condiviso col vero `<p-confirmDialog>`
+    // del template): sostituire il provider non basta, il ConfirmDialog di
+    // PrimeNG ha già bisogno del vero servizio (si abbona al suo
+    // `requireConfirmation$`). Per verificare l'esito di un'azione confermata
+    // (es. rilascio legame RENTRI) senza simulare il click reale nel dialog,
+    // recuperiamo l'istanza VERA dall'injector del componente e le mettiamo
+    // uno spy che invoca subito `accept()`.
+    if (overrides.autoConfirm) {
+      const realConfirmationService = fixture.debugElement.injector.get(ConfirmationService)
+      spyOn(realConfirmationService, 'confirm').and.callFake((opts: { accept?: () => void }) => {
+        opts.accept?.()
+        return realConfirmationService
+      })
+    }
   }
 
   afterEach(() => {
@@ -206,13 +233,16 @@ describe('FirDetailComponent', () => {
 
   it('NON mostra alcuna azione RENTRI per un VIEWER (eviterebbe un 403 dal backend)', () => {
     setup({ role: 'VIEWER' })
-    firService.getFIRById.and.returnValue(of(baseFIR))
+    firService.getFIRById.and.returnValue(
+      of({ ...baseFIR, rentriNumeroFir: 'RENTRI-1', rentriOrigineLegame: 'ACQUISITO_DA_TERZI' })
+    )
     fixture.detectChanges()
 
     const el: HTMLElement = fixture.nativeElement
     expect(el.querySelector('[data-testid="fir-detail-rentri-trasmetti"]')).toBeFalsy()
     expect(el.querySelector('[data-testid="fir-detail-rentri-riprova"]')).toBeFalsy()
     expect(el.querySelector('[data-testid="fir-detail-rentri-conferma-legame"]')).toBeFalsy()
+    expect(el.querySelector('[data-testid="fir-detail-rentri-rilascia-legame"]')).toBeFalsy()
   })
 
   it('mostra "Conferma il legame" quando c\'è una proposta pendente e l\'utente può gestire RENTRI', () => {
@@ -310,5 +340,114 @@ describe('FirDetailComponent', () => {
     component.trasmettiRENTRI(baseFIR)
 
     expect(rentriSyncService.syncFIR).toHaveBeenCalledWith('fir-1')
+  })
+
+  /**
+   * R2 Task 8: «Rilascia legame RENTRI» deve comparire SOLO per le origini
+   * ACQUISITO_DA_TERZI/AGGANCIO_MANUALE — mai su TRASMESSO_DA_NOI, dove il
+   * dominio lo vieta (`FIR.rilasciaLegameRENTRI`, R2 Task 3). Un pulsante che
+   * appare e poi fallisce con un 400 di dominio è peggio di un pulsante
+   * assente.
+   */
+  describe('Rilascia legame RENTRI', () => {
+    it('mostra il pulsante per un legame ACQUISITO_DA_TERZI', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(
+        of({
+          ...baseFIR,
+          rentriSyncStatus: 'SYNCED',
+          rentriNumeroFir: 'RENTRI-000999',
+          rentriOrigineLegame: 'ACQUISITO_DA_TERZI',
+        })
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-rilascia-legame"]')).toBeTruthy()
+    })
+
+    it('mostra il pulsante per un legame AGGANCIO_MANUALE', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(
+        of({
+          ...baseFIR,
+          rentriSyncStatus: 'SYNCED',
+          rentriNumeroFir: 'RENTRI-000999',
+          rentriOrigineLegame: 'AGGANCIO_MANUALE',
+        })
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-rilascia-legame"]')).toBeTruthy()
+    })
+
+    it('NON mostra il pulsante per un legame TRASMESSO_DA_NOI (il dominio lo vieta)', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(
+        of({
+          ...baseFIR,
+          rentriSyncStatus: 'SYNCED',
+          rentriNumeroFir: 'RENTRI-000999',
+          rentriOrigineLegame: 'TRASMESSO_DA_NOI',
+        })
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-rilascia-legame"]')).toBeFalsy()
+    })
+
+    it("NON mostra il pulsante quando non c'è alcun numero FIR legato", () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(
+        of({ ...baseFIR, rentriSyncStatus: 'PENDING', rentriNumeroFir: null })
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-rilascia-legame"]')).toBeFalsy()
+    })
+
+    it('rilascia il legame RENTRI e ricarica il FIR dopo conferma', () => {
+      setup({ role: 'ADMIN', autoConfirm: true })
+      const firConLegame: FIR = {
+        ...baseFIR,
+        rentriSyncStatus: 'SYNCED',
+        rentriNumeroFir: 'RENTRI-000999',
+        rentriOrigineLegame: 'ACQUISITO_DA_TERZI',
+      }
+      firService.getFIRById.and.returnValue(of(firConLegame))
+      fixture.detectChanges()
+
+      rentriFormulariService.rilasciaLegame.and.returnValue(
+        of({ numeroFirRilasciato: 'RENTRI-000999' })
+      )
+
+      component.rilasciaLegameRENTRI(firConLegame)
+
+      expect(rentriFormulariService.rilasciaLegame).toHaveBeenCalledWith('fir-1')
+      // Rilasciato con successo: ricarica il FIR (v. reload()/loadFIR()).
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('mostra un errore leggibile se il backend rifiuta il rilascio', () => {
+      setup({ role: 'ADMIN', autoConfirm: true })
+      const firConLegame: FIR = {
+        ...baseFIR,
+        rentriSyncStatus: 'SYNCED',
+        rentriNumeroFir: 'RENTRI-000999',
+        rentriOrigineLegame: 'AGGANCIO_MANUALE',
+      }
+      firService.getFIRById.and.returnValue(of(firConLegame))
+      fixture.detectChanges()
+
+      rentriFormulariService.rilasciaLegame.and.returnValue(
+        throwError(() => ({ error: { message: 'Nessun legame da rilasciare' } }))
+      )
+
+      expect(() => component.rilasciaLegameRENTRI(firConLegame)).not.toThrow()
+      expect(rentriFormulariService.rilasciaLegame).toHaveBeenCalledWith('fir-1')
+    })
   })
 })

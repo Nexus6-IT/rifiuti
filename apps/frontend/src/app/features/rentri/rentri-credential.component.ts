@@ -61,6 +61,12 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
             data-testid="rentri-credential-modalita-legame-link"
             >Modalità di legame RENTRI</a
           >
+          <a
+            routerLink="/rentri/formulari"
+            class="rentri-cross-link"
+            data-testid="rentri-credential-formulari-link"
+            >Formulari da agganciare</a
+          >
         </div>
       </header>
 
