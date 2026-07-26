@@ -1,10 +1,32 @@
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
-import { RentriCerSyncService } from './rentri-cer-sync.service'
-import { RentriCodificheSempliciSyncService } from './rentri-codifiche-semplici-sync.service'
-import { RentriTerritorialiSyncService } from './rentri-territoriali-sync.service'
+import { RentriCerSyncService, EsitoAllineamentoCer } from './rentri-cer-sync.service'
+import {
+  RentriCodificheSempliciSyncService,
+  EsitoAllineamentoTabella,
+} from './rentri-codifiche-semplici-sync.service'
+import {
+  RentriTerritorialiSyncService,
+  EsitoAllineamentoTerritoriale,
+} from './rentri-territoriali-sync.service'
 import { attendiMs } from '../../infrastructure/rentri/rentri-http-resilienza'
+
+/**
+ * Esito dell'ultimo ciclo di allineamento completato (R4 Task 7): stato in
+ * memoria dell'istanza, NON persistito — stessa scelta architetturale del
+ * lock `inCorso` (v. commento di classe): un singleton per processo Node è
+ * già l'assunzione di base di tutto il sottosistema RENTRI. Si azzera al
+ * riavvio del processo: la sezione «Codifiche» dell'area RENTRI (Task 7
+ * Step 2) lo tratta come "nessun dato disponibile in questo processo", non
+ * come "mai allineato" — la UI mostra un messaggio distinto nei due casi.
+ */
+export interface UltimoEsitoAllineamentoCodifiche {
+  quando: Date
+  cer: EsitoAllineamentoCer | null
+  codificheSemplici: EsitoAllineamentoTabella[] | null
+  territoriali: EsitoAllineamentoTerritoriale[] | null
+}
 
 /** Sollevato quando un allineamento è già in corso (lock in memoria, v. commento di classe). */
 export class AllineamentoRentriGiaInCorsoError extends Error {
@@ -64,6 +86,7 @@ export class RentriCodificheSyncService {
   private static readonly PAUSA_TRA_PASSI_MS = 250
 
   private inCorso = false
+  private ultimoEsito: UltimoEsitoAllineamentoCodifiche | null = null
 
   constructor(
     private readonly cerSync: RentriCerSyncService,
@@ -109,29 +132,47 @@ export class RentriCodificheSyncService {
     }
     this.inCorso = true
     try {
-      await this.eseguiPasso('CER', () => this.cerSync.allinea(tenantId))
+      const cer = await this.eseguiPasso('CER', () => this.cerSync.allinea(tenantId))
       await attendiMs(RentriCodificheSyncService.PAUSA_TRA_PASSI_MS)
 
-      await this.eseguiPasso(
+      const codificheSemplici = await this.eseguiPasso(
         'codifiche semplici (unità di misura, stati fisici, caratteristiche di pericolo, attività R/D)',
         () => this.codificheSempliciSync.allinea(tenantId)
       )
       await attendiMs(RentriCodificheSyncService.PAUSA_TRA_PASSI_MS)
 
-      await this.eseguiPasso('territoriali (province, nazioni, comuni)', () =>
+      const territoriali = await this.eseguiPasso('territoriali (province, nazioni, comuni)', () =>
         this.territorialiSync.allinea(tenantId)
       )
+
+      // Registrato SOLO a ciclo concluso (anche se uno o più passi sono
+      // falliti: eseguiPasso ritorna null in quel caso, v. sotto), mai a metà
+      // — così la diagnostica (Task 7) non mostra un giro parziale come se
+      // fosse completo.
+      this.ultimoEsito = { quando: new Date(), cer, codificheSemplici, territoriali }
     } finally {
       this.inCorso = false
     }
   }
 
-  private async eseguiPasso<T>(nome: string, passo: () => Promise<T>): Promise<void> {
+  /**
+   * Esito dell'ultimo ciclo concluso in QUESTO processo, per la diagnostica
+   * di sola lettura dell'area RENTRI (Task 7 Step 2). `null` se nessun ciclo
+   * è ancora terminato da quando il processo è partito (non vuol dire "mai
+   * allineato": il cron può aver girato prima di un riavvio).
+   */
+  ottieniUltimoEsito(): UltimoEsitoAllineamentoCodifiche | null {
+    return this.ultimoEsito
+  }
+
+  private async eseguiPasso<T>(nome: string, passo: () => Promise<T>): Promise<T | null> {
     try {
-      await passo()
+      const risultato = await passo()
       this.logger.info(`Allineamento RENTRI — passo "${nome}" completato.`)
+      return risultato
     } catch (e: any) {
       this.logger.warn(`Allineamento RENTRI — passo "${nome}" fallito: ${e.message}`)
+      return null
     }
   }
 }

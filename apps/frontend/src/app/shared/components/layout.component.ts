@@ -1108,6 +1108,22 @@ export class LayoutComponent implements OnInit {
       adminOnly: true,
     },
     {
+      // R4 Task 7: unità locali lette dall'ente (backend SUPER_ADMIN/ADMIN, v. RentriSitiController).
+      label: 'Unità locali RENTRI',
+      route: '/rentri/unita-locali',
+      icon: 'pi pi-map-marker',
+      feature: 'rentri',
+      adminOnly: true,
+    },
+    {
+      // R4 Task 7: diagnostica allineamento codifiche (backend SUPER_ADMIN/ADMIN, v. RentriCodificheController).
+      label: 'Codifiche RENTRI',
+      route: '/rentri/codifiche',
+      icon: 'pi pi-sync',
+      feature: 'rentri',
+      adminOnly: true,
+    },
+    {
       label: 'Dati di riferimento',
       route: '/reference-data',
       icon: 'pi pi-database',

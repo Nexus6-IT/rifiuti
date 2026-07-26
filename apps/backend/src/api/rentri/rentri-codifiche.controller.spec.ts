@@ -120,6 +120,11 @@ class MockCERRepository implements ICERRepository {
   }
 }
 
+/** Mock minimo di `CERPrismaRepository` per i test che non riguardano la diagnostica. */
+function cerRepositoryMock() {
+  return { listNonPresenti: jest.fn().mockResolvedValue([]) }
+}
+
 const user: CurrentUserPayload = {
   id: 'u1',
   email: 'admin@example.com',
@@ -131,7 +136,7 @@ const user: CurrentUserPayload = {
 describe('RentriCodificheController', () => {
   it('chiama sync.allineaTutto con user.tenantId e risponde { eseguito: true }', async () => {
     const sync = { allineaTutto: jest.fn().mockResolvedValue(undefined) }
-    const controller = new RentriCodificheController(sync as any)
+    const controller = new RentriCodificheController(sync as any, cerRepositoryMock() as any)
 
     const risposta = await controller.allinea(user)
 
@@ -145,7 +150,7 @@ describe('RentriCodificheController', () => {
   it('traduce AllineamentoRentriGiaInCorsoError in HttpException 409 con lo stesso messaggio', async () => {
     const erroreOriginale = new AllineamentoRentriGiaInCorsoError()
     const sync = { allineaTutto: jest.fn().mockRejectedValue(erroreOriginale) }
-    const controller = new RentriCodificheController(sync as any)
+    const controller = new RentriCodificheController(sync as any, cerRepositoryMock() as any)
 
     let errore: unknown
     try {
@@ -184,7 +189,7 @@ describe('RentriCodificheController', () => {
         territorialiSync as any,
         logger as any
       )
-      const controller = new RentriCodificheController(syncService)
+      const controller = new RentriCodificheController(syncService, cerRepositoryMock() as any)
 
       // Primo ciclo: RENTRI conferma ancora il codice.
       client.codiciEer.mockResolvedValueOnce([
@@ -206,6 +211,73 @@ describe('RentriCodificheController', () => {
       expect(cer?.rimossoDaRentriAl).not.toBeNull()
       await expect(repository.exists('20 03 01')).resolves.toBe(true)
       await expect(repository.isUtilizzabilePerNuovoFormulario('20 03 01')).resolves.toBe(false)
+    })
+  })
+
+  describe('GET /rentri/codifiche/diagnostica (Task 7 Step 2)', () => {
+    it('nessun ciclo concluso in questo processo: ultimoAllineamento null, codiciAggiornati 0', async () => {
+      const sync = { ottieniUltimoEsito: jest.fn().mockReturnValue(null) }
+      const cerRepository = { listNonPresenti: jest.fn().mockResolvedValue([]) }
+      const controller = new RentriCodificheController(sync as any, cerRepository as any)
+
+      const risposta = await controller.diagnostica()
+
+      expect(risposta).toEqual({
+        ultimoAllineamento: null,
+        codiciAggiornati: 0,
+        codiciNonPresenti: [],
+      })
+    })
+
+    it('somma nuovi+aggiornati di CER, codifiche semplici e territoriali dell’ultimo ciclo', async () => {
+      const quando = new Date('2026-07-26T00:00:00.000Z')
+      const sync = {
+        ottieniUltimoEsito: jest.fn().mockReturnValue({
+          quando,
+          cer: { nuovi: 2, aggiornati: 3, rimossi: 1 },
+          codificheSemplici: [{ tabella: 'stati-fisici', nuovi: 1, aggiornati: 0, rimossi: 0 }],
+          territoriali: [{ tabella: 'comuni', nuovi: 0, aggiornati: 4, rimossi: 0 }],
+        }),
+      }
+      const cerRepository = {
+        listNonPresenti: jest
+          .fn()
+          .mockResolvedValue([
+            { code: '20 03 01', description: 'Rifiuti urbani', rimossoDaRentriAl: quando },
+          ]),
+      }
+      const controller = new RentriCodificheController(sync as any, cerRepository as any)
+
+      const risposta = await controller.diagnostica()
+
+      // 2+3 (CER) + 1 (semplici) + 4 (territoriali) = 10
+      expect(risposta.codiciAggiornati).toBe(10)
+      expect(risposta.ultimoAllineamento).toBe(quando.toISOString())
+      expect(risposta.codiciNonPresenti).toEqual([
+        {
+          code: '20 03 01',
+          description: 'Rifiuti urbani',
+          rimossoDaRentriAl: quando.toISOString(),
+        },
+      ])
+    })
+
+    it('un passo fallito (null nell’esito) non contribuisce al totale', async () => {
+      const quando = new Date()
+      const sync = {
+        ottieniUltimoEsito: jest.fn().mockReturnValue({
+          quando,
+          cer: null, // il passo CER è fallito in quel ciclo
+          codificheSemplici: [{ tabella: 'stati-fisici', nuovi: 1, aggiornati: 0, rimossi: 0 }],
+          territoriali: null,
+        }),
+      }
+      const cerRepository = { listNonPresenti: jest.fn().mockResolvedValue([]) }
+      const controller = new RentriCodificheController(sync as any, cerRepository as any)
+
+      const risposta = await controller.diagnostica()
+
+      expect(risposta.codiciAggiornati).toBe(1)
     })
   })
 })

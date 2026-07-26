@@ -9,6 +9,15 @@ export interface CERSearchFilters {
   pericoloso?: boolean
   category?: string
   subcategory?: string
+  /**
+   * Filtra ai soli codici UTILIZZABILI per un FIR nuovo (R4 Task 7 Step 3).
+   * Non confondere con `isUtilizzabilePerNuovoFormulario` (verifica puntuale
+   * su un singolo codice, usata da `CreateFIRUseCase`): questo è il filtro di
+   * lista/ricerca dietro l'autocomplete del form di creazione FIR, che non
+   * deve più proporre un codice che l'ente ha smesso di confermare — restano
+   * cercabili/visibili altrove (storico, MUD) senza questo filtro.
+   */
+  presenteInRentri?: boolean
 }
 
 export interface ICERRepository {

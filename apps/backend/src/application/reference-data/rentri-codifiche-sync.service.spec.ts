@@ -64,6 +64,73 @@ describe('RentriCodificheSyncService', () => {
     expect(territorialiSync.allinea).toHaveBeenCalled()
   })
 
+  describe('ultimo esito (R4 Task 7 Step 2: diagnostica)', () => {
+    it('è null prima del primo ciclo concluso', () => {
+      expect(service.ottieniUltimoEsito()).toBeNull()
+    })
+
+    it('registra quando + i tre esiti dopo un ciclo completato con successo', async () => {
+      const esitoCer = { nuovi: 1, aggiornati: 2, rimossi: 0 }
+      const esitoSemplici = [{ tabella: 'stati-fisici', nuovi: 1, aggiornati: 0, rimossi: 0 }]
+      const esitoTerritoriali = [{ tabella: 'comuni', nuovi: 0, aggiornati: 5, rimossi: 0 }]
+      cerSync.allinea.mockResolvedValue(esitoCer)
+      codificheSempliciSync.allinea.mockResolvedValue(esitoSemplici)
+      territorialiSync.allinea.mockResolvedValue(esitoTerritoriali)
+
+      const prima = Date.now()
+      await service.allineaTutto()
+      const dopo = Date.now()
+
+      const esito = service.ottieniUltimoEsito()
+      expect(esito).not.toBeNull()
+      expect(esito!.cer).toEqual(esitoCer)
+      expect(esito!.codificheSemplici).toEqual(esitoSemplici)
+      expect(esito!.territoriali).toEqual(esitoTerritoriali)
+      expect(esito!.quando.getTime()).toBeGreaterThanOrEqual(prima)
+      expect(esito!.quando.getTime()).toBeLessThanOrEqual(dopo)
+    })
+
+    it('un passo fallito registra null per quel passo, non blocca la registrazione degli altri', async () => {
+      cerSync.allinea.mockRejectedValue(new Error('RENTRI non raggiungibile'))
+      codificheSempliciSync.allinea.mockResolvedValue([
+        { tabella: 'stati-fisici', nuovi: 1, aggiornati: 0, rimossi: 0 },
+      ])
+
+      await service.allineaTutto()
+
+      const esito = service.ottieniUltimoEsito()
+      expect(esito!.cer).toBeNull()
+      expect(esito!.codificheSemplici).toEqual([
+        { tabella: 'stati-fisici', nuovi: 1, aggiornati: 0, rimossi: 0 },
+      ])
+    })
+
+    it('un ciclo rigettato dal lock di concorrenza NON sovrascrive l’esito precedente', async () => {
+      cerSync.allinea.mockResolvedValue({ nuovi: 0, aggiornati: 0, rimossi: 0 })
+      await service.allineaTutto()
+      const primoEsito = service.ottieniUltimoEsito()
+
+      function deferred<T>() {
+        let resolve!: (value: T) => void
+        const promise = new Promise<T>(res => {
+          resolve = res
+        })
+        return { promise, resolve }
+      }
+      const bloccato = deferred<{ nuovi: number; aggiornati: number; rimossi: number }>()
+      cerSync.allinea.mockImplementation(() => bloccato.promise)
+
+      const inVolo = service.allineaTutto()
+      await Promise.resolve()
+      await expect(service.allineaTutto()).rejects.toThrow(AllineamentoRentriGiaInCorsoError)
+
+      expect(service.ottieniUltimoEsito()).toEqual(primoEsito)
+
+      bloccato.resolve({ nuovi: 0, aggiornati: 0, rimossi: 0 })
+      await inVolo
+    })
+  })
+
   describe('lock di concorrenza in memoria', () => {
     function deferred<T>() {
       let resolve!: (value: T) => void

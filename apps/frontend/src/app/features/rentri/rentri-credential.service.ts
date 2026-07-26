@@ -16,6 +16,14 @@ export interface RentriCredentialStatus {
   configured: boolean
   clientId?: string
   environment?: string
+  /**
+   * Numero di iscrizione dell'operatore (R4 Task 3): serve come parametro di
+   * path per leggere le unità locali dall'ente (`GET /operatore/{num_iscr}/siti`).
+   * Senza questo valore la sezione «Unità locali» dell'area RENTRI (Task 7
+   * Step 1) non può interrogare l'ente e deve dirlo, non mostrare una
+   * tabella vuota silenziosa.
+   */
+  numIscrOperatore?: string | null
 }
 
 /** Payload PEM diretto. */

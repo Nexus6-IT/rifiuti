@@ -167,10 +167,31 @@ export class CERPrismaRepository implements ICERRepository {
     return records.map(r => r.code)
   }
 
+  /**
+   * Codici marcati come non più confermati dall'ente (`presenteInRentri=false`),
+   * più recenti prima — query di sola lettura per la diagnostica dell'area
+   * RENTRI (Task 7 Step 2), NON parte dell'interfaccia `ICERRepository`: nessun
+   * altro consumatore del dominio ne ha bisogno, e aggiungerla all'interfaccia
+   * costringerebbe ogni test-double esistente a implementarla per niente.
+   */
+  async listNonPresenti(
+    limit = 50
+  ): Promise<Array<{ code: string; description: string; rimossoDaRentriAl: Date | null }>> {
+    const records = await this.prisma.cERCode.findMany({
+      where: { presenteInRentri: false },
+      orderBy: { rimossoDaRentriAl: 'desc' },
+      take: limit,
+      select: { code: true, description: true, rimossoDaRentriAl: true },
+    })
+    return records
+  }
+
   private filterWhere(filters?: CERSearchFilters): Record<string, unknown> {
     const where: Record<string, unknown> = {}
     if (filters?.pericoloso !== undefined) where['isPericoloso'] = filters.pericoloso
     if (filters?.category) where['category'] = filters.category
+    if (filters?.presenteInRentri !== undefined)
+      where['presenteInRentri'] = filters.presenteInRentri
     return where
   }
 

@@ -35,7 +35,15 @@
  * verso l'ente, non è un'azione operativa quotidiana.
  */
 
-import { Controller, Post, HttpCode, HttpStatus, UseGuards, HttpException } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Post,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+  HttpException,
+} from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
@@ -45,6 +53,29 @@ import {
   RentriCodificheSyncService,
   AllineamentoRentriGiaInCorsoError,
 } from '../../application/reference-data/rentri-codifiche-sync.service'
+import { CERPrismaRepository } from '../../infrastructure/persistence/cer-prisma.repository'
+
+/** Voce dell'elenco codici CER non più confermati dall'ultimo allineamento. */
+interface CodiceCerNonPresente {
+  code: string
+  description: string
+  rimossoDaRentriAl: string | null
+}
+
+/**
+ * Diagnostica di sola lettura per la sezione «Codifiche» dell'area RENTRI
+ * (R4 Task 7 Step 2): nessuna azione sui singoli codici, solo cosa è successo
+ * nell'ultimo giro e quali CER un amministratore potrebbe dover rivedere su
+ * un FIR in bozza.
+ */
+interface DiagnosticaCodificheResponse {
+  /** ISO 8601, o null se nessun ciclo è terminato da quando il processo è partito. */
+  ultimoAllineamento: string | null
+  /** Somma di nuovi+aggiornati sull'ultimo giro concluso (0 se `ultimoAllineamento` è null). */
+  codiciAggiornati: number
+  /** CER marcati `presenteInRentri=false`, più recenti prima: possono referenziare un FIR in bozza. */
+  codiciNonPresenti: CodiceCerNonPresente[]
+}
 
 @ApiTags('rentri')
 @ApiBearerAuth()
@@ -54,7 +85,50 @@ import {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN')
 export class RentriCodificheController {
-  constructor(private readonly sync: RentriCodificheSyncService) {}
+  constructor(
+    private readonly sync: RentriCodificheSyncService,
+    private readonly cerRepository: CERPrismaRepository
+  ) {}
+
+  @Get('diagnostica')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Diagnostica di sola lettura sull’ultimo allineamento delle codifiche RENTRI',
+    description:
+      'Nessuna azione sui singoli codici: solo quando è avvenuto l’ultimo giro concluso in questo ' +
+      'processo, quante codifiche ha aggiornato, e quali CER l’ente ha smesso di confermare — utile ' +
+      'a un amministratore per rivedere un FIR ancora in bozza che referenzia uno di quei codici.',
+  })
+  @ApiResponse({ status: 200, description: 'Diagnostica corrente' })
+  async diagnostica(): Promise<DiagnosticaCodificheResponse> {
+    const esito = this.sync.ottieniUltimoEsito()
+    const nonPresenti = await this.cerRepository.listNonPresenti()
+
+    return {
+      ultimoAllineamento: esito ? esito.quando.toISOString() : null,
+      codiciAggiornati: esito ? this.sommaAggiornamenti(esito) : 0,
+      codiciNonPresenti: nonPresenti.map(c => ({
+        code: c.code,
+        description: c.description,
+        rimossoDaRentriAl: c.rimossoDaRentriAl ? c.rimossoDaRentriAl.toISOString() : null,
+      })),
+    }
+  }
+
+  private sommaAggiornamenti(
+    esito: ReturnType<RentriCodificheSyncService['ottieniUltimoEsito']>
+  ): number {
+    if (!esito) return 0
+    let totale = 0
+    if (esito.cer) totale += esito.cer.nuovi + esito.cer.aggiornati
+    if (esito.codificheSemplici) {
+      for (const tabella of esito.codificheSemplici) totale += tabella.nuovi + tabella.aggiornati
+    }
+    if (esito.territoriali) {
+      for (const tabella of esito.territoriali) totale += tabella.nuovi + tabella.aggiornati
+    }
+    return totale
+  }
 
   @Post('allinea')
   @HttpCode(HttpStatus.OK)
