@@ -138,6 +138,36 @@ Non basta il test con la finta: usa Postgres vero (`docker compose up -d postgre
 
 ---
 
+### Task 3-bis: Far emergere il numero ufficiale dall'esito
+
+**Scoperto durante l'esecuzione del Task 2 e verificato sul contratto (2026-07-26).**
+
+Il numero ufficiale **viene restituito dall'ente**, ma annidato: `EsitoFormularioModel` espone `esito` come `oneOf`, che per una creazione risolve in **`EsitoNuovoFormularioModel`**, il quale contiene `numero_fir`. Il livello superiore ha solo `esito`, `tipo`, `transazione_id`, `validazione`, `errore`, `tempo_elaborazione`.
+
+Il nostro client però lo **scarta**: `attendiEsito` in `rentri-api.client.ts` restituisce un `EsitoFormulario` modellato come `{ errore, validazione }`, senza il payload `esito`. Di conseguenza lo use case non ha modo di conoscere il numero e chiama `markRENTRISynced` passando la `transazione_id` — che è la causa dell'incoerenza rilevata nel Task 2.
+
+**Files:**
+- Modify: `apps/backend/src/infrastructure/rentri/rentri-api.client.ts`
+- Modify: `apps/backend/src/application/rentri/sync-fir-to-rentri.use-case.ts`
+
+- [ ] **Step 1: Leggere il contratto prima di tipizzare**
+
+`EsitoNuovoFormularioModel` e gli altri membri del `oneOf` in `docs/contracts/rentri/formulari.yaml`. Il tipo deve riflettere il contratto, non una comodità: `esito` è polimorfo e il `numero_fir` esiste **solo** nella variante di creazione.
+
+- [ ] **Step 2: Scrivere il test**
+
+Contro l'oracolo (`*.oracolo.spec.ts`): completando una transazione con un esito che contiene `numero_fir`, il client deve restituirlo. E il caso negativo: un esito **senza** `numero_fir` non deve produrre un legame — meglio nessun legame che uno inventato.
+
+**Nota:** la fake accetta qualunque corpo (riserva nota in `FEDELTA.md`), quindi il test dimostra che il client **legge** correttamente ciò che riceve, non che l'ente restituisca davvero quella forma. Dichiaralo nel report: è una conformità di lettura, non di contratto.
+
+- [ ] **Step 3: Correggere la chiamata nello use case**
+
+`markRENTRISynced` deve ricevere il **numero ufficiale** in prima posizione, come previsto dal modello dati. Se il numero non è disponibile nell'esito, la trasmissione **non** va marcata come legata.
+
+- [ ] **Step 4: Commit**
+
+---
+
 ### Task 4: Il cablaggio
 
 È il cuore di R0: qui il sottosistema smette di essere codice morto.
