@@ -69,6 +69,20 @@ da assegnare a chi lavora su `apps/frontend/**`.
   `fir-detail-rentri-origine`, `fir-detail-rentri-messaggio-errore`,
   `fir-detail-rentri-trasmetti`, `fir-detail-rentri-riprova`,
   `fir-detail-rentri-conferma-legame`, `fir-detail-rentri-vedi-certificato`.
+- **RENTRI — aggancio dei formulari (colmato in R2 Task 8)**: la pagina
+  `/rentri/formulari` (`features/rentri/rentri-formulari.component.ts`) espone
+  `rentri-formulari-search-input`, `-cerca-button`, `-table`, `-loading`,
+  `-empty-state`, `-errore`, `-non-autorizzato`, `-sedi-link`, più i dinamici
+  per riga `rentri-formulari-row-{numeroFir}`,
+  `rentri-formulari-status-{numeroFir}`,
+  `rentri-formulari-aggancia-{numeroFir}`; il dialog espone
+  `rentri-formulari-confirm-dialog` (+ `-modalita-nuovo`, `-modalita-esistente`,
+  `-fir-locale-select`, `-fir-locali-troncati`, `-confirm-button`,
+  `-cancel-button`). Il dettaglio FIR aggiunge
+  `fir-detail-rentri-rilascia-legame` e
+  `fir-detail-rentri-rilascia-legame-confirm-dialog`.
+  NB: questi nomi sono stati SCRITTI qui dopo l'implementazione, non prima —
+  il piano di R2 li dava per già presenti in questo file e non lo erano.
   Restano mancanti i testid generali non-RENTRI della riga "FIR" sopra
   (`fir-nuovo-button`, `fir-row-{numeroFir}`, `fir-emetti-{numeroFir}`,
   `fir-presa-in-carico-{numeroFir}`, `fir-conferma-consegna-{numeroFir}`,
