@@ -17,10 +17,12 @@ import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
 import { RedisConfig } from '../cache/redis.config'
 import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
+import { GetRentriDiagnosticaUseCase } from '../../application/rentri/get-rentri-diagnostica.use-case'
 import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
 import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
 import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
+import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica.controller'
 
 /**
  * RentriModule — sottosistema di interoperabilità RENTRI (client + auth + firma).
@@ -39,6 +41,7 @@ import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
     RentriModalitaLegameController,
     RentriUnitaLocaleController,
     RentriSitiController,
+    RentriDiagnosticaController,
   ],
   providers: [
     {
@@ -63,6 +66,9 @@ import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
     // è dichiarato come provider diretto, come già fa `PermissionsModule`.
     RedisConfig,
     RentriRateLimiterService,
+    // Diagnostica di sola lettura (R5 Task 3): NON dipende da RENTRIApiClient
+    // (v. commento nell'use case) — deliberatamente, non un'omissione.
+    GetRentriDiagnosticaUseCase,
   ],
   exports: [
     RENTRIApiClient,

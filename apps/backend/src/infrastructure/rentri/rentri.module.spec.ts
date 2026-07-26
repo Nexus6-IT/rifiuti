@@ -16,6 +16,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
 import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
 import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
+import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica.controller'
+import { GetRentriDiagnosticaUseCase } from '../../application/rentri/get-rentri-diagnostica.use-case'
 
 /**
  * DI smoke test per RentriModule (cablato in AppModule).
@@ -45,6 +47,8 @@ describe('RentriModule (DI wiring)', () => {
     expect(moduleRef.get(SincronizzaSitiUseCase)).toBeDefined()
     expect(moduleRef.get(RentriSitiController)).toBeDefined()
     expect(moduleRef.get(RentriRateLimiterService)).toBeDefined()
+    expect(moduleRef.get(GetRentriDiagnosticaUseCase)).toBeDefined()
+    expect(moduleRef.get(RentriDiagnosticaController)).toBeDefined()
 
     await moduleRef.close()
   })

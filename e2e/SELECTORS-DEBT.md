@@ -89,6 +89,21 @@ da assegnare a chi lavora su `apps/frontend/**`.
   `fir-annulla-{numeroFir}`, `fir-status-badge-{numeroFir}`) — non toccati
   da R1.
 
+- **RENTRI — diagnostica per l'utente (colmato in R5 Task 3)**: la pagina
+  `/rentri/diagnostica` (`features/rentri/rentri-diagnostica.component.ts`)
+  espone `rentri-diagnostica-certificato-scadenza`,
+  `rentri-diagnostica-trasmissioni-recenti`,
+  `rentri-diagnostica-formulari-attenzione`,
+  `rentri-diagnostica-limitatore-stato` (nomi imposti dal piano
+  `docs/superpowers/plans/2026-07-26-r5-robustezza.md`, Task 3 Step 3), più
+  `-non-autorizzato`, `-loading`, `-aggiorna-btn`, `-trasmissioni-vuote`,
+  `-nessun-formulario-attenzione`, `-limitatore-in-attesa`,
+  `-limitatore-normale`, e i dinamici per riga
+  `rentri-diagnostica-trasmissione-{id}` e
+  `rentri-diagnostica-formulario-attenzione-{firId}`. Solo dati locali: la
+  pagina non genera mai una chiamata verso RENTRI al caricamento,
+  l'aggiornamento è un pulsante esplicito, mai un timer.
+
 ## Componenti "orfani" da chiarire (non un problema di selettori, ma di wiring)
 
 - `core/layout/header/header.component.ts` e `core/layout/tenant-selector/tenant-selector.component.ts`

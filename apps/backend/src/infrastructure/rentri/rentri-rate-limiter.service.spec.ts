@@ -170,4 +170,56 @@ describe('RentriRateLimiterService', () => {
       expect(permesso).toHaveProperty('rilascia')
     })
   })
+
+  describe('statoAttuale — lettura per la diagnostica (R5 Task 3)', () => {
+    it('restituisce volume/concorrenza correnti e inAttesa=false sotto soglia', async () => {
+      evalMock.mockResolvedValue([5, 1])
+
+      const stato = await service.statoAttuale('tenant-1')
+
+      expect(stato).toEqual({ volumeCorrente: 5, concorrenzaCorrente: 1, inAttesa: false })
+    })
+
+    it('inAttesa=true quando il volume ha raggiunto la soglia (30)', async () => {
+      evalMock.mockResolvedValue([RENTRI_RATE_LIMIT_SOGLIA_RICHIESTE, 0])
+
+      const stato = await service.statoAttuale('tenant-1')
+
+      expect(stato.inAttesa).toBe(true)
+    })
+
+    it('inAttesa=true quando la concorrenza ha raggiunto il massimo (3)', async () => {
+      evalMock.mockResolvedValue([0, RENTRI_RATE_LIMIT_CONCORRENZA_MASSIMA])
+
+      const stato = await service.statoAttuale('tenant-1')
+
+      expect(stato.inAttesa).toBe(true)
+    })
+
+    it('NON scrive nulla (nessun ZADD): è una lettura, non deve consumare budget', async () => {
+      evalMock.mockResolvedValue([0, 0])
+
+      await service.statoAttuale('tenant-1')
+
+      // L'unica interazione con Redis è l'EVAL di sola lettura: nessun ZADD
+      // separato, nessuna chiamata aggiuntiva che scriverebbe uno slot.
+      expect(evalMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('interroga le chiavi del tenant richiesto, isolate dagli altri tenant', async () => {
+      evalMock.mockResolvedValue([0, 0])
+
+      await service.statoAttuale('tenant-isolato')
+
+      expect(evalMock).toHaveBeenCalledWith(
+        expect.any(String),
+        2,
+        'rentri:ratelimit:tenant-isolato',
+        'rentri:concurrency:tenant-isolato',
+        expect.any(Number),
+        RENTRI_RATE_LIMIT_FINESTRA_MS,
+        RENTRI_RATE_LIMIT_TTL_CONCORRENZA_MS
+      )
+    })
+  })
 })
