@@ -742,6 +742,60 @@ model CERCode {
   @@map("cer_codes")
 }
 
+/// R4 Task 5: cache delle 4 tabelle di codifiche RENTRI "allinea ora" — unità
+/// di misura, stati fisici del rifiuto, caratteristiche di pericolo (HP),
+/// attività di recupero/smaltimento (R/D) — v.
+/// `docs/audits/rentri-codifiche-campi-2026-07-26.md` per l'audit completo di
+/// quali tabelle sono state incluse e perché.
+///
+/// Una tabella GENERICA con discriminatore `tabella` invece di 4 model quasi
+/// identici: le 4 tabelle condividono esattamente la stessa forma esterna del
+/// contratto (`{ id, code, name }`, nessuna con `properties` significative,
+/// v. `tools/rentri-fake/src/stato/fixture-codifiche.ts`) e lo stesso
+/// comportamento di sincronizzazione. Distinguerle in 4 model separati
+/// sarebbe superficie duplicata senza motivo tecnico o di dominio — a
+/// differenza di `CERCode` (già esistente, con propria logica di validazione
+/// in `CERCatalogService`/`CreateFIRUseCase`) o delle tabelle territoriali
+/// qui sotto (semantica/campi realmente diversi: `attivo`, `nuovo-id`,
+/// `fine-validita`).
+///
+/// Stesso schema di lifecycle di `CERCode` (Task 4): una riga non viene MAI
+/// cancellata quando l'ente smette di confermarla in un ciclo — resta
+/// leggibile per i FIR/movimenti storici che la referenziano come stringa
+/// libera, viene solo marcata `presenteInRentri=false`.
+model RentriCodificaSemplice {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Nome della tabella RENTRI di origine (segmento di path
+  /// `/lookup/<tabella>`): solo le 4 di questo task, `'unita-misura'`,
+  /// `'stati-fisici'`, `'caratteristiche-pericolo'`, `'attivita-rs'`.
+  tabella String @db.VarChar(30)
+
+  /// Identificativo RENTRI della voce (`LookupItem.id`), numerico o
+  /// alfanumerico a seconda della tabella — conservato come stringa per
+  /// uniformità di colonna (nessuna di queste 4 tabelle usa id numerici
+  /// grandi che richiedano un tipo dedicato).
+  externalId String @map("external_id") @db.VarChar(20)
+  code       String @db.VarChar(20)
+  name       String @db.VarChar(500)
+
+  /// True finché l'ente conferma la voce nel catalogo ufficiale; passa a
+  /// false quando RENTRI smette di restituirla in un ciclo di allineamento.
+  presenteInRentri Boolean @default(true) @map("presente_in_rentri")
+  /// Valorizzato quando presenteInRentri passa a false; azzerato se la voce
+  /// torna a comparire in un ciclo successivo.
+  rimossoDaRentriAl DateTime? @map("rimosso_da_rentri_al")
+  /// Sempre "rentri" per queste 4 tabelle: a differenza del CER, non esiste
+  /// un seed CSV/locale precedente da distinguere — l'unica fonte è l'ente.
+  fonte String @default("rentri") @db.VarChar(20)
+
+  @@unique([tabella, code])
+  @@index([tabella])
+  @@map("rentri_codifiche_semplici")
+}
+
 // ============================================================================
 // DATI DI RIFERIMENTO CONDIVISI (globali, non tenant-scoped)
 // Tabelle di decodifica comuni a tutto l'applicativo (anagrafiche, MUD, ...).
@@ -793,6 +847,103 @@ model IstatComune {
   @@index([provinciaSigla])
   @@index([name, provinciaSigla])
   @@map("istat_comuni")
+}
+
+/// R4 Task 5 — cache territoriale DEDICATA all'uso RENTRI (validazione
+/// pre-invio di siti/formulari), volutamente SEPARATA da `IstatProvincia`
+/// qui sopra. RENTRI espone comuni/province con una semantica di validità
+/// propria (`attivo`, `fine-validita`, `nuovo-id` per un comune
+/// soppresso/accorpato) che `Istat*` non ha — è un elenco statico usato dal
+/// MUD, che ha bisogno del codice ISTAT puro e stabile, non soggetto al
+/// ciclo di vita "attivo/soppresso" di RENTRI. Fondere le due fonti
+/// produrrebbe lo stesso problema che il Task 4 ha risolto per i CER: un
+/// comune soppresso non va più proposto in un formulario NUOVO, ma un FIR
+/// vecchio che lo referenzia (comune del produttore/destinatario) resta
+/// leggibile — la stessa protezione "mai cancellare, solo marcare" qui si
+/// applica alla riga del comune invece che al codice CER.
+///
+/// `regioni` NON riceve un model dedicato: nessun campo applicativo la
+/// referenzia oggi (v. l'audit) — la sola tabella territoriale con un
+/// consumatore concreto (validazione indirizzo pre-invio) è quella a
+/// grana comune/provincia/nazione.
+model RentriProvincia {
+  /// Codice ISTAT provincia (id RENTRI, es. "015" per Milano) — chiave
+  /// stabile, non la sigla (che RENTRI riporta nel campo `code`).
+  id        String   @id @db.VarChar(10)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Sigla automobilistica (es. "MI").
+  code      String @db.VarChar(2)
+  name      String @db.VarChar(255)
+  regioneId String @map("regione_id") @db.VarChar(10)
+
+  /// False = provincia non più valida per un nuovo formulario/sito (caso
+  /// raro ma previsto dal contratto, es. riordini provinciali).
+  attivo Boolean @default(true)
+  /// Valorizzato quando l'ente segnala fine-validità.
+  fineValidita DateTime? @map("fine_validita")
+
+  presenteInRentri  Boolean   @default(true) @map("presente_in_rentri")
+  rimossoDaRentriAl DateTime? @map("rimosso_da_rentri_al")
+  fonte             String    @default("rentri") @db.VarChar(20)
+
+  @@index([code])
+  @@map("rentri_province")
+}
+
+/// V. commento di testata di `RentriProvincia` per la motivazione della
+/// separazione da `IstatComune`.
+model RentriComune {
+  /// Codice ISTAT comune (id RENTRI, 6 cifre).
+  id        String   @id @db.VarChar(10)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Codice catastale Belfiore (RENTRI lo riporta nel campo `code`).
+  code        String @db.VarChar(4)
+  name        String @db.VarChar(255)
+  provinciaId String @map("provincia_id") @db.VarChar(10)
+  cciaa       String @db.VarChar(2)
+
+  /// False = comune soppresso/accorpato: non va più proposto per un
+  /// formulario/sito NUOVO. La riga non viene mai cancellata — un FIR
+  /// storico che referenzia questo comune resta leggibile.
+  attivo Boolean @default(true)
+  /// Comune in cui è confluito, se `attivo=false` (fusione/soppressione).
+  /// Informazione operativa: dice all'operatore dove reindirizzare un nuovo
+  /// inserimento.
+  nuovoId String? @map("nuovo_id") @db.VarChar(10)
+  /// Data da cui il comune non è più attivo.
+  fineValidita DateTime? @map("fine_validita")
+
+  presenteInRentri  Boolean   @default(true) @map("presente_in_rentri")
+  rimossoDaRentriAl DateTime? @map("rimosso_da_rentri_al")
+  fonte             String    @default("rentri") @db.VarChar(20)
+
+  @@index([provinciaId])
+  @@index([name])
+  @@map("rentri_comuni")
+}
+
+/// Nazioni RENTRI (ISO 3166-1): nessun concetto di `attivo`/`fine-validita`
+/// dichiarato dal contratto per questa tabella (v. commento di
+/// `CodificaItem` in `rentri-codifiche.model.ts`) — non porta quei campi.
+model RentriNazione {
+  /// Codice ISO 3166-1 alpha-2 (id RENTRI, es. "IT").
+  id        String   @id @db.VarChar(2)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Codice ISO 3166-1 numerico (RENTRI lo riporta nel campo `code`).
+  code String @db.VarChar(3)
+  name String @db.VarChar(255)
+
+  presenteInRentri  Boolean   @default(true) @map("presente_in_rentri")
+  rimossoDaRentriAl DateTime? @map("rimosso_da_rentri_al")
+  fonte             String    @default("rentri") @db.VarChar(20)
+
+  @@map("rentri_nazioni")
 }
 
 // ============================================================================

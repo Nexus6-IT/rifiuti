@@ -1,5 +1,4 @@
 import { Injectable, Inject } from '@nestjs/common'
-import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
 import { ICERRepository } from '../../domain/cer/repositories/cer-repository.interface'
 import { RentriCodificheClient } from '../../infrastructure/rentri/codifiche/rentri-codifiche.client'
@@ -44,6 +43,14 @@ export interface EsitoAllineamentoCer {
  * (aggiornamento del catalogo europeo dei rifiuti), non per uso quotidiano.
  * Una cadenza più frequente non comprerebbe alcuna freschezza reale, solo
  * chiamate in più verso l'ente per un dato che si muove a mesi di distanza.
+ *
+ * **R4 Task 5**: il cron mensile che scatenava `allinea()` è stato tolto da
+ * qui e spostato nell'orchestratore unico `RentriCodificheSyncService`, che
+ * lo chiama in sequenza insieme alle altre tabelle "allinea ora" (v. il
+ * commento di testata di quella classe). Tenere un `@Cron` anche qui
+ * avrebbe fatto scattare due allineamenti CER indipendenti nello stesso
+ * mese — lo stesso servizio resta comunque chiamabile manualmente tramite
+ * `allinea()`, invariato.
  */
 @Injectable()
 export class RentriCerSyncService {
@@ -53,19 +60,6 @@ export class RentriCerSyncService {
     private readonly logger: LoggerService
   ) {
     this.logger.setContext(RentriCerSyncService.name)
-  }
-
-  /** Cron mensile (primo del mese, mezzanotte) — v. commento di testata per la motivazione della cadenza. */
-  @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
-  async allineamentoSchedulato(): Promise<void> {
-    try {
-      const esito = await this.allinea()
-      this.logger.info(
-        `Allineamento CER da RENTRI completato: ${esito.nuovi} nuovi, ${esito.aggiornati} aggiornati, ${esito.rimossi} non più confermati (marcati, MAI cancellati)`
-      )
-    } catch (e: any) {
-      this.logger.warn(`Allineamento CER da RENTRI fallito: ${e.message}`)
-    }
   }
 
   /**
