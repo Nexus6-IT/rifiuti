@@ -57,6 +57,31 @@ export class RENTRISyncStatus {
   }
 
   /**
+   * Ricostruisce lo stato da valori già persistiti (righe `firs.rentri_*`),
+   * senza passare dalle transizioni di dominio (markAsSyncing/Synced/Failed):
+   * quelle producono un NUOVO stato da uno stato corrente, mentre qui si
+   * riparte da zero con i valori così come sono in DB. Necessario perché il
+   * costruttore è privato — senza questa fabbrica il repository non avrebbe
+   * modo di ricostruire l'aggregate al reload (esattamente il tranello della
+   * lettura dimenticata: vedi persistSignatures/firmeFromRecord).
+   */
+  static reconstitute(params: {
+    status: 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED' | 'PERMANENTLY_FAILED'
+    attempts: number
+    lastError?: string
+    protocolNumber?: string
+    syncedAt?: Date
+  }): RENTRISyncStatus {
+    return new RENTRISyncStatus(
+      params.status,
+      params.attempts,
+      params.lastError,
+      params.protocolNumber,
+      params.syncedAt
+    )
+  }
+
+  /**
    * Create failed status with error
    */
   static failed(attempts: number, error: string): RENTRISyncStatus {

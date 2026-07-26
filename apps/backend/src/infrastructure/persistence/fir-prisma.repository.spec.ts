@@ -54,6 +54,15 @@ function buildFirRecord(overrides: Partial<any> = {}) {
     createdAt: new Date('2026-07-01T10:00:00Z'),
     transportersAggiuntivi: [],
     signatures: [],
+    // Legame RENTRI: default "mai sincronizzato", coerente col default Prisma.
+    rentriSyncStatus: 'PENDING',
+    rentriSyncedAt: null,
+    rentriSyncAttempts: 0,
+    rentriLastSyncError: null,
+    rentriNextRetryAt: null,
+    rentriNumeroFir: null,
+    rentriTransazioneId: null,
+    rentriOrigineLegame: null,
     ...overrides,
   }
 }
@@ -163,6 +172,80 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       const fir = await repo.findById('fir-1')
 
       expect(fir!.firme.produttore).toBeUndefined()
+    })
+  })
+
+  describe('legame RENTRI — salva, rileggi, ritrova (stesso tranello delle firme)', () => {
+    it('ricostruisce tutti i campi rentri* da un FIR già agganciato', async () => {
+      prisma.db.fIR.findFirst.mockResolvedValue(
+        buildFirRecord({
+          rentriSyncStatus: 'SYNCED',
+          rentriSyncedAt: new Date('2026-07-26T09:00:00Z'),
+          rentriSyncAttempts: 1,
+          rentriLastSyncError: null,
+          rentriNextRetryAt: null,
+          rentriNumeroFir: 'RENTRI-000123',
+          rentriTransazioneId: 'tx-abc-999',
+          rentriOrigineLegame: 'TRASMESSO_DA_NOI',
+        })
+      )
+
+      const fir = await repo.findById('fir-1')
+
+      expect(fir).not.toBeNull()
+      expect(fir!.rentriNumeroFir).toBe('RENTRI-000123')
+      expect(fir!.rentriTransazioneId).toBe('tx-abc-999')
+      expect(fir!.rentriOrigineLegame).toBe('TRASMESSO_DA_NOI')
+      expect(fir!.rentriSyncStatus.getStatus()).toBe('SYNCED')
+      expect(fir!.rentriSyncStatus.getAttempts()).toBe(1)
+    })
+
+    it('ricostruisce un fallimento con tentativi ed errore', async () => {
+      prisma.db.fIR.findFirst.mockResolvedValue(
+        buildFirRecord({
+          rentriSyncStatus: 'FAILED',
+          rentriSyncAttempts: 2,
+          rentriLastSyncError: 'RENTRI ha risposto 500',
+        })
+      )
+
+      const fir = await repo.findById('fir-1')
+
+      expect(fir!.rentriSyncStatus.getStatus()).toBe('FAILED')
+      expect(fir!.rentriSyncStatus.getAttempts()).toBe(2)
+      expect(fir!.rentriSyncStatus.getLastError()).toBe('RENTRI ha risposto 500')
+      expect(fir!.rentriNumeroFir).toBeNull()
+    })
+
+    it('save scrive tutti i campi rentri* sulla riga firs (scrittura, non solo lettura)', async () => {
+      const fir = FIR.create({
+        produttoreId: 'reg-produttore',
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: 'reg-trasportatore',
+        destinatarioId: 'reg-destinatario',
+        tenantId: 'tenant-1',
+        creatoDaUserId: 'user-produttore',
+      })
+      const firma: FirmaDigitale = {
+        firmatario: 'Mario Rossi',
+        timestamp: new Date('2026-07-01T12:00:00Z'),
+        certificato: 'certificato-produttore',
+        userId: 'user-produttore',
+      }
+      fir.emetti('FIR-2026-000001', firma)
+      fir.markRENTRISynced('RENTRI-000123', 'tx-abc-999')
+
+      await repo.save(fir)
+
+      const [{ update }] = prisma.fIR.upsert.mock.calls[0]
+      expect(update).toMatchObject({
+        rentriNumeroFir: 'RENTRI-000123',
+        rentriTransazioneId: 'tx-abc-999',
+        rentriOrigineLegame: 'TRASMESSO_DA_NOI',
+        rentriSyncAttempts: 0,
+      })
+      expect(update.rentriSyncStatus).toBe('SYNCED')
+      expect(update.rentriSyncedAt).toBeInstanceOf(Date)
     })
   })
 

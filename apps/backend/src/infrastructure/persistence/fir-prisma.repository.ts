@@ -5,18 +5,24 @@
 
 import { Injectable, Logger } from '@nestjs/common'
 import { createHash } from 'crypto'
-import { FIRStatus as PrismaFIRStatus } from '@prisma/client'
+import {
+  FIRStatus as PrismaFIRStatus,
+  RENTRISyncStatus as PrismaRENTRISyncStatus,
+  RentriOrigineLegame as PrismaRentriOrigineLegame,
+} from '@prisma/client'
 import {
   FIR,
   FIRStato,
   FirmaDigitale,
   FirmeDigitali,
+  RentriOrigineLegame,
 } from '../../domain/fir/aggregates/fir.aggregate'
 import {
   IFIRRepository,
   FIRSearchFilters,
 } from '../../domain/fir/repositories/fir-repository.interface'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
+import { RENTRISyncStatus } from '../../domain/fir/rentri-sync-status.vo'
 import { PrismaService } from './prisma.service'
 
 @Injectable()
@@ -433,6 +439,14 @@ export class FIRPrismaRepository implements IFIRRepository {
       _annotazioni: record.wasteNotes || null,
       _fourthCopyReturnedAt: record.fourthCopyReturnedAt || null,
       _fourthCopyNotes: record.fourthCopyNotes || null,
+      // Legame RENTRI: senza questa ricostruzione i getter rentriNumeroFir/
+      // rentriSyncStatus/... tornerebbero sempre ai valori di default
+      // dell'aggregate appena creato, anche se scritti correttamente da save
+      // (il tranello descritto nel Task 3: scrittura ok, lettura dimenticata).
+      _rentriSyncStatus: this.rentriSyncStatusFromRecord(record),
+      _rentriNumeroFir: record.rentriNumeroFir || null,
+      _rentriTransazioneId: record.rentriTransazioneId || null,
+      _rentriOrigineLegame: (record.rentriOrigineLegame as RentriOrigineLegame) || null,
     })
 
     return fir
@@ -552,7 +566,53 @@ export class FIRPrismaRepository implements IFIRRepository {
       unit: fir.rifiuto.quantita.unitaMisura,
       transportDate: fir.dataPresaCarico || new Date(),
       actualArrivalDate: fir.dataConsegna,
+      ...this.rentriToPersistence(fir),
     }
+  }
+
+  /**
+   * Mappa il legame RENTRI dell'aggregate sui campi scalari `firs.rentri_*`.
+   * Prima di questa modifica NESSUNO di questi otto campi veniva scritto: il
+   * legame esisteva solo in memoria e spariva al primo reload — lo stesso
+   * difetto già risolto per le firme del ciclo di vita (persistSignatures).
+   *
+   * `rentriNextRetryAt` viene persistito solo quando esiste davvero un
+   * prossimo tentativo pianificato (stato FAILED con retry ancora
+   * disponibile): per PENDING/SYNCING/SYNCED/PERMANENTLY_FAILED non c'è un
+   * backoff in corso, quindi si scrive `null` invece del valore sempre
+   * calcolabile (ma privo di senso) di RENTRISyncStatus.getNextRetryAt().
+   */
+  private rentriToPersistence(fir: FIR): any {
+    const syncStatus = fir.rentriSyncStatus
+    return {
+      rentriSyncStatus: syncStatus.getStatus() as unknown as PrismaRENTRISyncStatus,
+      rentriSyncedAt: syncStatus.getSyncedAt() ?? null,
+      rentriSyncAttempts: syncStatus.getAttempts(),
+      rentriLastSyncError: syncStatus.getLastError() ?? null,
+      rentriNextRetryAt: fir.needsRENTRIRetry() ? fir.getNextRENTRIRetryAt() : null,
+      rentriNumeroFir: fir.rentriNumeroFir ?? null,
+      rentriTransazioneId: fir.rentriTransazioneId ?? null,
+      rentriOrigineLegame: fir.rentriOrigineLegame
+        ? (fir.rentriOrigineLegame as unknown as PrismaRentriOrigineLegame)
+        : null,
+    }
+  }
+
+  /**
+   * Ricostruisce lo stato di sincronizzazione RENTRI (VO) dai campi scalari
+   * persistiti. Il `protocolNumber` del VO coincide, per come è scritto
+   * `markRENTRISynced`, con `rentriNumeroFir`: è il valore passato a
+   * `markAsSynced(numeroFir)` al momento dell'aggancio, non il deprecato
+   * `rentriProtocolNumber` (mai valorizzato, vedi commento nello schema).
+   */
+  private rentriSyncStatusFromRecord(record: any): RENTRISyncStatus {
+    return RENTRISyncStatus.reconstitute({
+      status: record.rentriSyncStatus,
+      attempts: record.rentriSyncAttempts ?? 0,
+      lastError: record.rentriLastSyncError ?? undefined,
+      protocolNumber: record.rentriNumeroFir ?? undefined,
+      syncedAt: record.rentriSyncedAt ?? undefined,
+    })
   }
 }
 
