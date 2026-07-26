@@ -388,7 +388,13 @@ describe('SyncFIRToRENTRIUseCase — ciclo end-to-end contro la fake RENTRI (in-
     expect(firRiletto).not.toBeNull()
     expect(firRiletto!.rentriNumeroFir).toBeNull()
     expect(firRiletto!.rentriSyncStatus.getStatus()).not.toBe('SYNCED')
-    expect(firRiletto!.canSyncToRENTRI()).toBe(true) // resta ritrasmissibile: nessun aggancio spurio
+    // R1: un 403 (credenziale/certificato non valido) NON è più ritentabile
+    // automaticamente — ritentare ostinatamente lo stesso errore è il modo
+    // più diretto per farsi bandire (423) dall'ente. Il FIR passa subito a
+    // PERMANENTLY_FAILED (richiede intervento manuale sul certificato), non
+    // resta ritrasmissibile in attesa di un nuovo giro.
+    expect(firRiletto!.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+    expect(firRiletto!.canSyncToRENTRI()).toBe(false)
 
     // Il log di sincronizzazione registra il fallimento (leggibile), non un successo mascherato.
     expect(logSalvati.length).toBeGreaterThan(0)

@@ -247,6 +247,41 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       expect(update.rentriSyncStatus).toBe('SYNCED')
       expect(update.rentriSyncedAt).toBeInstanceOf(Date)
     })
+
+    /**
+     * Difetto R1: `rentriNextRetryAt` veniva calcolato da `fir.needsRENTRIRetry()`
+     * senza guardare il codice errore — un 403 (RENTRI_FORBIDDEN) con tentativi
+     * ancora disponibili veniva comunque pianificato per un nuovo giro,
+     * pronto a essere ripreso da un futuro scheduler/job che scansiona
+     * `rentriNextRetryAt <= now`. Deve restare `null`: nessun nuovo tentativo
+     * pianificato per un errore non ritentabile.
+     */
+    it('save NON pianifica un nuovo tentativo (rentriNextRetryAt null) dopo un fallimento non ritentabile (403)', async () => {
+      const fir = FIR.create({
+        produttoreId: 'reg-produttore',
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: 'reg-trasportatore',
+        destinatarioId: 'reg-destinatario',
+        tenantId: 'tenant-1',
+        creatoDaUserId: 'user-produttore',
+      })
+      const firma: FirmaDigitale = {
+        firmatario: 'Mario Rossi',
+        timestamp: new Date('2026-07-01T12:00:00Z'),
+        certificato: 'certificato-produttore',
+        userId: 'user-produttore',
+      }
+      fir.emetti('FIR-2026-000001', firma)
+      fir.startRENTRISync()
+      fir.markRENTRISyncFailed('Certificato non valido', 'RENTRI_FORBIDDEN')
+
+      await repo.save(fir)
+
+      const [{ update }] = prisma.fIR.upsert.mock.calls[0]
+      expect(update.rentriSyncStatus).toBe('PERMANENTLY_FAILED')
+      expect(update.rentriSyncAttempts).toBe(1)
+      expect(update.rentriNextRetryAt).toBeNull()
+    })
   })
 
   describe('scrittura (save) — deve persistere le firme nuove nella tabella fir_signatures', () => {

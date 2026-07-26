@@ -460,6 +460,25 @@ describe('FIR Aggregate', () => {
         expect(fir.needsRENTRIRetry()).toBe(false)
         expect(fir.canSyncToRENTRI()).toBe(false)
       })
+
+      /**
+       * Difetto R1: `needsRENTRIRetry()` guardava solo il conteggio dei
+       * tentativi, non il codice dell'ultimo errore. Un 403 (credenziale non
+       * valida) veniva ritentato fino a esaurimento invece di fermarsi al
+       * primo colpo — esattamente il comportamento che rischia di far
+       * bandire l'azienda (423) per troppe richieste non valide.
+       */
+      it('un errore non ritentabile (403 → RENTRI_FORBIDDEN) ferma il ciclo al primo fallimento, senza consumare tutti i tentativi', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+
+        fir.markRENTRISyncFailed('Certificato non valido', 'RENTRI_FORBIDDEN')
+
+        expect(fir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+        expect(fir.rentriSyncStatus.getAttempts()).toBe(1)
+        expect(fir.needsRENTRIRetry()).toBe(false)
+        expect(fir.canSyncToRENTRI()).toBe(false) // richiede intervento manuale
+      })
     })
 
     /**

@@ -566,7 +566,10 @@ export class FIR extends AggregateRoot {
 
   /**
    * Indica se il FIR è idoneo per un nuovo tentativo automatico dopo un
-   * fallimento (delega a RENTRISyncStatus.canRetry()).
+   * fallimento (delega a RENTRISyncStatus.canRetry()): tiene conto sia del
+   * conteggio dei tentativi residui sia del codice dell'ultimo errore — un
+   * errore non ritentabile (es. RENTRI_FORBIDDEN, 403) ferma il ciclo subito,
+   * anche con tentativi ancora disponibili.
    */
   needsRENTRIRetry(): boolean {
     return this._rentriSyncStatus.canRetry()
