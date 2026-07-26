@@ -6,7 +6,7 @@
 - **Nessun guard di autenticazione globale**: l'unico `APP_GUARD` in `app.module.ts` è `ThrottlerGuard` (rate limiting). L'autenticazione (`JwtAuthGuard`) e l'autorizzazione (`RolesGuard`, `@Roles`, `PermissionGuard`/`@RequirePermission`) dipendono **sempre** da decoratori espliciti sul controller/handler. Un controller senza `@UseGuards` è di fatto pubblico.
 - **`PermissionGuard`/`@RequirePermission`** (RBAC fine-grained, IAM) è cablato in `PermissionsModule` ma **usato da zero controller effettivamente registrati**: gli unici controller che lo userebbero (`RoleController`, `UserRoleController`, `AuditController` in `api/permissions/`, `ConsultantController`, `TemporaryPermissionController`) sono orfani (vedi sezione dedicata) — commento esplicito in `permissions.module.ts` spiega che i loro handler CQRS iniettano repository per interfaccia senza `@Inject(...)` esplicito, quindi il bootstrap Nest fallirebbe se registrati. **Nessun endpoint reale nell'app usa `@RequirePermission`.**
 - Sono stati trovati **12 controller su 36** elencati (33%) che **non risultano cablati in nessun modulo importato da `AppModule`** — di fatto codice morto, mai raggiungibile in produzione. Inoltre il controller FIR effettivamente attivo (`FIRControllerV2`, `apps/backend/src/api/fir/fir.controller.v2.ts`) **non era nell'elenco dei 36 file forniti**: il file realmente cablato da `FIRModule` non è `api/fir/fir.controller.ts` (quello è l'orfano) ma un file `.v2.ts` separato.
-- **99 endpoint HTTP raggiungibili** in totale su 25 controller cablati (incluso il duplicato `health`): **54 READ** (GET), **45 WRITE** (POST/PUT/PATCH/DELETE).
+- **100 endpoint HTTP raggiungibili** in totale su 25 controller cablati (incluso il duplicato `health`): **54 READ** (GET), **46 WRITE** (POST/PUT/PATCH/DELETE).
 
 ## Nota: collisione di path `GET /api/v1/health`
 
@@ -117,6 +117,7 @@ Entrambi definiscono `@Get()` sulla root `health`. Quale dei due gestisce effett
 | GET | api/v1/registry/destinatari/:id | registry | JwtAuthGuard, RolesGuard | — | R | NO | api/registry/registry.controller.ts:311 |
 | PUT | api/v1/registry/destinatari/:id | registry | JwtAuthGuard, RolesGuard | SUPER_ADMIN, ADMIN, OPERATOR | W | NO | api/registry/registry.controller.ts:331 |
 | DELETE | api/v1/registry/destinatari/:id | registry | JwtAuthGuard, RolesGuard | SUPER_ADMIN, ADMIN, OPERATOR | W | **SI - elimina anagrafica destinatario, potenzialmente referenziata da FIR** | api/registry/registry.controller.ts:355 |
+| POST | api/v1/rentri/codifiche/allinea | rentri-codifiche | JwtAuthGuard, RolesGuard | SUPER_ADMIN, ADMIN | W | NO — upsert additivo, marca `presenteInRentri=false` invece di cancellare (mai `DELETE`); v. `rentri-cer-sync.service.ts` | api/rentri/rentri-codifiche.controller.ts:50 |
 | PUT | api/v1/rentri/credential | rentri-credential | JwtAuthGuard, RolesGuard | SUPER_ADMIN, ADMIN | W | NO | api/rentri/rentri-credential.controller.ts:57 |
 | GET | api/v1/rentri/credential | rentri-credential | JwtAuthGuard, RolesGuard | SUPER_ADMIN, ADMIN | R | NO | api/rentri/rentri-credential.controller.ts:108 |
 | DELETE | api/v1/rentri/credential | rentri-credential | JwtAuthGuard, RolesGuard | SUPER_ADMIN, ADMIN | W | **SI - rimuove la credenziale RENTRI del tenant, interrompe la sincronizzazione finché non ricaricata** | api/rentri/rentri-credential.controller.ts:130 |
@@ -158,6 +159,8 @@ Endpoint senza alcun guard di autenticazione (o con `@Public()` esplicito):
 - `DELETE /api/v1/registry/trasportatori/:id` — elimina anagrafica trasportatore, master data potenzialmente referenziata da FIR esistenti.
 - `DELETE /api/v1/registry/destinatari/:id` — elimina anagrafica destinatario, master data potenzialmente referenziata da FIR esistenti.
 - `DELETE /api/v1/rentri/credential` — rimuove il certificato/chiave RENTRI del tenant, interrompendo l'interoperabilità RENTRI finché non viene ricaricata una nuova credenziale.
+
+`POST /api/v1/rentri/codifiche/allinea` (R4 Task 6) **non** è in questa blacklist, a differenza di `reseed`: `reseed` sovrascrive incondizionatamente con la fonte CSV, senza distinguere "scomparso" da "mai esistito"; l'allineamento RENTRI marca soltanto (`presenteInRentri`/`rimossoDaRentriAl`), non cancella né sovrascrive l'identità del codice — per questo non è classificato come distruttivo.
 
 ## Controller orfani / moduli non cablati
 

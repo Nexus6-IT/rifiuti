@@ -1,4 +1,7 @@
-import { RentriCodificheSyncService } from './rentri-codifiche-sync.service'
+import {
+  RentriCodificheSyncService,
+  AllineamentoRentriGiaInCorsoError,
+} from './rentri-codifiche-sync.service'
 
 describe('RentriCodificheSyncService', () => {
   let cerSync: { allinea: jest.Mock }
@@ -59,5 +62,63 @@ describe('RentriCodificheSyncService', () => {
     expect(cerSync.allinea).toHaveBeenCalled()
     expect(codificheSempliciSync.allinea).toHaveBeenCalled()
     expect(territorialiSync.allinea).toHaveBeenCalled()
+  })
+
+  describe('lock di concorrenza in memoria', () => {
+    function deferred<T>() {
+      let resolve!: (value: T) => void
+      let reject!: (reason?: unknown) => void
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+      return { promise, resolve, reject }
+    }
+
+    it("Test A: una seconda allineaTutto() mentre la prima è in volo rigetta con AllineamentoRentriGiaInCorsoError senza chiamare l'ente", async () => {
+      const primoCiclo = deferred<{ nuovi: number; aggiornati: number; rimossi: number }>()
+      cerSync.allinea.mockImplementation(() => primoCiclo.promise)
+
+      const chiamataUno = service.allineaTutto()
+
+      await Promise.resolve() // lascia partire il primo giro fino all'attesa di cerSync.allinea
+
+      await expect(service.allineaTutto()).rejects.toThrow(AllineamentoRentriGiaInCorsoError)
+      expect(cerSync.allinea).toHaveBeenCalledTimes(1)
+
+      primoCiclo.resolve({ nuovi: 0, aggiornati: 0, rimossi: 0 })
+      await expect(chiamataUno).resolves.toBeUndefined()
+    })
+
+    it('Test B: dopo che una chiamata è terminata (anche con un passo fallito) il lock si rilascia e la chiamata successiva viene eseguita normalmente', async () => {
+      cerSync.allinea.mockRejectedValueOnce(new Error('RENTRI non raggiungibile'))
+
+      await service.allineaTutto()
+
+      cerSync.allinea.mockResolvedValue({ nuovi: 0, aggiornati: 0, rimossi: 0 })
+      codificheSempliciSync.allinea.mockClear()
+      territorialiSync.allinea.mockClear()
+
+      await service.allineaTutto()
+
+      expect(cerSync.allinea).toHaveBeenCalledTimes(2)
+      expect(codificheSempliciSync.allinea).toHaveBeenCalledTimes(1)
+      expect(territorialiSync.allinea).toHaveBeenCalledTimes(1)
+    })
+
+    it("Test C: se allineamentoSchedulato() scatta mentre un'altra allineaTutto() è in volo, non lancia e logga un warning di ciclo saltato", async () => {
+      const primoCiclo = deferred<{ nuovi: number; aggiornati: number; rimossi: number }>()
+      cerSync.allinea.mockImplementation(() => primoCiclo.promise)
+
+      const chiamataManuale = service.allineaTutto()
+
+      await Promise.resolve()
+
+      await expect(service.allineamentoSchedulato()).resolves.toBeUndefined()
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('già in corso'))
+
+      primoCiclo.resolve({ nuovi: 0, aggiornati: 0, rimossi: 0 })
+      await chiamataManuale
+    })
   })
 })

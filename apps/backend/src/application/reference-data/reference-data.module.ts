@@ -12,6 +12,7 @@ import { REFERENCE_DATA_CONFIG, loadReferenceDataConfig } from './reference-data
 import { ReferenceDataService } from './reference-data.service'
 import { ReferenceDataSeederService } from './reference-data-seeder.service'
 import { ReferenceDataController } from './reference-data.controller'
+import { RentriCodificheController } from '../../api/rentri/rentri-codifiche.controller'
 import { RentriCerSyncService } from './rentri-cer-sync.service'
 import { RentriCodificheSempliciSyncService } from './rentri-codifiche-semplici-sync.service'
 import { RentriTerritorialiSyncService } from './rentri-territoriali-sync.service'
@@ -41,7 +42,7 @@ import { RentriCodificheSyncService } from './rentri-codifiche-sync.service'
  */
 @Module({
   imports: [ConfigModule, HttpModule, PrismaModule, LoggerModule, AuthModule, RentriModule],
-  controllers: [ReferenceDataController],
+  controllers: [ReferenceDataController, RentriCodificheController],
   providers: [
     {
       provide: REFERENCE_DATA_CONFIG,
