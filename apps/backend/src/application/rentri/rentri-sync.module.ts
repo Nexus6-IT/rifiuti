@@ -14,6 +14,7 @@ import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncJobProcessor } from '../../infrastructure/queue/jobs/rentri-sync.job'
 import { RENTRISyncController } from '../../api/rentri/rentri-sync.controller'
 import { RentriFormulariController } from '../../api/rentri/rentri-formulari.controller'
+import { RentriFirLifecycleController } from '../../api/rentri/rentri-fir-lifecycle.controller'
 import { DomainEventsService } from '../../core/domain-events.service'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
@@ -26,6 +27,7 @@ import { AcquisisciFormularioRENTRIUseCase } from './acquisisci-formulario-rentr
 import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.use-case'
 import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
 import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.use-case'
+import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -129,10 +131,19 @@ import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.
  * di `rentri-formulari.controller.ts` per la motivazione completa. Dipende
  * anche da `RentriUnitaLocaleService` (già importato da `RentriModule`) per
  * risolvere la sede su cui acquisire/rilasciare la visibilità.
+ *
+ * R3 Task 2 — "il motore della UI". `GetAzioniDisponibiliUseCase` espone
+ * `GET /rentri/fir/:id/azioni` (`RentriFirLifecycleController`, DEDICATO:
+ * dominio ancora diverso, il ciclo di vita del formulario già agganciato,
+ * non "trasmissione in uscita" né "cercare→agganciare"): interroga
+ * `RENTRIApiClient.leggiAzioniDisponibili` e riconcilia lo stato del FIR
+ * (`FIR.applyRentriStato`, Task 1) a ogni lettura. Ogni operazione di
+ * scrittura futura (Task 4+) dovrà verificare qui PRIMA di agire, per non
+ * incorrere nel 423 dell'ente.
  */
 @Module({
   imports: [ConfigModule, LoggerModule, MetricsModule, PrismaModule, RentriModule],
-  controllers: [RENTRISyncController, RentriFormulariController],
+  controllers: [RENTRISyncController, RentriFormulariController, RentriFirLifecycleController],
   providers: [
     FIRPrismaRepository,
     RENTRISyncQueue,
@@ -247,6 +258,16 @@ import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.
       ) => new RilasciaFormularioRENTRIUseCase(firRepo, rentriApiClient, prisma, logger),
       inject: [FIRPrismaRepository, RENTRIApiClient, PrismaService, LoggerService],
     },
+    {
+      provide: GetAzioniDisponibiliUseCase,
+      useFactory: (
+        prisma: PrismaService,
+        firRepo: FIRPrismaRepository,
+        rentriApiClient: RENTRIApiClient,
+        logger: LoggerService
+      ) => new GetAzioniDisponibiliUseCase(prisma, firRepo, rentriApiClient, logger),
+      inject: [PrismaService, FIRPrismaRepository, RENTRIApiClient, LoggerService],
+    },
   ],
   exports: [
     SyncFIRToRENTRIUseCase,
@@ -259,6 +280,7 @@ import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.
     CercaFormulariRENTRIUseCase,
     AcquisisciFormularioRENTRIUseCase,
     RilasciaFormularioRENTRIUseCase,
+    GetAzioniDisponibiliUseCase,
   ],
 })
 export class RentriSyncModule {}

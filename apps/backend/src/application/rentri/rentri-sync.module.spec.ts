@@ -11,11 +11,13 @@ import { CercaFormulariRENTRIUseCase } from './cerca-formulari-rentri.use-case'
 import { AcquisisciFormularioRENTRIUseCase } from './acquisisci-formulario-rentri.use-case'
 import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.use-case'
 import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
+import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncJobProcessor } from '../../infrastructure/queue/jobs/rentri-sync.job'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import { RENTRISyncController } from '../../api/rentri/rentri-sync.controller'
 import { RentriFormulariController } from '../../api/rentri/rentri-formulari.controller'
+import { RentriFirLifecycleController } from '../../api/rentri/rentri-fir-lifecycle.controller'
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
 import { AppModule } from '../../app.module'
 
@@ -75,6 +77,12 @@ describe('RentriSyncModule (DI wiring)', () => {
     // provider/controller dichiarato ma mai importato da AppModule non
     // basta).
     expect(moduleRef.get(RentriFormulariController)).toBeDefined()
+
+    // R3 Task 2: il motore della UI (azioni RENTRI disponibili) — stesso
+    // errore da non ripetere, il controller deve risolversi davvero, non
+    // solo l'use case.
+    expect(moduleRef.get(GetAzioniDisponibiliUseCase)).toBeDefined()
+    expect(moduleRef.get(RentriFirLifecycleController)).toBeDefined()
 
     // Nessun moduleRef.close(): onModuleInit non è mai stato invocato
     // (niente connessioni reali aperte), quindi non c'è nulla da chiudere.
