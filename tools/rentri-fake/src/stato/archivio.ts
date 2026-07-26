@@ -281,9 +281,15 @@ export class Archivio {
    * da {@link azzera}.
    */
   rimuoviCodiceEer(code: string): boolean {
-    const base = this.codiciEerOverride ?? [...codifiche.codiciEer]
+    const base = this.codiciEerOverride ?? codifiche.codiciEer
     const rimane = base.filter(v => v.code !== code)
     const rimosso = rimane.length !== base.length
+    if (!rimosso) {
+      // Nessun elemento rimosso: non materializzare una copia per-istanza
+      // identica all'array statico condiviso — l'override esiste solo
+      // quando serve davvero (v. commento del campo `codiciEerOverride`).
+      return false
+    }
     this.codiciEerOverride = rimane
     return rimosso
   }

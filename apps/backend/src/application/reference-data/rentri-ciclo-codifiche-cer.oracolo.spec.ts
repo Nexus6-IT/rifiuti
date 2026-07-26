@@ -463,5 +463,9 @@ describe('Ciclo di allineamento codifiche+CER — verifica reale contro la fake 
     expect(esito?.cer).toBeNull()
     expect(esito?.codificheSemplici?.length).toBeGreaterThan(0)
     expect(esito?.territoriali?.length).toBeGreaterThan(0)
-  }, 60000)
+    // Timeout alzato (F4, revisione): due sequenze di backoff reali da ~15s
+    // l'una (1+2+4+8s, passo CER isolato + passo CER dentro allineaTutto) più
+    // l'overhead delle chiamate reali di codifiche-semplici/territoriali —
+    // 60s lasciava un margine troppo stretto su un runner lento.
+  }, 120000)
 })

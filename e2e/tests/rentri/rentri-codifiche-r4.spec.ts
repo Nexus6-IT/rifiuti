@@ -93,6 +93,23 @@ test.describe('Area RENTRI — unità locali, autocomplete CER, aggiornamento ma
     const aggiornaBtn = page.getByTestId('rentri-siti-aggiorna-btn')
     await expect(aggiornaBtn).toBeVisible()
 
+    // Valore PRIMA del click: l'assert finale deve dimostrare un CAMBIAMENTO,
+    // non solo che la cella non sia vuota (altrimenti il test passerebbe
+    // identico anche se il bottone non aggiornasse nulla). Se la tabella non
+    // è ancora renderizzata (nessuna unità locale letta finora, empty-state),
+    // non c'è una cella da leggere: il valore precedente resta stringa vuota.
+    const tabellaPrimaDelClick = page.getByTestId('rentri-siti-tabella')
+    let valorePrecedente = ''
+    if (await tabellaPrimaDelClick.isVisible().catch(() => false)) {
+      const celleUltimoAggiornamentoPrima = await tabellaPrimaDelClick
+        .locator('tbody tr')
+        .first()
+        .locator('td')
+        .nth(3)
+        .textContent()
+      valorePrecedente = (celleUltimoAggiornamentoPrima ?? '').trim()
+    }
+
     const rispostaAggiorna = page.waitForResponse(
       resp => resp.url().includes('/rentri/siti/aggiorna') && resp.request().method() === 'POST',
       { timeout: 20_000 }
@@ -103,8 +120,9 @@ test.describe('Area RENTRI — unità locali, autocomplete CER, aggiornamento ma
 
     // La rilettura completa (aggiornaDaEnte -> load()) rimpiazza la tabella:
     // dopo la risposta, la tabella torna visibile con righe che riportano una
-    // colonna "Ultimo aggiornamento" popolata (aggiornata da questo stesso
-    // ciclo di sincronizzazione).
+    // colonna "Ultimo aggiornamento" AGGIORNATA da questo stesso ciclo di
+    // sincronizzazione — non solo "non vuota" (un valore invariato passerebbe
+    // comunque quell'assert anche se il bottone non avesse aggiornato nulla).
     await expect(page.getByTestId('rentri-siti-loading')).toBeHidden({ timeout: 15_000 })
 
     const tabella = page.getByTestId('rentri-siti-tabella')
@@ -115,6 +133,11 @@ test.describe('Area RENTRI — unità locali, autocomplete CER, aggiornamento ma
     )
     await expect(tabella).toBeVisible()
     const primaColonnaData = tabella.locator('tbody tr').first().locator('td').nth(3)
+    // Il timestamp del ciclo appena eseguito deve differire dal valore letto
+    // prima del click — se `valorePrecedente` fosse vuoto (prima lettura),
+    // il confronto resta comunque significativo: verifica che ORA sia
+    // valorizzato E diverso dal (non-)valore precedente.
     await expect(primaColonnaData).not.toHaveText('')
+    await expect(primaColonnaData).not.toHaveText(valorePrecedente)
   })
 })
