@@ -111,4 +111,17 @@ export class SetRentriCredentialDto {
   @IsString()
   @IsNotEmpty()
   numIscrOperatore?: string
+
+  @ApiPropertyOptional({
+    description:
+      'Identificativo delle credenziali di FIRMA REMOTA RENTRI (`credentials_id`, API ca-rentri — R3 Task 3). ' +
+      "Si ottiene con il boarding sul portale RENTRI (QR Code + PIN dall'area Operatori): è un passo umano, " +
+      'WasteFlow non può crearlo. Senza questo valore le operazioni che richiedono una firma (accettazione, ' +
+      'annullamento, ...) restano bloccate nello stato Firma*. Nessun vincolo di formato: non è documentato ' +
+      'da alcuna fonte ufficiale. È un identificativo, NON un segreto: la chiave privata resta sempre presso RENTRI.',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  credentialsIdFirmaRemota?: string
 }

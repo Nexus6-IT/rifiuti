@@ -42,6 +42,13 @@ interface CredentialStatusResponse {
   environment?: string
   numIscrSito?: string | null
   numIscrOperatore?: string | null
+  /**
+   * `credentials_id` della firma remota RENTRI (R3 Task 3). Esposto in
+   * chiaro perché NON è un segreto: è un identificativo di credenziali la
+   * cui chiave privata resta custodita da RENTRI e non transita mai da noi
+   * (v. `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`).
+   */
+  credentialsIdFirmaRemota?: string | null
 }
 
 @ApiTags('rentri')
@@ -103,6 +110,7 @@ export class RentriCredentialController {
       environment: dto.environment,
       numIscrSito: dto.numIscrSito,
       numIscrOperatore: dto.numIscrOperatore,
+      credentialsIdFirmaRemota: dto.credentialsIdFirmaRemota,
     })
 
     // NON restituire mai chiave/cert.
@@ -130,6 +138,7 @@ export class RentriCredentialController {
       environment: cred.environment,
       numIscrSito: cred.numIscrSito ?? null,
       numIscrOperatore: cred.numIscrOperatore ?? null,
+      credentialsIdFirmaRemota: cred.credentialsIdFirmaRemota ?? null,
     }
   }
 

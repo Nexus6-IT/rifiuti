@@ -29,6 +29,14 @@ export interface RentriCredentialPlain {
    * una singola unità locale, questo l'intero operatore).
    */
   numIscrOperatore?: string | null
+  /**
+   * `credentials_id` della firma remota RENTRI (API `ca-rentri`, R3 Task 3),
+   * o `null` se il tenant non ha ancora fatto il boarding (QR Code + PIN
+   * dall'area Operatori del portale: passo umano, non automatizzabile).
+   * Senza questo valore `CompletaOperazioneConFirmaUseCase` si ferma
+   * fail-closed PRIMA di contattare l'ente.
+   */
+  credentialsIdFirmaRemota?: string | null
 }
 
 /** Dati per creare/aggiornare la credenziale di un tenant. */
@@ -47,6 +55,8 @@ export interface RentriCredentialInput {
   numIscrSito?: string | null
   /** V. {@link RentriCredentialPlain.numIscrOperatore}. */
   numIscrOperatore?: string | null
+  /** V. {@link RentriCredentialPlain.credentialsIdFirmaRemota}. */
+  credentialsIdFirmaRemota?: string | null
 }
 
 /**
@@ -68,6 +78,18 @@ export class RentriCredentialService {
       )
     }
 
+    // Nessuna regex sul `credentials_id` (formato non documentato da alcuna
+    // fonte ufficiale, v. commento nello schema Prisma): l'unico controllo
+    // possibile senza inventare un vincolo è "non vuoto se valorizzato" —
+    // una stringa di soli spazi verso `ca-rentri` sarebbe un 400 sicuro.
+    if (input.credentialsIdFirmaRemota !== undefined && input.credentialsIdFirmaRemota !== null) {
+      if (input.credentialsIdFirmaRemota.trim() === '') {
+        throw new BadRequestException(
+          'Identificativo delle credenziali di firma remota RENTRI non valido: non può essere una stringa vuota. Lascialo assente se il boarding della firma remota non è ancora stato fatto.'
+        )
+      }
+    }
+
     const privateKeyEnc = encryptSecret(input.privateKeyPem, this.config.credentialEncKey)
     const data = {
       clientId: input.clientId,
@@ -77,6 +99,7 @@ export class RentriCredentialService {
       environment: input.environment || 'demo',
       numIscrSito: input.numIscrSito ?? null,
       numIscrOperatore: input.numIscrOperatore ?? null,
+      credentialsIdFirmaRemota: input.credentialsIdFirmaRemota?.trim() ?? null,
     }
 
     await this.prisma.rentriCredential.upsert({
@@ -101,7 +124,25 @@ export class RentriCredentialService {
       environment: record.environment,
       numIscrSito: record.numIscrSito ?? null,
       numIscrOperatore: record.numIscrOperatore ?? null,
+      credentialsIdFirmaRemota: record.credentialsIdFirmaRemota ?? null,
     }
+  }
+
+  /**
+   * Solo il `credentials_id` della firma remota del tenant (R3 Task 3), o
+   * `null` se non configurato / tenant senza credenziale.
+   *
+   * Metodo dedicato invece di {@link getForTenant}: quest'ultimo DECIFRA la
+   * chiave privata di interoperabilità per portarla in memoria in chiaro —
+   * un costo e un'esposizione ingiustificati per leggere un identificativo
+   * che non è un segreto. `CompletaOperazioneConFirmaUseCase` usa questo.
+   */
+  async getCredentialsIdFirmaRemota(tenantId: string): Promise<string | null> {
+    const record = await this.prisma.rentriCredential.findUnique({
+      where: { tenantId },
+      select: { credentialsIdFirmaRemota: true },
+    })
+    return record?.credentialsIdFirmaRemota ?? null
   }
 
   /** Indica se il tenant ha una credenziale configurata (senza decifrare). */

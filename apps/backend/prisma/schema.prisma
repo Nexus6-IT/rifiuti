@@ -1723,6 +1723,24 @@ model RentriCredential {
   /// dell'ente.
   sitiSincronizzatiAl DateTime? @map("siti_sincronizzati_al")
 
+  /// Identificativo delle credenziali di firma remota RENTRI (`credentials_id`,
+  /// API "ca-rentri" — R3 Task 3), create tramite il boarding umano
+  /// (QR Code + PIN dall'area Operatori del portale, non automatizzabile).
+  /// Nullable: un tenant può avere l'interoperabilità configurata senza aver
+  /// ancora fatto il boarding della firma remota (il ciclo di accettazione/
+  /// annullamento resta bloccato allo stato Firma* finché non lo fa).
+  ///
+  /// Sta QUI e non in una tabella figlia: `RentriCredential` è già "una riga
+  /// di configurazione RENTRI per tenant", e il certificato di firma remota
+  /// (sigillo M.O. 16) è riferito all'OPERATORE — stessa granularità e stesso
+  /// ciclo di vita del resto della riga. La motivazione che rese necessaria
+  /// `RentriUnitaLocale` ("un'azienda ha PIÙ sedi") non si applica qui.
+  ///
+  /// Nessun pattern: il formato di `credentials_id` non è documentato da
+  /// alcuna fonte ufficiale — una regex inventata rifiuterebbe valori
+  /// legittimi. Unico vincolo applicativo: non vuoto se valorizzato.
+  credentialsIdFirmaRemota String? @map("credentials_id_firma_remota") @db.VarChar(255)
+
   @@map("rentri_credentials")
 }
 

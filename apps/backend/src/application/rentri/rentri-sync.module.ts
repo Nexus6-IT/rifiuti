@@ -30,6 +30,9 @@ import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
 import { RentriRiconciliazioneJob } from '../../infrastructure/jobs/rentri-riconciliazione.job'
 import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
+import { CompletaOperazioneConFirmaUseCase } from './completa-operazione-con-firma.use-case'
+import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
+import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rate-limiter.service'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -306,6 +309,38 @@ import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
       ) => new GetAzioniDisponibiliUseCase(prisma, firRepo, rentriApiClient, logger),
       inject: [PrismaService, FIRPrismaRepository, RENTRIApiClient, LoggerService],
     },
+    // R3 Task 3 — infrastruttura comune di completamento con FIRMA REMOTA
+    // RENTRI (v. `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`).
+    // Nessun controller in questo task: l'endpoint che lo esporrà è compito
+    // dei Task 4-7, che lo invocheranno passando il proprio `tipoOperazione`.
+    // Registrato ora comunque, non lasciato scollegato: il difetto ricorrente
+    // di questo progetto è precisamente il sottosistema scritto e mai cablato.
+    // `useFactory` per lo stesso motivo degli altri: `IFIRRepository` è
+    // un'interfaccia e sparisce a runtime.
+    {
+      provide: CompletaOperazioneConFirmaUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        credentialService: RentriCredentialService,
+        rentriApiClient: RENTRIApiClient,
+        rateLimiter: RentriRateLimiterService,
+        logger: LoggerService
+      ) =>
+        new CompletaOperazioneConFirmaUseCase(
+          firRepo,
+          credentialService,
+          rentriApiClient,
+          rateLimiter,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        RentriCredentialService,
+        RENTRIApiClient,
+        RentriRateLimiterService,
+        LoggerService,
+      ],
+    },
   ],
   exports: [
     SyncFIRToRENTRIUseCase,
@@ -320,6 +355,7 @@ import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
     RilasciaFormularioRENTRIUseCase,
     RiconciliaStatoRentriUseCase,
     GetAzioniDisponibiliUseCase,
+    CompletaOperazioneConFirmaUseCase,
   ],
 })
 export class RentriSyncModule {}

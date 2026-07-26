@@ -46,6 +46,32 @@ export class RENTRIApiClient {
    */
   private static readonly FORMULARI_PATH = '/formulari/v1.0'
 
+  /**
+   * Path base del servizio `ca-rentri` v1.0 (firma remota RENTRI, R3 Task 3).
+   *
+   * **A differenza di `FORMULARI_PATH`, questo valore NON è confermato da un
+   * file OpenAPI**: `ca-rentri` non ha alcun contratto pubblico (v.
+   * `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`, «Lacune ancora
+   * aperte»). È ricavato dai PDF ufficiali degli incontri di formazione RENTRI
+   * per Software House, che citano testualmente path come
+   * `GET /ca-rentri/v1.0/credentials/boarding/{qrcode_token}`. Concatenato
+   * allo stesso `config.baseUrl` degli altri servizi (es.
+   * `https://demoapi.rentri.gov.it/ca-rentri/v1.0`).
+   */
+  private static readonly CA_RENTRI_PATH = '/ca-rentri/v1.0'
+
+  /**
+   * OID dell'algoritmo di digest dichiarato dalla documentazione RENTRI per
+   * `POST /credentials/authorize`: SHA-256. Costante, mai calcolata.
+   */
+  static readonly HASH_ALGO_SHA256 = '2.16.840.1.101.3.4.2.1'
+
+  /**
+   * OID dell'algoritmo di firma dichiarato per `POST /credentials/sign-hash`:
+   * ECDSA con SHA-256. Costante, mai calcolata.
+   */
+  static readonly SIGN_ALGO_ECDSA_SHA256 = '1.2.840.10045.4.3.2'
+
   constructor(
     private readonly httpService: HttpService,
     private readonly logger: LoggerService,
@@ -325,6 +351,317 @@ export class RENTRIApiClient {
         ),
       '/formulari (rilascio-visibilita)'
     )
+  }
+
+  // ------------------------------------------------------------------
+  // Firma remota RENTRI (R3 Task 3) — servizio `formulari` (contratto
+  // ufficiale) + servizio `ca-rentri` (NESSUN contratto pubblico, v.
+  // CA_RENTRI_PATH sopra). Tutte queste chiamate passano dagli stessi
+  // meccanismi ID_AUTH_REST_02 / INTEGRITY_REST_01 già usati dal resto del
+  // client (`post`/`get`): il certificato di INTEROPERABILITÀ che autentica
+  // la chiamata resta un oggetto distinto dal certificato di FIRMA REMOTA
+  // che viaggia nei corpi.
+  // ------------------------------------------------------------------
+
+  /**
+   * Richiede il digest da firmare per un formulario
+   * (`POST /{numero_fir}/hash` — formulari.yaml riga 1498).
+   *
+   * **ASYNC (NONBLOCK_PULL)**: la risposta è 202 con `TransazioneModel`; il
+   * risultato si attende con {@link attendiEsito}, esattamente come per
+   * {@link creaFormulario}. Questo metodo esegue l'intero ciclo e restituisce
+   * i due valori che servono al seguito (`digest_to_sign`, `token`).
+   *
+   * Corpo richiesto: `DatiPerFirmaModel` (formulari.yaml riga 7614) —
+   * `certificato` (base64, obbligatorio) e `tipo_firma` (opzionale). Qui
+   * `tipo_firma` NON viene inviato: il caso d'uso di questo task è il
+   * completamento di un'operazione già a un solo firmatario designato, e
+   * inviare un valore inventato cambierebbe il significato della richiesta.
+   *
+   * L'esito atteso è `EsitoGetHashPerFirmaModel` (riga 9415) dentro il campo
+   * polimorfo `esito`: la forma NON viene assunta ma verificata
+   * esplicitamente da {@link estraiDatiPerFirmaDaEsito}, stessa cautela di
+   * {@link estraiNumeroFirDaEsito}.
+   */
+  async richiediHashPerFirma(
+    tenantId: string,
+    numeroFir: string,
+    certificatoBase64: string,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<DatiPerFirma> {
+    const contesto = `/formulari/${numeroFir}/hash`
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/hash`,
+          { certificato: certificatoBase64 },
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const transazioneId = risposta.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di transazione_id: il ciclo NONBLOCK_PULL non può proseguire.`
+      )
+    }
+
+    const esito = await this.attendiEsito(tenantId, transazioneId, opzioni)
+    if (esito.errore) {
+      throw new Error(
+        `L'ente ha rifiutato la richiesta di hash per la firma del formulario ${numeroFir}: ${JSON.stringify(esito.validazione)}`
+      )
+    }
+
+    const dati = estraiDatiPerFirmaDaEsito(esito)
+    if (!dati) {
+      throw new Error(
+        `L'esito di ${contesto} non contiene 'digest_to_sign'/'token' nella forma prevista da EsitoGetHashPerFirmaModel: impossibile proseguire con la firma.`
+      )
+    }
+
+    return dati
+  }
+
+  /**
+   * Trasmette all'ente la firma apposta sul digest
+   * (`POST /{numero_fir}/acquisizione-firma` — formulari.yaml riga 531).
+   *
+   * **ASYNC (NONBLOCK_PULL)**, stesso ciclo di {@link richiediHashPerFirma}.
+   * Corpo richiesto: `FirmaModel` (riga 9646) — `certificato` (lo STESSO
+   * passato a `/hash`), `token` (quello ricevuto da `/hash`), `firma`
+   * (base64 dei byte della firma crittografica).
+   *
+   * Restituisce l'`EsitoFormularioModel` COSÌ COM'È, senza interpretarlo: la
+   * decisione su cosa fare di `esito.errore === true` è del chiamante (v.
+   * `CompletaOperazioneConFirmaUseCase`, che in quel caso NON scrive alcuno
+   * stato). Questo metodo non solleva eccezione su un esito negativo, perché
+   * un esito negativo È una risposta valida dell'ente e va potuta leggere.
+   */
+  async inviaAcquisizioneFirma(
+    tenantId: string,
+    numeroFir: string,
+    firma: { certificato: string; token: string; firma: string },
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    const contesto = `/formulari/${numeroFir}/acquisizione-firma`
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/acquisizione-firma`,
+          firma,
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const transazioneId = risposta.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di transazione_id: il ciclo NONBLOCK_PULL non può proseguire.`
+      )
+    }
+
+    return this.attendiEsito(tenantId, transazioneId, opzioni)
+  }
+
+  /**
+   * Legge il certificato X.509 della credenziale di firma remota
+   * (`GET /ca-rentri/v1.0/credentials/info?cert_info=true`). Serve per
+   * ottenere il `certificato` base64 da passare a
+   * {@link richiediHashPerFirma} e {@link inviaAcquisizioneFirma}: senza,
+   * quei due endpoint non si possono nemmeno chiamare.
+   *
+   * **Scelta NON confermata da alcuna fonte ufficiale** (dichiarata come tale,
+   * stesso stile di onestà dell'ADR): nessuna fonte specifica se
+   * `credentials_id` vada in query o in header. Si usa la **query**
+   * `credentials_id`, coerente con lo stile REST degli altri endpoint
+   * `ca-rentri` documentati. Se l'ente dovesse rifiutare, è QUESTA riga da
+   * cambiare — non un difetto sparso nel resto della sequenza.
+   *
+   * Risposta assunta: `{ certificato: string }` (base64). Eventuali altri
+   * campi del certificato vengono ignorati; l'assenza di `certificato` è un
+   * errore esplicito, mai una stringa vuota silenziosa.
+   */
+  async leggiCertificatoFirmaRemota(tenantId: string, credentialsId: string): Promise<string> {
+    const query = new URLSearchParams({ cert_info: 'true', credentials_id: credentialsId })
+    const contesto = '/ca-rentri/credentials/info'
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.get(
+          `${RENTRIApiClient.CA_RENTRI_PATH}/credentials/info?${query.toString()}`,
+          tenantId
+        ),
+      contesto
+    )
+
+    const certificato = risposta.data?.certificato
+    if (typeof certificato !== 'string' || certificato.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva del campo 'certificato': impossibile richiedere il digest da firmare.`
+      )
+    }
+    return certificato
+  }
+
+  /**
+   * Chiede l'autorizzazione a firmare un digest con la credenziale di firma
+   * remota (`POST /ca-rentri/v1.0/credentials/authorize`).
+   *
+   * Dopo questa chiamata **RENTRI notifica il dispositivo dell'utente**, che
+   * conferma con l'app ufficiale *RENTRI FIR Digitale*. Il nostro backend NON
+   * chiama mai `PUT /credentials/authorize-confirmation`: quella è l'app
+   * dell'utente. Noi rileviamo l'esito con {@link verificaAutorizzazioneFirma}.
+   *
+   * `num_signatures: 1` e un solo elemento in `hashes`: la documentazione
+   * dichiara **massimo un hash per richiesta** su `sign-hash`, e tenere
+   * l'autorizzazione allineata alla firma evita un `sad` valido per un
+   * insieme diverso da quello che si firmerà.
+   *
+   * `expires_in` è in **secondi**: è il tempo che l'utente ha per confermare,
+   * e l'unico limite legittimo del polling del chiamante.
+   */
+  async autorizzaFirmaRemota(
+    tenantId: string,
+    richiesta: RichiestaAutorizzazioneFirma
+  ): Promise<AutorizzazioneFirmaRemota> {
+    const contesto = '/ca-rentri/credentials/authorize'
+    const corpo = {
+      credentials_id: richiesta.credentialsId,
+      num_signatures: 1,
+      hashes: [richiesta.digestToSign],
+      hash_algo: RENTRIApiClient.HASH_ALGO_SHA256,
+      description: richiesta.description,
+      auth_data: richiesta.authData ?? null,
+      client_data: richiesta.clientData ?? null,
+    }
+
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.CA_RENTRI_PATH}/credentials/authorize`,
+          corpo,
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const sad = risposta.data?.sad
+    const handle = risposta.data?.handle
+    const expiresIn = Number(risposta.data?.expires_in)
+
+    if (typeof sad !== 'string' || sad.trim() === '' || typeof handle !== 'string') {
+      throw new Error(
+        `Risposta di ${contesto} priva di 'sad'/'handle': l'autorizzazione alla firma non è utilizzabile.`
+      )
+    }
+    if (!Number.isFinite(expiresIn) || expiresIn <= 0) {
+      throw new Error(
+        `Risposta di ${contesto} con 'expires_in' non valido (${risposta.data?.expires_in}): senza una scadenza nota il polling non avrebbe alcun limite legittimo.`
+      )
+    }
+
+    return { sad, handle, expiresIn }
+  }
+
+  /**
+   * **UNA SOLA** interrogazione dello stato dell'autorizzazione
+   * (`GET /ca-rentri/v1.0/credentials/authorize-check/{handle}`): **202** =
+   * l'utente non ha ancora confermato sul proprio dispositivo, **200** =
+   * autorizzata.
+   *
+   * Deliberatamente NON contiene il ciclo di attesa: il loop vive nello use
+   * case (`CompletaOperazioneConFirmaUseCase`), che è l'unico a conoscere
+   * `expires_in`, il rate limiter per-tenant e quanto è lecito far attendere
+   * l'utente. Un loop nascosto qui dentro renderebbe impossibile al chiamante
+   * distinguere «ancora in attesa» da «scaduta» e lo lascerebbe bloccato per
+   * un tempo che non ha scelto.
+   *
+   * `validateStatus` permissivo (come {@link interrogaStatoTransazione}) per
+   * poter leggere il 202 come dato invece che come eccezione; 403/429/423/5xx
+   * restano riconosciuti da {@link gestisciRispostaNonPrevista}, e qualunque
+   * altro status (410/400 = autorizzazione scaduta o rifiutata lato ente)
+   * solleva un errore esplicito, mai un silenzioso «ancora in attesa».
+   */
+  async verificaAutorizzazioneFirma(
+    tenantId: string,
+    handle: string
+  ): Promise<'IN_ATTESA' | 'AUTORIZZATA'> {
+    const url = `${this.config.baseUrl}${RENTRIApiClient.CA_RENTRI_PATH}/credentials/authorize-check/${handle}`
+    const contesto = '/ca-rentri/credentials/authorize-check'
+
+    for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
+      const headers = await this.buildAuthHeaders(tenantId)
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers,
+          timeout: this.timeout,
+          validateStatus: () => true,
+        })
+      )
+
+      if (response.status === 202) {
+        return 'IN_ATTESA'
+      }
+      if (response.status === 200) {
+        return 'AUTORIZZATA'
+      }
+
+      await this.gestisciRispostaNonPrevista(response, contesto, tentativo)
+      // 'ritenta': si riprova il ciclo (l'attesa è già stata eseguita sopra).
+    }
+
+    throw new Error(
+      `Superato il numero massimo di tentativi (${RENTRIApiClient.MAX_TENTATIVI_RESILIENZA}) interrogando ${contesto} per l'autorizzazione ${handle}.`
+    )
+  }
+
+  /**
+   * Fa firmare il digest all'HSM di RENTRI
+   * (`POST /ca-rentri/v1.0/credentials/sign-hash`). **Un solo hash per
+   * richiesta**, come dichiarato dalla documentazione ufficiale.
+   *
+   * **Forma della risposta assunta, non confermata da fonte ufficiale**
+   * (dichiarata come tale): `{ signatures: string[] }`, convenzione del
+   * Cloud Signature Consortium (CSC), di cui `ca-rentri` è presumibilmente
+   * un'implementazione. Gli elementi corrispondono in ordine a `hashes`:
+   * essendone stato inviato uno solo, si legge `signatures[0]`. Una risposta
+   * di forma diversa solleva un errore esplicito invece di produrre una
+   * "firma" `undefined` che l'ente rifiuterebbe più avanti con un messaggio
+   * molto meno comprensibile.
+   */
+  async firmaHashRemoto(tenantId: string, richiesta: RichiestaFirmaHash): Promise<string> {
+    const contesto = '/ca-rentri/credentials/sign-hash'
+    const corpo = {
+      credentials_id: richiesta.credentialsId,
+      sad: richiesta.sad,
+      hashes: [richiesta.digestToSign],
+      sign_algo: RENTRIApiClient.SIGN_ALGO_ECDSA_SHA256,
+    }
+
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.CA_RENTRI_PATH}/credentials/sign-hash`,
+          corpo,
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const firme = risposta.data?.signatures
+    const firma = Array.isArray(firme) ? firme[0] : undefined
+    if (typeof firma !== 'string' || firma.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di 'signatures[0]': nessuna firma da trasmettere all'ente.`
+      )
+    }
+    return firma
   }
 
   /** Intervallo di default (ms) tra un tentativo e l'altro del polling NONBLOCK_PULL. */
@@ -698,6 +1035,95 @@ export function estraiNumeroFirDaEsito(esito: EsitoFormulario): string | undefin
   }
   const numeroFir = (payload as EsitoNuovoFormularioModel).numero_fir
   return typeof numeroFir === 'string' && numeroFir.trim() !== '' ? numeroFir : undefined
+}
+
+/**
+ * Esito di `POST /{numero_fir}/hash` (`EsitoGetHashPerFirmaModel`, contratto
+ * ufficiale, formulari.yaml riga 9415): una delle varianti del `oneOf` di
+ * `EsitoFormularioModel.esito`. `hash_algorithm` e `versione` sono dichiarati
+ * dal contratto ma non servono al ciclo di firma remota (l'algoritmo è già
+ * fissato dalle costanti OID di {@link RENTRIApiClient}).
+ */
+export interface EsitoGetHashPerFirmaModel {
+  hash_algorithm?: string | null
+  digest_to_sign?: string | null
+  token?: string | null
+  versione?: number | null
+}
+
+/** I due valori di `EsitoGetHashPerFirmaModel` necessari a proseguire la firma. */
+export interface DatiPerFirma {
+  /** Digest base64 da far firmare (è già un hash SHA-256: non va ri-hashato). */
+  digestToSign: string
+  /** Token opaco da restituire a `/acquisizione-firma` insieme alla firma. */
+  token: string
+}
+
+/**
+ * Estrae `digest_to_sign` e `token` dall'esito di `POST /{numero_fir}/hash`,
+ * se e solo se l'esito ha davvero la forma di `EsitoGetHashPerFirmaModel` con
+ * entrambi i campi valorizzati con stringhe non vuote. `undefined` in ogni
+ * altro caso (altra variante del `oneOf`, `esito` assente, campi mancanti).
+ *
+ * Stessa cautela di {@link estraiNumeroFirDaEsito} e per lo stesso motivo:
+ * `esito` è polimorfo e nessuna sua forma va MAI assunta. Un `digest_to_sign`
+ * letto da un esito di tipo diverso porterebbe a far firmare all'utente
+ * qualcosa che non è il digest del suo formulario — l'errore peggiore
+ * possibile in questa sequenza, e silenzioso.
+ */
+export function estraiDatiPerFirmaDaEsito(esito: EsitoFormulario): DatiPerFirma | undefined {
+  const payload = esito.esito
+  if (!payload || typeof payload !== 'object') {
+    return undefined
+  }
+  if (!('digest_to_sign' in payload) || !('token' in payload)) {
+    return undefined
+  }
+
+  const { digest_to_sign: digestToSign, token } = payload as EsitoGetHashPerFirmaModel
+  if (typeof digestToSign !== 'string' || digestToSign.trim() === '') {
+    return undefined
+  }
+  if (typeof token !== 'string' || token.trim() === '') {
+    return undefined
+  }
+
+  return { digestToSign, token }
+}
+
+/** Parametri di {@link RENTRIApiClient.autorizzaFirmaRemota}. */
+export interface RichiestaAutorizzazioneFirma {
+  credentialsId: string
+  /** Il `digest_to_sign` ottenuto da `POST /{numero_fir}/hash`. */
+  digestToSign: string
+  /**
+   * Testo mostrato all'utente sul proprio dispositivo al momento della
+   * conferma: è l'unico punto in cui l'utente vede COSA sta autorizzando.
+   * Deve essere in italiano e riconoscibile (numero del formulario e
+   * operazione), mai un identificativo tecnico.
+   */
+  description: string
+  /** Dati di autenticazione aggiuntivi previsti dal corpo `authorize`, se il ciclo del tenant ne richiede. */
+  authData?: string | null
+  /** Dati applicativi opzionali del chiamante previsti dal corpo `authorize`. */
+  clientData?: string | null
+}
+
+/** Risposta di `POST /ca-rentri/v1.0/credentials/authorize`. */
+export interface AutorizzazioneFirmaRemota {
+  /** Signature Activation Data: lega l'autorizzazione a quello specifico hash. */
+  sad: string
+  /** Identificativo dell'autorizzazione, da interrogare con `authorize-check/{handle}`. */
+  handle: string
+  /** Secondi di validità del `sad`: il tempo che l'utente ha per confermare. */
+  expiresIn: number
+}
+
+/** Parametri di {@link RENTRIApiClient.firmaHashRemoto}. */
+export interface RichiestaFirmaHash {
+  credentialsId: string
+  sad: string
+  digestToSign: string
 }
 
 /**
