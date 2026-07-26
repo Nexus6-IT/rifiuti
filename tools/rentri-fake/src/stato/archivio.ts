@@ -230,6 +230,20 @@ export class Archivio {
   }
 
   /**
+   * Canale di controllo: simula l'utente che RIFIUTA la firma sul proprio
+   * dispositivo. Senza di questo lo stato `RIFIUTATA` sarebbe irraggiungibile
+   * e il ramo corrispondente di `authorize-check` resterebbe codice morto —
+   * la stessa categoria di difetto (un comportamento dichiarato che nulla può
+   * esercitare) che questa fake esiste per evitare.
+   */
+  rifiutaSessioneFirma(handle: string): boolean {
+    const sessione = this.sessioniFirma.get(handle)
+    if (!sessione) return false
+    sessione.stato = 'RIFIUTATA'
+    return true
+  }
+
+  /**
    * Canale di controllo: porta la scadenza nel passato, così un test può
    * verificare il ramo «scaduta» senza attendere `expires_in` reale (che
    * renderebbe la suite oracolo lunga minuti per nessun guadagno di fedeltà).

@@ -79,6 +79,20 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
     }
   )
 
+  // Simula l'utente che RIFIUTA la firma sul dispositivo: rende raggiungibile
+  // lo stato RIFIUTATA, che senza questo canale resterebbe irraggiungibile e
+  // lascerebbe il ramo corrispondente di `authorize-check` come codice morto.
+  app.post<{ Params: { handle: string } }>(
+    '/__controllo/ca-rentri/rifiuta/:handle',
+    async (richiesta, risposta) => {
+      const rifiutata = archivio.rifiutaSessioneFirma(richiesta.params.handle)
+      if (!rifiutata) {
+        return inviaProblemDetails(risposta, 404, { title: 'Autorizzazione non trovata' })
+      }
+      return { rifiutata: true }
+    }
+  )
+
   // Porta la scadenza nel passato: verifica il ramo «autorizzazione scaduta»
   // senza far attendere alla suite il tempo reale di `expires_in`.
   app.post<{ Params: { handle: string } }>(

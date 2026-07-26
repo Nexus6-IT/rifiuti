@@ -222,9 +222,64 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
 
     const risultato = await useCase.execute(comando)
 
-    expect(risultato).toEqual({ esito: 'SCADUTA', handle: 'handle-scaduto' })
+    // `rilevataDa` distingue questa scadenza (inferita dal NOSTRO orologio)
+    // da quella dichiarata dall'ente col 410 — v. il test successivo.
+    expect(risultato).toEqual({
+      esito: 'SCADUTA',
+      handle: 'handle-scaduto',
+      rilevataDa: 'orologio-locale',
+    })
     expect(client.firmaHashRemoto).not.toHaveBeenCalled()
     expect(client.inviaAcquisizioneFirma).not.toHaveBeenCalled()
+    expect(applyRentriStato).not.toHaveBeenCalled()
+    expect(firRepository.save).not.toHaveBeenCalled()
+  })
+
+  it('esito SCADUTA rilevata dall’ENTE (410): esce subito, senza attendere il nostro expires_in', async () => {
+    // È il caso che l'errore generico mascherava: l'ente considera morta
+    // l'autorizzazione PRIMA che scada il nostro orologio locale. Deve
+    // produrre un esito tipizzato, non un'eccezione indistinguibile da un
+    // guasto di rete.
+    const verifica = jest.fn().mockResolvedValue('SCADUTA')
+    const client = creaClient({
+      // `expires_in` lunghissimo: se il codice si affidasse solo al proprio
+      // orologio, resterebbe in attesa fino al tetto di invocazione e
+      // l'esito riporterebbe `orologio-locale`.
+      autorizzaFirmaRemota: jest
+        .fn()
+        .mockResolvedValue({ sad: 'sad-1', handle: 'handle-410', expiresIn: 3600 }),
+      verificaAutorizzazioneFirma: verifica,
+    })
+    const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
+
+    const risultato = await useCase.execute(comando)
+
+    expect(risultato).toEqual({ esito: 'SCADUTA', handle: 'handle-410', rilevataDa: 'ente' })
+    // Una sola interrogazione: la parola dell'ente chiude il ciclo subito,
+    // invece di continuare a interrogare un'autorizzazione morta.
+    expect(verifica).toHaveBeenCalledTimes(1)
+    expect(client.firmaHashRemoto).not.toHaveBeenCalled()
+    expect(applyRentriStato).not.toHaveBeenCalled()
+    expect(firRepository.save).not.toHaveBeenCalled()
+  })
+
+  it('esito RIFIUTATA (400): l’utente ha rifiutato sul dispositivo → tipizzato e distinto da SCADUTA', async () => {
+    const verifica = jest.fn().mockResolvedValue('RIFIUTATA')
+    const client = creaClient({
+      autorizzaFirmaRemota: jest
+        .fn()
+        .mockResolvedValue({ sad: 'sad-1', handle: 'handle-rifiuto', expiresIn: 3600 }),
+      verificaAutorizzazioneFirma: verifica,
+    })
+    const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
+
+    const risultato = await useCase.execute(comando)
+
+    // Un rifiuto NON è una scadenza: riproporre la stessa operazione
+    // significherebbe insistere su una decisione esplicita dell'utente.
+    expect(risultato).toEqual({ esito: 'RIFIUTATA', handle: 'handle-rifiuto' })
+    expect(verifica).toHaveBeenCalledTimes(1)
+    expect(client.firmaHashRemoto).not.toHaveBeenCalled()
     expect(applyRentriStato).not.toHaveBeenCalled()
     expect(firRepository.save).not.toHaveBeenCalled()
   })

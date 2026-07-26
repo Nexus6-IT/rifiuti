@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
-import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
+import {
+  RENTRIApiClient,
+  EsitoVerificaAutorizzazione,
+} from '../../infrastructure/rentri/rentri-api.client'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rate-limiter.service'
 import { verificaFirmaLocale } from '../../infrastructure/rentri/rentri-firma-verifica.util'
@@ -59,11 +62,31 @@ export type EsitoCompletamentoFirma =
     }
   | {
       /**
-       * `expires_in` è trascorso senza che l'utente confermasse:
-       * l'autorizzazione va richiesta di nuovo da capo. Nessuno stato è
-       * stato scritto.
+       * L'autorizzazione non è più valida: va richiesta di nuovo da capo.
+       * Nessuno stato è stato scritto.
        */
       esito: 'SCADUTA'
+      handle: string
+      /**
+       * Chi ha rilevato la scadenza — distinzione che il chiamante deve poter
+       * fare a livello di tipo, senza ispezionare stringhe:
+       * - `'ente'` → `authorize-check` ha risposto **410**. È la verità:
+       *   l'ente considera morta l'autorizzazione.
+       * - `'orologio-locale'` → il nostro `expires_in` calcolato è trascorso
+       *   prima che l'ente ce lo dicesse. È un'inferenza sul NOSTRO orologio,
+       *   che potrebbe non coincidere con quello dell'ente.
+       */
+      rilevataDa: 'ente' | 'orologio-locale'
+    }
+  | {
+      /**
+       * L'utente ha **rifiutato** la firma sul proprio dispositivo
+       * (`authorize-check` → 400). Diverso da `SCADUTA`: non è il tempo a
+       * essere finito, è una decisione esplicita — riproporre la stessa
+       * operazione senza dirlo all'utente significherebbe insistere su un
+       * rifiuto. Nessuno stato è stato scritto.
+       */
+      esito: 'RIFIUTATA'
       handle: string
     }
 
@@ -132,6 +155,33 @@ export interface ComandoCompletaOperazioneConFirma {
  * toccare `rentriStatoFormulario`. Lo stato finale non viene MAI dedotto
  * («dopo un'accettazione dev'essere Accettato»): viene riletto dall'ente,
  * come già fa `GetAzioniDisponibiliUseCase`.
+ *
+ * ## ⚠️ LIMITE NOTO — non c'è ripresa di una sessione già avviata
+ *
+ * `execute()` **ricomincia sempre da `/hash`** e crea una NUOVA
+ * autorizzazione: non accetta oggi alcun parametro per riprendere una
+ * sessione già in corso (`handle`/`sad`/`token`/`digest`).
+ *
+ * Perché è un problema reale e non teorico: coi valori di default il tetto di
+ * invocazione ({@link ATTESA_MASSIMA_INVOCAZIONE_MS}, 20 s) è quasi sempre
+ * **più corto** di `expires_in` dell'ente, quindi l'esito `IN_ATTESA` è il
+ * caso NORMALE, non l'eccezione. Se il chiamante reagisce a `IN_ATTESA`
+ * reinvocando `execute()`, la seconda invocazione **abbandona
+ * l'autorizzazione che l'utente sta in quel momento per confermare sul
+ * telefono** e gliene manda una seconda: l'utente vede due richieste, ne
+ * conferma una che il nostro polling non sta più seguendo, e l'operazione non
+ * si chiude. È anche traffico sprecato verso un ente che banna (423) chi
+ * insiste.
+ *
+ * `IN_ATTESA` espone già `handle` e `scadenzaAutorizzazione` proprio perché
+ * quei due valori sono ciò che serve a riprendere.
+ *
+ * **Vincolo per i Task 4-7**: prima di esporre questo flusso all'utente
+ * finale, `execute()` deve poter accettare una sessione di autorizzazione già
+ * in corso e riagganciarsi al suo polling invece di ripartire da `/hash`
+ * (oppure il chiamante deve garantire di non reinvocare mai su `IN_ATTESA`).
+ * Finché non è fatto, `IN_ATTESA` va trattato come «mostra lo stato e
+ * FERMATI», mai come «riprova».
  */
 @Injectable()
 export class CompletaOperazioneConFirmaUseCase {
@@ -216,8 +266,8 @@ export class CompletaOperazioneConFirmaUseCase {
     const statoAutorizzazione = await this.attendiAutorizzazione(tenantId, autorizzazione, comando)
 
     if (statoAutorizzazione.esito !== 'AUTORIZZATA') {
-      // Né errore né successo: nessuna scrittura di stato, in nessuno dei due
-      // rami. Il chiamante distingue i due casi dal tipo, non da una stringa.
+      // Né errore né successo: nessuna scrittura di stato, in NESSUNO di
+      // questi rami. Il chiamante li distingue dal tipo, non da una stringa.
       this.logger.info(
         'Firma remota non conclusa in questa invocazione: nessuno stato modificato',
         {
@@ -226,16 +276,25 @@ export class CompletaOperazioneConFirmaUseCase {
           numeroFir,
           tipoOperazione,
           esito: statoAutorizzazione.esito,
+          rilevataDa:
+            statoAutorizzazione.esito === 'SCADUTA' ? statoAutorizzazione.rilevataDa : undefined,
           correlationId,
         }
       )
-      return statoAutorizzazione.esito === 'SCADUTA'
-        ? { esito: 'SCADUTA', handle: autorizzazione.handle }
-        : {
+
+      const handle = autorizzazione.handle
+      switch (statoAutorizzazione.esito) {
+        case 'SCADUTA':
+          return { esito: 'SCADUTA', handle, rilevataDa: statoAutorizzazione.rilevataDa }
+        case 'RIFIUTATA':
+          return { esito: 'RIFIUTATA', handle }
+        default:
+          return {
             esito: 'IN_ATTESA',
-            handle: autorizzazione.handle,
+            handle,
             scadenzaAutorizzazione: statoAutorizzazione.scadenza,
           }
+      }
     }
 
     // --- 6. Firma vera e propria, lato HSM RENTRI ---
@@ -306,11 +365,19 @@ export class CompletaOperazioneConFirmaUseCase {
   }
 
   /**
-   * Attende la conferma dell'utente interrogando `authorize-check`, con DUE
-   * limiti indipendenti:
-   * - la scadenza dell'ente (`expires_in`) → oltre, l'esito è `SCADUTA`;
-   * - il tetto di questa invocazione ({@link ATTESA_MASSIMA_INVOCAZIONE_MS})
-   *   → oltre, l'esito è `IN_ATTESA` e l'autorizzazione resta valida.
+   * Attende la conferma dell'utente interrogando `authorize-check`.
+   *
+   * Il ciclo termina per una di QUATTRO ragioni, tutte tipizzate:
+   * - l'ente conferma → `AUTORIZZATA`;
+   * - l'ente dichiara scaduta l'autorizzazione (410) → `SCADUTA`
+   *   (`rilevataDa: 'ente'`) — è la verità, e ha la precedenza sul nostro
+   *   orologio: si esce SUBITO, senza attendere che scada anche il nostro
+   *   `expires_in` calcolato;
+   * - l'utente rifiuta sul dispositivo (400) → `RIFIUTATA`;
+   * - scade un nostro limite: `expires_in` calcolato localmente → `SCADUTA`
+   *   (`rilevataDa: 'orologio-locale'`), oppure il tetto di questa
+   *   invocazione ({@link ATTESA_MASSIMA_INVOCAZIONE_MS}) → `IN_ATTESA`, con
+   *   l'autorizzazione ancora valida.
    *
    * Ogni singola interrogazione acquisisce e rilascia capacità dal rate
    * limiter per-tenant: la capacità NON viene tenuta per tutta la durata
@@ -325,7 +392,10 @@ export class CompletaOperazioneConFirmaUseCase {
     autorizzazione: { handle: string; expiresIn: number },
     comando: ComandoCompletaOperazioneConFirma
   ): Promise<
-    { esito: 'AUTORIZZATA' } | { esito: 'SCADUTA' } | { esito: 'IN_ATTESA'; scadenza: Date }
+    | { esito: 'AUTORIZZATA' }
+    | { esito: 'SCADUTA'; rilevataDa: 'ente' | 'orologio-locale' }
+    | { esito: 'RIFIUTATA' }
+    | { esito: 'IN_ATTESA'; scadenza: Date }
   > {
     const intervalloMs = comando.intervalloPollingMs ?? INTERVALLO_POLLING_AUTORIZZAZIONE_MS
     const attesaMassimaMs = comando.attesaMassimaMs ?? ATTESA_MASSIMA_INVOCAZIONE_MS
@@ -338,10 +408,18 @@ export class CompletaOperazioneConFirmaUseCase {
       if (stato === 'AUTORIZZATA') {
         return { esito: 'AUTORIZZATA' }
       }
+      // L'ente ha parlato: la sua parola vince sul nostro orologio, e si esce
+      // subito invece di continuare a interrogare un'autorizzazione morta.
+      if (stato === 'SCADUTA') {
+        return { esito: 'SCADUTA', rilevataDa: 'ente' }
+      }
+      if (stato === 'RIFIUTATA') {
+        return { esito: 'RIFIUTATA' }
+      }
 
       const adesso = Date.now()
       if (adesso >= scadenzaEnteMs) {
-        return { esito: 'SCADUTA' }
+        return { esito: 'SCADUTA', rilevataDa: 'orologio-locale' }
       }
       if (adesso >= scadenzaInvocazioneMs) {
         return { esito: 'IN_ATTESA', scadenza: new Date(scadenzaEnteMs) }
@@ -358,7 +436,7 @@ export class CompletaOperazioneConFirmaUseCase {
   private async interrogaAutorizzazione(
     tenantId: string,
     handle: string
-  ): Promise<'IN_ATTESA' | 'AUTORIZZATA'> {
+  ): Promise<EsitoVerificaAutorizzazione> {
     const permesso = await this.rateLimiter.acquisisci(tenantId)
     try {
       return await this.rentriApiClient.verificaAutorizzazioneFirma(tenantId, handle)

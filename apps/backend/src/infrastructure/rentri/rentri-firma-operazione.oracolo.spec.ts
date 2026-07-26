@@ -10,6 +10,8 @@ import { verificaFirmaLocale } from './rentri-firma-verifica.util'
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaCertificatoDiTest } = require('../../../../../tools/rentri-fake/test/aiuti/certificati')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { intestazioniAutenticate } = require('../../../../../tools/rentri-fake/test/aiuti/token')
 
 /**
  * R3 Task 3 — verifica REALE (non mockata) del ciclo completo di FIRMA
@@ -403,7 +405,58 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
     ).toBe(false)
   }, 60000)
 
-  it('scadenza: expires_in trascorso senza conferma → esito SCADUTA, nessuna firma, nessuna corruzione di stato', async () => {
+  it('authorize-check su sessione scaduta: la fake risponde 410 e il client lo mappa a SCADUTA, non a un errore generico', async () => {
+    // Livello CLIENT, deterministico: usa `__expires_in_test` della fake per
+    // ottenere una scadenza di 50ms invece di attendere il default di 120s.
+    // Verifica il finding corretto in questo round: prima, il 410 finiva
+    // nella gestione generica degli errori e diventava un `Error` anonimo
+    // («Risposta inattesa da ...: HTTP 410»), indistinguibile da un guasto.
+    const client = creaClient()
+
+    const risposta = await app.inject({
+      method: 'POST',
+      url: '/ca-rentri/v1.0/credentials/authorize',
+      // `__expires_in_test` è un'affordance della sola fake: il client di
+      // produzione non la invia (e non deve), quindi questa singola richiesta
+      // si costruisce a mano con l'helper di autenticazione già in dotazione
+      // alla fake.
+      headers: await intestazioniAutenticate(),
+      payload: {
+        credentials_id: 'cred-scadenza',
+        num_signatures: 1,
+        hashes: [DIGEST],
+        hash_algo: '2.16.840.1.101.3.4.2.1',
+        description: 'Prova di scadenza',
+        __expires_in_test: 0.05,
+      },
+    })
+    expect(risposta.statusCode).toBe(200)
+    const { handle, expires_in: expiresIn } = risposta.json()
+    expect(expiresIn).toBe(0.05)
+
+    // Oltre la scadenza dichiarata dalla fake.
+    await new Promise(resolve => setTimeout(resolve, 120))
+
+    expect(await client.verificaAutorizzazioneFirma('', handle)).toBe('SCADUTA')
+  }, 60000)
+
+  it('authorize-check su sessione rifiutata dall’utente: 400 mappato a RIFIUTATA, distinto da SCADUTA', async () => {
+    const client = creaClient()
+    const autorizzazione = await client.autorizzaFirmaRemota('', {
+      credentialsId: 'cred-rifiuto',
+      digestToSign: DIGEST,
+      description: 'Prova di rifiuto',
+    })
+
+    await app.inject({
+      method: 'POST',
+      url: `/__controllo/ca-rentri/rifiuta/${autorizzazione.handle}`,
+    })
+
+    expect(await client.verificaAutorizzazioneFirma('', autorizzazione.handle)).toBe('RIFIUTATA')
+  }, 60000)
+
+  it('scadenza lato ente durante il ciclo: UN SOLO esito, SCADUTA rilevata dall’ente, nessuna corruzione di stato', async () => {
     const tenantId = 'tenant-oracolo-firma-2'
     const numeroFir = 'BCDFGH00010ZN'
     await seminaFormulario(numeroFir, 'FirmaAccettazione')
@@ -420,17 +473,21 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
 
     const completatore = avviaCompletatoreTransazioni({ digestToSign: DIGEST, token: TOKEN })
 
-    // Appena la sessione esiste, la si fa scadere dal canale di controllo:
-    // il ramo «scaduta» si verifica senza attendere `expires_in` reale.
-    const scadenza = setInterval(() => {
-      const sessioni = app.archivio.elencaSessioniFirma()
-      if (sessioni.length > 0) {
-        void app.inject({
-          method: 'POST',
-          url: `/__controllo/ca-rentri/scadi/${sessioni[0].handle}`,
-        })
-      }
-    }, 100)
+    // Deterministico: la sessione viene fatta scadere SUBITO DOPO che
+    // `authorize` l'ha creata e PRIMA che parta il primo `authorize-check`.
+    // Il primo controllo trova quindi certamente un 410, e l'esito atteso è
+    // uno solo. (La versione precedente di questo test usava un timer e
+    // ammetteva tre esiti alternativi: con tre su tre ammessi non verificava
+    // nulla, ed è ciò che ha nascosto il difetto del 410.)
+    const autorizzaOriginale = client.autorizzaFirmaRemota.bind(client)
+    jest.spyOn(client, 'autorizzaFirmaRemota').mockImplementation(async (tenant, richiesta) => {
+      const autorizzazione = await autorizzaOriginale(tenant, richiesta)
+      await app.inject({
+        method: 'POST',
+        url: `/__controllo/ca-rentri/scadi/${autorizzazione.handle}`,
+      })
+      return autorizzazione
+    })
 
     try {
       const risultato = await useCase.execute({
@@ -438,24 +495,20 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
         tenantId,
         tipoOperazione: 'ANNULLAMENTO',
         intervalloPollingMs: 100,
+        // Tetto di invocazione ampio: se l'esito dipendesse dal nostro
+        // orologio invece che dal 410 dell'ente, questo test attenderebbe
+        // 15s e riporterebbe `orologio-locale`, fallendo l'asserzione.
         attesaMassimaMs: 15000,
       })
 
-      // La fake, a sessione scaduta, risponde 410 su `authorize-check`: il
-      // client lo propaga come errore invece di fingere «ancora in attesa».
-      // Lo use case, se invece è la propria scadenza a scattare per prima,
-      // restituisce `SCADUTA`. Entrambi gli esiti sono accettabili qui —
-      // ciò che NON è accettabile è uno stato scritto.
-      expect(['SCADUTA', 'IN_ATTESA']).toContain(risultato.esito)
-    } catch (errore) {
-      // Ramo 410: propagato, mai silenziato.
-      expect((errore as Error).message).toMatch(/410|scadut/i)
+      expect(risultato.esito).toBe('SCADUTA')
+      if (risultato.esito === 'SCADUTA') {
+        expect(risultato.rilevataDa).toBe('ente')
+      }
     } finally {
-      clearInterval(scadenza)
       completatore.ferma()
     }
 
-    // In OGNI caso: nessuna scrittura di stato.
     expect(saveSpy).not.toHaveBeenCalled()
     const firRiletto = await firRepository.findById(fir.id)
     expect(firRiletto!.rentriStatoFormulario).toBeNull()
