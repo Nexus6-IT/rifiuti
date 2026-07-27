@@ -24,6 +24,7 @@ import { RentriFormulariService } from '../rentri/rentri-formulari.service'
 import {
   RentriFirLifecycleService,
   AllegatoFirRentri,
+  AzioneRentri,
 } from '../rentri/rentri-fir-lifecycle.service'
 
 /** Limite di dimensione dell'allegato (byte), replica lato UI del vincolo del
@@ -869,6 +870,10 @@ export class FirDetailComponent implements OnInit {
   protected readonly pdfScaricamentoInCorso = signal(false)
   protected readonly aggiornamentoStatoInCorso = signal(false)
 
+  // --- Azioni disponibili da RENTRI, pilotano i pulsanti del ciclo di vita (R3 Task 8) ---
+  /** Ultima risposta nota di `/azioni`. Vuota finché non arriva (fail-closed). */
+  protected readonly azioniRentri = signal<AzioneRentri[]>([])
+
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id')
     if (!id) {
@@ -890,6 +895,21 @@ export class FirDetailComponent implements OnInit {
           this.caricaElencoAllegati(fir.id)
         } else {
           this.allegati.set([])
+        }
+        // R3 Task 8: carica le azioni disponibili in background per pilotare
+        // i pulsanti del ciclo di vita (`canAccettareCarico`/`canAnnullareRentri`).
+        // Fail-closed: FIR non legato, ruolo non abilitato, o l'endpoint fallisce
+        // (rete, 403, ecc.) → lista vuota, nessun pulsante governato da `/azioni`
+        // compare. Diverso da «Aggiorna lo stato» (R3 Task 7): quello è un'azione
+        // esplicita dell'utente e mostra il proprio errore; questo è un
+        // caricamento silenzioso, nessun toast se fallisce.
+        if (!!fir.rentriNumeroFir && this.canManageRENTRI()) {
+          this.rentriFirLifecycleService.azioniDisponibili(fir.id).subscribe({
+            next: risultato => this.azioniRentri.set(risultato.azioni),
+            error: () => this.azioniRentri.set([]),
+          })
+        } else {
+          this.azioniRentri.set([])
         }
       },
       error: err => {
@@ -1024,7 +1044,9 @@ export class FirDetailComponent implements OnInit {
       this.mostraVaiAlCertificato(fir) ||
       this.canConfermareLegameRentri(fir) ||
       this.canRilasciareLegameRentri(fir) ||
-      this.canAccettareCarico(fir)
+      this.canAccettareCarico(fir) ||
+      this.canAnnullareRentri(fir) ||
+      this.canScaricarePdfRentri(fir)
     )
   }
 
@@ -1157,17 +1179,30 @@ export class FirDetailComponent implements OnInit {
     })
   }
 
+  /** Vero se `operazione` compare nell'ultima risposta nota di `/azioni`.
+   * Fail-closed: lista vuota (non ancora caricata, o l'ente l'ha rifiutata)
+   * → nessuna operazione è "disponibile". */
+  protected haOperazioneRentri(operazione: string): boolean {
+    return this.azioniRentri().some(a => a.operazione === operazione)
+  }
+
   /**
    * «Accetta il carico» compare solo per un FIR già legato a RENTRI (R3
-   * Task 4). Il Task 8 del piano (pulsanti pilotati da `/azioni`) non è
-   * ancora stato fatto: per questo task è accettabile mostrare il pulsante
-   * su qualunque FIR legato e lasciare che sia il backend a rifiutare con un
-   * messaggio leggibile se l'operazione non è disponibile
-   * (`AccettaORespingiFIRUseCase` verifica comunque `/azioni` prima di
-   * scrivere, lato server).
+   * Task 4) E quando l'ente dichiara `'Accettazione'` fra le azioni
+   * disponibili ORA per il formulario (R3 Task 8, `/azioni`). Prima di
+   * questo cambiamento il criterio era provvisorio (qualunque FIR legato,
+   * lasciando al backend l'ultima parola): ora è la stessa `/azioni`
+   * caricata in `loadFIR` a pilotare il pulsante. Se il caricamento in
+   * background non è ancora arrivato (o è fallito), `azioniRentri` è vuota
+   * e il pulsante resta temporaneamente assente — non è un bug, è la stessa
+   * cautela fail-closed del resto del piano. Il backend resta comunque
+   * l'autorità finale (`AccettaORespingiFIRUseCase` verifica di nuovo
+   * `/azioni` prima di scrivere, lato server).
    */
   canAccettareCarico(fir: FIR): boolean {
-    return !!fir.rentriNumeroFir && this.canManageRENTRI()
+    return (
+      !!fir.rentriNumeroFir && this.canManageRENTRI() && this.haOperazioneRentri('Accettazione')
+    )
   }
 
   apriDialogAccettazione(fir: FIR): void {
@@ -1251,13 +1286,16 @@ export class FirDetailComponent implements OnInit {
   }
 
   /**
-   * Stesso criterio provvisorio di `canAccettareCarico` (in attesa del Task
-   * 8, "azioni disponibili" come motore della UI): un FIR legato a RENTRI
-   * mostra il pulsante, il backend resta comunque l'autorità fail-closed
-   * (`AnnullaFIRRentriUseCase` verifica `/azioni` prima di scrivere, due volte).
+   * Stesso criterio di `canAccettareCarico`, ora pilotato da `/azioni` (R3
+   * Task 8): un FIR legato a RENTRI mostra «Annulla il formulario» solo
+   * quando l'ente dichiara `'Annulla'` fra le azioni disponibili ORA. Lista
+   * `azioniRentri` vuota (caricamento in background non ancora arrivato, o
+   * fallito) → pulsante temporaneamente assente, fail-closed, non un bug. Il
+   * backend resta comunque l'autorità fail-closed (`AnnullaFIRRentriUseCase`
+   * verifica `/azioni` prima di scrivere, due volte).
    */
   canAnnullareRentri(fir: FIR): boolean {
-    return !!fir.rentriNumeroFir && this.canManageRENTRI()
+    return !!fir.rentriNumeroFir && this.canManageRENTRI() && this.haOperazioneRentri('Annulla')
   }
 
   apriDialogAnnullamento(fir: FIR): void {
@@ -1309,7 +1347,21 @@ export class FirDetailComponent implements OnInit {
 
   // --- Allegati del formulario (R3 Task 6) ---
 
-  /** Come `canAccettareCarico`/`canAnnullareRentri`: un FIR legato a RENTRI mostra la sezione. */
+  /**
+   * A differenza di `canAccettareCarico`/`canAnnullareRentri`, QUESTO metodo
+   * NON è stato convertito a `/azioni` dal Task 8 — resta debito NON chiuso.
+   * Esiste una `Operazione: 'Allegato'` nel catalogo RENTRI, quindi in
+   * teoria si potrebbe gatare anche questa sezione, ma la sezione mostra
+   * insieme l'upload di un NUOVO allegato e l'elenco/eliminazione di quelli
+   * GIÀ caricati: se si gatasse l'intera sezione su
+   * `haOperazioneRentri('Allegato')`, un utente perderebbe la visibilità/
+   * possibilità di eliminare allegati già presenti in uno stato in cui
+   * l'ente non accetta più NUOVI allegati (probabilmente l'ente separa le
+   * due permission, il piano non lo chiarisce). Convertirlo richiederebbe
+   * una decisione di design (separare "posso aggiungere" da "posso vedere/
+   * eliminare") che il piano non specifica — non la si inventa qui. Resta
+   * quindi governato dal solo legame RENTRI + ruolo, come prima del Task 8.
+   */
   canGestireAllegati(fir: FIR): boolean {
     return !!fir.rentriNumeroFir && this.canManageRENTRI()
   }
@@ -1439,7 +1491,18 @@ export class FirDetailComponent implements OnInit {
 
   // --- Stampa PDF e aggiornamento dello stato (R3 Task 7) ---
 
-  /** Come `canAccettareCarico`/`canAnnullareRentri`/`canGestireAllegati`: un FIR legato a RENTRI mostra i due pulsanti. */
+  /**
+   * NON convertito a `/azioni` dal Task 8, e non per debito ma per
+   * costruzione: governa "Scarica il PDF" e "Aggiorna lo stato", nessuna
+   * delle due un'operazione di SCRITTURA del ciclo di vita del formulario.
+   * Non esiste una `Operazione` nel catalogo RENTRI (`Trasporto`,
+   * `Accettazione`, `Annulla`, `Allegato`, ecc. — v.
+   * `apps/backend/src/infrastructure/rentri/rentri-api.client.ts`, tipo
+   * `Operazione`) che corrisponda a "stampa" o "consultazione stato": sono
+   * azioni di LETTURA sempre disponibili per un FIR legato, non governate
+   * dalla macchina a stati che `/azioni` descrive. Restano quindi locali per
+   * costruzione, non per debito residuo come `canGestireAllegati`.
+   */
   canScaricarePdfRentri(fir: FIR): boolean {
     return !!fir.rentriNumeroFir && this.canManageRENTRI()
   }
@@ -1508,6 +1571,19 @@ export class FirDetailComponent implements OnInit {
    * "ban" (423) che vogliamo evitare. Richiama `/azioni` (Task 2), che
    * riconcilia `rentriStatoFormulario` lato backend, poi ricarica il FIR per
    * riflettere l'eventuale cambiamento.
+   *
+   * DEBITO NOTO (R3 Task 8, revisione): questo metodo chiama `azioniDisponibili`
+   * e scarta il risultato, poi `this.reload()` → `loadFIR()` richiama la
+   * STESSA `azioniDisponibili` una seconda volta — due chiamate all'ente per
+   * un solo click utente. Un fix "banale" (usare qui il risultato della prima
+   * chiamata per impostare `azioniRentri` prima di ricaricare) richiederebbe
+   * di rendere `loadFIR`/`reload()` — condivisi da altri percorsi (apertura
+   * pagina, altre azioni del ciclo di vita) — capaci di accettare un
+   * risultato `/azioni` già disponibile, per evitare la ri-chiamata interna.
+   * Non banale da fare in sicurezza in questo giro; non risolto per non
+   * rischiare di rompere `loadFIR`/`reload()` o il test che verifica che
+   * questo metodo chiami `/azioni` esplicitamente. Da riprendere se il doppio
+   * giro di rete diventa un problema reale (rate limiting RENTRI).
    */
   aggiornaStatoRentri(fir: FIR): void {
     this.aggiornamentoStatoInCorso.set(true)
