@@ -55,6 +55,26 @@ export interface Formulario {
    * "nota già registrata" sullo stato `Annullato`.
    */
   note?: string
+  /**
+   * Allegati registrati con successo (R3 Task 6, `POST /{numero_fir}/allegato`).
+   * L'`id` è quello dichiarato dal test nell'`esito.esito.allegato_id` passato
+   * a `/__controllo/completa-transazione` — la fake non lo genera da sola:
+   * è l'ente (qui simulato dal test) ad assegnarlo, il client si limita a
+   * leggerlo (v. `Archivio.applicaEffettoOperazione`, ramo `'Allegato'`).
+   */
+  allegati?: AllegatoFake[]
+}
+
+/**
+ * Allegato in memoria (R3 Task 6): sottoinsieme minimo di
+ * `DatiAllegatoModel`/`DownloadableBaseResponse` sufficiente a far
+ * funzionare il ciclo carica→elenca→scarica→elimina della fake.
+ */
+export interface AllegatoFake {
+  id: number
+  nome_file: string
+  content_type: string
+  contenuto: string
 }
 
 export type StatoTransazione = 'in_elaborazione' | 'completata'
@@ -111,8 +131,21 @@ export interface Transazione {
    */
   contestoOperazione?: {
     numeroFir: string
-    operazione: 'Accettazione' | 'AcquisizioneFirma' | 'Annulla' | 'NoteAnnullamento'
+    operazione:
+      | 'Accettazione'
+      | 'AcquisizioneFirma'
+      | 'Annulla'
+      | 'NoteAnnullamento'
+      | 'Allegato'
+      | 'RimuoviAllegato'
     corpo?: Record<string, unknown>
+    /**
+     * `allegato_id` da rimuovere (R3 Task 6, `DELETE /{numero_fir}/allegato/{allegato_id}`):
+     * viene dal PATH della richiesta, non da un corpo (il contratto non ne
+     * documenta uno per questa operazione) — per questo è un campo separato,
+     * non un valore dentro `corpo`.
+     */
+    allegatoId?: number
   }
 }
 
@@ -471,7 +504,7 @@ export class Archivio {
     }
 
     if (!esito.errore && transazione.contestoOperazione) {
-      this.applicaEffettoOperazione(transazione.contestoOperazione)
+      this.applicaEffettoOperazione(transazione.contestoOperazione, esito)
     }
   }
 
@@ -504,8 +537,24 @@ export class Archivio {
    * ha mai `pendingOperazione` — il ramo sotto per `acquisizione-firma` non
    * scatta e lo stato resta quello seminato dal test, esattamente come prima
    * di questo task.
+   *
+   * - `allegato` completata con successo (R3 Task 6) → **nessuno stato
+   *   cambia** (il contratto dichiara che l'allegato non necessita di firma,
+   *   v. `operazione.ts`): la fake registra l'allegato in
+   *   `formulario.allegati` usando l'`allegato_id` dichiarato dal TEST in
+   *   `esito.esito.allegato_id` — è l'ente (qui il test) ad assegnarlo, non
+   *   la fake, esattamente come per `numero_fir` in `estraiNumeroFirDaEsito`.
+   *   Senza un `allegato_id` leggibile nell'esito, nessun allegato viene
+   *   registrato (coerente col client, che nello stesso caso non crea la
+   *   riga locale — v. `GestisciAllegatiFIRUseCase`).
+   * - `rimuovi-allegato` completata con successo → rimuove dall'array
+   *   l'allegato il cui id è quello del PATH della `DELETE` originale
+   *   (`contesto.allegatoId`), non un valore letto dall'esito.
    */
-  private applicaEffettoOperazione(contesto: NonNullable<Transazione['contestoOperazione']>): void {
+  private applicaEffettoOperazione(
+    contesto: NonNullable<Transazione['contestoOperazione']>,
+    esito: EsitoTransazione
+  ): void {
     const formulario = this.formulari.get(contesto.numeroFir)
     if (!formulario) return
 
@@ -549,6 +598,41 @@ export class Archivio {
         return
       }
     }
+
+    if (contesto.operazione === 'Allegato') {
+      const payload = esito.esito
+      const allegatoId =
+        payload && typeof payload === 'object' && 'allegato_id' in payload
+          ? Number((payload as { allegato_id?: unknown }).allegato_id)
+          : undefined
+      if (allegatoId === undefined || !Number.isFinite(allegatoId)) return
+
+      const corpo = contesto.corpo ?? {}
+      formulario.allegati = [
+        ...(formulario.allegati ?? []),
+        {
+          id: allegatoId,
+          nome_file: typeof corpo.nome_file === 'string' ? corpo.nome_file : '',
+          content_type: typeof corpo.content_type === 'string' ? corpo.content_type : '',
+          contenuto: typeof corpo.contenuto === 'string' ? corpo.contenuto : '',
+        },
+      ]
+      return
+    }
+
+    if (contesto.operazione === 'RimuoviAllegato') {
+      if (contesto.allegatoId !== undefined) {
+        formulario.allegati = (formulario.allegati ?? []).filter(
+          allegato => allegato.id !== contesto.allegatoId
+        )
+      }
+      return
+    }
+  }
+
+  /** Legge un allegato registrato (`GET /{numero_fir}/allegato/{allegato_id}`, R3 Task 6). */
+  leggiAllegato(numeroFir: string, allegatoId: number): AllegatoFake | undefined {
+    return this.formulari.get(numeroFir)?.allegati?.find(allegato => allegato.id === allegatoId)
   }
 
   /** V. `RENTRIApiClient.estraiNumeroFirDaEsito`: stessa forma, stessa cautela sul `oneOf`. */

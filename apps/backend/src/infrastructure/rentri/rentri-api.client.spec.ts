@@ -37,6 +37,7 @@ describe('RENTRIApiClient', () => {
     mockHttpService = {
       post: jest.fn(),
       get: jest.fn(),
+      delete: jest.fn(),
     }
 
     // Il client opera sempre in modalità live (autenticazione Bearer self-issued).
@@ -379,7 +380,11 @@ describe('RENTRIApiClient', () => {
         .inviaAccettazione(
           'tenant-1',
           'BCDFGH00001JK',
-          { tipoAccettazione: 'A', dataOraArrivo: '2026-07-27T08:00:00Z', quantitaAccettataKg: 100 },
+          {
+            tipoAccettazione: 'A',
+            dataOraArrivo: '2026-07-27T08:00:00Z',
+            quantitaAccettataKg: 100,
+          },
           { maxTentativi: 1, intervalloMs: 1 }
         )
         .catch(() => undefined)
@@ -453,6 +458,108 @@ describe('RENTRIApiClient', () => {
           motivo_respingimento: 'Accettata solo la parte conforme',
         })
       )
+    })
+  })
+
+  describe('caricaAllegato — corpo conforme al contratto', () => {
+    const rispostaAccettata = (): AxiosResponse => ({
+      data: { transazione_id: 'tx-allegato-1' },
+      status: 202,
+      statusText: 'Accepted',
+      headers: { location: '/formulari/v1.0/transazioni/tx-allegato-1' },
+      config: {} as any,
+    })
+
+    it('invia content_type, nome_file, contenuto e identificativo_soggetto in snake_case su POST /{numero_fir}/allegato', async () => {
+      mockHttpService.post.mockReturnValue(of(rispostaAccettata()))
+
+      await client
+        .caricaAllegato(
+          'tenant-1',
+          'BCDFGH00001JK',
+          {
+            contentType: 'application/pdf',
+            nomeFile: 'analisi-chimica.pdf',
+            contenutoBase64: 'JVBERi0xLjQK',
+            identificativoSoggetto: 'MNZGZN78A01F839X',
+          },
+          { maxTentativi: 1, intervalloMs: 1 }
+        )
+        .catch(() => undefined)
+
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK/allegato',
+        expect.anything(),
+        expect.anything()
+      )
+
+      const corpo = mockHttpService.post.mock.calls[0][1] as Record<string, unknown>
+      expect(corpo).toEqual(
+        (expect as any).objectContaining({
+          content_type: 'application/pdf',
+          nome_file: 'analisi-chimica.pdf',
+          contenuto: 'JVBERi0xLjQK',
+          identificativo_soggetto: 'MNZGZN78A01F839X',
+        })
+      )
+      // La forma di dominio (camelCase) non deve MAI finire sul filo.
+      expect(Object.keys(corpo)).not.toContain('contentType')
+      expect(Object.keys(corpo)).not.toContain('nomeFile')
+      expect(Object.keys(corpo)).not.toContain('contenutoBase64')
+      expect(Object.keys(corpo)).not.toContain('identificativoSoggetto')
+      // 'descrizione' è deprecato dal contratto: questo client non lo invia mai.
+      expect(Object.keys(corpo)).not.toContain('descrizione')
+    })
+  })
+
+  describe('eliminaAllegato', () => {
+    const rispostaAccettata = (): AxiosResponse => ({
+      data: { transazione_id: 'tx-elimina-allegato-1' },
+      status: 202,
+      statusText: 'Accepted',
+      headers: { location: '/formulari/v1.0/transazioni/tx-elimina-allegato-1' },
+      config: {} as any,
+    })
+
+    it('invia DELETE su /{numero_fir}/allegato/{allegato_id}, senza corpo né firma di integrità', async () => {
+      mockHttpService.delete.mockReturnValue(of(rispostaAccettata()))
+
+      await client
+        .eliminaAllegato('tenant-1', 'BCDFGH00001JK', 42, { maxTentativi: 1, intervalloMs: 1 })
+        .catch(() => undefined)
+
+      expect(mockHttpService.delete).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK/allegato/42',
+        expect.anything()
+      )
+      // Nessun corpo nel contratto: la firma di integrità (calcolata da post())
+      // non ha nulla su cui applicarsi, quindi non deve essere invocata qui.
+      expect(mockSignature.buildIntegrityHeaders).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('scaricaAllegato', () => {
+    it('invia GET su /{numero_fir}/allegato/{allegato_id} e mappa DownloadableBaseResponse', async () => {
+      const mockResponse: AxiosResponse = {
+        data: { nome_file: 'analisi-chimica.pdf', mime: 'application/pdf', content: 'JVBERi0=' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
+      }
+      mockHttpService.get.mockReturnValue(of(mockResponse))
+
+      const risultato = await client.scaricaAllegato('tenant-1', 'BCDFGH00001JK', 42)
+
+      expect(mockHttpService.get).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK/allegato/42',
+        expect.anything()
+      )
+      expect(risultato).toEqual({
+        nomeFile: 'analisi-chimica.pdf',
+        mime: 'application/pdf',
+        contenutoBase64: 'JVBERi0=',
+      })
     })
   })
 

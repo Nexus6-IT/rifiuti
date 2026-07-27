@@ -50,6 +50,30 @@ export interface EsitoAnnullaFirRentri {
 }
 
 /**
+ * Payload di `POST /rentri/fir/:id/allegati` (v. backend
+ * `CaricaAllegatoFirRentriDto`). NON porta `identificativoSoggetto`: il
+ * backend lo risolve dal codice fiscale del tenant (v.
+ * `GestisciAllegatiFIRUseCase`), non un valore che il frontend deve conoscere.
+ */
+export interface CaricaAllegatoFirRentriPayload {
+  nomeFile: string
+  contentType: string
+  contenutoBase64: string
+  correlationId?: string
+}
+
+/** Riga locale di un allegato (v. backend `AllegatoFIR`). */
+export interface AllegatoFirRentri {
+  id: string
+  rentriAllegatoId: number
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  caricatoDa: string
+  caricatoAlle: string
+}
+
+/**
  * Client del ciclo di vita del formulario digitale RENTRI (R3): azioni
  * disponibili e accettazione/respingimento del carico. Backend:
  * `rentri-fir-lifecycle.controller.ts`.
@@ -73,5 +97,21 @@ export class RentriFirLifecycleService {
 
   annullaFIR(firId: string, payload: AnnullaFirRentriPayload): Observable<EsitoAnnullaFirRentri> {
     return this.http.post<EsitoAnnullaFirRentri>(`${this.API_URL}/${firId}/annullamento`, payload)
+  }
+
+  /** Elenco locale (mai una chiamata a RENTRI, v. backend). */
+  elencaAllegati(firId: string): Observable<AllegatoFirRentri[]> {
+    return this.http.get<AllegatoFirRentri[]>(`${this.API_URL}/${firId}/allegati`)
+  }
+
+  caricaAllegato(
+    firId: string,
+    payload: CaricaAllegatoFirRentriPayload
+  ): Observable<AllegatoFirRentri> {
+    return this.http.post<AllegatoFirRentri>(`${this.API_URL}/${firId}/allegati`, payload)
+  }
+
+  eliminaAllegato(firId: string, allegatoId: string): Observable<{ eliminato: true }> {
+    return this.http.delete<{ eliminato: true }>(`${this.API_URL}/${firId}/allegati/${allegatoId}`)
   }
 }
