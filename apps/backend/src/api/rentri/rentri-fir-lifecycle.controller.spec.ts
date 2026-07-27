@@ -1,6 +1,7 @@
 import { NotFoundException, BadRequestException } from '@nestjs/common'
 import { RentriFirLifecycleController } from './rentri-fir-lifecycle.controller'
 import { DomainException } from '../../domain/shared/domain-exception'
+import { traduciErroreRentri } from '../../application/rentri/rentri-error-presentation'
 
 /**
  * RentriFirLifecycleController — `GET :id/pdf` (R3 Task 7).
@@ -112,5 +113,236 @@ describe('RentriFirLifecycleController — scaricaPdf', () => {
       controller.scaricaPdf(FIR_ID, TENANT_ID, USER_ID, res as any)
     ).rejects.toBeInstanceOf(BadRequestException)
     expect(res.send).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * RentriFirLifecycleController — traduzione dei sei `errorCode` del Task 9
+ * (debito Task 10, Parte 0).
+ *
+ * Prima di questa modifica, ogni endpoint faceva sempre
+ * `BadRequestException(error.message)` — il messaggio grezzo di
+ * `DomainException.businessRuleViolation`, col prefisso tecnico
+ * "Business rule violated: <regola>." mai tradotto. Questa suite dimostra
+ * che, per i sei `errorCode` gestiti da `traduciErroreRentri` (R3 Task 9),
+ * l'eccezione HTTP porta ESATTAMENTE il testo prodotto da quella funzione —
+ * non solo un testo che "contiene" qualcosa — e che il prefisso grezzo non
+ * trapela mai. Include anche un test di non-regressione: un `rule` non
+ * tradotto continua a propagare `error.message` invariato (il fallback di
+ * `mappaErroreDominio`).
+ */
+describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
+  const FIR_ID = 'fir-1'
+  const TENANT_ID = 'tenant-1'
+  const USER_ID = 'utente-1'
+
+  let controller: RentriFirLifecycleController
+  let getAzioniDisponibiliUseCase: { execute: jest.Mock }
+  let accettaORespingiFIRUseCase: { execute: jest.Mock }
+  let annullaFIRRentriUseCase: { execute: jest.Mock }
+  let gestisciAllegatiFIRUseCase: {
+    elencaAllegati: jest.Mock
+    caricaAllegato: jest.Mock
+    eliminaAllegato: jest.Mock
+  }
+
+  function creaLogger(): any {
+    return {
+      setContext: jest.fn(),
+      debug: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    }
+  }
+
+  /** Verifica comune: nessun prefisso tecnico grezzo nel messaggio esposto. */
+  function assertNessunPrefissoTecnico(messaggio: string): void {
+    expect(messaggio).not.toContain('Business rule violated')
+    expect(messaggio).not.toMatch(
+      /ACCETTAZIONE_NON_DISPONIBILE|ANNULLAMENTO_NON_DISPONIBILE|ALLEGATO_NON_DISPONIBILE|FIRMA_RENTRI_RIFIUTATA|FORMATO_ALLEGATO_NON_AMMESSO|ALLEGATO_TROPPO_GRANDE/
+    )
+  }
+
+  /**
+   * Cattura l'eccezione lanciata da `esecuzione` (fallisce il test se non ne
+   * lancia nessuna). Preferito a `.rejects.toMatchObject({constructor: ...})`
+   * — non affidabile per verificare instanceof — permette di asserire
+   * SEPARATAMENTE tipo (`toBeInstanceOf`) e testo ESATTO del messaggio sulla
+   * stessa eccezione catturata una sola volta.
+   */
+  async function catturaErrore(esecuzione: () => Promise<unknown>): Promise<Error> {
+    try {
+      await esecuzione()
+    } catch (errore) {
+      return errore as Error
+    }
+    throw new Error('Era attesa un’eccezione, ma la chiamata è andata a buon fine')
+  }
+
+  beforeEach(() => {
+    getAzioniDisponibiliUseCase = { execute: jest.fn() }
+    accettaORespingiFIRUseCase = { execute: jest.fn() }
+    annullaFIRRentriUseCase = { execute: jest.fn() }
+    gestisciAllegatiFIRUseCase = {
+      elencaAllegati: jest.fn(),
+      caricaAllegato: jest.fn(),
+      eliminaAllegato: jest.fn(),
+    }
+
+    controller = new RentriFirLifecycleController(
+      getAzioniDisponibiliUseCase as any,
+      accettaORespingiFIRUseCase as any,
+      annullaFIRRentriUseCase as any,
+      gestisciAllegatiFIRUseCase as any,
+      {} as any, // ScaricaPdfFirUseCase — non usato da questi test
+      creaLogger()
+    )
+  })
+
+  it('ACCETTAZIONE_NON_DISPONIBILE (POST :id/accettazione) → messaggio tradotto, senza prefisso tecnico', async () => {
+    accettaORespingiFIRUseCase.execute.mockRejectedValue(
+      DomainException.businessRuleViolation(
+        'ACCETTAZIONE_NON_DISPONIBILE',
+        'Questo formulario non è nella fase di accettazione: nessuna operazione è stata inviata a RENTRI.'
+      )
+    )
+
+    const atteso = traduciErroreRentri({ errorCode: 'ACCETTAZIONE_NON_DISPONIBILE' }).messaggio
+
+    const errore = await catturaErrore(() =>
+      controller.accettaORespingi(FIR_ID, { tipoAccettazione: 'TOTALE' } as any, TENANT_ID, USER_ID)
+    )
+    expect(errore).toBeInstanceOf(BadRequestException)
+    expect(errore.message).toBe(atteso)
+    assertNessunPrefissoTecnico(atteso)
+  })
+
+  it('ANNULLAMENTO_NON_DISPONIBILE (POST :id/annullamento) → messaggio tradotto, senza prefisso tecnico', async () => {
+    annullaFIRRentriUseCase.execute.mockRejectedValue(
+      DomainException.businessRuleViolation(
+        'ANNULLAMENTO_NON_DISPONIBILE',
+        'Questo formulario non è nella fase di annullamento.'
+      )
+    )
+
+    const atteso = traduciErroreRentri({ errorCode: 'ANNULLAMENTO_NON_DISPONIBILE' }).messaggio
+
+    const errore = await catturaErrore(() =>
+      controller.annulla(FIR_ID, { motivo: 'errore di battitura' } as any, TENANT_ID, USER_ID)
+    )
+    expect(errore).toBeInstanceOf(BadRequestException)
+    expect(errore.message).toBe(atteso)
+    assertNessunPrefissoTecnico(atteso)
+  })
+
+  it('ALLEGATO_NON_DISPONIBILE (DELETE :id/allegati/:allegatoId) → messaggio tradotto, senza prefisso tecnico', async () => {
+    gestisciAllegatiFIRUseCase.eliminaAllegato.mockRejectedValue(
+      DomainException.businessRuleViolation(
+        'ALLEGATO_NON_DISPONIBILE',
+        'Il caricamento allegati non è disponibile in questa fase.'
+      )
+    )
+
+    const atteso = traduciErroreRentri({ errorCode: 'ALLEGATO_NON_DISPONIBILE' }).messaggio
+
+    const errore = await catturaErrore(() =>
+      controller.eliminaAllegato(FIR_ID, 'allegato-1', TENANT_ID, USER_ID)
+    )
+    expect(errore).toBeInstanceOf(BadRequestException)
+    expect(errore.message).toBe(atteso)
+    assertNessunPrefissoTecnico(atteso)
+  })
+
+  it("FIRMA_RENTRI_RIFIUTATA (accettazione) → messaggio tradotto che nomina l'operazione, senza prefisso tecnico", async () => {
+    const messaggioGrezzo =
+      "L'ente ha rifiutato la firma del formulario 123: l'operazione ACCETTAZIONE NON è stata completata. Dettaglio della validazione RENTRI: []"
+    accettaORespingiFIRUseCase.execute.mockRejectedValue(
+      DomainException.businessRuleViolation('FIRMA_RENTRI_RIFIUTATA', messaggioGrezzo)
+    )
+
+    const atteso = traduciErroreRentri({
+      errorCode: 'FIRMA_RENTRI_RIFIUTATA',
+      errorMessage: DomainException.businessRuleViolation('FIRMA_RENTRI_RIFIUTATA', messaggioGrezzo)
+        .message,
+    }).messaggio
+
+    const errore = await catturaErrore(() =>
+      controller.accettaORespingi(FIR_ID, { tipoAccettazione: 'TOTALE' } as any, TENANT_ID, USER_ID)
+    )
+    expect(errore).toBeInstanceOf(BadRequestException)
+    expect(errore.message).toBe(atteso)
+    // Prova che l'operazione è stata riconosciuta (regex su error.message
+    // completo, non sul solo `details` passato qui): mai il fallback generico.
+    expect(atteso).toBe("L'accettazione non si è completata sull'ente: puoi riprovare.")
+    assertNessunPrefissoTecnico(atteso)
+  })
+
+  it('FORMATO_ALLEGATO_NON_AMMESSO (POST :id/allegati) → messaggio tradotto, senza prefisso tecnico', async () => {
+    gestisciAllegatiFIRUseCase.caricaAllegato.mockRejectedValue(
+      DomainException.businessRuleViolation(
+        'FORMATO_ALLEGATO_NON_AMMESSO',
+        'Sono accettati solo allegati in formato PDF.'
+      )
+    )
+
+    const atteso = traduciErroreRentri({ errorCode: 'FORMATO_ALLEGATO_NON_AMMESSO' }).messaggio
+
+    const errore = await catturaErrore(() =>
+      controller.caricaAllegato(
+        FIR_ID,
+        { nomeFile: 'documento.txt', contentType: 'text/plain', contenutoBase64: 'AAAA' } as any,
+        TENANT_ID,
+        USER_ID
+      )
+    )
+    expect(errore).toBeInstanceOf(BadRequestException)
+    expect(errore.message).toBe(atteso)
+    assertNessunPrefissoTecnico(atteso)
+  })
+
+  it('ALLEGATO_TROPPO_GRANDE (POST :id/allegati) → messaggio tradotto, senza prefisso tecnico', async () => {
+    gestisciAllegatiFIRUseCase.caricaAllegato.mockRejectedValue(
+      DomainException.businessRuleViolation(
+        'ALLEGATO_TROPPO_GRANDE',
+        'Il file supera la dimensione massima di 1 MB.'
+      )
+    )
+
+    const atteso = traduciErroreRentri({ errorCode: 'ALLEGATO_TROPPO_GRANDE' }).messaggio
+
+    const errore = await catturaErrore(() =>
+      controller.caricaAllegato(
+        FIR_ID,
+        {
+          nomeFile: 'documento.pdf',
+          contentType: 'application/pdf',
+          contenutoBase64: 'AAAA',
+        } as any,
+        TENANT_ID,
+        USER_ID
+      )
+    )
+    expect(errore).toBeInstanceOf(BadRequestException)
+    expect(errore.message).toBe(atteso)
+    assertNessunPrefissoTecnico(atteso)
+  })
+
+  it('non-regressione: un `rule` NON tradotto (FIR_NON_LEGATO_RENTRI) propaga error.message invariato, il fallback non si rompe', async () => {
+    const eccezione = DomainException.businessRuleViolation(
+      'FIR_NON_LEGATO_RENTRI',
+      'Il FIR non è legato a un formulario RENTRI.'
+    )
+    getAzioniDisponibiliUseCase.execute.mockRejectedValue(eccezione)
+
+    const errore = await catturaErrore(() =>
+      controller.getAzioniDisponibili(FIR_ID, TENANT_ID, USER_ID)
+    )
+    expect(errore).toBeInstanceOf(BadRequestException)
+    expect(errore.message).toBe(eccezione.message)
+    // Il fallback non tenta MAI traduciErroreRentri per un rule sconosciuto:
+    // il messaggio resta quello grezzo di businessRuleViolation, prefisso
+    // tecnico incluso (non è il caso che questo debito doveva chiudere).
+    expect(eccezione.message).toContain('Business rule violated')
   })
 })

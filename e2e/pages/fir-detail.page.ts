@@ -48,6 +48,33 @@ export class FirDetailPage {
   readonly syncLogsRefresh: Locator
   readonly syncLogsEmpty: Locator
 
+  /** R3 Task 4 — accettazione/respingimento (anche parziale) del carico. */
+  readonly rentriAccettaCarico: Locator
+  readonly rentriAccettazioneDialog: Locator
+  readonly rentriAccettazioneCompleta: Locator
+  readonly rentriAccettazioneParziale: Locator
+  readonly rentriAccettazioneRespingi: Locator
+  readonly rentriAccettazioneQuantitaInput: Locator
+  readonly rentriAccettazioneCausaleSelect: Locator
+  readonly rentriAccettazioneMotivoInput: Locator
+  readonly rentriAccettazioneCancelButton: Locator
+  readonly rentriAccettazioneConfirmButton: Locator
+
+  /** R3 Task 5 — annullamento del formulario, con nota. */
+  readonly rentriAnnullaFormulario: Locator
+  readonly rentriAnnullaDialog: Locator
+  readonly rentriAnnullaMotivoInput: Locator
+  readonly rentriAnnullaCancelButton: Locator
+  readonly rentriAnnullaConfirmButton: Locator
+
+  /** R3 Task 6 — allegati del formulario. */
+  readonly allegatiUploadInput: Locator
+  readonly allegatiList: Locator
+
+  /** R3 Task 7 — stampa PDF e aggiornamento esplicito dello stato. */
+  readonly rentriScaricaPdf: Locator
+  readonly rentriAggiornaStato: Locator
+
   constructor(page: Page) {
     this.page = page
 
@@ -84,6 +111,39 @@ export class FirDetailPage {
     this.syncLogsTable = page.getByTestId('rentri-sync-logs-table')
     this.syncLogsRefresh = page.getByTestId('rentri-sync-logs-refresh')
     this.syncLogsEmpty = page.getByTestId('rentri-sync-logs-empty')
+
+    this.rentriAccettaCarico = page.getByTestId('fir-detail-rentri-accetta-carico')
+    this.rentriAccettazioneDialog = page.getByTestId('fir-detail-rentri-accettazione-dialog')
+    this.rentriAccettazioneCompleta = page.getByTestId('fir-detail-rentri-accettazione-completa')
+    this.rentriAccettazioneParziale = page.getByTestId('fir-detail-rentri-accettazione-parziale')
+    this.rentriAccettazioneRespingi = page.getByTestId('fir-detail-rentri-accettazione-respingi')
+    this.rentriAccettazioneQuantitaInput = page.getByTestId(
+      'fir-detail-rentri-accettazione-quantita-input'
+    )
+    this.rentriAccettazioneCausaleSelect = page.getByTestId(
+      'fir-detail-rentri-accettazione-causale-select'
+    )
+    this.rentriAccettazioneMotivoInput = page.getByTestId(
+      'fir-detail-rentri-accettazione-motivo-input'
+    )
+    this.rentriAccettazioneCancelButton = page.getByTestId(
+      'fir-detail-rentri-accettazione-cancel-button'
+    )
+    this.rentriAccettazioneConfirmButton = page.getByTestId(
+      'fir-detail-rentri-accettazione-confirm-button'
+    )
+
+    this.rentriAnnullaFormulario = page.getByTestId('fir-detail-rentri-annulla-formulario')
+    this.rentriAnnullaDialog = page.getByTestId('fir-detail-rentri-annulla-dialog')
+    this.rentriAnnullaMotivoInput = page.getByTestId('fir-detail-rentri-annulla-motivo-input')
+    this.rentriAnnullaCancelButton = page.getByTestId('fir-detail-rentri-annulla-cancel-button')
+    this.rentriAnnullaConfirmButton = page.getByTestId('fir-detail-rentri-annulla-confirm-button')
+
+    this.allegatiUploadInput = page.getByTestId('fir-detail-allegati-upload-input')
+    this.allegatiList = page.getByTestId('fir-detail-allegati-list')
+
+    this.rentriScaricaPdf = page.getByTestId('fir-detail-rentri-scarica-pdf')
+    this.rentriAggiornaStato = page.getByTestId('fir-detail-rentri-aggiorna-stato')
   }
 
   async goto(id: string) {
@@ -102,5 +162,15 @@ export class FirDetailPage {
 
   syncLogRow(logId: string): Locator {
     return this.page.getByTestId(`rentri-sync-logs-row-${logId}`)
+  }
+
+  /** Riga dell'allegato locale (R3 Task 6) — `{id}` è la chiave primaria LOCALE, non l'`allegato_id` dell'ente. */
+  allegatoRow(id: string): Locator {
+    return this.page.getByTestId(`fir-detail-allegati-row-${id}`)
+  }
+
+  /** Pulsante di eliminazione dell'allegato locale (R3 Task 6), stesso `{id}` di {@link allegatoRow}. */
+  allegatoEliminaButton(id: string): Locator {
+    return this.page.getByTestId(`fir-detail-allegati-elimina-${id}`)
   }
 }
