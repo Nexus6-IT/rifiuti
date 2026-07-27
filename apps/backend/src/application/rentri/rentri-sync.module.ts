@@ -35,6 +35,7 @@ import { MetricsService } from '../../core/metrics/metrics.service'
 import { CompletaOperazioneConFirmaUseCase } from './completa-operazione-con-firma.use-case'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rate-limiter.service'
+import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -349,6 +350,37 @@ import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rat
         LoggerService,
       ],
     },
+    // R3 Task 4 — prima operazione di scrittura reale del ciclo: accettazione
+    // (anche parziale) o respingimento del carico da parte del destinatario.
+    // Riusa `GetAzioniDisponibiliUseCase` per la precondizione da `/azioni` e
+    // `CompletaOperazioneConFirmaUseCase` per chiudere il ciclo con la firma
+    // remota — nessuna duplicazione del lookup del CF tenant né del ciclo di
+    // firma. `useFactory` per lo stesso motivo degli altri: `IFIRRepository`
+    // è un'interfaccia e sparisce a runtime.
+    {
+      provide: AccettaORespingiFIRUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        completaOperazioneConFirmaUseCase: CompletaOperazioneConFirmaUseCase,
+        logger: LoggerService
+      ) =>
+        new AccettaORespingiFIRUseCase(
+          firRepo,
+          getAzioniDisponibiliUseCase,
+          rentriApiClient,
+          completaOperazioneConFirmaUseCase,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        CompletaOperazioneConFirmaUseCase,
+        LoggerService,
+      ],
+    },
   ],
   exports: [
     SyncFIRToRENTRIUseCase,
@@ -364,6 +396,7 @@ import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rat
     RiconciliaStatoRentriUseCase,
     GetAzioniDisponibiliUseCase,
     CompletaOperazioneConFirmaUseCase,
+    AccettaORespingiFIRUseCase,
   ],
 })
 export class RentriSyncModule {}

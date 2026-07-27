@@ -190,7 +190,8 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
   // dominio si travestirebbe da transazione accettata.
   const registraOperazioneAsincrona = (
     segmento: string,
-    validaCorpo: (corpo: Record<string, unknown>) => string | null
+    validaCorpo: (corpo: Record<string, unknown>) => string | null,
+    operazione?: 'Accettazione' | 'AcquisizioneFirma'
   ): void => {
     app.post<{ Params: { identificativo: string }; Body: Record<string, unknown> }>(
       `${PREFISSO}/:identificativo/${segmento}`,
@@ -209,7 +210,8 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
           return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
         }
 
-        const motivo = validaCorpo(richiesta.body ?? {})
+        const corpo = richiesta.body ?? {}
+        const motivo = validaCorpo(corpo)
         if (motivo) {
           return inviaProblemDetails(risposta, 400, {
             title: 'Corpo della richiesta non valido',
@@ -217,7 +219,14 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
           })
         }
 
-        const id = archivio.creaTransazione()
+        // Collega la transazione al formulario/operazione (R3 Task 4): serve
+        // ad `Archivio.completaTransazione` per applicare la macchina a
+        // stati minima del ciclo scrivi→firma→esito. `hash` non passa alcun
+        // `operazione`: non ha effetto di dominio da applicare.
+        const id = archivio.creaTransazione(
+          undefined,
+          operazione ? { numeroFir, operazione, corpo } : undefined
+        )
         return risposta
           .status(202)
           .header('Location', `${PREFISSO}/${id}/status`)
@@ -228,7 +237,8 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
 
   // DatiPerFirmaModel (formulari.yaml riga 7614): `certificato` obbligatorio,
   // `tipo_firma` opzionale (non inviato dal nostro client, v. il commento di
-  // `RENTRIApiClient.richiediHashPerFirma`).
+  // `RENTRIApiClient.richiediHashPerFirma`). Nessun tag `operazione`: `hash`
+  // non ha effetto di dominio da applicare al completamento.
   registraOperazioneAsincrona('hash', corpo =>
     typeof corpo.certificato === 'string' && corpo.certificato.trim() !== ''
       ? null
@@ -237,15 +247,42 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
 
   // FirmaModel (formulari.yaml riga 9646): certificato + token + firma, tutti
   // obbligatori. Un client che dimenticasse il `token` ricevuto da /hash se ne
-  // accorgerebbe qui, non in produzione.
-  registraOperazioneAsincrona('acquisizione-firma', corpo => {
-    const mancanti = ['certificato', 'token', 'firma'].filter(
-      campo => typeof corpo[campo] !== 'string' || (corpo[campo] as string).trim() === ''
-    )
-    return mancanti.length === 0
-      ? null
-      : `Campi obbligatori mancanti (FirmaModel): ${mancanti.join(', ')}.`
-  })
+  // accorgerebbe qui, non in produzione. Taggata `'AcquisizioneFirma'`: se
+  // un'accettazione è in corso (`pendingOperazione`), il completamento di
+  // QUESTA transazione fa transitare il formulario allo stato terminale (v.
+  // `Archivio.applicaEffettoOperazione`).
+  registraOperazioneAsincrona(
+    'acquisizione-firma',
+    corpo => {
+      const mancanti = ['certificato', 'token', 'firma'].filter(
+        campo => typeof corpo[campo] !== 'string' || (corpo[campo] as string).trim() === ''
+      )
+      return mancanti.length === 0
+        ? null
+        : `Campi obbligatori mancanti (FirmaModel): ${mancanti.join(', ')}.`
+    },
+    'AcquisizioneFirma'
+  )
+
+  // DatiAccettazioneModel (formulari.yaml righe 6828-6862, R3 Task 4):
+  // validazione strutturale MINIMA, deliberatamente NON i vincoli
+  // condizionali di business (quantita_accettata/causale/motivo per certi
+  // tipi) — quelli sono responsabilità del chiamante (`AccettaORespingiFIRUseCase`),
+  // l'oracolo verifica il CICLO, non la correttezza del modello dati di
+  // scrittura (v. commento di testata del piano).
+  registraOperazioneAsincrona(
+    'accettazione',
+    corpo => {
+      if (corpo.tipo_accettazione !== 'A' && corpo.tipo_accettazione !== 'P' && corpo.tipo_accettazione !== 'R') {
+        return "'tipo_accettazione' deve essere uno tra 'A', 'P', 'R' (DatiAccettazioneModel)."
+      }
+      if (typeof corpo.data_ora_arrivo !== 'string' || corpo.data_ora_arrivo.trim() === '') {
+        return "'data_ora_arrivo' e' obbligatorio (DatiAccettazioneModel)."
+      }
+      return null
+    },
+    'Accettazione'
+  )
 
   // Nome del parametro `:identificativo` (non `:numero_fir`): questa rotta
   // condivide la posizione nel path con le rotte di transazione registrate

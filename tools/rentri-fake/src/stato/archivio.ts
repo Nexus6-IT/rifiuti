@@ -35,6 +35,16 @@ export interface Formulario {
    * impostato dal canale di controllo o `null` di default.
    */
   versione?: number | null
+  /**
+   * Operazione di dominio in corso su questo formulario, in attesa che la
+   * transazione NONBLOCK_PULL che l'ha originata (`POST /accettazione`) si
+   * completi (R3 Task 4). Applicata e svuotata da
+   * {@link Archivio.applicaEffettoOperazione} quando la SUCCESSIVA
+   * `POST /acquisizione-firma` si completa con successo — il meccanismo
+   * minimo che dimostra il ciclo scrivi→firma→esito senza replicare l'intera
+   * macchina a stati reale dell'ente (fuori scope, v. `operazione.ts`).
+   */
+  pendingOperazione?: { tipo: 'Accettazione'; corpo: Record<string, unknown> }
 }
 
 export type StatoTransazione = 'in_elaborazione' | 'completata'
@@ -81,6 +91,19 @@ export interface Transazione {
    * di creazione (nessun altro tipo esiste oggi nella fake).
    */
   richiestaCreazione?: Record<string, unknown>
+  /**
+   * Contesto di un'operazione di dominio diversa dalla creazione (R3 Task 4):
+   * quale formulario, quale operazione, quale corpo. Popolato da
+   * `registraOperazioneAsincrona` in `formulari.ts` per `accettazione` e
+   * `acquisizione-firma` (NON per `hash`, che non ha alcun effetto di dominio
+   * da applicare). Usato da {@link Archivio.completaTransazione} per
+   * decidere se e quale transizione di stato applicare al completamento.
+   */
+  contestoOperazione?: {
+    numeroFir: string
+    operazione: 'Accettazione' | 'AcquisizioneFirma'
+    corpo?: Record<string, unknown>
+  }
 }
 
 /** Stato di una sessione di autorizzazione alla firma remota (`ca-rentri`). */
@@ -381,10 +404,19 @@ export class Archivio {
    * `richiestaCreazione`, se indicato, è il corpo di `POST /` (creazione):
    * conservato per collegare l'esito di completamento a un `Formulario`
    * ricercabile (v. {@link completaTransazione}).
+   *
+   * `contestoOperazione`, se indicato (R3 Task 4), collega la transazione a
+   * un'operazione di dominio su un formulario ESISTENTE (`accettazione`,
+   * `acquisizione-firma`): {@link completaTransazione} lo usa per applicare
+   * la transizione di stato corrispondente. Parametro opzionale in coda per
+   * compatibilità con le chiamate esistenti che non lo passano (creazione).
    */
-  creaTransazione(richiestaCreazione?: Record<string, unknown>): string {
+  creaTransazione(
+    richiestaCreazione?: Record<string, unknown>,
+    contestoOperazione?: Transazione['contestoOperazione']
+  ): string {
     const id = randomUUID()
-    this.transazioni.set(id, { id, stato: 'in_elaborazione', richiestaCreazione })
+    this.transazioni.set(id, { id, stato: 'in_elaborazione', richiestaCreazione, contestoOperazione })
     return id
   }
 
@@ -421,6 +453,57 @@ export class Archivio {
         num_iscr_sito:
           typeof richiesta.num_iscr_sito === 'string' ? richiesta.num_iscr_sito : undefined,
       })
+    }
+
+    if (!esito.errore && transazione.contestoOperazione) {
+      this.applicaEffettoOperazione(transazione.contestoOperazione)
+    }
+  }
+
+  /**
+   * Macchina a stati MINIMA per il ciclo scrivi→firma→esito (R3 Task 4),
+   * volutamente non una replica della macchina reale dell'ente (v. commento
+   * di testata di `operazione.ts`):
+   *
+   * - `accettazione` completata con successo → il formulario passa a
+   *   `FirmaAccettazione` e memorizza `tipo_accettazione` come operazione
+   *   pendente (non applica ancora l'esito finale: manca ancora la firma).
+   * - `acquisizione-firma` completata con successo E un'operazione pendente
+   *   di tipo `Accettazione` presente → il formulario transita allo stato
+   *   terminale (`A` → `Accettato`; `P`/`R` → `RespintoAccettatoParzialmente`)
+   *   e l'operazione pendente viene svuotata.
+   *
+   * **Non regressivo per costruzione**: le suite che seminano il formulario
+   * direttamente in `FirmaAccettazione` via `/__controllo/formulario` (es.
+   * `rentri-firma-operazione.oracolo.spec.ts`) non passano mai da
+   * `accettazione`, quindi il formulario non ha mai `pendingOperazione` — il
+   * ramo sotto per `acquisizione-firma` non scatta e lo stato resta quello
+   * seminato dal test, esattamente come prima di questo task.
+   */
+  private applicaEffettoOperazione(contesto: NonNullable<Transazione['contestoOperazione']>): void {
+    const formulario = this.formulari.get(contesto.numeroFir)
+    if (!formulario) return
+
+    if (contesto.operazione === 'Accettazione') {
+      formulario.stato = 'FirmaAccettazione'
+      formulario.pendingOperazione = {
+        tipo: 'Accettazione',
+        corpo: contesto.corpo ?? {},
+      }
+      return
+    }
+
+    if (contesto.operazione === 'AcquisizioneFirma') {
+      const pendente = formulario.pendingOperazione
+      if (!pendente || pendente.tipo !== 'Accettazione') {
+        // Nessuna operazione di accettazione in corso: nessuna transizione
+        // automatica — v. commento di classe, "non regressivo per costruzione".
+        return
+      }
+
+      const tipoAccettazione = pendente.corpo.tipo_accettazione
+      formulario.stato = tipoAccettazione === 'A' ? 'Accettato' : 'RespintoAccettatoParzialmente'
+      formulario.pendingOperazione = undefined
     }
   }
 

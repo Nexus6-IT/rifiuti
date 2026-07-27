@@ -346,6 +346,116 @@ describe('RENTRIApiClient', () => {
     })
   })
 
+  /**
+   * I NOMI DEI CAMPI SUL FILO, non la loro forma nel dominio.
+   *
+   * Il dominio parla camelCase (`tipoAccettazione`), il contratto RENTRI parla
+   * snake_case (`tipo_accettazione`, `DatiAccettazioneModel`). La traduzione
+   * avviene qui nel client, ed è l'unico punto in cui può rompersi.
+   *
+   * PERCHÉ SERVE UN TEST DEDICATO: l'oracolo NON può accorgersene. La fake
+   * accetta qualunque corpo (limite dichiarato in `rentri-accettazione.oracolo.spec.ts`),
+   * quindi una rinomina sbagliata lascerebbe verdi TUTTI i test — unitari e
+   * oracolo — e romperebbe solo contro l'ente vero. Peggio ancora: un ente che
+   * ignori un campo sconosciuto invece di rifiutarlo applicherebbe un default,
+   * e un respingimento diventerebbe un'accettazione senza che nulla protesti.
+   *
+   * Questi test fissano i nomi al contratto. Se il contratto cambia, vanno
+   * cambiati leggendolo — non adattati al codice finché non tornano verdi.
+   */
+  describe('inviaAccettazione — corpo conforme al contratto', () => {
+    const rispostaAccettata = (): AxiosResponse => ({
+      data: { transazione_id: 'tx-acc-1' },
+      status: 202,
+      statusText: 'Accepted',
+      headers: { location: '/formulari/v1.0/transazioni/tx-acc-1' },
+      config: {} as any,
+    })
+
+    it("accettazione intera: invia tipo_accettazione 'A' e quantita_accettata, in snake_case", async () => {
+      mockHttpService.post.mockReturnValue(of(rispostaAccettata()))
+
+      await client
+        .inviaAccettazione(
+          'tenant-1',
+          'BCDFGH00001JK',
+          { tipoAccettazione: 'A', dataOraArrivo: '2026-07-27T08:00:00Z', quantitaAccettataKg: 100 },
+          { maxTentativi: 1, intervalloMs: 1 }
+        )
+        .catch(() => undefined)
+
+      const corpo = mockHttpService.post.mock.calls[0][1] as Record<string, unknown>
+      expect(corpo).toEqual(
+        (expect as any).objectContaining({
+          tipo_accettazione: 'A',
+          data_ora_arrivo: '2026-07-27T08:00:00Z',
+          quantita_accettata: 100,
+        })
+      )
+      // La forma di dominio non deve MAI finire sul filo.
+      expect(Object.keys(corpo)).not.toContain('tipoAccettazione')
+      expect(Object.keys(corpo)).not.toContain('quantitaAccettataKg')
+    })
+
+    it("respingimento: invia tipo_accettazione 'R' con causale_respingimento e motivo_respingimento", async () => {
+      mockHttpService.post.mockReturnValue(of(rispostaAccettata()))
+
+      await client
+        .inviaAccettazione(
+          'tenant-1',
+          'BCDFGH00001JK',
+          {
+            tipoAccettazione: 'R',
+            dataOraArrivo: '2026-07-27T08:00:00Z',
+            causaleRespingimento: 'NC',
+            motivoRespingimento: 'Rifiuto non conforme alla descrizione',
+          },
+          { maxTentativi: 1, intervalloMs: 1 }
+        )
+        .catch(() => undefined)
+
+      const corpo = mockHttpService.post.mock.calls[0][1] as Record<string, unknown>
+      expect(corpo).toEqual(
+        (expect as any).objectContaining({
+          tipo_accettazione: 'R',
+          causale_respingimento: 'NC',
+          motivo_respingimento: 'Rifiuto non conforme alla descrizione',
+        })
+      )
+      // Un respingimento non dichiara una quantità accettata.
+      expect(Object.keys(corpo)).not.toContain('quantita_accettata')
+    })
+
+    it("accettazione parziale: 'P' porta sia la quantità sia la motivazione", async () => {
+      mockHttpService.post.mockReturnValue(of(rispostaAccettata()))
+
+      await client
+        .inviaAccettazione(
+          'tenant-1',
+          'BCDFGH00001JK',
+          {
+            tipoAccettazione: 'P',
+            dataOraArrivo: '2026-07-27T08:00:00Z',
+            quantitaAccettataKg: 60,
+            causaleRespingimento: 'IR',
+            motivoRespingimento: 'Accettata solo la parte conforme',
+          },
+          { maxTentativi: 1, intervalloMs: 1 }
+        )
+        .catch(() => undefined)
+
+      const corpo = mockHttpService.post.mock.calls[0][1] as Record<string, unknown>
+      expect(corpo).toEqual(
+        (expect as any).objectContaining({
+          tipo_accettazione: 'P',
+          quantita_accettata: 60,
+          causale_respingimento: 'IR',
+          motivo_respingimento: 'Accettata solo la parte conforme',
+        })
+      )
+    })
+  })
+
   describe('leggiFormulario', () => {
     it('invia GET su /{numero_fir} e restituisce il DettaglioFormulario', async () => {
       const mockResponse: AxiosResponse = {

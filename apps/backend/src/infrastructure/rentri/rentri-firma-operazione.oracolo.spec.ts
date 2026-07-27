@@ -72,6 +72,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
       rentriApiErrors: { inc: jest.fn() },
+      rentriTenantLocked: { set: jest.fn() },
     }
 
     const httpService: any = {

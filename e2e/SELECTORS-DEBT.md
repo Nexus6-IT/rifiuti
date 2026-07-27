@@ -69,6 +69,15 @@ da assegnare a chi lavora su `apps/frontend/**`.
   `fir-detail-rentri-origine`, `fir-detail-rentri-messaggio-errore`,
   `fir-detail-rentri-trasmetti`, `fir-detail-rentri-riprova`,
   `fir-detail-rentri-conferma-legame`, `fir-detail-rentri-vedi-certificato`.
+- **RENTRI — accettazione/respingimento del carico (colmato in R3 Task 4)**:
+  il dettaglio FIR aggiunge `fir-detail-rentri-accetta-carico` (pulsante che
+  apre il dialog), `fir-detail-rentri-accettazione-dialog`,
+  `fir-detail-rentri-accettazione-completa` / `-parziale` / `-respingi` (le
+  tre opzioni), `fir-detail-rentri-accettazione-quantita-input`,
+  `fir-detail-rentri-accettazione-causale-select`,
+  `fir-detail-rentri-accettazione-motivo-input`,
+  `fir-detail-rentri-accettazione-confirm-button` /
+  `-cancel-button`.
 - **RENTRI — aggancio dei formulari (colmato in R2 Task 8)**: la pagina
   `/rentri/formulari` (`features/rentri/rentri-formulari.component.ts`) espone
   `rentri-formulari-search-input`, `-cerca-button`, `-table`, `-loading`,

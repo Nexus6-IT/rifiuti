@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core'
 import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
 import { ActivatedRoute, Router, RouterModule } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
 import { TagModule } from 'primeng/tag'
@@ -7,6 +8,11 @@ import { MessageModule } from 'primeng/message'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ToastModule } from 'primeng/toast'
+import { DialogModule } from 'primeng/dialog'
+import { RadioButtonModule } from 'primeng/radiobutton'
+import { DropdownModule } from 'primeng/dropdown'
+import { InputTextareaModule } from 'primeng/inputtextarea'
+import { InputNumberModule } from 'primeng/inputnumber'
 import { ConfirmationService, MessageService } from 'primeng/api'
 import { FirService } from './fir.service'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
@@ -15,6 +21,17 @@ import { RENTRISyncLogsComponent } from './components/rentri-sync-logs/rentri-sy
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
 import { RentriFormulariService } from '../rentri/rentri-formulari.service'
+import { RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
+
+/** Opzioni del dialog di accettazione/respingimento (R3 Task 4). */
+type OpzioneAccettazione = 'A' | 'P' | 'R'
+
+/** Etichette leggibili della causale di respingimento (`CausaliRespingimento`, contratto RENTRI). */
+const CAUSALI_RESPINGIMENTO: { value: 'NC' | 'IR' | 'A'; label: string }[] = [
+  { value: 'NC', label: 'Non conformità' },
+  { value: 'IR', label: 'Irricevibile' },
+  { value: 'A', label: 'Altro' },
+]
 
 /** Origini di legame per cui il rilascio è ammesso (R2 Task 3): mai su TRASMESSO_DA_NOI. */
 const ORIGINI_RILASCIABILI = ['ACQUISITO_DA_TERZI', 'AGGANCIO_MANUALE']
@@ -46,6 +63,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     RouterModule,
     ButtonModule,
     TagModule,
@@ -53,6 +71,11 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
     ProgressSpinnerModule,
     ConfirmDialogModule,
     ToastModule,
+    DialogModule,
+    RadioButtonModule,
+    DropdownModule,
+    InputTextareaModule,
+    InputNumberModule,
     RENTRISyncBadgeComponent,
     RENTRISyncLogsComponent,
   ],
@@ -364,6 +387,17 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   "
                 />
               }
+              @if (canAccettareCarico(f)) {
+                <p-button
+                  label="Accetta il carico"
+                  icon="pi pi-inbox"
+                  severity="success"
+                  [outlined]="true"
+                  (onClick)="apriDialogAccettazione(f)"
+                  data-testid="fir-detail-rentri-accetta-carico"
+                  [attr.aria-label]="'Accetta o respingi il carico del FIR ' + (f.numeroProgressivo || f.id)"
+                />
+              }
             </div>
           </section>
         }
@@ -380,6 +414,108 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
       key="rentri-rilascia-legame"
       data-testid="fir-detail-rentri-rilascia-legame-confirm-dialog"
     ></p-confirmDialog>
+
+    <!-- Accettazione/respingimento del carico (R3 Task 4) -->
+    <p-dialog
+      header="Accetta o respingi il carico"
+      [(visible)]="accettazioneDialogVisible"
+      [modal]="true"
+      [style]="{ width: '30rem' }"
+      data-testid="fir-detail-rentri-accettazione-dialog"
+    >
+      <div class="accettazione-form">
+        <div class="accettazione-opzioni" role="radiogroup" aria-label="Esito dell'accettazione">
+          <label
+            class="accettazione-opzione"
+            data-testid="fir-detail-rentri-accettazione-completa"
+          >
+            <p-radioButton
+              name="accettazioneOpzione"
+              value="A"
+              [(ngModel)]="accettazioneOpzione"
+            ></p-radioButton>
+            <span>Accetta per intero</span>
+          </label>
+          <label
+            class="accettazione-opzione"
+            data-testid="fir-detail-rentri-accettazione-parziale"
+          >
+            <p-radioButton
+              name="accettazioneOpzione"
+              value="P"
+              [(ngModel)]="accettazioneOpzione"
+            ></p-radioButton>
+            <span>Accetta parzialmente</span>
+          </label>
+          <label class="accettazione-opzione" data-testid="fir-detail-rentri-accettazione-respingi">
+            <p-radioButton
+              name="accettazioneOpzione"
+              value="R"
+              [(ngModel)]="accettazioneOpzione"
+            ></p-radioButton>
+            <span>Respingi il carico</span>
+          </label>
+        </div>
+
+        @if (accettazioneOpzione() === 'A' || accettazioneOpzione() === 'P') {
+          <div class="form-field">
+            <label for="accettazione-quantita">Quantità accettata (kg) *</label>
+            <p-inputNumber
+              inputId="accettazione-quantita"
+              [(ngModel)]="accettazioneQuantitaKg"
+              [min]="0"
+              [maxFractionDigits]="2"
+              data-testid="fir-detail-rentri-accettazione-quantita-input"
+            ></p-inputNumber>
+          </div>
+        }
+
+        @if (accettazioneOpzione() === 'P' || accettazioneOpzione() === 'R') {
+          <div class="form-field">
+            <label for="accettazione-causale">Causale del respingimento *</label>
+            <p-dropdown
+              inputId="accettazione-causale"
+              [options]="causaliRespingimento"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Seleziona una causale"
+              [(ngModel)]="accettazioneCausale"
+              data-testid="fir-detail-rentri-accettazione-causale-select"
+            ></p-dropdown>
+          </div>
+          <div class="form-field">
+            <label for="accettazione-motivo">Motivazione *</label>
+            <textarea
+              pInputTextarea
+              id="accettazione-motivo"
+              rows="4"
+              [(ngModel)]="accettazioneMotivo"
+              placeholder="Descrivi il motivo del respingimento (o della parzialità)"
+              data-testid="fir-detail-rentri-accettazione-motivo-input"
+            ></textarea>
+          </div>
+        }
+      </div>
+
+      <ng-template pTemplate="footer">
+        <p-button
+          label="Annulla"
+          icon="pi pi-times"
+          [outlined]="true"
+          (onClick)="chiudiDialogAccettazione()"
+          data-testid="fir-detail-rentri-accettazione-cancel-button"
+        />
+        <p-button
+          label="Conferma"
+          icon="pi pi-check"
+          [disabled]="!accettazioneValida()"
+          [loading]="accettazioneInCorso()"
+          (onClick)="confermaAccettazione()"
+          data-testid="fir-detail-rentri-accettazione-confirm-button"
+        />
+      </ng-template>
+    </p-dialog>
+
     <p-toast></p-toast>
   `,
   styles: [
@@ -475,6 +611,41 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
         flex-wrap: wrap;
         gap: var(--spacing-sm);
       }
+
+      .accettazione-form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-base);
+      }
+
+      .accettazione-opzioni {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+      }
+
+      .accettazione-opzione {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        cursor: pointer;
+      }
+
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+      }
+
+      .form-field label {
+        font-weight: var(--font-weight-medium);
+      }
+
+      .form-field textarea,
+      .form-field p-inputnumber,
+      .form-field p-dropdown {
+        width: 100%;
+      }
     `,
   ],
 })
@@ -484,6 +655,7 @@ export class FirDetailComponent implements OnInit {
   private readonly firService = inject(FirService)
   private readonly rentriSyncService = inject(RENTRISyncService)
   private readonly rentriFormulariService = inject(RentriFormulariService)
+  private readonly rentriFirLifecycleService = inject(RentriFirLifecycleService)
   private readonly authService = inject(AuthService)
   private readonly confirmationService = inject(ConfirmationService)
   private readonly messageService = inject(MessageService)
@@ -491,6 +663,17 @@ export class FirDetailComponent implements OnInit {
   protected readonly fir = signal<FIR | null>(null)
   protected readonly loading = signal(true)
   protected readonly error = signal<string | null>(null)
+
+  /** Etichette leggibili delle causali di respingimento, esposte al template. */
+  protected readonly causaliRespingimento = CAUSALI_RESPINGIMENTO
+
+  // --- Accettazione/respingimento del carico (R3 Task 4) ---
+  protected readonly accettazioneDialogVisible = signal(false)
+  protected readonly accettazioneOpzione = signal<OpzioneAccettazione>('A')
+  protected readonly accettazioneInCorso = signal(false)
+  protected accettazioneQuantitaKg: number | null = null
+  protected accettazioneCausale: 'NC' | 'IR' | 'A' | null = null
+  protected accettazioneMotivo = ''
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id')
@@ -641,7 +824,8 @@ export class FirDetailComponent implements OnInit {
       this.canRiprovareRentri(fir) ||
       this.mostraVaiAlCertificato(fir) ||
       this.canConfermareLegameRentri(fir) ||
-      this.canRilasciareLegameRentri(fir)
+      this.canRilasciareLegameRentri(fir) ||
+      this.canAccettareCarico(fir)
     )
   }
 
@@ -772,5 +956,96 @@ export class FirDetailComponent implements OnInit {
         })
       },
     })
+  }
+
+  /**
+   * «Accetta il carico» compare solo per un FIR già legato a RENTRI (R3
+   * Task 4). Il Task 8 del piano (pulsanti pilotati da `/azioni`) non è
+   * ancora stato fatto: per questo task è accettabile mostrare il pulsante
+   * su qualunque FIR legato e lasciare che sia il backend a rifiutare con un
+   * messaggio leggibile se l'operazione non è disponibile
+   * (`AccettaORespingiFIRUseCase` verifica comunque `/azioni` prima di
+   * scrivere, lato server).
+   */
+  canAccettareCarico(fir: FIR): boolean {
+    return !!fir.rentriNumeroFir && this.canManageRENTRI()
+  }
+
+  apriDialogAccettazione(fir: FIR): void {
+    this.accettazioneOpzione.set('A')
+    this.accettazioneQuantitaKg = fir.rifiuto?.quantita ?? null
+    this.accettazioneCausale = null
+    this.accettazioneMotivo = ''
+    this.accettazioneDialogVisible.set(true)
+  }
+
+  chiudiDialogAccettazione(): void {
+    this.accettazioneDialogVisible.set(false)
+  }
+
+  /**
+   * Validazione lato UI, indipendente da quella del backend (che resta
+   * comunque l'autorità fail-closed): niente invio con motivazione vuota per
+   * un respingimento/parziale, niente invio senza quantità per
+   * intero/parziale — DEVE essere impossibile, non solo scoraggiato.
+   */
+  accettazioneValida(): boolean {
+    const opzione = this.accettazioneOpzione()
+    if (
+      (opzione === 'A' || opzione === 'P') &&
+      (this.accettazioneQuantitaKg === null || this.accettazioneQuantitaKg === undefined)
+    ) {
+      return false
+    }
+    if (
+      (opzione === 'P' || opzione === 'R') &&
+      (!this.accettazioneCausale || this.accettazioneMotivo.trim() === '')
+    ) {
+      return false
+    }
+    return true
+  }
+
+  /** Accetta o respinge (anche parzialmente) il carico: verbo del mestiere, mai gergo del protocollo RENTRI. */
+  confermaAccettazione(): void {
+    const fir = this.fir()
+    if (!fir || !this.accettazioneValida()) {
+      return
+    }
+
+    const opzione = this.accettazioneOpzione()
+    this.accettazioneInCorso.set(true)
+
+    this.rentriFirLifecycleService
+      .accettaORespingi(fir.id, {
+        tipoAccettazione: opzione,
+        quantitaAccettataKg:
+          opzione === 'A' || opzione === 'P' ? (this.accettazioneQuantitaKg ?? undefined) : undefined,
+        causaleRespingimento:
+          opzione === 'P' || opzione === 'R' ? (this.accettazioneCausale ?? undefined) : undefined,
+        motivoRespingimento:
+          opzione === 'P' || opzione === 'R' ? this.accettazioneMotivo : undefined,
+      })
+      .subscribe({
+        next: () => {
+          this.accettazioneInCorso.set(false)
+          this.accettazioneDialogVisible.set(false)
+          this.messageService.add({
+            severity: 'success',
+            summary: opzione === 'R' ? 'Carico respinto' : 'Carico accettato',
+            detail:
+              'La richiesta è stata inviata a RENTRI: segui il tuo dispositivo per confermare la firma.',
+          })
+          this.reload()
+        },
+        error: err => {
+          this.accettazioneInCorso.set(false)
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Errore',
+            detail: this.extractError(err, "Errore nell'invio dell'accettazione a RENTRI"),
+          })
+        },
+      })
   }
 }
