@@ -92,7 +92,7 @@ describe('FirDetailComponent', () => {
     // contrario (v. describe 'Accettazione/respingimento del carico' e
     // 'Annullamento del formulario').
     rentriFirLifecycleService.azioniDisponibili.and.returnValue(
-      of({ stato: 'stato', versione: 1, azioni: [] })
+      of({ stato: 'Emesso', versione: 1, azioni: [] })
     )
     authService = jasmine.createSpyObj('AuthService', [], {
       currentUser: () => ({ id: 'u1', email: 'u@example.com', role: overrides.role ?? 'ADMIN' }),
@@ -534,6 +534,10 @@ describe('FirDetailComponent', () => {
 
       const el: HTMLElement = fixture.nativeElement
       expect(el.querySelector('[data-testid="fir-detail-rentri-accetta-carico"]')).toBeFalsy()
+      // Cautela di fail-closed (`loadFIR`): un FIR non legato a RENTRI non deve
+      // MAI innescare la chiamata a `/azioni` — un refactor futuro che la
+      // richiamasse comunque verrebbe rilevato qui.
+      expect(rentriFirLifecycleService.azioniDisponibili).not.toHaveBeenCalled()
     })
 
     it('NON mostra "Accetta il carico" per un VIEWER', () => {
@@ -543,6 +547,9 @@ describe('FirDetailComponent', () => {
 
       const el: HTMLElement = fixture.nativeElement
       expect(el.querySelector('[data-testid="fir-detail-rentri-accetta-carico"]')).toBeFalsy()
+      // Stessa cautela: un ruolo non abilitato (VIEWER) non deve innescare la
+      // chiamata a `/azioni` nemmeno per un FIR legato a RENTRI.
+      expect(rentriFirLifecycleService.azioniDisponibili).not.toHaveBeenCalled()
     })
 
     it('apre il dialog precompilando la quantità con quella del rifiuto, opzione di default "intero"', () => {
@@ -794,6 +801,32 @@ describe('FirDetailComponent', () => {
 
       const el: HTMLElement = fixture.nativeElement
       expect(el.querySelector('[data-testid="fir-detail-rentri-annulla-formulario"]')).toBeFalsy()
+    })
+
+    // Revisione R3 Task 8 (Critical-1): `haAzioni` decideva se mostrare
+    // l'INTERA sezione «Azioni disponibili» guardando solo
+    // `canAccettareCarico`. Per un FIR legato in uno stato diverso da
+    // BOZZA/EMESSO (qui CONSEGNATO) con `/azioni` che risponde SOLO con
+    // 'Annulla' (niente 'Accettazione'), `haAzioni` tornava falso e faceva
+    // sparire l'intera sezione — compresi "Annulla il formulario" e
+    // "Aggiorna lo stato", che invece devono comparire. Questo test blocca
+    // la regressione: la sezione e i due pulsanti devono essere presenti.
+    it("mostra la sezione «Azioni disponibili» (Annulla + Aggiorna lo stato) per un FIR CONSEGNATO legato a RENTRI quando /azioni offre solo 'Annulla'", () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of({ ...firLegatoRentri, stato: FIRStato.CONSEGNATO }))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        of({
+          stato: 'Consegnato',
+          versione: 1,
+          azioni: [{ operazione: 'Annulla', verbo: 'Annulla il formulario' }],
+        })
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-actions"]')).toBeTruthy()
+      expect(el.querySelector('[data-testid="fir-detail-rentri-annulla-formulario"]')).toBeTruthy()
+      expect(el.querySelector('[data-testid="fir-detail-rentri-aggiorna-stato"]')).toBeTruthy()
     })
 
     it('NON mostra "Annulla il formulario" per un FIR non legato a RENTRI', () => {

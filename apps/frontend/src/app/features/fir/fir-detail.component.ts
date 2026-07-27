@@ -1044,7 +1044,9 @@ export class FirDetailComponent implements OnInit {
       this.mostraVaiAlCertificato(fir) ||
       this.canConfermareLegameRentri(fir) ||
       this.canRilasciareLegameRentri(fir) ||
-      this.canAccettareCarico(fir)
+      this.canAccettareCarico(fir) ||
+      this.canAnnullareRentri(fir) ||
+      this.canScaricarePdfRentri(fir)
     )
   }
 
@@ -1569,6 +1571,19 @@ export class FirDetailComponent implements OnInit {
    * "ban" (423) che vogliamo evitare. Richiama `/azioni` (Task 2), che
    * riconcilia `rentriStatoFormulario` lato backend, poi ricarica il FIR per
    * riflettere l'eventuale cambiamento.
+   *
+   * DEBITO NOTO (R3 Task 8, revisione): questo metodo chiama `azioniDisponibili`
+   * e scarta il risultato, poi `this.reload()` → `loadFIR()` richiama la
+   * STESSA `azioniDisponibili` una seconda volta — due chiamate all'ente per
+   * un solo click utente. Un fix "banale" (usare qui il risultato della prima
+   * chiamata per impostare `azioniRentri` prima di ricaricare) richiederebbe
+   * di rendere `loadFIR`/`reload()` — condivisi da altri percorsi (apertura
+   * pagina, altre azioni del ciclo di vita) — capaci di accettare un
+   * risultato `/azioni` già disponibile, per evitare la ri-chiamata interna.
+   * Non banale da fare in sicurezza in questo giro; non risolto per non
+   * rischiare di rompere `loadFIR`/`reload()` o il test che verifica che
+   * questo metodo chiami `/azioni` esplicitamente. Da riprendere se il doppio
+   * giro di rete diventa un problema reale (rate limiting RENTRI).
    */
   aggiornaStatoRentri(fir: FIR): void {
     this.aggiornamentoStatoInCorso.set(true)
