@@ -351,4 +351,55 @@ describe('RENTRIApiClient/GetAzioniDisponibiliUseCase — stato e azioni contro 
     const risultatoDopo = await useCase.execute(fir.id, tenantId)
     expect(risultatoDopo.stato).toBe('InserimentoAccettazione')
   })
+
+  it('guasto 423 su /azioni: il client ritenta entro i limiti di resilienza, poi propaga senza corrompere lo stato locale', async () => {
+    // Buco colmato qui (R3 Task 10): le altre quattro famiglie
+    // (rentri-firma-operazione, rentri-accettazione, rentri-annullamento,
+    // rentri-allegati) hanno già un test 423 iniettato su un guasto
+    // permanente (più occorrenze di RENTRIApiClient.MAX_TENTATIVI_RESILIENZA
+    // = 5, v. `rentri-api.client.ts`); questa suite aveva solo il 400 di
+    // "difesa in profondità" sopra. Stesso stile di quei quattro: guasto
+    // permanente (100 >> 5), il client esaurisce i tentativi di resilienza
+    // e propaga, senza corrompere `rentriStatoFormulario` né salvare nulla
+    // (stesso criterio del test "difesa in profondità").
+    const tenantId = 'tenant-oracolo-azioni-3'
+    const cf = 'MRTLGU82D10H501B'
+    const numeroFir = 'BCDFGH00010ZL'
+    await seminaFormulario({
+      numero_fir: numeroFir,
+      stato: 'InserimentoAccettazione',
+      identificativo_soggetto: cf,
+    })
+
+    const fir = creaFIRLegato(tenantId, numeroFir)
+    const firRepository = new FIRRepositoryFake()
+    await firRepository.save(fir)
+
+    const client = creaClient()
+    const prisma: any = {
+      tenant: { findUnique: jest.fn().mockResolvedValue({ codiceFiscale: cf }) },
+    }
+
+    const useCase = new GetAzioniDisponibiliUseCase(
+      prisma,
+      firRepository as any,
+      client,
+      creaLogger()
+    )
+
+    const saveSpy = jest.spyOn(firRepository, 'save')
+
+    // Guasto permanente: l'ente "banna" il chiamante su ogni tentativo.
+    // Verifica solo il ciclo di retry/propagazione (nessuna correttezza
+    // del modello dati coinvolta qui — l'endpoint è una GET).
+    await impostaGuasto(423, 100)
+
+    await expect(useCase.execute(fir.id, tenantId)).rejects.toThrow()
+
+    // Nessuna corruzione: né una riconciliazione né un salvataggio, anche
+    // dopo che il client ha esaurito i tentativi di resilienza.
+    expect(saveSpy).not.toHaveBeenCalled()
+    const firDopoIlGuasto = await firRepository.findById(fir.id)
+    expect(firDopoIlGuasto!.rentriStatoFormulario).toBeNull()
+  }, 30000)
 })
