@@ -40,6 +40,27 @@ import { AccettaFirRentriDto } from './dto/accetta-fir-rentri.dto'
 import { AnnullaFirRentriDto } from './dto/annulla-fir-rentri.dto'
 import { CaricaAllegatoFirRentriDto } from './dto/carica-allegato-fir-rentri.dto'
 import { DomainException } from '../../domain/shared/domain-exception'
+import { traduciErroreRentri } from '../../application/rentri/rentri-error-presentation'
+
+/**
+ * `rule` di `DomainException.businessRuleViolation` per cui esiste una
+ * traduzione dedicata in `traduciErroreRentri` (R3 Task 9). Qualunque altro
+ * `rule` (es. `FIR_NON_LEGATO_RENTRI`, `CF_TENANT_MANCANTE`,
+ * `ALLEGATO_RENTRI_RIFIUTATO`, `ALLEGATO_ID_MANCANTE`) NON è in questo elenco
+ * di proposito: `traduciErroreRentri` non ha un case dedicato per loro e il
+ * suo `default` è pensato per il flusso di sincronizzazione RENTRI, non per
+ * un errore di validazione locale — chiamarla comunque restituirebbe un
+ * messaggio falso ("RENTRI non è momentaneamente raggiungibile..."). Stessa
+ * cautela già adottata in `RentriFormulariController.mappaErroreHttp`.
+ */
+const RULE_TRADOTTE_TASK_9 = new Set([
+  'ACCETTAZIONE_NON_DISPONIBILE',
+  'ANNULLAMENTO_NON_DISPONIBILE',
+  'ALLEGATO_NON_DISPONIBILE',
+  'FIRMA_RENTRI_RIFIUTATA',
+  'FORMATO_ALLEGATO_NON_AMMESSO',
+  'ALLEGATO_TROPPO_GRANDE',
+])
 
 /**
  * RENTRI FIR Lifecycle Controller (R3 Task 2).
@@ -106,16 +127,7 @@ export class RentriFirLifecycleController {
         tenantId,
       })
 
-      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
-        throw new NotFoundException(error.message)
-      }
-      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
-        throw new UnauthorizedException(error.message)
-      }
-      if (error instanceof DomainException) {
-        throw new BadRequestException(error.message)
-      }
-      throw error
+      throw this.mappaErroreDominio(error)
     }
   }
 
@@ -171,16 +183,7 @@ export class RentriFirLifecycleController {
         tenantId,
       })
 
-      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
-        throw new NotFoundException(error.message)
-      }
-      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
-        throw new UnauthorizedException(error.message)
-      }
-      if (error instanceof DomainException) {
-        throw new BadRequestException(error.message)
-      }
-      throw error
+      throw this.mappaErroreDominio(error)
     }
   }
 
@@ -230,16 +233,7 @@ export class RentriFirLifecycleController {
         tenantId,
       })
 
-      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
-        throw new NotFoundException(error.message)
-      }
-      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
-        throw new UnauthorizedException(error.message)
-      }
-      if (error instanceof DomainException) {
-        throw new BadRequestException(error.message)
-      }
-      throw error
+      throw this.mappaErroreDominio(error)
     }
   }
 
@@ -265,13 +259,7 @@ export class RentriFirLifecycleController {
     try {
       return await this.gestisciAllegatiFIRUseCase.elencaAllegati(firId, tenantId)
     } catch (error: any) {
-      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
-        throw new NotFoundException(error.message)
-      }
-      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
-        throw new UnauthorizedException(error.message)
-      }
-      throw error
+      throw this.mappaErroreDominio(error)
     }
   }
 
@@ -321,16 +309,7 @@ export class RentriFirLifecycleController {
     } catch (error: any) {
       this.logger.error('Caricamento allegato RENTRI non riuscito', error, { firId, tenantId })
 
-      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
-        throw new NotFoundException(error.message)
-      }
-      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
-        throw new UnauthorizedException(error.message)
-      }
-      if (error instanceof DomainException) {
-        throw new BadRequestException(error.message)
-      }
-      throw error
+      throw this.mappaErroreDominio(error)
     }
   }
 
@@ -380,16 +359,7 @@ export class RentriFirLifecycleController {
         tenantId,
       })
 
-      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
-        throw new NotFoundException(error.message)
-      }
-      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
-        throw new UnauthorizedException(error.message)
-      }
-      if (error instanceof DomainException) {
-        throw new BadRequestException(error.message)
-      }
-      throw error
+      throw this.mappaErroreDominio(error)
     }
   }
 
@@ -431,13 +401,7 @@ export class RentriFirLifecycleController {
     } catch (error: any) {
       this.logger.error('Stampa PDF RENTRI non riuscita', error, { firId, tenantId })
 
-      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
-        throw new NotFoundException(error.message)
-      }
-      if (error instanceof DomainException) {
-        throw new BadRequestException(error.message)
-      }
-      throw error
+      throw this.mappaErroreDominio(error)
     }
 
     // Esito 204 dichiarato dal contratto (riga 1764): nessun PDF disponibile
@@ -455,5 +419,48 @@ export class RentriFirLifecycleController {
       'Content-Length': buffer.length,
     })
     res.send(buffer)
+  }
+
+  /**
+   * Mappa una `DomainException` sull'eccezione HTTP corrispondente,
+   * traducendo in italiano-utente i sei `errorCode` del Task 9 quando la
+   * regola violata è una di quelle (R3 Task 9/10, debito chiuso qui: prima
+   * di questo metodo ogni endpoint faceva sempre
+   * `BadRequestException(error.message)`, esponendo il prefisso tecnico
+   * "Business rule violated: <regola>." generato da
+   * `DomainException.businessRuleViolation`).
+   *
+   * Stesso pattern di `RentriFormulariController.mappaErroreHttp` (il
+   * modello da cui questo metodo è stato copiato, non reinventato): NOT_FOUND
+   * e UNAUTHORIZED restano invariati; una `BUSINESS_RULE_VIOLATION` con
+   * `rule` fuori da `RULE_TRADOTTE_TASK_9` ricade su `error.message`, mai su
+   * `traduciErroreRentri` (il suo `default` non è adatto a un errore di
+   * validazione locale). `errorMessage: error.message` è passato SEMPRE:
+   * `FIRMA_RENTRI_RIFIUTATA` ne estrae il tipo di operazione con una regex
+   * (`estraiTipoOperazioneFirma`) — omesso, il fallback generico scatterebbe
+   * sempre anche quando l'operazione è riconoscibile.
+   */
+  private mappaErroreDominio(error: unknown): Error {
+    if (!(error instanceof DomainException)) {
+      return error as Error
+    }
+
+    if (error.code === 'NOT_FOUND') {
+      return new NotFoundException(error.message)
+    }
+    if (error.code === 'UNAUTHORIZED') {
+      return new UnauthorizedException(error.message)
+    }
+    if (error.code === 'BUSINESS_RULE_VIOLATION') {
+      const rule = error.metadata?.rule as string | undefined
+      if (rule && RULE_TRADOTTE_TASK_9.has(rule)) {
+        return new BadRequestException(
+          traduciErroreRentri({ errorCode: rule, errorMessage: error.message }).messaggio
+        )
+      }
+      return new BadRequestException(error.message)
+    }
+
+    return new BadRequestException(error.message)
   }
 }
