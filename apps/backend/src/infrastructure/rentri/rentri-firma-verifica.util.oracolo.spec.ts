@@ -1,10 +1,21 @@
 import { createSign } from 'node:crypto'
 import { verificaFirmaLocale } from './rentri-firma-verifica.util'
 
+// Questa spec dipende dal materiale crittografico della fake
+// (`tools/rentri-fake/src/auth/ca-test`, che a sua volta importa `node-forge`):
+// `tools/*` NON e' un workspace npm, quindi `npm ci` alla radice non ne
+// installa le dipendenze. Per questo il file si chiama `*.oracolo.spec.ts` ed
+// e' escluso dalla suite unitaria: in CI girerebbe senza `node-forge` e
+// fallirebbe per assenza di infrastruttura, non per un difetto del codice.
+// E' lo stesso difetto che al rilascio di P5 teneva tre spec di conformita'
+// fuori dalla CI senza che nessuno se ne accorgesse.
+// NB: la riga del `require` sta su una riga sola di proposito. Se si destruttura
+// direttamente, Prettier la spezza su piu' righe e la direttiva `disable-next-line`
+// finisce per coprire `const {` invece della riga che ESLint segnala — il lint
+// fallisce e sembra un problema di regole, mentre e' solo formattazione.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const {
-  emettiCertificatoAccreditato,
-} = require('../../../../../tools/rentri-fake/src/auth/ca-test')
+const caTest = require('../../../../../tools/rentri-fake/src/auth/ca-test')
+const { emettiCertificatoAccreditato } = caTest
 
 /**
  * R3 Task 3 — `verificaFirmaLocale`.

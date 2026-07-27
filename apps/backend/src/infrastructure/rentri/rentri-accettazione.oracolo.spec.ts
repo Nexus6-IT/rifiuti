@@ -341,7 +341,11 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
     const tenantId = 'tenant-oracolo-accettazione-1'
     const cf = 'RSSMRA80A01H501U'
     const numeroFir = 'BCDFGH00020ZH'
-    await seminaFormulario({ numero_fir: numeroFir, stato: 'InserimentoAccettazione', identificativo_soggetto: cf })
+    await seminaFormulario({
+      numero_fir: numeroFir,
+      stato: 'InserimentoAccettazione',
+      identificativo_soggetto: cf,
+    })
 
     const firRepository = new FIRRepositoryFake()
     const fir = creaFIRLegato(tenantId, numeroFir)
@@ -350,7 +354,13 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
     const client = creaClient()
     agganciaConfermaAutomatica(client)
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, cf, 'cred-oracolo-accettazione-1', rateLimiter)
+    const useCase = creaUseCase(
+      firRepository,
+      client,
+      cf,
+      'cred-oracolo-accettazione-1',
+      rateLimiter
+    )
 
     const completatore = avviaCompletatoreOperazioni({ digestToSign: DIGEST, token: TOKEN })
 
@@ -380,7 +390,11 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
     const tenantId = 'tenant-oracolo-accettazione-2'
     const cf = 'VRDGPP75B02H501X'
     const numeroFir = 'BCDFGH00020ZB'
-    await seminaFormulario({ numero_fir: numeroFir, stato: 'InserimentoAccettazione', identificativo_soggetto: cf })
+    await seminaFormulario({
+      numero_fir: numeroFir,
+      stato: 'InserimentoAccettazione',
+      identificativo_soggetto: cf,
+    })
 
     const firRepository = new FIRRepositoryFake()
     const fir = creaFIRLegato(tenantId, numeroFir)
@@ -389,7 +403,13 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
     const client = creaClient()
     agganciaConfermaAutomatica(client)
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, cf, 'cred-oracolo-accettazione-2', rateLimiter)
+    const useCase = creaUseCase(
+      firRepository,
+      client,
+      cf,
+      'cred-oracolo-accettazione-2',
+      rateLimiter
+    )
 
     const completatore = avviaCompletatoreOperazioni({ digestToSign: DIGEST, token: TOKEN })
 
@@ -417,7 +437,11 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
     const tenantId = 'tenant-oracolo-accettazione-3'
     const cf = 'BNCLGU70C03H501Y'
     const numeroFir = 'BCDFGH00020ZC'
-    await seminaFormulario({ numero_fir: numeroFir, stato: 'InserimentoQuantita', identificativo_soggetto: cf })
+    await seminaFormulario({
+      numero_fir: numeroFir,
+      stato: 'InserimentoQuantita',
+      identificativo_soggetto: cf,
+    })
 
     const firRepository = new FIRRepositoryFake()
     const fir = creaFIRLegato(tenantId, numeroFir)
@@ -425,7 +449,13 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, cf, 'cred-oracolo-accettazione-3', rateLimiter)
+    const useCase = creaUseCase(
+      firRepository,
+      client,
+      cf,
+      'cred-oracolo-accettazione-3',
+      rateLimiter
+    )
     const spy = jest.spyOn(client, 'inviaAccettazione')
 
     await expect(
@@ -444,7 +474,11 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
     const tenantId = 'tenant-oracolo-accettazione-4'
     const cf = 'MRNLGU80D04H501Z'
     const numeroFir = 'BCDFGH00020ZD'
-    await seminaFormulario({ numero_fir: numeroFir, stato: 'InserimentoAccettazione', identificativo_soggetto: cf })
+    await seminaFormulario({
+      numero_fir: numeroFir,
+      stato: 'InserimentoAccettazione',
+      identificativo_soggetto: cf,
+    })
 
     const firRepository = new FIRRepositoryFake()
     const fir = creaFIRLegato(tenantId, numeroFir)
@@ -452,7 +486,13 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, cf, 'cred-oracolo-accettazione-4', rateLimiter)
+    const useCase = creaUseCase(
+      firRepository,
+      client,
+      cf,
+      'cred-oracolo-accettazione-4',
+      rateLimiter
+    )
     const spyAzioni = jest.spyOn(client, 'leggiAzioniDisponibili')
     const spyAccettazione = jest.spyOn(client, 'inviaAccettazione')
 
@@ -474,7 +514,11 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
     const tenantId = 'tenant-oracolo-accettazione-5'
     const cf = 'FRRLGU85E05H501A'
     const numeroFir = 'BCDFGH00020ZK'
-    await seminaFormulario({ numero_fir: numeroFir, stato: 'InserimentoAccettazione', identificativo_soggetto: cf })
+    await seminaFormulario({
+      numero_fir: numeroFir,
+      stato: 'InserimentoAccettazione',
+      identificativo_soggetto: cf,
+    })
 
     const firRepository = new FIRRepositoryFake()
     const fir = creaFIRLegato(tenantId, numeroFir)
@@ -482,7 +526,13 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, cf, 'cred-oracolo-accettazione-5', rateLimiter)
+    const useCase = creaUseCase(
+      firRepository,
+      client,
+      cf,
+      'cred-oracolo-accettazione-5',
+      rateLimiter
+    )
 
     // La precondizione da /azioni è mockata (nessuna rete reale): questo
     // scenario isola il guasto sulla chiamata /accettazione, non sulla
