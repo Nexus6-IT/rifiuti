@@ -5,7 +5,12 @@
  */
 
 import { AggregateRoot, DomainEvent } from '../../../core/domain/aggregate-root'
-import { DomainError, InvalidStateTransitionError } from '../../../core/domain/errors'
+import {
+  DomainError,
+  InvalidStateTransitionError,
+  FIRNonLegatoRentriError,
+  MetodoLocaleNonConsentitoSuFirLegatoError,
+} from '../../../core/domain/errors'
 import { Quantita, UnitaMisura } from '../value-objects/quantita'
 import { RENTRISyncStatus } from '../rentri-sync-status.vo'
 
@@ -32,6 +37,64 @@ export enum RentriOrigineLegame {
   ACQUISITO_DA_TERZI = 'ACQUISITO_DA_TERZI',
   /** Legame impostato manualmente da un operatore (es. correzione/riconciliazione). */
   AGGANCIO_MANUALE = 'AGGANCIO_MANUALE',
+}
+
+/**
+ * Stato del formulario secondo l'ente RENTRI (contratto OpenAPI,
+ * `docs/contracts/rentri/formulari.yaml`, schema `StatoFormulario`). 21
+ * valori ESATTI copiati dal contratto — non tradotti (sono già in italiano
+ * nel contratto stesso), non un sottoinsieme.
+ *
+ * Distinto da `FIRStato` (il ciclo di vita interno WasteFlow): finché un FIR
+ * non è legato a RENTRI (`rentriNumeroFir` null) comanda `FIRStato` come
+ * oggi; da quando è legato, questo stato ente "vince" e viene rispecchiato
+ * su `FIRStato` tramite `FIR.applyRentriStato` (v. Task 1, R3).
+ */
+export type StatoFormulario =
+  | 'InserimentoQuantita'
+  | 'InserimentoQuantitaTrasportoIniziale'
+  | 'InserimentoTrasportoIniziale'
+  | 'FirmaProduttoreTrasportatoreIniziale'
+  | 'FirmaTrasportatoreIniziale'
+  | 'FirmaProduttore'
+  | 'InserimentoTrasportoSuccessivo'
+  | 'FirmaTrasportatoreSuccessivo'
+  | 'FirmaAnnotazione'
+  | 'FirmaTrasbordoParziale'
+  | 'FirmaTrasbordoTotale'
+  | 'FirmaSostaTecnica'
+  | 'FirmaAllegato'
+  | 'InserimentoAccettazione'
+  | 'FirmaAccettazione'
+  | 'Accettato'
+  | 'RespintoAccettatoParzialmente'
+  | 'FirmaDestinatarioSuccessivo'
+  | 'FirmaAccettazioneSuccessiva'
+  | 'FirmaAnnullamento'
+  | 'Annullato'
+  | 'Indeterminato'
+
+/**
+ * Mappatura StatoFormulario (ente) → FIRStato (interno). Decisione presa nel
+ * piano R3 (sezione "Il nodo architetturale"), non rinegoziabile qui:
+ * - `Accettato` / `RespintoAccettatoParzialmente` → CONSEGNATO: l'operazione
+ *   presso l'ente si è conclusa con un esito finale (accettato o respinto),
+ *   il documento non ha più adempimenti pendenti lato ciclo di vita WasteFlow.
+ * - `Annullato` → ANNULLATO.
+ * - tutti gli altri 19 stati (compreso `Indeterminato`, incoerenza dati non
+ *   ancora un esito) → IN_TRANSITO: il FIR è "in lavorazione presso l'ente",
+ *   né bozza né concluso.
+ */
+function mapStatoFormularioToFIRStato(stato: StatoFormulario): FIRStato {
+  switch (stato) {
+    case 'Accettato':
+    case 'RespintoAccettatoParzialmente':
+      return FIRStato.CONSEGNATO
+    case 'Annullato':
+      return FIRStato.ANNULLATO
+    default:
+      return FIRStato.IN_TRANSITO
+  }
 }
 
 export interface FIRRifiuto {
@@ -187,6 +250,15 @@ export class FIRConsegnatoEvent implements DomainEvent {
   ) {}
 }
 
+export class FIRAnnullatoEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.annullato'
+  constructor(
+    public readonly firId: string,
+    public readonly motivo: string
+  ) {}
+}
+
 export class FIRRENTRISincronizzatoEvent implements DomainEvent {
   readonly occurredOn = new Date()
   readonly eventName = 'fir.rentri_sincronizzato'
@@ -223,6 +295,62 @@ export class FIRRENTRILegameDaConfermareEvent implements DomainEvent {
   constructor(
     public readonly firId: string,
     public readonly numeroFirProposto: string,
+    public readonly correlationId?: string
+  ) {}
+}
+
+/**
+ * Emesso quando il FIR viene legato a un formulario RENTRI nato altrove
+ * (Task 3, R2): acquisizione di visibilità o aggancio manuale dell'operatore.
+ * Distinto da FIRRENTRISincronizzatoEvent (che copre solo TRASMESSO_DA_NOI):
+ * qui il formulario esisteva già presso l'ente prima che questo gestionale
+ * se ne accorgesse.
+ */
+export class FIRRENTRIAgganciatoEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_agganciato'
+  constructor(
+    public readonly firId: string,
+    public readonly numeroFir: string,
+    public readonly origine: RentriOrigineLegame,
+    public readonly correlationId?: string
+  ) {}
+}
+
+/**
+ * Emesso dallo sgancio (`rilasciaLegameRENTRI`): il FIR locale resta, ma
+ * perde il legame con il numero_fir RENTRI. Riporta anche l'origine che
+ * aveva il legame appena rilasciato, utile per l'audit (v. Task 4,
+ * `RilasciaFormularioRENTRIUseCase` → ActivityLog).
+ */
+export class FIRRENTRILegameRilasciatoEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_legame_rilasciato'
+  constructor(
+    public readonly firId: string,
+    public readonly numeroFirRilasciato: string,
+    public readonly origineRilasciata: RentriOrigineLegame,
+    public readonly correlationId?: string
+  ) {}
+}
+
+/**
+ * Emesso da `FIR.applyRentriStato` (Task 1, R3) ogni volta che si riconcilia
+ * lo stato ente con il ciclo di vita interno. `statoRentriPrecedente` è
+ * `null` alla prima riconciliazione (nessuno stato ente noto finora).
+ * `statoInternoRisultante` è il `FIRStato` EFFETTIVO dopo l'applicazione
+ * (può differire dal derivato "puro" della mappatura se una transizione
+ * all'indietro è stata ignorata per protezione anti-regressione, v.
+ * `FIR.applyRentriStato`).
+ */
+export class RentriStatoRiconciliato implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.rentri_stato_riconciliato'
+  constructor(
+    public readonly numeroFir: string,
+    public readonly statoRentriPrecedente: string | null,
+    public readonly statoRentriNuovo: string,
+    public readonly statoInternoRisultante: FIRStato,
     public readonly correlationId?: string
   ) {}
 }
@@ -268,7 +396,24 @@ export class FIR extends AggregateRoot {
      * confermi esplicitamente. Finché è valorizzato, `rentriNumeroFir` resta
      * `null` — il FIR non è "legato" a tutti gli effetti.
      */
-    private _rentriNumeroFirProposto: string | null = null
+    private _rentriNumeroFirProposto: string | null = null,
+    /**
+     * Ultimo stato noto del formulario presso l'ente (StatoFormulario del
+     * contratto RENTRI). A differenza di `_stato` (FIRStato interno, protetto
+     * da regressione — v. `applyRentriStato`), questo campo è una copia in
+     * sola lettura dell'ULTIMO valore ricevuto, senza alcuna monotonia: si
+     * aggiorna sempre, anche quando il derivato su `_stato` viene ignorato.
+     * `null` per un FIR mai riconciliato (non legato, o legato ma senza
+     * ancora nessuna lettura dall'ente).
+     */
+    private _rentriStatoFormulario: StatoFormulario | null = null,
+    /**
+     * Motivo dell'annullamento del FIR: scritto da `annulla()` per un FIR
+     * locale, da `registraNoteAnnullamentoRentri()` per un FIR legato (stesso
+     * testo trasmesso all'ente con `POST /{numero_fir}/note-annullamento`).
+     * `null` per un FIR mai annullato.
+     */
+    private _motivoAnnullamento: string | null = null
   ) {
     super()
   }
@@ -331,6 +476,13 @@ export class FIR extends AggregateRoot {
   }
 
   presaInCarico(data: Date, firmaTrasportatore: FirmaDigitale): void {
+    if (this._rentriNumeroFir) {
+      throw new MetodoLocaleNonConsentitoSuFirLegatoError(
+        'presaInCarico',
+        "l'operazione di trasporto su RENTRI"
+      )
+    }
+
     if (this._stato !== FIRStato.EMESSO) {
       throw new InvalidStateTransitionError(this._stato, FIRStato.IN_TRANSITO)
     }
@@ -347,6 +499,13 @@ export class FIR extends AggregateRoot {
     firmaDestinatario: FirmaDigitale,
     noteDestinatario?: string
   ): void {
+    if (this._rentriNumeroFir) {
+      throw new MetodoLocaleNonConsentitoSuFirLegatoError(
+        'confermaConsegna',
+        "l'operazione di accettazione/respingimento su RENTRI (Task 4)"
+      )
+    }
+
     if (this._stato !== FIRStato.IN_TRANSITO) {
       throw new InvalidStateTransitionError(this._stato, FIRStato.CONSEGNATO)
     }
@@ -373,13 +532,54 @@ export class FIR extends AggregateRoot {
     this.addDomainEvent(new FIRConsegnatoEvent(this._id, pesoEffettivo))
   }
 
-  annulla(_motivo: string): void {
+  /**
+   * Annulla un FIR NON legato a RENTRI, conservando il motivo (R3 Task 5:
+   * il parametro era scartato, il motivo dell'annullamento andava perduto).
+   */
+  annulla(motivo: string): void {
+    if (this._rentriNumeroFir) {
+      throw new MetodoLocaleNonConsentitoSuFirLegatoError(
+        'annulla',
+        "l'operazione di annullamento su RENTRI (Task 5)"
+      )
+    }
+
     if (this._stato === FIRStato.CONSEGNATO) {
       throw new DomainError('Cannot annull a completed FIR')
     }
 
+    if (!motivo || motivo.trim() === '') {
+      throw new DomainError('Il motivo di annullamento è obbligatorio')
+    }
+
     this._stato = FIRStato.ANNULLATO
-    // In production, store motivo in a separate field or event
+    this._motivoAnnullamento = motivo
+    this.addDomainEvent(new FIRAnnullatoEvent(this._id, motivo))
+  }
+
+  /**
+   * Registra il testo delle note di annullamento RENTRI (R3 Task 5) su un FIR
+   * GIÀ riconciliato ad ANNULLATO da `applyRentriStato` (l'ente ha già
+   * confermato l'annullamento: qui si registra solo il testo trasmesso con
+   * `POST /{numero_fir}/note-annullamento`). A differenza di `annulla()`,
+   * questo metodo è ammesso SOLO per un FIR legato a RENTRI — è l'inverso
+   * della stessa guardia.
+   */
+  registraNoteAnnullamentoRentri(note: string): void {
+    if (!this._rentriNumeroFir) {
+      throw new DomainError(
+        "Questo FIR non è legato a RENTRI: usare annulla() per l'annullamento locale."
+      )
+    }
+    if (this._stato !== FIRStato.ANNULLATO) {
+      throw new DomainError(
+        `Le note di annullamento richiedono che il FIR sia già ANNULLATO (stato attuale: ${this._stato}).`
+      )
+    }
+    if (!note || note.trim() === '') {
+      throw new DomainError('La nota di annullamento non può essere vuota.')
+    }
+    this._motivoAnnullamento = note
   }
 
   // RENTRI sync — business methods
@@ -564,6 +764,200 @@ export class FIR extends AggregateRoot {
     this._rentriSyncStatus = RENTRISyncStatus.pending()
   }
 
+  // Aggancio a un formulario altrui (R2 Task 3) — due modi distinti di
+  // legare questo FIR a un numero_fir che NON è nato da una nostra
+  // trasmissione (v. markRENTRISynced/confermaLegameRENTRI, sopra):
+  //
+  // 1. agganciaFormularioAcquisito: il FIR locale nasce da zero a partire
+  //    dal dettaglio RENTRI di un formulario di cui si è appena acquisita
+  //    la visibilità (creato da un'altra controparte, es. il produttore).
+  //    Si invoca subito dopo la creazione del FIR (Task 5), mai su un FIR
+  //    preesistente — quello è il caso del metodo successivo.
+  // 2. agganciaManualmente: un FIR locale preesistente (tipicamente una
+  //    bozza o un record incompleto creato prima di conoscere il numero
+  //    ufficiale) viene riconciliato a mano dall'operatore con un
+  //    numero_fir che solo l'operatore può riconoscere come lo stesso
+  //    movimento — non automatizzabile.
+  //
+  // Entrambi condividono la stessa precondizione: il FIR non deve avere già
+  // un legame (in nessuna delle tre origini). Un formulario già legato non
+  // si ri-lega direttamente a un numero diverso: bisogna prima rilasciare
+  // il legame esistente (rilasciaLegameRENTRI). La ragione è di tracciabilità,
+  // non solo tecnica — un secondo aggancio silenzioso su un FIR già legato
+  // cancellerebbe, senza lasciarne evidenza, il fatto che era legato a
+  // *un altro* formulario: un errore di questo tipo va reso visibile ed
+  // esplicito (sgancio, poi nuovo aggancio), non nascosto da una sovrascrittura.
+
+  /**
+   * Lega questo FIR a un formulario RENTRI di cui si è acquisita la
+   * visibilità (creato da un'altra controparte). Vedi nota sopra: si usa
+   * solo sul FIR appena creato dal dettaglio RENTRI (Task 5), non per
+   * riconciliare un FIR preesistente (v. agganciaManualmente).
+   */
+  agganciaFormularioAcquisito(numeroFir: string, correlationId?: string): void {
+    this.assertNonGiaLegatoRENTRI()
+    if (!numeroFir || numeroFir.trim() === '') {
+      throw new DomainError(
+        "Numero FIR RENTRI mancante: impossibile registrare l'acquisizione del formulario"
+      )
+    }
+
+    this._rentriNumeroFir = numeroFir
+    this._rentriOrigineLegame = RentriOrigineLegame.ACQUISITO_DA_TERZI
+
+    this.addDomainEvent(
+      new FIRRENTRIAgganciatoEvent(
+        this._id,
+        numeroFir,
+        RentriOrigineLegame.ACQUISITO_DA_TERZI,
+        correlationId
+      )
+    )
+  }
+
+  /**
+   * Lega manualmente questo FIR (preesistente nel gestionale) a un
+   * numero_fir che l'operatore riconosce essere lo stesso movimento. È una
+   * riconciliazione a giudizio umano: nessuna validazione automatica può
+   * sostituirla, quindi il metodo non verifica altro oltre alla
+   * precondizione comune (nessun legame già presente).
+   */
+  agganciaManualmente(numeroFir: string, correlationId?: string): void {
+    this.assertNonGiaLegatoRENTRI()
+    if (!numeroFir || numeroFir.trim() === '') {
+      throw new DomainError("Numero FIR RENTRI mancante: impossibile registrare l'aggancio manuale")
+    }
+
+    this._rentriNumeroFir = numeroFir
+    this._rentriOrigineLegame = RentriOrigineLegame.AGGANCIO_MANUALE
+
+    this.addDomainEvent(
+      new FIRRENTRIAgganciatoEvent(
+        this._id,
+        numeroFir,
+        RentriOrigineLegame.AGGANCIO_MANUALE,
+        correlationId
+      )
+    )
+  }
+
+  /**
+   * Precondizione comune ai due metodi di aggancio sopra: rifiuta se il FIR
+   * ha già un legame, citando l'origine esistente nel messaggio (utile
+   * all'utente e al log) — un formulario legato non si ri-lega, va prima
+   * rilasciato con `rilasciaLegameRENTRI`.
+   */
+  private assertNonGiaLegatoRENTRI(): void {
+    if (this._rentriNumeroFir) {
+      throw new DomainError(
+        `FIR già legato al numero RENTRI ${this._rentriNumeroFir} (origine: ${this._rentriOrigineLegame}): ` +
+          'rilasciare il legame esistente prima di agganciarne un altro'
+      )
+    }
+  }
+
+  /**
+   * Lo sgancio: operazione inversa dell'aggancio, corrispondente al
+   * rilascio di visibilità verso RENTRI (POST /{numero_fir}/rilascio-
+   * visibilita/{num_iscr_sito}). Riporta il FIR a "non legato"
+   * (rentriNumeroFir/rentriOrigineLegame = null) — il FIR locale NON viene
+   * cancellato, resta come record, coerente con la semantica del contratto
+   * ("abbandona senza cancellare dall'ente": il formulario resta su RENTRI,
+   * smette solo di comparire tra quelli visibili a questa unità locale).
+   *
+   * Consentito SOLO se l'origine corrente è ACQUISITO_DA_TERZI o
+   * AGGANCIO_MANUALE — MAI su TRASMESSO_DA_NOI: un formulario che questo
+   * gestionale ha creato non si "rilascia" (l'ente continuerebbe a
+   * considerarlo nostro), si annullerebbe con gli endpoint del ciclo di
+   * vita (R3). Impedire questa confusione qui, con un messaggio di dominio
+   * esplicito, invece di lasciare che sia solo una convenzione della UI che
+   * un futuro chiamante (script, altro endpoint) potrebbe ignorare.
+   */
+  rilasciaLegameRENTRI(correlationId?: string): void {
+    if (!this._rentriNumeroFir || !this._rentriOrigineLegame) {
+      throw new DomainError('Nessun legame RENTRI da rilasciare per questo FIR')
+    }
+    if (this._rentriOrigineLegame === RentriOrigineLegame.TRASMESSO_DA_NOI) {
+      throw new DomainError(
+        'Un formulario trasmesso da questo gestionale non si rilascia: ' +
+          'per annullarlo usare gli endpoint del ciclo di vita RENTRI (R3)'
+      )
+    }
+
+    const numeroFirRilasciato = this._rentriNumeroFir
+    const origineRilasciata = this._rentriOrigineLegame
+
+    this._rentriNumeroFir = null
+    this._rentriOrigineLegame = null
+
+    this.addDomainEvent(
+      new FIRRENTRILegameRilasciatoEvent(
+        this._id,
+        numeroFirRilasciato,
+        origineRilasciata,
+        correlationId
+      )
+    )
+  }
+
+  // Riconciliazione ciclo di vita RENTRI (Task 1, R3) — v. StatoFormulario e
+  // mapStatoFormularioToFIRStato sopra per la mappatura completa.
+  //
+  // Metodo deterministico e puro: nessuna chiamata di rete qui dentro (la fa
+  // lo use case che lo invoca, Task 2-6 R3). Applica la mappatura al
+  // FIRStato interno con UNA protezione: una volta che il FIR ha raggiunto
+  // uno stato TERMINALE (CONSEGNATO/ANNULLATO), FIRStato non regredisce più
+  // — anche se una lettura successiva (race fra polling, risposta obsoleta
+  // arrivata in ordine sbagliato) mapperebbe a IN_TRANSITO. `rentriStatoFormulario`
+  // invece riflette SEMPRE l'ultimo valore noto dell'ente: non è un derivato
+  // monotono, è "l'ultimo stato che ci ha detto RENTRI".
+
+  /**
+   * Riconcilia lo stato ente (`nuovoStato`) con il FIR. Rifiuta se il FIR non
+   * è legato a RENTRI (`rentriNumeroFir` assente): non ha senso riconciliare
+   * uno stato ente su un FIR che l'ente non conosce.
+   */
+  applyRentriStato(nuovoStato: StatoFormulario, correlationId?: string): void {
+    if (!this._rentriNumeroFir) {
+      throw new FIRNonLegatoRentriError()
+    }
+
+    const statoRentriPrecedente = this._rentriStatoFormulario
+    const statoDerivato = mapStatoFormularioToFIRStato(nuovoStato)
+    const eTerminale = (s: FIRStato): boolean =>
+      s === FIRStato.CONSEGNATO || s === FIRStato.ANNULLATO
+    const statoInternoEraTerminale = eTerminale(this._stato)
+
+    // rentriStatoFormulario si aggiorna sempre: è l'ultimo stato noto
+    // dell'ente, non un derivato protetto da monotonia.
+    this._rentriStatoFormulario = nuovoStato
+
+    // La protezione vale SOLO contro una regressione verso uno stato NON
+    // terminale (una risposta di polling obsoleta arrivata fuori ordine
+    // farebbe tornare il FIR a IN_TRANSITO dopo un esito finale).
+    //
+    // NON vale fra due stati terminali: `Accettato` → `Annullato` non è una
+    // race, è l'ente che annulla un formulario già accettato — un evento
+    // legittimo del ciclo reale. Bloccarlo lascerebbe il gestionale su
+    // CONSEGNATO mentre l'ente dice Annullato, cioè esattamente le due verità
+    // divergenti che questo disegno esiste per impedire. Fra l'ipotesi "è una
+    // risposta vecchia" e "l'ente ha davvero cambiato esito", su uno stato
+    // terminale comanda l'ente.
+    if (!statoInternoEraTerminale || eTerminale(statoDerivato)) {
+      this._stato = statoDerivato
+    }
+
+    this.addDomainEvent(
+      new RentriStatoRiconciliato(
+        this._rentriNumeroFir,
+        statoRentriPrecedente,
+        nuovoStato,
+        this._stato,
+        correlationId
+      )
+    )
+  }
+
   /**
    * Indica se il FIR è idoneo per un nuovo tentativo automatico dopo un
    * fallimento (delega a RENTRISyncStatus.canRetry()): tiene conto sia del
@@ -717,6 +1111,23 @@ export class FIR extends AggregateRoot {
    */
   get rentriNumeroFirProposto(): string | null {
     return this._rentriNumeroFirProposto
+  }
+
+  /**
+   * Ultimo stato noto del formulario presso l'ente (v. `applyRentriStato`).
+   * `null` se il FIR non è mai stato riconciliato.
+   */
+  get rentriStatoFormulario(): StatoFormulario | null {
+    return this._rentriStatoFormulario
+  }
+
+  /**
+   * Motivo dell'annullamento (locale o RENTRI). `null` se il FIR non è stato
+   * annullato, o se è stato annullato presso l'ente senza che la nota sia
+   * stata registrata.
+   */
+  get motivoAnnullamento(): string | null {
+    return this._motivoAnnullamento
   }
 
   private static generateId(): string {

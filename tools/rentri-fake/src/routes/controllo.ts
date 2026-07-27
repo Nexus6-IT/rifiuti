@@ -9,13 +9,10 @@ import { inviaProblemDetails } from '../errori/problem-details'
  * l'elaborazione asincrona.
  */
 export function registraRotteControllo(app: FastifyInstance, archivio: Archivio): void {
-  app.post<{ Body: { stato: number; volte: number } }>(
-    '/__controllo/guasto',
-    async (richiesta) => {
-      archivio.impostaGuasto({ stato: richiesta.body.stato, volte: richiesta.body.volte })
-      return { impostato: true }
-    }
-  )
+  app.post<{ Body: { stato: number; volte: number } }>('/__controllo/guasto', async richiesta => {
+    archivio.impostaGuasto({ stato: richiesta.body.stato, volte: richiesta.body.volte })
+    return { impostato: true }
+  })
 
   app.post<{
     Body: {
@@ -46,7 +43,7 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
   // l'archivio, nessuno scenario di lettura positiva è verificabile
   // (`Archivio` nasce vuoto e nessuna rotta di dominio scrive un
   // formulario).
-  app.post<{ Body: Formulario }>('/__controllo/formulario', async (richiesta) => {
+  app.post<{ Body: Formulario }>('/__controllo/formulario', async richiesta => {
     archivio.salvaFormulario(richiesta.body)
     return { salvato: true }
   })
@@ -55,4 +52,57 @@ export function registraRotteControllo(app: FastifyInstance, archivio: Archivio)
     archivio.azzera()
     return { azzerato: true }
   })
+
+  // R4 Task 8: simula l'ente che smette di confermare un codice EER tra due
+  // cicli di allineamento (v. `Archivio.rimuoviCodiceEer`), stesso motivo e
+  // stesso pattern di `/__controllo/formulario`.
+  app.post<{ Body: { code: string } }>('/__controllo/rimuovi-codice-eer', async richiesta => {
+    const rimosso = archivio.rimuoviCodiceEer(richiesta.body.code)
+    return { rimosso }
+  })
+
+  // R3 Task 3 — firma remota (`ca-rentri`). Simula la conferma dell'utente
+  // sul PROPRIO dispositivo con l'app ufficiale RENTRI: e' l'unico modo per
+  // far passare una sessione a `AUTORIZZATA`, perche' quel gesto e' per
+  // definizione fuori dal nostro backend (che infatti non chiama mai
+  // `PUT /credentials/authorize-confirmation`). Se la fake si autorizzasse da
+  // sola, nessun test potrebbe distinguere «confermato» da «non ancora
+  // confermato».
+  app.post<{ Params: { handle: string } }>(
+    '/__controllo/ca-rentri/autorizza/:handle',
+    async (richiesta, risposta) => {
+      const autorizzata = archivio.autorizzaSessioneFirma(richiesta.params.handle)
+      if (!autorizzata) {
+        return inviaProblemDetails(risposta, 404, { title: 'Autorizzazione non trovata' })
+      }
+      return { autorizzata: true }
+    }
+  )
+
+  // Simula l'utente che RIFIUTA la firma sul dispositivo: rende raggiungibile
+  // lo stato RIFIUTATA, che senza questo canale resterebbe irraggiungibile e
+  // lascerebbe il ramo corrispondente di `authorize-check` come codice morto.
+  app.post<{ Params: { handle: string } }>(
+    '/__controllo/ca-rentri/rifiuta/:handle',
+    async (richiesta, risposta) => {
+      const rifiutata = archivio.rifiutaSessioneFirma(richiesta.params.handle)
+      if (!rifiutata) {
+        return inviaProblemDetails(risposta, 404, { title: 'Autorizzazione non trovata' })
+      }
+      return { rifiutata: true }
+    }
+  )
+
+  // Porta la scadenza nel passato: verifica il ramo «autorizzazione scaduta»
+  // senza far attendere alla suite il tempo reale di `expires_in`.
+  app.post<{ Params: { handle: string } }>(
+    '/__controllo/ca-rentri/scadi/:handle',
+    async (richiesta, risposta) => {
+      const scaduta = archivio.scadiSessioneFirma(richiesta.params.handle)
+      if (!scaduta) {
+        return inviaProblemDetails(risposta, 404, { title: 'Autorizzazione non trovata' })
+      }
+      return { scaduta: true }
+    }
+  )
 }

@@ -29,10 +29,20 @@ export class CerService {
   }
 
   /**
-   * Cerca codici CER per query (per autocomplete)
+   * Cerca codici CER per query (per autocomplete).
+   *
+   * `presenteInRentri`: quando true, limita ai codici confermati dall'ultimo
+   * allineamento RENTRI (R4 Task 7 Step 3) — usato dall'autocomplete del
+   * form di creazione FIR (`CerSelectComponent`), che non deve più proporre
+   * un codice storico non più restituito dall'ente. Omesso altrove (storico,
+   * ricerca libera nel catalogo): un codice rimane cercabile anche dopo che
+   * l'ente ha smesso di confermarlo.
    */
-  searchCER(query: string): Observable<CERSearchResult[]> {
-    const params = new HttpParams().set('q', query)
+  searchCER(query: string, presenteInRentri?: boolean): Observable<CERSearchResult[]> {
+    let params = new HttpParams().set('q', query)
+    if (presenteInRentri !== undefined) {
+      params = params.set('presenteInRentri', String(presenteInRentri))
+    }
     return this.http.get<CERSearchResult[]>(`${this.API_URL}/search`, { params })
   }
 

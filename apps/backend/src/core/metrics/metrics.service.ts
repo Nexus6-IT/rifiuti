@@ -32,6 +32,14 @@ export class MetricsService implements OnModuleInit {
   public readonly rentriApiRequestDuration: Histogram
   public readonly rentriApiErrors: Counter
 
+  // RENTRI robustezza (R5 Task 5 — allarmi)
+  public readonly rentriCertificateExpiryDays: Gauge
+  public readonly rentriTenantLocked: Gauge
+  public readonly rentriReconciliationDivergences: Counter
+
+  // RENTRI robustezza (R5 Task 2 — limitatore preventivo per tenant)
+  public readonly rentriRateLimiterWaitSeconds: Histogram
+
   // Queue metrics
   public readonly queueDepth: Gauge
   public readonly queueJobDuration: Histogram
@@ -114,6 +122,47 @@ export class MetricsService implements OnModuleInit {
       name: 'wasteflow_rentri_api_errors_total',
       help: 'Total number of RENTRI API errors',
       labelNames: ['endpoint', 'error_type'],
+      registers: [this.registry],
+    })
+
+    // RENTRI robustezza (R5 Task 5): metriche di supporto agli allarmi
+    // Prometheus (monitoring/alerts/rentri.yml) — riusano MetricsService/
+    // Registry esistenti, nessun meccanismo nuovo.
+    this.rentriCertificateExpiryDays = new Gauge({
+      name: 'wasteflow_rentri_certificate_expiry_days',
+      help: 'Giorni mancanti alla scadenza del certificato RENTRI del tenant (calcolati dal campo notAfter del PEM salvato, aggiornati dal job giornaliero rentri-certificato-scadenza.job.ts). Valore negativo = certificato già scaduto.',
+      labelNames: ['tenant_id'],
+      registers: [this.registry],
+    })
+
+    this.rentriTenantLocked = new Gauge({
+      name: 'wasteflow_rentri_tenant_locked',
+      help: "Indica (1) se il tenant ha ricevuto un 423 (risorsa bloccata) confermato dall'ultima risposta RENTRI, tornato a 0 alla prima risposta non-423 successiva (successo o altro errore). Non distingue un singolo 423 transitorio da un pattern persistente: quella distinzione è nella regola di allarme (increase(...) su una finestra di 1h), non in questo gauge.",
+      labelNames: ['tenant_id'],
+      registers: [this.registry],
+    })
+
+    this.rentriReconciliationDivergences = new Counter({
+      name: 'wasteflow_rentri_reconciliation_divergences_total',
+      help: 'Numero di divergenze rilevate dalla riconciliazione periodica dello stato RENTRI (R5 Task 4), per esito: "corretto" (il sistema ha riempito un buco con lo stesso metodo di dominio del flusso normale) o "segnalato" (richiede verifica manuale, nessuna correzione automatica).',
+      labelNames: ['tenant_id', 'esito'],
+      registers: [this.registry],
+    })
+
+    // R5 Task 2: quanto tempo un'operazione RENTRI ha atteso il limitatore
+    // preventivo per-tenant (rentri-rate-limiter.service.ts) prima di poter
+    // eseguire un tentativo HTTP. Distinta da `rentriApiErrors`: qui non è
+    // avvenuto alcun errore, è un'attesa VOLUTA per restare sotto la soglia
+    // dichiarata dal contratto RENTRI. Bucket fino a 5s: coerenti con
+    // l'ampiezza della finestra scorrevole del limitatore (5s,
+    // RENTRI_RATE_LIMIT_FINESTRA_MS) — un'attesa oltre quell'ordine di
+    // grandezza indicherebbe un tenant che satura sistematicamente il
+    // proprio budget, non un picco isolato.
+    this.rentriRateLimiterWaitSeconds = new Histogram({
+      name: 'wasteflow_rentri_rate_limiter_wait_seconds',
+      help: 'Tempo (secondi) atteso dal limitatore preventivo per-tenant RENTRI prima di un tentativo HTTP, per tenant. Un valore diverso da zero non è un errore: è il limitatore che rallenta di proposito il traffico nostro per restare sotto la soglia dichiarata dal contratto (100 richieste/5s).',
+      labelNames: ['tenant_id'],
+      buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5],
       registers: [this.registry],
     })
 

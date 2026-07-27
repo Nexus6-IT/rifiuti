@@ -82,11 +82,11 @@ Se il coordinatore preferisce un'unica fase, i Task 8-13 di questo piano sono co
 
 - [ ] **Step 1: Scrivere i test della mappatura prima del codice**
 
-Una tabella di casi: ogni valore di `StatoFormulario` del contratto (21 valori, riga 10174-10197) verso il `FIRStato` interno atteso, più il caso "FIR non legato a RENTRI → `applyRentriStato` rifiuta la chiamata" (non ha senso riconciliare senza legame) e il caso "il nuovo stato ente è più indietro di quello già registrato" (es. per via di una race fra polling — non deve far regredire `FIRStato` da `CONSEGNATO` a `IN_TRANSITO`).
+Una tabella di casi: ogni valore di `StatoFormulario` del contratto (22 valori, righe 10175-10196 — il conteggio "21" scritto qui in origine era sbagliato: verificato contando le voci del contratto) verso il `FIRStato` interno atteso, più il caso "FIR non legato a RENTRI → `applyRentriStato` rifiuta la chiamata" (non ha senso riconciliare senza legame) e il caso "il nuovo stato ente è più indietro di quello già registrato" (es. per via di una race fra polling — non deve far regredire `FIRStato` da `CONSEGNATO` a `IN_TRANSITO`).
 
 - [ ] **Step 2: Migrazione Prisma**
 
-`RentriStatoFormulario` enum con gli stessi 21 valori del contratto, in italiano dove il contratto è già in italiano (lo è: `InserimentoQuantita`, `Accettato`, ecc. — copiare i nomi esatti, non tradurli di nuovo). Campo `FIR.rentriStatoFormulario RentriStatoFormulario?` nullable (un FIR non legato non ce l'ha).
+`RentriStatoFormulario` enum con gli stessi 22 valori del contratto, in italiano dove il contratto è già in italiano (lo è: `InserimentoQuantita`, `Accettato`, ecc. — copiare i nomi esatti, non tradurli di nuovo). Campo `FIR.rentriStatoFormulario RentriStatoFormulario?` nullable (un FIR non legato non ce l'ha).
 
 - [ ] **Step 3: Implementare `applyRentriStato` sull'aggregate**
 
@@ -134,27 +134,122 @@ Unitario sull'use case (mock del client); oracolo sul ciclo reale contro la fake
 
 ### Task 3: Orchestrazione scrittura + firma — l'infrastruttura comune
 
+> **RISCRITTO il 2026-07-26 dopo una decisione del committente.** La versione
+> precedente di questo task faceva firmare a noi il `digest_to_sign` con il
+> meccanismo interno di P3. Quella strada è stata **scartata**: v. l'ADR
+> `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`. In sintesi — una
+> firma è qualificata solo se la chiave resta sotto controllo esclusivo del
+> firmatario; se firmiamo noi, non lo è, e su un documento che vale in
+> contestazione una firma non qualificata è peggio di nessuna firma.
+>
+> **Si usa la firma remota RENTRI**: `POST /{numero_fir}/invia-a-dispositivo`
+> con un `credentials_id`. La chiave privata non passa mai da noi.
+
 Senza questo, ogni operazione successiva si ferma nello stato `Firma*` e l'utente torna sul portale. È il task che rende reali i Task 4-7 (e, in futuro, R3-bis).
 
+**PREREQUISITO — RISOLTO il 2026-07-26.** La documentazione ufficiale è stata
+letta direttamente da `demoapi.rentri.gov.it/docs?page=api-flussi-operativi-mobile`
+(pagina applicativa JavaScript: si legge con un browser vero, non con un
+recupero automatico). Ecco cosa dice, ed è tutto ciò che serviva.
+
+**Il nostro backend può essere il «canale primario».** Testuale: «La richiesta
+di autorizzazione alla firma tramite le credenziali deve essere invocata dal
+canale primario, che può essere un'app mobile **oppure un'applicazione desktop
+o un servizio Web**». Non serve costruire un'app mobile: l'utente conferma
+sulla app ufficiale *RENTRI FIR Digitale* che già possiede.
+
+**La chiave privata è custodita da RENTRI** — testuale: «Le funzionalità di
+firma fanno uso dello specifico certificato digitale di firma remota rilasciato
+dal servizio di CA RENTRI all'operatore, **la cui chiave privata viene custodita
+dal sistema RENTRI**». È il motivo per cui questa via è stata scelta.
+
+**Sequenza completa** (`<ambiente>/ca-rentri/v1.0`):
+
+1. `POST /formulari/v1.0/{numero_fir}/hash` → `digest_to_sign`
+2. `POST /credentials/authorize` — corpo: `credentials_id`, `num_signatures`,
+   `hashes[]`, `hash_algo`, `description`, `auth_data`, `client_data`.
+   Risponde: **`sad`** (Signature Activation Data, lega l'autorizzazione a
+   quello specifico hash), **`handle`**, **`expires_in`** (secondi di validità
+   del `sad` — è la risposta alla domanda «quanto tempo ha l'utente»).
+3. RENTRI invia una notifica alla **`notification_callback_uri`** registrata in
+   fase di abbinamento del dispositivo, con `handle` e `otp`.
+4. L'utente conferma sul proprio dispositivo; l'app chiama
+   `PUT /credentials/authorize-confirmation`. **Non lo facciamo noi.**
+5. **`GET /credentials/authorize-check/{handle}`** — polling: **202** finché è
+   in attesa, **200** quando autorizzata. Testuale: «Se l'applicazione
+   richiedente l'autorizzazione non è la stessa a cui si prevede di recapitare
+   il messaggio, si potrà utilizzare l'endpoint per il controllo dello stato
+   dell'autorizzazione in modalità polling». **È esattamente il nostro caso.**
+6. `POST /signatures/sign-hash` — corpo: `credentials_id`, `sad`, `hashes[]`,
+   `sign_algo`. **Massimo un hash per richiesta.** Algoritmi fissi, da usare
+   come costanti: hash `2.16.840.1.101.3.4.2.1` (SHA-256), firma
+   `1.2.840.10045.4.3.2` (ECDSA con SHA-256).
+7. `POST /formulari/v1.0/{numero_fir}/acquisizione-firma` con la firma ottenuta.
+
+**Verifica locale possibile**: `GET /credentials/info?cert_info=true` restituisce
+il certificato; con la chiave pubblica si verifica che la firma corrisponda
+all'hash. Da fare — è la prova che ciò che abbiamo trasmesso è ciò che l'ente ha
+firmato.
+
+**Attenzione all'autenticazione**: anche queste API usano `ID_AUTH_REST_02` per
+il JWT e `INTEGRITY_REST_01` per la firma del corpo, cioè lo stesso meccanismo
+già implementato in `RENTRIApiClient` — **riusarlo, non riscriverlo**. Il
+certificato di *interoperabilità* resta distinto da quello di *firma remota*.
+
+**Resta fuori portata di questo task**: l'abbinamento del dispositivo (QR Code
+e PIN dall'area Operatori del portale) è un'operazione umana dell'azienda, non
+automatizzabile. Il nostro compito comincia quando il `credentials_id` esiste.
+Va però previsto **dove l'amministratore lo inserisce** — presumibilmente
+accanto alla credenziale di interoperabilità già esistente.
+
+**Nota su `invia-a-dispositivo`**: l'endpoint del contratto formulari non
+compare in questa documentazione, e la sua relazione con la sequenza `ca-rentri`
+resta non chiarita. **Usare la sequenza `ca-rentri` documentata sopra**, non
+`invia-a-dispositivo`, finché l'ente non chiarisce.
+
 **Files:**
-- `apps/backend/src/infrastructure/rentri/rentri-api.client.ts` (metodi `calcolaHash`, `acquisisciFirma`, `rollbackFirma`)
-- `apps/backend/src/application/rentri/completa-operazione-con-firma.use-case.ts` (nuovo, generico — prende in input il `numero_fir` e il tipo di operazione, orchestra hash→firma, non conosce i dettagli di accettazione/trasbordo/ecc.)
-- `apps/backend/src/domain/rentri/firma-non-legale.ts` (riuso esplicito del meccanismo P3 — **stessa cautela**: la firma qui non ha valore legale, va loggata come tale)
+- `apps/backend/src/infrastructure/rentri/rentri-api.client.ts` (metodo `inviaADispositivo`; `rollbackFirma` resta utile per annullare una firma già apposta)
+- `apps/backend/src/application/rentri/completa-operazione-con-firma.use-case.ts` (nuovo, generico — prende `numero_fir` e tipo di operazione, non conosce i dettagli di accettazione/trasbordo/ecc.)
 - Test oracolo: `apps/backend/src/infrastructure/rentri/rentri-firma-operazione.oracolo.spec.ts`
 
-- [ ] **Step 1: Verificare cosa espone già P3 e cosa manca**
+- [x] **Step 1: prerequisito RISOLTO** — v. la sezione sopra: endpoint, sequenza e tempi sono documentati e verificati sulla fonte ufficiale.
 
-P3 (`docs/superpowers/plans` corrispondente, memoria `rifiuti-p3-firma`) ha già un meccanismo di firma persistita fail-closed per il ciclo interno. Verificare se `POST /{numero_fir}/hash` + `POST /{numero_fir}/acquisizione-firma` sono già wrappati da quel lavoro o vanno scritti ex novo per il ciclo RENTRI — **non duplicare** se esiste già un client per l'hash, altrimenti scriverlo qui seguendo lo stesso pattern di resilienza di `RENTRIApiClient`.
+Se la risposta dell'ente non è disponibile, **fermarsi e riferire**: non
+inventare un meccanismo di attesa dell'esito. Un finto polling su un endpoint
+che non esiste è esattamente il tipo di sottosistema che questo progetto ha già
+scritto e mai cablato cinque volte.
 
 - [ ] **Step 2: Scrivere `CompletaOperazioneConFirmaUseCase`**
 
-Sequenza: (1) l'operazione specifica (Task 4-7) ha già fatto la sua `POST` e il formulario è in uno stato `Firma*`; (2) `POST /{numero_fir}/hash` → ottiene `digest_to_sign`; (3) firma il digest con il meccanismo non-legale esistente; (4) `POST /{numero_fir}/acquisizione-firma` con l'esito; (5) attende il risultato asincrono; (6) richiama `applyRentriStato` con lo stato finale. **Fail-closed**: se un passaggio fallisce, l'operazione resta visibilmente "in sospeso" (non finta come completata) e l'utente vede quale passaggio si è fermato — mai un silenzioso stato incoerente.
+Sequenza: (1) l'operazione specifica (Task 4-7) ha già fatto la sua `POST` e il
+formulario è in uno stato `Firma*`; (2) `POST /{numero_fir}/invia-a-dispositivo`
+con il `credentials_id` del firmatario; (3) l'utente autorizza **sul proprio
+dispositivo**, fuori dalla nostra applicazione; (4) si rileva l'esito con il
+meccanismo chiarito allo Step 1; (5) si richiama `applyRentriStato` con lo stato
+finale.
 
-- [ ] **Step 3: Test**
+**Fail-closed**: se un passaggio fallisce, o se l'utente non autorizza,
+l'operazione resta visibilmente «in attesa di firma» — mai finta come
+completata, mai uno stato incoerente silenzioso. L'attesa dell'autorizzazione
+non è un errore: è uno stato legittimo e va mostrato come tale, con l'indicazione
+di cosa deve fare l'utente sul proprio dispositivo.
 
-Un test per ogni tipo di fallimento a metà sequenza (hash ok, firma rifiutata; firma ok, esito in errore) — deve rimanere leggibile all'utente (collegamento con Task 9) e non deve corrompere `rentriStatoFormulario` con uno stato mai confermato dall'ente.
+- [ ] **Step 3: Il provider `qes` non deve più mentire**
 
-- [ ] **Step 4: Commit**
+`qes-signature.provider.ts` oggi è uno stub che lancia sempre eccezione. Con
+questa decisione non è più la strada principale: va **rimosso** oppure marcato
+esplicitamente come ramo futuro (l'opzione 2 dell'ADR, integrazione QTSP via
+API CSC). Non lasciarlo a suggerire una capacità che non esiste — è il difetto
+che questo progetto ripete.
+
+- [ ] **Step 4: Test**
+
+Un test per ogni fallimento: invio a dispositivo rifiutato; utente che non
+autorizza (o autorizzazione non ancora arrivata); esito in errore. Nessuno di
+questi deve corrompere `rentriStatoFormulario` con uno stato mai confermato
+dall'ente.
+
+- [ ] **Step 5: Commit**
 
 ---
 

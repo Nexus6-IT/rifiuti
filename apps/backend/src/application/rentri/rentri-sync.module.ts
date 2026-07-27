@@ -13,12 +13,32 @@ import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncJobProcessor } from '../../infrastructure/queue/jobs/rentri-sync.job'
 import { RENTRISyncController } from '../../api/rentri/rentri-sync.controller'
+import { RentriFormulariController } from '../../api/rentri/rentri-formulari.controller'
+import { RentriFirLifecycleController } from '../../api/rentri/rentri-fir-lifecycle.controller'
 import { DomainEventsService } from '../../core/domain-events.service'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
 import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
 import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
+import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
+import { CercaFormulariRENTRIUseCase } from './cerca-formulari-rentri.use-case'
+import { AcquisisciFormularioRENTRIUseCase } from './acquisisci-formulario-rentri.use-case'
+import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.use-case'
+import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
+import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.use-case'
+import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
+import { RentriRiconciliazioneJob } from '../../infrastructure/jobs/rentri-riconciliazione.job'
+import { RentriCertificatoScadenzaJob } from '../../infrastructure/jobs/rentri-certificato-scadenza.job'
+import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
+import { MetricsService } from '../../core/metrics/metrics.service'
+import { CompletaOperazioneConFirmaUseCase } from './completa-operazione-con-firma.use-case'
+import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
+import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rate-limiter.service'
+import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
+import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
+import { GestisciAllegatiFIRUseCase } from './gestisci-allegati-fir.use-case'
+import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -93,10 +113,48 @@ import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
  * certificato manca. `ConfermaLegameRENTRIUseCase` chiude il ciclo aperto
  * dalla modalità IBRIDA (`FIR.proporreLegameRENTRI`): senza di esso l'IBRIDA
  * sarebbe un aggancio che parte ma non si conclude mai.
+ *
+ * **R2 Task 4 — orchestrazione cercare→verificare→acquisire un formulario
+ * esistente.** `CercaFormulariRENTRIUseCase`, `AcquisisciFormularioRENTRIUseCase`
+ * e `RilasciaFormularioRENTRIUseCase` chiudono il caso complementare a
+ * quello sopra: un formulario che ESISTE GIÀ su RENTRI (creato da un'altra
+ * controparte), da trovare e agganciare senza ri-agganciarlo due volte (v. i
+ * commenti di classe di ciascun use case per l'ordine delle scritture RENTRI
+ * ↔ locale e come si ripara un'eventuale incoerenza). `RentriUnitaLocaleService`
+ * (da `RentriModule`, già importato) serve al prerequisito fail-closed della
+ * ricerca. `AcquisisciFormularioRENTRIUseCase` dipende dalla porta
+ * `CREA_FIR_DA_FORMULARIO_RENTRI_PORT`: registrata ora con l'implementazione
+ * reale `CreaFIRDaDettaglioRENTRIUseCase` (Task 5) — mappa il dettaglio
+ * RENTRI (`GET /{numero_fir}`) su un FIR locale, v. commento di classe di
+ * quel use case per le decisioni di prodotto (snapshot immutabile, campo
+ * obbligatorio mancante → rifiuto esplicito, nessuna validazione del CER
+ * contro il catalogo). Sostituisce il precedente adapter placeholder
+ * (rimosso, v. `crea-fir-da-formulario-rentri.non-implementato.adapter.ts`,
+ * non più registrato).
+ *
+ * R2 Task 6 — endpoint REST dell'aggancio. `RentriFormulariController`
+ * espone `CercaFormulariRENTRIUseCase`/`AcquisisciFormularioRENTRIUseCase`/
+ * `RilasciaFormularioRENTRIUseCase` (già cablati sopra per Task 4) come
+ * `GET /rentri/formulari` + `POST /rentri/formulari/:numeroFir/aggancia` +
+ * `POST /rentri/fir/:id/rilascia-legame-rentri`. Controller DEDICATO (non
+ * un'estensione di `RENTRISyncController`, già ~490 righe su un dominio
+ * distinto — trasmissione IN USCITA verso RENTRI): v. commento di testata
+ * di `rentri-formulari.controller.ts` per la motivazione completa. Dipende
+ * anche da `RentriUnitaLocaleService` (già importato da `RentriModule`) per
+ * risolvere la sede su cui acquisire/rilasciare la visibilità.
+ *
+ * R3 Task 2 — "il motore della UI". `GetAzioniDisponibiliUseCase` espone
+ * `GET /rentri/fir/:id/azioni` (`RentriFirLifecycleController`, DEDICATO:
+ * dominio ancora diverso, il ciclo di vita del formulario già agganciato,
+ * non "trasmissione in uscita" né "cercare→agganciare"): interroga
+ * `RENTRIApiClient.leggiAzioniDisponibili` e riconcilia lo stato del FIR
+ * (`FIR.applyRentriStato`, Task 1) a ogni lettura. Ogni operazione di
+ * scrittura futura (Task 4+) dovrà verificare qui PRIMA di agire, per non
+ * incorrere nel 423 dell'ente.
  */
 @Module({
   imports: [ConfigModule, LoggerModule, MetricsModule, PrismaModule, RentriModule],
-  controllers: [RENTRISyncController],
+  controllers: [RENTRISyncController, RentriFormulariController, RentriFirLifecycleController],
   providers: [
     FIRPrismaRepository,
     RENTRISyncQueue,
@@ -149,6 +207,254 @@ import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
         new ConfermaLegameRENTRIUseCase(firRepo, logger),
       inject: [FIRPrismaRepository, LoggerService],
     },
+    {
+      provide: CercaFormulariRENTRIUseCase,
+      useFactory: (
+        prisma: PrismaService,
+        unitaLocaleService: RentriUnitaLocaleService,
+        rentriApiClient: RENTRIApiClient,
+        firRepo: FIRPrismaRepository,
+        logger: LoggerService
+      ) =>
+        new CercaFormulariRENTRIUseCase(
+          prisma,
+          unitaLocaleService,
+          rentriApiClient,
+          firRepo,
+          logger
+        ),
+      inject: [
+        PrismaService,
+        RentriUnitaLocaleService,
+        RENTRIApiClient,
+        FIRPrismaRepository,
+        LoggerService,
+      ],
+    },
+    {
+      provide: CREA_FIR_DA_FORMULARIO_RENTRI_PORT,
+      useClass: CreaFIRDaDettaglioRENTRIUseCase,
+    },
+    {
+      provide: AcquisisciFormularioRENTRIUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        rentriApiClient: RENTRIApiClient,
+        prisma: PrismaService,
+        creaFirPort: CreaFIRDaDettaglioRENTRIUseCase,
+        logger: LoggerService
+      ) =>
+        new AcquisisciFormularioRENTRIUseCase(
+          firRepo,
+          rentriApiClient,
+          prisma,
+          creaFirPort,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        RENTRIApiClient,
+        PrismaService,
+        CREA_FIR_DA_FORMULARIO_RENTRI_PORT,
+        LoggerService,
+      ],
+    },
+    {
+      provide: RilasciaFormularioRENTRIUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        rentriApiClient: RENTRIApiClient,
+        prisma: PrismaService,
+        logger: LoggerService
+      ) => new RilasciaFormularioRENTRIUseCase(firRepo, rentriApiClient, prisma, logger),
+      inject: [FIRPrismaRepository, RENTRIApiClient, PrismaService, LoggerService],
+    },
+    // R5 Task 4 — riconciliazione periodica (v. commento di classe del use
+    // case per la decisione "corregge solo se riempie un buco, altrimenti
+    // segnala"). Stesso pattern di useFactory di sopra: IFIRRepository e'
+    // un'interfaccia, Nest non puo' risolverla da un tipo di parametro.
+    {
+      provide: RiconciliaStatoRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        prisma: PrismaService,
+        rentriApiClient: RENTRIApiClient,
+        syncLogRepo: RENTRISyncLogRepository,
+        domainEvents: DomainEventsService,
+        logger: LoggerService,
+        metrics: MetricsService
+      ) =>
+        new RiconciliaStatoRentriUseCase(
+          firRepo,
+          prisma,
+          rentriApiClient,
+          syncLogRepo,
+          domainEvents,
+          logger,
+          metrics
+        ),
+      inject: [
+        FIRPrismaRepository,
+        PrismaService,
+        RENTRIApiClient,
+        RENTRISyncLogRepository,
+        DomainEventsService,
+        LoggerService,
+        MetricsService,
+      ],
+    },
+    RentriRiconciliazioneJob,
+    // R5 Task 5 — allarmi: alimenta wasteflow_rentri_certificate_expiry_days
+    // una volta al giorno (v. commento di classe del job).
+    RentriCertificatoScadenzaJob,
+    // R3 Task 2 — consultazione di stato e azioni disponibili presso l'ente:
+    // e' la fonte di verita' per quali pulsanti mostrare, e la difesa contro il
+    // 423 (chiamare un'operazione che l'ente non consente e' precisamente la
+    // richiesta "autenticata ma non valida" che fa bandire il chiamante).
+    {
+      provide: GetAzioniDisponibiliUseCase,
+      useFactory: (
+        prisma: PrismaService,
+        firRepo: FIRPrismaRepository,
+        rentriApiClient: RENTRIApiClient,
+        logger: LoggerService
+      ) => new GetAzioniDisponibiliUseCase(prisma, firRepo, rentriApiClient, logger),
+      inject: [PrismaService, FIRPrismaRepository, RENTRIApiClient, LoggerService],
+    },
+    // R3 Task 3 — infrastruttura comune di completamento con FIRMA REMOTA
+    // RENTRI (v. `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`).
+    // Nessun controller in questo task: l'endpoint che lo esporrà è compito
+    // dei Task 4-7, che lo invocheranno passando il proprio `tipoOperazione`.
+    // Registrato ora comunque, non lasciato scollegato: il difetto ricorrente
+    // di questo progetto è precisamente il sottosistema scritto e mai cablato.
+    // `useFactory` per lo stesso motivo degli altri: `IFIRRepository` è
+    // un'interfaccia e sparisce a runtime.
+    {
+      provide: CompletaOperazioneConFirmaUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        credentialService: RentriCredentialService,
+        rentriApiClient: RENTRIApiClient,
+        rateLimiter: RentriRateLimiterService,
+        logger: LoggerService
+      ) =>
+        new CompletaOperazioneConFirmaUseCase(
+          firRepo,
+          credentialService,
+          rentriApiClient,
+          rateLimiter,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        RentriCredentialService,
+        RENTRIApiClient,
+        RentriRateLimiterService,
+        LoggerService,
+      ],
+    },
+    // R3 Task 4 — prima operazione di scrittura reale del ciclo: accettazione
+    // (anche parziale) o respingimento del carico da parte del destinatario.
+    // Riusa `GetAzioniDisponibiliUseCase` per la precondizione da `/azioni` e
+    // `CompletaOperazioneConFirmaUseCase` per chiudere il ciclo con la firma
+    // remota — nessuna duplicazione del lookup del CF tenant né del ciclo di
+    // firma. `useFactory` per lo stesso motivo degli altri: `IFIRRepository`
+    // è un'interfaccia e sparisce a runtime.
+    {
+      provide: AccettaORespingiFIRUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        completaOperazioneConFirmaUseCase: CompletaOperazioneConFirmaUseCase,
+        logger: LoggerService
+      ) =>
+        new AccettaORespingiFIRUseCase(
+          firRepo,
+          getAzioniDisponibiliUseCase,
+          rentriApiClient,
+          completaOperazioneConFirmaUseCase,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        CompletaOperazioneConFirmaUseCase,
+        LoggerService,
+      ],
+    },
+    // R3 Task 5 — annullamento del formulario, con nota. Stesse quattro
+    // dipendenze di AccettaORespingiFIRUseCase, stesso motivo: riusa la
+    // precondizione da /azioni e il ciclo di firma remota senza duplicarli.
+    {
+      provide: AnnullaFIRRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        completaOperazioneConFirmaUseCase: CompletaOperazioneConFirmaUseCase,
+        logger: LoggerService
+      ) =>
+        new AnnullaFIRRentriUseCase(
+          firRepo,
+          getAzioniDisponibiliUseCase,
+          rentriApiClient,
+          completaOperazioneConFirmaUseCase,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        CompletaOperazioneConFirmaUseCase,
+        LoggerService,
+      ],
+    },
+    // R3 Task 6 — allegati del formulario. NESSUNA firma (il contratto la
+    // dichiara superflua per questa operazione, v. commento di classe):
+    // niente `CompletaOperazioneConFirmaUseCase` a differenza degli use case
+    // sopra. Persistenza locale via `PrismaService` diretto (`fIRAllegatoRentri`),
+    // stesso stile di `GetAzioniDisponibiliUseCase` con `prisma.tenant`.
+    {
+      provide: GestisciAllegatiFIRUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        prisma: PrismaService,
+        getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        logger: LoggerService
+      ) =>
+        new GestisciAllegatiFIRUseCase(
+          firRepo,
+          prisma,
+          getAzioniDisponibiliUseCase,
+          rentriApiClient,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        PrismaService,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        LoggerService,
+      ],
+    },
+    // R3 Task 7 — stampa PDF (proxy dello stream, mai un redirect al
+    // portale) e "aggiorna lo stato" (riusa `GetAzioniDisponibiliUseCase`,
+    // nessun nuovo endpoint: v. commento di classe del controller). NESSUNA
+    // firma, NESSUN ciclo NONBLOCK_PULL: `GET /{numero_fir}/pdf` è
+    // sincrono. `useFactory` per lo stesso motivo degli altri:
+    // `IFIRRepository` è un'interfaccia e sparisce a runtime.
+    {
+      provide: ScaricaPdfFirUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        rentriApiClient: RENTRIApiClient,
+        logger: LoggerService
+      ) => new ScaricaPdfFirUseCase(firRepo, rentriApiClient, logger),
+      inject: [FIRPrismaRepository, RENTRIApiClient, LoggerService],
+    },
   ],
   exports: [
     SyncFIRToRENTRIUseCase,
@@ -158,6 +464,16 @@ import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
     RENTRISyncLogRepository,
     TrasmettiFIRSecondoModalitaUseCase,
     ConfermaLegameRENTRIUseCase,
+    CercaFormulariRENTRIUseCase,
+    AcquisisciFormularioRENTRIUseCase,
+    RilasciaFormularioRENTRIUseCase,
+    RiconciliaStatoRentriUseCase,
+    GetAzioniDisponibiliUseCase,
+    CompletaOperazioneConFirmaUseCase,
+    AccettaORespingiFIRUseCase,
+    AnnullaFIRRentriUseCase,
+    GestisciAllegatiFIRUseCase,
+    ScaricaPdfFirUseCase,
   ],
 })
 export class RentriSyncModule {}

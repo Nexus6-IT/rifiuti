@@ -1,5 +1,6 @@
-import { randomUUID } from 'crypto'
+import { createSign, randomUUID } from 'crypto'
 import { RegistroReplayMemoria } from '../auth/jwt-verifier'
+import { emettiCertificatoAccreditato } from '../auth/ca-test'
 import * as codifiche from './fixture-codifiche'
 import { LookupItem } from './fixture-codifiche'
 import * as anagrafiche from './fixture-anagrafiche'
@@ -26,6 +27,63 @@ export interface Formulario {
    * risposta di `GET /`.
    */
   sitiConVisibilita?: string[]
+  /**
+   * Versione del formulario (`InfoFormulario.versione`/`AzioniResult.versione`,
+   * formulari.yaml righe 2265/1330): incrementata a ogni operazione di
+   * scrittura reale sull'ente. La fake non la incrementa da sola (nessuna
+   * operazione di scrittura esiste ancora, Task 2 R3) — resta il valore
+   * impostato dal canale di controllo o `null` di default.
+   */
+  versione?: number | null
+  /**
+   * Operazione di dominio in corso su questo formulario, in attesa che la
+   * transazione NONBLOCK_PULL che l'ha originata (`POST /accettazione`) si
+   * completi (R3 Task 4). Applicata e svuotata da
+   * {@link Archivio.applicaEffettoOperazione} quando la SUCCESSIVA
+   * `POST /acquisizione-firma` si completa con successo — il meccanismo
+   * minimo che dimostra il ciclo scrivi→firma→esito senza replicare l'intera
+   * macchina a stati reale dell'ente (fuori scope, v. `operazione.ts`).
+   */
+  pendingOperazione?:
+    | { tipo: 'Accettazione'; corpo: Record<string, unknown> }
+    | { tipo: 'Annulla'; corpo: Record<string, unknown> }
+  /**
+   * Testo delle note di annullamento (R3 Task 5), impostato
+   * dall'applicazione dell'effetto `NoteAnnullamento` — non da una firma
+   * (quella chiamata non ha stato `Firma*` successivo, v. `operazione.ts`).
+   * Usato da `GET /azioni` per distinguere "nota non ancora trasmessa" da
+   * "nota già registrata" sullo stato `Annullato`.
+   */
+  note?: string
+  /**
+   * Allegati registrati con successo (R3 Task 6, `POST /{numero_fir}/allegato`).
+   * L'`id` è quello dichiarato dal test nell'`esito.esito.allegato_id` passato
+   * a `/__controllo/completa-transazione` — la fake non lo genera da sola:
+   * è l'ente (qui simulato dal test) ad assegnarlo, il client si limita a
+   * leggerlo (v. `Archivio.applicaEffettoOperazione`, ramo `'Allegato'`).
+   */
+  allegati?: AllegatoFake[]
+  /**
+   * Controlla l'esito di `GET /{numero_fir}/pdf` (R3 Task 7): il contratto
+   * dichiara ESPLICITAMENTE 204 "No Content" come esito possibile, distinto
+   * dal 200 con `DownloadableBaseResponse` (formulari.yaml righe 1758-1765)
+   * — senza un modo per il TEST di scegliere quale dei due esiti simulare,
+   * il ramo 204 resterebbe irraggiungibile dalla suite oracolo. `undefined`
+   * equivale a `true` (default: il PDF è disponibile).
+   */
+  pdfDisponibile?: boolean
+}
+
+/**
+ * Allegato in memoria (R3 Task 6): sottoinsieme minimo di
+ * `DatiAllegatoModel`/`DownloadableBaseResponse` sufficiente a far
+ * funzionare il ciclo carica→elenca→scarica→elimina della fake.
+ */
+export interface AllegatoFake {
+  id: number
+  nome_file: string
+  content_type: string
+  contenuto: string
 }
 
 export type StatoTransazione = 'in_elaborazione' | 'completata'
@@ -72,7 +130,66 @@ export interface Transazione {
    * di creazione (nessun altro tipo esiste oggi nella fake).
    */
   richiestaCreazione?: Record<string, unknown>
+  /**
+   * Contesto di un'operazione di dominio diversa dalla creazione (R3 Task 4):
+   * quale formulario, quale operazione, quale corpo. Popolato da
+   * `registraOperazioneAsincrona` in `formulari.ts` per `accettazione` e
+   * `acquisizione-firma` (NON per `hash`, che non ha alcun effetto di dominio
+   * da applicare). Usato da {@link Archivio.completaTransazione} per
+   * decidere se e quale transizione di stato applicare al completamento.
+   */
+  contestoOperazione?: {
+    numeroFir: string
+    operazione:
+      | 'Accettazione'
+      | 'AcquisizioneFirma'
+      | 'Annulla'
+      | 'NoteAnnullamento'
+      | 'Allegato'
+      | 'RimuoviAllegato'
+    corpo?: Record<string, unknown>
+    /**
+     * `allegato_id` da rimuovere (R3 Task 6, `DELETE /{numero_fir}/allegato/{allegato_id}`):
+     * viene dal PATH della richiesta, non da un corpo (il contratto non ne
+     * documenta uno per questa operazione) — per questo è un campo separato,
+     * non un valore dentro `corpo`.
+     */
+    allegatoId?: number
+  }
 }
+
+/** Stato di una sessione di autorizzazione alla firma remota (`ca-rentri`). */
+export type StatoSessioneFirma = 'IN_ATTESA' | 'AUTORIZZATA' | 'RIFIUTATA'
+
+/**
+ * Sessione di autorizzazione creata da `POST /ca-rentri/v1.0/credentials/authorize`
+ * e interrogata da `GET /credentials/authorize-check/{handle}`.
+ *
+ * La fake NON passa da sola a `AUTORIZZATA`: la conferma dell'utente avviene
+ * sul dispositivo con l'app ufficiale RENTRI, un gesto che il nostro backend
+ * non compie mai. Nella fake lo compie il canale di controllo
+ * (`POST /__controllo/ca-rentri/autorizza/{handle}`) — se la fake si
+ * autorizzasse da sola, nessun test potrebbe distinguere «l'utente ha
+ * confermato» da «l'utente non ha ancora confermato», cioè esattamente la
+ * distinzione che questo ciclo esiste per gestire.
+ */
+export interface SessioneFirma {
+  handle: string
+  sad: string
+  credentialsId: string
+  hashes: string[]
+  stato: StatoSessioneFirma
+  /** Istante (ms epoch) oltre il quale l'autorizzazione non è più valida. */
+  scadenzaMs: number
+}
+
+/**
+ * Valore di default di `expires_in` (secondi) restituito da
+ * `POST /credentials/authorize`. Il tempo reale concesso da RENTRI non è
+ * documentato da alcuna fonte (v. ADR, «Lacune ancora aperte»): questo
+ * valore è una scelta della fake, non un dato dell'ente.
+ */
+export const EXPIRES_IN_DEFAULT_SECONDI = 120
 
 /**
  * Stato in memoria della fake. Volutamente non persistente: ogni avvio
@@ -82,6 +199,32 @@ export class Archivio {
   private formulari = new Map<string, Formulario>()
   private transazioni = new Map<string, Transazione>()
   private guasto: Guasto | null = null
+  private sessioniFirma = new Map<string, SessioneFirma>()
+
+  /**
+   * Materiale crittografico di test della "CA RENTRI" simulata: il
+   * certificato restituito da `GET /credentials/info` e la chiave con cui
+   * `POST /credentials/sign-hash` firma DAVVERO.
+   *
+   * Generato una volta sola per istanza di `Archivio` (pigro: la generazione
+   * di una coppia RSA 2048 costa ~centinaia di ms, e la maggior parte dei
+   * test non tocca la firma remota). NON viene azzerato da {@link azzera}:
+   * è materiale di infrastruttura, non stato di scenario, e rigenerarlo a
+   * ogni test renderebbe la suite molto più lenta senza alcun guadagno di
+   * isolamento.
+   */
+  private materialeFirmaRemota: { certificatoBase64Der: string; chiavePrivataPem: string } | null =
+    null
+
+  /**
+   * Copia per-istanza del catalogo `codici-eer`, `null` finché nessun test
+   * la richiede (in quel caso `codiciEer()` serve ancora l'array statico
+   * condiviso `fixture-codifiche.codiciEer`, invariato). Popolata solo da
+   * {@link rimuoviCodiceEer} — simula l'ente che smette di confermare un
+   * codice tra due allineamenti (R4 Task 8), senza mutare l'array statico
+   * condiviso tra tutte le istanze di `Archivio` del processo.
+   */
+  private codiciEerOverride: LookupItem[] | null = null
 
   /**
    * Registro anti-replay dei `jti` gia' visti (FEDELTA.md §5.2 punto 3):
@@ -94,7 +237,124 @@ export class Archivio {
     this.formulari.clear()
     this.transazioni.clear()
     this.guasto = null
+    this.codiciEerOverride = null
+    this.sessioniFirma.clear()
     this.registroReplay.azzera()
+    // `materialeFirmaRemota` NON si azzera: v. il commento del campo.
+  }
+
+  // --- Firma remota (`ca-rentri`, R3 Task 3) --------------------------------
+
+  /**
+   * Certificato X.509 (base64 DER) della credenziale di firma remota
+   * simulata, servito da `GET /credentials/info?cert_info=true`. È lo stesso
+   * certificato la cui chiave privata firma in {@link firmaHash}: un test può
+   * quindi verificare DAVVERO la firma con la chiave pubblica estratta da qui.
+   */
+  certificatoFirmaRemota(): string {
+    return this.materiale().certificatoBase64Der
+  }
+
+  private materiale(): { certificatoBase64Der: string; chiavePrivataPem: string } {
+    if (!this.materialeFirmaRemota) {
+      this.materialeFirmaRemota = emettiCertificatoAccreditato('CREDENZIALE-FIRMA-REMOTA-TEST')
+    }
+    return this.materialeFirmaRemota
+  }
+
+  /**
+   * `POST /ca-rentri/v1.0/credentials/authorize`: crea una sessione in stato
+   * `IN_ATTESA`. Restituisce la sessione creata (`sad`, `handle`, scadenza).
+   */
+  creaSessioneFirma(
+    credentialsId: string,
+    hashes: string[],
+    expiresInSecondi: number
+  ): SessioneFirma {
+    const sessione: SessioneFirma = {
+      handle: randomUUID(),
+      sad: randomUUID(),
+      credentialsId,
+      hashes,
+      stato: 'IN_ATTESA',
+      scadenzaMs: Date.now() + expiresInSecondi * 1000,
+    }
+    this.sessioniFirma.set(sessione.handle, sessione)
+    return sessione
+  }
+
+  leggiSessioneFirma(handle: string): SessioneFirma | undefined {
+    return this.sessioniFirma.get(handle)
+  }
+
+  /** Tutte le sessioni note: serve a `sign-hash` per risalire dalla `sad` alla sessione. */
+  elencaSessioniFirma(): SessioneFirma[] {
+    return [...this.sessioniFirma.values()]
+  }
+
+  /**
+   * Canale di controllo: simula la conferma dell'utente sul proprio
+   * dispositivo (che nella realtà chiama `PUT /credentials/authorize-confirmation`
+   * — mai il nostro backend). `false` se la sessione non esiste.
+   */
+  autorizzaSessioneFirma(handle: string): boolean {
+    const sessione = this.sessioniFirma.get(handle)
+    if (!sessione) return false
+    sessione.stato = 'AUTORIZZATA'
+    return true
+  }
+
+  /**
+   * Canale di controllo: simula l'utente che RIFIUTA la firma sul proprio
+   * dispositivo. Senza di questo lo stato `RIFIUTATA` sarebbe irraggiungibile
+   * e il ramo corrispondente di `authorize-check` resterebbe codice morto —
+   * la stessa categoria di difetto (un comportamento dichiarato che nulla può
+   * esercitare) che questa fake esiste per evitare.
+   */
+  rifiutaSessioneFirma(handle: string): boolean {
+    const sessione = this.sessioniFirma.get(handle)
+    if (!sessione) return false
+    sessione.stato = 'RIFIUTATA'
+    return true
+  }
+
+  /**
+   * Canale di controllo: porta la scadenza nel passato, così un test può
+   * verificare il ramo «scaduta» senza attendere `expires_in` reale (che
+   * renderebbe la suite oracolo lunga minuti per nessun guadagno di fedeltà).
+   */
+  scadiSessioneFirma(handle: string): boolean {
+    const sessione = this.sessioniFirma.get(handle)
+    if (!sessione) return false
+    sessione.scadenzaMs = Date.now() - 1
+    return true
+  }
+
+  /** `true` se la sessione è oltre la propria scadenza (calcolata dal tempo, non da un contatore). */
+  sessioneFirmaScaduta(sessione: SessioneFirma): boolean {
+    return Date.now() > sessione.scadenzaMs
+  }
+
+  /**
+   * `POST /ca-rentri/v1.0/credentials/sign-hash`: firma DAVVERO il digest con
+   * la chiave privata di test.
+   *
+   * **Divergenza dichiarata dall'ente reale**: RENTRI dichiara `sign_algo`
+   * ECDSA-SHA256 su un digest già calcolato (firma «prehash»). Qui si firma
+   * con RSA-SHA256 sui byte del digest (`createSign('sha256')`), perché è la
+   * combinazione che il verificatore lato backend
+   * (`rentri-firma-verifica.util.ts`) può effettivamente verificare con la
+   * sola API pubblica di Node — v. il commento di quella funzione per il
+   * perché la verifica prehash EC non è realizzabile senza dipendenze nuove.
+   * La fake resta quindi utile a provare il CICLO (202 → 200 → firma →
+   * acquisizione) e a far passare la verifica locale nel caso positivo, NON a
+   * dimostrare la conformità crittografica all'algoritmo dell'ente.
+   */
+  firmaHash(digestBase64: string): string {
+    const firmatore = createSign('sha256')
+    firmatore.update(Buffer.from(digestBase64, 'base64'))
+    firmatore.end()
+    return firmatore.sign(this.materiale().chiavePrivataPem, 'base64')
   }
 
   impostaGuasto(guasto: Guasto | null): void {
@@ -196,10 +456,24 @@ export class Archivio {
    * `richiestaCreazione`, se indicato, è il corpo di `POST /` (creazione):
    * conservato per collegare l'esito di completamento a un `Formulario`
    * ricercabile (v. {@link completaTransazione}).
+   *
+   * `contestoOperazione`, se indicato (R3 Task 4), collega la transazione a
+   * un'operazione di dominio su un formulario ESISTENTE (`accettazione`,
+   * `acquisizione-firma`): {@link completaTransazione} lo usa per applicare
+   * la transizione di stato corrispondente. Parametro opzionale in coda per
+   * compatibilità con le chiamate esistenti che non lo passano (creazione).
    */
-  creaTransazione(richiestaCreazione?: Record<string, unknown>): string {
+  creaTransazione(
+    richiestaCreazione?: Record<string, unknown>,
+    contestoOperazione?: Transazione['contestoOperazione']
+  ): string {
     const id = randomUUID()
-    this.transazioni.set(id, { id, stato: 'in_elaborazione', richiestaCreazione })
+    this.transazioni.set(id, {
+      id,
+      stato: 'in_elaborazione',
+      richiestaCreazione,
+      contestoOperazione,
+    })
     return id
   }
 
@@ -237,6 +511,137 @@ export class Archivio {
           typeof richiesta.num_iscr_sito === 'string' ? richiesta.num_iscr_sito : undefined,
       })
     }
+
+    if (!esito.errore && transazione.contestoOperazione) {
+      this.applicaEffettoOperazione(transazione.contestoOperazione, esito)
+    }
+  }
+
+  /**
+   * Macchina a stati MINIMA per il ciclo scrivi→firma→esito (R3 Task 4),
+   * volutamente non una replica della macchina reale dell'ente (v. commento
+   * di testata di `operazione.ts`):
+   *
+   * - `accettazione` completata con successo → il formulario passa a
+   *   `FirmaAccettazione` e memorizza `tipo_accettazione` come operazione
+   *   pendente (non applica ancora l'esito finale: manca ancora la firma).
+   * - `acquisizione-firma` completata con successo E un'operazione pendente
+   *   di tipo `Accettazione` presente → il formulario transita allo stato
+   *   terminale (`A` → `Accettato`; `P`/`R` → `RespintoAccettatoParzialmente`)
+   *   e l'operazione pendente viene svuotata.
+   * - `annulla-fir` completata con successo (R3 Task 5) → il formulario
+   *   passa a `FirmaAnnullamento` e memorizza un'operazione pendente di tipo
+   *   `Annulla` (nessun corpo rilevante: il contratto non ne ha uno).
+   * - `acquisizione-firma` completata con successo E un'operazione pendente
+   *   di tipo `Annulla` presente → il formulario transita a `Annullato`.
+   * - `note-annullamento` completata con successo (R3 Task 5) → **nessuna
+   *   firma successiva** (a differenza di `annulla-fir`, v. `operazione.ts`):
+   *   l'effetto (`formulario.note`) si applica subito al completamento della
+   *   transazione, non c'è un `pendingOperazione` da attendere.
+   *
+   * **Non regressivo per costruzione**: le suite che seminano il formulario
+   * direttamente in `FirmaAccettazione`/`FirmaAnnullamento` via
+   * `/__controllo/formulario` (es. `rentri-firma-operazione.oracolo.spec.ts`)
+   * non passano mai da `accettazione`/`annulla-fir`, quindi il formulario non
+   * ha mai `pendingOperazione` — il ramo sotto per `acquisizione-firma` non
+   * scatta e lo stato resta quello seminato dal test, esattamente come prima
+   * di questo task.
+   *
+   * - `allegato` completata con successo (R3 Task 6) → **nessuno stato
+   *   cambia** (il contratto dichiara che l'allegato non necessita di firma,
+   *   v. `operazione.ts`): la fake registra l'allegato in
+   *   `formulario.allegati` usando l'`allegato_id` dichiarato dal TEST in
+   *   `esito.esito.allegato_id` — è l'ente (qui il test) ad assegnarlo, non
+   *   la fake, esattamente come per `numero_fir` in `estraiNumeroFirDaEsito`.
+   *   Senza un `allegato_id` leggibile nell'esito, nessun allegato viene
+   *   registrato (coerente col client, che nello stesso caso non crea la
+   *   riga locale — v. `GestisciAllegatiFIRUseCase`).
+   * - `rimuovi-allegato` completata con successo → rimuove dall'array
+   *   l'allegato il cui id è quello del PATH della `DELETE` originale
+   *   (`contesto.allegatoId`), non un valore letto dall'esito.
+   */
+  private applicaEffettoOperazione(
+    contesto: NonNullable<Transazione['contestoOperazione']>,
+    esito: EsitoTransazione
+  ): void {
+    const formulario = this.formulari.get(contesto.numeroFir)
+    if (!formulario) return
+
+    if (contesto.operazione === 'Accettazione') {
+      formulario.stato = 'FirmaAccettazione'
+      formulario.pendingOperazione = {
+        tipo: 'Accettazione',
+        corpo: contesto.corpo ?? {},
+      }
+      return
+    }
+
+    if (contesto.operazione === 'Annulla') {
+      formulario.stato = 'FirmaAnnullamento'
+      formulario.pendingOperazione = { tipo: 'Annulla', corpo: contesto.corpo ?? {} }
+      return
+    }
+
+    if (contesto.operazione === 'NoteAnnullamento') {
+      const note = contesto.corpo?.note
+      if (typeof note === 'string') {
+        formulario.note = note
+      }
+      return
+    }
+
+    if (contesto.operazione === 'AcquisizioneFirma') {
+      const pendente = formulario.pendingOperazione
+      if (!pendente) return
+
+      if (pendente.tipo === 'Accettazione') {
+        const tipoAccettazione = pendente.corpo.tipo_accettazione
+        formulario.stato = tipoAccettazione === 'A' ? 'Accettato' : 'RespintoAccettatoParzialmente'
+        formulario.pendingOperazione = undefined
+        return
+      }
+
+      if (pendente.tipo === 'Annulla') {
+        formulario.stato = 'Annullato'
+        formulario.pendingOperazione = undefined
+        return
+      }
+    }
+
+    if (contesto.operazione === 'Allegato') {
+      const payload = esito.esito
+      const allegatoId =
+        payload && typeof payload === 'object' && 'allegato_id' in payload
+          ? Number((payload as { allegato_id?: unknown }).allegato_id)
+          : undefined
+      if (allegatoId === undefined || !Number.isFinite(allegatoId)) return
+
+      const corpo = contesto.corpo ?? {}
+      formulario.allegati = [
+        ...(formulario.allegati ?? []),
+        {
+          id: allegatoId,
+          nome_file: typeof corpo.nome_file === 'string' ? corpo.nome_file : '',
+          content_type: typeof corpo.content_type === 'string' ? corpo.content_type : '',
+          contenuto: typeof corpo.contenuto === 'string' ? corpo.contenuto : '',
+        },
+      ]
+      return
+    }
+
+    if (contesto.operazione === 'RimuoviAllegato') {
+      if (contesto.allegatoId !== undefined) {
+        formulario.allegati = (formulario.allegati ?? []).filter(
+          allegato => allegato.id !== contesto.allegatoId
+        )
+      }
+      return
+    }
+  }
+
+  /** Legge un allegato registrato (`GET /{numero_fir}/allegato/{allegato_id}`, R3 Task 6). */
+  leggiAllegato(numeroFir: string, allegatoId: number): AllegatoFake | undefined {
+    return this.formulari.get(numeroFir)?.allegati?.find(allegato => allegato.id === allegatoId)
   }
 
   /** V. `RENTRIApiClient.estraiNumeroFirDaEsito`: stessa forma, stessa cautela sul `oneOf`. */
@@ -256,7 +661,31 @@ export class Archivio {
   // di aggiornamento su questo servizio.
 
   codiciEer(): LookupItem[] {
-    return codifiche.codiciEer
+    return this.codiciEerOverride ?? codifiche.codiciEer
+  }
+
+  /**
+   * Rimuove un codice EER dal catalogo restituito da `GET /lookup/codici-eer`
+   * per QUESTA istanza di `Archivio` (canale di controllo
+   * `/__controllo/rimuovi-codice-eer`, R4 Task 8): simula l'ente che smette
+   * di confermare un codice tra due cicli di allineamento, senza mutare
+   * l'array statico condiviso `fixture-codifiche.codiciEer` (copiato al
+   * primo utilizzo). Restituisce `true` se il codice era presente ed è stato
+   * rimosso, `false` se non era (mai) nel catalogo — idempotente, azzerato
+   * da {@link azzera}.
+   */
+  rimuoviCodiceEer(code: string): boolean {
+    const base = this.codiciEerOverride ?? codifiche.codiciEer
+    const rimane = base.filter(v => v.code !== code)
+    const rimosso = rimane.length !== base.length
+    if (!rimosso) {
+      // Nessun elemento rimosso: non materializzare una copia per-istanza
+      // identica all'array statico condiviso — l'override esiste solo
+      // quando serve davvero (v. commento del campo `codiciEerOverride`).
+      return false
+    }
+    this.codiciEerOverride = rimane
+    return rimosso
   }
 
   attivitaRs(): LookupItem[] {

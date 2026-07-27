@@ -127,6 +127,7 @@ describe('TrasmettiFIRSecondoModalitaUseCase — modalità di trasmissione contr
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
       rentriApiErrors: { inc: jest.fn() },
+      rentriTenantLocked: { set: jest.fn() },
     }
 
     const sequenza: string[] = []

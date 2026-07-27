@@ -13,9 +13,16 @@ import { RentriModalitaLegameService } from './rentri-modalita-legame.service'
 import { RentriUnitaLocaleService } from './rentri-unita-locale.service'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriCodificheClient } from './codifiche/rentri-codifiche.client'
+import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
+import { RentriRateLimiterService } from './rentri-rate-limiter.service'
+import { RedisConfig } from '../cache/redis.config'
+import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
+import { GetRentriDiagnosticaUseCase } from '../../application/rentri/get-rentri-diagnostica.use-case'
 import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
 import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
+import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
+import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica.controller'
 
 /**
  * RentriModule — sottosistema di interoperabilità RENTRI (client + auth + firma).
@@ -33,6 +40,8 @@ import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-local
     RentriCredentialController,
     RentriModalitaLegameController,
     RentriUnitaLocaleController,
+    RentriSitiController,
+    RentriDiagnosticaController,
   ],
   providers: [
     {
@@ -48,16 +57,31 @@ import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-local
     RentriUnitaLocaleService,
     RENTRIApiClient,
     RentriCodificheClient,
+    RentriAnagraficheClient,
+    SincronizzaSitiUseCase,
+    // Terzo strato di resilienza (R5, task 1): rate limiter preventivo
+    // per tenant. `RedisConfig` non ha un modulo dedicato che lo esporti
+    // (v. `infrastructure/cache/redis.config.ts`) — dipende solo da
+    // `ConfigService`, già disponibile qui tramite `ConfigModule` — quindi
+    // è dichiarato come provider diretto, come già fa `PermissionsModule`.
+    RedisConfig,
+    RentriRateLimiterService,
+    // Diagnostica di sola lettura (R5 Task 3): NON dipende da RENTRIApiClient
+    // (v. commento nell'use case) — deliberatamente, non un'omissione.
+    GetRentriDiagnosticaUseCase,
   ],
   exports: [
     RENTRIApiClient,
     RentriCodificheClient,
+    RentriAnagraficheClient,
     RentriAuthService,
     RentriSignatureService,
     RentriCredentialService,
     RentriCredentialResolver,
     RentriModalitaLegameService,
     RentriUnitaLocaleService,
+    SincronizzaSitiUseCase,
+    RentriRateLimiterService,
     RENTRI_CONFIG,
   ],
 })

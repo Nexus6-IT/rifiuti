@@ -69,11 +69,66 @@ da assegnare a chi lavora su `apps/frontend/**`.
   `fir-detail-rentri-origine`, `fir-detail-rentri-messaggio-errore`,
   `fir-detail-rentri-trasmetti`, `fir-detail-rentri-riprova`,
   `fir-detail-rentri-conferma-legame`, `fir-detail-rentri-vedi-certificato`.
+- **RENTRI — accettazione/respingimento del carico (colmato in R3 Task 4)**:
+  il dettaglio FIR aggiunge `fir-detail-rentri-accetta-carico` (pulsante che
+  apre il dialog), `fir-detail-rentri-accettazione-dialog`,
+  `fir-detail-rentri-accettazione-completa` / `-parziale` / `-respingi` (le
+  tre opzioni), `fir-detail-rentri-accettazione-quantita-input`,
+  `fir-detail-rentri-accettazione-causale-select`,
+  `fir-detail-rentri-accettazione-motivo-input`,
+  `fir-detail-rentri-accettazione-confirm-button` /
+  `-cancel-button`.
+- **RENTRI — annullamento del formulario, con nota (colmato in R3 Task 5)**:
+  il dettaglio FIR aggiunge `fir-detail-rentri-annulla-formulario` (pulsante
+  che apre il dialog), `fir-detail-rentri-annulla-dialog`,
+  `fir-detail-rentri-annulla-motivo-input`,
+  `fir-detail-rentri-annulla-cancel-button`,
+  `fir-detail-rentri-annulla-confirm-button`.
+- **RENTRI — allegati del formulario (colmato in R3 Task 6)**: il dettaglio
+  FIR aggiunge `fir-detail-allegati-upload-input` (input `type="file"`,
+  visibile solo per un FIR legato a RENTRI), `fir-detail-allegati-list`
+  (contenitore dell'elenco locale) e, per riga, `fir-detail-allegati-row-{id}`
+  / `fir-detail-allegati-elimina-{id}` (`{id}` = chiave primaria LOCALE della
+  riga `FIRAllegatoRentri`, non l'`allegato_id` dell'ente).
+- **RENTRI — stampa PDF e aggiornamento dello stato (colmato in R3 Task 7)**:
+  il dettaglio FIR aggiunge `fir-detail-rentri-scarica-pdf` (scarica il PDF
+  come `Blob` — il backend fa da tramite dello stream, mai un redirect al
+  portale) e `fir-detail-rentri-aggiorna-stato` (azione ESPLICITA, chiama
+  `/azioni` e riconcilia; nessun polling automatico).
+- **RENTRI — aggancio dei formulari (colmato in R2 Task 8)**: la pagina
+  `/rentri/formulari` (`features/rentri/rentri-formulari.component.ts`) espone
+  `rentri-formulari-search-input`, `-cerca-button`, `-table`, `-loading`,
+  `-empty-state`, `-errore`, `-non-autorizzato`, `-sedi-link`, più i dinamici
+  per riga `rentri-formulari-row-{numeroFir}`,
+  `rentri-formulari-status-{numeroFir}`,
+  `rentri-formulari-aggancia-{numeroFir}`; il dialog espone
+  `rentri-formulari-confirm-dialog` (+ `-modalita-nuovo`, `-modalita-esistente`,
+  `-fir-locale-select`, `-fir-locali-troncati`, `-confirm-button`,
+  `-cancel-button`). Il dettaglio FIR aggiunge
+  `fir-detail-rentri-rilascia-legame` e
+  `fir-detail-rentri-rilascia-legame-confirm-dialog`.
+  NB: questi nomi sono stati SCRITTI qui dopo l'implementazione, non prima —
+  il piano di R2 li dava per già presenti in questo file e non lo erano.
   Restano mancanti i testid generali non-RENTRI della riga "FIR" sopra
   (`fir-nuovo-button`, `fir-row-{numeroFir}`, `fir-emetti-{numeroFir}`,
   `fir-presa-in-carico-{numeroFir}`, `fir-conferma-consegna-{numeroFir}`,
   `fir-annulla-{numeroFir}`, `fir-status-badge-{numeroFir}`) — non toccati
   da R1.
+
+- **RENTRI — diagnostica per l'utente (colmato in R5 Task 3)**: la pagina
+  `/rentri/diagnostica` (`features/rentri/rentri-diagnostica.component.ts`)
+  espone `rentri-diagnostica-certificato-scadenza`,
+  `rentri-diagnostica-trasmissioni-recenti`,
+  `rentri-diagnostica-formulari-attenzione`,
+  `rentri-diagnostica-limitatore-stato` (nomi imposti dal piano
+  `docs/superpowers/plans/2026-07-26-r5-robustezza.md`, Task 3 Step 3), più
+  `-non-autorizzato`, `-loading`, `-aggiorna-btn`, `-trasmissioni-vuote`,
+  `-nessun-formulario-attenzione`, `-limitatore-in-attesa`,
+  `-limitatore-normale`, e i dinamici per riga
+  `rentri-diagnostica-trasmissione-{id}` e
+  `rentri-diagnostica-formulario-attenzione-{firId}`. Solo dati locali: la
+  pagina non genera mai una chiamata verso RENTRI al caricamento,
+  l'aggiornamento è un pulsante esplicito, mai un timer.
 
 ## Componenti "orfani" da chiarire (non un problema di selettori, ma di wiring)
 

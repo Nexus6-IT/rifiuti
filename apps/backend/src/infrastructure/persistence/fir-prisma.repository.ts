@@ -5,6 +5,7 @@
 
 import { Injectable, Logger } from '@nestjs/common'
 import { createHash } from 'crypto'
+import { Prisma } from '@prisma/client'
 import {
   FIRStatus as PrismaFIRStatus,
   RENTRISyncStatus as PrismaRENTRISyncStatus,
@@ -23,6 +24,7 @@ import {
 } from '../../domain/fir/repositories/fir-repository.interface'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { RENTRISyncStatus } from '../../domain/fir/rentri-sync-status.vo'
+import { FormularioGiaAgganciatoError } from '../../core/domain/errors'
 import { PrismaService } from './prisma.service'
 
 @Injectable()
@@ -168,6 +170,14 @@ export class FIRPrismaRepository implements IFIRRepository {
     return records.map((r: any) => this.toDomain(r))
   }
 
+  async findByRentriNumeroFir(tenantId: string, numeroFir: string): Promise<FIR | null> {
+    const record = await this.prisma.fIR.findFirst({
+      where: { tenantId, rentriNumeroFir: numeroFir },
+      include: FIRPrismaRepository.FIR_INCLUDE,
+    })
+    return record ? this.toDomain(record) : null
+  }
+
   async findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]> {
     const where: any = {
       status: this.statoToDb(stato),
@@ -209,13 +219,41 @@ export class FIRPrismaRepository implements IFIRRepository {
 
     // Le transizioni di stato aggiornano solo i campi scalari: tenant e
     // produttore-utente non cambiano dopo la creazione.
-    await this.prisma.fIR.upsert({
-      where: { id: fir.id },
-      create: createData,
-      update: scalars,
-    })
+    try {
+      await this.prisma.fIR.upsert({
+        where: { id: fir.id },
+        create: createData,
+        update: scalars,
+      })
+    } catch (error) {
+      throw this.translateUniqueConstraintError(error, fir)
+    }
 
     await this.persistSignatures(fir)
+  }
+
+  /**
+   * Traduce la violazione Postgres del vincolo di unicità
+   * (tenant_id, rentri_numero_fir) — P2002, v. Task 3 R2 — in un errore di
+   * dominio leggibile. Senza questa traduzione l'eccezione Prisma grezza
+   * risalirebbe fino al controller, che non saprebbe distinguerla da
+   * qualunque altro errore di scrittura. Qualunque altro errore Prisma (non
+   * il nostro vincolo) viene rilanciato invariato: questo repository non
+   * deve mascherare problemi diversi da quello che sa spiegare.
+   */
+  private translateUniqueConstraintError(error: unknown, fir: FIR): unknown {
+    const isUniqueViolationOnRentriNumeroFir =
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      (error.meta?.target as string[] | string | undefined)
+        ?.toString()
+        .includes('rentri_numero_fir')
+
+    if (isUniqueViolationOnRentriNumeroFir && fir.rentriNumeroFir) {
+      return new FormularioGiaAgganciatoError(fir.rentriNumeroFir)
+    }
+
+    return error
   }
 
   /**
@@ -450,6 +488,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       _annotazioni: record.wasteNotes || null,
       _fourthCopyReturnedAt: record.fourthCopyReturnedAt || null,
       _fourthCopyNotes: record.fourthCopyNotes || null,
+      _motivoAnnullamento: record.motivoAnnullamento || null,
       // Legame RENTRI: senza questa ricostruzione i getter rentriNumeroFir/
       // rentriSyncStatus/... tornerebbero sempre ai valori di default
       // dell'aggregate appena creato, anche se scritti correttamente da save
@@ -574,6 +613,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       effectiveWeight: fir.pesoEffettivo ?? undefined,
       fourthCopyReturnedAt: fir.fourthCopyReturnedAt || undefined,
       fourthCopyNotes: fir.fourthCopyNotes || undefined,
+      motivoAnnullamento: fir.motivoAnnullamento || undefined,
       quantity: fir.rifiuto.quantita.valore,
       unit: fir.rifiuto.quantita.unitaMisura,
       transportDate: fir.dataPresaCarico || new Date(),

@@ -12,7 +12,24 @@ module.exports = {
   // che la CI lancia in un passo dedicato dopo aver installato la fake: la
   // prova di conformita' non va persa, va solo eseguita dove ha le sue
   // dipendenze.
-  testPathIgnorePatterns: ['\\.oracolo\\.spec\\.ts$'],
+  // Le spec `*.postgres.spec.ts` richiedono un PostgreSQL reale (vincoli di
+  // unicita', comportamento dei NULL, traduzione degli errori del driver):
+  // cose che una finta non puo' dimostrare. In CI non esiste un database,
+  // quindi qui fallirebbero per assenza di infrastruttura e bloccherebbero il
+  // gate di rilascio. Si eseguono con `npm run test:postgres` avendo un
+  // Postgres raggiungibile.
+  // Le spec `*.redis.spec.ts` (R5, rate limiter preventivo RENTRI) testano
+  // comportamento TEMPORALE reale (una finestra che scorre, un'attesa che si
+  // risolve solo quando un altro processo rilascia uno slot): un Redis
+  // mockato nasconderebbe esattamente i bug di corsa che il rate limiter
+  // esiste per evitare. In CI/locale senza Redis fallirebbero per assenza di
+  // infrastruttura bloccando il gate, quindi vanno in una suite dedicata
+  // eseguita con `npm run test:redis` avendo un Redis reale raggiungibile.
+  testPathIgnorePatterns: [
+    '\\.oracolo\\.spec\\.ts$',
+    '\\.postgres\\.spec\\.ts$',
+    '\\.redis\\.spec\\.ts$',
+  ],
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },

@@ -66,6 +66,7 @@ describe('RENTRIApiClient — verifica reale contro la fake RENTRI (in-process)'
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
       rentriApiErrors: { inc: jest.fn() },
+      rentriTenantLocked: { set: jest.fn() },
     }
 
     // httpService reale sostituito da un adattatore su app.inject(): esegue

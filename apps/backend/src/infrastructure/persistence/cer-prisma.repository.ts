@@ -87,8 +87,15 @@ export class CERPrismaRepository implements ICERRepository {
         isPericoloso: cer.isPericoloso,
         category: cer.category,
         subcategory: cer.subcategory ?? '',
+        presenteInRentri: cer.presenteInRentri,
+        rimossoDaRentriAl: cer.rimossoDaRentriAl,
+        fonte: cer.fonte,
       },
       update: {
+        // NB: provenienza/attualità RENTRI (fonte/presenteInRentri/
+        // rimossoDaRentriAl) NON toccate qui: questo path è il salvataggio
+        // generico (import CSV via API), non deve declassare un codice già
+        // confermato da un allineamento RENTRI (v. `upsertFromRentri`).
         description: cer.description,
         isPericoloso: cer.isPericoloso,
         category: cer.category,
@@ -111,10 +118,80 @@ export class CERPrismaRepository implements ICERRepository {
     return (await this.prisma.cERCode.count({ where: { code } })) > 0
   }
 
+  async isUtilizzabilePerNuovoFormulario(code: string): Promise<boolean> {
+    const record = await this.prisma.cERCode.findUnique({
+      where: { code },
+      select: { presenteInRentri: true },
+    })
+    return record?.presenteInRentri === true
+  }
+
+  async upsertFromRentri(data: {
+    code: string
+    description: string
+    isPericoloso: boolean
+  }): Promise<void> {
+    const category = data.code.slice(0, 2)
+    await this.prisma.cERCode.upsert({
+      where: { code: data.code },
+      create: {
+        code: data.code,
+        description: data.description,
+        isPericoloso: data.isPericoloso,
+        category,
+        subcategory: '',
+        fonte: 'rentri',
+        presenteInRentri: true,
+        rimossoDaRentriAl: null,
+      },
+      update: {
+        description: data.description,
+        isPericoloso: data.isPericoloso,
+        fonte: 'rentri',
+        presenteInRentri: true,
+        rimossoDaRentriAl: null,
+      },
+    })
+  }
+
+  async marcaRimossoDaRentriSeAttivo(code: string, rimossoAl: Date): Promise<boolean> {
+    const risultato = await this.prisma.cERCode.updateMany({
+      where: { code, presenteInRentri: true },
+      data: { presenteInRentri: false, rimossoDaRentriAl: rimossoAl },
+    })
+    return risultato.count > 0
+  }
+
+  async listTuttiICodici(): Promise<string[]> {
+    const records = await this.prisma.cERCode.findMany({ select: { code: true } })
+    return records.map(r => r.code)
+  }
+
+  /**
+   * Codici marcati come non più confermati dall'ente (`presenteInRentri=false`),
+   * più recenti prima — query di sola lettura per la diagnostica dell'area
+   * RENTRI (Task 7 Step 2), NON parte dell'interfaccia `ICERRepository`: nessun
+   * altro consumatore del dominio ne ha bisogno, e aggiungerla all'interfaccia
+   * costringerebbe ogni test-double esistente a implementarla per niente.
+   */
+  async listNonPresenti(
+    limit = 50
+  ): Promise<Array<{ code: string; description: string; rimossoDaRentriAl: Date | null }>> {
+    const records = await this.prisma.cERCode.findMany({
+      where: { presenteInRentri: false },
+      orderBy: { rimossoDaRentriAl: 'desc' },
+      take: limit,
+      select: { code: true, description: true, rimossoDaRentriAl: true },
+    })
+    return records
+  }
+
   private filterWhere(filters?: CERSearchFilters): Record<string, unknown> {
     const where: Record<string, unknown> = {}
     if (filters?.pericoloso !== undefined) where['isPericoloso'] = filters.pericoloso
     if (filters?.category) where['category'] = filters.category
+    if (filters?.presenteInRentri !== undefined)
+      where['presenteInRentri'] = filters.presenteInRentri
     return where
   }
 
@@ -128,6 +205,9 @@ export class CERPrismaRepository implements ICERRepository {
       subcategory: record.subcategory || undefined,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+      presenteInRentri: record.presenteInRentri,
+      rimossoDaRentriAl: record.rimossoDaRentriAl,
+      fonte: record.fonte,
     })
   }
 }

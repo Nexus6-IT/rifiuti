@@ -21,6 +21,22 @@ export interface RentriCredentialPlain {
   environment: string
   /** Numero di iscrizione dell'unità locale RENTRI del tenant, se configurato. */
   numIscrSito?: string | null
+  /**
+   * Numero di iscrizione dell'OPERATORE (R4 Task 3), parametro `num_iscr` di
+   * `GET /anagrafiche/v1.0/operatore/{num_iscr}/siti`. Senza questo valore
+   * `SincronizzaSitiUseCase` non può leggere le unità locali dall'ente
+   * (fail-closed): non è lo stesso dato di `numIscrSito` (quello identifica
+   * una singola unità locale, questo l'intero operatore).
+   */
+  numIscrOperatore?: string | null
+  /**
+   * `credentials_id` della firma remota RENTRI (API `ca-rentri`, R3 Task 3),
+   * o `null` se il tenant non ha ancora fatto il boarding (QR Code + PIN
+   * dall'area Operatori del portale: passo umano, non automatizzabile).
+   * Senza questo valore `CompletaOperazioneConFirmaUseCase` si ferma
+   * fail-closed PRIMA di contattare l'ente.
+   */
+  credentialsIdFirmaRemota?: string | null
 }
 
 /** Dati per creare/aggiornare la credenziale di un tenant. */
@@ -37,6 +53,10 @@ export interface RentriCredentialInput {
    * in produzione. Non scrivere più nuovi valori qui.
    */
   numIscrSito?: string | null
+  /** V. {@link RentriCredentialPlain.numIscrOperatore}. */
+  numIscrOperatore?: string | null
+  /** V. {@link RentriCredentialPlain.credentialsIdFirmaRemota}. */
+  credentialsIdFirmaRemota?: string | null
 }
 
 /**
@@ -58,6 +78,18 @@ export class RentriCredentialService {
       )
     }
 
+    // Nessuna regex sul `credentials_id` (formato non documentato da alcuna
+    // fonte ufficiale, v. commento nello schema Prisma): l'unico controllo
+    // possibile senza inventare un vincolo è "non vuoto se valorizzato" —
+    // una stringa di soli spazi verso `ca-rentri` sarebbe un 400 sicuro.
+    if (input.credentialsIdFirmaRemota !== undefined && input.credentialsIdFirmaRemota !== null) {
+      if (input.credentialsIdFirmaRemota.trim() === '') {
+        throw new BadRequestException(
+          'Identificativo delle credenziali di firma remota RENTRI non valido: non può essere una stringa vuota. Lascialo assente se il boarding della firma remota non è ancora stato fatto.'
+        )
+      }
+    }
+
     const privateKeyEnc = encryptSecret(input.privateKeyPem, this.config.credentialEncKey)
     const data = {
       clientId: input.clientId,
@@ -66,6 +98,8 @@ export class RentriCredentialService {
       algorithm: input.algorithm || 'RS256',
       environment: input.environment || 'demo',
       numIscrSito: input.numIscrSito ?? null,
+      numIscrOperatore: input.numIscrOperatore ?? null,
+      credentialsIdFirmaRemota: input.credentialsIdFirmaRemota?.trim() ?? null,
     }
 
     await this.prisma.rentriCredential.upsert({
@@ -89,7 +123,26 @@ export class RentriCredentialService {
       algorithm: (record.algorithm as 'RS256' | 'ES256') || 'RS256',
       environment: record.environment,
       numIscrSito: record.numIscrSito ?? null,
+      numIscrOperatore: record.numIscrOperatore ?? null,
+      credentialsIdFirmaRemota: record.credentialsIdFirmaRemota ?? null,
     }
+  }
+
+  /**
+   * Solo il `credentials_id` della firma remota del tenant (R3 Task 3), o
+   * `null` se non configurato / tenant senza credenziale.
+   *
+   * Metodo dedicato invece di {@link getForTenant}: quest'ultimo DECIFRA la
+   * chiave privata di interoperabilità per portarla in memoria in chiaro —
+   * un costo e un'esposizione ingiustificati per leggere un identificativo
+   * che non è un segreto. `CompletaOperazioneConFirmaUseCase` usa questo.
+   */
+  async getCredentialsIdFirmaRemota(tenantId: string): Promise<string | null> {
+    const record = await this.prisma.rentriCredential.findUnique({
+      where: { tenantId },
+      select: { credentialsIdFirmaRemota: true },
+    })
+    return record?.credentialsIdFirmaRemota ?? null
   }
 
   /** Indica se il tenant ha una credenziale configurata (senza decifrare). */
@@ -101,5 +154,32 @@ export class RentriCredentialService {
   /** Rimuove la credenziale RENTRI di un tenant. */
   async removeForTenant(tenantId: string): Promise<void> {
     await this.prisma.rentriCredential.deleteMany({ where: { tenantId } })
+  }
+
+  /**
+   * Timestamp dell'ultimo allineamento riuscito delle unità locali del
+   * tenant (R4 Task 3), o `null` se mai eseguito / tenant senza credenziale.
+   * Usato da `SincronizzaSitiUseCase` come cache TTL.
+   */
+  async getSitiSincronizzatiAl(tenantId: string): Promise<Date | null> {
+    const record = await this.prisma.rentriCredential.findUnique({
+      where: { tenantId },
+      select: { sitiSincronizzatiAl: true },
+    })
+    return record?.sitiSincronizzatiAl ?? null
+  }
+
+  /**
+   * Marca ORA come ultimo allineamento riuscito delle unità locali del
+   * tenant. Chiamato da `SincronizzaSitiUseCase` dopo aver scaricato e
+   * salvato con successo l'elenco siti da RENTRI — mai prima, altrimenti un
+   * allineamento fallito a metà risulterebbe "recente" e la cache
+   * nasconderebbe il problema fino alla scadenza del TTL.
+   */
+  async markSitiSincronizzati(tenantId: string): Promise<void> {
+    await this.prisma.rentriCredential.update({
+      where: { tenantId },
+      data: { sitiSincronizzatiAl: new Date() },
+    })
   }
 }

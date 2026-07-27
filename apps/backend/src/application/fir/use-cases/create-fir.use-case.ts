@@ -38,6 +38,16 @@ export class CreateFIRUseCase {
     if (!cerExists) {
       return Result.fail<FIR>(`CER code not found: ${command.rifiuto.cerCode}`)
     }
+    // Il codice esiste per riferimento storico (sopra), ma un FIR NUOVO deve
+    // usare la verifica più stringente: un codice che RENTRI ha smesso di
+    // confermare resta leggibile/stampabile per i FIR già emessi, ma qui non è
+    // più selezionabile (v. piano R4 Task 4, CERCatalogService).
+    const cerUtilizzabile = await this.cerRepository.isUtilizzabilePerNuovoFormulario(cerCode)
+    if (!cerUtilizzabile) {
+      return Result.fail<FIR>(
+        "Questo codice CER non è più valido secondo il registro dell'ente: verificane la sostituzione"
+      )
+    }
     // Il cerCode normalizzato sovrascrive il valore originale (normalizzato a
     // "NN NN NN" / "NN NN NN*"). Gli altri campi del rifiuto passano invariati.
     const rifiuto = { ...command.rifiuto, cerCode }

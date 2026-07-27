@@ -37,6 +37,7 @@ describe('RENTRIApiClient', () => {
     mockHttpService = {
       post: jest.fn(),
       get: jest.fn(),
+      delete: jest.fn(),
     }
 
     // Il client opera sempre in modalità live (autenticazione Bearer self-issued).
@@ -66,6 +67,9 @@ describe('RENTRIApiClient', () => {
       },
       rentriApiErrors: {
         inc: jest.fn(),
+      },
+      rentriTenantLocked: {
+        set: jest.fn(),
       },
     }
 
@@ -343,6 +347,263 @@ describe('RENTRIApiClient', () => {
     })
   })
 
+  /**
+   * I NOMI DEI CAMPI SUL FILO, non la loro forma nel dominio.
+   *
+   * Il dominio parla camelCase (`tipoAccettazione`), il contratto RENTRI parla
+   * snake_case (`tipo_accettazione`, `DatiAccettazioneModel`). La traduzione
+   * avviene qui nel client, ed è l'unico punto in cui può rompersi.
+   *
+   * PERCHÉ SERVE UN TEST DEDICATO: l'oracolo NON può accorgersene. La fake
+   * accetta qualunque corpo (limite dichiarato in `rentri-accettazione.oracolo.spec.ts`),
+   * quindi una rinomina sbagliata lascerebbe verdi TUTTI i test — unitari e
+   * oracolo — e romperebbe solo contro l'ente vero. Peggio ancora: un ente che
+   * ignori un campo sconosciuto invece di rifiutarlo applicherebbe un default,
+   * e un respingimento diventerebbe un'accettazione senza che nulla protesti.
+   *
+   * Questi test fissano i nomi al contratto. Se il contratto cambia, vanno
+   * cambiati leggendolo — non adattati al codice finché non tornano verdi.
+   */
+  describe('inviaAccettazione — corpo conforme al contratto', () => {
+    const rispostaAccettata = (): AxiosResponse => ({
+      data: { transazione_id: 'tx-acc-1' },
+      status: 202,
+      statusText: 'Accepted',
+      headers: { location: '/formulari/v1.0/transazioni/tx-acc-1' },
+      config: {} as any,
+    })
+
+    it("accettazione intera: invia tipo_accettazione 'A' e quantita_accettata, in snake_case", async () => {
+      mockHttpService.post.mockReturnValue(of(rispostaAccettata()))
+
+      await client
+        .inviaAccettazione(
+          'tenant-1',
+          'BCDFGH00001JK',
+          {
+            tipoAccettazione: 'A',
+            dataOraArrivo: '2026-07-27T08:00:00Z',
+            quantitaAccettataKg: 100,
+          },
+          { maxTentativi: 1, intervalloMs: 1 }
+        )
+        .catch(() => undefined)
+
+      const corpo = mockHttpService.post.mock.calls[0][1] as Record<string, unknown>
+      expect(corpo).toEqual(
+        (expect as any).objectContaining({
+          tipo_accettazione: 'A',
+          data_ora_arrivo: '2026-07-27T08:00:00Z',
+          quantita_accettata: 100,
+        })
+      )
+      // La forma di dominio non deve MAI finire sul filo.
+      expect(Object.keys(corpo)).not.toContain('tipoAccettazione')
+      expect(Object.keys(corpo)).not.toContain('quantitaAccettataKg')
+    })
+
+    it("respingimento: invia tipo_accettazione 'R' con causale_respingimento e motivo_respingimento", async () => {
+      mockHttpService.post.mockReturnValue(of(rispostaAccettata()))
+
+      await client
+        .inviaAccettazione(
+          'tenant-1',
+          'BCDFGH00001JK',
+          {
+            tipoAccettazione: 'R',
+            dataOraArrivo: '2026-07-27T08:00:00Z',
+            causaleRespingimento: 'NC',
+            motivoRespingimento: 'Rifiuto non conforme alla descrizione',
+          },
+          { maxTentativi: 1, intervalloMs: 1 }
+        )
+        .catch(() => undefined)
+
+      const corpo = mockHttpService.post.mock.calls[0][1] as Record<string, unknown>
+      expect(corpo).toEqual(
+        (expect as any).objectContaining({
+          tipo_accettazione: 'R',
+          causale_respingimento: 'NC',
+          motivo_respingimento: 'Rifiuto non conforme alla descrizione',
+        })
+      )
+      // Un respingimento non dichiara una quantità accettata.
+      expect(Object.keys(corpo)).not.toContain('quantita_accettata')
+    })
+
+    it("accettazione parziale: 'P' porta sia la quantità sia la motivazione", async () => {
+      mockHttpService.post.mockReturnValue(of(rispostaAccettata()))
+
+      await client
+        .inviaAccettazione(
+          'tenant-1',
+          'BCDFGH00001JK',
+          {
+            tipoAccettazione: 'P',
+            dataOraArrivo: '2026-07-27T08:00:00Z',
+            quantitaAccettataKg: 60,
+            causaleRespingimento: 'IR',
+            motivoRespingimento: 'Accettata solo la parte conforme',
+          },
+          { maxTentativi: 1, intervalloMs: 1 }
+        )
+        .catch(() => undefined)
+
+      const corpo = mockHttpService.post.mock.calls[0][1] as Record<string, unknown>
+      expect(corpo).toEqual(
+        (expect as any).objectContaining({
+          tipo_accettazione: 'P',
+          quantita_accettata: 60,
+          causale_respingimento: 'IR',
+          motivo_respingimento: 'Accettata solo la parte conforme',
+        })
+      )
+    })
+  })
+
+  describe('caricaAllegato — corpo conforme al contratto', () => {
+    const rispostaAccettata = (): AxiosResponse => ({
+      data: { transazione_id: 'tx-allegato-1' },
+      status: 202,
+      statusText: 'Accepted',
+      headers: { location: '/formulari/v1.0/transazioni/tx-allegato-1' },
+      config: {} as any,
+    })
+
+    it('invia content_type, nome_file, contenuto e identificativo_soggetto in snake_case su POST /{numero_fir}/allegato', async () => {
+      mockHttpService.post.mockReturnValue(of(rispostaAccettata()))
+
+      await client
+        .caricaAllegato(
+          'tenant-1',
+          'BCDFGH00001JK',
+          {
+            contentType: 'application/pdf',
+            nomeFile: 'analisi-chimica.pdf',
+            contenutoBase64: 'JVBERi0xLjQK',
+            identificativoSoggetto: 'MNZGZN78A01F839X',
+          },
+          { maxTentativi: 1, intervalloMs: 1 }
+        )
+        .catch(() => undefined)
+
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK/allegato',
+        expect.anything(),
+        expect.anything()
+      )
+
+      const corpo = mockHttpService.post.mock.calls[0][1] as Record<string, unknown>
+      expect(corpo).toEqual(
+        (expect as any).objectContaining({
+          content_type: 'application/pdf',
+          nome_file: 'analisi-chimica.pdf',
+          contenuto: 'JVBERi0xLjQK',
+          identificativo_soggetto: 'MNZGZN78A01F839X',
+        })
+      )
+      // La forma di dominio (camelCase) non deve MAI finire sul filo.
+      expect(Object.keys(corpo)).not.toContain('contentType')
+      expect(Object.keys(corpo)).not.toContain('nomeFile')
+      expect(Object.keys(corpo)).not.toContain('contenutoBase64')
+      expect(Object.keys(corpo)).not.toContain('identificativoSoggetto')
+      // 'descrizione' è deprecato dal contratto: questo client non lo invia mai.
+      expect(Object.keys(corpo)).not.toContain('descrizione')
+    })
+  })
+
+  describe('eliminaAllegato', () => {
+    const rispostaAccettata = (): AxiosResponse => ({
+      data: { transazione_id: 'tx-elimina-allegato-1' },
+      status: 202,
+      statusText: 'Accepted',
+      headers: { location: '/formulari/v1.0/transazioni/tx-elimina-allegato-1' },
+      config: {} as any,
+    })
+
+    it('invia DELETE su /{numero_fir}/allegato/{allegato_id}, senza corpo né firma di integrità', async () => {
+      mockHttpService.delete.mockReturnValue(of(rispostaAccettata()))
+
+      await client
+        .eliminaAllegato('tenant-1', 'BCDFGH00001JK', 42, { maxTentativi: 1, intervalloMs: 1 })
+        .catch(() => undefined)
+
+      expect(mockHttpService.delete).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK/allegato/42',
+        expect.anything()
+      )
+      // Nessun corpo nel contratto: la firma di integrità (calcolata da post())
+      // non ha nulla su cui applicarsi, quindi non deve essere invocata qui.
+      expect(mockSignature.buildIntegrityHeaders).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('scaricaAllegato', () => {
+    it('invia GET su /{numero_fir}/allegato/{allegato_id} e mappa DownloadableBaseResponse', async () => {
+      const mockResponse: AxiosResponse = {
+        data: { nome_file: 'analisi-chimica.pdf', mime: 'application/pdf', content: 'JVBERi0=' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
+      }
+      mockHttpService.get.mockReturnValue(of(mockResponse))
+
+      const risultato = await client.scaricaAllegato('tenant-1', 'BCDFGH00001JK', 42)
+
+      expect(mockHttpService.get).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK/allegato/42',
+        expect.anything()
+      )
+      expect(risultato).toEqual({
+        nomeFile: 'analisi-chimica.pdf',
+        mime: 'application/pdf',
+        contenutoBase64: 'JVBERi0=',
+      })
+    })
+  })
+
+  describe('scaricaPdf', () => {
+    it('invia GET su /{numero_fir}/pdf e mappa DownloadableBaseResponse con disponibile:true', async () => {
+      const mockResponse: AxiosResponse = {
+        data: { nome_file: 'FIR-BCDFGH00001JK.pdf', mime: 'application/pdf', content: 'JVBERi0=' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
+      }
+      mockHttpService.get.mockReturnValue(of(mockResponse))
+
+      const risultato = await client.scaricaPdf('tenant-1', 'BCDFGH00001JK')
+
+      expect(mockHttpService.get).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK/pdf',
+        expect.anything()
+      )
+      expect(risultato).toEqual({
+        disponibile: true,
+        nomeFile: 'FIR-BCDFGH00001JK.pdf',
+        mime: 'application/pdf',
+        contenutoBase64: 'JVBERi0=',
+      })
+    })
+
+    it('mappa il 204 dichiarato dal contratto (riga 1764) su disponibile:false, mai un errore', async () => {
+      const mockResponse: AxiosResponse = {
+        data: '',
+        status: 204,
+        statusText: 'No Content',
+        headers: {},
+        config: {} as any,
+      }
+      mockHttpService.get.mockReturnValue(of(mockResponse))
+
+      const risultato = await client.scaricaPdf('tenant-1', 'BCDFGH00001JK')
+
+      expect(risultato).toEqual({ disponibile: false })
+    })
+  })
+
   describe('leggiFormulario', () => {
     it('invia GET su /{numero_fir} e restituisce il DettaglioFormulario', async () => {
       const mockResponse: AxiosResponse = {
@@ -486,6 +747,65 @@ describe('RENTRIApiClient', () => {
       const risultato = await promessa
       expect((risultato as any).stato_formulario).toBe('InserimentoQuantita')
       expect(mockHttpService.get).toHaveBeenCalledTimes(2)
+    })
+
+    it('423 (risorsa bloccata): tagga error_type "LOCKED" (non "HTTP"), imposta rentriTenantLocked=1 e lo riporta a 0 al successo (R5 Task 5)', async () => {
+      const successResponse: AxiosResponse = {
+        data: { transazione_id: 'tx-423-locked' },
+        status: 202,
+        statusText: 'Accepted',
+        headers: { location: '/formulari/v1.0/tx-423-locked/status' },
+        config: {} as any,
+      }
+
+      mockHttpService.post
+        .mockReturnValueOnce(
+          throwError(() => erroreProblemDetails(423, { title: 'Risorsa bloccata' }))
+        )
+        .mockReturnValueOnce(of(successResponse))
+
+      const promessa = client.creaFormulario('tenant-423', { dati: 'x' })
+      await jest.advanceTimersByTimeAsync(1000)
+      await promessa
+
+      // `error_type: 'LOCKED'` viene dalla classificazione in
+      // `gestisciRispostaErroreRentri` (rentri-http-resilienza.ts): è quello
+      // che distingue un 423 da un 429/5xx per la regola di allarme
+      // (monitoring/alerts/rentri.yml). Il catch di `post()` incrementa
+      // separatamente con `error_type: 'HTTP'` PRIMA di propagare l'errore
+      // al ciclo di resilienza — comportamento preesistente, non toccato da
+      // questo task: qui si verifica solo che la classificazione più
+      // specifica sia presente.
+      expect(mockMetrics.rentriApiErrors.inc).toHaveBeenCalledWith({
+        endpoint: '/formulari (crea)',
+        error_type: 'LOCKED',
+      })
+
+      const chiamate = mockMetrics.rentriTenantLocked.set.mock.calls
+      // Prima chiamata (dal ramo 423): a 1.
+      expect(chiamate[0]).toEqual([{ tenant_id: 'tenant-423' }, 1])
+      // Ultima chiamata (dalla risposta di successo che segue): a 0.
+      expect(chiamate[chiamate.length - 1]).toEqual([{ tenant_id: 'tenant-423' }, 0])
+    })
+
+    it('esaurisce i tentativi su un 423 persistente: error_type resta "LOCKED" anche a tentativi esauriti', async () => {
+      mockHttpService.post.mockReturnValue(
+        throwError(() => erroreProblemDetails(423, { title: 'Risorsa bloccata' }))
+      )
+
+      const promessa = client.creaFormulario('tenant-423-persistente', { dati: 'x' })
+      const assertion = expect(promessa).rejects.toThrow(RentriApiError)
+      await jest.runAllTimersAsync()
+      await assertion
+
+      expect(mockMetrics.rentriApiErrors.inc).toHaveBeenCalledWith({
+        endpoint: '/formulari (crea)',
+        error_type: 'LOCKED',
+      })
+      expect(mockMetrics.rentriTenantLocked.set).toHaveBeenCalledWith(
+        { tenant_id: 'tenant-423-persistente' },
+        1
+      )
     })
 
     it('esaurisce i tentativi su un 429 persistente: solleva RentriApiError retryable', async () => {
@@ -709,5 +1029,159 @@ describe('RENTRIApiClient', () => {
         expect(mockHttpService.get).toHaveBeenCalledTimes(3)
       })
     })
+  })
+
+  /**
+   * R5 Task 2: il limitatore preventivo per-tenant (Task 1) si applica PRIMA
+   * di ogni singolo tentativo HTTP, restando un livello DISTINTO dalla
+   * resilienza già verificata sopra (403/429/423/5xx) — non deve mai
+   * sovrapporsi né alterare l'attesa che il client calcola per un
+   * `Retry-After` reale. Qui `rateLimiter` è un doppio che permette di
+   * osservare l'interazione fra i due strati senza Redis reale (quello è
+   * `rentri-rate-limiter.redis.spec.ts` per il limitatore in isolamento, e
+   * `rentri-rate-limiter.oracolo.spec.ts` per la prova end-to-end contro
+   * l'oracolo, R5 Task 6).
+   */
+  describe('limitatore preventivo — separazione dei due strati (R5 Task 2)', () => {
+    let mockRateLimiter: any
+    let clientConLimitatore: RENTRIApiClient
+
+    beforeEach(() => {
+      jest.useFakeTimers()
+
+      mockRateLimiter = {
+        acquisisci: jest
+          .fn()
+          .mockResolvedValue({ rilascia: jest.fn().mockResolvedValue(undefined) }),
+      }
+      mockMetrics.rentriRateLimiterWaitSeconds = { observe: jest.fn() }
+
+      clientConLimitatore = new RENTRIApiClient(
+        mockHttpService,
+        mockLogger,
+        mockMetrics,
+        mockConfig,
+        mockAuth,
+        mockSignature,
+        mockRateLimiter
+      )
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('senza rateLimiter (comportamento preesistente): nessuna chiamata a acquisisci, nessuna osservazione della metrica', async () => {
+      mockHttpService.post.mockReturnValue(
+        of({
+          data: { transazione_id: 'tx-senza-limitatore' },
+          status: 202,
+          statusText: 'Accepted',
+          headers: {},
+          config: {} as any,
+        })
+      )
+
+      await client.creaFormulario('tenant-1', { dati: 'x' })
+
+      expect(mockMetrics.rentriRateLimiterWaitSeconds?.observe).not.toHaveBeenCalled()
+    })
+
+    it('con rateLimiter: acquisisce UNA volta per tentativo HTTP riuscito, e rilascia sempre', async () => {
+      mockHttpService.post.mockReturnValue(
+        of({
+          data: { transazione_id: 'tx-con-limitatore' },
+          status: 202,
+          statusText: 'Accepted',
+          headers: {},
+          config: {} as any,
+        })
+      )
+
+      await clientConLimitatore.creaFormulario('tenant-9', { dati: 'x' })
+
+      expect(mockRateLimiter.acquisisci).toHaveBeenCalledTimes(1)
+      expect(mockRateLimiter.acquisisci).toHaveBeenCalledWith('tenant-9')
+      const permesso = await mockRateLimiter.acquisisci.mock.results[0].value
+      expect(permesso.rilascia).toHaveBeenCalledTimes(1)
+      expect(mockMetrics.rentriRateLimiterWaitSeconds.observe).toHaveBeenCalledWith(
+        { tenant_id: 'tenant-9' },
+        expect.any(Number)
+      )
+    })
+
+    it(
+      "con rateLimiter: consuma UNA acquisizione per OGNI tentativo di resilienza, non una sola per l'intera operazione — " +
+        'un 429 ritentato due volte deve produrre 3 acquisizioni (una per tentativo), non 1',
+      async () => {
+        const successResponse: AxiosResponse = {
+          data: { transazione_id: 'tx-429-limitatore' },
+          status: 202,
+          statusText: 'Accepted',
+          headers: { location: '/formulari/v1.0/tx-429-limitatore/status' },
+          config: {} as any,
+        }
+
+        mockHttpService.post
+          .mockReturnValueOnce(
+            throwError(() =>
+              erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+            )
+          )
+          .mockReturnValueOnce(
+            throwError(() =>
+              erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+            )
+          )
+          .mockReturnValueOnce(of(successResponse))
+
+        const promessa = clientConLimitatore.creaFormulario('tenant-9', { dati: 'x' })
+        await jest.advanceTimersByTimeAsync(5000)
+        await jest.advanceTimersByTimeAsync(5000)
+        await promessa
+
+        expect(mockRateLimiter.acquisisci).toHaveBeenCalledTimes(3)
+      }
+    )
+
+    it(
+      "con rateLimiter che risolve ISTANTANEAMENTE (nessun budget da attendere): l'attesa totale resta " +
+        'quella del Retry-After reale (5s x 2), MAI più lunga — il limitatore preventivo non deve ' +
+        "sommarsi a un ritardo già corretto imposto dall'ente",
+      async () => {
+        const successResponse: AxiosResponse = {
+          data: { transazione_id: 'tx-429-non-raddoppiato' },
+          status: 202,
+          statusText: 'Accepted',
+          headers: { location: '/formulari/v1.0/tx-429-non-raddoppiato/status' },
+          config: {} as any,
+        }
+
+        mockHttpService.post
+          .mockReturnValueOnce(
+            throwError(() =>
+              erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+            )
+          )
+          .mockReturnValueOnce(
+            throwError(() =>
+              erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+            )
+          )
+          .mockReturnValueOnce(of(successResponse))
+
+        const promessa = clientConLimitatore.creaFormulario('tenant-9', { dati: 'x' })
+
+        // Esattamente le due attese da 5s del Retry-After bastano: se il
+        // limitatore avesse aggiunto un'attesa propria sopra queste, la
+        // promessa non si sarebbe ancora risolta a questo punto.
+        await jest.advanceTimersByTimeAsync(5000)
+        await jest.advanceTimersByTimeAsync(5000)
+
+        const risultato = await promessa
+        expect(risultato.transazioneId).toBe('tx-429-non-raddoppiato')
+        expect(mockHttpService.post).toHaveBeenCalledTimes(3)
+      }
+    )
   })
 })

@@ -45,6 +45,16 @@ export interface IFIRRepository {
   findByIds(ids: string[], tenantId: string): Promise<FIR[]>
 
   /**
+   * Trova il FIR del tenant già agganciato a questo numero_fir RENTRI, se
+   * esiste (R2 Task 4, `CercaFormulariRENTRIUseCase`/`AcquisisciFormularioRENTRIUseCase`):
+   * verifica LOCALE, ridondante col vincolo unico a DB (`@@unique([tenantId,
+   * rentriNumeroFir])`, R2 Task 3), ma necessaria per dare all'utente un
+   * errore di dominio leggibile ("già agganciato") invece di scoprirlo da un
+   * 500/P2002 dopo aver già chiamato RENTRI.
+   */
+  findByRentriNumeroFir(tenantId: string, numeroFir: string): Promise<FIR | null>
+
+  /**
    * Find FIRs by stato
    */
   findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]>

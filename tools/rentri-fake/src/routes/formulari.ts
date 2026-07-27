@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { verificaJwt } from '../auth/jwt-verifier'
 import { Archivio } from '../stato/archivio'
 import { numeroFirValido } from '../dominio/numero-fir'
+import { operazioniPerStato } from '../dominio/operazione'
 import { inviaProblemDetails } from '../errori/problem-details'
 
 const AUDIENCE = process.env.RENTRI_AUDIENCE ?? 'rentrigov.demo.api'
@@ -106,6 +107,360 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
       detail: `GET ${PREFISSO}/status e' un path ufficiale del contratto ma non e' implementato in questa fake (v. FEDELTA.md).`,
     })
   })
+
+  // GET /{numero_fir}/stato (formulari.yaml riga 2265, "Consultazione dello
+  // stato del formulario"): risposta 200 = InfoFormulario
+  // ({versione, stato_formulario}). Nessun parametro oltre al path — a
+  // differenza di /azioni sotto, che richiede identificativo_soggetto.
+  app.get<{ Params: { identificativo: string } }>(
+    `${PREFISSO}/:identificativo/stato`,
+    async (richiesta, risposta) => {
+      if (!(await autentica(richiesta, risposta, archivio))) return
+
+      const numeroFir = richiesta.params.identificativo
+      if (!numeroFirValido(numeroFir)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Numero FIR non valido',
+          detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+        })
+      }
+
+      const formulario = archivio.leggiFormulario(numeroFir)
+      if (!formulario) {
+        return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+      }
+
+      return {
+        versione: formulario.versione ?? null,
+        stato_formulario: formulario.stato,
+      }
+    }
+  )
+
+  // GET /{numero_fir}/azioni (formulari.yaml riga 1330, "Azioni disponibili
+  // sul formulario"): risposta 200 = AzioniResult ({versione, stato, azioni}).
+  // `identificativo_soggetto` e' OBBLIGATORIO (righe 1348-1353, il CF del
+  // soggetto per cui si chiedono le azioni) — a differenza di GET /{numero_fir}
+  // e di /stato sopra. `num_iscr_sito` opzionale non e' gestito da questa fake
+  // (fuori scope Task 2 R3: acquisirebbe automaticamente la visibilita').
+  app.get<{
+    Params: { identificativo: string }
+    Querystring: { identificativo_soggetto?: string }
+  }>(`${PREFISSO}/:identificativo/azioni`, async (richiesta, risposta) => {
+    if (!(await autentica(richiesta, risposta, archivio))) return
+
+    const numeroFir = richiesta.params.identificativo
+    if (!numeroFirValido(numeroFir)) {
+      return inviaProblemDetails(risposta, 400, {
+        title: 'Numero FIR non valido',
+        detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+      })
+    }
+
+    if (!richiesta.query.identificativo_soggetto) {
+      return inviaProblemDetails(risposta, 400, {
+        title: 'Parametro richiesto non specificato',
+        detail: "'identificativo_soggetto' e' obbligatorio.",
+      })
+    }
+
+    const formulario = archivio.leggiFormulario(numeroFir)
+    if (!formulario) {
+      return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+    }
+
+    return {
+      versione: formulario.versione ?? null,
+      stato: formulario.stato,
+      azioni: operazioniPerStato(formulario.stato, {
+        noteAnnullamentoGiaPresenti: !!formulario.note,
+      }),
+    }
+  })
+
+  // POST /{numero_fir}/hash (formulari.yaml riga 1498) e
+  // POST /{numero_fir}/acquisizione-firma (riga 531) — R3 Task 3.
+  //
+  // Entrambe ASYNC: rispondono 202 + TransazioneModel, esattamente come
+  // `POST /` in transazioni.ts, e si completano SOLO dal canale di controllo
+  // (`/__controllo/completa-transazione`, riusato tale e quale). La fake non
+  // decide da sola l'esito di una scrittura: e' il test a stabilire se
+  // l'ente accetta o rifiuta, che e' il punto dell'oracolo.
+  //
+  // Come le altre rotte di dominio, si validano PRIMA il numero FIR (400 di
+  // validazione) e l'esistenza del formulario (404), altrimenti un errore di
+  // dominio si travestirebbe da transazione accettata.
+  const registraOperazioneAsincrona = (
+    segmento: string,
+    validaCorpo: (corpo: Record<string, unknown>) => string | null,
+    operazione?: 'Accettazione' | 'AcquisizioneFirma' | 'Annulla' | 'NoteAnnullamento' | 'Allegato'
+  ): void => {
+    app.post<{ Params: { identificativo: string }; Body: Record<string, unknown> }>(
+      `${PREFISSO}/:identificativo/${segmento}`,
+      async (richiesta, risposta) => {
+        if (!(await autentica(richiesta, risposta, archivio))) return
+
+        const numeroFir = richiesta.params.identificativo
+        if (!numeroFirValido(numeroFir)) {
+          return inviaProblemDetails(risposta, 400, {
+            title: 'Numero FIR non valido',
+            detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+          })
+        }
+
+        if (!archivio.leggiFormulario(numeroFir)) {
+          return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+        }
+
+        const corpo = richiesta.body ?? {}
+        const motivo = validaCorpo(corpo)
+        if (motivo) {
+          return inviaProblemDetails(risposta, 400, {
+            title: 'Corpo della richiesta non valido',
+            detail: motivo,
+          })
+        }
+
+        // Collega la transazione al formulario/operazione (R3 Task 4): serve
+        // ad `Archivio.completaTransazione` per applicare la macchina a
+        // stati minima del ciclo scrivi→firma→esito. `hash` non passa alcun
+        // `operazione`: non ha effetto di dominio da applicare.
+        const id = archivio.creaTransazione(
+          undefined,
+          operazione ? { numeroFir, operazione, corpo } : undefined
+        )
+        return risposta
+          .status(202)
+          .header('Location', `${PREFISSO}/${id}/status`)
+          .send({ transazione_id: id })
+      }
+    )
+  }
+
+  // DatiPerFirmaModel (formulari.yaml riga 7614): `certificato` obbligatorio,
+  // `tipo_firma` opzionale (non inviato dal nostro client, v. il commento di
+  // `RENTRIApiClient.richiediHashPerFirma`). Nessun tag `operazione`: `hash`
+  // non ha effetto di dominio da applicare al completamento.
+  registraOperazioneAsincrona('hash', corpo =>
+    typeof corpo.certificato === 'string' && corpo.certificato.trim() !== ''
+      ? null
+      : "'certificato' e' obbligatorio (DatiPerFirmaModel)."
+  )
+
+  // FirmaModel (formulari.yaml riga 9646): certificato + token + firma, tutti
+  // obbligatori. Un client che dimenticasse il `token` ricevuto da /hash se ne
+  // accorgerebbe qui, non in produzione. Taggata `'AcquisizioneFirma'`: se
+  // un'accettazione è in corso (`pendingOperazione`), il completamento di
+  // QUESTA transazione fa transitare il formulario allo stato terminale (v.
+  // `Archivio.applicaEffettoOperazione`).
+  registraOperazioneAsincrona(
+    'acquisizione-firma',
+    corpo => {
+      const mancanti = ['certificato', 'token', 'firma'].filter(
+        campo => typeof corpo[campo] !== 'string' || (corpo[campo] as string).trim() === ''
+      )
+      return mancanti.length === 0
+        ? null
+        : `Campi obbligatori mancanti (FirmaModel): ${mancanti.join(', ')}.`
+    },
+    'AcquisizioneFirma'
+  )
+
+  // DatiAccettazioneModel (formulari.yaml righe 6828-6862, R3 Task 4):
+  // validazione strutturale MINIMA, deliberatamente NON i vincoli
+  // condizionali di business (quantita_accettata/causale/motivo per certi
+  // tipi) — quelli sono responsabilità del chiamante (`AccettaORespingiFIRUseCase`),
+  // l'oracolo verifica il CICLO, non la correttezza del modello dati di
+  // scrittura (v. commento di testata del piano).
+  registraOperazioneAsincrona(
+    'accettazione',
+    corpo => {
+      if (
+        corpo.tipo_accettazione !== 'A' &&
+        corpo.tipo_accettazione !== 'P' &&
+        corpo.tipo_accettazione !== 'R'
+      ) {
+        return "'tipo_accettazione' deve essere uno tra 'A', 'P', 'R' (DatiAccettazioneModel)."
+      }
+      if (typeof corpo.data_ora_arrivo !== 'string' || corpo.data_ora_arrivo.trim() === '') {
+        return "'data_ora_arrivo' e' obbligatorio (DatiAccettazioneModel)."
+      }
+      return null
+    },
+    'Accettazione'
+  )
+
+  // POST /{numero_fir}/annulla-fir (formulari.yaml righe 1232-1329, R3 Task 5,
+  // NON /annulla, deprecato riga 1136): NESSUN requestBody nel contratto —
+  // nessuna validazione strutturale necessaria (DatiAnnullamentoModel non si
+  // applica qui).
+  registraOperazioneAsincrona('annulla-fir', () => null, 'Annulla')
+
+  // POST /{numero_fir}/note-annullamento (formulari.yaml righe 1642-1738,
+  // R3 Task 5): NoteAnnullamentoModel (righe 9895-9906), un solo campo
+  // obbligatorio, `note` (stringa non vuota, max 1024 caratteri).
+  registraOperazioneAsincrona(
+    'note-annullamento',
+    corpo => {
+      if (typeof corpo.note !== 'string' || corpo.note.trim() === '') {
+        return "'note' e' obbligatorio (NoteAnnullamentoModel)."
+      }
+      if (corpo.note.length > 1024) {
+        return "'note' non puo' superare 1024 caratteri (NoteAnnullamentoModel)."
+      }
+      return null
+    },
+    'NoteAnnullamento'
+  )
+
+  // POST /{numero_fir}/allegato (formulari.yaml righe 776-881, R3 Task 6):
+  // DatiAllegatoModel (righe 6902-6938) — validazione strutturale MINIMA
+  // (stesso principio di 'accettazione'/'note-annullamento' sopra: il
+  // vincolo di business sulla dimensione, 1 MB, e' responsabilita' del
+  // CHIAMANTE, GestisciAllegatiFIRUseCase, verificato PRIMA di raggiungere
+  // questa rotta — l'oracolo verifica il CICLO, non la correttezza del
+  // modello dati di scrittura). NESSUN effetto di firma (v. operazione.ts):
+  // l'allegato viene registrato in archivio non appena la transazione si
+  // completa, usando l'`allegato_id` che il TEST dichiara nell'esito (v.
+  // `Archivio.applicaEffettoOperazione`, ramo 'Allegato').
+  registraOperazioneAsincrona(
+    'allegato',
+    corpo => {
+      if (typeof corpo.content_type !== 'string' || corpo.content_type.trim() === '') {
+        return "'content_type' e' obbligatorio (DatiAllegatoModel)."
+      }
+      if (typeof corpo.nome_file !== 'string' || corpo.nome_file.trim() === '') {
+        return "'nome_file' e' obbligatorio (DatiAllegatoModel)."
+      }
+      if (corpo.nome_file.length > 255) {
+        return "'nome_file' non puo' superare 255 caratteri (DatiAllegatoModel)."
+      }
+      if (typeof corpo.contenuto !== 'string' || corpo.contenuto.trim() === '') {
+        return "'contenuto' e' obbligatorio (DatiAllegatoModel)."
+      }
+      if (
+        typeof corpo.identificativo_soggetto !== 'string' ||
+        corpo.identificativo_soggetto.trim() === ''
+      ) {
+        return "'identificativo_soggetto' e' obbligatorio (DatiAllegatoModel)."
+      }
+      return null
+    },
+    'Allegato'
+  )
+
+  // DELETE /{numero_fir}/allegato/{allegato_id} (formulari.yaml righe
+  // 941-1017, R3 Task 6): nessun corpo nel contratto, l'`allegato_id` viene
+  // dal PATH — non riusa `registraOperazioneAsincrona` (un solo parametro di
+  // path) ma segue lo stesso schema ASYNC (202 + TransazioneModel).
+  app.delete<{ Params: { identificativo: string; allegato_id: string } }>(
+    `${PREFISSO}/:identificativo/allegato/:allegato_id`,
+    async (richiesta, risposta) => {
+      if (!(await autentica(richiesta, risposta, archivio))) return
+
+      const numeroFir = richiesta.params.identificativo
+      if (!numeroFirValido(numeroFir)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Numero FIR non valido',
+          detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+        })
+      }
+      if (!archivio.leggiFormulario(numeroFir)) {
+        return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+      }
+
+      const allegatoId = Number(richiesta.params.allegato_id)
+      if (!Number.isFinite(allegatoId)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'allegato_id non valido',
+          detail: `'${richiesta.params.allegato_id}' non e' un intero valido.`,
+        })
+      }
+
+      const id = archivio.creaTransazione(undefined, {
+        numeroFir,
+        operazione: 'RimuoviAllegato',
+        allegatoId,
+      })
+      return risposta
+        .status(202)
+        .header('Location', `${PREFISSO}/${id}/status`)
+        .send({ transazione_id: id })
+    }
+  )
+
+  // GET /{numero_fir}/allegato/{allegato_id} (formulari.yaml righe 882-940,
+  // R3 Task 6): SINCRONO (200 diretto, a differenza di POST/DELETE sullo
+  // stesso path) — DownloadableBaseResponse (nome_file/mime/content).
+  app.get<{ Params: { identificativo: string; allegato_id: string } }>(
+    `${PREFISSO}/:identificativo/allegato/:allegato_id`,
+    async (richiesta, risposta) => {
+      if (!(await autentica(richiesta, risposta, archivio))) return
+
+      const numeroFir = richiesta.params.identificativo
+      if (!numeroFirValido(numeroFir)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Numero FIR non valido',
+          detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+        })
+      }
+      if (!archivio.leggiFormulario(numeroFir)) {
+        return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+      }
+
+      const allegatoId = Number(richiesta.params.allegato_id)
+      const allegato = archivio.leggiAllegato(numeroFir, allegatoId)
+      if (!allegato) {
+        return inviaProblemDetails(risposta, 404, { title: 'Allegato non trovato' })
+      }
+
+      return {
+        nome_file: allegato.nome_file,
+        mime: allegato.content_type,
+        content: allegato.contenuto,
+      }
+    }
+  )
+
+  // GET /{numero_fir}/pdf (formulari.yaml riga 1739, "Stampa PDF del FIR",
+  // R3 Task 7): SINCRONO, stessa forma di `DownloadableBaseResponse` di
+  // /{numero_fir}/allegato/{allegato_id} sopra. La fake non genera un PDF
+  // reale — un contenuto placeholder deterministico, sufficiente per
+  // verificare il CICLO (200/204/404), non il contenuto del documento.
+  // Il 204 dichiarato dal contratto (righe 1758-1765) è raggiungibile
+  // tramite `Formulario.pdfDisponibile === false` (v. archivio.ts): senza
+  // questo controllo esplicito dal test, quel ramo del client resterebbe
+  // verificato solo per lettura del codice, mai eseguito.
+  app.get<{ Params: { identificativo: string } }>(
+    `${PREFISSO}/:identificativo/pdf`,
+    async (richiesta, risposta) => {
+      if (!(await autentica(richiesta, risposta, archivio))) return
+
+      const numeroFir = richiesta.params.identificativo
+      if (!numeroFirValido(numeroFir)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Numero FIR non valido',
+          detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+        })
+      }
+
+      const formulario = archivio.leggiFormulario(numeroFir)
+      if (!formulario) {
+        return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+      }
+
+      if (formulario.pdfDisponibile === false) {
+        return risposta.status(204).send()
+      }
+
+      const contenuto = Buffer.from(`%PDF-FAKE ${numeroFir}`, 'utf-8').toString('base64')
+      return {
+        nome_file: `FIR-${numeroFir}.pdf`,
+        mime: 'application/pdf',
+        content: contenuto,
+      }
+    }
+  )
 
   // Nome del parametro `:identificativo` (non `:numero_fir`): questa rotta
   // condivide la posizione nel path con le rotte di transazione registrate

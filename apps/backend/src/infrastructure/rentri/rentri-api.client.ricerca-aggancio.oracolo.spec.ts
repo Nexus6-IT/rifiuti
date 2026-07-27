@@ -68,6 +68,7 @@ describe('RENTRIApiClient — ricerca e aggancio contro la fake RENTRI (in-proce
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
       rentriApiErrors: { inc: jest.fn() },
+      rentriTenantLocked: { set: jest.fn() },
     }
 
     const httpService: any = {
