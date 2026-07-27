@@ -1,7 +1,9 @@
 import {
   Controller,
   Get,
+  Post,
   Param,
+  Body,
   UseGuards,
   NotFoundException,
   BadRequestException,
@@ -18,6 +20,11 @@ import {
   GetAzioniDisponibiliUseCase,
   GetAzioniDisponibiliResult,
 } from '../../application/rentri/get-azioni-disponibili.use-case'
+import {
+  AccettaORespingiFIRUseCase,
+  EsitoAccettaORespingiFIR,
+} from '../../application/rentri/accetta-o-respingi-fir.use-case'
+import { AccettaFirRentriDto } from './dto/accetta-fir-rentri.dto'
 import { DomainException } from '../../domain/shared/domain-exception'
 
 /**
@@ -46,6 +53,7 @@ import { DomainException } from '../../domain/shared/domain-exception'
 export class RentriFirLifecycleController {
   constructor(
     private readonly getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
+    private readonly accettaORespingiFIRUseCase: AccettaORespingiFIRUseCase,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('RentriFirLifecycleController')
@@ -77,6 +85,71 @@ export class RentriFirLifecycleController {
       return await this.getAzioniDisponibiliUseCase.execute(firId, tenantId)
     } catch (error: any) {
       this.logger.error('Lettura azioni RENTRI disponibili non riuscita', error, {
+        firId,
+        tenantId,
+      })
+
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
+        throw new UnauthorizedException(error.message)
+      }
+      if (error instanceof DomainException) {
+        throw new BadRequestException(error.message)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Accetta o respinge (anche parzialmente) il carico ricevuto (R3 Task 4).
+   * Verifica SEMPRE prima `/azioni` (v. `AccettaORespingiFIRUseCase`): mai
+   * una scrittura diretta senza quella precondizione. Se l'ente accetta i
+   * dati, chiude il ciclo con la firma remota RENTRI
+   * (`CompletaOperazioneConFirmaUseCase`, R3 Task 3) e ne propaga l'esito.
+   */
+  @Post(':id/accettazione')
+  @ApiOperation({
+    summary: 'Accetta o respingi (anche parzialmente) il carico',
+    description:
+      'Verifica la precondizione da /azioni, invia i dati di accettazione a RENTRI e completa ' +
+      "il ciclo con la firma remota. NON verifica autonomamente lo stato del formulario oltre a " +
+      "quanto risulta da /azioni.",
+  })
+  @ApiResponse({ status: 200, description: 'Accettazione inviata ed esito della firma' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validazione locale fallita, operazione non disponibile o rifiutata dall’ente',
+  })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  async accettaORespingi(
+    @Param('id') firId: string,
+    @Body() dto: AccettaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string
+  ): Promise<EsitoAccettaORespingiFIR> {
+    this.logger.debug('Accettazione/respingimento RENTRI richiesto', {
+      firId,
+      tenantId,
+      userId,
+      tipoAccettazione: dto.tipoAccettazione,
+    })
+
+    try {
+      return await this.accettaORespingiFIRUseCase.execute({
+        firId,
+        tenantId,
+        tipoAccettazione: dto.tipoAccettazione,
+        dataOraArrivo: dto.dataOraArrivo,
+        quantitaAccettataKg: dto.quantitaAccettataKg,
+        causaleRespingimento: dto.causaleRespingimento,
+        motivoRespingimento: dto.motivoRespingimento,
+        attesaVerificaAnalitica: dto.attesaVerificaAnalitica,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Accettazione/respingimento RENTRI non riuscito', error, {
         firId,
         tenantId,
       })

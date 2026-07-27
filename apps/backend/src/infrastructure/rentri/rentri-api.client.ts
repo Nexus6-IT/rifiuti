@@ -476,6 +476,69 @@ export class RENTRIApiClient {
   }
 
   /**
+   * Trasmette l'accettazione (o il respingimento, anche parziale) di un
+   * carico da parte del destinatario (`POST /{numero_fir}/accettazione` —
+   * formulari.yaml righe 429-513). Corpo: {@link DatiAccettazionePayload},
+   * mappato qui a snake_case (`DatiAccettazioneModel`, righe 6828-6862).
+   *
+   * **ASYNC (NONBLOCK_PULL)**, stesso ciclo di {@link inviaAcquisizioneFirma}:
+   * risposta 202 con `TransazioneModel.transazione_id`, esito atteso con
+   * {@link attendiEsito}. Come `inviaAcquisizioneFirma`, restituisce
+   * l'`EsitoFormularioModel` COSÌ COM'È, senza interpretare `esito.errore`:
+   * quella decisione è del chiamante (`AccettaORespingiFIRUseCase`).
+   *
+   * Nessun campo `undefined` viene inserito nel corpo HTTP (spread
+   * condizionale): il contratto dichiara `additionalProperties: false` su
+   * `DatiAccettazioneModel`, e un valore `undefined` esplicito comparirebbe
+   * comunque come chiave nel JSON serializzato se scritto come
+   * `campo: dati.x ?? undefined`.
+   */
+  async inviaAccettazione(
+    tenantId: string,
+    numeroFir: string,
+    dati: DatiAccettazionePayload,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    const contesto = `/formulari/${numeroFir}/accettazione`
+    const corpo: Record<string, unknown> = {
+      tipo_accettazione: dati.tipoAccettazione,
+      data_ora_arrivo: dati.dataOraArrivo,
+      ...(dati.quantitaAccettataKg !== undefined
+        ? { quantita_accettata: dati.quantitaAccettataKg }
+        : {}),
+      ...(dati.causaleRespingimento !== undefined
+        ? { causale_respingimento: dati.causaleRespingimento }
+        : {}),
+      ...(dati.motivoRespingimento !== undefined
+        ? { motivo_respingimento: dati.motivoRespingimento }
+        : {}),
+      ...(dati.attesaVerificaAnalitica !== undefined
+        ? { attesa_verifica_analitica: dati.attesaVerificaAnalitica }
+        : {}),
+    }
+
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/accettazione`,
+          corpo,
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const transazioneId = risposta.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di transazione_id: il ciclo NONBLOCK_PULL non può proseguire.`
+      )
+    }
+
+    return this.attendiEsito(tenantId, transazioneId, opzioni)
+  }
+
+  /**
    * Legge il certificato X.509 della credenziale di firma remota
    * (`GET /ca-rentri/v1.0/credentials/info?cert_info=true`). Serve per
    * ottenere il `certificato` base64 da passare a
@@ -1024,6 +1087,26 @@ export class RENTRIApiClient {
  * esistenti (`import { RentriApiError } from './rentri-api.client'`).
  */
 export { RentriApiError } from './rentri-http-resilienza'
+
+/**
+ * Corpo di `POST /{numero_fir}/accettazione` (`DatiAccettazioneModel`,
+ * formulari.yaml righe 6828-6862). Solo `tipoAccettazione` e `dataOraArrivo`
+ * sono obbligatori nello JSON Schema del contratto: i vincoli condizionali
+ * (`quantitaAccettataKg` per 'A'/'P', `causaleRespingimento` +
+ * `motivoRespingimento` per 'P'/'R') sono descritti solo in prosa nella
+ * `description` di ciascun campo e vanno quindi applicati dal CHIAMANTE
+ * (v. `AccettaORespingiFIRUseCase`) PRIMA di costruire questo payload —
+ * {@link RENTRIApiClient.inviaAccettazione} non li rivalida.
+ */
+export interface DatiAccettazionePayload {
+  tipoAccettazione: 'A' | 'P' | 'R'
+  /** ISO 8601 UTC. */
+  dataOraArrivo: string
+  quantitaAccettataKg?: number
+  causaleRespingimento?: 'NC' | 'IR' | 'A'
+  motivoRespingimento?: string
+  attesaVerificaAnalitica?: boolean
+}
 
 /**
  * Opzioni configurabili del polling NONBLOCK_PULL di {@link RENTRIApiClient.attendiEsito}.

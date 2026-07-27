@@ -1,5 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing'
+// Il dialog di PrimeNG dichiara animazioni: senza un modulo che le gestisca,
+// qualunque test che lo renda DAVVERO nel DOM fallisce con NG05105 prima ancora
+// di poter verificare alcunche'. `Noop` e non `BrowserAnimations` perche' in un
+// test non serve animare — serve solo che l'animazione non sia un errore.
+import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { ActivatedRoute, convertToParamMap } from '@angular/router'
 import { of, throwError } from 'rxjs'
 import { FirDetailComponent } from './fir-detail.component'
@@ -7,6 +12,7 @@ import { FirService } from './fir.service'
 import { AuthService } from '../../core/services/auth.service'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { RentriFormulariService } from '../rentri/rentri-formulari.service'
+import { RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { ConfirmationService } from 'primeng/api'
 
@@ -28,6 +34,7 @@ describe('FirDetailComponent', () => {
   let firService: jasmine.SpyObj<FirService>
   let rentriSyncService: jasmine.SpyObj<RENTRISyncService>
   let rentriFormulariService: jasmine.SpyObj<RentriFormulariService>
+  let rentriFirLifecycleService: jasmine.SpyObj<RentriFirLifecycleService>
   let authService: jasmine.SpyObj<AuthService>
   let httpMock: HttpTestingController
 
@@ -69,6 +76,10 @@ describe('FirDetailComponent', () => {
       'aggancia',
       'rilasciaLegame',
     ])
+    rentriFirLifecycleService = jasmine.createSpyObj('RentriFirLifecycleService', [
+      'azioniDisponibili',
+      'accettaORespingi',
+    ])
     authService = jasmine.createSpyObj('AuthService', [], {
       currentUser: () => ({ id: 'u1', email: 'u@example.com', role: overrides.role ?? 'ADMIN' }),
     })
@@ -78,11 +89,12 @@ describe('FirDetailComponent', () => {
       { provide: FirService, useValue: firService },
       { provide: RENTRISyncService, useValue: rentriSyncService },
       { provide: RentriFormulariService, useValue: rentriFormulariService },
+      { provide: RentriFirLifecycleService, useValue: rentriFirLifecycleService },
       { provide: AuthService, useValue: authService },
     ]
 
     TestBed.configureTestingModule({
-      imports: [FirDetailComponent, HttpClientTestingModule],
+      imports: [FirDetailComponent, HttpClientTestingModule, NoopAnimationsModule],
       providers,
     })
 
@@ -448,6 +460,242 @@ describe('FirDetailComponent', () => {
 
       expect(() => component.rilasciaLegameRENTRI(firConLegame)).not.toThrow()
       expect(rentriFormulariService.rilasciaLegame).toHaveBeenCalledWith('fir-1')
+    })
+  })
+
+  /**
+   * R3 Task 4 — accettazione/respingimento del carico. Il punto più
+   * delicato: il pulsante di conferma DEVE restare disabilitato finché i
+   * campi obbligatori dell'opzione scelta non sono validi (niente invio con
+   * motivazione vuota per parziale/respinto) — verificato lato UI, non solo
+   * lato backend.
+   */
+  describe('Accettazione/respingimento del carico', () => {
+    const firLegatoRentri: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'SYNCED',
+      rentriNumeroFir: 'RENTRI-000999',
+      rifiuto: { cerCode: '150101', quantita: 42, unitaMisura: 'kg' },
+    }
+
+    it('mostra "Accetta il carico" solo per un FIR legato a RENTRI e un ruolo abilitato', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-accetta-carico"]')).toBeTruthy()
+    })
+
+    it('NON mostra "Accetta il carico" per un FIR non legato a RENTRI', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of({ ...baseFIR, rentriNumeroFir: null }))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-accetta-carico"]')).toBeFalsy()
+    })
+
+    it('NON mostra "Accetta il carico" per un VIEWER', () => {
+      setup({ role: 'VIEWER' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-accetta-carico"]')).toBeFalsy()
+    })
+
+    it('apre il dialog precompilando la quantità con quella del rifiuto, opzione di default "intero"', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAccettazione(firLegatoRentri)
+
+      expect(component['accettazioneDialogVisible']()).toBeTrue()
+      expect(component['accettazioneOpzione']()).toBe('A')
+      expect(component['accettazioneQuantitaKg']).toBe(42)
+    })
+
+    it('opzione "intero": valida con la sola quantità, non richiede causale/motivo', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('A')
+      component['accettazioneQuantitaKg'] = 42
+
+      expect(component.accettazioneValida()).toBeTrue()
+    })
+
+    it('opzione "intero": NON valida senza quantità', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('A')
+      component['accettazioneQuantitaKg'] = null
+
+      expect(component.accettazioneValida()).toBeFalse()
+    })
+
+    it('opzione "parziale": NON valida senza motivazione (anche con quantità e causale presenti)', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('P')
+      component['accettazioneQuantitaKg'] = 20
+      component['accettazioneCausale'] = 'NC'
+      component['accettazioneMotivo'] = '   '
+
+      expect(component.accettazioneValida()).toBeFalse()
+    })
+
+    it('opzione "parziale": valida con quantità, causale e motivazione', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('P')
+      component['accettazioneQuantitaKg'] = 20
+      component['accettazioneCausale'] = 'NC'
+      component['accettazioneMotivo'] = 'Quantità parzialmente non conforme'
+
+      expect(component.accettazioneValida()).toBeTrue()
+    })
+
+    it('opzione "respingi": NON valida senza causale né motivazione, e non richiede quantità', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('R')
+      component['accettazioneQuantitaKg'] = null
+
+      expect(component.accettazioneValida()).toBeFalse()
+
+      component['accettazioneCausale'] = 'IR'
+      component['accettazioneMotivo'] = 'Il carico è irricevibile'
+
+      expect(component.accettazioneValida()).toBeTrue()
+    })
+
+    it('il pulsante di conferma nel DOM è disabilitato finché l’opzione non è valida', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('R')
+      fixture.detectChanges()
+
+      const bottone: HTMLButtonElement | null = fixture.nativeElement.querySelector(
+        '[data-testid="fir-detail-rentri-accettazione-confirm-button"] button'
+      )
+      expect(bottone?.disabled).toBeTrue()
+    })
+
+    it('invia il payload atteso al servizio per un\'accettazione intera', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.accettaORespingi.and.returnValue(
+        of({ tipoAccettazione: 'A', esitoFirma: { esito: 'COMPLETATA', statoFormulario: 'Accettato' } })
+      )
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('A')
+      component['accettazioneQuantitaKg'] = 42
+      component.confermaAccettazione()
+
+      expect(rentriFirLifecycleService.accettaORespingi).toHaveBeenCalledWith(
+        'fir-1',
+        jasmine.objectContaining({ tipoAccettazione: 'A', quantitaAccettataKg: 42 })
+      )
+    })
+
+    it('invia il payload atteso al servizio per un respingimento (causale + motivo, niente quantità)', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.accettaORespingi.and.returnValue(
+        of({
+          tipoAccettazione: 'R',
+          esitoFirma: { esito: 'COMPLETATA', statoFormulario: 'RespintoAccettatoParzialmente' },
+        })
+      )
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('R')
+      component['accettazioneCausale'] = 'IR'
+      component['accettazioneMotivo'] = 'Il carico è irricevibile'
+      component.confermaAccettazione()
+
+      expect(rentriFirLifecycleService.accettaORespingi).toHaveBeenCalledWith(
+        'fir-1',
+        jasmine.objectContaining({
+          tipoAccettazione: 'R',
+          causaleRespingimento: 'IR',
+          motivoRespingimento: 'Il carico è irricevibile',
+          quantitaAccettataKg: undefined,
+        })
+      )
+    })
+
+    it('non invia nulla se si tenta la conferma con opzione non valida', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('R')
+      // Nessuna causale/motivazione impostata.
+      component.confermaAccettazione()
+
+      expect(rentriFirLifecycleService.accettaORespingi).not.toHaveBeenCalled()
+    })
+
+    it('chiude il dialog e ricarica il FIR dopo una conferma riuscita', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.accettaORespingi.and.returnValue(
+        of({ tipoAccettazione: 'A', esitoFirma: { esito: 'IN_ATTESA', handle: 'h1', scadenzaAutorizzazione: '2026-01-01T00:00:00.000Z' } })
+      )
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('A')
+      component['accettazioneQuantitaKg'] = 42
+      component.confermaAccettazione()
+
+      expect(component['accettazioneDialogVisible']()).toBeFalse()
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('mostra un errore leggibile se il backend rifiuta l’accettazione', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.accettaORespingi.and.returnValue(
+        throwError(() => ({ error: { message: 'Il formulario non è nella fase di accettazione' } }))
+      )
+
+      component.apriDialogAccettazione(firLegatoRentri)
+      component['accettazioneOpzione'].set('A')
+      component['accettazioneQuantitaKg'] = 42
+
+      expect(() => component.confermaAccettazione()).not.toThrow()
+      expect(rentriFirLifecycleService.accettaORespingi).toHaveBeenCalled()
     })
   })
 })

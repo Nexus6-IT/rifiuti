@@ -12,6 +12,7 @@ import { AcquisisciFormularioRENTRIUseCase } from './acquisisci-formulario-rentr
 import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.use-case'
 import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
 import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
+import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
 import { RentriRiconciliazioneJob } from '../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../infrastructure/jobs/rentri-certificato-scadenza.job'
@@ -86,6 +87,11 @@ describe('RentriSyncModule (DI wiring)', () => {
     // solo l'use case.
     expect(moduleRef.get(GetAzioniDisponibiliUseCase)).toBeDefined()
     expect(moduleRef.get(RentriFirLifecycleController)).toBeDefined()
+
+    // R3 Task 4: accettazione/respingimento del carico — stesso motivo,
+    // deve risolversi anche il controller che lo espone (già verificato
+    // sopra), non solo lo use case in isolamento.
+    expect(moduleRef.get(AccettaORespingiFIRUseCase)).toBeDefined()
 
     // R5 Task 4/5: riconciliazione periodica + i due job schedulati che ne
     // dipendono/l'accompagnano (allarmi Prometheus).
