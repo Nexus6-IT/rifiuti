@@ -15,6 +15,7 @@ import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
 import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
 import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
 import { GestisciAllegatiFIRUseCase } from './gestisci-allegati-fir.use-case'
+import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
 import { RentriRiconciliazioneJob } from '../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../infrastructure/jobs/rentri-certificato-scadenza.job'
@@ -105,6 +106,11 @@ describe('RentriSyncModule (DI wiring)', () => {
     // che lo espone è lo stesso RentriFirLifecycleController già verificato
     // sopra, con GestisciAllegatiFIRUseCase iniettato in più).
     expect(moduleRef.get(GestisciAllegatiFIRUseCase)).toBeDefined()
+
+    // R3 Task 7: stampa PDF — stesso motivo, stesso errore ricorrente da non
+    // ripetere: deve risolversi anche qui (stesso controller di sopra, con
+    // ScaricaPdfFirUseCase iniettato in più).
+    expect(moduleRef.get(ScaricaPdfFirUseCase)).toBeDefined()
 
     // R5 Task 4/5: riconciliazione periodica + i due job schedulati che ne
     // dipendono/l'accompagnano (allarmi Prometheus).

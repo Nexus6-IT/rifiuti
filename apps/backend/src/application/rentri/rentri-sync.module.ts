@@ -38,6 +38,7 @@ import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rat
 import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
 import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
 import { GestisciAllegatiFIRUseCase } from './gestisci-allegati-fir.use-case'
+import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -439,6 +440,21 @@ import { GestisciAllegatiFIRUseCase } from './gestisci-allegati-fir.use-case'
         LoggerService,
       ],
     },
+    // R3 Task 7 — stampa PDF (proxy dello stream, mai un redirect al
+    // portale) e "aggiorna lo stato" (riusa `GetAzioniDisponibiliUseCase`,
+    // nessun nuovo endpoint: v. commento di classe del controller). NESSUNA
+    // firma, NESSUN ciclo NONBLOCK_PULL: `GET /{numero_fir}/pdf` è
+    // sincrono. `useFactory` per lo stesso motivo degli altri:
+    // `IFIRRepository` è un'interfaccia e sparisce a runtime.
+    {
+      provide: ScaricaPdfFirUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        rentriApiClient: RENTRIApiClient,
+        logger: LoggerService
+      ) => new ScaricaPdfFirUseCase(firRepo, rentriApiClient, logger),
+      inject: [FIRPrismaRepository, RENTRIApiClient, LoggerService],
+    },
   ],
   exports: [
     SyncFIRToRENTRIUseCase,
@@ -457,6 +473,7 @@ import { GestisciAllegatiFIRUseCase } from './gestisci-allegati-fir.use-case'
     AccettaORespingiFIRUseCase,
     AnnullaFIRRentriUseCase,
     GestisciAllegatiFIRUseCase,
+    ScaricaPdfFirUseCase,
   ],
 })
 export class RentriSyncModule {}

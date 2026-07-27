@@ -421,6 +421,31 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   "
                 />
               }
+              @if (canScaricarePdfRentri(f)) {
+                <p-button
+                  label="Scarica il PDF"
+                  icon="pi pi-file-pdf"
+                  [outlined]="true"
+                  [loading]="pdfScaricamentoInCorso()"
+                  (onClick)="scaricaPdfRentri(f)"
+                  data-testid="fir-detail-rentri-scarica-pdf"
+                  [attr.aria-label]="
+                    'Scarica il PDF del formulario RENTRI del FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+                <p-button
+                  label="Aggiorna lo stato"
+                  icon="pi pi-refresh"
+                  [outlined]="true"
+                  severity="secondary"
+                  [loading]="aggiornamentoStatoInCorso()"
+                  (onClick)="aggiornaStatoRentri(f)"
+                  data-testid="fir-detail-rentri-aggiorna-stato"
+                  [attr.aria-label]="
+                    'Aggiorna lo stato RENTRI del FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
             </div>
           </section>
         }
@@ -839,6 +864,10 @@ export class FirDetailComponent implements OnInit {
   protected readonly allegatiCaricamentoInCorso = signal(false)
   /** `id` locale dell'allegato in eliminazione, o `null` se nessuna eliminazione in corso. */
   protected readonly allegatoEliminazioneInCorso = signal<string | null>(null)
+
+  // --- Stampa PDF e aggiornamento dello stato (R3 Task 7) ---
+  protected readonly pdfScaricamentoInCorso = signal(false)
+  protected readonly aggiornamentoStatoInCorso = signal(false)
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id')
@@ -1403,6 +1432,101 @@ export class FirDetailComponent implements OnInit {
               detail: this.extractError(err, "Errore nell'eliminazione dell'allegato su RENTRI"),
             })
           },
+        })
+      },
+    })
+  }
+
+  // --- Stampa PDF e aggiornamento dello stato (R3 Task 7) ---
+
+  /** Come `canAccettareCarico`/`canAnnullareRentri`/`canGestireAllegati`: un FIR legato a RENTRI mostra i due pulsanti. */
+  canScaricarePdfRentri(fir: FIR): boolean {
+    return !!fir.rentriNumeroFir && this.canManageRENTRI()
+  }
+
+  /**
+   * Scarica il PDF del formulario: il backend fa da TRAMITE (proxy dello
+   * stream, mai un redirect al portale RENTRI — v. `RentriFirLifecycleService.scaricaPdf`
+   * e il backend `RentriFirLifecycleController.scaricaPdf`). Il file arriva
+   * come `Blob` e viene aperto/scaricato interamente dentro WasteFlow:
+   * l'utente non lascia mai la pagina.
+   */
+  scaricaPdfRentri(fir: FIR): void {
+    this.pdfScaricamentoInCorso.set(true)
+    this.rentriFirLifecycleService.scaricaPdf(fir.id).subscribe({
+      next: risposta => {
+        this.pdfScaricamentoInCorso.set(false)
+
+        if (risposta.status === 204 || !risposta.body) {
+          this.messageService.add({
+            severity: 'info',
+            summary: 'PDF non ancora disponibile',
+            detail:
+              "L'ente non ha ancora restituito un PDF per questo formulario. Riprova più tardi.",
+          })
+          return
+        }
+
+        const nomeFile = this.estraiNomeFileDaContentDisposition(
+          risposta.headers.get('content-disposition')
+        )
+        this.avviaDownloadBlob(
+          risposta.body,
+          nomeFile ?? `FIR-${fir.numeroProgressivo || fir.id}.pdf`
+        )
+      },
+      error: err => {
+        this.pdfScaricamentoInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, 'Errore nello scaricamento del PDF da RENTRI'),
+        })
+      },
+    })
+  }
+
+  private estraiNomeFileDaContentDisposition(header: string | null): string | null {
+    if (!header) return null
+    const match = /filename="?([^";]+)"?/i.exec(header)
+    return match ? match[1] : null
+  }
+
+  private avviaDownloadBlob(blob: Blob, nomeFile: string): void {
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = nomeFile
+    link.click()
+    window.URL.revokeObjectURL(url)
+  }
+
+  /**
+   * «Aggiorna lo stato»: azione ESPLICITA dell'utente, mai un timer/polling
+   * automatico — per lo stesso motivo per cui la diagnostica RENTRI (R5) non
+   * interroga l'ente a ogni caricamento di pagina: saremmo noi la causa del
+   * "ban" (423) che vogliamo evitare. Richiama `/azioni` (Task 2), che
+   * riconcilia `rentriStatoFormulario` lato backend, poi ricarica il FIR per
+   * riflettere l'eventuale cambiamento.
+   */
+  aggiornaStatoRentri(fir: FIR): void {
+    this.aggiornamentoStatoInCorso.set(true)
+    this.rentriFirLifecycleService.azioniDisponibili(fir.id).subscribe({
+      next: () => {
+        this.aggiornamentoStatoInCorso.set(false)
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Stato aggiornato',
+          detail: 'Lo stato del formulario è stato verificato presso RENTRI.',
+        })
+        this.reload()
+      },
+      error: err => {
+        this.aggiornamentoStatoInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, "Errore nell'aggiornamento dello stato da RENTRI"),
         })
       },
     })

@@ -83,6 +83,7 @@ describe('FirDetailComponent', () => {
       'elencaAllegati',
       'caricaAllegato',
       'eliminaAllegato',
+      'scaricaPdf',
     ])
     rentriFirLifecycleService.elencaAllegati.and.returnValue(of([]))
     authService = jasmine.createSpyObj('AuthService', [], {
@@ -1031,6 +1032,139 @@ describe('FirDetailComponent', () => {
 
       expect(rentriFirLifecycleService.eliminaAllegato).toHaveBeenCalledWith('fir-1', 'allegato-1')
       expect(component['allegati']().length).toBe(0)
+    })
+  })
+
+  describe('Stampa PDF e aggiornamento dello stato (R3 Task 7)', () => {
+    const firLegatoRentri: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'SYNCED',
+      rentriNumeroFir: 'RENTRI-000999',
+    }
+
+    it('mostra i due pulsanti solo per un FIR legato a RENTRI', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-scarica-pdf"]')).toBeTruthy()
+      expect(el.querySelector('[data-testid="fir-detail-rentri-aggiorna-stato"]')).toBeTruthy()
+    })
+
+    it('NON mostra i due pulsanti per un FIR non legato a RENTRI', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(baseFIR))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-scarica-pdf"]')).toBeFalsy()
+      expect(el.querySelector('[data-testid="fir-detail-rentri-aggiorna-stato"]')).toBeFalsy()
+    })
+
+    it('apertura della pagina NON chiama /azioni da sola: nessun polling automatico', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      // Solo l'apertura della pagina: /azioni deve restare non chiamata finché
+      // l'utente non preme esplicitamente "Aggiorna lo stato".
+      expect(rentriFirLifecycleService.azioniDisponibili).not.toHaveBeenCalled()
+    })
+
+    it('scarica il PDF ricevuto come Blob e avvia il download, senza mai navigare fuori da WasteFlow', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      const blob = new Blob(['%PDF-1.4 contenuto di prova'], { type: 'application/pdf' })
+      const headers = new Map([
+        ['content-disposition', 'attachment; filename="FIR-RENTRI-000999.pdf"'],
+      ])
+      rentriFirLifecycleService.scaricaPdf.and.returnValue(
+        of({
+          status: 200,
+          body: blob,
+          headers: { get: (nome: string) => headers.get(nome) ?? null },
+        } as any)
+      )
+
+      // Il componente crea un solo elemento ('a') per avviare il download:
+      // basta restituire sempre un anchor fittizio, senza delegare al vero
+      // `document.createElement` (nessun altro tag viene creato da questo metodo).
+      const anchorClickSpy = jasmine.createSpy('click')
+      spyOn(document, 'createElement').and.returnValue({
+        click: anchorClickSpy,
+        href: '',
+        download: '',
+      } as unknown as HTMLAnchorElement)
+      spyOn(window.URL, 'createObjectURL').and.returnValue('blob:fake-url')
+      spyOn(window.URL, 'revokeObjectURL')
+
+      component.scaricaPdfRentri(firLegatoRentri)
+
+      expect(rentriFirLifecycleService.scaricaPdf).toHaveBeenCalledWith('fir-1')
+      expect(anchorClickSpy).toHaveBeenCalled()
+      expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:fake-url')
+    })
+
+    it("non avvia alcun download e informa l'utente quando l'ente risponde 204 (PDF non ancora disponibile)", () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.scaricaPdf.and.returnValue(
+        of({ status: 204, body: null, headers: { get: () => null } } as any)
+      )
+      spyOn(window.URL, 'createObjectURL')
+
+      component.scaricaPdfRentri(firLegatoRentri)
+
+      expect(window.URL.createObjectURL).not.toHaveBeenCalled()
+    })
+
+    it('mostra un errore leggibile se lo scaricamento del PDF fallisce', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.scaricaPdf.and.returnValue(
+        throwError(() => ({ status: 500, error: { message: 'Errore ente' } }))
+      )
+
+      expect(() => component.scaricaPdfRentri(firLegatoRentri)).not.toThrow()
+      expect(component['pdfScaricamentoInCorso']()).toBe(false)
+    })
+
+    it("'Aggiorna lo stato' chiama /azioni ESPLICITAMENTE (azione utente) e ricarica il FIR", () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        of({ stato: 'Accettato', versione: 2, azioni: [] })
+      )
+
+      component.aggiornaStatoRentri(firLegatoRentri)
+
+      expect(rentriFirLifecycleService.azioniDisponibili).toHaveBeenCalledWith('fir-1')
+      // Il reload richiama getFIRById: già invocata una volta all'apertura
+      // pagina, deve essere invocata ANCORA dopo l'aggiornamento esplicito.
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it("mostra un errore leggibile se l'aggiornamento dello stato fallisce", () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        throwError(() => ({ status: 500, error: { message: 'Errore ente' } }))
+      )
+
+      component.aggiornaStatoRentri(firLegatoRentri)
+
+      expect(component['aggiornamentoStatoInCorso']()).toBe(false)
     })
   })
 })

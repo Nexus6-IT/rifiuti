@@ -90,6 +90,11 @@ da assegnare a chi lavora su `apps/frontend/**`.
   (contenitore dell'elenco locale) e, per riga, `fir-detail-allegati-row-{id}`
   / `fir-detail-allegati-elimina-{id}` (`{id}` = chiave primaria LOCALE della
   riga `FIRAllegatoRentri`, non l'`allegato_id` dell'ente).
+- **RENTRI — stampa PDF e aggiornamento dello stato (colmato in R3 Task 7)**:
+  il dettaglio FIR aggiunge `fir-detail-rentri-scarica-pdf` (scarica il PDF
+  come `Blob` — il backend fa da tramite dello stream, mai un redirect al
+  portale) e `fir-detail-rentri-aggiorna-stato` (azione ESPLICITA, chiama
+  `/azioni` e riconcilia; nessun polling automatico).
 - **RENTRI — aggancio dei formulari (colmato in R2 Task 8)**: la pagina
   `/rentri/formulari` (`features/rentri/rentri-formulari.component.ts`) espone
   `rentri-formulari-search-input`, `-cerca-button`, `-table`, `-loading`,

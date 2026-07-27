@@ -756,6 +756,47 @@ export class RENTRIApiClient {
   }
 
   /**
+   * Scarica la stampa PDF del formulario (`GET /{numero_fir}/pdf` —
+   * formulari.yaml righe 1739-1789, "Stampa PDF del FIR", R3 Task 7).
+   * **SINCRONO** (200/204 diretto, nessun ciclo NONBLOCK_PULL), stessa forma
+   * di risposta di {@link scaricaAllegato} (`DownloadableBaseResponse`,
+   * righe 9140-9156).
+   *
+   * Il contratto dichiara ESPLICITAMENTE **204 "No Content"** come esito
+   * possibile (riga 1764), distinto da un errore: nessun corpo, nessun
+   * `content` da decodificare. Restituito qui come `disponibile: false`,
+   * mai sollevato come eccezione — un 204 non è un fallimento della
+   * chiamata, è l'ente che dichiara "non c'è ancora un PDF da restituire".
+   *
+   * Il contratto autorizza questa operazione (riga 1748) a "un'utenza che
+   * abbia incarichi per (o coincida con) almeno uno dei soggetti coinvolti
+   * nel formulario": QUESTO client non decide l'autorizzazione, si limita a
+   * tradurre la risposta dell'ente così come arriva — la verifica è
+   * responsabilità del chiamante ({@link ScaricaPdfFirUseCase}, che dichiara
+   * esplicitamente quale parte di quel vincolo è verificabile con i dati che
+   * abbiamo). Un 403 dell'ente propaga da {@link eseguiRichiestaConResilienza}
+   * come qualunque altro errore di questa famiglia.
+   */
+  async scaricaPdf(tenantId: string, numeroFir: string): Promise<PdfFormularioScaricato> {
+    const contesto = `/formulari/${numeroFir}/pdf`
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () => this.get(`${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/pdf`, tenantId),
+      contesto
+    )
+
+    if (risposta.status === 204) {
+      return { disponibile: false }
+    }
+
+    return {
+      disponibile: true,
+      nomeFile: risposta.data?.nome_file ?? undefined,
+      mime: risposta.data?.mime ?? undefined,
+      contenutoBase64: risposta.data?.content ?? undefined,
+    }
+  }
+
+  /**
    * Legge il certificato X.509 della credenziale di firma remota
    * (`GET /ca-rentri/v1.0/credentials/info?cert_info=true`). Serve per
    * ottenere il `certificato` base64 da passare a
@@ -1375,6 +1416,20 @@ export interface AllegatoScaricato {
   nomeFile?: string
   mime?: string
   /** Contenuto base64, non decodificato: la decodifica è del chiamante. */
+  contenutoBase64?: string
+}
+
+/**
+ * Risposta di `GET /{numero_fir}/pdf` (R3 Task 7): stessa forma di
+ * {@link AllegatoScaricato} (`DownloadableBaseResponse`) più `disponibile`,
+ * che distingue il 200 (PDF presente) dal 204 dichiarato dal contratto
+ * (righe 1758-1765) — nessun campo è significativo quando `disponibile` è
+ * `false`.
+ */
+export interface PdfFormularioScaricato {
+  disponibile: boolean
+  nomeFile?: string
+  mime?: string
   contenutoBase64?: string
 }
 
