@@ -82,3 +82,6 @@ ruvector.db
 /e2e/playwright/.cache/
 # crash dump di Git Bash su Windows, mai da versionare
 *.stackdump
+
+# artefatti delle sessioni Playwright MCP, mai da versionare
+.playwright-mcp/
