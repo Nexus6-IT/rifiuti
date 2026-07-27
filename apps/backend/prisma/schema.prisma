@@ -305,6 +305,12 @@ model FIR {
   fourthCopyReturnedAt DateTime? @map("fourth_copy_returned_at")
   // 4ª copia: note/esito del destinatario alla ricezione
   fourthCopyNotes      String?   @map("fourth_copy_notes") @db.Text
+  /// Motivo dell'annullamento del FIR — locale (FIR.annulla) o RENTRI
+  /// (note-annullamento, stesso testo trasmesso all'ente). Nullable: un FIR
+  /// mai annullato non ce l'ha. Vincolo di lunghezza allineato al contratto
+  /// RENTRI (NoteAnnullamentoModel.note, maxLength 1024) perché lo stesso testo
+  /// viene anche inviato all'ente per un FIR legato.
+  motivoAnnullamento   String?   @map("motivo_annullamento") @db.VarChar(1024)
 
   transportDate        DateTime  @map("transport_date")
   estimatedArrivalDate DateTime? @map("estimated_arrival_date")

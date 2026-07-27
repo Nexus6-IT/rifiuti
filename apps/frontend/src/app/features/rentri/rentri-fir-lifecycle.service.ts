@@ -38,6 +38,17 @@ export interface EsitoAccettaFirRentri {
   esitoFirma: EsitoFirmaRemota
 }
 
+/** Payload di `POST /rentri/fir/:id/annullamento` (v. backend `AnnullaFirRentriDto`). */
+export interface AnnullaFirRentriPayload {
+  motivo: string
+  correlationId?: string
+}
+
+export interface EsitoAnnullaFirRentri {
+  esitoFirma: EsitoFirmaRemota
+  noteInviate: boolean
+}
+
 /**
  * Client del ciclo di vita del formulario digitale RENTRI (R3): azioni
  * disponibili e accettazione/respingimento del carico. Backend:
@@ -58,5 +69,9 @@ export class RentriFirLifecycleService {
     payload: AccettaFirRentriPayload
   ): Observable<EsitoAccettaFirRentri> {
     return this.http.post<EsitoAccettaFirRentri>(`${this.API_URL}/${firId}/accettazione`, payload)
+  }
+
+  annullaFIR(firId: string, payload: AnnullaFirRentriPayload): Observable<EsitoAnnullaFirRentri> {
+    return this.http.post<EsitoAnnullaFirRentri>(`${this.API_URL}/${firId}/annullamento`, payload)
   }
 }

@@ -11,6 +11,7 @@ import {
   FIREmessoEvent,
   FIRPresaInCaricoEvent,
   FIRConsegnatoEvent,
+  FIRAnnullatoEvent,
   StatoFormulario,
   RentriStatoRiconciliato,
 } from './fir.aggregate'
@@ -287,6 +288,33 @@ describe('FIR Aggregate', () => {
 
       expect(() => fir.annulla('Tentativo annullamento')).toThrow(DomainError)
       expect(() => fir.annulla('Tentativo annullamento')).toThrow(/Cannot annull a completed FIR/)
+    })
+
+    it('conserva il motivo di annullamento su un FIR NON legato a RENTRI', () => {
+      const fir = FIR.create(createValidFIRProps())
+
+      fir.annulla('errore di pesatura')
+
+      expect(fir.motivoAnnullamento).toBe('errore di pesatura')
+      expect(fir.stato).toBe(FIRStato.ANNULLATO)
+    })
+
+    it('rifiuta un annullamento senza motivo', () => {
+      const fir = FIR.create(createValidFIRProps())
+
+      expect(() => fir.annulla('   ')).toThrow(DomainError)
+      expect(fir.stato).toBe(FIRStato.BOZZA)
+    })
+
+    it("emette l'evento di dominio fir.annullato con il motivo", () => {
+      const fir = FIR.create(createValidFIRProps())
+
+      fir.annulla('errore di pesatura')
+
+      const evento = fir.domainEvents.find(e => e instanceof FIRAnnullatoEvent) as FIRAnnullatoEvent
+      expect(evento).toBeDefined()
+      expect(evento.motivo).toBe('errore di pesatura')
+      expect(evento.firId).toBe(fir.id)
     })
   })
 
@@ -899,6 +927,52 @@ describe('FIR Aggregate', () => {
         expect(() => fir.annulla('tentativo locale')).toThrow(
           MetodoLocaleNonConsentitoSuFirLegatoError
         )
+      })
+    })
+
+    /**
+     * Task 5 (R3) — il testo delle note di annullamento trasmesso all'ente
+     * con `POST /{numero_fir}/note-annullamento` va registrato anche da noi.
+     */
+    describe('registraNoteAnnullamentoRentri', () => {
+      const firLegatoEAnnullato = (): FIR => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+        fir.applyRentriStato('Annullato')
+        return fir
+      }
+
+      it('registra la nota su un FIR legato e già ANNULLATO', () => {
+        const fir = firLegatoEAnnullato()
+
+        fir.registraNoteAnnullamentoRentri('errore di pesatura alla partenza')
+
+        expect(fir.motivoAnnullamento).toBe('errore di pesatura alla partenza')
+        expect(fir.stato).toBe(FIRStato.ANNULLATO)
+      })
+
+      it('rifiuta un FIR non legato a RENTRI', () => {
+        const fir = emettiFIR()
+
+        expect(() => fir.registraNoteAnnullamentoRentri('motivo')).toThrow(DomainError)
+      })
+
+      it('rifiuta un FIR legato ma non ancora ANNULLATO', () => {
+        const fir = emettiFIR()
+        fir.startRENTRISync()
+        fir.markRENTRISynced('RENTRI-NUM-000123')
+
+        expect(() => fir.registraNoteAnnullamentoRentri('motivo')).toThrow(
+          /richiedono che il FIR sia già ANNULLATO/
+        )
+      })
+
+      it('rifiuta una nota vuota', () => {
+        const fir = firLegatoEAnnullato()
+
+        expect(() => fir.registraNoteAnnullamentoRentri('   ')).toThrow(/non può essere vuota/)
+        expect(fir.motivoAnnullamento).toBeNull()
       })
     })
   })

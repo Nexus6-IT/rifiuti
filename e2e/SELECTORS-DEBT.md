@@ -78,6 +78,12 @@ da assegnare a chi lavora su `apps/frontend/**`.
   `fir-detail-rentri-accettazione-motivo-input`,
   `fir-detail-rentri-accettazione-confirm-button` /
   `-cancel-button`.
+- **RENTRI — annullamento del formulario, con nota (colmato in R3 Task 5)**:
+  il dettaglio FIR aggiunge `fir-detail-rentri-annulla-formulario` (pulsante
+  che apre il dialog), `fir-detail-rentri-annulla-dialog`,
+  `fir-detail-rentri-annulla-motivo-input`,
+  `fir-detail-rentri-annulla-cancel-button`,
+  `fir-detail-rentri-annulla-confirm-button`.
 - **RENTRI — aggancio dei formulari (colmato in R2 Task 8)**: la pagina
   `/rentri/formulari` (`features/rentri/rentri-formulari.component.ts`) espone
   `rentri-formulari-search-input`, `-cerca-button`, `-table`, `-loading`,

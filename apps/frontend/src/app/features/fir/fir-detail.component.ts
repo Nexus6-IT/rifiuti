@@ -395,7 +395,22 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   [outlined]="true"
                   (onClick)="apriDialogAccettazione(f)"
                   data-testid="fir-detail-rentri-accetta-carico"
-                  [attr.aria-label]="'Accetta o respingi il carico del FIR ' + (f.numeroProgressivo || f.id)"
+                  [attr.aria-label]="
+                    'Accetta o respingi il carico del FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
+              @if (canAnnullareRentri(f)) {
+                <p-button
+                  label="Annulla il formulario"
+                  icon="pi pi-ban"
+                  severity="danger"
+                  [outlined]="true"
+                  (onClick)="apriDialogAnnullamento(f)"
+                  data-testid="fir-detail-rentri-annulla-formulario"
+                  [attr.aria-label]="
+                    'Annulla il formulario RENTRI del FIR ' + (f.numeroProgressivo || f.id)
+                  "
                 />
               }
             </div>
@@ -425,10 +440,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
     >
       <div class="accettazione-form">
         <div class="accettazione-opzioni" role="radiogroup" aria-label="Esito dell'accettazione">
-          <label
-            class="accettazione-opzione"
-            data-testid="fir-detail-rentri-accettazione-completa"
-          >
+          <label class="accettazione-opzione" data-testid="fir-detail-rentri-accettazione-completa">
             <p-radioButton
               name="accettazioneOpzione"
               value="A"
@@ -436,10 +448,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
             ></p-radioButton>
             <span>Accetta per intero</span>
           </label>
-          <label
-            class="accettazione-opzione"
-            data-testid="fir-detail-rentri-accettazione-parziale"
-          >
+          <label class="accettazione-opzione" data-testid="fir-detail-rentri-accettazione-parziale">
             <p-radioButton
               name="accettazioneOpzione"
               value="P"
@@ -512,6 +521,54 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
           [loading]="accettazioneInCorso()"
           (onClick)="confermaAccettazione()"
           data-testid="fir-detail-rentri-accettazione-confirm-button"
+        />
+      </ng-template>
+    </p-dialog>
+
+    <!-- Annullamento del formulario, con nota (R3 Task 5) -->
+    <p-dialog
+      header="Annulla il formulario"
+      [(visible)]="annullamentoDialogVisible"
+      [modal]="true"
+      [style]="{ width: '30rem' }"
+      data-testid="fir-detail-rentri-annulla-dialog"
+    >
+      <div class="annullamento-form">
+        <p class="annullamento-avviso">
+          L'annullamento è irreversibile presso RENTRI: una volta confermato dall'ente, il
+          formulario non può tornare in lavorazione. Sarà necessario emetterne uno nuovo per
+          proseguire il trasporto.
+        </p>
+        <div class="form-field">
+          <label for="annullamento-motivo">Motivo dell'annullamento *</label>
+          <textarea
+            pInputTextarea
+            id="annullamento-motivo"
+            rows="4"
+            maxlength="1024"
+            [(ngModel)]="annullamentoMotivo"
+            placeholder="Descrivi il motivo dell'annullamento: verrà trasmesso a RENTRI come nota"
+            data-testid="fir-detail-rentri-annulla-motivo-input"
+          ></textarea>
+        </div>
+      </div>
+
+      <ng-template pTemplate="footer">
+        <p-button
+          label="Chiudi"
+          icon="pi pi-times"
+          [outlined]="true"
+          (onClick)="chiudiDialogAnnullamento()"
+          data-testid="fir-detail-rentri-annulla-cancel-button"
+        />
+        <p-button
+          label="Conferma annullamento"
+          icon="pi pi-check"
+          severity="danger"
+          [disabled]="!annullamentoValido()"
+          [loading]="annullamentoInCorso()"
+          (onClick)="confermaAnnullamento()"
+          data-testid="fir-detail-rentri-annulla-confirm-button"
         />
       </ng-template>
     </p-dialog>
@@ -674,6 +731,11 @@ export class FirDetailComponent implements OnInit {
   protected accettazioneQuantitaKg: number | null = null
   protected accettazioneCausale: 'NC' | 'IR' | 'A' | null = null
   protected accettazioneMotivo = ''
+
+  // --- Annullamento del formulario, con nota (R3 Task 5) ---
+  protected readonly annullamentoDialogVisible = signal(false)
+  protected readonly annullamentoInCorso = signal(false)
+  protected annullamentoMotivo = ''
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id')
@@ -1020,7 +1082,9 @@ export class FirDetailComponent implements OnInit {
       .accettaORespingi(fir.id, {
         tipoAccettazione: opzione,
         quantitaAccettataKg:
-          opzione === 'A' || opzione === 'P' ? (this.accettazioneQuantitaKg ?? undefined) : undefined,
+          opzione === 'A' || opzione === 'P'
+            ? (this.accettazioneQuantitaKg ?? undefined)
+            : undefined,
         causaleRespingimento:
           opzione === 'P' || opzione === 'R' ? (this.accettazioneCausale ?? undefined) : undefined,
         motivoRespingimento:
@@ -1044,6 +1108,63 @@ export class FirDetailComponent implements OnInit {
             severity: 'error',
             summary: 'Errore',
             detail: this.extractError(err, "Errore nell'invio dell'accettazione a RENTRI"),
+          })
+        },
+      })
+  }
+
+  /**
+   * Stesso criterio provvisorio di `canAccettareCarico` (in attesa del Task
+   * 8, "azioni disponibili" come motore della UI): un FIR legato a RENTRI
+   * mostra il pulsante, il backend resta comunque l'autorità fail-closed
+   * (`AnnullaFIRRentriUseCase` verifica `/azioni` prima di scrivere, due volte).
+   */
+  canAnnullareRentri(fir: FIR): boolean {
+    return !!fir.rentriNumeroFir && this.canManageRENTRI()
+  }
+
+  apriDialogAnnullamento(fir: FIR): void {
+    this.annullamentoMotivo = ''
+    this.annullamentoDialogVisible.set(true)
+  }
+
+  chiudiDialogAnnullamento(): void {
+    this.annullamentoDialogVisible.set(false)
+  }
+
+  annullamentoValido(): boolean {
+    return this.annullamentoMotivo.trim() !== '' && this.annullamentoMotivo.length <= 1024
+  }
+
+  /** Annulla il formulario: verbo del mestiere, mai gergo del protocollo RENTRI. */
+  confermaAnnullamento(): void {
+    const fir = this.fir()
+    if (!fir || !this.annullamentoValido()) {
+      return
+    }
+
+    this.annullamentoInCorso.set(true)
+
+    this.rentriFirLifecycleService
+      .annullaFIR(fir.id, { motivo: this.annullamentoMotivo })
+      .subscribe({
+        next: () => {
+          this.annullamentoInCorso.set(false)
+          this.annullamentoDialogVisible.set(false)
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Formulario annullato',
+            detail:
+              'La richiesta è stata inviata a RENTRI: segui il tuo dispositivo per confermare la firma.',
+          })
+          this.reload()
+        },
+        error: err => {
+          this.annullamentoInCorso.set(false)
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Errore',
+            detail: this.extractError(err, "Errore nell'annullamento del formulario su RENTRI"),
           })
         },
       })

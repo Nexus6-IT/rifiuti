@@ -172,7 +172,9 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
     return {
       versione: formulario.versione ?? null,
       stato: formulario.stato,
-      azioni: operazioniPerStato(formulario.stato),
+      azioni: operazioniPerStato(formulario.stato, {
+        noteAnnullamentoGiaPresenti: !!formulario.note,
+      }),
     }
   })
 
@@ -191,7 +193,7 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
   const registraOperazioneAsincrona = (
     segmento: string,
     validaCorpo: (corpo: Record<string, unknown>) => string | null,
-    operazione?: 'Accettazione' | 'AcquisizioneFirma'
+    operazione?: 'Accettazione' | 'AcquisizioneFirma' | 'Annulla' | 'NoteAnnullamento'
   ): void => {
     app.post<{ Params: { identificativo: string }; Body: Record<string, unknown> }>(
       `${PREFISSO}/:identificativo/${segmento}`,
@@ -273,7 +275,11 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
   registraOperazioneAsincrona(
     'accettazione',
     corpo => {
-      if (corpo.tipo_accettazione !== 'A' && corpo.tipo_accettazione !== 'P' && corpo.tipo_accettazione !== 'R') {
+      if (
+        corpo.tipo_accettazione !== 'A' &&
+        corpo.tipo_accettazione !== 'P' &&
+        corpo.tipo_accettazione !== 'R'
+      ) {
         return "'tipo_accettazione' deve essere uno tra 'A', 'P', 'R' (DatiAccettazioneModel)."
       }
       if (typeof corpo.data_ora_arrivo !== 'string' || corpo.data_ora_arrivo.trim() === '') {
@@ -282,6 +288,29 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
       return null
     },
     'Accettazione'
+  )
+
+  // POST /{numero_fir}/annulla-fir (formulari.yaml righe 1232-1329, R3 Task 5,
+  // NON /annulla, deprecato riga 1136): NESSUN requestBody nel contratto —
+  // nessuna validazione strutturale necessaria (DatiAnnullamentoModel non si
+  // applica qui).
+  registraOperazioneAsincrona('annulla-fir', () => null, 'Annulla')
+
+  // POST /{numero_fir}/note-annullamento (formulari.yaml righe 1642-1738,
+  // R3 Task 5): NoteAnnullamentoModel (righe 9895-9906), un solo campo
+  // obbligatorio, `note` (stringa non vuota, max 1024 caratteri).
+  registraOperazioneAsincrona(
+    'note-annullamento',
+    corpo => {
+      if (typeof corpo.note !== 'string' || corpo.note.trim() === '') {
+        return "'note' e' obbligatorio (NoteAnnullamentoModel)."
+      }
+      if (corpo.note.length > 1024) {
+        return "'note' non puo' superare 1024 caratteri (NoteAnnullamentoModel)."
+      }
+      return null
+    },
+    'NoteAnnullamento'
   )
 
   // Nome del parametro `:identificativo` (non `:numero_fir`): questa rotta

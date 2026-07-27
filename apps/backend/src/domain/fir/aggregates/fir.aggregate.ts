@@ -250,6 +250,15 @@ export class FIRConsegnatoEvent implements DomainEvent {
   ) {}
 }
 
+export class FIRAnnullatoEvent implements DomainEvent {
+  readonly occurredOn = new Date()
+  readonly eventName = 'fir.annullato'
+  constructor(
+    public readonly firId: string,
+    public readonly motivo: string
+  ) {}
+}
+
 export class FIRRENTRISincronizzatoEvent implements DomainEvent {
   readonly occurredOn = new Date()
   readonly eventName = 'fir.rentri_sincronizzato'
@@ -397,7 +406,14 @@ export class FIR extends AggregateRoot {
      * `null` per un FIR mai riconciliato (non legato, o legato ma senza
      * ancora nessuna lettura dall'ente).
      */
-    private _rentriStatoFormulario: StatoFormulario | null = null
+    private _rentriStatoFormulario: StatoFormulario | null = null,
+    /**
+     * Motivo dell'annullamento del FIR: scritto da `annulla()` per un FIR
+     * locale, da `registraNoteAnnullamentoRentri()` per un FIR legato (stesso
+     * testo trasmesso all'ente con `POST /{numero_fir}/note-annullamento`).
+     * `null` per un FIR mai annullato.
+     */
+    private _motivoAnnullamento: string | null = null
   ) {
     super()
   }
@@ -516,7 +532,11 @@ export class FIR extends AggregateRoot {
     this.addDomainEvent(new FIRConsegnatoEvent(this._id, pesoEffettivo))
   }
 
-  annulla(_motivo: string): void {
+  /**
+   * Annulla un FIR NON legato a RENTRI, conservando il motivo (R3 Task 5:
+   * il parametro era scartato, il motivo dell'annullamento andava perduto).
+   */
+  annulla(motivo: string): void {
     if (this._rentriNumeroFir) {
       throw new MetodoLocaleNonConsentitoSuFirLegatoError(
         'annulla',
@@ -528,8 +548,38 @@ export class FIR extends AggregateRoot {
       throw new DomainError('Cannot annull a completed FIR')
     }
 
+    if (!motivo || motivo.trim() === '') {
+      throw new DomainError('Il motivo di annullamento è obbligatorio')
+    }
+
     this._stato = FIRStato.ANNULLATO
-    // In production, store motivo in a separate field or event
+    this._motivoAnnullamento = motivo
+    this.addDomainEvent(new FIRAnnullatoEvent(this._id, motivo))
+  }
+
+  /**
+   * Registra il testo delle note di annullamento RENTRI (R3 Task 5) su un FIR
+   * GIÀ riconciliato ad ANNULLATO da `applyRentriStato` (l'ente ha già
+   * confermato l'annullamento: qui si registra solo il testo trasmesso con
+   * `POST /{numero_fir}/note-annullamento`). A differenza di `annulla()`,
+   * questo metodo è ammesso SOLO per un FIR legato a RENTRI — è l'inverso
+   * della stessa guardia.
+   */
+  registraNoteAnnullamentoRentri(note: string): void {
+    if (!this._rentriNumeroFir) {
+      throw new DomainError(
+        "Questo FIR non è legato a RENTRI: usare annulla() per l'annullamento locale."
+      )
+    }
+    if (this._stato !== FIRStato.ANNULLATO) {
+      throw new DomainError(
+        `Le note di annullamento richiedono che il FIR sia già ANNULLATO (stato attuale: ${this._stato}).`
+      )
+    }
+    if (!note || note.trim() === '') {
+      throw new DomainError('La nota di annullamento non può essere vuota.')
+    }
+    this._motivoAnnullamento = note
   }
 
   // RENTRI sync — business methods
@@ -1069,6 +1119,15 @@ export class FIR extends AggregateRoot {
    */
   get rentriStatoFormulario(): StatoFormulario | null {
     return this._rentriStatoFormulario
+  }
+
+  /**
+   * Motivo dell'annullamento (locale o RENTRI). `null` se il FIR non è stato
+   * annullato, o se è stato annullato presso l'ente senza che la nota sia
+   * stata registrata.
+   */
+  get motivoAnnullamento(): string | null {
+    return this._motivoAnnullamento
   }
 
   private static generateId(): string {

@@ -24,7 +24,12 @@ import {
   AccettaORespingiFIRUseCase,
   EsitoAccettaORespingiFIR,
 } from '../../application/rentri/accetta-o-respingi-fir.use-case'
+import {
+  AnnullaFIRRentriUseCase,
+  EsitoAnnullaFIRRentri,
+} from '../../application/rentri/annulla-fir-rentri.use-case'
 import { AccettaFirRentriDto } from './dto/accetta-fir-rentri.dto'
+import { AnnullaFirRentriDto } from './dto/annulla-fir-rentri.dto'
 import { DomainException } from '../../domain/shared/domain-exception'
 
 /**
@@ -54,6 +59,7 @@ export class RentriFirLifecycleController {
   constructor(
     private readonly getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
     private readonly accettaORespingiFIRUseCase: AccettaORespingiFIRUseCase,
+    private readonly annullaFIRRentriUseCase: AnnullaFIRRentriUseCase,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('RentriFirLifecycleController')
@@ -114,8 +120,8 @@ export class RentriFirLifecycleController {
     summary: 'Accetta o respingi (anche parzialmente) il carico',
     description:
       'Verifica la precondizione da /azioni, invia i dati di accettazione a RENTRI e completa ' +
-      "il ciclo con la firma remota. NON verifica autonomamente lo stato del formulario oltre a " +
-      "quanto risulta da /azioni.",
+      'il ciclo con la firma remota. NON verifica autonomamente lo stato del formulario oltre a ' +
+      'quanto risulta da /azioni.',
   })
   @ApiResponse({ status: 200, description: 'Accettazione inviata ed esito della firma' })
   @ApiResponse({
@@ -150,6 +156,65 @@ export class RentriFirLifecycleController {
       })
     } catch (error: any) {
       this.logger.error('Accettazione/respingimento RENTRI non riuscito', error, {
+        firId,
+        tenantId,
+      })
+
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
+        throw new UnauthorizedException(error.message)
+      }
+      if (error instanceof DomainException) {
+        throw new BadRequestException(error.message)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Annulla il formulario RENTRI, con nota (R3 Task 5). Verifica SEMPRE
+   * prima `/azioni` (v. `AnnullaFIRRentriUseCase`) — DUE volte: una per
+   * `Annulla`, una per `NoteAnnullamento` dopo che l'ente ha confermato
+   * l'annullamento. Chiude il ciclo di firma con
+   * `CompletaOperazioneConFirmaUseCase` (R3 Task 3) prima di trasmettere la
+   * nota.
+   */
+  @Post(':id/annullamento')
+  @ApiOperation({
+    summary: 'Annulla il formulario RENTRI',
+    description:
+      'Verifica la precondizione da /azioni, avvia annulla-fir, completa il ciclo con la firma ' +
+      'remota e, solo dopo la conferma dell’ente, trasmette la nota di annullamento.',
+  })
+  @ApiResponse({ status: 200, description: 'Annullamento avviato ed esito della firma/nota' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validazione locale fallita, operazione non disponibile o rifiutata dall’ente',
+  })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  async annulla(
+    @Param('id') firId: string,
+    @Body() dto: AnnullaFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string
+  ): Promise<EsitoAnnullaFIRRentri> {
+    this.logger.debug('Annullamento RENTRI richiesto', {
+      firId,
+      tenantId,
+      userId,
+    })
+
+    try {
+      return await this.annullaFIRRentriUseCase.execute({
+        firId,
+        tenantId,
+        motivo: dto.motivo,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Annullamento RENTRI non riuscito', error, {
         firId,
         tenantId,
       })
