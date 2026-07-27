@@ -3,14 +3,17 @@ import {
   IsNotEmpty,
   IsArray,
   IsEnum,
+  IsIn,
   IsOptional,
   IsNumber,
   IsBoolean,
   IsInt,
   IsDateString,
+  IsUUID,
   Min,
 } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { PAYMENT_TERMS, BILLING_FREQUENCIES } from '../contract-vocabulary'
 
 export enum CounterpartyTypeDto {
   TRANSPORTER = 'TRANSPORTER',
@@ -43,15 +46,13 @@ export class CreateContractDto {
   contractNumber: string
 
   @ApiProperty({ description: 'ID registro produttore' })
-  @IsString()
-  @IsNotEmpty()
+  @IsUUID()
   producerId: string
 
   @ApiProperty({
     description: 'ID registro controparte (trasportatore/destinatario/intermediario)',
   })
-  @IsString()
-  @IsNotEmpty()
+  @IsUUID()
   counterpartyId: string
 
   @ApiProperty({ enum: CounterpartyTypeDto })
@@ -117,13 +118,13 @@ export class CreateContractDto {
   @Min(0)
   renewalNoticeDays?: number
 
-  @ApiPropertyOptional({ example: 'net_30' })
-  @IsString()
+  @ApiPropertyOptional({ enum: PAYMENT_TERMS, example: 'net_30' })
+  @IsIn(PAYMENT_TERMS as readonly string[])
   @IsOptional()
   paymentTerms?: string
 
-  @ApiPropertyOptional({ example: 'monthly' })
-  @IsString()
+  @ApiPropertyOptional({ enum: BILLING_FREQUENCIES, example: 'monthly' })
+  @IsIn(BILLING_FREQUENCIES as readonly string[])
   @IsOptional()
   billingFrequency?: string
 }

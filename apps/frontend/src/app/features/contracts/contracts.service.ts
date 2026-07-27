@@ -29,6 +29,16 @@ export type PricingModel =
   | 'MINIMUM_GUARANTEE'
   | 'HYBRID'
 
+/**
+ * Parte del contratto risolta verso il registro anagrafico.
+ * `null` sul contratto quando l'id non corrisponde più a un'anagrafica.
+ */
+export interface ContractParty {
+  id: string
+  ragioneSociale: string
+  partitaIVA: string
+}
+
 /** Contratto come restituito dal backend (modello Prisma `Contract`). */
 export interface Contract {
   id: string
@@ -54,6 +64,10 @@ export interface Contract {
   paymentTerms: string
   billingFrequency: string
   status: ContractStatus
+  /** Produttore risolto dal registro; null se l'anagrafica non esiste più. */
+  producer?: ContractParty | null
+  /** Controparte risolta dal registro; null se l'anagrafica non esiste più. */
+  counterparty?: ContractParty | null
 }
 
 /** Payload di creazione, allineato a `CreateContractDto` del backend. */
@@ -110,6 +124,14 @@ export class ContractsService {
   /** Dettaglio di un contratto. */
   getById(id: string): Observable<Contract> {
     return this.http.get<Contract>(`${this.API_URL}/${id}`)
+  }
+
+  /**
+   * Prossimo numero contratto suggerito (`CTR-<anno>-<progressivo>`).
+   * È un suggerimento per il form: l'unicità è garantita dal DB.
+   */
+  nextNumber(): Observable<{ contractNumber: string }> {
+    return this.http.get<{ contractNumber: string }>(`${this.API_URL}/next-number`)
   }
 
   /** Crea un contratto (stato iniziale DRAFT). */
