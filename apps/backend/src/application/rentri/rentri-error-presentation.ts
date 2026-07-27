@@ -135,6 +135,58 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
         azione: 'RIPROVA',
       }
 
+    case 'ACCETTAZIONE_NON_DISPONIBILE':
+    case 'ANNULLAMENTO_NON_DISPONIBILE':
+    case 'ALLEGATO_NON_DISPONIBILE':
+      // I tre nascono dalla stessa causa (R3 Task 2): la precondizione locale
+      // contro `/azioni` ha rifiutato l'operazione. Non dovrebbe mai arrivare
+      // fin qui — l'use case verifica `/azioni` PRIMA di chiamare RENTRI — ma
+      // se il messaggio arriva comunque all'utente, deve dirgli cosa succede
+      // ADESSO (lo stato è cambiato), non solo cosa è andato storto.
+      return {
+        messaggio:
+          'Il formulario non è più nella fase in cui questa operazione è possibile: la pagina si aggiornerà con lo stato corrente.',
+        azione: 'NESSUNA',
+      }
+
+    case 'FIRMA_RENTRI_RIFIUTATA': {
+      // L'ente ha rifiutato la firma a metà di un'operazione (R3 Task 3): il
+      // messaggio grezzo nomina sempre l'operazione in maiuscolo
+      // ("l'operazione ACCETTAZIONE NON è stata completata" / "ANNULLAMENTO"
+      // — v. `completa-operazione-con-firma.use-case.ts`). Ritentare la
+      // stessa operazione ha senso: non è un rifiuto definitivo dell'ente
+      // sui dati, è la firma che non si è conclusa.
+      const operazione = estraiTipoOperazioneFirma(input.errorMessage)
+      const messaggio =
+        operazione === 'ACCETTAZIONE'
+          ? "L'accettazione non si è completata sull'ente: puoi riprovare."
+          : operazione === 'ANNULLAMENTO'
+            ? "L'annullamento non si è completato sull'ente: puoi riprovare."
+            : "L'operazione non si è completata sull'ente: puoi riprovare."
+      return {
+        messaggio,
+        azione: 'RIPROVA',
+      }
+    }
+
+    case 'FORMATO_ALLEGATO_NON_AMMESSO':
+      // Validazione locale (R3 Task 2), eseguita PRIMA di qualunque chiamata
+      // di rete: nessuna richiesta è mai partita verso RENTRI, quindi il
+      // messaggio non deve MAI sembrare un rifiuto dell'ente.
+      return {
+        messaggio:
+          "Il formato del file non è ammesso: l'ente accetta solo allegati in PDF. Scegli un altro file.",
+        azione: 'NESSUNA',
+      }
+
+    case 'ALLEGATO_TROPPO_GRANDE':
+      // Stessa natura di FORMATO_ALLEGATO_NON_AMMESSO: validazione locale,
+      // nessuna richiesta partita verso l'ente.
+      return {
+        messaggio: 'Il file supera la dimensione massima ammessa: scegli un file più piccolo.',
+        azione: 'NESSUNA',
+      }
+
     case 'RENTRI_API_ERROR':
     default:
       return {
@@ -173,4 +225,29 @@ function estraiCampoValidazione(responsePayload?: string | null): string | undef
   } catch {
     return undefined
   }
+}
+
+/**
+ * Estrae il tipo di operazione (`'ACCETTAZIONE'` | `'ANNULLAMENTO'`) dal
+ * messaggio grezzo prodotto da `CompletaOperazioneConFirmaUseCase` quando
+ * l'ente rifiuta la firma (`FIRMA_RENTRI_RIFIUTATA`). Il chiamante scrive
+ * sempre, per costruzione, la frase
+ * "l'operazione <TIPO> non è stata completata" con `<TIPO>` in MAIUSCOLO
+ * (v. `tipoOperazione` in `ComandoCompletaOperazioneConFirma`, valorizzato da
+ * `accetta-o-respingi-fir.use-case.ts` e `annulla-fir-rentri.use-case.ts`).
+ *
+ * Restituisce `undefined` — mai un valore inventato — se il messaggio manca
+ * o non contiene la frase attesa: il chiamante ricade sul testo generico
+ * piuttosto che nominare un'operazione sbagliata.
+ */
+function estraiTipoOperazioneFirma(
+  errorMessage?: string | null
+): 'ACCETTAZIONE' | 'ANNULLAMENTO' | undefined {
+  if (!errorMessage) {
+    return undefined
+  }
+
+  const match = errorMessage.match(/l'operazione\s+(\S+)\s+non è stata completata/i)
+  const tipo = match?.[1]?.toUpperCase()
+  return tipo === 'ACCETTAZIONE' || tipo === 'ANNULLAMENTO' ? tipo : undefined
 }

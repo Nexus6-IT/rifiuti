@@ -123,4 +123,98 @@ describe('traduciErroreRentri', () => {
     )
     expect(risultato.azione).toBe('NESSUNA')
   })
+
+  // --- R3 Task 9: operazione non più ammessa nello stato corrente ---
+  //
+  // Tre errorCode diversi (ACCETTAZIONE_NON_DISPONIBILE, ANNULLAMENTO_NON_DISPONIBILE,
+  // ALLEGATO_NON_DISPONIBILE) condividono lo stesso `case` nell'implementazione: qui
+  // verifichiamo esplicitamente due dei tre per provare che il fallthrough funziona
+  // davvero, non solo per assunzione (il terzo, ANNULLAMENTO_NON_DISPONIBILE, cade
+  // sullo stesso ramo e non aggiunge copertura).
+
+  it('operazione non più ammessa (ACCETTAZIONE_NON_DISPONIBILE): la pagina si aggiornerà con lo stato corrente, nessun «Riprova»', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'ACCETTAZIONE_NON_DISPONIBILE',
+    })
+
+    expect(risultato.messaggio).toBe(
+      'Il formulario non è più nella fase in cui questa operazione è possibile: la pagina si aggiornerà con lo stato corrente.'
+    )
+    expect(risultato.azione).toBe('NESSUNA')
+  })
+
+  it('operazione non più ammessa (ALLEGATO_NON_DISPONIBILE): stesso messaggio condiviso del fallthrough', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'ALLEGATO_NON_DISPONIBILE',
+    })
+
+    expect(risultato.messaggio).toBe(
+      'Il formulario non è più nella fase in cui questa operazione è possibile: la pagina si aggiornerà con lo stato corrente.'
+    )
+    expect(risultato.azione).toBe('NESSUNA')
+  })
+
+  // --- R3 Task 9: firma rifiutata a metà operazione ---
+
+  it("firma rifiutata (FIRMA_RENTRI_RIFIUTATA, ACCETTAZIONE): nomina l'operazione specifica con l'accordo femminile, propone «Riprova»", () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'FIRMA_RENTRI_RIFIUTATA',
+      errorMessage:
+        "L'ente ha rifiutato la firma del formulario 123: l'operazione ACCETTAZIONE NON è stata completata. Dettaglio della validazione RENTRI: []",
+    })
+
+    expect(risultato.messaggio).toBe(
+      "L'accettazione non si è completata sull'ente: puoi riprovare."
+    )
+    expect(risultato.azione).toBe('RIPROVA')
+  })
+
+  it("firma rifiutata (FIRMA_RENTRI_RIFIUTATA, ANNULLAMENTO): nomina l'operazione specifica con l'accordo maschile, propone «Riprova»", () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'FIRMA_RENTRI_RIFIUTATA',
+      errorMessage:
+        "L'ente ha rifiutato la firma del formulario 123: l'operazione ANNULLAMENTO NON è stata completata. Dettaglio della validazione RENTRI: []",
+    })
+
+    expect(risultato.messaggio).toBe(
+      "L'annullamento non si è completato sull'ente: puoi riprovare."
+    )
+    expect(risultato.azione).toBe('RIPROVA')
+  })
+
+  it('firma rifiutata (FIRMA_RENTRI_RIFIUTATA) senza operazione riconoscibile: fallback generico, mai un crash', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'FIRMA_RENTRI_RIFIUTATA',
+      errorMessage: '',
+    })
+
+    expect(risultato.messaggio).toBe("L'operazione non si è completata sull'ente: puoi riprovare.")
+    expect(risultato.azione).toBe('RIPROVA')
+  })
+
+  // --- R3 Task 9: validazione locale dell'allegato, non un errore RENTRI ---
+
+  it("formato allegato non ammesso (FORMATO_ALLEGATO_NON_AMMESSO): non è un rifiuto dell'ente, nessuna azione", () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'FORMATO_ALLEGATO_NON_AMMESSO',
+    })
+
+    expect(risultato.messaggio).toBe(
+      "Il formato del file non è ammesso: l'ente accetta solo allegati in PDF. Scegli un altro file."
+    )
+    expect(risultato.messaggio).not.toContain('RENTRI')
+    expect(risultato.azione).toBe('NESSUNA')
+  })
+
+  it("allegato troppo grande (ALLEGATO_TROPPO_GRANDE): non è un rifiuto dell'ente, nessuna azione", () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'ALLEGATO_TROPPO_GRANDE',
+    })
+
+    expect(risultato.messaggio).toBe(
+      'Il file supera la dimensione massima ammessa: scegli un file più piccolo.'
+    )
+    expect(risultato.messaggio).not.toContain('RENTRI')
+    expect(risultato.azione).toBe('NESSUNA')
+  })
 })
