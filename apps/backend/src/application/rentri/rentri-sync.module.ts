@@ -37,6 +37,7 @@ import { RentriCredentialService } from '../../infrastructure/rentri/rentri-cred
 import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rate-limiter.service'
 import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
 import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
+import { GestisciAllegatiFIRUseCase } from './gestisci-allegati-fir.use-case'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -409,6 +410,35 @@ import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
         LoggerService,
       ],
     },
+    // R3 Task 6 — allegati del formulario. NESSUNA firma (il contratto la
+    // dichiara superflua per questa operazione, v. commento di classe):
+    // niente `CompletaOperazioneConFirmaUseCase` a differenza degli use case
+    // sopra. Persistenza locale via `PrismaService` diretto (`fIRAllegatoRentri`),
+    // stesso stile di `GetAzioniDisponibiliUseCase` con `prisma.tenant`.
+    {
+      provide: GestisciAllegatiFIRUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        prisma: PrismaService,
+        getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        logger: LoggerService
+      ) =>
+        new GestisciAllegatiFIRUseCase(
+          firRepo,
+          prisma,
+          getAzioniDisponibiliUseCase,
+          rentriApiClient,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        PrismaService,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        LoggerService,
+      ],
+    },
   ],
   exports: [
     SyncFIRToRENTRIUseCase,
@@ -426,6 +456,7 @@ import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
     CompletaOperazioneConFirmaUseCase,
     AccettaORespingiFIRUseCase,
     AnnullaFIRRentriUseCase,
+    GestisciAllegatiFIRUseCase,
   ],
 })
 export class RentriSyncModule {}

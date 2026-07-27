@@ -21,7 +21,15 @@ import { RENTRISyncLogsComponent } from './components/rentri-sync-logs/rentri-sy
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
 import { RentriFormulariService } from '../rentri/rentri-formulari.service'
-import { RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
+import {
+  RentriFirLifecycleService,
+  AllegatoFirRentri,
+} from '../rentri/rentri-fir-lifecycle.service'
+
+/** Limite di dimensione dell'allegato (byte), replica lato UI del vincolo del
+ * contratto (`DatiAllegatoModel.contenuto`, 1 MB) — difesa aggiuntiva,
+ * l'autorità resta il backend (`GestisciAllegatiFIRUseCase`). */
+const LIMITE_ALLEGATO_BYTES = 1 * 1024 * 1024
 
 /** Opzioni del dialog di accettazione/respingimento (R3 Task 4). */
 type OpzioneAccettazione = 'A' | 'P' | 'R'
@@ -417,6 +425,61 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
           </section>
         }
 
+        <!-- Allegati del formulario (R3 Task 6) -->
+        @if (canGestireAllegati(f)) {
+          <section class="surface-card detail-section" aria-label="Allegati del formulario">
+            <h2 class="section-title">Allegati</h2>
+
+            <div class="field mb-3">
+              <label for="fir-allegati-upload" class="block mb-2"
+                >Aggiungi un allegato (solo PDF, max 1 MB)</label
+              >
+              <input
+                id="fir-allegati-upload"
+                type="file"
+                accept="application/pdf"
+                [disabled]="allegatiCaricamentoInCorso()"
+                (change)="onFileSelezionatoAllegato($event, f)"
+                data-testid="fir-detail-allegati-upload-input"
+                aria-describedby="fir-allegati-upload-hint"
+              />
+              <small id="fir-allegati-upload-hint" class="block mt-1 text-tertiary">
+                Il file viene inviato a RENTRI: nessuna firma richiesta.
+              </small>
+            </div>
+
+            @if (allegatiCaricamentoInCorso()) {
+              <p-progressSpinner styleClass="small-spinner" strokeWidth="4" />
+            }
+
+            <ul class="allegati-list" data-testid="fir-detail-allegati-list">
+              @for (allegato of allegati(); track allegato.id) {
+                <li
+                  class="allegati-row"
+                  [attr.data-testid]="'fir-detail-allegati-row-' + allegato.id"
+                >
+                  <span class="allegati-nome">{{ allegato.filename }}</span>
+                  <span class="allegati-dimensione"
+                    >{{ (allegato.sizeBytes / 1024).toFixed(0) }} KB</span
+                  >
+                  <p-button
+                    label="Elimina"
+                    icon="pi pi-trash"
+                    severity="danger"
+                    [outlined]="true"
+                    [loading]="allegatoEliminazioneInCorso() === allegato.id"
+                    (onClick)="eliminaAllegatoFir(f, allegato)"
+                    [attr.data-testid]="'fir-detail-allegati-elimina-' + allegato.id"
+                    [attr.aria-label]="'Elimina allegato ' + allegato.filename"
+                  />
+                </li>
+              } @empty {
+                <li class="allegati-vuoto">Nessun allegato caricato.</li>
+              }
+            </ul>
+          </section>
+        }
+
         <!-- Cronologia delle trasmissioni -->
         <section class="detail-section" aria-label="Cronologia delle trasmissioni RENTRI">
           <app-rentri-sync-logs [firId]="f.id"></app-rentri-sync-logs>
@@ -703,6 +766,40 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
       .form-field p-dropdown {
         width: 100%;
       }
+
+      .allegati-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+      }
+
+      .allegati-row {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm);
+        border: 1px solid var(--surface-border, #e5e7eb);
+        border-radius: 6px;
+      }
+
+      .allegati-nome {
+        flex: 1;
+        font-weight: var(--font-weight-medium);
+        word-break: break-all;
+      }
+
+      .allegati-dimensione {
+        color: var(--text-color-secondary, #6b7280);
+        font-size: 0.875rem;
+      }
+
+      .allegati-vuoto {
+        color: var(--text-color-secondary, #6b7280);
+        font-style: italic;
+      }
     `,
   ],
 })
@@ -737,6 +834,12 @@ export class FirDetailComponent implements OnInit {
   protected readonly annullamentoInCorso = signal(false)
   protected annullamentoMotivo = ''
 
+  // --- Allegati del formulario (R3 Task 6) ---
+  protected readonly allegati = signal<AllegatoFirRentri[]>([])
+  protected readonly allegatiCaricamentoInCorso = signal(false)
+  /** `id` locale dell'allegato in eliminazione, o `null` se nessuna eliminazione in corso. */
+  protected readonly allegatoEliminazioneInCorso = signal<string | null>(null)
+
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id')
     if (!id) {
@@ -754,6 +857,11 @@ export class FirDetailComponent implements OnInit {
       next: fir => {
         this.fir.set(fir)
         this.loading.set(false)
+        if (this.canGestireAllegati(fir)) {
+          this.caricaElencoAllegati(fir.id)
+        } else {
+          this.allegati.set([])
+        }
       },
       error: err => {
         // Il backend risponde 404 sia per FIR inesistente sia per FIR di un
@@ -1168,5 +1276,135 @@ export class FirDetailComponent implements OnInit {
           })
         },
       })
+  }
+
+  // --- Allegati del formulario (R3 Task 6) ---
+
+  /** Come `canAccettareCarico`/`canAnnullareRentri`: un FIR legato a RENTRI mostra la sezione. */
+  canGestireAllegati(fir: FIR): boolean {
+    return !!fir.rentriNumeroFir && this.canManageRENTRI()
+  }
+
+  private caricaElencoAllegati(firId: string): void {
+    this.allegatiCaricamentoInCorso.set(true)
+    this.rentriFirLifecycleService.elencaAllegati(firId).subscribe({
+      next: allegati => {
+        this.allegati.set(allegati)
+        this.allegatiCaricamentoInCorso.set(false)
+      },
+      error: err => {
+        this.allegatiCaricamentoInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, 'Impossibile caricare gli allegati'),
+        })
+      },
+    })
+  }
+
+  /**
+   * Legge il file scelto dall'utente e lo invia a RENTRI. Formato e
+   * dimensione sono verificati QUI, lato UI, PRIMA di leggere il file — pura
+   * difesa in profondità: l'autorità resta il backend
+   * (`GestisciAllegatiFIRUseCase`), che rifiuterebbe comunque un file non
+   * ammesso senza mai chiamare l'ente.
+   */
+  onFileSelezionatoAllegato(event: Event, fir: FIR): void {
+    const input = event.target as HTMLInputElement
+    const file = input.files?.[0]
+    if (!file) return
+
+    if (file.type !== 'application/pdf') {
+      this.messageService.add({
+        severity: 'error',
+        summary: 'Formato non ammesso',
+        detail: "Solo file PDF sono ammessi come allegato ('application/pdf').",
+      })
+      input.value = ''
+      return
+    }
+    if (file.size > LIMITE_ALLEGATO_BYTES) {
+      this.messageService.add({
+        severity: 'error',
+        summary: 'File troppo grande',
+        detail: 'Il file supera 1 MB: non verrà inviato a RENTRI.',
+      })
+      input.value = ''
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      // result è "data:...;base64,XXXX": teniamo solo la parte base64.
+      const result = reader.result as string
+      const contenutoBase64 = result.includes(',') ? result.split(',')[1] : result
+      this.caricaAllegato(fir, file.name, file.type, contenutoBase64)
+      input.value = ''
+    }
+    reader.readAsDataURL(file)
+  }
+
+  private caricaAllegato(
+    fir: FIR,
+    nomeFile: string,
+    contentType: string,
+    contenutoBase64: string
+  ): void {
+    this.allegatiCaricamentoInCorso.set(true)
+    this.rentriFirLifecycleService
+      .caricaAllegato(fir.id, { nomeFile, contentType, contenutoBase64 })
+      .subscribe({
+        next: allegato => {
+          this.allegati.update(elenco => [allegato, ...elenco])
+          this.allegatiCaricamentoInCorso.set(false)
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Allegato caricato',
+            detail: `'${nomeFile}' è stato aggiunto al formulario RENTRI.`,
+          })
+        },
+        error: err => {
+          this.allegatiCaricamentoInCorso.set(false)
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Errore',
+            detail: this.extractError(err, "Errore nel caricamento dell'allegato su RENTRI"),
+          })
+        },
+      })
+  }
+
+  /** Elimina un allegato: verbo del mestiere, con conferma (azione distruttiva su RENTRI). */
+  eliminaAllegatoFir(fir: FIR, allegato: AllegatoFirRentri): void {
+    this.confirmationService.confirm({
+      header: 'Elimina allegato',
+      message: `Eliminare l'allegato '${allegato.filename}' dal formulario RENTRI?`,
+      icon: 'pi pi-trash',
+      acceptLabel: 'Elimina',
+      rejectLabel: 'Annulla',
+      accept: () => {
+        this.allegatoEliminazioneInCorso.set(allegato.id)
+        this.rentriFirLifecycleService.eliminaAllegato(fir.id, allegato.id).subscribe({
+          next: () => {
+            this.allegati.update(elenco => elenco.filter(a => a.id !== allegato.id))
+            this.allegatoEliminazioneInCorso.set(null)
+            this.messageService.add({
+              severity: 'success',
+              summary: 'Allegato eliminato',
+              detail: `'${allegato.filename}' è stato rimosso dal formulario RENTRI.`,
+            })
+          },
+          error: err => {
+            this.allegatoEliminazioneInCorso.set(null)
+            this.messageService.add({
+              severity: 'error',
+              summary: 'Errore',
+              detail: this.extractError(err, "Errore nell'eliminazione dell'allegato su RENTRI"),
+            })
+          },
+        })
+      },
+    })
   }
 }

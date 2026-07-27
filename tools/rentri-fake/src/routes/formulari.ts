@@ -193,7 +193,7 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
   const registraOperazioneAsincrona = (
     segmento: string,
     validaCorpo: (corpo: Record<string, unknown>) => string | null,
-    operazione?: 'Accettazione' | 'AcquisizioneFirma' | 'Annulla' | 'NoteAnnullamento'
+    operazione?: 'Accettazione' | 'AcquisizioneFirma' | 'Annulla' | 'NoteAnnullamento' | 'Allegato'
   ): void => {
     app.post<{ Params: { identificativo: string }; Body: Record<string, unknown> }>(
       `${PREFISSO}/:identificativo/${segmento}`,
@@ -311,6 +311,115 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
       return null
     },
     'NoteAnnullamento'
+  )
+
+  // POST /{numero_fir}/allegato (formulari.yaml righe 776-881, R3 Task 6):
+  // DatiAllegatoModel (righe 6902-6938) — validazione strutturale MINIMA
+  // (stesso principio di 'accettazione'/'note-annullamento' sopra: il
+  // vincolo di business sulla dimensione, 1 MB, e' responsabilita' del
+  // CHIAMANTE, GestisciAllegatiFIRUseCase, verificato PRIMA di raggiungere
+  // questa rotta — l'oracolo verifica il CICLO, non la correttezza del
+  // modello dati di scrittura). NESSUN effetto di firma (v. operazione.ts):
+  // l'allegato viene registrato in archivio non appena la transazione si
+  // completa, usando l'`allegato_id` che il TEST dichiara nell'esito (v.
+  // `Archivio.applicaEffettoOperazione`, ramo 'Allegato').
+  registraOperazioneAsincrona(
+    'allegato',
+    corpo => {
+      if (typeof corpo.content_type !== 'string' || corpo.content_type.trim() === '') {
+        return "'content_type' e' obbligatorio (DatiAllegatoModel)."
+      }
+      if (typeof corpo.nome_file !== 'string' || corpo.nome_file.trim() === '') {
+        return "'nome_file' e' obbligatorio (DatiAllegatoModel)."
+      }
+      if (corpo.nome_file.length > 255) {
+        return "'nome_file' non puo' superare 255 caratteri (DatiAllegatoModel)."
+      }
+      if (typeof corpo.contenuto !== 'string' || corpo.contenuto.trim() === '') {
+        return "'contenuto' e' obbligatorio (DatiAllegatoModel)."
+      }
+      if (
+        typeof corpo.identificativo_soggetto !== 'string' ||
+        corpo.identificativo_soggetto.trim() === ''
+      ) {
+        return "'identificativo_soggetto' e' obbligatorio (DatiAllegatoModel)."
+      }
+      return null
+    },
+    'Allegato'
+  )
+
+  // DELETE /{numero_fir}/allegato/{allegato_id} (formulari.yaml righe
+  // 941-1017, R3 Task 6): nessun corpo nel contratto, l'`allegato_id` viene
+  // dal PATH — non riusa `registraOperazioneAsincrona` (un solo parametro di
+  // path) ma segue lo stesso schema ASYNC (202 + TransazioneModel).
+  app.delete<{ Params: { identificativo: string; allegato_id: string } }>(
+    `${PREFISSO}/:identificativo/allegato/:allegato_id`,
+    async (richiesta, risposta) => {
+      if (!(await autentica(richiesta, risposta, archivio))) return
+
+      const numeroFir = richiesta.params.identificativo
+      if (!numeroFirValido(numeroFir)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Numero FIR non valido',
+          detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+        })
+      }
+      if (!archivio.leggiFormulario(numeroFir)) {
+        return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+      }
+
+      const allegatoId = Number(richiesta.params.allegato_id)
+      if (!Number.isFinite(allegatoId)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'allegato_id non valido',
+          detail: `'${richiesta.params.allegato_id}' non e' un intero valido.`,
+        })
+      }
+
+      const id = archivio.creaTransazione(undefined, {
+        numeroFir,
+        operazione: 'RimuoviAllegato',
+        allegatoId,
+      })
+      return risposta
+        .status(202)
+        .header('Location', `${PREFISSO}/${id}/status`)
+        .send({ transazione_id: id })
+    }
+  )
+
+  // GET /{numero_fir}/allegato/{allegato_id} (formulari.yaml righe 882-940,
+  // R3 Task 6): SINCRONO (200 diretto, a differenza di POST/DELETE sullo
+  // stesso path) — DownloadableBaseResponse (nome_file/mime/content).
+  app.get<{ Params: { identificativo: string; allegato_id: string } }>(
+    `${PREFISSO}/:identificativo/allegato/:allegato_id`,
+    async (richiesta, risposta) => {
+      if (!(await autentica(richiesta, risposta, archivio))) return
+
+      const numeroFir = richiesta.params.identificativo
+      if (!numeroFirValido(numeroFir)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Numero FIR non valido',
+          detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+        })
+      }
+      if (!archivio.leggiFormulario(numeroFir)) {
+        return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+      }
+
+      const allegatoId = Number(richiesta.params.allegato_id)
+      const allegato = archivio.leggiAllegato(numeroFir, allegatoId)
+      if (!allegato) {
+        return inviaProblemDetails(risposta, 404, { title: 'Allegato non trovato' })
+      }
+
+      return {
+        nome_file: allegato.nome_file,
+        mime: allegato.content_type,
+        content: allegato.contenuto,
+      }
+    }
   )
 
   // Nome del parametro `:identificativo` (non `:numero_fir`): questa rotta

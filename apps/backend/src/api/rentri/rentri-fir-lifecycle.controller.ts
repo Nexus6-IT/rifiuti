@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Param,
   Body,
   UseGuards,
@@ -28,8 +29,13 @@ import {
   AnnullaFIRRentriUseCase,
   EsitoAnnullaFIRRentri,
 } from '../../application/rentri/annulla-fir-rentri.use-case'
+import {
+  GestisciAllegatiFIRUseCase,
+  AllegatoFIR,
+} from '../../application/rentri/gestisci-allegati-fir.use-case'
 import { AccettaFirRentriDto } from './dto/accetta-fir-rentri.dto'
 import { AnnullaFirRentriDto } from './dto/annulla-fir-rentri.dto'
+import { CaricaAllegatoFirRentriDto } from './dto/carica-allegato-fir-rentri.dto'
 import { DomainException } from '../../domain/shared/domain-exception'
 
 /**
@@ -60,6 +66,7 @@ export class RentriFirLifecycleController {
     private readonly getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
     private readonly accettaORespingiFIRUseCase: AccettaORespingiFIRUseCase,
     private readonly annullaFIRRentriUseCase: AnnullaFIRRentriUseCase,
+    private readonly gestisciAllegatiFIRUseCase: GestisciAllegatiFIRUseCase,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('RentriFirLifecycleController')
@@ -216,6 +223,156 @@ export class RentriFirLifecycleController {
     } catch (error: any) {
       this.logger.error('Annullamento RENTRI non riuscito', error, {
         firId,
+        tenantId,
+      })
+
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
+        throw new UnauthorizedException(error.message)
+      }
+      if (error instanceof DomainException) {
+        throw new BadRequestException(error.message)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Elenca gli allegati registrati localmente (R3 Task 6) — lettura pura,
+   * mai una chiamata a RENTRI (v. commento di classe di
+   * `GestisciAllegatiFIRUseCase`).
+   */
+  @Get(':id/allegati')
+  @ApiOperation({
+    summary: 'Allegati registrati localmente sul formulario',
+    description: 'Elenco locale, senza alcuna chiamata a RENTRI.',
+  })
+  @ApiResponse({ status: 200, description: 'Elenco allegati' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  async elencaAllegati(
+    @Param('id') firId: string,
+    @TenantId() tenantId: string,
+    @UserId() userId: string
+  ): Promise<AllegatoFIR[]> {
+    this.logger.debug('Elenco allegati RENTRI richiesto', { firId, tenantId, userId })
+
+    try {
+      return await this.gestisciAllegatiFIRUseCase.elencaAllegati(firId, tenantId)
+    } catch (error: any) {
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
+        throw new UnauthorizedException(error.message)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Carica un allegato (R3 Task 6). Verifica SEMPRE prima formato/dimensione
+   * (locale, PRIMA di qualunque rete) e poi `/azioni` (v.
+   * `GestisciAllegatiFIRUseCase`): mai una scrittura diretta senza quelle
+   * precondizioni. Nessuna firma remota: il contratto dichiara che
+   * l'allegato non la richiede.
+   */
+  @Post(':id/allegati')
+  @ApiOperation({
+    summary: 'Aggiungi un allegato al formulario',
+    description:
+      'Verifica formato (solo PDF) e dimensione (1 MB) localmente, poi la precondizione da ' +
+      '/azioni, poi invia l’allegato a RENTRI. Nessuna firma successiva.',
+  })
+  @ApiResponse({ status: 201, description: 'Allegato caricato e registrato localmente' })
+  @ApiResponse({
+    status: 400,
+    description: 'Formato/dimensione non ammessi, operazione non disponibile o rifiutata',
+  })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  async caricaAllegato(
+    @Param('id') firId: string,
+    @Body() dto: CaricaAllegatoFirRentriDto,
+    @TenantId() tenantId: string,
+    @UserId() userId: string
+  ): Promise<AllegatoFIR> {
+    this.logger.debug('Caricamento allegato RENTRI richiesto', {
+      firId,
+      tenantId,
+      userId,
+      nomeFile: dto.nomeFile,
+    })
+
+    try {
+      return await this.gestisciAllegatiFIRUseCase.caricaAllegato({
+        firId,
+        tenantId,
+        userId,
+        nomeFile: dto.nomeFile,
+        contentType: dto.contentType,
+        contenutoBase64: dto.contenutoBase64,
+        correlationId: dto.correlationId,
+      })
+    } catch (error: any) {
+      this.logger.error('Caricamento allegato RENTRI non riuscito', error, { firId, tenantId })
+
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      if (error instanceof DomainException && error.code === 'UNAUTHORIZED') {
+        throw new UnauthorizedException(error.message)
+      }
+      if (error instanceof DomainException) {
+        throw new BadRequestException(error.message)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Elimina un allegato (R3 Task 6). Verifica SEMPRE prima `/azioni`, poi
+   * chiama l'ente e riflette l'eliminazione in locale SOLO dopo la sua
+   * conferma (v. `GestisciAllegatiFIRUseCase.eliminaAllegato`): un
+   * fallimento a metà propaga come errore esplicito, mai in silenzio.
+   */
+  @Delete(':id/allegati/:allegatoId')
+  @ApiOperation({
+    summary: 'Rimuovi un allegato dal formulario',
+    description:
+      'Verifica la precondizione da /azioni, chiama RENTRI e SOLO dopo la sua conferma cancella ' +
+      'la copia locale.',
+  })
+  @ApiResponse({ status: 200, description: 'Allegato eliminato su RENTRI e in locale' })
+  @ApiResponse({
+    status: 400,
+    description: 'Operazione non disponibile o rifiutata dall’ente',
+  })
+  @ApiResponse({ status: 404, description: 'FIR o allegato non trovato' })
+  async eliminaAllegato(
+    @Param('id') firId: string,
+    @Param('allegatoId') allegatoId: string,
+    @TenantId() tenantId: string,
+    @UserId() userId: string
+  ): Promise<{ eliminato: true }> {
+    this.logger.debug('Eliminazione allegato RENTRI richiesta', {
+      firId,
+      allegatoId,
+      tenantId,
+      userId,
+    })
+
+    try {
+      await this.gestisciAllegatiFIRUseCase.eliminaAllegato({
+        firId,
+        tenantId,
+        allegatoLocaleId: allegatoId,
+      })
+      return { eliminato: true }
+    } catch (error: any) {
+      this.logger.error('Eliminazione allegato RENTRI non riuscita', error, {
+        firId,
+        allegatoId,
         tenantId,
       })
 

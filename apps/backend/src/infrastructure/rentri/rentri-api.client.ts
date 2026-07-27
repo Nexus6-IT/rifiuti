@@ -620,6 +620,142 @@ export class RENTRIApiClient {
   }
 
   /**
+   * Limite di dimensione del file allegato (byte), **dichiarato dal
+   * contratto per QUESTO endpoint** (`DatiAllegatoModel.contenuto`,
+   * formulari.yaml riga 6926: "Il contenuto non deve superare 1 MB di
+   * dimensione") — NON i limiti di 3 MB (xFIR risultante, stesso paragrafo,
+   * vincolo dell'ente sul FIR nel suo complesso, non verificabile lato
+   * nostro prima dell'upload) o 5 MB (copia cartacea/xFIR interi, vincoli di
+   * altri oggetti). Verificato da {@link GestisciAllegatiFIRUseCase} PRIMA di
+   * chiamare {@link caricaAllegato}: un allegato oltre questo limite è una
+   * richiesta non valida, e RENTRI conta le richieste non valide contro il
+   * chiamante fino al "ban" (423) — non va mai spedita "tanto per vedere".
+   */
+  static readonly LIMITE_ALLEGATO_BYTES = 1 * 1024 * 1024
+
+  /**
+   * Aggiunge un allegato al formulario (`POST /{numero_fir}/allegato` —
+   * formulari.yaml righe 776-881). Corpo `DatiAllegatoModel` (righe
+   * 6902-6938): `content_type`, `nome_file`, `contenuto` (base64), e
+   * `identificativo_soggetto` (CF del soggetto a cui riferire l'allegato,
+   * OBBLIGATORIO — non un parametro opzionale). Il campo `descrizione` è
+   * deprecato dal contratto: non tradotto.
+   *
+   * Il contratto dichiara esplicitamente (riga 788): "Il file aggiunto
+   * all'xFIR viene inserito all'interno del contenitore ZIP e non necessita
+   * di essere firmato" — a differenza di accettazione/annullamento, QUESTA
+   * operazione **non** apre un ciclo di firma remota: l'esito del polling
+   * NONBLOCK_PULL è definitivo così com'è (nessuna chiamata successiva a
+   * `CompletaOperazioneConFirmaUseCase`).
+   *
+   * **La verifica della dimensione è responsabilità del chiamante**
+   * ({@link GestisciAllegatiFIRUseCase}, PRIMA di invocare questo metodo):
+   * questo client non ripete la validazione, si limita a tradurre il corpo.
+   *
+   * **ASYNC (NONBLOCK_PULL)**, stesso ciclo di {@link annullaFormulario}.
+   */
+  async caricaAllegato(
+    tenantId: string,
+    numeroFir: string,
+    dati: DatiAllegatoPayload,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    const contesto = `/formulari/${numeroFir}/allegato`
+    const corpo = {
+      content_type: dati.contentType,
+      nome_file: dati.nomeFile,
+      contenuto: dati.contenutoBase64,
+      identificativo_soggetto: dati.identificativoSoggetto,
+    }
+
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/allegato`,
+          corpo,
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const transazioneId = risposta.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di transazione_id: il ciclo NONBLOCK_PULL non può proseguire.`
+      )
+    }
+
+    return this.attendiEsito(tenantId, transazioneId, opzioni)
+  }
+
+  /**
+   * Rimuove un allegato (`DELETE /{numero_fir}/allegato/{allegato_id}` —
+   * formulari.yaml righe 941-1017). Nessun corpo nel contratto: nessuna
+   * firma di integrità da calcolare (a differenza di {@link post}, che la
+   * calcola sempre — v. {@link delete_}).
+   *
+   * **ASYNC (NONBLOCK_PULL)**, stesso ciclo. Restituisce l'esito COSÌ COM'È:
+   * la decisione su `esito.errore` è del chiamante
+   * ({@link GestisciAllegatiFIRUseCase}), che deve riflettere l'eliminazione
+   * anche in locale SOLO dopo un esito senza errore.
+   */
+  async eliminaAllegato(
+    tenantId: string,
+    numeroFir: string,
+    allegatoId: number,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    const contesto = `/formulari/${numeroFir}/allegato/${allegatoId}`
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.delete_(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/allegato/${allegatoId}`,
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const transazioneId = risposta.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di transazione_id: il ciclo NONBLOCK_PULL non può proseguire.`
+      )
+    }
+
+    return this.attendiEsito(tenantId, transazioneId, opzioni)
+  }
+
+  /**
+   * Scarica un allegato (`GET /{numero_fir}/allegato/{allegato_id}` —
+   * formulari.yaml righe 882-940). **SINCRONO** (200 diretto, nessun ciclo
+   * NONBLOCK_PULL, a differenza di `POST`/`DELETE` sullo stesso path):
+   * `DownloadableBaseResponse` (righe 9140-9156) — `nome_file`, `mime`,
+   * `content` (base64), tutti nullable per contratto. Restituiti così come
+   * arrivano: nessuna verifica che l'ente non dichiari un campo mancante,
+   * perché in lettura non c'è alcun 423 da evitare (non è una scrittura).
+   */
+  async scaricaAllegato(
+    tenantId: string,
+    numeroFir: string,
+    allegatoId: number
+  ): Promise<AllegatoScaricato> {
+    const contesto = `/formulari/${numeroFir}/allegato/${allegatoId}`
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.get(`${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/allegato/${allegatoId}`, tenantId),
+      contesto
+    )
+
+    return {
+      nomeFile: risposta.data?.nome_file ?? undefined,
+      mime: risposta.data?.mime ?? undefined,
+      contenutoBase64: risposta.data?.content ?? undefined,
+    }
+  }
+
+  /**
    * Legge il certificato X.509 della credenziale di firma remota
    * (`GET /ca-rentri/v1.0/credentials/info?cert_info=true`). Serve per
    * ottenere il `certificato` base64 da passare a
@@ -1142,6 +1278,30 @@ export class RENTRIApiClient {
   }
 
   /**
+   * DELETE con Bearer self-issued. A differenza di {@link post}, **nessuna
+   * firma di integrità**: il contratto non documenta un corpo per
+   * `DELETE /{numero_fir}/allegato/{allegato_id}` (formulari.yaml righe
+   * 941-1017 — solo path/header, nessun `requestBody`), quindi non c'è
+   * niente su cui calcolare il digest RFC 3230. Stesso motivo per cui
+   * {@link get} non la calcola.
+   */
+  private async delete_(path: string, metricEndpoint: string, tenantId?: string) {
+    const url = `${this.config.baseUrl}${path}`
+    const headers = await this.buildAuthHeaders(tenantId)
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.delete(url, { headers, timeout: this.timeout })
+      )
+      this.metrics.rentriTenantLocked.set({ tenant_id: tenantId ?? this.tenantIdCorrente() }, 0)
+      return response
+    } catch (error: any) {
+      this.metrics.rentriApiErrors.inc({ endpoint: metricEndpoint, error_type: 'HTTP' })
+      throw error
+    }
+  }
+
+  /**
    * Header di autenticazione Bearer self-issued. Condiviso da {@link get} e
    * dai metodi di polling del ciclo NONBLOCK_PULL
    * ({@link interrogaStatoTransazione}, {@link leggiEsitoTransazione}).
@@ -1187,6 +1347,55 @@ export interface DatiAccettazionePayload {
   causaleRespingimento?: 'NC' | 'IR' | 'A'
   motivoRespingimento?: string
   attesaVerificaAnalitica?: boolean
+}
+
+/**
+ * Corpo di `POST /{numero_fir}/allegato` (`DatiAllegatoModel`, formulari.yaml
+ * righe 6902-6938). `descrizione` non è tradotto: deprecato dal contratto.
+ * La verifica di `RENTRIApiClient.LIMITE_ALLEGATO_BYTES` è responsabilità del
+ * CHIAMANTE ({@link GestisciAllegatiFIRUseCase}), non di questo payload né
+ * del client — v. commento di {@link RENTRIApiClient.caricaAllegato}.
+ */
+export interface DatiAllegatoPayload {
+  /** Sempre `'application/pdf'` per contratto, oggi l'unico valore ammesso. */
+  contentType: string
+  nomeFile: string
+  /** Contenuto del file, GIA' codificato base64 (non i byte grezzi). */
+  contenutoBase64: string
+  /** CF del soggetto (tra quelli del formulario) a cui riferire l'allegato. */
+  identificativoSoggetto: string
+}
+
+/**
+ * Risposta di `GET /{numero_fir}/allegato/{allegato_id}`
+ * (`DownloadableBaseResponse`, formulari.yaml righe 9140-9156): tutti i campi
+ * sono nullable per contratto, restituiti così come arrivano.
+ */
+export interface AllegatoScaricato {
+  nomeFile?: string
+  mime?: string
+  /** Contenuto base64, non decodificato: la decodifica è del chiamante. */
+  contenutoBase64?: string
+}
+
+/**
+ * Estrae `allegato_id` dall'esito di `POST /{numero_fir}/allegato`
+ * (`EsitoAddAllegatoModel.allegato_id`, formulari.yaml riga 9163 — una delle
+ * varianti del `oneOf` di `EsitoFormularioModel.esito`, stessa cautela di
+ * {@link estraiNumeroFirDaEsito}: mai assumere che il campo sia presente).
+ *
+ * **Limite dichiarato**: la fake RENTRI usata contro l'oracolo accetta
+ * qualunque corpo di controllo — questa funzione dimostra che il client
+ * legge correttamente `allegato_id` quando è presente nella forma prevista
+ * dal contratto, non che l'ente lo restituisca davvero in quella forma.
+ */
+export function estraiAllegatoIdDaEsito(esito: EsitoFormulario): number | undefined {
+  const payload = esito.esito
+  if (!payload || typeof payload !== 'object' || !('allegato_id' in payload)) {
+    return undefined
+  }
+  const allegatoId = (payload as { allegato_id?: unknown }).allegato_id
+  return typeof allegatoId === 'number' && Number.isFinite(allegatoId) ? allegatoId : undefined
 }
 
 /**

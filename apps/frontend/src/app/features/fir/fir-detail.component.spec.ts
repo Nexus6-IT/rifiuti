@@ -80,7 +80,11 @@ describe('FirDetailComponent', () => {
       'azioniDisponibili',
       'accettaORespingi',
       'annullaFIR',
+      'elencaAllegati',
+      'caricaAllegato',
+      'eliminaAllegato',
     ])
+    rentriFirLifecycleService.elencaAllegati.and.returnValue(of([]))
     authService = jasmine.createSpyObj('AuthService', [], {
       currentUser: () => ({ id: 'u1', email: 'u@example.com', role: overrides.role ?? 'ADMIN' }),
     })
@@ -882,6 +886,151 @@ describe('FirDetailComponent', () => {
 
       expect(() => component.confermaAnnullamento()).not.toThrow()
       expect(rentriFirLifecycleService.annullaFIR).toHaveBeenCalled()
+    })
+  })
+
+  describe('Allegati del formulario', () => {
+    const firLegatoRentri: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'SYNCED',
+      rentriNumeroFir: 'RENTRI-000999',
+    }
+
+    function creaFilePdf(nome: string, byte: number): File {
+      return new File([new Uint8Array(byte)], nome, { type: 'application/pdf' })
+    }
+
+    function creaEvento(file: File): Event {
+      const input = document.createElement('input')
+      input.type = 'file'
+      Object.defineProperty(input, 'files', { value: [file] })
+      return { target: input } as unknown as Event
+    }
+
+    it('mostra la sezione allegati solo per un FIR legato a RENTRI', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-allegati-upload-input"]')).toBeTruthy()
+      expect(el.querySelector('[data-testid="fir-detail-allegati-list"]')).toBeTruthy()
+    })
+
+    it('NON mostra la sezione allegati per un FIR non legato a RENTRI', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of({ ...baseFIR, rentriNumeroFir: null }))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-allegati-upload-input"]')).toBeFalsy()
+    })
+
+    it('carica l’elenco degli allegati all’apertura della pagina', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      rentriFirLifecycleService.elencaAllegati.and.returnValue(
+        of([
+          {
+            id: 'allegato-1',
+            rentriAllegatoId: 7,
+            filename: 'analisi.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 2048,
+            caricatoDa: 'u1',
+            caricatoAlle: '2026-07-27T10:00:00.000Z',
+          },
+        ])
+      )
+      fixture.detectChanges()
+
+      expect(rentriFirLifecycleService.elencaAllegati).toHaveBeenCalledWith('fir-1')
+      expect(component['allegati']().length).toBe(1)
+
+      fixture.detectChanges()
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-allegati-row-allegato-1"]')).toBeTruthy()
+      expect(
+        el.querySelector('[data-testid="fir-detail-allegati-elimina-allegato-1"]')
+      ).toBeTruthy()
+    })
+
+    it('un file diverso da PDF NON viene inviato al servizio', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      const file = new File(['x'], 'foto.png', { type: 'image/png' })
+      component.onFileSelezionatoAllegato(creaEvento(file), firLegatoRentri)
+
+      expect(rentriFirLifecycleService.caricaAllegato).not.toHaveBeenCalled()
+    })
+
+    it('un file oltre 1 MB NON viene inviato al servizio', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      const fileTroppoGrande = creaFilePdf('troppo-grande.pdf', 1024 * 1024 + 1)
+      component.onFileSelezionatoAllegato(creaEvento(fileTroppoGrande), firLegatoRentri)
+
+      expect(rentriFirLifecycleService.caricaAllegato).not.toHaveBeenCalled()
+    })
+
+    it('un PDF entro il limite viene letto e inviato in base64, senza identificativoSoggetto', done => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.caricaAllegato.and.returnValue(
+        of({
+          id: 'allegato-nuovo',
+          rentriAllegatoId: 9,
+          filename: 'analisi.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
+          caricatoDa: 'u1',
+          caricatoAlle: '2026-07-27T10:00:00.000Z',
+        })
+      )
+
+      const file = creaFilePdf('analisi.pdf', 100)
+      component.onFileSelezionatoAllegato(creaEvento(file), firLegatoRentri)
+
+      // FileReader e' asincrono: verifichiamo dopo che ha finito di leggere.
+      setTimeout(() => {
+        expect(rentriFirLifecycleService.caricaAllegato).toHaveBeenCalledTimes(1)
+        const [firId, payload] = rentriFirLifecycleService.caricaAllegato.calls.mostRecent().args
+        expect(firId).toBe('fir-1')
+        expect(payload.nomeFile).toBe('analisi.pdf')
+        expect(payload.contentType).toBe('application/pdf')
+        expect(typeof payload.contenutoBase64).toBe('string')
+        expect(Object.keys(payload)).not.toContain('identificativoSoggetto')
+        done()
+      }, 500)
+    })
+
+    it('elimina un allegato solo dopo conferma, e lo rimuove dall’elenco locale', () => {
+      setup({ role: 'ADMIN', autoConfirm: true })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      const allegato = {
+        id: 'allegato-1',
+        rentriAllegatoId: 7,
+        filename: 'analisi.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 2048,
+        caricatoDa: 'u1',
+        caricatoAlle: '2026-07-27T10:00:00.000Z',
+      }
+      rentriFirLifecycleService.elencaAllegati.and.returnValue(of([allegato]))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.eliminaAllegato.and.returnValue(of({ eliminato: true }))
+
+      component.eliminaAllegatoFir(firLegatoRentri, allegato)
+
+      expect(rentriFirLifecycleService.eliminaAllegato).toHaveBeenCalledWith('fir-1', 'allegato-1')
+      expect(component['allegati']().length).toBe(0)
     })
   })
 })

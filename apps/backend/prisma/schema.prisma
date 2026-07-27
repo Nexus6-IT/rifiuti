@@ -165,16 +165,17 @@ model User {
   signatureCertificateHash String?   @map("signature_certificate_hash") @db.VarChar(64)
   signatureValidUntil      DateTime? @map("signature_valid_until")
 
-  tenant                  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  producedFIRs            FIR[]            @relation("ProducerUser")
-  carrierFIRs             FIR[]            @relation("CarrierUser")
-  receiverFIRs            FIR[]            @relation("ReceiverUser")
+  tenant                  Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  producedFIRs            FIR[]               @relation("ProducerUser")
+  carrierFIRs             FIR[]               @relation("CarrierUser")
+  receiverFIRs            FIR[]               @relation("ReceiverUser")
   firSignatures           FIRSignature[]
   notifications           Notification[]
   activityLogs            ActivityLog[]
-  createdBackupSchedules  BackupSchedule[] @relation("CreatedByUser")
-  executedBackupHistories BackupHistory[]  @relation("ExecutedByUser")
-  recordedMovements       WasteMovement[]  @relation("RecordedMovements")
+  createdBackupSchedules  BackupSchedule[]    @relation("CreatedByUser")
+  executedBackupHistories BackupHistory[]     @relation("ExecutedByUser")
+  recordedMovements       WasteMovement[]     @relation("RecordedMovements")
+  allegatiRentriCaricati  FIRAllegatoRentri[]
 
   @@unique([tenantId, fiscalCode])
   @@index([tenantId])
@@ -340,21 +341,21 @@ model FIR {
   // Numero ufficiale assegnato da RENTRI al formulario (numero_fir dell'ente):
   // è la chiave stabile del legame FIR interno ↔ formulario RENTRI, non cambia
   // tra una trasmissione e l'altra. Nullable: valorizzato solo dopo l'aggancio.
-  rentriNumeroFir         String?              @map("rentri_numero_fir") @db.VarChar(50)
+  rentriNumeroFir         String?                @map("rentri_numero_fir") @db.VarChar(50)
   // Identificativo tecnico (transazione_id) restituito dall'ultima chiamata di
   // trasmissione REST verso RENTRI. Cambia ad ogni tentativo: non è una chiave
   // di aggancio, serve solo per correlare la trasmissione con il suo esito
   // (polling GET /{transazione_id}/status) e per il supporto.
-  rentriTransazioneId     String?              @map("rentri_transazione_id") @db.VarChar(100)
+  rentriTransazioneId     String?                @map("rentri_transazione_id") @db.VarChar(100)
   // Come è nato il legame con rentriNumeroFir: rilevante per cosa l'utente può
   // fare dopo (es. un legame acquisito da terzi non è ritrasmissibile) e in
   // caso di contestazione su chi ha originato/confermato l'aggancio.
-  rentriOrigineLegame     RentriOrigineLegame? @map("rentri_origine_legame")
+  rentriOrigineLegame     RentriOrigineLegame?   @map("rentri_origine_legame")
   // Numero ufficiale ricevuto da una trasmissione automatica in modalità
   // IBRIDA (Tenant.rentriModalitaLegame) ma NON ancora confermato dall'utente:
   // finché è valorizzato, rentriNumeroFir resta null — il FIR non è "legato"
   // a tutti gli effetti (R1 Task 2, FIR.proporreLegameRENTRI/confermaLegameRENTRI).
-  rentriNumeroFirProposto String?              @map("rentri_numero_fir_proposto") @db.VarChar(50)
+  rentriNumeroFirProposto String?                @map("rentri_numero_fir_proposto") @db.VarChar(50)
   // Ultimo stato noto del formulario presso l'ente (StatoFormulario del
   // contratto RENTRI). Copia locale in SOLA LETTURA: si aggiorna SOLO
   // leggendo dall'ente (polling/webhook, mai da un'azione locale isolata —
@@ -374,17 +375,28 @@ model FIR {
   // Aggiornato ad OGNI controllo (con o senza divergenza trovata), mai da
   // un'altra operazione: un campo dedicato, distinto da updatedAt (che
   // cambia per qualunque modifica al FIR, non solo per la riconciliazione).
-  rentriLastReconciledAt DateTime? @map("rentri_last_reconciled_at")
+  rentriLastReconciledAt  DateTime?              @map("rentri_last_reconciled_at")
 
+  /// SUPERATO da `FIRAllegatoRentri` (sotto), R3 Task 6 — non "il campo già
+  /// in uso": verificato il 2026-07-27 che ha ZERO riferimenti in tutto il
+  /// codice (backend, frontend, spec) e ZERO righe valorizzate in
+  /// produzione. Non tipizzava il singolo allegato e non permetteva di
+  /// elencarli o cancellarli singolarmente — da qui `FIRAllegatoRentri`,
+  /// una riga per allegato con id RENTRI, dimensione e soggetto. NON
+  /// rimosso (nessuna DROP su colonna già in produzione, anche se vuota):
+  /// se un domani serve un allegato "solo nostro" non legato a RENTRI,
+  /// riusare questo campo con un modello tipizzato dedicato — mai un terzo
+  /// `Json?` parallelo a rappresentare la stessa cosa.
   attachmentUrls Json? @map("attachment_urls")
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  producerUser   User            @relation("ProducerUser", fields: [producerUserId], references: [id])
-  carrierUser    User?           @relation("CarrierUser", fields: [carrierUserId], references: [id])
-  receiverUser   User?           @relation("ReceiverUser", fields: [receiverUserId], references: [id])
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  producerUser   User                @relation("ProducerUser", fields: [producerUserId], references: [id])
+  carrierUser    User?               @relation("CarrierUser", fields: [carrierUserId], references: [id])
+  receiverUser   User?               @relation("ReceiverUser", fields: [receiverUserId], references: [id])
   signatures     FIRSignature[]
   activityLogs   ActivityLog[]
   rentriSyncLogs RENTRISyncLog[]
+  allegatiRentri FIRAllegatoRentri[]
 
   // Trasportatori aggiuntivi per trasporto intermodale (oltre al trasportatore
   // principale inline Campo 4): N tratte ordinate (terrestre/ferroviaria/
@@ -815,7 +827,7 @@ model CERCode {
   /// false quando RENTRI smette di restituirlo in un ciclo di allineamento —
   /// la riga resta, resta leggibile/stampabile per i FIR storici, ma non è
   /// più selezionabile per un FIR nuovo (v. CERCatalogService).
-  presenteInRentri Boolean @default(true) @map("presente_in_rentri")
+  presenteInRentri  Boolean   @default(true) @map("presente_in_rentri")
   /// Valorizzato quando presenteInRentri passa a false: quando l'ente ha
   /// smesso di confermare il codice. Azzerato se il codice torna a comparire
   /// in un ciclo successivo.
@@ -823,7 +835,7 @@ model CERCode {
   /// "locale" per lo stato preesistente (seed da CSV bundled) o "rentri" per
   /// i codici allineati/confermati dall'ente — diagnostica di provenienza
   /// durante la transizione, i due sottosistemi restano paralleli.
-  fonte String @default("locale") @db.VarChar(20) @map("fonte")
+  fonte             String    @default("locale") @map("fonte") @db.VarChar(20)
 
   @@index([code])
   @@index([category])
@@ -871,13 +883,13 @@ model RentriCodificaSemplice {
 
   /// True finché l'ente conferma la voce nel catalogo ufficiale; passa a
   /// false quando RENTRI smette di restituirla in un ciclo di allineamento.
-  presenteInRentri Boolean @default(true) @map("presente_in_rentri")
+  presenteInRentri  Boolean   @default(true) @map("presente_in_rentri")
   /// Valorizzato quando presenteInRentri passa a false; azzerato se la voce
   /// torna a comparire in un ciclo successivo.
   rimossoDaRentriAl DateTime? @map("rimosso_da_rentri_al")
   /// Sempre "rentri" per queste 4 tabelle: a differenza del CER, non esiste
   /// un seed CSV/locale precedente da distinguere — l'unica fonte è l'ente.
-  fonte String @default("rentri") @db.VarChar(20)
+  fonte             String    @default("rentri") @db.VarChar(20)
 
   @@unique([tabella, code])
   @@index([tabella])
@@ -968,7 +980,7 @@ model RentriProvincia {
 
   /// False = provincia non più valida per un nuovo formulario/sito (caso
   /// raro ma previsto dal contratto, es. riordini provinciali).
-  attivo Boolean @default(true)
+  attivo       Boolean   @default(true)
   /// Valorizzato quando l'ente segnala fine-validità.
   fineValidita DateTime? @map("fine_validita")
 
@@ -997,11 +1009,11 @@ model RentriComune {
   /// False = comune soppresso/accorpato: non va più proposto per un
   /// formulario/sito NUOVO. La riga non viene mai cancellata — un FIR
   /// storico che referenzia questo comune resta leggibile.
-  attivo Boolean @default(true)
+  attivo       Boolean   @default(true)
   /// Comune in cui è confluito, se `attivo=false` (fusione/soppressione).
   /// Informazione operativa: dice all'operatore dove reindirizzare un nuovo
   /// inserimento.
-  nuovoId String? @map("nuovo_id") @db.VarChar(10)
+  nuovoId      String?   @map("nuovo_id") @db.VarChar(10)
   /// Data da cui il comune non è più attivo.
   fineValidita DateTime? @map("fine_validita")
 
@@ -1842,6 +1854,56 @@ model RENTRISyncLog {
   @@index([status])
   @@index([createdAt])
   @@map("rentri_sync_logs")
+}
+
+/// Allegato di un formulario RENTRI (`POST/GET/DELETE /{numero_fir}/allegato`,
+/// R3 Task 6) — sostituisce l'uso previsto (ma mai realizzato: nessuna
+/// occorrenza nel codice) del generico `FIR.attachmentUrls Json?`, che non
+/// tipizzava il singolo allegato e non permetteva di elencarli o cancellarli
+/// singolarmente. Una riga per allegato caricato con successo sull'ente:
+/// creata SOLO dopo che `POST /allegato` ha restituito un esito senza
+/// `errore` (mai un'aggiunta ottimistica prima della conferma dell'ente),
+/// cancellata SOLO dopo che `DELETE /allegato/{allegato_id}` ha fatto lo
+/// stesso (vedi GestisciAllegatiFIRUseCase — un fallimento a metà non lascia
+/// mai RENTRI e la copia locale disallineati in silenzio: l'eccezione lo
+/// dichiara esplicitamente).
+model FIRAllegatoRentri {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firId     String   @map("fir_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// `allegato_id` restituito dall'ente (`EsitoAddAllegatoModel.allegato_id`,
+  /// formulari.yaml riga 9163): chiave per `GET`/`DELETE
+  /// /{numero_fir}/allegato/{allegato_id}`. Non è la chiave primaria locale
+  /// (quella è `id`, UUID) perché è un intero assegnato dall'ente, non da noi.
+  rentriAllegatoId Int @map("rentri_allegato_id")
+
+  /// Nome del file (`DatiAllegatoModel.nome_file`, maxLength 255).
+  filename  String @db.VarChar(255)
+  /// Tipo MIME dichiarato all'ente (`content_type`). Il contratto ammette
+  /// solo "application/pdf" oggi, ma il campo resta libero: è l'ente che
+  /// decide cosa accettare, non un'assunzione fissata qui.
+  mimeType  String @map("mime_type") @db.VarChar(255)
+  /// Dimensione in byte del file ORIGINALE (non della codifica base64
+  /// trasmessa): è il numero verificato localmente PRIMA della chiamata
+  /// contro il limite di 1 MB dichiarato da `DatiAllegatoModel.contenuto`
+  /// (formulari.yaml riga 6926 — proprio di questo endpoint, non il limite di
+  /// 3 MB/5 MB di xFIR/copia cartacea, che sono vincoli di altri oggetti).
+  sizeBytes Int    @map("size_bytes")
+
+  /// Utente che ha caricato l'allegato (FK obbligatoria: un caricamento è
+  /// sempre un'azione di un utente autenticato, mai anonima).
+  caricatoDa   String   @map("caricato_da") @db.Uuid
+  caricatoAlle DateTime @default(now()) @map("caricato_alle")
+
+  fir              FIR  @relation(fields: [firId], references: [id], onDelete: Cascade)
+  caricatoDaUtente User @relation(fields: [caricatoDa], references: [id])
+
+  // Un allegato dell'ente non può comparire due volte per lo stesso FIR:
+  // stessa cautela già applicata a `[tenantId, rentriNumeroFir]` sul FIR.
+  @@unique([firId, rentriAllegatoId])
+  @@index([firId])
+  @@map("fir_allegati_rentri")
 }
 
 enum RENTRISyncLogStatus {

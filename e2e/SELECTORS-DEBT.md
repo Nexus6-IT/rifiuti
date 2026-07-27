@@ -84,6 +84,12 @@ da assegnare a chi lavora su `apps/frontend/**`.
   `fir-detail-rentri-annulla-motivo-input`,
   `fir-detail-rentri-annulla-cancel-button`,
   `fir-detail-rentri-annulla-confirm-button`.
+- **RENTRI — allegati del formulario (colmato in R3 Task 6)**: il dettaglio
+  FIR aggiunge `fir-detail-allegati-upload-input` (input `type="file"`,
+  visibile solo per un FIR legato a RENTRI), `fir-detail-allegati-list`
+  (contenitore dell'elenco locale) e, per riga, `fir-detail-allegati-row-{id}`
+  / `fir-detail-allegati-elimina-{id}` (`{id}` = chiave primaria LOCALE della
+  riga `FIRAllegatoRentri`, non l'`allegato_id` dell'ente).
 - **RENTRI — aggancio dei formulari (colmato in R2 Task 8)**: la pagina
   `/rentri/formulari` (`features/rentri/rentri-formulari.component.ts`) espone
   `rentri-formulari-search-input`, `-cerca-button`, `-table`, `-loading`,
