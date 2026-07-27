@@ -13,6 +13,7 @@ import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.us
 import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
 import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
 import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
+import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
 import { RentriRiconciliazioneJob } from '../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../infrastructure/jobs/rentri-certificato-scadenza.job'
@@ -92,6 +93,11 @@ describe('RentriSyncModule (DI wiring)', () => {
     // deve risolversi anche il controller che lo espone (già verificato
     // sopra), non solo lo use case in isolamento.
     expect(moduleRef.get(AccettaORespingiFIRUseCase)).toBeDefined()
+
+    // R3 Task 5: annullamento del formulario, con nota — stesso motivo,
+    // stesso errore ricorrente da non ripetere: deve risolversi anche qui,
+    // non restare orfano (v. `AccettaORespingiFIRUseCase` sopra).
+    expect(moduleRef.get(AnnullaFIRRentriUseCase)).toBeDefined()
 
     // R5 Task 4/5: riconciliazione periodica + i due job schedulati che ne
     // dipendono/l'accompagnano (allarmi Prometheus).

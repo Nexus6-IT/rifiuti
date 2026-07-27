@@ -79,6 +79,7 @@ describe('FirDetailComponent', () => {
     rentriFirLifecycleService = jasmine.createSpyObj('RentriFirLifecycleService', [
       'azioniDisponibili',
       'accettaORespingi',
+      'annullaFIR',
     ])
     authService = jasmine.createSpyObj('AuthService', [], {
       currentUser: () => ({ id: 'u1', email: 'u@example.com', role: overrides.role ?? 'ADMIN' }),
@@ -601,13 +602,16 @@ describe('FirDetailComponent', () => {
       expect(bottone?.disabled).toBeTrue()
     })
 
-    it('invia il payload atteso al servizio per un\'accettazione intera', () => {
+    it("invia il payload atteso al servizio per un'accettazione intera", () => {
       setup({ role: 'ADMIN' })
       firService.getFIRById.and.returnValue(of(firLegatoRentri))
       fixture.detectChanges()
 
       rentriFirLifecycleService.accettaORespingi.and.returnValue(
-        of({ tipoAccettazione: 'A', esitoFirma: { esito: 'COMPLETATA', statoFormulario: 'Accettato' } })
+        of({
+          tipoAccettazione: 'A',
+          esitoFirma: { esito: 'COMPLETATA', statoFormulario: 'Accettato' },
+        })
       )
 
       component.apriDialogAccettazione(firLegatoRentri)
@@ -669,7 +673,14 @@ describe('FirDetailComponent', () => {
       fixture.detectChanges()
 
       rentriFirLifecycleService.accettaORespingi.and.returnValue(
-        of({ tipoAccettazione: 'A', esitoFirma: { esito: 'IN_ATTESA', handle: 'h1', scadenzaAutorizzazione: '2026-01-01T00:00:00.000Z' } })
+        of({
+          tipoAccettazione: 'A',
+          esitoFirma: {
+            esito: 'IN_ATTESA',
+            handle: 'h1',
+            scadenzaAutorizzazione: '2026-01-01T00:00:00.000Z',
+          },
+        })
       )
 
       component.apriDialogAccettazione(firLegatoRentri)
@@ -696,6 +707,181 @@ describe('FirDetailComponent', () => {
 
       expect(() => component.confermaAccettazione()).not.toThrow()
       expect(rentriFirLifecycleService.accettaORespingi).toHaveBeenCalled()
+    })
+  })
+
+  /**
+   * R3 Task 5 — annullamento del formulario, con nota. Stesso criterio di
+   * visibilità di "Accetta il carico" (Task 4): il punto delicato qui è che
+   * il pulsante di conferma resti disabilitato con un motivo vuoto o oltre
+   * 1024 caratteri, e che il payload inviato al servizio contenga
+   * ESATTAMENTE il testo scritto dall'utente.
+   */
+  describe('Annullamento del formulario', () => {
+    const firLegatoRentri: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'SYNCED',
+      rentriNumeroFir: 'RENTRI-000999',
+    }
+
+    it('mostra "Annulla il formulario" solo per un FIR legato a RENTRI e un ruolo abilitato', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-annulla-formulario"]')).toBeTruthy()
+    })
+
+    it('NON mostra "Annulla il formulario" per un FIR non legato a RENTRI', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of({ ...baseFIR, rentriNumeroFir: null }))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-annulla-formulario"]')).toBeFalsy()
+    })
+
+    it('NON mostra "Annulla il formulario" per un VIEWER', () => {
+      setup({ role: 'VIEWER' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-annulla-formulario"]')).toBeFalsy()
+    })
+
+    it('apre il dialog azzerando il motivo precedente', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component['annullamentoMotivo'] = 'residuo di un tentativo precedente'
+      component.apriDialogAnnullamento(firLegatoRentri)
+
+      expect(component['annullamentoDialogVisible']()).toBeTrue()
+      expect(component['annullamentoMotivo']).toBe('')
+    })
+
+    it('NON valida con un motivo vuoto', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAnnullamento(firLegatoRentri)
+      component['annullamentoMotivo'] = '   '
+
+      expect(component.annullamentoValido()).toBeFalse()
+    })
+
+    it('NON valida con un motivo oltre 1024 caratteri', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAnnullamento(firLegatoRentri)
+      component['annullamentoMotivo'] = 'x'.repeat(1025)
+
+      expect(component.annullamentoValido()).toBeFalse()
+    })
+
+    it('valida con un motivo non vuoto entro 1024 caratteri', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAnnullamento(firLegatoRentri)
+      component['annullamentoMotivo'] = 'errore di pesatura alla partenza'
+
+      expect(component.annullamentoValido()).toBeTrue()
+    })
+
+    it('il pulsante di conferma nel DOM è disabilitato con motivo vuoto', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAnnullamento(firLegatoRentri)
+      fixture.detectChanges()
+
+      const bottone: HTMLButtonElement | null = fixture.nativeElement.querySelector(
+        '[data-testid="fir-detail-rentri-annulla-confirm-button"] button'
+      )
+      expect(bottone?.disabled).toBeTrue()
+    })
+
+    it('invia il payload atteso al servizio ({motivo: ...})', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.annullaFIR.and.returnValue(
+        of({ esitoFirma: { esito: 'COMPLETATA', statoFormulario: 'Annullato' }, noteInviate: true })
+      )
+
+      component.apriDialogAnnullamento(firLegatoRentri)
+      component['annullamentoMotivo'] = 'errore di pesatura alla partenza'
+      component.confermaAnnullamento()
+
+      expect(rentriFirLifecycleService.annullaFIR).toHaveBeenCalledWith('fir-1', {
+        motivo: 'errore di pesatura alla partenza',
+      })
+    })
+
+    it('non invia nulla se si tenta la conferma con motivo non valido', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      component.apriDialogAnnullamento(firLegatoRentri)
+      // Nessun motivo impostato.
+      component.confermaAnnullamento()
+
+      expect(rentriFirLifecycleService.annullaFIR).not.toHaveBeenCalled()
+    })
+
+    it('chiude il dialog e ricarica il FIR dopo una conferma riuscita', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.annullaFIR.and.returnValue(
+        of({
+          esitoFirma: {
+            esito: 'IN_ATTESA',
+            handle: 'h1',
+            scadenzaAutorizzazione: '2026-01-01T00:00:00.000Z',
+          },
+          noteInviate: false,
+        })
+      )
+
+      component.apriDialogAnnullamento(firLegatoRentri)
+      component['annullamentoMotivo'] = 'errore di pesatura alla partenza'
+      component.confermaAnnullamento()
+
+      expect(component['annullamentoDialogVisible']()).toBeFalse()
+      expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    })
+
+    it('mostra un errore leggibile se il backend rifiuta l’annullamento', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      fixture.detectChanges()
+
+      rentriFirLifecycleService.annullaFIR.and.returnValue(
+        throwError(() => ({
+          error: {
+            message: 'Questo formulario non è (più) nella fase in cui può essere annullato',
+          },
+        }))
+      )
+
+      component.apriDialogAnnullamento(firLegatoRentri)
+      component['annullamentoMotivo'] = 'errore di pesatura alla partenza'
+
+      expect(() => component.confermaAnnullamento()).not.toThrow()
+      expect(rentriFirLifecycleService.annullaFIR).toHaveBeenCalled()
     })
   })
 })

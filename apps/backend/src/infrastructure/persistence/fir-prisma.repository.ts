@@ -488,6 +488,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       _annotazioni: record.wasteNotes || null,
       _fourthCopyReturnedAt: record.fourthCopyReturnedAt || null,
       _fourthCopyNotes: record.fourthCopyNotes || null,
+      _motivoAnnullamento: record.motivoAnnullamento || null,
       // Legame RENTRI: senza questa ricostruzione i getter rentriNumeroFir/
       // rentriSyncStatus/... tornerebbero sempre ai valori di default
       // dell'aggregate appena creato, anche se scritti correttamente da save
@@ -612,6 +613,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       effectiveWeight: fir.pesoEffettivo ?? undefined,
       fourthCopyReturnedAt: fir.fourthCopyReturnedAt || undefined,
       fourthCopyNotes: fir.fourthCopyNotes || undefined,
+      motivoAnnullamento: fir.motivoAnnullamento || undefined,
       quantity: fir.rifiuto.quantita.valore,
       unit: fir.rifiuto.quantita.unitaMisura,
       transportDate: fir.dataPresaCarico || new Date(),

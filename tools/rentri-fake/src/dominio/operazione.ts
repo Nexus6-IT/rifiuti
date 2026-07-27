@@ -110,16 +110,32 @@ const STATI_ACCETTAZIONE = new Set([
 
 const STATI_ANNULLAMENTO = new Set(['FirmaAnnullamento'])
 
-const STATI_TERMINALI = new Set(['Accettato', 'RespintoAccettatoParzialmente', 'Annullato'])
+// `Annullato` NON è più in questo set (R3 Task 5): a differenza di
+// `Accettato`/`RespintoAccettatoParzialmente` (esiti finali senza alcun
+// seguito), il contratto ammette esplicitamente `NoteAnnullamento` su un
+// formulario `Annullato` finché è "privo di note" (formulari.yaml, riga
+// 1656) — v. `operazioniPerStato` sotto.
+const STATI_TERMINALI_SENZA_SEGUITO = new Set(['Accettato', 'RespintoAccettatoParzialmente'])
 
 /**
  * Restituisce il sottoinsieme di {@link Operazione} plausibile per lo stato
  * corrente di un formulario. Stato sconosciuto/`Indeterminato` → lista vuota
  * (scelta conservativa: un'incoerenza dati non giustifica proporre scritture).
+ *
+ * `opzioni.noteAnnullamentoGiaPresenti` (R3 Task 5): per lo stato `Annullato`,
+ * distingue "nota non ancora trasmessa" (`NoteAnnullamento` disponibile) da
+ * "nota già registrata" (lista vuota, coerente col contratto: il formulario
+ * annullato con nota non ha più adempimenti pendenti).
  */
-export function operazioniPerStato(stato: string): Operazione[] {
-  if (STATI_TERMINALI.has(stato)) {
+export function operazioniPerStato(
+  stato: string,
+  opzioni?: { noteAnnullamentoGiaPresenti?: boolean }
+): Operazione[] {
+  if (STATI_TERMINALI_SENZA_SEGUITO.has(stato)) {
     return []
+  }
+  if (stato === 'Annullato') {
+    return opzioni?.noteAnnullamentoGiaPresenti ? [] : ['NoteAnnullamento']
   }
   if (STATI_ANNULLAMENTO.has(stato)) {
     return [...OPERAZIONI_STATO_ANNULLAMENTO]

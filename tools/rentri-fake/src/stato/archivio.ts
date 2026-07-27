@@ -44,7 +44,17 @@ export interface Formulario {
    * minimo che dimostra il ciclo scrivi→firma→esito senza replicare l'intera
    * macchina a stati reale dell'ente (fuori scope, v. `operazione.ts`).
    */
-  pendingOperazione?: { tipo: 'Accettazione'; corpo: Record<string, unknown> }
+  pendingOperazione?:
+    | { tipo: 'Accettazione'; corpo: Record<string, unknown> }
+    | { tipo: 'Annulla'; corpo: Record<string, unknown> }
+  /**
+   * Testo delle note di annullamento (R3 Task 5), impostato
+   * dall'applicazione dell'effetto `NoteAnnullamento` — non da una firma
+   * (quella chiamata non ha stato `Firma*` successivo, v. `operazione.ts`).
+   * Usato da `GET /azioni` per distinguere "nota non ancora trasmessa" da
+   * "nota già registrata" sullo stato `Annullato`.
+   */
+  note?: string
 }
 
 export type StatoTransazione = 'in_elaborazione' | 'completata'
@@ -101,7 +111,7 @@ export interface Transazione {
    */
   contestoOperazione?: {
     numeroFir: string
-    operazione: 'Accettazione' | 'AcquisizioneFirma'
+    operazione: 'Accettazione' | 'AcquisizioneFirma' | 'Annulla' | 'NoteAnnullamento'
     corpo?: Record<string, unknown>
   }
 }
@@ -416,7 +426,12 @@ export class Archivio {
     contestoOperazione?: Transazione['contestoOperazione']
   ): string {
     const id = randomUUID()
-    this.transazioni.set(id, { id, stato: 'in_elaborazione', richiestaCreazione, contestoOperazione })
+    this.transazioni.set(id, {
+      id,
+      stato: 'in_elaborazione',
+      richiestaCreazione,
+      contestoOperazione,
+    })
     return id
   }
 
@@ -472,13 +487,23 @@ export class Archivio {
    *   di tipo `Accettazione` presente → il formulario transita allo stato
    *   terminale (`A` → `Accettato`; `P`/`R` → `RespintoAccettatoParzialmente`)
    *   e l'operazione pendente viene svuotata.
+   * - `annulla-fir` completata con successo (R3 Task 5) → il formulario
+   *   passa a `FirmaAnnullamento` e memorizza un'operazione pendente di tipo
+   *   `Annulla` (nessun corpo rilevante: il contratto non ne ha uno).
+   * - `acquisizione-firma` completata con successo E un'operazione pendente
+   *   di tipo `Annulla` presente → il formulario transita a `Annullato`.
+   * - `note-annullamento` completata con successo (R3 Task 5) → **nessuna
+   *   firma successiva** (a differenza di `annulla-fir`, v. `operazione.ts`):
+   *   l'effetto (`formulario.note`) si applica subito al completamento della
+   *   transazione, non c'è un `pendingOperazione` da attendere.
    *
    * **Non regressivo per costruzione**: le suite che seminano il formulario
-   * direttamente in `FirmaAccettazione` via `/__controllo/formulario` (es.
-   * `rentri-firma-operazione.oracolo.spec.ts`) non passano mai da
-   * `accettazione`, quindi il formulario non ha mai `pendingOperazione` — il
-   * ramo sotto per `acquisizione-firma` non scatta e lo stato resta quello
-   * seminato dal test, esattamente come prima di questo task.
+   * direttamente in `FirmaAccettazione`/`FirmaAnnullamento` via
+   * `/__controllo/formulario` (es. `rentri-firma-operazione.oracolo.spec.ts`)
+   * non passano mai da `accettazione`/`annulla-fir`, quindi il formulario non
+   * ha mai `pendingOperazione` — il ramo sotto per `acquisizione-firma` non
+   * scatta e lo stato resta quello seminato dal test, esattamente come prima
+   * di questo task.
    */
   private applicaEffettoOperazione(contesto: NonNullable<Transazione['contestoOperazione']>): void {
     const formulario = this.formulari.get(contesto.numeroFir)
@@ -493,17 +518,36 @@ export class Archivio {
       return
     }
 
+    if (contesto.operazione === 'Annulla') {
+      formulario.stato = 'FirmaAnnullamento'
+      formulario.pendingOperazione = { tipo: 'Annulla', corpo: contesto.corpo ?? {} }
+      return
+    }
+
+    if (contesto.operazione === 'NoteAnnullamento') {
+      const note = contesto.corpo?.note
+      if (typeof note === 'string') {
+        formulario.note = note
+      }
+      return
+    }
+
     if (contesto.operazione === 'AcquisizioneFirma') {
       const pendente = formulario.pendingOperazione
-      if (!pendente || pendente.tipo !== 'Accettazione') {
-        // Nessuna operazione di accettazione in corso: nessuna transizione
-        // automatica — v. commento di classe, "non regressivo per costruzione".
+      if (!pendente) return
+
+      if (pendente.tipo === 'Accettazione') {
+        const tipoAccettazione = pendente.corpo.tipo_accettazione
+        formulario.stato = tipoAccettazione === 'A' ? 'Accettato' : 'RespintoAccettatoParzialmente'
+        formulario.pendingOperazione = undefined
         return
       }
 
-      const tipoAccettazione = pendente.corpo.tipo_accettazione
-      formulario.stato = tipoAccettazione === 'A' ? 'Accettato' : 'RespintoAccettatoParzialmente'
-      formulario.pendingOperazione = undefined
+      if (pendente.tipo === 'Annulla') {
+        formulario.stato = 'Annullato'
+        formulario.pendingOperazione = undefined
+        return
+      }
     }
   }
 

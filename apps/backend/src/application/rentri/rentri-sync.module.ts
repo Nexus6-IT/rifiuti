@@ -36,6 +36,7 @@ import { CompletaOperazioneConFirmaUseCase } from './completa-operazione-con-fir
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rate-limiter.service'
 import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
+import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -381,6 +382,33 @@ import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
         LoggerService,
       ],
     },
+    // R3 Task 5 — annullamento del formulario, con nota. Stesse quattro
+    // dipendenze di AccettaORespingiFIRUseCase, stesso motivo: riusa la
+    // precondizione da /azioni e il ciclo di firma remota senza duplicarli.
+    {
+      provide: AnnullaFIRRentriUseCase,
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        getAzioniDisponibiliUseCase: GetAzioniDisponibiliUseCase,
+        rentriApiClient: RENTRIApiClient,
+        completaOperazioneConFirmaUseCase: CompletaOperazioneConFirmaUseCase,
+        logger: LoggerService
+      ) =>
+        new AnnullaFIRRentriUseCase(
+          firRepo,
+          getAzioniDisponibiliUseCase,
+          rentriApiClient,
+          completaOperazioneConFirmaUseCase,
+          logger
+        ),
+      inject: [
+        FIRPrismaRepository,
+        GetAzioniDisponibiliUseCase,
+        RENTRIApiClient,
+        CompletaOperazioneConFirmaUseCase,
+        LoggerService,
+      ],
+    },
   ],
   exports: [
     SyncFIRToRENTRIUseCase,
@@ -397,6 +425,7 @@ import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
     GetAzioniDisponibiliUseCase,
     CompletaOperazioneConFirmaUseCase,
     AccettaORespingiFIRUseCase,
+    AnnullaFIRRentriUseCase,
   ],
 })
 export class RentriSyncModule {}

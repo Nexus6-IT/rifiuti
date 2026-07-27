@@ -539,6 +539,87 @@ export class RENTRIApiClient {
   }
 
   /**
+   * Avvia l'annullamento del FIR digitale (`POST /{numero_fir}/annulla-fir` —
+   * formulari.yaml righe 1232-1329, **non** `/annulla`, deprecato riga 1136).
+   * **Nessun corpo richiesto dal contratto**: si invia `{}` solo perché `post`
+   * calcola sempre la firma di integrità su una stringa (un body `undefined`
+   * romperebbe il calcolo del digest — stesso motivo già documentato per
+   * {@link acquisisciVisibilita}).
+   *
+   * **ASYNC (NONBLOCK_PULL)**, stesso ciclo di {@link inviaAccettazione}.
+   * Restituisce l'`EsitoFormularioModel` COSÌ COM'È: la decisione su
+   * `esito.errore` è del chiamante (`AnnullaFIRRentriUseCase`).
+   */
+  async annullaFormulario(
+    tenantId: string,
+    numeroFir: string,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    const contesto = `/formulari/${numeroFir}/annulla-fir`
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/annulla-fir`,
+          {},
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const transazioneId = risposta.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di transazione_id: il ciclo NONBLOCK_PULL non può proseguire.`
+      )
+    }
+
+    return this.attendiEsito(tenantId, transazioneId, opzioni)
+  }
+
+  /**
+   * Trasmette le note di annullamento (`POST /{numero_fir}/note-annullamento`
+   * — formulari.yaml righe 1642-1738). Corpo: `NoteAnnullamentoModel` (righe
+   * 9895-9906), UN SOLO campo, `note` (maxLength 1024) — nome identico in
+   * camelCase e snake_case, nessuna mappatura necessaria.
+   *
+   * Ammesso SOLO quando il formulario è già `Annullato` presso l'ente (il
+   * ciclo di firma di {@link annullaFormulario} deve essere già concluso).
+   * **Nessuna firma successiva a questa chiamata**, a differenza di
+   * `annullaFormulario`: il contratto non documenta uno stato `Firma*` dopo
+   * `note-annullamento`.
+   *
+   * **ASYNC**, stesso ciclo. Restituisce l'esito COSÌ COM'È.
+   */
+  async inviaNoteAnnullamento(
+    tenantId: string,
+    numeroFir: string,
+    note: string,
+    opzioni?: OpzioniPollingEsito
+  ): Promise<EsitoFormulario> {
+    const contesto = `/formulari/${numeroFir}/note-annullamento`
+    const risposta = await this.eseguiRichiestaConResilienza(
+      () =>
+        this.post(
+          `${RENTRIApiClient.FORMULARI_PATH}/${numeroFir}/note-annullamento`,
+          { note },
+          contesto,
+          tenantId
+        ),
+      contesto
+    )
+
+    const transazioneId = risposta.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di transazione_id: il ciclo NONBLOCK_PULL non può proseguire.`
+      )
+    }
+
+    return this.attendiEsito(tenantId, transazioneId, opzioni)
+  }
+
+  /**
    * Legge il certificato X.509 della credenziale di firma remota
    * (`GET /ca-rentri/v1.0/credentials/info?cert_info=true`). Serve per
    * ottenere il `certificato` base64 da passare a
