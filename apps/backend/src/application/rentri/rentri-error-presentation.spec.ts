@@ -154,6 +154,17 @@ describe('traduciErroreRentri', () => {
     expect(risultato.azione).toBe('NESSUNA')
   })
 
+  it('operazione non più ammessa (ANNULLAMENTO_NON_DISPONIBILE): stesso messaggio condiviso del fallthrough', () => {
+    const risultato = traduciErroreRentri({
+      errorCode: 'ANNULLAMENTO_NON_DISPONIBILE',
+    })
+
+    expect(risultato.messaggio).toBe(
+      'Il formulario non è più nella fase in cui questa operazione è possibile: la pagina si aggiornerà con lo stato corrente.'
+    )
+    expect(risultato.azione).toBe('NESSUNA')
+  })
+
   // --- R3 Task 9: firma rifiutata a metà operazione ---
 
   it("firma rifiutata (FIRMA_RENTRI_RIFIUTATA, ACCETTAZIONE): nomina l'operazione specifica con l'accordo femminile, propone «Riprova»", () => {
@@ -200,21 +211,23 @@ describe('traduciErroreRentri', () => {
     })
 
     expect(risultato.messaggio).toBe(
-      "Il formato del file non è ammesso: l'ente accetta solo allegati in PDF. Scegli un altro file."
+      'Il formato del file non è ammesso: sono accettati solo allegati in PDF. Scegli un altro file.'
     )
     expect(risultato.messaggio).not.toContain('RENTRI')
+    expect(risultato.messaggio.toLowerCase()).not.toContain('ente')
     expect(risultato.azione).toBe('NESSUNA')
   })
 
-  it("allegato troppo grande (ALLEGATO_TROPPO_GRANDE): non è un rifiuto dell'ente, nessuna azione", () => {
+  it("allegato troppo grande (ALLEGATO_TROPPO_GRANDE): non è un rifiuto dell'ente, nessuna azione, indica il limite", () => {
     const risultato = traduciErroreRentri({
       errorCode: 'ALLEGATO_TROPPO_GRANDE',
     })
 
     expect(risultato.messaggio).toBe(
-      'Il file supera la dimensione massima ammessa: scegli un file più piccolo.'
+      'Il file supera la dimensione massima ammessa (1 MB): scegli un file più piccolo.'
     )
     expect(risultato.messaggio).not.toContain('RENTRI')
+    expect(risultato.messaggio.toLowerCase()).not.toContain('ente')
     expect(risultato.azione).toBe('NESSUNA')
   })
 })

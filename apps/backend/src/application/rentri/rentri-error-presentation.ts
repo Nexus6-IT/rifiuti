@@ -175,7 +175,7 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
       // messaggio non deve MAI sembrare un rifiuto dell'ente.
       return {
         messaggio:
-          "Il formato del file non è ammesso: l'ente accetta solo allegati in PDF. Scegli un altro file.",
+          'Il formato del file non è ammesso: sono accettati solo allegati in PDF. Scegli un altro file.',
         azione: 'NESSUNA',
       }
 
@@ -183,7 +183,8 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
       // Stessa natura di FORMATO_ALLEGATO_NON_AMMESSO: validazione locale,
       // nessuna richiesta partita verso l'ente.
       return {
-        messaggio: 'Il file supera la dimensione massima ammessa: scegli un file più piccolo.',
+        messaggio:
+          'Il file supera la dimensione massima ammessa (1 MB): scegli un file più piccolo.',
         azione: 'NESSUNA',
       }
 
