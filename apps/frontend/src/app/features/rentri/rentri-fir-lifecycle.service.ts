@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core'
-import { HttpClient } from '@angular/common/http'
+import { HttpClient, HttpResponse } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { environment } from '../../../environments/environment'
 
@@ -113,5 +113,19 @@ export class RentriFirLifecycleService {
 
   eliminaAllegato(firId: string, allegatoId: string): Observable<{ eliminato: true }> {
     return this.http.delete<{ eliminato: true }>(`${this.API_URL}/${firId}/allegati/${allegatoId}`)
+  }
+
+  /**
+   * Scarica il PDF del formulario (R3 Task 7): il backend fa da TRAMITE
+   * (scarica da RENTRI e trasmette lo stream), mai un redirect al portale —
+   * per questo la risposta è `blob`, non un URL da aprire in una nuova
+   * scheda. `observe: 'response'` per leggere `Content-Disposition` (nome
+   * file suggerito dall'ente) invece di indovinarlo lato client.
+   */
+  scaricaPdf(firId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.API_URL}/${firId}/pdf`, {
+      responseType: 'blob',
+      observe: 'response',
+    })
   }
 }

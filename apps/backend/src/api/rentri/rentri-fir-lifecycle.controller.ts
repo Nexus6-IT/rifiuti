@@ -5,12 +5,14 @@ import {
   Delete,
   Param,
   Body,
+  Res,
   UseGuards,
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
+import { Response } from 'express'
 import { TenantId } from '../../core/decorators/tenant.decorator'
 import { UserId } from '../../core/decorators/user.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -33,6 +35,7 @@ import {
   GestisciAllegatiFIRUseCase,
   AllegatoFIR,
 } from '../../application/rentri/gestisci-allegati-fir.use-case'
+import { ScaricaPdfFirUseCase } from '../../application/rentri/scarica-pdf-fir.use-case'
 import { AccettaFirRentriDto } from './dto/accetta-fir-rentri.dto'
 import { AnnullaFirRentriDto } from './dto/annulla-fir-rentri.dto'
 import { CaricaAllegatoFirRentriDto } from './dto/carica-allegato-fir-rentri.dto'
@@ -67,6 +70,7 @@ export class RentriFirLifecycleController {
     private readonly accettaORespingiFIRUseCase: AccettaORespingiFIRUseCase,
     private readonly annullaFIRRentriUseCase: AnnullaFIRRentriUseCase,
     private readonly gestisciAllegatiFIRUseCase: GestisciAllegatiFIRUseCase,
+    private readonly scaricaPdfFirUseCase: ScaricaPdfFirUseCase,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('RentriFirLifecycleController')
@@ -387,5 +391,69 @@ export class RentriFirLifecycleController {
       }
       throw error
     }
+  }
+
+  /**
+   * Stampa PDF del formulario (R3 Task 7): scarica il PDF da RENTRI e lo
+   * trasmette come STREAM di byte al chiamante — NESSUN redirect al
+   * portale RENTRI (v. commento di classe di `ScaricaPdfFirUseCase`): il
+   * criterio di valore del programma è che l'utente non cambi mai
+   * piattaforma, per lo stesso motivo per cui `PdfController.downloadFIR`
+   * serve già i PDF generati localmente senza mai rimandare altrove.
+   *
+   * `@Res()` NON-passthrough (come `PdfController`): l'uso case viene
+   * invocato PRIMA di toccare `res`, quindi un errore di dominio propaga
+   * ancora come eccezione HTTP gestita normalmente da Nest — solo dopo un
+   * esito positivo la risposta viene scritta a mano (headers + buffer).
+   */
+  @Get(':id/pdf')
+  @ApiOperation({
+    summary: 'Stampa PDF del formulario',
+    description:
+      'Scarica il PDF da RENTRI e lo trasmette come stream: nessun redirect al portale, ' +
+      'il browser del chiamante non contatta mai l’ente direttamente.',
+  })
+  @ApiResponse({ status: 200, description: 'PDF del formulario' })
+  @ApiResponse({ status: 204, description: 'Nessun PDF disponibile ancora per questo formulario' })
+  @ApiResponse({ status: 400, description: 'FIR non legato a RENTRI' })
+  @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  async scaricaPdf(
+    @Param('id') firId: string,
+    @TenantId() tenantId: string,
+    @UserId() userId: string,
+    @Res() res: Response
+  ): Promise<void> {
+    this.logger.debug('Stampa PDF RENTRI richiesta', { firId, tenantId, userId })
+
+    let pdf: Awaited<ReturnType<ScaricaPdfFirUseCase['execute']>>
+    try {
+      pdf = await this.scaricaPdfFirUseCase.execute(firId, tenantId)
+    } catch (error: any) {
+      this.logger.error('Stampa PDF RENTRI non riuscita', error, { firId, tenantId })
+
+      if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+        throw new NotFoundException(error.message)
+      }
+      if (error instanceof DomainException) {
+        throw new BadRequestException(error.message)
+      }
+      throw error
+    }
+
+    // Esito 204 dichiarato dal contratto (riga 1764): nessun PDF disponibile
+    // ORA per questo formulario. Propagato COSÌ COM'È al chiamante, mai
+    // travestito da errore.
+    if (!pdf.disponibile || !pdf.contenutoBase64) {
+      res.status(204).send()
+      return
+    }
+
+    const buffer = Buffer.from(pdf.contenutoBase64, 'base64')
+    res.set({
+      'Content-Type': pdf.mime || 'application/pdf',
+      'Content-Disposition': `attachment; filename="${pdf.nomeFile || `FIR-${firId}.pdf`}"`,
+      'Content-Length': buffer.length,
+    })
+    res.send(buffer)
   }
 }

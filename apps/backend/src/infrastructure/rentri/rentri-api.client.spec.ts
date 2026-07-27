@@ -563,6 +563,47 @@ describe('RENTRIApiClient', () => {
     })
   })
 
+  describe('scaricaPdf', () => {
+    it('invia GET su /{numero_fir}/pdf e mappa DownloadableBaseResponse con disponibile:true', async () => {
+      const mockResponse: AxiosResponse = {
+        data: { nome_file: 'FIR-BCDFGH00001JK.pdf', mime: 'application/pdf', content: 'JVBERi0=' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {} as any,
+      }
+      mockHttpService.get.mockReturnValue(of(mockResponse))
+
+      const risultato = await client.scaricaPdf('tenant-1', 'BCDFGH00001JK')
+
+      expect(mockHttpService.get).toHaveBeenCalledWith(
+        'https://demoapi.rentri.gov.it/formulari/v1.0/BCDFGH00001JK/pdf',
+        expect.anything()
+      )
+      expect(risultato).toEqual({
+        disponibile: true,
+        nomeFile: 'FIR-BCDFGH00001JK.pdf',
+        mime: 'application/pdf',
+        contenutoBase64: 'JVBERi0=',
+      })
+    })
+
+    it('mappa il 204 dichiarato dal contratto (riga 1764) su disponibile:false, mai un errore', async () => {
+      const mockResponse: AxiosResponse = {
+        data: '',
+        status: 204,
+        statusText: 'No Content',
+        headers: {},
+        config: {} as any,
+      }
+      mockHttpService.get.mockReturnValue(of(mockResponse))
+
+      const risultato = await client.scaricaPdf('tenant-1', 'BCDFGH00001JK')
+
+      expect(risultato).toEqual({ disponibile: false })
+    })
+  })
+
   describe('leggiFormulario', () => {
     it('invia GET su /{numero_fir} e restituisce il DettaglioFormulario', async () => {
       const mockResponse: AxiosResponse = {

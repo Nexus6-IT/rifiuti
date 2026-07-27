@@ -63,6 +63,15 @@ export interface Formulario {
    * leggerlo (v. `Archivio.applicaEffettoOperazione`, ramo `'Allegato'`).
    */
   allegati?: AllegatoFake[]
+  /**
+   * Controlla l'esito di `GET /{numero_fir}/pdf` (R3 Task 7): il contratto
+   * dichiara ESPLICITAMENTE 204 "No Content" come esito possibile, distinto
+   * dal 200 con `DownloadableBaseResponse` (formulari.yaml righe 1758-1765)
+   * — senza un modo per il TEST di scegliere quale dei due esiti simulare,
+   * il ramo 204 resterebbe irraggiungibile dalla suite oracolo. `undefined`
+   * equivale a `true` (default: il PDF è disponibile).
+   */
+  pdfDisponibile?: boolean
 }
 
 /**

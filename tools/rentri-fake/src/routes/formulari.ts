@@ -422,6 +422,46 @@ export function registraRotteFormulari(app: FastifyInstance, archivio: Archivio)
     }
   )
 
+  // GET /{numero_fir}/pdf (formulari.yaml riga 1739, "Stampa PDF del FIR",
+  // R3 Task 7): SINCRONO, stessa forma di `DownloadableBaseResponse` di
+  // /{numero_fir}/allegato/{allegato_id} sopra. La fake non genera un PDF
+  // reale — un contenuto placeholder deterministico, sufficiente per
+  // verificare il CICLO (200/204/404), non il contenuto del documento.
+  // Il 204 dichiarato dal contratto (righe 1758-1765) è raggiungibile
+  // tramite `Formulario.pdfDisponibile === false` (v. archivio.ts): senza
+  // questo controllo esplicito dal test, quel ramo del client resterebbe
+  // verificato solo per lettura del codice, mai eseguito.
+  app.get<{ Params: { identificativo: string } }>(
+    `${PREFISSO}/:identificativo/pdf`,
+    async (richiesta, risposta) => {
+      if (!(await autentica(richiesta, risposta, archivio))) return
+
+      const numeroFir = richiesta.params.identificativo
+      if (!numeroFirValido(numeroFir)) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Numero FIR non valido',
+          detail: `'${numeroFir}' non rispetta il pattern numero_fir del contratto.`,
+        })
+      }
+
+      const formulario = archivio.leggiFormulario(numeroFir)
+      if (!formulario) {
+        return inviaProblemDetails(risposta, 404, { title: 'Formulario non trovato' })
+      }
+
+      if (formulario.pdfDisponibile === false) {
+        return risposta.status(204).send()
+      }
+
+      const contenuto = Buffer.from(`%PDF-FAKE ${numeroFir}`, 'utf-8').toString('base64')
+      return {
+        nome_file: `FIR-${numeroFir}.pdf`,
+        mime: 'application/pdf',
+        content: contenuto,
+      }
+    }
+  )
+
   // Nome del parametro `:identificativo` (non `:numero_fir`): questa rotta
   // condivide la posizione nel path con le rotte di transazione registrate
   // da `registraRotteTransazioni` (`/status`, `/result`). find-my-way
