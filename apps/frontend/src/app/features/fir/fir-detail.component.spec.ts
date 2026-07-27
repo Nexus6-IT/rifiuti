@@ -86,6 +86,14 @@ describe('FirDetailComponent', () => {
       'scaricaPdf',
     ])
     rentriFirLifecycleService.elencaAllegati.and.returnValue(of([]))
+    // R3 Task 8: default fail-closed, coerente con `loadFIR` che ora chiama
+    // `/azioni` in background per un FIR legato con ruolo abilitato — nessuna
+    // operazione dichiarata finché un test non impone esplicitamente il
+    // contrario (v. describe 'Accettazione/respingimento del carico' e
+    // 'Annullamento del formulario').
+    rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+      of({ stato: 'stato', versione: 1, azioni: [] })
+    )
     authService = jasmine.createSpyObj('AuthService', [], {
       currentUser: () => ({ id: 'u1', email: 'u@example.com', role: overrides.role ?? 'ADMIN' }),
     })
@@ -487,10 +495,36 @@ describe('FirDetailComponent', () => {
     it('mostra "Accetta il carico" solo per un FIR legato a RENTRI e un ruolo abilitato', () => {
       setup({ role: 'OPERATOR' })
       firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        of({
+          stato: 'Emesso',
+          versione: 1,
+          azioni: [{ operazione: 'Accettazione', verbo: 'Accetta o respingi il carico' }],
+        })
+      )
       fixture.detectChanges()
 
       const el: HTMLElement = fixture.nativeElement
       expect(el.querySelector('[data-testid="fir-detail-rentri-accetta-carico"]')).toBeTruthy()
+    })
+
+    // R3 Task 8: il pulsante ora è pilotato dalla lista reale di `/azioni`, non
+    // più da un criterio provvisorio locale — questo è il test che conta di
+    // più in revisione (v. task-8-brief.md).
+    it('NON mostra "Accetta il carico" se /azioni non include \'Accettazione\' fra le operazioni disponibili', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        of({
+          stato: 'Emesso',
+          versione: 1,
+          azioni: [{ operazione: 'Annulla', verbo: 'Annulla il formulario' }],
+        })
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-accetta-carico"]')).toBeFalsy()
     })
 
     it('NON mostra "Accetta il carico" per un FIR non legato a RENTRI', () => {
@@ -732,10 +766,34 @@ describe('FirDetailComponent', () => {
     it('mostra "Annulla il formulario" solo per un FIR legato a RENTRI e un ruolo abilitato', () => {
       setup({ role: 'OPERATOR' })
       firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        of({
+          stato: 'Emesso',
+          versione: 1,
+          azioni: [{ operazione: 'Annulla', verbo: 'Annulla il formulario' }],
+        })
+      )
       fixture.detectChanges()
 
       const el: HTMLElement = fixture.nativeElement
       expect(el.querySelector('[data-testid="fir-detail-rentri-annulla-formulario"]')).toBeTruthy()
+    })
+
+    // R3 Task 8: stesso schema del test analogo per "Accetta il carico".
+    it('NON mostra "Annulla il formulario" se /azioni non include \'Annulla\' fra le operazioni disponibili', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        of({
+          stato: 'Emesso',
+          versione: 1,
+          azioni: [{ operazione: 'Accettazione', verbo: 'Accetta o respingi il carico' }],
+        })
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-annulla-formulario"]')).toBeFalsy()
     })
 
     it('NON mostra "Annulla il formulario" per un FIR non legato a RENTRI', () => {
@@ -1062,14 +1120,36 @@ describe('FirDetailComponent', () => {
       expect(el.querySelector('[data-testid="fir-detail-rentri-aggiorna-stato"]')).toBeFalsy()
     })
 
-    it('apertura della pagina NON chiama /azioni da sola: nessun polling automatico', () => {
+    // R3 Task 7 aveva scelto "nessuna chiamata automatica" come criterio
+    // provvisorio: il caricamento di `/azioni` avveniva SOLO sull'azione
+    // esplicita "Aggiorna lo stato". Il Task 8 lo sostituisce esplicitamente
+    // (v. piano, Step 1 "Caricare /azioni all'apertura della pagina"): ora
+    // la lista reale delle azioni disponibili pilota i pulsanti del ciclo di
+    // vita, quindi deve essere caricata già all'apertura pagina. Questo test,
+    // che prima asseriva il contrario, è stato aggiornato di conseguenza
+    // anziché cancellato in silenzio.
+    it('apertura della pagina chiama /azioni per un FIR legato, per pilotare i pulsanti (R3 Task 8)', () => {
       setup({ role: 'OPERATOR' })
       firService.getFIRById.and.returnValue(of(firLegatoRentri))
       fixture.detectChanges()
 
-      // Solo l'apertura della pagina: /azioni deve restare non chiamata finché
-      // l'utente non preme esplicitamente "Aggiorna lo stato".
-      expect(rentriFirLifecycleService.azioniDisponibili).not.toHaveBeenCalled()
+      expect(rentriFirLifecycleService.azioniDisponibili).toHaveBeenCalledWith('fir-1')
+    })
+
+    it('un errore nel caricamento di /azioni all’apertura pagina non fa fallire il caricamento del FIR (i pulsanti governati da /azioni restano assenti)', () => {
+      setup({ role: 'OPERATOR' })
+      firService.getFIRById.and.returnValue(of(firLegatoRentri))
+      rentriFirLifecycleService.azioniDisponibili.and.returnValue(
+        throwError(() => ({ status: 500, error: { message: 'Errore ente' } }))
+      )
+
+      expect(() => fixture.detectChanges()).not.toThrow()
+
+      expect(component['fir']()).toEqual(firLegatoRentri)
+      expect(component['error']()).toBeNull()
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-rentri-accetta-carico"]')).toBeFalsy()
+      expect(el.querySelector('[data-testid="fir-detail-rentri-annulla-formulario"]')).toBeFalsy()
     })
 
     it('scarica il PDF ricevuto come Blob e avvia il download, senza mai navigare fuori da WasteFlow', () => {
