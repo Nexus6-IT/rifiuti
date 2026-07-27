@@ -9,6 +9,7 @@ import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
 import { gestisciRispostaErroreRentri, attendiMs } from './rentri-http-resilienza'
+import { RentriRateLimiterService } from './rentri-rate-limiter.service'
 import type { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
 
 /**
@@ -78,9 +79,55 @@ export class RENTRIApiClient {
     private readonly metrics: MetricsService,
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
     private readonly auth: RentriAuthService,
-    private readonly signature: RentriSignatureService
+    private readonly signature: RentriSignatureService,
+    // R5 Task 2: terzo strato di resilienza (v. rentri-rate-limiter.service.ts).
+    // OPZIONALE (non `@Inject` obbligatorio) per non rompere le costruzioni
+    // dirette già esistenti nelle suite di test (15 file, tutte istanziano
+    // RENTRIApiClient con `new` invece che via DI) — quando assente, il
+    // comportamento resta quello preesistente (nessuna attesa preventiva),
+    // MAI un errore. `RentriModule` lo passa sempre in produzione (risolto
+    // per tipo dal container Nest, essendo un provider dello stesso modulo).
+    private readonly rateLimiter?: RentriRateLimiterService
   ) {
     this.logger.setContext('RENTRIApiClient')
+  }
+
+  /**
+   * Applica il limitatore preventivo per-tenant (R5 Task 1) attorno a UN
+   * singolo tentativo HTTP, poi esegue `azione`. Aggancio deciso in R5 Task 2:
+   * PRIMA di ogni tentativo effettivo, non attorno all'intera operazione di
+   * dominio — un'operazione che consuma 5 tentativi di resilienza deve
+   * consumare 5 unità del budget del limitatore, non 1, altrimenti il
+   * limitatore non vedrebbe il traffico reale generato dai retry, che è
+   * esattamente il traffico a rischio di superare la soglia dell'ente.
+   *
+   * Nessun `timeoutMs` passato ad `acquisisci()`: questo client è il punto
+   * comune sia ai job automatici (BullMQ) sia alle azioni interattive, e la
+   * decisione se applicare un tetto di attesa breve è del CHIAMANTE che
+   * conosce il contesto (v. `RENTRI_RATE_LIMIT_TIMEOUT_AZIONE_MANUALE_MS` in
+   * `rentri-rate-limiter.service.ts`) — non di questo client, che aspetterebbe
+   * altrimenti la stessa cosa per un utente interattivo e per un job in coda.
+   *
+   * `rilascia()` è SEMPRE in `finally`: lo slot di concorrenza va liberato sia
+   * che `azione()` abbia successo sia che sollevi (compreso un 429/423/5xx
+   * che il chiamante ritenterà con un nuovo giro — e quindi una nuova
+   * acquisizione).
+   */
+  private async conRateLimiter<T>(tenantId: string, azione: () => Promise<T>): Promise<T> {
+    if (!this.rateLimiter) {
+      return azione()
+    }
+
+    const inizio = Date.now()
+    const permesso = await this.rateLimiter.acquisisci(tenantId)
+    const attesaSecondi = (Date.now() - inizio) / 1000
+    this.metrics.rentriRateLimiterWaitSeconds.observe({ tenant_id: tenantId }, attesaSecondi)
+
+    try {
+      return await azione()
+    } finally {
+      await permesso.rilascia()
+    }
   }
 
   /**
@@ -948,14 +995,19 @@ export class RENTRIApiClient {
     const contesto = '/ca-rentri/credentials/authorize-check'
 
     for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
-      const headers = await this.buildAuthHeaders(tenantId)
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          headers,
-          timeout: this.timeout,
-          validateStatus: () => true,
-        })
-      )
+      const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
+      // R5 Task 2: stesso aggancio degli altri cicli di polling di questo
+      // client — v. commento di `conRateLimiter`.
+      const response = await this.conRateLimiter(tenantEffettivo, async () => {
+        const headers = await this.buildAuthHeaders(tenantId)
+        return firstValueFrom(
+          this.httpService.get(url, {
+            headers,
+            timeout: this.timeout,
+            validateStatus: () => true,
+          })
+        )
+      })
 
       if (response.status === 202) {
         return 'IN_ATTESA'
@@ -1103,17 +1155,21 @@ export class RENTRIApiClient {
     const url = `${this.config.baseUrl}${RENTRIApiClient.FORMULARI_PATH}/${transazioneId}/status`
 
     for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
-      const headers = await this.buildAuthHeaders(tenantId)
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          headers,
-          timeout: this.timeout,
-          maxRedirects: 0,
-          validateStatus: () => true,
-        })
-      )
-
       const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
+      // R5 Task 2: limitatore preventivo attorno a QUESTO tentativo di
+      // polling, stesso aggancio di `eseguiRichiestaConResilienza` — v.
+      // commento di `conRateLimiter`.
+      const response = await this.conRateLimiter(tenantEffettivo, async () => {
+        const headers = await this.buildAuthHeaders(tenantId)
+        return firstValueFrom(
+          this.httpService.get(url, {
+            headers,
+            timeout: this.timeout,
+            maxRedirects: 0,
+            validateStatus: () => true,
+          })
+        )
+      })
 
       if (response.status === 200) {
         this.metrics.rentriTenantLocked.set({ tenant_id: tenantEffettivo }, 0)
@@ -1157,16 +1213,18 @@ export class RENTRIApiClient {
     const url = urlEsito.startsWith('http') ? urlEsito : `${this.config.baseUrl}${urlEsito}`
 
     for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
-      const headers = await this.buildAuthHeaders(tenantId)
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          headers,
-          timeout: this.timeout,
-          validateStatus: () => true,
-        })
-      )
-
       const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
+      // R5 Task 2: v. commento in `interrogaStatoTransazione`.
+      const response = await this.conRateLimiter(tenantEffettivo, async () => {
+        const headers = await this.buildAuthHeaders(tenantId)
+        return firstValueFrom(
+          this.httpService.get(url, {
+            headers,
+            timeout: this.timeout,
+            validateStatus: () => true,
+          })
+        )
+      })
 
       if (response.status === 400) {
         this.metrics.rentriTenantLocked.set({ tenant_id: tenantEffettivo }, 0)
@@ -1247,7 +1305,9 @@ export class RENTRIApiClient {
     const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
     for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
       try {
-        return await azione()
+        // R5 Task 2: il limitatore protegge QUESTO tentativo, non l'intera
+        // operazione — v. commento di `conRateLimiter`.
+        return await this.conRateLimiter(tenantEffettivo, azione)
       } catch (error: any) {
         const risposta = error?.response
         if (!risposta || typeof risposta.status !== 'number') {

@@ -1030,4 +1030,158 @@ describe('RENTRIApiClient', () => {
       })
     })
   })
+
+  /**
+   * R5 Task 2: il limitatore preventivo per-tenant (Task 1) si applica PRIMA
+   * di ogni singolo tentativo HTTP, restando un livello DISTINTO dalla
+   * resilienza già verificata sopra (403/429/423/5xx) — non deve mai
+   * sovrapporsi né alterare l'attesa che il client calcola per un
+   * `Retry-After` reale. Qui `rateLimiter` è un doppio che permette di
+   * osservare l'interazione fra i due strati senza Redis reale (quello è
+   * `rentri-rate-limiter.redis.spec.ts` per il limitatore in isolamento, e
+   * `rentri-rate-limiter.oracolo.spec.ts` per la prova end-to-end contro
+   * l'oracolo, R5 Task 6).
+   */
+  describe('limitatore preventivo — separazione dei due strati (R5 Task 2)', () => {
+    let mockRateLimiter: any
+    let clientConLimitatore: RENTRIApiClient
+
+    beforeEach(() => {
+      jest.useFakeTimers()
+
+      mockRateLimiter = {
+        acquisisci: jest
+          .fn()
+          .mockResolvedValue({ rilascia: jest.fn().mockResolvedValue(undefined) }),
+      }
+      mockMetrics.rentriRateLimiterWaitSeconds = { observe: jest.fn() }
+
+      clientConLimitatore = new RENTRIApiClient(
+        mockHttpService,
+        mockLogger,
+        mockMetrics,
+        mockConfig,
+        mockAuth,
+        mockSignature,
+        mockRateLimiter
+      )
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('senza rateLimiter (comportamento preesistente): nessuna chiamata a acquisisci, nessuna osservazione della metrica', async () => {
+      mockHttpService.post.mockReturnValue(
+        of({
+          data: { transazione_id: 'tx-senza-limitatore' },
+          status: 202,
+          statusText: 'Accepted',
+          headers: {},
+          config: {} as any,
+        })
+      )
+
+      await client.creaFormulario('tenant-1', { dati: 'x' })
+
+      expect(mockMetrics.rentriRateLimiterWaitSeconds?.observe).not.toHaveBeenCalled()
+    })
+
+    it('con rateLimiter: acquisisce UNA volta per tentativo HTTP riuscito, e rilascia sempre', async () => {
+      mockHttpService.post.mockReturnValue(
+        of({
+          data: { transazione_id: 'tx-con-limitatore' },
+          status: 202,
+          statusText: 'Accepted',
+          headers: {},
+          config: {} as any,
+        })
+      )
+
+      await clientConLimitatore.creaFormulario('tenant-9', { dati: 'x' })
+
+      expect(mockRateLimiter.acquisisci).toHaveBeenCalledTimes(1)
+      expect(mockRateLimiter.acquisisci).toHaveBeenCalledWith('tenant-9')
+      const permesso = await mockRateLimiter.acquisisci.mock.results[0].value
+      expect(permesso.rilascia).toHaveBeenCalledTimes(1)
+      expect(mockMetrics.rentriRateLimiterWaitSeconds.observe).toHaveBeenCalledWith(
+        { tenant_id: 'tenant-9' },
+        expect.any(Number)
+      )
+    })
+
+    it(
+      "con rateLimiter: consuma UNA acquisizione per OGNI tentativo di resilienza, non una sola per l'intera operazione — " +
+        'un 429 ritentato due volte deve produrre 3 acquisizioni (una per tentativo), non 1',
+      async () => {
+        const successResponse: AxiosResponse = {
+          data: { transazione_id: 'tx-429-limitatore' },
+          status: 202,
+          statusText: 'Accepted',
+          headers: { location: '/formulari/v1.0/tx-429-limitatore/status' },
+          config: {} as any,
+        }
+
+        mockHttpService.post
+          .mockReturnValueOnce(
+            throwError(() =>
+              erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+            )
+          )
+          .mockReturnValueOnce(
+            throwError(() =>
+              erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+            )
+          )
+          .mockReturnValueOnce(of(successResponse))
+
+        const promessa = clientConLimitatore.creaFormulario('tenant-9', { dati: 'x' })
+        await jest.advanceTimersByTimeAsync(5000)
+        await jest.advanceTimersByTimeAsync(5000)
+        await promessa
+
+        expect(mockRateLimiter.acquisisci).toHaveBeenCalledTimes(3)
+      }
+    )
+
+    it(
+      "con rateLimiter che risolve ISTANTANEAMENTE (nessun budget da attendere): l'attesa totale resta " +
+        'quella del Retry-After reale (5s x 2), MAI più lunga — il limitatore preventivo non deve ' +
+        "sommarsi a un ritardo già corretto imposto dall'ente",
+      async () => {
+        const successResponse: AxiosResponse = {
+          data: { transazione_id: 'tx-429-non-raddoppiato' },
+          status: 202,
+          statusText: 'Accepted',
+          headers: { location: '/formulari/v1.0/tx-429-non-raddoppiato/status' },
+          config: {} as any,
+        }
+
+        mockHttpService.post
+          .mockReturnValueOnce(
+            throwError(() =>
+              erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+            )
+          )
+          .mockReturnValueOnce(
+            throwError(() =>
+              erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '5' })
+            )
+          )
+          .mockReturnValueOnce(of(successResponse))
+
+        const promessa = clientConLimitatore.creaFormulario('tenant-9', { dati: 'x' })
+
+        // Esattamente le due attese da 5s del Retry-After bastano: se il
+        // limitatore avesse aggiunto un'attesa propria sopra queste, la
+        // promessa non si sarebbe ancora risolta a questo punto.
+        await jest.advanceTimersByTimeAsync(5000)
+        await jest.advanceTimersByTimeAsync(5000)
+
+        const risultato = await promessa
+        expect(risultato.transazioneId).toBe('tx-429-non-raddoppiato')
+        expect(mockHttpService.post).toHaveBeenCalledTimes(3)
+      }
+    )
+  })
 })
