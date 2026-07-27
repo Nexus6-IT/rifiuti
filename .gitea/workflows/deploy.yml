@@ -15,6 +15,9 @@ name: Deploy
 on:
   push:
     branches: [develop, master]
+  # Avvio manuale: permette di ri-rilasciare (o ritentare un gate caduto per
+  # ragioni transitorie) senza dover creare un commit fittizio su master.
+  workflow_dispatch:
 
 concurrency:
   group: deploy-${{ github.ref }}
