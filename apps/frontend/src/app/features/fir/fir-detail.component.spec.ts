@@ -853,7 +853,7 @@ describe('FirDetailComponent', () => {
       fixture.detectChanges()
 
       component['annullamentoMotivo'] = 'residuo di un tentativo precedente'
-      component.apriDialogAnnullamento(firLegatoRentri)
+      component.apriDialogAnnullamento()
 
       expect(component['annullamentoDialogVisible']()).toBeTrue()
       expect(component['annullamentoMotivo']).toBe('')
@@ -864,7 +864,7 @@ describe('FirDetailComponent', () => {
       firService.getFIRById.and.returnValue(of(firLegatoRentri))
       fixture.detectChanges()
 
-      component.apriDialogAnnullamento(firLegatoRentri)
+      component.apriDialogAnnullamento()
       component['annullamentoMotivo'] = '   '
 
       expect(component.annullamentoValido()).toBeFalse()
@@ -875,7 +875,7 @@ describe('FirDetailComponent', () => {
       firService.getFIRById.and.returnValue(of(firLegatoRentri))
       fixture.detectChanges()
 
-      component.apriDialogAnnullamento(firLegatoRentri)
+      component.apriDialogAnnullamento()
       component['annullamentoMotivo'] = 'x'.repeat(1025)
 
       expect(component.annullamentoValido()).toBeFalse()
@@ -886,7 +886,7 @@ describe('FirDetailComponent', () => {
       firService.getFIRById.and.returnValue(of(firLegatoRentri))
       fixture.detectChanges()
 
-      component.apriDialogAnnullamento(firLegatoRentri)
+      component.apriDialogAnnullamento()
       component['annullamentoMotivo'] = 'errore di pesatura alla partenza'
 
       expect(component.annullamentoValido()).toBeTrue()
@@ -897,7 +897,7 @@ describe('FirDetailComponent', () => {
       firService.getFIRById.and.returnValue(of(firLegatoRentri))
       fixture.detectChanges()
 
-      component.apriDialogAnnullamento(firLegatoRentri)
+      component.apriDialogAnnullamento()
       fixture.detectChanges()
 
       const bottone: HTMLButtonElement | null = fixture.nativeElement.querySelector(
@@ -915,7 +915,7 @@ describe('FirDetailComponent', () => {
         of({ esitoFirma: { esito: 'COMPLETATA', statoFormulario: 'Annullato' }, noteInviate: true })
       )
 
-      component.apriDialogAnnullamento(firLegatoRentri)
+      component.apriDialogAnnullamento()
       component['annullamentoMotivo'] = 'errore di pesatura alla partenza'
       component.confermaAnnullamento()
 
@@ -929,7 +929,7 @@ describe('FirDetailComponent', () => {
       firService.getFIRById.and.returnValue(of(firLegatoRentri))
       fixture.detectChanges()
 
-      component.apriDialogAnnullamento(firLegatoRentri)
+      component.apriDialogAnnullamento()
       // Nessun motivo impostato.
       component.confermaAnnullamento()
 
@@ -952,7 +952,7 @@ describe('FirDetailComponent', () => {
         })
       )
 
-      component.apriDialogAnnullamento(firLegatoRentri)
+      component.apriDialogAnnullamento()
       component['annullamentoMotivo'] = 'errore di pesatura alla partenza'
       component.confermaAnnullamento()
 
@@ -973,7 +973,7 @@ describe('FirDetailComponent', () => {
         }))
       )
 
-      component.apriDialogAnnullamento(firLegatoRentri)
+      component.apriDialogAnnullamento()
       component['annullamentoMotivo'] = 'errore di pesatura alla partenza'
 
       expect(() => component.confermaAnnullamento()).not.toThrow()

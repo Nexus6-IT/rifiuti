@@ -415,7 +415,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   icon="pi pi-ban"
                   severity="danger"
                   [outlined]="true"
-                  (onClick)="apriDialogAnnullamento(f)"
+                  (onClick)="apriDialogAnnullamento()"
                   data-testid="fir-detail-rentri-annulla-formulario"
                   [attr.aria-label]="
                     'Annulla il formulario RENTRI del FIR ' + (f.numeroProgressivo || f.id)
@@ -1298,7 +1298,13 @@ export class FirDetailComponent implements OnInit {
     return !!fir.rentriNumeroFir && this.canManageRENTRI() && this.haOperazioneRentri('Annulla')
   }
 
-  apriDialogAnnullamento(fir: FIR): void {
+  /**
+   * Nessun parametro di proposito: `confermaAnnullamento()` risolve il
+   * formulario da `this.fir()`, non da un argomento. Accettarne uno qui e poi
+   * ignorarlo suggerirebbe che il dialog sia legato a QUEL FIR mentre l'azione
+   * ne usa un'altra fonte — un'incoerenza che prima o poi qualcuno segue.
+   */
+  apriDialogAnnullamento(): void {
     this.annullamentoMotivo = ''
     this.annullamentoDialogVisible.set(true)
   }
