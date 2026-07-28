@@ -222,7 +222,10 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
       next: risposta => {
         const opzioni = (risposta?.items ?? []).map(v => this.toOption(v))
         this.voci.set(opzioni)
-        this.suggestions.set(opzioni)
+        // Copia, non lo stesso riferimento: i due segnali non devono
+        // condividere l'array, o un aggiornamento di uno passa inosservato
+        // all'altro (vedi la nota su `cerca`).
+        this.suggestions.set([...opzioni])
         this.caricato.set(true)
         this.risolviSelezioneIniziale()
       },
@@ -256,10 +259,19 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
 
   // ─── Ricerca ──────────────────────────────────────────────────────────────
 
+  /**
+   * SEMPRE un array NUOVO, anche quando l'elenco non cambia.
+   *
+   * p-autoComplete accende il proprio indicatore di caricamento quando invoca
+   * `completeMethod` e lo spegne solo vedendo CAMBIARE l'input `suggestions`.
+   * Riassegnare lo stesso riferimento (il caso della query vuota, cioe' del
+   * semplice click sulla tendina) non e' un cambiamento: il menu resta a
+   * caricare all'infinito senza mostrare nulla.
+   */
   cerca(event: AutoCompleteCompleteEvent): void {
     const q = (event.query || '').trim().toLowerCase()
     if (!q) {
-      this.suggestions.set(this.voci())
+      this.suggestions.set([...this.voci()])
       return
     }
     this.suggestions.set(

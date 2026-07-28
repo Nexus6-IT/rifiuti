@@ -64,6 +64,41 @@ describe('AnagraficaSelectComponent', () => {
     expect(component.suggestions().map(s => s.id)).toEqual(['p1'])
   })
 
+  /**
+   * Regressione: con query vuota (il semplice click sulla tendina) i
+   * suggerimenti venivano riassegnati con LO STESSO array. p-autoComplete
+   * spegne il proprio indicatore di caricamento solo vedendo cambiare l'input
+   * `suggestions`: stesso riferimento = nessun cambiamento = menu che gira a
+   * vuoto per sempre. Non basta controllare il contenuto, va controllata
+   * l'identita' dell'array.
+   */
+  it('con query vuota emette un array NUOVO (altrimenti il menu resta a caricare)', () => {
+    fixture.detectChanges()
+    const primaDelClick = component.suggestions()
+
+    component.cerca({ query: '', originalEvent: new Event('input') } as any)
+
+    expect(component.suggestions()).not.toBe(primaDelClick)
+    expect(component.suggestions().map(s => s.id)).toEqual(['p1', 'p2'])
+  })
+
+  it("i suggerimenti non condividono l'array con le voci caricate", () => {
+    fixture.detectChanges()
+
+    expect(component.suggestions()).not.toBe(component.voci())
+    expect(component.suggestions().map(s => s.id)).toEqual(component.voci().map(s => s.id))
+  })
+
+  it('due click consecutivi danno due array distinti', () => {
+    fixture.detectChanges()
+    component.cerca({ query: '', originalEvent: new Event('input') } as any)
+    const primo = component.suggestions()
+
+    component.cerca({ query: '', originalEvent: new Event('input') } as any)
+
+    expect(component.suggestions()).not.toBe(primo)
+  })
+
   it("emette l'id, non l'oggetto, alla selezione", () => {
     fixture.detectChanges()
     const emessi: string[] = []
