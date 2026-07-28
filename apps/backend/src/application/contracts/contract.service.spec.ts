@@ -23,6 +23,21 @@ describe('ContractService', () => {
         findFirst: jest.fn(),
         update: jest.fn(),
       },
+      // Registri anagrafici: per difetto le parti ESISTONO, così i test che non
+      // parlano di validazione dei riferimenti restano leggibili. I test che la
+      // riguardano sovrascrivono il mock caso per caso.
+      produttore: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'p1' }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      trasportatore: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'c1' }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      destinatario: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'c1' }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     }
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -119,5 +134,160 @@ describe('ContractService', () => {
     })
     expect(res.status).toBe('DRAFT')
     expect(res.tenantId).toBe('t1')
+  })
+
+  // ─── Verifica dei riferimenti alle anagrafiche ────────────────────────────
+  describe('create — riferimenti alle anagrafiche', () => {
+    const input = (over: Partial<any> = {}) => ({
+      contractNumber: 'CTR-2026-001',
+      producerId: 'p1',
+      counterpartyId: 'c1',
+      counterpartyType: 'TRANSPORTER' as const,
+      contractType: 'WASTE_TRANSPORT' as const,
+      cerCodes: ['150101'],
+      pricingModel: 'FLAT_RATE',
+      startDate: new Date('2026-01-01'),
+      ...over,
+    })
+
+    it('rifiuta un produttore che non esiste nel registro', async () => {
+      prisma.produttore.findFirst.mockResolvedValue(null)
+      await expect(service.create('t1', input())).rejects.toBeInstanceOf(BadRequestException)
+      expect(prisma.contract.create).not.toHaveBeenCalled()
+    })
+
+    it('rifiuta una controparte assente dal registro del suo tipo', async () => {
+      prisma.trasportatore.findFirst.mockResolvedValue(null)
+      await expect(service.create('t1', input())).rejects.toBeInstanceOf(BadRequestException)
+      expect(prisma.contract.create).not.toHaveBeenCalled()
+    })
+
+    it('cerca la controparte nel registro corrispondente al tipo', async () => {
+      prisma.contract.create.mockImplementation((a: any) => Promise.resolve(a.data))
+      await service.create('t1', input({ counterpartyType: 'DISPOSER' }))
+
+      expect(prisma.destinatario.findFirst).toHaveBeenCalled()
+      expect(prisma.trasportatore.findFirst).not.toHaveBeenCalled()
+    })
+
+    it('cerca le parti SOLO nel tenant corrente', async () => {
+      prisma.contract.create.mockImplementation((a: any) => Promise.resolve(a.data))
+      await service.create('t1', input())
+
+      expect(prisma.produttore.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'p1', tenantId: 't1' } })
+      )
+      expect(prisma.trasportatore.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'c1', tenantId: 't1' } })
+      )
+    })
+
+    it('non verifica alcun registro per BROKER (non ne esiste uno)', async () => {
+      prisma.contract.create.mockImplementation((a: any) => Promise.resolve(a.data))
+      await service.create('t1', input({ counterpartyType: 'BROKER' }))
+
+      expect(prisma.trasportatore.findFirst).not.toHaveBeenCalled()
+      expect(prisma.destinatario.findFirst).not.toHaveBeenCalled()
+      expect(prisma.contract.create).toHaveBeenCalled()
+    })
+  })
+
+  // ─── Risoluzione delle parti in lettura ──────────────────────────────────
+  describe('list — risoluzione delle parti', () => {
+    it('aggiunge ragione sociale e P.IVA di produttore e controparte', async () => {
+      prisma.contract.findMany.mockResolvedValue([
+        { id: 'k1', producerId: 'p1', counterpartyId: 't1r', counterpartyType: 'TRANSPORTER' },
+      ])
+      prisma.produttore.findMany.mockResolvedValue([
+        { id: 'p1', ragioneSociale: 'ACME SPA', partitaIVA: '01234567890' },
+      ])
+      prisma.trasportatore.findMany.mockResolvedValue([
+        { id: 't1r', ragioneSociale: 'ROSSI TRASPORTI SRL', partitaIVA: '09876543210' },
+      ])
+
+      const [riga] = await service.list('t1')
+
+      expect(riga.producer).toEqual({
+        id: 'p1',
+        ragioneSociale: 'ACME SPA',
+        partitaIVA: '01234567890',
+      })
+      expect(riga.counterparty?.ragioneSociale).toBe('ROSSI TRASPORTI SRL')
+    })
+
+    it('dà null — non solleva — se un id non è più in anagrafica', async () => {
+      prisma.contract.findMany.mockResolvedValue([
+        { id: 'k1', producerId: 'sparito', counterpartyId: 'pure', counterpartyType: 'DISPOSER' },
+      ])
+
+      const [riga] = await service.list('t1')
+
+      expect(riga.producer).toBeNull()
+      expect(riga.counterparty).toBeNull()
+    })
+
+    it('interroga ogni registro una volta sola, non una per contratto', async () => {
+      prisma.contract.findMany.mockResolvedValue([
+        { id: 'k1', producerId: 'p1', counterpartyId: 'x1', counterpartyType: 'TRANSPORTER' },
+        { id: 'k2', producerId: 'p1', counterpartyId: 'x2', counterpartyType: 'TRANSPORTER' },
+        { id: 'k3', producerId: 'p2', counterpartyId: 'x3', counterpartyType: 'DISPOSER' },
+      ])
+
+      await service.list('t1')
+
+      expect(prisma.produttore.findMany).toHaveBeenCalledTimes(1)
+      expect(prisma.trasportatore.findMany).toHaveBeenCalledTimes(1)
+      expect(prisma.destinatario.findMany).toHaveBeenCalledTimes(1)
+      // Gli id duplicati non vengono richiesti due volte.
+      expect(prisma.produttore.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: 't1', id: { in: ['p1', 'p2'] } } })
+      )
+    })
+
+    it('non interroga i registri se non ci sono contratti', async () => {
+      prisma.contract.findMany.mockResolvedValue([])
+
+      expect(await service.list('t1')).toEqual([])
+      expect(prisma.produttore.findMany).not.toHaveBeenCalled()
+    })
+  })
+
+  // ─── Numerazione progressiva ─────────────────────────────────────────────
+  describe('nextContractNumber', () => {
+    it("parte da 001 quando non ci sono contratti per l'anno", async () => {
+      prisma.contract.findMany.mockResolvedValue([])
+      expect(await service.nextContractNumber('t1', new Date('2026-03-04'))).toBe('CTR-2026-001')
+    })
+
+    it('usa il massimo esistente, non il conteggio (regge i buchi)', async () => {
+      prisma.contract.findMany.mockResolvedValue([
+        { contractNumber: 'CTR-2026-001' },
+        { contractNumber: 'CTR-2026-007' },
+      ])
+      expect(await service.nextContractNumber('t1', new Date('2026-03-04'))).toBe('CTR-2026-008')
+    })
+
+    it("riparte da 001 al cambio d'anno", async () => {
+      prisma.contract.findMany.mockResolvedValue([])
+      expect(await service.nextContractNumber('t1', new Date('2027-01-02'))).toBe('CTR-2027-001')
+      expect(prisma.contract.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ contractNumber: { startsWith: 'CTR-2027-' } }),
+        })
+      )
+    })
+
+    it('ignora i numeri fuori formato inseriti a mano', async () => {
+      prisma.contract.findMany.mockResolvedValue([
+        { contractNumber: 'CTR-2026-004' },
+        { contractNumber: 'CTR-2026-004-bis' },
+      ])
+      expect(await service.nextContractNumber('t1', new Date('2026-05-05'))).toBe('CTR-2026-005')
+    })
+
+    it('supera le tre cifre senza troncare', async () => {
+      prisma.contract.findMany.mockResolvedValue([{ contractNumber: 'CTR-2026-999' }])
+      expect(await service.nextContractNumber('t1', new Date('2026-05-05'))).toBe('CTR-2026-1000')
+    })
   })
 })

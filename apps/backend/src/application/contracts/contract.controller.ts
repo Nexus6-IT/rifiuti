@@ -62,6 +62,18 @@ export class ContractController {
     return this.contractService.getAutoFillForFir(user.tenantId, producerId, cerCode)
   }
 
+  // ATTENZIONE: deve restare PRIMA di `@Get(':id')`, altrimenti la rotta
+  // parametrica cattura "next-number" trattandolo come un id.
+  @Get('next-number')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Prossimo numero contratto suggerito',
+    description: 'Formato CTR-<anno>-<progressivo>. Suggerimento, non prenotazione.',
+  })
+  async nextNumber(@CurrentUser() user: CurrentUserPayload) {
+    return { contractNumber: await this.contractService.nextContractNumber(user.tenantId) }
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Dettaglio contratto' })
