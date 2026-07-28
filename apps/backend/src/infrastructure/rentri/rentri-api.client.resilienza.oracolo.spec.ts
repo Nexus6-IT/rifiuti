@@ -438,6 +438,13 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
           prometheusContainerName,
           '-p',
           `${prometheusPort}:9090`,
+          // `host.docker.internal` è una comodità di Docker Desktop: su Docker
+          // per Linux — quello del runner CI — non esiste, e senza questa
+          // riga Prometheus parte, diventa pronto, ma non scrape-a nulla. Il
+          // sintomo non è un errore di rete: è l'attesa dell'allarme che scade,
+          // che somiglia a un difetto del prodotto e non lo è.
+          '--add-host',
+          'host.docker.internal:host-gateway',
           '--entrypoint',
           'sh',
           'prom/prometheus:latest',
