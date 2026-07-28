@@ -18,8 +18,19 @@ name: CI
 on:
   push:
     branches: [develop, master]
+    # Stesso filtro di deploy.yml: un commit di sola documentazione non puo'
+    # rompere lint, test o build, quindi non vale il tempo di runner. Vale
+    # solo per i commit che toccano ESCLUSIVAMENTE questi percorsi.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
   pull_request:
     branches: [develop, master]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
 
 # Annulla run precedenti ancora in corso sullo stesso ref (risparmia tempo runner).
 concurrency:

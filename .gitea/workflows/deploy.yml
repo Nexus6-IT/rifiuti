@@ -15,6 +15,22 @@ name: Deploy
 on:
   push:
     branches: [develop, master]
+    # Un commit di sola documentazione non cambia cio' che gira in produzione:
+    # ricostruire le immagini e sostituire i container per aggiornare COSTS.md
+    # occupa il runner per mezz'ora e ripaga nulla.
+    #
+    # Il filtro vale solo per i commit che toccano ESCLUSIVAMENTE questi
+    # percorsi: se un commit mescola codice e documentazione, il rilascio parte
+    # normalmente. Verificato prima di introdurlo che nessun .md sia importato
+    # dal codice, incluso negli asset di build, e che nessun test legga da
+    # `docs/` (i file letti dalle suite sono `monitoring/alerts/*.yml` e
+    # `tools/rentri-fake/`, che restano fuori dal filtro).
+    #
+    # Per rilasciare comunque dopo un commit filtrato: `workflow_dispatch`.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
   # Avvio manuale: permette di ri-rilasciare (o ritentare un gate caduto per
   # ragioni transitorie) senza dover creare un commit fittizio su master.
   workflow_dispatch:
