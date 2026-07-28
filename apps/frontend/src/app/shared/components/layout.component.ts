@@ -1097,6 +1097,8 @@ export class LayoutComponent implements OnInit {
     icon: string
     feature: string
     adminOnly?: boolean
+    /** Voce visibile al solo SUPER_ADMIN (piu' restrittiva di `adminOnly`). */
+    superAdminOnly?: boolean
   }[] = [
     {
       label: 'Certificato RENTRI',
@@ -1124,20 +1126,26 @@ export class LayoutComponent implements OnInit {
       adminOnly: true,
     },
     {
+      // Manutenzione di tabelle di piattaforma: solo SUPER_ADMIN (2026-07-28).
       label: 'Dati di riferimento',
       route: '/reference-data',
       icon: 'pi pi-database',
       feature: 'reference_data',
+      superAdminOnly: true,
     },
   ]
 
   /**
    * Voci Impostazioni effettivamente visibili: filtrate per feature attiva e,
    * per le voci `adminOnly`, per ruolo amministrativo (SUPER_ADMIN/ADMIN).
+   * Le voci `superAdminOnly` richiedono il solo SUPER_ADMIN.
    */
   readonly visibleImpostazioni = computed(() =>
     this.navImpostazioni.filter(
-      item => this.ff.has(item.feature) && (!item.adminOnly || this.canSeeAdminSection())
+      item =>
+        this.ff.has(item.feature) &&
+        (!item.adminOnly || this.canSeeAdminSection()) &&
+        (!item.superAdminOnly || this.isSuperAdmin())
     )
   )
 

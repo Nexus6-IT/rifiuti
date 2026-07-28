@@ -7,12 +7,22 @@ import { ReferenceDataService } from './reference-data.service'
 import { ReferenceDataSeederService, ReferenceDataset } from './reference-data-seeder.service'
 
 /**
- * Reference Data Controller — lookup pubblici (autenticati) + gestione admin
- * del popolamento dei dati di riferimento condivisi.
+ * Reference Data Controller — stato e consultazione delle tabelle condivise
+ * (ISTAT/ATECO) e ripopolamento dalle sorgenti.
+ *
+ * RISERVATO AL SUPER_ADMIN (decisione del committente, 2026-07-28). Prima
+ * bastava essere autenticati per leggere stato e ricerche: era la pagina di
+ * manutenzione di dati di piattaforma, esposta a chiunque avesse un account.
+ * Il vincolo sta QUI, non solo nel menu o nel guard di rotta del frontend, che
+ * evitano soltanto di mostrare una pagina inutilizzabile.
+ *
+ * Nessun'altra schermata consuma questi endpoint (verificato prima di
+ * restringerli): le ricerche di comuni/ATECO dei form usano altre vie.
  */
 @ApiTags('reference-data')
 @Controller('reference-data')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN')
 @ApiBearerAuth()
 export class ReferenceDataController {
   constructor(
@@ -49,10 +59,10 @@ export class ReferenceDataController {
 
   @Post('reseed')
   @HttpCode(HttpStatus.ACCEPTED)
-  @UseGuards(RolesGuard)
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  // Nessun @Roles qui: vale quello del controller (SUPER_ADMIN). Prima
+  // ammetteva anche ADMIN, ora piu' restrittivo come il resto della pagina.
   @ApiOperation({
-    summary: 'Ripopola i dati di riferimento dalle sorgenti (admin)',
+    summary: 'Ripopola i dati di riferimento dalle sorgenti (SUPER_ADMIN)',
     description:
       'Avvia il reseed di tutti i dataset o di uno solo (?dataset=ateco|nazioni|province|comuni).',
   })
