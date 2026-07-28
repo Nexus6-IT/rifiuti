@@ -139,7 +139,12 @@ export const routes: Routes = [
           ),
       },
       {
+        // Dati di riferimento (tabelle condivise ISTAT/ATECO): manutenzione di
+        // piattaforma, riservata al SUPER_ADMIN (2026-07-28). Il guard evita
+        // l'accesso digitando l'URL; l'autorizzazione reale resta sul backend
+        // (reference-data.controller.ts, @Roles('SUPER_ADMIN')).
         path: 'reference-data',
+        canActivate: [superAdminGuard],
         loadComponent: () =>
           import('./features/reference-data/reference-data.component').then(
             m => m.ReferenceDataComponent

@@ -301,6 +301,36 @@ kbd {
 .p-button.p-button-sm { height: var(--control-sm); padding: 0 var(--spacing-md) !important; font-size: var(--font-size-xs) !important; }
 .p-button.p-button-lg { height: var(--control-lg); }
 
+/* SelectButton — l'opzione SELEZIONATA appariva bianca su bianco.
+   Due cause sovrapposte, entrambe necessarie da correggere:
+   1) PrimeNG rende ogni opzione come `.p-button`, e la regola generale qui
+      sopra impone `color: #ffffff`, ereditato dall'etichetta con `!important`;
+   2) il tema disegna sull'opzione selezionata un riquadro `::before` BIANCO
+      (inset di 4px) che copre lo sfondo del bottone e sotto cui l'etichetta
+      bianca sparisce. Colorare solo lo sfondo del bottone non bastava: la
+      pillola ci passava sopra.
+   Qui il riempimento e' del bottone, quindi il riquadro non serve. */
+.p-selectbutton .p-button::before {
+  display: none;
+}
+.p-selectbutton .p-button {
+  background: var(--surface-card, #ffffff);
+  border-color: var(--surface-border-strong);
+  color: var(--text-secondary);
+}
+.p-selectbutton .p-button:not(:disabled):hover {
+  background: var(--color-gray-100);
+  border-color: var(--surface-border-strong);
+  color: var(--text-primary);
+}
+/* Selezionata: teal scuro + bianco, gli stessi 4.5:1 dell'azione primaria. */
+.p-selectbutton .p-button.p-highlight,
+.p-selectbutton .p-button.p-highlight:not(:disabled):hover {
+  background: var(--brand-primary-dark);
+  border-color: var(--brand-primary-dark);
+  color: #ffffff;
+}
+
 /* Campi input reali — altezza unica --control-md */
 .p-inputtext, .p-calendar .p-inputtext, .p-inputnumber-input, .p-password input {
   height: var(--control-md);
