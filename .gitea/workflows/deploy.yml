@@ -39,6 +39,19 @@ jobs:
     timeout-minutes: 20
     env:
       NODE_VERSION: "20"
+    # Redis reale per le suite dell'oracolo che provano il limitatore preventivo
+    # e la resilienza con guasti iniettati (R5): usano ioredis contro un'istanza
+    # vera, non un finto. Senza questo servizio fallivano con
+    # "MaxRetriesPerRequestError" e il gate bloccava ogni rilascio pur essendo
+    # verde in locale, dove un Redis di sviluppo è sempre acceso.
+    #
+    # NIENTE `ports:`: il runner gira con `container.network=host`
+    # (ops/setup-gitea-runner.sh), e con la rete host Docker IGNORA i port
+    # mapping — il servizio resta sulla sua porta, 6379. I test la prendono da
+    # RENTRI_RATELIMIT_TEST_REDIS_PORT, impostata sul passo dell'oracolo.
+    services:
+      redis:
+        image: redis:7-alpine
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -107,11 +120,30 @@ jobs:
         working-directory: tools/rentri-fake
         run: npm ci
 
+      # Se il servizio Redis non e' raggiungibile, dirlo QUI con un messaggio
+      # comprensibile: altrimenti l'unico sintomo e' un
+      # "MaxRetriesPerRequestError" sepolto dentro l'output di Jest, che non
+      # somiglia affatto a "manca un servizio".
+      - name: Verifica che il Redis di test risponda
+        run: |
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/6379) 2>/dev/null; then
+              echo "Redis di test raggiungibile su 127.0.0.1:6379"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Redis di test non raggiungibile su 127.0.0.1:6379. Le suite oracolo del limitatore (R5) non possono girare."
+          exit 1
+
       - name: Test di conformita' RENTRI contro l'oracolo
         working-directory: apps/backend
         env:
           NODE_ENV: test
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
+          # Il servizio Redis sta sulla porta di default (vedi `services:`),
+          # non sulla 16399 che i test assumono quando si lavora in locale.
+          RENTRI_RATELIMIT_TEST_REDIS_HOST: 127.0.0.1
+          RENTRI_RATELIMIT_TEST_REDIS_PORT: "6379"
         run: npm run test:oracolo
 
       # Build backend (stesso percorso usato dal Dockerfile.prod).
