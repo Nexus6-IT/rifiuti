@@ -27,6 +27,7 @@ describe('RENTRISyncLogRepository — persistenza log RENTRI (rentri_sync_logs)'
       rENTRISyncLog: {
         upsert: jest.fn().mockResolvedValue({}),
         findUnique: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
       },
@@ -80,33 +81,45 @@ describe('RENTRISyncLogRepository — persistenza log RENTRI (rentri_sync_logs)'
     })
   })
 
-  it('findById rilegge e ricostruisce un log persistito con tutti i campi', async () => {
-    const syncedAt = new Date('2026-07-26T09:00:00Z')
-    prisma.rENTRISyncLog.findUnique.mockResolvedValue({
-      id: 'log-1',
-      firId: 'fir-1',
-      tenantId: 'tenant-1',
-      status: 'SUCCESS',
-      attempt: 1,
-      requestPayload: '{"xfir":true}',
-      responsePayload: '{"esito":"ok"}',
-      errorMessage: null,
-      errorCode: null,
-      protocolNumber: 'RENTRI-000123',
-      syncedAt,
-      durationMs: 250,
-      createdAt: new Date('2026-07-26T08:59:00Z'),
-    })
+  it('findById rilegge e ricostruisce un log persistito con tutti i campi', async () =>
+    perTenant(async () => {
+      const syncedAt = new Date('2026-07-26T09:00:00Z')
+      prisma.rENTRISyncLog.findFirst.mockResolvedValue({
+        id: 'log-1',
+        firId: 'fir-1',
+        tenantId: 'tenant-1',
+        status: 'SUCCESS',
+        attempt: 1,
+        requestPayload: '{"xfir":true}',
+        responsePayload: '{"esito":"ok"}',
+        errorMessage: null,
+        errorCode: null,
+        protocolNumber: 'RENTRI-000123',
+        syncedAt,
+        durationMs: 250,
+        createdAt: new Date('2026-07-26T08:59:00Z'),
+      })
 
-    const log = await repo.findById('log-1')
+      const log = await repo.findById('log-1')
 
-    expect(log).not.toBeNull()
-    expect(log!.status).toBe('SUCCESS')
-    expect(log!.protocolNumber).toBe('RENTRI-000123')
-    expect(log!.responsePayload).toBe('{"esito":"ok"}')
-    expect(log!.syncedAt).toEqual(syncedAt)
-    expect(log!.durationMs).toBe(250)
-  })
+      expect(log).not.toBeNull()
+      expect(log!.status).toBe('SUCCESS')
+      expect(log!.protocolNumber).toBe('RENTRI-000123')
+      expect(log!.responsePayload).toBe('{"esito":"ok"}')
+      expect(log!.syncedAt).toEqual(syncedAt)
+      expect(log!.durationMs).toBe(250)
+    }))
+
+  it('findById cerca solo dentro l’azienda corrente', async () =>
+    perTenant(async () => {
+      await repo.findById('log-1')
+
+      expect(prisma.rENTRISyncLog.findFirst).toHaveBeenCalledWith({
+        where: { id: 'log-1', tenantId: 'tenant-1' },
+      })
+      // Mai una lookup per solo id: restituirebbe il log di un'altra azienda.
+      expect(prisma.rENTRISyncLog.findUnique).not.toHaveBeenCalled()
+    }))
 
   it('findByFIRId filtra per firId e tenant e ordina per data decrescente', async () =>
     perTenant(async () => {
@@ -118,11 +131,12 @@ describe('RENTRISyncLogRepository — persistenza log RENTRI (rentri_sync_logs)'
       })
     }))
 
-  it('findById su log inesistente torna null (non uno stub sempre-null indipendente dal dato)', async () => {
-    prisma.rENTRISyncLog.findUnique.mockResolvedValue(null)
+  it('findById su log inesistente torna null (non uno stub sempre-null indipendente dal dato)', async () =>
+    perTenant(async () => {
+      prisma.rENTRISyncLog.findFirst.mockResolvedValue(null)
 
-    const log = await repo.findById('non-esiste')
+      const log = await repo.findById('non-esiste')
 
-    expect(log).toBeNull()
-  })
+      expect(log).toBeNull()
+    }))
 })

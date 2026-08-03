@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import {
   GetDashboardUseCase,
   DashboardData,
@@ -120,7 +121,7 @@ export class DashboardController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string
   ): Promise<DashboardData> {
-    const tenantId = req.user.tenantId
+    const tenantId = requireRequestTenantId(req)
 
     const dateRange =
       startDate && endDate
@@ -174,7 +175,7 @@ export class DashboardController {
     @Req() req: any,
     @Query('format') _format: 'csv' | 'xlsx' = 'csv'
   ): Promise<string> {
-    const tenantId = req.user.tenantId
+    const tenantId = requireRequestTenantId(req)
 
     const dashboard = await this.getDashboardUseCase.execute({ tenantId })
 

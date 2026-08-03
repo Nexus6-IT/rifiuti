@@ -4,6 +4,7 @@
  */
 
 import { createParamDecorator, ExecutionContext } from '@nestjs/common'
+import { resolveRequestTenantId } from '../../core/context/resolve-request-tenant'
 
 export interface CurrentUserPayload {
   id: string
@@ -19,6 +20,21 @@ export interface CurrentUserPayload {
 export const CurrentUser = createParamDecorator(
   (data: unknown, ctx: ExecutionContext): CurrentUserPayload => {
     const request = ctx.switchToHttp().getRequest()
-    return request.user
+    const user = request.user
+
+    if (!user) {
+      return user
+    }
+
+    // `tenantId` è l'azienda su cui la richiesta OPERA, non quella scritta nel
+    // token: durante uno switch di azienda (X-Tenant-ID validato) le due
+    // divergono, e i controller devono seguire l'azienda selezionata — la
+    // stessa che l'estensione RLS di Prisma inietta nelle query.
+    const tenantAttivo = resolveRequestTenantId(request)
+    if (!tenantAttivo || tenantAttivo === user.tenantId) {
+      return user
+    }
+
+    return { ...user, tenantId: tenantAttivo }
   }
 )

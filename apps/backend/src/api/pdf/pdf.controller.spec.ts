@@ -1,4 +1,4 @@
-import { BadRequestException, HttpException } from '@nestjs/common'
+import { ForbiddenException, HttpException } from '@nestjs/common'
 import { PNG } from 'pngjs'
 import jsQR from 'jsqr'
 import { PdfController } from './pdf.controller'
@@ -94,10 +94,14 @@ describe('PdfController — QR verifica su downloadFIR', () => {
     expect(pdfService.generateFIRPDF).not.toHaveBeenCalled()
   })
 
-  it('rifiuta la richiesta senza tenant nel token (400, non genera nulla)', async () => {
+  // 403 (non 400): la risoluzione dell'azienda attiva è centralizzata in
+  // `requireRequestTenantId`, che è fail-closed e uniforme su tutti gli
+  // endpoint — "nessuna azienda selezionata" è un problema di autorizzazione,
+  // non una richiesta malformata.
+  it('rifiuta la richiesta senza azienda attiva (403, non genera nulla)', async () => {
     await expect(
       controller.downloadFIR(FIR_ID, { user: {} } as any, res as any)
-    ).rejects.toBeInstanceOf(BadRequestException)
+    ).rejects.toBeInstanceOf(ForbiddenException)
 
     expect(prisma.fIR.findFirst).not.toHaveBeenCalled()
     expect(pdfService.generateFIRPDF).not.toHaveBeenCalled()

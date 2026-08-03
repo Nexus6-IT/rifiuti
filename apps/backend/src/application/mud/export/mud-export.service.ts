@@ -166,7 +166,10 @@ export class MudExportService {
     })
 
     // Anagrafica + codici ISTAT dei destinatari (per i moduli DR).
-    const destInfo = await this.loadDestinatariInfo(firs.map(f => f.receiverId))
+    const destInfo = await this.loadDestinatariInfo(
+      tenantId,
+      firs.map(f => f.receiverId)
+    )
 
     interface Acc {
       recuperoKg: number
@@ -232,7 +235,7 @@ export class MudExportService {
    * Carica anagrafica + codice ISTAT (provincia 3 + comune 3) dei destinatari
    * indicati, risolvendo il comune dalle tabelle di riferimento condivise.
    */
-  private async loadDestinatariInfo(receiverIds: Array<string | null>) {
+  private async loadDestinatariInfo(tenantId: string, receiverIds: Array<string | null>) {
     const ids = Array.from(new Set(receiverIds.filter((id): id is string => !!id)))
     const info = new Map<
       string,
@@ -248,7 +251,12 @@ export class MudExportService {
     >()
     if (ids.length === 0) return info
 
-    const destinatari = await this.prisma.destinatario.findMany({ where: { id: { in: ids } } })
+    // Il `tenantId` è obbligatorio anche se gli id arrivano dai FIR del tenant:
+    // questo service usa il client Prisma senza estensione RLS, quindi il
+    // perimetro dell'azienda esiste solo se sta scritto nella query.
+    const destinatari = await this.prisma.destinatario.findMany({
+      where: { id: { in: ids }, tenantId },
+    })
 
     // Risolve i comuni una sola volta per coppia (comune, provincia) distinta:
     // con N destinatari nello stesso comune si faceva una lookup per ciascuno.

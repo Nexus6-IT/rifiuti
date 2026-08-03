@@ -20,6 +20,7 @@ import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.qu
 import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query'
 import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface'
 import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-change-history.repository.interface'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 
 /**
  * AuditController
@@ -88,7 +89,7 @@ export class AuditController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string
   ) {
-    const tenantId = request.user.tenantId
+    const tenantId = requireRequestTenantId(request)
 
     const query = new GetAuditTrailQuery(
       tenantId,
@@ -135,7 +136,7 @@ export class AuditController {
     @Query('endDate') endDate?: string,
     @Query('userId') userId?: string
   ) {
-    const tenantId = request.user.tenantId
+    const tenantId = requireRequestTenantId(request)
 
     const csv = await this.auditLogRepository.exportToCsv({
       tenantId,
@@ -173,7 +174,7 @@ export class AuditController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string
   ) {
-    const tenantId = request.user.tenantId
+    const tenantId = requireRequestTenantId(request)
 
     const query = new GetAuditTrailQuery(
       tenantId,
@@ -207,7 +208,7 @@ export class AuditController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string
   ) {
-    const tenantId = request.user.tenantId
+    const tenantId = requireRequestTenantId(request)
 
     const query = new GetAuditTrailQuery(
       tenantId,
@@ -254,7 +255,7 @@ export class AuditController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string
   ) {
-    const tenantId = request.user.tenantId
+    const tenantId = requireRequestTenantId(request)
 
     const result = await this.roleChangeHistoryRepository.findWithFilters({
       tenantId,
@@ -320,7 +321,7 @@ export class AuditController {
     @Req() request: any,
     @Body() body: { userId: string; timestamp: string }
   ) {
-    const tenantId = request.user.tenantId
+    const tenantId = requireRequestTenantId(request)
 
     const query = new ReconstructHistoricalPermissionsQuery(
       body.userId,
@@ -343,7 +344,7 @@ export class AuditController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string
   ) {
-    const tenantId = request.user.tenantId
+    const tenantId = requireRequestTenantId(request)
 
     const [permissionStats, roleChangeStats] = await Promise.all([
       this.auditLogRepository.getStatistics(tenantId, {
@@ -374,7 +375,7 @@ export class AuditController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string
   ) {
-    const tenantId = request.user.tenantId
+    const tenantId = requireRequestTenantId(request)
 
     const result = await this.auditLogRepository.validateChainIntegrity(tenantId, {
       startDate: startDate ? new Date(startDate) : undefined,

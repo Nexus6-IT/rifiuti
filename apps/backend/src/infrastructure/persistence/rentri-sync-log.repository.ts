@@ -72,8 +72,11 @@ export class RENTRISyncLogRepository implements ITenantRepository<RENTRISyncLog>
    * Find sync log by ID
    */
   async findById(id: string): Promise<RENTRISyncLog | null> {
-    const record = await this.prisma.rENTRISyncLog.findUnique({
-      where: { id },
+    // `findFirst` con il tenant, non `findUnique` per solo id: l'id è una PK
+    // globale e una lookup non filtrata restituirebbe il log di un'altra
+    // azienda a chi ne conoscesse (o indovinasse) l'identificativo.
+    const record = await this.prisma.rENTRISyncLog.findFirst({
+      where: { id, tenantId: this.getTenantId() },
     })
 
     if (!record) {

@@ -14,6 +14,8 @@
  * ============================================================================
  */
 
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { applyTenantScope, TENANT_SCOPED_MODELS, rlsExtension } from './prisma-rls.extension'
 import { TenantContext } from '../../core/context/tenant-context'
 
@@ -189,6 +191,31 @@ describe('RLS Prisma Extension (applyTenantScope)', () => {
       expect(TENANT_SCOPED_MODELS.has('Tenant')).toBe(false)
       expect(TENANT_SCOPED_MODELS.has('CERCode')).toBe(false)
       expect(TENANT_SCOPED_MODELS.has('AbacPolicy')).toBe(false)
+    })
+
+    /**
+     * Guardia contro le omissioni future: la whitelist è scritta a mano, quindi
+     * un model nuovo con `tenant_id` resterebbe silenziosamente fuori dalla RLS
+     * (è successo con `RENTRISyncLog`). Qui la si confronta con lo schema.
+     */
+    it('nessun model con tenant_id nello schema resta fuori dalla whitelist', () => {
+      const schema = readFileSync(join(__dirname, '../../../prisma/schema.prisma'), 'utf8')
+
+      const conTenantId: string[] = []
+      const regexModel = /model\s+(\w+)\s*\{([\s\S]*?)\n\}/g
+      let match: RegExpExecArray | null
+      while ((match = regexModel.exec(schema))) {
+        const [, nome, corpo] = match
+        if (/\n\s*tenantId\s+String/.test(corpo)) {
+          conTenantId.push(nome)
+        }
+      }
+
+      // Sanity check: se il parsing non trova nulla il test non sta verificando niente.
+      expect(conTenantId.length).toBeGreaterThan(10)
+
+      const fuoriWhitelist = conTenantId.filter(nome => !TENANT_SCOPED_MODELS.has(nome))
+      expect(fuoriWhitelist).toEqual([])
     })
 
     it('rlsExtension è applicabile a un client tramite $extends', () => {

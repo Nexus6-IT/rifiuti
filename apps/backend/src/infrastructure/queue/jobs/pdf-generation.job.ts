@@ -155,8 +155,11 @@ export class PdfGenerationJobProcessor extends WorkerHost {
     let pdfBuffer: Buffer
 
     if (documentType === 'fir') {
-      const fir = await this.prisma.fIR.findUnique({
-        where: { id: documentId },
+      // `findFirst` con `tenantId`, mai `findUnique` per solo id: il job gira
+      // fuori dal ciclo di richiesta, quindi senza TenantContext e senza
+      // estensione RLS. Il perimetro dell'azienda lo impone questa query.
+      const fir = await this.prisma.fIR.findFirst({
+        where: { id: documentId, tenantId },
         include: {
           producerUser: true,
           carrierUser: true,
@@ -167,13 +170,15 @@ export class PdfGenerationJobProcessor extends WorkerHost {
       })
 
       if (!fir) {
+        // Anche il caso "esiste ma è di un'altra azienda" finisce qui: non
+        // distinguiamo i due esiti, come per il download sincrono del PDF.
         throw new Error(`FIR not found: ${documentId}`)
       }
 
       pdfBuffer = await this.pdfService.generateFIRPDF(fir)
     } else if (documentType === 'mud') {
-      const mudReport = await this.prisma.mUDReport.findUnique({
-        where: { id: documentId },
+      const mudReport = await this.prisma.mUDReport.findFirst({
+        where: { id: documentId, tenantId },
         include: {
           tenant: true,
         },

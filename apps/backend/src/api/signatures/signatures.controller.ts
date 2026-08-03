@@ -41,6 +41,7 @@ import { VerifySignaturesUseCase } from '../../application/signatures/verify-sig
 import { DomainException } from '../../domain/shared/domain-exception'
 import { ApplySignatureDto, ApplySignatureResponseDto } from './dto/apply-signature.dto'
 import { VerifySignaturesResponseDto } from './dto/verify-signatures.dto'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 
 /** UUID v1-v5 — l'id FIR è una colonna Postgres `uuid`. */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -109,7 +110,9 @@ export class SignaturesController {
     try {
       const result = await this.applySignatureUseCase.execute({
         firId,
-        tenantId: user.tenantId,
+        // Azienda EFFETTIVA della richiesta (non quella del token): la firma
+        // deve restare nel perimetro dell'azienda su cui si sta operando.
+        tenantId: requireRequestTenantId(req),
         userId: user.id, // UUID utente (per fir_signatures.user_id)
         role: dto.role,
         signerFiscalCode: user.fiscalCode ?? user.sub ?? 'SANDBOX000A00A000A',
@@ -232,7 +235,7 @@ export class SignaturesController {
     try {
       return await this.verifySignaturesUseCase.execute({
         firId,
-        tenantId: req.user.tenantId,
+        tenantId: requireRequestTenantId(req),
         disclosePersonalData: true,
       })
     } catch (error) {

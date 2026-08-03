@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { NotificationService } from '../../application/notifications/notification.service'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 
 @ApiTags('Notifications')
 @Controller('notifications')
@@ -31,7 +32,7 @@ export class NotificationsController {
     // Il JWT strategy popola req.user.id (non req.user.userId)
     return await this.notificationService.getUserNotifications({
       userId: req.user.id,
-      tenantId: req.user.tenantId,
+      tenantId: requireRequestTenantId(req),
       unreadOnly: unreadOnly === true,
       limit: limit ? parseInt(String(limit)) : 50,
     })
@@ -40,7 +41,10 @@ export class NotificationsController {
   @Get('unread-count')
   @ApiOperation({ summary: 'Get unread notification count' })
   async getUnreadCount(@Req() req: any) {
-    const count = await this.notificationService.getUnreadCount(req.user.id, req.user.tenantId)
+    const count = await this.notificationService.getUnreadCount(
+      req.user.id,
+      requireRequestTenantId(req)
+    )
     return { count }
   }
 
@@ -56,7 +60,7 @@ export class NotificationsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark all notifications as read' })
   async markAllAsRead(@Req() req: any) {
-    await this.notificationService.markAllAsRead(req.user.id, req.user.tenantId)
+    await this.notificationService.markAllAsRead(req.user.id, requireRequestTenantId(req))
     return { success: true }
   }
 

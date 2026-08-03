@@ -16,6 +16,24 @@ export class MembershipService {
   ) {}
 
   /**
+   * Filtro di un'associazione consulente VALIDA: attiva **e non scaduta**.
+   *
+   * `isActive` da solo non basta: il dominio
+   * (`ConsultantTenantAssociation.isActiveAndNotExpired()`) considera scaduta =
+   * inattiva, ma la disattivazione non viene scritta a DB allo scadere. Senza
+   * il vincolo su `expiresAt` un consulente conserverebbe l'accesso all'azienda
+   * del cliente oltre la fine dell'incarico.
+   */
+  private static associazioneValida(consultantUserId: string, tenantId?: string) {
+    return {
+      consultantUserId,
+      ...(tenantId ? { tenantId } : {}),
+      isActive: true,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    }
+  }
+
+  /**
    * Identità anagrafica della società attiva (tenant effettivo della richiesta).
    *
    * Serve al frontend (registro C/S) per determinare, dato un FIR, se il
@@ -53,7 +71,7 @@ export class MembershipService {
     owned.forEach(t => ids.add(t.id))
 
     const assoc = await this.prisma.consultantTenantAssociation.findMany({
-      where: { consultantUserId: user.id, isActive: true },
+      where: MembershipService.associazioneValida(user.id),
       select: { tenantId: true },
     })
     assoc.forEach(a => ids.add(a.tenantId))
@@ -98,9 +116,9 @@ export class MembershipService {
     })
     if (owned) return true
 
-    // 3. Associazione consulente attiva.
+    // 3. Associazione consulente attiva e non scaduta.
     const assoc = await this.prisma.consultantTenantAssociation.findFirst({
-      where: { consultantUserId: userId, tenantId: targetTenantId, isActive: true },
+      where: MembershipService.associazioneValida(userId, targetTenantId),
       select: { id: true },
     })
     return !!assoc
@@ -121,7 +139,7 @@ export class MembershipService {
       }
       if (!allowed) {
         const assoc = await this.prisma.consultantTenantAssociation.findFirst({
-          where: { consultantUserId: user.id, tenantId: targetTenantId, isActive: true },
+          where: MembershipService.associazioneValida(user.id, targetTenantId),
           select: { id: true },
         })
         allowed = !!assoc

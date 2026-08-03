@@ -106,6 +106,37 @@ describe('MudExportService', () => {
     expect(te).toContain('22222222222')
   })
 
+  it('cerca i destinatari dei moduli DR solo dentro l’azienda del dichiarante', async () => {
+    // L'export gira sul client Prisma SENZA estensione RLS: il perimetro
+    // dell'azienda deve stare nella query, altrimenti l'anagrafica di un
+    // destinatario omonimo di un altro tenant finirebbe nel MUD.
+    prisma.tenant.findUnique.mockResolvedValue({
+      ragioneSociale: 'Acme Spa',
+      partitaIva: '12345678901',
+      city: 'Roma',
+      province: 'RM',
+    })
+    prisma.fIR.findMany.mockResolvedValue([
+      {
+        cerCode: '170405',
+        quantity: 10,
+        wasteOperationType: 'RECOVERY',
+        carrierId: null,
+        carrierName: null,
+        carrierPartitaIva: null,
+        receiverId: 'dest-1',
+        receiverName: 'Recupero Metalli Srl',
+        receiverPartitaIva: '33333333333',
+      },
+    ])
+
+    await service.exportTelematico('tenant-1', 2024)
+
+    expect(prisma.destinatario.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['dest-1'] }, tenantId: 'tenant-1' },
+    })
+  })
+
   it('propaga errore per anno non supportato (prima di toccare il DB)', async () => {
     await expect(service.exportTelematico('tenant-1', 1999)).rejects.toThrow(
       'Versione tracciato MUD non disponibile'

@@ -17,6 +17,7 @@ import { PDFService } from '../../infrastructure/pdf/pdf.service'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { MUDGeneratorService } from '../../application/mud/mud-generator.service'
 import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 
 /**
  * PDF Controller
@@ -41,7 +42,7 @@ export class PdfController {
   async downloadFIR(@Param('id') id: string, @Req() req: any, @Res() res: Response) {
     // Il tenant DEVE essere quello dell'utente autenticato: senza questo vincolo
     // qualsiasi utente scaricherebbe il FIR di qualsiasi tenant conoscendone l'id.
-    const tenantId = req.user?.tenantId
+    const tenantId = requireRequestTenantId(req)
     if (!tenantId) {
       throw new BadRequestException('Tenant non disponibile per l’utente corrente')
     }
@@ -99,7 +100,7 @@ export class PdfController {
     }
 
     // Usa il tenant reale dell'utente autenticato (mai un placeholder).
-    const tenantId = req.user?.tenantId
+    const tenantId = requireRequestTenantId(req)
     if (!tenantId) {
       throw new BadRequestException('Tenant non disponibile per l’utente corrente')
     }

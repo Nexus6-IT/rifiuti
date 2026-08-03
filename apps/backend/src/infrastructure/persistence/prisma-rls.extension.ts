@@ -64,6 +64,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'PermissionRequest',
   'RentriCredential',
   'RentriUnitaLocale',
+  // Log delle sincronizzazioni verso l'ente: contiene il tracciato delle
+  // trasmissioni di un'azienda, non è un dato condiviso.
+  'RENTRISyncLog',
   'WasteMovement',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.

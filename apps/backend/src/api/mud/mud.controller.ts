@@ -4,6 +4,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { MUDGeneratorService } from '../../application/mud/mud-generator.service'
 import { MudExportService } from '../../application/mud/export/mud-export.service'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 
 /**
  * MUD Controller
@@ -25,7 +26,7 @@ export class MudController {
   @ApiOperation({ summary: 'Generate MUD report for a specific year' })
   @ApiQuery({ name: 'year', required: true, type: Number, example: 2024 })
   async generateReport(@Req() req: any, @Query('year') year: string) {
-    const tenantId = req.user.tenantId
+    const tenantId = requireRequestTenantId(req)
     const reportYear = this.parseYear(year)
 
     return await this.mudGenerator.generateMUDReport(tenantId, reportYear)
@@ -45,7 +46,7 @@ export class MudController {
     @Res() res: Response,
     @Query('year') year: string
   ): Promise<void> {
-    const tenantId = req.user.tenantId
+    const tenantId = requireRequestTenantId(req)
     const result = await this.mudExport.exportTelematico(tenantId, this.parseYear(year))
 
     res.setHeader('Content-Type', 'text/plain; charset=us-ascii')
