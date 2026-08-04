@@ -95,10 +95,16 @@ export class UserAdminService {
 
     // 1-bis. Enforcement abbonamento: verifica sospensione e limite utenti.
     // Il SUPER_ADMIN (amministratore di piattaforma) bypassa i controlli.
+    //
+    // Il limite passa da SubscriptionEnforcementService: il tetto vive sul
+    // contratto della MADRE (una figlia non ha un abbonamento proprio), mentre
+    // il conteggio resta sull'azienda su cui si sta creando — stessa regola del
+    // tetto FIR. Leggerlo dalla figlia bloccava a due utenti anche i gruppi
+    // ENTERPRISE (userLimitTotal = 0 = illimitato sulla radice).
     if (!this.isSuperAdmin(currentUser)) {
       await this.enforcement.assertNotSuspended(targetTenantId)
+      await this.enforcement.assertUserLimitNotReached(targetTenantId, dto.role)
     }
-    await this.enforceUserLimit(currentUser, targetTenantId, dto.role)
 
     // 2. Valida il codice fiscale (riusa la VO di dominio).
     if (!FiscalCode.isValid(dto.fiscalCode)) {
@@ -245,54 +251,6 @@ export class UserAdminService {
       where: { id: userId },
       data: { companyLimit },
     })
-  }
-
-  /**
-   * Verifica che la creazione di un nuovo utente non superi il limite di utenze
-   * del piano del tenant (`Tenant.userLimitTotal`).
-   *
-   * Regole:
-   *  - SUPER_ADMIN bypassa sempre il controllo.
-   *  - Il nuovo utente con ruolo ADMIN non incide sul limite → consentito.
-   *  - Per gli altri ruoli si contano gli utenti esistenti con ruolo DIVERSO da
-   *    ADMIN (i tenant admin sono esclusi dal conteggio); se il conteggio ha già
-   *    raggiunto il limite, la creazione è rifiutata.
-   *
-   * @throws ForbiddenException se il limite è raggiunto.
-   */
-  private async enforceUserLimit(
-    currentUser: CurrentUser,
-    targetTenantId: string,
-    newRole: string
-  ): Promise<void> {
-    if (this.isSuperAdmin(currentUser)) {
-      return
-    }
-
-    // Gli ADMIN (tenant admin) non rientrano nel limite.
-    if (newRole === UserRole.ADMIN) {
-      return
-    }
-
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: targetTenantId },
-      select: { userLimitTotal: true },
-    })
-
-    if (!tenant) {
-      throw new NotFoundException('Tenant non trovato')
-    }
-
-    const nonAdminCount = await this.prisma.user.count({
-      where: {
-        tenantId: targetTenantId,
-        role: { not: UserRole.ADMIN },
-      },
-    })
-
-    if (nonAdminCount >= tenant.userLimitTotal) {
-      throw new ForbiddenException('Limite utenze del piano raggiunto')
-    }
   }
 
   /**
