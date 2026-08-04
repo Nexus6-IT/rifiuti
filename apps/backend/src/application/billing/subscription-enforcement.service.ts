@@ -12,10 +12,14 @@
 import { Injectable, ForbiddenException } from '@nestjs/common'
 import { SubscriptionStatus } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { ContrattoGruppoService } from './contratto-gruppo.service'
 
 @Injectable()
 export class SubscriptionEnforcementService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly contratto: ContrattoGruppoService
+  ) {}
 
   /**
    * Verifica che il tenant non sia SUSPENDED o EXPIRED.
@@ -25,14 +29,9 @@ export class SubscriptionEnforcementService {
    * @throws ForbiddenException con messaggio localizzato in italiano.
    */
   async assertNotSuspended(tenantId: string): Promise<void> {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: {
-        subscriptionStatus: true,
-        subscriptionEnd: true,
-        ragioneSociale: true,
-      },
-    })
+    // Il contratto vive sulla radice del gruppo: una figlia non ha un
+    // abbonamento proprio, eredita quello della madre.
+    const tenant = await this.contratto.caricaContratto(tenantId)
 
     if (!tenant) return // Tenant non trovato: lascia che altri meccanismi gestiscano (es. RLS)
 
@@ -68,10 +67,9 @@ export class SubscriptionEnforcementService {
    * @throws ForbiddenException se il limite è raggiunto, con messaggio chiaro.
    */
   async assertFirLimitNotReached(tenantId: string): Promise<void> {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { firLimitPerMonth: true, subscriptionTier: true },
-    })
+    // Il VALORE del tetto viene dal piano della madre; il CONTEGGIO resta
+    // della singola azienda (tetto per azienda, non di gruppo).
+    const tenant = await this.contratto.caricaContratto(tenantId)
 
     if (!tenant) return
 
@@ -113,10 +111,7 @@ export class SubscriptionEnforcementService {
     // ADMIN non conta nel limite per design del sistema.
     if (newRole === 'ADMIN' || newRole === 'SUPER_ADMIN') return
 
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { userLimitTotal: true },
-    })
+    const tenant = await this.contratto.caricaContratto(tenantId)
 
     if (!tenant) return
 

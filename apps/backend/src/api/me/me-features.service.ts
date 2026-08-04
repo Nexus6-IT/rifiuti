@@ -3,6 +3,7 @@ import { SubscriptionTier } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { FEATURE_KEYS, effectiveFeatures } from '../../application/admin/feature-catalog'
+import { ContrattoGruppoService } from '../../application/billing/contratto-gruppo.service'
 
 /** Risposta dell'endpoint GET /me/features. */
 export interface MeFeaturesResponse {
@@ -13,7 +14,10 @@ export interface MeFeaturesResponse {
 
 @Injectable()
 export class MeFeaturesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly contratto: ContrattoGruppoService
+  ) {}
 
   /**
    * Calcola feature/piano/limite utenze per l'utente autenticato.
@@ -35,14 +39,8 @@ export class MeFeaturesService {
       }
     }
 
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: {
-        subscriptionTier: true,
-        userLimitTotal: true,
-        featureFlags: true,
-      },
-    })
+    // Piano, feature e limite utenti vengono dal contratto della radice.
+    const tenant = await this.contratto.caricaContratto(tenantId)
 
     // Tenant assente (caso anomalo): nessuna feature, fail-closed.
     if (!tenant) {
