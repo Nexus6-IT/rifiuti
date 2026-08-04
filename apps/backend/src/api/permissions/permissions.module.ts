@@ -77,7 +77,7 @@ import { GetUserPermissionsQueryHandler } from '../../application/queries/handle
 import { GetAuditTrailQueryHandler } from '../../application/queries/handlers/get-audit-trail.handler'
 import { ReconstructHistoricalPermissionsQueryHandler } from '../../application/queries/handlers/reconstruct-historical-permissions.handler'
 import { GetConsultantTenantsQueryHandler } from '../../application/queries/handlers/get-consultant-tenants.handler'
-import { GetAggregatedDashboardQueryHandler } from '../../application/queries/handlers/get-aggregated-dashboard.handler'
+import { GetAggregatedDashboardHandler } from '../../application/queries/handlers/get-aggregated-dashboard.handler'
 
 // Command handlers
 import { AssignRoleCommandHandler } from '../../application/commands/handlers/assign-role.handler'
@@ -96,7 +96,7 @@ const QUERY_HANDLERS = [
   GetAuditTrailQueryHandler,
   ReconstructHistoricalPermissionsQueryHandler,
   GetConsultantTenantsQueryHandler,
-  GetAggregatedDashboardQueryHandler,
+  GetAggregatedDashboardHandler,
 ]
 
 const COMMAND_HANDLERS = [
