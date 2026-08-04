@@ -5,6 +5,7 @@ import { StripeService } from './stripe.service'
 import { BillingService } from './billing.service'
 import { BillingController } from './billing.controller'
 import { SubscriptionEnforcementService } from './subscription-enforcement.service'
+import { ContrattoGruppoService } from './contratto-gruppo.service'
 
 /**
  * BillingModule — apparato commerciale SaaS (WS-F).
@@ -22,7 +23,12 @@ import { SubscriptionEnforcementService } from './subscription-enforcement.servi
 @Module({
   imports: [ConfigModule, PrismaModule],
   controllers: [BillingController],
-  providers: [StripeService, BillingService, SubscriptionEnforcementService],
-  exports: [SubscriptionEnforcementService, BillingService, StripeService],
+  providers: [
+    StripeService,
+    BillingService,
+    SubscriptionEnforcementService,
+    ContrattoGruppoService,
+  ],
+  exports: [SubscriptionEnforcementService, BillingService, StripeService, ContrattoGruppoService],
 })
 export class BillingModule {}
