@@ -100,10 +100,11 @@ export class MembershipService {
    * Verifica se l'utente ha accesso al tenant indicato (senza emettere un nuovo
    * JWT). Usato dal `TenantSwitchInterceptor` per validare l'header `X-Tenant-ID`.
    *
-   * Tre sorgenti di membership controllate nell'ordine:
+   * Quattro sorgenti di membership controllate nell'ordine:
    *   1. Tenant primario del JWT (sempre consentito, nessuna query extra).
    *   2. Tenant di cui l'utente è owner (`Tenant.ownerUserId`).
    *   3. Associazioni consulente attive (`ConsultantTenantAssociation`).
+   *   4. Discesa gerarchica: abilitazione all'azienda MADRE del target.
    *
    * Fail-closed: qualunque errore interno è propagato al chiamante, che deve
    * ignorare l'header e ricadere sul tenant primario.
