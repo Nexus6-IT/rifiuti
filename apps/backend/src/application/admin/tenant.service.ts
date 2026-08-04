@@ -110,7 +110,8 @@ export class TenantService {
    * - SUPER_ADMIN: può impostare piano, feature flag e limiti; `ownerUserId` =
    *   `dto.ownerUserId` (opzionale) o null.
    * - ADMIN (self-service): la quota `currentUser.companyLimit` viene applicata
-   *   (conteggio dei tenant di cui è `ownerUserId`); il piano è forzato al
+   *   (conteggio dei tenant di cui è `ownerUserId`) SOLO se non comanda la
+   *   quota di gruppo (v. `parentTenantId` più sotto); il piano è forzato al
    *   default (TRIAL + feature TRIAL + `userLimitTotal` di schema) ignorando
    *   qualsiasi tier/feature/limite passato nel DTO; `ownerUserId` =
    *   `currentUser.id`.
@@ -122,6 +123,10 @@ export class TenantService {
    * Gruppo (`dto.parentTenantId`): un ADMIN può agganciare la figlia solo a
    * una madre su cui ha accesso (`MembershipService.checkAccess`); il
    * SUPER_ADMIN può agganciarla a qualunque madre.
+   *
+   * Precedenza delle quote (spec §5, non cumulative): se la madre indicata ha
+   * `aziendeLimit` valorizzato comanda quello e `User.companyLimit` non viene
+   * nemmeno consultato; altrimenti vale `User.companyLimit` di chi crea.
    *
    * @throws ConflictException se la partita IVA è già registrata.
    * @throws ForbiddenException se l'ADMIN ha raggiunto la quota aziende, non
@@ -141,25 +146,11 @@ export class TenantService {
       throw new ConflictException(`Partita IVA ${dto.partitaIva} già registrata`)
     }
 
-    // Determina il proprietario (ownerUserId) e applica la quota per gli ADMIN.
-    let ownerUserId: string | null
-    if (isSuperAdmin) {
-      ownerUserId = dto.ownerUserId ?? null
-    } else {
-      // ADMIN self-service: proprietario = se stesso + enforcement quota.
-      ownerUserId = currentUser.id
-
-      const limit = await this.getCompanyLimit(currentUser.id)
-      const owned = await this.prisma.tenant.count({
-        where: { ownerUserId: currentUser.id },
-      })
-
-      if (owned >= limit) {
-        throw new ForbiddenException(`Limite aziende raggiunto (${owned}/${limit})`)
-      }
-    }
-
     // --- Gruppo: validazione della madre, se richiesta una figlia ---
+    // Si risolve PRIMA della quota personale: la precedenza fra i due limiti e'
+    // stabilita dalla spec §5 e non ammette cumulo — se la madre dichiara
+    // `aziendeLimit`, comanda quello e il `User.companyLimit` non si applica.
+    let quotaDiGruppoInVigore = false
     if (dto.parentTenantId) {
       const madre = await this.prisma.tenant.findUnique({
         where: { id: dto.parentTenantId },
@@ -198,6 +189,7 @@ export class TenantService {
       // Quota di gruppo: se la madre la dichiara, comanda lei; altrimenti
       // resta in vigore il vecchio User.companyLimit di chi crea.
       if (madre.aziendeLimit !== null) {
+        quotaDiGruppoInVigore = true
         const figlie = await this.prisma.tenant.count({
           where: { parentTenantId: madre.id },
         })
@@ -206,6 +198,27 @@ export class TenantService {
             `Limite aziende del gruppo raggiunto (${figlie}/${madre.aziendeLimit}). ` +
               'Aggiorna il piano per aggiungere altre aziende.'
           )
+        }
+      }
+    }
+
+    // Determina il proprietario (ownerUserId) e applica la quota personale per
+    // gli ADMIN, ma solo se non e' gia' in vigore la quota di gruppo.
+    let ownerUserId: string | null
+    if (isSuperAdmin) {
+      ownerUserId = dto.ownerUserId ?? null
+    } else {
+      // ADMIN self-service: proprietario = se stesso.
+      ownerUserId = currentUser.id
+
+      if (!quotaDiGruppoInVigore) {
+        const limit = await this.getCompanyLimit(currentUser.id)
+        const owned = await this.prisma.tenant.count({
+          where: { ownerUserId: currentUser.id },
+        })
+
+        if (owned >= limit) {
+          throw new ForbiddenException(`Limite aziende raggiunto (${owned}/${limit})`)
         }
       }
     }
