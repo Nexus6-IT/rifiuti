@@ -418,7 +418,7 @@ export class TenantService {
    * - SUPER_ADMIN: può aggiornare tutti i campi (anagrafica + subscription).
    * - ADMIN: solo se proprietario (`ownerUserId === currentUser.id`) e SOLO
    *   l'anagrafica; i campi di piano (subscriptionTier, userLimitTotal,
-   *   featureFlags, firLimitPerMonth) vengono ignorati.
+   *   featureFlags, firLimitPerMonth, aziendeLimit) vengono ignorati.
    *
    * @throws NotFoundException se il tenant non esiste.
    * @throws ForbiddenException se l'ADMIN non è il proprietario.
@@ -468,6 +468,9 @@ export class TenantService {
       ...(isSuperAdmin && dto.userLimitTotal !== undefined
         ? { userLimitTotal: dto.userLimitTotal }
         : {}),
+      // aziendeLimit: quota di aziende del gruppo. `null` la rimuove e riporta
+      // in vigore il `User.companyLimit` di chi crea (spec §5).
+      ...(isSuperAdmin && dto.aziendeLimit !== undefined ? { aziendeLimit: dto.aziendeLimit } : {}),
       // featureFlags: array di override (validato in DTO contro FEATURE_KEYS).
       // Per tornare a derivare dal piano si può inviare un array vuoto o `null`.
       ...(isSuperAdmin && dto.featureFlags !== undefined
