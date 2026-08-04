@@ -12,6 +12,7 @@ import { CreateTenantDto } from '../../api/admin/dto/create-tenant.dto'
 import { UpdateTenantDto } from '../../api/admin/dto/update-tenant.dto'
 import { seedRolesForTenant } from './system-roles'
 import { TenantContext } from '../../core/context/tenant-context'
+import { MembershipService } from '../../api/me/membership.service'
 
 /**
  * TenantService (admin)
@@ -43,7 +44,8 @@ export interface CurrentUser {
 export class TenantService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly membership: MembershipService
   ) {
     this.logger.setContext(TenantService.name)
   }
@@ -117,8 +119,15 @@ export class TenantService {
    * nuovo tenant e l'admin proprietario viene associato (ConsultantTenantAssociation)
    * al ruolo ADMIN del nuovo tenant, così da poter switchare nell'azienda creata.
    *
+   * Gruppo (`dto.parentTenantId`): un ADMIN può agganciare la figlia solo a
+   * una madre su cui ha accesso (`MembershipService.checkAccess`); il
+   * SUPER_ADMIN può agganciarla a qualunque madre.
+   *
    * @throws ConflictException se la partita IVA è già registrata.
-   * @throws ForbiddenException se l'ADMIN ha raggiunto la quota aziende.
+   * @throws ForbiddenException se l'ADMIN ha raggiunto la quota aziende, non
+   *   ha accesso alla madre indicata, o la madre ha raggiunto `aziendeLimit`.
+   * @throws BadRequestException se la madre indicata non esiste o è a sua
+   *   volta una figlia (gerarchia a un solo livello).
    */
   async create(currentUser: CurrentUser, dto: CreateTenantDto) {
     const isSuperAdmin = this.isSuperAdmin(currentUser)
@@ -158,6 +167,25 @@ export class TenantService {
       })
       if (!madre) {
         throw new BadRequestException('Azienda madre non trovata')
+      }
+      // Titolarità sulla madre: senza questo controllo un qualsiasi ADMIN
+      // autenticato potrebbe agganciare la propria azienda a una madre
+      // qualunque conoscendone l'UUID, consumandone la quota e — più grave —
+      // ereditandone il contratto (piano/stato/limiti/feature, v. Task 2/3).
+      // Il SUPER_ADMIN resta libero di agganciare qualunque madre (stesso
+      // pattern di bypass usato da MembershipService.switchTenant). Delega a
+      // checkAccess: è la definizione unica di "questo utente può accedere a
+      // questa azienda" (tenant primario, proprietà, associazione consulente
+      // valida, discesa gerarchica) — niente logica di accesso duplicata qui.
+      if (!isSuperAdmin) {
+        const hasAccess = await this.membership.checkAccess(
+          currentUser.id,
+          madre.id,
+          currentUser.tenantId
+        )
+        if (!hasAccess) {
+          throw new ForbiddenException("Nessun accesso all'azienda madre indicata")
+        }
       }
       // Gerarchia a UN SOLO livello: senza questo vincolo servirebbero query
       // ricorsive e "chi vede cosa" diventerebbe un albero da risolvere a ogni

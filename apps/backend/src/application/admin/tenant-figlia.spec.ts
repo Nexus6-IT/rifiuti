@@ -18,13 +18,22 @@
  * task) interroga con `where: { partitaIva }` — senza `id` — quindi deve
  * ricevere `null` (nessun conflitto), non un tenant a caso: il fallback e'
  * esplicitamente `null`, i due rami "madre"/"figlia esistente" scattano solo
- * sull'id atteso.
+ * sull'id atteso. Lo stesso fallback `null` copre anche il caso di
+ * `parentTenantId` che punta a un tenant inesistente.
+ *
+ * Fix round 1: `TenantService.create` ora dipende anche da
+ * `MembershipService` (delega di `checkAccess` per verificare che l'ADMIN
+ * abbia titolo sulla madre indicata). Qui si mocka solo l'interfaccia usata
+ * (`checkAccess`), non l'implementazione reale: la logica delle quattro
+ * sorgenti di membership e' gia' coperta da `membership.service.spec.ts`.
  */
 import { BadRequestException, ForbiddenException } from '@nestjs/common'
 import { TenantService } from './tenant.service'
 
 const MADRE = 'tenant-madre-uuid'
 const FIGLIA_ESISTENTE = 'tenant-figlia-uuid'
+const MADRE_ALTRUI = 'tenant-madre-altrui-uuid'
+const NON_ESISTENTE = 'tenant-inesistente-uuid'
 const ADMIN = 'utente-admin-uuid'
 
 const dtoBase = {
@@ -36,7 +45,11 @@ const dtoBase = {
   postalCode: '00100',
 }
 
-function makeService(opts: { aziendeLimit: number | null; figlieEsistenti: number }) {
+function makeService(opts: {
+  aziendeLimit: number | null
+  figlieEsistenti: number
+  accessoMadre?: boolean
+}) {
   const prisma: any = {
     tenant: {
       findUnique: jest.fn(({ where }: any) => {
@@ -54,8 +67,12 @@ function makeService(opts: { aziendeLimit: number | null; figlieEsistenti: numbe
             aziendeLimit: null,
           })
         }
+        if (where.id === MADRE_ALTRUI) {
+          return Promise.resolve({ id: MADRE_ALTRUI, parentTenantId: null, aziendeLimit: null })
+        }
         // Altre chiamate (es. verifica unicita' partitaIva su `where.partitaIva`,
-        // invariata da questo task): nessun conflitto.
+        // invariata da questo task, o `parentTenantId` inesistente): nessun
+        // conflitto / nessuna madre trovata.
         return Promise.resolve(null)
       }),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -68,10 +85,20 @@ function makeService(opts: { aziendeLimit: number | null; figlieEsistenti: numbe
     rentriCredential: { findUnique: jest.fn().mockResolvedValue(null) },
   }
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
-  return { prisma, service: new TenantService(prisma, logger) }
+  // Default: accesso consentito, cosi' i test preesistenti (che non
+  // riguardano l'accesso alla madre) restano validi senza modifiche.
+  const membership: any = {
+    checkAccess: jest.fn().mockResolvedValue(opts.accessoMadre ?? true),
+  }
+  return { prisma, membership, service: new TenantService(prisma, logger, membership) }
 }
 
 const adminCorrente = { id: ADMIN, role: 'ADMIN', tenantId: MADRE } as any
+const superAdminCorrente = {
+  id: 'utente-super-admin-uuid',
+  role: 'SUPER_ADMIN',
+  tenantId: MADRE,
+} as any
 
 describe('TenantService — creazione azienda figlia', () => {
   it('rifiuta una figlia sotto una figlia (gerarchia a un solo livello)', async () => {
@@ -111,5 +138,68 @@ describe('TenantService — creazione azienda figlia', () => {
     expect(prisma.rentriCredential.findUnique).not.toHaveBeenCalled()
     const [{ data }] = prisma.tenant.create.mock.calls[0]
     expect(data).not.toHaveProperty('rentriCredential')
+  })
+
+  it('rifiuta un ADMIN che indica una madre a cui non ha accesso, senza scrivere nulla', async () => {
+    const { service, prisma, membership } = makeService({
+      aziendeLimit: null,
+      figlieEsistenti: 0,
+      accessoMadre: false,
+    })
+
+    await expect(
+      service.create(adminCorrente, { ...dtoBase, parentTenantId: MADRE_ALTRUI } as any)
+    ).rejects.toBeInstanceOf(ForbiddenException)
+
+    expect(membership.checkAccess).toHaveBeenCalledWith(ADMIN, MADRE_ALTRUI, MADRE)
+    expect(prisma.tenant.create).not.toHaveBeenCalled()
+  })
+
+  it('un ADMIN che indica la propria madre crea la figlia come gia previsto', async () => {
+    const { service, prisma, membership } = makeService({
+      aziendeLimit: 5,
+      figlieEsistenti: 0,
+      accessoMadre: true,
+    })
+
+    await service.create(adminCorrente, { ...dtoBase, parentTenantId: MADRE } as any)
+
+    expect(membership.checkAccess).toHaveBeenCalledWith(ADMIN, MADRE, MADRE)
+    const [{ data }] = prisma.tenant.create.mock.calls[0]
+    expect(data.madre.connect.id).toBe(MADRE)
+  })
+
+  it('un SUPER_ADMIN puo agganciare qualunque madre, senza passare da checkAccess', async () => {
+    const { service, prisma, membership } = makeService({
+      aziendeLimit: null,
+      figlieEsistenti: 0,
+      accessoMadre: false, // anche se l'accesso sarebbe negato, il SUPER_ADMIN e' esente
+    })
+
+    await service.create(superAdminCorrente, { ...dtoBase, parentTenantId: MADRE_ALTRUI } as any)
+
+    expect(membership.checkAccess).not.toHaveBeenCalled()
+    const [{ data }] = prisma.tenant.create.mock.calls[0]
+    expect(data.madre.connect.id).toBe(MADRE_ALTRUI)
+  })
+
+  it('rifiuta un parentTenantId che punta a un tenant inesistente', async () => {
+    const { service, prisma } = makeService({ aziendeLimit: 5, figlieEsistenti: 0 })
+
+    await expect(
+      service.create(adminCorrente, { ...dtoBase, parentTenantId: NON_ESISTENTE } as any)
+    ).rejects.toBeInstanceOf(BadRequestException)
+
+    expect(prisma.tenant.create).not.toHaveBeenCalled()
+  })
+
+  it('aziendeLimit a zero conta come limite valorizzato: rifiuta anche con zero figlie esistenti', async () => {
+    const { service, prisma } = makeService({ aziendeLimit: 0, figlieEsistenti: 0 })
+
+    await expect(
+      service.create(adminCorrente, { ...dtoBase, parentTenantId: MADRE } as any)
+    ).rejects.toBeInstanceOf(ForbiddenException)
+
+    expect(prisma.tenant.create).not.toHaveBeenCalled()
   })
 })
