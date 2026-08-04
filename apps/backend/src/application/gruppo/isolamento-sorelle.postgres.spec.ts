@@ -22,7 +22,9 @@ const db = base.$extends(rlsExtension)
 let pivaCounter = 0
 const piva = (n: number) => {
   pivaCounter += 1
-  return String(Date.now() * 1000 + pivaCounter * 10 + n).slice(-11).padStart(11, '1')
+  return String(Date.now() * 1000 + pivaCounter * 10 + n)
+    .slice(-11)
+    .padStart(11, '1')
 }
 
 describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
@@ -30,6 +32,15 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
   let alfaId: string
   let betaId: string
   let utenteAlfaId: string
+  // Il FIR di Beta creato dal test "un FIR di Beta non e visibile ad Alfa"
+  // referenzia producerUserId = utenteAlfaId (FK a User, tenant diverso da
+  // quello del FIR). Il cascade di Tenant.delete su Alfa cancellerebbe anche
+  // quell'utente: se il FIR (di Beta) non e' gia' stato rimosso, il vincolo
+  // RESTRICT fra FIR e User blocca la cancellazione e lascia sporco nel DB
+  // (scoperto durante la revisione: il primo tentativo di afterAll falliva
+  // con `firs_producer_user_id_fkey`). Per questo va cancellato esplicitamente
+  // PRIMA del giro sui tenant, invece di affidarsi al solo cascade su tenantId.
+  let firBetaId: string | undefined
 
   beforeAll(async () => {
     const madre = await base.tenant.create({
@@ -88,9 +99,25 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
   })
 
   afterAll(async () => {
+    // Il FIR referenzia un utente di un'altra sorella (vedi commento su
+    // `firBetaId` sopra): va rimosso esplicitamente prima di toccare i tenant,
+    // altrimenti il cascade su Alfa (che cancella il suo utente) puo' urtare
+    // il vincolo RESTRICT fra FIR e User e interrompere tutta la pulizia.
+    if (firBetaId) {
+      await base.fIR.delete({ where: { id: firBetaId } }).catch(err => {
+        // eslint-disable-next-line no-console
+        console.error(`isolamento-sorelle: impossibile cancellare il FIR ${firBetaId}`, err)
+      })
+    }
+
     // onDelete: Cascade sui dati operativi; le figlie prima della madre.
     for (const id of [alfaId, betaId, madreId]) {
-      await base.tenant.delete({ where: { id } }).catch(() => undefined)
+      await base.tenant.delete({ where: { id } }).catch(err => {
+        // Non deve passare inosservato: se la cancellazione fallisce restano
+        // dati sporchi nel database fra un'esecuzione e l'altra.
+        // eslint-disable-next-line no-console
+        console.error(`isolamento-sorelle: impossibile cancellare il tenant ${id}`, err)
+      })
     }
     await base.$disconnect()
   })
@@ -104,13 +131,43 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
     })
   })
 
-  it('Alfa non raggiunge un produttore di Beta nemmeno conoscendone l id', async () => {
+  it('Alfa non raggiunge un produttore di Beta con una ricerca filtrata', async () => {
+    // Rinominato in revisione: il nome originale ("nemmeno conoscendone l'id")
+    // era fuorviante. `findFirst` è una delle operazioni "WHERE" che l'estensione
+    // filtra iniettando `where.tenantId` — è la protezione contro una query che
+    // dimentica il filtro esplicito, non contro un accesso diretto per chiave
+    // primaria (quello è verificato, e smentito, dal test successivo).
     const diBeta = await base.produttore.findFirst({ where: { tenantId: betaId } })
 
     await TenantContext.run({ tenantId: alfaId, userId: utenteAlfaId }, async () => {
       const trovato = await db.produttore.findFirst({ where: { id: diBeta!.id } })
 
       expect(trovato).toBeNull()
+    })
+  })
+
+  it("findUnique per id NON e filtrato dall'estensione: la protezione sta nei repository", async () => {
+    // Questo test documenta un limite DICHIARATO dell'estensione RLS, non una
+    // regressione di questo lavoro: `prisma-rls.extension.ts` esclude
+    // deliberatamente findUnique/findUniqueOrThrow/update/delete per chiave
+    // primaria dall'iniezione di `tenantId` (vedi il commento a
+    // `applyTenantScope`, righe 196-201) perché aggiungere `tenantId` al
+    // `where` di una `findUnique` per PK violerebbe il vincolo "unique field"
+    // di Prisma. Il rischio esiste identico fra QUALSIASI coppia di tenant
+    // (non solo fra sorelle) e non è nuovo: la vera difesa in profondità per
+    // questo percorso sono i repository applicativi, che devono usare
+    // `findFirst`/`findFirstOrThrow` con `where.tenantId` esplicito (o un id
+    // già risolto nel tenant corretto) invece di una `findUnique` nuda per id
+    // proveniente da input esterno. Se questa asserzione un giorno cambiasse
+    // esito, sarebbe una modifica al comportamento dell'estensione da
+    // verificare con attenzione, non un dettaglio da aggiustare qui.
+    const diBeta = await base.produttore.findFirst({ where: { tenantId: betaId } })
+
+    await TenantContext.run({ tenantId: alfaId, userId: utenteAlfaId }, async () => {
+      const trovato = await db.produttore.findUnique({ where: { id: diBeta!.id } })
+
+      expect(trovato).not.toBeNull()
+      expect(trovato!.tenantId).toBe(betaId)
     })
   })
 
@@ -154,6 +211,80 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
       const credenziali = await db.rentriCredential.findMany()
 
       expect(credenziali).toHaveLength(0)
+    })
+  })
+
+  it('un FIR di Beta non e visibile ad Alfa', async () => {
+    const firBeta = await base.fIR.create({
+      data: {
+        tenantId: betaId,
+        // producerUserId e' una FK tecnica obbligatoria (User): nessuna
+        // asserzione di questo test dipende da quale utente vi e' collegato,
+        // quindi si riusa l'utente gia' creato per il setup invece di
+        // costruirne uno dedicato solo per soddisfare il vincolo.
+        producerUserId: utenteAlfaId,
+        producerPartitaIva: piva(7),
+        producerName: 'Produttore di Beta',
+        producerAddress: 'Via Beta 2, 20100 Milano MI',
+        carrierPartitaIva: piva(8),
+        carrierName: 'Trasportatore di Beta',
+        carrierVehiclePlate: 'AB123CD',
+        receiverPartitaIva: piva(9),
+        receiverName: 'Destinatario di Beta',
+        receiverAddress: 'Via Destinazione 1, 20100 Milano MI',
+        cerCode: '20 01 01',
+        wasteDescription: 'Carta e cartone',
+        wasteCategory: 'Non pericoloso',
+        quantity: 100,
+        transportDate: new Date(),
+      },
+    })
+    firBetaId = firBeta.id
+    expect(firBeta.tenantId).toBe(betaId) // conferma che il dato di Beta esiste davvero
+
+    await TenantContext.run({ tenantId: alfaId, userId: utenteAlfaId }, async () => {
+      const fir = await db.fIR.findMany()
+
+      expect(fir).toHaveLength(0)
+    })
+  })
+
+  it('un movimento di registro di Beta non e visibile ad Alfa', async () => {
+    const movimentoBeta = await base.wasteMovement.create({
+      data: {
+        tenantId: betaId,
+        progressiveNumber: 1,
+        progressiveYear: 2026,
+        type: 'CARICO',
+        causale: 'PRODUZIONE_INTERNA',
+        cerCode: '20 01 01',
+        quantity: 50,
+        movementDate: new Date(),
+      } as any,
+    })
+    expect(movimentoBeta.tenantId).toBe(betaId)
+
+    await TenantContext.run({ tenantId: alfaId, userId: utenteAlfaId }, async () => {
+      const movimenti = await db.wasteMovement.findMany()
+
+      expect(movimenti).toHaveLength(0)
+    })
+  })
+
+  it('un MUD di Beta non e visibile ad Alfa', async () => {
+    const mudBeta = await base.mUDReport.create({
+      data: {
+        tenantId: betaId,
+        year: 2025,
+        reportData: { rifiuti: [] },
+      },
+    })
+    expect(mudBeta.tenantId).toBe(betaId)
+
+    await TenantContext.run({ tenantId: alfaId, userId: utenteAlfaId }, async () => {
+      const mud = await db.mUDReport.findMany()
+
+      expect(mud).toHaveLength(0)
     })
   })
 })
