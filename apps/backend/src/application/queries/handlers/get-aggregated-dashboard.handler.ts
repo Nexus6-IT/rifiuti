@@ -56,13 +56,18 @@ export class GetAggregatedDashboardHandler {
         by: ['tenantId'],
         where: {
           tenantId: { in: ids },
-          // "Da trasmettere" = FIR non ancora completato: tutti gli stati
-          // precedenti a COMPLETED/SYNCED_TO_RENTRI, esclusi quelli annullati
-          // (CANCELLED). Il brief originale usava solo ['DRAFT',
-          // 'AWAITING_CARRIER']: valori validi dell'enum ma un sottoinsieme
-          // incompleto, perche' escludeva AWAITING_PRODUCER e
-          // AWAITING_RECEIVER, che sono altrettanto "non trasmesso".
-          status: { in: ['DRAFT', 'AWAITING_PRODUCER', 'AWAITING_CARRIER', 'AWAITING_RECEIVER'] },
+          // Decisione PO (Task 7, fix round 1): questo contatore risponde a
+          // "dove devo intervenire", non a "quante pratiche sono aperte".
+          // DRAFT e AWAITING_PRODUCER sono ENTRAMBI lo stato di dominio BOZZA
+          // (v. fir-prisma.repository.ts, DB_TO_STATO) — nessuna ragione per
+          // includere l'uno ed escludere l'altro. AWAITING_CARRIER è EMESSO,
+          // in attesa che il trasportatore lo prenda in carico: c'è ancora
+          // un'azione da fare. AWAITING_RECEIVER è invece IN_TRANSITO: il
+          // FIR è già in viaggio verso il destinatario, e chi guarda la vista
+          // di gruppo non ha nulla da fare finché non arriva a destino — va
+          // quindi ESCLUSO, insieme a COMPLETED/SYNCED_TO_RENTRI (conclusi
+          // con successo) e CANCELLED (concluso, annullato).
+          status: { in: ['DRAFT', 'AWAITING_PRODUCER', 'AWAITING_CARRIER'] },
         },
         _count: { _all: true },
       }),

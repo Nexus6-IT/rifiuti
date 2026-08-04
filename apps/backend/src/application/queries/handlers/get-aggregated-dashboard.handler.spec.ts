@@ -10,7 +10,16 @@ const MADRE = 'tenant-madre-uuid'
 const ALFA = 'tenant-alfa-uuid'
 const BETA = 'tenant-beta-uuid'
 
-function makePrisma() {
+/**
+ * Il doppio di `fIR.groupBy` APPLICA DAVVERO il filtro `where.status.in` e
+ * `where.tenantId.in` sui FIR passati in `firs`, invece di restituire un
+ * conteggio fisso indipendente dagli argomenti. Un mock incondizionato
+ * (come nella prima versione di questo spec) rende invisibile QUALE insieme
+ * di stati l'handler stia effettivamente usando: è esattamente il motivo per
+ * cui una decisione di prodotto (quali stati contano come "da lavorare") è
+ * potuta cambiare in produzione senza che nessun test se ne accorgesse.
+ */
+function makePrisma(firs: Array<{ tenantId: string; status: string }> = []) {
   return {
     tenant: {
       findMany: jest.fn(({ where }: any) =>
@@ -25,10 +34,22 @@ function makePrisma() {
       ),
     },
     fIR: {
-      groupBy: jest.fn().mockResolvedValue([
-        { tenantId: ALFA, _count: { _all: 3 } },
-        { tenantId: BETA, _count: { _all: 1 } },
-      ]),
+      groupBy: jest.fn(({ where }: any) => {
+        const tenantIds: string[] = where.tenantId.in
+        const statuses: string[] = where.status.in
+        const conteggi = new Map<string, number>()
+        for (const fir of firs) {
+          if (!tenantIds.includes(fir.tenantId)) continue
+          if (!statuses.includes(fir.status)) continue
+          conteggi.set(fir.tenantId, (conteggi.get(fir.tenantId) ?? 0) + 1)
+        }
+        return Promise.resolve(
+          Array.from(conteggi.entries()).map(([tenantId, count]) => ({
+            tenantId,
+            _count: { _all: count },
+          }))
+        )
+      }),
       findMany: jest.fn().mockResolvedValue([]),
     },
     mUDReport: { findMany: jest.fn().mockResolvedValue([]) },
@@ -38,7 +59,12 @@ function makePrisma() {
 
 describe('GetAggregatedDashboardHandler', () => {
   it('aggrega le figlie della madre e somma i FIR da trasmettere', async () => {
-    const prisma = makePrisma()
+    const prisma = makePrisma([
+      { tenantId: ALFA, status: 'DRAFT' },
+      { tenantId: ALFA, status: 'AWAITING_PRODUCER' },
+      { tenantId: ALFA, status: 'AWAITING_CARRIER' },
+      { tenantId: BETA, status: 'DRAFT' },
+    ])
     const handler = new GetAggregatedDashboardHandler(prisma)
 
     const risultato = await handler.execute({ tenantIdMadre: MADRE } as any)
@@ -61,5 +87,33 @@ describe('GetAggregatedDashboardHandler', () => {
 
     expect(risultato.totalTenants).toBe(0)
     expect(risultato.pendingFirsByClient).toEqual([])
+  })
+
+  it('un FIR AWAITING_RECEIVER (in transito) non conta come "da lavorare"', async () => {
+    // Decisione PO (fix round 1): la vista risponde a "dove devo intervenire".
+    // Un FIR in transito verso il destinatario non richiede alcuna azione da
+    // parte di chi guarda la vista di gruppo, quindi va escluso dal conteggio.
+    const prisma = makePrisma([{ tenantId: ALFA, status: 'AWAITING_RECEIVER' }])
+    const handler = new GetAggregatedDashboardHandler(prisma)
+
+    const risultato = await handler.execute({ tenantIdMadre: MADRE } as any)
+
+    expect(risultato.totalPendingFirs).toBe(0)
+    expect(risultato.pendingFirsByClient).toEqual([])
+  })
+
+  it('un FIR AWAITING_PRODUCER (bozza, come DRAFT) conta come "da lavorare"', async () => {
+    // DRAFT e AWAITING_PRODUCER sono entrambi lo stato di dominio BOZZA
+    // (v. fir-prisma.repository.ts, DB_TO_STATO): nessuna ragione per
+    // trattarli diversamente nel conteggio.
+    const prisma = makePrisma([{ tenantId: ALFA, status: 'AWAITING_PRODUCER' }])
+    const handler = new GetAggregatedDashboardHandler(prisma)
+
+    const risultato = await handler.execute({ tenantIdMadre: MADRE } as any)
+
+    expect(risultato.totalPendingFirs).toBe(1)
+    expect(risultato.pendingFirsByClient).toEqual([
+      { tenantId: ALFA, tenantName: 'Alfa Srl', pendingCount: 1 },
+    ])
   })
 })
