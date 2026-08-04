@@ -175,15 +175,18 @@ jobs:
   # ne' e' bloccato dagli altri.
   #
   # Raggiungibilita' del database: il runner gira con
-  # `container.network = host` (vedi ops/setup-gitea-runner.sh), quindi la
-  # risoluzione DNS per nome di servizio (es. `postgres:5432`) tipicamente
-  # NON funziona con `services:` in questa configurazione. Usiamo comunque
-  # `services:` (stile piu' vicino a GitHub Actions, meno codice da
-  # mantenere di un `docker run` manuale) ma ci affidiamo SOLO alla porta
-  # pubblicata su 127.0.0.1, mai al nome del servizio `postgres`: con la rete
-  # host, il container del job condivide il namespace di rete dell'host, per
-  # cui la porta mappata e' raggiungibile su 127.0.0.1 indipendentemente
-  # dalla risoluzione DNS.
+  # `container.network = host` (vedi ops/setup-gitea-runner.sh). FIX ROUND 1
+  # (2026-08-04): con `--network host` Docker IGNORA la pubblicazione delle
+  # porte (`ports:`/`-p`) — verificato sul runner reale, il servizio Postgres
+  # restava in ascolto sulla SUA porta di default (5432) sull'host, non su
+  # quella "mappata". Niente piu' `services:` con `ports:`. Avviamo Postgres
+  # con uno step `docker run` esplicito, dicendogli di ascoltare DIRETTAMENTE
+  # sulla porta che vogliamo (`-c port=55432`): in rete host non c'e' nessuna
+  # mappatura da rispettare, quindi funziona a prescindere. Nome del
+  # container legato a `github.run_id` per evitare collisioni fra run
+  # concorrenti sullo stesso runner, con rimozione garantita in uno step
+  # `if: always()` (altrimenti restano container Postgres orfani sul runner,
+  # come gia' successo con i volumi buildx — vedi cron gitea-runner-cleanup).
   # ==========================================================================
   test-postgres:
     name: Test integrazione (PostgreSQL reale)
@@ -191,27 +194,12 @@ jobs:
     defaults:
       run:
         working-directory: apps/backend
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: wasteflow
-          POSTGRES_PASSWORD: wasteflow_ci
-          POSTGRES_DB: wasteflow_ci
-        # Porta pubblicata esplicitamente: e' quella che useremo via 127.0.0.1,
-        # non il nome del servizio (vedi nota sopra sul network host).
-        ports:
-          - 55432:5432
-        options: >-
-          --health-cmd="pg_isready -U wasteflow"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=10
     env:
       # Costruito qui, non preso dal codice applicativo: credenziali e porta
       # sono quelle del container Postgres effimero di questo job, non quelle
       # attese in sviluppo/produzione.
       DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public"
+      POSTGRES_CI_CONTAINER: "postgres-ci-${{ github.run_id }}"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -233,11 +221,28 @@ jobs:
       - name: Prisma generate
         run: npm run prisma:generate
 
-      # Verifica esplicita e attiva che la porta sia raggiungibile, oltre
-      # all'health-cmd del servizio: usiamo il redirector /dev/tcp di bash
-      # (built-in, nessun tool esterno da assumere installato sul runner) per
-      # non fare affidamento solo sull'health-check del servizio, la cui
-      # semantica su Gitea Actions non e' stata verificata in questo repo.
+      # `docker run` esplicito invece di `services:` (vedi nota sopra: con
+      # network host la pubblicazione delle porte non viene applicata).
+      # `-c port=55432` fa ascoltare Postgres direttamente su quella porta,
+      # anche in rete host. `--rm` come rete di sicurezza aggiuntiva (in caso
+      # il container si fermi da solo), ma la rimozione affidabile e'
+      # comunque delegata allo step finale `if: always()`.
+      - name: Avvia PostgreSQL (docker run, porta esplicita)
+        run: |
+          docker run -d --rm \
+            --name "$POSTGRES_CI_CONTAINER" \
+            --network host \
+            -e POSTGRES_USER=wasteflow \
+            -e POSTGRES_PASSWORD=wasteflow_ci \
+            -e POSTGRES_DB=wasteflow_ci \
+            postgres:16-alpine \
+            -c port=55432
+
+      # Verifica esplicita e attiva che la porta sia raggiungibile: usiamo il
+      # redirector /dev/tcp di bash (built-in, nessun tool esterno da
+      # assumere installato sul runner) invece di fare affidamento su un
+      # health-check di `services:` la cui semantica su Gitea Actions non e'
+      # stata verificata in questo repo.
       - name: Attendi che PostgreSQL sia raggiungibile
         run: |
           for i in $(seq 1 30); do
@@ -250,6 +255,7 @@ jobs:
             sleep 2
           done
           echo "PostgreSQL non raggiungibile su 127.0.0.1:55432 dopo 30 tentativi" >&2
+          docker logs "$POSTGRES_CI_CONTAINER" || true
           exit 1
 
       # Ulteriore margine di sicurezza: la porta puo' essere aperta prima che
@@ -276,6 +282,15 @@ jobs:
       # *.postgres.spec.ts), non toccato da questo commit.
       - name: Test integrazione Postgres (*.postgres.spec.ts)
         run: npm run test:postgres
+
+      # Cleanup garantito: gira sempre, anche se un passo precedente e'
+      # fallito, altrimenti il container Postgres resta orfano sul runner
+      # (gia' successo con i volumi buildx — v. cron gitea-runner-cleanup
+      # sul nodo Proxmox). `--rm` sopra copre lo stop pulito, questo copre
+      # anche i casi in cui il container e' rimasto vivo (es. job annullato).
+      - name: Rimuovi il container PostgreSQL (sempre)
+        if: always()
+        run: docker rm -f "$POSTGRES_CI_CONTAINER" 2>/dev/null || true
 
   # ==========================================================================
   # SECURITY - npm audit (non bloccante)

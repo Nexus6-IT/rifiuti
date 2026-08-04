@@ -22,7 +22,7 @@ describe('ordinaAziendePerGruppo', () => {
     expect(risultato.every(a => !a.annidata)).toBe(true)
   })
 
-  it('non perde le figlie la cui madre non e\' accessibile all\'utente', () => {
+  it("non perde le figlie la cui madre non e' accessibile all'utente", () => {
     const risultato = ordinaAziendePerGruppo([
       { id: 'orfana', name: 'Orfana Srl', parentTenantId: 'madre-non-visibile' },
       { id: 'uno', name: 'Uno Srl', parentTenantId: null },
