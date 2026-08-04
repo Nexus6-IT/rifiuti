@@ -79,9 +79,18 @@ export class MembershipService {
     if (ids.size === 0) {
       return { tenants: [], currentTenantId: user.tenantId ?? null }
     }
+
+    // Le figlie delle aziende accessibili sono a loro volta accessibili
+    // (discesa gerarchica, v. checkAccess).
+    const figlie = await this.prisma.tenant.findMany({
+      where: { parentTenantId: { in: Array.from(ids) } },
+      select: { id: true },
+    })
+    figlie.forEach(f => ids.add(f.id))
+
     const tenants = await this.prisma.tenant.findMany({
       where: { id: { in: Array.from(ids) } },
-      select: { id: true, ragioneSociale: true },
+      select: { id: true, ragioneSociale: true, parentTenantId: true },
       orderBy: { ragioneSociale: 'asc' },
     })
     return { tenants, currentTenantId: user.tenantId ?? null }
@@ -121,7 +130,20 @@ export class MembershipService {
       where: MembershipService.associazioneValida(userId, targetTenantId),
       select: { id: true },
     })
-    return !!assoc
+    if (assoc) return true
+
+    // 4. Discesa gerarchica: chi e' abilitato all'azienda MADRE accede alle
+    //    figlie coi poteri del proprio ruolo. E' l'unico punto in cui la
+    //    gerarchia concede qualcosa, e vale in una sola direzione: essere
+    //    abilitati a una figlia non da' accesso ne' alla madre ne' alle sorelle.
+    const target = await this.prisma.tenant.findUnique({
+      where: { id: targetTenantId },
+      select: { parentTenantId: true },
+    })
+    if (!target?.parentTenantId) return false
+
+    // Ricorsione di UN solo passo: la gerarchia e' a un livello.
+    return this.checkAccess(userId, target.parentTenantId, primaryTenantId)
   }
 
   /** Verifica l'accesso e ri-emette il JWT con il tenant target. */

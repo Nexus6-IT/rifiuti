@@ -108,3 +108,74 @@ describe('MembershipService — associazione consulente scaduta', () => {
     ).rejects.toThrow(ForbiddenException)
   })
 })
+
+describe('MembershipService — gerarchia madre-figlie', () => {
+  const MADRE = 'tenant-madre-uuid'
+  const FIGLIA = 'tenant-figlia-uuid'
+  const SORELLA = 'tenant-sorella-uuid'
+  const UTENTE_MADRE = 'utente-madre-uuid'
+  const UTENTE_FIGLIA = 'utente-figlia-uuid'
+
+  /** Prisma finto: gerarchia + proprieta' + associazioni consulente. */
+  function makePrismaGerarchia() {
+    const tenants: Record<string, any> = {
+      [MADRE]: { id: MADRE, parentTenantId: null, ownerUserId: UTENTE_MADRE },
+      [FIGLIA]: { id: FIGLIA, parentTenantId: MADRE, ownerUserId: null },
+      [SORELLA]: { id: SORELLA, parentTenantId: MADRE, ownerUserId: null },
+    }
+    return {
+      tenant: {
+        findUnique: jest.fn(({ where }: any) => Promise.resolve(tenants[where.id] ?? null)),
+        findFirst: jest.fn(({ where }: any) => {
+          const t = tenants[where.id]
+          if (!t) return Promise.resolve(null)
+          if (where.ownerUserId && t.ownerUserId !== where.ownerUserId) return Promise.resolve(null)
+          return Promise.resolve({ id: t.id })
+        }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      consultantTenantAssociation: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      user: { findUnique: jest.fn().mockResolvedValue(null) },
+    } as any
+  }
+
+  it('chi e abilitato alla madre accede a una figlia', async () => {
+    const service = new MembershipService(makePrismaGerarchia(), jwtTokens)
+
+    await expect(service.checkAccess(UTENTE_MADRE, FIGLIA, MADRE)).resolves.toBe(true)
+  })
+
+  it('chi e abilitato a una figlia NON accede alla sorella', async () => {
+    const service = new MembershipService(makePrismaGerarchia(), jwtTokens)
+
+    await expect(service.checkAccess(UTENTE_FIGLIA, SORELLA, FIGLIA)).resolves.toBe(false)
+  })
+
+  it('chi e abilitato a una figlia NON risale alla madre', async () => {
+    const service = new MembershipService(makePrismaGerarchia(), jwtTokens)
+
+    await expect(service.checkAccess(UTENTE_FIGLIA, MADRE, FIGLIA)).resolves.toBe(false)
+  })
+
+  it('l elenco aziende include le figlie della madre, col legame', async () => {
+    const prisma = makePrismaGerarchia()
+    prisma.tenant.findMany = jest.fn(({ where }: any) => {
+      if (where.parentTenantId) return Promise.resolve([{ id: FIGLIA }, { id: SORELLA }])
+      if (where.ownerUserId) return Promise.resolve([{ id: MADRE }])
+      return Promise.resolve([
+        { id: MADRE, ragioneSociale: 'Gruppo Madre Srl', parentTenantId: null },
+        { id: FIGLIA, ragioneSociale: 'Figlia Alfa Srl', parentTenantId: MADRE },
+        { id: SORELLA, ragioneSociale: 'Figlia Beta Srl', parentTenantId: MADRE },
+      ])
+    })
+    const service = new MembershipService(prisma, jwtTokens)
+
+    const risposta = await service.listTenants({ id: UTENTE_MADRE, tenantId: MADRE } as any)
+
+    expect(risposta.tenants.map((t: any) => t.id)).toEqual([MADRE, FIGLIA, SORELLA])
+    expect(risposta.tenants.find((t: any) => t.id === FIGLIA)!.parentTenantId).toBe(MADRE)
+  })
+})
