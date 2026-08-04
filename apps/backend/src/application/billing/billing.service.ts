@@ -22,6 +22,7 @@ import { SubscriptionStatus, SubscriptionTier, Prisma } from '@prisma/client'
 import Stripe from 'stripe'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { StripeService } from './stripe.service'
+import { ContrattoGruppoService } from './contratto-gruppo.service'
 
 /** Mapping Stripe Price ID → SubscriptionTier. Letto dai parametri env. */
 export interface PlanPriceMapping {
@@ -62,7 +63,8 @@ export class BillingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripeService: StripeService,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    private readonly contratto: ContrattoGruppoService
   ) {
     // Costruisce il mapping priceId→tier dai parametri env.
     this.priceIds = {}
@@ -78,10 +80,16 @@ export class BillingService {
 
   /**
    * Recupera lo stato di abbonamento corrente del tenant.
+   *
+   * Il contratto (piano, stato, limiti, identificativi Stripe) vive SOLO sulla
+   * radice del gruppo: una figlia deve vedere l'abbonamento del gruppo, non i
+   * propri valori — che nessuno mantiene aggiornati.
    */
   async getStatus(tenantId: string): Promise<BillingStatusDto> {
+    const radiceId = await this.contratto.risolviRadice(tenantId)
+
     const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
+      where: { id: radiceId },
       select: {
         subscriptionTier: true,
         subscriptionStatus: true,
@@ -126,6 +134,8 @@ export class BillingService {
     planTier: 'PROFESSIONAL' | 'ENTERPRISE',
     baseUrl: string
   ): Promise<string | null> {
+    await this.assertRadiceDelGruppo(tenantId)
+
     if (!this.stripeService.isEnabled) {
       this.logger.warn(
         'createCheckoutSession: Stripe non abilitato (no-op). ATTIVARE: STRIPE_SECRET_KEY'
@@ -195,6 +205,8 @@ export class BillingService {
    * @returns URL del Billing Portal Stripe, o null se Stripe non abilitato.
    */
   async createBillingPortalSession(tenantId: string, baseUrl: string): Promise<string | null> {
+    await this.assertRadiceDelGruppo(tenantId)
+
     if (!this.stripeService.isEnabled) {
       this.logger.warn('createBillingPortalSession: Stripe non abilitato (no-op)')
       return null
@@ -215,6 +227,23 @@ export class BillingService {
       customerId: tenant.stripeCustomerId,
       returnUrl: `${baseUrl}/abbonamento`,
     })
+  }
+
+  /**
+   * Rifiuta le operazioni di pagamento avviate da un'azienda figlia.
+   *
+   * Senza questo blocco una figlia potrebbe aprire un checkout e scrivere
+   * `stripeCustomerId`/`stripeSubscriptionId` su un tenant non radice: un
+   * secondo contratto dentro lo stesso gruppo, che il risolutore del contratto
+   * ignora. Il cliente pagherebbe senza che cambi nulla.
+   *
+   * @throws ForbiddenException se il tenant non è la radice del gruppo.
+   */
+  private async assertRadiceDelGruppo(tenantId: string): Promise<void> {
+    const radiceId = await this.contratto.risolviRadice(tenantId)
+    if (radiceId !== tenantId) {
+      throw new ForbiddenException("L'abbonamento si gestisce dall'azienda madre del gruppo.")
+    }
   }
 
   /**
