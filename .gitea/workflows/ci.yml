@@ -164,6 +164,120 @@ jobs:
         run: npm run build
 
   # ==========================================================================
+  # TEST INTEGRAZIONE - PostgreSQL reale (*.postgres.spec.ts)
+  # ----------------------------------------------------------------------------
+  # Le spec `*.postgres.spec.ts` (isolamento fra aziende sorelle, gerarchia
+  # tenant, repository Prisma) girano contro un Postgres vero: vincoli di
+  # unicita', comportamento dei NULL, RLS. Il job "backend" sopra le esclude
+  # per costruzione (jest.config.js -> testPathIgnorePatterns), quindi finora
+  # nessun gate le eseguiva mai: una regressione sull'isolamento fra tenant
+  # sarebbe passata inosservata. Job indipendente, senza `needs`: non blocca
+  # ne' e' bloccato dagli altri.
+  #
+  # Raggiungibilita' del database: il runner gira con
+  # `container.network = host` (vedi ops/setup-gitea-runner.sh), quindi la
+  # risoluzione DNS per nome di servizio (es. `postgres:5432`) tipicamente
+  # NON funziona con `services:` in questa configurazione. Usiamo comunque
+  # `services:` (stile piu' vicino a GitHub Actions, meno codice da
+  # mantenere di un `docker run` manuale) ma ci affidiamo SOLO alla porta
+  # pubblicata su 127.0.0.1, mai al nome del servizio `postgres`: con la rete
+  # host, il container del job condivide il namespace di rete dell'host, per
+  # cui la porta mappata e' raggiungibile su 127.0.0.1 indipendentemente
+  # dalla risoluzione DNS.
+  # ==========================================================================
+  test-postgres:
+    name: Test integrazione (PostgreSQL reale)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wasteflow
+          POSTGRES_PASSWORD: wasteflow_ci
+          POSTGRES_DB: wasteflow_ci
+        # Porta pubblicata esplicitamente: e' quella che useremo via 127.0.0.1,
+        # non il nome del servizio (vedi nota sopra sul network host).
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd="pg_isready -U wasteflow"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      # Costruito qui, non preso dal codice applicativo: credenziali e porta
+      # sono quelle del container Postgres effimero di questo job, non quelle
+      # attese in sviluppo/produzione.
+      DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20 + cache npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Stessa modalita' degli altri job: `npm ci` alla radice del monorepo
+      # popola anche apps/backend (workspaces npm). Nessuna installazione
+      # diversa da quella gia' in uso.
+      - name: Install dipendenze (monorepo)
+        working-directory: ${{ github.workspace }}
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      # Verifica esplicita e attiva che la porta sia raggiungibile, oltre
+      # all'health-cmd del servizio: usiamo il redirector /dev/tcp di bash
+      # (built-in, nessun tool esterno da assumere installato sul runner) per
+      # non fare affidamento solo sull'health-check del servizio, la cui
+      # semantica su Gitea Actions non e' stata verificata in questo repo.
+      - name: Attendi che PostgreSQL sia raggiungibile
+        run: |
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/55432) 2>/dev/null; then
+              exec 3<&- 3>&-
+              echo "PostgreSQL raggiungibile su 127.0.0.1:55432 (tentativo ${i})"
+              exit 0
+            fi
+            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
+            sleep 2
+          done
+          echo "PostgreSQL non raggiungibile su 127.0.0.1:55432 dopo 30 tentativi" >&2
+          exit 1
+
+      # Ulteriore margine di sicurezza: la porta puo' essere aperta prima che
+      # Postgres abbia finito l'inizializzazione di ruoli/database (accetta
+      # TCP ma rifiuta ancora l'autenticazione). Il retry qui e' innocuo:
+      # `prisma migrate deploy` non ha effetti collaterali se fallisce prima
+      # di applicare alcuna migrazione.
+      - name: Applica le migrazioni Prisma (con retry)
+        run: |
+          for i in $(seq 1 10); do
+            if npx prisma migrate deploy; then
+              echo "Migrazioni applicate al tentativo ${i}"
+              exit 0
+            fi
+            echo "Tentativo ${i}/10 fallito, riprovo tra 3s..."
+            sleep 3
+          done
+          echo "Impossibile applicare le migrazioni dopo 10 tentativi" >&2
+          exit 1
+
+      # Suite di integrazione su Postgres reale: isolamento fra aziende
+      # sorelle, gerarchia tenant, repository Prisma (CER, FIR, RENTRI).
+      # Selezione dei file via jest.postgres.config.js (testRegex
+      # *.postgres.spec.ts), non toccato da questo commit.
+      - name: Test integrazione Postgres (*.postgres.spec.ts)
+        run: npm run test:postgres
+
+  # ==========================================================================
   # SECURITY - npm audit (non bloccante)
   # ==========================================================================
   security:
