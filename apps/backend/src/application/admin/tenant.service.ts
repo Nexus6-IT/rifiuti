@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common'
 import { SubscriptionStatus, SubscriptionTier, UserRole, Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
@@ -149,6 +150,38 @@ export class TenantService {
       }
     }
 
+    // --- Gruppo: validazione della madre, se richiesta una figlia ---
+    if (dto.parentTenantId) {
+      const madre = await this.prisma.tenant.findUnique({
+        where: { id: dto.parentTenantId },
+        select: { id: true, parentTenantId: true, aziendeLimit: true },
+      })
+      if (!madre) {
+        throw new BadRequestException('Azienda madre non trovata')
+      }
+      // Gerarchia a UN SOLO livello: senza questo vincolo servirebbero query
+      // ricorsive e "chi vede cosa" diventerebbe un albero da risolvere a ogni
+      // richiesta.
+      if (madre.parentTenantId) {
+        throw new BadRequestException(
+          'Questa azienda e gia una figlia: non e possibile creare un gruppo dentro un gruppo.'
+        )
+      }
+      // Quota di gruppo: se la madre la dichiara, comanda lei; altrimenti
+      // resta in vigore il vecchio User.companyLimit di chi crea.
+      if (madre.aziendeLimit !== null) {
+        const figlie = await this.prisma.tenant.count({
+          where: { parentTenantId: madre.id },
+        })
+        if (figlie >= madre.aziendeLimit) {
+          throw new ForbiddenException(
+            `Limite aziende del gruppo raggiunto (${figlie}/${madre.aziendeLimit}). ` +
+              'Aggiorna il piano per aggiungere altre aziende.'
+          )
+        }
+      }
+    }
+
     // Costruzione dati di subscription:
     //  - SUPER_ADMIN: rispetta i valori del DTO (default TRIAL dove omessi).
     //  - ADMIN: piano forzato al default (TRIAL + feature TRIAL + limiti schema),
@@ -206,6 +239,7 @@ export class TenantService {
       postalCode: dto.postalCode,
       country: dto.country ?? 'IT',
       ownerUserId,
+      ...(dto.parentTenantId ? { madre: { connect: { id: dto.parentTenantId } } } : {}),
       ...subscriptionData,
     }
 

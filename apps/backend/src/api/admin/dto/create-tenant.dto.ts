@@ -11,6 +11,7 @@ import {
   IsIn,
   IsUUID,
 } from 'class-validator'
+import { ApiPropertyOptional } from '@nestjs/swagger'
 import { SubscriptionTier, SubscriptionStatus } from '@prisma/client'
 import { FEATURE_KEYS } from '../../../application/admin/feature-catalog'
 
@@ -143,4 +144,13 @@ export class CreateTenantDto {
   @IsOptional()
   @IsUUID()
   ownerUserId?: string
+
+  /**
+   * Azienda madre del gruppo. Se valorizzato, il tenant creato e' una figlia:
+   * eredita il contratto della madre e resta isolato dalle sorelle.
+   */
+  @ApiPropertyOptional({ description: "Id dell'azienda madre del gruppo" })
+  @IsOptional()
+  @IsUUID()
+  parentTenantId?: string
 }
