@@ -8,21 +8,27 @@ import { ContrattoGruppoService } from './contratto-gruppo.service'
 const RADICE = 'tenant-madre-uuid'
 const FIGLIA = 'tenant-figlia-uuid'
 
-/** Prisma finto che si comporta come il DB: risolve per id. */
+const RIGA_RADICE = {
+  id: RADICE,
+  parentTenantId: null,
+  subscriptionTier: 'PROFESSIONAL',
+  subscriptionStatus: 'ACTIVE',
+  subscriptionEnd: null,
+  firLimitPerMonth: 100,
+  userLimitTotal: 10,
+  featureFlags: null,
+  aziendeLimit: 5,
+  ragioneSociale: 'Gruppo Madre Srl',
+}
+
+/**
+ * Prisma finto che si comporta come il DB: risolve per id e, come farebbe una
+ * `select` con relazione, restituisce la madre gia' in join sulla riga della
+ * figlia. Serve a verificare che il servizio non faccia una seconda query.
+ */
 function makePrisma() {
   const righe: Record<string, any> = {
-    [RADICE]: {
-      id: RADICE,
-      parentTenantId: null,
-      subscriptionTier: 'PROFESSIONAL',
-      subscriptionStatus: 'ACTIVE',
-      subscriptionEnd: null,
-      firLimitPerMonth: 100,
-      userLimitTotal: 10,
-      featureFlags: null,
-      aziendeLimit: 5,
-      ragioneSociale: 'Gruppo Madre Srl',
-    },
+    [RADICE]: { ...RIGA_RADICE, madre: null },
     [FIGLIA]: {
       id: FIGLIA,
       parentTenantId: RADICE,
@@ -35,6 +41,7 @@ function makePrisma() {
       featureFlags: null,
       aziendeLimit: null,
       ragioneSociale: 'Figlia Alfa Srl',
+      madre: { ...RIGA_RADICE },
     },
   }
   return {
@@ -84,12 +91,28 @@ describe('ContrattoGruppoService', () => {
     expect(prisma.tenant.findUnique).toHaveBeenCalledTimes(1)
   })
 
-  it('per una figlia: due query (tenant + madre)', async () => {
+  // Percorso caldo: FIRControllerV2.create chiama in sequenza assertNotSuspended
+  // e assertFirLimitNotReached. Con due query per figlia si arrivava a quattro
+  // letture per ogni FIR creato: la madre va presa in join, non con una seconda
+  // andata al database.
+  it('per una figlia: una sola query, con la madre in join', async () => {
     const prisma = makePrisma()
     const service = new ContrattoGruppoService(prisma)
 
     await service.caricaContratto(FIGLIA)
 
-    expect(prisma.tenant.findUnique).toHaveBeenCalledTimes(2)
+    expect(prisma.tenant.findUnique).toHaveBeenCalledTimes(1)
+  })
+
+  it('legge solo i campi del contratto, non la riga intera', async () => {
+    const prisma = makePrisma()
+    const service = new ContrattoGruppoService(prisma)
+
+    await service.caricaContratto(FIGLIA)
+
+    const [{ select }] = prisma.tenant.findUnique.mock.calls[0]
+    expect(select).toBeDefined()
+    expect(select.subscriptionTier).toBe(true)
+    expect(select.madre.select.subscriptionTier).toBe(true)
   })
 })

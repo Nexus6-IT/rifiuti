@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { SubscriptionStatus, SubscriptionTier, Tenant } from '@prisma/client'
+import { SubscriptionStatus, SubscriptionTier } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 
 /**
@@ -7,6 +7,19 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
  */
 export interface ContrattoEffettivo {
   tenantIdRadice: string
+  subscriptionTier: SubscriptionTier
+  subscriptionStatus: SubscriptionStatus
+  subscriptionEnd: Date | null
+  firLimitPerMonth: number
+  userLimitTotal: number
+  featureFlags: unknown
+  aziendeLimit: number | null
+  ragioneSociale: string
+}
+
+/** Riga letta dal database con i soli campi del contratto. */
+interface RigaContratto {
+  id: string
   subscriptionTier: SubscriptionTier
   subscriptionStatus: SubscriptionStatus
   subscriptionEnd: Date | null
@@ -42,28 +55,42 @@ export class ContrattoGruppoService {
     return tenant.parentTenantId ?? tenant.id
   }
 
-  /** Contratto effettivo, o null se il tenant non esiste. */
+  /**
+   * Contratto effettivo, o null se il tenant non esiste.
+   *
+   * Una sola query: i soli campi del contratto, con la madre gia' in join.
+   * E' un percorso caldo (ogni creazione di FIR passa da assertNotSuspended +
+   * assertFirLimitNotReached): leggere la riga intera, e per giunta due volte
+   * per le figlie, costava quattro select complete per FIR.
+   */
   async caricaContratto(tenantId: string): Promise<ContrattoEffettivo | null> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
+      select: {
+        ...ContrattoGruppoService.CAMPI_CONTRATTO,
+        madre: { select: ContrattoGruppoService.CAMPI_CONTRATTO },
+      },
     })
     if (!tenant) return null
 
-    // Se il tenant è radice, usalo direttamente
-    if (!tenant.parentTenantId) {
-      return this.toContrattoEffettivo(tenant)
-    }
-
-    // Altrimenti, leggi la madre
-    const radice = await this.prisma.tenant.findUnique({
-      where: { id: tenant.parentTenantId },
-    })
-    if (!radice) return null
-
-    return this.toContrattoEffettivo(radice)
+    // Il contratto e' quello della madre; se madre non c'e', il tenant e' radice.
+    return this.toContrattoEffettivo(tenant.madre ?? tenant)
   }
 
-  private toContrattoEffettivo(radice: Tenant): ContrattoEffettivo {
+  /** Colonne che compongono il contratto: nient'altro va letto. */
+  private static readonly CAMPI_CONTRATTO = {
+    id: true,
+    subscriptionTier: true,
+    subscriptionStatus: true,
+    subscriptionEnd: true,
+    firLimitPerMonth: true,
+    userLimitTotal: true,
+    featureFlags: true,
+    aziendeLimit: true,
+    ragioneSociale: true,
+  } as const
+
+  private toContrattoEffettivo(radice: RigaContratto): ContrattoEffettivo {
     return {
       tenantIdRadice: radice.id,
       subscriptionTier: radice.subscriptionTier,

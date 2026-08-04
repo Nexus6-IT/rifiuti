@@ -9,23 +9,26 @@ const RADICE = 'tenant-madre-uuid'
 const FIGLIA = 'tenant-figlia-uuid'
 
 function makeService() {
+  // La madre arriva in join sulla riga della figlia: e' la forma restituita
+  // dalla `select` con relazione di ContrattoGruppoService (una sola query).
+  const rigaRadice = {
+    id: RADICE,
+    parentTenantId: null,
+    subscriptionTier: 'ENTERPRISE',
+    subscriptionStatus: 'ACTIVE',
+    subscriptionEnd: null,
+    firLimitPerMonth: 0,
+    userLimitTotal: 50,
+    featureFlags: null,
+    aziendeLimit: 5,
+    ragioneSociale: 'Gruppo Madre Srl',
+  }
   const prisma: any = {
     tenant: {
       findUnique: jest.fn(({ where }: any) =>
         Promise.resolve(
           where.id === RADICE
-            ? {
-                id: RADICE,
-                parentTenantId: null,
-                subscriptionTier: 'ENTERPRISE',
-                subscriptionStatus: 'ACTIVE',
-                subscriptionEnd: null,
-                firLimitPerMonth: 0,
-                userLimitTotal: 50,
-                featureFlags: null,
-                aziendeLimit: 5,
-                ragioneSociale: 'Gruppo Madre Srl',
-              }
+            ? { ...rigaRadice, madre: null }
             : {
                 id: FIGLIA,
                 parentTenantId: RADICE,
@@ -37,6 +40,7 @@ function makeService() {
                 featureFlags: null,
                 aziendeLimit: null,
                 ragioneSociale: 'Figlia Alfa Srl',
+                madre: { ...rigaRadice },
               }
         )
       ),
