@@ -939,8 +939,10 @@ describe('TenantService — creazione azienda figlia', () => {
 
     await service.create({ ...dtoBase, parentTenantId: MADRE } as any, adminCorrente)
 
+    // Prisma vuole la relazione in forma `connect`, non la FK scalare: e' la
+    // stessa forma gia' usata per `tenant`/`producerUser` altrove nel progetto.
     const [{ data }] = prisma.tenant.create.mock.calls[0]
-    expect(data.parentTenantId).toBe(MADRE)
+    expect(data.madre.connect.id).toBe(MADRE)
   })
 
   it('la figlia nasce senza configurazione RENTRI ereditata dalla madre', async () => {
@@ -1028,11 +1030,7 @@ Verifica che `BadRequestException` e `ForbiddenException` siano importati da `@n
 - [ ] **Step 5: Eseguire i test e verificare che passino**
 
 Run: `cd apps/backend && npx jest src/application/admin/`
-Expected: PASS. Nota: il test «crea la figlia col legame» legge `data.parentTenantId`; con `connect` il valore arriva come `data.madre.connect.id`. Adegua l'asserzione del test a ciò che il codice produce davvero:
-
-```typescript
-    expect(data.madre.connect.id).toBe(MADRE)
-```
+Expected: PASS, 4 test. Se altri spec preesistenti costruiscono `TenantService` o chiamano `create`, verifica che restino verdi: il nuovo blocco di validazione si attiva **solo** quando `dto.parentTenantId` è valorizzato, quindi il comportamento senza gruppo non cambia.
 
 - [ ] **Step 6: Suite completa e typecheck**
 

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common'
 import { SubscriptionStatus, SubscriptionTier, UserRole, Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
@@ -11,6 +12,7 @@ import { CreateTenantDto } from '../../api/admin/dto/create-tenant.dto'
 import { UpdateTenantDto } from '../../api/admin/dto/update-tenant.dto'
 import { seedRolesForTenant } from './system-roles'
 import { TenantContext } from '../../core/context/tenant-context'
+import { MembershipService } from '../../api/me/membership.service'
 
 /**
  * TenantService (admin)
@@ -42,7 +44,8 @@ export interface CurrentUser {
 export class TenantService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly membership: MembershipService
   ) {
     this.logger.setContext(TenantService.name)
   }
@@ -107,7 +110,8 @@ export class TenantService {
    * - SUPER_ADMIN: può impostare piano, feature flag e limiti; `ownerUserId` =
    *   `dto.ownerUserId` (opzionale) o null.
    * - ADMIN (self-service): la quota `currentUser.companyLimit` viene applicata
-   *   (conteggio dei tenant di cui è `ownerUserId`); il piano è forzato al
+   *   (conteggio dei tenant di cui è `ownerUserId`) SOLO se non comanda la
+   *   quota di gruppo (v. `parentTenantId` più sotto); il piano è forzato al
    *   default (TRIAL + feature TRIAL + `userLimitTotal` di schema) ignorando
    *   qualsiasi tier/feature/limite passato nel DTO; `ownerUserId` =
    *   `currentUser.id`.
@@ -116,8 +120,19 @@ export class TenantService {
    * nuovo tenant e l'admin proprietario viene associato (ConsultantTenantAssociation)
    * al ruolo ADMIN del nuovo tenant, così da poter switchare nell'azienda creata.
    *
+   * Gruppo (`dto.parentTenantId`): un ADMIN può agganciare la figlia solo a
+   * una madre su cui ha accesso (`MembershipService.checkAccess`); il
+   * SUPER_ADMIN può agganciarla a qualunque madre.
+   *
+   * Precedenza delle quote (spec §5, non cumulative): se la madre indicata ha
+   * `aziendeLimit` valorizzato comanda quello e `User.companyLimit` non viene
+   * nemmeno consultato; altrimenti vale `User.companyLimit` di chi crea.
+   *
    * @throws ConflictException se la partita IVA è già registrata.
-   * @throws ForbiddenException se l'ADMIN ha raggiunto la quota aziende.
+   * @throws ForbiddenException se l'ADMIN ha raggiunto la quota aziende, non
+   *   ha accesso alla madre indicata, o la madre ha raggiunto `aziendeLimit`.
+   * @throws BadRequestException se la madre indicata non esiste o è a sua
+   *   volta una figlia (gerarchia a un solo livello).
    */
   async create(currentUser: CurrentUser, dto: CreateTenantDto) {
     const isSuperAdmin = this.isSuperAdmin(currentUser)
@@ -131,21 +146,80 @@ export class TenantService {
       throw new ConflictException(`Partita IVA ${dto.partitaIva} già registrata`)
     }
 
-    // Determina il proprietario (ownerUserId) e applica la quota per gli ADMIN.
+    // --- Gruppo: validazione della madre, se richiesta una figlia ---
+    // Si risolve PRIMA della quota personale: la precedenza fra i due limiti e'
+    // stabilita dalla spec §5 e non ammette cumulo — se la madre dichiara
+    // `aziendeLimit`, comanda quello e il `User.companyLimit` non si applica.
+    let quotaDiGruppoInVigore = false
+    if (dto.parentTenantId) {
+      const madre = await this.prisma.tenant.findUnique({
+        where: { id: dto.parentTenantId },
+        select: { id: true, parentTenantId: true, aziendeLimit: true },
+      })
+      if (!madre) {
+        throw new BadRequestException('Azienda madre non trovata')
+      }
+      // Titolarità sulla madre: senza questo controllo un qualsiasi ADMIN
+      // autenticato potrebbe agganciare la propria azienda a una madre
+      // qualunque conoscendone l'UUID, consumandone la quota e — più grave —
+      // ereditandone il contratto (piano/stato/limiti/feature, v. Task 2/3).
+      // Il SUPER_ADMIN resta libero di agganciare qualunque madre (stesso
+      // pattern di bypass usato da MembershipService.switchTenant). Delega a
+      // checkAccess: è la definizione unica di "questo utente può accedere a
+      // questa azienda" (tenant primario, proprietà, associazione consulente
+      // valida, discesa gerarchica) — niente logica di accesso duplicata qui.
+      if (!isSuperAdmin) {
+        const hasAccess = await this.membership.checkAccess(
+          currentUser.id,
+          madre.id,
+          currentUser.tenantId
+        )
+        if (!hasAccess) {
+          throw new ForbiddenException("Nessun accesso all'azienda madre indicata")
+        }
+      }
+      // Gerarchia a UN SOLO livello: senza questo vincolo servirebbero query
+      // ricorsive e "chi vede cosa" diventerebbe un albero da risolvere a ogni
+      // richiesta.
+      if (madre.parentTenantId) {
+        throw new BadRequestException(
+          'Questa azienda e gia una figlia: non e possibile creare un gruppo dentro un gruppo.'
+        )
+      }
+      // Quota di gruppo: se la madre la dichiara, comanda lei; altrimenti
+      // resta in vigore il vecchio User.companyLimit di chi crea.
+      if (madre.aziendeLimit !== null) {
+        quotaDiGruppoInVigore = true
+        const figlie = await this.prisma.tenant.count({
+          where: { parentTenantId: madre.id },
+        })
+        if (figlie >= madre.aziendeLimit) {
+          throw new ForbiddenException(
+            `Limite aziende del gruppo raggiunto (${figlie}/${madre.aziendeLimit}). ` +
+              'Aggiorna il piano per aggiungere altre aziende.'
+          )
+        }
+      }
+    }
+
+    // Determina il proprietario (ownerUserId) e applica la quota personale per
+    // gli ADMIN, ma solo se non e' gia' in vigore la quota di gruppo.
     let ownerUserId: string | null
     if (isSuperAdmin) {
       ownerUserId = dto.ownerUserId ?? null
     } else {
-      // ADMIN self-service: proprietario = se stesso + enforcement quota.
+      // ADMIN self-service: proprietario = se stesso.
       ownerUserId = currentUser.id
 
-      const limit = await this.getCompanyLimit(currentUser.id)
-      const owned = await this.prisma.tenant.count({
-        where: { ownerUserId: currentUser.id },
-      })
+      if (!quotaDiGruppoInVigore) {
+        const limit = await this.getCompanyLimit(currentUser.id)
+        const owned = await this.prisma.tenant.count({
+          where: { ownerUserId: currentUser.id },
+        })
 
-      if (owned >= limit) {
-        throw new ForbiddenException(`Limite aziende raggiunto (${owned}/${limit})`)
+        if (owned >= limit) {
+          throw new ForbiddenException(`Limite aziende raggiunto (${owned}/${limit})`)
+        }
       }
     }
 
@@ -206,6 +280,7 @@ export class TenantService {
       postalCode: dto.postalCode,
       country: dto.country ?? 'IT',
       ownerUserId,
+      ...(dto.parentTenantId ? { madre: { connect: { id: dto.parentTenantId } } } : {}),
       ...subscriptionData,
     }
 
@@ -343,7 +418,7 @@ export class TenantService {
    * - SUPER_ADMIN: può aggiornare tutti i campi (anagrafica + subscription).
    * - ADMIN: solo se proprietario (`ownerUserId === currentUser.id`) e SOLO
    *   l'anagrafica; i campi di piano (subscriptionTier, userLimitTotal,
-   *   featureFlags, firLimitPerMonth) vengono ignorati.
+   *   featureFlags, firLimitPerMonth, aziendeLimit) vengono ignorati.
    *
    * @throws NotFoundException se il tenant non esiste.
    * @throws ForbiddenException se l'ADMIN non è il proprietario.
@@ -393,6 +468,9 @@ export class TenantService {
       ...(isSuperAdmin && dto.userLimitTotal !== undefined
         ? { userLimitTotal: dto.userLimitTotal }
         : {}),
+      // aziendeLimit: quota di aziende del gruppo. `null` la rimuove e riporta
+      // in vigore il `User.companyLimit` di chi crea (spec §5).
+      ...(isSuperAdmin && dto.aziendeLimit !== undefined ? { aziendeLimit: dto.aziendeLimit } : {}),
       // featureFlags: array di override (validato in DTO contro FEATURE_KEYS).
       // Per tornare a derivare dal piano si può inviare un array vuoto o `null`.
       ...(isSuperAdmin && dto.featureFlags !== undefined

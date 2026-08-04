@@ -26,6 +26,56 @@ interface UserTenant {
   id: string
   name: string
   role?: string
+  parentTenantId?: string | null
+  annidata?: boolean
+}
+
+/** Azienda selezionabile nel selettore, con il solo legame madre/figlia necessario a ordinaAziendePerGruppo. */
+export interface AziendaSelezionabile {
+  id: string
+  name: string
+  parentTenantId?: string | null
+  annidata?: boolean
+}
+
+/**
+ * Ordina le aziende per gruppo: ogni figlia compare subito sotto la propria
+ * madre e viene marcata `annidata` (il template la indenta). Le aziende senza
+ * gruppo restano un elenco piatto nell'ordine ricevuto dal backend.
+ */
+export function ordinaAziendePerGruppo(
+  aziende: AziendaSelezionabile[]
+): Array<AziendaSelezionabile & { annidata: boolean }> {
+  const figliePerMadre = new Map<string, AziendaSelezionabile[]>()
+  for (const a of aziende) {
+    if (!a.parentTenantId) continue
+    const gruppo = figliePerMadre.get(a.parentTenantId) ?? []
+    gruppo.push(a)
+    figliePerMadre.set(a.parentTenantId, gruppo)
+  }
+
+  const risultato: Array<AziendaSelezionabile & { annidata: boolean }> = []
+  for (const a of aziende) {
+    if (a.parentTenantId) continue
+    risultato.push({ ...a, annidata: false })
+    // Le figlie sotto la stessa madre sono ordinate alfabeticamente per
+    // leggibilita', indipendentemente dall'ordine in cui il backend le manda.
+    const figlie = (figliePerMadre.get(a.id) ?? [])
+      .slice()
+      .sort((x, y) => x.name.localeCompare(y.name))
+    for (const figlia of figlie) {
+      risultato.push({ ...figlia, annidata: true })
+    }
+  }
+
+  // Figlie la cui madre non e' accessibile all'utente: non vanno perse.
+  for (const a of aziende) {
+    if (a.parentTenantId && !risultato.some(r => r.id === a.id)) {
+      risultato.push({ ...a, annidata: false })
+    }
+  }
+
+  return risultato
 }
 
 @Component({
@@ -379,7 +429,11 @@ interface UserTenant {
             appendTo="body"
             styleClass="tenant-switcher__dropdown"
             [ariaLabel]="'Cambia azienda corrente'"
-          ></p-dropdown>
+          >
+            <ng-template let-azienda pTemplate="item">
+              <span [class.azienda-annidata]="azienda.annidata">{{ azienda.name }}</span>
+            </ng-template>
+          </p-dropdown>
         </div>
       } @else {
         <!-- Utente con una sola azienda: mostro il nome (nessuno switch). -->
@@ -662,6 +716,16 @@ interface UserTenant {
       :host ::ng-deep .tenant-switcher__dropdown .p-dropdown-trigger,
       :host ::ng-deep .tenant-switcher__dropdown .p-dropdown-clear-icon {
         color: var(--sidebar-ink-muted);
+      }
+      /*
+       * Azienda figlia nel gruppo: indentata sotto la propria madre.
+       * Regola globale (senza prefisso :host) perche' il pannello del
+       * p-dropdown e' agganciato al <body> (appendTo="body"), quindi non e'
+       * un discendente dell'host di questo componente.
+       */
+      ::ng-deep .azienda-annidata {
+        display: inline-block;
+        padding-left: 1.25rem;
       }
 
       /* ===== Navigazione ===== */
@@ -1250,9 +1314,13 @@ export class LayoutComponent implements OnInit {
           const list = Array.isArray(res?.tenants) ? res.tenants : []
           const mapped: UserTenant[] = list.map(t => {
             const id = t.id ?? t.tenantId
-            return { id, name: t.ragioneSociale ?? t.name ?? t.tenantName ?? id }
+            return {
+              id,
+              name: t.ragioneSociale ?? t.name ?? t.tenantName ?? id,
+              parentTenantId: t.parentTenantId ?? null,
+            }
           })
-          this.userTenants.set(mapped)
+          this.userTenants.set(ordinaAziendePerGruppo(mapped))
           this.currentUserTenantId.set(res?.currentTenantId ?? null)
         },
         error: () => this.userTenants.set([]),

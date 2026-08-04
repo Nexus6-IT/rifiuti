@@ -13,7 +13,7 @@ import { GetUserPermissionsQueryHandler } from '../../application/queries/handle
 import { GetAuditTrailQueryHandler } from '../../application/queries/handlers/get-audit-trail.handler'
 import { ReconstructHistoricalPermissionsQueryHandler } from '../../application/queries/handlers/reconstruct-historical-permissions.handler'
 import { GetConsultantTenantsQueryHandler } from '../../application/queries/handlers/get-consultant-tenants.handler'
-import { GetAggregatedDashboardQueryHandler } from '../../application/queries/handlers/get-aggregated-dashboard.handler'
+import { GetAggregatedDashboardHandler } from '../../application/queries/handlers/get-aggregated-dashboard.handler'
 import { AssignRoleCommandHandler } from '../../application/commands/handlers/assign-role.handler'
 import { RevokeRoleCommandHandler } from '../../application/commands/handlers/revoke-role.handler'
 import { CreateCustomRoleCommandHandler } from '../../application/commands/handlers/create-custom-role.handler'
@@ -78,7 +78,7 @@ describe('PermissionsModule (DI wiring)', () => {
     expect(moduleRef.get(GetAuditTrailQueryHandler)).toBeDefined()
     expect(moduleRef.get(ReconstructHistoricalPermissionsQueryHandler)).toBeDefined()
     expect(moduleRef.get(GetConsultantTenantsQueryHandler)).toBeDefined()
-    expect(moduleRef.get(GetAggregatedDashboardQueryHandler)).toBeDefined()
+    expect(moduleRef.get(GetAggregatedDashboardHandler)).toBeDefined()
 
     // Command handler
     expect(moduleRef.get(AssignRoleCommandHandler)).toBeDefined()

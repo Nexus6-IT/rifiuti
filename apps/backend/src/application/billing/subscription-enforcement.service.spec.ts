@@ -11,6 +11,7 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { ForbiddenException } from '@nestjs/common'
 import { SubscriptionStatus, SubscriptionTier } from '@prisma/client'
 import { SubscriptionEnforcementService } from './subscription-enforcement.service'
+import { ContrattoGruppoService } from './contratto-gruppo.service'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 
 // ── Mock PrismaService ────────────────────────────────────────────────────
@@ -36,7 +37,11 @@ describe('SubscriptionEnforcementService', () => {
     jest.clearAllMocks()
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [SubscriptionEnforcementService, { provide: PrismaService, useValue: mockPrisma }],
+      providers: [
+        SubscriptionEnforcementService,
+        ContrattoGruppoService,
+        { provide: PrismaService, useValue: mockPrisma },
+      ],
     }).compile()
 
     service = module.get<SubscriptionEnforcementService>(SubscriptionEnforcementService)

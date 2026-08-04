@@ -164,6 +164,135 @@ jobs:
         run: npm run build
 
   # ==========================================================================
+  # TEST INTEGRAZIONE - PostgreSQL reale (*.postgres.spec.ts)
+  # ----------------------------------------------------------------------------
+  # Le spec `*.postgres.spec.ts` (isolamento fra aziende sorelle, gerarchia
+  # tenant, repository Prisma) girano contro un Postgres vero: vincoli di
+  # unicita', comportamento dei NULL, RLS. Il job "backend" sopra le esclude
+  # per costruzione (jest.config.js -> testPathIgnorePatterns), quindi finora
+  # nessun gate le eseguiva mai: una regressione sull'isolamento fra tenant
+  # sarebbe passata inosservata. Job indipendente, senza `needs`: non blocca
+  # ne' e' bloccato dagli altri.
+  #
+  # Raggiungibilita' del database: il runner gira con
+  # `container.network = host` (vedi ops/setup-gitea-runner.sh). FIX ROUND 1
+  # (2026-08-04): con `--network host` Docker IGNORA la pubblicazione delle
+  # porte (`ports:`/`-p`) — verificato sul runner reale, il servizio Postgres
+  # restava in ascolto sulla SUA porta di default (5432) sull'host, non su
+  # quella "mappata". Niente piu' `services:` con `ports:`. Avviamo Postgres
+  # con uno step `docker run` esplicito, dicendogli di ascoltare DIRETTAMENTE
+  # sulla porta che vogliamo (`-c port=55432`): in rete host non c'e' nessuna
+  # mappatura da rispettare, quindi funziona a prescindere. Nome del
+  # container legato a `github.run_id` per evitare collisioni fra run
+  # concorrenti sullo stesso runner, con rimozione garantita in uno step
+  # `if: always()` (altrimenti restano container Postgres orfani sul runner,
+  # come gia' successo con i volumi buildx — vedi cron gitea-runner-cleanup).
+  # ==========================================================================
+  test-postgres:
+    name: Test integrazione (PostgreSQL reale)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend
+    env:
+      # Costruito qui, non preso dal codice applicativo: credenziali e porta
+      # sono quelle del container Postgres effimero di questo job, non quelle
+      # attese in sviluppo/produzione.
+      DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public"
+      POSTGRES_CI_CONTAINER: "postgres-ci-${{ github.run_id }}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20 + cache npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Stessa modalita' degli altri job: `npm ci` alla radice del monorepo
+      # popola anche apps/backend (workspaces npm). Nessuna installazione
+      # diversa da quella gia' in uso.
+      - name: Install dipendenze (monorepo)
+        working-directory: ${{ github.workspace }}
+        run: npm ci
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      # `docker run` esplicito invece di `services:` (vedi nota sopra: con
+      # network host la pubblicazione delle porte non viene applicata).
+      # `-c port=55432` fa ascoltare Postgres direttamente su quella porta,
+      # anche in rete host. `--rm` come rete di sicurezza aggiuntiva (in caso
+      # il container si fermi da solo), ma la rimozione affidabile e'
+      # comunque delegata allo step finale `if: always()`.
+      - name: Avvia PostgreSQL (docker run, porta esplicita)
+        run: |
+          docker run -d --rm \
+            --name "$POSTGRES_CI_CONTAINER" \
+            --network host \
+            -e POSTGRES_USER=wasteflow \
+            -e POSTGRES_PASSWORD=wasteflow_ci \
+            -e POSTGRES_DB=wasteflow_ci \
+            postgres:16-alpine \
+            -c port=55432
+
+      # Verifica esplicita e attiva che la porta sia raggiungibile: usiamo il
+      # redirector /dev/tcp di bash (built-in, nessun tool esterno da
+      # assumere installato sul runner) invece di fare affidamento su un
+      # health-check di `services:` la cui semantica su Gitea Actions non e'
+      # stata verificata in questo repo.
+      - name: Attendi che PostgreSQL sia raggiungibile
+        run: |
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/55432) 2>/dev/null; then
+              exec 3<&- 3>&-
+              echo "PostgreSQL raggiungibile su 127.0.0.1:55432 (tentativo ${i})"
+              exit 0
+            fi
+            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
+            sleep 2
+          done
+          echo "PostgreSQL non raggiungibile su 127.0.0.1:55432 dopo 30 tentativi" >&2
+          docker logs "$POSTGRES_CI_CONTAINER" || true
+          exit 1
+
+      # Ulteriore margine di sicurezza: la porta puo' essere aperta prima che
+      # Postgres abbia finito l'inizializzazione di ruoli/database (accetta
+      # TCP ma rifiuta ancora l'autenticazione). Il retry qui e' innocuo:
+      # `prisma migrate deploy` non ha effetti collaterali se fallisce prima
+      # di applicare alcuna migrazione.
+      - name: Applica le migrazioni Prisma (con retry)
+        run: |
+          for i in $(seq 1 10); do
+            if npx prisma migrate deploy; then
+              echo "Migrazioni applicate al tentativo ${i}"
+              exit 0
+            fi
+            echo "Tentativo ${i}/10 fallito, riprovo tra 3s..."
+            sleep 3
+          done
+          echo "Impossibile applicare le migrazioni dopo 10 tentativi" >&2
+          exit 1
+
+      # Suite di integrazione su Postgres reale: isolamento fra aziende
+      # sorelle, gerarchia tenant, repository Prisma (CER, FIR, RENTRI).
+      # Selezione dei file via jest.postgres.config.js (testRegex
+      # *.postgres.spec.ts), non toccato da questo commit.
+      - name: Test integrazione Postgres (*.postgres.spec.ts)
+        run: npm run test:postgres
+
+      # Cleanup garantito: gira sempre, anche se un passo precedente e'
+      # fallito, altrimenti il container Postgres resta orfano sul runner
+      # (gia' successo con i volumi buildx — v. cron gitea-runner-cleanup
+      # sul nodo Proxmox). `--rm` sopra copre lo stop pulito, questo copre
+      # anche i casi in cui il container e' rimasto vivo (es. job annullato).
+      - name: Rimuovi il container PostgreSQL (sempre)
+        if: always()
+        run: docker rm -f "$POSTGRES_CI_CONTAINER" 2>/dev/null || true
+
+  # ==========================================================================
   # SECURITY - npm audit (non bloccante)
   # ==========================================================================
   security:

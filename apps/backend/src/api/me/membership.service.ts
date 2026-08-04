@@ -5,8 +5,9 @@ import type { CurrentUserPayload } from '../../auth/decorators/current-user.deco
 
 /**
  * Gestione multi-azienda dell'utente autenticato: elenco delle aziende
- * accessibili (tenant primario + possedute + associazioni attive) e switch
- * con ri-emissione del JWT sul tenant scelto.
+ * accessibili (tenant primario + possedute + associazioni attive + figlie
+ * delle aziende accessibili) e switch con ri-emissione del JWT sul tenant
+ * scelto.
  */
 @Injectable()
 export class MembershipService {
@@ -79,9 +80,18 @@ export class MembershipService {
     if (ids.size === 0) {
       return { tenants: [], currentTenantId: user.tenantId ?? null }
     }
+
+    // Le figlie delle aziende accessibili sono a loro volta accessibili
+    // (discesa gerarchica, v. checkAccess).
+    const figlie = await this.prisma.tenant.findMany({
+      where: { parentTenantId: { in: Array.from(ids) } },
+      select: { id: true },
+    })
+    figlie.forEach(f => ids.add(f.id))
+
     const tenants = await this.prisma.tenant.findMany({
       where: { id: { in: Array.from(ids) } },
-      select: { id: true, ragioneSociale: true },
+      select: { id: true, ragioneSociale: true, parentTenantId: true },
       orderBy: { ragioneSociale: 'asc' },
     })
     return { tenants, currentTenantId: user.tenantId ?? null }
@@ -91,10 +101,11 @@ export class MembershipService {
    * Verifica se l'utente ha accesso al tenant indicato (senza emettere un nuovo
    * JWT). Usato dal `TenantSwitchInterceptor` per validare l'header `X-Tenant-ID`.
    *
-   * Tre sorgenti di membership controllate nell'ordine:
+   * Quattro sorgenti di membership controllate nell'ordine:
    *   1. Tenant primario del JWT (sempre consentito, nessuna query extra).
    *   2. Tenant di cui l'utente è owner (`Tenant.ownerUserId`).
    *   3. Associazioni consulente attive (`ConsultantTenantAssociation`).
+   *   4. Discesa gerarchica: abilitazione all'azienda MADRE del target.
    *
    * Fail-closed: qualunque errore interno è propagato al chiamante, che deve
    * ignorare l'header e ricadere sul tenant primario.
@@ -121,29 +132,31 @@ export class MembershipService {
       where: MembershipService.associazioneValida(userId, targetTenantId),
       select: { id: true },
     })
-    return !!assoc
+    if (assoc) return true
+
+    // 4. Discesa gerarchica: chi e' abilitato all'azienda MADRE accede alle
+    //    figlie coi poteri del proprio ruolo. E' l'unico punto in cui la
+    //    gerarchia concede qualcosa, e vale in una sola direzione: essere
+    //    abilitati a una figlia non da' accesso ne' alla madre ne' alle sorelle.
+    const target = await this.prisma.tenant.findUnique({
+      where: { id: targetTenantId },
+      select: { parentTenantId: true },
+    })
+    if (!target?.parentTenantId) return false
+
+    // Ricorsione di UN solo passo: la gerarchia e' a un livello.
+    return this.checkAccess(userId, target.parentTenantId, primaryTenantId)
   }
 
   /** Verifica l'accesso e ri-emette il JWT con il tenant target. */
   async switchTenant(user: CurrentUserPayload, targetTenantId: string) {
     const isSuperAdmin = user.role === 'SUPER_ADMIN'
     if (!isSuperAdmin) {
-      const isPrimary = user.tenantId === targetTenantId
-      let allowed = isPrimary
-      if (!allowed) {
-        const owned = await this.prisma.tenant.findFirst({
-          where: { id: targetTenantId, ownerUserId: user.id },
-          select: { id: true },
-        })
-        allowed = !!owned
-      }
-      if (!allowed) {
-        const assoc = await this.prisma.consultantTenantAssociation.findFirst({
-          where: MembershipService.associazioneValida(user.id, targetTenantId),
-          select: { id: true },
-        })
-        allowed = !!assoc
-      }
+      // Stessa definizione di "questo utente puo' accedere a questa azienda"
+      // usata dal TenantSwitchInterceptor per l'header X-Tenant-ID: delegare
+      // a checkAccess evita che le due strade divergano di nuovo (es. la
+      // discesa gerarchica madre->figlie, aggiunta li' e dimenticata qui).
+      const allowed = await this.checkAccess(user.id, targetTenantId, user.tenantId)
       if (!allowed) {
         throw new ForbiddenException('Nessun accesso a questa azienda')
       }

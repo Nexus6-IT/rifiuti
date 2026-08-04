@@ -113,6 +113,16 @@ export class UpdateTenantDto {
   userLimitTotal?: number
 
   /**
+   * Quota di aziende figlie del gruppo (campo di piano, solo SUPER_ADMIN).
+   * `null` rimuove la quota di gruppo: torna a valere `User.companyLimit` di
+   * chi crea (spec §5). Se omesso resta invariata.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  aziendeLimit?: number | null
+
+  /**
    * Override esplicito delle feature abilitate (array di chiavi del catalogo).
    * Ogni elemento deve appartenere a FEATURE_KEYS. Se omesso, le feature
    * restano invariate; per tornare a derivarle dal piano impostarlo a `null`

@@ -5,6 +5,7 @@ import {
   Delete,
   Body,
   Param,
+  Req,
   HttpCode,
   HttpStatus,
   UseGuards,
@@ -18,12 +19,12 @@ import { RequirePermission } from '../decorators/require-permission.decorator'
 import { CurrentUser } from '../decorators/current-user.decorator'
 import { CurrentTenant } from '../decorators/current-tenant.decorator'
 import { AuditAction } from '../decorators/audit-action.decorator'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { SwitchTenantContextCommand } from '../../application/commands/switch-tenant-context.command'
 import { SwitchTenantContextCommandHandler } from '../../application/commands/handlers/switch-tenant-context.handler'
 import { GetConsultantTenantsQuery } from '../../application/queries/get-consultant-tenants.query'
 import { GetConsultantTenantsQueryHandler } from '../../application/queries/handlers/get-consultant-tenants.handler'
-import { GetAggregatedDashboardQuery } from '../../application/queries/get-aggregated-dashboard.query'
-import { GetAggregatedDashboardQueryHandler } from '../../application/queries/handlers/get-aggregated-dashboard.handler'
+import { GetAggregatedDashboardHandler } from '../../application/queries/handlers/get-aggregated-dashboard.handler'
 import { ConsultantTenantAssociationRepository } from '../../domain/identity-access/consultant-tenant-association.repository.interface'
 import { ConsultantTenantAssociation } from '../../domain/identity-access/consultant-tenant-association.entity'
 
@@ -63,7 +64,7 @@ export class ConsultantController {
   constructor(
     private readonly switchTenantContextHandler: SwitchTenantContextCommandHandler,
     private readonly getConsultantTenantsHandler: GetConsultantTenantsQueryHandler,
-    private readonly getAggregatedDashboardHandler: GetAggregatedDashboardQueryHandler,
+    private readonly getAggregatedDashboardHandler: GetAggregatedDashboardHandler,
     @Inject('ConsultantTenantAssociationRepository')
     private readonly consultantAssociationRepository: ConsultantTenantAssociationRepository
   ) {}
@@ -135,28 +136,27 @@ export class ConsultantController {
 
   /**
    * T112: GET /api/v1/consultant/dashboard
-   * Aggregated dashboard with cross-tenant KPIs
-   * Per spec.md: Show pending FIRs, MUD deadlines, RENTRI sync failures
+   * Vista d'insieme del gruppo: aggrega le aziende FIGLIE della madre attiva
+   * sulla richiesta (v. GetAggregatedDashboardHandler). Non piu' basata sulle
+   * associazioni consulente-tenant: la sorgente e' l'elenco dei figli
+   * dell'azienda selezionata (requireRequestTenantId).
    *
    * Response:
-   * - totalTenants: Number of client tenants
-   * - totalPendingFirs: Pending FIRs across all clients
-   * - totalMudDeadlines: Upcoming deadlines
-   * - totalRentriSyncFailures: Sync issues requiring attention
-   * - pendingFirsByClient: Breakdown by tenant
-   * - upcomingDeadlines: Next 20 deadlines
-   * - recentActivity: Last 20 activities across all tenants
+   * - totalTenants: Numero di aziende figlie
+   * - totalPendingFirs: FIR da trasmettere su tutte le figlie
+   * - totalRentriSyncFailures: Sincronie RENTRI fallite
+   * - pendingFirsByClient: Ripartizione per azienda figlia
+   * - upcomingDeadlines: Prossime scadenze MUD
+   * - recentActivity: Ultime attivita' su tutte le figlie
    */
   @Get('dashboard')
   @HttpCode(HttpStatus.OK)
   @AuditAction('view_consultant_dashboard')
-  async getDashboard(@CurrentUser('id') userId: string) {
-    this.logger.log(`Consultant ${userId} fetching aggregated dashboard`)
+  async getDashboard(@CurrentUser('id') userId: string, @Req() req: any) {
+    const tenantIdMadre = requireRequestTenantId(req)
+    this.logger.log(`Utente ${userId} richiede la vista di gruppo per l'azienda ${tenantIdMadre}`)
 
-    const query = new GetAggregatedDashboardQuery(userId)
-    const result = await this.getAggregatedDashboardHandler.execute(query)
-
-    return result
+    return this.getAggregatedDashboardHandler.execute({ tenantIdMadre })
   }
 
   /**

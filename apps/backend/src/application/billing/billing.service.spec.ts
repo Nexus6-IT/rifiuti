@@ -16,6 +16,7 @@ import { SubscriptionStatus, SubscriptionTier } from '@prisma/client'
 import { BillingService } from './billing.service'
 import { StripeService } from './stripe.service'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { ContrattoGruppoService } from './contratto-gruppo.service'
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -59,10 +60,12 @@ function makeTenant(
     userLimitTotal: number
     pec: string | null
     ragioneSociale: string
+    parentTenantId: string | null
   }> = {}
 ) {
   return {
     id: 'tenant-uuid-1',
+    parentTenantId: null,
     subscriptionTier: SubscriptionTier.TRIAL,
     subscriptionStatus: SubscriptionStatus.TRIAL,
     subscriptionEnd: null,
@@ -90,6 +93,9 @@ describe('BillingService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: StripeService, useValue: mockStripeService },
         { provide: ConfigService, useValue: mockConfig },
+        // Servizio reale sul Prisma finto: e' lui a stabilire chi e' la radice
+        // del gruppo, regola che questi test verificano.
+        ContrattoGruppoService,
       ],
     }).compile()
 
@@ -113,6 +119,59 @@ describe('BillingService', () => {
       ;(mockPrisma.tenant.findUnique as jest.Mock).mockResolvedValue(null)
 
       await expect(service.getStatus('non-esiste')).rejects.toThrow('Tenant non trovato')
+    })
+
+    it('una figlia vede il piano del gruppo, non il proprio', async () => {
+      // Prima lettura: la figlia (per risolvere la radice). Seconda: la madre.
+      ;(mockPrisma.tenant.findUnique as jest.Mock)
+        .mockResolvedValueOnce(
+          makeTenant({
+            subscriptionTier: SubscriptionTier.TRIAL,
+            parentTenantId: 'tenant-madre-uuid',
+          })
+        )
+        .mockResolvedValueOnce(
+          makeTenant({
+            subscriptionTier: SubscriptionTier.ENTERPRISE,
+            subscriptionStatus: SubscriptionStatus.ACTIVE,
+          })
+        )
+
+      const result = await service.getStatus('tenant-figlia-uuid')
+
+      expect(result.tier).toBe(SubscriptionTier.ENTERPRISE)
+      expect(result.status).toBe(SubscriptionStatus.ACTIVE)
+    })
+  })
+
+  // ── createBillingPortalSession ────────────────────────────────────────────
+
+  describe('createBillingPortalSession', () => {
+    it('una figlia non puo aprire il portale: si gestisce dalla madre', async () => {
+      Object.defineProperty(mockStripeService, 'isEnabled', { value: true, writable: true })
+      ;(mockPrisma.tenant.findUnique as jest.Mock).mockResolvedValue(
+        makeTenant({ parentTenantId: 'tenant-madre-uuid' })
+      )
+
+      await expect(
+        service.createBillingPortalSession('tenant-figlia-uuid', 'https://app.test')
+      ).rejects.toThrow("L'abbonamento si gestisce dall'azienda madre del gruppo")
+
+      expect(mockStripeService.createBillingPortalSession).not.toHaveBeenCalled()
+    })
+
+    it('una radice apre il portale come prima', async () => {
+      Object.defineProperty(mockStripeService, 'isEnabled', { value: true, writable: true })
+      ;(mockPrisma.tenant.findUnique as jest.Mock).mockResolvedValue(
+        makeTenant({ stripeCustomerId: 'cus_test123' })
+      )
+      ;(mockStripeService.createBillingPortalSession as jest.Mock).mockResolvedValue(
+        'https://billing.stripe.com/test'
+      )
+
+      const result = await service.createBillingPortalSession('tenant-uuid-1', 'https://app.test')
+
+      expect(result).toBe('https://billing.stripe.com/test')
     })
   })
 
@@ -157,6 +216,21 @@ describe('BillingService', () => {
           priceId: 'price_professional_test',
         })
       )
+    })
+
+    it('una figlia non puo avviare un checkout: si paga dalla madre', async () => {
+      Object.defineProperty(mockStripeService, 'isEnabled', { value: true, writable: true })
+      // Tenant figlia: parentTenantId valorizzato → non e' la radice del gruppo.
+      ;(mockPrisma.tenant.findUnique as jest.Mock).mockResolvedValue(
+        makeTenant({ parentTenantId: 'tenant-madre-uuid' })
+      )
+
+      await expect(
+        service.createCheckoutSession('tenant-figlia-uuid', 'PROFESSIONAL', 'https://app.test')
+      ).rejects.toThrow("L'abbonamento si gestisce dall'azienda madre del gruppo")
+
+      expect(mockStripeService.createCheckoutSession).not.toHaveBeenCalled()
+      expect(mockPrisma.tenant.update).not.toHaveBeenCalled()
     })
 
     it('lancia ForbiddenException se il tenant è SUSPENDED', async () => {

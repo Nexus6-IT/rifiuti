@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core'
+import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { HttpClient } from '@angular/common/http'
 import { TableModule } from 'primeng/table'
@@ -15,7 +15,8 @@ import { TooltipModule } from 'primeng/tooltip'
  * Features:
  * - Total tenant count and overview
  * - Pending FIRs grouped by client
- * - Upcoming MUD deadlines across all clients
+ * - Dichiarazioni MUD ancora aperte (anno + stato; il backend non fornisce una
+ *   data di scadenza: non se ne inventa una)
  * - RENTRI sync failures requiring attention
  * - Recent activity feed across all tenants
  * - Quick tenant switching from dashboard
@@ -51,9 +52,9 @@ import { TooltipModule } from 'primeng/tooltip'
         </div>
         <div class="stat-card">
           <span class="stat-card__label"
-            ><i class="pi pi-calendar" aria-hidden="true"></i> Scadenze imminenti</span
+            ><i class="pi pi-calendar" aria-hidden="true"></i> MUD da chiudere</span
           >
-          <span class="stat-card__value">{{ dashboardData().totalMudDeadlines }}</span>
+          <span class="stat-card__value">{{ mudDaChiudere() }}</span>
         </div>
         <div class="stat-card">
           <span class="stat-card__label"
@@ -127,9 +128,9 @@ import { TooltipModule } from 'primeng/tooltip'
         </div>
       </section>
 
-      <!-- Scadenze imminenti -->
-      <section class="surface-card mb-section" aria-label="Scadenze MUD imminenti">
-        <h2 class="card-title">Scadenze MUD imminenti</h2>
+      <!-- Dichiarazioni MUD ancora aperte -->
+      <section class="surface-card mb-section" aria-label="Dichiarazioni MUD da chiudere">
+        <h2 class="card-title">Dichiarazioni MUD da chiudere</h2>
         <div class="table-responsive">
           <p-table
             [value]="dashboardData().upcomingDeadlines"
@@ -140,9 +141,8 @@ import { TooltipModule } from 'primeng/tooltip'
             <ng-template pTemplate="header">
               <tr>
                 <th>Cliente</th>
-                <th>Tipo scadenza</th>
-                <th>Data</th>
-                <th>Giorni rimanenti</th>
+                <th style="width: 8rem">Anno</th>
+                <th style="width: 12rem">Stato</th>
                 <th style="width: 10rem">Azioni</th>
               </tr>
             </ng-template>
@@ -150,12 +150,11 @@ import { TooltipModule } from 'primeng/tooltip'
             <ng-template pTemplate="body" let-deadline>
               <tr>
                 <td>{{ deadline.tenantName }}</td>
-                <td>{{ deadline.deadlineType }}</td>
-                <td>{{ deadline.deadlineDate | date: 'short' }}</td>
+                <td>{{ deadline.year }}</td>
                 <td>
                   <p-tag
-                    [value]="getDaysRemaining(deadline.deadlineDate) + ' giorni'"
-                    [severity]="getSeverityForDeadline(deadline.deadlineDate)"
+                    [value]="etichettaStato(deadline.status)"
+                    [severity]="severitaStato(deadline.status)"
                   ></p-tag>
                 </td>
                 <td>
@@ -173,10 +172,10 @@ import { TooltipModule } from 'primeng/tooltip'
 
             <ng-template pTemplate="emptymessage">
               <tr>
-                <td colspan="5">
+                <td colspan="4">
                   <div class="empty-state">
                     <i class="pi pi-check-circle empty-state__icon" aria-hidden="true"></i>
-                    <p class="empty-state__title">Nessuna scadenza imminente</p>
+                    <p class="empty-state__title">Nessuna dichiarazione MUD aperta</p>
                   </div>
                 </td>
               </tr>
@@ -238,30 +237,26 @@ import { TooltipModule } from 'primeng/tooltip'
         ></p-chart>
       </section>
 
-      <!-- Timeline scadenze -->
-      <section class="surface-card mb-section" aria-label="Timeline delle scadenze">
-        <h2 class="card-title">Timeline delle scadenze</h2>
+      <!-- Le cinque dichiarazioni piu' recenti -->
+      <section class="surface-card mb-section" aria-label="Ultime dichiarazioni MUD aperte">
+        <h2 class="card-title">Ultime dichiarazioni MUD aperte</h2>
         <div class="deadline-timeline">
           <div
             *ngFor="let deadline of dashboardData().upcomingDeadlines.slice(0, 5)"
             class="timeline-item"
-            [class.urgent]="getDaysRemaining(deadline.deadlineDate) <= 7"
-            [class.warning]="
-              getDaysRemaining(deadline.deadlineDate) > 7 &&
-              getDaysRemaining(deadline.deadlineDate) <= 14
-            "
+            [class.urgent]="deadline.status === 'DRAFT'"
+            [class.warning]="deadline.status === 'REVIEWING'"
           >
             <div class="timeline-marker" aria-hidden="true"></div>
             <div class="timeline-content">
               <div class="timeline-header">
                 <strong>{{ deadline.tenantName }}</strong>
-                <span class="timeline-date">{{ deadline.deadlineDate | date: 'mediumDate' }}</span>
+                <span class="timeline-date">Anno {{ deadline.year }}</span>
               </div>
-              <p class="timeline-description">{{ deadline.deadlineType }}</p>
               <div class="timeline-footer">
                 <p-tag
-                  [value]="getDaysRemaining(deadline.deadlineDate) + ' giorni rimanenti'"
-                  [severity]="getSeverityForDeadline(deadline.deadlineDate)"
+                  [value]="etichettaStato(deadline.status)"
+                  [severity]="severitaStato(deadline.status)"
                 ></p-tag>
               </div>
             </div>
@@ -269,7 +264,7 @@ import { TooltipModule } from 'primeng/tooltip'
 
           <div *ngIf="dashboardData().upcomingDeadlines.length === 0" class="empty-state">
             <i class="pi pi-check-circle empty-state__icon" aria-hidden="true"></i>
-            <p class="empty-state__title">Nessuna scadenza imminente</p>
+            <p class="empty-state__title">Nessuna dichiarazione MUD aperta</p>
           </div>
         </div>
       </section>
@@ -521,7 +516,6 @@ export class ConsultantDashboardComponent implements OnInit {
   dashboardData = signal<any>({
     totalTenants: 0,
     totalPendingFirs: 0,
-    totalMudDeadlines: 0,
     totalRentriSyncFailures: 0,
     pendingFirsByClient: [],
     upcomingDeadlines: [],
@@ -529,6 +523,12 @@ export class ConsultantDashboardComponent implements OnInit {
     rentriSyncFailures: [],
     pendingFirsTrend: [],
   })
+
+  /**
+   * Dichiarazioni MUD ancora aperte. Il backend non manda un totale: si conta
+   * l'elenco che manda davvero (`upcomingDeadlines`).
+   */
+  mudDaChiudere = computed<number>(() => this.dashboardData().upcomingDeadlines?.length ?? 0)
 
   isLoading = signal(false)
 
@@ -644,18 +644,32 @@ export class ConsultantDashboardComponent implements OnInit {
     })
   }
 
-  getDaysRemaining(deadlineDate: string): number {
-    const deadline = new Date(deadlineDate)
-    const now = new Date()
-    const diffTime = deadline.getTime() - now.getTime()
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    return Math.max(0, diffDays)
+  /**
+   * Etichetta dello stato della dichiarazione MUD (enum MUDStatus del backend).
+   * Le dichiarazioni gia' presentate (SUBMITTED) non arrivano in questo elenco.
+   */
+  etichettaStato(status: string): string {
+    switch (status) {
+      case 'DRAFT':
+        return 'Bozza'
+      case 'REVIEWING':
+        return 'In revisione'
+      case 'ARCHIVED':
+        return 'Archiviata'
+      default:
+        return status
+    }
   }
 
-  getSeverityForDeadline(deadlineDate: string): 'success' | 'warning' | 'danger' {
-    const days = this.getDaysRemaining(deadlineDate)
-    if (days <= 7) return 'danger'
-    if (days <= 14) return 'warning'
-    return 'success'
+  /** Quanto urge: una bozza non e' ancora stata lavorata, una in revisione si'. */
+  severitaStato(status: string): 'success' | 'warning' | 'danger' {
+    switch (status) {
+      case 'DRAFT':
+        return 'danger'
+      case 'REVIEWING':
+        return 'warning'
+      default:
+        return 'success'
+    }
   }
 }
