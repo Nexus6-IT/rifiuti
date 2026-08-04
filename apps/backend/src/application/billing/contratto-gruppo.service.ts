@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { SubscriptionStatus, SubscriptionTier } from '@prisma/client'
+import { SubscriptionStatus, SubscriptionTier, Tenant } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 
 /**
@@ -46,15 +46,24 @@ export class ContrattoGruppoService {
   async caricaContratto(tenantId: string): Promise<ContrattoEffettivo | null> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true, parentTenantId: true },
     })
     if (!tenant) return null
 
-    const radiceId = tenant.parentTenantId ?? tenant.id
-    const radice = await this.prisma.tenant.findUnique({ where: { id: radiceId } })
+    // Se il tenant è radice, usalo direttamente
+    if (!tenant.parentTenantId) {
+      return this.toContrattoEffettivo(tenant)
+    }
 
+    // Altrimenti, leggi la madre
+    const radice = await this.prisma.tenant.findUnique({
+      where: { id: tenant.parentTenantId },
+    })
     if (!radice) return null
 
+    return this.toContrattoEffettivo(radice)
+  }
+
+  private toContrattoEffettivo(radice: Tenant): ContrattoEffettivo {
     return {
       tenantIdRadice: radice.id,
       subscriptionTier: radice.subscriptionTier,

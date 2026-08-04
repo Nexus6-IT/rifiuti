@@ -74,4 +74,22 @@ describe('ContrattoGruppoService', () => {
 
     await expect(service.caricaContratto('non-esiste')).resolves.toBeNull()
   })
+
+  it('per una radice: una sola query', async () => {
+    const prisma = makePrisma()
+    const service = new ContrattoGruppoService(prisma)
+
+    await service.caricaContratto(RADICE)
+
+    expect(prisma.tenant.findUnique).toHaveBeenCalledTimes(1)
+  })
+
+  it('per una figlia: due query (tenant + madre)', async () => {
+    const prisma = makePrisma()
+    const service = new ContrattoGruppoService(prisma)
+
+    await service.caricaContratto(FIGLIA)
+
+    expect(prisma.tenant.findUnique).toHaveBeenCalledTimes(2)
+  })
 })
