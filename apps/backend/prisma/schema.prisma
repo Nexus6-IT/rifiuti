@@ -73,6 +73,21 @@ model Tenant {
   // dal super admin. Usato per la quota aziende per-admin e per la lista "le mie aziende".
   ownerUserId String? @map("owner_user_id") @db.Uuid
 
+  /// Azienda madre del gruppo. null = azienda madre (radice, titolare del
+  /// contratto); valorizzata = azienda figlia. Gerarchia a UN SOLO livello:
+  /// una figlia non puo' avere figlie (vincolo applicativo, v. TenantService).
+  ///
+  /// Le figlie restano tenant a tutti gli effetti: ereditano immutato
+  /// l'isolamento (TenantContext + estensione RLS) e hanno ciascuna la propria
+  /// RentriCredential. Il contratto (piano, limiti, feature, Stripe) si legge
+  /// invece SEMPRE risalendo alla radice: v. ContrattoGruppoService.
+  parentTenantId String? @map("parent_tenant_id") @db.Uuid
+
+  /// Quante aziende figlie puo' avere questo gruppo. Solo sulla radice.
+  /// null = nessun limite di gruppo: vale il vecchio `User.companyLimit` di
+  /// chi crea (retrocompatibilita' per i tenant esistenti).
+  aziendeLimit Int? @map("aziende_limit")
+
   // Modalità di aggancio dei FIR ai formulari RENTRI per questo tenant.
   // Default MANUALE: nessun tenant ha oggi un certificato RENTRI valido
   // configurato, e una trasmissione automatica verso l'ente da parte di
@@ -93,6 +108,8 @@ model Tenant {
   autorizzazioniImpianto AutorizzazioneImpianto[]
   wasteMovements         WasteMovement[]
   rentriUnitaLocali      RentriUnitaLocale[]
+  madre                  Tenant?                   @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
+  figlie                 Tenant[]                  @relation("GruppoAziende")
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -102,6 +119,7 @@ model Tenant {
   // prossimo `prisma migrate dev` proponga di cancellarli.
   @@index([ownerUserId])
   @@index([stripeCustomerId])
+  @@index([parentTenantId])
   @@map("tenants")
 }
 
