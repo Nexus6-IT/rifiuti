@@ -178,4 +178,30 @@ describe('MembershipService — gerarchia madre-figlie', () => {
     expect(risposta.tenants.map((t: any) => t.id)).toEqual([MADRE, FIGLIA, SORELLA])
     expect(risposta.tenants.find((t: any) => t.id === FIGLIA)!.parentTenantId).toBe(MADRE)
   })
+
+  it('chi e abilitato alla madre ottiene lo switch su una figlia', async () => {
+    const prisma = makePrismaGerarchia()
+    prisma.user.findUnique = jest
+      .fn()
+      .mockResolvedValue({ email: 'madre@example.it', fiscalCode: 'CF', role: 'OPERATOR' })
+    const service = new MembershipService(prisma, jwtTokens)
+
+    const risposta = await service.switchTenant(
+      { id: UTENTE_MADRE, tenantId: MADRE, role: 'OPERATOR' } as any,
+      FIGLIA
+    )
+
+    expect(risposta.tenantId).toBe(FIGLIA)
+  })
+
+  it('chi e abilitato a una figlia NON ottiene lo switch sulla sorella', async () => {
+    const service = new MembershipService(makePrismaGerarchia(), jwtTokens)
+
+    await expect(
+      service.switchTenant(
+        { id: UTENTE_FIGLIA, tenantId: FIGLIA, role: 'OPERATOR' } as any,
+        SORELLA
+      )
+    ).rejects.toThrow(ForbiddenException)
+  })
 })

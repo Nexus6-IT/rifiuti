@@ -5,8 +5,9 @@ import type { CurrentUserPayload } from '../../auth/decorators/current-user.deco
 
 /**
  * Gestione multi-azienda dell'utente autenticato: elenco delle aziende
- * accessibili (tenant primario + possedute + associazioni attive) e switch
- * con ri-emissione del JWT sul tenant scelto.
+ * accessibili (tenant primario + possedute + associazioni attive + figlie
+ * delle aziende accessibili) e switch con ri-emissione del JWT sul tenant
+ * scelto.
  */
 @Injectable()
 export class MembershipService {
@@ -151,22 +152,11 @@ export class MembershipService {
   async switchTenant(user: CurrentUserPayload, targetTenantId: string) {
     const isSuperAdmin = user.role === 'SUPER_ADMIN'
     if (!isSuperAdmin) {
-      const isPrimary = user.tenantId === targetTenantId
-      let allowed = isPrimary
-      if (!allowed) {
-        const owned = await this.prisma.tenant.findFirst({
-          where: { id: targetTenantId, ownerUserId: user.id },
-          select: { id: true },
-        })
-        allowed = !!owned
-      }
-      if (!allowed) {
-        const assoc = await this.prisma.consultantTenantAssociation.findFirst({
-          where: MembershipService.associazioneValida(user.id, targetTenantId),
-          select: { id: true },
-        })
-        allowed = !!assoc
-      }
+      // Stessa definizione di "questo utente puo' accedere a questa azienda"
+      // usata dal TenantSwitchInterceptor per l'header X-Tenant-ID: delegare
+      // a checkAccess evita che le due strade divergano di nuovo (es. la
+      // discesa gerarchica madre->figlie, aggiunta li' e dimenticata qui).
+      const allowed = await this.checkAccess(user.id, targetTenantId, user.tenantId)
       if (!allowed) {
         throw new ForbiddenException('Nessun accesso a questa azienda')
       }
