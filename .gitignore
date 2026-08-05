@@ -85,3 +85,6 @@ ruvector.db
 
 # artefatti delle sessioni Playwright MCP, mai da versionare
 .playwright-mcp/
+
+# Credenziali della suite E2E (mai committare)
+.env.e2e
