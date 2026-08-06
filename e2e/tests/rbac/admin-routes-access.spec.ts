@@ -13,10 +13,19 @@ import { hasRoleCredentials, type Role } from '../../utils/env'
  * Skip condizionale per ruolo se mancano le credenziali corrispondenti.
  */
 
+/**
+ * NB: il frammento include il prefisso `/api/v1` di proposito. Senza, il
+ * filtro su `page.on('response')` cattura anche il DOCUMENTO HTML della
+ * navigazione — `page.goto('/admin/tenants')` produce una risposta 200 il cui
+ * URL contiene `/admin/tenants` — e il test fallisce sempre, segnalando un
+ * "buco RBAC" che non esiste. Verificato il 2026-08-05 chiamando direttamente
+ * gli endpoint come operator e viewer: `/admin/tenants`, `/admin/tenants/mine`
+ * e `/admin/tenants/:id` rispondono tutti 403.
+ */
 const adminOnlyRoutes: { route: string; apiPathFragment: string }[] = [
-  { route: '/admin/tenants', apiPathFragment: '/admin/tenants' },
-  { route: '/admin/utenti', apiPathFragment: '/admin/users' },
-  { route: '/rentri/certificato', apiPathFragment: '/rentri/credential' },
+  { route: '/admin/tenants', apiPathFragment: '/api/v1/admin/tenants' },
+  { route: '/admin/utenti', apiPathFragment: '/api/v1/admin/users' },
+  { route: '/rentri/certificato', apiPathFragment: '/api/v1/rentri/credential' },
 ]
 
 const nonAdminRoles: Role[] = ['operator', 'viewer']

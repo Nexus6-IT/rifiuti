@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core'
+import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MessageService } from 'primeng/api'
@@ -28,6 +28,7 @@ import {
   AnagraficaSavedEvent,
 } from '../registry/anagrafica-form-dialog.component'
 import { CerSelectComponent } from '../cer/cer-select.component'
+import { puoCreareFir } from './fir-permissions'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
@@ -76,7 +77,9 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
             [outlined]="true"
             [disabled]="loading || firList.length === 0"
           />
-          <p-button label="Nuovo FIR" icon="pi pi-plus" (onClick)="showCreateDialog()" />
+          @if (puoCreareFir()) {
+            <p-button label="Nuovo FIR" icon="pi pi-plus" (onClick)="showCreateDialog()" />
+          }
         </div>
       </header>
 
@@ -1253,6 +1256,14 @@ export class FirListComponent implements OnInit {
 
   private readonly rentriSyncService = inject(RENTRISyncService)
   private readonly authService = inject(AuthService)
+
+  /**
+   * Il VIEWER ha sola lettura: il backend rifiuta la creazione con un 403
+   * (`@Roles('SUPER_ADMIN','ADMIN','OPERATOR')` su `FIRControllerV2.create`),
+   * quindi l'azione non va nemmeno mostrata. La regola vive in
+   * `fir-permissions.ts`, allineata a quell'elenco.
+   */
+  readonly puoCreareFir = computed(() => puoCreareFir(this.authService.currentUser()?.role))
 
   constructor(
     private firService: FirService,
