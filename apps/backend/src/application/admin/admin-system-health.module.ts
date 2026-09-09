@@ -31,7 +31,6 @@ import { AuthModule } from '../../auth/auth.module'
 import { LoggerModule } from '../../core/logger/logger.module'
 import { RentriSyncModule } from '../rentri/rentri-sync.module'
 import { ReferenceDataModule } from '../reference-data/reference-data.module'
-import { S3Service } from '../../infrastructure/storage/s3.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { SystemHealthController } from '../../api/admin/system-health.controller'
 import { SystemHealthService, CODE_SYSTEM_HEALTH } from './system-health/system-health.service'
@@ -68,7 +67,6 @@ const NOMI_CODE = CODE_ATTESE.map(coda => coda.nome)
     FreschezzaProbe,
     CredenzialiProbe,
     FlagProbe,
-    S3Service,
     EmailService,
     {
       provide: CODE_SYSTEM_HEALTH,

@@ -8,7 +8,8 @@ Auto-generated from all feature plans. Last updated: 2025-10-30
 - Angular 17 (standalone components), PrimeNG 17, NgRx 17 (001-production-ready-app)
 - passport-saml (SPID/CIE authentication) (001-production-ready-app)
 - BullMQ (background jobs), Socket.IO (WebSocket real-time), PDFKit (PDF export) (001-production-ready-app)
-- Winston (logging), AWS SES (email), AWS S3 (storage) (001-production-ready-app)
+- Winston (logging), AWS SES (email) (001-production-ready-app)
+- **Nessuno storage a oggetti**: `S3Service` e il job `pdf-generation` sono stati rimossi il 2026-09-09 perche' inerti (ne' produttore ne' consumatore). I PDF si generano al momento della richiesta e si scrivono nella risposta HTTP, senza coda e senza cache. Se servira' archiviazione documentale, va progettata come funzionalita', non ripristinata da qui.
 - [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION] + [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION] (002-roles-permissions-system)
 - [if applicable, e.g., PostgreSQL, CoreData, files or N/A] (002-roles-permissions-system)
 

@@ -42,7 +42,7 @@ export interface SystemHealth {
   /** True se la risposta viene dalla cache in-process. */
   cached: boolean
   cacheAgeSeconds: number
-  /** Postgres, Redis, storage oggetti, SMTP, Keycloak. */
+  /** Postgres, Redis, SMTP, Keycloak. */
   infrastructure: HealthItem[]
   /** Code BullMQ: profondita', falliti e — soprattutto — consumatori vivi. */
   queues: HealthItem[]

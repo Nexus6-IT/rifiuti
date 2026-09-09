@@ -15,7 +15,6 @@ describe('SystemHealthService', () => {
   const scheduler = { getCronJobs: () => new Map() }
   const config = { get: () => undefined }
   const http = { get: jest.fn() }
-  const s3 = { verificaAccesso: jest.fn() }
   const email = { modalitaSviluppo: true, verificaConnessione: jest.fn() }
 
   let infraProbe: { raccogli: jest.Mock }
@@ -32,7 +31,6 @@ describe('SystemHealthService', () => {
       scheduler as never,
       config as never,
       http as never,
-      s3 as never,
       email as never,
       codeProbe as never,
       jobProbe as never,

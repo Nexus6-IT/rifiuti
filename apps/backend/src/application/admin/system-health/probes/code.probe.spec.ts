@@ -96,7 +96,7 @@ describe('CodeProbe', () => {
   })
 
   it('dichiara unknown la coda non registrata in questo processo', async () => {
-    const voce = (await probe.raccogli(new Map())).find(v => v.key === 'coda.pdf-generation')
+    const voce = (await probe.raccogli(new Map())).find(v => v.key === 'coda.cache-warming')
 
     expect(voce?.state).toBe('unknown')
     expect(voce?.detail).toContain('non registrata')

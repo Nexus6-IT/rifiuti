@@ -15,11 +15,10 @@ import { HealthItem, HealthState, formattaDurata } from '../health-item'
  *
  * Al momento della scrittura questa distinzione NON e' teorica in questo
  * repository: `ArchiveAuditLogsJob`, `CleanupOldPermissionRequestsJob`,
- * `ExpireTempPermissionsJob`, `WarmPermissionCacheJob` e
- * `PdfGenerationJobProcessor` sono classi `@Processor` che nessun modulo
- * registra fra i propri `providers` (e `infrastructure/jobs/queues.config.ts`
- * non e' importato da nessuna parte), quindi i loro worker non esistono a
- * runtime. La pagina lo dira' guardando Redis, non fidandosi di una lista
+ * `ExpireTempPermissionsJob` e `WarmPermissionCacheJob` sono classi
+ * `@Processor` che nessun modulo registra fra i propri `providers`
+ * (e `infrastructure/jobs/queues.config.ts` non e' importato da nessuna
+ * parte), quindi i loro worker non esistono a runtime. La pagina lo dira' guardando Redis, non fidandosi di una lista
  * scritta a mano che potrebbe invecchiare.
  */
 
@@ -40,7 +39,6 @@ export const CODE_ATTESE: DescrittoreCoda[] = [
   { nome: 'permission-expiration', label: 'Scadenza permessi temporanei' },
   { nome: 'permission-cleanup', label: 'Pulizia richieste di permesso' },
   { nome: 'cache-warming', label: 'Riscaldamento cache permessi' },
-  { nome: 'pdf-generation', label: 'Generazione PDF' },
 ]
 
 /** Conteggi che ci interessano, nell'ordine in cui li mostriamo. */

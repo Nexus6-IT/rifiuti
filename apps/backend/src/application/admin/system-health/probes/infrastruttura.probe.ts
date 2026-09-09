@@ -3,13 +3,12 @@ import { Injectable } from '@nestjs/common'
 import { HealthItem } from '../health-item'
 
 /**
- * Probe delle dipendenze infrastrutturali (Postgres, Redis, storage oggetti,
- * SMTP, Keycloak).
+ * Probe delle dipendenze infrastrutturali (Postgres, Redis, SMTP, Keycloak).
  *
  * VINCOLO CHE DECIDE QUESTA PROBE: la verifica deve essere un contatto REALE
  * con la dipendenza, non la lettura di una variabile d'ambiente. Sapere che
- * `AWS_S3_BUCKET` e' valorizzato non dice nulla su quel bucket; una
- * `HeadBucket` che risponde si'. La configurazione la guardiamo solo per
+ * `SMTP_HOST` e' valorizzato non dice nulla su quel server; una connessione
+ * autenticata che riesce si'. La configurazione la guardiamo solo per
  * distinguere «spento di proposito» (`off`) da «rotto» (`error`): una
  * dipendenza non configurata in questo ambiente non e' un guasto.
  *

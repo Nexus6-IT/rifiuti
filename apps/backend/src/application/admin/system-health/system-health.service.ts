@@ -13,7 +13,6 @@ import { InfrastrutturaProbe, ControlloInfrastruttura } from './probes/infrastru
 import { FreschezzaProbe } from './probes/freschezza.probe'
 import { CredenzialiProbe } from './probes/credenziali.probe'
 import { FlagProbe } from './probes/flag.probe'
-import { S3Service } from '../../../infrastructure/storage/s3.service'
 import { EmailService } from '../../../infrastructure/email/email.service'
 
 /** Token del dizionario delle code, popolato dal modulo (v. modulo). */
@@ -41,7 +40,6 @@ export class SystemHealthService {
     private readonly scheduler: SchedulerRegistry,
     private readonly config: ConfigService,
     private readonly http: HttpService,
-    private readonly s3: S3Service,
     private readonly email: EmailService,
     private readonly codeProbe: CodeProbe,
     private readonly jobProbe: JobSchedulatiProbe,
@@ -143,12 +141,6 @@ export class SystemHealthService {
         motivoNonConfigurato:
           'Nessuna coda registrata in questo processo: Redis non interrogabile.',
         verifica: () => this.verificaRedis(),
-      },
-      {
-        key: 'storage',
-        label: 'Storage oggetti (S3/MinIO)',
-        configurato: true,
-        verifica: () => this.s3.verificaAccesso(),
       },
       {
         key: 'smtp',
