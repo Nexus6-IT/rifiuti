@@ -55,6 +55,31 @@ export class EmailService {
   }
 
   /**
+   * True quando il servizio e' in modalita' sviluppo: le email NON vengono
+   * spedite, vengono solo scritte nel log. Esposto per la pagina «Stato del
+   * sistema», che deve poter dire «spento di proposito» (`off`) invece di
+   * «guasto» (`error`) — sono due cose diverse e vanno mostrate diverse.
+   */
+  get modalitaSviluppo(): boolean {
+    return this.isDevelopment
+  }
+
+  /**
+   * Contatta il server SMTP configurato e restituisce la prova del contatto.
+   * Solleva se connessione o autenticazione falliscono: l'eccezione e' il
+   * risultato utile per chi diagnostica.
+   */
+  async verificaConnessione(): Promise<string> {
+    if (!this.transporter) {
+      throw new Error('transporter SMTP non inizializzato')
+    }
+    await this.transporter.verify()
+    const host = process.env.SMTP_HOST || 'smtp.sendgrid.net'
+    const porta = process.env.SMTP_PORT || '587'
+    return `server SMTP ${host}:${porta} raggiungibile e autenticato`
+  }
+
+  /**
    * Send email
    */
   async sendEmail(params: {

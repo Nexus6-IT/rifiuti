@@ -457,6 +457,12 @@ import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
     },
   ],
   exports: [
+    // Esportati per il rilancio manuale dalla pagina «Stato del sistema»
+    // (JobActionsService): riprovvederli in quel modulo creerebbe una SECONDA
+    // istanza con i propri @Cron registrati, cioe' raddoppierebbe i job
+    // schedulati.
+    RentriRiconciliazioneJob,
+    RentriCertificatoScadenzaJob,
     SyncFIRToRENTRIUseCase,
     TriggerBatchSyncUseCase,
     GetSyncStatusUseCase,

@@ -39,6 +39,7 @@ import { RentriSyncModule } from './application/rentri/rentri-sync.module'
 // Amministrazione piattaforma (SUPER_ADMIN): tenant + utenti (provisioning Keycloak)
 import { AdminTenantModule } from './application/admin/admin-tenant.module'
 import { AdminUserModule } from './application/admin/admin-user.module'
+import { AdminSystemHealthModule } from './application/admin/admin-system-health.module'
 // Endpoint "self" utente autenticato (feature abilitate dal piano)
 import { MeModule } from './api/me/me.module'
 // Firma digitale FIR "pronta-ma-non-collegata" (WS-E)
@@ -139,6 +140,9 @@ import { AccessRequestModule } from './application/access-request/access-request
     // Amministrazione piattaforma (SUPER_ADMIN)
     AdminTenantModule,
     AdminUserModule,
+    // Pagina «Stato del sistema» (SUPER_ADMIN): stato verificato di
+    // infrastruttura, code, job schedulati e credenziali.
+    AdminSystemHealthModule,
 
     // Endpoint "self" utente autenticato
     MeModule,

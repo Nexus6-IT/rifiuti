@@ -4,6 +4,7 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  HeadBucketCommand,
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3'
 import { LoggerService } from '../../core/logger/logger.service'
@@ -43,6 +44,26 @@ export class S3Service {
     })
 
     this.logger.info(`S3 Service initialized: bucket=${this.bucketName}, region=${this.region}`)
+  }
+
+  /** Bucket su cui questo servizio opera (per diagnostica e pagina di stato). */
+  get bucket(): string {
+    return this.bucketName
+  }
+
+  /**
+   * Verifica di raggiungibilita' dello storage per la pagina «Stato del
+   * sistema»: una `HeadBucket`, cioe' un contatto REALE con S3/MinIO.
+   *
+   * Deliberatamente NON riusa `fileExists`: quel metodo cattura ogni errore e
+   * risponde `false`, quindi non distingue «oggetto assente» (storage sano)
+   * da «storage irraggiungibile» — e una pagina di stato che confonde le due
+   * cose non serve a nulla. Qui l'eccezione viene lasciata salire: e' la
+   * prova del guasto.
+   */
+  async verificaAccesso(): Promise<string> {
+    await this.s3Client.send(new HeadBucketCommand({ Bucket: this.bucketName }))
+    return `bucket ${this.bucketName} raggiungibile nella regione ${this.region}`
   }
 
   /**

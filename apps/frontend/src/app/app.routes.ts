@@ -176,6 +176,17 @@ export const routes: Routes = [
           import('./features/admin/users/user-admin.component').then(m => m.UserAdminComponent),
       },
       {
+        // Stato del sistema — pagina di piattaforma (SUPER_ADMIN: espone
+        // aggregati di TUTTE le aziende; enforcement lato backend, guard qui
+        // per non mostrare una pagina che risponderebbe 403)
+        path: 'admin/stato-sistema',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/admin/system-health/system-health.component').then(
+            m => m.SystemHealthComponent
+          ),
+      },
+      {
         // Gestione certificato RENTRI (solo admin — enforcement lato componente + backend)
         path: 'rentri/certificato',
         loadComponent: () =>

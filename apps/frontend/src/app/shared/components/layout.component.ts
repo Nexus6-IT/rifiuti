@@ -381,6 +381,22 @@ export function ordinaAziendePerGruppo(
               <span class="nav-item__label">Utenti</span>
             </a>
           </li>
+          <!-- Stato del sistema: dati aggregati di TUTTE le aziende, quindi
+               solo SUPER_ADMIN (l'ADMIN ha la diagnostica della sua azienda). -->
+          @if (isSuperAdmin()) {
+            <li>
+              <a
+                routerLink="/admin/stato-sistema"
+                routerLinkActive="nav-item--active"
+                class="nav-item"
+                [attr.aria-current]="isActiveRoute('/admin/stato-sistema') ? 'page' : null"
+                (click)="mobile ? closeMobileSidebar() : null"
+              >
+                <i class="nav-item__icon pi pi-heart" aria-hidden="true"></i>
+                <span class="nav-item__label">Stato del sistema</span>
+              </a>
+            </li>
+          }
         </ul>
       }
     </ng-template>
@@ -1384,6 +1400,7 @@ export class LayoutComponent implements OnInit {
     const navAmministrazione = [
       { label: this.tenantsMenuLabel(), route: '/admin/tenants' },
       { label: 'Utenti', route: '/admin/utenti' },
+      { label: 'Stato del sistema', route: '/admin/stato-sistema' },
     ]
     const navAccount = [{ label: 'Abbonamento', route: '/abbonamento' }]
     const all = [
