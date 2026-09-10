@@ -3,7 +3,11 @@
  */
 
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
-import { TipoTratta, TipoOperazioneRifiuto } from '../../../domain/fir/aggregates/fir.aggregate'
+import {
+  TipoTratta,
+  TipoOperazioneRifiuto,
+  ProvenienzaRifiuto,
+} from '../../../domain/fir/aggregates/fir.aggregate'
 
 /** Trasportatore aggiuntivo (tratta intermodale) richiesto alla creazione del FIR. */
 export interface TrasportatoreAggiuntivoInput {
@@ -35,6 +39,10 @@ export class CreateFIRCommand {
     public readonly destinatarioId: string,
     public readonly userId: string,
     public readonly tenantId: string,
+    /** Provenienza del rifiuto (URBANO/SPECIALE), richiesta dal contratto RENTRI. */
+    public readonly provenienza: ProvenienzaRifiuto,
+    /** Modalità di trasporto della tratta principale, richiesta dal contratto RENTRI. */
+    public readonly tipoTrattaPrincipale: TipoTratta,
     public readonly trasportatoriAggiuntivi: TrasportatoreAggiuntivoInput[] = [],
     /** Campo 17 FIR: annotazioni libere. */
     public readonly annotazioni?: string

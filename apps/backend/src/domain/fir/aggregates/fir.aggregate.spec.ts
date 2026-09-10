@@ -14,6 +14,8 @@ import {
   FIRAnnullatoEvent,
   StatoFormulario,
   RentriStatoRiconciliato,
+  ProvenienzaRifiuto,
+  TipoTratta,
 } from './fir.aggregate'
 import { UnitaMisura } from '../value-objects/quantita'
 import {
@@ -89,6 +91,24 @@ describe('FIR Aggregate', () => {
       expect(fir.firme.produttore).toBeUndefined()
       expect(fir.firme.trasportatore).toBeUndefined()
       expect(fir.firme.destinatario).toBeUndefined()
+    })
+
+    it('should default provenienza and tipoTrattaPrincipale to null when not provided', () => {
+      const fir = FIR.create(createValidFIRProps())
+
+      expect(fir.provenienza).toBeNull()
+      expect(fir.tipoTrattaPrincipale).toBeNull()
+    })
+
+    it('should capture provenienza and tipoTrattaPrincipale when provided', () => {
+      const props = createValidFIRProps()
+      props.provenienza = ProvenienzaRifiuto.SPECIALE
+      props.tipoTrattaPrincipale = TipoTratta.FERROVIARIA
+
+      const fir = FIR.create(props)
+
+      expect(fir.provenienza).toBe(ProvenienzaRifiuto.SPECIALE)
+      expect(fir.tipoTrattaPrincipale).toBe(TipoTratta.FERROVIARIA)
     })
   })
 

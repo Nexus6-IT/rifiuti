@@ -108,6 +108,8 @@ export class FIRControllerV2 {
       dto.destinatarioId,
       user.id,
       user.tenantId,
+      dto.provenienza,
+      dto.tipoTrattaPrincipale,
       dto.trasportatoriAggiuntivi ?? [],
       dto.annotazioni
     )

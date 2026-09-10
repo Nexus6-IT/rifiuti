@@ -108,8 +108,8 @@ model Tenant {
   autorizzazioniImpianto AutorizzazioneImpianto[]
   wasteMovements         WasteMovement[]
   rentriUnitaLocali      RentriUnitaLocale[]
-  madre                  Tenant?                   @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
-  figlie                 Tenant[]                  @relation("GruppoAziende")
+  madre                  Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
+  figlie                 Tenant[]                 @relation("GruppoAziende")
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -307,7 +307,8 @@ model FIR {
   wasteOperationType WasteOperationType @default(DISPOSAL) @map("waste_operation_type")
 
   // ---- Campi obbligatori FIR (DM 59/2023, art. 193 D.Lgs 152/2006) ----
-  // Campo 2: stato fisico del rifiuto (Solido/Liquido/Fangoso/Gassoso/Polvere/Misto)
+  // Campo 2: stato fisico del rifiuto (Solido/Liquido/Fangoso/Polvere — Gassoso
+  // e Misto rimossi 2026-09: nessun codice RENTRI corrispondente, v. StatoFisicoRifiuto)
   wastePhysicalState   String?   @map("waste_physical_state") @db.VarChar(50)
   // Campo 2: caratteristiche di pericolo HP (Reg. UE 1357/2014, All. III D.Lgs 152/2006)
   // Multi-valore, memorizzato come lista separata da virgole es. "HP4,HP14"
@@ -330,6 +331,20 @@ model FIR {
   /// RENTRI (NoteAnnullamentoModel.note, maxLength 1024) perché lo stesso testo
   /// viene anche inviato all'ente per un FIR legato.
   motivoAnnullamento   String?   @map("motivo_annullamento") @db.VarChar(1024)
+
+  /// Provenienza del rifiuto (D.Lgs 152/2006): URBANO o SPECIALE. Richiesta dal
+  /// contratto RENTRI (enum `ProvenienzaRifiuto`, codici 'U'/'S') per poter
+  /// trasmettere un formulario: la traduzione ai codici ente resta compito del
+  /// mappatore RENTRI, non di questo modello. Nullable: additiva, i FIR già in
+  /// produzione (12 al 2026-09-10) non hanno questo dato e non viene inventato
+  /// a posteriori — obbligatoria solo per i FIR creati da qui in avanti (DTO).
+  provenienza ProvenienzaRifiuto? @map("provenienza")
+
+  /// Modalità di trasporto della tratta principale (Campo 4, trasportatore
+  /// inline su questo modello): riusa lo stesso enum `TipoTratta` già in uso
+  /// per le tratte aggiuntive (`FIRTransporter.tipoTratta`), richiesto dal
+  /// contratto RENTRI. Nullable per lo stesso motivo di `provenienza` sopra.
+  tipoTrattaPrincipale TipoTratta? @map("tipo_tratta_principale")
 
   transportDate        DateTime  @map("transport_date")
   estimatedArrivalDate DateTime? @map("estimated_arrival_date")
@@ -566,6 +581,16 @@ model FIRSignature {
   @@index([userId])
   @@index([signerFiscalCode])
   @@map("fir_signatures")
+}
+
+/// Provenienza del rifiuto (D.Lgs 152/2006): urbano o speciale. Valori leggibili
+/// di dominio — il contratto RENTRI usa i codici 'U'/'S' (`ProvenienzaRifiuto`
+/// del contratto), tradotti dal mappatore RENTRI, non da questo enum.
+enum ProvenienzaRifiuto {
+  URBANO
+  SPECIALE
+
+  @@map("provenienza_rifiuto")
 }
 
 /// Tipo di tratta di un trasporto intermodale (D.Lgs 152/2006, FIR multimodale):

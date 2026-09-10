@@ -17,6 +17,8 @@ import {
   FirmaDigitale,
   FirmeDigitali,
   RentriOrigineLegame,
+  ProvenienzaRifiuto,
+  TipoTratta,
 } from '../../domain/fir/aggregates/fir.aggregate'
 import {
   IFIRRepository,
@@ -473,6 +475,8 @@ export class FIRPrismaRepository implements IFIRRepository {
         mezzo: t.mezzo || undefined,
         dataPresaInCarico: t.dataPresaInCarico || undefined,
       })),
+      provenienza: (record.provenienza as ProvenienzaRifiuto) || undefined,
+      tipoTrattaPrincipale: (record.tipoTrattaPrincipale as TipoTratta) || undefined,
     })
 
     // Restore state (using reflection - in production use proper reconstitution)
@@ -616,6 +620,8 @@ export class FIRPrismaRepository implements IFIRRepository {
       motivoAnnullamento: fir.motivoAnnullamento || undefined,
       quantity: fir.rifiuto.quantita.valore,
       unit: fir.rifiuto.quantita.unitaMisura,
+      provenienza: fir.provenienza || undefined,
+      tipoTrattaPrincipale: fir.tipoTrattaPrincipale || undefined,
       transportDate: fir.dataPresaCarico || new Date(),
       actualArrivalDate: fir.dataConsegna,
       ...this.rentriToPersistence(fir),

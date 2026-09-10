@@ -102,6 +102,8 @@ export class CreateFIRUseCase {
         destinatario: this.snapshotDestinatario(destinatario),
         trasportatoriAggiuntivi,
         annotazioni: command.annotazioni,
+        provenienza: command.provenienza,
+        tipoTrattaPrincipale: command.tipoTrattaPrincipale,
       })
 
       // 5. Persist FIR

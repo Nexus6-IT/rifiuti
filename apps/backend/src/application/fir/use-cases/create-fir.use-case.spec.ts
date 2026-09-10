@@ -14,7 +14,12 @@ import { Trasportatore } from '../../../domain/registry/entities/trasportatore'
 import { Destinatario } from '../../../domain/registry/entities/destinatario'
 import { PartitaIVA } from '../../../domain/registry/value-objects/partita-iva'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
-import { FIR, FIRStato, TipoTratta } from '../../../domain/fir/aggregates/fir.aggregate'
+import {
+  FIR,
+  FIRStato,
+  TipoTratta,
+  ProvenienzaRifiuto,
+} from '../../../domain/fir/aggregates/fir.aggregate'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 
 // Mock Repositories
@@ -273,7 +278,9 @@ describe('CreateFIRUseCase', () => {
       'tenant-transporter-456',
       'tenant-destination-789',
       'user-123',
-      'tenant-1'
+      'tenant-1',
+      ProvenienzaRifiuto.SPECIALE,
+      TipoTratta.TERRESTRE
     )
   }
 
@@ -367,7 +374,9 @@ describe('CreateFIRUseCase', () => {
         'tenant-transporter-456',
         'tenant-destination-789',
         'user-123',
-        'tenant-1'
+        'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE
       )
 
       const result = await useCase.execute(command)
@@ -384,7 +393,9 @@ describe('CreateFIRUseCase', () => {
         '', // Empty trasportatoreId
         'tenant-destination-789',
         'user-123',
-        'tenant-1'
+        'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE
       )
 
       const result = await useCase.execute(command)
@@ -401,7 +412,9 @@ describe('CreateFIRUseCase', () => {
         'tenant-transporter-456',
         '', // Empty destinatarioId
         'user-123',
-        'tenant-1'
+        'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE
       )
 
       const result = await useCase.execute(command)
@@ -418,7 +431,9 @@ describe('CreateFIRUseCase', () => {
         'tenant-transporter-456',
         'tenant-destination-789',
         'user-123',
-        'tenant-1'
+        'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE
       )
 
       const result = await useCase.execute(command)
@@ -435,7 +450,9 @@ describe('CreateFIRUseCase', () => {
         'tenant-transporter-456',
         'tenant-destination-789',
         'user-123',
-        'tenant-1'
+        'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE
       )
 
       const result = await useCase.execute(command)
@@ -453,6 +470,8 @@ describe('CreateFIRUseCase', () => {
         'tenant-destination-789',
         'user-123',
         'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE,
         [
           { trasportatoreId: 'carrier-rail', tipoTratta: TipoTratta.FERROVIARIA, ordine: 2 },
           { trasportatoreId: 'carrier-sea', tipoTratta: TipoTratta.MARITTIMA, ordine: 3 },
@@ -485,6 +504,8 @@ describe('CreateFIRUseCase', () => {
         'tenant-destination-789',
         'user-123',
         'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE,
         [{ trasportatoreId: 'carrier-missing', tipoTratta: TipoTratta.TERRESTRE, ordine: 2 }]
       )
 
