@@ -6,6 +6,9 @@ import { environment } from '../../../environments/environment'
 
 export type TipoTratta = 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA'
 
+/** Provenienza del rifiuto — richiesta dal contratto RENTRI (Campo 1 FIR). */
+export type ProvenienzaRifiuto = 'URBANO' | 'SPECIALE'
+
 export interface TrasportatoreAggiuntivoDto {
   trasportatoreId: string
   tipoTratta: TipoTratta
@@ -16,6 +19,10 @@ export interface CreateFIRDto {
   produttoreId: string
   trasportatoreId: string
   destinatarioId: string
+  /** Provenienza del rifiuto (Urbano/Speciale) — obbligatoria per la trasmissione RENTRI. */
+  provenienza?: ProvenienzaRifiuto
+  /** Modalità di trasporto della tratta principale — obbligatoria per la trasmissione RENTRI. */
+  tipoTrattaPrincipale?: TipoTratta
   trasportatoriAggiuntivi?: TrasportatoreAggiuntivoDto[]
   rifiuto: {
     cerCode: string

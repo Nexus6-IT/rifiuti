@@ -107,7 +107,7 @@ export const CAUSALE_LABELS: Record<CausaleMovimento, string> = {
   ALTRO_SCARICO: 'Altro scarico',
 }
 
-export const STATI_FISICI = ['Solido', 'Liquido', 'Fangoso', 'Gassoso', 'Polvere', 'Misto'] as const
+export const STATI_FISICI = ['Solido', 'Liquido', 'Fangoso', 'Polvere'] as const
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 

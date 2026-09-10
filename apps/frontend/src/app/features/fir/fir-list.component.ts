@@ -639,6 +639,65 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
 
               <div class="col-12 sm:col-6">
                 <div class="field">
+                  <label for="new-provenienza"
+                    >Provenienza del rifiuto <span class="req" aria-hidden="true">*</span></label
+                  >
+                  <p-dropdown
+                    inputId="new-provenienza"
+                    [options]="provenienzaOptions"
+                    [(ngModel)]="newFIR.provenienza"
+                    (onChange)="clearFirError('provenienza')"
+                    placeholder="Seleziona…"
+                    [required]="true"
+                    [styleClass]="firErrors['provenienza'] ? 'w-full p-invalid' : 'w-full'"
+                    [attr.aria-invalid]="firErrors['provenienza'] ? true : null"
+                    [attr.aria-describedby]="
+                      firErrors['provenienza'] ? 'new-provenienza-err' : null
+                    "
+                    ariaLabel="Provenienza del rifiuto"
+                  />
+                  <small
+                    *ngIf="firErrors['provenienza']"
+                    id="new-provenienza-err"
+                    class="field-error"
+                    role="alert"
+                    >{{ firErrors['provenienza'] }}</small
+                  >
+                </div>
+              </div>
+              <div class="col-12 sm:col-6">
+                <div class="field">
+                  <label for="new-tipo-tratta-principale"
+                    >Modalità di trasporto <span class="req" aria-hidden="true">*</span></label
+                  >
+                  <p-dropdown
+                    inputId="new-tipo-tratta-principale"
+                    [options]="tipoTrattaOptions"
+                    [(ngModel)]="newFIR.tipoTrattaPrincipale"
+                    (onChange)="clearFirError('tipoTrattaPrincipale')"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Seleziona…"
+                    [required]="true"
+                    [styleClass]="firErrors['tipoTrattaPrincipale'] ? 'w-full p-invalid' : 'w-full'"
+                    [attr.aria-invalid]="firErrors['tipoTrattaPrincipale'] ? true : null"
+                    [attr.aria-describedby]="
+                      firErrors['tipoTrattaPrincipale'] ? 'new-tipo-tratta-principale-err' : null
+                    "
+                    ariaLabel="Modalità di trasporto della tratta principale"
+                  />
+                  <small
+                    *ngIf="firErrors['tipoTrattaPrincipale']"
+                    id="new-tipo-tratta-principale-err"
+                    class="field-error"
+                    role="alert"
+                    >{{ firErrors['tipoTrattaPrincipale'] }}</small
+                  >
+                </div>
+              </div>
+
+              <div class="col-12 sm:col-6">
+                <div class="field">
                   <label for="new-stato-fisico">
                     Stato fisico
                     <i
@@ -1157,9 +1216,16 @@ export class FirListComponent implements OnInit {
     { label: 'Solido', value: 'Solido' },
     { label: 'Liquido', value: 'Liquido' },
     { label: 'Fangoso', value: 'Fangoso' },
-    { label: 'Gassoso', value: 'Gassoso' },
     { label: 'Polvere', value: 'Polvere' },
-    { label: 'Misto', value: 'Misto' },
+  ]
+
+  /**
+   * Provenienza del rifiuto — Campo 1 FIR, obbligatoria per la trasmissione
+   * RENTRI: senza questo dato il contratto ufficiale rifiuta l'invio.
+   */
+  provenienzaOptions = [
+    { label: 'Urbano', value: 'URBANO' as const },
+    { label: 'Speciale', value: 'SPECIALE' as const },
   ]
 
   /**
@@ -1225,6 +1291,8 @@ export class FirListComponent implements OnInit {
     produttoreId: '',
     trasportatoreId: '',
     destinatarioId: '',
+    provenienza: undefined,
+    tipoTrattaPrincipale: undefined,
     rifiuto: {
       cerCode: '',
       quantita: 0,
@@ -1465,6 +1533,8 @@ export class FirListComponent implements OnInit {
       produttoreId: '',
       trasportatoreId: '',
       destinatarioId: '',
+      provenienza: undefined,
+      tipoTrattaPrincipale: undefined,
       rifiuto: {
         cerCode: '',
         quantita: 0,
@@ -1498,6 +1568,12 @@ export class FirListComponent implements OnInit {
     if (!this.newFIR.rifiuto.cerCode?.trim()) errors['cerCode'] = 'Il codice CER è obbligatorio.'
     if (!this.newFIR.rifiuto.quantita || this.newFIR.rifiuto.quantita <= 0) {
       errors['quantita'] = 'Indica una quantità maggiore di zero.'
+    }
+    if (!this.newFIR.provenienza) {
+      errors['provenienza'] = 'Seleziona la provenienza del rifiuto.'
+    }
+    if (!this.newFIR.tipoTrattaPrincipale) {
+      errors['tipoTrattaPrincipale'] = 'Seleziona la modalità di trasporto.'
     }
     this.firErrors = errors
     return Object.keys(errors).length === 0
