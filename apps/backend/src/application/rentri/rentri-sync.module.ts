@@ -22,6 +22,7 @@ import { GetSyncStatusUseCase } from './get-sync-status.use-case'
 import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
 import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
 import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
+import { CostruisciPayloadRentri } from './mappatura/costruisci-payload-rentri'
 import { CercaFormulariRENTRIUseCase } from './cerca-formulari-rentri.use-case'
 import { AcquisisciFormularioRENTRIUseCase } from './acquisisci-formulario-rentri.use-case'
 import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.use-case'
@@ -157,6 +158,9 @@ import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
   controllers: [RENTRISyncController, RentriFormulariController, RentriFirLifecycleController],
   providers: [
     FIRPrismaRepository,
+    // Costruisce il corpo di POST /formulari dal FIR: legge le anagrafiche
+    // dai registri, l'unita' locale del tenant e risolve il codice comune.
+    CostruisciPayloadRentri,
     RENTRISyncQueue,
     RENTRISyncJobProcessor,
     GetSyncStatusUseCase,
@@ -173,14 +177,24 @@ import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
         rentriApiClient: RENTRIApiClient,
         syncLogRepo: RENTRISyncLogRepository,
         domainEvents: DomainEventsService,
-        logger: LoggerService
-      ) => new SyncFIRToRENTRIUseCase(firRepo, rentriApiClient, syncLogRepo, domainEvents, logger),
+        logger: LoggerService,
+        costruisciPayload: CostruisciPayloadRentri
+      ) =>
+        new SyncFIRToRENTRIUseCase(
+          firRepo,
+          rentriApiClient,
+          syncLogRepo,
+          domainEvents,
+          logger,
+          costruisciPayload
+        ),
       inject: [
         FIRPrismaRepository,
         RENTRIApiClient,
         RENTRISyncLogRepository,
         DomainEventsService,
         LoggerService,
+        CostruisciPayloadRentri,
       ],
     },
     {

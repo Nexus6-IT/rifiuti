@@ -4,6 +4,7 @@ import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriConfig } from './rentri-config'
 import { SyncFIRToRENTRIUseCase } from '../../application/rentri/sync-fir-to-rentri.use-case'
+import { costruttorePayloadFinto } from '../../application/rentri/mappatura/aiuti-test'
 import { FIR, FIRStato, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -276,7 +277,8 @@ describe('SyncFIRToRENTRIUseCase — ciclo end-to-end contro la fake RENTRI (in-
       client,
       syncLogRepository,
       domainEvents,
-      logger
+      logger,
+      costruttorePayloadFinto()
     )
 
     // Completa la transazione con un timer REALE (non un fake timer di
@@ -362,7 +364,8 @@ describe('SyncFIRToRENTRIUseCase — ciclo end-to-end contro la fake RENTRI (in-
       client,
       syncLogRepository,
       domainEvents,
-      logger
+      logger,
+      costruttorePayloadFinto()
     )
 
     // Guasto iniettato dal canale di controllo: la prossima chiamata

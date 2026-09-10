@@ -6,6 +6,7 @@ import { FIR, FIRStato } from '../../domain/fir/aggregates/fir.aggregate'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import { IDomainEvent } from '../../domain/shared/domain-event.interface'
+import { CostruisciPayloadRentri } from './mappatura/costruisci-payload-rentri'
 import {
   RENTRIApiClient,
   RentriApiError,
@@ -54,7 +55,8 @@ export class SyncFIRToRENTRIUseCase {
     private readonly rentriApiClient: RENTRIApiClient,
     private readonly syncLogRepository: RENTRISyncLogRepository,
     private readonly domainEvents: DomainEventsService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly costruisciPayload: CostruisciPayloadRentri
   ) {
     this.logger.setContext('SyncFIRToRENTRIUseCase')
   }
@@ -92,8 +94,15 @@ export class SyncFIRToRENTRIUseCase {
       // Mark sync as starting
       fir.startRENTRISync()
 
+      // Il corpo si costruisce PRIMA del log e prima della chiamata: e' la
+      // stessa struttura che finisce nel registro delle trasmissioni e sulla
+      // rete, quindi il log non puo' divergere da cio' che e' stato spedito.
+      // Se il FIR non ha i dati che il contratto richiede, qui si solleva un
+      // errore e la trasmissione non parte affatto.
+      const payload = await this.costruisciPayload.costruisci(fir, tenantId)
+
       // Create sync log
-      const syncLog = await this.createSyncLog(fir, startTime)
+      const syncLog = await this.createSyncLog(fir, startTime, payload)
 
       try {
         // Call RENTRI API
@@ -109,10 +118,7 @@ export class SyncFIRToRENTRIUseCase {
         // Un errore qui (rete, timeout, superamento tentativi di polling)
         // finisce nel catch sottostante: stessa semantica retry-abile che
         // aveva un errore di rete del vecchio submitFIR.
-        const { transazioneId } = await this.rentriApiClient.creaFormulario(
-          tenantId,
-          this.convertFIRToPayload(fir)
-        )
+        const { transazioneId } = await this.rentriApiClient.creaFormulario(tenantId, payload)
         const esito = await this.rentriApiClient.attendiEsito(tenantId, transazioneId)
 
         if (!esito.errore) {
@@ -310,13 +316,13 @@ export class SyncFIRToRENTRIUseCase {
   /**
    * Create sync log entry
    */
-  private async createSyncLog(fir: FIR, _startTime: number) {
+  private async createSyncLog(fir: FIR, _startTime: number, payload: Record<string, unknown>) {
     const syncLog = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       firId: fir.id,
       tenantId: fir.tenantId ?? '',
       attempt: fir.rentriSyncStatus.getAttempts() + 1,
-      requestPayload: JSON.stringify(this.convertFIRToPayload(fir)),
+      requestPayload: JSON.stringify(payload),
     }
 
     return this.syncLogRepository.createPending(syncLog)
@@ -386,17 +392,6 @@ export class SyncFIRToRENTRIUseCase {
     return validazione
       .map(v => `${v.campo ?? v.field ?? '?'}: ${v.codice_messaggio ?? v.message ?? 'errore'}`)
       .join('; ')
-  }
-
-  /**
-   * Convert FIR to RENTRI payload (simplified - actual conversion in API client)
-   */
-  private convertFIRToPayload(fir: FIR): any {
-    return {
-      firId: fir.id,
-      firNumber: fir.numeroProgressivo,
-      // ... other fields
-    }
   }
 }
 

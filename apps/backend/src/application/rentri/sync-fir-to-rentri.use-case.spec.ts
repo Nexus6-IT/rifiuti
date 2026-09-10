@@ -1,4 +1,5 @@
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
+import { costruttorePayloadFinto } from './mappatura/aiuti-test'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-api.client'
 
 /**
@@ -55,7 +56,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
       mockRENTRIApiClient,
       mockSyncLogRepository,
       mockDomainEvents,
-      mockLogger
+      mockLogger,
+      costruttorePayloadFinto()
     )
   })
 
