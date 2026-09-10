@@ -22,13 +22,12 @@ const { readFileSync, writeFileSync } = require('fs')
 const { join } = require('path')
 const { load } = require('js-yaml')
 
-const CONTRATTO = join(__dirname, '..', '..', '..', 'docs', 'contracts', 'rentri', 'formulari.yaml')
 const PREFISSO_REF = '#/components/schemas/'
 
-// Argomenti opzionali (`npm run genera-schema -- <RadiceSchema> <percorso-uscita> <NOME_COSTANTE>`):
+// Argomenti opzionali (`npm run genera-schema -- <RadiceSchema> <percorso-uscita> <NOME_COSTANTE> <file-contratto>`):
 // senza argomenti si rigenera lo schema storico di `NuovoFormularioModel`,
 // invariato rispetto a prima che questo script accettasse parametri.
-const [argRadice, argUscita, argNomeCostante] = process.argv.slice(2)
+const [argRadice, argUscita, argNomeCostante, argContratto] = process.argv.slice(2)
 const RADICE = argRadice || 'NuovoFormularioModel'
 const USCITA = argUscita
   ? join(__dirname, '..', argUscita)
@@ -37,6 +36,10 @@ const USCITA = argUscita
 // Default invariato rispetto allo script originale (nessun argomento ->
 // stesso output di sempre, `SCHEMA_NUOVO_FORMULARIO`/`DEFINIZIONI_NUOVO_FORMULARIO`).
 const NOME_COSTANTE = argNomeCostante || 'NUOVO_FORMULARIO'
+// Nome del file contratto sotto `docs/contracts/rentri/` (4° argomento
+// opzionale): senza argomento resta `formulari.yaml`, invariato rispetto a
+// prima che questo script sapesse leggere altri servizi (es. `dati-registri.yaml`).
+const CONTRATTO = join(__dirname, '..', '..', '..', 'docs', 'contracts', 'rentri', argContratto || 'formulari.yaml')
 
 /** Nomi degli schemi referenziati da un nodo, a qualunque profondita'. */
 function riferimenti(nodo, trovati = new Set()) {

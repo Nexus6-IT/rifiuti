@@ -5,7 +5,18 @@ set -euo pipefail
 
 BASE="https://demoapi.rentri.gov.it/docs"
 DEST="$(cd "$(dirname "$0")/../../../docs/contracts/rentri" && pwd)"
-API_DISPONIBILI=("formulari" "anagrafiche" "codifiche" "ca-rentri" "dati-registri")
+API_DISPONIBILI=(
+  "formulari"
+  "anagrafiche"
+  "codifiche"
+  "ca-rentri"
+  "dati-registri"
+  # Vidimazione virtuale dei formulari. Un audit del 25/07/2026 l'aveva
+  # dichiarata inesistente e il codice che la usava fu cancellato: era una
+  # conclusione sbagliata, l'API risponde 200. E' l'unica che restituisce
+  # `qr_code_bytes`, cioe' il contenuto del QR del formulario stampato.
+  "vidimazione-formulari"
+)
 
 mkdir -p "$DEST"
 : > "$DEST/MANIFEST.md"
