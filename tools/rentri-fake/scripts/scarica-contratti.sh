@@ -5,7 +5,7 @@ set -euo pipefail
 
 BASE="https://demoapi.rentri.gov.it/docs"
 DEST="$(cd "$(dirname "$0")/../../../docs/contracts/rentri" && pwd)"
-API_DISPONIBILI=("formulari" "anagrafiche" "codifiche")
+API_DISPONIBILI=("formulari" "anagrafiche" "codifiche" "ca-rentri" "dati-registri")
 
 mkdir -p "$DEST"
 : > "$DEST/MANIFEST.md"

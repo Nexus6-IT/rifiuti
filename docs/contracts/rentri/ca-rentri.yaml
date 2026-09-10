@@ -1,0 +1,3671 @@
+openapi: 3.0.4
+info:
+  title: ca-rentri
+  description: Servizio RENTRI CA
+  termsOfService: https://www.rentri.gov.it
+  contact:
+    email: techref@rentri.it
+  version: 1.0.20260831-1084
+  x-summary: Servizio RENTRI CA
+  x-api-id: rentrigov.sign
+servers:
+- url: https://demoapi.rentri.gov.it/ca-rentri/v1.0
+  description: Demo
+paths:
+  /ca/{num_seriale_ca_cert}:
+    get:
+      tags:
+      - CA
+      summary: Certificato CA
+      description: Ottiene il certificato di CA associato al numero di serie specificato.
+      parameters:
+      - name: num_seriale_ca_cert
+        in: path
+        description: Numero di serie del certificato CA.
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        200:
+          description: Certificato CA codificato in formato DER.
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /ca/{num_seriale_ca_cert}/crl:
+    get:
+      tags:
+      - CA
+      summary: CRL
+      description: Ottiene la CRL della CA RENTRI.
+      parameters:
+      - name: num_seriale_ca_cert
+        in: path
+        description: Numero di serie del certificato CA.
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        200:
+          description: CRL della CA RENTRI.
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials:
+    post:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: Crea/aggiorna credenziali
+      description: >-
+        Crea delle nuove credenziali associate al soggetto e al dispositivo specificati, oppure aggiorna le informazioni associate a credenziali esistenti.
+
+
+        Per ulteriori informazioni consultare la documentazione del CSC (Cloud Signature Consortium) relativa alle specifiche API v2.0 (20/04/2023) al link: https://cloudsignatureconsortium.org/download-api-specifications/.
+      requestBody:
+        description: Dati delle credenziali.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/CreateUpdateCredentialsRequest'
+      responses:
+        201:
+          description: Identificativo delle credenziali create/aggiornate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUpdateCredentialsResponse'
+        400:
+          description: Richiesta non valida.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        422:
+          description: Registrazione del dispositivo non riuscita.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      callbacks:
+        Callback di notifica di fine elaborazione:
+          https://notification-callback-uri.com:
+            post:
+              summary: Callback per lo smistamento delle notifiche alla quale verranno inviati in POST i dati delle notifiche RENTRI.
+              requestBody:
+                content:
+                  application/json:
+                    schema:
+                      oneOf:
+                      - $ref: '#/components/schemas/PushNotificationDeviceInfo'
+                      - $ref: '#/components/schemas/PushNotificationDeviceSync'
+                      - $ref: '#/components/schemas/PushNotification'
+              responses:
+                200:
+                  description: Il fruitore restituisce questo Status Code in caso di avvenuta ricezione.
+                400:
+                  description: Il fruitore restituisce questo Status Code in caso di formato non corretto della richiesta.
+                500:
+                  description: Il fruitore restituisce questo Status Code in caso di errori non dipendenti dalla richiesta.
+  /credentials/{credentials_id}:
+    get:
+      tags:
+      - Gestione credenziali
+      summary: Dettaglio credenziali
+      description: Ottiene le informazioni di dettaglio delle credenziali specificate.
+      parameters:
+      - name: credentials_id
+        in: path
+        description: Identificativo delle credenziali.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Dettaglio delle credenziali.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsModel'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+    delete:
+      tags:
+      - Gestione credenziali
+      summary: Elimina credenziali
+      description: Elimina le credenziali indicate.
+      parameters:
+      - name: credentials_id
+        in: path
+        description: Identificativo delle credenziali da eliminare.
+        required: true
+        schema:
+          maxLength: 9
+          minLength: 9
+          type: string
+      responses:
+        202:
+          description: Credenziali eliminate.
+        400:
+          description: Richiesta non valida.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        422:
+          description: Eliminazione del dispositivo associato non riuscita.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/{credentials_id}/change-pin:
+    put:
+      tags:
+      - Gestione credenziali
+      summary: Cambio PIN
+      description: Imposta un nuovo PIN operativo per le credenziali specificate.
+      parameters:
+      - name: credentials_id
+        in: path
+        description: Identificativo delle credenziali
+        required: true
+        schema:
+          maxLength: 9
+          minLength: 9
+          type: string
+      requestBody:
+        description: Dati delle credenziali e nuovo PIN.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/ChangePinRequest'
+      responses:
+        200:
+          description: PIN operativo modificato correttamente.
+        400:
+          description: Richiesta non valida o credenziali non attive.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/{credentials_id}/reset-pin:
+    put:
+      tags:
+      - Gestione credenziali
+      summary: Reset PIN
+      description: Completa la procedura di reset del PIN operativo avviata tramite la dashboard di gestione dei dispositivi, impostando un nuovo PIN per le credenziali specificate.
+      parameters:
+      - name: credentials_id
+        in: path
+        description: Identificativo delle credenziali
+        required: true
+        schema:
+          maxLength: 9
+          minLength: 9
+          type: string
+      requestBody:
+        description: Dati delle credenziali e nuovo PIN.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/ResetPinRequest'
+      responses:
+        200:
+          description: Procedura di reset del PIN operativo completata e nuovo PIN impostato correttamente.
+        400:
+          description: Richiesta non valida o credenziali non attive.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/{credentials_id}/rimuovi-associazione:
+    delete:
+      tags:
+      - Gestione credenziali
+      summary: Rimuovi associazione credenziali
+      description: Rimuove l'associazione delle credenziali con l'operatore o con l'unità locale specificata.
+      parameters:
+      - name: credentials_id
+        in: path
+        description: Identificativo delle credenziali.
+        required: true
+        schema:
+          maxLength: 9
+          minLength: 9
+          type: string
+      - name: num_iscr_sito
+        in: query
+        description: Identificativo dell'unità locale da rimuovere.
+        required: true
+        schema:
+          maxLength: 22
+          minLength: 22
+          type: string
+      responses:
+        202:
+          description: Associazione eliminata.
+        400:
+          description: Richiesta non valida o credenziali non attive.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/{credentials_id}/signature-logs:
+    get:
+      tags:
+      - Gestione credenziali
+      summary: Log firma remota
+      description: Ottiene l'elenco delle operazioni di firma remota relative alle credenziali specificate, filtrate in base ai criteri specificati.
+      parameters:
+      - name: credentials_id
+        in: path
+        description: Identificativo delle credenziali
+        required: true
+        schema:
+          maxLength: 9
+          minLength: 9
+          type: string
+      - name: user_name
+        in: query
+        description: Identificativo (Codice Fiscale) dell'utente.
+        schema:
+          type: string
+      - name: sad_handle
+        in: query
+        description: Handle del SAD associato alla richiesta di autorizzazione alla firma, in caso di 2FA tramite dispositivo mobile.
+        schema:
+          type: string
+          format: uuid
+      - name: data_da
+        in: query
+        description: Dalla data di firma, inclusa (formato ISO 8601 UTC)
+        schema:
+          type: string
+          format: date-time
+      - name: data_a
+        in: query
+        description: Alla data di firma, esclusa (formato ISO 8601 UTC)
+        schema:
+          type: string
+          format: date-time
+      - name: document_reference
+        in: query
+        description: Riferimento al documento. Per i FIR, il numero del FIR.
+        schema:
+          type: string
+      - name: Paging-Page
+        in: header
+        description: Valore per l'header Paging-Page.
+        schema:
+          maximum: 2147483647
+          minimum: 1
+          type: integer
+          format: int32
+          default: 1
+      - name: Paging-PageSize
+        in: header
+        description: Valore per l'header Paging-PageSize.
+        schema:
+          maximum: 200
+          minimum: 1
+          type: integer
+          format: int32
+          default: 50
+      responses:
+        200:
+          description: Elenco delle operazioni di firma remota corrispondenti ai criteri di ricerca specificati.
+          headers:
+            Paging-PageCount:
+              description: Numero totale di pagine.
+              schema:
+                type: integer
+                description: Numero totale di pagine.
+                format: $int32
+            Paging-Page:
+              description: Numero di pagina.
+              schema:
+                type: integer
+                description: Numero di pagina.
+                format: $int32
+            Paging-PageSize:
+              description: Dimensione della pagina.
+              schema:
+                type: integer
+                description: Dimensione della pagina.
+                format: $int32
+            Paging-TotalRecordCount:
+              description: Numero totale di record.
+              schema:
+                type: integer
+                description: Numero totale di record.
+                format: $int32
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsSignatureLogsResponse'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita per il Soggetto.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/{credentials_id}/status:
+    get:
+      tags:
+      - Gestione credenziali
+      summary: Stato credenziali
+      description: Ottiene le informazioni sullo stato delle credenziali.
+      parameters:
+      - name: credentials_id
+        in: path
+        description: Identificativo delle credenziali.
+        required: true
+        schema:
+          maxLength: 9
+          minLength: 9
+          type: string
+      responses:
+        200:
+          description: Stato delle credenziali.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsStatusResponse'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/authorize:
+    post:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: Autorizza credenziali
+      description: >-
+        Autorizza l'accesso alle credenziali per una richiesta di firma.
+
+
+        La richiesta di autorizzazione genera l'invio di una notifica al dispositivo mobile associato alle credenziali.
+
+
+        L'autorizzazione può essere richiesta solamente per credenziali attive.
+
+
+        Per ulteriori informazioni consultare la documentazione del CSC (Cloud Signature Consortium) relativa alle specifiche API v2.0 (20/04/2023) al link: https://cloudsignatureconsortium.org/download-api-specifications/.
+      requestBody:
+        description: Dati delle credenziali da autorizzare.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/CredentialsAuthorizeRequest'
+      responses:
+        200:
+          description: Richiesta di autorizzazione creata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsAuthorizeResponse'
+        400:
+          description: Richiesta non valida, credenziali non attive o certificato di firma non valido, scaduto o revocato.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        422:
+          description: Invio della notifica al dispositivo mobile non riuscita.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/authorize-check/{handle}:
+    get:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: Verifica autorizzazione credenziali
+      description: >-
+        Verifica lo stato di una richiesta di autorizzazione alla firma per le credenziali.
+
+
+        Per ulteriori informazioni consultare la documentazione del CSC (Cloud Signature Consortium) relativa alle specifiche API v2.0 (20/04/2023) al link: https://cloudsignatureconsortium.org/download-api-specifications/.
+      parameters:
+      - name: handle
+        in: path
+        description: Handle del SAD per verificare lo stato di autorizzazione della richiesta.
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        200:
+          description: Autorizzazione concessa.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsAuthorizeResponse'
+        202:
+          description: Autorizzazione in attesa.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsAuthorizeResponse'
+        400:
+          description: Richiesta non valida, credenziali non attive o autorizzazione scaduta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita o autorizzazione non concessa.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        422:
+          description: Notifica al dispositivo mobile per la richiesta di autorizzazione non inviata.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/authorize-confirmation:
+    put:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: Imposta autorizzazione credenziali
+      description: >-
+        Completa il processo di autorizzazione delle credenziali per la firma.
+
+
+        Da richiamare a seguito della ricezione della notifica sul dispositivo mobile, per impostare il consenso o meno alla richiesta di autorizzazione per la firma.
+
+
+        Per ulteriori informazioni consultare la documentazione del CSC (Cloud Signature Consortium) relativa alle specifiche API v2.0 (20/04/2023) al link: https://cloudsignatureconsortium.org/download-api-specifications/.
+      requestBody:
+        description: Dati per l'impostazione dell'autorizzazione.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/CredentialsAuthorizeConfirmationRequest'
+      responses:
+        202:
+          description: Stato dell'autorizzazione aggiornato.
+        400:
+          description: Richiesta non valida.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/authorizeCheck/{handle}:
+    get:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: ⚠️[DEPRECATO] - utilizzare /credentials/authorize-check/{handle} - Verifica autorizzazione credenziali
+      description: >-
+        Verifica lo stato di una richiesta di autorizzazione alla firma per le credenziali.
+
+
+        Per ulteriori informazioni consultare la documentazione del CSC (Cloud Signature Consortium) relativa alle specifiche API v2.0 (20/04/2023) al link: https://cloudsignatureconsortium.org/download-api-specifications/.
+      parameters:
+      - name: handle
+        in: path
+        description: Handle del SAD per verificare lo stato di autorizzazione della richiesta.
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        200:
+          description: Autorizzazione concessa.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsAuthorizeResponse'
+        202:
+          description: Autorizzazione in attesa.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsAuthorizeResponse'
+        400:
+          description: Richiesta non valida, credenziali non attive o autorizzazione scaduta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita o autorizzazione non concessa.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        422:
+          description: Notifica al dispositivo mobile per la richiesta di autorizzazione non inviata.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      deprecated: true
+  /credentials/authorizeConfirmation:
+    put:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: ⚠️[DEPRECATO] - utilizzare /credentials/authorize-confirmation - Imposta autorizzazione credenziali
+      description: >-
+        Completa il processo di autorizzazione delle credenziali per la firma.
+
+
+        Da richiamare a seguito della ricezione della notifica sul dispositivo mobile, per impostare il consenso o meno alla richiesta di autorizzazione per la firma.
+
+
+        Per ulteriori informazioni consultare la documentazione del CSC (Cloud Signature Consortium) relativa alle specifiche API v2.0 (20/04/2023) al link: https://cloudsignatureconsortium.org/download-api-specifications/.
+      requestBody:
+        description: Dati per l'impostazione dell'autorizzazione.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/CredentialsAuthorizeConfirmationRequest'
+      responses:
+        202:
+          description: Stato dell'autorizzazione aggiornato.
+        400:
+          description: Richiesta non valida.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      deprecated: true
+  /credentials/boarding/{qrcode_token}:
+    get:
+      tags:
+      - Gestione credenziali
+      summary: Informazioni boarding
+      description: Verifica se il codice di boarding specificato è attivo e restituisce le informazioni necessarie al dispositivo per creare delle nuove credenziali.
+      parameters:
+      - name: qrcode_token
+        in: path
+        description: Token letto dal QR Code di boarding.
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: pin
+        in: query
+        description: PIN di boarding.
+        required: true
+        schema:
+          maxLength: 6
+          minLength: 6
+          type: string
+      responses:
+        200:
+          description: Accesso consentito.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardingAccessResponse'
+        403:
+          description: Parametri per il boarding non validi.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/info:
+    get:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: Informazioni credenziali
+      description: >-
+        Ottiene le informazioni sull'identità principale ed il certificato (o la catena di certificati) ad esso associata.
+
+
+        Per ulteriori informazioni consultare la documentazione del CSC (Cloud Signature Consortium) relativa alle specifiche API v2.0 (20/04/2023) al link: https://cloudsignatureconsortium.org/download-api-specifications/.
+      parameters:
+      - name: credentials_id
+        in: query
+        description: Identificativo delle credenziali di firma.
+        required: true
+        schema:
+          maxLength: 9
+          minLength: 9
+          type: string
+      - name: cert_info
+        in: query
+        description: Indica se includere nella risposta anche i parametri contenenti informazioni relative al certificato.
+        schema:
+          type: boolean
+      - name: certificates
+        in: query
+        description: Specifica quali certificati dalla catena devono essere restituiti.
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/CredentialsCertificate'
+      - name: auth_info
+        in: query
+        description: Indica se includere nella risposta anche i parametri contenenti informazioni sul meccanismo di autorizzazione supportato dalle credenziali.
+        schema:
+          type: boolean
+      - name: lang
+        in: query
+        description: Lingua prescelta per la risposta, specificata secondo RFC 5646.
+        schema:
+          type: string
+      - name: client_data
+        in: query
+        description: Dati arbitrari dell'applicazione di firma.
+        schema:
+          type: string
+      responses:
+        200:
+          description: Informazioni sulle credenziali.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsInfoResponse'
+        400:
+          description: Richiesta non valida.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /credentials/list:
+    get:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: Elenco credenziali soggetto
+      description: >-
+        Ottiene l'elenco delle credenziali associate ad un soggetto.
+
+
+        Per ulteriori informazioni consultare la documentazione del CSC (Cloud Signature Consortium) relativa alle specifiche API v2.0 (20/04/2023) al link: https://cloudsignatureconsortium.org/download-api-specifications/.
+      parameters:
+      - name: identificativo_soggetto
+        in: query
+        description: Codice Fiscale di un Operatore iscritto.
+        required: true
+        schema:
+          type: string
+      - name: num_iscr_sito
+        in: query
+        description: Numero iscrizione unità locale.
+        schema:
+          maxLength: 22
+          minLength: 22
+          type: string
+      - name: user_name
+        in: query
+        description: Identificativo (Codice Fiscale) dell'utente utilizzatore del dispositivo (da SPID, CIE, CNS).
+        schema:
+          maxLength: 256
+          type: string
+      - name: credential_info
+        in: query
+        description: Indica se includere nella risposta anche le informazioni relative alla chiave pubblica del certificato ed il certificato stesso, oppure la catena di certificati associata alle credenziali.
+        schema:
+          type: boolean
+      - name: only_valid
+        in: query
+        description: Indica se includere nella risposta solo credenziali utilizzabili per creare una firma valida.
+        schema:
+          type: boolean
+      - name: cert_info
+        in: query
+        description: Indica se includere nella risposta anche i parametri contenenti informazioni relative al certificato.
+        schema:
+          type: boolean
+      - name: certificates
+        in: query
+        description: Specifica quali certificati dalla catena devono essere restituiti.
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/CredentialsCertificate'
+      - name: auth_info
+        in: query
+        description: Indica se includere nella risposta anche i parametri contenenti informazioni sul meccanismo di autorizzazione supportato dalle credenziali.
+        schema:
+          type: boolean
+      - name: lang
+        in: query
+        description: Lingua prescelta per la risposta, specificata secondo RFC 5646.
+        schema:
+          type: string
+      - name: client_data
+        in: query
+        description: Dati arbitrari dell'applicazione di firma.
+        schema:
+          type: string
+      responses:
+        200:
+          description: Elenco delle credenziali.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsListResponse'
+        400:
+          description: Richiesta non valida.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Credenziali non trovate.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /devices:
+    get:
+      tags:
+      - Gestione dispositivi
+      summary: Elenco dispositivi
+      description: Ottiene l'elenco dei dispositivi, filtrati in base ai criteri specificati.
+      parameters:
+      - name: identificativo_soggetto
+        in: query
+        description: Codice Fiscale di un Operatore iscritto.
+        required: true
+        schema:
+          type: string
+      - name: user_name
+        in: query
+        description: Identificativo (Codice Fiscale) dell'utente utilizzatore del dispositivo (da SPID, CIE, CNS).
+        schema:
+          maxLength: 256
+          type: string
+      - name: device_id
+        in: query
+        description: Identificativo del dispositivo.
+        schema:
+          maxLength: 50
+          type: string
+      - name: credentials_id
+        in: query
+        description: Identificativo delle credenziali di firma.
+        schema:
+          maxLength: 9
+          minLength: 9
+          type: string
+      - name: attivi
+        in: query
+        description: Indica se includere solamente i dispositivi attivi.
+        schema:
+          type: boolean
+      - name: Paging-Page
+        in: header
+        description: Valore per l'header Paging-Page.
+        schema:
+          maximum: 2147483647
+          minimum: 1
+          type: integer
+          format: int32
+          default: 1
+      - name: Paging-PageSize
+        in: header
+        description: Valore per l'header Paging-PageSize.
+        schema:
+          maximum: 200
+          minimum: 1
+          type: integer
+          format: int32
+          default: 50
+      responses:
+        200:
+          description: Elenco dei dispositivi corrispondenti ai criteri di ricerca specificati.
+          headers:
+            Paging-PageCount:
+              description: Numero totale di pagine.
+              schema:
+                type: integer
+                description: Numero totale di pagine.
+                format: $int32
+            Paging-Page:
+              description: Numero di pagina.
+              schema:
+                type: integer
+                description: Numero di pagina.
+                format: $int32
+            Paging-PageSize:
+              description: Dimensione della pagina.
+              schema:
+                type: integer
+                description: Dimensione della pagina.
+                format: $int32
+            Paging-TotalRecordCount:
+              description: Numero totale di record.
+              schema:
+                type: integer
+                description: Numero totale di record.
+                format: $int32
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceModel'
+        403:
+          description: Operazione non consentita per il Soggetto.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        422:
+          description: Unprocessable Content
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Dispositivi non trovati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /devices/{device_id}/{identificativo_soggetto}:
+    get:
+      tags:
+      - Gestione dispositivi
+      summary: Dettaglio dispositivo
+      description: Ottiene informazioni di dettaglio di un dispositivo.
+      parameters:
+      - name: device_id
+        in: path
+        description: Criteri di ricerca dei dispositivi.
+        required: true
+        schema:
+          maxLength: 50
+          type: string
+      - name: identificativo_soggetto
+        in: path
+        description: Identificativo del soggetto.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Informazioni su dispositivo, app e credenziali.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceModel'
+        403:
+          description: Operazione non consentita per il Soggetto.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Dispositivo non trovati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /devices/sync:
+    put:
+      tags:
+      - Gestione dispositivi
+      summary: Sincronizza dispositivo
+      description: Sincronizza le informazioni del dispositivo specificato e dell'app installata.
+      requestBody:
+        description: Dati del dispositivo.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/SyncDeviceInfoRequest'
+      responses:
+        202:
+          description: Informazioni del dispositivo sincronizzate correttamente.
+        403:
+          description: Operazione non consentita per il dispositivo.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Dispositivo non trovato.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /info:
+    get:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: Info servizio
+      description: Restituisce informazioni sul servizio di firma remota e l'elenco dei metodi API implementati.
+      parameters:
+      - name: lang
+        in: query
+        description: Lingua prescelta per la risposta, specificata secondo RFC 5646.
+        schema:
+          type: string
+          default: it-IT
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InfoData'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /logs/ca/{num_seriale_ca_cert}/certificato/{num_seriale_cert}:
+    get:
+      tags:
+      - CA
+      summary: Log firma remota
+      description: Ottiene l'elenco delle operazioni di firma remota relative al certificato specificato.
+      parameters:
+      - name: num_seriale_ca_cert
+        in: path
+        description: Numero di serie del certificato CA.
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: num_seriale_cert
+        in: path
+        description: Numero di serie del certificato.
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: credentials_identifier
+        in: query
+        description: Identificativo delle credenziali di firma.
+        schema:
+          type: string
+      - name: utente_nome_cognome
+        in: query
+        description: Nome e cognome dell'utente associato all'operazione di firma.
+        schema:
+          type: string
+      - name: user_name
+        in: query
+        description: Identificativo (Codice Fiscale) dell'utente associato all'operazione di firma (da SPID, CIE, CNS).
+        schema:
+          type: string
+      - name: data_da
+        in: query
+        description: Dalla data di firma, inclusa (formato ISO 8601 UTC)
+        schema:
+          type: string
+          format: date-time
+      - name: data_a
+        in: query
+        description: Alla data di firma, esclusa (formato ISO 8601 UTC)
+        schema:
+          type: string
+          format: date-time
+      - name: document_reference
+        in: query
+        description: Riferimento al documento. Per i FIR, il numero del FIR.
+        schema:
+          type: string
+      - name: Paging-Page
+        in: header
+        description: Valore per l'header Paging-Page.
+        schema:
+          maximum: 2147483647
+          minimum: 1
+          type: integer
+          format: int32
+          default: 1
+      - name: Paging-PageSize
+        in: header
+        description: Valore per l'header Paging-PageSize.
+        schema:
+          maximum: 200
+          minimum: 1
+          type: integer
+          format: int32
+          default: 50
+      responses:
+        200:
+          description: Elenco delle operazioni di firma remota relative al certificato specificato.
+          headers:
+            Paging-PageCount:
+              description: Numero totale di pagine.
+              schema:
+                type: integer
+                description: Numero totale di pagine.
+                format: $int32
+            Paging-Page:
+              description: Numero di pagina.
+              schema:
+                type: integer
+                description: Numero di pagina.
+                format: $int32
+            Paging-PageSize:
+              description: Dimensione della pagina.
+              schema:
+                type: integer
+                description: Dimensione della pagina.
+                format: $int32
+            Paging-TotalRecordCount:
+              description: Numero totale di record.
+              schema:
+                type: integer
+                description: Numero totale di record.
+                format: $int32
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateSignatureLogsResponse'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Certificato non trovato.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /signatures/sign-hash:
+    post:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: Firma hash
+      description: Calcola la firma di uno o più hash specificati.
+      requestBody:
+        description: ''
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/SignatureRequest'
+      responses:
+        200:
+          description: Firma applicata correttamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignatureResponse'
+        400:
+          description: Richiesta non valida o credenziali non attive.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        422:
+          description: SAD senza autorizzazione, mancato invio della notifica o mancata corrispondenza degli hash.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /signatures/signHash:
+    post:
+      tags:
+      - CSC - Firma remota RENTRI
+      summary: ⚠️[DEPRECATO] - utilizzare /signatures/sign-hash - Firma hash
+      description: Calcola la firma di uno o più hash specificati.
+      requestBody:
+        description: ''
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/SignatureRequest'
+      responses:
+        200:
+          description: Firma applicata correttamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignatureResponse'
+        400:
+          description: Richiesta non valida o credenziali non attive.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        422:
+          description: SAD senza autorizzazione, mancato invio della notifica o mancata corrispondenza degli hash.
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      deprecated: true
+  /status:
+    get:
+      summary: Stato API
+      description: Verifica dello stato dell'API.
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+components:
+  schemas:
+    AppInfo:
+      required:
+      - build
+      - name
+      - package_name
+      - version
+      type: object
+      properties:
+        name:
+          maxLength: 50
+          minLength: 1
+          type: string
+          description: Nome dell'applicazione.
+        package_name:
+          maxLength: 100
+          minLength: 1
+          type: string
+          description: Nome del package o identificativo dell'applicazione.
+        version:
+          maxLength: 14
+          minLength: 1
+          type: string
+          description: Versione dell'applicazione.
+        build:
+          maxLength: 14
+          minLength: 1
+          type: string
+          description: Numero della build della versione dell'applicazione.
+      additionalProperties: false
+      description: Informazioni sulla App.
+    AuthData:
+      type: object
+      properties:
+        mode:
+          allOf:
+          - $ref: '#/components/schemas/AuthMode'
+          description: Modalità di autorizzazione.<p>Valori ammessi:<ul style="margin:0"><li><i>Implicit</i> - Il processo autorizzativo è gestito dal servizio. I fattori autenticativi sono gestiti dal servizio interagendo direttamente con l'utente, e non con l'applicazione di firma.</li><li><i>Explicit</i> - Il processo autorizzativo è gestito dall'applicazione di firma, che gestisce i fattori di autenticazione come PIN o One-Time Password (OTP).</li><li><i>Oauth2Code</i> - Il processo autorizzativo è gestito da un servizio di autenticazione utilizzando OAuth 2.0.</li><li><i>Oauth2Token</i> - Il processo autorizzativo è gestito da un servizio di autenticazione utilizzando OAuth 2.0.</li></ul></p>
+          nullable: true
+        expression:
+          type: string
+          nullable: true
+        objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthObjectInfo'
+          description: Informazioni sui metodi di autenticazione disponibili.
+          nullable: true
+      additionalProperties: false
+    AuthMode:
+      enum:
+      - Implicit
+      - Explicit
+      - Oauth2Code
+      - Oauth2Token
+      type: string
+    AuthObjectData:
+      type: object
+      properties:
+        id:
+          pattern: (?i)^mobile$
+          type: string
+          description: Identificativo del metodo di autenticazione. Attualmente è supportato solo il valore "mobile".
+          nullable: true
+        value:
+          type: string
+          description: Utilizzato per indicare il valore del fattore di autenticazione. Inutilizzato per il metodo "mobile".
+          nullable: true
+      additionalProperties: false
+    AuthObjectInfo:
+      type: object
+      properties:
+        type:
+          type: string
+          nullable: true
+        id:
+          type: string
+          nullable: true
+        format:
+          type: string
+          nullable: true
+        generator:
+          type: string
+          nullable: true
+        label:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+      additionalProperties: false
+    BoardingAccessResponse:
+      type: object
+      properties:
+        identificativo_soggetto:
+          type: string
+          description: Identificativo del soggetto.
+          nullable: true
+        denominazione_soggetto:
+          type: string
+          description: Denominazione del soggetto.
+          nullable: true
+        num_iscr_operatore:
+          type: string
+          description: Numero di iscrizione dell'operatore.
+          nullable: true
+        num_iscr_sito:
+          type: string
+          description: Numero di iscrizione del sito.
+          nullable: true
+        nome_sito:
+          type: string
+          description: Nome del sito.
+          nullable: true
+        token:
+          type: string
+          description: Token di identificazione a autorizzazione della richiesta di boarding.
+          format: uuid
+          nullable: true
+      additionalProperties: false
+    CertData:
+      type: object
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/CertStatus'
+          description: Stato del certificato.<p>Valori ammessi:<ul style="margin:0"><li><i>Valid</i> - Valido.</li><li><i>Expired</i> - Scaduto.</li><li><i>Revoked</i> - Revocato.</li><li><i>Suspended</i> - Sospeso.</li></ul></p>
+        certificates:
+          type: array
+          items:
+            type: string
+          description: >-
+            Codifica base 64 dei certificati X.509.
+
+            Se il parametro certificates è "chain", è presente l'intera catena di certificati con il certificato dell'ente finale nella prima posizione dell'elenco.
+
+            Se il parametro certificates è “single”, è presente solo il certificato dell'entità finale.
+
+            Se il parametro certificates è "none", non è presente alcun certificato.
+          nullable: true
+        issuer_dn:
+          type: string
+          description: Emittente del certificato.
+          nullable: true
+        serial_number:
+          type: string
+          description: Serial number del certificato.
+          nullable: true
+        subject_dn:
+          type: string
+          description: Soggetto del certificato.
+          nullable: true
+        valid_from:
+          type: string
+          description: Data di inizio validità del certificato (formato ISO 8601 UTC).
+          format: date-time
+        valid_to:
+          type: string
+          description: Data di fine validità del certificato (formato ISO 8601 UTC).
+          format: date-time
+      additionalProperties: false
+    CertStatus:
+      enum:
+      - Valid
+      - Expired
+      - Revoked
+      - Suspended
+      type: string
+    CertificateInfoModel:
+      type: object
+      properties:
+        serial_number:
+          type: integer
+          description: Numero seriale.
+          format: int64
+          nullable: true
+        subject_dn:
+          type: string
+          description: Distinguished Name (DN) del soggetto intestatario del certificato.
+          nullable: true
+        data_rilascio:
+          type: string
+          description: Data di rilascio (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+        data_scadenza:
+          type: string
+          description: Data di scadenza (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+        data_revoca:
+          type: string
+          description: Data di revoca (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+      additionalProperties: false
+      description: Informazioni sul certificato.
+    CertificateOperationInfoModel:
+      type: object
+      properties:
+        credentials_info:
+          allOf:
+          - $ref: '#/components/schemas/CredentialsInfoModel'
+          description: Informazioni di base delle credenziali di firma associate al dispositivo mobile.
+          nullable: true
+        sad_handle:
+          type: string
+          description: Handle del SAD associato alla richiesta di autorizzazione alla firma, in caso di 2FA tramite dispositivo mobile.
+          format: uuid
+          nullable: true
+        utente_nome_cognome:
+          type: string
+          description: Nome e cognome dell'utente utilizzatore del dispositivo associato alle credenziali di firma, al momento dell'operazione.
+          nullable: true
+        utente_identificativo_altro:
+          type: string
+          description: Identificativo alternativo o aggiuntivo dell'utente utilizzatore del dispositivo associato alle credenziali di firma, al momento dell'operazione.
+          nullable: true
+        user_name:
+          type: string
+          description: Identificativo (Codice Fiscale) dell'utente utilizzatore del dispositivo associato alle credenziali di firma (da SPID, CIE, CNS), al momento dell'operazione.
+          nullable: true
+        description:
+          type: string
+          description: Descrizione dell'operazione associata alla richiesta di autorizzazione alla firma.
+          nullable: true
+        data_consenso:
+          type: string
+          description: Data del consenso alla firma (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+        data_firma:
+          type: string
+          description: Data dichiarata di firma (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+        consenso:
+          type: boolean
+          description: Indica se l'utente ha approvato o meno la richiesta di autorizzazione alla firma, in caso di 2FA tramite dispositivo mobile.
+          nullable: true
+        hashes:
+          type: array
+          items:
+            $ref: '#/components/schemas/HashData'
+          description: Elenco dei codici hash associati alla richiesta di firma, codificati in base 64.
+          nullable: true
+      additionalProperties: false
+      description: Informazioni sull'operazione di firma remota.
+    CertificateSignatureLogsResponse:
+      type: object
+      properties:
+        certificate_info:
+          allOf:
+          - $ref: '#/components/schemas/CertificateInfoModel'
+          description: Informazioni sul certificato.
+          nullable: true
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificateOperationInfoModel'
+          description: Lista delle operazioni di firma remota effettuate.
+          nullable: true
+      additionalProperties: false
+      description: Informazioni di dettaglio sulle operazioni di firma remota relative al certificato.
+    ChangePinRequest:
+      required:
+      - current_pin
+      - new_pin
+      type: object
+      properties:
+        current_pin:
+          maxLength: 6
+          minLength: 6
+          type: string
+          description: PIN corrente.
+        new_pin:
+          maxLength: 6
+          minLength: 6
+          type: string
+          description: Nuovo PIN.
+      additionalProperties: false
+    CreateUpdateCredentialsRequest:
+      required:
+      - app_info
+      - boarding_token
+      - device_info
+      - identificativo_soggetto
+      - num_iscr_sito
+      - utente_nome_cognome
+      type: object
+      properties:
+        identificativo_soggetto:
+          minLength: 1
+          type: string
+          description: Codice Fiscale di un Operatore iscritto.
+        num_iscr_sito:
+          maxLength: 22
+          minLength: 22
+          type: string
+          description: Numero iscrizione unità locale.
+        identificativo:
+          maxLength: 100
+          type: string
+          description: >-
+            Identificativo del soggetto associato alle credenziali di firma.
+
+
+            ⚠️ Deprecato: utilizzare "utente_nome_cognome"
+          nullable: true
+          deprecated: true
+        utente_nome_cognome:
+          maxLength: 100
+          minLength: 1
+          type: string
+          description: Nome e cognome dell'utente utilizzatore del dispositivo associato alle credenziali di firma.
+        identificativo_altro:
+          maxLength: 100
+          type: string
+          description: >-
+            Identificativo alternativo del soggetto associato alle credenziali di firma.
+
+
+            ⚠️ Deprecato: utilizzare "utente_identificativo_altro"
+          nullable: true
+          deprecated: true
+        utente_identificativo_altro:
+          maxLength: 100
+          type: string
+          description: Identificativo alternativo o aggiuntivo dell'utente utilizzatore del dispositivo associato alle credenziali di firma.
+          nullable: true
+        user_name:
+          maxLength: 256
+          type: string
+          description: Identificativo (Codice Fiscale) dell'utente utilizzatore del dispositivo associato alle credenziali di firma (da SPID, CIE, CNS).
+          nullable: true
+        device_info:
+          allOf:
+          - $ref: '#/components/schemas/DeviceInfo'
+          description: Informazioni sul dispositivo.
+        app_info:
+          allOf:
+          - $ref: '#/components/schemas/AppInfo'
+          description: Informazioni sulla App.
+        boarding_token:
+          type: string
+          description: Token di identificazione e autorizzazione della richiesta di boarding.
+          format: uuid
+      additionalProperties: false
+    CreateUpdateCredentialsResponse:
+      type: object
+      properties:
+        credentials_id:
+          type: string
+          description: Identificativo delle credenziali di firma.
+          nullable: true
+        pin:
+          type: string
+          description: PIN.
+          nullable: true
+      additionalProperties: false
+    CredentialsAuthorizeConfirmationRequest:
+      required:
+      - allowed
+      - credentials_id
+      - handle
+      - otp
+      - pin
+      type: object
+      properties:
+        credentials_id:
+          maxLength: 9
+          minLength: 9
+          type: string
+          description: Identificativo delle credenziali di firma.
+        handle:
+          type: string
+          description: Handle del SAD da autorizzare.
+          format: uuid
+        otp:
+          maxLength: 6
+          minLength: 6
+          type: string
+          description: OTP ricevuto con la notifica.
+        allowed:
+          type: boolean
+          description: Consenso.
+        pin:
+          minLength: 1
+          type: string
+          description: PIN delle credenziali di firma.
+      additionalProperties: false
+    CredentialsAuthorizeRequest:
+      required:
+      - credentials_id
+      - description
+      - hash_algo
+      - hashes
+      - num_signatures
+      type: object
+      properties:
+        credentials_id:
+          maxLength: 9
+          minLength: 9
+          type: string
+          description: Identificativo delle credenziali di firma.
+        num_signatures:
+          type: integer
+          format: int32
+        hashes:
+          maxItems: 1
+          minItems: 1
+          type: array
+          items:
+            type: string
+          description: Elenco dei codici hash da firmare in formato base 64. Attualmente è consentito l'invio di un solo codice hash.
+        hash_algo:
+          minLength: 1
+          pattern: ^2\.16\.840\.1\.101\.3\.4\.2\.1$
+          type: string
+          description: OID dell'algoritmo utilizzato per calcolare l'hash fisso a 2.16.840.1.101.3.4.2.1 (SHA256)
+        description:
+          maxLength: 1000
+          minLength: 1
+          pattern: ^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s\.,;:!?\-\(\)/€%&@]*$
+          type: string
+          description: Descrizione dell'operazione associata alla richiesta di autorizzazione.
+        auth_data:
+          maxItems: 1
+          minItems: 1
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthObjectData'
+          description: Metodo di autenticazione abbinato alle credenziali.
+          nullable: true
+        client_data:
+          type: string
+          description: Dati arbitrari dell'applicazione di firma.
+          nullable: true
+      additionalProperties: false
+    CredentialsAuthorizeResponse:
+      type: object
+      properties:
+        sad:
+          type: string
+          description: SAD (Signature Activation Data), solo nel caso in cui la richiesta di autorizzazione abbia avuto successo.
+          nullable: true
+        expires_in:
+          type: integer
+          description: La durata del SAD espressa in secondi (default 60), solo nel caso in cui l'autorizzazione sia stata concessa.
+          format: int32
+          nullable: true
+        handle:
+          type: string
+          description: Handle del SAD per verificare lo stato di autorizzazione della richiesta.
+          nullable: true
+      additionalProperties: false
+    CredentialsCertificate:
+      enum:
+      - None
+      - Single
+      - Chain
+      type: string
+    CredentialsInfo:
+      type: object
+      properties:
+        credentials_id:
+          type: string
+          description: Identificativo delle credenziali di firma.
+          nullable: true
+        description:
+          type: string
+          description: Descrizione delle credenziali di firma.
+          nullable: true
+        signature_qualifier:
+          allOf:
+          - $ref: '#/components/schemas/SignatureQualifier'
+          description: Identificativo che qualifica il tipo di firma per cui sono adatte le credenziali.
+          nullable: true
+        key:
+          allOf:
+          - $ref: '#/components/schemas/KeyData'
+          description: Informazioni sulla chiave di firma.
+          nullable: true
+        cert:
+          allOf:
+          - $ref: '#/components/schemas/CertData'
+          description: Informazioni sul certificato.
+          nullable: true
+        auth:
+          allOf:
+          - $ref: '#/components/schemas/AuthData'
+          description: Informazioni sulla modalità di autorizzazione.
+          nullable: true
+        scal:
+          type: string
+          description: >-
+            Indica se il servizio di autorizzazione genera un Signature Activation Data (SAD) che contiene un collegamento con i codici hash da firmare.
+
+            1 - non collegato (default)
+
+            2 - collegato
+          nullable: true
+        multisign:
+          type: integer
+          description: Numero massimo di firme che possono essere create con queste credenziali con una singola richiesta.
+          format: int32
+          nullable: true
+        lang:
+          type: string
+          description: Lingua prescelta per la risposta, specificata secondo RFC 5646.
+          nullable: true
+      additionalProperties: false
+    CredentialsInfoModel:
+      type: object
+      properties:
+        identifier:
+          type: string
+          description: Identificativo delle credenziali di firma.
+          nullable: true
+        identificativo:
+          type: string
+          description: >-
+            Identificativo del soggetto associato alle credenziali di firma.
+
+
+            ⚠️ Deprecato: utilizzare "utente_nome_cognome"
+          nullable: true
+          readOnly: true
+          deprecated: true
+        utente_nome_cognome:
+          type: string
+          description: Nome e cognome dell'utente utilizzatore del dispositivo associato alle credenziali di firma.
+          nullable: true
+        identificativo_altro:
+          type: string
+          description: >-
+            Identificativo alternativo del soggetto associato alle credenziali di firma.
+
+
+            ⚠️ Deprecato: utilizzare "utente_identificativo_altro"
+          nullable: true
+          readOnly: true
+          deprecated: true
+        utente_identificativo_altro:
+          type: string
+          description: Identificativo alternativo o aggiuntivo dell'utente utilizzatore del dispositivo associato alle credenziali di firma.
+          nullable: true
+        user_name:
+          type: string
+          description: Identificativo (Codice Fiscale) dell'utente utilizzatore del dispositivo associato alle credenziali di firma (da SPID, CIE, CNS).
+          nullable: true
+      additionalProperties: false
+      description: Informazioni di base delle credenziali di firma.
+    CredentialsInfoResponse:
+      type: object
+      properties:
+        description:
+          type: string
+          description: Descrizione delle credenziali di firma.
+          nullable: true
+        signature_qualifier:
+          allOf:
+          - $ref: '#/components/schemas/SignatureQualifier'
+          description: Identificativo che qualifica il tipo di firma per cui sono adatte le credenziali.
+          nullable: true
+        key:
+          allOf:
+          - $ref: '#/components/schemas/KeyData'
+          description: Informazioni sulla chiave di firma.
+          nullable: true
+        cert:
+          allOf:
+          - $ref: '#/components/schemas/CertData'
+          description: Informazioni sul certificato.
+          nullable: true
+        auth:
+          allOf:
+          - $ref: '#/components/schemas/AuthData'
+          description: Informazioni sulla modalità di autorizzazione.
+          nullable: true
+        scal:
+          type: string
+          description: >-
+            Indica se il servizio di autorizzazione genera un Signature Activation Data (SAD) che contiene un collegamento con i codici hash da firmare.
+
+            1 - non collegato (default)
+
+            2 - collegato
+          nullable: true
+        multisign:
+          type: integer
+          description: Numero massimo di firme che possono essere create con queste credenziali con una singola richiesta.
+          format: int32
+          nullable: true
+        lang:
+          type: string
+          description: Lingua prescelta per la risposta, specificata secondo RFC 5646.
+          nullable: true
+      additionalProperties: false
+    CredentialsListResponse:
+      type: object
+      properties:
+        credentials_ids:
+          type: array
+          items:
+            type: string
+          description: Uno o più identificativi delle credenziali di firma associate al dispositivo.
+          nullable: true
+        credentials_infos:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialsInfo'
+          description: Specifiche relative a ciascun identificativo delle credenziali di firma.
+          nullable: true
+        only_valid:
+          type: boolean
+          description: Indica se sono state incluse nella risposta solo credenziali di firma utilizzabili per creare una firma valida.
+          nullable: true
+      additionalProperties: false
+    CredentialsModel:
+      type: object
+      properties:
+        ultimo_accesso:
+          type: string
+          description: Data dell'ultimo accesso effettuato (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+        data_eliminazione:
+          type: string
+          description: Data di eliminazione (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+        data_scadenza_richiesta_pin_reset:
+          type: string
+          description: Data di scadenza della richiesta di reset del PIN (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+        stato:
+          allOf:
+          - $ref: '#/components/schemas/Stato'
+          description: 'Stato.<p>Valori ammessi:<ul style="margin:0"><li><i>Attivo</i> - Utilizzato per: Certificati, Dispositivi e Credenziali.</li><li><i>Eliminato</i> - Utilizzato per Certificati e Dispositivi.</li><li><i>Nuovo</i> - Utilizzato per Certificati.</li><li><i>Revocato</i> - Utilizzato per Certificati e Credenziali (eliminate).</li><li><i>Scaduto</i> - Utilizzato per Certificati.</li><li><i>Inattivo</i> - Utilizzato per Credenziali (stato assegnato a seguito del blocco del corrispondente dispositivo).</li></ul></p>'
+          nullable: true
+        siti:
+          type: array
+          items:
+            type: string
+          description: Elenco delle unità locali sulle quali è possibile operare.
+          nullable: true
+        device_identifier:
+          type: string
+          description: Identificativo del dispositivo.
+          nullable: true
+        device_is_banned:
+          type: boolean
+          description: Indica se il device è stato bloccato.
+          nullable: true
+        identifier:
+          type: string
+          description: Identificativo delle credenziali di firma.
+          nullable: true
+        identificativo:
+          type: string
+          description: >-
+            Identificativo del soggetto associato alle credenziali di firma.
+
+
+            ⚠️ Deprecato: utilizzare "utente_nome_cognome"
+          nullable: true
+          readOnly: true
+          deprecated: true
+        utente_nome_cognome:
+          type: string
+          description: Nome e cognome dell'utente utilizzatore del dispositivo associato alle credenziali di firma.
+          nullable: true
+        identificativo_altro:
+          type: string
+          description: >-
+            Identificativo alternativo del soggetto associato alle credenziali di firma.
+
+
+            ⚠️ Deprecato: utilizzare "utente_identificativo_altro"
+          nullable: true
+          readOnly: true
+          deprecated: true
+        utente_identificativo_altro:
+          type: string
+          description: Identificativo alternativo o aggiuntivo dell'utente utilizzatore del dispositivo associato alle credenziali di firma.
+          nullable: true
+        user_name:
+          type: string
+          description: Identificativo (Codice Fiscale) dell'utente utilizzatore del dispositivo associato alle credenziali di firma (da SPID, CIE, CNS).
+          nullable: true
+      additionalProperties: false
+      description: Informazioni dettagliate delle credenziali di firma.
+    CredentialsOperationInfoModel:
+      type: object
+      properties:
+        certificate_info:
+          allOf:
+          - $ref: '#/components/schemas/CertificateInfoModel'
+          description: Informazioni sul certificato.
+          nullable: true
+        sad_handle:
+          type: string
+          description: Handle del SAD associato alla richiesta di autorizzazione alla firma, in caso di 2FA tramite dispositivo mobile.
+          format: uuid
+          nullable: true
+        utente_nome_cognome:
+          type: string
+          description: Nome e cognome dell'utente utilizzatore del dispositivo associato alle credenziali di firma, al momento dell'operazione.
+          nullable: true
+        utente_identificativo_altro:
+          type: string
+          description: Identificativo alternativo o aggiuntivo dell'utente utilizzatore del dispositivo associato alle credenziali di firma, al momento dell'operazione.
+          nullable: true
+        user_name:
+          type: string
+          description: Identificativo (Codice Fiscale) dell'utente utilizzatore del dispositivo associato alle credenziali di firma (da SPID, CIE, CNS), al momento dell'operazione.
+          nullable: true
+        description:
+          type: string
+          description: Descrizione dell'operazione associata alla richiesta di autorizzazione alla firma.
+          nullable: true
+        data_consenso:
+          type: string
+          description: Data del consenso alla firma (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+        data_firma:
+          type: string
+          description: Data dichiarata di firma (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+        consenso:
+          type: boolean
+          description: Indica se l'utente ha approvato o meno la richiesta di autorizzazione alla firma, in caso di 2FA tramite dispositivo mobile.
+          nullable: true
+        hashes:
+          type: array
+          items:
+            $ref: '#/components/schemas/HashData'
+          description: Elenco dei codici hash associati alla richiesta di firma, codificati in base 64.
+          nullable: true
+      additionalProperties: false
+      description: Informazioni sull'operazione di firma remota eseguita tramite dispositivo mobile.
+    CredentialsSignatureLogsResponse:
+      type: object
+      properties:
+        credentials_info:
+          allOf:
+          - $ref: '#/components/schemas/CredentialsInfoModel'
+          description: Informazioni di base delle credenziali di firma.
+          nullable: true
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialsOperationInfoModel'
+          description: Lista delle operazioni di firma remota effettuate.
+          nullable: true
+      additionalProperties: false
+      description: Informazioni di dettaglio sulle operazioni di firma remota relative alle credenziali.
+    CredentialsSito:
+      type: object
+      properties:
+        num_iscr_sito:
+          type: string
+          nullable: true
+        nome:
+          type: string
+          nullable: true
+        indirizzo:
+          type: string
+          nullable: true
+        civico:
+          type: string
+          nullable: true
+        comune_id:
+          type: string
+          nullable: true
+        provincia_id:
+          type: string
+          nullable: true
+      additionalProperties: false
+    CredentialsStatusResponse:
+      type: object
+      properties:
+        identifier:
+          type: string
+          description: Identificativo delle credenziali di firma.
+          nullable: true
+        identificativo:
+          type: string
+          description: >-
+            Identificativo del soggetto associato alle credenziali di firma.
+
+
+            ⚠️ Deprecato: utilizzare "utente_nome_cognome"
+          nullable: true
+          readOnly: true
+          deprecated: true
+        utente_nome_cognome:
+          type: string
+          description: Nome e cognome dell'utente utilizzatore del dispositivo associato alle credenziali di firma.
+          nullable: true
+        identificativo_altro:
+          type: string
+          description: >-
+            Identificativo alternativo del soggetto associato alle credenziali di firma.
+
+
+            ⚠️ Deprecato: utilizzare "utente_identificativo_altro"
+          nullable: true
+          readOnly: true
+          deprecated: true
+        utente_identificativo_altro:
+          type: string
+          description: Identificativo alternativo o aggiuntivo dell'utente utilizzatore del dispositivo associato alle credenziali di firma.
+          nullable: true
+        user_name:
+          type: string
+          description: Identificativo (Codice Fiscale) dell'utente utilizzatore del dispositivo associato alle credenziali di firma (da SPID, CIE, CNS).
+          nullable: true
+        stato:
+          allOf:
+          - $ref: '#/components/schemas/Stato'
+          description: 'Stato.<p>Valori ammessi:<ul style="margin:0"><li><i>Attivo</i> - Utilizzato per: Certificati, Dispositivi e Credenziali.</li><li><i>Eliminato</i> - Utilizzato per Certificati e Dispositivi.</li><li><i>Nuovo</i> - Utilizzato per Certificati.</li><li><i>Revocato</i> - Utilizzato per Certificati e Credenziali (eliminate).</li><li><i>Scaduto</i> - Utilizzato per Certificati.</li><li><i>Inattivo</i> - Utilizzato per Credenziali (stato assegnato a seguito del blocco del corrispondente dispositivo).</li></ul></p>'
+        siti:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialsSito'
+          description: Elenco delle unità locali sulle quali è possibile operare.
+          nullable: true
+        is_abbinato_solo_soggetto:
+          type: boolean
+          description: Indica se le credenziali sono abbinate direttamente al soggetto.
+      additionalProperties: false
+    DeviceInfo:
+      required:
+      - form_factor
+      - identifier
+      - manufacturer
+      - model
+      - name
+      - notification_callback_parameters
+      - notification_callback_uri
+      - os_version
+      - platform
+      - type
+      type: object
+      properties:
+        identifier:
+          maxLength: 50
+          minLength: 1
+          type: string
+          description: Identificativo del dispositivo.
+        model:
+          maxLength: 50
+          minLength: 1
+          type: string
+          description: Modello del dispositivo.
+        manufacturer:
+          maxLength: 50
+          minLength: 1
+          type: string
+          description: Produttore del dispositivo.
+        name:
+          maxLength: 150
+          minLength: 1
+          type: string
+          description: Nome del dispositivo.
+        os_version:
+          maxLength: 14
+          minLength: 1
+          type: string
+          description: Versione del Sistema Operativo del dispositivo.
+        form_factor:
+          maxLength: 20
+          minLength: 1
+          type: string
+          description: Stile del dispositivo.
+        type:
+          allOf:
+          - $ref: '#/components/schemas/DeviceType'
+          description: Tipo di dispositivo.<p>Valori ammessi:<ul style="margin:0"><li><i>Physical</i> - Dispositivo fisico</li><li><i>Virtual</i> - Dispositivo virtuale</li></ul></p>
+        platform:
+          maxLength: 20
+          minLength: 1
+          type: string
+          description: Piattaforma del dispositivo.
+        notification_callback_uri:
+          maxLength: 2000
+          minLength: 1
+          type: string
+          description: URI di callback alla quale verranno inviati in POST i dati delle notifiche RENTRI.
+        notification_callback_parameters:
+          maxLength: 4000
+          type: object
+          additionalProperties:
+            type: string
+          description: Dizionario di parametri custom che verranno inviati, tra i dati delle notifiche, all'URI di callback.
+      additionalProperties: false
+      description: Informazioni sul dispositivo.
+    DeviceModel:
+      type: object
+      properties:
+        identifier:
+          type: string
+          description: Identificativo del dispositivo.
+          nullable: true
+        name:
+          type: string
+          description: Nome.
+          nullable: true
+        model:
+          type: string
+          description: Modello.
+          nullable: true
+        manufacturer:
+          type: string
+          description: Produttore.
+          nullable: true
+        os_version:
+          type: string
+          description: Versione del Sistema Operativo.
+          nullable: true
+        form_factor:
+          type: string
+          description: Formato.
+          nullable: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/DeviceType'
+          description: Tipo di dispositivo (fisico, virtuale).<p>Valori ammessi:<ul style="margin:0"><li><i>Physical</i> - Dispositivo fisico</li><li><i>Virtual</i> - Dispositivo virtuale</li></ul></p>
+          nullable: true
+        platform:
+          type: string
+          description: Piattaforma o Sistema Operativo (Android, iOS, Windows).
+          nullable: true
+        data_registrazione:
+          type: string
+          description: Data di registrazione (formato ISO 8601 UTC).
+          format: date-time
+          nullable: true
+        is_banned:
+          type: boolean
+          description: Indica se il dispositivo è stato bloccato.
+          nullable: true
+        stato:
+          allOf:
+          - $ref: '#/components/schemas/Stato'
+          description: 'Stato.<p>Valori ammessi:<ul style="margin:0"><li><i>Attivo</i> - Utilizzato per: Certificati, Dispositivi e Credenziali.</li><li><i>Eliminato</i> - Utilizzato per Certificati e Dispositivi.</li><li><i>Nuovo</i> - Utilizzato per Certificati.</li><li><i>Revocato</i> - Utilizzato per Certificati e Credenziali (eliminate).</li><li><i>Scaduto</i> - Utilizzato per Certificati.</li><li><i>Inattivo</i> - Utilizzato per Credenziali (stato assegnato a seguito del blocco del corrispondente dispositivo).</li></ul></p>'
+          nullable: true
+        app_name:
+          type: string
+          description: Nome dell'app installata.
+          nullable: true
+        app_package_name:
+          type: string
+          description: Nome del package dell'app installata.
+          nullable: true
+        app_version:
+          type: string
+          description: Versione dell'app installata.
+          nullable: true
+        app_build:
+          type: string
+          description: Numero di build dell'app installata.
+          nullable: true
+        notification_callback_uri:
+          type: string
+          description: URI di callback alla quale verranno inviati in POST i dati delle notifiche RENTRI.
+          nullable: true
+        notification_callback_parameters:
+          type: object
+          additionalProperties:
+            type: string
+          description: Dizionario di parametri custom che verranno inviati, tra i dati delle notifiche, all'URI di callback.
+          nullable: true
+      additionalProperties: false
+      description: Dati di base del dispositivo e informazioni sulla registrazione al servizio di smistamento delle notifiche RENTRI.
+    DeviceType:
+      enum:
+      - Physical
+      - Virtual
+      type: string
+    DocumentType:
+      enum:
+      - Generic
+      - FIR
+      type: string
+    HashData:
+      type: object
+      properties:
+        hash:
+          type: string
+          description: Hash del documento, in formato base 64.
+          nullable: true
+        reference:
+          type: string
+          description: Riferimento al documento. Per i FIR, il numero del FIR.
+          nullable: true
+        document_type:
+          allOf:
+          - $ref: '#/components/schemas/DocumentType'
+          description: Tipo di documento.<p>Valori ammessi:<ul style="margin:0"><li><i>Generic</i> - Documento generico.</li><li><i>FIR</i> - Formulario digitale.</li></ul></p>
+          nullable: true
+        info:
+          type: string
+          description: Informazioni aggiuntive relative al documento. Per i FIR, la fase del FIR.
+          nullable: true
+      additionalProperties: false
+    InfoData:
+      type: object
+      properties:
+        specs:
+          type: string
+          description: Versione della specifica CSC implementata.
+          nullable: true
+        name:
+          type: string
+          description: Nome commerciale del servizio.
+          nullable: true
+        logo:
+          type: string
+          description: L'URI del file immagine del logo del servizio.
+          nullable: true
+        region:
+          type: string
+          description: Codice ISO 3166-1 del paese in cui il fornitore di servizi è stabilito.
+          nullable: true
+        lang:
+          type: string
+          description: Lingua utilizzata per la risposta, specificata secondo RFC 5646.
+          nullable: true
+        description:
+          type: string
+          description: Descrizione del servizio.
+          nullable: true
+        auth_type:
+          type: array
+          items:
+            type: string
+          description: Metodi di autenticazione supportati dal servizio.
+          nullable: true
+        oauth2:
+          type: string
+          description: URI di base del server di autorizzazione OAuth 2.0.
+          nullable: true
+        methods:
+          type: array
+          items:
+            type: string
+          description: Elenco dei nomi di tutti i metodi API implementati dal servizio.
+          nullable: true
+        sign_algorithms:
+          allOf:
+          - $ref: '#/components/schemas/SignAlgorithms'
+          description: Algoritmi di firma supportati dal servizio.
+          nullable: true
+        signature_formats:
+          allOf:
+          - $ref: '#/components/schemas/SignatureFormats'
+          description: Formati di firma supportati dal servizio.
+          nullable: true
+        conformance_levels:
+          type: array
+          items:
+            type: string
+          description: Elenco dei livelli di conformità della firma supportati dal servizio.
+          nullable: true
+      additionalProperties: false
+    KeyData:
+      type: object
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/KeyStatus'
+          description: Stato della chiave di firma.<p>Valori ammessi:<ul style="margin:0"><li><i>Enabled</i> - Chiave abilitata ed utilizzabile per la firma.</li><li><i>Disabled</i> - Chiave disabilitata e non utilizzabile per la firma.</li></ul></p>
+        algo:
+          type: array
+          items:
+            type: string
+          description: Elenco degli OID degli algoritmi chiave supportati.
+          nullable: true
+        len:
+          type: integer
+          description: Lunghezza della chiave crittografica in bit.
+          format: int32
+          nullable: true
+        curve:
+          type: string
+          description: OID della curva ECDSA.
+          nullable: true
+      additionalProperties: false
+    KeyStatus:
+      enum:
+      - Enabled
+      - Disabled
+      type: string
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: integer
+          format: int32
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+      additionalProperties: {}
+    PushNotification:
+      required:
+      - device
+      - rentri_push_notification
+      type: object
+      properties:
+        type:
+          allOf:
+          - $ref: '#/components/schemas/PushNotificationType'
+          readOnly: true
+        credentials_id:
+          type: string
+          nullable: true
+        device:
+          allOf:
+          - $ref: '#/components/schemas/PushNotificationDevice'
+        rentri_push_notification:
+          allOf:
+          - $ref: '#/components/schemas/RentriPushNotification'
+      additionalProperties: false
+    PushNotificationDevice:
+      required:
+      - identifier
+      - notification_callback_parameters
+      - notification_callback_uri
+      type: object
+      properties:
+        identifier:
+          minLength: 1
+          type: string
+        notification_callback_uri:
+          minLength: 1
+          type: string
+        notification_callback_parameters:
+          type: object
+          additionalProperties:
+            type: string
+      additionalProperties: false
+    PushNotificationDeviceInfo:
+      required:
+      - device
+      - identificativo_soggetto
+      type: object
+      properties:
+        type:
+          allOf:
+          - $ref: '#/components/schemas/PushNotificationType'
+          readOnly: true
+        is_credentials_deletion:
+          type: boolean
+        credentials_id:
+          type: string
+          nullable: true
+        device:
+          allOf:
+          - $ref: '#/components/schemas/PushNotificationDevice'
+        identificativo_soggetto:
+          minLength: 1
+          type: string
+        user_name:
+          type: string
+          nullable: true
+      additionalProperties: false
+    PushNotificationDeviceSync:
+      required:
+      - device
+      type: object
+      properties:
+        type:
+          allOf:
+          - $ref: '#/components/schemas/PushNotificationType'
+          readOnly: true
+        device:
+          allOf:
+          - $ref: '#/components/schemas/PushNotificationDevice'
+      additionalProperties: false
+    PushNotificationType:
+      enum:
+      - Notification
+      - DeviceInfo
+      - DeviceSync
+      type: string
+    RentriPushNotification:
+      type: object
+      properties:
+        action:
+          type: string
+          nullable: true
+        handle:
+          type: string
+          nullable: true
+        otp:
+          type: string
+          nullable: true
+        expires_in:
+          type: integer
+          format: int32
+          nullable: true
+        credentials_id:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        body:
+          type: string
+          nullable: true
+      additionalProperties: false
+    ResetPinRequest:
+      required:
+      - token
+      type: object
+      properties:
+        token:
+          type: string
+          description: Token della richiesta di reset.
+          format: uuid
+        new_pin:
+          maxLength: 6
+          minLength: 6
+          type: string
+          description: Nuovo PIN.
+          nullable: true
+        abort:
+          type: boolean
+          description: Annullamento della procedura.
+      additionalProperties: false
+    SignAlgorithms:
+      type: object
+      properties:
+        algos:
+          type: array
+          items:
+            type: string
+          description: Elenco degli algoritmi di firma supportati dal servizio.
+          nullable: true
+        algo_params:
+          type: array
+          items:
+            type: string
+          description: Elenco degli eventuali parametri di firma.
+          nullable: true
+      additionalProperties: false
+    SignatureFormats:
+      type: object
+      properties:
+        formats:
+          type: array
+          items:
+            type: string
+          description: Elenco dei formati di firma supportati dal servizio.
+          nullable: true
+        envelope_properties:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+          description: Elenco delle proprietà riguardanti la busta firmata.
+          nullable: true
+      additionalProperties: false
+    SignatureQualifier:
+      enum:
+      - EU_eIDAS_QES
+      - EU_eIDAS_AES
+      - EU_eIDAS_AESQC
+      - EU_eIDAS_QESeal
+      - EU_eIDAS_AESeal
+      - EU_eIDAS_AESealQC
+      - ZA_ECTA_AES
+      - ZA_ECTA_OES
+      type: string
+    SignatureRequest:
+      required:
+      - credentials_id
+      - hashes
+      - sad
+      - sign_algo
+      type: object
+      properties:
+        credentials_id:
+          maxLength: 9
+          minLength: 9
+          type: string
+          description: Identificativo delle credenziali di firma.
+        sad:
+          minLength: 1
+          type: string
+          description: SAD (Signature Activation Data).
+        hashes:
+          maxItems: 1
+          minItems: 1
+          type: array
+          items:
+            type: string
+          description: Elenco dei codici hash da firmare in formato base 64. Attualmente è consentito l'invio di un solo codice hash.
+        hash_algo:
+          pattern: ^2\.16\.840\.1\.101\.3\.4\.2\.1$
+          type: string
+          description: OID dell'algoritmo utilizzato per calcolare l'hash. Questo parametro deve essere omesso o ignorato se l'algoritmo hash è implicitamente specificato dal parametro SignAlgo.
+          nullable: true
+        sign_algo:
+          minLength: 1
+          pattern: ^1\.2\.840\.10045\.4\.3\.2$
+          type: string
+          description: OID dell'algoritmo da utilizzare per la firma. Deve essere uno dei valori consentiti dalle credenziali.
+        sign_algo_params:
+          type: string
+          description: I parametri per l'algoritmo di firma, se richiesti dall'algoritmo di firma.
+          nullable: true
+        client_data:
+          type: string
+          description: Dati arbitrari dell'applicazione di firma.
+          nullable: true
+      additionalProperties: false
+    SignatureResponse:
+      type: object
+      properties:
+        signatures:
+          type: array
+          items:
+            type: string
+          description: Lista delle firme applicate.
+          nullable: true
+      additionalProperties: false
+    Stato:
+      enum:
+      - Attivo
+      - Eliminato
+      - Nuovo
+      - Revocato
+      - Scaduto
+      - Inattivo
+      type: string
+    StatusResponse:
+      type: object
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusResponseEnum'
+          description: Stato corrente dell'API<p>Valori ammessi:<ul style="margin:0"><li><i>Ok</i> - L'API è pienamente operativa e non sono presenti segnalazioni</li><li><i>Warning</i> - L'API è operativa, ma sono presenti avvisi relativi a potenziali disservizi o anomalie</li><li><i>Planned</i> - L'API è operativa, ma sono previsti interventi o disservizi programmati</li></ul></p>
+        warnings:
+          type: array
+          items:
+            type: string
+          description: >-
+            Elenco degli avvisi relativi a potenziali disservizi,
+
+            anomalie o situazioni che potrebbero influire sul servizio.
+          nullable: true
+        planned_notices:
+          type: array
+          items:
+            type: string
+          description: >-
+            Elenco delle comunicazioni relative a interventi,
+
+            manutenzioni o disservizi programmati.
+          nullable: true
+      additionalProperties: false
+      description: Informazioni sullo stato operativo dell'API
+    StatusResponseEnum:
+      enum:
+      - Ok
+      - Warning
+      - Planned
+      type: string
+      description: Enumerazione che rappresenta lo stato operativo dell'API
+    SyncDeviceInfoRequest:
+      required:
+      - app_info
+      - identificativo_soggetto
+      - identifier
+      - name
+      - notification_callback_parameters
+      - notification_callback_uri
+      - os_version
+      type: object
+      properties:
+        identificativo_soggetto:
+          minLength: 1
+          type: string
+          description: Codice Fiscale di un Operatore iscritto.
+        identifier:
+          maxLength: 50
+          minLength: 1
+          type: string
+          description: Identificativo del dispositivo.
+        name:
+          maxLength: 150
+          minLength: 1
+          type: string
+          description: Nome.
+        os_version:
+          maxLength: 14
+          minLength: 1
+          type: string
+          description: Versione del Sistema Operativo.
+        notification_callback_uri:
+          maxLength: 2000
+          minLength: 1
+          type: string
+          description: URI di callback alla quale verranno inviati in POST i dati delle notifiche RENTRI.
+        notification_callback_parameters:
+          maxLength: 4000
+          type: object
+          additionalProperties:
+            type: string
+          description: Dizionario di parametri custom che verranno inviati, tra i dati delle notifiche, all'URI di callback.
+        app_info:
+          allOf:
+          - $ref: '#/components/schemas/AppInfo'
+          description: Informazioni sulla App installata.
+      additionalProperties: false
+  securitySchemes:
+    Bearer:
+      type: http
+      description: Bearer JWT
+      scheme: bearer
+      bearerFormat: JWT
+security:
+- Bearer: []
+tags:
+- name: CSC - Firma remota RENTRI
+- name: Gestione credenziali
+- name: Gestione dispositivi
+- name: CA
