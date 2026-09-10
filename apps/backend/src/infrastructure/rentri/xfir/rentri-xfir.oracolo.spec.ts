@@ -9,11 +9,9 @@ import { RentriCredentialResolver } from '../rentri-credential.resolver'
 import { RentriConfig } from '../rentri-config'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../../tools/rentri-fake/src/app')
+const AIUTO_CERTIFICATI = '../../../../../../tools/rentri-fake/test/aiuti/certificati'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const {
-  creaCertificatoDiTest,
-  creaCertificatoAutofirmato,
-} = require('../../../../../../tools/rentri-fake/test/aiuti/certificati')
+const { creaCertificatoDiTest, creaCertificatoAutofirmato } = require(AIUTO_CERTIFICATI)
 
 /**
  * Test di INTEGRAZIONE (oracolo): monta il finto RENTRI in-process
