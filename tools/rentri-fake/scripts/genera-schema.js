@@ -23,9 +23,20 @@ const { join } = require('path')
 const { load } = require('js-yaml')
 
 const CONTRATTO = join(__dirname, '..', '..', '..', 'docs', 'contracts', 'rentri', 'formulari.yaml')
-const USCITA = join(__dirname, '..', 'src', 'dominio', 'schema-nuovo-formulario.ts')
-const RADICE = 'NuovoFormularioModel'
 const PREFISSO_REF = '#/components/schemas/'
+
+// Argomenti opzionali (`npm run genera-schema -- <RadiceSchema> <percorso-uscita> <NOME_COSTANTE>`):
+// senza argomenti si rigenera lo schema storico di `NuovoFormularioModel`,
+// invariato rispetto a prima che questo script accettasse parametri.
+const [argRadice, argUscita, argNomeCostante] = process.argv.slice(2)
+const RADICE = argRadice || 'NuovoFormularioModel'
+const USCITA = argUscita
+  ? join(__dirname, '..', argUscita)
+  : join(__dirname, '..', 'src', 'dominio', 'schema-nuovo-formulario.ts')
+// Nome (senza prefisso `SCHEMA_`/`DEFINIZIONI_`) delle costanti esportate.
+// Default invariato rispetto allo script originale (nessun argomento ->
+// stesso output di sempre, `SCHEMA_NUOVO_FORMULARIO`/`DEFINIZIONI_NUOVO_FORMULARIO`).
+const NOME_COSTANTE = argNomeCostante || 'NUOVO_FORMULARIO'
 
 /** Nomi degli schemi referenziati da un nodo, a qualunque profondita'. */
 function riferimenti(nodo, trovati = new Set()) {
@@ -82,10 +93,10 @@ const contenuto = `/**
  * \`$ref\`, dal contratto ufficiale \`docs/contracts/rentri/formulari.yaml\`.
  * L'allineamento e' imposto da \`test/schema-allineato-al-contratto.test.ts\`.
  */
-export const SCHEMA_NUOVO_FORMULARIO = ${JSON.stringify(modello, null, 2)} as const
+export const SCHEMA_${NOME_COSTANTE} = ${JSON.stringify(modello, null, 2)} as const
 
 /** Schemi raggiunti da \`${RADICE}\` tramite \`$ref\`, verbatim dal contratto. */
-export const DEFINIZIONI_NUOVO_FORMULARIO = ${JSON.stringify(definizioni, null, 2)} as const
+export const DEFINIZIONI_${NOME_COSTANTE} = ${JSON.stringify(definizioni, null, 2)} as const
 `
 
 writeFileSync(USCITA, contenuto, 'utf8')

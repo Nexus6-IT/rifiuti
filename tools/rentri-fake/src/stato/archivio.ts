@@ -196,6 +196,40 @@ export interface SessioneFirma {
 export const EXPIRES_IN_DEFAULT_SECONDI = 120
 
 /**
+ * Trasmissione dati di un FIR digitale (`POST /trasmissioni/operatore/{num_iscr_sito}`,
+ * formulari.yaml righe 5278-5365, R6): a differenza del `Formulario`, questa
+ * operazione è **sincrona** (201 immediato, mai un ciclo NONBLOCK_PULL) — il
+ * contratto non dichiara alcun `TransazioneModel` per questo path.
+ *
+ * **Divergenza dichiarata**: `sito_oggetto_trasmissione`/
+ * `sito_trasportatore_per_conto_produttore` (`TrasmissioneDatiSitoResult`)
+ * espongono qui solo `num_iscr_sito` — la fake non incrocia questo valore con
+ * `fixture-anagrafiche.ts` per risolvere denominazione/comune/indirizzo:
+ * quel catalogo usa un formato di `num_iscr_sito` diverso da quello richiesto
+ * dal pattern del path (`^OP[0-9]{4}[A-Z0-9]{3}[0-9]{6}-[A-Z]{2}[0-9]{4}$`,
+ * es. `OP1234ABC000001-AB0001`), quindi nessun sito di fixture vi
+ * corrisponderebbe mai. Risolvere l'anagrafica qui richiederebbe allineare
+ * due cataloghi indipendenti, fuori dall'ambito di questo task.
+ */
+export interface TrasmissioneDatiFake {
+  identificativo: string
+  /** Unità locale del path (`num_iscr_sito`): a chi appartiene la trasmissione. */
+  numIscrSito: string
+  /** `num_iscr_sito_produttore` (query, invio per conto del produttore), se indicato. */
+  numIscrSitoTrasportatorePerContoProduttore?: string
+  numeroFir: string
+  userName: string
+  /** ISO 8601 UTC, valorizzata dalla fake al momento dell'invio. */
+  dataTrasmissione: string
+  dataEmissione?: string
+  codiceEer?: string
+  tipo: 'Api' | 'Supporto' | 'AppMobileRentri'
+  stato: 'Attivo' | 'Annullato'
+  /** Corpo originale `DatiTrasmissioneFormularioModel`, per `TrasmissioneDatiResult.formulario`. */
+  formulario: Record<string, unknown>
+}
+
+/**
  * Stato in memoria della fake. Volutamente non persistente: ogni avvio
  * riparte pulito, così i test non dipendono dall'ordine di esecuzione.
  */
@@ -204,6 +238,7 @@ export class Archivio {
   private transazioni = new Map<string, Transazione>()
   private guasto: Guasto | null = null
   private sessioniFirma = new Map<string, SessioneFirma>()
+  private trasmissioniDati = new Map<string, TrasmissioneDatiFake>()
 
   /**
    * Materiale crittografico di test della "CA RENTRI" simulata: il
@@ -243,6 +278,7 @@ export class Archivio {
     this.guasto = null
     this.codiciEerOverride = null
     this.sessioniFirma.clear()
+    this.trasmissioniDati.clear()
     this.registroReplay.azzera()
     // `materialeFirmaRemota` NON si azzera: v. il commento del campo.
   }
@@ -841,6 +877,115 @@ export class Archivio {
 
   sitoDelegatoA(numIscrAss: string, numIscrSito: string): anagrafiche.SitoFixture | undefined {
     return anagrafiche.sitoDelegatoA(numIscrAss, numIscrSito)
+  }
+
+  // --- Trasmissione dati operatore (formulari.yaml righe 5149-5577, R6) ---
+
+  /**
+   * `POST /trasmissioni/operatore/{num_iscr_sito}`: registra la trasmissione,
+   * SINCRONA (nessuna transazione NONBLOCK_PULL). `identificativo` è un uuid
+   * generato dalla fake — il contratto non ne vincola il formato
+   * (`TrasmissioneFormularioResponse.identificativo` è `type: string`, senza
+   * `format`).
+   */
+  creaTrasmissioneDati(
+    numIscrSito: string,
+    corpo: Record<string, unknown>,
+    opzioni: { numIscrSitoProduttore?: string; userName: string }
+  ): TrasmissioneDatiFake {
+    const partenza = (corpo.dati_partenza ?? {}) as Record<string, unknown>
+    const rifiuto = partenza.rifiuto as Record<string, unknown> | undefined
+
+    const trasmissione: TrasmissioneDatiFake = {
+      identificativo: randomUUID(),
+      numIscrSito,
+      numIscrSitoTrasportatorePerContoProduttore: opzioni.numIscrSitoProduttore,
+      numeroFir: typeof partenza.numero_fir === 'string' ? partenza.numero_fir : '',
+      userName: opzioni.userName,
+      dataTrasmissione: new Date().toISOString(),
+      dataEmissione:
+        typeof partenza.data_emissione === 'string' ? partenza.data_emissione : undefined,
+      codiceEer: typeof rifiuto?.codice_eer === 'string' ? rifiuto.codice_eer : undefined,
+      tipo: 'Api',
+      stato: 'Attivo',
+      formulario: corpo,
+    }
+    this.trasmissioniDati.set(trasmissione.identificativo, trasmissione)
+    return trasmissione
+  }
+
+  /**
+   * `GET /trasmissioni/operatore/{num_iscr_sito}/{identificativo}`: visibile
+   * solo al sito destinatario della trasmissione (`num_iscr_sito` del path
+   * con cui è stata creata) — a differenza di {@link elencaTrasmissioniDati},
+   * qui non si applica la visibilità estesa al trasportatore per conto del
+   * produttore, che il contratto dichiara solo per l'elenco.
+   */
+  leggiTrasmissioneDati(
+    numIscrSito: string,
+    identificativo: string
+  ): TrasmissioneDatiFake | undefined {
+    const trasmissione = this.trasmissioniDati.get(identificativo)
+    if (!trasmissione || trasmissione.numIscrSito !== numIscrSito) return undefined
+    return trasmissione
+  }
+
+  /**
+   * `GET /trasmissioni/operatore/{num_iscr_sito}`: filtro per
+   * `numero_fir`/`stato`/`tipo`/`codice_eer` ed eventuale inclusione delle
+   * trasmissioni effettuate per conto del produttore
+   * (`includi_trasportatore_per_conto_produttore`).
+   *
+   * **Divergenza dichiarata**: `data_trasmissione_da`/`data_trasmissione_a`
+   * (intervallo ISO 8601) non sono applicati — nessun test di questo
+   * programma esercita il filtro per data, e implementarlo fedelmente
+   * (confronto di intervalli UTC) senza un caso che lo verifichi
+   * rischierebbe di introdurre una regola mai controllata.
+   */
+  elencaTrasmissioniDati(
+    numIscrSito: string,
+    filtro?: {
+      numeroFir?: string
+      stato?: string
+      tipo?: string
+      codiceEer?: string
+      includiTrasportatorePerContoProduttore?: boolean
+    }
+  ): TrasmissioneDatiFake[] {
+    return [...this.trasmissioniDati.values()].filter(t => {
+      const appartiene =
+        t.numIscrSito === numIscrSito ||
+        (!!filtro?.includiTrasportatorePerContoProduttore &&
+          t.numIscrSitoTrasportatorePerContoProduttore === numIscrSito)
+      if (!appartiene) return false
+      if (filtro?.numeroFir && t.numeroFir !== filtro.numeroFir) return false
+      if (filtro?.stato && t.stato !== filtro.stato) return false
+      if (filtro?.tipo && t.tipo !== filtro.tipo) return false
+      if (filtro?.codiceEer && t.codiceEer !== filtro.codiceEer) return false
+      return true
+    })
+  }
+
+  /**
+   * `DELETE /trasmissioni/operatore/{num_iscr_sito}/{identificativo}/annulla`:
+   * `'non-trovata'` se l'identificativo non esiste per QUESTO `num_iscr_sito`
+   * (stesso confine di visibilità di {@link leggiTrasmissioneDati} — la fake
+   * risponde 404, mai rivelando l'esistenza della trasmissione a un sito
+   * diverso da quello che l'ha inviata). `'gia-annullata'` se lo stato è già
+   * `Annullato`: l'operazione non è reversibile (formulari.yaml riga 5423),
+   * quindi ripeterla è un errore del chiamante, non un'operazione idempotente
+   * — da cui il 400 dichiarato dal contratto per questo path (unico, tra
+   * `GET`/`DELETE` di questo gruppo, a documentarlo).
+   */
+  annullaTrasmissioneDati(
+    numIscrSito: string,
+    identificativo: string
+  ): 'ok' | 'non-trovata' | 'gia-annullata' {
+    const trasmissione = this.leggiTrasmissioneDati(numIscrSito, identificativo)
+    if (!trasmissione) return 'non-trovata'
+    if (trasmissione.stato === 'Annullato') return 'gia-annullata'
+    trasmissione.stato = 'Annullato'
+    return 'ok'
   }
 }
 

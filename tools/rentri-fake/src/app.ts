@@ -8,6 +8,7 @@ import { registraRotteControllo } from './routes/controllo'
 import { registraRotteCodifiche } from './routes/codifiche'
 import { registraRotteAnagrafiche } from './routes/anagrafiche'
 import { registraRotteCaRentri } from './routes/ca-rentri'
+import { registraRotteTrasmissioniDati } from './routes/trasmissioni-dati'
 import { Archivio } from './stato/archivio'
 import { inviaProblemDetails } from './errori/problem-details'
 
@@ -68,6 +69,7 @@ export function creaApp(): FastifyInstance {
   registraRotteCodifiche(app, archivio)
   registraRotteAnagrafiche(app, archivio)
   registraRotteCaRentri(app, archivio)
+  registraRotteTrasmissioniDati(app, archivio)
 
   return app
 }

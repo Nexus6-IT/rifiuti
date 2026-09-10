@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
     "test": "jest --runInBand",
-    "genera-schema": "node scripts/genera-schema.js"
+    "genera-schema": "node scripts/genera-schema.js",
+    "genera-schema:trasmissione-dati": "node scripts/genera-schema.js DatiTrasmissioneFormularioModel src/dominio/schema-trasmissione-dati.ts TRASMISSIONE_DATI"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.5",
