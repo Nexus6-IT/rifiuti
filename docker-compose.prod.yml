@@ -85,6 +85,27 @@ services:
       TSA_PROVIDER: ${TSA_PROVIDER:?TSA_PROVIDER richiesta (mock|rfc3161)}
       # Autenticazione: Keycloak come IdP SAML (realm condiviso ignicraft).
       # La SpidStrategy (passport-saml) legge le variabili SPID_*.
+      # Invio email. PRIMA di questo blocco nessuna SMTP_* arrivava al
+      # container: le credenziali potevano stare in /opt/rifiuti/.env e il
+      # backend non le vedeva comunque, quindi l'invio falliva all'avvio con
+      # «Missing credentials for PLAIN» qualunque cosa ci fosse nel file.
+      #
+      # Porta 465 (SMTPS diretto) e NON 587: il provider del VPS blocca la 587
+      # in uscita. Il codice attiva TLS solo se SMTP_PORT vale esattamente
+      # '465', quindi la porta va lasciata cosi'.
+      #
+      # Con Gmail la password NON e' quella dell'account ma una App Password
+      # (https://myaccount.google.com/apppasswords), e SMTP_USER deve essere
+      # lo stesso indirizzo di EMAIL_FROM, altrimenti Gmail riscrive il
+      # mittente e i messaggi finiscono nello spam.
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      EMAIL_FROM: ${EMAIL_FROM}
+      # Destinatario delle notifiche di richiesta accesso: senza questa (e
+      # senza EMAIL_FROM) la notifica viene saltata in silenzio.
+      ACCESS_REQUEST_NOTIFY_EMAIL: ${ACCESS_REQUEST_NOTIFY_EMAIL}
       KEYCLOAK_URL: ${KEYCLOAK_URL:-https://auth.ignicraft.com}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-ignicraft}
       # Service account 'rifiuti-admin' (client_credentials) per il provisioning
