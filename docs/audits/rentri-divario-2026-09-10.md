@@ -100,8 +100,24 @@ XMLDSig in tutto il repository: le uniche occorrenze di «xFIR» e «ASiC» sono
 commenti nel client. La validazione `/xfir/valida` non esiste.
 
 **QR code del documento stampato (riga 23).** Serve CBOR firmato COSE_Sign1 in
-Base45. Nel codice non c'è né CBOR né COSE: esiste un generatore di QR
-generico, che è un'altra cosa.
+Base45. Nel codice non c'è né CBOR né COSE.
+
+> **Correzione in revisione (2026-09-10).** Questa riga, e prima di essa
+> l'audit di luglio, dicevano che il generatore di QR non è collegato al PDF.
+> Non è più vero: `apps/backend/src/api/pdf/pdf.controller.ts` genera il QR e
+> lo passa al PDF. Il `qrcode.service.ts` citato dall'audit non esiste più.
+> Quello che il QR contiene, però, resta un'altra cosa: l'URL della nostra
+> verifica firme in chiaro, con correzione d'errore di livello M invece di H.
+> Quindi il documento stampato **un QR ce l'ha**, ma non è quello normato: la
+> lacuna è nel contenuto e nel livello, non nell'assenza.
+
+Il formato del contenuto **non è specificato in alcun documento che abbiamo**:
+il contratto OpenAPI non tratta il QR, che è una regola tecnica esterna, e nel
+repository nessuna fonte descrive struttura del payload, intestazione COSE,
+algoritmo o provenienza della chiave. Dettaglio e fonti in
+`rentri-qr-specifica-mancante-2026-09-10.md`. Finché quella specifica non
+arriva, implementarlo significherebbe inventare il formato di un documento
+diretto a un ente pubblico.
 
 **Copia cartacea (riga 27) e vidimazione a piè di pagina (riga 24).** Assenti.
 
