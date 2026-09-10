@@ -11,6 +11,7 @@ import { registraRotteCaRentri } from './routes/ca-rentri'
 import { registraRotteTrasmissioniDati } from './routes/trasmissioni-dati'
 import { registraRotteCopie } from './routes/copie'
 import { registraRotteDatiRegistri } from './routes/dati-registri'
+import { registraRotteVidimazione } from './routes/vidimazione'
 import { Archivio } from './stato/archivio'
 import { inviaProblemDetails } from './errori/problem-details'
 
@@ -74,6 +75,7 @@ export function creaApp(): FastifyInstance {
   registraRotteTrasmissioniDati(app, archivio)
   registraRotteCopie(app, archivio)
   registraRotteDatiRegistri(app)
+  registraRotteVidimazione(app)
 
   return app
 }

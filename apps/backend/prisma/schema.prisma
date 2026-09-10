@@ -410,6 +410,19 @@ model FIR {
   // cambia per qualunque modifica al FIR, non solo per la riconciliazione).
   rentriLastReconciledAt  DateTime?              @map("rentri_last_reconciled_at")
 
+  /// Byte del QR Code restituiti dall'ente alla vidimazione
+  /// (`EfirModel.qr_code_bytes`/`EfirPublicModel.qr_code_bytes`, servizio
+  /// `vidimazione-formulari`), Base64 COSI' COME li restituisce RENTRI —
+  /// nessuna ricodifica qui, quella (Base64 -> Base45 -> disegno QR livello
+  /// H) avviene a valle in `infrastructure/rentri/qr/` al momento di
+  /// stampare il PDF. Prova della vidimazione: va conservata come si
+  /// conserva `rentriNumeroFir`, non ricostruita. Nullable: un FIR non
+  /// (ancora) vidimato dall'ente non ce l'ha — `pdf.controller.ts` decide
+  /// di conseguenza se stampare il QR ufficiale o nessun QR (mai il vecchio
+  /// QR con URL di verifica su un documento che sembrerebbe vidimato senza
+  /// esserlo, v. `docs/audits/rentri-vidimazione-e-qr-2026-09-10.md`).
+  rentriQrCodeBytes String? @map("rentri_qr_code_bytes") @db.Text
+
   /// SUPERATO da `FIRAllegatoRentri` (sotto), R3 Task 6 — non "il campo già
   /// in uso": verificato il 2026-07-27 che ha ZERO riferimenti in tutto il
   /// codice (backend, frontend, spec) e ZERO righe valorizzate in
