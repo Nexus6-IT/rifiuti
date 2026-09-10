@@ -37,10 +37,28 @@ export async function validaAsicE(contenuto: Buffer): Promise<EsitoValidazione> 
 
   const nomi = Object.keys(zip.files)
   const xmlPresenti = nomi.filter((n) => n.endsWith('.xml') && !n.startsWith('META-INF/'))
-  const nomiFirme = nomi.filter((n) => n.startsWith('META-INF/') && n.endsWith('.xml'))
+
+  // Solo i file `META-INF/*signatures*.xml` sono firme, per la convenzione
+  // ASiC (ETSI TS 102 918): dentro META-INF/ vive anche `manifest.xml`, che
+  // NON e' una firma.
+  //
+  // Prima qui si prendeva OGNI xml sotto META-INF/, manifest compreso: un
+  // contenitore conforme, che il manifest ce l'ha, veniva letto come se
+  // contenesse una «firma» priva di riferimenti e quindi RIFIUTATO. La
+  // conseguenza pratica l'abbiamo vista subito: chi ha costruito il
+  // contenitore lato backend ha smesso di produrre il manifest per far
+  // passare la validazione, cioe' l'oracolo infedele stava facendo produrre
+  // un contenitore non conforme. E' esattamente il danno che questo
+  // strumento esiste per evitare.
+  const nomiFirme = nomi.filter(
+    (n) => n.startsWith('META-INF/') && n.endsWith('.xml') && /signatures/i.test(n)
+  )
 
   if (nomiFirme.length === 0) {
-    return { valido: false, motivo: 'nessuna firma XAdES presente in META-INF/' }
+    return {
+      valido: false,
+      motivo: 'nessuna firma XAdES presente in META-INF/ (attesa META-INF/*signatures*.xml)',
+    }
   }
 
   const firme: FirmaXades[] = []
