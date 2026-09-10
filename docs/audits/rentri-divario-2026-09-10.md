@@ -128,12 +128,30 @@ l'impianto; oggi manca il contenuto che ci passa dentro. È una differenza
 sostanziale, perché il contenuto si può costruire incrementalmente contro un
 riferimento — mentre l'impianto andava riscritto.
 
-**Il prossimo passo utile non è scrivere codice.** Il modello dati va mappato
-contro `NuovoFormularioModel` del contratto ufficiale già versionato in
-`docs/contracts/rentri/`, e la mappatura va verificata contro l'ambiente demo
-reale. Quella verifica richiede le credenziali di accreditamento
-all'interoperabilità, che oggi non abbiamo: è il vero collo di bottiglia, e va
-avviata come pratica prima ancora che come sviluppo.
+**Il lavoro si può fare tutto in casa, e questo è il punto che conta.** Il
+contratto ufficiale è versionato in `docs/contracts/rentri/formulari.yaml` e
+definisce `NuovoFormularioModel` per intero: campi obbligatori
+(`dati_partenza`, `num_iscr_sito`), espressioni regolari sui formati,
+`additionalProperties: false`, e tutta la gerarchia annidata sotto
+(`DatiPartenzaModel` con destinatario, rifiuto e almeno un trasportatore
+obbligatori, e i modelli di trasporto terrestre, marittimo e ferroviario).
+
+Non serve l'ambiente demo per costruire la mappatura né per verificarla: serve
+insegnare al finto RENTRI a validare il corpo contro quello schema. Oggi non lo
+fa, e lo dichiara apertamente — `tools/rentri-fake/src/stato/archivio.ts:14`
+scrive che «la fake non modella l'intera struttura `dati_partenza`/soggetti del
+`NuovoFormularioModel` reale». La rotta di creazione accetta qualunque corpo e
+risponde 202 (`src/routes/transazioni.ts:62`). Fra le dipendenze del finto non
+c'è alcun validatore di schema.
+
+**Il finto è cresciuto più di quanto il divario lasci pensare.** Ha già un
+validatore ASiC-E e uno XAdES, con le librerie per farlo davvero. Quindi anche
+il contenitore xFIR, che resta il pezzo più grosso da costruire, ha un oracolo
+locale che lo aspetta.
+
+Le credenziali di accreditamento servono per la **conferma finale** contro
+l'ambiente reale, non per fare il lavoro. Vale la pena avviare la pratica in
+parallelo perché ha tempi non nostri, ma non è ciò che blocca lo sviluppo.
 
 **Un avvertimento dalle FAQ ufficiali**, già segnalato a luglio e ancora valido:
 il certificato `.p12` di interoperabilità **non serve a firmare i FIR**. La via
@@ -143,14 +161,21 @@ corretta è la firma remota CA RENTRI, che ora è implementata.
 
 ## 6. Ordine proposto
 
-1. **Avviare l'accreditamento all'interoperabilità** per ottenere le credenziali
-   dell'ambiente demo. Sblocca tutto il resto e non dipende da noi, quindi va
-   fatto per primo.
-2. **Costruire il modello dati di scrittura** contro il contratto ufficiale,
-   sostituendo il segnaposto di §2. Verificabile davvero solo contro la demo,
-   ma la mappatura si scrive prima.
-3. **Contenitore xFIR e firma XAdES**, che è il pezzo più grosso rimasto sul
-   fronte formulari.
+1. **Insegnare al finto RENTRI a validare il corpo** contro
+   `NuovoFormularioModel` e la sua gerarchia. Senza questo passo, qualunque
+   mappatura scriveremo continuerà a risultare verde su un oracolo che non
+   guarda il contenuto — è lo stesso meccanismo che ha lasciato passare il
+   segnaposto di §2 per mesi. È il primo passo perché rende falsificabile tutto
+   ciò che viene dopo.
+2. **Costruire il modello dati di scrittura**, sostituendo il segnaposto di §2,
+   con il finto ormai capace di rifiutarlo.
+3. **Contenitore xFIR e firma XAdES**, il pezzo più grosso rimasto sui
+   formulari. L'oracolo ha già i due validatori pronti.
 4. **Registro cronologico**, cantiere autonomo e altrettanto grande.
 5. **QR, copia cartacea, vidimazione a piè di pagina**: rifiniture del documento
    stampato, dopo che il resto regge.
+
+In parallelo e fuori da questa scaletta: **avviare l'accreditamento
+all'interoperabilità**. Serve per la conferma finale contro l'ambiente reale e
+ha tempi che non dipendono da noi, quindi conviene farlo partire subito — ma
+non blocca nessuno dei cinque passi qui sopra.
