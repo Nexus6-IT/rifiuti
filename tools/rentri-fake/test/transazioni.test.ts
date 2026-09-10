@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { importPKCS8, SignJWT } from 'jose'
 import { creaApp } from '../src/app'
 import { creaCertificatoDiTest } from './aiuti/certificati'
+import { corpoNuovoFormularioValido } from './aiuti/formulario'
 
 // Un jti diverso ad ogni chiamata (FEDELTA.md §5.2 punto 3, anti-replay): un
 // token self-issued non va mai riutilizzato per piu' di una richiesta HTTP,
@@ -39,7 +40,7 @@ describe('Asincronia NONBLOCK_PULL', () => {
       method: 'POST',
       url: '/formulari/v1.0/',
       headers: { authorization: `Bearer ${await tokenValido()}` },
-      payload: { dati: 'qualsiasi' },
+      payload: corpoNuovoFormularioValido(),
     })
 
     expect(risposta.statusCode).toBe(202)
@@ -78,7 +79,7 @@ describe('Asincronia NONBLOCK_PULL', () => {
       method: 'POST',
       url: '/formulari/v1.0/',
       headers: await intestazioni(),
-      payload: {},
+      payload: corpoNuovoFormularioValido(),
     })
     const id = creazione.json().transazione_id
 
@@ -102,7 +103,7 @@ describe('Asincronia NONBLOCK_PULL', () => {
       method: 'POST',
       url: '/formulari/v1.0/',
       headers: await intestazioni(),
-      payload: {},
+      payload: corpoNuovoFormularioValido(),
     })
     const id = creazione.json().transazione_id
 
@@ -131,7 +132,7 @@ describe('Asincronia NONBLOCK_PULL', () => {
       method: 'POST',
       url: '/formulari/v1.0/',
       headers: await intestazioni(),
-      payload: {},
+      payload: corpoNuovoFormularioValido(),
     })
     const id = creazione.json().transazione_id
 
@@ -154,7 +155,7 @@ describe('Asincronia NONBLOCK_PULL', () => {
       method: 'POST',
       url: '/formulari/v1.0/',
       headers: await intestazioni(),
-      payload: {},
+      payload: corpoNuovoFormularioValido(),
     })
     const id = creazione.json().transazione_id
 

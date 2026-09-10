@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { importPKCS8, SignJWT } from 'jose'
 import { creaApp } from '../src/app'
 import { creaCertificatoDiTest } from './aiuti/certificati'
+import { corpoNuovoFormularioValido } from './aiuti/formulario'
 
 // Un jti diverso ad ogni chiamata (FEDELTA.md §5.2 punto 3, anti-replay): un
 // token self-issued non va mai riutilizzato per piu' di una richiesta HTTP.
@@ -105,7 +106,7 @@ describe('Canale di controllo', () => {
       method: 'POST',
       url: '/formulari/v1.0/',
       headers: await intestazioni(),
-      payload: {},
+      payload: corpoNuovoFormularioValido(),
     })
     const id = creazione.json().transazione_id
 

@@ -486,3 +486,36 @@ Con queste riserve esplicitate, la fake può essere adottata come oracolo di P2 
 protocollo e per l'autenticazione**, non per la validazione dei modelli dati né per il valore
 giuridico della firma. Le riserve 1, 3 e 5 sono a basso costo di chiusura e andrebbero chiuse
 prima che P2 e P3 comincino a produrre codice contro questo oracolo.
+
+---
+
+## 7. Chiusura parziale di N1 — validazione del modello dati di scrittura (2026-09-10)
+
+**Cosa è cambiato.** `POST /formulari/v1.0/` non accetta più qualunque corpo. La rotta valida
+ora il primo livello di `NuovoFormularioModel` e risponde **400 `ProblemDetails`** quando:
+
+- manca un campo di `required` (`dati_partenza`, `num_iscr_sito`);
+- un campo con `pattern` non lo rispetta (oggi `num_iscr_sito`);
+- il corpo porta campi fuori da `properties`, come impone `additionalProperties: false`.
+
+**Perché era urgente.** N1 non era teorico: il backend spediva
+`{ firId, firNumber }` — due identificativi interni — e nessun test diventava rosso. La
+riserva §6.5 punto 1 lo aveva previsto con esattezza; è rimasta aperta abbastanza a lungo
+da produrre il difetto che descriveva.
+
+**Come è stata evitata la deriva.** Le regole non sono scritte a mano nel finto: sono lette da
+`src/dominio/schema-nuovo-formulario.ts`, generato da `scripts/genera-schema.js` a partire da
+`formulari.yaml`. Il modulo generato è confrontato con il contratto da
+`test/schema-allineato-al-contratto.test.ts`, che diventa rosso se qualcuno riscarica i
+contratti senza rigenerare lo schema. Lo schema è materializzato nel sorgente perché il
+contesto di build dell'immagine è `tools/rentri-fake`, da cui `docs/contracts/` non è
+raggiungibile; il test copre proprio quel salto. `js-yaml` resta una dipendenza di sviluppo:
+il runtime non legge YAML e l'immagine non ingrassa.
+
+**Cosa resta aperto di N1.** La validazione si ferma al primo livello. **Non** sono ancora
+verificati i modelli annidati: `DatiPartenzaModel` (che richiede `destinatario`, `rifiuto` e
+almeno un trasportatore), `DatiRifiutoModel` (`codice_eer`, `provenienza`, `stato_fisico`), i
+tre modelli di trasporto in `oneOf`, e i `$ref` transitivi sotto di essi. Un corpo con
+`dati_partenza: {}` è oggi accettato. Finché quella chiusura non arriva, il finto giudica la
+**forma esterna** del modello dati, non la sua completezza: la riserva §6.5 punto 1 va
+considerata ridotta, non risolta.
