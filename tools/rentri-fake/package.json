@@ -10,7 +10,13 @@
     "dev": "ts-node src/server.ts",
     "test": "jest --runInBand",
     "genera-schema": "node scripts/genera-schema.js",
-    "genera-schema:trasmissione-dati": "node scripts/genera-schema.js DatiTrasmissioneFormularioModel src/dominio/schema-trasmissione-dati.ts TRASMISSIONE_DATI"
+    "genera-schema:trasmissione-dati": "node scripts/genera-schema.js DatiTrasmissioneFormularioModel src/dominio/schema-trasmissione-dati.ts TRASMISSIONE_DATI",
+    "genera-schema:movimento": "node scripts/genera-schema.js MovimentoModel src/dominio/schema-movimento.ts MOVIMENTO dati-registri.yaml",
+    "genera-schema:annullamento-movimento": "node scripts/genera-schema.js AnnullamentoMovimentoModel src/dominio/schema-annullamento-movimento.ts ANNULLAMENTO_MOVIMENTO dati-registri.yaml",
+    "genera-schema:valida-registro": "node scripts/genera-schema.js ValidaRegistroRequest src/dominio/schema-valida-registro.ts VALIDA_REGISTRO dati-registri.yaml",
+    "genera-schema:copia-cartacea": "node scripts/genera-schema.js CopiaCartaceaModel src/dominio/schema-copia-cartacea.ts COPIA_CARTACEA",
+    "genera-schema:copia-cartacea-conferma": "node scripts/genera-schema.js CopiaCartaceaConfermaModel src/dominio/schema-copia-cartacea-conferma.ts COPIA_CARTACEA_CONFERMA",
+    "genera-schema:copia-digitale": "node scripts/genera-schema.js CopiaDigitaleModel src/dominio/schema-copia-digitale.ts COPIA_DIGITALE"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.5",

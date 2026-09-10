@@ -39,7 +39,16 @@ const NOME_COSTANTE = argNomeCostante || 'NUOVO_FORMULARIO'
 // Nome del file contratto sotto `docs/contracts/rentri/` (4° argomento
 // opzionale): senza argomento resta `formulari.yaml`, invariato rispetto a
 // prima che questo script sapesse leggere altri servizi (es. `dati-registri.yaml`).
-const CONTRATTO = join(__dirname, '..', '..', '..', 'docs', 'contracts', 'rentri', argContratto || 'formulari.yaml')
+const CONTRATTO = join(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  'docs',
+  'contracts',
+  'rentri',
+  argContratto || 'formulari.yaml'
+)
 
 /** Nomi degli schemi referenziati da un nodo, a qualunque profondita'. */
 function riferimenti(nodo, trovati = new Set()) {
