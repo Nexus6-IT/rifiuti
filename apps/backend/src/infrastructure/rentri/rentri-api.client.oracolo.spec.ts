@@ -3,6 +3,7 @@ import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriConfig } from './rentri-config'
+import { corpoFormularioValido } from '../../application/rentri/mappatura/aiuti-test'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -116,7 +117,7 @@ describe('RENTRIApiClient — verifica reale contro la fake RENTRI (in-process)'
     // tenantId vuoto: RentriAuthService ricade sul certificato di fallback
     // (config.certificatePem/privateKeyPem) impostato sopra — v.
     // RentriAuthService.risolviCredenziale.
-    const risultato = await client.creaFormulario('', { dati: 'qualsiasi' })
+    const risultato = await client.creaFormulario('', corpoFormularioValido())
 
     expect(risultato.transazioneId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -154,7 +155,7 @@ describe('RENTRIApiClient — verifica reale contro la fake RENTRI (in-process)'
     const client = creaClient()
 
     // 1) Crea il formulario: 202 + transazione_id + Location.
-    const { transazioneId, urlStato } = await client.creaFormulario('', { dati: 'qualsiasi' })
+    const { transazioneId, urlStato } = await client.creaFormulario('', corpoFormularioValido())
     expect(urlStato).toBe(`/formulari/v1.0/${transazioneId}/status`)
 
     // Per interrogare /status e /result "a mano" (senza passare dal client)

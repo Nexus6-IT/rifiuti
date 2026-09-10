@@ -11,6 +11,7 @@ import {
   RENTRI_RATE_LIMIT_SOGLIA_RICHIESTE,
   RENTRI_RATE_LIMIT_FINESTRA_MS,
 } from './rentri-rate-limiter.service'
+import { corpoFormularioValido } from '../../application/rentri/mappatura/aiuti-test'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -208,8 +209,9 @@ describe('RentriRateLimiterService — sotto carico reale contro la fake RENTRI 
     const tenantId = `r5-task6-concorrenza-${process.pid}`
     azzeraOsservazione()
 
+    // "concorrenza": 15 chiamate concorrenti dello stesso tenant (v. titolo del test).
     const chiamate = Array.from({ length: 15 }, () =>
-      client.creaFormulario(tenantId, { dati: 'concorrenza' })
+      client.creaFormulario(tenantId, corpoFormularioValido())
     )
     await Promise.all(chiamate)
 
@@ -228,8 +230,9 @@ describe('RentriRateLimiterService — sotto carico reale contro la fake RENTRI 
     const tenantId = `r5-task6-volume-${process.pid}`
     azzeraOsservazione()
 
+    // "volume": 20 chiamate per verificare la soglia sulla finestra scorrevole.
     const chiamate = Array.from({ length: 20 }, () =>
-      client.creaFormulario(tenantId, { dati: 'volume' })
+      client.creaFormulario(tenantId, corpoFormularioValido())
     )
     await Promise.all(chiamate)
 
@@ -262,8 +265,10 @@ describe('RentriRateLimiterService — sotto carico reale contro la fake RENTRI 
       rateLimiter.acquisisci(tenantSaturato),
     ])
 
+    // "tenant libero": chiamata del tenant non saturato, a differenza di
+    // `tenantSaturato` sopra.
     const inizio = Date.now()
-    await client.creaFormulario(tenantLibero, { dati: 'tenant libero' })
+    await client.creaFormulario(tenantLibero, corpoFormularioValido())
     const durata = Date.now() - inizio
 
     // Nessuna attesa di rilievo: il tenant libero non ha mai dovuto

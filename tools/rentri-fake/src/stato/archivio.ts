@@ -10,12 +10,16 @@ export interface Formulario {
   stato: string
   produttore: string
   /**
-   * Codice fiscale di un soggetto coinvolto nel FIR (semplificazione di test:
-   * la fake non modella l'intera struttura `dati_partenza`/soggetti del
-   * `NuovoFormularioModel` reale, legge questo campo direttamente dal corpo
-   * passato a `POST /` o al canale di controllo — sufficiente per verificare
-   * che `cercaFormulari({ identificativoSoggetto })` filtri correttamente,
-   * non per validare la mappatura completa xFIR, fuori scope di R2 Task 2).
+   * Codice fiscale di un soggetto coinvolto nel FIR, per cui il formulario e'
+   * cercabile (`GET /?identificativo_soggetto=`).
+   *
+   * Fino alla validazione del modello dati veniva letto da un campo inventato
+   * alla radice del corpo — una scorciatoia che reggeva solo perche' la fake
+   * accettava qualunque cosa. Ora si ricava da `dati_partenza` (produttore,
+   * poi destinatario, poi primo trasportatore), cioe' da dove il contratto
+   * mette davvero i soggetti. Il canale di controllo puo' ancora impostarlo
+   * direttamente: li' e' una scorciatoia dichiarata, non un campo di
+   * protocollo.
    */
   identificativo_soggetto?: string
   /** Unità locale che ha creato il FIR. */
@@ -502,11 +506,8 @@ export class Archivio {
       this.salvaFormulario({
         numero_fir: numeroFir,
         stato: typeof richiesta.stato === 'string' ? richiesta.stato : 'InserimentoQuantita',
-        produttore: typeof richiesta.produttore === 'string' ? richiesta.produttore : '',
-        identificativo_soggetto:
-          typeof richiesta.identificativo_soggetto === 'string'
-            ? richiesta.identificativo_soggetto
-            : undefined,
+        produttore: denominazioneProduttore(richiesta),
+        identificativo_soggetto: identificativoSoggettoDa(richiesta),
         num_iscr_sito:
           typeof richiesta.num_iscr_sito === 'string' ? richiesta.num_iscr_sito : undefined,
       })
@@ -841,4 +842,44 @@ export class Archivio {
   sitoDelegatoA(numIscrAss: string, numIscrSito: string): anagrafiche.SitoFixture | undefined {
     return anagrafiche.sitoDelegatoA(numIscrAss, numIscrSito)
   }
+}
+
+/**
+ * Denominazione del produttore, letta da dove il contratto la mette davvero.
+ *
+ * Prima veniva letta da un campo `produttore` alla radice del corpo, che il
+ * contratto non definisce: funzionava solo perche' la fake accettava
+ * qualunque cosa. Ora che il modello dati e' validato quel campo verrebbe
+ * rifiutato, e la denominazione si prende da `dati_partenza.produttore`.
+ */
+function denominazioneProduttore(richiesta: Record<string, unknown>): string {
+  const partenza = richiesta.dati_partenza as Record<string, unknown> | undefined
+  const produttore = partenza?.produttore as Record<string, unknown> | undefined
+  return typeof produttore?.denominazione === 'string' ? produttore.denominazione : ''
+}
+
+/**
+ * Identificativo del soggetto per cui il formulario e' cercabile
+ * (`GET /?identificativo_soggetto=`).
+ *
+ * Anche questo era un campo inventato alla radice del corpo, con una nota che
+ * ammetteva la semplificazione. RENTRI vero indicizza il formulario per i
+ * soggetti che vi compaiono: qui si prende il codice fiscale del produttore,
+ * poi del destinatario, poi del primo trasportatore — il primo che c'e'. Cosi'
+ * la ricerca si prova con un corpo conforme al contratto invece che con una
+ * scorciatoia della fake.
+ */
+function identificativoSoggettoDa(richiesta: Record<string, unknown>): string | undefined {
+  const partenza = richiesta.dati_partenza as Record<string, unknown> | undefined
+  if (!partenza) return undefined
+
+  const trasportatori = (partenza.trasportatori as Record<string, unknown>[] | undefined) ?? []
+  const candidati = [partenza.produttore, partenza.destinatario, trasportatori[0]]
+
+  for (const parte of candidati) {
+    const soggetto = parte as Record<string, unknown> | undefined
+    if (typeof soggetto?.codice_fiscale === 'string') return soggetto.codice_fiscale
+    if (typeof soggetto?.num_iscr_sito === 'string') return soggetto.num_iscr_sito
+  }
+  return undefined
 }

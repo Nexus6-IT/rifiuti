@@ -22,3 +22,23 @@ export function costruttorePayloadFinto(): CostruisciPayloadRentri {
     costruisci: async () => corpoNuovoFormularioValido(),
   } as unknown as CostruisciPayloadRentri
 }
+
+/**
+ * Corpo valido per `POST /formulari/v1.0/`, da usare nei test che verificano
+ * il PROTOCOLLO e non il contenuto (ciclo asincrono, resilienza, limitatore,
+ * riconciliazione).
+ *
+ * Prima della validazione del modello dati questi test passavano
+ * `{ dati: 'qualsiasi' }`: funzionava solo perche' il finto accettava
+ * qualunque cosa, ed e' lo stesso buco che ha lasciato passare per mesi il
+ * segnaposto del backend. Ora il corpo e' vero, e resta in un posto solo.
+ *
+ * `sovrascritture` permette di cambiare un campo mantenendo il resto valido
+ * (per esempio il codice fiscale del produttore, quando il test cerca il
+ * formulario per soggetto).
+ */
+export function corpoFormularioValido(
+  sovrascritture?: Record<string, unknown>
+): Record<string, unknown> {
+  return { ...corpoNuovoFormularioValido(), ...(sovrascritture ?? {}) }
+}

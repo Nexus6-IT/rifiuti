@@ -12,6 +12,7 @@ import { RentriConfig } from './rentri-config'
 import { RedisConfig } from '../cache/redis.config'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
 import { MetricsService } from '../../core/metrics/metrics.service'
+import { corpoFormularioValido } from '../../application/rentri/mappatura/aiuti-test'
 
 const execFileAsync = promisify(execFile)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -179,7 +180,7 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
     const client = creaClient()
     await impostaGuasto(429, 2)
 
-    const risultato = await client.creaFormulario('', { dati: 'qualsiasi' })
+    const risultato = await client.creaFormulario('', corpoFormularioValido())
 
     expect(risultato.transazioneId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -194,7 +195,7 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
     const client = creaClient()
     await impostaGuasto(503, 1)
 
-    const risultato = await client.creaFormulario('', { dati: 'qualsiasi' })
+    const risultato = await client.creaFormulario('', corpoFormularioValido())
 
     expect(risultato.transazioneId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -216,7 +217,7 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
     let erroreCatturato: unknown
     let sollevato = false
     try {
-      await client.creaFormulario('', { dati: 'qualsiasi' })
+      await client.creaFormulario('', corpoFormularioValido())
     } catch (errore) {
       sollevato = true
       erroreCatturato = errore
@@ -275,9 +276,10 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
         await impostaGuasto(429, 2)
 
         const inizio = Date.now()
-        const risultato = await client.creaFormulario('r5-task6-step2-non-raddoppiato', {
-          dati: 'qualsiasi',
-        })
+        const risultato = await client.creaFormulario(
+          'r5-task6-step2-non-raddoppiato',
+          corpoFormularioValido()
+        )
         const durata = Date.now() - inizio
 
         expect(risultato.transazioneId).toMatch(
@@ -528,7 +530,9 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
         // v. `post()` in rentri-api.client.ts).
         await impostaGuasto(423, 5)
 
-        await expect(client.creaFormulario(tenantId, { dati: 'bandito' })).rejects.toThrow(
+        // "bandito": il tenant che subisce 5 fallimenti 423 consecutivi
+        // (v. RentriApiError.retryable e il gauge rentriTenantLocked sotto).
+        await expect(client.creaFormulario(tenantId, corpoFormularioValido())).rejects.toThrow(
           RentriApiError
         )
 

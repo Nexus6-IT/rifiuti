@@ -4,6 +4,7 @@ import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
 import { RentriAuthService } from '../../infrastructure/rentri/rentri-auth.service'
 import { RentriConfig } from '../../infrastructure/rentri/rentri-config'
+import { corpoFormularioValido } from './mappatura/aiuti-test'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -157,7 +158,9 @@ describe('RiconciliaStatoRentriUseCase — contro la fake RENTRI (transazione re
     tenantId: string,
     esito: { errore: boolean; numero_fir?: string }
   ): Promise<string> {
-    const { transazioneId } = await client.creaFormulario(tenantId, { dati: 'riconciliazione' })
+    // "riconciliazione": corpo usato per creare la transazione che il test
+    // completerà via canale di controllo, con l'esito passato a questo aiuto.
+    const { transazioneId } = await client.creaFormulario(tenantId, corpoFormularioValido())
     await app.inject({
       method: 'POST',
       url: '/__controllo/completa-transazione',
