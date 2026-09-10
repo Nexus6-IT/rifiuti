@@ -8,20 +8,26 @@
  * il test dice esattamente quale regola sta esercitando.
  *
  * I valori rispettano i vincoli del contratto ufficiale
- * (`docs/contracts/rentri/formulari.yaml`): il pattern di `num_iscr_sito`, i
- * campi obbligatori di `DatiPartenzaModel` (destinatario, rifiuto, almeno un
- * trasportatore) e quelli di `DatiRifiutoModel`.
+ * (`docs/contracts/rentri/formulari.yaml`), compresi quelli che una lettura
+ * distratta sbaglia: `provenienza` e `stato_fisico` sono CODICI (`S`, non
+ * «Speciale»/«Solido») e ogni trasportatore deve portare `tipo_trasporto`,
+ * che arriva dal modello base tramite `allOf` e non si vede guardando solo la
+ * variante «Sito». La prima stesura di questo aiuto sbagliava entrambe le
+ * cose ed e' stato il validatore a dirlo — che e' esattamente il lavoro per
+ * cui esiste.
  */
 export function corpoNuovoFormularioValido(): Record<string, unknown> {
   return {
     num_iscr_sito: 'OP1234ABC000001-AB0001',
     dati_partenza: {
       destinatario: { num_iscr_sito: 'OP1234ABC000002-AB0002' },
-      trasportatori: [{ num_iscr_sito: 'OP1234ABC000003-AB0003' }],
+      trasportatori: [
+        { num_iscr_sito: 'OP1234ABC000003-AB0003', tipo_trasporto: 'Terrestre' },
+      ],
       rifiuto: {
         codice_eer: '150106',
-        provenienza: 'Speciale',
-        stato_fisico: 'Solido',
+        provenienza: 'S',
+        stato_fisico: 'S',
       },
     },
   }

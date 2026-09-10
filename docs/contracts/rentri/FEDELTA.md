@@ -519,3 +519,36 @@ tre modelli di trasporto in `oneOf`, e i `$ref` transitivi sotto di essi. Un cor
 `dati_partenza: {}` è oggi accettato. Finché quella chiusura non arriva, il finto giudica la
 **forma esterna** del modello dati, non la sua completezza: la riserva §6.5 punto 1 va
 considerata ridotta, non risolta.
+
+### 7.1 Estensione ai modelli annidati (stessa data)
+
+La validazione non si ferma più al primo livello. Lo script di generazione estrae ora la
+**chiusura transitiva** dei `$ref` a partire da `NuovoFormularioModel` — 35 schemi — e il
+validatore li applica tutti tramite ajv. Il finto rifiuta quindi anche un `dati_partenza`
+incompleto, un trasportatore senza `tipo_trasporto`, un `oneOf` che non risolve, un enum
+fuori dai valori ammessi.
+
+**Prova che serviva davvero.** Il corpo «valido» scritto a mano per i test era sbagliato in
+due punti: `provenienza`/`stato_fisico` con le parole per esteso invece dei codici (`S`), e
+`tipo_trasporto` mancante — obbligatorio, ma ereditato via `allOf` dal modello base, quindi
+invisibile leggendo solo la variante «Sito». Nessuno dei due errori era rilevabile senza un
+validatore: sono esattamente il tipo di sbaglio che la mappatura del backend farà.
+
+**Guardia anti-deriva estesa.** `test/schema-allineato-al-contratto.test.ts` ora verifica
+anche che ogni definizione annidata sia identica a quella del contratto e che non restino
+`$ref` pendenti. Verificato per mutazione: alterando un campo nello schema generato il test
+diventa rosso.
+
+**Due divergenze permissive residue, dichiarate invece che nascoste.**
+
+1. **Un `pattern` del contratto non è applicato**: `^(?!.*(?i)it).*$` su `nazione_id` di
+   `CittaEsteraModel` usa il flag inline `(?i)` della sintassi .NET, che JavaScript non
+   compila. Riscriverlo a mano significherebbe reinterpretare il contratto, cioè la cosa che
+   questo impianto esiste per evitare: il pattern viene scartato e finisce in
+   `PATTERN_NON_APPLICABILI`, esportato apposta per poterlo dichiarare.
+2. **I `format` non sono verificati**: quelli del contratto sono di OpenAPI (`int32`,
+   `double`, `date-time`) e ajv non li applica senza `ajv-formats`. Dichiarato con
+   `validateFormats: false` invece di lasciare che ajv emetta un avviso per ognuno.
+
+Con queste due eccezioni, la riserva N1 di §6.5 punto 1 può considerarsi **chiusa** per il
+servizio `formulari`: il percorso di scrittura di P2 ha finalmente un oracolo.

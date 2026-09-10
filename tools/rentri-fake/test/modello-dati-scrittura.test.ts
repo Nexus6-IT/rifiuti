@@ -76,4 +76,18 @@ describe('POST /formulari/v1.0/ — modello dati di scrittura', () => {
     expect(risposta.statusCode).toBe(400)
     expect(risposta.json().detail).toContain('num_iscr_sito')
   })
+
+  it('rifiuta con 400 dati_partenza privo dei suoi campi obbligatori', async () => {
+    const app = creaApp()
+
+    const risposta = await app.inject({
+      method: 'POST',
+      url: '/formulari/v1.0/',
+      headers: { authorization: `Bearer ${await tokenValido()}` },
+      payload: { ...corpoNuovoFormularioValido(), dati_partenza: {} },
+    })
+
+    expect(risposta.statusCode).toBe(400)
+    expect(risposta.json().detail).toContain('destinatario')
+  })
 })

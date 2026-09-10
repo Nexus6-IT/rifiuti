@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Estrae `NuovoFormularioModel` dal contratto ufficiale e lo scrive come
- * modulo TypeScript dentro il finto.
+ * Estrae `NuovoFormularioModel` dal contratto ufficiale, insieme a TUTTI gli
+ * schemi che raggiunge tramite `$ref`, e li scrive come modulo TypeScript
+ * dentro il finto.
  *
  * Serve perche' il contesto di build dell'immagine e' `tools/rentri-fake`:
  * `docs/contracts/` non e' raggiungibile da li', quindi lo schema va
@@ -9,7 +10,13 @@
  * diventa rosso se qualcuno aggiorna il contratto senza rieseguire questo
  * script.
  *
- *   node scripts/genera-schema.js
+ * Gli schemi sono copiati VERBATIM dal contratto, senza conversioni: la
+ * traduzione da OpenAPI a JSON Schema (`nullable`, riscrittura dei `$ref`)
+ * avviene nel validatore. Cosi' il test di allineamento puo' confrontare
+ * campo per campo col contratto, che e' la garanzia piu' forte contro la
+ * deriva.
+ *
+ *   npm run genera-schema
  */
 const { readFileSync, writeFileSync } = require('fs')
 const { join } = require('path')
@@ -17,23 +24,71 @@ const { load } = require('js-yaml')
 
 const CONTRATTO = join(__dirname, '..', '..', '..', 'docs', 'contracts', 'rentri', 'formulari.yaml')
 const USCITA = join(__dirname, '..', 'src', 'dominio', 'schema-nuovo-formulario.ts')
+const RADICE = 'NuovoFormularioModel'
+const PREFISSO_REF = '#/components/schemas/'
+
+/** Nomi degli schemi referenziati da un nodo, a qualunque profondita'. */
+function riferimenti(nodo, trovati = new Set()) {
+  if (nodo === null || typeof nodo !== 'object') return trovati
+
+  if (Array.isArray(nodo)) {
+    for (const voce of nodo) riferimenti(voce, trovati)
+    return trovati
+  }
+
+  for (const [chiave, valore] of Object.entries(nodo)) {
+    if (chiave === '$ref' && typeof valore === 'string' && valore.startsWith(PREFISSO_REF)) {
+      trovati.add(valore.slice(PREFISSO_REF.length))
+    } else {
+      riferimenti(valore, trovati)
+    }
+  }
+  return trovati
+}
 
 const contratto = load(readFileSync(CONTRATTO, 'utf8'))
-const modello = contratto.components.schemas.NuovoFormularioModel
+const schemi = contratto.components.schemas
+const modello = schemi[RADICE]
 if (!modello) {
-  console.error('NuovoFormularioModel non trovato nel contratto')
+  console.error(`${RADICE} non trovato nel contratto`)
   process.exit(1)
 }
 
-const intestazione = `/**
+// Chiusura transitiva: si parte dalla radice e si segue ogni $ref finche' non
+// emergono nomi nuovi. Senza questo, un modello annidato resterebbe un $ref
+// pendente e il validatore lo salterebbe in silenzio.
+const definizioni = {}
+const daVisitare = [...riferimenti(modello)]
+while (daVisitare.length > 0) {
+  const nome = daVisitare.pop()
+  if (definizioni[nome]) continue
+
+  const schema = schemi[nome]
+  if (!schema) {
+    console.error(`$ref pendente: '${nome}' non esiste in components.schemas`)
+    process.exit(1)
+  }
+
+  definizioni[nome] = schema
+  for (const riferito of riferimenti(schema)) {
+    if (!definizioni[riferito]) daVisitare.push(riferito)
+  }
+}
+
+const contenuto = `/**
  * GENERATO da \`scripts/genera-schema.js\` — NON modificare a mano.
  *
- * Copia di \`NuovoFormularioModel\` dal contratto ufficiale
- * \`docs/contracts/rentri/formulari.yaml\`. L'allineamento e' imposto da
- * \`test/schema-allineato-al-contratto.test.ts\`.
+ * Copia verbatim di \`${RADICE}\` e della chiusura transitiva dei suoi
+ * \`$ref\`, dal contratto ufficiale \`docs/contracts/rentri/formulari.yaml\`.
+ * L'allineamento e' imposto da \`test/schema-allineato-al-contratto.test.ts\`.
  */
 export const SCHEMA_NUOVO_FORMULARIO = ${JSON.stringify(modello, null, 2)} as const
+
+/** Schemi raggiunti da \`${RADICE}\` tramite \`$ref\`, verbatim dal contratto. */
+export const DEFINIZIONI_NUOVO_FORMULARIO = ${JSON.stringify(definizioni, null, 2)} as const
 `
 
-writeFileSync(USCITA, intestazione, 'utf8')
-console.log(`Schema scritto in ${USCITA}`)
+writeFileSync(USCITA, contenuto, 'utf8')
+console.log(
+  `Schema scritto in ${USCITA} (${Object.keys(definizioni).length} definizioni raggiunte)`
+)
