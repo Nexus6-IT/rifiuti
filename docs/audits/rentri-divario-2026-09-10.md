@@ -195,3 +195,56 @@ In parallelo e fuori da questa scaletta: **avviare l'accreditamento
 all'interoperabilità**. Serve per la conferma finale contro l'ambiente reale e
 ha tempi che non dipendono da noi, quindi conviene farlo partire subito — ma
 non blocca nessuno dei cinque passi qui sopra.
+
+---
+
+## 7. Stato a fine giornata (2026-09-10, sera)
+
+Rifatto il conto verificando sul codice, non sulla memoria. Attenzione al modo:
+cercare una parola non basta, perché molte comparivano solo in commenti — ogni
+riga qui sotto distingue un'implementazione da una citazione.
+
+### Chiuso oggi
+
+| Area | Come |
+|---|---|
+| Mappatura del formulario (il segnaposto a due campi) | Sostituita e collegata al percorso di invio. In produzione. |
+| Contenitore ASiC-E + firma XAdES | Costruito; accettato dal validatore dell'oracolo, rifiutato se manomesso. |
+| Trasmissione dati formulari pericolosi | Variante operatore per intero, rotte nell'oracolo + client. |
+| Modello dati del formulario (provenienza, modalità di trasporto) | Colonne, form e migrazione applicata in produzione. |
+
+### Assegnato, in lavorazione
+
+Registro cronologico (contratto `dati-registri.yaml`, ottenuto oggi) e copia
+cartacea/digitale (18 path già nel contratto dei formulari).
+
+### Resta fuori, con la ragione
+
+- **Codice bidimensionale normato (riga 23) e vidimazione a piè di pagina
+  (riga 24).** Bloccati dalla stessa causa: la regola tecnica che descrive il
+  contenuto non è in nostro possesso. Verificato: nel codice non esiste alcuna
+  vidimazione a piè di pagina nel PDF. Vanno chiesti all'ente, ragionevolmente
+  insieme all'accreditamento.
+- **Conservazione a norma (riga 20).** Nel codice compare solo in commenti.
+  Non è un'interfaccia da implementare: è un servizio di conservazione
+  esterno, quindi una scelta contrattuale prima che tecnica.
+- **Validazione del certificato: catena, CRL, OCSP (riga 5).** Assente del
+  tutto. Oggi verifichiamo solo la scadenza. È lavoro nostro, non serve nulla
+  dall'ente.
+- **Indisponibilità dei servizi (riga 37).** Parziale in un modo che va detto:
+  `trasformato_in_cartaceo` esiste come campo nei modelli di risposta, quindi
+  sappiamo leggerlo, ma non esiste alcun comportamento che lo gestisca.
+- **Varianti «soggetto delegato».** Ogni endpoint di trasmissioni e registro è
+  doppio, per operatore e per delegato. Finora è stata fatta solo la variante
+  operatore, deliberatamente: serve solo a chi opera per conto di terzi.
+- **Firma con valore legale.** I metodi della firma remota della CA RENTRI
+  esistono nel client. Manca il dispositivo reale, che dipende
+  dall'accreditamento.
+
+### La dipendenza che governa tutto il resto
+
+Quattro delle voci qui sopra si sbloccano con lo stesso passo: **l'accreditamento
+all'interoperabilità**. Serve per le credenziali dell'ambiente reale, per il
+dispositivo di firma, e ragionevolmente è l'occasione per chiedere la regola
+tecnica del codice bidimensionale. Non è lavoro tecnico e ha tempi che non
+dipendono da noi: è la cosa da avviare per prima.
