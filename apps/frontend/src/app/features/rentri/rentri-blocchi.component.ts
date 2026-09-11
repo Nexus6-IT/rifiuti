@@ -90,7 +90,9 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
               <span class="rentri-scorta-totale__numero">{{
                 scorta()?.totaleDisponibili ?? 0
               }}</span>
-              <span class="rentri-scorta-totale__etichetta">numeri disponibili in totale</span>
+              <span class="rentri-scorta-totale__etichetta"
+                >numeri disponibili in totale, su tutte le sedi</span
+              >
             </div>
             <ul class="rentri-scorta-per-blocco" *ngIf="(scorta()?.perBlocco?.length ?? 0) > 0">
               <li
@@ -98,7 +100,7 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
                 [attr.data-testid]="'rentri-blocchi-scorta-blocco-' + s.codiceBlocco"
               >
                 <strong>{{ s.descrizione }}</strong>
-                <span class="text-secondary"> ({{ s.codiceBlocco }})</span>:
+                <span class="text-secondary"> ({{ s.codiceBlocco }} · {{ s.numIscrSito }})</span>:
                 {{ s.disponibili }} disponibili
               </li>
             </ul>
@@ -230,6 +232,7 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
             inputId="vidima-quantita"
             [(ngModel)]="quantitaVidimazione"
             [min]="1"
+            [max]="quantitaVidimazioneMassima"
             [showButtons]="false"
             styleClass="w-full"
             data-testid="rentri-blocchi-vidima-input-quantita"
@@ -248,7 +251,11 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
             label="Avvia vidimazione"
             icon="pi pi-check"
             [loading]="vidimando()"
-            [disabled]="!quantitaVidimazione || quantitaVidimazione < 1"
+            [disabled]="
+              !quantitaVidimazione ||
+              quantitaVidimazione < 1 ||
+              quantitaVidimazione > quantitaVidimazioneMassima
+            "
             (onClick)="confermaVidimazione()"
             data-testid="rentri-blocchi-vidima-conferma"
           ></p-button>
@@ -359,6 +366,15 @@ export class RentriBlocchiComponent implements OnInit {
   bloccoSelezionato: RentriBlocco | null = null
   quantitaVidimazione: number | null = null
 
+  /**
+   * Tetto della quantità vidimabile in un lotto, allineato a `@Max(100)` di
+   * `VidimaScortaRentriDto` (backend): senza questo limite anche nel campo,
+   * chi digita 250 scopre il rifiuto solo dopo l'invio, con un messaggio in
+   * inglese di class-validator — su un ramo che fa della normalizzazione
+   * preventiva il suo criterio.
+   */
+  readonly quantitaVidimazioneMassima = 100
+
   /** Dove si creano i blocchi: SOLO sul portale dell'ente, mai da qui. */
   readonly notaPortaleTesto =
     'I blocchi virtuali si creano solo sul portale RENTRI: area riservata "Operatori" → ' +
@@ -403,7 +419,8 @@ export class RentriBlocchiComponent implements OnInit {
   impostaPredefinito(b: RentriBlocco): void {
     this.service.setPredefinito(b.codiceBlocco).subscribe({
       next: () => {
-        this.toast.success(`"${b.descrizione}" è ora il blocco predefinito`)
+        const etichetta = b.descrizione ? `"${b.descrizione}"` : `il blocco ${b.codiceBlocco}`
+        this.toast.success(`${etichetta} è ora il blocco predefinito`)
         this.load()
       },
       error: err => {
@@ -419,7 +436,13 @@ export class RentriBlocchiComponent implements OnInit {
   }
 
   confermaVidimazione(): void {
-    if (!this.bloccoSelezionato || !this.quantitaVidimazione || this.quantitaVidimazione < 1) return
+    if (
+      !this.bloccoSelezionato ||
+      !this.quantitaVidimazione ||
+      this.quantitaVidimazione < 1 ||
+      this.quantitaVidimazione > this.quantitaVidimazioneMassima
+    )
+      return
     this.vidimando.set(true)
     this.service.vidima(this.bloccoSelezionato.codiceBlocco, this.quantitaVidimazione).subscribe({
       next: () => {

@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
-import { of, throwError } from 'rxjs'
+import { of } from 'rxjs'
 import { FirListComponent } from './fir-list.component'
 import { FirService } from './fir.service'
 import { RegistryService } from '../registry/registry.service'
@@ -122,13 +122,16 @@ describe('FirListComponent — campi RENTRI obbligatori (provenienza, tratta pri
 })
 
 /**
- * TDD per l'avviso "PRIMA della compilazione" (GET /rentri/emissione-possibile):
- * a differenza dei gestionali concorrenti, che scoprono l'indisponibilità di
- * numeri vidimati solo al salvataggio del formulario già compilato, qui
- * l'apertura del dialogo "Nuovo FIR" interroga subito il backend e mostra
- * l'avviso PRIMA che l'utente scriva qualcosa.
+ * L'avviso "PRIMA della compilazione" (GET /rentri/emissione-possibile) è
+ * stato tolto dal dialogo "Nuovo FIR" (revisione finale del ramo
+ * feat/scadenzario-cruscotto, R6): `ConsumaNumeroVidimatoUseCase` non ha
+ * ancora alcun chiamante (l'emissione FIR reale non consuma dalla scorta),
+ * quindi il controllo restituiva un falso allarme ad OGNI apertura del
+ * dialogo per qualunque tenant senza R6 configurato — cioè tutti, oggi.
+ * L'endpoint e lo use case restano (v. `verifica-emissione-possibile.use-case.ts`):
+ * il banner tornerà quando il consumo sarà ricablato in `EmettiFIRUseCase`.
  */
-describe('FirListComponent — avviso emissione-possibile PRIMA della compilazione', () => {
+describe('FirListComponent — nessun avviso emissione-possibile nel dialogo "Nuovo FIR"', () => {
   let fixture: ComponentFixture<FirListComponent>
   let component: FirListComponent
   let rentriBlocchiService: jasmine.SpyObj<RentriBlocchiService>
@@ -184,57 +187,18 @@ describe('FirListComponent — avviso emissione-possibile PRIMA della compilazio
     fixture.detectChanges()
   })
 
-  it('interroga emissione-possibile quando si apre il dialogo "Nuovo FIR"', () => {
-    rentriBlocchiService.emissionePossibile.and.returnValue(
-      of({ possibile: true, numeriDisponibili: 5 })
-    )
-
+  it('non interroga più emissione-possibile quando si apre il dialogo "Nuovo FIR"', () => {
     component.showCreateDialog()
 
-    expect(rentriBlocchiService.emissionePossibile).toHaveBeenCalled()
-    expect(component.emissionePossibile()).toEqual({ possibile: true, numeriDisponibili: 5 })
+    expect(rentriBlocchiService.emissionePossibile).not.toHaveBeenCalled()
   })
 
-  it("mostra l'avviso col motivo del backend (non riscritto) quando l'emissione non è possibile", () => {
-    rentriBlocchiService.emissionePossibile.and.returnValue(
-      of({
-        possibile: false,
-        motivo: 'Nessun numero vidimato disponibile per il blocco predefinito.',
-        numeriDisponibili: 0,
-      })
-    )
-
-    component.showCreateDialog()
-    fixture.detectChanges()
-
-    const html: HTMLElement = fixture.nativeElement
-    const banner = html.querySelector('[data-testid="fir-create-emissione-non-possibile"]')
-    expect(banner).not.toBeNull()
-    expect(banner?.textContent).toContain(
-      'Nessun numero vidimato disponibile per il blocco predefinito.'
-    )
-  })
-
-  it("non mostra alcun avviso quando l'emissione è possibile", () => {
-    rentriBlocchiService.emissionePossibile.and.returnValue(
-      of({ possibile: true, numeriDisponibili: 12 })
-    )
-
+  it('non mostra mai il banner di emissione non possibile, anche se il dialogo è aperto', () => {
     component.showCreateDialog()
     fixture.detectChanges()
 
     const html: HTMLElement = fixture.nativeElement
     expect(html.querySelector('[data-testid="fir-create-emissione-non-possibile"]')).toBeNull()
-  })
-
-  it('non blocca il form se il controllo emissione-possibile fallisce (fail-open sul solo avviso)', () => {
-    rentriBlocchiService.emissionePossibile.and.returnValue(throwError(() => ({ status: 500 })))
-
-    component.showCreateDialog()
-    fixture.detectChanges()
-
-    expect(component.displayCreateDialog).toBe(true)
-    expect(component.emissionePossibile()).toBeNull()
   })
 })
 

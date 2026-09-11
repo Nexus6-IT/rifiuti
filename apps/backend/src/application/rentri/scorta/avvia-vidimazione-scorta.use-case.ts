@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { RentriVidimazioneClient } from '../../../infrastructure/rentri/rentri-vidimazione.client'
 import { RentriScortaRepository } from '../../../infrastructure/persistence/rentri-scorta.repository'
 import { LoggerService } from '../../../core/logger/logger.service'
+import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
+import { risolviCfTenant } from './risolvi-cf-tenant'
 
 export interface EsitoAvvioVidimazioneScorta {
   richiesti: number
@@ -26,13 +28,26 @@ export interface EsitoAvvioVidimazioneScorta {
  * NON interrompe gli altri del lotto — stesso principio già in uso in
  * `RentriRiconciliazioneJob` (isolamento per tenant): un ente lento o
  * intermittente non deve azzerare un intero rifornimento programmato.
+ *
+ * **Fail-closed sul `codiceBlocco`, PRIMA di scrivere**: `POST
+ * /rentri/scorta/vidima` prende `codiceBlocco` dal corpo della richiesta,
+ * scelto dal chiamante — non da un elenco già validato come in
+ * `ImpostaBloccoPredefinitoUseCase` (che lo risolve sempre da `GET
+ * /rentri/blocchi`). Senza una verifica preventiva qui, un `codiceBlocco`
+ * inventato o di un'altra sede finirebbe comunque a `vidimaFir`, che lo gira
+ * all'ente: l'ente resta il vero backstop, ma questo use case scriverebbe
+ * (o proverebbe a scrivere) prima di sapere se il blocco esiste per questo
+ * operatore. Stessa regola di `ImpostaBloccoPredefinitoUseCase`: si
+ * interroga `elencaBlocchi` per quel `codiceBlocco` e si rifiuta con 404 se
+ * non risulta, PRIMA di qualunque chiamata a `vidimaFir`.
  */
 @Injectable()
 export class AvviaVidimazioneScortaUseCase {
   constructor(
     private readonly vidimazioneClient: RentriVidimazioneClient,
     private readonly scortaRepo: RentriScortaRepository,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly prisma: PrismaService
   ) {
     this.logger.setContext('AvviaVidimazioneScortaUseCase')
   }
@@ -42,6 +57,20 @@ export class AvviaVidimazioneScortaUseCase {
     codiceBlocco: string,
     quantita: number
   ): Promise<EsitoAvvioVidimazioneScorta> {
+    const cf = await risolviCfTenant(this.prisma, tenantId)
+    const { risultati } = await this.vidimazioneClient.elencaBlocchi(
+      cf,
+      { codiceBlocco, ancheDisattivi: true },
+      tenantId
+    )
+    const blocco = risultati.find(b => b.codice_blocco === codiceBlocco)
+
+    if (!blocco) {
+      throw new NotFoundException(
+        `Nessun blocco virtuale RENTRI con codice ${codiceBlocco} trovato per questo operatore.`
+      )
+    }
+
     let riusciti = 0
     let falliti = 0
 

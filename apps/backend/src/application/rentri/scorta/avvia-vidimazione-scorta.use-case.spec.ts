@@ -1,12 +1,17 @@
+import { NotFoundException } from '@nestjs/common'
 import { AvviaVidimazioneScortaUseCase } from './avvia-vidimazione-scorta.use-case'
 
 describe('AvviaVidimazioneScortaUseCase', () => {
   const TENANT = 'tenant-1'
 
-  function build() {
+  function build(overrides: { blocchiEsistenti?: unknown[] } = {}) {
     const vidimazioneClient = {
       vidimaFir: jest.fn(),
       attendiEsitoVidimazione: jest.fn(),
+      elencaBlocchi: jest.fn().mockResolvedValue({
+        risultati: overrides.blocchiEsistenti ?? [{ codice_blocco: 'BLK-A' }],
+        paging: { page: 1, pageSize: 100, pageCount: 1, totalRecordCount: 0 },
+      }),
     }
     const scortaRepo = {
       inserisciDisponibile: jest.fn().mockResolvedValue(undefined),
@@ -18,15 +23,22 @@ describe('AvviaVidimazioneScortaUseCase', () => {
       warn: jest.fn(),
       error: jest.fn(),
     }
+    const prisma = {
+      tenant: {
+        findUnique: jest.fn().mockResolvedValue({ codiceFiscale: 'RSSMRA80A01H501U' }),
+      },
+    }
     return {
       useCase: new AvviaVidimazioneScortaUseCase(
         vidimazioneClient as any,
         scortaRepo as any,
-        logger as any
+        logger as any,
+        prisma as any
       ),
       vidimazioneClient,
       scortaRepo,
       logger,
+      prisma,
     }
   }
 
@@ -100,5 +112,28 @@ describe('AvviaVidimazioneScortaUseCase', () => {
 
     expect(scortaRepo.inserisciDisponibile).not.toHaveBeenCalled()
     expect(risultato).toEqual({ richiesti: 1, riusciti: 0, falliti: 1 })
+  })
+
+  it('rifiuta con 404 un codiceBlocco inesistente presso l’ente, PRIMA di scrivere (fail-closed)', async () => {
+    const { useCase, vidimazioneClient, scortaRepo } = build({ blocchiEsistenti: [] })
+
+    await expect(useCase.execute(TENANT, 'BLK-INESISTENTE', 3)).rejects.toThrow(NotFoundException)
+
+    expect(vidimazioneClient.vidimaFir).not.toHaveBeenCalled()
+    expect(scortaRepo.inserisciDisponibile).not.toHaveBeenCalled()
+  })
+
+  it('verifica l’esistenza del blocco presso l’ente prima di avviare la vidimazione', async () => {
+    const { useCase, vidimazioneClient } = build({ blocchiEsistenti: [{ codice_blocco: 'BLK-A' }] })
+    vidimazioneClient.vidimaFir.mockResolvedValue({ transazioneId: 'tx-1' })
+    vidimazioneClient.attendiEsitoVidimazione.mockResolvedValue(esitoOk(1))
+
+    await useCase.execute(TENANT, 'BLK-A', 1)
+
+    expect(vidimazioneClient.elencaBlocchi).toHaveBeenCalledWith(
+      'RSSMRA80A01H501U',
+      { codiceBlocco: 'BLK-A', ancheDisattivi: true },
+      TENANT
+    )
   })
 })

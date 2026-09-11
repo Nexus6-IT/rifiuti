@@ -49,11 +49,23 @@ export class VerificaEmissionePossibileRentriUseCase {
       : await this.unitaLocaleService.getPrincipale(tenantId)
 
     if (!unitaLocale) {
+      // `getPrincipale` torna null in DUE casi ben distinti, che non vanno
+      // confusi in un unico messaggio: (a) il tenant non ha ALCUNA unità
+      // locale RENTRI, oppure (b) ne ha una o più ma NESSUNA è marcata
+      // "principale" (v. RentriUnitaLocaleService.getPrincipale). Dire
+      // "nessuna unità locale configurata" nel caso (b) sarebbe falso e
+      // manderebbe l'utente a ricreare una sede che esiste già.
+      const numIscrSitoRichiesto = numIscrSito
+      const esisteAlmenoUnaSede = numIscrSitoRichiesto
+        ? false // già cercata per numIscrSito sopra: se non trovata, non esiste quella sede
+        : (await this.unitaLocaleService.listForTenant(tenantId)).length > 0
+
       return {
         possibile: false,
         numeriDisponibili: 0,
-        motivo:
-          'Nessuna unità locale RENTRI configurata per questo tenant: configurala prima di poter emettere un formulario.',
+        motivo: esisteAlmenoUnaSede
+          ? 'Nessuna unità locale RENTRI è marcata come principale per questo tenant: impostane una come principale prima di poter emettere un formulario.'
+          : 'Nessuna unità locale RENTRI configurata per questo tenant: configurala prima di poter emettere un formulario.',
       }
     }
 

@@ -44,10 +44,34 @@ describe('GetScortaRentriUseCase', () => {
     expect(risultato).toEqual({
       totaleDisponibili: 7,
       perBlocco: [
-        { codiceBlocco: 'BLK-A', descrizione: 'Blocco sede Roma', disponibili: 5 },
-        { codiceBlocco: 'BLK-B', descrizione: 'Blocco riserva', disponibili: 2 },
+        {
+          codiceBlocco: 'BLK-A',
+          numIscrSito: 'OP1',
+          descrizione: 'Blocco sede Roma',
+          disponibili: 5,
+        },
+        {
+          codiceBlocco: 'BLK-B',
+          numIscrSito: 'OP1',
+          descrizione: 'Blocco riserva',
+          disponibili: 2,
+        },
       ],
     })
+  })
+
+  it('riporta la sede (numIscrSito) di ogni riga: il totale è di tenant ma ogni riga resta attribuibile alla sua sede', async () => {
+    const { useCase } = build({
+      totale: 10,
+      perBlocco: [
+        { codiceBlocco: 'BLK-A', numIscrSito: 'OP1-SEDE-A', disponibili: 0 },
+        { codiceBlocco: 'BLK-B', numIscrSito: 'OP1-SEDE-B', disponibili: 10 },
+      ],
+    })
+
+    const risultato = await useCase.execute(TENANT)
+
+    expect(risultato.perBlocco.map(b => b.numIscrSito)).toEqual(['OP1-SEDE-A', 'OP1-SEDE-B'])
   })
 
   it('nessuna scorta: ritorna zero, mai un errore', async () => {
@@ -69,7 +93,7 @@ describe('GetScortaRentriUseCase', () => {
 
     expect(risultato).toEqual({
       totaleDisponibili: 3,
-      perBlocco: [{ codiceBlocco: 'BLK-A', descrizione: null, disponibili: 3 }],
+      perBlocco: [{ codiceBlocco: 'BLK-A', numIscrSito: 'OP1', descrizione: null, disponibili: 3 }],
     })
   })
 })

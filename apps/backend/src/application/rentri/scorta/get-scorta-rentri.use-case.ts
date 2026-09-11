@@ -4,6 +4,8 @@ import { ElencaBlocchiRentriUseCase } from './elenca-blocchi-rentri.use-case'
 
 export interface ScortaPerBloccoDto {
   codiceBlocco: string
+  /** Unità locale (sede) a cui appartiene questo blocco — v. il commento della classe. */
+  numIscrSito: string
   descrizione: string | null
   disponibili: number
 }
@@ -29,6 +31,22 @@ export interface GetScortaRentriResult {
  * degli altri use case RENTRI: qui `descrizione` è solo un'etichetta di
  * comodo per la UI, non una precondizione per un'operazione. Se l'ente non
  * risponde, la sezione "scorta" resta comunque utile con la sola conta.
+ *
+ * **`totaleDisponibili` è un aggregato di TENANT (`contaTotaleDisponibili`
+ * chiamato SENZA `numIscrSito`), non per sede.** È una scelta deliberata: la
+ * schermata "Blocchi RENTRI" da cui questo endpoint è letto elenca già i
+ * blocchi di TUTTE le sedi del tenant (ogni riga porta il proprio
+ * `numIscrSito`, v. `RentriBlocco`/`ScortaPerBloccoDto` sopra), quindi un
+ * totale di tenant è la lettura corretta per quella vista d'insieme — a
+ * differenza di `GET /rentri/emissione-possibile`
+ * (`VerificaEmissionePossibileRentriUseCase`), che risponde "posso emettere
+ * ADESSO da QUESTA sede" ed è perciò per-sede per costruzione (i numeri
+ * vidimati funzionano solo per la sede che li ha richiesti). Le due cifre
+ * NON sono la stessa domanda: un tenant con due sedi e 10 numeri sulla sede
+ * B avrà `totaleDisponibili: 10` qui e "0 disponibili" per l'emissione dalla
+ * sede A, e questo è corretto — la UI deve però etichettare questo totale
+ * come "su tutte le sedi", mai come "pronti per il prossimo FIR" (v.
+ * `rentri-blocchi.component.ts`).
  */
 @Injectable()
 export class GetScortaRentriUseCase {
@@ -49,6 +67,7 @@ export class GetScortaRentriUseCase {
       totaleDisponibili,
       perBlocco: gruppi.map(g => ({
         codiceBlocco: g.codiceBlocco,
+        numIscrSito: g.numIscrSito,
         descrizione: descrizioniPerCodice.get(g.codiceBlocco) ?? null,
         disponibili: g.disponibili,
       })),

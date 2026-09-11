@@ -133,9 +133,9 @@ export class RentriScortaRepository {
    * FAIL-CLOSED, mai un numero inventato.
    *
    * Ordine dei parametri interpolati nella query, fisso e usato dai test che
-   * mockano `$queryRaw` (v. `rentri-scorta.repository.spec.ts`): tenantId,
-   * numIscrSito (x2, per il confronto `IS NULL OR =`), codiceBlocco (x2),
-   * firId.
+   * mockano `$queryRaw` (v. `rentri-scorta.repository.spec.ts`): firId (è nel
+   * `SET` e compare per primo nel testo SQL), tenantId, numIscrSito (x2, per
+   * il confronto `IS NULL OR =`), codiceBlocco (x2).
    */
   async consumaProssimoDisponibile(
     tenantId: string,

@@ -8,6 +8,7 @@ describe('VerificaEmissionePossibileRentriUseCase', () => {
     disponibili?: number
     codiceFiscale?: string | null
     blocchiAttivi?: unknown[]
+    unitaLocaliTenant?: unknown[]
   }) {
     const unitaLocaleService = {
       getPrincipale: jest.fn().mockResolvedValue(
@@ -19,7 +20,7 @@ describe('VerificaEmissionePossibileRentriUseCase', () => {
             }
           : overrides.principale
       ),
-      listForTenant: jest.fn().mockResolvedValue([]),
+      listForTenant: jest.fn().mockResolvedValue(overrides.unitaLocaliTenant ?? []),
     }
     const scortaRepo = {
       contaTotaleDisponibili: jest.fn().mockResolvedValue(overrides.disponibili ?? 0),
@@ -64,6 +65,26 @@ describe('VerificaEmissionePossibileRentriUseCase', () => {
     expect(risultato.possibile).toBe(false)
     expect(risultato.numeriDisponibili).toBe(0)
     expect(risultato.motivo).toMatch(/unità locale/i)
+  })
+
+  it('unità locali esistenti ma nessuna marcata principale: motivo NON dice "nessuna configurata" (falso)', async () => {
+    const { useCase } = build({
+      principale: null,
+      unitaLocaliTenant: [
+        {
+          numIscrSito: 'OP1234ABC123456-RM1234',
+          denominazione: 'Sede A',
+          codiceBloccoPredefinito: null,
+        },
+      ],
+    })
+
+    const risultato = await useCase.execute(TENANT)
+
+    expect(risultato.possibile).toBe(false)
+    expect(risultato.numeriDisponibili).toBe(0)
+    expect(risultato.motivo).not.toMatch(/nessuna unità locale rentri configurata/i)
+    expect(risultato.motivo).toMatch(/nessuna.*(è|sia).*(principale|predefinita)/i)
   })
 
   it('scorta vuota e nessun blocco attivo presso l’ente: motivo "va creato sul portale RENTRI"', async () => {

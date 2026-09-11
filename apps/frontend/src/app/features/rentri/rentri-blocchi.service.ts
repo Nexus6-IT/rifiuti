@@ -7,7 +7,7 @@ import { environment } from '../../../environments/environment'
 /** Blocco virtuale RENTRI (creato SOLO sul portale dell'ente, mai da qui). */
 export interface RentriBlocco {
   codiceBlocco: string
-  descrizione: string
+  descrizione: string | null
   numIscrSito: string
   disattivo: boolean
   numeroFirVidimati: number
@@ -18,11 +18,20 @@ export interface RentriBlocco {
 /** Scorta di numeri già vidimati, pronti all'uso, per blocco. */
 export interface RentriScortaPerBlocco {
   codiceBlocco: string
-  descrizione: string
+  /** Sede (unità locale RENTRI) a cui appartiene questo blocco. */
+  numIscrSito: string
+  descrizione: string | null
   disponibili: number
 }
 
-/** Scorta complessiva del tenant. */
+/**
+ * Scorta complessiva del tenant. `totaleDisponibili` è la somma su TUTTE le
+ * sedi (v. `GetScortaRentriUseCase` lato backend) — non è lo stesso numero
+ * di `RentriEmissionePossibile.numeriDisponibili`, che invece è per-sede
+ * (quanti numeri sono usabili per il PROSSIMO FIR da una sede specifica).
+ * In UI vanno etichettati diversamente: questo come "su tutte le sedi",
+ * l'altro come disponibilità per l'emissione corrente.
+ */
 export interface RentriScorta {
   totaleDisponibili: number
   perBlocco: RentriScortaPerBlocco[]

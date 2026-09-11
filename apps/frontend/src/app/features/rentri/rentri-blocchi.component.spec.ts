@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { signal } from '@angular/core'
+import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
 import { RentriBlocchiComponent } from './rentri-blocchi.component'
 import { RentriBlocchiService, RentriBlocco, RentriScorta } from './rentri-blocchi.service'
@@ -23,7 +24,12 @@ function scorta(overrides: Partial<RentriScorta> = {}): RentriScorta {
   return {
     totaleDisponibili: 30,
     perBlocco: [
-      { codiceBlocco: 'BLK-001', descrizione: 'Blocco camion targa AB123CD', disponibili: 30 },
+      {
+        codiceBlocco: 'BLK-001',
+        numIscrSito: 'OP1234ABC123456-RM1234',
+        descrizione: 'Blocco camion targa AB123CD',
+        disponibili: 30,
+      },
     ],
     ...overrides,
   }
@@ -48,7 +54,7 @@ describe('RentriBlocchiComponent', () => {
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error'])
 
     TestBed.configureTestingModule({
-      imports: [RentriBlocchiComponent],
+      imports: [RentriBlocchiComponent, NoopAnimationsModule],
       providers: [
         { provide: RentriBlocchiService, useValue: service },
         { provide: AuthService, useValue: authStub },
@@ -80,6 +86,21 @@ describe('RentriBlocchiComponent', () => {
     expect(service.scorta).toHaveBeenCalled()
     expect(component.blocchi()).toEqual([blocco()])
     expect(component.scorta()).toEqual(scorta())
+  })
+
+  it('etichetta il totale scorta come "su tutte le sedi" e mostra la sede di ogni riga', () => {
+    setup('ADMIN')
+    service.blocchi.and.returnValue(of([blocco()]))
+    service.scorta.and.returnValue(of(scorta()))
+
+    fixture.detectChanges()
+    const html: HTMLElement = fixture.nativeElement
+
+    const totale = html.querySelector('[data-testid="rentri-blocchi-scorta-totale"]')
+    expect(totale?.textContent).toContain('tutte le sedi')
+
+    const riga = html.querySelector('[data-testid="rentri-blocchi-scorta-blocco-BLK-001"]')
+    expect(riga?.textContent).toContain('OP1234ABC123456-RM1234')
   })
 
   it('mostra sempre la nota su dove si creano i blocchi (solo sul portale RENTRI)', () => {
@@ -151,6 +172,20 @@ describe('RentriBlocchiComponent', () => {
     expect(toast.success).toHaveBeenCalled()
   })
 
+  it('imposta un blocco senza descrizione come predefinito senza mostrare "null"', () => {
+    setup('ADMIN')
+    service.blocchi.and.returnValue(of([blocco({ predefinito: false, descrizione: null })]))
+    service.scorta.and.returnValue(of(scorta()))
+    fixture.detectChanges()
+
+    service.setPredefinito.and.returnValue(of({ codiceBlocco: 'BLK-001', numIscrSito: 'x' }))
+    component.impostaPredefinito(blocco({ predefinito: false, descrizione: null }))
+
+    const messaggio = toast.success.calls.mostRecent().args[0] as string
+    expect(messaggio).not.toContain('null')
+    expect(messaggio).toContain('BLK-001')
+  })
+
   it('avvia la vidimazione di un lotto e avvisa che non è immediata', () => {
     setup('ADMIN')
     service.blocchi.and.returnValue(of([blocco()]))
@@ -167,6 +202,34 @@ describe('RentriBlocchiComponent', () => {
     expect(component.displayVidimaDialog).toBe(false)
     const messaggio = toast.success.calls.mostRecent().args[0]
     expect(messaggio).toContain('non è immediata')
+  })
+
+  it('impone il tetto di 100 sul campo quantità, come il backend (@Max(100))', () => {
+    setup('ADMIN')
+    service.blocchi.and.returnValue(of([blocco()]))
+    service.scorta.and.returnValue(of(scorta()))
+    fixture.detectChanges()
+
+    component.apriVidimazione(blocco())
+    fixture.detectChanges()
+    const html: HTMLElement = fixture.nativeElement
+
+    const input = html.querySelector('[data-testid="rentri-blocchi-vidima-input-quantita"]')
+    expect(input?.getAttribute('ng-reflect-max') ?? input?.getAttribute('max')).toBe('100')
+  })
+
+  it('non avvia la vidimazione se la quantità supera 100 (allineato al @Max(100) del backend)', () => {
+    setup('ADMIN')
+    service.blocchi.and.returnValue(of([blocco()]))
+    service.scorta.and.returnValue(of(scorta()))
+    fixture.detectChanges()
+
+    component.apriVidimazione(blocco())
+    component.quantitaVidimazione = 250
+
+    component.confermaVidimazione()
+
+    expect(service.vidima).not.toHaveBeenCalled()
   })
 
   it('mostra un errore se la vidimazione fallisce, senza chiudere il dialogo', () => {
