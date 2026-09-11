@@ -10,9 +10,13 @@ import {
 /**
  * Andamento Controller
  *
- * GET /dashboard/andamento — formulari emessi per mese negli ultimi dodici
+ * GET /dashboard/andamento — formulari creati per mese negli ultimi dodici
  * mesi per il tenant corrente (Task 4 del piano cruscotto): un conteggio
  * dice dove sei, questa serie dice dove stai andando.
+ *
+ * Etichetta "creati", non "emessi" (ruling PO, giro di revisione 1): v.
+ * `RaccogliAndamentoMensileUseCase` sul perché non esiste ancora un campo
+ * "data di emissione" persistito.
  *
  * Isolato per tenant (contesto autenticato, mai un parametro del chiamante).
  */
@@ -31,10 +35,10 @@ export class AndamentoController {
   @Get('andamento')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Formulari emessi per mese negli ultimi dodici mesi',
+    summary: 'Formulari creati per mese negli ultimi dodici mesi',
     description: `
       Serie mensile (12 mesi, il più recente è il mese corrente) dei
-      formulari emessi dal tenant corrente, per il grafico "Andamento" del
+      formulari creati dal tenant corrente, per il grafico "Andamento" del
       cruscotto.
     `,
   })

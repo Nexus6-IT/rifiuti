@@ -76,6 +76,16 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
 
       expect(risultato.voci).toHaveLength(0)
     })
+
+    it('esclude i formulari ANNULLATI dal conteggio (un documento chiuso non va trasmesso)', async () => {
+      const prisma = buildPrisma()
+      const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
+
+      await useCase.raccogli(TENANT)
+
+      const { where } = (prisma.fIR.groupBy as jest.Mock).mock.calls[0][0]
+      expect(where.status.notIn).toContain('CANCELLED')
+    })
   })
 
   describe('numeri vidimati pronti', () => {

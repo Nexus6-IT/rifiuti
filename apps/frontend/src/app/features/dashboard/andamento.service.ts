@@ -3,7 +3,12 @@ import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { environment } from '../../../environments/environment'
 
-/** Conteggio dei formulari emessi in un dato mese ('YYYY-MM'). */
+/**
+ * Conteggio dei formulari creati in un dato mese ('YYYY-MM'). Etichetta
+ * "creati" (non "emessi", ruling PO giro di revisione 1): il backend conta
+ * per data di creazione perché non esiste un campo "data di emissione"
+ * persistito — v. `raccogli-andamento-mensile.use-case.ts` sul backend.
+ */
 export interface AndamentoMensileVoce {
   mese: string
   conteggio: number
@@ -14,7 +19,7 @@ export interface AndamentoMensileResult {
 }
 
 /**
- * Client per l'andamento mensile dei formulari emessi (Task 4 del piano
+ * Client per l'andamento mensile dei formulari creati (Task 4 del piano
  * cruscotto). Backend: GET api/v1/dashboard/andamento (isolato per tenant).
  */
 @Injectable({

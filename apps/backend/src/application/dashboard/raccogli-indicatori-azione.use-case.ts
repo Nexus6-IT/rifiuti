@@ -5,11 +5,25 @@ import { RentriScortaRepository } from '../../infrastructure/persistence/rentri-
 import { VoceAttenzione, AttenzioneResult } from './raccogli-attenzione.use-case'
 
 /**
- * Stati del ciclo di vita FIR (colonna `status`, Prisma) che corrispondono al
- * dominio BOZZA (v. `fir-prisma.repository.ts`, DB_TO_STATO): un formulario
- * ancora in bozza non è "emesso", quindi non ha nulla da trasmettere.
+ * Stati FIR (colonna `status`, Prisma) da escludere dal conteggio "da
+ * trasmettere": BOZZA (`DRAFT`/`AWAITING_PRODUCER`, v. `fir-prisma.repository.ts`,
+ * DB_TO_STATO — un formulario ancora in bozza non è "emesso", non ha nulla
+ * da trasmettere) e ANNULLATO (`CANCELLED` — un documento chiuso non va
+ * trasmesso, anche se non ha mai raggiunto `rentriNumeroFir`/`SYNCED`).
+ * Stesso filtro di `get-aggregated-dashboard.handler.ts` (righe 69-70), che
+ * esclude `CANCELLED` esplicitamente insieme a `DRAFT`/`AWAITING_PRODUCER`.
+ *
+ * Corretto in revisione (giro 1): la prima versione ometteva `CANCELLED`,
+ * facendo contare — e in caso di un tentativo di sync fallito prima
+ * dell'annullamento, anche marcare "critico" — formulari già chiusi che
+ * l'operatore non deve inseguire. Rinominata da `STATI_BOZZA` perché quel
+ * nome dichiarava un contenuto diverso da quello reale.
  */
-const STATI_BOZZA: FIRStatus[] = [FIRStatus.DRAFT, FIRStatus.AWAITING_PRODUCER]
+const STATI_ESCLUSI_DA_TRASMETTERE: FIRStatus[] = [
+  FIRStatus.DRAFT,
+  FIRStatus.AWAITING_PRODUCER,
+  FIRStatus.CANCELLED,
+]
 
 /**
  * Raccoglie indicatori orientati all'azione per il cruscotto (Task 3 del
@@ -65,7 +79,7 @@ export class RaccogliIndicatoriAzioneUseCase {
       by: ['rentriSyncStatus'],
       where: {
         tenantId,
-        status: { notIn: STATI_BOZZA },
+        status: { notIn: STATI_ESCLUSI_DA_TRASMETTERE },
         rentriNumeroFir: null,
         rentriSyncStatus: { not: RENTRISyncStatus.SYNCED },
       },

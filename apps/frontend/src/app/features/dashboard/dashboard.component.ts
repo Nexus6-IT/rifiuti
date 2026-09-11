@@ -275,7 +275,7 @@ interface DashboardStats {
            dove stai andando (Task 4). -->
       <section class="surface-card mt-4" aria-labelledby="andamento-heading" *ngIf="!error">
         <h2 id="andamento-heading" class="card-title">Andamento mensile</h2>
-        <p class="andamento-sottotitolo">Formulari emessi negli ultimi dodici mesi</p>
+        <p class="andamento-sottotitolo">Formulari creati negli ultimi dodici mesi</p>
 
         <ng-container *ngIf="loadingAndamento">
           <div aria-busy="true">
@@ -297,12 +297,12 @@ interface DashboardStats {
               [data]="andamentoChartData"
               [options]="andamentoChartOptions"
               role="img"
-              aria-label="Grafico a linee dei formulari emessi negli ultimi dodici mesi"
+              aria-label="Grafico a linee dei formulari creati negli ultimi dodici mesi"
             />
 
             <div *ngIf="!hasAndamentoData" class="empty-state" data-testid="andamento-vuoto">
               <i class="pi pi-chart-line empty-state__icon" aria-hidden="true"></i>
-              <p class="empty-state__title">Nessun formulario emesso negli ultimi dodici mesi</p>
+              <p class="empty-state__title">Nessun formulario creato negli ultimi dodici mesi</p>
             </div>
           </ng-container>
 
@@ -311,12 +311,12 @@ interface DashboardStats {
                al grafico, non solo come ripiego in caso di errore. -->
           <table class="sr-only" data-testid="andamento-tabella-testuale">
             <caption>
-              Formulari emessi per mese, ultimi dodici mesi
+              Formulari creati per mese, ultimi dodici mesi
             </caption>
             <thead>
               <tr>
                 <th scope="col">Mese</th>
-                <th scope="col">Formulari emessi</th>
+                <th scope="col">Formulari creati</th>
               </tr>
             </thead>
             <tbody>
@@ -496,11 +496,19 @@ export class DashboardComponent implements OnInit {
   chartOptions: any
 
   /**
-   * Formulari emessi per mese, ultimi dodici mesi (Task 4): un conteggio
+   * Formulari creati per mese, ultimi dodici mesi (Task 4): un conteggio
    * dice dove sei, questa serie dice dove stai andando. Tenuta anche a
    * parte da `andamentoChartData` perché alimenta l'alternativa testuale
    * della tabella (v. template) — un grafico che uno screen reader non sa
    * leggere non comunica niente.
+   *
+   * Etichetta "creati", non "emessi" (ruling PO, giro di revisione 1): il
+   * backend conta per `createdAt` perché non esiste un campo "data di
+   * emissione" persistito (v. `raccogli-andamento-mensile.use-case.ts`), e
+   * l'esistenza dello stato `AWAITING_PRODUCER` dimostra che il ritardo fra
+   * creazione ed emissione è un caso previsto dal dominio, non un'eccezione
+   * rara da approssimare in etichetta. Si corregge il testo mostrato
+   * all'utente, non lo schema dati.
    */
   andamentoMesi: AndamentoMensileVoce[] = []
   loadingAndamento = false
@@ -673,7 +681,7 @@ export class DashboardComponent implements OnInit {
       labels: this.andamentoMesi.map(voce => this.formattaMeseEtichetta(voce.mese)),
       datasets: [
         {
-          label: 'Formulari emessi',
+          label: 'Formulari creati',
           data: this.andamentoMesi.map(voce => voce.conteggio),
           borderColor: '#1d4ed8',
           backgroundColor: 'rgba(29, 78, 216, 0.15)',
@@ -684,7 +692,7 @@ export class DashboardComponent implements OnInit {
     }
   }
 
-  /** True quando almeno un mese ha un formulario emesso — un grafico piatto a zero non aggiunge nulla. */
+  /** True quando almeno un mese ha un formulario creato — un grafico piatto a zero non aggiunge nulla. */
   get hasAndamentoData(): boolean {
     return this.andamentoMesi.some(voce => voce.conteggio > 0)
   }

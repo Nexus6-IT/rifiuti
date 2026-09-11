@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 
-/** Conteggio dei formulari emessi in un dato mese ('YYYY-MM'). */
+/** Conteggio dei formulari creati in un dato mese ('YYYY-MM'). */
 export interface AndamentoMensileVoce {
   mese: string
   conteggio: number
@@ -20,10 +20,9 @@ interface RigaGrezza {
 
 /**
  * Stati del ciclo di vita FIR (colonna `status`) che corrispondono al
- * dominio BOZZA (v. `fir-prisma.repository.ts`, DB_TO_STATO): un formulario
- * ancora in bozza non è "emesso". `CANCELLED` (ANNULLATO) è escluso allo
- * stesso modo: un formulario annullato non è mai stato completato, non è
- * andamento da mostrare come "emesso".
+ * dominio BOZZA (v. `fir-prisma.repository.ts`, DB_TO_STATO) o ad ANNULLATO:
+ * una bozza mai emessa e un formulario annullato non sono "andamento" da
+ * mostrare — non sono documenti compiuti.
  *
  * Inseriti nell'SQL come frammento letterale via `Prisma.raw` (non come
  * parametro `$queryRaw` ordinario, che legherebbe l'intera stringa come UN
@@ -35,19 +34,27 @@ const STATI_ESCLUSI_SQL = Prisma.raw("'DRAFT', 'AWAITING_PRODUCER', 'CANCELLED'"
 
 /**
  * «Un conteggio dice dove sei, una serie dice dove stai andando» (Task 4 del
- * piano cruscotto): formulari emessi per mese negli ultimi dodici mesi,
+ * piano cruscotto): formulari creati per mese negli ultimi dodici mesi,
  * isolati per tenant.
  *
- * Non esiste in questo schema un campo "data di emissione" persistito e
+ * ETICHETTA "creati", non "emessi" (ruling PO, giro di revisione 1): non
+ * esiste in questo schema un campo "data di emissione" persistito e
  * popolato (il campo `submittedAt` sul modello `FIR` non è mai scritto da
- * alcun use case, verificato — v. report del task): si usa `createdAt`
- * come approssimazione del mese in cui il formulario è entrato nel
- * sistema, filtrato agli stati che indicano che è stato effettivamente
- * emesso (non BOZZA, non ANNULLATO). Per come funziona oggi il flusso
- * (emissione avviene a ridosso della creazione) è un'approssimazione
- * ragionevole, non un dato inventato — ma resta un'approssimazione: un FIR
- * creato in bozza un mese e emesso il mese successivo comparirebbe nel
- * mese di creazione, non in quello di emissione.
+ * alcun use case, verificato — v. report del task), quindi si usa
+ * `createdAt` come chiave temporale. Non è un'approssimazione trascurabile
+ * da nascondere dietro un'etichetta "emessi": l'esistenza dello stato
+ * `AWAITING_PRODUCER` dimostra che il ritardo fra creazione ed emissione è
+ * un caso PREVISTO dal dominio, non raro — quindi il testo mostrato
+ * all'utente (titolo sezione, aria-label del grafico, intestazione della
+ * tabella per screen reader, tutto lato frontend) dice "creati", che è
+ * esattamente ciò che questa query conta. Aggiungere il campo "data di
+ * emissione" resterebbe la soluzione corretta ma vale solo in avanti (i
+ * formulari già in banca dati non lo avrebbero, il grafico resterebbe
+ * vuoto per dodici mesi): debito dichiarato, non risolto qui.
+ *
+ * Il filtro di stato (esclude BOZZA e ANNULLATO) resta comunque utile: un
+ * formulario mai uscito dalla bozza o poi annullato non è un evento da
+ * mostrare in un grafico di "cosa è successo", a prescindere dall'etichetta.
  *
  * Query aggregata via `$queryRaw` (`GROUP BY date_trunc('month', ...)`),
  * non un `findMany` di tutti i formulari dell'anno da contare in memoria:

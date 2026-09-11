@@ -208,7 +208,7 @@ describe('DashboardComponent', () => {
   })
 
   describe('andamento mensile (Task 4)', () => {
-    it("mostra il grafico dei formulari emessi per mese con un'alternativa testuale per screen reader", () => {
+    it("mostra il grafico dei formulari creati per mese con un'alternativa testuale per screen reader", () => {
       setup()
       andamentoService.getAndamento.and.returnValue(
         of({
@@ -224,7 +224,11 @@ describe('DashboardComponent', () => {
       const html: HTMLElement = fixture.nativeElement
       const grafico = html.querySelector('[data-testid="andamento-grafico"]')
       expect(grafico).not.toBeNull()
-      expect(grafico!.getAttribute('aria-label')).toContain('formulari emessi')
+      // Etichetta "creati", non "emessi" (ruling PO giro di revisione 1): il
+      // backend conta per data di creazione, non esiste un campo "data di
+      // emissione" persistito — l'interfaccia deve dire il vero, non far
+      // finta di mostrare un dato che non ha.
+      expect(grafico!.getAttribute('aria-label')).toContain('formulari creati')
 
       // Alternativa testuale: un grafico che uno screen reader non sa
       // leggere non comunica niente, quindi dev'esserci SEMPRE, non solo in
@@ -247,7 +251,7 @@ describe('DashboardComponent', () => {
       expect(html.querySelector('[data-testid="andamento-errore"]')).not.toBeNull()
     })
 
-    it('senza formulari emessi negli ultimi dodici mesi mostra uno stato vuoto, non un grafico piatto', () => {
+    it('senza formulari creati negli ultimi dodici mesi mostra uno stato vuoto, non un grafico piatto', () => {
       setup()
       andamentoService.getAndamento.and.returnValue(of(andamentoVuoto()))
 
@@ -256,6 +260,7 @@ describe('DashboardComponent', () => {
       const html: HTMLElement = fixture.nativeElement
       expect(html.querySelector('[data-testid="andamento-grafico"]')).toBeNull()
       expect(html.querySelector('[data-testid="andamento-vuoto"]')).not.toBeNull()
+      expect(html.querySelector('[data-testid="andamento-vuoto"]')!.textContent).toContain('creato')
     })
   })
 })
