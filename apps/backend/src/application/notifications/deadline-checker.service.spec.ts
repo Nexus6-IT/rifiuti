@@ -60,6 +60,12 @@ const mockPrisma = {
   autorizzazioneImpianto: {
     findMany: jest.fn(),
   },
+  trasportatore: {
+    findMany: jest.fn(),
+  },
+  destinatario: {
+    findMany: jest.fn(),
+  },
   rentriCredential: {
     findMany: jest.fn(),
   },
@@ -109,6 +115,8 @@ describe('DeadlineCheckerService', () => {
     ;(mockPrisma.user.findMany as jest.Mock).mockResolvedValue([utenteFixture()])
     ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([{ id: 't1' }])
     ;(mockPrisma.autorizzazioneImpianto.findMany as jest.Mock).mockResolvedValue([])
+    ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([])
+    ;(mockPrisma.destinatario.findMany as jest.Mock).mockResolvedValue([])
     ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([])
     // Default: nessuna notifica recente per la stessa entità, così i test
     // esistenti (senza dedup) restano validi senza doverlo mockare ovunque.
@@ -280,6 +288,144 @@ describe('DeadlineCheckerService', () => {
       } finally {
         jest.useRealTimers()
       }
+    })
+
+    // Task 3 dello scadenzario: lo stesso controllo copre anche la scadenza
+    // dell'iscrizione dei trasportatori e dell'autorizzazione dei
+    // destinatari (dato prima inesistente). Stessa forma delle autorizzazioni
+    // impianto, ma con NotificationType e relatedEntityType dedicati — senza
+    // questa distinzione la dedup di un tipo sopprimerebbe l'avviso dell'altro
+    // a parità di id (v. commento su esisteNotificaRecente).
+    it("avvisa quando l'iscrizione di un trasportatore scade fra 30 giorni", async () => {
+      const fra30 = new Date()
+      fra30.setDate(fra30.getDate() + 30)
+      ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
+        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: 't1',
+            type: 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA',
+            severity: 'WARNING',
+            relatedEntityId: 'tr1',
+            relatedEntityType: 'Trasportatore',
+          }),
+        })
+      )
+    })
+
+    it("avvisa con severità ERROR quando l'iscrizione di un trasportatore è già scaduta", async () => {
+      const ieri = new Date()
+      ieri.setDate(ieri.getDate() - 1)
+      ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
+        { id: 'tr2', tenantId: 't1', numeroIscrizione: 'MI/009999', scadenzaIscrizione: ieri },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA',
+            severity: 'ERROR',
+            message: expect.stringContaining('è scaduta'),
+          }),
+        })
+      )
+    })
+
+    it("avvisa quando l'autorizzazione di un destinatario scade fra 15 giorni", async () => {
+      const fra15 = new Date()
+      fra15.setDate(fra15.getDate() + 15)
+      ;(mockPrisma.destinatario.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'de1',
+          tenantId: 't1',
+          numeroAutorizzazione: 'NA/AUT/2023/001',
+          scadenzaAutorizzazione: fra15,
+        },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: 't1',
+            type: 'DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA',
+            severity: 'WARNING',
+            relatedEntityId: 'de1',
+            relatedEntityType: 'Destinatario',
+          }),
+        })
+      )
+    })
+
+    it("avvisa con severità ERROR quando l'autorizzazione di un destinatario è già scaduta", async () => {
+      const ieri = new Date()
+      ieri.setDate(ieri.getDate() - 1)
+      ;(mockPrisma.destinatario.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'de2',
+          tenantId: 't1',
+          numeroAutorizzazione: 'NA/AUT/2023/999',
+          scadenzaAutorizzazione: ieri,
+        },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA',
+            severity: 'ERROR',
+            message: expect.stringContaining('è scaduta'),
+          }),
+        })
+      )
+    })
+
+    it('non avvisa per un trasportatore se i giorni mancanti non sono un intervallo previsto', async () => {
+      const fra20 = new Date()
+      fra20.setDate(fra20.getDate() + 20)
+      ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
+        { id: 'tr3', tenantId: 't1', numeroIscrizione: 'MI/000001', scadenzaIscrizione: fra20 },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+    })
+
+    it('non crea una nuova notifica per lo stesso trasportatore se una esiste già negli ultimi 7 giorni (dedup per tenantId)', async () => {
+      const fra30 = new Date()
+      fra30.setDate(fra30.getDate() + 30)
+      ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
+        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+      ])
+      ;(mockPrisma.notification.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'n-esistente',
+        createdAt: new Date(),
+      })
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            tenantId: 't1',
+            type: 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA',
+            relatedEntityId: 'tr1',
+            relatedEntityType: 'Trasportatore',
+          }),
+        })
+      )
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled()
     })
   })
 

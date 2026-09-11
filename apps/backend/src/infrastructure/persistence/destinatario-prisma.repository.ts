@@ -28,6 +28,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
       email: destinatario.email || null,
       telefono: destinatario.telefono || null,
       pec: destinatario.pec || null,
+      scadenzaAutorizzazione: destinatario.scadenzaAutorizzazione || null,
       updatedAt: new Date(),
     }
 
@@ -127,6 +128,7 @@ export class DestinatarioPrismaRepository implements DestinatarioRepository {
       email: record.email || undefined,
       telefono: record.telefono || undefined,
       pec: record.pec || undefined,
+      scadenzaAutorizzazione: record.scadenzaAutorizzazione || undefined,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     })

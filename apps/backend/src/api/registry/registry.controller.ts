@@ -103,6 +103,7 @@ export class RegistryController {
       partitaIVA: result.value.partitaIVA.getValue(),
       sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       numeroIscrizione: result.value.numeroIscrizione,
+      scadenzaIscrizione: this.dateToIso(result.value.scadenzaIscrizione),
     }
   }
 
@@ -122,6 +123,7 @@ export class RegistryController {
       partitaIVA: result.value.partitaIVA.getValue(),
       sede: this.indirizzoToObject(result.value.sede),
       numeroAutorizzazione: result.value.numeroAutorizzazione,
+      scadenzaAutorizzazione: this.dateToIso(result.value.scadenzaAutorizzazione),
     }
   }
 
@@ -225,6 +227,7 @@ export class RegistryController {
       email: t.email,
       telefono: t.telefono,
       pec: t.pec,
+      scadenzaIscrizione: this.dateToIso(t.scadenzaIscrizione),
     }))
     return this.toPaginated(items)
   }
@@ -246,6 +249,7 @@ export class RegistryController {
       email: result.value.email,
       telefono: result.value.telefono,
       pec: result.value.pec,
+      scadenzaIscrizione: this.dateToIso(result.value.scadenzaIscrizione),
     }
   }
 
@@ -270,6 +274,7 @@ export class RegistryController {
       email: result.value.email,
       telefono: result.value.telefono,
       pec: result.value.pec,
+      scadenzaIscrizione: this.dateToIso(result.value.scadenzaIscrizione),
     }
   }
 
@@ -304,6 +309,7 @@ export class RegistryController {
       email: d.email,
       telefono: d.telefono,
       pec: d.pec,
+      scadenzaAutorizzazione: this.dateToIso(d.scadenzaAutorizzazione),
     }))
     return this.toPaginated(items)
   }
@@ -325,6 +331,7 @@ export class RegistryController {
       email: result.value.email,
       telefono: result.value.telefono,
       pec: result.value.pec,
+      scadenzaAutorizzazione: this.dateToIso(result.value.scadenzaAutorizzazione),
     }
   }
 
@@ -349,6 +356,7 @@ export class RegistryController {
       email: result.value.email,
       telefono: result.value.telefono,
       pec: result.value.pec,
+      scadenzaAutorizzazione: this.dateToIso(result.value.scadenzaAutorizzazione),
     }
   }
 
@@ -393,6 +401,16 @@ export class RegistryController {
       comune: indirizzo.getCitta?.() ?? indirizzo.citta ?? indirizzo.comune ?? '',
       provincia: indirizzo.getProvincia?.() ?? indirizzo.provincia ?? '',
     }
+  }
+
+  /**
+   * Converte una data di dominio nella stringa ISO (solo giorno) attesa dal
+   * frontend, o `undefined` se la scadenza non è impostata (campo
+   * facoltativo, Task 3 dello scadenzario).
+   */
+  private dateToIso(date?: Date): string | undefined {
+    if (!date) return undefined
+    return date.toISOString().slice(0, 10)
   }
 
   /**
@@ -445,6 +463,7 @@ export class RegistryController {
       email: dto.email,
       telefono: dto.telefono,
       pec: dto.pec,
+      scadenzaIscrizione: dto.scadenzaIscrizione ? new Date(dto.scadenzaIscrizione) : undefined,
     }
   }
 
@@ -457,6 +476,9 @@ export class RegistryController {
       email: dto.email,
       telefono: dto.telefono,
       pec: dto.pec,
+      scadenzaAutorizzazione: dto.scadenzaAutorizzazione
+        ? new Date(dto.scadenzaAutorizzazione)
+        : undefined,
     }
   }
 
@@ -478,6 +500,7 @@ export class RegistryController {
       email: dto.email,
       telefono: dto.telefono,
       pec: dto.pec,
+      scadenzaIscrizione: this.mapScadenzaUpdate(dto.scadenzaIscrizione),
     }
   }
 
@@ -489,6 +512,18 @@ export class RegistryController {
       email: dto.email,
       telefono: dto.telefono,
       pec: dto.pec,
+      scadenzaAutorizzazione: this.mapScadenzaUpdate(dto.scadenzaAutorizzazione),
     }
+  }
+
+  /**
+   * Mappa il valore ISO/null/assente di una scadenza in update al comando:
+   * assente → `undefined` (campo non toccato), `null` → `null` (azzeramento
+   * esplicito), stringa ISO → `Date`.
+   */
+  private mapScadenzaUpdate(value: string | null | undefined): Date | null | undefined {
+    if (value === undefined) return undefined
+    if (value === null) return null
+    return new Date(value)
   }
 }

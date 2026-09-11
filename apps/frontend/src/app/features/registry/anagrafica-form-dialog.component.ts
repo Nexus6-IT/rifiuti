@@ -33,6 +33,10 @@ interface FormData {
   provincia: string
   numeroIscrizione: string
   numeroAutorizzazione: string
+  // Scadenza facoltativa (Task 3 scadenzario): stringa yyyy-MM-dd per
+  // l'input HTML type="date", vuota se non impostata.
+  scadenzaIscrizione: string
+  scadenzaAutorizzazione: string
 }
 
 function emptyForm(): FormData {
@@ -47,6 +51,8 @@ function emptyForm(): FormData {
     provincia: '',
     numeroIscrizione: '',
     numeroAutorizzazione: '',
+    scadenzaIscrizione: '',
+    scadenzaAutorizzazione: '',
   }
 }
 
@@ -206,6 +212,39 @@ function indirizzoFrom(f: FormData): Indirizzo {
                 class="field-error"
                 role="alert"
                 >{{ errors.numeroAutorizzazione }}</small
+              >
+            </div>
+          </div>
+
+          <!-- Scadenza iscrizione/autorizzazione — facoltativa (Task 3 scadenzario) -->
+          <div class="ana-row" *ngIf="tipo === 'trasportatore' || tipo === 'destinatario'">
+            <div class="field ana-row__half" *ngIf="tipo === 'trasportatore'">
+              <label [for]="pfx + '-scad-iscrizione'"> Scadenza iscrizione Albo </label>
+              <input
+                pInputText
+                type="date"
+                [id]="pfx + '-scad-iscrizione'"
+                name="scadenzaIscrizione"
+                [(ngModel)]="form.scadenzaIscrizione"
+                class="w-full"
+              />
+              <small class="field-hint"
+                >Facoltativa: se nota, abilita il promemoria di scadenza.</small
+              >
+            </div>
+
+            <div class="field ana-row__half" *ngIf="tipo === 'destinatario'">
+              <label [for]="pfx + '-scad-autorizzazione'"> Scadenza autorizzazione </label>
+              <input
+                pInputText
+                type="date"
+                [id]="pfx + '-scad-autorizzazione'"
+                name="scadenzaAutorizzazione"
+                [(ngModel)]="form.scadenzaAutorizzazione"
+                class="w-full"
+              />
+              <small class="field-hint"
+                >Facoltativa: se nota, abilita il promemoria di scadenza.</small
               >
             </div>
           </div>
@@ -437,6 +476,10 @@ function indirizzoFrom(f: FormData): Indirizzo {
         font-weight: var(--font-weight-medium);
         color: var(--text-secondary);
       }
+      .field-hint {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+      }
 
       /* Righe a più colonne */
       .ana-row {
@@ -558,9 +601,13 @@ export class AnagraficaFormDialogComponent implements OnChanges {
 
     if (this.tipo === 'trasportatore') {
       this.form.numeroIscrizione = (entity as Trasportatore).numeroIscrizione ?? ''
+      // Il backend restituisce una stringa ISO (yyyy-MM-dd): compatibile
+      // direttamente con l'input HTML type="date".
+      this.form.scadenzaIscrizione = (entity as Trasportatore).scadenzaIscrizione ?? ''
     }
     if (this.tipo === 'destinatario') {
       this.form.numeroAutorizzazione = (entity as Destinatario).numeroAutorizzazione ?? ''
+      this.form.scadenzaAutorizzazione = (entity as Destinatario).scadenzaAutorizzazione ?? ''
     }
   }
 
@@ -670,6 +717,9 @@ export class AnagraficaFormDialogComponent implements OnChanges {
         sedeLegale: indirizzo,
         numeroIscrizione: this.form.numeroIscrizione.trim(),
         pec: this.form.pec.trim() || undefined,
+        // In edit, campo vuoto = azzeramento esplicito (`null`); in create,
+        // campo vuoto = semplicemente non inviato.
+        scadenzaIscrizione: this.form.scadenzaIscrizione || (isEdit ? null : undefined),
       }
       const op$ = isEdit
         ? this.registryService.updateTrasportatore(this.entityData!.id, base)
@@ -681,6 +731,7 @@ export class AnagraficaFormDialogComponent implements OnChanges {
         sede: indirizzo,
         numeroAutorizzazione: this.form.numeroAutorizzazione.trim(),
         pec: this.form.pec.trim() || undefined,
+        scadenzaAutorizzazione: this.form.scadenzaAutorizzazione || (isEdit ? null : undefined),
       }
       const op$ = isEdit
         ? this.registryService.updateDestinatario(this.entityData!.id, base)

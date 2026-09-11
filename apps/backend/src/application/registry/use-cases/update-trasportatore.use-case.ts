@@ -28,6 +28,11 @@ export interface UpdateTrasportatoreCommand {
   email?: string
   telefono?: string
   pec?: string
+  // `undefined` = campo non toccato dalla richiesta; `null` = azzeramento
+  // esplicito della scadenza (campo facoltativo). Servono valori distinti,
+  // quindi non si può riusare la stessa convenzione di updateContatti (dove
+  // `undefined` mantiene il valore corrente per email/telefono/pec).
+  scadenzaIscrizione?: Date | null
 }
 
 @Injectable()
@@ -76,6 +81,12 @@ export class UpdateTrasportatoreUseCase {
 
       if (command.numeroIscrizione) {
         trasportatore.updateNumeroIscrizione(command.numeroIscrizione)
+      }
+
+      // `undefined` = campo non presente nella richiesta, nessuna modifica;
+      // `null` = azzeramento esplicito della scadenza.
+      if (command.scadenzaIscrizione !== undefined) {
+        trasportatore.updateScadenzaIscrizione(command.scadenzaIscrizione ?? undefined)
       }
 
       // Update contacts if any field is provided

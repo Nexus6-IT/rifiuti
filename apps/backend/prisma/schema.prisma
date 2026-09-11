@@ -758,6 +758,8 @@ enum NotificationType {
   SYSTEM_ERROR
   AUTORIZZAZIONE_IN_SCADENZA
   CERTIFICATO_RENTRI_IN_SCADENZA
+  TRASPORTATORE_ISCRIZIONE_IN_SCADENZA
+  DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA
 
   @@map("notification_type")
 }
@@ -1159,6 +1161,12 @@ model Trasportatore {
   telefono String? @db.VarChar(20)
   pec      String? @db.VarChar(255)
 
+  /// Scadenza dell'iscrizione all'Albo Gestori Ambientali. Nullable: le
+  /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
+  /// dello scadenzario, 2026-09-11). Senza valore, nessun avviso di
+  /// scadenza viene generato per questo trasportatore.
+  scadenzaIscrizione DateTime? @map("scadenza_iscrizione") @db.Date
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, partitaIVA])
@@ -1187,6 +1195,12 @@ model Destinatario {
   email    String? @db.VarChar(255)
   telefono String? @db.VarChar(20)
   pec      String? @db.VarChar(255)
+
+  /// Scadenza dell'autorizzazione allo smaltimento/recupero. Nullable: le
+  /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
+  /// dello scadenzario, 2026-09-11). Senza valore, nessun avviso di
+  /// scadenza viene generato per questo destinatario.
+  scadenzaAutorizzazione DateTime? @map("scadenza_autorizzazione") @db.Date
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

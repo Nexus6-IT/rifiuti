@@ -204,6 +204,14 @@ export class DeadlineCheckerService {
    * `NOTIFICATION_INTERVALS` finché la scadenza è futura; un'autorizzazione
    * già scaduta non deve restare silenziosa, quindi viene segnalata ogni
    * giorno con severità maggiore (ERROR) finché non viene rinnovata.
+   *
+   * Task 3 dello scadenzario: lo stesso controllo copre anche la scadenza
+   * dell'iscrizione all'Albo Gestori dei trasportatori
+   * (`Trasportatore.scadenzaIscrizione`) e la scadenza dell'autorizzazione
+   * dei destinatari (`Destinatario.scadenzaAutorizzazione`) — dato prima
+   * inesistente in anagrafica. Entrambe facoltative: le anagrafiche senza
+   * scadenza valorizzata non generano alcun avviso, non essendocene una da
+   * confrontare.
    */
   @Cron(CronExpression.EVERY_DAY_AT_10AM)
   async checkAuthorizationExpirations(): Promise<void> {
@@ -223,19 +231,27 @@ export class DeadlineCheckerService {
         },
       })
 
+      // NOTA: qui NON si esce con un `return` anticipato quando l'elenco è
+      // vuoto (come faceva la prima versione del Task 1) — il metodo deve
+      // proseguire fino ai blocchi trasportatori/destinatari del Task 3 più
+      // sotto, che condividono la stessa `limite` ma interrogano tabelle
+      // diverse. Il ciclo `for` seguente è comunque un no-op su un array
+      // vuoto, quindi non serve altro guard.
       if (autorizzazioni.length === 0) {
         this.logger.debug('Nessuna autorizzazione impianto in scadenza o scaduta')
-        return
       }
 
       const tenantIds = [...new Set(autorizzazioni.map(a => a.tenantId))]
-      const utenti = await this.prisma.user.findMany({
-        where: {
-          tenantId: { in: tenantIds },
-          role: { in: ['ADMIN', 'OPERATOR'] },
-        },
-        include: { tenant: true },
-      })
+      const utenti =
+        tenantIds.length > 0
+          ? await this.prisma.user.findMany({
+              where: {
+                tenantId: { in: tenantIds },
+                role: { in: ['ADMIN', 'OPERATOR'] },
+              },
+              include: { tenant: true },
+            })
+          : []
 
       let notificationsSent = 0
 
@@ -336,12 +352,162 @@ export class DeadlineCheckerService {
         }
       }
 
+      // Trasportatori: stessa finestra `limite` calcolata sopra.
+      const trasportatori = await this.prisma.trasportatore.findMany({
+        where: { scadenzaIscrizione: { not: null, lte: limite } },
+      })
+      notificationsSent += await this.elaboraScadenzaControparte(
+        trasportatori.map(t => ({
+          id: t.id,
+          tenantId: t.tenantId,
+          scadenza: t.scadenzaIscrizione as Date,
+          identificativo: t.numeroIscrizione,
+        })),
+        {
+          notificationType: 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA',
+          relatedEntityType: 'Trasportatore',
+          etichetta: 'iscrizione',
+          actionUrl: '/trasportatori',
+        }
+      )
+
+      // Destinatari: stessa finestra `limite` calcolata sopra.
+      const destinatari = await this.prisma.destinatario.findMany({
+        where: { scadenzaAutorizzazione: { not: null, lte: limite } },
+      })
+      notificationsSent += await this.elaboraScadenzaControparte(
+        destinatari.map(d => ({
+          id: d.id,
+          tenantId: d.tenantId,
+          scadenza: d.scadenzaAutorizzazione as Date,
+          identificativo: d.numeroAutorizzazione,
+        })),
+        {
+          notificationType: 'DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA',
+          relatedEntityType: 'Destinatario',
+          etichetta: 'autorizzazione',
+          actionUrl: '/destinatari',
+        }
+      )
+
       this.logger.info(
         `Controllo scadenza autorizzazioni impianto completato: ${notificationsSent} notifiche inviate`
       )
     } catch (error) {
       this.logger.error('Controllo scadenza autorizzazioni impianto fallito', error)
     }
+  }
+
+  /**
+   * Elabora un elenco di record con scadenza (trasportatori o destinatari,
+   * Task 3 dello scadenzario) con la stessa logica di preavviso/scaduto già
+   * usata per le autorizzazioni impianto: avvisa agli intervalli previsti da
+   * `NOTIFICATION_INTERVALS`, poi ogni giorno con severità ERROR una volta
+   * scaduta. Fattorizzata qui perché la logica è identica per le due
+   * anagrafiche — cambiano solo il tipo di notifica, il testo e l'URL.
+   *
+   * `notificationType`/`relatedEntityType` sono DISTINTI per trasportatori e
+   * destinatari (e distinti da `AUTORIZZAZIONE_IN_SCADENZA`): senza questa
+   * distinzione, la dedup su `esisteNotificaRecente` — che confronta
+   * `type`+`relatedEntityId`+`relatedEntityType` — potrebbe far sì che una
+   * notifica di una semantica ne sopprima un'altra a parità di id (stesso
+   * principio già applicato a Task 2 per il certificato RENTRI illeggibile).
+   *
+   * Ritorna il numero di notifiche effettivamente create.
+   */
+  private async elaboraScadenzaControparte(
+    record: Array<{ id: string; tenantId: string; scadenza: Date; identificativo: string }>,
+    opts: {
+      notificationType:
+        | 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA'
+        | 'DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA'
+      relatedEntityType: 'Trasportatore' | 'Destinatario'
+      etichetta: string // "iscrizione" | "autorizzazione", per i testi
+      actionUrl: string
+    }
+  ): Promise<number> {
+    if (record.length === 0) {
+      return 0
+    }
+
+    const oggi = new Date()
+    const tenantIds = [...new Set(record.map(r => r.tenantId))]
+    const utenti = await this.prisma.user.findMany({
+      where: {
+        tenantId: { in: tenantIds },
+        role: { in: ['ADMIN', 'OPERATOR'] },
+      },
+    })
+
+    let notificationsSent = 0
+
+    for (const r of record) {
+      const giorniAllaScadenza = Math.ceil(
+        (r.scadenza.getTime() - oggi.getTime()) / (1000 * 60 * 60 * 24)
+      )
+      const scaduta = giorniAllaScadenza < 0
+
+      if (!scaduta && !this.NOTIFICATION_INTERVALS.includes(giorniAllaScadenza)) {
+        continue
+      }
+
+      const giaNotificata = await this.esisteNotificaRecente(
+        r.tenantId,
+        opts.notificationType,
+        r.id,
+        opts.relatedEntityType
+      )
+      if (giaNotificata) {
+        this.logger.debug(
+          `${opts.relatedEntityType} ${r.identificativo} già notificato negli ultimi ${this.NOTIFICATION_DEDUP_GIORNI} giorni, salto`
+        )
+        continue
+      }
+
+      const dataScadenzaFormattata = r.scadenza.toLocaleDateString('it-IT', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+
+      const titolo = scaduta
+        ? `Scadenza ${opts.etichetta} ${r.identificativo}`
+        : `Promemoria scadenza ${opts.etichetta} ${r.identificativo}`
+      const messaggio = scaduta
+        ? `L'${opts.etichetta} ${r.identificativo} è scaduta il ${dataScadenzaFormattata}.`
+        : `L'${opts.etichetta} ${r.identificativo} scadrà fra ${giorniAllaScadenza} giorni, il ${dataScadenzaFormattata}.`
+
+      const destinatari = utenti.filter(u => u.tenantId === r.tenantId)
+
+      for (const utente of destinatari) {
+        try {
+          await this.prisma.notification.create({
+            data: {
+              tenantId: r.tenantId,
+              userId: utente.id,
+              type: opts.notificationType,
+              title: titolo,
+              message: messaggio,
+              severity: scaduta ? 'ERROR' : 'WARNING',
+              relatedEntityId: r.id,
+              relatedEntityType: opts.relatedEntityType,
+              actionUrl: opts.actionUrl,
+              isRead: false,
+            },
+          })
+
+          notificationsSent++
+          this.logger.debug(`Avviso scadenza ${opts.etichetta} inviato a ${utente.email}`)
+        } catch (error) {
+          this.logger.error(
+            `Creazione avviso scadenza ${opts.etichetta} fallita per ${utente.email}`,
+            error
+          )
+        }
+      }
+    }
+
+    return notificationsSent
   }
 
   /**
@@ -562,7 +728,11 @@ export class DeadlineCheckerService {
    */
   private async esisteNotificaRecente(
     tenantId: string,
-    type: 'AUTORIZZAZIONE_IN_SCADENZA' | 'CERTIFICATO_RENTRI_IN_SCADENZA',
+    type:
+      | 'AUTORIZZAZIONE_IN_SCADENZA'
+      | 'CERTIFICATO_RENTRI_IN_SCADENZA'
+      | 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA'
+      | 'DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA',
     relatedEntityId: string,
     relatedEntityType: string
   ): Promise<boolean> {

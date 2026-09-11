@@ -16,6 +16,11 @@ export interface TrasportatoreProps {
   email?: string
   telefono?: string
   pec?: string
+  // Scadenza dell'iscrizione all'Albo Gestori Ambientali. Facoltativa: le
+  // anagrafiche esistenti non hanno questo dato, e non va inventata (Task 3
+  // dello scadenzario). Senza valore, il controllo periodico delle scadenze
+  // non genera alcun avviso per questo trasportatore.
+  scadenzaIscrizione?: Date
 }
 
 export interface TrasportatoreRestoreProps extends TrasportatoreProps {
@@ -33,6 +38,7 @@ export class Trasportatore {
   private _email?: string
   private _telefono?: string
   private _pec?: string
+  private _scadenzaIscrizione?: Date
   private readonly _createdAt: Date
   private _updatedAt: Date
 
@@ -45,6 +51,7 @@ export class Trasportatore {
     this._email = props.email
     this._telefono = props.telefono
     this._pec = props.pec
+    this._scadenzaIscrizione = props.scadenzaIscrizione
     this._createdAt = props.createdAt
     this._updatedAt = props.updatedAt
   }
@@ -70,6 +77,7 @@ export class Trasportatore {
       email: props.email,
       telefono: props.telefono,
       pec: props.pec,
+      scadenzaIscrizione: props.scadenzaIscrizione,
       createdAt: new Date(),
       updatedAt: new Date(),
     })
@@ -111,6 +119,10 @@ export class Trasportatore {
     return this._pec
   }
 
+  get scadenzaIscrizione(): Date | undefined {
+    return this._scadenzaIscrizione
+  }
+
   get createdAt(): Date {
     return this._createdAt
   }
@@ -147,6 +159,16 @@ export class Trasportatore {
       throw new Error('Numero iscrizione is required')
     }
     this._numeroIscrizione = trimmed
+    this._updatedAt = new Date()
+  }
+
+  /**
+   * Aggiorna la scadenza dell'iscrizione all'Albo Gestori. `undefined` la
+   * azzera esplicitamente (campo facoltativo, non c'è un valore "non
+   * valido" da rifiutare come per gli altri campi obbligatori).
+   */
+  updateScadenzaIscrizione(scadenzaIscrizione: Date | undefined): void {
+    this._scadenzaIscrizione = scadenzaIscrizione
     this._updatedAt = new Date()
   }
 }

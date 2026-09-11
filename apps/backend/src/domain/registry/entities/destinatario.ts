@@ -16,6 +16,11 @@ export interface DestinatarioProps {
   email?: string
   telefono?: string
   pec?: string
+  // Scadenza dell'autorizzazione allo smaltimento/recupero. Facoltativa: le
+  // anagrafiche esistenti non hanno questo dato, e non va inventata (Task 3
+  // dello scadenzario). Senza valore, il controllo periodico delle scadenze
+  // non genera alcun avviso per questo destinatario.
+  scadenzaAutorizzazione?: Date
 }
 
 export interface DestinatarioRestoreProps extends DestinatarioProps {
@@ -33,6 +38,7 @@ export class Destinatario {
   private _email?: string
   private _telefono?: string
   private _pec?: string
+  private _scadenzaAutorizzazione?: Date
   private readonly _createdAt: Date
   private _updatedAt: Date
 
@@ -45,6 +51,7 @@ export class Destinatario {
     this._email = props.email
     this._telefono = props.telefono
     this._pec = props.pec
+    this._scadenzaAutorizzazione = props.scadenzaAutorizzazione
     this._createdAt = props.createdAt
     this._updatedAt = props.updatedAt
   }
@@ -70,6 +77,7 @@ export class Destinatario {
       email: props.email,
       telefono: props.telefono,
       pec: props.pec,
+      scadenzaAutorizzazione: props.scadenzaAutorizzazione,
       createdAt: new Date(),
       updatedAt: new Date(),
     })
@@ -111,6 +119,10 @@ export class Destinatario {
     return this._pec
   }
 
+  get scadenzaAutorizzazione(): Date | undefined {
+    return this._scadenzaAutorizzazione
+  }
+
   get createdAt(): Date {
     return this._createdAt
   }
@@ -147,6 +159,16 @@ export class Destinatario {
       throw new Error('Numero autorizzazione is required')
     }
     this._numeroAutorizzazione = trimmed
+    this._updatedAt = new Date()
+  }
+
+  /**
+   * Aggiorna la scadenza dell'autorizzazione. `undefined` la azzera
+   * esplicitamente (campo facoltativo, non c'è un valore "non valido" da
+   * rifiutare come per gli altri campi obbligatori).
+   */
+  updateScadenzaAutorizzazione(scadenzaAutorizzazione: Date | undefined): void {
+    this._scadenzaAutorizzazione = scadenzaAutorizzazione
     this._updatedAt = new Date()
   }
 }

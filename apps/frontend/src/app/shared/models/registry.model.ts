@@ -23,6 +23,9 @@ export interface Trasportatore {
   sedeLegale: Indirizzo
   numeroIscrizione: string // Albo Gestori
   pec?: string
+  // Scadenza dell'iscrizione all'Albo Gestori (ISO, solo data). Facoltativa:
+  // le anagrafiche esistenti non ce l'hanno (Task 3 dello scadenzario).
+  scadenzaIscrizione?: string
   createdAt: string
   updatedAt: string
 }
@@ -34,6 +37,9 @@ export interface Destinatario {
   sede: Indirizzo
   numeroAutorizzazione: string
   pec?: string
+  // Scadenza dell'autorizzazione (ISO, solo data). Facoltativa: le
+  // anagrafiche esistenti non ce l'hanno (Task 3 dello scadenzario).
+  scadenzaAutorizzazione?: string
   createdAt: string
   updatedAt: string
 }
