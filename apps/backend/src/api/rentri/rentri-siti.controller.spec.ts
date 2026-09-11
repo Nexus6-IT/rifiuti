@@ -17,6 +17,11 @@ const items = [
     denominazione: 'Sede legale - Milano',
     principale: true,
     attiva: true,
+    // Aggiunti dal lavoro R6 sulla scorta di numeri vidimati: il modello
+    // Prisma li dichiara, quindi il finto deve averli o non compila.
+    // Nulli: questa sede non ha un blocco predefinito ne una soglia di scorta.
+    codiceBloccoPredefinito: null,
+    dimensioneScortaDesiderata: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
