@@ -11,6 +11,7 @@ import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader.component'
 import { EmptyStateComponent } from '../../shared/components/empty-state.component'
 import { ErrorStateComponent } from '../../shared/components/error-state.component'
+import { AttenzioneService, VoceAttenzione } from './attenzione.service'
 
 interface DashboardStats {
   totalFIR: number
@@ -51,6 +52,48 @@ interface DashboardStats {
           />
         </div>
       </header>
+
+      <!-- Fascia delle cose che richiedono attenzione oggi: compare solo se
+           c'è qualcosa da segnalare, mai come riquadro vuoto -->
+      <section
+        *ngIf="vociAttenzione.length > 0"
+        class="attenzione-fascia"
+        aria-labelledby="attenzione-heading"
+        data-testid="attenzione-fascia"
+      >
+        <h2 id="attenzione-heading" class="attenzione-fascia__title">
+          <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+          Richiede attenzione
+        </h2>
+        <ul class="attenzione-fascia__list">
+          <li
+            *ngFor="let voce of vociAttenzione"
+            class="attenzione-voce"
+            [ngClass]="'attenzione-voce--' + voce.gravita"
+            [attr.data-testid]="'attenzione-voce-' + voce.chiave"
+          >
+            <p-tag
+              [value]="etichettaGravita(voce.gravita)"
+              [severity]="getGravitaSeverity(voce.gravita)"
+              [attr.aria-label]="'Gravità: ' + etichettaGravita(voce.gravita)"
+            />
+            <div class="attenzione-voce__testo">
+              <span class="attenzione-voce__titolo">{{ voce.titolo }}</span>
+              <span class="attenzione-voce__dettaglio">{{ voce.dettaglio }}</span>
+            </div>
+            <p-button
+              *ngIf="voce.azione as azione"
+              [label]="azione.etichetta"
+              [text]="true"
+              [routerLink]="azione.rotta"
+              icon="pi pi-arrow-right"
+              iconPos="right"
+              [ariaLabel]="azione.etichetta + ': ' + voce.titolo"
+              [attr.data-testid]="'attenzione-azione-' + voce.chiave"
+            />
+          </li>
+        </ul>
+      </section>
 
       <!-- Stato di caricamento KPI -->
       <ng-container *ngIf="loading && recentFIR.length === 0">
@@ -254,6 +297,68 @@ interface DashboardStats {
         padding: var(--spacing-2xl);
       }
 
+      .attenzione-fascia {
+        margin-bottom: var(--spacing-base);
+      }
+
+      .attenzione-fascia__title {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        margin: 0 0 var(--spacing-sm) 0;
+        font-family: var(--font-display);
+        font-size: var(--font-size-base);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+      }
+
+      .attenzione-fascia__list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+      }
+
+      .attenzione-voce {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-base);
+        border-radius: var(--radius-md, 8px);
+        border-left: 4px solid var(--text-secondary);
+        background: var(--surface-card, #fff);
+      }
+
+      .attenzione-voce--critico {
+        border-left-color: #b91c1c;
+      }
+      .attenzione-voce--avviso {
+        border-left-color: #b45309;
+      }
+      .attenzione-voce--informativo {
+        border-left-color: #1d4ed8;
+      }
+
+      .attenzione-voce__testo {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      .attenzione-voce__titolo {
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+      }
+
+      .attenzione-voce__dettaglio {
+        color: var(--text-secondary);
+        font-size: var(--font-size-sm);
+      }
+
       .mt-4 {
         margin-top: var(--spacing-lg);
       }
@@ -272,14 +377,61 @@ export class DashboardComponent implements OnInit {
   loading = false
   error = ''
 
+  /**
+   * Cose che richiedono attenzione oggi. Un errore nel loro caricamento non
+   * deve rompere il resto del cruscotto: in caso di errore resta vuoto e la
+   * fascia semplicemente non compare (vedi loadAttenzione).
+   */
+  vociAttenzione: VoceAttenzione[] = []
+
   chartData: any
   chartOptions: any
 
-  constructor(private firService: FirService) {}
+  constructor(
+    private firService: FirService,
+    private attenzioneService: AttenzioneService
+  ) {}
 
   ngOnInit(): void {
     this.loadDashboardData()
+    this.loadAttenzione()
     this.initChart()
+  }
+
+  /**
+   * Carica le voci di attenzione indipendentemente dal resto del cruscotto:
+   * un fallimento qui non deve impedire la visualizzazione di indicatori,
+   * FIR recenti e grafico. In caso di errore la fascia resta assente
+   * (nessuna voce), non un messaggio d'errore che gareggia con quello
+   * principale del cruscotto.
+   */
+  loadAttenzione(): void {
+    this.attenzioneService.getAttenzione().subscribe({
+      next: risultato => {
+        this.vociAttenzione = risultato.voci
+      },
+      error: () => {
+        this.vociAttenzione = []
+      },
+    })
+  }
+
+  etichettaGravita(gravita: VoceAttenzione['gravita']): string {
+    const etichette: Record<VoceAttenzione['gravita'], string> = {
+      critico: 'Critico',
+      avviso: 'Avviso',
+      informativo: 'Informativo',
+    }
+    return etichette[gravita]
+  }
+
+  getGravitaSeverity(gravita: VoceAttenzione['gravita']): 'danger' | 'warning' | 'info' {
+    const severityMap: Record<VoceAttenzione['gravita'], 'danger' | 'warning' | 'info'> = {
+      critico: 'danger',
+      avviso: 'warning',
+      informativo: 'info',
+    }
+    return severityMap[gravita]
   }
 
   loadDashboardData(): void {
