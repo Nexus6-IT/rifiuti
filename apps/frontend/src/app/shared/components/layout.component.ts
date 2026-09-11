@@ -1206,6 +1206,16 @@ export class LayoutComponent implements OnInit {
       adminOnly: true,
     },
     {
+      // Blocchi virtuali e scorta di numeri vidimati: lettura per
+      // SUPER_ADMIN/ADMIN/OPERATOR (gate fine sui ruoli nel componente stesso),
+      // quindi NON adminOnly qui — altrimenti l'OPERATOR non vedrebbe la voce
+      // che gli serve ogni giorno per sapere se può emettere un FIR.
+      label: 'Blocchi e vidimazione RENTRI',
+      route: '/rentri/blocchi',
+      icon: 'pi pi-verified',
+      feature: 'rentri',
+    },
+    {
       // Manutenzione di tabelle di piattaforma: solo SUPER_ADMIN (2026-07-28).
       label: 'Dati di riferimento',
       route: '/reference-data',

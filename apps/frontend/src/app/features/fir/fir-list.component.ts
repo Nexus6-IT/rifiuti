@@ -9,6 +9,7 @@ import { DropdownModule } from 'primeng/dropdown'
 import { TagModule } from 'primeng/tag'
 import { DialogModule } from 'primeng/dialog'
 import { InputNumberModule } from 'primeng/inputnumber'
+import { MessageModule } from 'primeng/message'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ConfirmationService } from 'primeng/api'
 import { SplitButtonModule } from 'primeng/splitbutton'
@@ -32,6 +33,7 @@ import { puoCreareFir } from './fir-permissions'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
+import { RentriBlocchiService, RentriEmissionePossibile } from '../rentri/rentri-blocchi.service'
 
 /** Ruoli autorizzati a trasmettere/confermare verso RENTRI (v. RENTRISyncController backend). */
 const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
@@ -49,6 +51,7 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
     TagModule,
     DialogModule,
     InputNumberModule,
+    MessageModule,
     ConfirmDialogModule,
     SplitButtonModule,
     CardModule,
@@ -305,6 +308,17 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
         closeAriaLabel="Chiudi la finestra Nuovo FIR"
       >
         <div class="fir-form p-fluid">
+          <!-- Avviso PRIMA di compilare: se l'emissione non è possibile (es. nessun
+               numero vidimato disponibile) lo diciamo qui, non dopo che l'utente ha
+               già compilato tutto il formulario. -->
+          @if (emissionePossibile() && !emissionePossibile()!.possibile) {
+            <p-message
+              severity="warn"
+              [text]="emissionePossibile()!.motivo"
+              styleClass="w-full mb-3"
+              data-testid="fir-create-emissione-non-possibile"
+            />
+          }
           <p class="fir-form__legend">
             I campi contrassegnati con <span class="req">*</span> sono obbligatori.
           </p>
@@ -1324,6 +1338,17 @@ export class FirListComponent implements OnInit {
 
   private readonly rentriSyncService = inject(RENTRISyncService)
   private readonly authService = inject(AuthService)
+  private readonly rentriBlocchiService = inject(RentriBlocchiService)
+
+  /**
+   * Esito del controllo "posso emettere un FIR adesso?" (numeri vidimati
+   * disponibili in scorta). Interrogato all'apertura del dialogo "Nuovo FIR",
+   * PRIMA che l'utente scriva qualcosa: è il punto in cui facciamo meglio dei
+   * gestionali concorrenti, che scoprono l'indisponibilità solo al salvataggio
+   * del formulario già compilato. `motivo` arriva già in italiano dal backend
+   * e non va riscritto qui.
+   */
+  readonly emissionePossibile = signal<RentriEmissionePossibile | null>(null)
 
   /**
    * Il VIEWER ha sola lettura: il backend rifiuta la creazione con un 403
@@ -1549,7 +1574,23 @@ export class FirListComponent implements OnInit {
     this.trasportatoriAggiuntivi = []
     this.showTrasportatoriAggiuntivi = false
     this.firErrors = {}
+    this.emissionePossibile.set(null)
     this.displayCreateDialog = true
+    this.caricaEmissionePossibile()
+  }
+
+  /**
+   * Controlla PRIMA della compilazione se l'emissione è possibile (scorta di
+   * numeri vidimati). Se la chiamata fallisce non blocchiamo il form: meglio
+   * lasciare che l'utente scopra l'eventuale indisponibilità al salvataggio
+   * (come i concorrenti) piuttosto che impedirgli di lavorare per un errore
+   * di rete sul controllo stesso.
+   */
+  private caricaEmissionePossibile(): void {
+    this.rentriBlocchiService.emissionePossibile().subscribe({
+      next: esito => this.emissionePossibile.set(esito),
+      error: () => this.emissionePossibile.set(null),
+    })
   }
 
   /** Pulisce l'errore inline di un campo del form FIR mentre l'utente lo corregge. */

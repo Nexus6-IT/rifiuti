@@ -40,6 +40,15 @@ import { AccettaORespingiFIRUseCase } from './accetta-o-respingi-fir.use-case'
 import { AnnullaFIRRentriUseCase } from './annulla-fir-rentri.use-case'
 import { GestisciAllegatiFIRUseCase } from './gestisci-allegati-fir.use-case'
 import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
+import { RentriScortaRepository } from '../../infrastructure/persistence/rentri-scorta.repository'
+import { ElencaBlocchiRentriUseCase } from './scorta/elenca-blocchi-rentri.use-case'
+import { GetScortaRentriUseCase } from './scorta/get-scorta-rentri.use-case'
+import { AvviaVidimazioneScortaUseCase } from './scorta/avvia-vidimazione-scorta.use-case'
+import { ImpostaBloccoPredefinitoUseCase } from './scorta/imposta-blocco-predefinito.use-case'
+import { VerificaEmissionePossibileRentriUseCase } from './scorta/verifica-emissione-possibile.use-case'
+import { ConsumaNumeroVidimatoUseCase } from './scorta/consuma-numero-vidimato.use-case'
+import { RentriRifornimentoScortaJob } from '../../infrastructure/jobs/rentri-rifornimento-scorta.job'
+import { RentriScortaController } from '../../api/rentri/rentri-scorta.controller'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -155,7 +164,12 @@ import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
  */
 @Module({
   imports: [ConfigModule, LoggerModule, MetricsModule, PrismaModule, RentriModule],
-  controllers: [RENTRISyncController, RentriFormulariController, RentriFirLifecycleController],
+  controllers: [
+    RENTRISyncController,
+    RentriFormulariController,
+    RentriFirLifecycleController,
+    RentriScortaController,
+  ],
   providers: [
     FIRPrismaRepository,
     // Costruisce il corpo di POST /formulari dal FIR: legge le anagrafiche
@@ -469,6 +483,18 @@ import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
       ) => new ScaricaPdfFirUseCase(firRepo, rentriApiClient, logger),
       inject: [FIRPrismaRepository, RENTRIApiClient, LoggerService],
     },
+    // R6 — scorta di numeri FIR pre-vidimati (v. commento di classe di
+    // `RentriScortaRepository`/`RentriRifornimentoScortaJob`): tutte classi
+    // concrete, nessuna interfaccia da risolvere a mano con `useFactory`
+    // (a differenza degli use case sopra che dipendono da `IFIRRepository`).
+    RentriScortaRepository,
+    ElencaBlocchiRentriUseCase,
+    GetScortaRentriUseCase,
+    AvviaVidimazioneScortaUseCase,
+    ImpostaBloccoPredefinitoUseCase,
+    VerificaEmissionePossibileRentriUseCase,
+    ConsumaNumeroVidimatoUseCase,
+    RentriRifornimentoScortaJob,
   ],
   exports: [
     // Esportati per il rilancio manuale dalla pagina «Stato del sistema»
@@ -494,6 +520,9 @@ import { ScaricaPdfFirUseCase } from './scarica-pdf-fir.use-case'
     AnnullaFIRRentriUseCase,
     GestisciAllegatiFIRUseCase,
     ScaricaPdfFirUseCase,
+    RentriRifornimentoScortaJob,
+    RentriScortaRepository,
+    ConsumaNumeroVidimatoUseCase,
   ],
 })
 export class RentriSyncModule {}

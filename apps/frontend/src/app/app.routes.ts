@@ -242,6 +242,13 @@ export const routes: Routes = [
             m => m.RentriDiagnosticaComponent
           ),
       },
+      {
+        // Blocchi virtuali e scorta di numeri vidimati (SUPER_ADMIN/ADMIN/OPERATOR
+        // in lettura, scrittura solo admin — enforcement lato componente + backend)
+        path: 'rentri/blocchi',
+        loadComponent: () =>
+          import('./features/rentri/rentri-blocchi.component').then(m => m.RentriBlocchiComponent),
+      },
       // T179: Custom Role Management Routes
       {
         path: 'permissions',
