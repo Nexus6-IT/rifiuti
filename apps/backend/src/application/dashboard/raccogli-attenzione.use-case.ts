@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
+import { calcolaScadenza } from '../notifications/scadenza-controparte.util'
 
 /**
  * Una singola cosa che richiede attenzione oggi, già scritta in italiano
@@ -136,6 +137,12 @@ export class RaccogliAttenzioneUseCase {
    * (già scaduta o entro la soglia), ma qui filtrato per `tenantId`: quel
    * job scansiona tutti i tenant (invia email), questo endpoint risponde a
    * UNO alla volta — l'isolamento è obbligatorio.
+   *
+   * Il calcolo dei giorni alla scadenza riusa `calcolaScadenza` (Task 4
+   * dello scadenzario, `scadenza-controparte.util.ts`), non lo riscrive:
+   * la stessa formula alimenta anche l'avviso nel form FIR, e due
+   * implementazioni indipendenti potrebbero divergere silenziosamente su
+   * un dato dichiarato a un ente pubblico.
    */
   private async vociAutorizzazioniImpianto(tenantId: string): Promise<VoceAttenzione[]> {
     const oggi = new Date()
@@ -150,9 +157,11 @@ export class RaccogliAttenzioneUseCase {
     })
 
     return autorizzazioni.map(autorizzazione => {
-      const dataScadenza = autorizzazione.dataScadenza as Date
-      const giorni = Math.ceil((dataScadenza.getTime() - oggi.getTime()) / (1000 * 60 * 60 * 24))
-      const scaduta = giorni < 0
+      const { giorniAllaScadenza, scaduta } = calcolaScadenza(autorizzazione.dataScadenza, oggi)
+      // `dataScadenza` è garantita non nulla dal filtro Prisma sopra, quindi
+      // `giorniAllaScadenza` non è mai `null` qui (lo sarebbe solo per
+      // un'anagrafica senza scadenza valorizzata).
+      const giorni = giorniAllaScadenza as number
 
       return {
         chiave: 'autorizzazione',
