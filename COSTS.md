@@ -1,7 +1,7 @@
 # COSTS.md — Registro costi sessioni (rifiuti)
 
-<!-- costs-total-usd:1955.83 -->
-**Totale cumulato: $1955.83**
+<!-- costs-total-usd:2184.07 -->
+**Totale cumulato: $2184.07**
 
 Costo registrato automaticamente a fine sessione (hook SessionEnd) e leggibile via `~/.claude/bin/session-cost.sh`.
 
@@ -20,3 +20,4 @@ Costo registrato automaticamente a fine sessione (hook SessionEnd) e leggibile v
 | 2026-07-25 | `d2aea025` | Analisi completa + UAT e2e su produzione: swarm multi-agente (Opus coordinatore/revisore + implementatori Sonnet). 6 report di audit, 86 scenari UAT in italiano, suite Playwright da zero (71 test verdi + guardrail anti-distruttivi), 6 difetti corretti e verificati. Rilevata non conformità nuova: sessione singola non implementata. | $878.26 |
 | 2026-07-25 | `a254dceb` | (auto — descrizione da completare) | $2.90 |
 | 2026-07-28 | `c76b5014` | (auto — descrizione da completare) | $1.61 |
+| 2026-09-10 | `6db9644e` | **Area RENTRI: da impianto a contenuto, tutto in produzione.** Il difetto centrale era un segnaposto di due campi (`{firId, firNumber}`) che la sincronizzazione spediva all ente sul percorso VIVO: nessun test diventava rosso perche l oracolo accettava qualunque corpo. Prima si e insegnato al finto RENTRI a RIFIUTARE (schemi generati dal contratto, chiusura transitiva dei $ref, guardia anti-deriva verificata per mutazione), poi si e scritta la mappatura vera e collegata. Chiusi nella stessa giornata: contenitore ASiC-E con firma, trasmissione dati formulari pericolosi, registro cronologico, restituzione copie cartacea e digitale, vidimazione col QR dell ente, validazione del certificato al caricamento. Due migrazioni additive applicate in produzione (provenienza, modalita di trasporto, byte del QR). **Tre conclusioni storiche ribaltate**: il servizio `vidimazione-formulari` era stato dichiarato inesistente da un audit e il codice cancellato — esiste; il contratto del registro non era mai stato scaricato perche nessuno aveva provato il nome giusto; il QR non va costruito ma ricevuto dall ente (Base45 verificata contro i vettori ufficiali RFC 9285). **Rimosso** codice inerte: job PDF e storage a oggetti, ne produttore ne consumatore. Orchestrazione con 9 agenti su modelli minori, Opus coordinatore e revisore: la revisione ha intercettato un manifest omesso per compiacere un oracolo infedele, un refactor del generatore da verificare rigenerando, e tre registrazioni concorrenti sullo stesso file. Tre rilasci caduti e diagnosticati: test oracolo esclusi dalla suite unitaria, un errore di lint in una cartella non controllata, e il doppio lockfile. Oracolo da 104 a 193 test, conformita da 91 a 122. | $228.24 |
