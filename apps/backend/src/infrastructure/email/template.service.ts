@@ -130,7 +130,12 @@ export class TemplateService {
     companyName: string
     issuingAuthority: string
     activities: string[]
-    authorizationUrl: string
+    // Facoltativo (correzione di revisione, rilievo critico dello
+    // scadenzario): non tutte le entità con scadenza hanno una pagina di
+    // dettaglio nel frontend (le autorizzazioni impianto, ad oggi, non ce
+    // l'hanno). Quando manca, il template non deve inventare un link morto:
+    // omette del tutto il pulsante "Visualizza Autorizzazione".
+    authorizationUrl?: string
     isProroga?: boolean
     contactInfo?: {
       name: string

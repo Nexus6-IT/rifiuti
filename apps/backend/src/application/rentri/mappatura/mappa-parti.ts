@@ -265,7 +265,7 @@ export function mappaTrasportatore(
       throw new DatoMancantePerRentriError(
         'trasportatore',
         'numero_iscrizione_albo',
-        `il valore "${trasportatore.numeroIscrizione}" non e' normalizzabile nel formato richiesto da RENTRI (due lettere, slash, fino a sei cifre — es. "AB/123456" o "MI/7490")`
+        `il valore "${trasportatore.numeroIscrizione}" non è normalizzabile nel formato richiesto da RENTRI (due lettere, slash, fino a sei cifre — es. "AB/123456" o "MI/7490")`
       )
     }
     risultato.numero_iscrizione_albo = numeroNormalizzato

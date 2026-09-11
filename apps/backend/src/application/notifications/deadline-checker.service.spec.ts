@@ -402,6 +402,115 @@ describe('DeadlineCheckerService', () => {
       expect(mockPrisma.notification.create).not.toHaveBeenCalled()
     })
 
+    it("non invia un link morto: l'autorizzazione impianto non ha una pagina di dettaglio, quindi né la notifica né l'email includono un actionUrl inventato", async () => {
+      // Rilievo critico di revisione: `/impianti/autorizzazioni/${id}` non
+      // esiste in app.routes.ts (il catch-all reindirizza al cruscotto), e
+      // proporre un link che sembra portare da qualche parte ma torna al
+      // cruscotto è peggio di nessun link.
+      const fra30 = new Date()
+      fra30.setDate(fra30.getDate() + 30)
+      ;(mockPrisma.autorizzazioneImpianto.findMany as jest.Mock).mockResolvedValue([
+        { id: 'a1', tenantId: 't1', estremi: 'AUT/123', dataScadenza: fra30 },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.not.objectContaining({ actionUrl: expect.stringContaining('impianti') }),
+        })
+      )
+      const [[argomentiNotifica]] = (mockPrisma.notification.create as jest.Mock).mock.calls
+      expect(argomentiNotifica.data.actionUrl).toBeUndefined()
+
+      expect(mockTemplateService.renderAuthorizationExpiration).toHaveBeenCalledWith(
+        expect.objectContaining({ authorizationUrl: undefined })
+      )
+    })
+
+    it('il certificato RENTRI usa la rotta reale del frontend (rentri/certificato), non /rentri/credenziali che non esiste', async () => {
+      // Le due occorrenze in checkRentriCertificateExpiration (illeggibile e
+      // in scadenza) puntavano a `/rentri/credenziali`; in app.routes.ts la
+      // rotta è `rentri/certificato`.
+      mockCalcolaGiorni.mockReturnValue(15)
+      ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
+        { tenantId: 't1', certificatePem: 'PEM-FASULLO' },
+      ])
+
+      await service.checkRentriCertificateExpiration()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ actionUrl: '/rentri/certificato' }),
+        })
+      )
+    })
+
+    it('il ramo "certificato non analizzabile" usa anch\'esso la rotta reale rentri/certificato', async () => {
+      mockCalcolaGiorni.mockReturnValue(null)
+      ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
+        { tenantId: 't1', certificatePem: 'PEM-NON-VALIDO' },
+      ])
+
+      await service.checkRentriCertificateExpiration()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ actionUrl: '/rentri/certificato' }),
+        })
+      )
+    })
+
+    it("manda anche l'email quando l'iscrizione di un trasportatore è in scadenza (non solo la notifica in applicazione)", async () => {
+      // Rilievo di revisione (importante): a differenza del certificato
+      // RENTRI (dove l'email manca perché non esiste un template dedicato),
+      // qui il modello e il canale email esistono già e sono usati per le
+      // autorizzazioni impianto — non c'è nulla da inventare, quindi
+      // l'email va inviata anche per trasportatori/destinatari.
+      const fra30 = new Date()
+      fra30.setDate(fra30.getDate() + 30)
+      ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
+        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockTemplateService.renderAuthorizationExpiration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          authorizationUrl: '/trasportatori',
+          isExpired: false,
+        })
+      )
+      expect(mockEmailService.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: utenteFixture().email })
+      )
+    })
+
+    it("manda anche l'email quando l'autorizzazione di un destinatario è scaduta, con rotta /destinatari", async () => {
+      const ieri = new Date()
+      ieri.setDate(ieri.getDate() - 1)
+      ;(mockPrisma.destinatario.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'de2',
+          tenantId: 't1',
+          numeroAutorizzazione: 'NA/AUT/2023/999',
+          scadenzaAutorizzazione: ieri,
+        },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockTemplateService.renderAuthorizationExpiration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          authorizationUrl: '/destinatari',
+          isExpired: true,
+        })
+      )
+      expect(mockEmailService.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: utenteFixture().email })
+      )
+    })
+
     it('non crea una nuova notifica per lo stesso trasportatore se una esiste già negli ultimi 7 giorni (dedup per tenantId)', async () => {
       const fra30 = new Date()
       fra30.setDate(fra30.getDate() + 30)

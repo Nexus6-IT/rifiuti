@@ -203,8 +203,10 @@ export class DeadlineCheckerService {
    *
    * Stessa forma di `checkMudDeadlines`: avvisa agli intervalli previsti da
    * `NOTIFICATION_INTERVALS` finché la scadenza è futura; un'autorizzazione
-   * già scaduta non deve restare silenziosa, quindi viene segnalata ogni
-   * giorno con severità maggiore (ERROR) finché non viene rinnovata.
+   * già scaduta non deve restare silenziosa, quindi viene segnalata con
+   * severità maggiore (ERROR) ogni `NOTIFICATION_DEDUP_GIORNI` (7) giorni,
+   * finché non viene rinnovata — non ogni giorno: la deduplicazione
+   * settimanale si applica anche allo stato "già scaduto".
    *
    * Task 3 dello scadenzario: lo stesso controllo copre anche la scadenza
    * dell'iscrizione all'Albo Gestori dei trasportatori
@@ -320,7 +322,11 @@ export class DeadlineCheckerService {
                 ...(autorizzazione.operazioniRecupero ?? []),
                 ...(autorizzazione.operazioniSmaltimento ?? []),
               ],
-              authorizationUrl: `${process.env.PUBLIC_URL || 'https://wasteflow.app'}/impianti/autorizzazioni/${autorizzazione.id}`,
+              // Nessuna pagina di dettaglio esiste per le autorizzazioni
+              // impianto in app.routes.ts (correzione di revisione, rilievo
+              // critico): niente URL inventato — meglio nessun link che uno
+              // che promette una destinazione e riporta al cruscotto.
+              authorizationUrl: undefined,
             })
 
             await this.emailService.sendEmail({
@@ -341,7 +347,9 @@ export class DeadlineCheckerService {
                 severity: scaduta ? 'ERROR' : 'WARNING',
                 relatedEntityId: autorizzazione.id,
                 relatedEntityType: 'AutorizzazioneImpianto',
-                actionUrl: `/impianti/autorizzazioni/${autorizzazione.id}`,
+                // Idem: nessuna pagina esiste per questa entità, quindi
+                // nessun actionUrl (campo facoltativo in schema).
+                actionUrl: undefined,
                 isRead: false,
               },
             })
@@ -373,6 +381,7 @@ export class DeadlineCheckerService {
           relatedEntityType: 'Trasportatore',
           etichetta: 'iscrizione',
           actionUrl: '/trasportatori',
+          tipoAutorizzazione: 'Iscrizione Albo Gestori Ambientali',
         }
       )
 
@@ -392,6 +401,7 @@ export class DeadlineCheckerService {
           relatedEntityType: 'Destinatario',
           etichetta: 'autorizzazione',
           actionUrl: '/destinatari',
+          tipoAutorizzazione: 'Autorizzazione destinatario',
         }
       )
 
@@ -407,9 +417,15 @@ export class DeadlineCheckerService {
    * Elabora un elenco di record con scadenza (trasportatori o destinatari,
    * Task 3 dello scadenzario) con la stessa logica di preavviso/scaduto già
    * usata per le autorizzazioni impianto: avvisa agli intervalli previsti da
-   * `NOTIFICATION_INTERVALS`, poi ogni giorno con severità ERROR una volta
-   * scaduta. Fattorizzata qui perché la logica è identica per le due
-   * anagrafiche — cambiano solo il tipo di notifica, il testo e l'URL.
+   * `NOTIFICATION_INTERVALS`, poi ogni `NOTIFICATION_DEDUP_GIORNI` (7) giorni
+   * con severità ERROR una volta scaduta — non ogni giorno, stessa
+   * deduplicazione settimanale del resto dello scadenzario. Fattorizzata qui
+   * perché la logica è identica per le due anagrafiche — cambiano il tipo di
+   * notifica, il testo e l'URL. Manda anche l'email, con lo stesso template
+   * `authorization-expiration` già usato per le autorizzazioni impianto
+   * (correzione di revisione: prima creava solo la notifica in applicazione,
+   * lasciando all'oscuro chi non apre WasteFlow che un'autorizzazione di un
+   * destinatario o l'iscrizione di un trasportatore è scaduta).
    *
    * `notificationType`/`relatedEntityType` sono DISTINTI per trasportatori e
    * destinatari (e distinti da `AUTORIZZAZIONE_IN_SCADENZA`): senza questa
@@ -429,6 +445,10 @@ export class DeadlineCheckerService {
       relatedEntityType: 'Trasportatore' | 'Destinatario'
       etichetta: string // "iscrizione" | "autorizzazione", per i testi
       actionUrl: string
+      // Etichetta per il campo `authorizationType` del template email
+      // condiviso `authorization-expiration` (già usato per le
+      // autorizzazioni impianto).
+      tipoAutorizzazione: string
     }
   ): Promise<number> {
     if (record.length === 0) {
@@ -442,6 +462,7 @@ export class DeadlineCheckerService {
         tenantId: { in: tenantIds },
         role: { in: ['ADMIN', 'OPERATOR'] },
       },
+      include: { tenant: true },
     })
 
     let notificationsSent = 0
@@ -489,6 +510,25 @@ export class DeadlineCheckerService {
 
       for (const utente of destinatari) {
         try {
+          const html = await this.templateService.renderAuthorizationExpiration({
+            recipientName: `${utente.firstName} ${utente.lastName}`,
+            authorizationType: opts.tipoAutorizzazione,
+            authorizationNumber: r.identificativo,
+            expirationDate: dataScadenzaFormattata,
+            isExpired: scaduta,
+            daysRemaining: scaduta ? undefined : giorniAllaScadenza,
+            companyName: utente.tenant?.ragioneSociale ?? '',
+            issuingAuthority: '',
+            activities: [],
+            authorizationUrl: opts.actionUrl,
+          })
+
+          await this.emailService.sendEmail({
+            to: utente.email,
+            subject: scaduta ? `[WasteFlow] URGENTE: ${titolo}` : `[WasteFlow] ${titolo}`,
+            html,
+          })
+
           await this.prisma.notification.create({
             data: {
               tenantId: r.tenantId,
@@ -599,7 +639,7 @@ export class DeadlineCheckerService {
                   severity: 'ERROR',
                   relatedEntityId: credenziale.tenantId,
                   relatedEntityType: 'RentriCredentialIllegibile',
-                  actionUrl: '/rentri/credenziali',
+                  actionUrl: '/rentri/certificato',
                   isRead: false,
                 },
               })
@@ -666,7 +706,7 @@ export class DeadlineCheckerService {
                 severity: scaduto ? 'ERROR' : 'WARNING',
                 relatedEntityId: credenziale.tenantId,
                 relatedEntityType: 'RentriCredential',
-                actionUrl: '/rentri/credenziali',
+                actionUrl: '/rentri/certificato',
                 isRead: false,
               },
             })

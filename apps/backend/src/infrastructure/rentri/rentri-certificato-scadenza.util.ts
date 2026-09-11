@@ -12,6 +12,19 @@ import { X509Certificate } from 'node:crypto'
  * con la stessa logica, non una seconda implementazione del parsing: un
  * allarme e un avviso in UI con numeri diversi (anche di un solo giorno,
  * per un arrotondamento fatto diversamente) confonderebbero l'utente.
+ *
+ * ARROTONDAMENTO — `Math.floor`, DIVERSO da `Math.ceil` usato in
+ * `calcolaScadenza` (rilievo di revisione, minore): differenza intenzionale,
+ * non una svista da uniformare. Qui `scadenza` è l'istante esatto
+ * (`notAfter` del certificato X.509, con ora e minuti), non una data di
+ * calendario: `Math.floor` è la scelta prudente — un certificato con 30
+ * giorni e 12 ore residue mostra "30 giorni" (garantiti), non "31"
+ * (arrotondando per eccesso un tempo che non c'è ancora). `calcolaScadenza`
+ * lavora invece su date di calendario (autorizzazioni, sempre a
+ * mezzanotte) dove `Math.ceil` ha un significato diverso e altrettanto
+ * intenzionale (vedi commento lì). Uniformare romperebbe il comportamento
+ * testato di entrambe (qui `rentri-certificato-scadenza.job.spec.ts`,
+ * fissato su `Math.floor` con casi espliciti a +12 ore).
  */
 export function calcolaGiorniAllaScadenzaCertificato(certificatePem: string): number | null {
   try {

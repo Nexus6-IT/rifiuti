@@ -18,6 +18,23 @@
  * un avviso costruito su un dato assente (regola di prodotto: un avviso su
  * un'informazione che non abbiamo è rumore che insegna a ignorare gli
  * avvisi veri).
+ *
+ * ARROTONDAMENTO — `Math.ceil`, DIVERSO da `Math.floor` usato in
+ * `calcolaGiorniAllaScadenzaCertificato` (rilievo di revisione, minore):
+ * NON è una svista da uniformare, sono due dati di natura diversa.
+ * `scadenza` qui è sempre una data di calendario (mezzanotte, senza
+ * significato nell'ora — vedi il test "una scadenza già passata nelle ore
+ * ma nello stesso giorno solare non è ancora scaduta"): `Math.ceil` conta
+ * "quanti giorni di calendario mancano", coerente con `checkMudDeadlines`
+ * che usa la stessa formula per la stessa ragione. Il certificato RENTRI
+ * invece ha un istante di scadenza preciso (`notAfter` del certificato
+ * X.509): lì `Math.floor` è la scelta prudente, per non promettere più
+ * tempo di quanto ne resti davvero arrotondando per eccesso un timestamp
+ * esatto. Uniformare romperebbe il comportamento intenzionale e testato di
+ * entrambe le funzioni (vedi `scadenza-controparte.util.spec.ts` per
+ * questa, `rentri-certificato-scadenza.job.spec.ts` per l'altra) per un
+ * caso limite (poche ore da mezzanotte) che in pratica riguarda solo
+ * l'ultimo giorno prima della scadenza.
  */
 export interface EsitoScadenza {
   giorniAllaScadenza: number | null
