@@ -15,14 +15,30 @@
  *      già scaduto
  *
  *  Deduplicazione settimanale (entrambi i task, richiesta dal coordinatore
- *  dopo la prima consegna): una notifica dello stesso tipo per la stessa
- *  entità (relatedEntityId + relatedEntityType) non va ripetuta se ne esiste
- *  già una creata negli ultimi 7 giorni — altrimenti lo stato "già scaduto"
- *  genererebbe un avviso identico ogni giorno all'infinito.
- *   6. autorizzazione: notifica esistente creata ieri → nessuna nuova notifica
+ *  dopo la prima consegna): una notifica dello stesso tipo, PER LO STESSO
+ *  TENANT, per la stessa entità (relatedEntityId + relatedEntityType) non va
+ *  ripetuta se ne esiste già una creata negli ultimi 7 giorni — altrimenti
+ *  lo stato "già scaduto" genererebbe un avviso identico ogni giorno
+ *  all'infinito.
+ *   6. autorizzazione: notifica esistente creata ieri, STESSO tenant →
+ *      nessuna nuova notifica; verifica che il filtro includa tenantId
  *   7. autorizzazione: notifica esistente creata 10 giorni fa → se ne crea una nuova
- *   8. certificato RENTRI: notifica esistente creata ieri → nessuna nuova notifica
+ *   8. certificato RENTRI: notifica esistente creata ieri, STESSO tenant →
+ *      nessuna nuova notifica; verifica che il filtro includa tenantId
  *   9. certificato RENTRI: notifica esistente creata 10 giorni fa → se ne crea una nuova
+ *
+ *  Correzione di revisione (giro 1): senza `tenantId` nel filtro di dedup,
+ *  una notifica di un ALTRO tenant sulla stessa entità sopprimerebbe
+ *  l'avviso dovuto a questo tenant — violazione della regola di isolamento
+ *  del progetto (ogni query filtra per tenant). I test 6 e 8 sopra ora
+ *  asserisco esplicitamente `tenantId` nel `where` di `findFirst`.
+ *  10. limite esatto: una notifica creata esattamente NOTIFICATION_DEDUP_GIORNI
+ *      giorni fa conta ancora come "recente" (il confronto è `gte`, incluso
+ *      il limite) → nessuna nuova notifica.
+ *  11. certificato non analizzabile: genera comunque un avviso in
+ *      applicazione (nessuna email, nessun template dedicato — quella
+ *      decisione resta invariata), perché il canale in-app esiste già e un
+ *      certificato illeggibile non deve restare silenzioso.
  */
 
 import { Test, TestingModule } from '@nestjs/testing'
@@ -181,6 +197,7 @@ describe('DeadlineCheckerService', () => {
       expect(mockPrisma.notification.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
+            tenantId: 't1',
             type: 'AUTORIZZAZIONE_IN_SCADENZA',
             relatedEntityId: 'a1',
             relatedEntityType: 'AutorizzazioneImpianto',
@@ -189,6 +206,22 @@ describe('DeadlineCheckerService', () => {
         })
       )
       expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+    })
+
+    it('la deduplicazione filtra anche per tenantId: non basta stesso tipo e stessa entità', async () => {
+      // Regressione del rilievo di revisione: senza `tenantId` nel `where`,
+      // una notifica di un ALTRO tenant sulla stessa autorizzazione
+      // sopprimerebbe l'avviso dovuto a questo tenant.
+      const fra30 = new Date()
+      fra30.setDate(fra30.getDate() + 30)
+      ;(mockPrisma.autorizzazioneImpianto.findMany as jest.Mock).mockResolvedValue([
+        { id: 'a1', tenantId: 't1', estremi: 'AUT/123', dataScadenza: fra30 },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      const [[argomentiChiamata]] = (mockPrisma.notification.findFirst as jest.Mock).mock.calls
+      expect(argomentiChiamata.where).toHaveProperty('tenantId', 't1')
     })
 
     it("crea una nuova notifica se l'ultima per la stessa autorizzazione risale a più di 7 giorni fa", async () => {
@@ -213,6 +246,40 @@ describe('DeadlineCheckerService', () => {
           }),
         })
       )
+    })
+
+    it('decisione esplicita sul limite: una notifica creata esattamente NOTIFICATION_DEDUP_GIORNI giorni fa conta ancora come "recente" (limite incluso)', async () => {
+      // Il codice confronta con `createdAt: { gte: sogliaDedup }`: il limite
+      // è incluso, quindi una notifica di esattamente 7 giorni fa blocca
+      // ancora la creazione di una nuova (finestra di 7 giorni PIENI, non
+      // "più di 7 giorni"). Per testarlo in modo deterministico (senza un
+      // database Postgres reale che valuti il `gte`) si fissa l'orologio e
+      // si fa rispondere al mock esattamente la semantica di `gte`.
+      jest.useFakeTimers().setSystemTime(new Date('2026-09-11T10:00:00.000Z'))
+      try {
+        const fra30 = new Date()
+        fra30.setDate(fra30.getDate() + 30)
+        ;(mockPrisma.autorizzazioneImpianto.findMany as jest.Mock).mockResolvedValue([
+          { id: 'a1', tenantId: 't1', estremi: 'AUT/123', dataScadenza: fra30 },
+        ])
+
+        const esattamenteSetteGiorniFa = new Date('2026-09-11T10:00:00.000Z')
+        esattamenteSetteGiorniFa.setDate(esattamenteSetteGiorniFa.getDate() - 7)
+        ;(mockPrisma.notification.findFirst as jest.Mock).mockImplementationOnce(
+          async ({ where }: { where: { createdAt: { gte: Date } } }) => {
+            const soglia = where.createdAt.gte
+            return esattamenteSetteGiorniFa.getTime() >= soglia.getTime()
+              ? { id: 'n-limite', createdAt: esattamenteSetteGiorniFa }
+              : null
+          }
+        )
+
+        await service.checkAuthorizationExpirations()
+
+        expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+      } finally {
+        jest.useRealTimers()
+      }
     })
   })
 
@@ -256,11 +323,42 @@ describe('DeadlineCheckerService', () => {
       )
     })
 
-    it('non avvisa se il certificato non è analizzabile (giorni non calcolabili)', async () => {
+    it('avvisa in applicazione (nessuna email) se il certificato non è analizzabile', async () => {
+      // Non c'è un template email per questo caso (decisione presa a monte,
+      // non cambiata da questo giro di correzione), ma il canale in-app
+      // esiste già: un certificato illeggibile non deve restare silenzioso.
       mockCalcolaGiorni.mockReturnValue(null)
       ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
         { tenantId: 't1', certificatePem: 'PEM-NON-VALIDO' },
       ])
+
+      await service.checkRentriCertificateExpiration()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: 't1',
+            type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
+            severity: 'ERROR',
+            relatedEntityId: 't1',
+            relatedEntityType: 'RentriCredential',
+          }),
+        })
+      )
+      expect(mockEmailService.sendEmail).not.toHaveBeenCalled()
+    })
+
+    it('non ripete l\'avviso "certificato non analizzabile" se ne esiste già uno recente', async () => {
+      const ieri = new Date()
+      ieri.setDate(ieri.getDate() - 1)
+      mockCalcolaGiorni.mockReturnValue(null)
+      ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
+        { tenantId: 't1', certificatePem: 'PEM-NON-VALIDO' },
+      ])
+      ;(mockPrisma.notification.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'n-esistente',
+        createdAt: ieri,
+      })
 
       await service.checkRentriCertificateExpiration()
 
@@ -284,6 +382,7 @@ describe('DeadlineCheckerService', () => {
       expect(mockPrisma.notification.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
+            tenantId: 't1',
             type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
             relatedEntityId: 't1',
             relatedEntityType: 'RentriCredential',

@@ -257,6 +257,7 @@ export class DeadlineCheckerService {
         // un'altra identica oggi (vale sia per l'avviso preventivo sia per
         // lo stato "già scaduta").
         const giaNotificata = await this.esisteNotificaRecente(
+          autorizzazione.tenantId,
           'AUTORIZZAZIONE_IN_SCADENZA',
           autorizzazione.id,
           'AutorizzazioneImpianto'
@@ -373,9 +374,61 @@ export class DeadlineCheckerService {
         const giorniAllaScadenza = calcolaGiorniAllaScadenzaCertificato(credenziale.certificatePem)
 
         if (giorniAllaScadenza === null) {
-          this.logger.warn('Certificato RENTRI non analizzabile: nessun avviso generato', {
-            tenantId: credenziale.tenantId,
+          this.logger.warn(
+            'Certificato RENTRI non analizzabile: avviso in applicazione (nessuna email)',
+            { tenantId: credenziale.tenantId }
+          )
+
+          // Il canale email non esiste per questo caso (nessun template
+          // dedicato, decisione presa a monte: non se ne inventa uno qui),
+          // ma quello in applicazione sì — un certificato illeggibile non
+          // deve restare silenzioso solo perché manca l'email. Stessa
+          // deduplicazione settimanale degli altri avvisi.
+          const giaNotificatoIllegibile = await this.esisteNotificaRecente(
+            credenziale.tenantId,
+            'CERTIFICATO_RENTRI_IN_SCADENZA',
+            credenziale.tenantId,
+            'RentriCredential'
+          )
+          if (giaNotificatoIllegibile) {
+            continue
+          }
+
+          const utentiDaAvvisare = await this.prisma.user.findMany({
+            where: {
+              tenantId: credenziale.tenantId,
+              role: { in: ['ADMIN', 'OPERATOR'] },
+            },
           })
+
+          for (const utente of utentiDaAvvisare) {
+            try {
+              await this.prisma.notification.create({
+                data: {
+                  tenantId: credenziale.tenantId,
+                  userId: utente.id,
+                  type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
+                  title: 'Certificato RENTRI non leggibile',
+                  message:
+                    "Il certificato RENTRI configurato non è analizzabile: verificare che sia valido e caricato correttamente. Le trasmissioni verso l'ente potrebbero non funzionare finché non viene corretto.",
+                  severity: 'ERROR',
+                  relatedEntityId: credenziale.tenantId,
+                  relatedEntityType: 'RentriCredential',
+                  actionUrl: '/rentri/credenziali',
+                  isRead: false,
+                },
+              })
+
+              notificationsSent++
+              this.logger.debug(`Avviso certificato RENTRI non leggibile inviato a ${utente.email}`)
+            } catch (error) {
+              this.logger.error(
+                `Creazione avviso certificato RENTRI non leggibile fallita per ${utente.email}`,
+                error
+              )
+            }
+          }
+
           continue
         }
 
@@ -390,6 +443,7 @@ export class DeadlineCheckerService {
         // Deduplicazione settimanale: stesso criterio del Task 1, entità
         // identificata dal tenant (un solo certificato RENTRI per tenant).
         const giaNotificato = await this.esisteNotificaRecente(
+          credenziale.tenantId,
           'CERTIFICATO_RENTRI_IN_SCADENZA',
           credenziale.tenantId,
           'RentriCredential'
@@ -477,14 +531,26 @@ export class DeadlineCheckerService {
   }
 
   /**
-   * Vero se esiste già, per lo stesso tipo e la stessa entità
-   * (`relatedEntityId` + `relatedEntityType`), una notifica creata negli
-   * ultimi `NOTIFICATION_DEDUP_GIORNI` giorni. Usata per non ripetere ogni
-   * giorno lo stesso avviso di scadenza (autorizzazioni impianto,
+   * Vero se esiste già, per lo stesso tenant, lo stesso tipo e la stessa
+   * entità (`relatedEntityId` + `relatedEntityType`), una notifica creata
+   * negli ultimi `NOTIFICATION_DEDUP_GIORNI` giorni. Usata per non ripetere
+   * ogni giorno lo stesso avviso di scadenza (autorizzazioni impianto,
    * certificato RENTRI): una notifica settimanale resta letta, una
    * quotidiana identica no.
+   *
+   * `tenantId` è OBBLIGATORIO nel filtro (regola di isolamento del
+   * progetto: ogni query filtra per tenant, il tenant è l'azienda). Senza
+   * di esso una notifica di un ALTRO tenant sulla stessa entità
+   * sopprimerebbe l'avviso dovuto a questo tenant — non un eccesso di
+   * lettura, ma un avviso mancato.
+   *
+   * Il confronto `createdAt: { gte: sogliaDedup }` include il limite: una
+   * notifica creata esattamente `NOTIFICATION_DEDUP_GIORNI` giorni fa conta
+   * ancora come "recente" e blocca la creazione di una nuova — la finestra
+   * di deduplicazione è quindi di 7 giorni pieni, non di "più di 7 giorni".
    */
   private async esisteNotificaRecente(
+    tenantId: string,
     type: 'AUTORIZZAZIONE_IN_SCADENZA' | 'CERTIFICATO_RENTRI_IN_SCADENZA',
     relatedEntityId: string,
     relatedEntityType: string
@@ -494,6 +560,7 @@ export class DeadlineCheckerService {
 
     const notificaRecente = await this.prisma.notification.findFirst({
       where: {
+        tenantId,
         type,
         relatedEntityId,
         relatedEntityType,
