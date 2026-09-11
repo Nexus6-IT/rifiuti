@@ -70,6 +70,12 @@ che nel frattempo è stato aggiunto allo schema.
 
 - [ ] **Passo 1: scrivere il test che fallisce**
 
+> **Correzione alla prima stesura, dalla scansione preliminare.** Il servizio
+> **non** inietta `NotificationService`: scrive la notifica direttamente con
+> `prisma.notification.create`, come fa `checkMudDeadlines`. E il metodo di quel
+> servizio si chiamerebbe comunque `createNotification`, non `create`. Il test
+> qui sotto è già corretto — la prima stesura era sbagliata.
+
 ```ts
 it('avvisa quando un autorizzazione scade fra 30 giorni', async () => {
   const fra30 = new Date()
@@ -80,11 +86,23 @@ it('avvisa quando un autorizzazione scade fra 30 giorni', async () => {
 
   await service.checkAuthorizationExpirations()
 
-  expect(notificationService.create).toHaveBeenCalledWith(
-    expect.objectContaining({ tenantId: 't1', severity: 'WARNING' })
+  expect(prisma.notification.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({
+        tenantId: 't1',
+        type: 'AUTORIZZAZIONE_IN_SCADENZA',
+        severity: 'WARNING',
+      }),
+    })
   )
 })
 ```
+
+**Passo 0, prima del test:** l'enum `NotificationType` non ha alcun valore per
+le scadenze (`SUBSCRIPTION_EXPIRING` è l'abbonamento, non le autorizzazioni).
+Serve una migrazione additiva che aggiunga `AUTORIZZAZIONE_IN_SCADENZA` e
+`CERTIFICATO_RENTRI_IN_SCADENZA` — quest'ultimo lo userà il Task 2. Formato:
+`ALTER TYPE "notification_type" ADD VALUE '<valore>';`, una riga per valore.
 
 - [ ] **Passo 2: eseguirlo e vederlo fallire**
 
