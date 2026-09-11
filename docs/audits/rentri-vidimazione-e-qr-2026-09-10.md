@@ -88,7 +88,7 @@ stampiamo contiene un URL nostro: va sostituito, non affiancato.
 L'errore non è stato tecnico ma di metodo: una conclusione negativa —
 «quell'endpoint non esiste» — è stata trattata come un fatto acquisito e ha
 prodotto la cancellazione di codice funzionante. Provare un nome e ricevere un
-404 dimostra che *quel nome* è sbagliato, mai che il servizio non esista.
+404 dimostra che _quel nome_ è sbagliato, mai che il servizio non esista.
 
 Il costo è stato alto: due mesi di lavoro impostati come se la vidimazione
 andasse reinventata, più un documento prodotto oggi che risponde a una domanda
@@ -97,3 +97,79 @@ sono ora un elenco esplicito con la storia di questo caso a commento.
 
 **Fonti**: [Guida tecnica alla struttura del FIR digitale (RENTRI)](https://demoapi.rentri.gov.it/docs?page=guida-tecnica-struttura-fir-digitale) ·
 [contratto `vidimazione-formulari` v1.0](https://demoapi.rentri.gov.it/docs/vidimazione-formulari/v1.0/openapi.json)
+
+---
+
+## 5. I blocchi virtuali — accertato sul manuale ministeriale (2026-09-11)
+
+Nato da una domanda del committente: «i blocchi vanno richiesti lato cliente? dove
+si evince? esiste un'API per farne richiesta, vederli, controllarne lo stato?».
+
+### La risposta, e la fonte
+
+**No, non esiste alcuna API per creare un blocco.** Non è una nostra lacuna. Il
+manuale ministeriale — Allegato 3 al Decreto Direttoriale 254 del 12/12/2024,
+«Manuale per l'emissione dei FIR cartacei con i servizi di supporto», §6 — lo
+dice testualmente:
+
+> Prima di vidimare digitalmente il FIR tramite interoperabilità l'operatore
+> iscritto al RENTRI deve creare il blocco virtuale dove vengono raccolti tutti i
+> FIR vidimati digitalmente. La creazione del blocco virtuale è una funzione che
+> deve essere svolta esclusivamente tramite accesso all'area riservata
+> «Operatori». **Non sono previste quindi API per la creazione del blocco
+> virtuale.**
+
+Il contratto concorda: dei dieci path di `vidimazione-formulari` l'unica scrittura
+è quella che **consuma** un numero (`POST /{codice_blocco}`), più l'annullamento
+di una vidimazione. Tutto il resto è lettura. Il percorso sul portale è
+Interoperabilità → Gestione blocchi virtuali dei FIR.
+
+### Correzione a quanto avevo scritto prima
+
+Avevo descritto il blocco come **un intervallo di numeri che si esaurisce**, e
+costruito su quello una domanda di prodotto su cosa fare quando finiscono. È
+**sbagliato**. Il manuale lo descrive come un _contenitore dove vengono raccolti_
+i FIR vidimati, e né il manuale né il contratto parlano mai di capienza, limite o
+esaurimento — cercati tutti i termini plausibili in entrambi. Il solo dato
+quantitativo è `numero_fir_vidimati`, un contatore di quelli già usati. Quindi
+l'avviso «stai per esaurire il blocco» non è costruibile e **non serve**.
+
+### Cosa dice il manuale, e che vincola il disegno
+
+- Il blocco va creato **prima** di qualunque vidimazione: senza, non si emette.
+- Può stare a livello di operatore **oppure** legato a una singola unità locale.
+- Nella stessa unità locale se ne possono avere **più d'uno**, tenuti distinti per
+  esigenze interne. L'esempio del ministero: un blocco per area aziendale o per
+  uno specifico mezzo di trasporto, quando i volumi sono alti.
+- Ogni blocco ha un codice generato dal sistema **e una descrizione scritta
+  dall'utente**, che serve a ritrovarlo. Nella nostra interfaccia è la descrizione
+  a dover essere in evidenza, non il codice.
+- I blocchi non si cancellano, si **disattivano** (creati per errore o non più
+  necessari).
+- Ambiente DEMO: massimo 100 blocchi per operatore.
+
+### Conseguenze per il prodotto
+
+1. **Nessun pulsante «richiedi blocco»**: mentirebbe. Al suo posto una schermata
+   che elenca i blocchi (descrizione, unità locale, stato, contatore, ultimo
+   utilizzo) e spiega dove si creano.
+2. **Il caso che conta è l'assenza.** Nessun blocco attivo = emissione
+   impossibile. Va detto **prima** che l'utente compili un formulario, non dopo:
+   è l'attrito peggiore, perché l'utente si aspetta di fare tutto da un posto solo.
+3. **Con più blocchi serve una scelta**, e va deciso se ogni volta o con un
+   predefinito per unità locale.
+
+---
+
+## 6. Stato del collegamento (2026-09-11): i client non sono raggiungibili
+
+Verificato sul codice. Dei cinque client RENTRI costruiti il 10/09, **nessuno ha
+un endpoint né è registrato in un modulo**: vidimazione, registro, copie e
+contenitore xFIR non sono usati da alcun file di produzione; trasmissioni è usato
+solo dai propri. Sono corretti e provati contro l'oracolo, ma inerti — la stessa
+condizione del job PDF rimosso il 09/09 perché privo di produttore e consumatore.
+
+**L'eccezione, che è anche il modello da seguire**: l'**annullamento del
+formulario** è collegato per intero — use case, endpoint `POST /:id/annullamento`,
+e nel frontend un dialogo che avvisa dell'irreversibilità presso l'ente prima di
+confermare. È l'unico pezzo dell'area RENTRI che un utente può davvero usare.
