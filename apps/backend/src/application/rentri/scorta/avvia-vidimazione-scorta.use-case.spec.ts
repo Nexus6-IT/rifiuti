@@ -136,4 +136,44 @@ describe('AvviaVidimazioneScortaUseCase', () => {
       TENANT
     )
   })
+
+  describe('verificaBlocco (validazione preventiva usata dal controller, PRIMA del 202)', () => {
+    it('rifiuta con 404 un codiceBlocco inesistente presso l’ente', async () => {
+      const { useCase } = build({ blocchiEsistenti: [] })
+
+      await expect(useCase.verificaBlocco(TENANT, 'BLK-INESISTENTE')).rejects.toThrow(
+        NotFoundException
+      )
+    })
+
+    it('risolve senza errori se il blocco esiste presso l’ente', async () => {
+      const { useCase } = build({ blocchiEsistenti: [{ codice_blocco: 'BLK-A' }] })
+
+      await expect(useCase.verificaBlocco(TENANT, 'BLK-A')).resolves.toBeUndefined()
+    })
+
+    it('un ente irraggiungibile (errore di comunicazione) è TRANSITORIO: non rifiuta la richiesta, si rimanda la verifica al ciclo di vidimazione', async () => {
+      const { useCase, vidimazioneClient, logger } = build()
+      vidimazioneClient.elencaBlocchi.mockRejectedValue(new Error('RENTRI non raggiungibile'))
+
+      await expect(useCase.verificaBlocco(TENANT, 'BLK-A')).resolves.toBeUndefined()
+
+      expect(logger.warn).toHaveBeenCalled()
+    })
+  })
+
+  describe('execute: un ente irraggiungibile durante la verifica preventiva non deve azzerare il lotto in silenzio', () => {
+    it('se elencaBlocchi fallisce per un errore di comunicazione, si procede comunque al ciclo di vidimazione (che isola per-numero, come prima di R6)', async () => {
+      const { useCase, vidimazioneClient, scortaRepo, logger } = build()
+      vidimazioneClient.elencaBlocchi.mockRejectedValue(new Error('RENTRI non raggiungibile'))
+      vidimazioneClient.vidimaFir.mockResolvedValue({ transazioneId: 'tx-1' })
+      vidimazioneClient.attendiEsitoVidimazione.mockResolvedValue(esitoOk(1))
+
+      const risultato = await useCase.execute(TENANT, 'BLK-A', 1)
+
+      expect(risultato).toEqual({ richiesti: 1, riusciti: 1, falliti: 0 })
+      expect(scortaRepo.inserisciDisponibile).toHaveBeenCalledTimes(1)
+      expect(logger.warn).toHaveBeenCalled()
+    })
+  })
 })

@@ -1,5 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { RentriVidimazioneClient } from '../../../infrastructure/rentri/rentri-vidimazione.client'
+import {
+  RentriVidimazioneClient,
+  BloccoModel,
+} from '../../../infrastructure/rentri/rentri-vidimazione.client'
 import { RentriScortaRepository } from '../../../infrastructure/persistence/rentri-scorta.repository'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
@@ -40,6 +43,30 @@ export interface EsitoAvvioVidimazioneScorta {
  * operatore. Stessa regola di `ImpostaBloccoPredefinitoUseCase`: si
  * interroga `elencaBlocchi` per quel `codiceBlocco` e si rifiuta con 404 se
  * non risulta, PRIMA di qualunque chiamata a `vidimaFir`.
+ *
+ * Questa verifica è esposta anche come metodo pubblico separato,
+ * {@link AvviaVidimazioneScortaUseCase.verificaBlocco}: il controller la
+ * `await`a PRIMA di rispondere 202, cosa che `execute` da solo non permette
+ * di fare in "fire and forget" (un `NotFoundException` lanciato dentro una
+ * promise non attesa muore in un `.catch(log)`, invisibile al chiamante —
+ * il difetto corretto qui). Il ciclo di vidimazione vero e proprio resta
+ * "avvia e dimentica": solo l'esito della verifica risale al chiamante come
+ * errore reale.
+ *
+ * **Blocco inesistente vs. ente irraggiungibile — NON sono lo stesso esito.**
+ * Un `codiceBlocco` confermato assente nella risposta dell'ente è un
+ * rifiuto DEFINITIVO (404, fail-closed, non si scrive). Un errore nel
+ * *contattare* l'ente (rete, timeout, 5xx) durante questa verifica è
+ * TRANSITORIO: non possiamo affermare né negare che il blocco esista. In
+ * questo caso NON si rifiuta la richiesta — si prosegue con il ciclo di
+ * vidimazione, che isola per-numero (v. sopra) esattamente come faceva
+ * prima che questa verifica preventiva esistesse: se l'ente è davvero
+ * irraggiungibile, ogni chiamata a `vidimaFir` fallirà a sua volta e verrà
+ * contata in `falliti`. Trattare un guasto transitorio come un rifiuto
+ * definitivo (o peggio, come nella regressione corretta qui, farlo morire
+ * in un log dentro un fire-and-forget) sarebbe più fail-closed di quanto
+ * serva e, nel caso fire-and-forget, silenzioso — il progetto vuole
+ * fail-closed sulle scritture, non il silenzio sui guasti di rete.
  */
 @Injectable()
 export class AvviaVidimazioneScortaUseCase {
@@ -52,24 +79,57 @@ export class AvviaVidimazioneScortaUseCase {
     this.logger.setContext('AvviaVidimazioneScortaUseCase')
   }
 
-  async execute(
-    tenantId: string,
-    codiceBlocco: string,
-    quantita: number
-  ): Promise<EsitoAvvioVidimazioneScorta> {
+  /**
+   * Verifica preventiva del `codiceBlocco`, PRIMA di scrivere.
+   *
+   * Rifiuta con `NotFoundException` (rifiuto definitivo, fail-closed) solo
+   * se l'ente RISPONDE e il blocco non risulta nell'elenco. Se l'ente non
+   * risponde (errore di comunicazione, condizione transitoria), NON
+   * rifiuta: si limita a loggare e a restituire, lasciando che sia il
+   * ciclo di vidimazione a scoprire — e contare come `falliti` — un ente
+   * davvero irraggiungibile, come faceva prima di questa verifica.
+   *
+   * Chiamato sia dal controller (atteso, PRIMA del 202) sia da `execute`
+   * stesso (per chi lo invoca direttamente, come `RentriRifornimentoScortaJob`).
+   */
+  async verificaBlocco(tenantId: string, codiceBlocco: string): Promise<void> {
     const cf = await risolviCfTenant(this.prisma, tenantId)
-    const { risultati } = await this.vidimazioneClient.elencaBlocchi(
-      cf,
-      { codiceBlocco, ancheDisattivi: true },
-      tenantId
-    )
-    const blocco = risultati.find(b => b.codice_blocco === codiceBlocco)
 
+    let risultati: BloccoModel[]
+    try {
+      ;({ risultati } = await this.vidimazioneClient.elencaBlocchi(
+        cf,
+        { codiceBlocco, ancheDisattivi: true },
+        tenantId
+      ))
+    } catch (error: unknown) {
+      this.logger.warn(
+        'Verifica preventiva del blocco RENTRI non riuscita per un errore di comunicazione con l’ente ' +
+          '(condizione transitoria): si procede comunque con la vidimazione, sarà il ciclo per-numero a ' +
+          'rilevare ed a contare un ente davvero irraggiungibile',
+        {
+          tenantId,
+          codiceBlocco,
+          errore: error instanceof Error ? error.message : String(error),
+        }
+      )
+      return
+    }
+
+    const blocco = risultati.find(b => b.codice_blocco === codiceBlocco)
     if (!blocco) {
       throw new NotFoundException(
         `Nessun blocco virtuale RENTRI con codice ${codiceBlocco} trovato per questo operatore.`
       )
     }
+  }
+
+  async execute(
+    tenantId: string,
+    codiceBlocco: string,
+    quantita: number
+  ): Promise<EsitoAvvioVidimazioneScorta> {
+    await this.verificaBlocco(tenantId, codiceBlocco)
 
     let riusciti = 0
     let falliti = 0

@@ -24,6 +24,7 @@ describe('RentriScortaController', () => {
     const elencaBlocchi = { execute: jest.fn() }
     const getScorta = { execute: jest.fn() }
     const avviaVidimazione = {
+      verificaBlocco: jest.fn().mockResolvedValue(undefined),
       execute: jest.fn().mockResolvedValue({ richiesti: 5, riusciti: 5, falliti: 0 }),
     }
     const impostaBloccoPredefinito = { execute: jest.fn() }
@@ -82,8 +83,24 @@ describe('RentriScortaController', () => {
     const risultato = await controller.vidimaLotto({ codiceBlocco: 'BLK-A', quantita: 5 }, user)
 
     expect(risultato).toEqual({ avviato: true, richiesti: 5 })
+    expect(avviaVidimazione.verificaBlocco).toHaveBeenCalledWith('tenant-1', 'BLK-A')
     expect(avviaVidimazione.execute).toHaveBeenCalledWith('tenant-1', 'BLK-A', 5)
     risolviVidimazione() // evita una promise pendente a fine test
+  })
+
+  it('POST /rentri/scorta/vidima rifiuta con 404 se il blocco non esiste, e NON avvia la vidimazione (verifica attesa PRIMA del 202)', async () => {
+    const { controller, avviaVidimazione } = build()
+    avviaVidimazione.verificaBlocco.mockRejectedValue(
+      new NotFoundException(
+        'Nessun blocco virtuale RENTRI con codice BLK-X trovato per questo operatore.'
+      )
+    )
+
+    await expect(
+      controller.vidimaLotto({ codiceBlocco: 'BLK-X', quantita: 5 }, user)
+    ).rejects.toThrow(NotFoundException)
+
+    expect(avviaVidimazione.execute).not.toHaveBeenCalled()
   })
 
   it('PUT /rentri/blocchi/:codiceBlocco/predefinito mappa NotFoundException del dominio', async () => {

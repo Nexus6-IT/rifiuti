@@ -105,6 +105,10 @@ export class RentriScortaController {
       'Consultare GET /rentri/scorta per vedere quando i numeri diventano disponibili.',
   })
   @ApiResponse({ status: 202, description: 'Vidimazione avviata' })
+  @ApiResponse({
+    status: 404,
+    description: 'Nessun blocco virtuale RENTRI con questo codice trovato per questo operatore',
+  })
   async vidimaLotto(
     @Body() dto: VidimaScortaRentriDto,
     @CurrentUser() user: CurrentUserPayload
@@ -115,8 +119,20 @@ export class RentriScortaController {
       quantita: dto.quantita,
     })
 
-    // Fire-and-forget deliberato: la vidimazione non è immediata (v. audit
-    // RENTRI), l'endpoint risponde subito 202. L'esito arriva via GET /scorta.
+    // Verifica preventiva ATTESA: impedisce davvero la scrittura (e le
+    // chiamate a vidimaFir) per un blocco inesistente, e il suo esito
+    // risale al chiamante come errore vero (404), non come log silenzioso
+    // dentro un fire-and-forget. Un ente irraggiungibile qui è transitorio
+    // e NON fa fallire questa verifica (v. `AvviaVidimazioneScortaUseCase.verificaBlocco`).
+    try {
+      await this.avviaVidimazione.verificaBlocco(user.tenantId, dto.codiceBlocco)
+    } catch (error: unknown) {
+      throw this.mappaErroreDominio(error)
+    }
+
+    // Fire-and-forget deliberato SOLO per il ciclo di vidimazione: non è
+    // immediato (v. audit RENTRI), l'endpoint risponde subito 202 dopo la
+    // verifica di cui sopra. L'esito arriva via GET /scorta.
     this.avviaVidimazione.execute(user.tenantId, dto.codiceBlocco, dto.quantita).catch(error => {
       this.logger.error(
         'Vidimazione lotto RENTRI non riuscita in background',
