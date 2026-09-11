@@ -207,6 +207,40 @@ describe('mappaTrasportatore', () => {
     ).toThrow(DatoMancantePerRentriError)
   })
 
+  it('normalizza il numero Albo a sei cifre invece di rifiutarlo', () => {
+    const out = mappaTrasportatore(
+      { ragioneSociale: 'T', partitaIVA: '1', numeroIscrizione: 'MI/7490' },
+      'Terrestre'
+    )
+    expect(out.numero_iscrizione_albo).toBe('MI/007490')
+  })
+
+  it('mette in maiuscolo la sigla e allinea a destra con zeri', () => {
+    const out = mappaTrasportatore(
+      { ragioneSociale: 'T', partitaIVA: '1', numeroIscrizione: 'mi/7' },
+      'Terrestre'
+    )
+    expect(out.numero_iscrizione_albo).toBe('MI/000007')
+  })
+
+  it('rifiuta comunque se le cifre sono piu di sei (ambiguo, non si indovina)', () => {
+    expect(() =>
+      mappaTrasportatore(
+        { ragioneSociale: 'T', partitaIVA: '1', numeroIscrizione: 'MI/1234567' },
+        'Terrestre'
+      )
+    ).toThrow(DatoMancantePerRentriError)
+  })
+
+  it('rifiuta comunque se la sigla non e di due lettere (ambiguo, non si indovina)', () => {
+    expect(() =>
+      mappaTrasportatore(
+        { ragioneSociale: 'T', partitaIVA: '1', numeroIscrizione: 'M/123' },
+        'Terrestre'
+      )
+    ).toThrow(DatoMancantePerRentriError)
+  })
+
   it('lancia DatoMancantePerRentriError se manca tipo_trasporto', () => {
     expect(() =>
       mappaTrasportatore(
