@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { FIRStatus, RENTRISyncStatus } from '@prisma/client'
-import { PrismaService } from '../../infrastructure/database/prisma.service'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RentriScortaRepository } from '../../infrastructure/persistence/rentri-scorta.repository'
 import { VoceAttenzione, AttenzioneResult } from './raccogli-attenzione.use-case'
 
@@ -10,8 +10,15 @@ import { VoceAttenzione, AttenzioneResult } from './raccogli-attenzione.use-case
  * DB_TO_STATO — un formulario ancora in bozza non è "emesso", non ha nulla
  * da trasmettere) e ANNULLATO (`CANCELLED` — un documento chiuso non va
  * trasmesso, anche se non ha mai raggiunto `rentriNumeroFir`/`SYNCED`).
- * Stesso filtro di `get-aggregated-dashboard.handler.ts` (righe 69-70), che
- * esclude `CANCELLED` esplicitamente insieme a `DRAFT`/`AWAITING_PRODUCER`.
+ *
+ * NOTA (corretta in revisione finale, 2026-09-11): questa lista NON è "lo
+ * stesso filtro" di `get-aggregated-dashboard.handler.ts` — quella query
+ * (righe 69-70) usa una lista di INCLUSIONE (`status: { in: [...] }`) per
+ * rispondere a una domanda diversa, "dove devo intervenire adesso" per una
+ * vista aggregata multi-tenant, e non menziona affatto `CANCELLED`. La
+ * citazione precedente era sbagliata; il filtro qui sotto resta corretto per
+ * la domanda che questo file pone ("cosa è ancora da trasmettere"), solo non
+ * supportato da quel riferimento.
  *
  * Corretto in revisione (giro 1): la prima versione ometteva `CANCELLED`,
  * facendo contare — e in caso di un tentativo di sync fallito prima
