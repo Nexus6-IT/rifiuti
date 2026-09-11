@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { PrismaService } from '../../infrastructure/database/prisma.service'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 
 /** Conteggio dei formulari creati in un dato mese ('YYYY-MM'). */
 export interface AndamentoMensileVoce {
