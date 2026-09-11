@@ -383,12 +383,23 @@ export class DeadlineCheckerService {
           // dedicato, decisione presa a monte: non se ne inventa uno qui),
           // ma quello in applicazione sì — un certificato illeggibile non
           // deve restare silenzioso solo perché manca l'email. Stessa
-          // deduplicazione settimanale degli altri avvisi.
+          // deduplicazione settimanale degli altri avvisi, ma con
+          // `relatedEntityType` DISTINTO ('RentriCredentialIllegibile',
+          // non 'RentriCredential'): correzione di revisione (giro 2) — la
+          // stessa chiave del ramo "in scadenza" avrebbe fatto sì che una
+          // notifica di illeggibilità di oggi sopprimesse un legittimo
+          // avviso di scadenza fra due giorni (e viceversa), perché
+          // `esisteNotificaRecente` non distingue le due semantiche a parità
+          // di `type`+`relatedEntityId`. `relatedEntityId` resta il
+          // `tenantId` (è `@db.Uuid`: non vi si può concatenare un
+          // suffisso testuale come `${tenantId}:illeggibile`, verrebbe
+          // rifiutato dal database), la disambiguazione passa da
+          // `relatedEntityType`, che è `@db.VarChar(50)`.
           const giaNotificatoIllegibile = await this.esisteNotificaRecente(
             credenziale.tenantId,
             'CERTIFICATO_RENTRI_IN_SCADENZA',
             credenziale.tenantId,
-            'RentriCredential'
+            'RentriCredentialIllegibile'
           )
           if (giaNotificatoIllegibile) {
             continue
@@ -413,7 +424,7 @@ export class DeadlineCheckerService {
                     "Il certificato RENTRI configurato non è analizzabile: verificare che sia valido e caricato correttamente. Le trasmissioni verso l'ente potrebbero non funzionare finché non viene corretto.",
                   severity: 'ERROR',
                   relatedEntityId: credenziale.tenantId,
-                  relatedEntityType: 'RentriCredential',
+                  relatedEntityType: 'RentriCredentialIllegibile',
                   actionUrl: '/rentri/credenziali',
                   isRead: false,
                 },

@@ -327,6 +327,11 @@ describe('DeadlineCheckerService', () => {
       // Non c'è un template email per questo caso (decisione presa a monte,
       // non cambiata da questo giro di correzione), ma il canale in-app
       // esiste già: un certificato illeggibile non deve restare silenzioso.
+      // `relatedEntityType` è 'RentriCredentialIllegibile', DISTINTO da
+      // 'RentriCredential' usato dal ramo "in scadenza" (correzione di
+      // revisione, giro 2): stessa entità (`relatedEntityId` = tenantId),
+      // ma chiave di deduplicazione diversa per non far collidere le due
+      // semantiche.
       mockCalcolaGiorni.mockReturnValue(null)
       ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
         { tenantId: 't1', certificatePem: 'PEM-NON-VALIDO' },
@@ -341,7 +346,7 @@ describe('DeadlineCheckerService', () => {
             type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
             severity: 'ERROR',
             relatedEntityId: 't1',
-            relatedEntityType: 'RentriCredential',
+            relatedEntityType: 'RentriCredentialIllegibile',
           }),
         })
       )
@@ -411,6 +416,65 @@ describe('DeadlineCheckerService', () => {
           }),
         })
       )
+    })
+
+    it('non confonde la chiave di dedup del certificato illeggibile con quella del certificato in scadenza (due notifiche distinte)', async () => {
+      // Regressione del rilievo di revisione (giro 2): se il ramo
+      // "illeggibile" usasse lo stesso `relatedEntityType` del ramo "in
+      // scadenza", la dedup basata su
+      // `{ tenantId, type, relatedEntityId, relatedEntityType, createdAt }`
+      // troverebbe la notifica di ieri (illeggibile) e salterebbe l'avviso
+      // legittimo di oggi (in scadenza fra 2 giorni), e viceversa. Simula un
+      // mini-database in memoria per `notification.create`/`findFirst` così
+      // la seconda chiamata vede davvero cosa ha scritto la prima — un
+      // semplice `mockResolvedValueOnce(null)` non lo dimostrerebbe.
+      const notificheCreate: Array<{
+        tenantId: string
+        type: string
+        relatedEntityId: string
+        relatedEntityType: string
+      }> = []
+
+      ;(mockPrisma.notification.create as jest.Mock).mockImplementation(
+        async ({ data }: { data: (typeof notificheCreate)[number] }) => {
+          notificheCreate.push(data)
+          return data
+        }
+      )
+      ;(mockPrisma.notification.findFirst as jest.Mock).mockImplementation(
+        async ({
+          where,
+        }: {
+          where: {
+            tenantId: string
+            type: string
+            relatedEntityId: string
+            relatedEntityType: string
+          }
+        }) =>
+          notificheCreate.find(
+            n =>
+              n.tenantId === where.tenantId &&
+              n.type === where.type &&
+              n.relatedEntityId === where.relatedEntityId &&
+              n.relatedEntityType === where.relatedEntityType
+          ) ?? null
+      )
+      ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
+        { tenantId: 't1', certificatePem: 'PEM-QUALSIASI' },
+      ])
+
+      // Giorno T: il certificato non è analizzabile.
+      mockCalcolaGiorni.mockReturnValue(null)
+      await service.checkRentriCertificateExpiration()
+
+      // Giorno T+2: il certificato è stato corretto ed è a 15 giorni dalla
+      // scadenza (un intervallo di avviso previsto).
+      mockCalcolaGiorni.mockReturnValue(15)
+      await service.checkRentriCertificateExpiration()
+
+      expect(notificheCreate).toHaveLength(2)
+      expect(notificheCreate[0].relatedEntityType).not.toBe(notificheCreate[1].relatedEntityType)
     })
   })
 })
