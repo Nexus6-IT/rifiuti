@@ -1,17 +1,23 @@
 import { RaccogliIndicatoriAzioneUseCase } from './raccogli-indicatori-azione.use-case'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 
 const TENANT = 'tenant-uuid-001'
 
-function buildPrisma(overrides: any = {}) {
+// L'use case legge tutti i model dal client esteso `this.prisma.db.<model>`
+// (difesa in profondità RLS, rilievo revisione finale 2026-09-11), non dal
+// client nudo: il mock riproduce quella forma, non `prisma.<model>` diretto.
+function buildPrisma(overrides: any = {}): PrismaService {
   return {
-    fIR: {
-      groupBy: jest.fn().mockResolvedValue([]),
+    db: {
+      fIR: {
+        groupBy: jest.fn().mockResolvedValue([]),
+      },
+      rentriUnitaLocale: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      ...overrides,
     },
-    rentriUnitaLocale: {
-      findMany: jest.fn().mockResolvedValue([]),
-    },
-    ...overrides,
-  }
+  } as unknown as PrismaService
 }
 
 function buildScortaRepo(overrides: any = {}) {
@@ -42,7 +48,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       expect(voce.dettaglio).toMatch(/3/)
       expect(voce.azione?.rotta).toBe('/fir')
 
-      expect(prisma.fIR.groupBy).toHaveBeenCalledWith(
+      expect(prisma.db.fIR.groupBy).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ tenantId: TENANT }),
         })
@@ -83,7 +89,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
 
       await useCase.raccogli(TENANT)
 
-      const { where } = (prisma.fIR.groupBy as jest.Mock).mock.calls[0][0]
+      const { where } = (prisma.db.fIR.groupBy as jest.Mock).mock.calls[0][0]
       expect(where.status.notIn).toContain('CANCELLED')
     })
   })
@@ -150,7 +156,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       const risultato = await useCase.raccogli(TENANT)
 
       expect(risultato.voci).toHaveLength(0)
-      expect(prisma.rentriUnitaLocale.findMany).toHaveBeenCalledWith(
+      expect(prisma.db.rentriUnitaLocale.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ tenantId: TENANT }),
         })

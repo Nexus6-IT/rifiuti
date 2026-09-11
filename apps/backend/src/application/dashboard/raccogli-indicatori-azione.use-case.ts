@@ -43,6 +43,13 @@ const STATI_ESCLUSI_DA_TRASMETTERE: FIRStatus[] = [
  *
  * Isolamento: ogni query è filtrata per `tenantId`, preso dal contesto
  * autenticato dal chiamante (mai da un parametro scelto dal chiamante).
+ *
+ * DIFESA IN PROFONDITÀ (rilievo revisione finale, 2026-09-11): le query
+ * passano da `this.prisma.db.<model>` (client esteso con `rlsExtension`),
+ * non dal client nudo — stessa scelta di `RaccogliAttenzioneUseCase`. `FIR` e
+ * `RentriUnitaLocale` sono entrambi in `TENANT_SCOPED_MODELS`, quindi
+ * l'iniezione automatica del `tenantId` copre anche queste query se il
+ * filtro esplicito venisse mai dimenticato.
  */
 @Injectable()
 export class RaccogliIndicatoriAzioneUseCase {
@@ -82,7 +89,7 @@ export class RaccogliIndicatoriAzioneUseCase {
    * normale del job periodico), altrimenti 'avviso'.
    */
   private async voceFormulariDaTrasmettere(tenantId: string): Promise<VoceAttenzione[]> {
-    const gruppi = await this.prisma.fIR.groupBy({
+    const gruppi = await this.prisma.db.fIR.groupBy({
       by: ['rentriSyncStatus'],
       where: {
         tenantId,
@@ -132,7 +139,7 @@ export class RaccogliIndicatoriAzioneUseCase {
    * un'informazione utile anche quando va tutto bene, non solo un allarme.
    */
   private async vociScortaVidimata(tenantId: string): Promise<VoceAttenzione[]> {
-    const unita = await this.prisma.rentriUnitaLocale.findMany({
+    const unita = await this.prisma.db.rentriUnitaLocale.findMany({
       where: { tenantId, dimensioneScortaDesiderata: { not: null } },
       select: { numIscrSito: true, denominazione: true, dimensioneScortaDesiderata: true },
     })

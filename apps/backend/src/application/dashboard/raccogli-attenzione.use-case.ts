@@ -76,6 +76,15 @@ export function ordinaVociPerGravita(voci: VoceAttenzione[]): VoceAttenzione[] {
  * Aggiungere una voce nuova è aggiungere un metodo privato che restituisce
  * `VoceAttenzione[]` e includerlo nell'array `raccoglitori` di `raccogli()`
  * — non richiede toccare le voci esistenti.
+ *
+ * DIFESA IN PROFONDITÀ (rilievo revisione finale, 2026-09-11): tutte le query
+ * qui sotto passano da `this.prisma.db.<model>`, il client ESTESO con
+ * `rlsExtension` (v. `prisma.service.ts`), non dal client nudo. I filtri
+ * espliciti per `tenantId` restano tutti al loro posto — non sono ridondanti,
+ * sono la prima linea — ma se uno di essi venisse dimenticato in futuro
+ * l'estensione lo inietterebbe comunque, per i model tutti presenti in
+ * `TENANT_SCOPED_MODELS` (`RentriCredential`, `AutorizzazioneImpianto`,
+ * `Trasportatore`, `Destinatario`).
  */
 @Injectable()
 export class RaccogliAttenzioneUseCase {
@@ -101,7 +110,7 @@ export class RaccogliAttenzioneUseCase {
    * di notifica) — non ne riscrive la logica di parsing.
    */
   private async voceCertificatoRentri(tenantId: string): Promise<VoceAttenzione[]> {
-    const credenziale = await this.prisma.rentriCredential.findUnique({
+    const credenziale = await this.prisma.db.rentriCredential.findUnique({
       where: { tenantId },
       select: { certificatePem: true },
     })
@@ -176,7 +185,7 @@ export class RaccogliAttenzioneUseCase {
     const limite = new Date(oggi)
     limite.setDate(limite.getDate() + SOGLIA_AVVISO_GIORNI)
 
-    const autorizzazioni = await this.prisma.autorizzazioneImpianto.findMany({
+    const autorizzazioni = await this.prisma.db.autorizzazioneImpianto.findMany({
       where: {
         tenantId,
         dataScadenza: { not: null, lte: limite },
@@ -215,7 +224,7 @@ export class RaccogliAttenzioneUseCase {
     const limite = new Date(oggi)
     limite.setDate(limite.getDate() + SOGLIA_AVVISO_GIORNI)
 
-    const trasportatori = await this.prisma.trasportatore.findMany({
+    const trasportatori = await this.prisma.db.trasportatore.findMany({
       where: {
         tenantId,
         scadenzaIscrizione: { not: null, lte: limite },
@@ -253,7 +262,7 @@ export class RaccogliAttenzioneUseCase {
     const limite = new Date(oggi)
     limite.setDate(limite.getDate() + SOGLIA_AVVISO_GIORNI)
 
-    const destinatari = await this.prisma.destinatario.findMany({
+    const destinatari = await this.prisma.db.destinatario.findMany({
       where: {
         tenantId,
         scadenzaAutorizzazione: { not: null, lte: limite },

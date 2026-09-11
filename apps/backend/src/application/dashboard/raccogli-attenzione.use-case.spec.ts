@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { RaccogliAttenzioneUseCase } from './raccogli-attenzione.use-case'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 
 // Stesso pattern di `rentri-certificato-scadenza.job.spec.ts`: generare un
 // vero certificato X.509 firmato richiederebbe OpenSSL o una libreria
@@ -27,18 +28,28 @@ function validToFraGiorni(giorni: number): string {
   return new Date(Date.now() + giorni * 24 * 60 * 60 * 1000 + 12 * 60 * 60 * 1000).toUTCString()
 }
 
+/** Percorso del router Angular, letto dal sorgente (non duplicato a mano). */
+const PERCORSO_APP_ROUTES = path.join(__dirname, '../../../../frontend/src/app/app.routes.ts')
+
 /**
  * Rotte realmente dichiarate nel router Angular. Letto dal sorgente (non
  * duplicato a mano) così che una rotta rinominata o rimossa in
  * `app.routes.ts` faccia fallire questo test invece di lasciare un
  * collegamento morto in produzione (rilievo revisione finale, 2026-09-11:
  * `/rentri/credenziali` non è mai esistita, `/impianti/...` nemmeno).
+ *
+ * `null` quando il file non esiste (rilievo revisione finale, 2026-09-11):
+ * questa suite backend può girare in contesti dove l'albero `frontend/` non
+ * è presente accanto a `backend/` (es. backend testato da solo, checkout
+ * parziale in CI). In quel caso il test che usa questa funzione deve
+ * saltare con un messaggio esplicito, non fallire con un `ENOENT` che non
+ * dice nulla sull'intento del controllo.
  */
-function percorsiDichiaratiFrontend(): Set<string> {
-  const contenuto = fs.readFileSync(
-    path.join(__dirname, '../../../../frontend/src/app/app.routes.ts'),
-    'utf-8'
-  )
+function percorsiDichiaratiFrontend(): Set<string> | null {
+  if (!fs.existsSync(PERCORSO_APP_ROUTES)) {
+    return null
+  }
+  const contenuto = fs.readFileSync(PERCORSO_APP_ROUTES, 'utf-8')
   const percorsi = new Set<string>()
   const regex = /path:\s*'([^']*)'/g
   let corrispondenza: RegExpExecArray | null
@@ -65,22 +76,27 @@ function rottaDichiarata(rotta: string, percorsi: Set<string>): boolean {
   return percorsi.has(conSegnaposto)
 }
 
-function buildPrisma(overrides: any = {}) {
+// L'use case legge tutti i model dal client esteso `this.prisma.db.<model>`
+// (difesa in profondità RLS, rilievo revisione finale 2026-09-11), non dal
+// client nudo: il mock riproduce quella forma, non `prisma.<model>` diretto.
+function buildPrisma(overrides: any = {}): PrismaService {
   return {
-    rentriCredential: {
-      findUnique: jest.fn().mockResolvedValue(null),
+    db: {
+      rentriCredential: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      autorizzazioneImpianto: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      trasportatore: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      destinatario: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      ...overrides,
     },
-    autorizzazioneImpianto: {
-      findMany: jest.fn().mockResolvedValue([]),
-    },
-    trasportatore: {
-      findMany: jest.fn().mockResolvedValue([]),
-    },
-    destinatario: {
-      findMany: jest.fn().mockResolvedValue([]),
-    },
-    ...overrides,
-  }
+  } as unknown as PrismaService
 }
 
 describe('RaccogliAttenzioneUseCase', () => {
@@ -110,7 +126,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       expect(voce.azione).toBeDefined()
       expect(voce.azione?.rotta).toBe('/rentri/certificato')
 
-      expect(prisma.rentriCredential.findUnique).toHaveBeenCalledWith(
+      expect(prisma.db.rentriCredential.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { tenantId: TENANT } })
       )
     })
@@ -198,7 +214,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       // peggio di nessun collegamento, quindi `azione` resta assente.
       expect(risultato.voci[0].azione).toBeUndefined()
 
-      expect(prisma.autorizzazioneImpianto.findMany).toHaveBeenCalledWith(
+      expect(prisma.db.autorizzazioneImpianto.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ tenantId: TENANT }),
         })
@@ -245,7 +261,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       expect(risultato.voci[0].titolo).toMatch(/Trasporti Rossi SRL/)
       expect(risultato.voci[0].azione?.rotta).toBe('/trasportatori')
 
-      expect(prisma.trasportatore.findMany).toHaveBeenCalledWith(
+      expect(prisma.db.trasportatore.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ tenantId: TENANT }),
         })
@@ -303,7 +319,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       expect(risultato.voci[0].titolo).toMatch(/Impianto Bianchi SPA/)
       expect(risultato.voci[0].azione?.rotta).toBe('/destinatari')
 
-      expect(prisma.destinatario.findMany).toHaveBeenCalledWith(
+      expect(prisma.db.destinatario.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ tenantId: TENANT }),
         })
@@ -375,6 +391,14 @@ describe('RaccogliAttenzioneUseCase', () => {
 
       const risultato = await useCase.raccogli(TENANT)
       const percorsi = percorsiDichiaratiFrontend()
+      if (percorsi === null) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[skip] "${PERCORSO_APP_ROUTES}" non trovato: albero frontend assente in ` +
+            'questo contesto di esecuzione, impossibile verificare i collegamenti contro le rotte reali.'
+        )
+        return
+      }
       const azioniConRotta = risultato.voci.filter(voce => voce.azione)
 
       // Almeno una voce con azione deve essere stata effettivamente prodotta

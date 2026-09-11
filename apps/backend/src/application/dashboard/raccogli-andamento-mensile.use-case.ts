@@ -59,6 +59,14 @@ const STATI_ESCLUSI_SQL = Prisma.raw("'DRAFT', 'AWAITING_PRODUCER', 'CANCELLED'"
  * Query aggregata via `$queryRaw` (`GROUP BY date_trunc('month', ...)`),
  * non un `findMany` di tutti i formulari dell'anno da contare in memoria:
  * dodici mesi di formulari di un tenant attivo sono tanti.
+ *
+ * NIENTE DIFESA IN PROFONDITÀ QUI (rilievo revisione finale, 2026-09-11):
+ * `this.prisma.$queryRaw` usa il client NUDO, non `this.prisma.db` esteso
+ * con `rlsExtension` — per disegno, non per svista. L'estensione intercetta
+ * solo le operazioni del Prisma Client (`findMany`, `groupBy`, ...); una SQL
+ * grezza le è invisibile per costruzione, indipendentemente da quale dei due
+ * client la esegue. L'isolamento per tenant qui è SOLO il filtro esplicito
+ * `tenant_id = ${tenantId}::uuid` nella query sotto.
  */
 @Injectable()
 export class RaccogliAndamentoMensileUseCase {

@@ -24,7 +24,7 @@ function voceAttenzione(overrides: Partial<VoceAttenzione> = {}): VoceAttenzione
     gravita: 'avviso',
     titolo: 'Autorizzazione XYZ in scadenza',
     dettaglio: 'scade fra 12 giorni',
-    azione: { etichetta: 'Vedi autorizzazione', rotta: '/impianti/autorizzazioni/1' },
+    azione: { etichetta: 'Vedi autorizzazione', rotta: '/trasportatori' },
     ...overrides,
   }
 }
@@ -75,7 +75,7 @@ describe('DashboardComponent', () => {
             gravita: 'critico',
             titolo: 'Certificato RENTRI scaduto',
             dettaglio: 'scaduto da 3 giorni',
-            azione: { etichetta: 'Rinnova certificato', rotta: '/rentri/credenziali' },
+            azione: { etichetta: 'Rinnova certificato', rotta: '/rentri/certificato' },
           }),
           voceAttenzione({
             chiave: 'autorizzazione',
