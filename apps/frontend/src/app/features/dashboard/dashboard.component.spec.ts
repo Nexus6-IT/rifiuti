@@ -5,6 +5,7 @@ import { of, throwError } from 'rxjs'
 import { DashboardComponent } from './dashboard.component'
 import { FirService } from '../fir/fir.service'
 import { AttenzioneService, VoceAttenzione } from './attenzione.service'
+import { AndamentoService, AndamentoMensileResult } from './andamento.service'
 import { FIR, PaginatedFIRResponse } from '../../shared/models/fir.model'
 
 function paginaFIRVuota(): PaginatedFIRResponse {
@@ -28,11 +29,16 @@ function voceAttenzione(overrides: Partial<VoceAttenzione> = {}): VoceAttenzione
   }
 }
 
+function andamentoVuoto(): AndamentoMensileResult {
+  return { mesi: [] }
+}
+
 describe('DashboardComponent', () => {
   let fixture: ComponentFixture<DashboardComponent>
   let component: DashboardComponent
   let firService: jasmine.SpyObj<FirService>
   let attenzioneService: jasmine.SpyObj<AttenzioneService>
+  let andamentoService: jasmine.SpyObj<AndamentoService>
 
   function setup(): void {
     firService = jasmine.createSpyObj<FirService>('FirService', ['getFIRList'])
@@ -43,11 +49,15 @@ describe('DashboardComponent', () => {
     ])
     attenzioneService.getAttenzione.and.returnValue(of({ voci: [] }))
 
+    andamentoService = jasmine.createSpyObj<AndamentoService>('AndamentoService', ['getAndamento'])
+    andamentoService.getAndamento.and.returnValue(of(andamentoVuoto()))
+
     TestBed.configureTestingModule({
       imports: [DashboardComponent, RouterTestingModule],
       providers: [
         { provide: FirService, useValue: firService },
         { provide: AttenzioneService, useValue: attenzioneService },
+        { provide: AndamentoService, useValue: andamentoService },
       ],
     })
 
@@ -195,5 +205,57 @@ describe('DashboardComponent', () => {
     )
     expect(scorta).not.toBeNull()
     expect(scorta!.querySelector('p-tag')?.getAttribute('aria-label')).toBe('Gravità: Informativo')
+  })
+
+  describe('andamento mensile (Task 4)', () => {
+    it("mostra il grafico dei formulari emessi per mese con un'alternativa testuale per screen reader", () => {
+      setup()
+      andamentoService.getAndamento.and.returnValue(
+        of({
+          mesi: [
+            { mese: '2026-08', conteggio: 5 },
+            { mese: '2026-09', conteggio: 8 },
+          ],
+        })
+      )
+
+      fixture.detectChanges()
+
+      const html: HTMLElement = fixture.nativeElement
+      const grafico = html.querySelector('[data-testid="andamento-grafico"]')
+      expect(grafico).not.toBeNull()
+      expect(grafico!.getAttribute('aria-label')).toContain('formulari emessi')
+
+      // Alternativa testuale: un grafico che uno screen reader non sa
+      // leggere non comunica niente, quindi dev'esserci SEMPRE, non solo in
+      // caso di errore.
+      const tabella = html.querySelector('[data-testid="andamento-tabella-testuale"]')
+      expect(tabella).not.toBeNull()
+      expect(tabella!.textContent).toContain('8')
+      expect(tabella!.textContent).toContain('5')
+    })
+
+    it("un errore nel caricamento dell'andamento non rompe il resto del cruscotto", () => {
+      setup()
+      andamentoService.getAndamento.and.returnValue(throwError(() => new Error('boom')))
+
+      fixture.detectChanges()
+
+      const html: HTMLElement = fixture.nativeElement
+      expect(component.error).toBe('')
+      expect(html.querySelector('.stat-grid')).not.toBeNull()
+      expect(html.querySelector('[data-testid="andamento-errore"]')).not.toBeNull()
+    })
+
+    it('senza formulari emessi negli ultimi dodici mesi mostra uno stato vuoto, non un grafico piatto', () => {
+      setup()
+      andamentoService.getAndamento.and.returnValue(of(andamentoVuoto()))
+
+      fixture.detectChanges()
+
+      const html: HTMLElement = fixture.nativeElement
+      expect(html.querySelector('[data-testid="andamento-grafico"]')).toBeNull()
+      expect(html.querySelector('[data-testid="andamento-vuoto"]')).not.toBeNull()
+    })
   })
 })

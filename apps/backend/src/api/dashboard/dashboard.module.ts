@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common'
 import { DashboardController } from './dashboard.controller'
 import { AttenzioneController } from './attenzione.controller'
+import { AndamentoController } from './andamento.controller'
 import { AnalyticsModule } from '../../application/analytics/analytics.module'
 import { RaccogliAttenzioneUseCase } from '../../application/dashboard/raccogli-attenzione.use-case'
 import { RaccogliIndicatoriAzioneUseCase } from '../../application/dashboard/raccogli-indicatori-azione.use-case'
+import { RaccogliAndamentoMensileUseCase } from '../../application/dashboard/raccogli-andamento-mensile.use-case'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
 import { PrismaModule as PersistencePrismaModule } from '../../infrastructure/persistence/prisma.module'
 import { RentriScortaRepository } from '../../infrastructure/persistence/rentri-scorta.repository'
@@ -25,7 +27,12 @@ import { RentriScortaRepository } from '../../infrastructure/persistence/rentri-
  */
 @Module({
   imports: [AnalyticsModule, PrismaModule, PersistencePrismaModule],
-  controllers: [DashboardController, AttenzioneController],
-  providers: [RaccogliAttenzioneUseCase, RaccogliIndicatoriAzioneUseCase, RentriScortaRepository],
+  controllers: [DashboardController, AttenzioneController, AndamentoController],
+  providers: [
+    RaccogliAttenzioneUseCase,
+    RaccogliIndicatoriAzioneUseCase,
+    RaccogliAndamentoMensileUseCase,
+    RentriScortaRepository,
+  ],
 })
 export class DashboardModule {}

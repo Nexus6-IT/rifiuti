@@ -12,6 +12,7 @@ import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader
 import { EmptyStateComponent } from '../../shared/components/empty-state.component'
 import { ErrorStateComponent } from '../../shared/components/error-state.component'
 import { AttenzioneService, VoceAttenzione } from './attenzione.service'
+import { AndamentoService, AndamentoMensileVoce } from './andamento.service'
 
 interface DashboardStats {
   totalFIR: number
@@ -269,6 +270,64 @@ interface DashboardStats {
           </div>
         </div>
       </div>
+
+      <!-- Andamento mensile: un conteggio dice dove sei, una serie dice
+           dove stai andando (Task 4). -->
+      <section class="surface-card mt-4" aria-labelledby="andamento-heading" *ngIf="!error">
+        <h2 id="andamento-heading" class="card-title">Andamento mensile</h2>
+        <p class="andamento-sottotitolo">Formulari emessi negli ultimi dodici mesi</p>
+
+        <ng-container *ngIf="loadingAndamento">
+          <div aria-busy="true">
+            <span class="sr-only">Caricamento andamento mensile in corso</span>
+            <app-skeleton-loader variant="rectangle" width="100%" height="220px" [repeat]="1" />
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="!loadingAndamento">
+          <p *ngIf="erroreAndamento" class="andamento-errore" data-testid="andamento-errore">
+            Non è stato possibile caricare l'andamento mensile. Riprova più tardi.
+          </p>
+
+          <ng-container *ngIf="!erroreAndamento">
+            <p-chart
+              *ngIf="hasAndamentoData"
+              data-testid="andamento-grafico"
+              type="line"
+              [data]="andamentoChartData"
+              [options]="andamentoChartOptions"
+              role="img"
+              aria-label="Grafico a linee dei formulari emessi negli ultimi dodici mesi"
+            />
+
+            <div *ngIf="!hasAndamentoData" class="empty-state" data-testid="andamento-vuoto">
+              <i class="pi pi-chart-line empty-state__icon" aria-hidden="true"></i>
+              <p class="empty-state__title">Nessun formulario emesso negli ultimi dodici mesi</p>
+            </div>
+          </ng-container>
+
+          <!-- Alternativa testuale (WCAG): un grafico che uno screen reader
+               non sa leggere non comunica niente. Presente sempre insieme
+               al grafico, non solo come ripiego in caso di errore. -->
+          <table class="sr-only" data-testid="andamento-tabella-testuale">
+            <caption>
+              Formulari emessi per mese, ultimi dodici mesi
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Mese</th>
+                <th scope="col">Formulari emessi</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let voce of andamentoMesi">
+                <td>{{ formattaMeseEtichetta(voce.mese) }}</td>
+                <td>{{ voce.conteggio }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </ng-container>
+      </section>
     </div>
   `,
   styles: [
@@ -391,6 +450,16 @@ interface DashboardStats {
       .mt-4 {
         margin-top: var(--spacing-lg);
       }
+
+      .andamento-sottotitolo {
+        margin: 0 0 var(--spacing-base) 0;
+        color: var(--text-secondary);
+        font-size: var(--font-size-sm);
+      }
+
+      .andamento-errore {
+        color: var(--color-danger);
+      }
     `,
   ],
 })
@@ -426,15 +495,38 @@ export class DashboardComponent implements OnInit {
   chartData: any
   chartOptions: any
 
+  /**
+   * Formulari emessi per mese, ultimi dodici mesi (Task 4): un conteggio
+   * dice dove sei, questa serie dice dove stai andando. Tenuta anche a
+   * parte da `andamentoChartData` perché alimenta l'alternativa testuale
+   * della tabella (v. template) — un grafico che uno screen reader non sa
+   * leggere non comunica niente.
+   */
+  andamentoMesi: AndamentoMensileVoce[] = []
+  loadingAndamento = false
+
+  /**
+   * True quando l'ultima chiamata a getAndamento() è fallita. Stesso
+   * principio di erroreAttenzione: non deve rompere il resto del cruscotto,
+   * ma nemmeno sparire in silenzio.
+   */
+  erroreAndamento = false
+
+  andamentoChartData: any
+  andamentoChartOptions: any
+
   constructor(
     private firService: FirService,
-    private attenzioneService: AttenzioneService
+    private attenzioneService: AttenzioneService,
+    private andamentoService: AndamentoService
   ) {}
 
   ngOnInit(): void {
     this.loadDashboardData()
     this.loadAttenzione()
+    this.loadAndamento()
     this.initChart()
+    this.initAndamentoChart()
   }
 
   /**
@@ -474,6 +566,30 @@ export class DashboardComponent implements OnInit {
       informativo: 'info',
     }
     return severityMap[gravita]
+  }
+
+  /**
+   * Carica l'andamento mensile indipendentemente dal resto del cruscotto
+   * (stessa indipendenza di loadAttenzione): un fallimento qui non deve
+   * impedire la visualizzazione di indicatori, FIR recenti e grafico "per
+   * stato". Un fallimento resta comunque un fatto da comunicare
+   * (erroreAndamento), mai inghiottito in silenzio.
+   */
+  loadAndamento(): void {
+    this.loadingAndamento = true
+    this.erroreAndamento = false
+    this.andamentoService.getAndamento().subscribe({
+      next: risultato => {
+        this.andamentoMesi = risultato.mesi
+        this.updateAndamentoChartData()
+        this.loadingAndamento = false
+      },
+      error: () => {
+        this.andamentoMesi = []
+        this.erroreAndamento = true
+        this.loadingAndamento = false
+      },
+    })
   }
 
   loadDashboardData(): void {
@@ -537,6 +653,52 @@ export class DashboardComponent implements OnInit {
   get hasChartData(): boolean {
     const data: number[] = this.chartData?.datasets?.[0]?.data ?? []
     return data.some(v => v > 0)
+  }
+
+  initAndamentoChart(): void {
+    this.andamentoChartOptions = {
+      plugins: {
+        legend: { display: false },
+      },
+      scales: {
+        // Conteggi interi: niente tacche a metà formulario.
+        y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#e2e8f0' } },
+        x: { grid: { display: false } },
+      },
+    }
+  }
+
+  updateAndamentoChartData(): void {
+    this.andamentoChartData = {
+      labels: this.andamentoMesi.map(voce => this.formattaMeseEtichetta(voce.mese)),
+      datasets: [
+        {
+          label: 'Formulari emessi',
+          data: this.andamentoMesi.map(voce => voce.conteggio),
+          borderColor: '#1d4ed8',
+          backgroundColor: 'rgba(29, 78, 216, 0.15)',
+          tension: 0.3,
+          fill: true,
+        },
+      ],
+    }
+  }
+
+  /** True quando almeno un mese ha un formulario emesso — un grafico piatto a zero non aggiunge nulla. */
+  get hasAndamentoData(): boolean {
+    return this.andamentoMesi.some(voce => voce.conteggio > 0)
+  }
+
+  /** 'YYYY-MM' -> «set 2026», etichetta breve in italiano per asse del grafico e tabella testuale. */
+  formattaMeseEtichetta(mese: string): string {
+    const [anno, meseNumero] = mese.split('-').map(Number)
+    const data = new Date(Date.UTC(anno, meseNumero - 1, 1))
+    const etichetta = data.toLocaleDateString('it-IT', {
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
+    return etichetta
   }
 
   getStatoSeverity(
