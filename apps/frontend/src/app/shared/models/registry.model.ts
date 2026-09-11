@@ -26,6 +26,12 @@ export interface Trasportatore {
   // Scadenza dell'iscrizione all'Albo Gestori (ISO, solo data). Facoltativa:
   // le anagrafiche esistenti non ce l'hanno (Task 3 dello scadenzario).
   scadenzaIscrizione?: string
+  // Stato di scadenza calcolato dal backend (Task 4 dello scadenzario), con
+  // la stessa formula del controllo periodico: `false`/`null` quando
+  // `scadenzaIscrizione` non è impostata — l'assenza del dato non è mai
+  // un'iscrizione scaduta.
+  iscrizioneScaduta?: boolean
+  giorniAllaScadenza?: number | null
   createdAt: string
   updatedAt: string
 }
@@ -40,6 +46,12 @@ export interface Destinatario {
   // Scadenza dell'autorizzazione (ISO, solo data). Facoltativa: le
   // anagrafiche esistenti non ce l'hanno (Task 3 dello scadenzario).
   scadenzaAutorizzazione?: string
+  // Stato di scadenza calcolato dal backend (Task 4 dello scadenzario), con
+  // la stessa formula del controllo periodico: `false`/`null` quando
+  // `scadenzaAutorizzazione` non è impostata — l'assenza del dato non è mai
+  // un'autorizzazione scaduta.
+  autorizzazioneScaduta?: boolean
+  giorniAllaScadenza?: number | null
   createdAt: string
   updatedAt: string
 }

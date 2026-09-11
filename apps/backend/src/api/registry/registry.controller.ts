@@ -19,6 +19,7 @@ import {
   BadRequestException,
 } from '@nestjs/common'
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
+import { calcolaScadenza } from '../../application/notifications/scadenza-controparte.util'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
@@ -218,17 +219,26 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
-    const items = result.value.map(t => ({
-      id: t.id,
-      ragioneSociale: t.ragioneSociale,
-      partitaIVA: t.partitaIVA.getValue(),
-      sedeLegale: this.indirizzoToObject(t.sedeLegale),
-      numeroIscrizione: t.numeroIscrizione,
-      email: t.email,
-      telefono: t.telefono,
-      pec: t.pec,
-      scadenzaIscrizione: this.dateToIso(t.scadenzaIscrizione),
-    }))
+    const items = result.value.map(t => {
+      // Task 4 dello scadenzario: l'operatore va avvisato SUBITO quando
+      // sceglie il trasportatore in un formulario, non solo via email il
+      // giorno dopo. Stessa `calcolaScadenza` del controllo periodico
+      // (Task 1/3): senza data (`undefined`), niente avviso inventato.
+      const { giorniAllaScadenza, scaduta } = calcolaScadenza(t.scadenzaIscrizione)
+      return {
+        id: t.id,
+        ragioneSociale: t.ragioneSociale,
+        partitaIVA: t.partitaIVA.getValue(),
+        sedeLegale: this.indirizzoToObject(t.sedeLegale),
+        numeroIscrizione: t.numeroIscrizione,
+        email: t.email,
+        telefono: t.telefono,
+        pec: t.pec,
+        scadenzaIscrizione: this.dateToIso(t.scadenzaIscrizione),
+        iscrizioneScaduta: scaduta,
+        giorniAllaScadenza,
+      }
+    })
     return this.toPaginated(items)
   }
 
@@ -300,17 +310,24 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
-    const items = result.value.map(d => ({
-      id: d.id,
-      ragioneSociale: d.ragioneSociale,
-      partitaIVA: d.partitaIVA.getValue(),
-      sede: this.indirizzoToObject(d.sede),
-      numeroAutorizzazione: d.numeroAutorizzazione,
-      email: d.email,
-      telefono: d.telefono,
-      pec: d.pec,
-      scadenzaAutorizzazione: this.dateToIso(d.scadenzaAutorizzazione),
-    }))
+    const items = result.value.map(d => {
+      // Task 4 dello scadenzario: stessa logica dei trasportatori sopra —
+      // l'avviso compare alla scelta del destinatario, non solo via email.
+      const { giorniAllaScadenza, scaduta } = calcolaScadenza(d.scadenzaAutorizzazione)
+      return {
+        id: d.id,
+        ragioneSociale: d.ragioneSociale,
+        partitaIVA: d.partitaIVA.getValue(),
+        sede: this.indirizzoToObject(d.sede),
+        numeroAutorizzazione: d.numeroAutorizzazione,
+        email: d.email,
+        telefono: d.telefono,
+        pec: d.pec,
+        scadenzaAutorizzazione: this.dateToIso(d.scadenzaAutorizzazione),
+        autorizzazioneScaduta: scaduta,
+        giorniAllaScadenza,
+      }
+    })
     return this.toPaginated(items)
   }
 

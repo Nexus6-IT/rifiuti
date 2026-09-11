@@ -5,6 +5,7 @@ import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
+import { calcolaScadenza } from './scadenza-controparte.util'
 
 /**
  * Deadline Checker Service
@@ -257,10 +258,14 @@ export class DeadlineCheckerService {
 
       for (const autorizzazione of autorizzazioni) {
         const dataScadenza = autorizzazione.dataScadenza as Date
-        const giorniAllaScadenza = Math.ceil(
-          (dataScadenza.getTime() - oggi.getTime()) / (1000 * 60 * 60 * 24)
-        )
-        const scaduta = giorniAllaScadenza < 0
+        // Stessa formula usata per trasportatori/destinatari qui sotto e per
+        // l'avviso "a scelta" nel form FIR (Task 4): estratta in
+        // `calcolaScadenza` per non tenerne due copie.
+        // `dataScadenza` è sempre valorizzata qui (filtro `not: null` nella
+        // query sopra), quindi `giorniAllaScadenza` non è mai `null`.
+        const esito = calcolaScadenza(dataScadenza, oggi)
+        const giorniAllaScadenza = esito.giorniAllaScadenza as number
+        const scaduta = esito.scaduta
 
         // Finché non è scaduta, avvisare solo agli intervalli previsti,
         // esattamente come per il MUD.
@@ -442,10 +447,13 @@ export class DeadlineCheckerService {
     let notificationsSent = 0
 
     for (const r of record) {
-      const giorniAllaScadenza = Math.ceil(
-        (r.scadenza.getTime() - oggi.getTime()) / (1000 * 60 * 60 * 24)
-      )
-      const scaduta = giorniAllaScadenza < 0
+      // `r.scadenza` è sempre valorizzata (filtro `not: null` nella query dei
+      // due chiamanti), quindi `giorniAllaScadenza` non è mai `null`. Stessa
+      // `calcolaScadenza` usata sopra per le autorizzazioni impianto e
+      // dall'avviso "a scelta" nel form FIR (Task 4).
+      const esito = calcolaScadenza(r.scadenza, oggi)
+      const giorniAllaScadenza = esito.giorniAllaScadenza as number
+      const scaduta = esito.scaduta
 
       if (!scaduta && !this.NOTIFICATION_INTERVALS.includes(giorniAllaScadenza)) {
         continue
