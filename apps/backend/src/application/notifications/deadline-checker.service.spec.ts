@@ -80,6 +80,7 @@ const mockPrisma = {
 
 const mockTemplateService = {
   renderAuthorizationExpiration: jest.fn().mockResolvedValue('<html></html>'),
+  renderCounterpartyExpiration: jest.fn().mockResolvedValue('<html></html>'),
 } as unknown as TemplateService
 
 const mockEmailService = {
@@ -475,10 +476,23 @@ describe('DeadlineCheckerService', () => {
 
       await service.checkAuthorizationExpirations()
 
-      expect(mockTemplateService.renderAuthorizationExpiration).toHaveBeenCalledWith(
+      // Rilievo critico di revisione (giro 2): un trasportatore/destinatario
+      // è un soggetto TERZO in anagrafica, non l'azienda del destinatario
+      // dell'email — il modello `authorization-expiration` (che parla di
+      // "autorizzazione della tua azienda" e di reato ex D.Lgs. 152/2006)
+      // è FALSO in questo scenario. Va usato il modello dedicato
+      // `renderCounterpartyExpiration`, mai quello delle autorizzazioni
+      // impianto.
+      expect(mockTemplateService.renderAuthorizationExpiration).not.toHaveBeenCalled()
+      expect(mockTemplateService.renderCounterpartyExpiration).toHaveBeenCalledWith(
         expect.objectContaining({
-          authorizationUrl: '/trasportatori',
+          counterpartyKind: 'trasportatore',
           isExpired: false,
+          // Rilievo importante di revisione: l'email è un canale assoluto,
+          // un link relativo non è risolvibile da un client di posta —
+          // a differenza della notifica in applicazione (v. test dedicato
+          // più sotto), che resta correttamente relativa.
+          counterpartyUrl: expect.stringMatching(/^https?:\/\/.+\/trasportatori$/),
         })
       )
       expect(mockEmailService.sendEmail).toHaveBeenCalledWith(
@@ -500,14 +514,53 @@ describe('DeadlineCheckerService', () => {
 
       await service.checkAuthorizationExpirations()
 
-      expect(mockTemplateService.renderAuthorizationExpiration).toHaveBeenCalledWith(
+      expect(mockTemplateService.renderAuthorizationExpiration).not.toHaveBeenCalled()
+      expect(mockTemplateService.renderCounterpartyExpiration).toHaveBeenCalledWith(
         expect.objectContaining({
-          authorizationUrl: '/destinatari',
+          counterpartyKind: 'destinatario',
           isExpired: true,
+          counterpartyUrl: expect.stringMatching(/^https?:\/\/.+\/destinatari$/),
         })
       )
       expect(mockEmailService.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({ to: utenteFixture().email })
+      )
+    })
+
+    it("nella notifica in applicazione (non email) l'actionUrl del trasportatore resta relativo — solo l'email ha bisogno di un URL assoluto", async () => {
+      const fra30 = new Date()
+      fra30.setDate(fra30.getDate() + 30)
+      ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
+        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ actionUrl: '/trasportatori' }),
+        })
+      )
+    })
+
+    it("nella notifica in applicazione (non email) l'actionUrl del destinatario resta relativo", async () => {
+      const ieri = new Date()
+      ieri.setDate(ieri.getDate() - 1)
+      ;(mockPrisma.destinatario.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'de2',
+          tenantId: 't1',
+          numeroAutorizzazione: 'NA/AUT/2023/999',
+          scadenzaAutorizzazione: ieri,
+        },
+      ])
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ actionUrl: '/destinatari' }),
+        })
       )
     })
 

@@ -375,13 +375,15 @@ export class DeadlineCheckerService {
           tenantId: t.tenantId,
           scadenza: t.scadenzaIscrizione as Date,
           identificativo: t.numeroIscrizione,
+          ragioneSociale: t.ragioneSociale,
         })),
         {
           notificationType: 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA',
           relatedEntityType: 'Trasportatore',
           etichetta: 'iscrizione',
           actionUrl: '/trasportatori',
-          tipoAutorizzazione: 'Iscrizione Albo Gestori Ambientali',
+          counterpartyKind: 'trasportatore',
+          tipoDato: 'Iscrizione Albo Gestori Ambientali',
         }
       )
 
@@ -395,13 +397,15 @@ export class DeadlineCheckerService {
           tenantId: d.tenantId,
           scadenza: d.scadenzaAutorizzazione as Date,
           identificativo: d.numeroAutorizzazione,
+          ragioneSociale: d.ragioneSociale,
         })),
         {
           notificationType: 'DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA',
           relatedEntityType: 'Destinatario',
           etichetta: 'autorizzazione',
           actionUrl: '/destinatari',
-          tipoAutorizzazione: 'Autorizzazione destinatario',
+          counterpartyKind: 'destinatario',
+          tipoDato: 'Autorizzazione destinatario',
         }
       )
 
@@ -421,11 +425,18 @@ export class DeadlineCheckerService {
    * con severità ERROR una volta scaduta — non ogni giorno, stessa
    * deduplicazione settimanale del resto dello scadenzario. Fattorizzata qui
    * perché la logica è identica per le due anagrafiche — cambiano il tipo di
-   * notifica, il testo e l'URL. Manda anche l'email, con lo stesso template
-   * `authorization-expiration` già usato per le autorizzazioni impianto
-   * (correzione di revisione: prima creava solo la notifica in applicazione,
-   * lasciando all'oscuro chi non apre WasteFlow che un'autorizzazione di un
-   * destinatario o l'iscrizione di un trasportatore è scaduta).
+   * notifica, il testo e l'URL. Manda anche l'email (correzione di revisione:
+   * prima creava solo la notifica in applicazione, lasciando all'oscuro chi
+   * non apre WasteFlow che un'autorizzazione di un destinatario o
+   * l'iscrizione di un trasportatore è scaduta) con il template DEDICATO
+   * `counterparty-expiration` — MAI `authorization-expiration` (correzione
+   * di revisione, giro 2, rilievo critico): un trasportatore o un
+   * destinatario è un soggetto TERZO in anagrafica, non l'azienda
+   * dell'utente che riceve l'email. Il modello delle autorizzazioni impianto
+   * dice "l'autorizzazione della tua azienda" e minaccia sanzioni penali a
+   * carico del lettore: falso in questo scenario, dove il rischio per chi
+   * legge è affidare un formulario a una controparte non più in regola, non
+   * un reato proprio.
    *
    * `notificationType`/`relatedEntityType` sono DISTINTI per trasportatori e
    * destinatari (e distinti da `AUTORIZZAZIONE_IN_SCADENZA`): senza questa
@@ -434,10 +445,22 @@ export class DeadlineCheckerService {
    * notifica di una semantica ne sopprima un'altra a parità di id (stesso
    * principio già applicato a Task 2 per il certificato RENTRI illeggibile).
    *
+   * `opts.actionUrl` resta RELATIVO (usato per la notifica in applicazione,
+   * dove è corretto così com'è): l'URL assoluto per l'email si costruisce a
+   * parte con `buildEmailUrl` (correzione di revisione, rilievo importante:
+   * un link relativo dentro un messaggio di posta non è risolvibile da
+   * nessun client).
+   *
    * Ritorna il numero di notifiche effettivamente create.
    */
   private async elaboraScadenzaControparte(
-    record: Array<{ id: string; tenantId: string; scadenza: Date; identificativo: string }>,
+    record: Array<{
+      id: string
+      tenantId: string
+      scadenza: Date
+      identificativo: string
+      ragioneSociale?: string
+    }>,
     opts: {
       notificationType:
         | 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA'
@@ -445,10 +468,13 @@ export class DeadlineCheckerService {
       relatedEntityType: 'Trasportatore' | 'Destinatario'
       etichetta: string // "iscrizione" | "autorizzazione", per i testi
       actionUrl: string
-      // Etichetta per il campo `authorizationType` del template email
-      // condiviso `authorization-expiration` (già usato per le
-      // autorizzazioni impianto).
-      tipoAutorizzazione: string
+      // Quale dei due casi è, per il testo del template dedicato
+      // `counterparty-expiration` (distingue "iscrizione Albo" da
+      // "autorizzazione destinatario" invece di restare vago).
+      counterpartyKind: 'trasportatore' | 'destinatario'
+      // Etichetta del dato che scade, mostrata come label nel dettaglio del
+      // template dedicato `counterparty-expiration`.
+      tipoDato: string
     }
   ): Promise<number> {
     if (record.length === 0) {
@@ -510,17 +536,18 @@ export class DeadlineCheckerService {
 
       for (const utente of destinatari) {
         try {
-          const html = await this.templateService.renderAuthorizationExpiration({
+          const html = await this.templateService.renderCounterpartyExpiration({
             recipientName: `${utente.firstName} ${utente.lastName}`,
-            authorizationType: opts.tipoAutorizzazione,
-            authorizationNumber: r.identificativo,
+            counterpartyKind: opts.counterpartyKind,
+            counterpartyName: r.ragioneSociale,
+            tipoDato: opts.tipoDato,
+            identificativo: r.identificativo,
             expirationDate: dataScadenzaFormattata,
             isExpired: scaduta,
             daysRemaining: scaduta ? undefined : giorniAllaScadenza,
-            companyName: utente.tenant?.ragioneSociale ?? '',
-            issuingAuthority: '',
-            activities: [],
-            authorizationUrl: opts.actionUrl,
+            // Assoluto: l'email va risolta fuori da WasteFlow. `opts.actionUrl`
+            // resta relativo più sotto per la notifica in applicazione.
+            counterpartyUrl: this.buildEmailUrl(opts.actionUrl),
           })
 
           await this.emailService.sendEmail({
@@ -774,6 +801,19 @@ export class DeadlineCheckerService {
    * ancora come "recente" e blocca la creazione di una nuova — la finestra
    * di deduplicazione è quindi di 7 giorni pieni, non di "più di 7 giorni".
    */
+  /**
+   * Costruisce un URL assoluto per un link dentro un'email, a partire da un
+   * percorso relativo dell'app (es. `/trasportatori`). Correzione di
+   * revisione (rilievo importante): un percorso relativo dentro un
+   * messaggio di posta non è risolvibile da nessun client — a differenza
+   * della notifica in applicazione, dove il percorso relativo resta
+   * corretto così com'è e NON va fatto passare da qui. Stesso fallback già
+   * usato per `mudUrl` in `checkMudDeadlines`.
+   */
+  private buildEmailUrl(path: string): string {
+    return `${process.env.PUBLIC_URL || 'https://wasteflow.app'}${path}`
+  }
+
   private async esisteNotificaRecente(
     tenantId: string,
     type:

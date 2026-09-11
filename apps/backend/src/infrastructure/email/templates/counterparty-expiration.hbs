@@ -1,0 +1,71 @@
+<div class="alert alert-danger">
+  <strong>🔔 Scadenza anagrafica {{#if isTrasportatore}}trasportatore{{/if}}{{#if isDestinatario}}destinatario{{/if}}</strong>
+</div>
+
+<p>Gentile {{recipientName}},</p>
+
+<p>
+  {{#if isTrasportatore}}
+  un trasportatore presente nella tua anagrafica risulta {{#if isExpired}}con l'iscrizione all'Albo Gestori Ambientali scaduta{{else}}con l'iscrizione all'Albo Gestori Ambientali in scadenza{{/if}}.
+  {{/if}}
+  {{#if isDestinatario}}
+  un destinatario presente nella tua anagrafica risulta {{#if isExpired}}con l'autorizzazione scaduta{{else}}con l'autorizzazione in scadenza{{/if}}.
+  {{/if}}
+</p>
+
+<div class="details">
+  {{#if counterpartyName}}
+  <div class="details-item">
+    <span class="details-label">Ragione sociale:</span> {{counterpartyName}}
+  </div>
+  {{/if}}
+  <div class="details-item">
+    <span class="details-label">{{tipoDato}}:</span> {{identificativo}}
+  </div>
+  <div class="details-item">
+    <span class="details-label">Data scadenza:</span> {{expirationDate}}
+  </div>
+  {{#unless isExpired}}
+  <div class="details-item">
+    <span class="details-label">Giorni rimanenti:</span> {{daysRemaining}}
+  </div>
+  {{/unless}}
+</div>
+
+{{#if isExpired}}
+<div class="alert alert-danger">
+  <strong>⚠️ Dato scaduto</strong><br>
+  {{#if isTrasportatore}}
+  Se questo dato è corretto, affidare un trasporto a questo vettore espone il formulario a una non conformità.
+  {{/if}}
+  {{#if isDestinatario}}
+  Se questo dato è corretto, conferire rifiuti a questo destinatario espone il formulario a una non conformità.
+  {{/if}}
+  Ricorda che il dato potrebbe anche essere semplicemente non aggiornato nella tua anagrafica.
+</div>
+{{else}}
+<div class="alert alert-warning">
+  <strong>⚠️ Scadenza in arrivo</strong><br>
+  {{#if isTrasportatore}}
+  Verifica per tempo la posizione del vettore prima di affidargli nuovi trasporti dopo la scadenza.
+  {{/if}}
+  {{#if isDestinatario}}
+  Verifica per tempo la posizione del destinatario prima di conferirgli rifiuti dopo la scadenza.
+  {{/if}}
+</div>
+{{/if}}
+
+<p><strong>Cosa fare:</strong></p>
+<ol>
+  <li>Verifica la posizione attuale della controparte ({{#if isTrasportatore}}Albo Gestori Ambientali{{/if}}{{#if isDestinatario}}atto autorizzativo del destinatario{{/if}})</li>
+  <li>Se la scadenza è nel frattempo cambiata, aggiorna il dato in anagrafica</li>
+  <li>Se il dato è invece corretto e la controparte non ha ancora rinnovato, evita di affidarle nuovi formulari finché non è di nuovo in regola</li>
+</ol>
+
+<p>
+  <a href="{{counterpartyUrl}}" class="button">Apri anagrafica {{#if isTrasportatore}}trasportatori{{/if}}{{#if isDestinatario}}destinatari{{/if}}</a>
+</p>
+
+<p><strong>Nota:</strong> questo avviso segnala la scadenza di un soggetto terzo registrato nella tua anagrafica, non un'autorizzazione intestata alla tua azienda. Il D.Lgs. 152/2006 richiede di affidare i rifiuti solo a soggetti regolarmente iscritti o autorizzati: verificare la posizione delle controparti prima di ogni conferimento è una buona pratica di conformità.</p>
+
+<p>Per assistenza, contatta il supporto tecnico WasteFlow.</p>
