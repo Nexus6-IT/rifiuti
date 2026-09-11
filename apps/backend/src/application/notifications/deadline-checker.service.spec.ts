@@ -7,6 +7,12 @@
  *   1. avvisa quando un'autorizzazione scade fra 30 giorni (WARNING)
  *   2. avvisa con severità ERROR e testo "è scaduta" quando è già scaduta
  *   3. non avvisa se i giorni mancanti non sono un intervallo previsto
+ *
+ *  Task 2 — checkRentriCertificateExpiration (avviso di scadenza del
+ *  certificato RENTRI, riusando calcolaGiorniAllaScadenzaCertificato):
+ *   4. avvisa quando il certificato scade fra 15 giorni (WARNING)
+ *   5. avvisa con severità ERROR e testo sulle trasmissioni ferme quando è
+ *      già scaduto
  */
 
 import { Test, TestingModule } from '@nestjs/testing'
@@ -15,6 +21,11 @@ import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
+
+jest.mock('../../infrastructure/rentri/rentri-certificato-scadenza.util')
+
+const mockCalcolaGiorni = calcolaGiorniAllaScadenzaCertificato as jest.Mock
 
 const mockPrisma = {
   tenant: {
@@ -136,6 +147,58 @@ describe('DeadlineCheckerService', () => {
       ])
 
       await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('checkRentriCertificateExpiration', () => {
+    it('avvisa quando il certificato RENTRI scade fra 15 giorni', async () => {
+      mockCalcolaGiorni.mockReturnValue(15)
+      ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
+        { tenantId: 't1', certificatePem: 'PEM-FASULLO' },
+      ])
+
+      await service.checkRentriCertificateExpiration()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: 't1',
+            type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
+            severity: 'WARNING',
+          }),
+        })
+      )
+    })
+
+    it('avvisa con severità ERROR quando il certificato RENTRI è già scaduto', async () => {
+      mockCalcolaGiorni.mockReturnValue(-2)
+      ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
+        { tenantId: 't1', certificatePem: 'PEM-FASULLO' },
+      ])
+
+      await service.checkRentriCertificateExpiration()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: 't1',
+            type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
+            severity: 'ERROR',
+            message: expect.stringContaining('trasmissioni'),
+          }),
+        })
+      )
+    })
+
+    it('non avvisa se il certificato non è analizzabile (giorni non calcolabili)', async () => {
+      mockCalcolaGiorni.mockReturnValue(null)
+      ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
+        { tenantId: 't1', certificatePem: 'PEM-NON-VALIDO' },
+      ])
+
+      await service.checkRentriCertificateExpiration()
 
       expect(mockPrisma.notification.create).not.toHaveBeenCalled()
     })

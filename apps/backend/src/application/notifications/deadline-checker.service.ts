@@ -4,6 +4,7 @@ import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 
 /**
  * Deadline Checker Service
@@ -314,6 +315,98 @@ export class DeadlineCheckerService {
       )
     } catch (error) {
       this.logger.error('Controllo scadenza autorizzazioni impianto fallito', error)
+    }
+  }
+
+  /**
+   * Controllo giornaliero (11:00) della scadenza del certificato RENTRI per
+   * ogni tenant. Senza certificato valido ogni trasmissione all'ente si
+   * ferma: è la scadenza più costosa dello scadenzario.
+   *
+   * Riusa `calcolaGiorniAllaScadenzaCertificato` (stessa logica di lettura
+   * del `notAfter` usata dal gauge Prometheus in
+   * `RentriCertificatoScadenzaJob`) — non duplica il parsing del certificato.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_11AM)
+  async checkRentriCertificateExpiration(): Promise<void> {
+    this.logger.info('Avvio controllo scadenza certificato RENTRI')
+
+    try {
+      const tenantsAttivi = await this.prisma.tenant.findMany({
+        where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
+        select: { id: true },
+      })
+
+      const credenziali = await this.prisma.rentriCredential.findMany({
+        where: { tenantId: { in: tenantsAttivi.map(t => t.id) } },
+        select: { tenantId: true, certificatePem: true },
+      })
+
+      let notificationsSent = 0
+
+      for (const credenziale of credenziali) {
+        const giorniAllaScadenza = calcolaGiorniAllaScadenzaCertificato(credenziale.certificatePem)
+
+        if (giorniAllaScadenza === null) {
+          this.logger.warn('Certificato RENTRI non analizzabile: nessun avviso generato', {
+            tenantId: credenziale.tenantId,
+          })
+          continue
+        }
+
+        const scaduto = giorniAllaScadenza < 0
+
+        // Finché non è scaduto, avvisare solo agli intervalli previsti,
+        // esattamente come per le autorizzazioni degli impianti.
+        if (!scaduto && !this.NOTIFICATION_INTERVALS.includes(giorniAllaScadenza)) {
+          continue
+        }
+
+        const titolo = scaduto
+          ? 'Certificato RENTRI scaduto'
+          : 'Promemoria scadenza certificato RENTRI'
+        const messaggio = scaduto
+          ? "Il certificato RENTRI è scaduto: tutte le trasmissioni all'ente sono ferme finché non viene rinnovato."
+          : `Il certificato RENTRI scadrà fra ${giorniAllaScadenza} giorni: le trasmissioni all'ente si fermeranno alla scadenza.`
+
+        const utenti = await this.prisma.user.findMany({
+          where: {
+            tenantId: credenziale.tenantId,
+            role: { in: ['ADMIN', 'OPERATOR'] },
+          },
+        })
+
+        for (const utente of utenti) {
+          try {
+            await this.prisma.notification.create({
+              data: {
+                tenantId: credenziale.tenantId,
+                userId: utente.id,
+                type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
+                title: titolo,
+                message: messaggio,
+                severity: scaduto ? 'ERROR' : 'WARNING',
+                actionUrl: '/rentri/credenziali',
+                isRead: false,
+              },
+            })
+
+            notificationsSent++
+            this.logger.debug(`Avviso scadenza certificato RENTRI inviato a ${utente.email}`)
+          } catch (error) {
+            this.logger.error(
+              `Creazione avviso scadenza certificato RENTRI fallita per ${utente.email}`,
+              error
+            )
+          }
+        }
+      }
+
+      this.logger.info(
+        `Controllo scadenza certificato RENTRI completato: ${notificationsSent} notifiche inviate`
+      )
+    } catch (error) {
+      this.logger.error('Controllo scadenza certificato RENTRI fallito', error)
     }
   }
 

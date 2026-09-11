@@ -757,6 +757,7 @@ enum NotificationType {
   SIGNATURE_REQUIRED
   SYSTEM_ERROR
   AUTORIZZAZIONE_IN_SCADENZA
+  CERTIFICATO_RENTRI_IN_SCADENZA
 
   @@map("notification_type")
 }
