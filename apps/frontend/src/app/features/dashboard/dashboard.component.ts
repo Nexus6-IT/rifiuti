@@ -53,10 +53,13 @@ interface DashboardStats {
         </div>
       </header>
 
-      <!-- Fascia delle cose che richiedono attenzione oggi: compare solo se
-           c'è qualcosa da segnalare, mai come riquadro vuoto -->
+      <!-- Fascia delle cose che richiedono attenzione oggi: compare quando
+           c'è un fatto da comunicare — voci reali oppure il fatto che il
+           controllo stesso non è riuscito. Resta assente SOLO quando il
+           controllo è andato a buon fine e non ha trovato nulla: mai un
+           riquadro vuoto permanente. -->
       <section
-        *ngIf="vociAttenzione.length > 0"
+        *ngIf="vociAttenzione.length > 0 || erroreAttenzione"
         class="attenzione-fascia"
         aria-labelledby="attenzione-heading"
         data-testid="attenzione-fascia"
@@ -66,6 +69,32 @@ interface DashboardStats {
           Richiede attenzione
         </h2>
         <ul class="attenzione-fascia__list">
+          <!-- La verifica stessa non è riuscita: "non lo so" non è "tutto a
+               posto", va comunicato con la stessa fascia, non inghiottito. -->
+          <li
+            *ngIf="erroreAttenzione"
+            class="attenzione-voce attenzione-voce--critico"
+            data-testid="attenzione-voce-verifica-fallita"
+          >
+            <p-tag value="Critico" severity="danger" aria-label="Gravità: Critico" />
+            <div class="attenzione-voce__testo">
+              <span class="attenzione-voce__titolo">Verifica delle scadenze non riuscita</span>
+              <span class="attenzione-voce__dettaglio"
+                >Non è stato possibile controllare oggi certificato RENTRI e autorizzazioni.
+                Riprova.</span
+              >
+            </div>
+            <p-button
+              label="Riprova"
+              [text]="true"
+              icon="pi pi-refresh"
+              iconPos="right"
+              ariaLabel="Riprova a verificare le scadenze"
+              data-testid="attenzione-azione-verifica-fallita"
+              (onClick)="loadAttenzione()"
+            />
+          </li>
+
           <li
             *ngFor="let voce of vociAttenzione"
             class="attenzione-voce"
@@ -333,13 +362,13 @@ interface DashboardStats {
       }
 
       .attenzione-voce--critico {
-        border-left-color: #b91c1c;
+        border-left-color: var(--color-danger);
       }
       .attenzione-voce--avviso {
-        border-left-color: #b45309;
+        border-left-color: var(--color-warning);
       }
       .attenzione-voce--informativo {
-        border-left-color: #1d4ed8;
+        border-left-color: var(--color-info);
       }
 
       .attenzione-voce__testo {
@@ -379,10 +408,20 @@ export class DashboardComponent implements OnInit {
 
   /**
    * Cose che richiedono attenzione oggi. Un errore nel loro caricamento non
-   * deve rompere il resto del cruscotto: in caso di errore resta vuoto e la
-   * fascia semplicemente non compare (vedi loadAttenzione).
+   * deve rompere il resto del cruscotto (vedi loadAttenzione), ma NON deve
+   * nemmeno sparire in silenzio: "non sono riuscito a controllare" è un
+   * fatto da comunicare tanto quanto una scadenza vera, non equivale a
+   * "controllato, nessuna voce" — vedi erroreAttenzione.
    */
   vociAttenzione: VoceAttenzione[] = []
+
+  /**
+   * True quando l'ultima chiamata a getAttenzione() è fallita. In questo
+   * caso la fascia compare comunque, con un'unica voce sintetica che dice
+   * che la verifica non è riuscita: la fascia assente deve significare SOLO
+   * "controllato, tutto a posto", mai "non lo so".
+   */
+  erroreAttenzione = false
 
   chartData: any
   chartOptions: any
@@ -401,17 +440,20 @@ export class DashboardComponent implements OnInit {
   /**
    * Carica le voci di attenzione indipendentemente dal resto del cruscotto:
    * un fallimento qui non deve impedire la visualizzazione di indicatori,
-   * FIR recenti e grafico. In caso di errore la fascia resta assente
-   * (nessuna voce), non un messaggio d'errore che gareggia con quello
-   * principale del cruscotto.
+   * FIR recenti e grafico (è una subscribe separata da loadDashboardData).
+   * Ma un fallimento QUI è comunque un fatto da mostrare nella fascia stessa
+   * (erroreAttenzione): non sappiamo se ci sono scadenze critiche, e quello
+   * non è la stessa cosa di sapere che non ce ne sono.
    */
   loadAttenzione(): void {
+    this.erroreAttenzione = false
     this.attenzioneService.getAttenzione().subscribe({
       next: risultato => {
         this.vociAttenzione = risultato.voci
       },
       error: () => {
         this.vociAttenzione = []
+        this.erroreAttenzione = true
       },
     })
   }

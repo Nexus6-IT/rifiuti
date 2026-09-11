@@ -120,8 +120,34 @@ describe('DashboardComponent', () => {
     fixture.detectChanges()
 
     const html: HTMLElement = fixture.nativeElement
-    expect(html.querySelector('[data-testid="attenzione-fascia"]')).toBeNull()
     expect(component.error).toBe('')
     expect(html.querySelector('.stat-grid')).not.toBeNull()
+  })
+
+  it('mostra la fascia con una voce di verifica fallita quando il controllo non riesce: "non lo so" non è "tutto a posto"', () => {
+    setup()
+    attenzioneService.getAttenzione.and.returnValue(throwError(() => new Error('Network error')))
+
+    fixture.detectChanges()
+
+    const html: HTMLElement = fixture.nativeElement
+    const fascia = html.querySelector('[data-testid="attenzione-fascia"]')
+    expect(fascia).not.toBeNull()
+
+    const voceErrore = html.querySelector('[data-testid="attenzione-voce-verifica-fallita"]')
+    expect(voceErrore).not.toBeNull()
+    // Testo dal punto di vista dell'utente, non un dettaglio tecnico di rete
+    expect(voceErrore!.textContent).not.toContain('Network error')
+    expect(voceErrore!.textContent?.toLowerCase()).toContain('non è stato possibile')
+
+    // Azione di riprova che rilancia il controllo
+    const riprova = html.querySelector(
+      '[data-testid="attenzione-azione-verifica-fallita"] button'
+    ) as HTMLButtonElement
+    expect(riprova).not.toBeNull()
+
+    attenzioneService.getAttenzione.calls.reset()
+    riprova.click()
+    expect(attenzioneService.getAttenzione).toHaveBeenCalledTimes(1)
   })
 })
