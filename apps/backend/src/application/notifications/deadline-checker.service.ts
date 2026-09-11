@@ -23,6 +23,13 @@ export class DeadlineCheckerService {
   // Notification intervals (days before deadline)
   private readonly NOTIFICATION_INTERVALS = [30, 15, 7, 3, 1]
 
+  // Finestra di deduplicazione: una notifica dello stesso tipo per la stessa
+  // entità non va ripetuta se ne esiste già una creata in questi giorni.
+  // Settimanale (non giornaliera) perché uno stato "già scaduto" resta tale
+  // ogni giorno finché non viene risolto — un avviso quotidiano identico
+  // smetterebbe di essere letto, ottenendo l'effetto opposto a quello voluto.
+  private readonly NOTIFICATION_DEDUP_GIORNI = 7
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly templateService: TemplateService,
@@ -245,6 +252,22 @@ export class DeadlineCheckerService {
           continue
         }
 
+        // Deduplicazione settimanale: se questa autorizzazione ha già
+        // generato una notifica negli ultimi 7 giorni, non se ne crea
+        // un'altra identica oggi (vale sia per l'avviso preventivo sia per
+        // lo stato "già scaduta").
+        const giaNotificata = await this.esisteNotificaRecente(
+          'AUTORIZZAZIONE_IN_SCADENZA',
+          autorizzazione.id,
+          'AutorizzazioneImpianto'
+        )
+        if (giaNotificata) {
+          this.logger.debug(
+            `Autorizzazione ${autorizzazione.estremi} già notificata negli ultimi ${this.NOTIFICATION_DEDUP_GIORNI} giorni, salto`
+          )
+          continue
+        }
+
         const dataScadenzaFormattata = dataScadenza.toLocaleDateString('it-IT', {
           day: 'numeric',
           month: 'long',
@@ -294,6 +317,8 @@ export class DeadlineCheckerService {
                 title: titolo,
                 message: messaggio,
                 severity: scaduta ? 'ERROR' : 'WARNING',
+                relatedEntityId: autorizzazione.id,
+                relatedEntityType: 'AutorizzazioneImpianto',
                 actionUrl: `/impianti/autorizzazioni/${autorizzazione.id}`,
                 isRead: false,
               },
@@ -362,6 +387,20 @@ export class DeadlineCheckerService {
           continue
         }
 
+        // Deduplicazione settimanale: stesso criterio del Task 1, entità
+        // identificata dal tenant (un solo certificato RENTRI per tenant).
+        const giaNotificato = await this.esisteNotificaRecente(
+          'CERTIFICATO_RENTRI_IN_SCADENZA',
+          credenziale.tenantId,
+          'RentriCredential'
+        )
+        if (giaNotificato) {
+          this.logger.debug(
+            `Certificato RENTRI del tenant ${credenziale.tenantId} già notificato negli ultimi ${this.NOTIFICATION_DEDUP_GIORNI} giorni, salto`
+          )
+          continue
+        }
+
         const titolo = scaduto
           ? 'Certificato RENTRI scaduto'
           : 'Promemoria scadenza certificato RENTRI'
@@ -386,6 +425,8 @@ export class DeadlineCheckerService {
                 title: titolo,
                 message: messaggio,
                 severity: scaduto ? 'ERROR' : 'WARNING',
+                relatedEntityId: credenziale.tenantId,
+                relatedEntityType: 'RentriCredential',
                 actionUrl: '/rentri/credenziali',
                 isRead: false,
               },
@@ -433,6 +474,34 @@ export class DeadlineCheckerService {
     } catch (error) {
       this.logger.error('Failed to cleanup old notifications', error)
     }
+  }
+
+  /**
+   * Vero se esiste già, per lo stesso tipo e la stessa entità
+   * (`relatedEntityId` + `relatedEntityType`), una notifica creata negli
+   * ultimi `NOTIFICATION_DEDUP_GIORNI` giorni. Usata per non ripetere ogni
+   * giorno lo stesso avviso di scadenza (autorizzazioni impianto,
+   * certificato RENTRI): una notifica settimanale resta letta, una
+   * quotidiana identica no.
+   */
+  private async esisteNotificaRecente(
+    type: 'AUTORIZZAZIONE_IN_SCADENZA' | 'CERTIFICATO_RENTRI_IN_SCADENZA',
+    relatedEntityId: string,
+    relatedEntityType: string
+  ): Promise<boolean> {
+    const sogliaDedup = new Date()
+    sogliaDedup.setDate(sogliaDedup.getDate() - this.NOTIFICATION_DEDUP_GIORNI)
+
+    const notificaRecente = await this.prisma.notification.findFirst({
+      where: {
+        type,
+        relatedEntityId,
+        relatedEntityType,
+        createdAt: { gte: sogliaDedup },
+      },
+    })
+
+    return notificaRecente !== null
   }
 
   /**

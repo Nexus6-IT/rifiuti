@@ -13,6 +13,16 @@
  *   4. avvisa quando il certificato scade fra 15 giorni (WARNING)
  *   5. avvisa con severità ERROR e testo sulle trasmissioni ferme quando è
  *      già scaduto
+ *
+ *  Deduplicazione settimanale (entrambi i task, richiesta dal coordinatore
+ *  dopo la prima consegna): una notifica dello stesso tipo per la stessa
+ *  entità (relatedEntityId + relatedEntityType) non va ripetuta se ne esiste
+ *  già una creata negli ultimi 7 giorni — altrimenti lo stato "già scaduto"
+ *  genererebbe un avviso identico ogni giorno all'infinito.
+ *   6. autorizzazione: notifica esistente creata ieri → nessuna nuova notifica
+ *   7. autorizzazione: notifica esistente creata 10 giorni fa → se ne crea una nuova
+ *   8. certificato RENTRI: notifica esistente creata ieri → nessuna nuova notifica
+ *   9. certificato RENTRI: notifica esistente creata 10 giorni fa → se ne crea una nuova
  */
 
 import { Test, TestingModule } from '@nestjs/testing'
@@ -42,6 +52,7 @@ const mockPrisma = {
   },
   notification: {
     create: jest.fn(),
+    findFirst: jest.fn(),
   },
 } as unknown as PrismaService
 
@@ -83,6 +94,9 @@ describe('DeadlineCheckerService', () => {
     ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([{ id: 't1' }])
     ;(mockPrisma.autorizzazioneImpianto.findMany as jest.Mock).mockResolvedValue([])
     ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([])
+    // Default: nessuna notifica recente per la stessa entità, così i test
+    // esistenti (senza dedup) restano validi senza doverlo mockare ovunque.
+    ;(mockPrisma.notification.findFirst as jest.Mock).mockResolvedValue(null)
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -150,6 +164,56 @@ describe('DeadlineCheckerService', () => {
 
       expect(mockPrisma.notification.create).not.toHaveBeenCalled()
     })
+
+    it('non crea una nuova notifica se una per la stessa autorizzazione esiste già negli ultimi 7 giorni', async () => {
+      const ieri = new Date()
+      ieri.setDate(ieri.getDate() - 1)
+      ;(mockPrisma.autorizzazioneImpianto.findMany as jest.Mock).mockResolvedValue([
+        { id: 'a1', tenantId: 't1', estremi: 'AUT/123', dataScadenza: ieri },
+      ])
+      ;(mockPrisma.notification.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'n-esistente',
+        createdAt: ieri,
+      })
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            type: 'AUTORIZZAZIONE_IN_SCADENZA',
+            relatedEntityId: 'a1',
+            relatedEntityType: 'AutorizzazioneImpianto',
+            createdAt: expect.objectContaining({ gte: expect.any(Date) }),
+          }),
+        })
+      )
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+    })
+
+    it("crea una nuova notifica se l'ultima per la stessa autorizzazione risale a più di 7 giorni fa", async () => {
+      const ieri = new Date()
+      ieri.setDate(ieri.getDate() - 1)
+      ;(mockPrisma.autorizzazioneImpianto.findMany as jest.Mock).mockResolvedValue([
+        { id: 'a1', tenantId: 't1', estremi: 'AUT/123', dataScadenza: ieri },
+      ])
+      // Nessun record entro la finestra di 7 giorni (l'ultimo risale a 10
+      // giorni fa, quindi la query filtrata da `createdAt: { gte }` non lo
+      // trova): la dedup non deve bloccare la creazione.
+      ;(mockPrisma.notification.findFirst as jest.Mock).mockResolvedValueOnce(null)
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            relatedEntityId: 'a1',
+            relatedEntityType: 'AutorizzazioneImpianto',
+            type: 'AUTORIZZAZIONE_IN_SCADENZA',
+          }),
+        })
+      )
+    })
   })
 
   describe('checkRentriCertificateExpiration', () => {
@@ -201,6 +265,53 @@ describe('DeadlineCheckerService', () => {
       await service.checkRentriCertificateExpiration()
 
       expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+    })
+
+    it('non crea una nuova notifica se una per lo stesso certificato esiste già negli ultimi 7 giorni', async () => {
+      const ieri = new Date()
+      ieri.setDate(ieri.getDate() - 1)
+      mockCalcolaGiorni.mockReturnValue(-2)
+      ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
+        { tenantId: 't1', certificatePem: 'PEM-FASULLO' },
+      ])
+      ;(mockPrisma.notification.findFirst as jest.Mock).mockResolvedValueOnce({
+        id: 'n-esistente',
+        createdAt: ieri,
+      })
+
+      await service.checkRentriCertificateExpiration()
+
+      expect(mockPrisma.notification.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
+            relatedEntityId: 't1',
+            relatedEntityType: 'RentriCredential',
+            createdAt: expect.objectContaining({ gte: expect.any(Date) }),
+          }),
+        })
+      )
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+    })
+
+    it("crea una nuova notifica se l'ultima per lo stesso certificato risale a più di 7 giorni fa", async () => {
+      mockCalcolaGiorni.mockReturnValue(-2)
+      ;(mockPrisma.rentriCredential.findMany as jest.Mock).mockResolvedValue([
+        { tenantId: 't1', certificatePem: 'PEM-FASULLO' },
+      ])
+      ;(mockPrisma.notification.findFirst as jest.Mock).mockResolvedValueOnce(null)
+
+      await service.checkRentriCertificateExpiration()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            relatedEntityId: 't1',
+            relatedEntityType: 'RentriCredential',
+            type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
+          }),
+        })
+      )
     })
   })
 })
