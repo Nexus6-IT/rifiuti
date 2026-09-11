@@ -108,6 +108,7 @@ model Tenant {
   autorizzazioniImpianto AutorizzazioneImpianto[]
   wasteMovements         WasteMovement[]
   rentriUnitaLocali      RentriUnitaLocale[]
+  rentriNumeriVidimati   RentriNumeroVidimato[]
   madre                  Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
 
@@ -755,6 +756,7 @@ enum NotificationType {
   SUBSCRIPTION_EXPIRING
   SIGNATURE_REQUIRED
   SYSTEM_ERROR
+  AUTORIZZAZIONE_IN_SCADENZA
 
   @@map("notification_type")
 }
@@ -1856,11 +1858,89 @@ model RentriUnitaLocale {
   /// per nuovi agganci.
   attiva        Boolean @default(true)
 
+  /// Blocco virtuale (RENTRI) usato di default per vidimare i FIR emessi da
+  /// questa unità locale (R6, scorta vidimazioni — v. `RentriNumeroVidimato`
+  /// e `docs/audits/rentri-blocchi-come-fanno-gli-altri-2026-09-11.md`).
+  /// Nessuna FK verso RENTRI (il blocco vive solo lato ente, letto via
+  /// `RentriVidimazioneClient.elencaBlocchi`): qui è solo il codice scelto
+  /// dall'utente quando c'è ambiguità fra più blocchi attivi sulla stessa
+  /// sede. Null finché nessuno lo imposta esplicitamente — in quel caso il
+  /// job di rifornimento non vidima nulla per questa sede (fail-closed, mai
+  /// un blocco indovinato).
+  codiceBloccoPredefinito String? @map("codice_blocco_predefinito") @db.VarChar(50)
+
+  /// Quanti numeri vidimati tenere sempre pronti in scorta per questa sede
+  /// (soglia di rifornimento, R6). Null = nessuna soglia configurata: il job
+  /// periodico non rifornisce nulla per questa sede e lo scrive nel log,
+  /// mai un valore di ripiego inventato.
+  dimensioneScortaDesiderata Int? @map("dimensione_scorta_desiderata")
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, numIscrSito])
   @@index([tenantId])
   @@map("rentri_unita_locali")
+}
+
+/// Stato di un numero FIR già vidimato dall'ente e tenuto in scorta (R6).
+enum RentriNumeroVidimatoStato {
+  /// Vidimato dall'ente, non ancora assegnato a nessun FIR: pronto all'uso.
+  DISPONIBILE
+  /// Consumato da un'emissione locale (`firId` valorizzato).
+  USATO
+  /// Annullato presso l'ente (`RentriVidimazioneClient.annullaFir`) prima di
+  /// essere usato — resta per audit, mai cancellato.
+  ANNULLATO
+}
+
+/// Scorta di numeri FIR pre-vidimati dall'ente RENTRI (R6 — "chi fa i FIR
+/// cartacei con supporto interoperabilità vidima IN ANTICIPO, a lotti, e
+/// consuma dalla scorta all'emissione": v.
+/// `docs/audits/rentri-blocchi-come-fanno-gli-altri-2026-09-11.md`).
+///
+/// Popolata da `RentriRifornimentoScortaJob`/`AvviaVidimazioneScortaUseCase`
+/// chiamando `RentriVidimazioneClient.vidimaFir` + `attendiEsitoVidimazione`
+/// (esito = `EfirPublicModel`, incluso `qr_code_bytes` firmato dall'ente).
+/// Consumata SOLO tramite `RentriScortaRepository.consumaProssimoDisponibile`
+/// (UPDATE...WHERE id = (SELECT...FOR UPDATE SKIP LOCKED LIMIT 1) in un solo
+/// statement: due emissioni concorrenti non possono mai ricevere lo stesso
+/// numero, v. commento di classe del repository).
+///
+/// Isolamento: tenantId basta (= l'azienda, v. `Tenant`/`TENANT_SCOPED_MODELS`
+/// — questo progetto non ha un concetto di "azienda" separato dal tenant).
+model RentriNumeroVidimato {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Unità locale (num_iscr_sito) su cui è stato vidimato il numero.
+  numIscrSito String @map("num_iscr_sito") @db.VarChar(30)
+  /// Codice del blocco virtuale RENTRI su cui è stato vidimato.
+  codiceBlocco String @map("codice_blocco") @db.VarChar(50)
+  /// Progressivo del numero all'interno del blocco (`EfirPublicModel.progressivo`).
+  progressivo Int
+  /// Numero FIR assegnato dall'ente (`EfirPublicModel.numero_fir`).
+  numeroFir String @map("numero_fir") @db.VarChar(100)
+  /// Byte firmati dall'ente per il QR (Base64, `EfirPublicModel.qr_code_bytes`)
+  /// — v. `docs/audits/rentri-vidimazione-e-qr-2026-09-10.md` §1: si
+  /// decodificano da Base64 e si ricodificano in Base45 per il disegno del
+  /// QR (`infrastructure/rentri/qr/`), nessun contenuto costruito da noi.
+  qrCodeBytes String @map("qr_code_bytes") @db.Text
+
+  stato RentriNumeroVidimatoStato @default(DISPONIBILE)
+
+  /// FIR locale che ha consumato questo numero (valorizzato solo se stato = USATO).
+  firId String? @map("fir_id") @db.Uuid
+
+  dataVidimazione DateTime  @map("data_vidimazione")
+  dataConsumo     DateTime? @map("data_consumo")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, codiceBlocco, progressivo])
+  @@index([tenantId, numIscrSito, stato])
+  @@map("rentri_numeri_vidimati")
 }
 
 /// Log di sincronizzazione RENTRI: un record per ogni tentativo di

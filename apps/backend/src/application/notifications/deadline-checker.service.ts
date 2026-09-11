@@ -189,25 +189,131 @@ export class DeadlineCheckerService {
   }
 
   /**
-   * Check authorization expiration dates daily at 10:00 AM
-   * TODO: Implement when Authorization entities are added to schema
+   * Controllo giornaliero (10:00) delle scadenze delle autorizzazioni degli
+   * impianti, su `AutorizzazioneImpianto.dataScadenza`.
+   *
+   * Stessa forma di `checkMudDeadlines`: avvisa agli intervalli previsti da
+   * `NOTIFICATION_INTERVALS` finché la scadenza è futura; un'autorizzazione
+   * già scaduta non deve restare silenziosa, quindi viene segnalata ogni
+   * giorno con severità maggiore (ERROR) finché non viene rinnovata.
    */
   @Cron(CronExpression.EVERY_DAY_AT_10AM)
   async checkAuthorizationExpirations(): Promise<void> {
-    this.logger.info('Starting authorization expiration check')
+    this.logger.info('Avvio controllo scadenza autorizzazioni impianto')
 
     try {
-      // TODO: Implement when Authorization models are added
-      // - Query authorizations expiring within 180 days
-      // - Check intervals (180, 90, 60, 30, 15, 7, 3, 1 days)
-      // - Send reminders using templateService.renderAuthorizationExpiration()
-      // - Mark expired authorizations
+      const oggi = new Date()
+      const massimoGiorniAvviso = Math.max(...this.NOTIFICATION_INTERVALS)
+      const limite = new Date(oggi)
+      limite.setDate(limite.getDate() + massimoGiorniAvviso)
 
-      this.logger.debug(
-        'Authorization expiration check not yet implemented (awaiting Authorization schema)'
+      // Un'autorizzazione già scaduta ha dataScadenza nel passato, quindi
+      // rientra comunque nel filtro `lte: limite`.
+      const autorizzazioni = await this.prisma.autorizzazioneImpianto.findMany({
+        where: {
+          dataScadenza: { not: null, lte: limite },
+        },
+      })
+
+      if (autorizzazioni.length === 0) {
+        this.logger.debug('Nessuna autorizzazione impianto in scadenza o scaduta')
+        return
+      }
+
+      const tenantIds = [...new Set(autorizzazioni.map(a => a.tenantId))]
+      const utenti = await this.prisma.user.findMany({
+        where: {
+          tenantId: { in: tenantIds },
+          role: { in: ['ADMIN', 'OPERATOR'] },
+        },
+        include: { tenant: true },
+      })
+
+      let notificationsSent = 0
+
+      for (const autorizzazione of autorizzazioni) {
+        const dataScadenza = autorizzazione.dataScadenza as Date
+        const giorniAllaScadenza = Math.ceil(
+          (dataScadenza.getTime() - oggi.getTime()) / (1000 * 60 * 60 * 24)
+        )
+        const scaduta = giorniAllaScadenza < 0
+
+        // Finché non è scaduta, avvisare solo agli intervalli previsti,
+        // esattamente come per il MUD.
+        if (!scaduta && !this.NOTIFICATION_INTERVALS.includes(giorniAllaScadenza)) {
+          continue
+        }
+
+        const dataScadenzaFormattata = dataScadenza.toLocaleDateString('it-IT', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })
+
+        const titolo = scaduta
+          ? `Autorizzazione ${autorizzazione.estremi} scaduta`
+          : `Promemoria scadenza autorizzazione ${autorizzazione.estremi}`
+        const messaggio = scaduta
+          ? `L'autorizzazione ${autorizzazione.estremi} è scaduta il ${dataScadenzaFormattata}.`
+          : `L'autorizzazione ${autorizzazione.estremi} scadrà fra ${giorniAllaScadenza} giorni, il ${dataScadenzaFormattata}.`
+
+        const destinatari = utenti.filter(u => u.tenantId === autorizzazione.tenantId)
+
+        for (const utente of destinatari) {
+          try {
+            const html = await this.templateService.renderAuthorizationExpiration({
+              recipientName: `${utente.firstName} ${utente.lastName}`,
+              authorizationType: 'Autorizzazione impianto',
+              authorizationNumber: autorizzazione.estremi,
+              expirationDate: dataScadenzaFormattata,
+              isExpired: scaduta,
+              daysRemaining: scaduta ? undefined : giorniAllaScadenza,
+              companyName: utente.tenant?.ragioneSociale ?? '',
+              issuingAuthority: '',
+              activities: [
+                ...(autorizzazione.operazioniRecupero ?? []),
+                ...(autorizzazione.operazioniSmaltimento ?? []),
+              ],
+              authorizationUrl: `${process.env.PUBLIC_URL || 'https://wasteflow.app'}/impianti/autorizzazioni/${autorizzazione.id}`,
+            })
+
+            await this.emailService.sendEmail({
+              to: utente.email,
+              subject: scaduta
+                ? '[WasteFlow] URGENTE: Autorizzazione impianto scaduta'
+                : '[WasteFlow] Promemoria scadenza autorizzazione impianto',
+              html,
+            })
+
+            await this.prisma.notification.create({
+              data: {
+                tenantId: autorizzazione.tenantId,
+                userId: utente.id,
+                type: 'AUTORIZZAZIONE_IN_SCADENZA',
+                title: titolo,
+                message: messaggio,
+                severity: scaduta ? 'ERROR' : 'WARNING',
+                actionUrl: `/impianti/autorizzazioni/${autorizzazione.id}`,
+                isRead: false,
+              },
+            })
+
+            notificationsSent++
+            this.logger.debug(`Avviso scadenza autorizzazione inviato a ${utente.email}`)
+          } catch (error) {
+            this.logger.error(
+              `Invio avviso scadenza autorizzazione fallito per ${utente.email}`,
+              error
+            )
+          }
+        }
+      }
+
+      this.logger.info(
+        `Controllo scadenza autorizzazioni impianto completato: ${notificationsSent} notifiche inviate`
       )
     } catch (error) {
-      this.logger.error('Failed to check authorization expirations', error)
+      this.logger.error('Controllo scadenza autorizzazioni impianto fallito', error)
     }
   }
 
