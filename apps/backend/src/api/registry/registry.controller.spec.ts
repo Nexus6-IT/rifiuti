@@ -160,5 +160,17 @@ describe('RegistryController — stato di scadenza nell’elenco (Task 4 scadenz
       expect(result.items[0].iscrizioneScaduta).toBe(false)
       expect(result.items[0].giorniAllaScadenza).toBeNull()
     })
+
+    // Correzione di revisione (rilievo minore): stesso test già presente per
+    // i destinatari, mancava qui pur essendo il percorso identico
+    // (tenantId dalla request al comando del caso d'uso) — copertura
+    // asimmetrica, non un difetto di comportamento diverso.
+    it('propaga il tenantId dalla request al caso d’uso (isolamento per tenant)', async () => {
+      listTrasportatoriUseCase.execute.mockResolvedValue(Result.ok([]))
+
+      await controller.listTrasportatori(req('tenant-xyz'))
+
+      expect(listTrasportatoriUseCase.execute).toHaveBeenCalledWith({ tenantId: 'tenant-xyz' })
+    })
   })
 })
