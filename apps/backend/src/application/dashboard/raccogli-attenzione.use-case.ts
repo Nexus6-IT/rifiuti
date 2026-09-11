@@ -82,9 +82,14 @@ export function ordinaVociPerGravita(voci: VoceAttenzione[]): VoceAttenzione[] {
  * `rlsExtension` (v. `prisma.service.ts`), non dal client nudo. I filtri
  * espliciti per `tenantId` restano tutti al loro posto — non sono ridondanti,
  * sono la prima linea — ma se uno di essi venisse dimenticato in futuro
- * l'estensione lo inietterebbe comunque, per i model tutti presenti in
- * `TENANT_SCOPED_MODELS` (`RentriCredential`, `AutorizzazioneImpianto`,
- * `Trasportatore`, `Destinatario`).
+ * l'estensione lo inietterebbe comunque, per i `findMany` su
+ * `AutorizzazioneImpianto`, `Trasportatore` e `Destinatario`.
+ *
+ * UNICA ECCEZIONE, e non e' una svista: la `findUnique` su `RentriCredential`
+ * resta fuori. `applyTenantScope` lascia apposta `findUnique` invariata
+ * (`prisma-rls.extension.ts`), perche' iniettare il `tenantId` romperebbe il
+ * vincolo di unicita'. Li' l'isolamento non manca: su quel model il
+ * `tenantId` E' la chiave unica, quindi la query e' isolata per costruzione.
  */
 @Injectable()
 export class RaccogliAttenzioneUseCase {

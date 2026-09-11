@@ -24,7 +24,7 @@ function voceAttenzione(overrides: Partial<VoceAttenzione> = {}): VoceAttenzione
     gravita: 'avviso',
     titolo: 'Autorizzazione XYZ in scadenza',
     dettaglio: 'scade fra 12 giorni',
-    azione: { etichetta: 'Vedi autorizzazione', rotta: '/trasportatori' },
+    azione: { etichetta: 'Vedi trasportatori', rotta: '/trasportatori' },
     ...overrides,
   }
 }

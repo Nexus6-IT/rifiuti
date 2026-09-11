@@ -49,7 +49,10 @@ const STATI_ESCLUSI_DA_TRASMETTERE: FIRStatus[] = [
  * non dal client nudo — stessa scelta di `RaccogliAttenzioneUseCase`. `FIR` e
  * `RentriUnitaLocale` sono entrambi in `TENANT_SCOPED_MODELS`, quindi
  * l'iniezione automatica del `tenantId` copre anche queste query se il
- * filtro esplicito venisse mai dimenticato.
+ * filtro esplicito venisse mai dimenticato. NON copre invece i conteggi
+ * della scorta, che passano da `RentriScortaRepository` sul client nudo:
+ * li' vale solo il filtro esplicito, ed e' una scelta di quel repository,
+ * non una dimenticanza di questo use case.
  */
 @Injectable()
 export class RaccogliIndicatoriAzioneUseCase {

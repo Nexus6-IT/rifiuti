@@ -783,6 +783,19 @@ export class DeadlineCheckerService {
   }
 
   /**
+   * Costruisce un URL assoluto per un link dentro un'email, a partire da un
+   * percorso relativo dell'app (es. `/trasportatori`). Correzione di
+   * revisione (rilievo importante): un percorso relativo dentro un
+   * messaggio di posta non è risolvibile da nessun client — a differenza
+   * della notifica in applicazione, dove il percorso relativo resta
+   * corretto così com'è e NON va fatto passare da qui. Stesso fallback già
+   * usato per `mudUrl` in `checkMudDeadlines`.
+   */
+  private buildEmailUrl(path: string): string {
+    return `${process.env.PUBLIC_URL || 'https://wasteflow.app'}${path}`
+  }
+
+  /**
    * Vero se esiste già, per lo stesso tenant, lo stesso tipo e la stessa
    * entità (`relatedEntityId` + `relatedEntityType`), una notifica creata
    * negli ultimi `NOTIFICATION_DEDUP_GIORNI` giorni. Usata per non ripetere
@@ -801,19 +814,6 @@ export class DeadlineCheckerService {
    * ancora come "recente" e blocca la creazione di una nuova — la finestra
    * di deduplicazione è quindi di 7 giorni pieni, non di "più di 7 giorni".
    */
-  /**
-   * Costruisce un URL assoluto per un link dentro un'email, a partire da un
-   * percorso relativo dell'app (es. `/trasportatori`). Correzione di
-   * revisione (rilievo importante): un percorso relativo dentro un
-   * messaggio di posta non è risolvibile da nessun client — a differenza
-   * della notifica in applicazione, dove il percorso relativo resta
-   * corretto così com'è e NON va fatto passare da qui. Stesso fallback già
-   * usato per `mudUrl` in `checkMudDeadlines`.
-   */
-  private buildEmailUrl(path: string): string {
-    return `${process.env.PUBLIC_URL || 'https://wasteflow.app'}${path}`
-  }
-
   private async esisteNotificaRecente(
     tenantId: string,
     type:
