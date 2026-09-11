@@ -150,4 +150,50 @@ describe('DashboardComponent', () => {
     riprova.click()
     expect(attenzioneService.getAttenzione).toHaveBeenCalledTimes(1)
   })
+
+  it("mostra gli indicatori orientati all'azione (Task 3) con la stessa fascia generica, informativo incluso", () => {
+    // Il template `*ngFor` legge solo chiave/gravita/titolo/dettaglio/azione:
+    // le nuove voci del backend (formulari da trasmettere, numeri vidimati
+    // pronti) non richiedono alcuna modifica al componente, compreso il caso
+    // 'informativo' già supportato da etichettaGravita/getGravitaSeverity.
+    setup()
+    attenzioneService.getAttenzione.and.returnValue(
+      of({
+        voci: [
+          voceAttenzione({
+            chiave: 'formulari-da-trasmettere',
+            gravita: 'avviso',
+            titolo: 'Formulari da trasmettere a RENTRI',
+            dettaglio: "3 in attesa di trasmissione all'ente",
+            azione: { etichetta: 'Vedi formulari', rotta: '/fir' },
+          }),
+          voceAttenzione({
+            chiave: 'scorta-vidimata-OP0001AAA000001-MI0001',
+            gravita: 'informativo',
+            titolo: 'Numeri vidimati pronti — Sede di Milano',
+            dettaglio: '25 pronti su una soglia di 10',
+            azione: { etichetta: 'Vedi scorta', rotta: '/rentri/blocchi' },
+          }),
+        ],
+      })
+    )
+
+    fixture.detectChanges()
+
+    const html: HTMLElement = fixture.nativeElement
+    const daTrasmettere = html.querySelector(
+      '[data-testid="attenzione-voce-formulari-da-trasmettere"]'
+    )
+    expect(daTrasmettere).not.toBeNull()
+    expect(daTrasmettere!.textContent).toContain('Formulari da trasmettere a RENTRI')
+    expect(daTrasmettere!.querySelector('p-tag')?.getAttribute('aria-label')).toBe(
+      'Gravità: Avviso'
+    )
+
+    const scorta = html.querySelector(
+      '[data-testid="attenzione-voce-scorta-vidimata-OP0001AAA000001-MI0001"]'
+    )
+    expect(scorta).not.toBeNull()
+    expect(scorta!.querySelector('p-tag')?.getAttribute('aria-label')).toBe('Gravità: Informativo')
+  })
 })

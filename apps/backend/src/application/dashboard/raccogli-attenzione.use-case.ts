@@ -40,18 +40,27 @@ const ORDINE_GRAVITA: Record<VoceAttenzione['gravita'], number> = {
 }
 
 /**
+ * Ordina voci di attenzione per gravità (i critici per primi). Esportata
+ * perché il controller la riusa per fondere le voci di
+ * `RaccogliAttenzioneUseCase` con quelle di `RaccogliIndicatoriAzioneUseCase`
+ * (Task 3 del piano cruscotto) in un'unica lista ordinata, senza duplicare
+ * la regola di ordinamento in due punti.
+ */
+export function ordinaVociPerGravita(voci: VoceAttenzione[]): VoceAttenzione[] {
+  return [...voci].sort((a, b) => ORDINE_GRAVITA[a.gravita] - ORDINE_GRAVITA[b.gravita])
+}
+
+/**
  * Raccoglie in un'unica chiamata le cose che richiedono attenzione oggi per
  * un tenant, già ordinate per gravità (i critici per primi).
  *
- * NOTA SULLA PORTATA (decisione del PO, non svista): il piano originale
- * prevedeva anche le voci "scorta di numeri vidimati esaurita o sotto
- * soglia" e "nessun blocco attivo", che dipendono da `RentriScortaRepository`.
- * Quel repository esiste nell'albero di lavoro ma non è tracciato da git in
- * questo momento (altro lavoro in corso in parallelo): importarlo qui
- * produrrebbe un commit rotto per chiunque clonasse il ramo senza quei file
- * non tracciati. Le voci coperte in questo task sono solo quelle che
- * poggiano su codice già committato: certificato RENTRI e autorizzazioni
- * impianto.
+ * NOTA SULLA PORTATA: le voci "formulari da trasmettere" e "numeri vidimati
+ * pronti" (Task 3 del piano cruscotto, che dipendono da `RentriScortaRepository`
+ * — committato in `96a87ca`) vivono in `RaccogliIndicatoriAzioneUseCase`, un
+ * file separato: questo file supera già le 150 righe che il piano indica come
+ * soglia oltre la quale separare, e `AttenzioneController` fonde le voci dei
+ * due use case in un'unica lista ordinata (v. `ordinaVociPerGravita`). Le voci
+ * coperte QUI restano certificato RENTRI e autorizzazioni impianto.
  *
  * Aggiungere una voce nuova è aggiungere un metodo privato che restituisce
  * `VoceAttenzione[]` e includerlo nell'array `raccoglitori` di `raccogli()`
@@ -68,9 +77,7 @@ export class RaccogliAttenzioneUseCase {
     ]
 
     const risultati = await Promise.all(raccoglitori.map(raccoglitore => raccoglitore()))
-    const voci = risultati
-      .flat()
-      .sort((a, b) => ORDINE_GRAVITA[a.gravita] - ORDINE_GRAVITA[b.gravita])
+    const voci = ordinaVociPerGravita(risultati.flat())
 
     return { voci }
   }
