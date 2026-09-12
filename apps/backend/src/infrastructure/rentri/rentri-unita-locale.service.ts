@@ -12,6 +12,10 @@ export interface RentriUnitaLocale {
   attiva: boolean
   createdAt: Date
   updatedAt: Date
+  /** Blocco virtuale RENTRI predefinito per l'emissione da questa sede (R6). Null = non configurato. */
+  codiceBloccoPredefinito: string | null
+  /** Soglia di scorta di numeri vidimati da mantenere pronti per questa sede (R6). Null = job disattivato per questa sede. */
+  dimensioneScortaDesiderata: number | null
 }
 
 /** Dati per creare una nuova unità locale. */
@@ -30,6 +34,8 @@ export interface CreateRentriUnitaLocaleInput {
 export interface UpdateRentriUnitaLocaleInput {
   denominazione?: string
   attiva?: boolean
+  /** Soglia di scorta (R6). `null` esplicito disattiva il rifornimento automatico per questa sede. */
+  dimensioneScortaDesiderata?: number | null
 }
 
 /**
@@ -119,13 +125,55 @@ export class RentriUnitaLocaleService {
     if (input.denominazione !== undefined && !input.denominazione.trim()) {
       throw new BadRequestException('La denominazione della sede è obbligatoria')
     }
+    if (
+      input.dimensioneScortaDesiderata !== undefined &&
+      input.dimensioneScortaDesiderata !== null
+    ) {
+      if (
+        !Number.isInteger(input.dimensioneScortaDesiderata) ||
+        input.dimensioneScortaDesiderata < 1
+      ) {
+        throw new BadRequestException('La dimensione della scorta deve essere un intero positivo')
+      }
+    }
 
     const row = await this.prisma.db.rentriUnitaLocale.update({
       where: { id },
       data: {
         ...(input.denominazione !== undefined ? { denominazione: input.denominazione.trim() } : {}),
         ...(input.attiva !== undefined ? { attiva: input.attiva } : {}),
+        ...(input.dimensioneScortaDesiderata !== undefined
+          ? { dimensioneScortaDesiderata: input.dimensioneScortaDesiderata }
+          : {}),
       },
+    })
+    return this.toPlain(row)
+  }
+
+  /**
+   * Imposta il blocco virtuale predefinito della sede identificata da
+   * `numIscrSito` (R6 — `PUT /rentri/blocchi/:codiceBlocco/predefinito`: il
+   * chiamante conosce solo il codice del blocco, la sede si risolve da
+   * quello). Fail-closed: nessuna sede locale con quel `numIscrSito` per
+   * questo tenant → 404, mai una creazione implicita.
+   */
+  async impostaBloccoPredefinitoPerNumIscrSito(
+    tenantId: string,
+    numIscrSito: string,
+    codiceBlocco: string
+  ): Promise<RentriUnitaLocale> {
+    const existing = await this.prisma.db.rentriUnitaLocale.findFirst({
+      where: { tenantId, numIscrSito },
+    })
+    if (!existing) {
+      throw new NotFoundException(
+        `Nessuna unità locale RENTRI registrata per num_iscr_sito ${numIscrSito}: registrala prima di impostare un blocco predefinito.`
+      )
+    }
+
+    const row = await this.prisma.db.rentriUnitaLocale.update({
+      where: { id: existing.id },
+      data: { codiceBloccoPredefinito: codiceBlocco },
     })
     return this.toPlain(row)
   }
@@ -262,6 +310,8 @@ export class RentriUnitaLocaleService {
     attiva: boolean
     createdAt: Date
     updatedAt: Date
+    codiceBloccoPredefinito?: string | null
+    dimensioneScortaDesiderata?: number | null
   }): RentriUnitaLocale {
     return {
       id: row.id,
@@ -271,6 +321,8 @@ export class RentriUnitaLocaleService {
       attiva: row.attiva,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      codiceBloccoPredefinito: row.codiceBloccoPredefinito ?? null,
+      dimensioneScortaDesiderata: row.dimensioneScortaDesiderata ?? null,
     }
   }
 }

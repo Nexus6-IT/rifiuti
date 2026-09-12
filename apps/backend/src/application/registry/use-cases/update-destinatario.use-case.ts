@@ -28,6 +28,9 @@ export interface UpdateDestinatarioCommand {
   email?: string
   telefono?: string
   pec?: string
+  // `undefined` = campo non toccato dalla richiesta; `null` = azzeramento
+  // esplicito della scadenza (campo facoltativo).
+  scadenzaAutorizzazione?: Date | null
 }
 
 @Injectable()
@@ -79,6 +82,12 @@ export class UpdateDestinatarioUseCase {
 
       if (command.numeroAutorizzazione) {
         destinatario.updateNumeroAutorizzazione(command.numeroAutorizzazione)
+      }
+
+      // `undefined` = campo non presente nella richiesta, nessuna modifica;
+      // `null` = azzeramento esplicito della scadenza.
+      if (command.scadenzaAutorizzazione !== undefined) {
+        destinatario.updateScadenzaAutorizzazione(command.scadenzaAutorizzazione ?? undefined)
       }
 
       // Update contacts if any field is provided

@@ -262,4 +262,85 @@ describe('Trasportatore Entity', () => {
       )
     })
   })
+
+  // Task 3 scadenzario: scadenzaIscrizione è facoltativa perché le anagrafiche
+  // esistenti non hanno questo dato — non va inventata una scadenza per chi
+  // non l'ha mai fornita.
+  describe('scadenzaIscrizione', () => {
+    it('should create without scadenzaIscrizione (anagrafiche esistenti)', () => {
+      const trasportatore = Trasportatore.create({
+        ragioneSociale: 'Trasporti Eco Srl',
+        partitaIVA: PartitaIVA.create('98765432109'),
+        sedeLegale: Indirizzo.create({
+          via: 'Via Milano',
+          civico: '50',
+          cap: '20100',
+          citta: 'Milano',
+          provincia: 'MI',
+        }),
+        numeroIscrizione: 'MI/001234',
+      })
+
+      expect(trasportatore.scadenzaIscrizione).toBeUndefined()
+    })
+
+    it('should create with scadenzaIscrizione', () => {
+      const scadenza = new Date('2027-01-15')
+      const trasportatore = Trasportatore.create({
+        ragioneSociale: 'Trasporti Eco Srl',
+        partitaIVA: PartitaIVA.create('98765432109'),
+        sedeLegale: Indirizzo.create({
+          via: 'Via Milano',
+          civico: '50',
+          cap: '20100',
+          citta: 'Milano',
+          provincia: 'MI',
+        }),
+        numeroIscrizione: 'MI/001234',
+        scadenzaIscrizione: scadenza,
+      })
+
+      expect(trasportatore.scadenzaIscrizione).toBe(scadenza)
+    })
+
+    it('should update scadenzaIscrizione', () => {
+      const trasportatore = Trasportatore.create({
+        ragioneSociale: 'Trasporti Eco Srl',
+        partitaIVA: PartitaIVA.create('98765432109'),
+        sedeLegale: Indirizzo.create({
+          via: 'Via Milano',
+          civico: '50',
+          cap: '20100',
+          citta: 'Milano',
+          provincia: 'MI',
+        }),
+        numeroIscrizione: 'MI/001234',
+      })
+
+      const nuovaScadenza = new Date('2028-06-30')
+      trasportatore.updateScadenzaIscrizione(nuovaScadenza)
+
+      expect(trasportatore.scadenzaIscrizione).toBe(nuovaScadenza)
+    })
+
+    it('should clear scadenzaIscrizione when updated with undefined', () => {
+      const trasportatore = Trasportatore.create({
+        ragioneSociale: 'Trasporti Eco Srl',
+        partitaIVA: PartitaIVA.create('98765432109'),
+        sedeLegale: Indirizzo.create({
+          via: 'Via Milano',
+          civico: '50',
+          cap: '20100',
+          citta: 'Milano',
+          provincia: 'MI',
+        }),
+        numeroIscrizione: 'MI/001234',
+        scadenzaIscrizione: new Date('2027-01-15'),
+      })
+
+      trasportatore.updateScadenzaIscrizione(undefined)
+
+      expect(trasportatore.scadenzaIscrizione).toBeUndefined()
+    })
+  })
 })

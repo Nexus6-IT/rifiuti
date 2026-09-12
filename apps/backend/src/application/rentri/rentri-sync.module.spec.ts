@@ -26,6 +26,15 @@ import { RENTRISyncController } from '../../api/rentri/rentri-sync.controller'
 import { RentriFormulariController } from '../../api/rentri/rentri-formulari.controller'
 import { RentriFirLifecycleController } from '../../api/rentri/rentri-fir-lifecycle.controller'
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
+import { RentriScortaRepository } from '../../infrastructure/persistence/rentri-scorta.repository'
+import { ElencaBlocchiRentriUseCase } from './scorta/elenca-blocchi-rentri.use-case'
+import { GetScortaRentriUseCase } from './scorta/get-scorta-rentri.use-case'
+import { AvviaVidimazioneScortaUseCase } from './scorta/avvia-vidimazione-scorta.use-case'
+import { ImpostaBloccoPredefinitoUseCase } from './scorta/imposta-blocco-predefinito.use-case'
+import { VerificaEmissionePossibileRentriUseCase } from './scorta/verifica-emissione-possibile.use-case'
+import { ConsumaNumeroVidimatoUseCase } from './scorta/consuma-numero-vidimato.use-case'
+import { RentriRifornimentoScortaJob } from '../../infrastructure/jobs/rentri-rifornimento-scorta.job'
+import { RentriScortaController } from '../../api/rentri/rentri-scorta.controller'
 import { AppModule } from '../../app.module'
 
 /**
@@ -117,6 +126,20 @@ describe('RentriSyncModule (DI wiring)', () => {
     expect(moduleRef.get(RiconciliaStatoRentriUseCase)).toBeDefined()
     expect(moduleRef.get(RentriRiconciliazioneJob)).toBeDefined()
     expect(moduleRef.get(RentriCertificatoScadenzaJob)).toBeDefined()
+
+    // R6 — scorta di numeri FIR pre-vidimati: stesso motivo, stesso errore
+    // ricorrente da non ripetere (v. `RentriVidimazioneClient`, corretto e
+    // provato ma mai cablato prima d'ora). Deve risolversi anche il
+    // controller REST, non solo i singoli use case in isolamento.
+    expect(moduleRef.get(RentriScortaRepository)).toBeDefined()
+    expect(moduleRef.get(ElencaBlocchiRentriUseCase)).toBeDefined()
+    expect(moduleRef.get(GetScortaRentriUseCase)).toBeDefined()
+    expect(moduleRef.get(AvviaVidimazioneScortaUseCase)).toBeDefined()
+    expect(moduleRef.get(ImpostaBloccoPredefinitoUseCase)).toBeDefined()
+    expect(moduleRef.get(VerificaEmissionePossibileRentriUseCase)).toBeDefined()
+    expect(moduleRef.get(ConsumaNumeroVidimatoUseCase)).toBeDefined()
+    expect(moduleRef.get(RentriRifornimentoScortaJob)).toBeDefined()
+    expect(moduleRef.get(RentriScortaController)).toBeDefined()
 
     // Nessun moduleRef.close(): onModuleInit non è mai stato invocato
     // (niente connessioni reali aperte), quindi non c'è nulla da chiudere.

@@ -29,6 +29,7 @@ export interface CreateTrasportatoreCommand {
   email?: string
   telefono?: string
   pec?: string
+  scadenzaIscrizione?: Date
 }
 
 @Injectable()
@@ -79,6 +80,7 @@ export class CreateTrasportatoreUseCase {
         email: command.email,
         telefono: command.telefono,
         pec: command.pec,
+        scadenzaIscrizione: command.scadenzaIscrizione,
       })
 
       // Save to repository

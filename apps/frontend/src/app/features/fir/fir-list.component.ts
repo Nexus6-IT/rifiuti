@@ -9,6 +9,7 @@ import { DropdownModule } from 'primeng/dropdown'
 import { TagModule } from 'primeng/tag'
 import { DialogModule } from 'primeng/dialog'
 import { InputNumberModule } from 'primeng/inputnumber'
+import { MessageModule } from 'primeng/message'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ConfirmationService } from 'primeng/api'
 import { SplitButtonModule } from 'primeng/splitbutton'
@@ -49,6 +50,7 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
     TagModule,
     DialogModule,
     InputNumberModule,
+    MessageModule,
     ConfirmDialogModule,
     SplitButtonModule,
     CardModule,
@@ -305,6 +307,14 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
         closeAriaLabel="Chiudi la finestra Nuovo FIR"
       >
         <div class="fir-form p-fluid">
+          <!-- L'avviso "emissione non possibile" (GET /rentri/emissione-possibile) è
+               stato tolto da qui il 2026-09-11: ConsumaNumeroVidimatoUseCase non ha
+               ancora alcun chiamante (v. la sua classe), quindi l'emissione reale non
+               consuma mai dalla scorta e questo controllo era un falso allarme
+               permanente per ogni tenant senza R6 configurato, cioè tutti oggi.
+               Il banner tornerà qui quando il consumo sarà ricablato in
+               EmettiFIRUseCase (v. verifica-emissione-possibile.use-case.ts, che
+               resta e viene ancora usato per l'endpoint). -->
           <p class="fir-form__legend">
             I campi contrassegnati con <span class="req">*</span> sono obbligatori.
           </p>
@@ -429,6 +439,16 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                 role="alert"
                 >{{ firErrors['trasportatoreId'] }}</small
               >
+              <!-- Avviso "a scelta" (Task 4 dello scadenzario): AVVISA, non IMPEDISCE —
+                   la scadenza potrebbe essere un nostro dato non aggiornato. -->
+              @if (trasportatoreSelezionato()?.iscrizioneScaduta) {
+                <p-message
+                  severity="warn"
+                  text="L'iscrizione all'Albo Gestori di questo trasportatore risulta scaduta. Verifica il dato prima di procedere: l'emissione non viene bloccata."
+                  styleClass="w-full mt-2"
+                  data-testid="fir-trasportatore-iscrizione-scaduta"
+                />
+              }
             </div>
 
             <div class="field">
@@ -489,6 +509,15 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                 role="alert"
                 >{{ firErrors['destinatarioId'] }}</small
               >
+              <!-- Avviso "a scelta" (Task 4 dello scadenzario): AVVISA, non IMPEDISCE. -->
+              @if (destinatarioSelezionato()?.autorizzazioneScaduta) {
+                <p-message
+                  severity="warn"
+                  text="L'autorizzazione di questo destinatario risulta scaduta. Verifica il dato prima di procedere: l'emissione non viene bloccata."
+                  styleClass="w-full mt-2"
+                  data-testid="fir-destinatario-autorizzazione-scaduta"
+                />
+              }
             </div>
 
             <!-- Trasportatori aggiuntivi (trasporto intermodale) -->
@@ -1557,6 +1586,24 @@ export class FirListComponent implements OnInit {
     if (this.firErrors[field]) {
       delete this.firErrors[field]
     }
+  }
+
+  /**
+   * Trasportatore attualmente scelto nel form "Nuovo FIR" (o `null`), usato
+   * per l'avviso inline di iscrizione scaduta — Task 4 dello scadenzario:
+   * si AVVISA alla scelta della controparte, non solo via email il giorno
+   * dopo. `iscrizioneScaduta` arriva già calcolata dal backend
+   * (`RegistryController`, stessa `calcolaScadenza` del controllo
+   * periodico) e vale `false` quando la scadenza non è nota: nessun avviso
+   * inventato su un dato assente.
+   */
+  trasportatoreSelezionato(): Trasportatore | null {
+    return this.trasportatori().find(t => t.id === this.newFIR.trasportatoreId) ?? null
+  }
+
+  /** Destinatario attualmente scelto nel form "Nuovo FIR" (o `null`), stessa logica sopra. */
+  destinatarioSelezionato(): Destinatario | null {
+    return this.destinatari().find(d => d.id === this.newFIR.destinatarioId) ?? null
   }
 
   /** Valida i campi obbligatori del form FIR popolando `firErrors`. */

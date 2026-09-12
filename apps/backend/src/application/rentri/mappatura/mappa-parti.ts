@@ -14,10 +14,32 @@
 export type TipoTrasporto = 'Terrestre' | 'Ferroviario' | 'Marittimo'
 
 /**
- * Pattern del numero di iscrizione all'Albo Gestori Ambientali richiesto da RENTRI
- * per "numero_iscrizione_albo" (due lettere, slash, sei cifre — es. "AB/123456").
+ * Pattern TOLLERANTE del numero di iscrizione all'Albo Gestori Ambientali: due lettere,
+ * slash, da una a sei cifre. RENTRI pretende sempre sei cifre con gli zeri davanti
+ * (es. "AB/123456"), ma un trasportatore scrive spesso il proprio numero senza gli zeri
+ * (es. "MI/7490"): se sappiamo cosa intendeva, lo normalizziamo invece di rifiutarlo
+ * (vedi {@link normalizzaNumeroIscrizioneAlbo}). Rifiutiamo solo quando e' davvero
+ * ambiguo: piu' di sei cifre, o una sigla che non e' di due lettere.
  */
-const PATTERN_NUMERO_ISCRIZIONE_ALBO = /^[A-Za-z]{2}\/[0-9]{6}$/
+const PATTERN_NUMERO_ISCRIZIONE_ALBO = /^([A-Za-z]{2})\/([0-9]{1,6})$/
+
+/**
+ * Normalizza il numero di iscrizione all'Albo nel formato preteso da RENTRI (due
+ * lettere maiuscole, slash, sei cifre con zeri davanti). Restituisce `null` quando il
+ * valore e' ambiguo e non va indovinato (sigla non di due lettere, o piu' di sei cifre):
+ * in quel caso e' compito del chiamante sollevare {@link DatoMancantePerRentriError}.
+ *
+ * Allineare a destra con zeri e' sicuro perche' "MI/7490" e "MI/007490" sono lo stesso
+ * numero: non si inventano cifre, non si taglia nulla, non si indovina una sigla.
+ */
+function normalizzaNumeroIscrizioneAlbo(valoreGrezzo: string): string | null {
+  const corrispondenza = PATTERN_NUMERO_ISCRIZIONE_ALBO.exec(valoreGrezzo)
+  if (!corrispondenza) {
+    return null
+  }
+  const [, sigla, cifre] = corrispondenza
+  return `${sigla.toUpperCase()}/${cifre.padStart(6, '0')}`
+}
 
 /**
  * Errore di dominio sollevato quando un dato obbligatorio per la trasmissione a RENTRI
@@ -238,14 +260,15 @@ export function mappaTrasportatore(
   }
 
   if (trasportatore.numeroIscrizione) {
-    if (!PATTERN_NUMERO_ISCRIZIONE_ALBO.test(trasportatore.numeroIscrizione)) {
+    const numeroNormalizzato = normalizzaNumeroIscrizioneAlbo(trasportatore.numeroIscrizione)
+    if (numeroNormalizzato === null) {
       throw new DatoMancantePerRentriError(
         'trasportatore',
         'numero_iscrizione_albo',
-        `il valore "${trasportatore.numeroIscrizione}" non rispetta il formato richiesto da RENTRI (due lettere, slash, sei cifre — es. "AB/123456")`
+        `il valore "${trasportatore.numeroIscrizione}" non è normalizzabile nel formato richiesto da RENTRI (due lettere, slash, fino a sei cifre — es. "AB/123456" o "MI/7490")`
       )
     }
-    risultato.numero_iscrizione_albo = trasportatore.numeroIscrizione
+    risultato.numero_iscrizione_albo = numeroNormalizzato
   }
 
   return risultato

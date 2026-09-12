@@ -130,7 +130,12 @@ export class TemplateService {
     companyName: string
     issuingAuthority: string
     activities: string[]
-    authorizationUrl: string
+    // Facoltativo (correzione di revisione, rilievo critico dello
+    // scadenzario): non tutte le entità con scadenza hanno una pagina di
+    // dettaglio nel frontend (le autorizzazioni impianto, ad oggi, non ce
+    // l'hanno). Quando manca, il template non deve inventare un link morto:
+    // omette del tutto il pulsante "Visualizza Autorizzazione".
+    authorizationUrl?: string
     isProroga?: boolean
     contactInfo?: {
       name: string
@@ -144,6 +149,46 @@ export class TemplateService {
         ? 'URGENTE: Autorizzazione Scaduta'
         : 'Promemoria: Scadenza Autorizzazione',
       ...data,
+    })
+  }
+
+  /**
+   * Render counterparty (trasportatore/destinatario) expiration notice.
+   *
+   * Modello DEDICATO, distinto da `renderAuthorizationExpiration`
+   * (correzione di revisione, rilievo critico): quel modello parla in prima
+   * persona di "autorizzazione della tua azienda" ed è corretto per le
+   * autorizzazioni impianto (caso proprio), ma FALSO quando l'entità in
+   * scadenza è un trasportatore o un destinatario in rubrica — soggetti
+   * TERZI, non l'azienda del destinatario dell'email. Questo modello dice
+   * la verità: è scaduta l'anagrafica di una controparte, il rischio per chi
+   * legge è affidarle un formulario non conforme, non un reato proprio.
+   */
+  async renderCounterpartyExpiration(data: {
+    recipientName: string
+    counterpartyKind: 'trasportatore' | 'destinatario'
+    // Facoltativo: se l'anagrafica non ha ragione sociale valorizzata, il
+    // template omette del tutto la riga invece di lasciarla in bianco.
+    counterpartyName?: string
+    // Etichetta del dato che scade ("Iscrizione Albo Gestori Ambientali" /
+    // "Autorizzazione destinatario"), mostrata come label nel dettaglio.
+    tipoDato: string
+    identificativo: string
+    expirationDate: string
+    isExpired: boolean
+    daysRemaining?: number
+    // Sempre valorizzato: assoluto quando chiama da un'email (unico canale
+    // che ne ha bisogno), relativo per la notifica in applicazione — la
+    // distinzione è responsabilità del chiamante, non di questo metodo.
+    counterpartyUrl: string
+  }): Promise<string> {
+    return this.render('counterparty-expiration', {
+      subject: data.isExpired
+        ? 'Attenzione: anagrafica controparte scaduta'
+        : 'Promemoria: anagrafica controparte in scadenza',
+      ...data,
+      isTrasportatore: data.counterpartyKind === 'trasportatore',
+      isDestinatario: data.counterpartyKind === 'destinatario',
     })
   }
 

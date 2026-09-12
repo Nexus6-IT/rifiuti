@@ -22,8 +22,15 @@ import { CODE_ATTESE } from './system-health/probes/code.probe'
  * nel modulo: riprovvederli qui raddoppierebbe i `@Cron`).
  */
 describe('AdminSystemHealthModule (DI wiring)', () => {
+  // Il grafo include AuthModule (RedisService) e le code BullMQ: entrambi
+  // aprono una connessione ioredis reale nel costruttore, non in
+  // onModuleInit. Senza chiuderle il client resta a riprovare la connessione
+  // all'infinito (retryStrategy sempre attivo) e il processo jest non esce
+  // mai da solo — da qui il tracciamento per chiuderle in afterEach.
+  const moduliCreati: Array<{ close(): Promise<void> }> = []
+
   async function compila() {
-    return Test.createTestingModule({
+    const moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
         EventEmitterModule.forRoot(),
@@ -34,7 +41,13 @@ describe('AdminSystemHealthModule (DI wiring)', () => {
         AdminSystemHealthModule,
       ],
     }).compile()
+    moduliCreati.push(moduleRef)
+    return moduleRef
   }
+
+  afterEach(async () => {
+    await Promise.all(moduliCreati.splice(0).map(moduleRef => moduleRef.close()))
+  })
 
   it('risolve controller e servizi della pagina', async () => {
     const moduleRef = await compila()

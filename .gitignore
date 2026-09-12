@@ -88,3 +88,6 @@ ruvector.db
 
 # Credenziali della suite E2E (mai committare)
 .env.e2e
+
+# Area di lavoro degli agenti (ledger, briefing, pacchetti di revisione)
+.superpowers/
