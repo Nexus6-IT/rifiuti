@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import { RentriScortaRepository } from './rentri-scorta.repository'
 
@@ -72,11 +73,11 @@ describe('RentriScortaRepository — consumo concorrente su Postgres reale', () 
     const [primo, secondo] = await Promise.all([
       repo.consumaProssimoDisponibile(tenantId, {
         numIscrSito: NUM_ISCR_SITO,
-        firId: 'fir-a',
+        firId: randomUUID(),
       }),
       repo.consumaProssimoDisponibile(tenantId, {
         numIscrSito: NUM_ISCR_SITO,
-        firId: 'fir-b',
+        firId: randomUUID(),
       }),
     ])
 
@@ -93,7 +94,7 @@ describe('RentriScortaRepository — consumo concorrente su Postgres reale', () 
       Array.from({ length: 10 }, (_, i) =>
         repo.consumaProssimoDisponibile(tenantId, {
           numIscrSito: NUM_ISCR_SITO,
-          firId: `fir-${i}`,
+          firId: randomUUID(),
         })
       )
     )
@@ -110,11 +111,11 @@ describe('RentriScortaRepository — consumo concorrente su Postgres reale', () 
 
     await repo.consumaProssimoDisponibile(tenantId, {
       numIscrSito: NUM_ISCR_SITO,
-      firId: 'fir-unico',
+      firId: randomUUID(),
     })
     const secondo = await repo.consumaProssimoDisponibile(tenantId, {
       numIscrSito: NUM_ISCR_SITO,
-      firId: 'fir-in-piu',
+      firId: randomUUID(),
     })
 
     expect(secondo).toBeNull()
