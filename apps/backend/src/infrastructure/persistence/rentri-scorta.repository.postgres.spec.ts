@@ -91,7 +91,7 @@ describe('RentriScortaRepository — consumo concorrente su Postgres reale', () 
     await popolaScorta(8)
 
     const esiti = await Promise.all(
-      Array.from({ length: 10 }, (_, i) =>
+      Array.from({ length: 10 }, () =>
         repo.consumaProssimoDisponibile(tenantId, {
           numIscrSito: NUM_ISCR_SITO,
           firId: randomUUID(),
