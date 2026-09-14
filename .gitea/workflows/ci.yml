@@ -347,16 +347,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Lint dedicato di e2e/, PRIMA di accendere qualunque infrastruttura:
-      # fino a questo commit .eslintrc.json non includeva e2e/tsconfig.json in
-      # parserOptions.project (vedi e2e/.eslintrc.js), quindi la cartella non
-      # veniva analizzata da nessun gate — tutto il codice della suite E2E non
-      # e' mai stato passato al linter. E' il posto piu' economico per
-      # fermarsi se il codice dei test e' rotto, prima del costo di Postgres/
-      # Redis/build/Playwright.
-      - name: Lint e2e (check-only)
-        run: npx eslint "e2e/**/*.ts" --max-warnings=-1
-
       - name: Setup Node 20 + cache npm
         uses: actions/setup-node@v4
         with:
@@ -370,6 +360,30 @@ jobs:
       - name: Prisma generate
         working-directory: apps/backend
         run: npm run prisma:generate
+
+      # Lint dedicato di e2e/, PRIMA di accendere qualunque infrastruttura
+      # applicativa (Postgres/Redis/backend/frontend/Chromium): fino a un
+      # commit precedente .eslintrc.json non includeva e2e/tsconfig.json in
+      # parserOptions.project (vedi e2e/.eslintrc.js), quindi la cartella non
+      # veniva analizzata da nessun gate — tutto il codice della suite E2E non
+      # e' mai stato passato al linter. E' il posto piu' economico per
+      # fermarsi se il codice dei test e' rotto, prima del costo di Postgres/
+      # Redis/build/Playwright.
+      #
+      # ATTENZIONE ALL'ORDINE (rilievo critico della revisione finale,
+      # 2026-09-14): questo step DEVE girare DOPO "Setup Node 20", "Install
+      # dipendenze" e "Prisma generate", non prima. `npx eslint` senza
+      # `node_modules` installato scarica una eslint v9 isolata con
+      # configurazione "flat" di default, che ignora .eslintrc.json/
+      # e2e/.eslintrc.js del progetto e termina con "couldn't find an
+      # eslint.config.js" — il job restava rosso per sempre, esattamente il
+      # difetto che il commento sopra dichiara di voler evitare. In piu' il
+      # linting qui e' TYPE-AWARE (parserOptions.project in e2e/.eslintrc.js):
+      # e2e/utils/db-locale.ts importa `@prisma/client`, i cui tipi esistono
+      # solo dopo "Prisma generate" — lintare prima romperebbe la
+      # risoluzione dei tipi anche con node_modules gia' installato.
+      - name: Lint e2e (check-only)
+        run: npx eslint "e2e/**/*.ts" --max-warnings=-1
 
       # `docker run` esplicito invece di `services:` (vedi nota del job
       # "test-postgres": con rete host la pubblicazione delle porte non viene
