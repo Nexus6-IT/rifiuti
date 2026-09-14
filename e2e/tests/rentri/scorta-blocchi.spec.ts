@@ -203,3 +203,68 @@ test.describe('RENTRI — regressione: vidimaButtons() non deve confondersi con 
     await expect(blocchiPage.vidimaButtons()).toHaveCount(0)
   })
 })
+
+/**
+ * Regressione — giro di correzione 2 (2026-09-14): stessa classe di difetto
+ * di `vidimaButtons()` sopra, non cercata al primo giro nello stesso file.
+ * `data-testid="rentri-blocchi-vidima-input-quantita"` nel componente è un
+ * attributo statico sul tag host `<p-inputNumber>`, non sull'`<input>`
+ * nativo interno (che ha `inputId="vidima-quantita"`). `.fill()` chiamato
+ * sull'host lancia "Element is not an <input>...". Stesso principio per
+ * `rentri-blocchi-vidima-conferma`: è sull'host `<p-button>`, e
+ * `toBeDisabled()` su un host non nativo non fallisce mai (Playwright ignora
+ * `disabled` su elementi non-form), quindi l'asserzione risulterebbe falsa
+ * anche a bottone davvero disabilitato.
+ *
+ * DOM statico via `page.setContent`, nessuna app viva. Eseguito in questa
+ * sessione: `npx playwright test -c e2e/playwright.config.ts --project=chromium
+ * -g "host p-inputNumber/p-button"` → 2 passed.
+ */
+test.describe('RENTRI — regressione: host p-inputNumber/p-button non sono l’elemento nativo controllabile', () => {
+  test('vidimaInputQuantita.fill() scrive nell’input nativo interno, non nell’host p-inputNumber', async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <div data-testid="rentri-blocchi-vidima-input-quantita">
+        <span class="p-inputnumber-input-wrapper">
+          <input id="vidima-quantita" type="text" inputmode="numeric" />
+        </span>
+      </div>
+    `)
+
+    const blocchiPage = new RentriBlocchiPage(page)
+
+    // Prova che la collisione esisteva davvero: `.fill()` sull'host intero
+    // (il locator "ingenuo" di prima della correzione) fallisce perché
+    // l'host non è un campo.
+    await expect(
+      page.getByTestId('rentri-blocchi-vidima-input-quantita').fill('150')
+    ).rejects.toThrow(/not an <input>/i)
+
+    // Il locator corretto, scopato all'input nativo interno, funziona.
+    await blocchiPage.vidimaInputQuantita.fill('150')
+    await expect(blocchiPage.vidimaInputQuantita).toHaveValue('150')
+  })
+
+  test('vidimaConferma.toBeDisabled() legge il bottone nativo interno, non l’host p-button', async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <div data-testid="rentri-blocchi-vidima-conferma">
+        <button type="button" disabled>Avvia vidimazione</button>
+      </div>
+    `)
+
+    const blocchiPage = new RentriBlocchiPage(page)
+
+    // Prova che l'asserzione ingenua sull'host è un falso negativo: l'host
+    // non è un elemento di form, quindi Playwright lo considera sempre
+    // "enabled" a prescindere dal `disabled` sul bottone reale al suo
+    // interno.
+    await expect(page.getByTestId('rentri-blocchi-vidima-conferma')).not.toBeDisabled()
+
+    // Il locator corretto, scopato al bottone nativo interno, riconosce
+    // davvero lo stato disabilitato.
+    await expect(blocchiPage.vidimaConferma).toBeDisabled()
+  })
+})
