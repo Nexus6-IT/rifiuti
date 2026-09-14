@@ -21,6 +21,15 @@ import { LoggerModule } from '../../core/logger/logger.module'
     EmailService,
     TemplateService,
   ],
-  exports: [NotificationService, EmailService],
+  exports: [
+    NotificationService,
+    EmailService,
+    // Esportato per il rilancio manuale dalla pagina «Stato del sistema»
+    // (JobActionsService, azione 'scadenzario-autorizzazioni'): riprovvederlo
+    // in quel modulo creerebbe una SECONDA istanza con i propri @Cron
+    // registrati, cioe' raddoppierebbe i job schedulati (stessa convenzione
+    // gia' in uso per RentriSyncModule/ReferenceDataModule).
+    DeadlineCheckerService,
+  ],
 })
 export class NotificationsModule {}

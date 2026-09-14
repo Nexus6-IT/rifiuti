@@ -66,6 +66,7 @@ describe('AdminSystemHealthModule (DI wiring)', () => {
       'rentri-certificato-scadenza',
       'codifiche-rentri',
       'dati-riferimento',
+      'scadenzario-autorizzazioni',
     ])
   })
 
