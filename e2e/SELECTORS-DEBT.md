@@ -39,10 +39,7 @@ da assegnare a chi lavora su `apps/frontend/**`.
 | Contratti                      | `apps/frontend/src/app/features/contracts/contracts-list.component.ts`        | `contratti-nuovo-button`, `contratti-row-{id}`, `contratti-status-select-{id}`                                                                                                                                                                                                                                                                                                                                                    |
 | ESG                            | `apps/frontend/src/app/features/esg/esg.component.ts`                         | `esg-filtro-periodo`, `esg-report-summary`                                                                                                                                                                                                                                                                                                                                                                                        |
 | Anomalie                       | `apps/frontend/src/app/features/anomaly/anomaly.component.ts`                 | `anomalie-row-{id}`, `anomalie-status-badge-{id}`                                                                                                                                                                                                                                                                                                                                                                                 |
-| Anagrafiche — Produttori       | `apps/frontend/src/app/features/registry/produttori-list.component.ts`        | `produttori-nuovo-button`, `produttori-row-{id}`, `produttori-modifica-{id}`, `produttori-elimina-{id}`                                                                                                                                                                                                                                                                                                                           |
-| Anagrafiche — Trasportatori    | `apps/frontend/src/app/features/registry/trasportatori-list.component.ts`     | `trasportatori-nuovo-button`, `trasportatori-row-{id}`, `trasportatori-modifica-{id}`, `trasportatori-elimina-{id}`                                                                                                                                                                                                                                                                                                               |
-| Anagrafiche — Destinatari      | `apps/frontend/src/app/features/registry/destinatari-list.component.ts`       | `destinatari-nuovo-button`, `destinatari-row-{id}`, `destinatari-modifica-{id}`, `destinatari-elimina-{id}`                                                                                                                                                                                                                                                                                                                       |
-| Anagrafiche — dialog condiviso | `apps/frontend/src/app/features/registry/anagrafica-form-dialog.component.ts` | `anagrafica-form-dialog`, `anagrafica-form-save-button`, `anagrafica-form-cancel-button`                                                                                                                                                                                                                                                                                                                                          |
+| Anagrafiche — dialog condiviso | `apps/frontend/src/app/features/registry/anagrafica-form-dialog.component.ts` | `anagrafica-form-dialog`, `anagrafica-form-save-button`, `anagrafica-form-cancel-button` — montato solo nel flusso rapido di "Nuovo FIR", non nelle pagine `/produttori`, `/trasportatori`, `/destinatari` (ciascuna ha un proprio dialog inline separato)                                                                                                                                                                       |
 | Admin — Tenants                | `apps/frontend/src/app/features/admin/tenants/tenant-admin.component.ts`      | `admin-tenants-nuovo-button`, `admin-tenants-row-{id}`, `admin-tenants-status-button-{id}`                                                                                                                                                                                                                                                                                                                                        |
 | Admin — Utenti                 | `apps/frontend/src/app/features/admin/users/user-admin.component.ts`          | `admin-users-nuovo-button`, `admin-users-row-{id}`, `admin-users-impersona-{id}`, `admin-users-role-select-{id}`                                                                                                                                                                                                                                                                                                                  |
 | RENTRI — Certificato           | `apps/frontend/src/app/features/rentri/rentri-credential.component.ts`        | `rentri-credential-upload-input`, `rentri-credential-save-button`, `rentri-credential-delete-button`                                                                                                                                                                                                                                                                                                                              |
@@ -54,6 +51,29 @@ da assegnare a chi lavora su `apps/frontend/**`.
 
 ## Aree già con buona copertura (nessuna azione richiesta)
 
+- **Anagrafiche — Produttori, Trasportatori, Destinatari (colmato 2026-09-14,
+  Task 2 piano UAT/E2E)**: le tre pagine instradate
+  (`produttori-list.component.ts`, `trasportatori-list.component.ts`,
+  `destinatari-list.component.ts` — ciascuna col proprio dialog inline di
+  creazione/modifica, distinto dal componente condiviso
+  `anagrafica-form-dialog.component.ts`) espongono `{area}-nuovo-button`,
+  `{area}-row-{id}`, `{area}-modifica-{id}`, `{area}-elimina-{id}`,
+  `{area}-form-dialog`, `{area}-form-save-button`,
+  `{area}-form-cancel-button`, `{area}-confirm-dialog` (`area` =
+  `produttori`/`trasportatori`/`destinatari`, `id` = id di business
+  dell'anagrafica). Il dialog di conferma eliminazione usa il template
+  di default di PrimeNG `ConfirmationService` (non un dialog custom): il
+  testid è solo sul contenitore `<p-confirmDialog>`, non sui pulsanti
+  accetta/rifiuta interni — aggiungerli richiederebbe un template
+  personalizzato, fuori perimetro per un task "solo attributi".
+  Nello stesso lavoro è stato chiuso anche un difetto di prodotto trovato
+  durante l'analisi: il campo facoltativo della data di scadenza
+  (`scadenzaIscrizione`/`scadenzaAutorizzazione`) esisteva nel backend, nel
+  cron e nella fascia di attenzione del cruscotto, ma non nei dialog inline
+  di trasportatori/destinatari — l'unico punto UI in cui esisteva era il
+  dialog condiviso, montato solo nel flusso "Nuovo FIR". Aggiunto con
+  `trasportatori-scadenza-iscrizione-input` /
+  `destinatari-scadenza-autorizzazione-input`.
 - `features/permissions/pages/my-permissions/*` (`permission-discovery.component.ts`)
 - `features/permissions/pages/permission-denied/*`
 - `features/permissions/pages/my-assignments/*`
