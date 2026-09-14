@@ -32,28 +32,32 @@ async function leggiCorpo(risposta: Response): Promise<unknown> {
 }
 
 /**
- * Login via il bypass di sviluppo POST /auth/dev/login (vedi
+ * Bypass di sviluppo diretto per email — POST /auth/dev/login (vedi
  * apps/backend/src/auth/controllers/dev-auth.controller.ts). Quell'endpoint
  * NON esiste in produzione — auth.module.ts lo registra solo quando
  * NODE_ENV !== 'production', quindi in produzione la richiesta risulterebbe
  * in un 404 poco chiaro. Qui rifiutiamo esplicitamente di provarci contro
  * un target non locale, invece di degradare in silenzio.
+ *
+ * A differenza di apiLogin() sotto, l'email non viene letta dalle credenziali
+ * di ruolo (E2E_<RUOLO>_USER) ma passata direttamente dal chiamante: è così
+ * che fixtures/auth.ts autentica con le email del seed di sviluppo
+ * (admin@test.com / operator@test.com / viewer@test.com — vedi
+ * apps/backend/prisma/seed-test-user.ts e getDevLoginSeedEmail() in
+ * utils/env.ts), che non hanno nulla a che fare con eventuali credenziali
+ * Keycloak configurate via env. Ritorna la coppia completa di token: il
+ * refresh token serve a chi deve riprodurre esattamente lo stato che
+ * l'app scrive in localStorage dopo il vero redirect da /auth/callback.
  */
-export async function apiLogin(ruolo: Role): Promise<string> {
+export async function devLoginTokens(
+  email: string
+): Promise<{ accessToken: string; refreshToken: string }> {
   if (isProductionTarget()) {
     throw new Error(
-      `[SICUREZZA] apiLogin("${ruolo}") userebbe ${DEV_LOGIN_PATH}, disponibile SOLO in ambienti ` +
+      `[SICUREZZA] devLoginTokens("${email}") userebbe ${DEV_LOGIN_PATH}, disponibile SOLO in ambienti ` +
         'non di produzione (vedi apps/backend/src/auth/auth.module.ts). Il target corrente è di ' +
         `produzione (E2E_BASE_URL): questo client rifiuta di procedere invece di fallire con un ` +
         '404 poco chiaro lato server.'
-    )
-  }
-
-  const credenziali = getRoleCredentials(ruolo)
-  if (!credenziali) {
-    throw new Error(
-      `Credenziali mancanti per il ruolo "${ruolo}" (variabili E2E_${ruolo.toUpperCase()}_USER/PASS non ` +
-        'impostate). Impostale prima di chiamare apiLogin — vedi e2e/README.md.'
     )
   }
 
@@ -64,26 +68,51 @@ export async function apiLogin(ruolo: Role): Promise<string> {
     // apps/backend/src/auth/dto/dev-login.dto.ts) e il ValidationPipe
     // globale ha forbidNonWhitelisted:true — mandare anche la password
     // farebbe fallire la richiesta con 400.
-    body: JSON.stringify({ email: credenziali.email }),
+    body: JSON.stringify({ email }),
   })
 
   const corpo = await leggiCorpo(risposta)
   if (!risposta.ok) {
     throw new ApiClientError(
-      `Login dev fallito per il ruolo "${ruolo}": ${risposta.status} ${risposta.statusText} — ` +
+      `Login dev fallito per l'email "${email}": ${risposta.status} ${risposta.statusText} — ` +
         `${JSON.stringify(corpo)}`,
       risposta.status,
       corpo
     )
   }
 
-  const token = (corpo as { accessToken?: string } | null)?.accessToken
-  if (!token) {
+  const accessToken = (corpo as { accessToken?: string } | null)?.accessToken
+  const refreshToken = (corpo as { refreshToken?: string } | null)?.refreshToken
+  if (!accessToken || !refreshToken) {
     throw new Error(
-      `Risposta di login dev senza accessToken per il ruolo "${ruolo}": ${JSON.stringify(corpo)}`
+      `Risposta di login dev incompleta (manca accessToken o refreshToken) per l'email "${email}": ` +
+        `${JSON.stringify(corpo)}`
     )
   }
-  return token
+  return { accessToken, refreshToken }
+}
+
+/**
+ * Login via il bypass di sviluppo, usando l'email dalle credenziali di ruolo
+ * configurate via env (E2E_<RUOLO>_USER). Pensato per chi ha impostato
+ * E2E_<RUOLO>_USER/PASS puntando a un utente del seed di sviluppo (la
+ * password non viene inviata — il DTO del bypass accetta solo email — ma
+ * deve comunque essere presente perché hasRoleCredentials()/getRoleCredentials()
+ * considerino il ruolo configurato). Per il caso comune "nessuna credenziale
+ * impostata, usa le email note del seed" vedi devLoginTokens() sopra, usato
+ * da fixtures/auth.ts.
+ */
+export async function apiLogin(ruolo: Role): Promise<string> {
+  const credenziali = getRoleCredentials(ruolo)
+  if (!credenziali) {
+    throw new Error(
+      `Credenziali mancanti per il ruolo "${ruolo}" (variabili E2E_${ruolo.toUpperCase()}_USER/PASS non ` +
+        'impostate). Impostale prima di chiamare apiLogin — vedi e2e/README.md.'
+    )
+  }
+
+  const { accessToken } = await devLoginTokens(credenziali.email)
+  return accessToken
 }
 
 function intestazioni(token: string): HeadersInit {

@@ -74,8 +74,50 @@ export function getRoleCredentials(role: Role): RoleCredentials | null {
   return { email, password }
 }
 
+/**
+ * Email del seed di sviluppo (apps/backend/prisma/seed-test-user.ts) per
+ * ciascun ruolo, usate dal bypass POST /auth/dev/login. Copre solo
+ * admin/operator/viewer: quel seed NON crea nessun utente SUPER_ADMIN, quindi
+ * "superAdmin" resta volutamente fuori da questa mappa — vedi
+ * getDevLoginSeedEmail e skipReason() in fixtures/auth.ts.
+ */
+const DEV_LOGIN_SEED_EMAILS: Partial<Record<Role, string>> = {
+  admin: 'admin@test.com',
+  operator: 'operator@test.com',
+  viewer: 'viewer@test.com',
+}
+
+/**
+ * Email del seed di sviluppo per il ruolo, o null se il ruolo non ha un
+ * utente seed (oggi: solo "superAdmin").
+ */
+export function getDevLoginSeedEmail(role: Role): string | null {
+  return DEV_LOGIN_SEED_EMAILS[role] ?? null
+}
+
+/**
+ * true se il bypass POST /auth/dev/login è utilizzabile per questo ruolo sul
+ * target corrente: mai su un target di produzione (isProductionTarget — la
+ * rotta non esiste nemmeno, vedi auth.module.ts) e solo se esiste un utente
+ * seed per il ruolo.
+ */
+export function canUseDevLogin(role: Role): boolean {
+  return !isProductionTarget() && getDevLoginSeedEmail(role) !== null
+}
+
+/**
+ * true se il ruolo è autenticabile in questa run, con QUALUNQUE dei due
+ * percorsi: credenziali Keycloak reali (E2E_<RUOLO>_USER/PASS) oppure il
+ * bypass di sviluppo dev-login (solo su target non di produzione, solo per
+ * admin/operator/viewer — vedi canUseDevLogin). Usata da tutte le spec per
+ * decidere lo skip: `test.skip(!hasRoleCredentials(role), skipReason(role))`.
+ * Il nome è storico (era "solo credenziali reali"); il significato attuale è
+ * "posso autenticare questo ruolo", non "ho una password per questo ruolo" —
+ * per il motivo della scelta di precedenza fra i due percorsi, vedi
+ * loginAndSaveState() in fixtures/auth.ts.
+ */
 export function hasRoleCredentials(role: Role): boolean {
-  return getRoleCredentials(role) !== null
+  return getRoleCredentials(role) !== null || canUseDevLogin(role)
 }
 
 export function hasAnyCredentials(): boolean {
