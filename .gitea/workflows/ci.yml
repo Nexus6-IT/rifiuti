@@ -293,7 +293,8 @@ jobs:
         run: docker rm -f "$POSTGRES_CI_CONTAINER" 2>/dev/null || true
 
   # ==========================================================================
-  # E2E - Playwright (Task 7 del piano UAT/E2E, tests/public)
+  # E2E - Playwright (Task 7 del piano UAT/E2E; ampliato oltre tests/public
+  # dal task "rendi eseguibile la suite E2E" del 2026-09-14)
   # ----------------------------------------------------------------------------
   # Fino a questo commit nessun workflow eseguiva Playwright: una suite che
   # nessuno esegue si degrada senza che nulla diventi rosso (e' successo in
@@ -310,16 +311,42 @@ jobs:
   # in ops/setup-gitea-runner.sh): gia' vera oggi con backend/frontend/
   # test-postgres/security nello stesso workflow, non introdotta da questo job.
   #
-  # Scope volutamente ristretto a e2e/tests/public: e' l'unico sottoinsieme
-  # che secondo e2e/README.md "gira SENZA credenziali, deve passare oggi".
-  # Le altre cartelle (auth/rbac/fir/admin/registro/registry/scadenze) fanno
-  # skip esplicito senza le credenziali E2E_*_USER/PASS, che qui non
-  # impostiamo (provisioning Keycloak dedicato alla CI e' fuori perimetro di
-  # questo task). e2e/tests/rentri/fake-disponibile.spec.ts fa eccezione: NON
-  # fa skip e richiede la fake RENTRI (tools/rentri-fake, non avviata qui) —
-  # per questo resta fuori dallo scope insieme al resto di tests/rentri/.
-  # Cablare l'intera cartella tests/ oggi significherebbe un job rosso
-  # permanente su quelle spec, il difetto esplicitamente da evitare.
+  # SCOPE (aggiornato 2026-09-14): due passate di Playwright, non una sola.
+  # La prima (tests/public) e' quella storica, invariata. La seconda copre
+  # tutto il resto TRANNE tests/rentri/, che resta fuori perche' richiede la
+  # fake RENTRI (tools/rentri-fake) non avviata in questo job — cablarla e'
+  # un task a parte, non di questo commit; includerla oggi significherebbe un
+  # job rosso permanente su quelle spec, il difetto che questo job esiste
+  # apposta per evitare. La seconda passata e' resa possibile dal bypass
+  # dev-login (POST /auth/dev/login, vedi e2e/fixtures/auth.ts e
+  # apps/backend/src/auth/controllers/dev-auth.controller.ts): prima di
+  # questo task TUTTA la suite autenticata era skip permanente per mancanza
+  # di credenziali Keycloak, che qui non proviamo a provisionare.
+  #
+  # CONFLITTO NODE_ENV RISOLTO CON DUE AVVII DEL BACKEND (il dettaglio che
+  # costava un'ora a chi arrivava dopo, vedi task brief): la prima passata
+  # richiede NODE_ENV=production per far vedere a
+  # tests/public/{security-headers,swagger-exposure}.spec.ts il comportamento
+  # di produzione vero (CSP rigida, Swagger spento — vedi commento piu' sotto
+  # sullo step "Avvia il backend"). Ma con NODE_ENV=production
+  # DevAuthController non viene nemmeno REGISTRATO (auth.module.ts,
+  # `devOnlyControllers`) e csrf-protection.middleware.ts marca i cookie
+  # Secure-only, inaccettabili su http:// semplice: la seconda passata, che
+  # usa il dev-login, non puo' girare con quello stesso processo backend.
+  # Soluzione: dopo la prima passata si TERMINA il backend "produzione" e se
+  # ne avvia un secondo, identico per porta/config, ma SENZA NODE_ENV=production
+  # (dev-login attivo, cookie non Secure-only) — non un backend "diverso", lo
+  # stesso build, un env diverso. Vedi gli step "Ferma il backend..." e
+  # "Riavvia il backend..." sotto.
+  #
+  # SEED UTENTI DI TEST: il dev-login autentica un utente ESISTENTE per sola
+  # email (nessuna password, vedi dev-auth.controller.ts) — serve quindi che
+  # admin@test.com/operator@test.com/viewer@test.com esistano gia' nel DB del
+  # job PRIMA di qualunque test che li usi. Eseguito con
+  # `npx ts-node prisma/seed-test-user.ts` (mai compilato in dist/, a
+  # differenza di seed:permissions/seed:roles) dopo "Build backend" — quello
+  # script referenzia la tabella `permissions`, quindi seed:rbac (permessi +
+  # ruoli di sistema) deve girare PRIMA, non dopo.
   #
   # Stessa infrastruttura del job "test-postgres": docker run esplicito (mai
   # `services:`, per il motivo li' commentato su --network host e la
@@ -328,9 +355,18 @@ jobs:
   # da quella del job "test-postgres" (55432): entrambi i job sono
   # indipendenti (nessun `needs`) e possono girare in parallelo sullo stesso
   # runner in rete host, dove una porta duplicata collidirebbe.
+  #
+  # LIMITE NOTO (non risolto in questo task): il reporter HTML di Playwright
+  # scrive sempre nella stessa cartella (e2e-report/, vedi playwright.config.ts)
+  # per entrambe le passate — la seconda sovrascrive il report della prima.
+  # Se la prima passata fallisce il job si ferma li' (step successivi non
+  # eseguiti) e il suo report resta quello pubblicato; se fallisce la seconda,
+  # solo il SUO report viene pubblicato. Accettato come compromesso: separare
+  # gli output richiederebbe un config Playwright dedicato per passata, fuori
+  # scope per questo task.
   # ==========================================================================
   e2e:
-    name: E2E (Playwright, tests/public)
+    name: E2E (Playwright, tests/public + resto via dev-login)
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55433/wasteflow_ci?schema=public"
@@ -466,6 +502,29 @@ jobs:
         working-directory: apps/backend
         run: npm run build
 
+      # Permessi + ruoli di sistema (ADMIN/OPERATOR/VIEWER/CONSULTANT/
+      # COMPLIANCE_OFFICER globali, non legati a un tenant): seed-test-user.ts
+      # (step successivo) crea/assegna ruoli PER TENANT invocando la funzione
+      # SQL seed_default_roles_for_tenant(), che legge da `permissions` — se
+      # quella tabella e' vuota i ruoli vengono creati ma senza permessi
+      # associati (INSERT... SELECT su 0 righe, nessun errore, solo un RBAC
+      # silenziosamente vuoto). Richiede dist/ (script compilati), quindi
+      # DOPO "Build backend", non prima.
+      - name: Seed permessi e ruoli di sistema (seed:rbac)
+        working-directory: apps/backend
+        run: npm run seed:rbac
+
+      # Utenti del bypass dev-login (admin@test.com/operator@test.com/
+      # viewer@test.com — vedi apps/backend/prisma/seed-test-user.ts): NON
+      # compilato in dist/, eseguito via ts-node come in sviluppo locale.
+      # Nessun utente SUPER_ADMIN in questo seed: le spec che lo richiedono
+      # (impersonation, tenant-switch) restano skip anche in questa run — e'
+      # il comportamento corretto (vedi skipReason('superAdmin') in
+      # e2e/fixtures/auth.ts), non una lacuna di questo step.
+      - name: Seed utenti di test per il dev-login
+        working-directory: apps/backend
+        run: npx ts-node prisma/seed-test-user.ts
+
       # Avviato nativamente (node dist/main.js), non in un container: nessuno
       # step successivo lo richiede containerizzato (a differenza del
       # frontend, vedi sotto) e cosi' evitiamo un'immagine in piu' da
@@ -487,7 +546,7 @@ jobs:
       # http:// semplice. Le spec autenticate andrebbero servite su un
       # frontend TLS oppure il backend andrebbe avviato senza
       # NODE_ENV=production per quelle run.
-      - name: Avvia il backend (node dist/main.js, in background)
+      - name: Avvia il backend — passata 1, produzione (node dist/main.js, in background)
         working-directory: apps/backend
         env:
           NODE_ENV: production
@@ -497,8 +556,8 @@ jobs:
           SIGNATURE_PROVIDER: sandbox
           TSA_PROVIDER: mock
         run: |
-          nohup node dist/main.js > /tmp/backend-e2e.log 2>&1 &
-          echo $! > /tmp/backend-e2e.pid
+          nohup node dist/main.js > /tmp/backend-e2e-prod.log 2>&1 &
+          echo $! > /tmp/backend-e2e-prod.pid
 
       - name: Attendi che il backend sia raggiungibile
         run: |
@@ -512,7 +571,7 @@ jobs:
             sleep 2
           done
           echo "Backend non raggiungibile su 127.0.0.1:3000 dopo 30 tentativi" >&2
-          cat /tmp/backend-e2e.log || true
+          cat /tmp/backend-e2e-prod.log || true
           exit 1
 
       # Build di produzione (configuration "production" e' il default, come
@@ -567,14 +626,83 @@ jobs:
       - name: Installa Chromium (Playwright)
         run: npx playwright install --with-deps chromium
 
-      - name: Esegui la suite E2E (tests/public)
+      - name: Esegui la suite E2E — passata 1 (tests/public)
         run: npx playwright test -c e2e/playwright.config.ts --project=chromium tests/public
+
+      # Vedi il blocco di commento sopra "SCOPE"/"CONFLITTO NODE_ENV" per il
+      # perche': il backend di produzione della passata 1 non ha
+      # DevAuthController registrato e userebbe cookie Secure-only. Lo
+      # fermiamo e ne avviamo uno identico (stessa dist/, stesso DATABASE_URL
+      # ereditato dall'env del job) ma senza NODE_ENV=production.
+      - name: Ferma il backend di produzione (passata 1)
+        run: |
+          if [ -f /tmp/backend-e2e-prod.pid ]; then
+            kill "$(cat /tmp/backend-e2e-prod.pid)" 2>/dev/null || true
+          fi
+          # Attesa attiva che la porta si liberi, non un kill-and-hope: il
+          # secondo avvio fallirebbe con EADDRINUSE se partisse mentre il
+          # processo precedente sta ancora chiudendo il listener.
+          for i in $(seq 1 15); do
+            if ! (exec 3<>/dev/tcp/127.0.0.1/3000) 2>/dev/null; then
+              echo "Porta 3000 libera (tentativo ${i})"
+              exit 0
+            fi
+            exec 3<&- 3>&- 2>/dev/null || true
+            sleep 1
+          done
+          echo "Porta 3000 ancora occupata dopo 15 tentativi, proseguo comunque" >&2
+
+      - name: Avvia il backend — passata 2, dev-login (node dist/main.js, in background)
+        working-directory: apps/backend
+        env:
+          # NIENTE NODE_ENV=production qui: e' la differenza voluta rispetto
+          # alla passata 1 (vedi commento "CONFLITTO NODE_ENV" sopra). Stesso
+          # PORT/API_PREFIX/JWT_SECRET: e' la continuazione dello stesso
+          # backend applicativo, non un secondo ambiente diverso.
+          PORT: "3000"
+          API_PREFIX: "api/v1"
+          JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
+          SIGNATURE_PROVIDER: sandbox
+          TSA_PROVIDER: mock
+        run: |
+          nohup node dist/main.js > /tmp/backend-e2e-devlogin.log 2>&1 &
+          echo $! > /tmp/backend-e2e-devlogin.pid
+
+      - name: Attendi che il backend (passata 2) sia raggiungibile
+        run: |
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/3000) 2>/dev/null; then
+              exec 3<&- 3>&-
+              echo "Backend (passata 2) raggiungibile su 127.0.0.1:3000 (tentativo ${i})"
+              exit 0
+            fi
+            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
+            sleep 2
+          done
+          echo "Backend (passata 2) non raggiungibile su 127.0.0.1:3000 dopo 30 tentativi" >&2
+          cat /tmp/backend-e2e-devlogin.log || true
+          exit 1
+
+      # Ambito: tutte le sottocartelle di tests/ tranne public/ (gia' coperta
+      # dalla passata 1) e rentri/ (fake RENTRI non avviata qui — vedi
+      # commento "SCOPE" sopra). Calcolato dinamicamente, non elencato a mano:
+      # una nuova sottocartella sotto e2e/tests/ entra automaticamente nello
+      # scope senza dover ricordarsi di aggiornare questo step.
+      - name: Esegui la suite E2E — passata 2 (resto, autenticata via dev-login)
+        run: |
+          dirs=$(find e2e/tests -mindepth 1 -maxdepth 1 -type d ! -name public ! -name rentri -printf 'tests/%f\n')
+          echo "Cartelle incluse nella passata 2:"
+          echo "$dirs"
+          npx playwright test -c e2e/playwright.config.ts --project=chromium $dirs
 
       # Pubblica il report SOLO se il job fallisce: un fallimento E2E senza
       # traccia costringe a riprodurlo a mano. actions/upload-artifact@v3
       # (non v4: questo runner Gitea non ha un servizio cache/artifact v4,
       # v3 e' la versione gia' verificata funzionante su questa infra — vedi
-      # nota upload-artifact in ROADS).
+      # nota upload-artifact in ROADS). Se fallisce la passata 1 il job si
+      # ferma li' (step successivi non eseguiti) e questo pubblica il report
+      # di quella passata; se fallisce la passata 2 pubblica il SUO report
+      # (sovrascrive quello della 1, vedi "LIMITE NOTO" sopra).
       - name: Pubblica il report Playwright (solo se il job e' fallito)
         if: failure()
         uses: actions/upload-artifact@v3
@@ -593,8 +721,14 @@ jobs:
           docker rm -f "$POSTGRES_CI_CONTAINER" 2>/dev/null || true
           docker rm -f "$REDIS_CI_CONTAINER" 2>/dev/null || true
           docker rm -f "$FRONTEND_CI_CONTAINER" 2>/dev/null || true
-          if [ -f /tmp/backend-e2e.pid ]; then
-            kill "$(cat /tmp/backend-e2e.pid)" 2>/dev/null || true
+          # Due possibili backend in vita a seconda di dove si e' fermato il
+          # job (passata 1 sola, o anche la 2): entrambi i pid file, kill
+          # innocuo se il processo non c'e' piu' o il file non esiste.
+          if [ -f /tmp/backend-e2e-prod.pid ]; then
+            kill "$(cat /tmp/backend-e2e-prod.pid)" 2>/dev/null || true
+          fi
+          if [ -f /tmp/backend-e2e-devlogin.pid ]; then
+            kill "$(cat /tmp/backend-e2e-devlogin.pid)" 2>/dev/null || true
           fi
 
   # ==========================================================================
