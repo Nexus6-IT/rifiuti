@@ -18,6 +18,11 @@
  * granulari (`PermissionGuard`) copre oggi solo audit/permessi/assegnazioni.
  *
  * Fail-closed: ruolo assente o sconosciuto ⇒ nessuna azione.
+ *
+ * Allineamento con il backend verificato da un test dedicato:
+ * `apps/backend/src/api/registry/registry.controller.authorization.spec.ts`
+ * asserisce l'elenco esatto dei ruoli su ogni `@Roles` di scrittura del
+ * `RegistryController`. Se cambi l'elenco qui, cambialo anche là.
  */
 const RUOLI_CHE_GESTISCONO_ANAGRAFICHE = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR'] as const
 
