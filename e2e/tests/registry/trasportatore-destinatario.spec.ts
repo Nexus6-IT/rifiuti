@@ -96,13 +96,25 @@ function fraUnAnnoIso(): string {
 }
 
 /**
- * Apre l'overlay del p-dropdown associato all'etichetta indicata e sceglie
- * l'opzione il cui testo contiene `testoOpzione`. Stesso pattern già in uso
- * nella suite (`.p-dropdown-item`, vedi rentri-ciclo-formulario.spec.ts) —
- * classe strutturale di PrimeNG, non uno stile applicativo.
+ * Apre l'overlay del p-dropdown identificato da `inputId` (l'attributo
+ * `inputId` di `<p-dropdown>`, che PrimeNG applica all'elemento nativo
+ * interno) e sceglie l'opzione il cui testo contiene `testoOpzione`. Stesso
+ * pattern già in uso nella suite (`.p-dropdown-item`, vedi
+ * rentri-ciclo-formulario.spec.ts) — classe strutturale di PrimeNG, non uno
+ * stile applicativo.
+ *
+ * NON usare `page.getByLabel(...)`: in `fir-list.component.ts` l'etichetta
+ * «Trasportatore» (e «Destinatario») è una sottostringa che matcha anche i
+ * bottoni `aria-label="Nuovo trasportatore"` / `"Modifica trasportatore
+ * selezionato"` e le tratte aggiuntive dinamiche «Trasportatore aggiuntivo
+ * N» — `getByLabel` è per sottostringa e case-insensitive per default e
+ * considera anche `aria-label`, quindi la modalità stretta di Playwright
+ * fallisce con più elementi trovati. L'id del controllo (`new-trasportatore`
+ * / `new-destinatario`, l'`inputId` dichiarato in `fir-list.component.ts`)
+ * è invece univoco nel DOM: si usa un locator per id esatto.
  */
-async function selezionaDropdown(page: Page, etichetta: string, testoOpzione: string) {
-  await page.getByLabel(etichetta).click()
+async function selezionaDropdown(page: Page, inputId: string, testoOpzione: string) {
+  await page.locator(`#${inputId}`).click()
   await page.locator('.p-dropdown-item', { hasText: testoOpzione }).first().click()
 }
 
@@ -241,7 +253,7 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'Trasportatore', trasportatore.ragioneSociale)
+    await selezionaDropdown(page, 'new-trasportatore', trasportatore.ragioneSociale)
 
     await expect(page.getByTestId('fir-trasportatore-iscrizione-scaduta')).toHaveCount(0)
   })
@@ -260,7 +272,7 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'Destinatario', destinatario.ragioneSociale)
+    await selezionaDropdown(page, 'new-destinatario', destinatario.ragioneSociale)
 
     await expect(page.getByTestId('fir-destinatario-autorizzazione-scaduta')).toHaveCount(0)
   })
@@ -304,7 +316,7 @@ test.describe('Scadenze — avviso alla scelta della parte, emissione non impedi
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'Trasportatore', trasportatore.ragioneSociale)
+    await selezionaDropdown(page, 'new-trasportatore', trasportatore.ragioneSociale)
     await expect(page.getByTestId('fir-trasportatore-iscrizione-scaduta')).toBeVisible()
 
     await page.getByRole('button', { name: /crea fir/i }).click()
@@ -329,7 +341,7 @@ test.describe('Scadenze — avviso alla scelta della parte, emissione non impedi
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'Destinatario', destinatario.ragioneSociale)
+    await selezionaDropdown(page, 'new-destinatario', destinatario.ragioneSociale)
     await expect(page.getByTestId('fir-destinatario-autorizzazione-scaduta')).toBeVisible()
 
     await page.getByRole('button', { name: /crea fir/i }).click()
