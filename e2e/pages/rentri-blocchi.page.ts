@@ -38,8 +38,23 @@ export class RentriBlocchiPage {
     this.listDisattivati = page.getByTestId('rentri-blocchi-list-disattivati')
 
     this.vidimaDialog = page.getByTestId('rentri-blocchi-vidima-dialog')
-    this.vidimaInputQuantita = page.getByTestId('rentri-blocchi-vidima-input-quantita')
-    this.vidimaConferma = page.getByTestId('rentri-blocchi-vidima-conferma')
+    // `data-testid="rentri-blocchi-vidima-input-quantita"` è un attributo
+    // statico sul tag host `<p-inputNumber>` nel componente, non
+    // sull'`<input>` nativo che PrimeNG genera al suo interno (quello ha
+    // `inputId="vidima-quantita"`, dichiarato nel template). Playwright
+    // rifiuta `.fill()` su un elemento che non è input/textarea/
+    // contenteditable, quindi il locator deve puntare all'input interno —
+    // stessa classe di difetto già trovata su `vidimaButtons()` (v. sopra),
+    // qui annidata due righe più in là e non cercata alla prima correzione.
+    this.vidimaInputQuantita = page
+      .getByTestId('rentri-blocchi-vidima-input-quantita')
+      .locator('input')
+    // Stesso principio per il bottone: `data-testid` è sull'host `<p-button>`,
+    // PrimeNG propaga `disabled` solo al `<button>` nativo interno.
+    // `toBeDisabled()` su un host non nativo non fallisce mai (Playwright
+    // ignora l'attributo su elementi non-form), quindi l'asserzione va fatta
+    // sul `<button>` reale.
+    this.vidimaConferma = page.getByTestId('rentri-blocchi-vidima-conferma').locator('button')
   }
 
   async goto() {
