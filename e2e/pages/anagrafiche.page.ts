@@ -16,6 +16,23 @@ import { type Page, type Locator, expect } from '@playwright/test'
  */
 export type AreaAnagrafica = 'produttori' | 'trasportatori' | 'destinatari'
 
+/**
+ * Sottoinsieme delle aree che hanno un campo di scadenza facoltativo (Task 4
+ * dello scadenzario, 2026-09-12): iscrizione all'Albo Gestori per i
+ * trasportatori, autorizzazione per i destinatari. I produttori non hanno
+ * una scadenza — non è un'omissione, l'anagrafica non ne ha bisogno.
+ */
+export type AreaConScadenza = 'trasportatori' | 'destinatari'
+
+const TESTID_SCADENZA: Record<AreaConScadenza, string> = {
+  trasportatori: 'trasportatori-scadenza-iscrizione-input',
+  destinatari: 'destinatari-scadenza-autorizzazione-input',
+}
+
+function isAreaConScadenza(area: AreaAnagrafica): area is AreaConScadenza {
+  return area === 'trasportatori' || area === 'destinatari'
+}
+
 export class AnagrafichePage {
   readonly page: Page
   readonly area: AreaAnagrafica
@@ -99,5 +116,22 @@ export class AnagrafichePage {
     await expect(this.confirmDialog).toBeVisible()
     await this.confirmDialog.getByRole('button', { name: /^(s(ì|i)|yes)$/i }).click()
     await expect(this.row(id)).toBeHidden()
+  }
+
+  /**
+   * Input della scadenza (Task 4 dello scadenzario) — esiste solo per
+   * `trasportatori` (scadenza iscrizione Albo) e `destinatari` (scadenza
+   * autorizzazione). Lancia se chiamato per `produttori`, invece di
+   * restituire un locator che non troverà mai nulla: un test che lo usasse
+   * per errore su quell'area deve fallire in modo esplicito, non restare
+   * silenziosamente pending su `toBeVisible()`.
+   */
+  get scadenzaInput(): Locator {
+    if (!isAreaConScadenza(this.area)) {
+      throw new Error(
+        `AnagrafichePage.scadenzaInput non esiste per l'area "${this.area}": questa anagrafica non ha un campo di scadenza.`
+      )
+    }
+    return this.page.getByTestId(TESTID_SCADENZA[this.area])
   }
 }
