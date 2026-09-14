@@ -121,3 +121,86 @@ describe('DestinatariListComponent — data di scadenza autorizzazione (facoltat
     expect(inviato.scadenzaAutorizzazione).toBe('2029-06-30')
   })
 })
+
+/**
+ * TDD per il difetto CRITICO del 2026-09-14: `UpdateDestinatarioDto` non
+ * dichiara `partitaIVA` e il backend ha `forbidNonWhitelisted: true`, quindi
+ * ogni PUT che la include riceve 400. Il payload di modifica NON deve
+ * contenere quel campo. `jasmine.objectContaining` non basta: ignora i campi
+ * in più, quindi qui si asserisce la forma ESATTA dell'oggetto inviato.
+ */
+describe('DestinatariListComponent — payload di modifica senza partitaIVA (bug produzione)', () => {
+  let fixture: ComponentFixture<DestinatariListComponent>
+  let component: DestinatariListComponent
+  let registryService: jasmine.SpyObj<RegistryService>
+
+  const DESTINATARIO_ESISTENTE: Destinatario = {
+    id: 'd1',
+    ragioneSociale: 'Impianto Verdi S.r.l.',
+    partitaIVA: '01234567890',
+    sede: { via: 'Via Torino', civico: '5', cap: '10100', comune: 'Torino', provincia: 'TO' },
+    numeroAutorizzazione: 'AUT/2024/001',
+    pec: 'impianto@pec.it',
+    scadenzaAutorizzazione: '2027-03-15',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    registryService = jasmine.createSpyObj<RegistryService>('RegistryService', [
+      'getDestinatari',
+      'createDestinatario',
+      'updateDestinatario',
+      'deleteDestinatario',
+    ])
+    registryService.getDestinatari.and.returnValue(
+      of({ items: [DESTINATARIO_ESISTENTE], total: 1, page: 1, limit: 10, totalPages: 1 })
+    )
+    registryService.updateDestinatario.and.returnValue(of(DESTINATARIO_ESISTENTE))
+
+    TestBed.configureTestingModule({
+      imports: [DestinatariListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: RegistryService, useValue: registryService },
+        MessageService,
+        ConfirmationService,
+      ],
+    })
+
+    fixture = TestBed.createComponent(DestinatariListComponent)
+    component = fixture.componentInstance
+    fixture.detectChanges()
+  })
+
+  it('il payload PUT ha esattamente i campi accettati da UpdateDestinatarioDto, mai partitaIVA', () => {
+    component.editDestinatario(DESTINATARIO_ESISTENTE)
+    component.formData.ragioneSociale = 'Impianto Verdi S.r.l. (aggiornato)'
+
+    component.saveDestinatario()
+
+    const inviato = registryService.updateDestinatario.calls.mostRecent().args[1]
+    expect(inviato).toEqual({
+      ragioneSociale: 'Impianto Verdi S.r.l. (aggiornato)',
+      sede: DESTINATARIO_ESISTENTE.sede,
+      numeroAutorizzazione: DESTINATARIO_ESISTENTE.numeroAutorizzazione,
+      pec: DESTINATARIO_ESISTENTE.pec,
+      scadenzaAutorizzazione: DESTINATARIO_ESISTENTE.scadenzaAutorizzazione,
+    })
+    expect(Object.prototype.hasOwnProperty.call(inviato, 'partitaIVA')).toBeFalse()
+  })
+
+  it('il campo Partita IVA è disabilitato nel form di modifica', async () => {
+    component.editDestinatario(DESTINATARIO_ESISTENTE)
+    fixture.detectChanges()
+    // NgModel applica lo stato disabled al FormControl dentro un microtask
+    // (`resolvedPromise.then`, vedi @angular/forms `NgModel._updateDisabled`):
+    // serve attendere quel giro prima di rileggere il DOM.
+    await Promise.resolve()
+    fixture.detectChanges()
+
+    const input = fixture.nativeElement.querySelector(
+      '[data-testid="destinatari-piva-input"]'
+    ) as HTMLInputElement
+    expect(input.disabled).toBeTrue()
+  })
+})

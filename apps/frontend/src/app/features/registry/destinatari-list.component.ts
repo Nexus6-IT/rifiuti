@@ -237,7 +237,15 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
                   maxlength="11"
                   inputmode="numeric"
                   required
+                  [disabled]="editMode"
+                  data-testid="destinatari-piva-input"
                 />
+                <!-- La partita IVA è l'identità fiscale del soggetto: non
+                     modificabile dopo la creazione, il backend la rifiuta in
+                     modifica (400 forbidNonWhitelisted). -->
+                <small class="field-hint" *ngIf="editMode"
+                  >Non modificabile: è l'identità fiscale del soggetto.</small
+                >
               </div>
               <div class="field col-12 md:col-6">
                 <label for="dest-autorizzazione"
@@ -625,17 +633,30 @@ export class DestinatariListComponent implements OnInit {
     }
 
     this.saving = true
-    const payload: CreateDestinatarioDto = {
-      ...this.formData,
-      // Facoltativa: campo vuoto = azzeramento esplicito in modifica
-      // (`null`), semplicemente non inviato in creazione (`undefined`).
-      scadenzaAutorizzazione:
-        this.formData.scadenzaAutorizzazione || (this.editMode ? null : undefined),
-    }
+    // Facoltativa: campo vuoto = azzeramento esplicito in modifica (`null`),
+    // semplicemente non inviato in creazione (`undefined`).
+    const scadenzaAutorizzazione =
+      this.formData.scadenzaAutorizzazione || (this.editMode ? null : undefined)
+
     const operation =
       this.editMode && this.selectedDestinatario
-        ? this.registryService.updateDestinatario(this.selectedDestinatario.id, payload)
-        : this.registryService.createDestinatario(payload)
+        ? this.registryService.updateDestinatario(
+            this.selectedDestinatario.id,
+            // NON includere partitaIVA: è l'identità fiscale del soggetto,
+            // UpdateDestinatarioDto non la accetta (400 forbidNonWhitelisted)
+            // e non deve essere modificabile da qui.
+            {
+              ragioneSociale: this.formData.ragioneSociale,
+              sede: this.formData.sede,
+              numeroAutorizzazione: this.formData.numeroAutorizzazione,
+              pec: this.formData.pec,
+              scadenzaAutorizzazione,
+            }
+          )
+        : this.registryService.createDestinatario({
+            ...this.formData,
+            scadenzaAutorizzazione,
+          })
 
     operation.subscribe({
       next: () => {

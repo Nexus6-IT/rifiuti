@@ -240,7 +240,15 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
                   maxlength="11"
                   inputmode="numeric"
                   required
+                  [disabled]="editMode"
+                  data-testid="trasportatori-piva-input"
                 />
+                <!-- La partita IVA è l'identità fiscale del soggetto: non
+                     modificabile dopo la creazione, il backend la rifiuta in
+                     modifica (400 forbidNonWhitelisted). -->
+                <small class="field-hint" *ngIf="editMode"
+                  >Non modificabile: è l'identità fiscale del soggetto.</small
+                >
               </div>
               <div class="field col-12 md:col-6">
                 <label for="tra-iscrizione"
@@ -624,16 +632,30 @@ export class TrasportatoriListComponent implements OnInit {
     }
 
     this.saving = true
-    const payload: CreateTrasportatoreDto = {
-      ...this.formData,
-      // Facoltativa: campo vuoto = azzeramento esplicito in modifica
-      // (`null`), semplicemente non inviato in creazione (`undefined`).
-      scadenzaIscrizione: this.formData.scadenzaIscrizione || (this.editMode ? null : undefined),
-    }
+    // Facoltativa: campo vuoto = azzeramento esplicito in modifica (`null`),
+    // semplicemente non inviato in creazione (`undefined`).
+    const scadenzaIscrizione =
+      this.formData.scadenzaIscrizione || (this.editMode ? null : undefined)
+
     const operation =
       this.editMode && this.selectedTrasportatore
-        ? this.registryService.updateTrasportatore(this.selectedTrasportatore.id, payload)
-        : this.registryService.createTrasportatore(payload)
+        ? this.registryService.updateTrasportatore(
+            this.selectedTrasportatore.id,
+            // NON includere partitaIVA: è l'identità fiscale del soggetto,
+            // UpdateTrasportatoreDto non la accetta (400
+            // forbidNonWhitelisted) e non deve essere modificabile da qui.
+            {
+              ragioneSociale: this.formData.ragioneSociale,
+              sedeLegale: this.formData.sedeLegale,
+              numeroIscrizione: this.formData.numeroIscrizione,
+              pec: this.formData.pec,
+              scadenzaIscrizione,
+            }
+          )
+        : this.registryService.createTrasportatore({
+            ...this.formData,
+            scadenzaIscrizione,
+          })
 
     operation.subscribe({
       next: () => {

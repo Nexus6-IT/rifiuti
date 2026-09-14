@@ -230,7 +230,15 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
                   maxlength="11"
                   inputmode="numeric"
                   required
+                  [disabled]="editMode"
+                  data-testid="produttori-piva-input"
                 />
+                <!-- La partita IVA è l'identità fiscale del soggetto: non
+                     modificabile dopo la creazione, il backend la rifiuta in
+                     modifica (400 forbidNonWhitelisted). -->
+                <small class="field-hint" *ngIf="editMode"
+                  >Non modificabile: è l'identità fiscale del soggetto.</small
+                >
               </div>
               <div class="field col-12 md:col-6">
                 <label for="prod-pec">PEC</label>
@@ -455,6 +463,12 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
         color: var(--color-danger);
         margin-left: 0.15rem;
       }
+      .field-hint {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        display: block;
+        margin-top: var(--spacing-xs);
+      }
 
       /* Vista a card impilata su mobile */
       @media (max-width: 768px) {
@@ -583,7 +597,17 @@ export class ProduttoriListComponent implements OnInit {
     this.saving = true
     const operation =
       this.editMode && this.selectedProduttore
-        ? this.registryService.updateProduttore(this.selectedProduttore.id, this.formData)
+        ? this.registryService.updateProduttore(
+            this.selectedProduttore.id,
+            // NON includere partitaIVA: è l'identità fiscale del soggetto,
+            // UpdateProduttoreDto non la accetta (400 forbidNonWhitelisted)
+            // e non deve essere modificabile da qui.
+            {
+              ragioneSociale: this.formData.ragioneSociale,
+              sedeLegale: this.formData.sedeLegale,
+              pec: this.formData.pec,
+            }
+          )
         : this.registryService.createProduttore(this.formData)
 
     operation.subscribe({
