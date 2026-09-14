@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { matchBlacklist } from '../../utils/blacklist'
+import { matchBlacklist, valutaRichiesta, esentaDallaBlacklist, pulisciEsenzioni } from '../../utils/blacklist'
 
 /**
  * Self-test del guardrail di sicurezza (e2e/fixtures/guardrail.ts +
@@ -108,4 +108,51 @@ test.describe('Guardrail — matcher blacklist distruttiva', () => {
       expect(Boolean(hit)).toBe(c.shouldMatch)
     })
   }
+})
+
+/**
+ * Self-test dell'esenzione per-run (Task 1 del piano UAT/E2E, passo 4):
+ * `valutaRichiesta` deve lasciar passare la cancellazione di un record
+ * registrato in questa run (esentato con `esentaDallaBlacklist`, come fa
+ * fixtures/risorse.ts `registra`), ma continuare a bloccare la
+ * cancellazione di un record qualunque non registrato. Il secondo caso è
+ * quello che conta: senza di esso l'esenzione sarebbe un indebolimento
+ * della blacklist travestito da correzione.
+ */
+test.describe('Guardrail — esenzione per-run su DELETE /registry/*', () => {
+  test.beforeEach(() => {
+    pulisciEsenzioni()
+  })
+
+  test('un record REGISTRATO in questa run passa (non viene bloccato)', () => {
+    esentaDallaBlacklist('id-registrato-in-questo-run')
+
+    const hit = valutaRichiesta(
+      'DELETE',
+      'https://rifiuti.ignicraft.com/api/v1/registry/produttori/id-registrato-in-questo-run',
+    )
+
+    expect(hit).toBeNull()
+  })
+
+  test('un record NON registrato resta bloccato — anche con altre esenzioni attive', () => {
+    // Un'esenzione per un ALTRO id non deve mai "sbordare" su id diversi.
+    esentaDallaBlacklist('id-registrato-in-questo-run')
+
+    const hit = valutaRichiesta(
+      'DELETE',
+      'https://rifiuti.ignicraft.com/api/v1/registry/produttori/id-mai-registrato',
+    )
+
+    expect(hit).not.toBeNull()
+    expect(hit?.label).toContain('DELETE /registry/*')
+  })
+
+  test("l'esenzione vale solo per DELETE /registry/*, non per altre voci della blacklist", () => {
+    esentaDallaBlacklist('abc-123')
+
+    const hit = valutaRichiesta('DELETE', 'https://rifiuti.ignicraft.com/api/v1/backup/cleanup')
+
+    expect(hit).not.toBeNull()
+  })
 })
