@@ -35,11 +35,42 @@ import { RegistryPage } from '../../pages/registry.page'
  * nativo del bottone risolto (`disabled` di un vero `<button>`) E, in più,
  * `aria-disabled="true"` su se stesso o su un antenato (compreso un host
  * `p-button` che lo avesse ricevuto).
+ *
+ * REGRESSIONE (trovata dal revisore, corretta 2026-09-14): `.catch(() =>
+ * false)` intorno a `isVisible()` è una trappola se lasciato generico.
+ * `isVisible()` rispetta la modalità stretta di Playwright: se il locator
+ * risolve a PIÙ di un elemento lancia "strict mode violation", non
+ * restituisce `false`. Un `.catch` che inghiotte QUALUNQUE eccezione
+ * trasforma quel lancio in «nascosto» — il test passa, ma non ha verificato
+ * nulla: un locator ambiguo (es. `RegistryPage.nuovoButton` prima della
+ * correzione, che su `/produttori` matchava sia il bottone d'intestazione
+ * sia quello — con lo stesso testo via "crea" — dello stato vuoto della
+ * tabella) fa sembrare "nascosto per permesso mancante" un bottone
+ * visibilissimo. Qui si distingue esplicitamente "l'elemento non esiste"
+ * (nessun elemento risolto: legittimamente nascosto) da "il locator è
+ * ambiguo" (più di un elemento risolto: errore del test, non del prodotto
+ * sotto test) — la seconda fa fallire con un messaggio chiaro invece di
+ * essere inghiottita.
  */
 async function expectNonUtilizzabile(locator: Locator) {
-  const visibile = await locator.isVisible().catch(() => false)
+  const conteggio = await locator.count()
+  if (conteggio > 1) {
+    throw new Error(
+      `Locator ambiguo: risolve a ${conteggio} elementi invece di 0 o 1. ` +
+        'expectNonUtilizzabile() non può decidere se "nascosto" o "visibile ma disabilitato" ' +
+        'quando il locator non è univoco — rendilo univoco (es. data-testid) invece di lasciare ' +
+        'che un `.catch()` generico interpreti la violazione della modalità stretta come "nascosto".'
+    )
+  }
+  if (conteggio === 0) {
+    // Nessun elemento nel DOM (es. *ngIf con la direttiva has-permission):
+    // va bene, legittimamente nascosto, nessuna asserzione ulteriore.
+    return
+  }
+
+  const visibile = await locator.isVisible()
   if (!visibile) {
-    // Nascosto (es. via *ngIf con la direttiva has-permission): va bene
+    // Presente nel DOM ma non visibile (es. `display: none`): va bene
     // altrettanto, nessuna asserzione ulteriore necessaria.
     return
   }
@@ -92,9 +123,11 @@ test.describe('VIEWER — bottoni di scrittura nascosti/disabilitati', () => {
  *    `true` da solo, senza bisogno di `expectNonUtilizzabile`. Verificato:
  *    `await expect(page.getByRole('button', {name:'Nuovo FIR'})).toBeDisabled()`
  *    passa con `<p-button aria-disabled="true"><button>Nuovo FIR</button></p-button>`.
- *    Per questo `firList.nuovoFirButton`/`registry.nuovoButton`
- *    (`getByRole('button', ...)`, non `getByTestId` sull'host) erano già
- *    corretti: non è la stessa istanza del difetto di `rentri-blocchi.page.ts`.
+ *    Per questo `firList.nuovoFirButton` (`getByRole('button', ...)`, non
+ *    `getByTestId` sull'host) non soffre della stessa istanza del difetto
+ *    di `rentri-blocchi.page.ts` (host vs elemento nativo). `RegistryPage.nuovoButton`
+ *    aveva invece un difetto DIVERSO, più grave — v. describe sotto,
+ *    "locator ambiguo non deve essere inghiottito in 'nascosto'".
  * 2. La stessa asserzione fatta con `getByTestId` puntato sull'HOST
  *    `<p-button>` (il pattern realmente rotto in `rentri-blocchi.page.ts`,
  *    dove il `data-testid` è sull'host) torna `enabled`: Playwright non
@@ -142,5 +175,62 @@ test.describe('RBAC — regressione: disabled/aria-disabled sull’host va risol
     // Il controllo robusto, applicato però al locator giusto (il bottone
     // nativo, non l'host), lo riconosce correttamente.
     await expectNonUtilizzabile(page.getByRole('button', { name: 'Nuovo FIR' }))
+  })
+})
+
+/**
+ * Regressione — trovata dal revisore (2026-09-14): `RegistryPage.nuovoButton`
+ * era `getByRole('button', {name: /nuovo|aggiungi|crea/i})`, che su
+ * `/produttori` matcha SIA il bottone d'intestazione SIA quello dello stato
+ * vuoto della tabella (`ariaLabel="Crea nuovo produttore"`, matchato via
+ * "crea"). Un locator ambiguo fa lanciare `isVisible()` per violazione
+ * della modalità stretta — e il `.catch(() => false)` di prima
+ * interpretava QUALUNQUE eccezione come "nascosto": il test passava senza
+ * aver verificato nulla, e avrebbe continuato a passare anche il giorno in
+ * cui il bottone fosse visibilissimo e cliccabile. Due prove qui, DOM
+ * statico via `page.setContent`, nessuna app viva:
+ *
+ * 1. La riproduzione esatta del locator "ingenuo" di prima (con `.catch`
+ *    generico): prova che il difetto esisteva davvero, il test passava a
+ *    vuoto.
+ * 2. `expectNonUtilizzabile` (versione corretta) sullo stesso locator
+ *    ambiguo: deve FALLIRE con un messaggio chiaro, non inghiottire
+ *    l'eccezione.
+ *
+ * `RegistryPage.nuovoButton` è stato corretto separatamente a
+ * `getByTestId('produttori-nuovo-button')` (univoco, esiste solo sul
+ * bottone d'intestazione): questo describe prova la difesa a monte,
+ * indipendente dal fatto che quel locator specifico sia stato sistemato.
+ */
+test.describe('RBAC — regressione: locator ambiguo non deve essere inghiottito in "nascosto"', () => {
+  const DOM_DUE_BOTTONI = `
+    <button>Nuovo produttore</button>
+    <button aria-label="Crea nuovo produttore">Nuovo produttore</button>
+  `
+
+  test('la riproduzione del bug: un .catch generico su isVisible() trasforma il locator ambiguo in "nascosto"', async ({
+    page,
+  }) => {
+    await page.setContent(DOM_DUE_BOTTONI)
+    const locatorAmbiguo = page.getByRole('button', { name: /nuovo|aggiungi|crea/i })
+
+    await expect(locatorAmbiguo).toHaveCount(2)
+
+    // Il `.catch` "ingenuo" di prima della correzione: qualunque eccezione,
+    // compresa la violazione di modalità stretta, diventa `false`.
+    const risultatoIngenuo = await locatorAmbiguo.isVisible().catch(() => false)
+    expect(
+      risultatoIngenuo,
+      'prova che il .catch generico maschera la violazione di modalità stretta come "nascosto"'
+    ).toBe(false)
+  })
+
+  test('expectNonUtilizzabile su un locator ambiguo fallisce con un messaggio chiaro, non lo dichiara "nascosto"', async ({
+    page,
+  }) => {
+    await page.setContent(DOM_DUE_BOTTONI)
+    const locatorAmbiguo = page.getByRole('button', { name: /nuovo|aggiungi|crea/i })
+
+    await expect(expectNonUtilizzabile(locatorAmbiguo)).rejects.toThrow(/locator ambiguo/i)
   })
 })
