@@ -50,6 +50,7 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
             icon="pi pi-plus"
             (onClick)="showCreateDialog()"
             ariaLabel="Crea nuovo destinatario"
+            data-testid="destinatari-nuovo-button"
           />
         </div>
       </header>
@@ -108,7 +109,7 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-destinatario>
-              <tr>
+              <tr [attr.data-testid]="'destinatari-row-' + destinatario.id">
                 <td>
                   <span class="cell-label">Ragione sociale</span>
                   <span class="font-semibold">{{ destinatario.ragioneSociale }}</span>
@@ -142,6 +143,7 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
                       pTooltip="Modifica"
                       tooltipPosition="top"
                       [ariaLabel]="'Modifica ' + destinatario.ragioneSociale"
+                      [attr.data-testid]="'destinatari-modifica-' + destinatario.id"
                     />
                     <p-button
                       icon="pi pi-trash"
@@ -152,6 +154,7 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
                       pTooltip="Elimina"
                       tooltipPosition="top"
                       [ariaLabel]="'Elimina ' + destinatario.ragioneSociale"
+                      [attr.data-testid]="'destinatari-elimina-' + destinatario.id"
                     />
                   </div>
                 </td>
@@ -201,6 +204,7 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
         [breakpoints]="{ '768px': '95vw' }"
         [header]="editMode ? 'Modifica destinatario' : 'Nuovo destinatario'"
         [dismissableMask]="true"
+        data-testid="destinatari-form-dialog"
       >
         <form class="dialog-form" (ngSubmit)="saveDestinatario()">
           <fieldset class="form-fieldset">
@@ -360,17 +364,19 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
             [text]="true"
             icon="pi pi-times"
             (onClick)="displayDialog = false"
+            data-testid="destinatari-form-cancel-button"
           />
           <p-button
             label="Salva"
             icon="pi pi-check"
             (onClick)="saveDestinatario()"
             [loading]="saving"
+            data-testid="destinatari-form-save-button"
           />
         </ng-template>
       </p-dialog>
 
-      <p-confirmDialog />
+      <p-confirmDialog data-testid="destinatari-confirm-dialog" />
     </div>
   `,
   styles: [

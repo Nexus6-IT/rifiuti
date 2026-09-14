@@ -52,6 +52,7 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
             icon="pi pi-plus"
             (onClick)="showCreateDialog()"
             ariaLabel="Crea nuovo trasportatore"
+            data-testid="trasportatori-nuovo-button"
           />
         </div>
       </header>
@@ -111,7 +112,7 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-trasportatore>
-              <tr>
+              <tr [attr.data-testid]="'trasportatori-row-' + trasportatore.id">
                 <td>
                   <span class="cell-label">Ragione sociale</span>
                   <span class="font-semibold">{{ trasportatore.ragioneSociale }}</span>
@@ -145,6 +146,7 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
                       pTooltip="Modifica"
                       tooltipPosition="top"
                       [ariaLabel]="'Modifica ' + trasportatore.ragioneSociale"
+                      [attr.data-testid]="'trasportatori-modifica-' + trasportatore.id"
                     />
                     <p-button
                       icon="pi pi-trash"
@@ -155,6 +157,7 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
                       pTooltip="Elimina"
                       tooltipPosition="top"
                       [ariaLabel]="'Elimina ' + trasportatore.ragioneSociale"
+                      [attr.data-testid]="'trasportatori-elimina-' + trasportatore.id"
                     />
                   </div>
                 </td>
@@ -204,6 +207,7 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
         [breakpoints]="{ '768px': '95vw' }"
         [header]="editMode ? 'Modifica trasportatore' : 'Nuovo trasportatore'"
         [dismissableMask]="true"
+        data-testid="trasportatori-form-dialog"
       >
         <form class="dialog-form" (ngSubmit)="saveTrasportatore()">
           <fieldset class="form-fieldset">
@@ -359,17 +363,19 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
             [text]="true"
             icon="pi pi-times"
             (onClick)="displayDialog = false"
+            data-testid="trasportatori-form-cancel-button"
           />
           <p-button
             label="Salva"
             icon="pi pi-check"
             (onClick)="saveTrasportatore()"
             [loading]="saving"
+            data-testid="trasportatori-form-save-button"
           />
         </ng-template>
       </p-dialog>
 
-      <p-confirmDialog />
+      <p-confirmDialog data-testid="trasportatori-confirm-dialog" />
     </div>
   `,
   styles: [

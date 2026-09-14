@@ -48,6 +48,7 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
             icon="pi pi-plus"
             (onClick)="showCreateDialog()"
             ariaLabel="Crea nuovo produttore"
+            data-testid="produttori-nuovo-button"
           />
         </div>
       </header>
@@ -105,7 +106,7 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-produttore>
-              <tr>
+              <tr [attr.data-testid]="'produttori-row-' + produttore.id">
                 <td>
                   <span class="cell-label">Ragione sociale</span>
                   <span class="font-semibold">{{ produttore.ragioneSociale }}</span>
@@ -135,6 +136,7 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
                       pTooltip="Modifica"
                       tooltipPosition="top"
                       [ariaLabel]="'Modifica ' + produttore.ragioneSociale"
+                      [attr.data-testid]="'produttori-modifica-' + produttore.id"
                     />
                     <p-button
                       icon="pi pi-trash"
@@ -145,6 +147,7 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
                       pTooltip="Elimina"
                       tooltipPosition="top"
                       [ariaLabel]="'Elimina ' + produttore.ragioneSociale"
+                      [attr.data-testid]="'produttori-elimina-' + produttore.id"
                     />
                   </div>
                 </td>
@@ -194,6 +197,7 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
         [breakpoints]="{ '768px': '95vw' }"
         [header]="editMode ? 'Modifica produttore' : 'Nuovo produttore'"
         [dismissableMask]="true"
+        data-testid="produttori-form-dialog"
       >
         <form class="dialog-form" (ngSubmit)="saveProduttore()">
           <fieldset class="form-fieldset">
@@ -324,17 +328,19 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
             [text]="true"
             icon="pi pi-times"
             (onClick)="displayDialog = false"
+            data-testid="produttori-form-cancel-button"
           />
           <p-button
             label="Salva"
             icon="pi pi-check"
             (onClick)="saveProduttore()"
             [loading]="saving"
+            data-testid="produttori-form-save-button"
           />
         </ng-template>
       </p-dialog>
 
-      <p-confirmDialog />
+      <p-confirmDialog data-testid="produttori-confirm-dialog" />
     </div>
   `,
   styles: [
