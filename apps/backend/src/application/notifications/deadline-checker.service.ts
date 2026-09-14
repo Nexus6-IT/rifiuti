@@ -124,6 +124,31 @@ export class DeadlineCheckerService {
 
         // Send notifications to all admin/operator users
         for (const user of tenant.users) {
+          // La notifica in applicazione va creata PRIMA e a parte
+          // dall'invio email: un guasto SMTP non deve sopprimere l'unico
+          // canale che funziona sempre (stesso principio applicato agli
+          // altri due rami dello scadenzario).
+          try {
+            await this.prisma.notification.create({
+              data: {
+                tenantId: tenant.id,
+                userId: user.id,
+                type: 'MUD_DEADLINE_APPROACHING',
+                title: `Promemoria Scadenza MUD ${previousYear}`,
+                message: `Mancano ${daysUntilDeadline} giorni alla scadenza del MUD. ${isComplete ? "Il MUD è pronto per l'invio." : `Completamento: ${completionPercentage}%`}`,
+                severity: daysUntilDeadline <= 7 ? 'WARNING' : 'INFO',
+                actionUrl: `/mud/${mudReport.id}`,
+                isRead: false,
+              },
+            })
+            notificationsSent++
+          } catch (error) {
+            this.logger.error(`Creazione avviso MUD fallita per ${user.email}`, error)
+            continue
+          }
+
+          // Invio email isolato: un guasto SMTP viene solo loggato, la
+          // notifica in applicazione creata sopra resta comunque valida.
           try {
             const html = await this.templateService.renderMudDeadlineReminder({
               recipientName: `${user.firstName} ${user.lastName}`,
@@ -148,24 +173,12 @@ export class DeadlineCheckerService {
               html,
             })
 
-            // Create in-app notification
-            await this.prisma.notification.create({
-              data: {
-                tenantId: tenant.id,
-                userId: user.id,
-                type: 'MUD_DEADLINE_APPROACHING',
-                title: `Promemoria Scadenza MUD ${previousYear}`,
-                message: `Mancano ${daysUntilDeadline} giorni alla scadenza del MUD. ${isComplete ? "Il MUD è pronto per l'invio." : `Completamento: ${completionPercentage}%`}`,
-                severity: daysUntilDeadline <= 7 ? 'WARNING' : 'INFO',
-                actionUrl: `/mud/${mudReport.id}`,
-                isRead: false,
-              },
-            })
-
-            notificationsSent++
             this.logger.debug(`Sent MUD reminder to ${user.email}`)
           } catch (error) {
-            this.logger.error(`Failed to send MUD reminder to ${user.email}`, error)
+            this.logger.error(
+              `Invio email promemoria MUD fallito per ${user.email} (notifica in app comunque creata)`,
+              error
+            )
           }
         }
       }
@@ -308,6 +321,40 @@ export class DeadlineCheckerService {
         const destinatari = utenti.filter(u => u.tenantId === autorizzazione.tenantId)
 
         for (const utente of destinatari) {
+          // La notifica in applicazione va creata PRIMA e a parte
+          // dall'invio email (stesso principio già applicato in
+          // `elaboraScadenzaControparte`): un guasto SMTP non deve
+          // sopprimere l'unico canale che funziona sempre. Se la
+          // creazione stessa fallisce, si salta l'utente senza tentare
+          // l'email.
+          try {
+            await this.prisma.notification.create({
+              data: {
+                tenantId: autorizzazione.tenantId,
+                userId: utente.id,
+                type: 'AUTORIZZAZIONE_IN_SCADENZA',
+                title: titolo,
+                message: messaggio,
+                severity: scaduta ? 'ERROR' : 'WARNING',
+                relatedEntityId: autorizzazione.id,
+                relatedEntityType: 'AutorizzazioneImpianto',
+                // Idem: nessuna pagina esiste per questa entità, quindi
+                // nessun actionUrl (campo facoltativo in schema).
+                actionUrl: undefined,
+                isRead: false,
+              },
+            })
+            notificationsSent++
+          } catch (error) {
+            this.logger.error(
+              `Creazione avviso scadenza autorizzazione fallita per ${utente.email}`,
+              error
+            )
+            continue
+          }
+
+          // Invio email isolato: un guasto SMTP viene solo loggato, la
+          // notifica in applicazione creata sopra resta comunque valida.
           try {
             const html = await this.templateService.renderAuthorizationExpiration({
               recipientName: `${utente.firstName} ${utente.lastName}`,
@@ -337,28 +384,10 @@ export class DeadlineCheckerService {
               html,
             })
 
-            await this.prisma.notification.create({
-              data: {
-                tenantId: autorizzazione.tenantId,
-                userId: utente.id,
-                type: 'AUTORIZZAZIONE_IN_SCADENZA',
-                title: titolo,
-                message: messaggio,
-                severity: scaduta ? 'ERROR' : 'WARNING',
-                relatedEntityId: autorizzazione.id,
-                relatedEntityType: 'AutorizzazioneImpianto',
-                // Idem: nessuna pagina esiste per questa entità, quindi
-                // nessun actionUrl (campo facoltativo in schema).
-                actionUrl: undefined,
-                isRead: false,
-              },
-            })
-
-            notificationsSent++
             this.logger.debug(`Avviso scadenza autorizzazione inviato a ${utente.email}`)
           } catch (error) {
             this.logger.error(
-              `Invio avviso scadenza autorizzazione fallito per ${utente.email}`,
+              `Invio email scadenza autorizzazione fallito per ${utente.email} (notifica in app comunque creata)`,
               error
             )
           }
