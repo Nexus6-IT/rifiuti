@@ -260,6 +260,22 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
                   autocomplete="email"
                 />
               </div>
+              <!-- Scadenza autorizzazione — facoltativa (Task 3 scadenzario):
+                   il dato può mancare per le anagrafiche già esistenti. -->
+              <div class="field col-12 md:col-6">
+                <label for="dest-scad-autorizzazione">Scadenza autorizzazione</label>
+                <input
+                  pInputText
+                  type="date"
+                  id="dest-scad-autorizzazione"
+                  name="scadenzaAutorizzazione"
+                  [(ngModel)]="formData.scadenzaAutorizzazione"
+                  data-testid="destinatari-scadenza-autorizzazione-input"
+                />
+                <small class="field-hint"
+                  >Facoltativa: se nota, abilita il promemoria di scadenza.</small
+                >
+              </div>
             </div>
           </fieldset>
 
@@ -467,6 +483,12 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
         color: var(--color-danger);
         margin-left: 0.15rem;
       }
+      .field-hint {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        display: block;
+        margin-top: var(--spacing-xs);
+      }
 
       @media (max-width: 768px) {
         :host ::ng-deep .p-datatable .p-datatable-thead {
@@ -579,6 +601,9 @@ export class DestinatariListComponent implements OnInit {
       numeroAutorizzazione: destinatario.numeroAutorizzazione,
       sede: { ...destinatario.sede },
       pec: destinatario.pec,
+      // Il backend restituisce una stringa ISO (yyyy-MM-dd): compatibile
+      // direttamente con l'input HTML type="date".
+      scadenzaAutorizzazione: destinatario.scadenzaAutorizzazione ?? '',
     }
     this.displayDialog = true
   }
@@ -594,10 +619,17 @@ export class DestinatariListComponent implements OnInit {
     }
 
     this.saving = true
+    const payload: CreateDestinatarioDto = {
+      ...this.formData,
+      // Facoltativa: campo vuoto = azzeramento esplicito in modifica
+      // (`null`), semplicemente non inviato in creazione (`undefined`).
+      scadenzaAutorizzazione:
+        this.formData.scadenzaAutorizzazione || (this.editMode ? null : undefined),
+    }
     const operation =
       this.editMode && this.selectedDestinatario
-        ? this.registryService.updateDestinatario(this.selectedDestinatario.id, this.formData)
-        : this.registryService.createDestinatario(this.formData)
+        ? this.registryService.updateDestinatario(this.selectedDestinatario.id, payload)
+        : this.registryService.createDestinatario(payload)
 
     operation.subscribe({
       next: () => {
@@ -682,6 +714,7 @@ export class DestinatariListComponent implements OnInit {
         provincia: '',
       },
       pec: '',
+      scadenzaAutorizzazione: '',
     }
   }
 }

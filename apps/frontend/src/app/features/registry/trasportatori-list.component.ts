@@ -263,6 +263,22 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
                   autocomplete="email"
                 />
               </div>
+              <!-- Scadenza iscrizione — facoltativa (Task 3 scadenzario): il
+                   dato può mancare per le anagrafiche già esistenti. -->
+              <div class="field col-12 md:col-6">
+                <label for="tra-scad-iscrizione">Scadenza iscrizione Albo</label>
+                <input
+                  pInputText
+                  type="date"
+                  id="tra-scad-iscrizione"
+                  name="scadenzaIscrizione"
+                  [(ngModel)]="formData.scadenzaIscrizione"
+                  data-testid="trasportatori-scadenza-iscrizione-input"
+                />
+                <small class="field-hint"
+                  >Facoltativa: se nota, abilita il promemoria di scadenza.</small
+                >
+              </div>
             </div>
           </fieldset>
 
@@ -466,6 +482,12 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
         color: var(--color-danger);
         margin-left: 0.15rem;
       }
+      .field-hint {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        display: block;
+        margin-top: var(--spacing-xs);
+      }
 
       @media (max-width: 768px) {
         :host ::ng-deep .p-datatable .p-datatable-thead {
@@ -578,6 +600,9 @@ export class TrasportatoriListComponent implements OnInit {
       numeroIscrizione: trasportatore.numeroIscrizione,
       sedeLegale: { ...trasportatore.sedeLegale },
       pec: trasportatore.pec,
+      // Il backend restituisce una stringa ISO (yyyy-MM-dd): compatibile
+      // direttamente con l'input HTML type="date".
+      scadenzaIscrizione: trasportatore.scadenzaIscrizione ?? '',
     }
     this.displayDialog = true
   }
@@ -593,10 +618,16 @@ export class TrasportatoriListComponent implements OnInit {
     }
 
     this.saving = true
+    const payload: CreateTrasportatoreDto = {
+      ...this.formData,
+      // Facoltativa: campo vuoto = azzeramento esplicito in modifica
+      // (`null`), semplicemente non inviato in creazione (`undefined`).
+      scadenzaIscrizione: this.formData.scadenzaIscrizione || (this.editMode ? null : undefined),
+    }
     const operation =
       this.editMode && this.selectedTrasportatore
-        ? this.registryService.updateTrasportatore(this.selectedTrasportatore.id, this.formData)
-        : this.registryService.createTrasportatore(this.formData)
+        ? this.registryService.updateTrasportatore(this.selectedTrasportatore.id, payload)
+        : this.registryService.createTrasportatore(payload)
 
     operation.subscribe({
       next: () => {
@@ -684,6 +715,7 @@ export class TrasportatoriListComponent implements OnInit {
         provincia: '',
       },
       pec: '',
+      scadenzaIscrizione: '',
     }
   }
 }
