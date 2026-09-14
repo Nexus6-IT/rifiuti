@@ -3,7 +3,8 @@ import {
   matchBlacklist,
   valutaRichiesta,
   esentaDallaBlacklist,
-  pulisciEsenzioni,
+  fotografaEsenzioni,
+  ripristinaEsenzioni,
 } from '../../utils/blacklist'
 
 /**
@@ -125,8 +126,20 @@ test.describe('Guardrail — matcher blacklist distruttiva', () => {
  * della blacklist travestito da correzione.
  */
 test.describe('Guardrail — esenzione per-run su DELETE /registry/*', () => {
+  // L'insieme delle esenzioni è di PROCESSO (vedi utils/blacklist.ts),
+  // condiviso con fixtures/risorse.ts: azzerarlo nel beforeEach (come
+  // faceva la versione precedente di questo test) cancella anche le
+  // esenzioni di cui il resto della suite, nello stesso worker, si fida
+  // ancora — convive solo perché i test in un worker sono sequenziali.
+  // Fotografa e ripristina, invece di azzerare.
+  let fotografia: ReadonlySet<string>
+
   test.beforeEach(() => {
-    pulisciEsenzioni()
+    fotografia = fotografaEsenzioni()
+  })
+
+  test.afterEach(() => {
+    ripristinaEsenzioni(fotografia)
   })
 
   test('un record REGISTRATO in questa run passa (non viene bloccato)', () => {

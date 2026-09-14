@@ -117,6 +117,34 @@ export function pulisciEsenzioni(): void {
 }
 
 /**
+ * Solo per i test del matcher: fotografa l'insieme di esenzioni corrente
+ * (per poterlo ripristinare dopo, vedi `ripristinaEsenzioni`) invece di
+ * azzerarlo — l'insieme è di PROCESSO, condiviso con `fixtures/risorse.ts`
+ * (`registra`/`ripulisci`), quindi un test che lo svuota nel proprio
+ * `beforeEach` cancella anche le esenzioni che il resto della suite,
+ * eseguito nello stesso worker, si aspetta di trovare ancora lì (rilievo
+ * minore della revisione finale, 2026-09-14: convive oggi solo perché i
+ * test dentro un worker sono sequenziali — un ordine diverso, o test in
+ * futuro eseguiti in parallelo nello stesso worker, romperebbero le
+ * cancellazioni di altri test).
+ */
+export function fotografaEsenzioni(): ReadonlySet<string> {
+  return new Set(idEsentiDaBlacklist)
+}
+
+/**
+ * Solo per i test del matcher: riporta l'insieme di esenzioni esattamente
+ * allo stato fotografato da `fotografaEsenzioni` (sostituzione, non unione:
+ * rimuove anche le esenzioni aggiunte dopo la fotografia).
+ */
+export function ripristinaEsenzioni(fotografia: ReadonlySet<string>): void {
+  idEsentiDaBlacklist.clear()
+  for (const id of fotografia) {
+    idEsentiDaBlacklist.add(id)
+  }
+}
+
+/**
  * Come `matchBlacklist`, ma applica l'esenzione per-run sulle tre rotte di
  * cancellazione dell'anagrafica: se l'id nell'URL è stato registrato in
  * questa run (`esentaDallaBlacklist`), la richiesta NON viene bloccata.
