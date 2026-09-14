@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core'
+import { Component, OnInit, computed, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MessageService } from 'primeng/api'
@@ -16,6 +16,8 @@ import { IconFieldModule } from 'primeng/iconfield'
 import { InputIconModule } from 'primeng/inputicon'
 import { RegistryService, CreateTrasportatoreDto } from './registry.service'
 import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
+import { AuthService } from '../../core/services/auth.service'
+import { puoGestireAnagrafiche } from './registry-permissions'
 
 @Component({
   selector: 'app-trasportatori-list',
@@ -47,13 +49,15 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
           </p>
         </div>
         <div class="page-actions">
-          <p-button
-            label="Nuovo trasportatore"
-            icon="pi pi-plus"
-            (onClick)="showCreateDialog()"
-            ariaLabel="Crea nuovo trasportatore"
-            data-testid="trasportatori-nuovo-button"
-          />
+          @if (puoGestire()) {
+            <p-button
+              label="Nuovo trasportatore"
+              icon="pi pi-plus"
+              (onClick)="showCreateDialog()"
+              ariaLabel="Crea nuovo trasportatore"
+              data-testid="trasportatori-nuovo-button"
+            />
+          }
         </div>
       </header>
 
@@ -137,29 +141,31 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
                 </td>
                 <td>
                   <span class="cell-label">Azioni</span>
-                  <div class="row-actions">
-                    <p-button
-                      icon="pi pi-pencil"
-                      [rounded]="true"
-                      [text]="true"
-                      (onClick)="editTrasportatore(trasportatore)"
-                      pTooltip="Modifica"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Modifica ' + trasportatore.ragioneSociale"
-                      [attr.data-testid]="'trasportatori-modifica-' + trasportatore.id"
-                    />
-                    <p-button
-                      icon="pi pi-trash"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="danger"
-                      (onClick)="deleteTrasportatore(trasportatore)"
-                      pTooltip="Elimina"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Elimina ' + trasportatore.ragioneSociale"
-                      [attr.data-testid]="'trasportatori-elimina-' + trasportatore.id"
-                    />
-                  </div>
+                  @if (puoGestire()) {
+                    <div class="row-actions">
+                      <p-button
+                        icon="pi pi-pencil"
+                        [rounded]="true"
+                        [text]="true"
+                        (onClick)="editTrasportatore(trasportatore)"
+                        pTooltip="Modifica"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Modifica ' + trasportatore.ragioneSociale"
+                        [attr.data-testid]="'trasportatori-modifica-' + trasportatore.id"
+                      />
+                      <p-button
+                        icon="pi pi-trash"
+                        [rounded]="true"
+                        [text]="true"
+                        severity="danger"
+                        (onClick)="deleteTrasportatore(trasportatore)"
+                        pTooltip="Elimina"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Elimina ' + trasportatore.ragioneSociale"
+                        [attr.data-testid]="'trasportatori-elimina-' + trasportatore.id"
+                      />
+                    </div>
+                  }
                 </td>
               </tr>
             </ng-template>
@@ -170,12 +176,14 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
                     <i class="pi pi-truck empty-state__icon" aria-hidden="true"></i>
                     <p class="empty-state__title">Nessun trasportatore trovato</p>
                     <p>Crea il primo trasportatore per associarlo ai formulari.</p>
-                    <p-button
-                      label="Nuovo trasportatore"
-                      icon="pi pi-plus"
-                      (onClick)="showCreateDialog()"
-                      ariaLabel="Crea nuovo trasportatore"
-                    />
+                    @if (puoGestire()) {
+                      <p-button
+                        label="Nuovo trasportatore"
+                        icon="pi pi-plus"
+                        (onClick)="showCreateDialog()"
+                        ariaLabel="Crea nuovo trasportatore"
+                      />
+                    }
                   </div>
                 </td>
               </tr>
@@ -546,6 +554,14 @@ export class TrasportatoriListComponent implements OnInit {
   selectedTrasportatore: Trasportatore | null = null
 
   formData: CreateTrasportatoreDto = this.getEmptyFormData()
+
+  private readonly authService = inject(AuthService)
+  // Ricalcola il gating in base al ruolo dell'utente autenticato: stesso
+  // schema di `fir-list.component.ts` (`puoCreareFir`). Il backend è
+  // l'unica fonte di verità (RegistryController, @Roles su POST/PUT/DELETE
+  // trasportatori), qui si evita solo di mostrare un'azione che il server
+  // rifiuterebbe con 403.
+  readonly puoGestire = computed(() => puoGestireAnagrafiche(this.authService.currentUser()?.role))
 
   constructor(
     private registryService: RegistryService,

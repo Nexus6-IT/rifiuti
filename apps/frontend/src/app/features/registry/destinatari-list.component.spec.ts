@@ -4,7 +4,18 @@ import { of } from 'rxjs'
 import { MessageService, ConfirmationService } from 'primeng/api'
 import { DestinatariListComponent } from './destinatari-list.component'
 import { RegistryService } from './registry.service'
+import { AuthService } from '../../core/services/auth.service'
 import { Destinatario } from '../../shared/models/registry.model'
+
+// Stub minimo: solo `currentUser()`, unico membro di AuthService usato dal
+// componente per il gating dei pulsanti (Task N3). Ruolo ADMIN di default,
+// così i test di business logic esistenti (non sul gating) restano validi
+// senza doverlo impostare ovunque.
+function authServiceStub(role = 'ADMIN') {
+  return {
+    currentUser: () => ({ id: 'u1', email: 'u@example.com', role }),
+  }
+}
 
 /**
  * TDD per il difetto del 2026-09-14: la pagina /destinatari (questo
@@ -49,6 +60,7 @@ describe('DestinatariListComponent — data di scadenza autorizzazione (facoltat
       imports: [DestinatariListComponent, NoopAnimationsModule],
       providers: [
         { provide: RegistryService, useValue: registryService },
+        { provide: AuthService, useValue: authServiceStub() },
         MessageService,
         ConfirmationService,
       ],
@@ -162,6 +174,7 @@ describe('DestinatariListComponent — payload di modifica senza partitaIVA (bug
       imports: [DestinatariListComponent, NoopAnimationsModule],
       providers: [
         { provide: RegistryService, useValue: registryService },
+        { provide: AuthService, useValue: authServiceStub() },
         MessageService,
         ConfirmationService,
       ],
@@ -202,5 +215,78 @@ describe('DestinatariListComponent — payload di modifica senza partitaIVA (bug
       '[data-testid="destinatari-piva-input"]'
     ) as HTMLInputElement
     expect(input.disabled).toBeTrue()
+  })
+})
+
+/**
+ * TDD per il rilievo N3: un VIEWER vede «Nuovo destinatario», compila tutto
+ * e riceve un 403 generico al salvataggio — RegistryController protegge
+ * POST/PUT/DELETE destinatari con @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR'),
+ * un VIEWER non c'è. Stesso schema di `fir-list.component.ts` (`puoCreareFir`).
+ */
+describe('DestinatariListComponent — gating dei pulsanti in base al ruolo (VIEWER)', () => {
+  let fixture: ComponentFixture<DestinatariListComponent>
+
+  const DESTINATARIO_ESISTENTE: Destinatario = {
+    id: 'd1',
+    ragioneSociale: 'Impianto Verdi S.r.l.',
+    partitaIVA: '01234567890',
+    sede: { via: 'Via Torino', civico: '5', cap: '10100', comune: 'Torino', provincia: 'TO' },
+    numeroAutorizzazione: 'AUT/2024/001',
+    pec: 'impianto@pec.it',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }
+
+  function creaComponente(role: string): void {
+    const registryService = jasmine.createSpyObj<RegistryService>('RegistryService', [
+      'getDestinatari',
+      'createDestinatario',
+      'updateDestinatario',
+      'deleteDestinatario',
+    ])
+    registryService.getDestinatari.and.returnValue(
+      of({ items: [DESTINATARIO_ESISTENTE], total: 1, page: 1, limit: 10, totalPages: 1 })
+    )
+
+    TestBed.configureTestingModule({
+      imports: [DestinatariListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: RegistryService, useValue: registryService },
+        { provide: AuthService, useValue: authServiceStub(role) },
+        MessageService,
+        ConfirmationService,
+      ],
+    })
+
+    fixture = TestBed.createComponent(DestinatariListComponent)
+    fixture.detectChanges()
+  }
+
+  it('un VIEWER non vede il pulsante "Nuovo destinatario"', () => {
+    creaComponente('VIEWER')
+
+    const bottone = fixture.nativeElement.querySelector('[data-testid="destinatari-nuovo-button"]')
+    expect(bottone).toBeNull()
+  })
+
+  it('un VIEWER non vede le azioni Modifica/Elimina sulla riga', () => {
+    creaComponente('VIEWER')
+
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="destinatari-modifica-d1"]')
+    ).toBeNull()
+    expect(fixture.nativeElement.querySelector('[data-testid="destinatari-elimina-d1"]')).toBeNull()
+  })
+
+  it('un OPERATOR vede sia "Nuovo destinatario" sia le azioni sulla riga', () => {
+    creaComponente('OPERATOR')
+
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="destinatari-nuovo-button"]')
+    ).toBeTruthy()
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="destinatari-modifica-d1"]')
+    ).toBeTruthy()
   })
 })

@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core'
+import { Component, OnInit, computed, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MessageService } from 'primeng/api'
@@ -16,6 +16,8 @@ import { IconFieldModule } from 'primeng/iconfield'
 import { InputIconModule } from 'primeng/inputicon'
 import { RegistryService, CreateDestinatarioDto } from './registry.service'
 import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
+import { AuthService } from '../../core/services/auth.service'
+import { puoGestireAnagrafiche } from './registry-permissions'
 
 @Component({
   selector: 'app-destinatari-list',
@@ -45,13 +47,15 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
           <p class="page-subtitle">Anagrafica degli impianti di destinazione autorizzati</p>
         </div>
         <div class="page-actions">
-          <p-button
-            label="Nuovo destinatario"
-            icon="pi pi-plus"
-            (onClick)="showCreateDialog()"
-            ariaLabel="Crea nuovo destinatario"
-            data-testid="destinatari-nuovo-button"
-          />
+          @if (puoGestire()) {
+            <p-button
+              label="Nuovo destinatario"
+              icon="pi pi-plus"
+              (onClick)="showCreateDialog()"
+              ariaLabel="Crea nuovo destinatario"
+              data-testid="destinatari-nuovo-button"
+            />
+          }
         </div>
       </header>
 
@@ -134,29 +138,31 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
                 </td>
                 <td>
                   <span class="cell-label">Azioni</span>
-                  <div class="row-actions">
-                    <p-button
-                      icon="pi pi-pencil"
-                      [rounded]="true"
-                      [text]="true"
-                      (onClick)="editDestinatario(destinatario)"
-                      pTooltip="Modifica"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Modifica ' + destinatario.ragioneSociale"
-                      [attr.data-testid]="'destinatari-modifica-' + destinatario.id"
-                    />
-                    <p-button
-                      icon="pi pi-trash"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="danger"
-                      (onClick)="deleteDestinatario(destinatario)"
-                      pTooltip="Elimina"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Elimina ' + destinatario.ragioneSociale"
-                      [attr.data-testid]="'destinatari-elimina-' + destinatario.id"
-                    />
-                  </div>
+                  @if (puoGestire()) {
+                    <div class="row-actions">
+                      <p-button
+                        icon="pi pi-pencil"
+                        [rounded]="true"
+                        [text]="true"
+                        (onClick)="editDestinatario(destinatario)"
+                        pTooltip="Modifica"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Modifica ' + destinatario.ragioneSociale"
+                        [attr.data-testid]="'destinatari-modifica-' + destinatario.id"
+                      />
+                      <p-button
+                        icon="pi pi-trash"
+                        [rounded]="true"
+                        [text]="true"
+                        severity="danger"
+                        (onClick)="deleteDestinatario(destinatario)"
+                        pTooltip="Elimina"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Elimina ' + destinatario.ragioneSociale"
+                        [attr.data-testid]="'destinatari-elimina-' + destinatario.id"
+                      />
+                    </div>
+                  }
                 </td>
               </tr>
             </ng-template>
@@ -167,12 +173,14 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
                     <i class="pi pi-map-marker empty-state__icon" aria-hidden="true"></i>
                     <p class="empty-state__title">Nessun destinatario trovato</p>
                     <p>Crea il primo impianto di destinazione per associarlo ai formulari.</p>
-                    <p-button
-                      label="Nuovo destinatario"
-                      icon="pi pi-plus"
-                      (onClick)="showCreateDialog()"
-                      ariaLabel="Crea nuovo destinatario"
-                    />
+                    @if (puoGestire()) {
+                      <p-button
+                        label="Nuovo destinatario"
+                        icon="pi pi-plus"
+                        (onClick)="showCreateDialog()"
+                        ariaLabel="Crea nuovo destinatario"
+                      />
+                    }
                   </div>
                 </td>
               </tr>
@@ -547,6 +555,14 @@ export class DestinatariListComponent implements OnInit {
   selectedDestinatario: Destinatario | null = null
 
   formData: CreateDestinatarioDto = this.getEmptyFormData()
+
+  private readonly authService = inject(AuthService)
+  // Ricalcola il gating in base al ruolo dell'utente autenticato: stesso
+  // schema di `fir-list.component.ts` (`puoCreareFir`). Il backend è
+  // l'unica fonte di verità (RegistryController, @Roles su POST/PUT/DELETE
+  // destinatari), qui si evita solo di mostrare un'azione che il server
+  // rifiuterebbe con 403.
+  readonly puoGestire = computed(() => puoGestireAnagrafiche(this.authService.currentUser()?.role))
 
   constructor(
     private registryService: RegistryService,

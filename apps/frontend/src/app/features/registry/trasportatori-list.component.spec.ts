@@ -4,7 +4,18 @@ import { of } from 'rxjs'
 import { MessageService, ConfirmationService } from 'primeng/api'
 import { TrasportatoriListComponent } from './trasportatori-list.component'
 import { RegistryService } from './registry.service'
+import { AuthService } from '../../core/services/auth.service'
 import { Trasportatore } from '../../shared/models/registry.model'
+
+// Stub minimo: solo `currentUser()`, unico membro di AuthService usato dal
+// componente per il gating dei pulsanti (Task N3). Ruolo ADMIN di default,
+// così i test di business logic esistenti (non sul gating) restano validi
+// senza doverlo impostare ovunque.
+function authServiceStub(role = 'ADMIN') {
+  return {
+    currentUser: () => ({ id: 'u1', email: 'u@example.com', role }),
+  }
+}
 
 /**
  * TDD per il difetto del 2026-09-14: la pagina /trasportatori (questo
@@ -49,6 +60,7 @@ describe('TrasportatoriListComponent — data di scadenza iscrizione (facoltativ
       imports: [TrasportatoriListComponent, NoopAnimationsModule],
       providers: [
         { provide: RegistryService, useValue: registryService },
+        { provide: AuthService, useValue: authServiceStub() },
         MessageService,
         ConfirmationService,
       ],
@@ -162,6 +174,7 @@ describe('TrasportatoriListComponent — payload di modifica senza partitaIVA (b
       imports: [TrasportatoriListComponent, NoopAnimationsModule],
       providers: [
         { provide: RegistryService, useValue: registryService },
+        { provide: AuthService, useValue: authServiceStub() },
         MessageService,
         ConfirmationService,
       ],
@@ -202,5 +215,83 @@ describe('TrasportatoriListComponent — payload di modifica senza partitaIVA (b
       '[data-testid="trasportatori-piva-input"]'
     ) as HTMLInputElement
     expect(input.disabled).toBeTrue()
+  })
+})
+
+/**
+ * TDD per il rilievo N3: un VIEWER vede «Nuovo trasportatore», compila
+ * tutto e riceve un 403 generico al salvataggio — RegistryController
+ * protegge POST/PUT/DELETE trasportatori con
+ * @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR'), un VIEWER non c'è. Stesso
+ * schema di `fir-list.component.ts` (`puoCreareFir`).
+ */
+describe('TrasportatoriListComponent — gating dei pulsanti in base al ruolo (VIEWER)', () => {
+  let fixture: ComponentFixture<TrasportatoriListComponent>
+
+  const TRASPORTATORE_ESISTENTE: Trasportatore = {
+    id: 't1',
+    ragioneSociale: 'Trasporti Rossi S.r.l.',
+    partitaIVA: '01234567890',
+    sedeLegale: { via: 'Via Roma', civico: '1', cap: '20100', comune: 'Milano', provincia: 'MI' },
+    numeroIscrizione: 'MI/000123',
+    pec: 'trasporti@pec.it',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }
+
+  function creaComponente(role: string): void {
+    const registryService = jasmine.createSpyObj<RegistryService>('RegistryService', [
+      'getTrasportatori',
+      'createTrasportatore',
+      'updateTrasportatore',
+      'deleteTrasportatore',
+    ])
+    registryService.getTrasportatori.and.returnValue(
+      of({ items: [TRASPORTATORE_ESISTENTE], total: 1, page: 1, limit: 10, totalPages: 1 })
+    )
+
+    TestBed.configureTestingModule({
+      imports: [TrasportatoriListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: RegistryService, useValue: registryService },
+        { provide: AuthService, useValue: authServiceStub(role) },
+        MessageService,
+        ConfirmationService,
+      ],
+    })
+
+    fixture = TestBed.createComponent(TrasportatoriListComponent)
+    fixture.detectChanges()
+  }
+
+  it('un VIEWER non vede il pulsante "Nuovo trasportatore"', () => {
+    creaComponente('VIEWER')
+
+    const bottone = fixture.nativeElement.querySelector(
+      '[data-testid="trasportatori-nuovo-button"]'
+    )
+    expect(bottone).toBeNull()
+  })
+
+  it('un VIEWER non vede le azioni Modifica/Elimina sulla riga', () => {
+    creaComponente('VIEWER')
+
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="trasportatori-modifica-t1"]')
+    ).toBeNull()
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="trasportatori-elimina-t1"]')
+    ).toBeNull()
+  })
+
+  it('un OPERATOR vede sia "Nuovo trasportatore" sia le azioni sulla riga', () => {
+    creaComponente('OPERATOR')
+
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="trasportatori-nuovo-button"]')
+    ).toBeTruthy()
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="trasportatori-modifica-t1"]')
+    ).toBeTruthy()
   })
 })
