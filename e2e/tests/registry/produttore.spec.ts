@@ -117,6 +117,20 @@ test.describe('Produttore — CRUD via UI (operator)', () => {
     // Modifica: la ragione sociale cambia, la P.IVA resta (immutabile in update).
     const ragioneSocialeModificata = `${ragioneSociale} (modificato)`
     await anagrafiche.apriModifica(creato!.id)
+
+    // Coerenza con la validazione lato API verificata sotto (describe
+    // "validazioni" → "la partita IVA è immutabile..."): il form NON deve
+    // mai poter inviare `partitaIVA` in un PUT, perché il backend la
+    // rifiuterebbe con 400 (whitelist di UpdateProduttoreDto). La UI
+    // garantisce questo disabilitando il campo in modifica (visibile, col
+    // valore attuale, ma non modificabile) invece di ometterlo — v.
+    // `produttori-list.component.ts` `[disabled]="editMode"` e il commento
+    // "NON includere partitaIVA" nel payload di update. Verificarlo qui,
+    // non solo a memoria: se qualcuno riabilitasse il campo per errore,
+    // questo test lo direbbe prima di un 400 inatteso in produzione.
+    await expect(page.getByLabel('Partita IVA')).toBeDisabled()
+    await expect(page.getByLabel('Partita IVA')).toHaveValue(partitaIVA)
+
     await page.getByLabel('Ragione sociale').fill(ragioneSocialeModificata)
     await anagrafiche.salva()
     await expect(anagrafiche.formDialog).toBeHidden()
@@ -284,6 +298,30 @@ test.describe('Produttore — isolamento fra due aziende', () => {
       }).then(r => r.json() as Promise<ListaPaginata<ProduttoreResponse>>)
       expect(dopoA.items.some(p => p.id === creato.id)).toBe(true)
     } finally {
+      // DEROGA CONSAPEVOLE, unica in questo file: `apiDelete` (utils/api-client.ts)
+      // passa da `valutaRichiesta` (utils/blacklist.ts), il guardrail che
+      // rifiuta un DELETE il cui id non risulta REGISTRATO in questa run
+      // (`fixtures/risorse.ts` → `registra`) — difesa in profondità contro
+      // cancellazioni non tracciate, in QUALUNQUE ambiente. Questa riga la
+      // aggira di proposito, con `fetch` diretto, per due motivi che non
+      // hanno un'alternativa dentro al perimetro attuale del client:
+      // 1. `apiDelete` non accetta header aggiuntivi: qui serve
+      //    `X-Tenant-ID: tenantA.id`, senza il quale il DELETE
+      //    risolverebbe sul tenant PRIMARIO dell'admin (vedi commento in
+      //    cima al test) e non cancellerebbe nulla — un residuo silenzioso
+      //    nel tenant secondario, invisibile a `verifica-residuo.ts`.
+      // 2. Per lo stesso motivo `creato.id` non passa da `registra()`
+      //    (quel registro presuppone il tenant primario): non c'è quindi
+      //    un id "registrato" da far accettare al guardrail.
+      // La sicurezza che il guardrail darebbe è qui sostituita da una
+      // garanzia più forte per costruzione: `creato.id` non è mai un valore
+      // salvato o riusato fra test, è l'id appena restituito dalla POST
+      // eseguita due righe sopra, nello stesso test, quindi non può essere
+      // l'id di una risorsa creata da qualcos'altro. NON copiare questo
+      // pattern altrove nella suite: se un altro test avesse bisogno dello
+      // stesso aggiramento, è un segnale che `apiDelete`/`registra()`
+      // vanno estesi per accettare un tenant esplicito, non che il
+      // guardrail vada bypassato di nuovo con `fetch` diretto.
       await fetch(`${getApiUrl()}/registry/produttori/${creato.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}`, 'X-Tenant-ID': tenantA.id },
@@ -354,7 +392,26 @@ interface CerVoce {
  * (`CERCatalogService.isUtilizzabilePerNuovoFormulario`) e non c'è un
  * endpoint dedicato per saperlo in anticipo, quindi si tenta con più
  * candidati finché uno viene accettato.
+ *
+ * Il ciclo esce SUBITO al primo errore che non sia un rifiuto del codice
+ * CER: `CreateFIRUseCase.execute` (v. `create-fir.use-case.ts`) rifiuta con
+ * 400 e uno di due soli messaggi quando il problema è il catalogo —
+ * `"CER code not found: …"` (codice inesistente) o il messaggio italiano
+ * "non è più valido secondo il registro dell'ente" quando
+ * `isUtilizzabilePerNuovoFormulario` è `false` — qualunque altro errore (una
+ * delle tre anagrafiche non trovata, un campo obbligatorio mancante, un 403
+ * di permessi, un 500) NON viene risolto provando un altro codice CER: senza
+ * questa uscita anticipata il ciclo avrebbe continuato a interrogare fino a
+ * 50 codici del catalogo per un problema che non li riguarda, incolpando
+ * infine "il catalogo" con un `test.skip()` fuorviante invece di far
+ * fallire il test con l'errore vero al primo tentativo.
  */
+function eRifiutoCatalogoCer(errore: unknown): boolean {
+  if (!(errore instanceof ApiClientError) || errore.status !== 400) return false
+  const messaggio = String((errore.body as { message?: unknown } | null)?.message ?? '')
+  return /CER code not found|non è più valido secondo il registro dell'ente/i.test(messaggio)
+}
+
 async function creaFirBozza(
   token: string,
   ids: { produttoreId: string; trasportatoreId: string; destinatarioId: string }
@@ -381,6 +438,12 @@ async function creaFirBozza(
         token
       )
     } catch (errore) {
+      if (!eRifiutoCatalogoCer(errore)) {
+        // Errore non riconducibile al codice CER: nessun altro candidato lo
+        // risolverebbe, uscire subito invece di bruciare il resto del
+        // catalogo.
+        throw errore
+      }
       ultimoErrore = errore
     }
   }

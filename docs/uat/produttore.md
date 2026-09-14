@@ -84,7 +84,7 @@
   1. Cliccare l'icona "Modifica" sulla riga del produttore.
   2. Cambiare la ragione sociale.
   3. Cliccare "Salva".
-- **Risultato atteso**: la riga mostra la nuova ragione sociale; la partita IVA resta invariata (il campo non è nemmeno proposto in modifica dal form).
+- **Risultato atteso**: la riga mostra la nuova ragione sociale; la partita IVA resta invariata. Il campo è VISIBILE anche in modifica ma disabilitato (readonly, `[disabled]="editMode"` in `produttori-list.component.ts`) — non "non proposto": l'utente lo vede col valore attuale, ma non può cambiarlo. Coerente con `UpdateProduttoreDto`/il `ValidationPipe` globale: il payload PUT non include mai `partitaIVA` in modifica (v. UAT-PROD-05, che verifica lato API il motivo per cui il form si comporta così — se il campo fosse editabile e il suo valore venisse inviato, l'update fallirebbe con 400 per whitelist).
 - **Pulizia**: come UAT-PROD-01 (stesso record).
 - **Automazione**: `e2e/tests/registry/produttore.spec.ts::happy path: crea e modifica un produttore dalla UI` (stesso test, fase di modifica)
 
