@@ -589,6 +589,36 @@ describe('DeadlineCheckerService', () => {
       )
       expect(mockPrisma.notification.create).not.toHaveBeenCalled()
     })
+
+    it('un guasto SMTP non sopprime la notifica in applicazione: la notifica nasce anche se sendEmail fallisce', async () => {
+      // Difetto di revisione: la notifica in-app veniva creata DOPO
+      // sendEmail, nello stesso try. In un ambiente senza SMTP l'eccezione
+      // veniva loggata e la notifica non nasceva mai — l'unico canale che
+      // funziona sempre restava silenzioso proprio quando la posta è rotta.
+      const fra30 = new Date()
+      fra30.setDate(fra30.getDate() + 30)
+      ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
+        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+      ])
+      ;(mockEmailService.sendEmail as jest.Mock).mockRejectedValueOnce(
+        new Error('connessione SMTP rifiutata')
+      )
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA',
+            relatedEntityId: 'tr1',
+          }),
+        })
+      )
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Invio email'),
+        expect.any(Error)
+      )
+    })
   })
 
   describe('checkRentriCertificateExpiration', () => {

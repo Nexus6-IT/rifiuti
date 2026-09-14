@@ -535,6 +535,36 @@ export class DeadlineCheckerService {
       const destinatari = utenti.filter(u => u.tenantId === r.tenantId)
 
       for (const utente of destinatari) {
+        // La notifica in applicazione va creata PRIMA e a parte dall'invio
+        // email: è il canale che funziona sempre, un guasto SMTP non deve
+        // sopprimerlo. Se la creazione stessa fallisce, saltiamo l'utente
+        // (nessun avviso possibile) senza tentare l'email.
+        try {
+          await this.prisma.notification.create({
+            data: {
+              tenantId: r.tenantId,
+              userId: utente.id,
+              type: opts.notificationType,
+              title: titolo,
+              message: messaggio,
+              severity: scaduta ? 'ERROR' : 'WARNING',
+              relatedEntityId: r.id,
+              relatedEntityType: opts.relatedEntityType,
+              actionUrl: opts.actionUrl,
+              isRead: false,
+            },
+          })
+          notificationsSent++
+        } catch (error) {
+          this.logger.error(
+            `Creazione avviso scadenza ${opts.etichetta} fallita per ${utente.email}`,
+            error
+          )
+          continue
+        }
+
+        // Invio email isolato: un guasto SMTP viene solo loggato, la notifica
+        // in applicazione creata sopra resta comunque valida.
         try {
           const html = await this.templateService.renderCounterpartyExpiration({
             recipientName: `${utente.firstName} ${utente.lastName}`,
@@ -556,26 +586,10 @@ export class DeadlineCheckerService {
             html,
           })
 
-          await this.prisma.notification.create({
-            data: {
-              tenantId: r.tenantId,
-              userId: utente.id,
-              type: opts.notificationType,
-              title: titolo,
-              message: messaggio,
-              severity: scaduta ? 'ERROR' : 'WARNING',
-              relatedEntityId: r.id,
-              relatedEntityType: opts.relatedEntityType,
-              actionUrl: opts.actionUrl,
-              isRead: false,
-            },
-          })
-
-          notificationsSent++
           this.logger.debug(`Avviso scadenza ${opts.etichetta} inviato a ${utente.email}`)
         } catch (error) {
           this.logger.error(
-            `Creazione avviso scadenza ${opts.etichetta} fallita per ${utente.email}`,
+            `Invio email scadenza ${opts.etichetta} fallito per ${utente.email} (notifica in app comunque creata)`,
             error
           )
         }
