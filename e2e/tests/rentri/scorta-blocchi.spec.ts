@@ -160,3 +160,46 @@ test.describe('RENTRI — blocchi e scorta vidimata (superficie raggiungibile)',
     expect(messaggio).not.toMatch(/not found/i)
   })
 })
+
+/**
+ * Regressione — giro di correzione 1 (2026-09-14): `vidimaButtons()`
+ * cercava `[data-testid^="rentri-blocchi-vidima-"]` su tutta la pagina.
+ * L'host di `p-dialog` porta lo stesso prefisso (`rentri-blocchi-vidima-dialog`)
+ * come attributo STATICO sul tag host — presente nel DOM anche a dialog
+ * chiuso, perché `*ngIf` nel componente nasconde solo il contenuto interno,
+ * mai l'host stesso. Con zero blocchi attivi (nessun bottone "Vidima un
+ * lotto" in pagina, sezione `rentri-blocchi-list-attivi` del tutto assente)
+ * quel selettore trovava comunque 1 elemento — l'host del dialog — invece
+ * di 0: il `test.skip()` sopra non scattava mai, e il test proseguiva
+ * cliccando il dialog al posto di un bottone, fallendo con un timeout privo
+ * di senso invece di saltare con un messaggio chiaro.
+ *
+ * Nessuna app viva necessaria: DOM statico via `page.setContent`, nessuna
+ * navigazione, nessun login. Eseguito in questa sessione (non solo scritto):
+ * `npx playwright test -c e2e/playwright.config.ts --project=chromium -g
+ * "non deve confondersi"` → 1 passed.
+ */
+test.describe('RENTRI — regressione: vidimaButtons() non deve confondersi con l’host del dialog', () => {
+  test('con zero blocchi attivi in pagina, vidimaButtons() conta 0 invece di trovare l’host del dialog', async ({
+    page,
+  }) => {
+    // Riproduzione minima della collisione: l'host del dialog è presente
+    // (sempre, per il motivo sopra), la sezione dei blocchi attivi no
+    // (esattamente il DOM che produce un tenant senza blocchi attivi).
+    await page.setContent(`
+      <div data-testid="rentri-blocchi-empty-state"></div>
+      <div data-testid="rentri-blocchi-vidima-dialog"></div>
+    `)
+
+    const blocchiPage = new RentriBlocchiPage(page)
+
+    // Prova che la regressione esisteva davvero: il selettore non scopato
+    // (quello di prima della correzione) trova l'host del dialog.
+    await expect(page.locator('[data-testid^="rentri-blocchi-vidima-"]')).toHaveCount(1)
+
+    // Il metodo corretto, scopato a `listAttivi` (assente in questo DOM),
+    // deve contare 0 — così il chiamante può fare `test.skip()` invece di
+    // andare in timeout cliccando l'host del dialog.
+    await expect(blocchiPage.vidimaButtons()).toHaveCount(0)
+  })
+})

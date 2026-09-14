@@ -63,9 +63,27 @@ export class RentriBlocchiPage {
     return this.page.getByTestId(`rentri-blocchi-set-predefinito-${codiceBlocco}`)
   }
 
-  /** Tutti i bottoni "Vidima un lotto" attualmente in pagina (uno per blocco attivo). */
+  /**
+   * Tutti i bottoni "Vidima un lotto" attualmente in pagina (uno per blocco
+   * attivo).
+   *
+   * ATTENZIONE alla collisione di prefisso: il componente usa lo stesso
+   * prefisso `rentri-blocchi-vidima-` sia per questi bottoni
+   * (`rentri-blocchi-vidima-{codiceBlocco}`) sia per il dialog e i suoi
+   * controlli (`rentri-blocchi-vidima-dialog`, `-input-quantita`,
+   * `-conferma`). Il `data-testid` del dialog è un attributo statico
+   * sull'elemento host `p-dialog`: resta nel DOM anche a dialog chiuso
+   * (`*ngIf` nasconde solo il contenuto interno, non l'host — verificato sul
+   * sorgente PrimeNG). Un selettore `[data-testid^="rentri-blocchi-vidima-"]`
+   * sull'intera pagina troverebbe quindi SEMPRE almeno l'host del dialog,
+   * anche con zero blocchi attivi — il caso esatto in cui il chiamante deve
+   * poter contare 0 e saltare. Per questo la ricerca è ristretta al
+   * contenitore delle righe attive (`listAttivi`), che non contiene il
+   * dialog (dichiarato come elemento a sé nel template, fuori da quella
+   * sezione).
+   */
   vidimaButtons(): Locator {
-    return this.page.locator('[data-testid^="rentri-blocchi-vidima-"]')
+    return this.listAttivi.locator('[data-testid^="rentri-blocchi-vidima-"]')
   }
 
   async apriVidimazione(codiceBlocco: string) {

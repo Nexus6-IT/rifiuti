@@ -138,3 +138,43 @@ none` travestito). Principio di prodotto: "non far sparire le cose". Se
   ramo (l'unit test `avvia-vidimazione-scorta.use-case.spec.ts` copre già
   la distinzione "blocco assente" vs "ente irraggiungibile" a livello di
   use case).
+
+## 4. Correzione — giro di correzione 1 (2026-09-14)
+
+Il revisore ha trovato una collisione di prefisso in
+`e2e/pages/rentri-blocchi.page.ts`: `vidimaButtons()` cercava
+`[data-testid^="rentri-blocchi-vidima-"]` su tutta la pagina, ma il
+componente usa lo stesso prefisso sia per i bottoni "Vidima un lotto" per
+riga (`rentri-blocchi-vidima-{codiceBlocco}`) sia per l'host del dialog e i
+suoi controlli (`rentri-blocchi-vidima-dialog`, `-input-quantita`,
+`-conferma`). L'host di `p-dialog` porta quell'attributo in modo statico:
+resta nel DOM anche a dialog chiuso, perché `*ngIf` nel componente nasconde
+solo il contenuto interno, mai l'host stesso.
+
+**Conseguenza reale**: con un tenant che ha ZERO blocchi attivi (esattamente
+il caso per cui esiste il `test.skip()` in UAT-SCORTA-02), il conteggio dei
+"bottoni vidima" non risultava 0 ma almeno 1 (l'host del dialog scambiato
+per un bottone) — il test non saltava, provava a cliccare il dialog al
+posto di un bottone, e falliva con un timeout muto invece di saltare con un
+messaggio chiaro. Il difetto peggiore per una suite: non rompe quando il
+codice è rotto, rompe quando l'ambiente è legittimamente vuoto.
+
+**Correzione**: `vidimaButtons()` ora cerca solo dentro `listAttivi`
+(`rentri-blocchi-list-attivi`), la sezione che contiene le righe dei
+blocchi attivi e che è del tutto assente dal DOM quando non ce n'è nessuno
+— non contiene mai l'host del dialog, dichiarato altrove nel template.
+Verificato che lo stesso schema non si ripete altrove nel page object: gli
+altri selettori dinamici (`row()`, `vidimaButton()`, `setPredefinitoButton()`)
+usano `getByTestId` con corrispondenza ESATTA (non un prefisso), quindi non
+sono esposti alla stessa collisione; l'unico altro selettore a prefisso
+nella spec (`[data-testid^="rentri-blocchi-row-"]`) era già scopato dentro
+`listDisattivati`.
+
+**Test di regressione aggiunto**: `scorta-blocchi.spec.ts`, describe
+"RENTRI — regressione: vidimaButtons() non deve confondersi con l'host del
+dialog" — DOM statico via `page.setContent` (nessuna app viva, nessun
+login), dimostra sia che il selettore non scopato trova 1 elemento (la
+regressione esisteva davvero) sia che il metodo corretto ne conta 0.
+Eseguito in questa sessione: `npx playwright test -c
+e2e/playwright.config.ts --project=chromium -g "non deve confondersi"` →
+1 passed.
