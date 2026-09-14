@@ -16,15 +16,14 @@ import { AnagrafichePage } from '../../pages/anagrafiche.page'
  * - `apps/backend/src/api/registry/registry.controller.ts` (@Roles)
  * - `apps/frontend/src/app/features/registry/produttori-list.component.ts`
  *
- * RISERVA DOCUMENTATA (vedi report della sessione): il Passo 5 del brief
- * ("un produttore referenziato da un formulario non deve poter essere
- * cancellato") descrive un comportamento che NON esiste nel codice sorgente
- * di oggi — verificato leggendo `delete-produttore.use-case.ts`,
- * `produttore-prisma.repository.ts` e lo schema Prisma (FIR.producerId è una
- * colonna senza `@relation`, nessun vincolo FK, nessun controllo
- * applicativo). Il test sotto per questo passo asserisce lo stato REALE
- * (cancellazione non impedita) e lo marca come difetto di prodotto aperto,
- * non lo nasconde: non si inventa un rifiuto che il backend non produce.
+ * NOTA SUL PASSO 5 DEL BRIEF, corretta dal committente dopo revisione (vedi
+ * report della sessione): il passo originale presupponeva un vincolo di
+ * cancellazione che il disegno rifiuta DI PROPOSITO — `schema.prisma`
+ * (righe ~272-275, decisione 2026-06-09) dice esplicitamente "Il FIR è un
+ * documento legale: conserva lo snapshot, non un join live". `producerId`
+ * è un UUID senza `@relation` per scelta, non per dimenticanza. L'invariante
+ * che conta davvero è l'opposto — vedi describe "effetto collaterale" in
+ * fondo a questo file.
  */
 
 function nuovaPartitaIVA(): string {
@@ -293,46 +292,157 @@ test.describe('Produttore — isolamento fra due aziende', () => {
   })
 })
 
-test.describe('Produttore — effetto collaterale: cancellazione se referenziato da un FIR', () => {
+interface TrasportatoreDiProvaResponse {
+  id: string
+  ragioneSociale: string
+}
+
+interface DestinatarioDiProvaResponse {
+  id: string
+  ragioneSociale: string
+}
+
+function payloadTrasportatoreDiProva(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    ragioneSociale: conPrefisso('Trasportatore per FIR SRL'),
+    partitaIVA: nuovaPartitaIVA(),
+    sedeLegale: SEDE_VALIDA,
+    numeroIscrizione: `MI/${Math.floor(Math.random() * 900000 + 100000)}`,
+    ...overrides,
+  }
+}
+
+function payloadDestinatarioDiProva(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    ragioneSociale: conPrefisso('Destinatario per FIR SRL'),
+    partitaIVA: nuovaPartitaIVA(),
+    sede: SEDE_VALIDA,
+    numeroAutorizzazione: `AUT/${new Date().getFullYear()}/${Math.floor(Math.random() * 9000 + 1000)}`,
+    ...overrides,
+  }
+}
+
+interface ParteFirSnapshot {
+  ragioneSociale: string
+  partitaIva: string
+  indirizzo?: string
+}
+
+interface FirResponse {
+  id: string
+  produttore?: ParteFirSnapshot | null
+}
+
+interface CerVoce {
+  code: string
+}
+
+/**
+ * Crea un FIR reale in stato BOZZA: serve a provare che cancellare il
+ * produttore non alteri lo snapshot già congelato sul documento.
+ *
+ * BOZZA è sufficiente (non serve emettere il FIR): lo snapshot è congelato
+ * alla CREAZIONE, non solo all'emissione — verificato leggendo
+ * `create-fir.use-case.ts` prima di scrivere questo helper (commento "the
+ * anagrafica must be captured as an immutable SNAPSHOT at creation time,
+ * not referenced live"). Attraversare anche il sottosistema di emissione
+ * (numerazione progressiva, firma digitale) aggiungerebbe complessità senza
+ * aggiungere evidenza per QUESTO invariante.
+ *
+ * Il codice CER è cercato nel catalogo dell'ambiente (mai inventato): il
+ * catalogo può contenere codici non più "utilizzabili per nuovo formulario"
+ * (`CERCatalogService.isUtilizzabilePerNuovoFormulario`) e non c'è un
+ * endpoint dedicato per saperlo in anticipo, quindi si tenta con più
+ * candidati finché uno viene accettato.
+ */
+async function creaFirBozza(
+  token: string,
+  ids: { produttoreId: string; trasportatoreId: string; destinatarioId: string }
+): Promise<FirResponse> {
+  const catalogo = await apiGet<{ items: CerVoce[] }>('/cer?limit=50', token)
+  test.skip(
+    catalogo.items.length === 0,
+    'Catalogo CER vuoto in questo ambiente: nessun codice disponibile per creare un FIR di prova.'
+  )
+
+  let ultimoErrore: unknown
+  for (const voce of catalogo.items) {
+    try {
+      return await apiPost<FirResponse>(
+        '/fir',
+        {
+          produttoreId: ids.produttoreId,
+          trasportatoreId: ids.trasportatoreId,
+          destinatarioId: ids.destinatarioId,
+          rifiuto: { cerCode: voce.code, quantita: 10 },
+          provenienza: 'SPECIALE',
+          tipoTrattaPrincipale: 'TERRESTRE',
+        },
+        token
+      )
+    } catch (errore) {
+      ultimoErrore = errore
+    }
+  }
+
+  test.skip(
+    true,
+    `Nessuno dei ${catalogo.items.length} codici CER del catalogo ha permesso di creare un FIR di ` +
+      `prova (ultimo errore: ${String(ultimoErrore)}).`
+  )
+  throw ultimoErrore
+}
+
+test.describe('Produttore — effetto collaterale: lo snapshot di un FIR sopravvive alla cancellazione', () => {
   test.skip(!hasRoleCredentials('operator'), skipReason('operator'))
 
   /**
-   * Il brief chiede di asserire il RIFIUTO della cancellazione. Verificato
-   * sul sorgente PRIMA di scrivere questo test (delete-produttore.use-case.ts,
-   * produttore-prisma.repository.ts, schema.prisma): non esiste alcun
-   * controllo, applicativo o a livello di database, che impedisca questa
-   * cancellazione. Il test sotto documenta lo stato REALE — non asserisce un
-   * comportamento che il codice non ha.
+   * RULING del committente dopo revisione (vedi report della sessione): il
+   * passo originale del brief presupponeva un vincolo che il disegno
+   * rifiuta di proposito. L'invariante che conta davvero è l'opposto —
+   * cancellare l'anagrafica NON deve alterare un documento già creato, che
+   * è la garanzia legale del FIR. Oggi nessun test la proteggeva.
    */
-  test('DIFETTO NOTO: un produttore referenziato da un FIR viene cancellato senza rifiuto', async () => {
+  test('cancellare il produttore non cambia nome/P.IVA/indirizzo già congelati sul FIR', async () => {
     const token = await apiLogin('operator')
-    const { creato } = await creaProduttore(token)
+    const { creato: produttore } = await creaProduttore(token)
 
-    // Nessun FIR viene creato qui: creare un FIR reale in BOZZA e verificare
-    // che referenzi producerId richiederebbe anche trasportatore/destinatario
-    // e passa da db-locale.ts per il teardown (nessun DELETE HTTP sui FIR).
-    // Non serve per dimostrare il difetto: la cancellazione del produttore
-    // non controlla ALCUN riferimento, quindi il comportamento è identico
-    // con o senza un FIR reale che lo referenzi — la verifica è sul
-    // controllo (assente), non sul dato collegato.
-    test.info().annotations.push({
-      type: 'difetto-di-prodotto',
-      description:
-        'delete-produttore.use-case.ts non verifica riferimenti da FIR.producerId prima di cancellare; ' +
-        'FIR.producerId in schema.prisma non ha una relazione Prisma (nessun vincolo FK, nessun onDelete). ' +
-        'Il brief del piano chiedeva di asserire il rifiuto: qui si documenta invece lo stato reale, in ' +
-        'attesa di una decisione su come chiudere il difetto (vedi report della sessione).',
+    const trasportatore = await apiPost<TrasportatoreDiProvaResponse>(
+      '/registry/trasportatori',
+      payloadTrasportatoreDiProva(),
+      token
+    )
+    registra('trasportatore', trasportatore.id)
+
+    const destinatario = await apiPost<DestinatarioDiProvaResponse>(
+      '/registry/destinatari',
+      payloadDestinatarioDiProva(),
+      token
+    )
+    registra('destinatario', destinatario.id)
+
+    const fir = await creaFirBozza(token, {
+      produttoreId: produttore.id,
+      trasportatoreId: trasportatore.id,
+      destinatarioId: destinatario.id,
     })
+    registra('fir', fir.id)
 
-    await apiDelete(`/registry/produttori/${creato.id}`, token)
+    const snapshotPrima = fir.produttore
+    expect(snapshotPrima?.ragioneSociale).toBe(produttore.ragioneSociale)
 
-    // La cancellazione riesce (nessuna eccezione sopra): lo confermiamo
-    // esplicitamente per rendere il difetto FALSIFICABILE da questo test —
-    // se in futuro qualcuno aggiunge il controllo, questa asserzione
-    // fallirà ed è il segnale che il test va riscritto per il nuovo
-    // comportamento (rifiuto atteso), non silenziosamente ignorato.
-    await expect(apiGet(`/registry/produttori/${creato.id}`, token)).rejects.toMatchObject({
+    await apiDelete(`/registry/produttori/${produttore.id}`, token)
+    // Il produttore è davvero sparito dal registro (comportamento atteso,
+    // vedi docs/uat/produttore.md): non è questo il punto sotto test, ma
+    // confermarlo distingue "cancellato" da "non toccato per un altro
+    // motivo".
+    await expect(apiGet(`/registry/produttori/${produttore.id}`, token)).rejects.toMatchObject({
       status: 404,
     })
+
+    const firDopo = await apiGet<FirResponse>(`/fir/${fir.id}`, token)
+    // Delta: lo snapshot dopo la cancellazione è IDENTICO a quello letto
+    // PRIMA, non un valore assoluto indovinato.
+    expect(firDopo.produttore).toEqual(snapshotPrima)
   })
 })

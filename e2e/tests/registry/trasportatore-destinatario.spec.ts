@@ -20,15 +20,17 @@ import { FirListPage } from '../../pages/fir-list.page'
  * - `apps/frontend/src/app/features/fir/fir-list.component.ts` (righe ~442-521 avviso, ~1610-1627 validateFir)
  * - `apps/backend/src/application/rentri/mappatura/mappa-parti.ts` (normalizzaNumeroIscrizioneAlbo)
  *
- * RISERVA DOCUMENTATA (vedi report della sessione): il Passo 4 del brief
- * ("MI/7490 inserito dall'utente viene accettato e mostrato come MI/007490")
- * descrive un comportamento che, verificato sul sorgente, non esiste al
- * livello di cui parla il brief (CRUD dell'anagrafica). La normalizzazione
- * in `mappa-parti.ts` esiste solo internamente alla costruzione del payload
- * di trasmissione RENTRI di un FIR — non è mai applicata né mostrata da
- * `CreateTrasportatoreUseCase`/`UpdateTrasportatoreUseCase` né dai
- * componenti `/trasportatori`. Non si scrive quindi un test che eserciti un
- * punto dell'interfaccia che non fa quello che il brief descrive.
+ * NOTA SUL PASSO 4 DEL BRIEF, corretta dal committente dopo revisione (vedi
+ * report della sessione): il passo originale chiedeva di verificare che
+ * "MI/7490" venisse mostrato come "MI/007490" nell'anagrafica. Verificato
+ * che questa normalizzazione non esiste lì (esiste solo in
+ * `mappa-parti.ts`, sul confine verso RENTRI, dove il formato conta
+ * davvero — corretto così, e già coperto da 15 test unitari in
+ * `mappa-parti.spec.ts`: ripeterla qui end-to-end sarebbe duplicazione, non
+ * copertura). Il punto realmente scoperto e visibile all'utente è un
+ * altro: che l'anagrafica ACCETTI "MI/7490" senza rifiutarlo, e che il
+ * valore si ritrovi invariato dopo il salvataggio — vedi describe
+ * "numero Albo non normalizzato" più sotto.
  */
 
 const SEDE_VALIDA = {
@@ -144,6 +146,33 @@ test.describe('Trasportatore — CRUD via UI (operator)', () => {
     registra('trasportatore', creato!.id)
 
     await expect(anagrafiche.row(creato!.id)).toContainText(ragioneSociale)
+  })
+})
+
+test.describe('Trasportatore — numero Albo non normalizzato', () => {
+  test.skip(!hasRoleCredentials('operator'), skipReason('operator'))
+
+  /**
+   * RULING del committente dopo revisione (vedi report della sessione): il
+   * punto visibile all'utente e scoperto non è la normalizzazione (che
+   * avviene correttamente sul confine verso RENTRI, non qui — vedi nota in
+   * cima al file), ma che l'anagrafica non rifiuti un numero senza zeri
+   * davanti e lo conservi esattamente come inserito.
+   */
+  test('"MI/7490" è accettato e si ritrova invariato dopo il salvataggio', async () => {
+    const token = await apiLogin('operator')
+    const body = payloadTrasportatore({ numeroIscrizione: 'MI/7490' })
+
+    const creato = await apiPost<TrasportatoreResponse>('/registry/trasportatori', body, token)
+    registra('trasportatore', creato.id)
+
+    expect(creato.numeroIscrizione).toBe('MI/7490')
+
+    const riletto = await apiGet<TrasportatoreResponse>(
+      `/registry/trasportatori/${creato.id}`,
+      token
+    )
+    expect(riletto.numeroIscrizione).toBe('MI/7490')
   })
 })
 
