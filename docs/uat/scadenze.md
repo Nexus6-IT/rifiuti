@@ -134,6 +134,39 @@ come `esito: 'completato'` con timestamp successivo al proprio avvio —
 esattamente il segnale che leggerebbe un amministratore reale — mai un
 `waitForTimeout` a durata fissa.
 
+**Finestra fra "completato in audit" e "lucchetto rilasciato"**: in
+`JobActionsService.avvia()` la scrittura dell'audit `'completato'` avviene
+nel `.then()` della catena della promise, e SOLO DOPO, nel `.finally()`
+concatenato subito dopo, `this.inCorso.delete(jobKey)` libera il lucchetto
+per quella chiave. Fra i due passaggi c'è una finestra reale (una manciata
+di millisecondi): il Passo 6 di UAT-SCADFLOW-01 (secondo avvio, per provare
+la dedup) chiama l'azione di nuovo subito dopo che `attendiCompletamento`
+ha visto "completato" — cadendo proprio in quella finestra poteva ricevere
+un 409 "già in corso" e far fallire il test a caso, non per un difetto del
+dedup. Il test ritenta l'avvio (non l'attesa) su 409 fino a 10s prima di
+arrendersi, così l'esito dipende dal dedup reale, non da una gara innocua
+sul lucchetto.
+
+**Residuo non ripulito, per scelta esplicita (v. anche `fixtures/risorse.ts`
+sul principio generale)**: oltre alle notifiche già segnalate sopra, questo
+file fa girare per davvero il job dello scadenzario, che scrive anche righe
+di **audit** (`ActivityLog`, evento 'avviato' e poi 'completato' per
+`jobKey = 'scadenzario-autorizzazioni'`) ad ogni invocazione — due per il
+primo giro, due per il secondo. Né le notifiche né queste righe di audit
+portano il prefisso di run (`conPrefisso`, v. `utils/run-id.ts`) e nessuna
+delle due tabelle è interrogata da `e2e/scripts/verifica-residuo.ts`: sono
+quindi residuo per costruzione in una suite il cui principio dichiarato è
+residuo zero. Scelta deliberata, non una svista: non esiste un endpoint di
+cancellazione né per le notifiche né per le righe di audit dei job
+(cancellarle direttamente sul DB dai test sarebbe un accesso fuori dal
+contratto API che il resto della suite rispetta), ed entrambe sono innocue
+— le notifiche escono dalla dedup dopo 7 giorni e dal cleanup automatico
+settimanale dopo 30, le righe di audit sono uno storico voluto (lo stesso
+scopo per cui esistono: un amministratore deve poterle rileggere) e non
+influenzano nessun'altra asserzione della suite. Se in futuro servirà
+davvero residuo zero anche qui, la via è un endpoint di pulizia dedicato
+per i test, non un accesso diretto al DB da `e2e/`.
+
 ## 4. Riserva dichiarata — Passo 5 del brief ("tutto a posto")
 
 Il brief chiede: «senza nulla in scadenza la fascia non compare affatto» —

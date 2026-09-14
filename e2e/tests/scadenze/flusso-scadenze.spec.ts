@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { loginAndSaveState, skipReason } from '../../fixtures/auth'
 import { hasRoleCredentials } from '../../utils/env'
-import { apiLogin, apiPost, apiGet } from '../../utils/api-client'
+import { apiLogin, apiPost, apiGet, ApiClientError } from '../../utils/api-client'
 import { registra } from '../../fixtures/risorse'
 import { conPrefisso } from '../../utils/run-id'
 import { AnagrafichePage } from '../../pages/anagrafiche.page'
@@ -141,8 +141,41 @@ function fraDueAnniIso(): string {
 }
 
 /** Avvia a mano il job scadenzario tramite l'azione SUPER_ADMIN. */
-async function avviaScadenzario(token: string): Promise<EsitoAvvioJob> {
+async function avviaScadenzarioUnaVolta(token: string): Promise<EsitoAvvioJob> {
   return apiPost<EsitoAvvioJob>(`/admin/system-health/actions/${JOB_KEY}/run`, {}, token)
+}
+
+/**
+ * Avvia il job scadenzario, tollerando la finestra di gara fra "l'audit
+ * segna completato" (quello che `attendiCompletamento` aspetta) e "il
+ * lucchetto e' davvero rilasciato" — in `JobActionsService.avvia()` la
+ * scrittura dell'audit ('completato') avviene nel `.then()` della catena,
+ * e SOLO DOPO, nel `.finally()` concatenato, `this.inCorso.delete(jobKey)`
+ * libera il lucchetto. Chiamare `avviaScadenzarioUnaVolta` subito dopo che
+ * il poll ha visto "completato" puo' quindi ricevere ancora un 409 (job
+ * "gia' in corso") per una manciata di millisecondi: non un errore reale,
+ * solo quella finestra. Qui si ritenta finche' il 409 non sparisce, mai a
+ * tempo fisso.
+ */
+async function avviaScadenzario(token: string): Promise<EsitoAvvioJob> {
+  let ultimoErrore: unknown
+  const scadenza = Date.now() + 10_000
+  while (Date.now() < scadenza) {
+    try {
+      return await avviaScadenzarioUnaVolta(token)
+    } catch (errore) {
+      if (errore instanceof ApiClientError && errore.status === 409) {
+        ultimoErrore = errore
+        await new Promise(resolve => setTimeout(resolve, 200))
+        continue
+      }
+      throw errore
+    }
+  }
+  throw new Error(
+    `avvio di "${JOB_KEY}" ancora in conflitto (409) dopo 10s di ritentativi — non e' piu' la ` +
+      `finestra di rilascio del lucchetto, probabile job davvero bloccato: ${String(ultimoErrore)}`
+  )
 }
 
 /**
