@@ -71,7 +71,7 @@ interface ListaPaginata<T> {
 test.describe('Pulizia self-test — prefisso di run e teardown', () => {
   test.skip(
     !hasRoleCredentials('admin'),
-    'Richiede E2E_ADMIN_USER/PASS + backend locale attivo (POST /auth/dev/login) — vedi e2e/README.md',
+    'Richiede E2E_ADMIN_USER/PASS + backend locale attivo (POST /auth/dev/login) — vedi e2e/README.md'
   )
 
   test('crea due anagrafiche col prefisso, ripulisce, verifica residuo zero', async () => {
@@ -83,14 +83,14 @@ test.describe('Pulizia self-test — prefisso di run e teardown', () => {
     const produttore = await apiPost<RisorsaCreata>(
       '/registry/produttori',
       datiProduttore(nomeProduttore),
-      token,
+      token
     )
     registra('produttore', produttore.id)
 
     const trasportatore = await apiPost<RisorsaCreata>(
       '/registry/trasportatori',
       datiTrasportatore(nomeTrasportatore),
-      token,
+      token
     )
     registra('trasportatore', trasportatore.id)
 
@@ -116,7 +116,7 @@ test.describe('Pulizia self-test — prefisso di run e teardown', () => {
 
     const residuoProduttori = produttoriDopo.items.filter(p => haPrefissoDiRun(p.ragioneSociale))
     const residuoTrasportatori = trasportatoriDopo.items.filter(t =>
-      haPrefissoDiRun(t.ragioneSociale),
+      haPrefissoDiRun(t.ragioneSociale)
     )
 
     expect(residuoProduttori).toEqual([])

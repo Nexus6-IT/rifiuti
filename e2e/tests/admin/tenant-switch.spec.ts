@@ -18,7 +18,7 @@ test.describe('Tenant switch', () => {
       await loginAndSaveState(page, context, 'superAdmin')
 
       const requestsWithoutTenantHeader: string[] = []
-      page.on('request', (request) => {
+      page.on('request', request => {
         const url = request.url()
         if (url.includes('/api/') && !request.headers()['x-tenant-id']) {
           requestsWithoutTenantHeader.push(url)
@@ -29,6 +29,6 @@ test.describe('Tenant switch', () => {
       // navigare su /permissions/consultant-dashboard (path assoluto
       // hardcoded /api/v1/consultant/... — vedi audit) e verificare che
       // anche quella chiamata riceva X-Tenant-ID.
-    },
+    }
   )
 })

@@ -55,7 +55,7 @@ function caricaModuliFreschi(runIdDiTest: string): ModuliFreschi {
     '..',
     '..',
     '.artifacts',
-    `registro-${runIdDiTest}.jsonl`,
+    `registro-${runIdDiTest}.jsonl`
   )
 
   return { registra: risorse.registra, ripulisci: risorse.ripulisci, percorsoRegistro }
@@ -98,10 +98,7 @@ test.describe('Registro risorse — persistenza su file fra processi simulati', 
       registra('trasportatore', 'id-trasportatore-1')
 
       expect(fs.existsSync(percorsoRegistro)).toBe(true)
-      const righe = fs
-        .readFileSync(percorsoRegistro, 'utf-8')
-        .trim()
-        .split('\n')
+      const righe = fs.readFileSync(percorsoRegistro, 'utf-8').trim().split('\n')
       expect(righe).toHaveLength(2)
 
       // "Processo B" (il globalTeardown, un processo Node diverso nella

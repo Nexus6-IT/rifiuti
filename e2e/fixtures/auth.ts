@@ -3,7 +3,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { LoginPage } from '../pages/login.page'
 import { KeycloakLoginPage } from '../pages/keycloak-login.page'
-import { getRoleCredentials, hasRoleCredentials, getBaseUrl, type Role } from '../utils/env'
+import { getRoleCredentials, getBaseUrl, type Role } from '../utils/env'
 
 /**
  * Fixture di autenticazione — login Keycloak SAML per ruolo, con storage
@@ -43,12 +43,16 @@ export function hasStoredSession(role: Role): boolean {
  * storage state su disco per riuso. Lancia se le credenziali non sono
  * impostate — il chiamante deve verificare `hasRoleCredentials(role)` prima.
  */
-export async function loginAndSaveState(page: Page, context: BrowserContext, role: Role): Promise<void> {
+export async function loginAndSaveState(
+  page: Page,
+  context: BrowserContext,
+  role: Role
+): Promise<void> {
   const creds = getRoleCredentials(role)
   if (!creds) {
     throw new Error(
       `Credenziali mancanti per il ruolo "${role}". Imposta le variabili d'ambiente ` +
-        `corrispondenti (vedi e2e/README.md) prima di chiamare loginAndSaveState().`,
+        `corrispondenti (vedi e2e/README.md) prima di chiamare loginAndSaveState().`
     )
   }
 
@@ -63,7 +67,7 @@ export async function loginAndSaveState(page: Page, context: BrowserContext, rol
   if (!isKeycloakForm) {
     throw new Error(
       'Atteso il redirect verso la form di login Keycloak dopo "Accedi", ma non è apparsa. ' +
-        'Il flusso SPID/SAML potrebbe essere cambiato — vedi TODO in pages/keycloak-login.page.ts.',
+        'Il flusso SPID/SAML potrebbe essere cambiato — vedi TODO in pages/keycloak-login.page.ts.'
     )
   }
   await kcLogin.login(creds.email, creds.password)

@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test'
-import { matchBlacklist, valutaRichiesta, esentaDallaBlacklist, pulisciEsenzioni } from '../../utils/blacklist'
+import {
+  matchBlacklist,
+  valutaRichiesta,
+  esentaDallaBlacklist,
+  pulisciEsenzioni,
+} from '../../utils/blacklist'
 
 /**
  * Self-test del guardrail di sicurezza (e2e/fixtures/guardrail.ts +
@@ -129,7 +134,7 @@ test.describe('Guardrail — esenzione per-run su DELETE /registry/*', () => {
 
     const hit = valutaRichiesta(
       'DELETE',
-      'https://rifiuti.ignicraft.com/api/v1/registry/produttori/id-registrato-in-questo-run',
+      'https://rifiuti.ignicraft.com/api/v1/registry/produttori/id-registrato-in-questo-run'
     )
 
     expect(hit).toBeNull()
@@ -141,7 +146,7 @@ test.describe('Guardrail — esenzione per-run su DELETE /registry/*', () => {
 
     const hit = valutaRichiesta(
       'DELETE',
-      'https://rifiuti.ignicraft.com/api/v1/registry/produttori/id-mai-registrato',
+      'https://rifiuti.ignicraft.com/api/v1/registry/produttori/id-mai-registrato'
     )
 
     expect(hit).not.toBeNull()

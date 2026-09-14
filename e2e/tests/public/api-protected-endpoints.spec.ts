@@ -34,7 +34,7 @@ const surfacePath = path.join(
   'docs',
   'audits',
   'uat-2026-07-25',
-  '01-api-surface.json',
+  '01-api-surface.json'
 )
 const surface: ApiSurfaceEntry[] = JSON.parse(fs.readFileSync(surfacePath, 'utf-8'))
 
@@ -47,7 +47,7 @@ function resolvePath(p: string): string {
 // Solo GET, solo endpoint con JwtAuthGuard (protetti), esclusi quelli
 // esplicitamente pubblici-by-design (CER, health, verify-url — vedi audit).
 const protectedGetEndpoints = surface.filter(
-  (e) => e.method === 'GET' && e.guards.includes('JwtAuthGuard') && e.type === 'R',
+  e => e.method === 'GET' && e.guards.includes('JwtAuthGuard') && e.type === 'R'
 )
 
 test.describe('API protetta — 401 senza credenziali (GET-only, read-only)', () => {
@@ -69,7 +69,7 @@ test.describe('API protetta — 401 senza credenziali (GET-only, read-only)', ()
       expect(
         [400, 401].includes(response.status()),
         `Atteso 400 o 401 per ${endpoint.path}, ricevuto ${response.status()}. ` +
-          `Se è 200: possibile regressione RBAC (endpoint dovrebbe richiedere JwtAuthGuard).`,
+          `Se è 200: possibile regressione RBAC (endpoint dovrebbe richiedere JwtAuthGuard).`
       ).toBeTruthy()
     })
   }

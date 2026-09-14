@@ -42,7 +42,7 @@ for (const role of nonAdminRoles) {
         await loginAndSaveState(page, context, role)
 
         const apiResponses: number[] = []
-        page.on('response', (response) => {
+        page.on('response', response => {
           if (response.url().includes(apiPathFragment)) {
             apiResponses.push(response.status())
           }
@@ -52,9 +52,9 @@ for (const role of nonAdminRoles) {
         await page.waitForLoadState('networkidle')
 
         expect(
-          apiResponses.every((status) => status === 401 || status === 403),
+          apiResponses.every(status => status === 401 || status === 403),
           `Attese solo risposte 401/403 dalla API ${apiPathFragment} per il ruolo ${role}, ` +
-            `ricevute: [${apiResponses.join(', ')}]. Un 200 qui sarebbe un buco RBAC.`,
+            `ricevute: [${apiResponses.join(', ')}]. Un 200 qui sarebbe un buco RBAC.`
         ).toBeTruthy()
       })
     }
@@ -69,5 +69,5 @@ test.fixme(
   async () => {
     // Da completare quando le credenziali OPERATOR/VIEWER saranno disponibili
     // e si potrà osservare il comportamento reale (vedi TODO in fixtures/auth.ts).
-  },
+  }
 )
