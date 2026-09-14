@@ -669,10 +669,16 @@ describe('DeadlineCheckerService', () => {
       // problema qui (SMTP giù + scadenza MUD del 30 aprile = nessun
       // avviso in applicazione).
       jest.useFakeTimers()
-      // 30 giorni prima della scadenza MUD (30 aprile): 31 marzo, sempre a
-      // 30 giorni esatti indipendentemente dagli anni bisestili (marzo ha
-      // 31 giorni).
-      jest.setSystemTime(new Date(2030, 2, 31))
+      // 1 giorno prima della scadenza MUD (30 aprile): 29 aprile. Non 30
+      // giorni prima (31 marzo): quell'intervallo attraversa il cambio d'ora
+      // legale di fine marzo, e in un fuso dove l'ora torna indietro fra
+      // quella data e il 30 aprile (Auckland, Sydney, Santiago) la differenza
+      // di `daysUntilDeadline` non è più 30 giorni esatti in millisecondi ma
+      // 30 giorni e un'ora: `Math.ceil` arrotonda a 31 e il metodo esce
+      // subito, facendo fallire il test. Un solo giorno di distanza resta
+      // dentro un unico offset in qualunque fuso: il test non dipende dal
+      // fuso orario di chi lo esegue.
+      jest.setSystemTime(new Date(2030, 3, 29))
       ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([
         {
           id: 't1',
