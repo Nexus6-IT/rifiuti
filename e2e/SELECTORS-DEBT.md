@@ -94,13 +94,21 @@ this.vidimaInputQuantita = page.getByTestId('rentri-blocchi-vidima-input-quantit
 this.vidimaConferma = page.getByTestId('rentri-blocchi-vidima-conferma').locator('button')
 ```
 
-Per i dropdown (`p-dropdown`, apertura via click sull'host, poi scelta
-nell'overlay `.p-dropdown-item`) il click sull'host è invece corretto: non
-è un caso di `.fill()`/`.toBeDisabled()`, è l'idioma già in uso in tutta la
-suite (v. `selezionaDropdown()` in
-`e2e/tests/registry/trasportatore-destinatario.spec.ts`) — quando serve
-aprire un overlay, l'host va bene; quando serve leggere/scrivere lo stato
-di un campo o di un bottone, no.
+Per i dropdown (`p-dropdown`, apertura via click, poi scelta nell'overlay
+`.p-dropdown-item`) l'apertura NON soffre della stessa trappola di
+`.fill()`/`toBeDisabled()`: cliccare l'`<div #container>` interno (dove
+PrimeNG mette `(click)="onContainerClick($event)"`, v.
+`node_modules/primeng/esm2022/dropdown/dropdown.mjs`) o un suo discendente
+apre comunque l'overlay, perché un click su un discendente fa comunque
+bubbling fino al listener del container. `selezionaDropdown()` (v.
+`e2e/tests/registry/trasportatore-destinatario.spec.ts`) NON clicca l'host
+`<p-dropdown>`: clicca `#{inputId}` — lo `<span role="combobox"
+[attr.id]="inputId">` interno che PrimeNG genera nel container, un
+discendente, non l'elemento con l'handler — e funziona per bubbling, non
+perché "l'host va bene". Quando serve leggere/scrivere lo stato di un campo
+o di un bottone (`.fill()`, `toBeDisabled()`), invece, il bubbling non
+aiuta: lì l'elemento nativo giusto va preso esplicitamente, come nei
+rimedi sopra.
 
 ## Elenco per area (priorità = valore di business, da audit)
 

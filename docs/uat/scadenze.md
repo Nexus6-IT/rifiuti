@@ -156,16 +156,34 @@ primo giro, due per il secondo. Né le notifiche né queste righe di audit
 portano il prefisso di run (`conPrefisso`, v. `utils/run-id.ts`) e nessuna
 delle due tabelle è interrogata da `e2e/scripts/verifica-residuo.ts`: sono
 quindi residuo per costruzione in una suite il cui principio dichiarato è
-residuo zero. Scelta deliberata, non una svista: non esiste un endpoint di
-cancellazione né per le notifiche né per le righe di audit dei job
-(cancellarle direttamente sul DB dai test sarebbe un accesso fuori dal
-contratto API che il resto della suite rispetta), ed entrambe sono innocue
-— le notifiche escono dalla dedup dopo 7 giorni e dal cleanup automatico
-settimanale dopo 30, le righe di audit sono uno storico voluto (lo stesso
-scopo per cui esistono: un amministratore deve poterle rileggere) e non
-influenzano nessun'altra asserzione della suite. Se in futuro servirà
-davvero residuo zero anche qui, la via è un endpoint di pulizia dedicato
-per i test, non un accesso diretto al DB da `e2e/`.
+residuo zero. Scelta deliberata, non una svista — e NON perché l'accesso
+diretto al database sia fuori contratto per la suite: lo è già, per i FIR
+(`fixtures/risorse.ts` → `eliminaFirConPrefisso`, `utils/db-locale.ts`) e,
+da questo stesso giro di correzioni, per l'intera verifica di residuo
+(`e2e/scripts/verifica-residuo.ts` legge anagrafiche e FIR dal DB, non
+dall'API). Il motivo vero è un altro: cancellare queste due tabelle
+falserebbe proprio ciò che il test osserva. Le righe di audit sono lette
+dal poll dello stesso test (`attendiCompletamento`, che aspetta
+`esito: 'completato'` su `GET .../actions/audit`) — cancellarle dopo la
+fine del test non aiuta nessuno, ma cancellarle a metà run (prima che il
+secondo giro abbia finito di leggerle) romperebbe l'attesa su condizione
+che il test stesso usa; e il loro scopo dichiarato è essere uno storico
+per un amministratore, quindi ripulirle a ogni run E2E contraddirebbe
+perché esistono. La notifica del primo giro è la prova stessa della dedup
+a 7 giorni verificata al Passo 6 (il secondo giro deve trovarla ancora lì
+per non duplicarla): cancellarla subito dopo il test invaliderebbe
+esattamente l'invariante appena controllato per qualunque run successiva
+nella stessa finestra di dedup. In più, nessun endpoint di cancellazione
+esiste per nessuna delle due tabelle (un DELETE diretto sul DB sarebbe
+comunque possibile tecnicamente, come per i FIR, ma qui andrebbe contro lo
+scopo sopra, non solo contro una convenzione), ed entrambe sono innocue —
+le notifiche escono dalla dedup dopo 7 giorni e dal cleanup automatico
+settimanale dopo 30, le righe di audit non influenzano nessun'altra
+asserzione della suite. Se in futuro servirà davvero residuo zero anche
+qui, la via è un endpoint di pulizia dedicato per i test che cancelli SOLO
+le righe più vecchie della finestra di dedup/dello storico voluto, non un
+DELETE indiscriminato che romperebbe l'invariante che questo stesso test
+verifica.
 
 ## 4. Riserva dichiarata — Passo 5 del brief ("tutto a posto")
 
