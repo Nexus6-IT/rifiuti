@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { apiDelete, ApiClientError } from '../utils/api-client'
 import { esentaDallaBlacklist } from '../utils/blacklist'
+import { eliminaFirConPrefisso } from '../utils/db-locale'
 import { runId } from '../utils/run-id'
 
 export type TipoRisorsa = 'produttore' | 'trasportatore' | 'destinatario' | 'fir'
@@ -31,8 +32,9 @@ function percorsoRegistro(): string {
 }
 
 // Mappa tipo -> segmento della rotta REST di registry. "fir" non ha un
-// endpoint di cancellazione (il ciclo di vita FIR conosce solo l'annulla
-// irreversibile, già in blacklist) — vedi gestione dedicata in `ripulisci`.
+// endpoint di cancellazione HTTP (il ciclo di vita FIR conosce solo
+// l'annulla irreversibile, già in blacklist): viene ripulito a livello di
+// database, vedi utils/db-locale.ts e la sezione dedicata in `ripulisci`.
 const PERCORSO_API: Record<Exclude<TipoRisorsa, 'fir'>, string> = {
   produttore: 'produttori',
   trasportatore: 'trasportatori',
@@ -75,18 +77,21 @@ function leggiRegistro(): RisorsaRegistrata[] {
  * `residue` invece di far esplodere l'intera pulizia: un residuo è una
  * segnalazione esplicita, non un crash che nasconde le cancellazioni
  * riuscite delle altre risorse.
+ *
+ * I FIR (nessun endpoint HTTP di cancellazione) vengono raccolti a parte e
+ * ripuliti in blocco a livello di database (utils/db-locale.ts), che
+ * verifica autonomamente il vincolo "solo ciò che porta il prefisso della
+ * run" — non basta che l'id sia registrato qui.
  */
 export async function ripulisci(token: string): Promise<{ rimosse: number; residue: string[] }> {
   const risorse = leggiRegistro()
   let rimosse = 0
   const residue: string[] = []
+  const idFir: string[] = []
 
   for (const risorsa of risorse) {
     if (risorsa.tipo === 'fir') {
-      // Nessun endpoint di cancellazione per i FIR (solo annulla, in
-      // blacklist) — riportato come residuo esplicito finché un task futuro
-      // non definisce come vanno ripulite le risorse FIR di test.
-      residue.push(`fir:${risorsa.id} (nessun endpoint di cancellazione disponibile)`)
+      idFir.push(risorsa.id)
       continue
     }
 
@@ -103,6 +108,12 @@ export async function ripulisci(token: string): Promise<{ rimosse: number; resid
       }
       residue.push(`${risorsa.tipo}:${risorsa.id}`)
     }
+  }
+
+  if (idFir.length > 0) {
+    const esitoFir = await eliminaFirConPrefisso(idFir)
+    rimosse += esitoFir.rimossi
+    residue.push(...esitoFir.residue)
   }
 
   fs.mkdirSync(ARTIFACTS_DIR, { recursive: true })

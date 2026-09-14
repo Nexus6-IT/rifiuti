@@ -82,8 +82,19 @@ export function matchBlacklist(method: string, url: string): BlacklistEntry | nu
 /**
  * Esenzioni per-run al blocco DELETE /registry/(produttori|trasportatori|
  * destinatari)/:id: id di risorse create ED ESPLICITAMENTE REGISTRATE da
- * questa run (vedi fixtures/risorse.ts `registra`), quindi sicure da
- * cancellare anche quando il target è produzione (npm run e2e:prod).
+ * questa run (vedi fixtures/risorse.ts `registra`).
+ *
+ * ATTENZIONE a cosa NON garantisce: questa esenzione non è "sicura anche in
+ * produzione" — è semplicemente IRRAGGIUNGIBILE in produzione con l'unico
+ * meccanismo di autenticazione oggi esistente. `apiLogin` (utils/api-client.ts)
+ * rifiuta sempre di autenticarsi contro un target non locale, e l'endpoint
+ * di bypass POST /auth/dev/login non è nemmeno registrato lì (vedi
+ * auth.module.ts) — quindi oggi non esiste un token valido con cui questa
+ * esenzione potrebbe essere usata contro produzione. Il giorno in cui
+ * qualcuno aggiunge un SECONDO modo di autenticarsi (un token reale, una
+ * chiave di servizio, ecc.), questa esenzione tornerà raggiungibile e andrà
+ * rivalutata da capo: non è stata pensata per quel caso, è solo che quel
+ * caso oggi non può presentarsi.
  *
  * Stato in-memory, per processo: fixtures/risorse.ts lo ripopola sia alla
  * registrazione (stesso processo del test) sia in `ripulisci()` (processo
