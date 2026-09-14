@@ -167,3 +167,41 @@ export async function firConPrefissoResidui(): Promise<string[]> {
 
   return tutti.filter(firPortaIlPrefisso).map(fir => `fir:${fir.id}`)
 }
+
+/**
+ * Cerca, fra TUTTE le anagrafiche di TUTTI i tenant (produttori,
+ * trasportatori, destinatari), quelle la cui ragione sociale porta il
+ * prefisso della run corrente.
+ *
+ * Correzione rispetto alla verifica precedente (rilievo della revisione
+ * finale, 2026-09-14): `verificaResiduo` interrogava le anagrafiche via
+ * `GET /registry/*`, endpoint che il controller scopa sempre sul tenant
+ * PRIMARIO dell'utente autenticato (vedi registry.controller.ts) — un
+ * residuo lasciato in un SECONDO tenant (esattamente il caso del test di
+ * isolamento fra aziende, tests/registry/produttore.spec.ts) non sarebbe
+ * mai stato visto, mentre l'intestazione del modulo prometteva di guardare
+ * "i dati reali rimasti" senza quel limite. Qui, come già per i FIR sopra,
+ * si interroga il database direttamente: nessuno scoping per tenant, la
+ * stessa copertura cross-tenant che vale per `firConPrefissoResidui`.
+ */
+export async function anagraficheConPrefissoResidui(): Promise<string[]> {
+  const prisma = ottieniClient()
+
+  const [produttori, trasportatori, destinatari] = await Promise.all([
+    prisma.produttore.findMany({ select: { id: true, ragioneSociale: true } }),
+    prisma.trasportatore.findMany({ select: { id: true, ragioneSociale: true } }),
+    prisma.destinatario.findMany({ select: { id: true, ragioneSociale: true } }),
+  ])
+
+  return [
+    ...produttori
+      .filter(p => haPrefissoDiRun(p.ragioneSociale))
+      .map(p => `produttore:${p.id}:${p.ragioneSociale}`),
+    ...trasportatori
+      .filter(t => haPrefissoDiRun(t.ragioneSociale))
+      .map(t => `trasportatore:${t.id}:${t.ragioneSociale}`),
+    ...destinatari
+      .filter(d => haPrefissoDiRun(d.ragioneSociale))
+      .map(d => `destinatario:${d.id}:${d.ragioneSociale}`),
+  ]
+}

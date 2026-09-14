@@ -3,16 +3,25 @@
  *
  * Due responsabilità distinte, tenute volutamente separate:
  *
- * - `verificaResiduo(token)`: interroga le liste di produttori/trasportatori/
- *   destinatari (via API) E i FIR (via database — vedi utils/db-locale.ts,
- *   nessun endpoint HTTP li espone tutti) e riporta ogni record il cui
- *   snapshot porta il prefisso della run corrente (vedi utils/run-id.ts
- *   `haPrefissoDiRun`). È la verifica INDIPENDENTE dal registro in
- *   memoria/su file di fixtures/risorse.ts: non si fida che `ripulisci()`
- *   abbia tracciato tutto correttamente, guarda i dati reali rimasti.
+ * - `verificaResiduo()`: interroga produttori/trasportatori/destinatari E i
+ *   FIR, ENTRAMBI via database (vedi utils/db-locale.ts), e riporta ogni
+ *   record il cui snapshot porta il prefisso della run corrente (vedi
+ *   utils/run-id.ts `haPrefissoDiRun`). È la verifica INDIPENDENTE dal
+ *   registro in memoria/su file di fixtures/risorse.ts: non si fida che
+ *   `ripulisci()` abbia tracciato tutto correttamente, guarda i dati reali
+ *   rimasti — per DAVVERO, non solo quelli visibili dal tenant primario
+ *   dell'admin.
  *   Include i FIR non per completismo: un residuo che la verifica non
  *   guarda non è un residuo zero, è una rassicurazione (rilievo 1 del giro
  *   di correzione 1, 2026-09-14).
+ *   Le anagrafiche sono passate da `GET /registry/*` (via API, tenant
+ *   dell'admin) al database diretto (rilievo della revisione finale,
+ *   2026-09-14): quell'endpoint scopa sempre sul tenant PRIMARIO
+ *   dell'utente autenticato, quindi un residuo lasciato in un secondo
+ *   tenant (es. dal test di isolamento fra aziende,
+ *   tests/registry/produttore.spec.ts) sarebbe sfuggito in silenzio —
+ *   esattamente il tipo di rassicurazione che il modulo diceva di non
+ *   voler essere. Vedi utils/db-locale.ts `anagraficheConPrefissoResidui`.
  *
  * - `export default` (globalTeardown di playwright.config.ts): orchestratore
  *   end-to-end per l'intera run — login, `ripulisci()` (teardown vero e
@@ -31,48 +40,23 @@
  */
 
 import type { FullConfig } from '@playwright/test'
-import { apiGet, apiLogin } from '../utils/api-client'
-import { chiudiConnessioneDb, firConPrefissoResidui } from '../utils/db-locale'
+import { apiLogin } from '../utils/api-client'
+import {
+  anagraficheConPrefissoResidui,
+  chiudiConnessioneDb,
+  firConPrefissoResidui,
+} from '../utils/db-locale'
 import { getRoleCredentials, isProductionTarget } from '../utils/env'
-import { haPrefissoDiRun } from '../utils/run-id'
 import { ripulisci } from '../fixtures/risorse'
 
-interface VoceRegistry {
-  id: string
-  ragioneSociale: string
-}
-
-interface ListaPaginata<T> {
-  items: T[]
-}
-
-const ENDPOINT_PER_TIPO: Record<string, string> = {
-  produttore: '/registry/produttori',
-  trasportatore: '/registry/trasportatori',
-  destinatario: '/registry/destinatari',
-}
-
 /**
- * Cerca, in ogni endpoint di anagrafica PIÙ nei FIR (a livello di
- * database), record il cui nome/snapshot porta il prefisso della run
- * corrente. Ritorna la lista dei residui trovati (vuota se non ce n'è
- * nessuno) nel formato `tipo:id:ragioneSociale` (anagrafiche) o `fir:id`.
+ * Cerca, nel database, anagrafiche (di TUTTI i tenant) E FIR il cui
+ * nome/snapshot porta il prefisso della run corrente. Ritorna la lista dei
+ * residui trovati (vuota se non ce n'è nessuno) nel formato
+ * `tipo:id:ragioneSociale` (anagrafiche) o `fir:id`.
  */
-export async function verificaResiduo(token: string): Promise<string[]> {
-  const residui: string[] = []
-
-  for (const [tipo, endpoint] of Object.entries(ENDPOINT_PER_TIPO)) {
-    const lista = await apiGet<ListaPaginata<VoceRegistry>>(endpoint, token)
-    for (const voce of lista.items) {
-      if (haPrefissoDiRun(voce.ragioneSociale)) {
-        residui.push(`${tipo}:${voce.id}:${voce.ragioneSociale}`)
-      }
-    }
-  }
-
-  residui.push(...(await firConPrefissoResidui()))
-
-  return residui
+export async function verificaResiduo(): Promise<string[]> {
+  return [...(await anagraficheConPrefissoResidui()), ...(await firConPrefissoResidui())]
 }
 
 /**
@@ -112,7 +96,7 @@ export default async function globalTeardown(_config: FullConfig): Promise<void>
     // eslint-disable-next-line no-console
     console.log(`[verifica-residuo] Teardown: ${rimosse} risorse rimosse.`)
 
-    const residuoTrovato = await verificaResiduo(token)
+    const residuoTrovato = await verificaResiduo()
 
     const tuttiIResidui = [...residuiNonCancellabili, ...residuoTrovato]
     if (tuttiIResidui.length > 0) {
