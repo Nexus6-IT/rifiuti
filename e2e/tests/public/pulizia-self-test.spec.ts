@@ -1,8 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { hasRoleCredentials } from '../../utils/env'
 import { apiLogin, apiPost, apiGet } from '../../utils/api-client'
-import { registra, ripulisci } from '../../fixtures/risorse'
-import { conPrefisso, haPrefissoDiRun } from '../../utils/run-id'
+import { conRunIsolata } from '../../fixtures/run-isolata'
 
 /**
  * Self-test delle fondamenta E2E (Task 1 del piano UAT/E2E): crea due
@@ -21,6 +20,18 @@ import { conPrefisso, haPrefissoDiRun } from '../../utils/run-id'
  * credenziali sono impostate ma il backend non risponde, il test FALLISCE
  * con l'errore di rete: non c'è un percorso che lo faccia risultare verde
  * senza aver davvero parlato con un backend.
+ *
+ * ISOLAMENTO (rilievo critico della revisione finale, 2026-09-14): questo
+ * test NON usa più `ripulisci()` sul registro CONDIVISO della run (quello
+ * scritto da tutti i worker, vedi fixtures/risorse.ts) — con
+ * `fullyParallel: true` quel registro viene letto e TRONCATO anche mentre
+ * altri test stanno ancora usando le anagrafiche che hanno appena
+ * registrato lì, e il teardown globale successivo trova il registro
+ * svuotato: tutto ciò che era registrato prima della troncatura smette di
+ * essere visto come residuo. Qui si lavora invece sotto un E2E_RUN_ID
+ * isolato dedicato (vedi fixtures/run-isolata.ts, stessa tecnica di
+ * registro-risorse-persistenza.spec.ts): il registro toccato da questo
+ * test è file proprio, mai condiviso con nessun altro.
  */
 
 function partitaIvaCasuale(): string {
@@ -75,51 +86,58 @@ test.describe('Pulizia self-test — prefisso di run e teardown', () => {
   )
 
   test('crea due anagrafiche col prefisso, ripulisce, verifica residuo zero', async () => {
-    const token = await apiLogin('admin')
+    await conRunIsolata('pulizia-self-test', async ({ conPrefisso, haPrefissoDiRun, registra, ripulisci }) => {
+      const token = await apiLogin('admin')
 
-    const nomeProduttore = conPrefisso('produttore-pulizia-self-test')
-    const nomeTrasportatore = conPrefisso('trasportatore-pulizia-self-test')
+      const nomeProduttore = conPrefisso('produttore-pulizia-self-test')
+      const nomeTrasportatore = conPrefisso('trasportatore-pulizia-self-test')
 
-    const produttore = await apiPost<RisorsaCreata>(
-      '/registry/produttori',
-      datiProduttore(nomeProduttore),
-      token
-    )
-    registra('produttore', produttore.id)
+      const produttore = await apiPost<RisorsaCreata>(
+        '/registry/produttori',
+        datiProduttore(nomeProduttore),
+        token
+      )
+      registra('produttore', produttore.id)
 
-    const trasportatore = await apiPost<RisorsaCreata>(
-      '/registry/trasportatori',
-      datiTrasportatore(nomeTrasportatore),
-      token
-    )
-    registra('trasportatore', trasportatore.id)
+      const trasportatore = await apiPost<RisorsaCreata>(
+        '/registry/trasportatori',
+        datiTrasportatore(nomeTrasportatore),
+        token
+      )
+      registra('trasportatore', trasportatore.id)
 
-    // Verifica a delta: prima del teardown le due anagrafiche col prefisso
-    // devono essere effettivamente presenti (altrimenti il test dopo il
-    // teardown proverebbe ben poco).
-    const [produttoriPrima, trasportatoriPrima] = await Promise.all([
-      apiGet<ListaPaginata<RisorsaCreata>>('/registry/produttori', token),
-      apiGet<ListaPaginata<RisorsaCreata>>('/registry/trasportatori', token),
-    ])
-    expect(produttoriPrima.items.some(p => p.id === produttore.id)).toBe(true)
-    expect(trasportatoriPrima.items.some(t => t.id === trasportatore.id)).toBe(true)
+      // Verifica a delta: prima del teardown le due anagrafiche col prefisso
+      // devono essere effettivamente presenti (altrimenti il test dopo il
+      // teardown proverebbe ben poco).
+      const [produttoriPrima, trasportatoriPrima] = await Promise.all([
+        apiGet<ListaPaginata<RisorsaCreata>>('/registry/produttori', token),
+        apiGet<ListaPaginata<RisorsaCreata>>('/registry/trasportatori', token),
+      ])
+      expect(produttoriPrima.items.some(p => p.id === produttore.id)).toBe(true)
+      expect(trasportatoriPrima.items.some(t => t.id === trasportatore.id)).toBe(true)
 
-    const { rimosse, residue } = await ripulisci(token)
+      const { rimosse, residue } = await ripulisci(token)
 
-    expect(residue).toEqual([])
-    expect(rimosse).toBeGreaterThanOrEqual(2)
+      // Asserzione ESATTA, non "almeno due" (rilievo critico della
+      // revisione finale): il registro è ormai isolato a questo solo test,
+      // quindi deve contenere esattamente le due risorse appena create — se
+      // ne rimuove di più o di meno, qualcosa non torna nel meccanismo, non
+      // è "va bene comunque".
+      expect(residue).toEqual([])
+      expect(rimosse).toBe(2)
 
-    const [produttoriDopo, trasportatoriDopo] = await Promise.all([
-      apiGet<ListaPaginata<RisorsaCreata>>('/registry/produttori', token),
-      apiGet<ListaPaginata<RisorsaCreata>>('/registry/trasportatori', token),
-    ])
+      const [produttoriDopo, trasportatoriDopo] = await Promise.all([
+        apiGet<ListaPaginata<RisorsaCreata>>('/registry/produttori', token),
+        apiGet<ListaPaginata<RisorsaCreata>>('/registry/trasportatori', token),
+      ])
 
-    const residuoProduttori = produttoriDopo.items.filter(p => haPrefissoDiRun(p.ragioneSociale))
-    const residuoTrasportatori = trasportatoriDopo.items.filter(t =>
-      haPrefissoDiRun(t.ragioneSociale)
-    )
+      const residuoProduttori = produttoriDopo.items.filter(p => haPrefissoDiRun(p.ragioneSociale))
+      const residuoTrasportatori = trasportatoriDopo.items.filter(t =>
+        haPrefissoDiRun(t.ragioneSociale)
+      )
 
-    expect(residuoProduttori).toEqual([])
-    expect(residuoTrasportatori).toEqual([])
+      expect(residuoProduttori).toEqual([])
+      expect(residuoTrasportatori).toEqual([])
+    })
   })
 })
