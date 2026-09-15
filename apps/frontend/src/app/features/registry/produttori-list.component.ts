@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core'
+import { Component, OnInit, computed, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MessageService } from 'primeng/api'
@@ -15,6 +15,8 @@ import { IconFieldModule } from 'primeng/iconfield'
 import { InputIconModule } from 'primeng/inputicon'
 import { RegistryService, CreateProduttoreDto } from './registry.service'
 import { Produttore, Indirizzo } from '../../shared/models/registry.model'
+import { AuthService } from '../../core/services/auth.service'
+import { puoGestireAnagrafiche } from './registry-permissions'
 
 @Component({
   selector: 'app-produttori-list',
@@ -43,12 +45,15 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
           <p class="page-subtitle">Anagrafica dei produttori di rifiuti</p>
         </div>
         <div class="page-actions">
-          <p-button
-            label="Nuovo produttore"
-            icon="pi pi-plus"
-            (onClick)="showCreateDialog()"
-            ariaLabel="Crea nuovo produttore"
-          />
+          @if (puoGestire()) {
+            <p-button
+              label="Nuovo produttore"
+              icon="pi pi-plus"
+              (onClick)="showCreateDialog()"
+              ariaLabel="Crea nuovo produttore"
+              data-testid="produttori-nuovo-button"
+            />
+          }
         </div>
       </header>
 
@@ -105,7 +110,7 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-produttore>
-              <tr>
+              <tr [attr.data-testid]="'produttori-row-' + produttore.id">
                 <td>
                   <span class="cell-label">Ragione sociale</span>
                   <span class="font-semibold">{{ produttore.ragioneSociale }}</span>
@@ -126,27 +131,31 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
                 </td>
                 <td>
                   <span class="cell-label">Azioni</span>
-                  <div class="row-actions">
-                    <p-button
-                      icon="pi pi-pencil"
-                      [rounded]="true"
-                      [text]="true"
-                      (onClick)="editProduttore(produttore)"
-                      pTooltip="Modifica"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Modifica ' + produttore.ragioneSociale"
-                    />
-                    <p-button
-                      icon="pi pi-trash"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="danger"
-                      (onClick)="deleteProduttore(produttore)"
-                      pTooltip="Elimina"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Elimina ' + produttore.ragioneSociale"
-                    />
-                  </div>
+                  @if (puoGestire()) {
+                    <div class="row-actions">
+                      <p-button
+                        icon="pi pi-pencil"
+                        [rounded]="true"
+                        [text]="true"
+                        (onClick)="editProduttore(produttore)"
+                        pTooltip="Modifica"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Modifica ' + produttore.ragioneSociale"
+                        [attr.data-testid]="'produttori-modifica-' + produttore.id"
+                      />
+                      <p-button
+                        icon="pi pi-trash"
+                        [rounded]="true"
+                        [text]="true"
+                        severity="danger"
+                        (onClick)="deleteProduttore(produttore)"
+                        pTooltip="Elimina"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Elimina ' + produttore.ragioneSociale"
+                        [attr.data-testid]="'produttori-elimina-' + produttore.id"
+                      />
+                    </div>
+                  }
                 </td>
               </tr>
             </ng-template>
@@ -157,12 +166,14 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
                     <i class="pi pi-building empty-state__icon" aria-hidden="true"></i>
                     <p class="empty-state__title">Nessun produttore trovato</p>
                     <p>Crea il primo produttore per iniziare a registrare i rifiuti.</p>
-                    <p-button
-                      label="Nuovo produttore"
-                      icon="pi pi-plus"
-                      (onClick)="showCreateDialog()"
-                      ariaLabel="Crea nuovo produttore"
-                    />
+                    @if (puoGestire()) {
+                      <p-button
+                        label="Nuovo produttore"
+                        icon="pi pi-plus"
+                        (onClick)="showCreateDialog()"
+                        ariaLabel="Crea nuovo produttore"
+                      />
+                    }
                   </div>
                 </td>
               </tr>
@@ -194,6 +205,7 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
         [breakpoints]="{ '768px': '95vw' }"
         [header]="editMode ? 'Modifica produttore' : 'Nuovo produttore'"
         [dismissableMask]="true"
+        data-testid="produttori-form-dialog"
       >
         <form class="dialog-form" (ngSubmit)="saveProduttore()">
           <fieldset class="form-fieldset">
@@ -226,7 +238,15 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
                   maxlength="11"
                   inputmode="numeric"
                   required
+                  [disabled]="editMode"
+                  data-testid="produttori-piva-input"
                 />
+                <!-- La partita IVA è l'identità fiscale del soggetto: non
+                     modificabile dopo la creazione, il backend la rifiuta in
+                     modifica (400 forbidNonWhitelisted). -->
+                <small class="field-hint" *ngIf="editMode"
+                  >Non modificabile: è l'identità fiscale del soggetto.</small
+                >
               </div>
               <div class="field col-12 md:col-6">
                 <label for="prod-pec">PEC</label>
@@ -324,17 +344,19 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
             [text]="true"
             icon="pi pi-times"
             (onClick)="displayDialog = false"
+            data-testid="produttori-form-cancel-button"
           />
           <p-button
             label="Salva"
             icon="pi pi-check"
             (onClick)="saveProduttore()"
             [loading]="saving"
+            data-testid="produttori-form-save-button"
           />
         </ng-template>
       </p-dialog>
 
-      <p-confirmDialog />
+      <p-confirmDialog data-testid="produttori-confirm-dialog" />
     </div>
   `,
   styles: [
@@ -449,6 +471,12 @@ import { Produttore, Indirizzo } from '../../shared/models/registry.model'
         color: var(--color-danger);
         margin-left: 0.15rem;
       }
+      .field-hint {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        display: block;
+        margin-top: var(--spacing-xs);
+      }
 
       /* Vista a card impilata su mobile */
       @media (max-width: 768px) {
@@ -494,6 +522,14 @@ export class ProduttoriListComponent implements OnInit {
   selectedProduttore: Produttore | null = null
 
   formData: CreateProduttoreDto = this.getEmptyFormData()
+
+  private readonly authService = inject(AuthService)
+  // Ricalcola il gating in base al ruolo dell'utente autenticato: stesso
+  // schema di `fir-list.component.ts` (`puoCreareFir`). Il backend è
+  // l'unica fonte di verità (RegistryController, @Roles su POST/PUT/DELETE
+  // produttori), qui si evita solo di mostrare un'azione che il server
+  // rifiuterebbe con 403.
+  readonly puoGestire = computed(() => puoGestireAnagrafiche(this.authService.currentUser()?.role))
 
   constructor(
     private registryService: RegistryService,
@@ -577,7 +613,17 @@ export class ProduttoriListComponent implements OnInit {
     this.saving = true
     const operation =
       this.editMode && this.selectedProduttore
-        ? this.registryService.updateProduttore(this.selectedProduttore.id, this.formData)
+        ? this.registryService.updateProduttore(
+            this.selectedProduttore.id,
+            // NON includere partitaIVA: è l'identità fiscale del soggetto,
+            // UpdateProduttoreDto non la accetta (400 forbidNonWhitelisted)
+            // e non deve essere modificabile da qui.
+            {
+              ragioneSociale: this.formData.ragioneSociale,
+              sedeLegale: this.formData.sedeLegale,
+              pec: this.formData.pec,
+            }
+          )
         : this.registryService.createProduttore(this.formData)
 
     operation.subscribe({

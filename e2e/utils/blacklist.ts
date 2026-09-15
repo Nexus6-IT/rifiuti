@@ -58,6 +58,11 @@ export const DESTRUCTIVE_BLACKLIST: BlacklistEntry[] = [
 /**
  * Verifica se una richiesta (metodo + url) matcha una voce della blacklist.
  * L'URL può essere assoluto o relativo: viene confrontato solo il pathname.
+ *
+ * Matcher puro: non conosce run, prefissi o esenzioni. Resta invariato (e
+ * quindi il self-test esistente in tests/public/guardrail-self-test.spec.ts
+ * continua a valere) — le esenzioni per-run sono un livello separato, vedi
+ * `valutaRichiesta` sotto.
  */
 export function matchBlacklist(method: string, url: string): BlacklistEntry | null {
   let pathname: string
@@ -72,4 +77,100 @@ export function matchBlacklist(method: string, url: string): BlacklistEntry | nu
     if (entry.pattern.test(pathname)) return entry
   }
   return null
+}
+
+/**
+ * Esenzioni per-run al blocco DELETE /registry/(produttori|trasportatori|
+ * destinatari)/:id: id di risorse create ED ESPLICITAMENTE REGISTRATE da
+ * questa run (vedi fixtures/risorse.ts `registra`).
+ *
+ * ATTENZIONE a cosa NON garantisce: questa esenzione non è "sicura anche in
+ * produzione" — è semplicemente IRRAGGIUNGIBILE in produzione con l'unico
+ * meccanismo di autenticazione oggi esistente. `apiLogin` (utils/api-client.ts)
+ * rifiuta sempre di autenticarsi contro un target non locale, e l'endpoint
+ * di bypass POST /auth/dev/login non è nemmeno registrato lì (vedi
+ * auth.module.ts) — quindi oggi non esiste un token valido con cui questa
+ * esenzione potrebbe essere usata contro produzione. Il giorno in cui
+ * qualcuno aggiunge un SECONDO modo di autenticarsi (un token reale, una
+ * chiave di servizio, ecc.), questa esenzione tornerà raggiungibile e andrà
+ * rivalutata da capo: non è stata pensata per quel caso, è solo che quel
+ * caso oggi non può presentarsi.
+ *
+ * Stato in-memory, per processo: fixtures/risorse.ts lo ripopola sia alla
+ * registrazione (stesso processo del test) sia in `ripulisci()` (processo
+ * del teardown, che rilegge il registro persistito su disco e riesenta
+ * ogni id prima di cancellarlo).
+ */
+const idEsentiDaBlacklist = new Set<string>()
+
+const PATTERN_DELETE_REGISTRY =
+  /\/api\/v1\/registry\/(produttori|trasportatori|destinatari)\/([^/]+)\/?$/
+
+/** Segna un id come esente dal blocco DELETE /registry/* per questo processo. */
+export function esentaDallaBlacklist(id: string): void {
+  idEsentiDaBlacklist.add(id)
+}
+
+/** Solo per i test del matcher: azzera le esenzioni registrate. */
+export function pulisciEsenzioni(): void {
+  idEsentiDaBlacklist.clear()
+}
+
+/**
+ * Solo per i test del matcher: fotografa l'insieme di esenzioni corrente
+ * (per poterlo ripristinare dopo, vedi `ripristinaEsenzioni`) invece di
+ * azzerarlo — l'insieme è di PROCESSO, condiviso con `fixtures/risorse.ts`
+ * (`registra`/`ripulisci`), quindi un test che lo svuota nel proprio
+ * `beforeEach` cancella anche le esenzioni che il resto della suite,
+ * eseguito nello stesso worker, si aspetta di trovare ancora lì (rilievo
+ * minore della revisione finale, 2026-09-14: convive oggi solo perché i
+ * test dentro un worker sono sequenziali — un ordine diverso, o test in
+ * futuro eseguiti in parallelo nello stesso worker, romperebbero le
+ * cancellazioni di altri test).
+ */
+export function fotografaEsenzioni(): ReadonlySet<string> {
+  return new Set(idEsentiDaBlacklist)
+}
+
+/**
+ * Solo per i test del matcher: riporta l'insieme di esenzioni esattamente
+ * allo stato fotografato da `fotografaEsenzioni` (sostituzione, non unione:
+ * rimuove anche le esenzioni aggiunte dopo la fotografia).
+ */
+export function ripristinaEsenzioni(fotografia: ReadonlySet<string>): void {
+  idEsentiDaBlacklist.clear()
+  for (const id of fotografia) {
+    idEsentiDaBlacklist.add(id)
+  }
+}
+
+/**
+ * Come `matchBlacklist`, ma applica l'esenzione per-run sulle tre rotte di
+ * cancellazione dell'anagrafica: se l'id nell'URL è stato registrato in
+ * questa run (`esentaDallaBlacklist`), la richiesta NON viene bloccata.
+ * Ogni altra voce della blacklist resta bloccata SEMPRE, senza eccezioni:
+ * l'esenzione riguarda esclusivamente DELETE /registry/*.
+ *
+ * Questo è il punto che deve essere usato da chi esegue davvero le
+ * richieste (vedi utils/api-client.ts `apiDelete`) — `matchBlacklist` resta
+ * il matcher puro per il self-test della blacklist.
+ */
+export function valutaRichiesta(method: string, url: string): BlacklistEntry | null {
+  const hit = matchBlacklist(method, url)
+  if (!hit) return null
+
+  let pathname: string
+  try {
+    pathname = new URL(url).pathname
+  } catch {
+    pathname = url
+  }
+
+  const registryDeleteMatch = pathname.match(PATTERN_DELETE_REGISTRY)
+  if (registryDeleteMatch && method.toUpperCase() === 'DELETE') {
+    const id = registryDeleteMatch[2]
+    if (idEsentiDaBlacklist.has(id)) return null
+  }
+
+  return hit
 }

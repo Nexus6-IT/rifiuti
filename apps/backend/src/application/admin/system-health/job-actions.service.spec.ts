@@ -25,6 +25,7 @@ describe('JobActionsService', () => {
   let certificati: { eseguiControlloScadenza: jest.Mock }
   let codifiche: { allineaTutto: jest.Mock }
   let datiRiferimento: { reseedAll: jest.Mock }
+  let scadenzario: { checkAuthorizationExpirations: jest.Mock }
   let service: JobActionsService
 
   beforeEach(() => {
@@ -35,13 +36,15 @@ describe('JobActionsService', () => {
     certificati = { eseguiControlloScadenza: jest.fn().mockResolvedValue(undefined) }
     codifiche = { allineaTutto: jest.fn().mockResolvedValue(undefined) }
     datiRiferimento = { reseedAll: jest.fn().mockResolvedValue(undefined) }
+    scadenzario = { checkAuthorizationExpirations: jest.fn().mockResolvedValue(undefined) }
 
     service = new JobActionsService(
       prisma as never,
       riconciliazione as never,
       certificati as never,
       codifiche as never,
-      datiRiferimento as never
+      datiRiferimento as never,
+      scadenzario as never
     )
   })
 
@@ -55,7 +58,21 @@ describe('JobActionsService', () => {
       'rentri-certificato-scadenza',
       'codifiche-rentri',
       'dati-riferimento',
+      'scadenzario-autorizzazioni',
     ])
+  })
+
+  it('rilancia a mano il controllo scadenze autorizzazioni/controparti (DeadlineCheckerService)', async () => {
+    const { promessa, risolvi } = promessaControllata()
+    scadenzario.checkAuthorizationExpirations.mockReturnValue(promessa)
+
+    const esito = await service.avvia('scadenzario-autorizzazioni', UTENTE)
+
+    expect(esito).toMatchObject({ jobKey: 'scadenzario-autorizzazioni', stato: 'avviato' })
+    expect(scadenzario.checkAuthorizationExpirations).toHaveBeenCalledTimes(1)
+
+    risolvi()
+    await promessa
   })
 
   it('risponde AVVIATO senza attendere la fine del giro', async () => {

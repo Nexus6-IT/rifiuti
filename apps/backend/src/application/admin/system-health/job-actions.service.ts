@@ -5,6 +5,7 @@ import { RentriRiconciliazioneJob } from '../../../infrastructure/jobs/rentri-ri
 import { RentriCertificatoScadenzaJob } from '../../../infrastructure/jobs/rentri-certificato-scadenza.job'
 import { RentriCodificheSyncService } from '../../reference-data/rentri-codifiche-sync.service'
 import { ReferenceDataSeederService } from '../../reference-data/reference-data-seeder.service'
+import { DeadlineCheckerService } from '../../notifications/deadline-checker.service'
 
 /**
  * Rilancio manuale dei job dalla pagina «Stato del sistema».
@@ -64,7 +65,8 @@ export class JobActionsService {
     private readonly riconciliazione: RentriRiconciliazioneJob,
     private readonly certificati: RentriCertificatoScadenzaJob,
     private readonly codifiche: RentriCodificheSyncService,
-    private readonly datiRiferimento: ReferenceDataSeederService
+    private readonly datiRiferimento: ReferenceDataSeederService,
+    private readonly scadenzario: DeadlineCheckerService
   ) {}
 
   /** Le chiavi rilanciabili, con la descrizione mostrata nell'audit. */
@@ -85,6 +87,19 @@ export class JobActionsService {
       'dati-riferimento': {
         descrizione: 'Refresh dei dati di riferimento',
         esegui: () => this.datiRiferimento.reseedAll(),
+      },
+      // Aggiunta per lo scadenzario (piano UAT/E2E, Task 5): prima di questa
+      // voce nessuna delle quattro azioni sopra innescava
+      // `DeadlineCheckerService.checkAuthorizationExpirations` — il cron
+      // giornaliero delle scadenze di autorizzazioni impianto, iscrizione
+      // Albo Gestori dei trasportatori e autorizzazione dei destinatari.
+      // Se quel cron salta una notte, prima d'ora non c'era modo di
+      // recuperare se non aspettare il giorno successivo: stesso valore
+      // operativo delle quattro voci sopra, non superficie aggiunta per
+      // comodita' dei test.
+      'scadenzario-autorizzazioni': {
+        descrizione: 'Controllo scadenze autorizzazioni impianti e controparti',
+        esegui: () => this.scadenzario.checkAuthorizationExpirations(),
       },
     }
   }

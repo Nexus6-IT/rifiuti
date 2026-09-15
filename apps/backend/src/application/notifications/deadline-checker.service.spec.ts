@@ -72,6 +72,9 @@ const mockPrisma = {
   user: {
     findMany: jest.fn(),
   },
+  mUDReport: {
+    create: jest.fn(),
+  },
   notification: {
     create: jest.fn(),
     findFirst: jest.fn(),
@@ -81,6 +84,7 @@ const mockPrisma = {
 const mockTemplateService = {
   renderAuthorizationExpiration: jest.fn().mockResolvedValue('<html></html>'),
   renderCounterpartyExpiration: jest.fn().mockResolvedValue('<html></html>'),
+  renderMudDeadlineReminder: jest.fn().mockResolvedValue('<html></html>'),
 } as unknown as TemplateService
 
 const mockEmailService = {
@@ -588,6 +592,124 @@ describe('DeadlineCheckerService', () => {
         })
       )
       expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+    })
+
+    it('un guasto SMTP non sopprime la notifica in applicazione: la notifica nasce anche se sendEmail fallisce', async () => {
+      // Difetto di revisione: la notifica in-app veniva creata DOPO
+      // sendEmail, nello stesso try. In un ambiente senza SMTP l'eccezione
+      // veniva loggata e la notifica non nasceva mai — l'unico canale che
+      // funziona sempre restava silenzioso proprio quando la posta è rotta.
+      const fra30 = new Date()
+      fra30.setDate(fra30.getDate() + 30)
+      ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
+        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+      ])
+      ;(mockEmailService.sendEmail as jest.Mock).mockRejectedValueOnce(
+        new Error('connessione SMTP rifiutata')
+      )
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA',
+            relatedEntityId: 'tr1',
+          }),
+        })
+      )
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Invio email'),
+        expect.any(Error)
+      )
+    })
+
+    it("un guasto SMTP non sopprime la notifica in applicazione per un'autorizzazione impianto scaduta", async () => {
+      // Stesso difetto del test precedente ma nel ramo AUTORIZZAZIONI
+      // IMPIANTO dello stesso metodo checkAuthorizationExpirations, dove la
+      // revisione ha trovato sendEmail e notification.create ancora nello
+      // stesso try/catch, nello stesso ordine sbagliato — non basta
+      // correggere un ramo su tre.
+      const ieri = new Date()
+      ieri.setDate(ieri.getDate() - 1)
+      ;(mockPrisma.autorizzazioneImpianto.findMany as jest.Mock).mockResolvedValue([
+        { id: 'a1', tenantId: 't1', estremi: 'AUT/123', dataScadenza: ieri },
+      ])
+      ;(mockEmailService.sendEmail as jest.Mock).mockRejectedValueOnce(
+        new Error('connessione SMTP rifiutata')
+      )
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'AUTORIZZAZIONE_IN_SCADENZA',
+            relatedEntityId: 'a1',
+            severity: 'ERROR',
+          }),
+        })
+      )
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Invio email'),
+        expect.any(Error)
+      )
+    })
+  })
+
+  describe('checkMudDeadlines', () => {
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('un guasto SMTP non sopprime la notifica in applicazione per il promemoria MUD', async () => {
+      // Terzo ramo con lo stesso difetto: checkMudDeadlines creava la
+      // notifica DOPO sendEmail, nello stesso try/catch — correggere solo
+      // elaboraScadenzaControparte lasciava in piedi esattamente lo stesso
+      // problema qui (SMTP giù + scadenza MUD del 30 aprile = nessun
+      // avviso in applicazione).
+      jest.useFakeTimers()
+      // 1 giorno prima della scadenza MUD (30 aprile): 29 aprile. Non 30
+      // giorni prima (31 marzo): quell'intervallo attraversa il cambio d'ora
+      // legale di fine marzo, e in un fuso dove l'ora torna indietro fra
+      // quella data e il 30 aprile (Auckland, Sydney, Santiago) la differenza
+      // di `daysUntilDeadline` non è più 30 giorni esatti in millisecondi ma
+      // 30 giorni e un'ora: `Math.ceil` arrotonda a 31 e il metodo esce
+      // subito, facendo fallire il test. Un solo giorno di distanza resta
+      // dentro un unico offset in qualunque fuso: il test non dipende dal
+      // fuso orario di chi lo esegue.
+      jest.setSystemTime(new Date(2030, 3, 29))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 't1',
+          ragioneSociale: 'Alfa Ambiente Srl',
+          mudReports: [],
+          users: [utenteFixture()],
+        },
+      ])
+      ;(mockPrisma.mUDReport.create as jest.Mock).mockResolvedValue({
+        id: 'mud1',
+        status: 'DRAFT',
+        reportData: {},
+      })
+      ;(mockEmailService.sendEmail as jest.Mock).mockRejectedValueOnce(
+        new Error('connessione SMTP rifiutata')
+      )
+
+      await service.checkMudDeadlines()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'MUD_DEADLINE_APPROACHING',
+            tenantId: 't1',
+          }),
+        })
+      )
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Invio email'),
+        expect.any(Error)
+      )
     })
   })
 

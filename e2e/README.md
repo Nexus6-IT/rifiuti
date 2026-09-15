@@ -10,19 +10,21 @@ strumento E2E del progetto.
 e2e/
   playwright.config.ts   # config: baseURL da env, reporter, trace/video/screenshot
   utils/
-    env.ts                # risoluzione baseURL/apiUrl/credenziali per ruolo
-    blacklist.ts           # endpoint distruttivi + matcher (guardrail)
+    env.ts                # risoluzione baseURL/apiUrl/credenziali per ruolo + disponibilità dev-login
+    api-client.ts           # setup/teardown via API, incluso il bypass dev-login (devLoginTokens/apiLogin)
+    blacklist.ts             # endpoint distruttivi + matcher (guardrail)
   fixtures/
-    auth.ts                # login Keycloak SAML per ruolo + storage state
+    auth.ts                # login per ruolo: Keycloak SAML reale se ci sono credenziali,
+                            # altrimenti bypass dev-login (mai in produzione) + storage state
     guardrail.ts            # route interception che blocca endpoint distruttivi
   pages/                  # Page Object Model (login, dashboard, FIR, registro, anagrafiche, admin, permessi)
   tests/
     public/               # girano SENZA credenziali, devono passare oggi
-    auth/                  # ciclo di login (skip se mancano credenziali)
-    rbac/                  # accesso per ruolo a rotte/API (skip se mancano credenziali)
-    fir/                   # ciclo di vita FIR (scheletro, fixme finché mancano dati/credenziali)
+    auth/                  # ciclo di login (skip se il ruolo non è autenticabile — vedi sopra)
+    rbac/                  # accesso per ruolo a rotte/API (skip se il ruolo non è autenticabile)
+    fir/                   # ciclo di vita FIR (scheletro, fixme finché mancano dati)
     registro/              # registro C/S (scheletro)
-    admin/                 # impersonificazione, tenant switch (scheletro)
+    admin/                  # impersonificazione, tenant switch (richiedono superAdmin, sempre skip senza Keycloak reale)
   scripts/
     run-against-prod.js    # wrapper esplicito per l'esecuzione contro produzione
   SELECTORS-DEBT.md        # debito data-testid da aggiungere al frontend
@@ -53,20 +55,81 @@ Senza `E2E_BASE_URL` impostata, il target di default è
 npx playwright test -c e2e/playwright.config.ts tests/public
 ```
 
+## Eseguire la suite autenticata in locale SENZA credenziali (dev-login)
+
+La suite autenticata (`tests/auth`, `tests/rbac`, `tests/fir`, `tests/admin`,
+`tests/registro`, `tests/registry`, `tests/scadenze`) non richiede più
+credenziali Keycloak per girare in locale: se `E2E_ADMIN_USER`/`_OPERATOR_`/
+`_VIEWER_` non sono impostate e il target NON è di produzione,
+`e2e/fixtures/auth.ts` fa login da sé con il bypass di sviluppo del backend
+(`POST /auth/dev/login`, email-only, vedi
+`apps/backend/src/auth/controllers/dev-auth.controller.ts`), scrivendo i
+token esattamente dove l'app Angular li cerca (`localStorage`, chiavi
+`accessToken`/`refreshToken` — stesso posto in cui li scrive
+`AuthCallbackComponent` dopo il redirect SAML vero). Nessuna azione manuale
+da parte tua oltre al seed: `hasRoleCredentials(role)` diventa `true` da solo
+per `admin`/`operator`/`viewer` non appena il backend risponde.
+
+**Unico prerequisito in più rispetto a `tests/public`: seedare gli utenti di
+sviluppo nel database a cui punta il backend.**
+
+```bash
+# 1. Seed permessi/ruoli di sistema (una tantum sul DB, se non già fatto)
+cd apps/backend && npm run seed:rbac
+
+# 2. Seed degli utenti del bypass dev-login
+#    (admin@test.com / operator@test.com / viewer@test.com)
+npx ts-node prisma/seed-test-user.ts
+cd ../..
+
+# 3. Avvia backend e frontend (SENZA NODE_ENV=production: con quel valore
+#    /auth/dev/login non è nemmeno registrato — vedi auth.module.ts)
+npm run backend:dev                              # terminale 1, porta 3000
+cd apps/frontend && npm start                    # terminale 2, porta 4200
+
+# 4. Esegui la suite (esclusa tests/rentri/, che richiede la fake RENTRI
+#    separata — vedi sezione dedicata sotto)
+npx playwright test -c e2e/playwright.config.ts --project=chromium \
+  tests/auth tests/rbac tests/fir tests/admin tests/registro tests/registry tests/scadenze
+```
+
+**Ruolo `superAdmin`: resta sempre skippato senza credenziali Keycloak vere.**
+Il seed di sviluppo (`apps/backend/prisma/seed-test-user.ts`) crea solo
+ADMIN/OPERATOR/VIEWER, mai un utente SUPER_ADMIN — è una scelta del seed, non
+un difetto di questa suite. I test che lo richiedono (`tests/admin/*`, parte
+di `tests/scadenze/flusso-scadenze.spec.ts`) fanno skip con un messaggio che
+lo dice esplicitamente (`skipReason('superAdmin')`), mai "credenziali
+mancanti" generico. Per eseguirli serve `E2E_SUPERADMIN_USER`/`_PASS` puntate
+a un utente Keycloak reale con quel ruolo.
+
+**Precedenza quando sono impostate ANCHE le credenziali Keycloak**: vince
+Keycloak (percorso reale, via `loginViaKeycloak` in `fixtures/auth.ts`) — il
+dev-login resta un ripiego per quando non ci sono credenziali, non sostituisce
+mai il flusso vero se è disponibile.
+
+Su un target di produzione (`E2E_BASE_URL` non locale) il dev-login è
+**sempre disabilitato**, credenziali o non credenziali: la rotta
+`/auth/dev/login` non esiste nemmeno lato server in quell'ambiente (vedi
+`auth.module.ts`, `devOnlyControllers`) — vedi anche "Eseguire contro
+produzione" sotto.
+
 ## Variabili d'ambiente
 
 | Variabile | Default | Note |
 |---|---|---|
 | `E2E_BASE_URL` | `http://localhost:4200` | baseURL del frontend. Impostarla a un host non-locale richiede anche `E2E_ALLOW_PROD_RUN=1` (vedi sotto) o playwright.config.ts rifiuta di partire. |
 | `E2E_API_URL` | derivato (`http://localhost:3000/api/v1` in locale, `${E2E_BASE_URL}/api/v1` se `E2E_BASE_URL` è di produzione) | Solo per i test `public/` che chiamano l'API direttamente via `request` fixture. |
-| `E2E_ADMIN_USER` / `E2E_ADMIN_PASS` | — | Credenziali ruolo ADMIN. Se assenti, tutti i test che le richiedono fanno `test.skip()` con messaggio esplicito. |
-| `E2E_OPERATOR_USER` / `E2E_OPERATOR_PASS` | — | Credenziali ruolo OPERATOR. |
-| `E2E_VIEWER_USER` / `E2E_VIEWER_PASS` | — | Credenziali ruolo VIEWER. |
-| `E2E_SUPERADMIN_USER` / `E2E_SUPERADMIN_PASS` | — | Credenziali ruolo SUPER_ADMIN (impersonificazione, tenant switch, admin tenants). |
+| `E2E_ADMIN_USER` / `E2E_ADMIN_PASS` | — | Credenziali Keycloak reali ruolo ADMIN. Se assenti e il target NON è di produzione, il ruolo resta comunque autenticabile via dev-login (vedi sopra) — lo skip scatta solo su un target di produzione senza credenziali. |
+| `E2E_OPERATOR_USER` / `E2E_OPERATOR_PASS` | — | Credenziali ruolo OPERATOR. Stessa nota di sopra sul dev-login. |
+| `E2E_VIEWER_USER` / `E2E_VIEWER_PASS` | — | Credenziali ruolo VIEWER. Stessa nota di sopra sul dev-login. |
+| `E2E_SUPERADMIN_USER` / `E2E_SUPERADMIN_PASS` | — | Credenziali ruolo SUPER_ADMIN (impersonificazione, tenant switch, admin tenants). **Nessun dev-login per questo ruolo**: il seed di sviluppo non crea un utente SUPER_ADMIN, quindi senza questa variabile i test relativi restano sempre skip, anche in locale. |
 | `E2E_ALLOW_PROD_RUN` | — | Impostata automaticamente da `npm run e2e:prod` (`e2e/scripts/run-against-prod.js`). Non impostarla manualmente. |
 
-Nessuna di queste credenziali è disponibile in questo ambiente al momento
-della stesura di questa suite (2026-07-25) — vedi "Cosa manca" sotto.
+Nessuna di queste credenziali Keycloak è disponibile in questo ambiente al
+momento della stesura di questa suite (2026-07-25). Da 2026-09-14 questo non
+blocca più `admin`/`operator`/`viewer` in locale: vedi "Eseguire la suite
+autenticata in locale SENZA credenziali" sopra. Resta vero solo per
+`superAdmin` e per l'esecuzione contro produzione — vedi "Cosa manca" sotto.
 
 ## Eseguire contro produzione
 
@@ -117,10 +180,10 @@ invece che da `@playwright/test`, e usare `guardedPage` invece di `page`
 nei test che possono girare contro produzione con un ruolo autenticato
 (es. `tests/rbac/*`, `tests/admin/*`).
 
-## Skip condizionale per credenziali mancanti
+## Skip condizionale per ruolo non autenticabile
 
-Ogni test che richiede login usa `hasRoleCredentials(role)` /
-`skipReason(role)` da `e2e/fixtures/auth.ts`:
+Ogni test che richiede login usa `hasRoleCredentials(role)` (da
+`e2e/utils/env.ts`) e `skipReason(role)` (da `e2e/fixtures/auth.ts`):
 
 ```ts
 test.describe('...', () => {
@@ -129,15 +192,28 @@ test.describe('...', () => {
 })
 ```
 
+`hasRoleCredentials(role)` risponde `true` se il ruolo è autenticabile con
+QUALUNQUE dei due percorsi (Keycloak reale o bypass dev-login — vedi
+"Eseguire la suite autenticata in locale SENZA credenziali" sopra), non solo
+se ci sono credenziali. Il nome è rimasto per non toccare ~15 file di spec
+che già lo importano; il significato è "posso autenticare questo ruolo qui e
+ora". `skipReason(role)` spiega il motivo VERO dello skip quando scatta
+(credenziali/dev-login assenti, target di produzione, o — per `superAdmin` —
+nessun utente nel seed di sviluppo), mai un messaggio generico che mente sul
+perché.
+
 Questo produce uno **skip esplicito e visibile nel report** (mai un test
 verde che in realtà non ha eseguito nulla, mai un fallimento rumoroso per
-credenziali assenti).
+mancata autenticazione).
 
 ## Cosa manca per completare la suite
 
-1. **Credenziali di test** per i 4 ruoli (`E2E_ADMIN_*`, `E2E_OPERATOR_*`,
-   `E2E_VIEWER_*`, `E2E_SUPERADMIN_*`) su un tenant di test dedicato (mai
-   sul tenant di produzione reale con dati veri).
+1. **Credenziali Keycloak reali** per `E2E_SUPERADMIN_*` (unico ruolo che il
+   dev-login non copre — vedi sopra) e, per esercitare il flusso SAML vero
+   invece del bypass, anche `E2E_ADMIN_*`/`E2E_OPERATOR_*`/`E2E_VIEWER_*`, su
+   un tenant di test dedicato (mai sul tenant di produzione reale con dati
+   veri). `admin`/`operator`/`viewer` non le richiedono più per girare in
+   locale (vedi "Eseguire la suite autenticata in locale SENZA credenziali").
 2. **Verifica del flusso Keycloak reale** (`e2e/fixtures/auth.ts`,
    `e2e/pages/keycloak-login.page.ts`): gli id dei campi (`#username`,
    `#password`, `#kc-login`) sono quelli standard del tema Keycloak, ma il

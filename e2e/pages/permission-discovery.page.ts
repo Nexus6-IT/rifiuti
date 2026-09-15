@@ -27,7 +27,9 @@ export class PermissionDiscoveryPage {
   }
 
   categoryHeader(key: string): Locator {
-    return this.page.getByTestId(`category-header-${key}`).or(this.page.getByTestId('category-header'))
+    return this.page
+      .getByTestId(`category-header-${key}`)
+      .or(this.page.getByTestId('category-header'))
   }
 
   categoryContent(key: string): Locator {

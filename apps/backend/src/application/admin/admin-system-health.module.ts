@@ -15,9 +15,10 @@
  * le code usano davvero.
  *
  * I job rilanciabili a mano NON vengono riprovveduti qui: arrivano dai loro
- * moduli (`RentriSyncModule`, `ReferenceDataModule`), che li esportano
- * apposta. Riprovvederli creerebbe una seconda istanza con i propri `@Cron`
- * registrati, cioe' raddoppierebbe i job schedulati del sistema.
+ * moduli (`RentriSyncModule`, `ReferenceDataModule`, `NotificationsModule`
+ * per `DeadlineCheckerService`), che li esportano apposta. Riprovvederli
+ * creerebbe una seconda istanza con i propri `@Cron` registrati, cioe'
+ * raddoppierebbe i job schedulati del sistema.
  */
 
 import { Module } from '@nestjs/common'
@@ -31,6 +32,7 @@ import { AuthModule } from '../../auth/auth.module'
 import { LoggerModule } from '../../core/logger/logger.module'
 import { RentriSyncModule } from '../rentri/rentri-sync.module'
 import { ReferenceDataModule } from '../reference-data/reference-data.module'
+import { NotificationsModule } from '../notifications/notifications.module'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { SystemHealthController } from '../../api/admin/system-health.controller'
 import { SystemHealthService, CODE_SYSTEM_HEALTH } from './system-health/system-health.service'
@@ -54,6 +56,7 @@ const NOMI_CODE = CODE_ATTESE.map(coda => coda.nome)
     HttpModule,
     RentriSyncModule,
     ReferenceDataModule,
+    NotificationsModule,
     BullModule.registerQueue(...NOMI_CODE.map(name => ({ name }))),
   ],
   controllers: [SystemHealthController],

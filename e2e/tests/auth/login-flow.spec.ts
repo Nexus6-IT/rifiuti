@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test } from '@playwright/test'
 import { LoginPage } from '../../pages/login.page'
 import { DashboardPage } from '../../pages/dashboard.page'
 import { loginAndSaveState, skipReason } from '../../fixtures/auth'
@@ -37,7 +37,7 @@ test.describe('Login SPID/Keycloak', () => {
   // bug già noto e non ancora deciso se è un difetto o comportamento voluto).
   test.fixme(
     'deep-link su rotta protetta prima del login: dopo il login SPID si torna alla rotta originale (returnUrl)',
-    async ({ page, context }) => {
+    async ({ page, context: _context }) => {
       const creds = getRoleCredentials('admin')
       test.skip(!creds, skipReason('admin'))
 
@@ -50,6 +50,6 @@ test.describe('Login SPID/Keycloak', () => {
 
       // Comportamento atteso se il bug fosse risolto: redirect a /fir.
       await page.waitForURL(/\/fir/, { timeout: 30_000 })
-    },
+    }
   )
 })
