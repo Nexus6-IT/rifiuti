@@ -594,15 +594,28 @@ jobs:
       # --add-host risolve l'hostname "backend" del proxy_pass di nginx.conf
       # (pensato per Docker Compose) al backend nativo di questo job, che
       # sotto rete host e' semplicemente 127.0.0.1.
+      # NIENTE BIND MOUNT, ed e' il punto che ha fatto fallire questo job tre
+      # volte prima di essere capito. Il job gira DENTRO un container, ma il
+      # demone Docker e' quello dell'host (socket condiviso): un `-v $(pwd)/...`
+      # viene risolto sull'HOST, dove il checkout non esiste — sta dentro il
+      # container del job. Docker allora crea il percorso mancante come
+      # DIRECTORY, e montare una directory su `/etc/nginx/conf.d/default.conf`
+      # fallisce con «not a directory». Verificato sull'host del runner: quel
+      # percorso era una directory vuota creata dai tentativi precedenti.
+      # Rimedio: si crea il container fermo, gli si copiano dentro i file con
+      # `docker cp` (che passa dal demone e non dipende dai percorsi dell'host),
+      # e solo allora lo si avvia. Conserva il nginx.conf VERO di produzione,
+      # che serve alla spec sugli header di sicurezza.
       - name: Avvia il frontend (nginx, stesso nginx.conf di produzione)
         run: |
-          docker run -d --rm \
+          docker create \
             --name "$FRONTEND_CI_CONTAINER" \
             --network host \
             --add-host backend:127.0.0.1 \
-            -v "$(pwd)/apps/frontend/dist/frontend:/usr/share/nginx/html:ro" \
-            -v "$(pwd)/apps/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
             nginx:alpine
+          docker cp apps/frontend/nginx.conf "$FRONTEND_CI_CONTAINER":/etc/nginx/conf.d/default.conf
+          docker cp apps/frontend/dist/frontend/. "$FRONTEND_CI_CONTAINER":/usr/share/nginx/html/
+          docker start "$FRONTEND_CI_CONTAINER"
 
       - name: Attendi che il frontend sia raggiungibile
         run: |
