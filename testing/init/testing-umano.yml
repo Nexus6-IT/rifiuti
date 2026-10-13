@@ -1,0 +1,58 @@
+# Generato da testing-umano init 0.2.0. Copialo in .gitea/workflows/ per attivarlo.
+# Servono i secret TESTING_SSH_KEY (chiave per il tunnel) e TESTING_PG_PASSWORD (password del ruolo)
+# e le variabili TESTING_SSH_TARGET (es. root@host), TESTING_DB_CONTAINER (container Postgres sul server)
+# e TESTING_SSH_KNOWN_HOSTS (host key del server fissata: output di `ssh-keyscan <host>`, controllato a mano).
+name: testing-umano
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '40 1 * * *'
+  push:
+    branches: [main, master]
+    paths: ['testing/**']
+concurrency:
+  group: testing-umano
+  cancel-in-progress: false
+jobs:
+  verifica:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Motore dal tarball vendorizzato
+        run: |
+          mkdir -p "$RUNNER_TEMP/tu"
+          npm install --prefix "$RUNNER_TEMP/tu" --no-audit --no-fund ./testing/vendor/testing-umano-motore-*.tgz
+      - name: Tunnel verso il database
+        env:
+          CHIAVE: ${{ secrets.TESTING_SSH_KEY }}
+          DESTINAZIONE: ${{ vars.TESTING_SSH_TARGET }}
+          CONTAINER: ${{ vars.TESTING_DB_CONTAINER }}
+          KNOWN_HOSTS: ${{ vars.TESTING_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          test -n "$KNOWN_HOSTS" || { echo "variabile TESTING_SSH_KNOWN_HOSTS mancante" >&2; exit 1; }
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+          printf '%s\n' "$CHIAVE" > ~/.ssh/testing_umano && chmod 600 ~/.ssh/testing_umano
+          ip=$(ssh -i ~/.ssh/testing_umano -o StrictHostKeyChecking=yes "$DESTINAZIONE" \
+            "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $CONTAINER")
+          porta=$((20000 + RANDOM % 20000))
+          ssh -i ~/.ssh/testing_umano -f -N -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -L "$porta:$ip:5432" "$DESTINAZIONE"
+          echo "TESTING_PORTA=$porta" >> "$GITHUB_ENV"
+      - name: Verifica
+        env:
+          PASSWORD: ${{ secrets.TESTING_PG_PASSWORD }}
+        run: |
+          export RIFIUTI_TESTING_PG_URL="postgresql://rifiuti_testing:$PASSWORD@127.0.0.1:$TESTING_PORTA/wasteflow_prod"
+          "$RUNNER_TEMP/tu/node_modules/.bin/testing-umano" verifica --dir testing --ambito tutto --report testing-umano-report.json
+      - uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: testing-umano-report
+          path: testing-umano-report.json

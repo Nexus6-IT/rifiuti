@@ -1,0 +1,569 @@
+# Generato da testing-umano init 0.2.0 il 2026-10-13 sul database wasteflow_prod.
+# Controlli universali: isolamento dei tenant, riferimenti senza FK, numerazioni senza buchi.
+# Nascono tutti in-attesa: il primo giro li conta senza bloccare nulla. Promuovili ad attiva
+# uno alla volta, dopo aver guardato le violazioni ('testing-umano baseline crea <CODICE>').
+
+versione: 1
+sorgente:
+  url_env: RIFIUTI_TESTING_PG_URL
+  marcatore: staging
+  host_ammessi:
+    - 127.0.0.1
+    - ::1
+    - localhost
+  database_vietati: []
+  statement_timeout_ms: 5000
+  durata_max_s: 120
+  tenant:
+    tabella: tenants
+    id: id
+    colonna: tenant_id
+    tipo: uuid
+invarianti:
+  - codice: STESSO_TENANT_ACTIVITY_LOGS_FIR_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di activity_logs punta, con fir_id, a una riga di firs dello stesso tenant
+    nota: "init: vincolo activity_logs_fir_id_fkey"
+    chiave: &a1
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM activity_logs c
+        JOIN firs p ON p.id = c.fir_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_ACTIVITY_LOGS_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di activity_logs punta, con user_id, a una riga di users dello stesso tenant
+    nota: "init: vincolo activity_logs_user_id_fkey"
+    chiave: *a1
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM activity_logs c
+        JOIN users p ON p.id = c.user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_CONSULTANT_TENANT_ASSOCIATIONS_CONSULTANT_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di consultant_tenant_associations punta, con consultant_user_id, a una riga di users dello stesso tenant
+    nota: "init: riferimento per nome, senza FK (consultant_tenant_associations.consultant_user_id -> users)"
+    chiave: &a2
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM consultant_tenant_associations c
+        JOIN users p ON p.id = c.consultant_user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_CONSULTANT_TENANT_ASSOCIATIONS_ROLE_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di consultant_tenant_associations punta, con role_id, a una riga di roles dello stesso tenant
+    nota: "init: vincolo consultant_tenant_associations_role_id_fkey"
+    chiave: *a2
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM consultant_tenant_associations c
+        JOIN roles p ON p.id = c.role_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_CONTRACTS_PRODUCER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di contracts punta, con producer_id, a una riga di produttori dello stesso tenant
+    nota: "init: riferimento indicato con --collega (contracts.producer_id -> produttori)"
+    chiave: &a7
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM contracts c
+        JOIN produttori p ON p.id = c.producer_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_FIRS_CARRIER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di firs punta, con carrier_id, a una riga di trasportatori dello stesso tenant
+    nota: "init: riferimento indicato con --collega (firs.carrier_id -> trasportatori)"
+    chiave: &a3
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM firs c
+        JOIN trasportatori p ON p.id = c.carrier_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_FIRS_CARRIER_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di firs punta, con carrier_user_id, a una riga di users dello stesso tenant
+    nota: "init: vincolo firs_carrier_user_id_fkey"
+    chiave: *a3
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM firs c
+        JOIN users p ON p.id = c.carrier_user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_FIRS_PRODUCER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di firs punta, con producer_id, a una riga di produttori dello stesso tenant
+    nota: "init: riferimento indicato con --collega (firs.producer_id -> produttori)"
+    chiave: *a3
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM firs c
+        JOIN produttori p ON p.id = c.producer_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_FIRS_PRODUCER_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di firs punta, con producer_user_id, a una riga di users dello stesso tenant
+    nota: "init: vincolo firs_producer_user_id_fkey"
+    chiave: *a3
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM firs c
+        JOIN users p ON p.id = c.producer_user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_FIRS_RECEIVER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di firs punta, con receiver_id, a una riga di destinatari dello stesso tenant
+    nota: "init: riferimento indicato con --collega (firs.receiver_id -> destinatari)"
+    chiave: *a3
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM firs c
+        JOIN destinatari p ON p.id = c.receiver_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_FIRS_RECEIVER_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di firs punta, con receiver_user_id, a una riga di users dello stesso tenant
+    nota: "init: vincolo firs_receiver_user_id_fkey"
+    chiave: *a3
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM firs c
+        JOIN users p ON p.id = c.receiver_user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_NOTIFICATIONS_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di notifications punta, con user_id, a una riga di users dello stesso tenant
+    nota: "init: vincolo notifications_user_id_fkey"
+    chiave:
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM notifications c
+        JOIN users p ON p.id = c.user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_PERMISSION_AUDIT_LOGS_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di permission_audit_logs punta, con user_id, a una riga di users dello stesso tenant
+    nota: "init: riferimento per nome, senza FK (permission_audit_logs.user_id -> users)"
+    chiave: &a9
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM permission_audit_logs c
+        JOIN users p ON p.id = c.user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_PERMISSION_REQUESTS_REQUESTED_ROLE_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di permission_requests punta, con requested_role_id, a una riga di roles dello stesso tenant
+    nota: "init: vincolo permission_requests_requested_role_id_fkey"
+    chiave: &a4
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM permission_requests c
+        JOIN roles p ON p.id = c.requested_role_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_PERMISSION_REQUESTS_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di permission_requests punta, con user_id, a una riga di users dello stesso tenant
+    nota: "init: riferimento per nome, senza FK (permission_requests.user_id -> users)"
+    chiave: *a4
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM permission_requests c
+        JOIN users p ON p.id = c.user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_RENTRI_NUMERI_VIDIMATI_FIR_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di rentri_numeri_vidimati punta, con fir_id, a una riga di firs dello stesso tenant
+    nota: "init: riferimento per nome, senza FK (rentri_numeri_vidimati.fir_id -> firs)"
+    chiave: &a10
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM rentri_numeri_vidimati c
+        JOIN firs p ON p.id = c.fir_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_RENTRI_SYNC_LOGS_FIR_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di rentri_sync_logs punta, con fir_id, a una riga di firs dello stesso tenant
+    nota: "init: vincolo rentri_sync_logs_fir_id_fkey"
+    chiave:
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM rentri_sync_logs c
+        JOIN firs p ON p.id = c.fir_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_RESOURCE_OWNERSHIP_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di resource_ownership punta, con user_id, a una riga di users dello stesso tenant
+    nota: "init: riferimento per nome, senza FK (resource_ownership.user_id -> users)"
+    chiave: &a11
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM resource_ownership c
+        JOIN users p ON p.id = c.user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_ROLE_CHANGE_HISTORY_ROLE_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di role_change_history punta, con role_id, a una riga di roles dello stesso tenant
+    nota: "init: vincolo role_change_history_role_id_fkey"
+    chiave:
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM role_change_history c
+        JOIN roles p ON p.id = c.role_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_TEMPORARY_PERMISSION_GRANTS_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di temporary_permission_grants punta, con user_id, a una riga di users dello stesso tenant
+    nota: "init: riferimento per nome, senza FK (temporary_permission_grants.user_id -> users)"
+    chiave: &a12
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM temporary_permission_grants c
+        JOIN users p ON p.id = c.user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_USER_ROLE_ASSIGNMENTS_ROLE_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di user_role_assignments punta, con role_id, a una riga di roles dello stesso tenant
+    nota: "init: vincolo user_role_assignments_role_id_fkey"
+    chiave: &a5
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM user_role_assignments c
+        JOIN roles p ON p.id = c.role_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_USER_ROLE_ASSIGNMENTS_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di user_role_assignments punta, con user_id, a una riga di users dello stesso tenant
+    nota: "init: riferimento per nome, senza FK (user_role_assignments.user_id -> users)"
+    chiave: *a5
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM user_role_assignments c
+        JOIN users p ON p.id = c.user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_WASTE_MOVEMENTS_FIR_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di waste_movements punta, con fir_id, a una riga di firs dello stesso tenant
+    nota: "init: riferimento per nome, senza FK (waste_movements.fir_id -> firs)"
+    chiave: &a6
+      - id
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM waste_movements c
+        JOIN firs p ON p.id = c.fir_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_WASTE_MOVEMENTS_RECORDED_BY_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: Ogni riga di waste_movements punta, con recorded_by_user_id, a una riga di users dello stesso tenant
+    nota: "init: vincolo waste_movements_recorded_by_user_id_fkey"
+    chiave: *a6
+    sql: |
+      SELECT c.id, c.tenant_id::text AS tenant_figlio, p.tenant_id::text AS tenant_padre
+        FROM waste_movements c
+        JOIN users p ON p.id = c.recorded_by_user_id
+       WHERE (c.tenant_id = ANY($tenant) OR p.tenant_id = ANY($tenant))
+         AND p.tenant_id IS DISTINCT FROM c.tenant_id
+  - codice: STESSO_TENANT_FIR_ALLEGATI_RENTRI_CARICATO_DA_FIR_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: In fir_allegati_rentri, caricato_da (users) e fir_id (firs) puntano allo stesso tenant
+    nota: "init: vincolo fir_allegati_rentri_caricato_da_fkey; init: vincolo fir_allegati_rentri_fir_id_fkey"
+    chiave:
+      - id
+    sql: |
+      SELECT l.id, a.tenant_id::text AS tenant_a, b.tenant_id::text AS tenant_b
+        FROM fir_allegati_rentri l
+        JOIN users a ON a.id = l.caricato_da
+        JOIN firs b ON b.id = l.fir_id
+       WHERE (a.tenant_id = ANY($tenant) OR b.tenant_id = ANY($tenant))
+         AND a.tenant_id IS DISTINCT FROM b.tenant_id
+  - codice: STESSO_TENANT_FIR_SIGNATURES_FIR_ID_USER_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: In fir_signatures, fir_id (firs) e user_id (users) puntano allo stesso tenant
+    nota: "init: vincolo fir_signatures_fir_id_fkey; init: vincolo fir_signatures_user_id_fkey"
+    chiave:
+      - id
+    sql: |
+      SELECT l.id, a.tenant_id::text AS tenant_a, b.tenant_id::text AS tenant_b
+        FROM fir_signatures l
+        JOIN firs a ON a.id = l.fir_id
+        JOIN users b ON b.id = l.user_id
+       WHERE (a.tenant_id = ANY($tenant) OR b.tenant_id = ANY($tenant))
+         AND a.tenant_id IS DISTINCT FROM b.tenant_id
+  - codice: STESSO_TENANT_FIR_TRANSPORTERS_FIR_ID_TRASPORTATORE_ID
+    categoria: isolamento
+    stato: in-attesa
+    descrizione: In fir_transporters, fir_id (firs) e trasportatore_id (trasportatori) puntano allo stesso tenant
+    nota: "init: vincolo fir_transporters_fir_id_fkey; init: riferimento per nome, senza FK (fir_transporters.trasportatore_id -> trasportatori)"
+    chiave: &a8
+      - id
+    sql: |
+      SELECT l.id, a.tenant_id::text AS tenant_a, b.tenant_id::text AS tenant_b
+        FROM fir_transporters l
+        JOIN firs a ON a.id = l.fir_id
+        JOIN trasportatori b ON b.id = l.trasportatore_id
+       WHERE (a.tenant_id = ANY($tenant) OR b.tenant_id = ANY($tenant))
+         AND a.tenant_id IS DISTINCT FROM b.tenant_id
+  - codice: RIFERIMENTO_CONSULTANT_TENANT_ASSOCIATIONS_CONSULTANT_USER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: consultant_tenant_associations.consultant_user_id, quando valorizzata, punta a una riga esistente di users
+    nota: "init: riferimento per nome, senza FK (consultant_tenant_associations.consultant_user_id -> users)"
+    chiave: *a2
+    sql: |
+      SELECT c.id, c.consultant_user_id::text AS riferimento
+        FROM consultant_tenant_associations c
+       WHERE c.consultant_user_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM users p WHERE p.id = c.consultant_user_id)
+  - codice: RIFERIMENTO_CONTRACTS_PRODUCER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: contracts.producer_id, quando valorizzata, punta a una riga esistente di produttori
+    nota: "init: riferimento indicato con --collega (contracts.producer_id -> produttori)"
+    chiave: *a7
+    sql: |
+      SELECT c.id, c.producer_id::text AS riferimento
+        FROM contracts c
+       WHERE c.producer_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM produttori p WHERE p.id = c.producer_id)
+  - codice: RIFERIMENTO_FIR_TRANSPORTERS_TRASPORTATORE_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: fir_transporters.trasportatore_id, quando valorizzata, punta a una riga esistente di trasportatori
+    nota: "init: riferimento per nome, senza FK (fir_transporters.trasportatore_id -> trasportatori)"
+    chiave: *a8
+    sql: |
+      SELECT c.id, c.trasportatore_id::text AS riferimento
+        FROM fir_transporters c
+       WHERE c.trasportatore_id IS NOT NULL
+         AND EXISTS (SELECT 1 FROM firs a WHERE a.id = c.fir_id AND a.tenant_id = ANY($tenant))
+         AND NOT EXISTS (SELECT 1 FROM trasportatori p WHERE p.id = c.trasportatore_id)
+  - codice: RIFERIMENTO_FIRS_CARRIER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: firs.carrier_id, quando valorizzata, punta a una riga esistente di trasportatori
+    nota: "init: riferimento indicato con --collega (firs.carrier_id -> trasportatori)"
+    chiave: *a3
+    sql: |
+      SELECT c.id, c.carrier_id::text AS riferimento
+        FROM firs c
+       WHERE c.carrier_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM trasportatori p WHERE p.id = c.carrier_id)
+  - codice: RIFERIMENTO_FIRS_PRODUCER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: firs.producer_id, quando valorizzata, punta a una riga esistente di produttori
+    nota: "init: riferimento indicato con --collega (firs.producer_id -> produttori)"
+    chiave: *a3
+    sql: |
+      SELECT c.id, c.producer_id::text AS riferimento
+        FROM firs c
+       WHERE c.producer_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM produttori p WHERE p.id = c.producer_id)
+  - codice: RIFERIMENTO_FIRS_RECEIVER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: firs.receiver_id, quando valorizzata, punta a una riga esistente di destinatari
+    nota: "init: riferimento indicato con --collega (firs.receiver_id -> destinatari)"
+    chiave: *a3
+    sql: |
+      SELECT c.id, c.receiver_id::text AS riferimento
+        FROM firs c
+       WHERE c.receiver_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM destinatari p WHERE p.id = c.receiver_id)
+  - codice: RIFERIMENTO_PERMISSION_AUDIT_LOGS_USER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: permission_audit_logs.user_id, quando valorizzata, punta a una riga esistente di users
+    nota: "init: riferimento per nome, senza FK (permission_audit_logs.user_id -> users)"
+    chiave: *a9
+    sql: |
+      SELECT c.id, c.user_id::text AS riferimento
+        FROM permission_audit_logs c
+       WHERE c.user_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM users p WHERE p.id = c.user_id)
+  - codice: RIFERIMENTO_PERMISSION_REQUESTS_USER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: permission_requests.user_id, quando valorizzata, punta a una riga esistente di users
+    nota: "init: riferimento per nome, senza FK (permission_requests.user_id -> users)"
+    chiave: *a4
+    sql: |
+      SELECT c.id, c.user_id::text AS riferimento
+        FROM permission_requests c
+       WHERE c.user_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM users p WHERE p.id = c.user_id)
+  - codice: RIFERIMENTO_RENTRI_NUMERI_VIDIMATI_FIR_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: rentri_numeri_vidimati.fir_id, quando valorizzata, punta a una riga esistente di firs
+    nota: "init: riferimento per nome, senza FK (rentri_numeri_vidimati.fir_id -> firs)"
+    chiave: *a10
+    sql: |
+      SELECT c.id, c.fir_id::text AS riferimento
+        FROM rentri_numeri_vidimati c
+       WHERE c.fir_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM firs p WHERE p.id = c.fir_id)
+  - codice: RIFERIMENTO_RESOURCE_OWNERSHIP_USER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: resource_ownership.user_id, quando valorizzata, punta a una riga esistente di users
+    nota: "init: riferimento per nome, senza FK (resource_ownership.user_id -> users)"
+    chiave: *a11
+    sql: |
+      SELECT c.id, c.user_id::text AS riferimento
+        FROM resource_ownership c
+       WHERE c.user_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM users p WHERE p.id = c.user_id)
+  - codice: RIFERIMENTO_TEMPORARY_PERMISSION_GRANTS_USER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: temporary_permission_grants.user_id, quando valorizzata, punta a una riga esistente di users
+    nota: "init: riferimento per nome, senza FK (temporary_permission_grants.user_id -> users)"
+    chiave: *a12
+    sql: |
+      SELECT c.id, c.user_id::text AS riferimento
+        FROM temporary_permission_grants c
+       WHERE c.user_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM users p WHERE p.id = c.user_id)
+  - codice: RIFERIMENTO_TENANTS_OWNER_USER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: tenants.owner_user_id, quando valorizzata, punta a una riga esistente di users
+    nota: "init: riferimento per nome, senza FK (tenants.owner_user_id -> users)"
+    chiave:
+      - id
+    sql: |
+      SELECT c.id, c.owner_user_id::text AS riferimento
+        FROM tenants c
+       WHERE c.owner_user_id IS NOT NULL
+         AND c.id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM users p WHERE p.id = c.owner_user_id)
+  - codice: RIFERIMENTO_USER_ROLE_ASSIGNMENTS_USER_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: user_role_assignments.user_id, quando valorizzata, punta a una riga esistente di users
+    nota: "init: riferimento per nome, senza FK (user_role_assignments.user_id -> users)"
+    chiave: *a5
+    sql: |
+      SELECT c.id, c.user_id::text AS riferimento
+        FROM user_role_assignments c
+       WHERE c.user_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM users p WHERE p.id = c.user_id)
+  - codice: RIFERIMENTO_WASTE_MOVEMENTS_FIR_ID
+    categoria: riferimenti
+    stato: in-attesa
+    descrizione: waste_movements.fir_id, quando valorizzata, punta a una riga esistente di firs
+    nota: "init: riferimento per nome, senza FK (waste_movements.fir_id -> firs)"
+    chiave: *a6
+    sql: |
+      SELECT c.id, c.fir_id::text AS riferimento
+        FROM waste_movements c
+       WHERE c.fir_id IS NOT NULL
+         AND c.tenant_id = ANY($tenant)
+         AND NOT EXISTS (SELECT 1 FROM firs p WHERE p.id = c.fir_id)
+  - codice: NUMERAZIONE_RENTRI_NUMERI_VIDIMATI_PROGRESSIVO
+    categoria: numerazione
+    stato: in-attesa
+    descrizione: rentri_numeri_vidimati.progressivo numera da 1 senza buchi per tenant, codice_blocco
+    nota: "init: vincolo univoco (tenant_id, codice_blocco, progressivo)"
+    chiave:
+      - tenant
+      - codice_blocco
+    scostamento:
+      a: ultimo
+      b: righe
+    sql: |
+      SELECT c.tenant_id::text AS tenant, c.codice_blocco, count(c.progressivo)::bigint AS righe, max(c.progressivo)::bigint AS ultimo
+        FROM rentri_numeri_vidimati c
+       WHERE c.tenant_id = ANY($tenant)
+       GROUP BY c.tenant_id, c.codice_blocco
+      HAVING max(c.progressivo) <> count(c.progressivo)
+  - codice: NUMERAZIONE_WASTE_MOVEMENTS_PROGRESSIVE_NUMBER
+    categoria: numerazione
+    stato: in-attesa
+    descrizione: waste_movements.progressive_number numera da 1 senza buchi per tenant, progressive_year
+    nota: "init: vincolo univoco (tenant_id, progressive_year, progressive_number)"
+    chiave:
+      - tenant
+      - progressive_year
+    scostamento:
+      a: ultimo
+      b: righe
+    sql: |
+      SELECT c.tenant_id::text AS tenant, c.progressive_year, count(c.progressive_number)::bigint AS righe, max(c.progressive_number)::bigint AS ultimo
+        FROM waste_movements c
+       WHERE c.tenant_id = ANY($tenant)
+       GROUP BY c.tenant_id, c.progressive_year
+      HAVING max(c.progressive_number) <> count(c.progressive_number)
