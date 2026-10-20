@@ -639,7 +639,14 @@ jobs:
       - name: Installa Chromium (Playwright)
         run: npx playwright install --with-deps chromium
 
+      # E2E_DEV_LOGIN_DISABILITATO: il target (E2E_BASE_URL) e' locale, ma il
+      # backend di questa passata gira con NODE_ENV=production e non registra
+      # /auth/dev/login. Senza il flag le spec autenticate via API non
+      # verrebbero saltate e fallirebbero (run del 2026-09-17), e il teardown
+      # tenterebbe un login impossibile. Vedi canUseDevLogin() in e2e/utils/env.ts.
       - name: Esegui la suite E2E — passata 1 (tests/public)
+        env:
+          E2E_DEV_LOGIN_DISABILITATO: "1"
         run: npx playwright test -c e2e/playwright.config.ts --project=chromium tests/public
 
       # Vedi il blocco di commento sopra "SCOPE"/"CONFLITTO NODE_ENV" per il

@@ -3,6 +3,7 @@ import {
   hasRoleCredentials,
   canUseDevLogin,
   getDevLoginSeedEmail,
+  getApiLoginEmail,
   type Role,
 } from '../../utils/env'
 import { skipReason } from '../../fixtures/auth'
@@ -30,6 +31,7 @@ const ENV_KEYS = [
   'E2E_SUPERADMIN_USER',
   'E2E_SUPERADMIN_PASS',
   'E2E_BASE_URL',
+  'E2E_DEV_LOGIN_DISABILITATO',
 ] as const
 
 let snapshot: Record<string, string | undefined>
@@ -103,6 +105,33 @@ test.describe.serial('Decisione autenticazione — Keycloak reale vs dev-login',
     for (const role of ['admin', 'operator', 'viewer'] as Role[]) {
       expect(hasRoleCredentials(role)).toBe(true)
       expect(skipReason(role)).toContain('è autenticabile')
+    }
+  })
+
+  test("apiLogin senza credenziali su target locale usa l'email del seed (stessa regola dello skip)", () => {
+    // Regressione CI 2026-09-17: hasRoleCredentials() era stata estesa al
+    // dev-login, apiLogin() no — le spec API non venivano saltate e poi
+    // fallivano con "Credenziali mancanti".
+    for (const role of ['admin', 'operator', 'viewer'] as Role[]) {
+      expect(getApiLoginEmail(role), `getApiLoginEmail("${role}")`).toBe(getDevLoginSeedEmail(role))
+    }
+    expect(getApiLoginEmail('superAdmin')).toBeNull()
+  })
+
+  test("apiLogin con credenziali presenti usa l'email delle credenziali, non quella del seed", () => {
+    process.env.E2E_ADMIN_USER = 'admin@example.it'
+    process.env.E2E_ADMIN_PASS = 'segreta'
+    expect(getApiLoginEmail('admin')).toBe('admin@example.it')
+  })
+
+  test('E2E_DEV_LOGIN_DISABILITATO=1: target locale ma backend in produzione, nessun dev-login', () => {
+    // Passata 1 della CI: E2E_BASE_URL locale, backend con NODE_ENV=production
+    // (la rotta /auth/dev/login non è registrata).
+    process.env.E2E_DEV_LOGIN_DISABILITATO = '1'
+    for (const role of ['admin', 'operator', 'viewer'] as Role[]) {
+      expect(canUseDevLogin(role), `canUseDevLogin("${role}")`).toBe(false)
+      expect(hasRoleCredentials(role), `hasRoleCredentials("${role}")`).toBe(false)
+      expect(getApiLoginEmail(role), `getApiLoginEmail("${role}")`).toBeNull()
     }
   })
 })

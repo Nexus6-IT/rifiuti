@@ -5,7 +5,7 @@
  * package.json "engines").
  */
 
-import { getApiUrl, getRoleCredentials, isProductionTarget, type Role } from './env'
+import { getApiLoginEmail, getApiUrl, isProductionTarget, type Role } from './env'
 import { valutaRichiesta } from './blacklist'
 
 const DEV_LOGIN_PATH = '/auth/dev/login'
@@ -93,25 +93,24 @@ export async function devLoginTokens(
 }
 
 /**
- * Login via il bypass di sviluppo, usando l'email dalle credenziali di ruolo
- * configurate via env (E2E_<RUOLO>_USER). Pensato per chi ha impostato
- * E2E_<RUOLO>_USER/PASS puntando a un utente del seed di sviluppo (la
- * password non viene inviata — il DTO del bypass accetta solo email — ma
- * deve comunque essere presente perché hasRoleCredentials()/getRoleCredentials()
- * considerino il ruolo configurato). Per il caso comune "nessuna credenziale
- * impostata, usa le email note del seed" vedi devLoginTokens() sopra, usato
- * da fixtures/auth.ts.
+ * Login via il bypass di sviluppo. L'email è quella delle credenziali di
+ * ruolo (E2E_<RUOLO>_USER) se impostate, altrimenti quella del seed di
+ * sviluppo quando il dev-login è disponibile — vedi getApiLoginEmail() in
+ * utils/env.ts, che segue la stessa regola di hasRoleCredentials(): una spec
+ * non saltata deve poter fare login anche senza credenziali. La password non
+ * viene mai inviata (il DTO del bypass accetta solo email).
  */
 export async function apiLogin(ruolo: Role): Promise<string> {
-  const credenziali = getRoleCredentials(ruolo)
-  if (!credenziali) {
+  const email = getApiLoginEmail(ruolo)
+  if (!email) {
     throw new Error(
-      `Credenziali mancanti per il ruolo "${ruolo}" (variabili E2E_${ruolo.toUpperCase()}_USER/PASS non ` +
-        'impostate). Impostale prima di chiamare apiLogin — vedi e2e/README.md.'
+      `Impossibile autenticare via API il ruolo "${ruolo}": variabili E2E_${ruolo.toUpperCase()}_USER/PASS ` +
+        'non impostate e dev-login non disponibile (target di produzione, E2E_DEV_LOGIN_DISABILITATO=1 ' +
+        'o nessun utente seed per il ruolo) — vedi e2e/README.md.'
     )
   }
 
-  const { accessToken } = await devLoginTokens(credenziali.email)
+  const { accessToken } = await devLoginTokens(email)
   return accessToken
 }
 

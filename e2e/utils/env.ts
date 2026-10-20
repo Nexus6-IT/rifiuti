@@ -100,9 +100,28 @@ export function getDevLoginSeedEmail(role: Role): string | null {
  * target corrente: mai su un target di produzione (isProductionTarget — la
  * rotta non esiste nemmeno, vedi auth.module.ts) e solo se esiste un utente
  * seed per il ruolo.
+ *
+ * E2E_DEV_LOGIN_DISABILITATO=1 lo spegne anche su un target locale: serve
+ * quando il backend locale gira con NODE_ENV=production (passata 1 della CI,
+ * vedi .gitea/workflows/ci.yml), dove la rotta non è registrata — il target
+ * è locale ma il dev-login non c'è.
  */
 export function canUseDevLogin(role: Role): boolean {
+  if (process.env.E2E_DEV_LOGIN_DISABILITATO?.trim() === '1') return false
   return !isProductionTarget() && getDevLoginSeedEmail(role) !== null
+}
+
+/**
+ * Email con cui apiLogin() chiede il token al bypass dev-login: quella delle
+ * credenziali di ruolo se impostate, altrimenti quella del seed se il
+ * dev-login è disponibile, altrimenti null. Stessa regola di
+ * hasRoleCredentials(): una spec che non viene saltata deve anche poter fare
+ * login via API.
+ */
+export function getApiLoginEmail(role: Role): string | null {
+  const credenziali = getRoleCredentials(role)
+  if (credenziali) return credenziali.email
+  return canUseDevLogin(role) ? getDevLoginSeedEmail(role) : null
 }
 
 /**

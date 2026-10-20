@@ -46,7 +46,7 @@ import {
   chiudiConnessioneDb,
   firConPrefissoResidui,
 } from '../utils/db-locale'
-import { getRoleCredentials, isProductionTarget } from '../utils/env'
+import { getApiLoginEmail, getRoleCredentials, isProductionTarget } from '../utils/env'
 import { ripulisci } from '../fixtures/risorse'
 
 /**
@@ -78,18 +78,39 @@ export default async function globalTeardown(_config: FullConfig): Promise<void>
     )
   }
 
-  const credenziali = getRoleCredentials('admin')
-  if (!credenziali) {
+  // Stessa regola di hasRoleCredentials()/apiLogin(): credenziali admin
+  // oppure dev-login col seed. Prima guardava solo le credenziali, e nella
+  // passata 2 della CI (solo dev-login) saltava pulizia e verifica.
+  if (!getApiLoginEmail('admin')) {
     // eslint-disable-next-line no-console
     console.warn(
-      '[verifica-residuo] Credenziali mancanti per il ruolo "admin" (E2E_ADMIN_USER/PASS): ' +
-        'teardown e verifica di residuo saltati. Se la run ha creato dati via API con un altro ' +
-        'ruolo, quei dati NON vengono ripuliti — servono le credenziali admin per il login dev.'
+      '[verifica-residuo] Ruolo "admin" non autenticabile (E2E_ADMIN_USER/PASS assenti e dev-login ' +
+        'non disponibile): teardown e verifica di residuo saltati. Se la run ha creato dati via API ' +
+        'con un altro ruolo, quei dati NON vengono ripuliti.'
     )
     return
   }
 
-  const token = await apiLogin('admin')
+  let token: string
+  try {
+    token = await apiLogin('admin')
+  } catch (errore) {
+    // Unico caso tollerato: nessuna credenziale impostata e backend locale
+    // spento (fetch non arriva nemmeno a connettersi) — succede eseguendo in
+    // locale solo spec che non parlano col backend, e in quel caso non c'è
+    // nulla da ripulire. Con credenziali impostate, o con un backend che
+    // risponde con un errore, il fallimento resta un fallimento.
+    const backendSpento = errore instanceof TypeError && errore.message === 'fetch failed'
+    if (backendSpento && !getRoleCredentials('admin')) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[verifica-residuo] Backend locale non raggiungibile per il dev-login: teardown e verifica ' +
+          'di residuo saltati.'
+      )
+      return
+    }
+    throw errore
+  }
 
   try {
     const { rimosse, residue: residuiNonCancellabili } = await ripulisci(token)

@@ -123,6 +123,7 @@ produzione" sotto.
 | `E2E_OPERATOR_USER` / `E2E_OPERATOR_PASS` | — | Credenziali ruolo OPERATOR. Stessa nota di sopra sul dev-login. |
 | `E2E_VIEWER_USER` / `E2E_VIEWER_PASS` | — | Credenziali ruolo VIEWER. Stessa nota di sopra sul dev-login. |
 | `E2E_SUPERADMIN_USER` / `E2E_SUPERADMIN_PASS` | — | Credenziali ruolo SUPER_ADMIN (impersonificazione, tenant switch, admin tenants). **Nessun dev-login per questo ruolo**: il seed di sviluppo non crea un utente SUPER_ADMIN, quindi senza questa variabile i test relativi restano sempre skip, anche in locale. |
+| `E2E_DEV_LOGIN_DISABILITATO` | — | `1` spegne il dev-login anche su target locale: serve quando il backend locale gira con `NODE_ENV=production` (passata 1 della CI), dove `/auth/dev/login` non esiste. Senza credenziali i test autenticati vengono saltati invece di fallire. |
 | `E2E_ALLOW_PROD_RUN` | — | Impostata automaticamente da `npm run e2e:prod` (`e2e/scripts/run-against-prod.js`). Non impostarla manualmente. |
 
 Nessuna di queste credenziali Keycloak è disponibile in questo ambiente al
