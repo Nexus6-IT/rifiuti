@@ -1,8 +1,20 @@
 /* ============================================================================
-   WasteFlow — Design System (Direzione B "Operativo Compatto")
-   Slate + teal-600, IBM Plex, griglia 8pt, altezze controlli uniche 32/40/48,
-   tabelle dense, sidebar scura (gestita nel layout). WCAG 2.1 AA, responsive.
+   WasteFlow — Design System "Registro" (chiaro e scuro)
+   Teal + neutri freddi tinti di verde, IBM Plex, griglia 8pt, altezze controlli
+   uniche 32/40/48, tabelle dense, sidebar scura in entrambe le modalità.
+   WCAG 2.1 AA in entrambe le modalità, responsive.
    I nomi dei token sono preservati per retro-compatibilità coi componenti.
+
+   MODALITÀ SCURA: :root contiene i valori chiari; :root[data-theme='dark']
+   (più sotto) ridefinisce SOLO i colori. data-theme lo imposta TemaService
+   (src/app/core/services/tema.service.ts) e, prima che Angular parta,
+   src/assets/tema-iniziale.js. Regole per i componenti:
+   - usare sempre i token, mai colori letterali (un #fff è giusto solo in una
+     delle due modalità);
+   - su un fondo pieno colorato (--brand-primary-dark, --color-success, ...)
+     il testo è --text-inverse: in scuro i fondi pieni diventano chiari e
+     --text-inverse diventa scuro, quindi la coppia regge in entrambe;
+   - per i bottoni d'azione usare --accent-fill / --on-accent.
    ============================================================================ */
 
 :root {
@@ -10,14 +22,23 @@
   --brand-primary: #0d9488;
   --brand-primary-dark: #0f766e;
   --brand-primary-light: #14b8a6;
-  --brand-primary-50: #f0fdfa;
-  --brand-primary-100: #ccfbf1;
+  --brand-primary-50: #ecf7f5;
+  --brand-primary-100: #cdede8;
   --brand-secondary: #b45309;
   --brand-secondary-dark: #92400e;
   --brand-secondary-light: #d97706;
   --brand-accent: #1d4ed8;
   --brand-accent-dark: #1e3a8a;
   --brand-accent-light: #3b82f6;
+
+  /* ===== Azione primaria (fondo pieno + testo sopra) ===== */
+  --accent-fill: #0f766e;
+  --accent-fill-hover: #0a5f57;
+  --on-accent: #fcfdfd;
+  /* Azione secondaria piena (p-button-secondary) */
+  --neutral-fill: #33474a;
+  --neutral-fill-hover: #1d2e30;
+  --on-neutral: #fcfdfd;
 
   /* ===== Semantici (colore + soft bg, AA) ===== */
   --color-success: #15803d;
@@ -29,45 +50,66 @@
   --color-info: #1d4ed8;
   --color-info-bg: #dbeafe;
 
-  /* ===== Neutrali (slate) ===== */
-  --color-gray-50: #f8fafc;
-  --color-gray-100: #f1f5f9;
-  --color-gray-200: #e2e8f0;
-  --color-gray-300: #cbd5e1;
-  --color-gray-400: #94a3b8;
-  --color-gray-500: #64748b;
-  --color-gray-600: #475569;
-  --color-gray-700: #334155;
-  --color-gray-800: #1e293b;
-  --color-gray-900: #0f172a;
+  /* ===== Neutrali (freddi, tinti verso il teal) ===== */
+  --color-gray-50: #f6f9f9;
+  --color-gray-100: #ebf1f1;
+  --color-gray-200: #dce5e5;
+  --color-gray-300: #c3d0d0;
+  --color-gray-400: #8fa1a1;
+  --color-gray-500: #5e7273;
+  --color-gray-600: #4a5d5e;
+  --color-gray-700: #33474a;
+  --color-gray-800: #1d2e30;
+  --color-gray-900: #0f1e1f;
 
   /* ===== Superfici ===== */
-  --surface-ground: #f1f5f9;
-  --surface-section: #ffffff;
-  --surface-card: #ffffff;
-  --surface-overlay: #ffffff;
-  --surface-border: #e2e8f0;
-  --surface-border-strong: #cbd5e1;
-  /* Bordo dei controlli editabili (input/select): slate-500 = 4.76:1 su bianco (WCAG 1.4.11 richiede ≥3:1). */
-  --control-border: #64748b;
-  --surface-hover: #f8fafc;
+  --surface-ground: #f2f5f5;
+  --surface-section: #fcfdfd;
+  --surface-card: #fcfdfd;
+  --surface-overlay: #fcfdfd;
+  --surface-border: #d2dcdc;
+  --surface-border-strong: #b9c8c8;
+  /* Bordo dei controlli editabili (input/select): ~5:1 sulla card (WCAG 1.4.11 richiede ≥3:1). */
+  --control-border: #5e7273;
+  --surface-hover: #f6f9f9;
+  --overlay-mask: rgba(15, 30, 31, 0.5);
 
   /* ===== Testo ===== */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  /* Testo terziario/muted: slate-600 = 6.92:1 su slate-100 (era slate-500 #64748b = 4.34:1 = fail AA). */
-  --text-tertiary: #475569;
-  --text-disabled: #94a3b8;
-  --text-inverse: #ffffff;
+  --text-primary: #0f1e1f;
+  --text-secondary: #3d5052;
+  /* Testo terziario/muted: ~6.4:1 sul fondo pagina (AA). */
+  --text-tertiary: #4a5d5e;
+  --text-disabled: #8fa1a1;
+  --text-inverse: #fcfdfd;
+  /* Placeholder leggibili (AA, ~5.5:1 sulla card). */
+  --text-placeholder: #566a6b;
 
-  /* ===== Sidebar scura (usata dal layout) ===== */
-  --sidebar-bg: #0f172a;
-  --sidebar-bg-2: #1e293b;
-  --sidebar-ink: #cbd5e1;
-  --sidebar-ink-muted: #94a3b8;
-  --sidebar-active: #14b8a6;
-  --sidebar-active-bg: rgba(20, 184, 166, 0.12);
-  --sidebar-border: #1e293b;
+  /* ===== Sidebar scura (usata dal layout, scura in entrambe le modalità) ===== */
+  --sidebar-bg: #0c1a1c;
+  --sidebar-bg-2: #142527;
+  --sidebar-ink: #c6d4d3;
+  --sidebar-ink-muted: #93a7a6;
+  --sidebar-ink-strong: #f2f7f6;
+  --sidebar-active: #2cc0ae;
+  --sidebar-active-bg: rgba(44, 192, 174, 0.14);
+  --sidebar-border: #1c2e30;
+  --sidebar-hover-bg: #1b2e30;
+  --sidebar-hover-border: #2a3f41;
+  /* Esci/logout sulla sidebar, che è scura in entrambe le modalità. */
+  --sidebar-danger: #fca5a5;
+  --sidebar-danger-strong: #fecaca;
+  --sidebar-danger-bg: rgba(239, 68, 68, 0.18);
+
+  /* Testo del contrassegno azienda (src/app/shared/utils/contrassegno-azienda.ts):
+     la tavolozza è scura in entrambe le modalità, quindi testo chiaro fisso. */
+  --on-contrassegno: #fcfdfd;
+
+  /* Pannello di marca di login e iscrizione: volutamente uguale nelle due
+     modalità (testo chiaro su teal profondo), quindi non ridefinito in scuro. */
+  --brand-panel-from: #0d9488;
+  --brand-panel-mid: #0f766e;
+  --brand-panel-to: #1e3a8a;
+  --on-brand-panel: #fcfdfd;
 
   /* ===== Tipografia (IBM Plex) ===== */
   --font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -118,13 +160,13 @@
   --radius-xl: 12px;
   --radius-full: 9999px;
 
-  /* ===== Ombre ===== */
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.05);
-  --shadow-base: 0 4px 12px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 8px 20px -4px rgba(15, 23, 42, 0.12);
-  --shadow-lg: 0 16px 32px -8px rgba(15, 23, 42, 0.16);
-  --shadow-xl: 0 24px 48px -12px rgba(15, 23, 42, 0.22);
+  /* ===== Ombre (tinte col neutro, mai nero puro) ===== */
+  --shadow-xs: 0 1px 2px rgba(15, 30, 31, 0.05);
+  --shadow-sm: 0 1px 2px rgba(15, 30, 31, 0.06), 0 1px 3px rgba(15, 30, 31, 0.05);
+  --shadow-base: 0 4px 12px rgba(15, 30, 31, 0.08);
+  --shadow-md: 0 8px 20px -4px rgba(15, 30, 31, 0.12);
+  --shadow-lg: 0 16px 32px -8px rgba(15, 30, 31, 0.16);
+  --shadow-xl: 0 24px 48px -12px rgba(15, 30, 31, 0.22);
 
   /* ===== Transizioni ===== */
   --transition-fast: 130ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -141,13 +183,108 @@
   /* teal-700 = 5.47:1 su bianco (l'indicatore di focus resta ben visibile). */
   --focus-ring-color: #0f766e;
   --focus-ring-offset: 2px;
+  --focus-glow: rgba(13, 148, 136, 0.18);
 
   /* ===== Allineamento tema PrimeNG (Aura) ===== */
   --primary-color: var(--brand-primary);
-  --primary-color-text: #ffffff;
+  --primary-color-text: var(--on-accent);
   --p-primary-color: var(--brand-primary);
   --highlight-bg: var(--brand-primary-50);
   --highlight-text-color: var(--brand-primary-dark);
+
+  color-scheme: light;
+}
+
+/* ============================================================================
+   Modalità scura — solo colori. Stessi nomi dei token chiari.
+   I fondi pieni (brand, semantici) diventano chiari e --text-inverse scuro,
+   così le coppie fondo/testo dei componenti restano leggibili.
+   In stampa si usa sempre la palette chiara (@media screen).
+   ============================================================================ */
+@media screen {
+:root[data-theme='dark'] {
+  --brand-primary: #3fc5b5;
+  --brand-primary-dark: #5ed0c2;
+  --brand-primary-light: #7fdccf;
+  --brand-primary-50: #0f2d2a;
+  --brand-primary-100: #15413c;
+  --brand-secondary: #f1b65a;
+  --brand-secondary-dark: #e0a54a;
+  --brand-secondary-light: #f5c87a;
+  --brand-accent: #8db4ff;
+  --brand-accent-dark: #b3ccff;
+  --brand-accent-light: #8db4ff;
+
+  --accent-fill: #3fc5b5;
+  --accent-fill-hover: #64d3c5;
+  --on-accent: #04201d;
+  --neutral-fill: #33494a;
+  --neutral-fill-hover: #3f5759;
+  --on-neutral: #e2ebea;
+
+  --color-success: #62c987;
+  --color-success-bg: #12301f;
+  --color-warning: #f1b65a;
+  --color-warning-bg: #33250c;
+  --color-danger: #f4867e;
+  --color-danger-bg: #3a1714;
+  --color-info: #8db4ff;
+  --color-info-bg: #14213d;
+
+  /* Scala invertita: 50 è il più vicino al fondo, 900 il più vicino al testo. */
+  --color-gray-50: #142224;
+  --color-gray-100: #182a2b;
+  --color-gray-200: #243736;
+  --color-gray-300: #33494a;
+  --color-gray-400: #5f7373;
+  --color-gray-500: #8a9e9d;
+  --color-gray-600: #a8bab9;
+  --color-gray-700: #c6d4d3;
+  --color-gray-800: #dde7e6;
+  --color-gray-900: #eef4f3;
+
+  --surface-ground: #0b1416;
+  --surface-section: #111e1f;
+  --surface-card: #111e1f;
+  --surface-overlay: #152425;
+  --surface-border: #243736;
+  --surface-border-strong: #33494a;
+  --control-border: #6e8586;
+  --surface-hover: #172728;
+  --overlay-mask: rgba(0, 0, 0, 0.6);
+
+  --text-primary: #e2ebea;
+  --text-secondary: #b4c4c3;
+  --text-tertiary: #93a7a6;
+  --text-disabled: #5f7373;
+  --text-inverse: #0b1416;
+  --text-placeholder: #8a9e9d;
+
+  --sidebar-bg: #081011;
+  --sidebar-bg-2: #0f1c1d;
+  --sidebar-ink: #b4c4c3;
+  --sidebar-ink-muted: #8a9e9d;
+  --sidebar-ink-strong: #eef4f3;
+  --sidebar-active: #3fc5b5;
+  --sidebar-active-bg: rgba(63, 197, 181, 0.14);
+  --sidebar-border: #1a2a2b;
+  --sidebar-hover-bg: #152526;
+  --sidebar-hover-border: #24393a;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-base: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 20px -4px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 32px -8px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
+
+  --focus-ring-color: #5ed0c2;
+  --focus-glow: rgba(63, 197, 181, 0.25);
+
+  --highlight-text-color: var(--brand-primary-light);
+
+  color-scheme: dark;
+}
 }
 
 /* ===== Reset ===== */
@@ -219,6 +356,19 @@ kbd {
 .shadow-md { box-shadow: var(--shadow-md) !important; }
 .shadow-lg { box-shadow: var(--shadow-lg) !important; }
 
+/* ===== Contrassegno azienda (iniziali su colore fisso per azienda) =====
+   Globale perché compare anche nei pannelli dei dropdown, agganciati al <body>. */
+.contrassegno {
+  display: inline-grid; place-items: center; flex-shrink: 0;
+  width: 2rem; height: 2rem; border-radius: var(--radius-md);
+  color: var(--on-contrassegno);
+  font-family: var(--font-display); font-size: var(--font-size-xs); font-weight: var(--font-weight-bold);
+  letter-spacing: 0.02em; line-height: 1;
+}
+.contrassegno--sm { width: 1.5rem; height: 1.5rem; border-radius: var(--radius-sm); font-size: 0.65rem; }
+.azienda-opzione { display: flex; align-items: center; gap: var(--spacing-sm); min-width: 0; }
+.azienda-opzione__nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ===== Layout pagina riusabile ===== */
 .page { max-width: 1320px; margin: 0 auto; padding: clamp(1rem, 2vw, var(--spacing-xl)); animation: fadeInUp var(--transition-base); }
 .page-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--spacing-base); margin-bottom: var(--spacing-lg); }
@@ -267,10 +417,10 @@ kbd {
   font-size: var(--font-size-sm) !important;
   letter-spacing: 0.01em;
   padding: 0 1rem !important;
-  /* Primario: teal scuro per garantire 4.5:1 col testo bianco (WCAG AA). */
-  background: var(--brand-primary-dark);
-  border-color: var(--brand-primary-dark);
-  color: #ffffff;
+  /* Primario: fondo pieno + testo sopra, 4.5:1 in entrambe le modalità (WCAG AA). */
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--on-accent);
   transition: background var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast) !important;
 }
 /* Testo e icona ereditano SEMPRE il colore del bottone */
@@ -279,18 +429,18 @@ kbd {
 .p-button .p-button-icon-left { margin-right: var(--spacing-sm); }
 .p-button .p-button-icon-right { margin-left: var(--spacing-sm); }
 .p-button-icon-only .p-button-icon { margin: 0; }
-/* Varianti piene: testo bianco garantito */
+/* Varianti piene: il testo è --text-inverse, che si inverte insieme al fondo */
 .p-button.p-button-success, .p-button.p-button-danger, .p-button.p-button-warning,
-.p-button.p-button-secondary, .p-button.p-button-info, .p-button.p-button-help { color: #fff; }
-.p-button:not(:disabled):hover { background: #0a5f57; border-color: #0a5f57; box-shadow: var(--shadow-sm) !important; }
+.p-button.p-button-info, .p-button.p-button-help { color: var(--text-inverse); }
+.p-button:not(:disabled):hover { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); box-shadow: var(--shadow-sm) !important; }
 .p-button:not(:disabled):active { transform: translateY(1px); }
 /* Secondari NEUTRI: il teal resta riservato all'azione primaria (gerarchia). */
 .p-button.p-button-outlined { background: transparent; color: var(--text-secondary); border-color: var(--surface-border-strong); }
 .p-button.p-button-outlined:not(:disabled):hover { background: var(--color-gray-100); border-color: var(--surface-border-strong); color: var(--text-primary); }
 .p-button.p-button-text { background: transparent; color: var(--text-secondary); border-color: transparent; }
 .p-button.p-button-text:not(:disabled):hover { background: var(--color-gray-100); color: var(--text-primary); }
-.p-button.p-button-secondary { background: var(--color-gray-700); border-color: var(--color-gray-700); }
-.p-button.p-button-secondary:not(:disabled):hover { background: var(--color-gray-800); border-color: var(--color-gray-800); }
+.p-button.p-button-secondary { background: var(--neutral-fill); border-color: var(--neutral-fill); color: var(--on-neutral); }
+.p-button.p-button-secondary:not(:disabled):hover { background: var(--neutral-fill-hover); border-color: var(--neutral-fill-hover); }
 .p-button.p-button-success { background: var(--color-success); border-color: var(--color-success); }
 .p-button.p-button-danger { background: var(--color-danger); border-color: var(--color-danger); }
 .p-button.p-button-warning { background: var(--color-warning); border-color: var(--color-warning); }
@@ -314,7 +464,7 @@ kbd {
   display: none;
 }
 .p-selectbutton .p-button {
-  background: var(--surface-card, #ffffff);
+  background: var(--surface-card);
   border-color: var(--surface-border-strong);
   color: var(--text-secondary);
 }
@@ -323,12 +473,12 @@ kbd {
   border-color: var(--surface-border-strong);
   color: var(--text-primary);
 }
-/* Selezionata: teal scuro + bianco, gli stessi 4.5:1 dell'azione primaria. */
+/* Selezionata: stessi colori (e stesso 4.5:1) dell'azione primaria. */
 .p-selectbutton .p-button.p-highlight,
 .p-selectbutton .p-button.p-highlight:not(:disabled):hover {
-  background: var(--brand-primary-dark);
-  border-color: var(--brand-primary-dark);
-  color: #ffffff;
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--on-accent);
 }
 
 /* Campi input reali — altezza unica --control-md */
@@ -374,9 +524,9 @@ textarea.p-inputtext { height: auto; min-height: calc(var(--control-md) * 2); pa
 .p-inputtext::placeholder,
 .p-inputnumber-input::placeholder,
 textarea.p-inputtext::placeholder,
-.p-password input::placeholder { color: #5b6878; opacity: 1; }
+.p-password input::placeholder { color: var(--text-placeholder); opacity: 1; }
 .p-dropdown .p-dropdown-label.p-placeholder,
-.p-multiselect .p-multiselect-label.p-placeholder { color: #5b6878; }
+.p-multiselect .p-multiselect-label.p-placeholder { color: var(--text-placeholder); }
 .p-inputtext:enabled:hover, .p-dropdown:not(.p-disabled):hover, .p-multiselect:not(.p-disabled):hover { border-color: var(--brand-primary-light) !important; }
 .p-inputtext:enabled:focus,
 .p-dropdown:not(.p-disabled).p-focus,
@@ -386,7 +536,7 @@ textarea.p-inputtext::placeholder,
 .p-password:not(.p-disabled).p-focus input,
 textarea.p-inputtext:enabled:focus {
   border-color: var(--brand-primary) !important;
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.18) !important;
+  box-shadow: 0 0 0 3px var(--focus-glow) !important;
   /* Focus visibile anche in forced-colors / oltre al glow (WCAG 2.4.7). */
   outline: 2px solid var(--brand-primary-dark);
   outline-offset: 2px;
@@ -419,7 +569,7 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 .p-datatable.p-datatable-sm .p-datatable-tbody > tr > td { padding: var(--spacing-xs) var(--spacing-md); }
 .p-datatable .p-sortable-column.p-highlight, .p-datatable .p-sortable-column.p-highlight .p-sortable-column-icon { color: var(--brand-primary-dark); }
 .p-paginator { background: var(--surface-section); border: none; padding: var(--spacing-md); }
-.p-paginator .p-paginator-pages .p-paginator-page.p-highlight { background: var(--brand-primary-dark); color: #fff; border-radius: var(--radius-base); }
+.p-paginator .p-paginator-pages .p-paginator-page.p-highlight { background: var(--accent-fill); color: var(--on-accent); border-radius: var(--radius-base); }
 
 /* Dialog */
 .p-dialog { border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-xl) !important; overflow: hidden; }
@@ -439,7 +589,8 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 .p-dialog .p-dialog-content { padding: var(--spacing-lg); }
 /* Footer simmetrico (24px) + azioni allineate a destra con gap coerente. */
 .p-dialog .p-dialog-footer { padding: var(--spacing-base) var(--spacing-lg); border-top: 1px solid var(--surface-border); display: flex; justify-content: flex-end; gap: var(--spacing-md); }
-.p-overlay-mask { background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(2px); }
+.p-dialog .p-dialog-content, .p-dialog .p-dialog-footer { background: var(--surface-section); color: var(--text-primary); }
+.p-overlay-mask { background: var(--overlay-mask); backdrop-filter: blur(2px); }
 
 /* Tag / Badge — colore + soft bg (mai solo colore: il testo è nel value) */
 .p-tag { border-radius: var(--radius-full); font-weight: var(--font-weight-semibold); font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); letter-spacing: 0.02em; }
@@ -447,10 +598,10 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 .p-tag.p-tag-warning { background: var(--color-warning-bg); color: var(--color-warning); }
 .p-tag.p-tag-danger { background: var(--color-danger-bg); color: var(--color-danger); }
 .p-tag.p-tag-info { background: var(--color-info-bg); color: var(--color-info); }
-.p-badge { border-radius: var(--radius-full); font-weight: var(--font-weight-semibold); background: var(--brand-primary-dark); color: #fff; }
+.p-badge { border-radius: var(--radius-full); font-weight: var(--font-weight-semibold); background: var(--accent-fill); color: var(--on-accent); }
 
 /* Overlay / dropdown panel */
-.p-dropdown-panel, .p-multiselect-panel, .p-menu, .p-overlaypanel { border-radius: var(--radius-md) !important; box-shadow: var(--shadow-md) !important; border: 1px solid var(--surface-border); }
+.p-dropdown-panel, .p-multiselect-panel, .p-menu, .p-overlaypanel { border-radius: var(--radius-md) !important; box-shadow: var(--shadow-md) !important; border: 1px solid var(--surface-border); background: var(--surface-overlay); color: var(--text-primary); }
 .p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight,
 .p-multiselect-panel .p-multiselect-items .p-multiselect-item.p-highlight { background: var(--brand-primary-50); color: var(--brand-primary-dark); }
 

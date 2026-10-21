@@ -932,10 +932,10 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
       .row-actions__none {
         color: var(--text-secondary);
       }
-      /* Garantisce testo leggibile (bianco) sui pulsanti pieni teal del design system B */
+      /* Testo leggibile sui pulsanti pieni teal, in chiaro e in scuro */
       .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-label,
       .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-icon {
-        color: #ffffff;
+        color: var(--on-accent);
       }
 
       .cell-mono {

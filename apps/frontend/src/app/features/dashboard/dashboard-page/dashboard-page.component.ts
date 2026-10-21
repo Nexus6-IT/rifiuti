@@ -7,6 +7,8 @@ import { TagModule } from 'primeng/tag'
 import { ProgressBarModule } from 'primeng/progressbar'
 import { SkeletonModule } from 'primeng/skeleton'
 import { DashboardService, DashboardData } from '../../../core/services/dashboard.service'
+import { TemaService } from '../../../core/services/tema.service'
+import { coloriGrafico } from '../../../shared/utils/colori-grafici'
 import { MessageService } from 'primeng/api'
 
 /**
@@ -161,7 +163,7 @@ import { MessageService } from 'primeng/api'
               *ngIf="hasStatusData(); else chartEmpty"
               type="pie"
               [data]="statusChartData()"
-              [options]="chartOptions"
+              [options]="chartOptions()"
               height="300px"
               role="img"
               aria-label="Grafico a torta della distribuzione dei FIR per stato"
@@ -174,7 +176,7 @@ import { MessageService } from 'primeng/api'
               *ngIf="hasDestinationData(); else chartEmpty"
               type="doughnut"
               [data]="destinationChartData()"
-              [options]="chartOptions"
+              [options]="chartOptions()"
               height="300px"
               role="img"
               aria-label="Grafico a ciambella della destinazione dei rifiuti tra recupero e smaltimento"
@@ -205,7 +207,7 @@ import { MessageService } from 'primeng/api'
               *ngIf="hasCerData(); else chartEmpty"
               type="bar"
               [data]="cerChartData()"
-              [options]="barChartOptions"
+              [options]="barChartOptions()"
               height="300px"
               role="img"
               aria-label="Grafico a barre dei dieci codici CER con maggiore quantità di rifiuti"
@@ -559,37 +561,40 @@ export class DashboardPageComponent implements OnInit {
   protected readonly dashboard = signal<DashboardData | null>(null)
   protected readonly error = signal<string | null>(null)
 
-  // Colore neutro leggibile (WCAG AA) per tick/legenda/titoli assi -> --text-secondary
-  private readonly axisTextColor = '#475569'
-  private readonly axisGridColor = '#e2e8f0'
+  // Colori dei grafici dal tema attivo (chiaro/scuro): Chart.js non legge i token CSS.
+  private readonly tema = inject(TemaService)
+  private readonly colori = computed(() => coloriGrafico(this.tema.effettivo()))
 
-  protected readonly chartOptions = {
+  protected readonly chartOptions = computed(() => ({
     plugins: {
       legend: {
         position: 'bottom' as const,
         labels: {
-          color: this.axisTextColor,
+          color: this.colori().testo,
         },
       },
     },
-  }
+  }))
 
-  protected readonly barChartOptions = {
-    ...this.chartOptions,
-    indexAxis: 'y' as const,
-    scales: {
-      x: {
-        ticks: { color: this.axisTextColor },
-        grid: { color: this.axisGridColor },
-        title: { color: this.axisTextColor },
+  protected readonly barChartOptions = computed(() => {
+    const c = this.colori()
+    return {
+      ...this.chartOptions(),
+      indexAxis: 'y' as const,
+      scales: {
+        x: {
+          ticks: { color: c.testo },
+          grid: { color: c.griglia },
+          title: { color: c.testo },
+        },
+        y: {
+          ticks: { color: c.testo },
+          grid: { color: c.griglia },
+          title: { color: c.testo },
+        },
       },
-      y: {
-        ticks: { color: this.axisTextColor },
-        grid: { color: this.axisGridColor },
-        title: { color: this.axisTextColor },
-      },
-    },
-  }
+    }
+  })
 
   // Computed values
   protected readonly growthPercentage = computed(() => {
@@ -613,7 +618,12 @@ export class DashboardPageComponent implements OnInit {
         {
           data: Object.values(data.status.breakdown),
           // Palette semantica: info / success / warning / danger
-          backgroundColor: ['#1d4ed8', '#15803d', '#b45309', '#b91c1c'],
+          backgroundColor: [
+            this.colori().info,
+            this.colori().successo,
+            this.colori().attenzione,
+            this.colori().pericolo,
+          ],
         },
       ],
     }
@@ -636,7 +646,7 @@ export class DashboardPageComponent implements OnInit {
         {
           data: [data.waste.byDestination.recovery.count, data.waste.byDestination.disposal.count],
           // Palette semantica: success (recupero) / warning (smaltimento)
-          backgroundColor: ['#15803d', '#b45309'],
+          backgroundColor: [this.colori().successo, this.colori().attenzione],
         },
       ],
     }
@@ -662,7 +672,7 @@ export class DashboardPageComponent implements OnInit {
           label: 'Quantità (kg)',
           data: top10.map(w => w.totalQuantity),
           // Colore brand primario (scuro, contrasto adeguato)
-          backgroundColor: '#0f766e',
+          backgroundColor: this.colori().primario,
         },
       ],
     }

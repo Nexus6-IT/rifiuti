@@ -336,13 +336,13 @@ const DOCS: Record<string, LegalDoc> = {
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem 1.5rem;
-        background: #fef3c7;
-        border-bottom: 1px solid #fbbf24;
+        background: var(--color-warning-bg);
+        border-bottom: 1px solid var(--color-warning);
         font-size: 0.875rem;
-        color: #92400e;
+        color: var(--color-warning);
       }
       .legal-banner__icon {
-        color: #d97706;
+        color: var(--color-warning);
         font-size: 1.1rem;
         flex-shrink: 0;
       }
@@ -361,12 +361,12 @@ const DOCS: Record<string, LegalDoc> = {
         gap: 0.4rem;
         font-size: 0.875rem;
         font-weight: 600;
-        color: #0d9488;
+        color: var(--brand-primary);
         text-decoration: none;
         margin-bottom: 1.5rem;
       }
       .legal-back:hover {
-        color: #0f766e;
+        color: var(--brand-primary-dark);
         text-decoration: underline;
       }
 
@@ -375,7 +375,7 @@ const DOCS: Record<string, LegalDoc> = {
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: #ef4444;
+        color: var(--color-danger);
         margin: 0 0 0.5rem;
       }
       .legal-title {
@@ -383,17 +383,17 @@ const DOCS: Record<string, LegalDoc> = {
         font-weight: 700;
         letter-spacing: -0.02em;
         margin: 0 0 0.5rem;
-        color: #0f172a;
+        color: var(--text-primary);
         line-height: 1.2;
       }
       .legal-subtitle {
         font-size: 1rem;
-        color: #475569;
+        color: var(--text-secondary);
         margin: 0 0 1.5rem;
       }
       .legal-divider {
         border: none;
-        border-top: 1px solid #e2e8f0;
+        border-top: 1px solid var(--surface-border);
         margin: 0 0 2rem;
       }
 
@@ -407,15 +407,15 @@ const DOCS: Record<string, LegalDoc> = {
       .legal-section__heading {
         font-size: 1rem;
         font-weight: 700;
-        color: #0f172a;
+        color: var(--text-primary);
         margin: 0 0 0.75rem;
         padding-bottom: 0.4rem;
-        border-bottom: 2px solid #0d9488;
+        border-bottom: 2px solid var(--brand-primary);
       }
       .legal-section__para {
         font-size: 0.9375rem;
         line-height: 1.7;
-        color: #334155;
+        color: var(--text-secondary);
         margin: 0 0 0.6rem;
       }
       .legal-section__para:last-child {
@@ -426,19 +426,19 @@ const DOCS: Record<string, LegalDoc> = {
       .legal-footer {
         margin-top: 3rem;
         padding-top: 1.5rem;
-        border-top: 1px solid #e2e8f0;
+        border-top: 1px solid var(--surface-border);
         font-size: 0.8125rem;
-        color: #64748b;
+        color: var(--text-tertiary);
       }
       .legal-footer p {
         margin: 0.25rem 0;
       }
       .legal-link {
-        color: #0d9488;
+        color: var(--brand-primary);
         font-weight: 600;
       }
       .legal-link:hover {
-        color: #0f766e;
+        color: var(--brand-primary-dark);
       }
 
       /* ── Not found ─────────────────────────────────────────────── */
@@ -448,7 +448,7 @@ const DOCS: Record<string, LegalDoc> = {
         justify-content: center;
         min-height: 40vh;
         font-size: 1rem;
-        color: #475569;
+        color: var(--text-secondary);
       }
 
       /* ── Responsive ────────────────────────────────────────────── */
