@@ -32,6 +32,8 @@ import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.re
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
 import { TrasmettiFIRSecondoModalitaUseCase } from '../../rentri/trasmetti-fir-secondo-modalita.use-case'
 import { LoggerService } from '../../../core/logger/logger.service'
+import { annoSolareItaliano } from '../../../core/time/anno-italiano'
+import { DomainError } from '../../../core/domain/errors'
 
 export class EmettiFIRUseCase {
   constructor(
@@ -61,22 +63,22 @@ export class EmettiFIRUseCase {
       return Result.fail<FIR>(`Firma produttore non riuscita: ${error.message}`)
     }
 
-    // 3. Generate numero progressivo (usa tenantId, non produttoreId)
-    const anno = new Date().getFullYear()
-    const numeroProgressivo = await this.firRepository.generateNumeroProgressivo(
-      fir.tenantId ?? fir.produttoreId,
-      anno
-    )
-
-    // 4. Execute domain method (business logic)
+    // 3-5. Numero progressivo, transizione di dominio e salvataggio in UNA transaction
+    //    del repository, serializzata per tenant e anno di emissione (anno solare
+    //    italiano dell'istante di emissione, non quello UTC del processo).
+    //    È qui che il piano della scorta innesterà il consumo del numero vidimato
+    //    (Decisione 7).
+    //    Se fallisce, `applicaEmissione` può aver già mutato `fir` in memoria: l'aggregate
+    //    NON si riusa né si salva, si restituisce l'errore.
+    const anno = annoSolareItaliano(new Date())
     try {
-      fir.emetti(numeroProgressivo, firma)
+      await this.firRepository.emettiConNumerazione(fir, anno, numero => fir.emetti(numero, firma))
     } catch (error) {
-      return Result.fail<FIR>(`Failed to emit FIR: ${error.message}`)
+      if (error instanceof DomainError) {
+        return Result.fail<FIR>(`Failed to emit FIR: ${error.message}`)
+      }
+      throw error
     }
-
-    // 5. Persist changes
-    await this.firRepository.save(fir)
 
     // 6. Publish domain events (TODO: event bus integration)
     // await this.eventBus.publishAll(fir.domainEvents)

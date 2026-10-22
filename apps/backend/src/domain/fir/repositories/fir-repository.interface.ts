@@ -75,12 +75,6 @@ export interface IFIRRepository {
   existsNumeroProgressivo(numeroProgressivo: string): Promise<boolean>
 
   /**
-   * Generate next numero progressivo for tenant
-   * @deprecated usare emettiConNumerazione
-   */
-  generateNumeroProgressivo(tenantId: string, anno: number): Promise<string>
-
-  /**
    * Emissione del FIR con assegnazione del riferimento interno, in una sola
    * transaction: lock per tenant e anno di emissione, verifica che il FIR sia
    * ancora in bozza, calcolo del progressivo, `applicaEmissione(numero)` sul

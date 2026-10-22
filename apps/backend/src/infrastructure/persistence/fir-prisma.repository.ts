@@ -454,37 +454,6 @@ export class FIRPrismaRepository implements IFIRRepository {
     )
   }
 
-  /** @deprecated usare emettiConNumerazione */
-  async generateNumeroProgressivo(tenantId: string, anno: number): Promise<string> {
-    // Calcola il prossimo progressivo dal MASSIMO firNumber esistente per
-    // tenant/anno, escludendo le BOZZE (firNumber = NULL).
-    // count() falsava il risultato perché include le bozze senza numero assegnato.
-    const ultimo = await this.prisma.fIR.findFirst({
-      where: {
-        tenantId,
-        firNumber: { not: null },
-        createdAt: {
-          gte: new Date(anno, 0, 1),
-          lt: new Date(anno + 1, 0, 1),
-        },
-      },
-      orderBy: { firNumber: 'desc' },
-      select: { firNumber: true },
-    })
-
-    let nextNum = 1
-    if (ultimo?.firNumber) {
-      // Formato atteso: FIR-YYYY-NNNNNN  →  l'ultimo segmento è il progressivo.
-      const parts = ultimo.firNumber.split('-')
-      const parsed = parseInt(parts[parts.length - 1], 10)
-      if (!isNaN(parsed)) {
-        nextNum = parsed + 1
-      }
-    }
-
-    return `FIR-${anno}-${String(nextNum).padStart(6, '0')}`
-  }
-
   async count(filters?: FIRSearchFilters): Promise<number> {
     const where: any = {}
 

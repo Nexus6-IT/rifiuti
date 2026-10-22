@@ -289,10 +289,6 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
       return false
     }
 
-    async generateNumeroProgressivo(): Promise<string> {
-      return 'N/D'
-    }
-
     async emettiConNumerazione(
       fir: FIR,
       anno: number,

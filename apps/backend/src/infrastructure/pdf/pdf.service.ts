@@ -116,7 +116,20 @@ export class PDFService {
           width: '*',
           stack: [
             { text: 'Numero FIR', style: 'label' },
-            { text: fir.firNumber, style: 'value', fontSize: 16, bold: true },
+            // Il numero del formulario è quello RENTRI, se c'è; il riferimento interno
+            // (FIR-AAAA-NNNNNN) resta visibile in un campo a parte.
+            {
+              text: fir.rentriNumeroFir || fir.firNumber,
+              style: 'value',
+              fontSize: 16,
+              bold: true,
+            },
+            ...(fir.rentriNumeroFir
+              ? [
+                  { text: 'Riferimento interno', style: 'label' },
+                  { text: fir.firNumber, style: 'value' },
+                ]
+              : []),
           ],
         },
         {

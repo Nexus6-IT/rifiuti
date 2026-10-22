@@ -71,11 +71,6 @@ class MockFIRRepository implements IFIRRepository {
     return (await this.findByNumeroProgressivo(numeroProgressivo)) !== null
   }
 
-  async generateNumeroProgressivo(tenantId: string, anno: number): Promise<string> {
-    const count = this.firs.size + 1
-    return `FIR-${anno}-${String(count).padStart(6, '0')}`
-  }
-
   async emettiConNumerazione(
     fir: FIR,
     anno: number,

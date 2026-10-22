@@ -61,10 +61,6 @@ class MockFIRRepository implements IFIRRepository {
     return false
   }
 
-  async generateNumeroProgressivo(): Promise<string> {
-    return 'FIR-2025-000001'
-  }
-
   async emettiConNumerazione(
     fir: FIR,
     anno: number,
