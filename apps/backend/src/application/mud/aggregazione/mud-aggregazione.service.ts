@@ -10,12 +10,7 @@ import {
 } from '../../../domain/waste-movement/unita-misura-registro'
 import { collegabilitaFir, etichettaFir, STATI_FIR_EMESSI } from '../../../domain/fir/stati-fir'
 import { stessiDatiRicopia } from '../../registro/ricopia-fir'
-import type {
-  MudAllegatoDR,
-  MudAllegatoTE,
-  MudRifiutoLine,
-  StatoFisico,
-} from '../export/mud-export.types'
+import type { MudAllegatoDR, MudAllegatoTE, MudRifiutoLine } from '../export/mud-export.types'
 import {
   classificaMovimento,
   limitiAnnoMud,
