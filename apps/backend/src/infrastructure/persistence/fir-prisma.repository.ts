@@ -34,7 +34,7 @@ import {
   FirNonPiuInBozzaError,
 } from '../../core/domain/errors'
 import { formattaNumeroFir } from '../../domain/fir/numero-fir'
-import { STATO_RENTRI_ANNULLATO } from '../../domain/fir/stati-fir'
+import { STATI_FIR_IN_BOZZA, STATO_RENTRI_ANNULLATO } from '../../domain/fir/stati-fir'
 import { PrismaService } from './prisma.service'
 
 @Injectable()
@@ -457,12 +457,17 @@ export class FIRPrismaRepository implements IFIRRepository {
           SELECT status::text AS status FROM firs
           WHERE id = ${fir.id}::uuid AND tenant_id = ${tenantId}::uuid
           FOR UPDATE`
-        if (righe.length === 0 || this.statoFromDb(righe[0].status) !== FIRStato.BOZZA) {
+        // Fail-closed sullo stato grezzo: uno stato che non è esplicitamente una bozza
+        // (anche uno sconosciuto, che statoFromDb ricondurrebbe a BOZZA) non si emette.
+        const statiBozza: readonly string[] = STATI_FIR_IN_BOZZA
+        if (righe.length === 0 || !statiBozza.includes(righe[0].status)) {
           throw new FirNonPiuInBozzaError(fir.id)
         }
 
+        // Al più 9 cifre: entrano sempre in un integer. Un riferimento più lungo (dati
+        // importati) è fuori formato, come quelli non numerici, e non blocca l'emissione.
         const [{ max_num }] = await tx.$queryRaw<Array<{ max_num: number | null }>>`
-          SELECT MAX(CAST(substring(fir_number FROM '^FIR-[0-9]{4}-([0-9]+)$') AS integer)) AS max_num
+          SELECT MAX(CAST(substring(fir_number FROM '^FIR-[0-9]{4}-([0-9]{1,9})$') AS integer)) AS max_num
           FROM firs
           WHERE tenant_id = ${tenantId}::uuid AND fir_number LIKE ${'FIR-' + anno + '-%'}`
         const numero = formattaNumeroFir(anno, (max_num ?? 0) + 1)

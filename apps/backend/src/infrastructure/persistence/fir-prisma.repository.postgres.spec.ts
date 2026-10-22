@@ -321,5 +321,24 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         await repoNumeri.emettiConNumerazione(f, 2030, n => f.emetti(n, firma(utenteNumeri)))
       ).toBe('FIR-2030-000001')
     })
+
+    it('un riferimento con troppe cifre non blocca l emissione e non conta nel massimo', async () => {
+      // 11 cifre: fuori dal campo di un integer, il cast farebbe fallire ogni emissione.
+      const importato = await bozza()
+      await prisma.fIR.update({
+        where: { id: importato.id },
+        data: { firNumber: 'FIR-2031-12345678901' },
+      })
+      const regolare = await bozza()
+      await prisma.fIR.update({
+        where: { id: regolare.id },
+        data: { firNumber: 'FIR-2031-000005' },
+      })
+
+      const f = await bozza()
+      expect(
+        await repoNumeri.emettiConNumerazione(f, 2031, n => f.emetti(n, firma(utenteNumeri)))
+      ).toBe('FIR-2031-000006')
+    })
   })
 })

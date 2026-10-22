@@ -10,7 +10,7 @@
  */
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
-import { FirmaSenzaUtenteError } from '../../core/domain/errors'
+import { FirmaSenzaUtenteError, FirNonPiuInBozzaError } from '../../core/domain/errors'
 
 function buildFirRecord(overrides: Partial<any> = {}) {
   return {
@@ -353,6 +353,55 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       await repo.save(buildFirWithFirmaProduttore())
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('emettiConNumerazione — controllo della bozza sullo stato grezzo', () => {
+    function bozza(): FIR {
+      return FIR.create({
+        produttoreId: 'reg-produttore',
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: 'reg-trasportatore',
+        destinatarioId: 'reg-destinatario',
+        tenantId: 'tenant-1',
+        creatoDaUserId: 'user-produttore',
+      })
+    }
+
+    beforeEach(() => {
+      prisma.$executeRaw = jest.fn().mockResolvedValue(1)
+      prisma.$transaction = jest.fn(async (fn: any) => fn(prisma))
+    })
+
+    it('uno stato sconosciuto non vale come bozza: emissione rifiutata', async () => {
+      prisma.$queryRaw = jest.fn().mockResolvedValueOnce([{ status: 'STATO_INATTESO' }])
+      const applica = jest.fn()
+
+      await expect(repo.emettiConNumerazione(bozza(), 2026, applica)).rejects.toThrow(
+        FirNonPiuInBozzaError
+      )
+      expect(applica).not.toHaveBeenCalled()
+      expect(prisma.fIR.upsert).not.toHaveBeenCalled()
+    })
+
+    it.each(['DRAFT', 'AWAITING_PRODUCER'])('lo stato %s è una bozza emettibile', async status => {
+      prisma.$queryRaw = jest
+        .fn()
+        .mockResolvedValueOnce([{ status }])
+        .mockResolvedValueOnce([{ max_num: 4 }])
+        .mockResolvedValue([])
+      const fir = bozza()
+
+      const numero = await repo.emettiConNumerazione(fir, 2026, n =>
+        fir.emetti(n, {
+          firmatario: 'Mario Rossi',
+          timestamp: new Date(),
+          certificato: 'x',
+          userId: 'user-produttore',
+        })
+      )
+
+      expect(numero).toBe('FIR-2026-000005')
     })
   })
 })
