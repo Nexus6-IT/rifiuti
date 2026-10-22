@@ -76,8 +76,27 @@ export interface IFIRRepository {
 
   /**
    * Generate next numero progressivo for tenant
+   * @deprecated usare emettiConNumerazione
    */
   generateNumeroProgressivo(tenantId: string, anno: number): Promise<string>
+
+  /**
+   * Emissione del FIR con assegnazione del riferimento interno, in una sola
+   * transaction: lock per tenant e anno di emissione, verifica che il FIR sia
+   * ancora in bozza, calcolo del progressivo, `applicaEmissione(numero)` sul
+   * dominio e salvataggio di stato e firme. Restituisce il riferimento interno
+   * assegnato (`formattaNumeroFir`); se il FIR non è più in bozza lancia
+   * `FirNonPiuInBozzaError`.
+   *
+   * È la transaction di emissione in cui il piano
+   * `2026-09-12-collegamento-scorta-emissione.md` aggiungerà il consumo del
+   * numero vidimato.
+   */
+  emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applicaEmissione: (numeroProgressivo: string) => void
+  ): Promise<string>
 
   /**
    * Count FIRs by filters

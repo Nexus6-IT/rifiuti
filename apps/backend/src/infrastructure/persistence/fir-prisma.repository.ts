@@ -28,7 +28,12 @@ import {
 } from '../../domain/fir/repositories/fir-repository.interface'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { RENTRISyncStatus } from '../../domain/fir/rentri-sync-status.vo'
-import { FormularioGiaAgganciatoError, FirmaSenzaUtenteError } from '../../core/domain/errors'
+import {
+  FormularioGiaAgganciatoError,
+  FirmaSenzaUtenteError,
+  FirNonPiuInBozzaError,
+} from '../../core/domain/errors'
+import { formattaNumeroFir } from '../../domain/fir/numero-fir'
 import { PrismaService } from './prisma.service'
 
 @Injectable()
@@ -397,6 +402,59 @@ export class FIRPrismaRepository implements IFIRRepository {
     return count > 0
   }
 
+  /**
+   * Emissione con assegnazione del riferimento interno (`FIR-AAAA-NNNNNN`) in una
+   * sola transaction. Il lock per tenant e anno di emissione serializza le
+   * emissioni concorrenti, che altrimenti leggerebbero lo stesso massimo e
+   * assegnerebbero lo stesso numero; il `FOR UPDATE` sulla riga del FIR impedisce
+   * di emettere due volte la stessa bozza da due richieste parallele.
+   *
+   * L'anno si legge dal riferimento, non da `createdAt`: una bozza creata a
+   * dicembre ed emessa a gennaio conta nell'anno di emissione. Il massimo è
+   * numerico (le stringhe ordinerebbero `FIR-2027-1000000` prima di
+   * `FIR-2027-999999`) e ignora i riferimenti fuori formato.
+   *
+   * È la transaction di emissione in cui il piano
+   * `2026-09-12-collegamento-scorta-emissione.md` aggiungerà il consumo del
+   * numero vidimato.
+   */
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applicaEmissione: (numeroProgressivo: string) => void
+  ): Promise<string> {
+    // Stesso tenant che salvaCon scrive (toPersistence): fallback a produttoreId per i FIR legacy.
+    const tenantId = fir.tenantId || fir.produttoreId
+    return this.prisma.$transaction(
+      async tx => {
+        const chiave = `fir-numero|${tenantId}|${anno}`
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiave}))`
+
+        const righe = await tx.$queryRaw<Array<{ status: string }>>`
+          SELECT status::text AS status FROM firs
+          WHERE id = ${fir.id}::uuid AND tenant_id = ${tenantId}::uuid
+          FOR UPDATE`
+        if (righe.length === 0 || this.statoFromDb(righe[0].status) !== FIRStato.BOZZA) {
+          throw new FirNonPiuInBozzaError(fir.id)
+        }
+
+        const [{ max_num }] = await tx.$queryRaw<Array<{ max_num: number | null }>>`
+          SELECT MAX(CAST(substring(fir_number FROM '^FIR-[0-9]{4}-([0-9]+)$') AS integer)) AS max_num
+          FROM firs
+          WHERE tenant_id = ${tenantId}::uuid AND fir_number LIKE ${'FIR-' + anno + '-%'}`
+        const numero = formattaNumeroFir(anno, (max_num ?? 0) + 1)
+
+        // Un'eccezione del dominio qui annulla l'intera transaction.
+        applicaEmissione(numero)
+        await this.salvaCon(tx, fir)
+        return numero
+      },
+      // Lock, verifica, massimo, upsert e firme: più round trip del default di 5 s.
+      { timeout: 15000 }
+    )
+  }
+
+  /** @deprecated usare emettiConNumerazione */
   async generateNumeroProgressivo(tenantId: string, anno: number): Promise<string> {
     // Calcola il prossimo progressivo dal MASSIMO firNumber esistente per
     // tenant/anno, escludendo le BOZZE (firNumber = NULL).

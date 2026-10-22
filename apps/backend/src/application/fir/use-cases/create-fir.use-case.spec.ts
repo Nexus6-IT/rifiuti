@@ -20,10 +20,12 @@ import {
   TipoTratta,
   ProvenienzaRifiuto,
 } from '../../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 
 // Mock Repositories
 class MockFIRRepository implements IFIRRepository {
+  private progressiveCounter = 0
   private firs: Map<string, FIR> = new Map()
 
   async findById(id: string): Promise<FIR | null> {
@@ -72,6 +74,18 @@ class MockFIRRepository implements IFIRRepository {
   async generateNumeroProgressivo(tenantId: string, anno: number): Promise<string> {
     const count = this.firs.size + 1
     return `FIR-${anno}-${String(count).padStart(6, '0')}`
+  }
+
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applica: (n: string) => void
+  ): Promise<string> {
+    this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+    const numero = formattaNumeroFir(anno, this.progressiveCounter)
+    applica(numero)
+    await this.save(fir)
+    return numero
   }
 
   async count(_filters?: any): Promise<number> {

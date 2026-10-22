@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import { FIRPrismaRepository } from './fir-prisma.repository'
-import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
-import { FormularioGiaAgganciatoError } from '../../core/domain/errors'
+import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
+import { FirNonPiuInBozzaError, FormularioGiaAgganciatoError } from '../../core/domain/errors'
 
 /**
  * R2 Task 3, Step 4 — vincolo di unicità (tenant_id, rentri_numero_fir) su
@@ -197,6 +197,112 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       expect(riletto.status).toBe('AWAITING_CARRIER')
       expect(riletto.firNumber).toBe('FIR-2099-000002')
       expect(await prisma.fIRSignature.count({ where: { firId: fir.id } })).toBe(1)
+    })
+  })
+
+  describe('riferimento interno del FIR per tenant e anno di emissione', () => {
+    // Tenant dedicato: il progressivo conta solo i FIR di questo tenant, quindi
+    // i FIR creati dagli altri test non lo falsano.
+    let repoNumeri: FIRPrismaRepository
+    let tenantNumeri: string
+    let utenteNumeri: string
+
+    beforeAll(async () => {
+      // findById usa this.prisma.db: serve un client con la proprietà `db`.
+      repoNumeri = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+      const tenant = await prisma.tenant.create({
+        data: {
+          partitaIva: `NF${Date.now().toString().slice(-9)}`,
+          ragioneSociale: 'Numerazione FIR Test SRL',
+          country: 'IT',
+        },
+      })
+      tenantNumeri = tenant.id
+      const user = await prisma.user.create({
+        data: {
+          tenantId: tenantNumeri,
+          keycloakId: `keycloak-nf-${Date.now()}`,
+          fiscalCode: 'RSSMRA80A01H501U',
+          firstName: 'Mario',
+          lastName: 'Rossi',
+          email: `nf-${Date.now()}@example.com`,
+          role: 'OPERATOR',
+        },
+      })
+      utenteNumeri = user.id
+    })
+
+    afterAll(async () => {
+      await prisma.fIR.deleteMany({ where: { tenantId: tenantNumeri } })
+      await prisma.user.deleteMany({ where: { tenantId: tenantNumeri } })
+      await prisma.tenant.deleteMany({ where: { id: tenantNumeri } })
+    })
+
+    function firma(uid: string): FirmaDigitale {
+      return { firmatario: 'Mario Rossi', timestamp: new Date(), certificato: 'x', userId: uid }
+    }
+
+    async function bozza(): Promise<FIR> {
+      const fir = FIR.create({
+        produttoreId: REGISTRO_PRODUTTORE,
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: REGISTRO_TRASPORTATORE,
+        destinatarioId: REGISTRO_DESTINATARIO,
+        tenantId: tenantNumeri,
+        creatoDaUserId: utenteNumeri,
+      })
+      await repoNumeri.save(fir)
+      return fir
+    }
+
+    it("una bozza creata a dicembre ed emessa a gennaio conta nel progressivo dell'anno di emissione", async () => {
+      const a = await bozza()
+      await prisma.fIR.update({
+        where: { id: a.id },
+        data: { createdAt: new Date('2026-12-31T10:00:00Z') },
+      })
+      expect(
+        await repoNumeri.emettiConNumerazione(a, 2027, n => a.emetti(n, firma(utenteNumeri)))
+      ).toBe('FIR-2027-000001')
+      const b = await bozza()
+      expect(
+        await repoNumeri.emettiConNumerazione(b, 2027, n => b.emetti(n, firma(utenteNumeri)))
+      ).toBe('FIR-2027-000002')
+    })
+
+    it('due emissioni concorrenti di bozze diverse prendono numeri consecutivi senza errori', async () => {
+      const [x, y] = [await bozza(), await bozza()]
+      const numeri = await Promise.all([
+        repoNumeri.emettiConNumerazione(x, 2028, n => x.emetti(n, firma(utenteNumeri))),
+        repoNumeri.emettiConNumerazione(y, 2028, n => y.emetti(n, firma(utenteNumeri))),
+      ])
+      expect(numeri.sort()).toEqual(['FIR-2028-000001', 'FIR-2028-000002'])
+    })
+
+    it('la stessa bozza emessa due volte in parallelo: una sola emissione', async () => {
+      const f = await bozza()
+      const copia1 = (await repoNumeri.findById(f.id))!
+      const copia2 = (await repoNumeri.findById(f.id))!
+      const esiti = await Promise.allSettled([
+        repoNumeri.emettiConNumerazione(copia1, 2029, n => copia1.emetti(n, firma(utenteNumeri))),
+        repoNumeri.emettiConNumerazione(copia2, 2029, n => copia2.emetti(n, firma(utenteNumeri))),
+      ])
+      expect(esiti.filter(e => e.status === 'fulfilled')).toHaveLength(1)
+      const rifiutato = esiti.find(e => e.status === 'rejected') as PromiseRejectedResult
+      expect(rifiutato.reason).toBeInstanceOf(FirNonPiuInBozzaError)
+      expect(await prisma.fIRSignature.count({ where: { firId: f.id } })).toBe(1)
+    })
+
+    it('il progressivo ignora i numeri che non hanno il formato FIR-AAAA-N', async () => {
+      // Un FIR del tenant con un riferimento fuori formato (dati storici o
+      // importati) non deve far fallire il cast né contare nel massimo.
+      const vecchio = await bozza()
+      await prisma.fIR.update({ where: { id: vecchio.id }, data: { firNumber: 'FIR-2030-ABC' } })
+
+      const f = await bozza()
+      expect(
+        await repoNumeri.emettiConNumerazione(f, 2030, n => f.emetti(n, firma(utenteNumeri)))
+      ).toBe('FIR-2030-000001')
     })
   })
 })

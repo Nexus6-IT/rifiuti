@@ -11,6 +11,7 @@ import { ConfermaConsegnaFIRUseCase } from './conferma-consegna-fir.use-case'
 import { ConfermaConsegnaFIRCommand } from '../commands/conferma-consegna-fir.command'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
 import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
@@ -19,6 +20,7 @@ import { LoggerService } from '../../../core/logger/logger.service'
 
 // Mock Repository (ciclo di vita)
 class MockFIRRepository implements IFIRRepository {
+  private progressiveCounter = 0
   private firs: Map<string, FIR> = new Map()
 
   async findById(id: string): Promise<FIR | null> {
@@ -61,6 +63,18 @@ class MockFIRRepository implements IFIRRepository {
 
   async generateNumeroProgressivo(): Promise<string> {
     return 'FIR-2025-000001'
+  }
+
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applica: (n: string) => void
+  ): Promise<string> {
+    this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+    const numero = formattaNumeroFir(anno, this.progressiveCounter)
+    applica(numero)
+    await this.save(fir)
+    return numero
   }
 
   async count(): Promise<number> {

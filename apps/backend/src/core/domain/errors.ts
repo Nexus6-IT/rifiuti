@@ -133,3 +133,12 @@ export class FirmaSenzaUtenteError extends DomainError {
     this.name = 'FirmaSenzaUtenteError'
   }
 }
+
+export class FirNonPiuInBozzaError extends DomainError {
+  constructor(firId: string) {
+    super(
+      `Il FIR ${firId} non è più in bozza: è già stato emesso o annullato da un'altra operazione`
+    )
+    this.name = 'FirNonPiuInBozzaError'
+  }
+}

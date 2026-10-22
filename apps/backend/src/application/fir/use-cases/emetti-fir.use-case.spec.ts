@@ -11,6 +11,7 @@ import { EmettiFIRUseCase } from './emetti-fir.use-case'
 import { EmettiFIRCommand } from '../commands/emetti-fir.command'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
 import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
@@ -66,6 +67,18 @@ class MockFIRRepository implements IFIRRepository {
   async generateNumeroProgressivo(tenantId: string, anno: number): Promise<string> {
     this.progressiveCounter++
     return `FIR-${anno}-${String(this.progressiveCounter).padStart(6, '0')}`
+  }
+
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applica: (n: string) => void
+  ): Promise<string> {
+    this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+    const numero = formattaNumeroFir(anno, this.progressiveCounter)
+    applica(numero)
+    await this.save(fir)
+    return numero
   }
 
   async count(): Promise<number> {

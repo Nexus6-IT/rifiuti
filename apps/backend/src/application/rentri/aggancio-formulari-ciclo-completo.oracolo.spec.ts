@@ -5,6 +5,7 @@ import { corpoFormularioValido } from './mappatura/aiuti-test'
 import { RentriAuthService } from '../../infrastructure/rentri/rentri-auth.service'
 import { RentriConfig } from '../../infrastructure/rentri/rentri-config'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../domain/fir/numero-fir'
 import {
   IFIRRepository,
   FIRSearchFilters,
@@ -234,6 +235,7 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
    * il campo in `agganciaManualmente`, questo repository lo scoprirebbe.
    */
   class InMemoryFIRRepository implements IFIRRepository {
+    private progressiveCounter = 0
     private readonly store = new Map<string, FIR>()
 
     seed(fir: FIR): void {
@@ -289,6 +291,18 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
 
     async generateNumeroProgressivo(): Promise<string> {
       return 'N/D'
+    }
+
+    async emettiConNumerazione(
+      fir: FIR,
+      anno: number,
+      applica: (n: string) => void
+    ): Promise<string> {
+      this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+      const numero = formattaNumeroFir(anno, this.progressiveCounter)
+      applica(numero)
+      await this.save(fir)
+      return numero
     }
 
     async count(): Promise<number> {
