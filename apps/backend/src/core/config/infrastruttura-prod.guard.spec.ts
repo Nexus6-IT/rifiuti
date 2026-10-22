@@ -176,6 +176,18 @@ describe('docker-compose.prod.yml: fuso orario', () => {
   })
 })
 
+describe('docker-compose.prod.yml: log', () => {
+  const compose = leggiFile('docker-compose.prod.yml')
+  it('definisce una rotazione json-file da 50m x 3', () => {
+    expect(compose).toMatch(
+      /^x-logging: &logging\n {2}driver: json-file\n {2}options:\n {4}max-size: "50m"\n {4}max-file: "3"$/m
+    )
+  })
+  it.each(['postgres', 'redis', 'backend', 'frontend'])('%s usa la rotazione comune', servizio => {
+    expect(bloccoServizio(compose, servizio)).toContain('    logging: *logging')
+  })
+})
+
 describe('deploy.yml: rilascio in produzione', () => {
   const deploy = leggiFile('.gitea/workflows/deploy.yml')
   const BACKUP =
