@@ -337,40 +337,80 @@ SQL
   printf 'DB_NAME=prova_restore\nDB_USER=%s\n' "$DB_USER" > "$TMP/env-restore"
   pg_exec pg_dump -U "$DB_USER" prova_restore | gzip > "$TMP/prova_restore.sql.gz"
   gzip -dc "$TMP/prova_restore.sql.gz" > "$TMP/prova_restore.sql"
+  # Dopo il dump la produzione cambia (seconda riga): un ripristino riuscito si riconosce
+  # perche' torna a una riga sola, un ripristino non avvenuto perche' ne restano due.
+  pg_exec psql -U "$DB_USER" -d prova_restore -qAtc 'INSERT INTO t_prova VALUES (2)' >/dev/null
 
-  printf 'CREATE TABLE a(id int);\nSELEC 1;\n%s\n' "$MARCATORE_DUMP" | gzip > "$TMP/istruzione-rotta.sql.gz"
+  # Dump con _prisma_migrations e una tabella validi e un'istruzione rotta in mezzo: senza
+  # ON_ERROR_STOP e -1 psql uscirebbe 0, i controlli passerebbero e lo scambio avverrebbe.
+  printf '%s\n' 'CREATE TABLE _prisma_migrations (id text);' "INSERT INTO _prisma_migrations VALUES ('m1');" \
+    'CREATE TABLE a (id int);' 'INSERT INTO a VALUES (1);' 'SELEC 1;' 'INSERT INTO a VALUES (2);' \
+    "$MARCATORE_DUMP" | gzip > "$TMP/istruzione-rotta.sql.gz"
   esegui_restore rotta "$TMP/istruzione-rotta.sql.gz" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore"
   verifica "restore: istruzione rotta, esce non zero" 0 esito_non_zero rotta
-  verifica "restore: istruzione rotta, produzione intatta" 0 test "$(sql_pg prova_restore 'SELECT count(*) FROM t_prova')" = "1"
+  verifica "restore: istruzione rotta, produzione intatta" 0 test "$(sql_pg prova_restore 'SELECT count(*) FROM t_prova')" = "2"
+  verifica "restore: istruzione rotta, nessun database precedente creato" 0 \
+    test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_prima_del_ripristino_%'")" = "0"
   verifica "restore: istruzione rotta, nessun database temporaneo" 0 \
     test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_ripristino_%'")" = "0"
-  verifica "restore: istruzione rotta, backend fermato e riavviato" 0 \
-    bash -c 'grep -q "stop backend" "$1" && grep -q "start backend" "$1"' _ "$TMP/dc-rotta.log"
+  verifica "restore: istruzione rotta, backend fermato e riavviato com'era (start, non up)" 0 \
+    bash -c 'grep -q "stop backend" "$1" && grep -q "start backend" "$1" && ! grep -q "up -d" "$1"' _ "$TMP/dc-rotta.log"
   verifica "restore: istruzione rotta, messaggio produzione intatta" 0 \
     grep -q 'Ripristino NON riuscito (esito 1): il database di produzione è intatto' "$TMP/err-rotta"
 
-  esegui_restore valido "$TMP/prova_restore.sql.gz" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore"
+  esegui_restore valido "$TMP/prova_restore.sql.gz" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore" \
+    FINTO_DC_PS_IMMAGINE=registro.prova/rifiuti-backend:sha-prova
   verifica "restore: dump valido, esce 0" 0 test "$(cat "$TMP/esito-valido")" -eq 0
   verifica "restore: dump valido, il precedente resta come prova_restore_prima_del_ripristino_*" 0 \
     test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_prima_del_ripristino_%'")" = "1"
-  verifica "restore: dump valido, il ripristinato ha i dati" 0 test "$(sql_pg prova_restore 'SELECT count(*) FROM t_prova')" = "1"
+  verifica "restore: dump valido, il precedente ha i dati di prima (2 righe)" 0 \
+    test "$(sql_pg "$(sql_pg postgres "SELECT datname FROM pg_database WHERE datname LIKE 'prova_restore_prima_del_ripristino_%'")" 'SELECT count(*) FROM t_prova')" = "2"
+  verifica "restore: dump valido, il ripristinato ha i dati del dump (1 riga)" 0 \
+    test "$(sql_pg prova_restore 'SELECT count(*) FROM t_prova')" = "1"
   verifica "restore: dump valido, nessun database temporaneo" 0 \
     test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_ripristino_%'")" = "0"
   verifica "restore: dump valido, migrate con il tag" 0 \
     grep -q 'TAG=sha-prova run --rm backend npx prisma migrate deploy' "$TMP/dc-valido.log"
-  verifica "restore: dump valido, backend riavviato" 0 grep -q 'start backend' "$TMP/dc-valido.log"
+  verifica "restore: dump valido, backend ricreato con il tag dopo il migrate" 0 \
+    bash -c 'grep -n "" "$1" | grep -q "TAG=sha-prova up -d --no-deps backend" &&
+      [ "$(grep -n "up -d" "$1" | cut -d: -f1)" -gt "$(grep -n "run --rm" "$1" | cut -d: -f1)" ] &&
+      ! grep -q "start backend" "$1"' _ "$TMP/dc-valido.log"
+  verifica "restore: dump valido, immagine del backend nel log" 0 \
+    grep -q "Backend avviato con l'immagine: registro.prova/rifiuti-backend:sha-prova" "$TMP/out-valido"
 
   esegui_restore validosql "$TMP/prova_restore.sql" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore"
   verifica "restore: .sql decompresso valido, esce 0" 0 test "$(cat "$TMP/esito-validosql")" -eq 0
   verifica "restore: .sql decompresso, due database precedenti distinti" 0 \
     test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_prima_del_ripristino_%'")" = "2"
 
+  esegui_restore altraimg "$TMP/prova_restore.sql.gz" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore" \
+    FINTO_DC_PS_IMMAGINE=registro.prova/rifiuti-backend:sha-altro
+  verifica "restore: backend con un'immagine diversa dal tag, esce non zero" 0 esito_non_zero altraimg
+  verifica "restore: backend con un'immagine diversa dal tag, messaggio" 0 \
+    grep -q "gira con l'immagine registro.prova/rifiuti-backend:sha-altro, non con il tag sha-prova" "$TMP/err-altraimg"
+
   esegui_restore migrateko "$TMP/prova_restore.sql.gz" RIPRISTINO_TAG=sha-prova FINTO_DC_RUN_FALLISCE=1 \
     WASTEFLOW_ENV_FILE="$TMP/env-restore"
   verifica "restore: migrate fallito esce non zero" 0 esito_non_zero migrateko
   verifica "restore: migrate fallito, il migrate e' stato eseguito" 0 grep -q 'run --rm backend' "$TMP/dc-migrateko.log"
   verifica "restore: migrate fallito, messaggio" 0 grep -q "prisma migrate deploy fallito con l'immagine sha-prova" "$TMP/err-migrateko"
-  verifica "restore: migrate fallito riavvia il backend" 0 grep -q 'start backend' "$TMP/dc-migrateko.log"
+  verifica "restore: migrate fallito, il backend resta fermo (ne' start ne' up)" 0 \
+    bash -c 'grep -q "stop backend" "$1" && ! grep -q "start backend" "$1" && ! grep -q "up -d" "$1"' _ "$TMP/dc-migrateko.log"
+  verifica "restore: migrate fallito, stato: schema non allineato e backend fermo" 0 \
+    grep -q 'il database di produzione è quello ripristinato, con lo schema NON allineato; il precedente è prova_restore_prima_del_ripristino_.*; il backend resta FERMO' "$TMP/err-migrateko"
+
+  # Disaster recovery: il database di produzione non esiste.
+  printf 'DB_NAME=prova_restore_dr\nDB_USER=%s\n' "$DB_USER" > "$TMP/env-restore-dr"
+  esegui_restore dr "$TMP/prova_restore.sql.gz" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore-dr"
+  verifica "restore DR: database assente, esce 0" 0 test "$(cat "$TMP/esito-dr")" -eq 0
+  verifica "restore DR: il ripristinato prende il nome di produzione" 0 \
+    test "$(sql_pg prova_restore_dr 'SELECT count(*) FROM t_prova')" = "1"
+  verifica "restore DR: nessun database precedente ne' temporaneo" 0 \
+    test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_dr_%'")" = "0"
+  verifica "restore DR: migrate e backend ricreato con il tag" 0 \
+    bash -c 'grep -q "TAG=sha-prova run --rm backend npx prisma migrate deploy" "$1" && grep -q "TAG=sha-prova up -d --no-deps backend" "$1"' \
+    _ "$TMP/dc-dr.log"
+  verifica "restore DR: messaggio senza database precedente" 0 grep -q "Non c'era un database precedente" "$TMP/out-dr"
 
   elimina_prova_restore
   verifica "restore: nessun database prova_restore% residuo" 0 test -z "$(elenco_prova_restore)"

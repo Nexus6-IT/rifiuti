@@ -111,7 +111,9 @@ rsync -az backup@backup-server.example.com:/backups/wasteflow/wasteflow_..._2026
 # age -d -i ~/.age/key.txt dump.sql.gz.age > dump.sql.gz
 
 # 3. Eseguire il ripristino (chiede conferma interattiva). RIPRISTINO_TAG è
-#    obbligatoria: il tag dell'immagine del backend coerente con il dump.
+#    obbligatoria: il tag dell'immagine del backend che girerà DOPO il ripristino.
+#    Le sue migration devono essere un'estensione dello schema del dump: di norma
+#    il tag in produzione quando il dump è stato fatto, o uno successivo.
 RIPRISTINO_TAG=sha-1a2b3c4 bash /opt/rifiuti/site/ops/restore.sh \
   /opt/rifiuti/backups/wasteflow_wasteflow_prod_20260610_033000.sql.gz
 ```
@@ -127,25 +129,37 @@ Il restore, nell'ordine:
 1. Rifiuta i formati non ammessi e verifica il dump (marcatore finale di
    `pg_dump`): un dump troncato si ferma qui, con il backend acceso e il database
    intatto
-2. Richiede `RIPRISTINO_TAG` e la esporta come `TAG` per il compose
+2. Richiede `RIPRISTINO_TAG` e la esporta come `TAG`, la variabile che sceglie
+   l'immagine del backend nel compose (`rifiuti-backend:${TAG}`)
 3. Controlla lo spazio libero in `BACKUP_DATI_DIR` (default `/var/lib/docker`):
-   dimensione del database × `RIPRISTINO_FATTORE_SPAZIO` (default 2)
-4. Chiede conferma esplicita (`YES`), poi ferma il backend; da qui in poi il
-   backend viene **sempre** riavviato all'uscita, anche in caso di errore
+   dimensione del database × `RIPRISTINO_FATTORE_SPAZIO` (default 2). Se il
+   database di produzione non esiste (disaster recovery, volume nuovo) la
+   dimensione si stima dal dump decompresso
+4. Chiede conferma esplicita (`YES`), poi ferma il backend
 5. Ripristina il dump in un database nuovo `<DB>_ripristino_<epoch>_<pid>`, in
    una sola transaction (`psql -1 -v ON_ERROR_STOP=1`); se fallisce elimina il
-   database temporaneo ed esce, con il database di produzione intatto
+   database temporaneo, **riavvia il backend** com'era ed esce, con il database di
+   produzione intatto
 6. Controlla il database ripristinato (almeno una tabella in `public`,
-   `_prisma_migrations` leggibile)
+   `_prisma_migrations` leggibile); se fallisce, come al punto 5
 7. Scambia i nomi: il database di produzione diventa
    `<DB>_prima_del_ripristino_<AAAAMMGG_HHMMSS>_<pid>` e quello ripristinato
-   prende il nome `<DB>`
-8. Esegue `prisma migrate deploy` con l'immagine `RIPRISTINO_TAG`; se fallisce
-   esce con errore (il database ripristinato resta in uso, il nome del precedente
-   è nel messaggio)
+   prende il nome `<DB>` (se il database di produzione non esisteva, il
+   ripristinato prende solo il nome)
+8. Esegue `prisma migrate deploy` con l'immagine `RIPRISTINO_TAG`. Se fallisce
+   esce con errore e **il backend resta fermo**: il database ripristinato è in
+   uso con lo schema non allineato, e farlo ripartire nasconderebbe il guasto. Il
+   messaggio dice come rilanciare migrate e avvio, oppure come tornare al
+   database precedente (rinominarlo in `<DB>` a backend fermo)
+9. Ricrea il backend con l'immagine `RIPRISTINO_TAG`
+   (`up -d --no-deps backend`, non `start`, che riavvierebbe il container con la
+   sua immagine di prima), scrive nel log l'immagine effettiva ed esce con errore
+   se non corrisponde al tag
 
 In caso di errore l'ultima riga del log dice in che stato è il database di
-produzione: `intatto`, oppure `quello ripristinato; il precedente è <nome>`.
+produzione: `intatto` (backend riavviato), `quello ripristinato, con lo schema
+NON allineato; il precedente è <nome>; il backend resta FERMO`, oppure uno stato
+da verificare a mano se lo script è stato interrotto durante lo scambio dei nomi.
 
 **Il database precedente non viene eliminato.** Dopo aver verificato
 l'applicazione va eliminato a mano con `DROP DATABASE "<nome>"` (il nome è
@@ -175,7 +189,8 @@ Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa
 **dopo** il `git revert` e la pipeline, con `RIPRISTINO_TAG` uguale al tag del
 rilascio **precedente** (quello in produzione prima del deploy da annullare):
-`restore.sh` esegue `prisma migrate deploy` con quell'immagine, e con il tag del
+`restore.sh` esegue `prisma migrate deploy` con quell'immagine e ci ricrea il
+backend, e con il tag del
 rilascio da annullare riapplicherebbe proprio la migration che si voleva togliere.
 
 Aggiungere a `deploy.yml` un input `tag` che salti la build è una decisione
