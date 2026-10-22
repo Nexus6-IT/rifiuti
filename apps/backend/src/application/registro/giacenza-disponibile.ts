@@ -70,7 +70,13 @@ export async function giacenzaDisponibileAl(
     FROM candidati c ORDER BY c.saldo ASC, c.g ASC LIMIT 1
   `
 
-  const r = righe[0]
+  // La query restituisce sempre il candidato del giorno richiesto; se non arriva nessuna
+  // riga, nessun movimento conta: saldo zero, col limite al giorno di `alla`.
+  const r: RigaGiacenza = righe?.[0] ?? {
+    vincolo_al: new Date(`${giornoAlla}T00:00:00Z`),
+    saldo: 0,
+    saldo_totale: 0,
+  }
   return {
     saldoComplessivoKg: arrotonda3(r.saldo_totale),
     disponibileAllaDataKg: arrotonda3(r.saldo),
