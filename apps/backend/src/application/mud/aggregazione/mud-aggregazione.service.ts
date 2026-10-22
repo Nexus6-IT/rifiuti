@@ -22,6 +22,7 @@ import {
   operazioneDaCausale,
   operazioneDaCodice,
   statoFisicoMud,
+  type StatoFisicoRegistro,
 } from './mud-regole'
 import { controlliMud, type MudEsitoControllo, type RifMovimento } from './mud-controlli'
 import {
@@ -118,7 +119,7 @@ interface RigaInCorso {
   recuperoKg: number
   smaltimentoKg: number
   /** stati fisici (non nulli) dei movimenti inclusi */
-  stati: Set<StatoFisico>
+  stati: Set<StatoFisicoRegistro>
   dr: Map<string, VoceDr>
   te: Map<string, VoceTe>
 }
@@ -777,11 +778,13 @@ export class MudAggregazioneService {
       }
 
       const stati = [...acc.stati]
-      if (stati.length > 1) controlli.push(controlliMud.statoFisicoNonUnivoco(cer6, stati))
+      if (stati.length > 1 || stati[0] === 'NON_RICONOSCIUTO') {
+        controlli.push(controlliMud.statoFisicoNonUnivoco(cer6, stati))
+      }
 
       return {
         cerCode: cer6,
-        ...(stati.length === 1 ? { statoFisico: stati[0] } : {}),
+        ...(stati.length === 1 && stati[0] !== 'NON_RICONOSCIUTO' ? { statoFisico: stati[0] } : {}),
         prodottoKg: arrotonda3(acc.prodottoKg),
         recuperoKg: arrotonda3(acc.recuperoKg),
         smaltimentoKg: arrotonda3(acc.smaltimentoKg),

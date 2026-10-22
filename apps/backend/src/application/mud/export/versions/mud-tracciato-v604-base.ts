@@ -49,6 +49,9 @@ export const LUNGHEZZE_RECORD_V604: Readonly<Record<string, number>> = {
   DB: 221,
 }
 
+/** Stato fisico che il tracciato indica quando la riga non ne ha uno. */
+export const STATO_FISICO_PREDEFINITO: StatoFisico = 'SOLIDO_NON_POLVERULENTO'
+
 /** Ordine dei 7 flag di stato fisico nei record BA e DA. */
 const STATO_FISICO_ORDER: StatoFisico[] = [
   'SOLIDO_POLVERULENTO',
@@ -276,7 +279,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
 
   /** 7 flag (0/1) di stato fisico; default solido NON polverulento. */
   protected statoFisicoFlags(stato?: StatoFisico): string[] {
-    const selected = stato ?? 'SOLIDO_NON_POLVERULENTO'
+    const selected = stato ?? STATO_FISICO_PREDEFINITO
     return STATO_FISICO_ORDER.map(s => (s === selected ? '1' : '0'))
   }
 

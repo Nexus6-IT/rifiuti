@@ -230,6 +230,26 @@ describe('MudAggregazioneService', () => {
       ])
     })
 
+    it('uno stato non riconosciuto avvisa invece di cadere in silenzio sul predefinito', async () => {
+      impostaDati({ movimenti: [mov({ wastePhysicalState: 'Rifiuto strano' })] })
+      const r = await service.aggrega('t1', 2025)
+      expect(r.righe[0].statoFisico).toBeUndefined()
+      expect(conCodice(r.controlli, 'STATO_FISICO_NON_UNIVOCO')).toEqual([
+        controlliMud.statoFisicoNonUnivoco('170405', ['NON_RICONOSCIUTO']),
+      ])
+    })
+
+    it('liquido più vischioso avvisa', async () => {
+      impostaDati({
+        movimenti: [
+          mov({ wastePhysicalState: 'Liquido' }),
+          mov({ progressiveNumber: 2, wastePhysicalState: 'Vischioso' }),
+        ],
+      })
+      const r = await service.aggrega('t1', 2025)
+      expect(conCodice(r.controlli, 'STATO_FISICO_NON_UNIVOCO')).toHaveLength(1)
+    })
+
     it('un movimento escluso non conta per lo stato', async () => {
       impostaDati({
         movimenti: [

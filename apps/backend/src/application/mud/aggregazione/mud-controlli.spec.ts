@@ -321,6 +321,17 @@ describe('controlliMud', () => {
     ).toBe(r.messaggio)
   })
 
+  it('statoFisicoNonUnivoco con un valore non riconosciuto lo dice, anche da solo', () => {
+    expect(
+      controlliMud.statoFisicoNonUnivoco('200304', ['LIQUIDO', 'NON_RICONOSCIUTO']).messaggio
+    ).toBe(
+      'Il rifiuto CER 200304 è registrato con stati fisici diversi (liquido, non riconosciuto): il file indica "solido non polverulento". La divisione in più schede RIF non è ancora supportata.'
+    )
+    expect(controlliMud.statoFisicoNonUnivoco('200304', ['NON_RICONOSCIUTO']).messaggio).toBe(
+      'Il rifiuto CER 200304 è registrato con uno stato fisico non riconosciuto: il file indica "solido non polverulento". Correggere lo stato fisico nel registro.'
+    )
+  })
+
   it('riepilogaAvvisi mette prima i codici che riducono il dichiarato', () => {
     const kg = (n: number, q: number) => ({ ...m, progressiveNumber: n, quantity: q, unit: 'KG' })
     const controlli = [

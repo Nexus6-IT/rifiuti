@@ -3,6 +3,8 @@ import { formattaDataItaliana } from '../../../core/time/anno-italiano'
 import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
 import { convertiInKg } from '../../../domain/waste-movement/unita-misura-registro'
 import type { StatoFisico } from '../export/mud-export.types'
+import { STATO_FISICO_PREDEFINITO } from '../export/versions/mud-tracciato-v604-base'
+import type { StatoFisicoRegistro } from './mud-regole'
 import { chiaveDestinatario, chiaveMovimento, chiavePesoSpecifico } from './mud-integrazioni'
 
 // Catalogo dei controlli del MUD: il testo dei messaggi è quello concordato, i test lo
@@ -88,7 +90,8 @@ export interface RifUnitaLocale {
 
 const q = formattaQuantita
 
-const ETICHETTA_STATO_FISICO: Record<StatoFisico, string> = {
+const ETICHETTA_STATO_FISICO: Record<StatoFisicoRegistro, string> = {
+  NON_RICONOSCIUTO: 'non riconosciuto',
   SOLIDO_POLVERULENTO: 'solido polverulento',
   SOLIDO_NON_POLVERULENTO: 'solido non polverulento',
   FANGOSO_PALABILE: 'fangoso palabile',
@@ -382,16 +385,26 @@ export const controlliMud = {
 
   // Chiamata solo con più di uno stato fisico per lo stesso CER (A-W-11). Gli stati si elencano
   // in ordine alfabetico di etichetta, così il testo non dipende dall'ordine dei movimenti.
-  statoFisicoNonUnivoco: (cerCode6: string, stati: StatoFisico[]): MudEsitoControllo => ({
-    codice: 'STATO_FISICO_NON_UNIVOCO',
-    gravita: AVVISO,
-    messaggio: `Il rifiuto CER ${cerCode6} è registrato con stati fisici diversi (${stati
-      .map(s => ETICHETTA_STATO_FISICO[s])
-      .sort()
-      .join(
-        ', '
-      )}): il file indica "solido non polverulento". La divisione in più schede RIF non è ancora supportata.`,
-  }),
+  statoFisicoNonUnivoco: (cerCode6: string, stati: StatoFisicoRegistro[]): MudEsitoControllo => {
+    const predefinito = ETICHETTA_STATO_FISICO[STATO_FISICO_PREDEFINITO]
+    if (stati.length === 1 && stati[0] === 'NON_RICONOSCIUTO') {
+      return {
+        codice: 'STATO_FISICO_NON_UNIVOCO',
+        gravita: AVVISO,
+        messaggio: `Il rifiuto CER ${cerCode6} è registrato con uno stato fisico non riconosciuto: il file indica "${predefinito}". Correggere lo stato fisico nel registro.`,
+      }
+    }
+    return {
+      codice: 'STATO_FISICO_NON_UNIVOCO',
+      gravita: AVVISO,
+      messaggio: `Il rifiuto CER ${cerCode6} è registrato con stati fisici diversi (${stati
+        .map(s => ETICHETTA_STATO_FISICO[s])
+        .sort()
+        .join(
+          ', '
+        )}): il file indica "${predefinito}". La divisione in più schede RIF non è ancora supportata.`,
+    }
+  },
 
   // Chiamata solo con almeno un saldo positivo (A-W-06): senza, il file è coerente col registro.
   giacenzeNonCalcolate: (

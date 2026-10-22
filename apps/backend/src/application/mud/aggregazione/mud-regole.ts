@@ -51,26 +51,44 @@ export function operazioneDaCausale(causale: string): 'R' | 'D' | undefined {
   return undefined
 }
 
+/** Valore del registro non vuoto che non corrisponde a nessun flag del tracciato. */
+export type StatoFisicoRegistro = StatoFisico | 'NON_RICONOSCIUTO'
+
+// Chiavi normalizzate come `normalizzaChiave` del ponte RENTRI (mappa-rifiuto.ts: maiuscolo,
+// spazi e trattini a underscore); gli alias di quel ponte ci sono tutti, più gassoso/misto/altro
+// e le forme del tracciato. Il bersaglio è diverso (flag MUD, non codici RENTRI), quindi la
+// tabella non è condivisa.
 const STATO_FISICO_DAL_REGISTRO: Record<string, StatoFisico> = {
-  solido: 'SOLIDO_NON_POLVERULENTO',
-  polvere: 'SOLIDO_POLVERULENTO',
-  polverulento: 'SOLIDO_POLVERULENTO',
-  fangoso: 'FANGOSO_PALABILE',
-  liquido: 'LIQUIDO',
-  gassoso: 'AERIFORME',
-  misto: 'ALTRO',
+  SOLIDO: 'SOLIDO_NON_POLVERULENTO',
+  SOLIDO_NON_POLVERULENTO: 'SOLIDO_NON_POLVERULENTO',
+  POLVERE: 'SOLIDO_POLVERULENTO',
+  POLVERULENTO: 'SOLIDO_POLVERULENTO',
+  SOLIDO_POLVERULENTO: 'SOLIDO_POLVERULENTO',
+  IN_POLVERE_O_PULVERULENTO: 'SOLIDO_POLVERULENTO',
+  FANGOSO: 'FANGOSO_PALABILE',
+  FANGOSO_PALABILE: 'FANGOSO_PALABILE',
+  LIQUIDO: 'LIQUIDO',
+  GASSOSO: 'AERIFORME',
+  AERIFORME: 'AERIFORME',
+  VISCHIOSO: 'VISCHIOSO_SCIROPPOSO',
+  VISCHIOSO_SCIROPPOSO: 'VISCHIOSO_SCIROPPOSO',
+  VISCOSO: 'VISCHIOSO_SCIROPPOSO',
+  VISCOSO_SCIROPPOSO: 'VISCHIOSO_SCIROPPOSO',
+  MISTO: 'ALTRO',
+  ALTRO: 'ALTRO',
 }
 
 /**
  * Stato fisico del tracciato dal valore scritto nel registro (`WasteMovement.wastePhysicalState`).
- * Confronto senza maiuscole né spazi ai bordi; un valore non riconosciuto o vuoto vale `null`,
- * cioè «non indicato» (il tracciato userà il suo predefinito).
+ * Vuoto o assente vale `null` («non indicato»: il tracciato userà il suo predefinito); un valore
+ * non vuoto che non si riconosce vale `NON_RICONOSCIUTO`, così non sparisce in silenzio.
  */
-export function statoFisicoMud(valore: string | null | undefined): StatoFisico | null {
-  const chiave = (valore ?? '').trim().toLowerCase()
+export function statoFisicoMud(valore: string | null | undefined): StatoFisicoRegistro | null {
+  const chiave = (valore ?? '').trim().toUpperCase().replace(/[s-]+/g, '_').replace(/_+/g, '_')
+  if (!chiave) return null
   return Object.prototype.hasOwnProperty.call(STATO_FISICO_DAL_REGISTRO, chiave)
     ? STATO_FISICO_DAL_REGISTRO[chiave]
-    : null
+    : 'NON_RICONOSCIUTO'
 }
 
 const arrotonda3 = (n: number): number => Math.round(n * 1000) / 1000
