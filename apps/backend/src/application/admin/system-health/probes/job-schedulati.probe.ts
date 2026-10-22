@@ -92,7 +92,8 @@ export const JOB_SCHEDULATI: DescrittoreJobSchedulato[] = [
     espressioneCron: CronExpression.EVERY_DAY_AT_8AM,
     cadenzaAttesaMs: GIORNO,
     nota:
-      'Il job invia notifiche solo a 30/15/7/3/1 giorni dalla scadenza del 30 aprile: ' +
+      'Il job invia notifiche solo a 30/15/7/3/1 giorni dalla scadenza del tracciato MUD ' +
+      "dell'anno (il 30 aprile solo se il tracciato non ne indica una): " +
       "negli altri giorni non produce nulla, quindi l'assenza di notifiche recenti non e' un guasto.",
   },
   {
