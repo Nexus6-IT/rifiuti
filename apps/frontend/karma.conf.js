@@ -10,7 +10,15 @@
 // E' una diagnosi che costa tempo, perche' si presenta travestita da difetto
 // del codice appena scritto. I valori sotto danno al browser un margine
 // realistico su una macchina che sta anche compilando e girando altre suite.
+// Ordine casuale dei test con seme stampato: un fallimento che dipende dall'ordine si
+// riproduce rilanciando con JASMINE_SEED=<seme> (prima il seme non si vedeva, e un test
+// instabile non era attribuibile).
+const semeJasmine = process.env.JASMINE_SEED || String(Math.floor(Math.random() * 100000))
+
 module.exports = function (config) {
+  console.log(
+    `Seme Jasmine: ${semeJasmine} (per riprodurre lo stesso ordine: JASMINE_SEED=${semeJasmine})`
+  )
   config.set({
     basePath: '',
     frameworks: ['jasmine', '@angular-devkit/build-angular'],
@@ -22,7 +30,7 @@ module.exports = function (config) {
       require('@angular-devkit/build-angular/plugins/karma'),
     ],
     client: {
-      jasmine: {},
+      jasmine: { random: true, seed: semeJasmine },
       clearContext: false,
     },
     reporters: ['progress', 'kjhtml'],

@@ -157,9 +157,16 @@ const BLOCCANTI_INTEGRAZIONE: MudControllo[] = [
 const erroreBlob = (status: number, body: object) =>
   new HttpErrorResponse({ status, error: new Blob([JSON.stringify(body)]) })
 
-/** Lascia completare le letture asincrone dei corpi Blob. */
-const attendi = async () => {
-  for (let i = 0; i < 5; i++) await new Promise(r => setTimeout(r, 0))
+/**
+ * Attende che il gestore d'errore asincrono abbia finito, cioè che `pronto()` sia vero (di
+ * solito: il toast è stato mostrato). `Blob.text()` in Chrome passa dal registro dei blob, quindi
+ * non si risolve in un numero fisso di giri del ciclo degli eventi: un conteggio fisso di
+ * `setTimeout` rendeva i test instabili sotto carico. Scaduto il tempo, ritorna e lascia
+ * fallire l'aspettativa del test con il suo messaggio.
+ */
+const attendiChe = async (pronto: () => boolean, entroMs = 5000) => {
+  const scadenza = Date.now() + entroMs
+  while (!pronto() && Date.now() < scadenza) await new Promise(r => setTimeout(r, 0))
 }
 
 describe('MudComponent', () => {
@@ -402,7 +409,7 @@ describe('MudComponent', () => {
       )
       crea()
       component.download()
-      await attendi()
+      await attendiChe(() => toast.warn.calls.any())
 
       expect(toast.warn).toHaveBeenCalledWith(
         'Gli avvisi sono cambiati: rileggili e conferma di nuovo.'
@@ -416,7 +423,7 @@ describe('MudComponent', () => {
       )
       crea()
       component.download()
-      await attendi()
+      await attendiChe(() => toast.error.calls.any())
 
       expect(toast.error).toHaveBeenCalledWith(
         'Il file MUD non può essere generato: correggi gli errori elencati nel riepilogo.'
@@ -436,7 +443,7 @@ describe('MudComponent', () => {
       )
       crea()
       component.download()
-      await attendi()
+      await attendiChe(() => toast.error.calls.any())
 
       expect(toast.error).toHaveBeenCalledWith(
         'Il file MUD ha avvisi da confermare: chiedi a un amministratore di generarlo.'
@@ -553,7 +560,7 @@ describe('MudComponent', () => {
       crea()
       component.apriSegnatura()
       component.conferma()
-      await attendi()
+      await attendiChe(() => toast.error.calls.any())
       expect(toast.error).toHaveBeenCalledWith('Il MUD risulta già presentato.')
     })
 
@@ -739,7 +746,7 @@ describe('MudComponent', () => {
       )
       conBloccanti()
       component.salvaIntegrazioni()
-      await attendi()
+      await attendiChe(() => toast.error.calls.any())
       expect(toast.error).toHaveBeenCalledWith('Codice fiscale o partita IVA "1" di "X" non valido')
     })
 
