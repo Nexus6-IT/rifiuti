@@ -3,6 +3,11 @@ import { RegistraMovimentoUseCase } from './registra-movimento.use-case'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
+import { giacenzaDisponibileAl } from '../giacenza-disponibile'
+import { annoSolareItaliano } from '../../../core/time/anno-italiano'
+
+jest.mock('../giacenza-disponibile')
+const giacenzaMock = giacenzaDisponibileAl as jest.MockedFunction<typeof giacenzaDisponibileAl>
 
 describe('RegistraMovimentoUseCase', () => {
   let useCase: RegistraMovimentoUseCase
@@ -61,22 +66,93 @@ describe('RegistraMovimentoUseCase', () => {
     )
   }
 
-  /** Helper che simula la transazione Prisma con un singolo progressivo disponibile.
-   * Aggiunge `$executeRaw` per il mock dell'advisory lock (pg_advisory_xact_lock). */
-  function _mockTransazione(record: object) {
-    prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
-      const tx = {
-        $executeRaw: jest.fn().mockResolvedValue(0), // advisory lock no-op nel test
-        $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
-        wasteMovement: {
-          create: jest.fn().mockResolvedValue(record),
-        },
-      }
-      return fn(tx)
-    })
+  /** SCARICO CONFERIMENTO_TRASPORTATORE sul CER 20 03 01, 100 KG, oggi, senza FIR. */
+  function scaricoCmd(
+    over: Partial<{ quantity: number; unit: string; movementDate: Date }> = {}
+  ): RegistraMovimentoCommand {
+    return new RegistraMovimentoCommand(
+      TENANT,
+      USER,
+      'SCARICO',
+      over.movementDate ?? TODAY,
+      TODAY,
+      'CONFERIMENTO_TRASPORTATORE',
+      '20 03 01',
+      undefined,
+      over.quantity ?? 100,
+      over.unit ?? 'KG',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    )
   }
 
+  const recordScarico = {
+    id: 'id-004',
+    tenantId: TENANT,
+    progressiveNumber: 6,
+    progressiveYear: 2026,
+    type: 'SCARICO',
+    movementDate: TODAY,
+    registrationDate: TODAY,
+    causale: 'CONFERIMENTO_TRASPORTATORE',
+    cerCode: '20 03 01',
+    wasteDescription: null,
+    quantity: 100,
+    unit: 'KG',
+    wastePhysicalState: null,
+    wasteHazardClasses: null,
+    operationCode: null,
+    counterpartName: null,
+    counterpartAddress: null,
+    firId: null,
+    recordedByUserId: USER,
+    entryHash: 'a'.repeat(64),
+    notes: null,
+    createdAt: TODAY,
+    updatedAt: TODAY,
+  }
+
+  const recordCarico = {
+    ...recordScarico,
+    id: 'id-005',
+    progressiveNumber: 1,
+    type: 'CARICO',
+    causale: 'PRODUZIONE_INTERNA',
+    entryHash: 'b'.repeat(64),
+  }
+
+  /** Helper che simula la transazione Prisma con un singolo progressivo disponibile.
+   * Aggiunge `$executeRaw` per il mock dell'advisory lock (pg_advisory_xact_lock).
+   * Restituisce il `tx` passato alla callback. */
+  function _mockTransazione(record: object) {
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(0), // advisory lock no-op nel test
+      $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
+      wasteMovement: {
+        create: jest.fn().mockResolvedValue(record),
+      },
+    }
+    prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => fn(tx))
+    return tx
+  }
+
+  const g = (complessivo: number, allaData = complessivo, vincoloAl = TODAY) => ({
+    saldoComplessivoKg: complessivo,
+    disponibileAllaDataKg: allaData,
+    vincoloAl,
+  })
+
   beforeEach(async () => {
+    giacenzaMock.mockResolvedValue({
+      saldoComplessivoKg: 1_000_000,
+      disponibileAllaDataKg: 1_000_000,
+      vincoloAl: TODAY,
+    })
     prisma = buildPrisma()
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -233,103 +309,214 @@ describe('RegistraMovimentoUseCase', () => {
     expect(capturedData.entryHash).toMatch(/^[0-9a-f]{64}$/)
   })
 
-  // ─── Giacenza insufficiente ──────────────────────────────────────────────────
+  // ─── Giacenza (dentro la transaction, sotto lock) ───────────────────────────
 
   it('restituisce errore se lo scarico supera la giacenza disponibile', async () => {
     // Giacenza: 80 kg, scarico richiesto: 100 kg
-    prisma.wasteMovement.groupBy.mockResolvedValue([
-      { type: 'CARICO', _sum: { quantity: 80 } },
-      { type: 'SCARICO', _sum: { quantity: 0 } },
-    ])
+    giacenzaMock.mockResolvedValue(g(80))
+    const tx = _mockTransazione(recordScarico)
 
-    const cmd = new RegistraMovimentoCommand(
-      TENANT,
-      USER,
-      'SCARICO',
-      TODAY,
-      TODAY,
-      'CONFERIMENTO_TRASPORTATORE',
-      '20 03 01',
-      undefined,
-      100,
-      'KG',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'fir-id-001',
-      undefined
-    )
-    const result = await useCase.execute(cmd)
+    const result = await useCase.execute(scaricoCmd({ quantity: 100 }))
 
     expect(result.isFailure).toBe(true)
     expect(result.error).toContain('Giacenza insufficiente')
+    expect(tx.wasteMovement.create).not.toHaveBeenCalled()
   })
 
   it('permette lo scarico se la giacenza è sufficiente', async () => {
-    prisma.wasteMovement.groupBy.mockResolvedValue([
-      { type: 'CARICO', _sum: { quantity: 200 } },
-      { type: 'SCARICO', _sum: { quantity: 50 } },
-    ])
-    prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
-      const tx = {
-        $executeRaw: jest.fn().mockResolvedValue(0),
-        $queryRaw: jest.fn().mockResolvedValue([{ max_num: 5 }]),
-        wasteMovement: {
-          create: jest.fn().mockResolvedValue({
-            id: 'id-004',
-            tenantId: TENANT,
-            progressiveNumber: 6,
-            progressiveYear: 2026,
-            type: 'SCARICO',
-            movementDate: TODAY,
-            registrationDate: TODAY,
-            causale: 'CONFERIMENTO_TRASPORTATORE',
-            cerCode: '20 03 01',
-            wasteDescription: null,
-            quantity: 100,
-            unit: 'KG',
-            wastePhysicalState: null,
-            wasteHazardClasses: null,
-            operationCode: null,
-            counterpartName: null,
-            counterpartAddress: null,
-            firId: 'fir-id-001',
-            recordedByUserId: USER,
-            entryHash: 'a'.repeat(64),
-            notes: null,
-            createdAt: TODAY,
-            updatedAt: TODAY,
-          }),
-        },
-      }
-      return fn(tx)
-    })
+    giacenzaMock.mockResolvedValue(g(150))
+    _mockTransazione(recordScarico)
 
-    const cmd = new RegistraMovimentoCommand(
-      TENANT,
-      USER,
-      'SCARICO',
-      TODAY,
-      TODAY,
-      'CONFERIMENTO_TRASPORTATORE',
-      '20 03 01',
-      undefined,
-      100,
-      'KG',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'fir-id-001',
-      undefined
-    )
-    const result = await useCase.execute(cmd)
+    const result = await useCase.execute(scaricoCmd({ quantity: 100 }))
 
     expect(result.isSuccess).toBe(true)
     expect(result.value.type).toBe('SCARICO')
+  })
+
+  it('calcola la giacenza dentro la transaction, per tenant, CER e data dello scarico', async () => {
+    giacenzaMock.mockResolvedValue(g(50))
+    _mockTransazione(recordScarico)
+    await useCase.execute(scaricoCmd({ quantity: 10, unit: 'KG', movementDate: TODAY }))
+    expect(giacenzaMock).toHaveBeenCalledWith(expect.anything(), {
+      tenantId: TENANT,
+      cerCode: '20 03 01',
+      alla: TODAY,
+    })
+    expect(prisma.wasteMovement.groupBy).not.toHaveBeenCalled()
+  })
+
+  it('prende il lock della giacenza dopo quello del progressivo e prima di leggere la giacenza', async () => {
+    const ordine: string[] = []
+    const tx = _mockTransazione(recordScarico)
+    tx.$executeRaw.mockImplementation(async (_s: any, chiave: string) => {
+      ordine.push(`lock ${chiave}`)
+      return 0
+    })
+    giacenzaMock.mockImplementation(async () => {
+      ordine.push('giacenza')
+      return g(1000)
+    })
+    await useCase.execute(scaricoCmd())
+    expect(ordine).toEqual([
+      `lock ${TENANT}-${annoSolareItaliano(TODAY)}`,
+      `lock giacenza|${TENANT}|20 03 01`,
+      'giacenza',
+    ])
+  })
+
+  it('il lock della giacenza usa il CER senza asterisco', async () => {
+    const chiavi: string[] = []
+    const tx = _mockTransazione({ ...recordScarico, cerCode: '20 03 01*' })
+    tx.$executeRaw.mockImplementation(async (_s: any, chiave: string) => {
+      chiavi.push(chiave)
+      return 0
+    })
+    await useCase.execute(
+      new RegistraMovimentoCommand(
+        TENANT,
+        USER,
+        'SCARICO',
+        TODAY,
+        TODAY,
+        'CONFERIMENTO_TRASPORTATORE',
+        '200301*',
+        undefined,
+        10,
+        'KG',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined
+      )
+    )
+    expect(chiavi).toContain(`giacenza|${TENANT}|20 03 01`)
+  })
+
+  it("il messaggio riporta la giacenza nell'unità dello scarico, in formato italiano", async () => {
+    giacenzaMock.mockResolvedValue(g(400))
+    const tx = _mockTransazione(recordScarico)
+    const r = await useCase.execute(scaricoCmd({ quantity: 0.5, unit: 'tonnellate' }))
+    expect(r.isFailure).toBe(true)
+    expect(r.error).toContain('restano 0,4 t, richiesti 0,5 t')
+    expect(r.error).not.toContain('Errore durante la registrazione')
+    expect(tx.wasteMovement.create).not.toHaveBeenCalled()
+  })
+
+  it("con l'unità vuota il messaggio scrive kg", async () => {
+    giacenzaMock.mockResolvedValue(g(1234.5))
+    _mockTransazione(recordScarico)
+    const r = await useCase.execute(scaricoCmd({ quantity: 2000, unit: '' }))
+    expect(r.error).toContain('restano 1.234,5 kg, richiesti 2.000 kg')
+  })
+
+  it('con il saldo complessivo già negativo il messaggio lo dice', async () => {
+    giacenzaMock.mockResolvedValue(g(-100))
+    _mockTransazione(recordScarico)
+    const r = await useCase.execute(scaricoCmd({ quantity: 1 }))
+    expect(r.error).toContain('il registro risulta già sotto zero di 100 kg')
+    expect(r.error).not.toContain('-100')
+  })
+
+  it('il messaggio di giacenza insufficiente indica quale carico registrare', async () => {
+    giacenzaMock.mockResolvedValue(g(10))
+    _mockTransazione(recordScarico)
+    const r = await useCase.execute(scaricoCmd({ quantity: 50 }))
+    expect(r.error).toContain(
+      'registra il carico mancante con la causale Altro carico (non viene contato come prodotto nel MUD)'
+    )
+    expect(r.error).toContain('se è stato prodotto ora, usa Produzione interna.')
+  })
+
+  it('uno scarico retrodatato coperto dal saldo complessivo si registra con un avviso', async () => {
+    giacenzaMock.mockResolvedValue(g(100, 0))
+    const tx = _mockTransazione(recordScarico)
+    const r = await useCase.execute(
+      scaricoCmd({ quantity: 50, movementDate: new Date('2026-03-05T00:00:00Z') })
+    )
+    expect(r.isSuccess).toBe(true)
+    expect(tx.wasteMovement.create).toHaveBeenCalled()
+    expect(r.value.avvisi).toEqual([
+      expect.stringContaining(
+        'Lo scarico è datato 05/03/2026, ma a quella data il registro ha disponibili 0 kg'
+      ),
+    ])
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Scarico registrato con un ordine di date incoerente',
+      expect.objectContaining({ cerCode: '20 03 01' })
+    )
+  })
+
+  it("l'avviso indica la data del saldo che fa da limite", async () => {
+    giacenzaMock.mockResolvedValue(g(100, 0, new Date('2026-03-03T00:00:00Z')))
+    _mockTransazione(recordScarico)
+    const r = await useCase.execute(
+      scaricoCmd({ movementDate: new Date('2026-03-02T00:00:00Z'), quantity: 10 })
+    )
+    expect(r.value.avvisi[0]).toContain('(il limite viene dal saldo del 03/03/2026)')
+  })
+
+  it("l'avviso non cita il limite se il saldo che lo fissa è dello stesso giorno dello scarico", async () => {
+    // Scarico alle 23:30 UTC del 2 marzo = 3 marzo italiano; vincoloAl = 3 marzo (mezzanotte UTC).
+    // Confrontando gli istanti il limite risulterebbe "dopo"; confrontando i giorni no.
+    giacenzaMock.mockResolvedValue(g(100, 0, new Date('2026-03-03T00:00:00Z')))
+    _mockTransazione(recordScarico)
+    const r = await useCase.execute(
+      scaricoCmd({ movementDate: new Date('2026-03-02T23:30:00Z'), quantity: 10 })
+    )
+    expect(r.value.avvisi).toHaveLength(1)
+    expect(r.value.avvisi[0]).not.toContain('il limite viene dal saldo')
+  })
+
+  it('senza problemi di date non ci sono avvisi', async () => {
+    _mockTransazione(recordScarico)
+    expect((await useCase.execute(scaricoCmd())).value.avvisi).toEqual([])
+  })
+
+  it.each([[NaN], [undefined], [null]])(
+    'se la giacenza non è un numero finito (%p) lo scarico è rifiutato',
+    async valore => {
+      giacenzaMock.mockResolvedValue({
+        saldoComplessivoKg: valore as any,
+        disponibileAllaDataKg: 1000,
+        vincoloAl: TODAY,
+      })
+      const tx = _mockTransazione(recordScarico)
+      const r = await useCase.execute(scaricoCmd({ quantity: 1 }))
+      expect(r.isFailure).toBe(true)
+      expect(r.error).toContain('Impossibile verificare la giacenza')
+      expect(tx.wasteMovement.create).not.toHaveBeenCalled()
+    }
+  )
+
+  it('uno scarico in unità non di massa salta il controllo con un warning', async () => {
+    const tx = _mockTransazione(recordScarico)
+    const r = await useCase.execute(scaricoCmd({ quantity: 3, unit: 'M3' }))
+    expect(r.isSuccess).toBe(true)
+    expect(giacenzaMock).not.toHaveBeenCalled()
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Scarico in unità non di massa: controllo di giacenza saltato',
+      expect.objectContaining({ unit: 'M3' })
+    )
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1) // solo il lock del progressivo
+    expect(tx.wasteMovement.create).toHaveBeenCalled()
+  })
+
+  it('un CARICO non legge la giacenza e non prende il lock della giacenza', async () => {
+    const tx = _mockTransazione(recordCarico)
+    const r = await useCase.execute(buildCommand())
+    expect(r.isSuccess).toBe(true)
+    expect(giacenzaMock).not.toHaveBeenCalled()
+    const chiavi = tx.$executeRaw.mock.calls.map((c: any[]) => c.slice(1).join(' '))
+    expect(chiavi).toEqual([`${TENANT}-${annoSolareItaliano(TODAY)}`])
+    expect(chiavi.some((k: string) => k.startsWith('giacenza|'))).toBe(false)
+  })
+
+  it('un CARICO restituisce avvisi vuoti', async () => {
+    _mockTransazione(recordCarico)
+    expect((await useCase.execute(buildCommand())).value.avvisi).toEqual([])
   })
 
   // ─── Ritardo registrazione ───────────────────────────────────────────────────
@@ -397,74 +584,6 @@ describe('RegistraMovimentoUseCase', () => {
     expect(result.isSuccess).toBe(true)
     expect(result.value.fuoriTermine).toBe(true)
     expect(result.value.ritardoGg).toBeGreaterThan(0)
-  })
-
-  // ─── Isolamento multi-tenant ─────────────────────────────────────────────────
-
-  it('la query giacenza filtra per tenantId — no leak cross-tenant', async () => {
-    prisma.wasteMovement.groupBy.mockResolvedValue([])
-    prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
-      const tx = {
-        $executeRaw: jest.fn().mockResolvedValue(0),
-        $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
-        wasteMovement: {
-          create: jest.fn().mockResolvedValue({
-            id: 'id-006',
-            tenantId: TENANT,
-            progressiveNumber: 1,
-            progressiveYear: 2026,
-            type: 'SCARICO',
-            movementDate: TODAY,
-            registrationDate: TODAY,
-            causale: 'AVVIO_RECUPERO',
-            cerCode: '20 03 01',
-            wasteDescription: null,
-            quantity: 10,
-            unit: 'KG',
-            wastePhysicalState: null,
-            wasteHazardClasses: null,
-            operationCode: null,
-            counterpartName: null,
-            counterpartAddress: null,
-            firId: null,
-            recordedByUserId: USER,
-            entryHash: 'c'.repeat(64),
-            notes: null,
-            createdAt: TODAY,
-            updatedAt: TODAY,
-          }),
-        },
-      }
-      return fn(tx)
-    })
-
-    const cmd = new RegistraMovimentoCommand(
-      TENANT,
-      USER,
-      'SCARICO',
-      TODAY,
-      TODAY,
-      'AVVIO_RECUPERO',
-      '20 03 01',
-      undefined,
-      10,
-      'KG',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined
-    )
-    await useCase.execute(cmd)
-
-    // La chiamata groupBy deve includere tenantId (non altri tenant)
-    expect(prisma.wasteMovement.groupBy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ tenantId: TENANT }),
-      })
-    )
   })
 
   // ─── Causali ─────────────────────────────────────────────────────────────────

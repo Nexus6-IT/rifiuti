@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { Result } from '../../../core/application/result'
@@ -14,6 +15,12 @@ import {
   formattaDataItaliana,
   giornoItaliano,
 } from '../../../core/time/anno-italiano'
+import { formattaQuantita } from '../../../core/format/formatta-quantita'
+import {
+  normalizzaUnitaRegistro,
+  simboloUnita,
+} from '../../../domain/waste-movement/unita-misura-registro'
+import { giacenzaDisponibileAl } from '../giacenza-disponibile'
 
 export interface MovimentoRegistrato {
   id: string
@@ -40,6 +47,8 @@ export interface MovimentoRegistrato {
   /** Segnala all'operatore se la registrazione supera i termini di legge. */
   fuoriTermine: boolean
   ritardoGg: number
+  /** Avvisi non bloccanti per l'operatore (vuoto se non ce ne sono). */
+  avvisi: string[]
 }
 
 /**
@@ -51,9 +60,9 @@ export interface MovimentoRegistrato {
  *
  * Calcola e persiste l'hash SHA-256 di vidimazione digitale (art. 4 DM 59/2023).
  *
- * Verifica che lo SCARICO non porti la giacenza del CER sotto zero
- * (anomaly detection: "scarico > carico"). Se la giacenza risulta insufficiente
- * restituisce un errore bloccante.
+ * Per uno SCARICO di massa verifica la giacenza del CER dentro la transaction, sotto
+ * lock: blocca se il saldo complessivo (in kg) non copre lo scarico; se lo copre ma
+ * non alla data dello scarico, lo registra e restituisce un avviso in `avvisi`.
  */
 @Injectable()
 export class RegistraMovimentoUseCase {
@@ -122,18 +131,6 @@ export class RegistraMovimentoUseCase {
       }
     }
 
-    // 1. Validazione preventiva giacenza per SCARICO
-    if (command.type === 'SCARICO') {
-      const giacenza = await this.getGiacenzaCer(command.tenantId, cerCode)
-      if (giacenza < command.quantity) {
-        return Result.fail(
-          `Giacenza insufficiente per CER ${cerCode}: ` +
-            `disponibili ${giacenza} ${command.unit}, richiesti ${command.quantity} ${command.unit}. ` +
-            `Verifica i movimenti di carico registrati.`
-        )
-      }
-    }
-
     // 2. Assegnazione numero progressivo (transazionale con SELECT FOR UPDATE)
     // Anno solare italiano (non quello del fuso del processo): il progressivo riparte
     // alle 00:00 italiane del 1° gennaio.
@@ -148,6 +145,12 @@ export class RegistraMovimentoUseCase {
         // pg_advisory_xact_lock è rilasciato automaticamente al commit/rollback.
         const lockKey = `${command.tenantId}-${anno}`
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+
+        // Controllo di giacenza per SCARICO, sotto il lock della giacenza del CER e
+        // dentro la transaction: due scarichi concorrenti (anche di anni diversi, quindi
+        // con lock del progressivo diversi) non possono leggere la stessa giacenza.
+        const avvisi =
+          command.type === 'SCARICO' ? await this.verificaGiacenza(tx, command, cerCode) : []
 
         const [row] = await tx.$queryRaw<Array<{ max_num: number | null }>>`
           SELECT MAX(progressive_number) AS max_num
@@ -232,9 +235,13 @@ export class RegistraMovimentoUseCase {
           notes: record.notes ?? undefined,
           fuoriTermine: ritardoGg > 0,
           ritardoGg,
+          avvisi,
         }
       })
     } catch (err) {
+      if (err instanceof GiacenzaInsufficienteError) {
+        return Result.fail(err.message)
+      }
       this.logger.error(`Errore registrazione movimento: ${err.message}`)
       return Result.fail(`Errore durante la registrazione: ${err.message}`)
     }
@@ -286,20 +293,100 @@ export class RegistraMovimentoUseCase {
     return count > 0
   }
 
-  /** Calcola la giacenza corrente per un CER del tenant (carico - scarico). */
-  private async getGiacenzaCer(tenantId: string, cerCode: string): Promise<number> {
-    const rows = await this.prisma.wasteMovement.groupBy({
-      by: ['type'],
-      where: { tenantId, cerCode },
-      _sum: { quantity: true },
-    })
-    let carico = 0
-    let scarico = 0
-    for (const r of rows) {
-      const qty = r._sum.quantity ? Number(r._sum.quantity) : 0
-      if (r.type === 'CARICO') carico += qty
-      else if (r.type === 'SCARICO') scarico += qty
+  /**
+   * Controllo di giacenza di uno SCARICO, da chiamare dentro la transaction dopo il
+   * lock del progressivo. Blocca (GiacenzaInsufficienteError) se il saldo complessivo
+   * del CER non copre lo scarico; se lo copre ma non alla data dello scarico, restituisce
+   * un avviso e lo scarico si registra. Le unità non di massa non si controllano.
+   */
+  private async verificaGiacenza(
+    tx: Prisma.TransactionClient,
+    command: RegistraMovimentoCommand,
+    cerCode: string
+  ): Promise<string[]> {
+    const { tenantId } = command
+    const u = normalizzaUnitaRegistro(command.unit)
+    if (!u.massa || u.fattoreKg === null) {
+      this.logger.warn('Scarico in unità non di massa: controllo di giacenza saltato', {
+        tenantId,
+        cerCode,
+        unit: command.unit,
+      })
+      return []
     }
-    return Math.max(0, carico - scarico)
+
+    // Terzo lock dell'ordine fisso (FIR, progressivo, giacenza): serializza gli scarichi
+    // dello stesso CER del tenant, con e senza asterisco.
+    const cerSenzaStella = cerCode.replace(/\*$/, '')
+    const chiaveGiacenza = `giacenza|${tenantId}|${cerSenzaStella}`
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveGiacenza}))`
+
+    const g = await giacenzaDisponibileAl(tx, { tenantId, cerCode, alla: command.movementDate })
+    const fattore = u.fattoreKg
+    const richiestoKg = command.quantity * fattore
+
+    // Fail-closed: senza un saldo leggibile lo scarico non si registra.
+    if (!Number.isFinite(g?.saldoComplessivoKg) || !Number.isFinite(g?.disponibileAllaDataKg)) {
+      this.logger.error('Giacenza non verificabile: valori non numerici', undefined, {
+        tenantId,
+        cerCode,
+        giacenza: g,
+      })
+      throw new GiacenzaInsufficienteError(
+        `Impossibile verificare la giacenza per CER ${cerCode}: riprovare; ` +
+          `se il problema persiste, contattare l'assistenza.`
+      )
+    }
+
+    const um = simboloUnita(u)
+    if (g.saldoComplessivoKg + 1e-9 < richiestoKg) {
+      const dettaglio =
+        g.saldoComplessivoKg >= 0
+          ? `nel registro restano ${formattaQuantita(g.saldoComplessivoKg / fattore)} ${um}, ` +
+            `richiesti ${formattaQuantita(command.quantity)} ${um}.`
+          : `il registro risulta già sotto zero di ` +
+            `${formattaQuantita(-g.saldoComplessivoKg / fattore)} ${um}, quindi nessuno ` +
+            `scarico è registrabile finché non si registrano i carichi mancanti.`
+      throw new GiacenzaInsufficienteError(
+        `Giacenza insufficiente per CER ${cerCode}: ${dettaglio} ${RIMEDIO_CARICO_MANCANTE}`
+      )
+    }
+
+    if (g.disponibileAllaDataKg + 1e-9 < richiestoKg) {
+      // Confronto fra giorni (vincoloAl è la mezzanotte UTC del giorno), mai fra istanti.
+      const limiteSuccessivo =
+        g.vincoloAl.toISOString().slice(0, 10) > giornoItaliano(command.movementDate)
+      const avviso =
+        `Lo scarico è datato ${formattaDataItaliana(command.movementDate)}, ma a quella data ` +
+        `il registro ha disponibili ` +
+        `${formattaQuantita(Math.max(0, g.disponibileAllaDataKg) / fattore)} ${um}` +
+        (limiteSuccessivo
+          ? ` (il limite viene dal saldo del ${formattaDataItaliana(g.vincoloAl)})`
+          : '') +
+        `: il carico che lo copre è annotato con una data successiva. ` +
+        `Lo scarico resta registrato con questa data.`
+      this.logger.warn('Scarico registrato con un ordine di date incoerente', {
+        tenantId,
+        cerCode,
+        movementDate: command.movementDate,
+        avviso,
+      })
+      return [avviso]
+    }
+
+    return []
+  }
+}
+
+const RIMEDIO_CARICO_MANCANTE =
+  'Se il rifiuto era già in deposito prima di iniziare a usare il registro, registra il ' +
+  'carico mancante con la causale Altro carico (non viene contato come prodotto nel MUD); ' +
+  'se è stato prodotto ora, usa Produzione interna.'
+
+/** Scarico non registrabile per giacenza: il messaggio arriva all'utente così com'è. */
+class GiacenzaInsufficienteError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GiacenzaInsufficienteError'
   }
 }
