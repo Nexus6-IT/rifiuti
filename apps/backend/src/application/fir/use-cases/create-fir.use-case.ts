@@ -19,6 +19,7 @@ import { Trasportatore } from '../../../domain/registry/entities/trasportatore'
 import { Destinatario } from '../../../domain/registry/entities/destinatario'
 import { Result } from '../../../core/application/result'
 import { CreateFIRCommand } from '../commands/create-fir.command'
+import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
 
 export class CreateFIRUseCase {
   constructor(
@@ -124,12 +125,7 @@ export class CreateFIRUseCase {
    */
   private normalizeCerCode(raw: string): string {
     if (!raw) return raw
-    const trimmed = raw.trim().toUpperCase()
-    const hazardous = trimmed.includes('*')
-    const digits = trimmed.replace(/[^0-9]/g, '')
-    if (digits.length !== 6) return trimmed
-    const spaced = `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 6)}`
-    return hazardous ? `${spaced}*` : spaced
+    return cerCanonico(raw.toUpperCase())
   }
 
   private snapshotProduttore(p: Produttore): ParteFIR {

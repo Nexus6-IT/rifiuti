@@ -3,6 +3,7 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { ICERRepository } from '../../domain/cer/repositories/cer-repository.interface'
 import { RentriCodificheClient } from '../../infrastructure/rentri/codifiche/rentri-codifiche.client'
 import { CodificaItem } from '../../infrastructure/rentri/codifiche/rentri-codifiche.model'
+import { cerCanonico, cerSoloCifre } from '../../domain/waste-movement/cer-registro'
 
 export interface EsitoAllineamentoCer {
   nuovi: number
@@ -117,12 +118,8 @@ export class RentriCerSyncService {
   private normalizzaCodice(voce: CodificaItem): string | null {
     const raw = voce.code
     if (!raw) return null
-    const trimmed = raw.trim().toUpperCase()
-    const hazardous = trimmed.endsWith('*')
-    const digits = trimmed.replace(/[^0-9]/g, '')
-    if (digits.length !== 6) return null
-    const spaced = `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 6)}`
-    return hazardous ? `${spaced}*` : spaced
+    if (cerSoloCifre(raw).length !== 6) return null
+    return cerCanonico(raw.toUpperCase())
   }
 
   /**
