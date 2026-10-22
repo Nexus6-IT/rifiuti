@@ -174,29 +174,91 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
     })
   })
 
-  it('impostazione e primo movimento concorrenti non producono numeri incoerenti', async () => {
-    // Un tenant nuovo per giro: imposta accetta solo l'anno in corso e il prossimo,
-    // quindi non esistono cinque anni puliti (F16).
-    for (let giro = 0; giro < 5; giro++) {
-      const tenantId = await nuovoTenant()
-      const [impostazione, movimento] = await Promise.allSettled([
-        service.imposta(tenantId, ANNO, 500, 'Migrazione', userId),
-        useCase.execute(carico(tenantId)),
-      ])
-
-      expect(movimento.status).toBe('fulfilled')
-      const esito = (movimento as PromiseFulfilledResult<any>).value
-      expect(esito.isSuccess).toBe(true)
-      const numero = esito.value.progressiveNumber
-
-      if (numero === 500) {
-        expect(impostazione.status).toBe('fulfilled')
-      } else {
-        expect(numero).toBe(1)
-        expect(impostazione.status).toBe('rejected')
-        expect((impostazione as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException)
-        expect(await prisma.registroProgressivoIniziale.count({ where: { tenantId } })).toBe(0)
-      }
+  /**
+   * Interleaving deterministico fra impostazione e primo movimento. Un client "con pausa"
+   * esegue la callback della transaction (quindi prende il lock e scrive) e poi aspetta
+   * il via prima del commit: l'altra operazione parte mentre la prima tiene il lock
+   * `<tenant>-<anno>` con la scrittura non ancora visibile. Senza quel lock la seconda
+   * operazione non aspetterebbe e leggerebbe lo stato di prima: i test diventano rossi.
+   * Un tenant nuovo per test: imposta accetta solo l'anno in corso e il prossimo (F16).
+   */
+  describe('impostazione e primo movimento concorrenti', () => {
+    function clientConPausa() {
+      let segnalaArrivo!: () => void
+      const arrivata = new Promise<void>(r => (segnalaArrivo = r))
+      let rilascia!: () => void
+      const via = new Promise<void>(r => (rilascia = r))
+      const client = new Proxy(prisma, {
+        get(target, prop) {
+          if (prop === '$transaction') {
+            return (fn: (tx: unknown) => Promise<unknown>, opzioni?: any) =>
+              target.$transaction(async tx => {
+                const risultato = await fn(tx)
+                segnalaArrivo()
+                await via
+                return risultato
+              }, opzioni)
+          }
+          const valore = Reflect.get(target, prop)
+          return typeof valore === 'function' ? valore.bind(target) : valore
+        },
+      })
+      return { client, arrivata, rilascia }
     }
+
+    /** Vero se entro `ms` una sessione aspetta un advisory lock (l'operazione è ferma lì). */
+    async function qualcunoAspettaIlLock(ms = 3000): Promise<boolean> {
+      const fine = Date.now() + ms
+      while (Date.now() < fine) {
+        const [r] = await prisma.$queryRaw<Array<{ n: number }>>`
+          SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted
+        `
+        if (r.n > 0) return true
+        await new Promise(res => setTimeout(res, 25))
+      }
+      return false
+    }
+
+    it("un movimento che tiene il lock fa rifiutare l'impostazione che lo aspetta", async () => {
+      const tenantId = await nuovoTenant()
+      const pausa = clientConPausa()
+      const movimentoInPausa = new RegistraMovimentoUseCase(pausa.client as any, loggerStub as any)
+
+      const movimento = movimentoInPausa.execute(carico(tenantId))
+      await pausa.arrivata // movimento scritto, lock tenuto, commit non ancora fatto
+      const impostazione = service.imposta(tenantId, ANNO, 500, 'Migrazione', userId).then(
+        v => ({ ok: true as const, v }),
+        e => ({ ok: false as const, e })
+      )
+      const inAttesa = await qualcunoAspettaIlLock()
+      pausa.rilascia()
+
+      const esitoMovimento = await movimento
+      const esitoImpostazione = await impostazione
+      expect(esitoMovimento.isSuccess).toBe(true)
+      expect(esitoMovimento.value.progressiveNumber).toBe(1)
+      expect(esitoImpostazione.ok).toBe(false)
+      expect(!esitoImpostazione.ok && esitoImpostazione.e).toBeInstanceOf(ConflictException)
+      expect(await prisma.registroProgressivoIniziale.count({ where: { tenantId } })).toBe(0)
+      expect(inAttesa).toBe(true)
+    })
+
+    it("un'impostazione che tiene il lock dà il suo numero al movimento che la aspetta", async () => {
+      const tenantId = await nuovoTenant()
+      const pausa = clientConPausa()
+      const impostazioneInPausa = new ProgressivoInizialeService(pausa.client as any)
+
+      const impostazione = impostazioneInPausa.imposta(tenantId, ANNO, 500, 'Migrazione', userId)
+      await pausa.arrivata // riga scritta, lock tenuto, commit non ancora fatto
+      const movimento = useCase.execute(carico(tenantId))
+      const inAttesa = await qualcunoAspettaIlLock()
+      pausa.rilascia()
+
+      await expect(impostazione).resolves.toEqual({ anno: ANNO, primoProgressivo: 500 })
+      const esitoMovimento = await movimento
+      expect(esitoMovimento.isSuccess).toBe(true)
+      expect(esitoMovimento.value.progressiveNumber).toBe(500)
+      expect(inAttesa).toBe(true)
+    })
   })
 })
