@@ -57,6 +57,7 @@ import {
   CausaleMovimento,
 } from './registro.service'
 import { messaggioMovimentoRegistrato } from './registro-messaggi'
+import { firCollegabileNelRegistro } from './registro-fir'
 import { CerSelectComponent } from '../cer/cer-select.component'
 
 interface DropdownOption<T> {
@@ -1191,7 +1192,7 @@ export class RegistroComponent implements OnInit {
     if (this.tuttiFir.length > 0) return
     this.firService.getFIRList(1, 200).subscribe({
       next: res => {
-        this.tuttiFir = res.items ?? []
+        this.tuttiFir = (res.items ?? []).filter(firCollegabileNelRegistro)
       },
       error: () => {
         this.tuttiFir = []

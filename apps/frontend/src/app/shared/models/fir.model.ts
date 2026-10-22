@@ -83,6 +83,8 @@ export interface FIR {
   rentriSyncStatus?: RENTRISyncStatusValue
   /** Numero FIR ufficiale RENTRI (legame confermato). */
   rentriNumeroFir?: string | null
+  /** Stato del formulario all'ente RENTRI (ultimo noto), es. 'Annullato'. */
+  rentriStatoFormulario?: string | null
   /**
    * Numero FIR proposto in modalità ibrida, in attesa di conferma esplicita
    * dell'operatore: NON è ancora il legame ufficiale (v. rentriNumeroFir).

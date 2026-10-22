@@ -39,7 +39,13 @@ describe('RegistraMovimentoUseCase', () => {
       },
       // FIR collegato: per default esiste e appartiene al tenant.
       fIR: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'fir-id-001' }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'fir-id-001',
+          status: 'AWAITING_CARRIER',
+          firNumber: 'FIR-2026-000007',
+          rentriNumeroFir: null,
+          rentriStatoFormulario: null,
+        }),
       },
       $transaction: jest.fn(),
       ...overrides,
@@ -677,6 +683,68 @@ describe('RegistraMovimentoUseCase', () => {
     expect(result.error).toContain('FIR collegato non trovato')
   })
 
+  it.each([
+    [
+      { status: 'DRAFT' },
+      "Il FIR FIR-2026-000007 è ancora in bozza: si registra nel registro solo dopo l'emissione. Se il trasporto è già avvenuto con un altro formulario, registra lo scarico senza collegare questo FIR.",
+    ],
+    [
+      { status: 'AWAITING_PRODUCER' },
+      "Il FIR FIR-2026-000007 è ancora in bozza: si registra nel registro solo dopo l'emissione. Se il trasporto è già avvenuto con un altro formulario, registra lo scarico senza collegare questo FIR.",
+    ],
+    [
+      { status: 'CANCELLED', rentriNumeroFir: 'ABC123' },
+      'Il FIR ABC123 è annullato: non si può collegare a un movimento del registro.',
+    ],
+    [
+      { status: 'AWAITING_CARRIER', rentriStatoFormulario: 'Annullato' },
+      'Il FIR FIR-2026-000007 è annullato: non si può collegare a un movimento del registro.',
+    ],
+    [
+      { status: 'BOH' },
+      "Il FIR FIR-2026-000007 ha uno stato non riconosciuto (BOH): non si può collegare a un movimento; contattare l'assistenza.",
+    ],
+  ])('rifiuta il collegamento a un FIR %o', async (over, messaggio) => {
+    prisma.fIR.findFirst.mockResolvedValue({
+      id: 'fir-id-001',
+      firNumber: 'FIR-2026-000007',
+      rentriNumeroFir: null,
+      rentriStatoFormulario: null,
+      ...over,
+    })
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+    expect(r.isFailure).toBe(true)
+    expect(r.error).toBe(messaggio)
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+
+  it.each(['AWAITING_CARRIER', 'AWAITING_RECEIVER', 'COMPLETED', 'SYNCED_TO_RENTRI'])(
+    'accetta il collegamento a un FIR %s',
+    async status => {
+      prisma.fIR.findFirst.mockResolvedValue({
+        id: 'fir-id-001',
+        status,
+        firNumber: 'FIR-2026-000007',
+        rentriNumeroFir: null,
+        rentriStatoFormulario: null,
+      })
+      _mockTransazione(recordScarico)
+      expect((await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))).isSuccess).toBe(true)
+    }
+  )
+
+  it('accetta il collegamento a un FIR in bozza locale con numero RENTRI (acquisito o agganciato)', async () => {
+    prisma.fIR.findFirst.mockResolvedValue({
+      id: 'fir-id-001',
+      status: 'DRAFT',
+      firNumber: null,
+      rentriNumeroFir: 'RENTRI-1',
+      rentriStatoFormulario: null,
+    })
+    _mockTransazione(recordScarico)
+    expect((await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))).isSuccess).toBe(true)
+  })
+
   // ─── Data nel futuro ─────────────────────────────────────────────────────────
 
   it("rifiuta un movimento con data dell'operazione nel futuro", async () => {
@@ -910,7 +978,15 @@ describe('RegistraMovimentoUseCase: tempo italiano', () => {
     const prisma: any = {
       wasteMovement: { groupBy: jest.fn().mockResolvedValue([]), create: jest.fn() },
       cERCode: { count: jest.fn().mockResolvedValue(1) },
-      fIR: { findFirst: jest.fn().mockResolvedValue({ id: 'fir-id-001' }) },
+      fIR: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'fir-id-001',
+          status: 'AWAITING_CARRIER',
+          firNumber: 'FIR-2026-000007',
+          rentriNumeroFir: null,
+          rentriStatoFormulario: null,
+        }),
+      },
       $transaction: jest.fn().mockImplementation(async (fn: (tx: any) => Promise<any>) => {
         const tx = {
           $executeRaw: jest.fn().mockImplementation(async (...args: any[]) => {

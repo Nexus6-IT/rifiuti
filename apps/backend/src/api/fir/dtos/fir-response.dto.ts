@@ -155,6 +155,12 @@ export class FIRResponseDto {
   rentriNumeroFir: string | null
 
   @ApiPropertyOptional({
+    example: 'Annullato',
+    description: "Stato del formulario all'ente RENTRI (ultimo noto), se acquisito",
+  })
+  rentriStatoFormulario: string | null
+
+  @ApiPropertyOptional({
     example: 'RENTRI-000123',
     description:
       'Numero FIR proposto in modalità ibrida, in attesa di conferma esplicita: NON è ancora il legame ufficiale',
@@ -251,6 +257,7 @@ export class FIRResponseDto {
       createdAt: fir.createdAt,
       rentriSyncStatus: fir.rentriSyncStatus.getStatus(),
       rentriNumeroFir: fir.rentriNumeroFir,
+      rentriStatoFormulario: fir.rentriStatoFormulario,
       rentriNumeroFirProposto: fir.rentriNumeroFirProposto,
       rentriOrigineLegame: fir.rentriOrigineLegame,
       rentriLastSyncError: lastError ?? null,

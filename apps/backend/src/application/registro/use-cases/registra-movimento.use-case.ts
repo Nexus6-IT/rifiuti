@@ -17,6 +17,7 @@ import {
   formattaDataItaliana,
   giornoItaliano,
 } from '../../../core/time/anno-italiano'
+import { collegabilitaFir, etichettaFir } from '../../../domain/fir/stati-fir'
 import { formattaQuantita } from '../../../core/format/formatta-quantita'
 import {
   normalizzaUnitaRegistro,
@@ -134,12 +135,39 @@ export class RegistraMovimentoUseCase {
     if (command.firId) {
       const fir = await this.prisma.fIR.findFirst({
         where: { id: command.firId, tenantId: command.tenantId },
-        select: { id: true },
+        select: {
+          id: true,
+          status: true,
+          firNumber: true,
+          rentriNumeroFir: true,
+          rentriStatoFormulario: true,
+        },
       })
       if (!fir) {
         return Result.fail(
           `FIR collegato non trovato o non appartenente al tenant: ${command.firId}`
         )
+      }
+      // Il FIR deve essere collegabile: emesso (o con numero RENTRI) e non annullato.
+      const collegabilita = collegabilitaFir(fir)
+      if (!collegabilita.collegabile) {
+        const etichetta = etichettaFir(fir)
+        switch (collegabilita.motivo) {
+          case 'BOZZA':
+            return Result.fail(
+              `Il FIR ${etichetta} è ancora in bozza: si registra nel registro solo dopo l'emissione. ` +
+                `Se il trasporto è già avvenuto con un altro formulario, registra lo scarico senza collegare questo FIR.`
+            )
+          case 'ANNULLATO':
+            return Result.fail(
+              `Il FIR ${etichetta} è annullato: non si può collegare a un movimento del registro.`
+            )
+          default:
+            return Result.fail(
+              `Il FIR ${etichetta} ha uno stato non riconosciuto (${fir.status ?? 'assente'}): ` +
+                `non si può collegare a un movimento; contattare l'assistenza.`
+            )
+        }
       }
     }
 
