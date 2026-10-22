@@ -507,6 +507,23 @@ describe('MudExportService', () => {
     )
   })
 
+  it('la città del dichiarante entra nel file senza spazi ai lati (XX e AA)', async () => {
+    prisma.tenant.findUnique.mockResolvedValue({ ...tenantCompleto, city: '  Roma ' })
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
+      movimentiPerCer: { '170405': 1 },
+      controlli: [],
+    })
+    const r = await service.exportTelematico('t1', 2024, admin)
+    expect(aziendaDichiarante({ ...tenantCompleto, city: '  Roma ' }, DICHIARANTE_OK).comune).toBe(
+      'Roma'
+    )
+    expect(r.content).toContain(';ROMA ')
+    expect(r.content).not.toContain('; ROMA')
+  })
+
   describe('dichiarazione sostitutiva (A-W-04)', () => {
     beforeEach(() => {
       aggregazione.aggrega.mockResolvedValue({

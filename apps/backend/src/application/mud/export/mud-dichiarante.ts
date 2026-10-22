@@ -52,7 +52,8 @@ export function aziendaDichiarante(
     codiceFiscale: tenant.codiceFiscale ?? undefined,
     via: tenant.address ?? undefined,
     civico: tenant.civico ?? undefined,
-    comune: tenant.city ?? undefined,
+    // senza spazi ai lati, come nella ricerca del codice ISTAT: ' Milano ' usciva ' MILANO'
+    comune: tenant.city?.trim() || undefined,
     comuneCode: dichiarante.comuneCode ?? undefined,
     provincia: tenant.province ?? undefined,
     cap: tenant.postalCode ?? undefined,
