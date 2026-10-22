@@ -2,6 +2,9 @@ import { PrismaClient } from '@prisma/client'
 import { RegistraMovimentoUseCase } from './registra-movimento.use-case'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import * as giacenzaModulo from '../giacenza-disponibile'
+import { FIRPrismaRepository } from '../../../infrastructure/persistence/fir-prisma.repository'
+import { FIR } from '../../../domain/fir/aggregates/fir.aggregate'
+import { FirGiaRegistratoError } from '../../../core/domain/errors'
 import type {
   CausaleMovimento,
   WasteMovementType,
@@ -183,5 +186,116 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
     const r = await useCase.execute(cmd('SCARICO', 'AVVIO_RECUPERO', 10, '2026-02-01'))
     expect(r.isSuccess).toBe(true)
     expect(r.value.avvisi).toHaveLength(1)
+  })
+
+  describe('ricopia FIR idempotente', () => {
+    let firId: string
+
+    beforeAll(async () => {
+      const user = await prisma.user.create({
+        data: {
+          tenantId,
+          keycloakId: `keycloak-ricopia-${Date.now()}`,
+          fiscalCode: 'RSSMRA80A01H501U',
+          firstName: 'Mario',
+          lastName: 'Rossi',
+          email: `ricopia-${Date.now()}@example.com`,
+          role: 'OPERATOR',
+        },
+      })
+      const repo = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+      const fir = FIR.create({
+        produttoreId: '11111111-1111-4111-8111-111111111111',
+        rifiuto: { cerCode: '999901', quantita: 100 },
+        trasportatoreId: '22222222-2222-4222-8222-222222222222',
+        destinatarioId: '33333333-3333-4333-8333-333333333333',
+        tenantId,
+        creatoDaUserId: user.id,
+      })
+      await repo.save(fir)
+      firId = fir.id
+      // FIR emesso: in attesa del trasportatore.
+      await prisma.fIR.update({ where: { id: firId }, data: { status: 'AWAITING_CARRIER' } })
+    })
+
+    afterAll(async () => {
+      await prisma.wasteMovement.deleteMany({ where: { tenantId } })
+      await prisma.fIR.deleteMany({ where: { tenantId } })
+      await prisma.user.deleteMany({ where: { tenantId } })
+    })
+
+    /** Movimento collegato al FIR scritto senza use case. */
+    function ricopiaDiretta(n: number, firIdRicopia?: string) {
+      return {
+        ...movimentoDiretto('CARICO', 100, '2026-03-01', n),
+        firId,
+        firIdRicopia,
+      }
+    }
+
+    it('la stessa ricopia ripetuta restituisce il movimento esistente', async () => {
+      await useCase.execute(cmd('CARICO', 'INGRESSO_ESTERNO', 1.005, '2026-03-01', 'KG', firId))
+      const a = await useCase.execute(
+        cmd('CARICO', 'INGRESSO_ESTERNO', 1.005, '2026-03-01', 'KG', firId)
+      )
+      expect(a.value.giaRegistrato).toBe(true)
+      expect(await prisma.wasteMovement.count({ where: { tenantId, firId } })).toBe(1)
+    })
+
+    it('due ricopie concorrenti dello stesso FIR producono un solo movimento', async () => {
+      const [x, y] = await Promise.all([
+        useCase.execute(cmd('CARICO', 'INGRESSO_ESTERNO', 100, '2026-03-01', 'KG', firId)),
+        useCase.execute(cmd('CARICO', 'INGRESSO_ESTERNO', 100, '2026-03-01', 'KG', firId)),
+      ])
+      expect(x.isSuccess && y.isSuccess).toBe(true)
+      expect(x.value.id).toBe(y.value.id)
+      expect([x.value.giaRegistrato, y.value.giaRegistrato].sort()).toEqual([false, true])
+    })
+
+    it('il retry di uno scarico che ha consumato tutta la giacenza non è respinto', async () => {
+      await useCase.execute(cmd('CARICO', 'PRODUZIONE_INTERNA', 100, '2026-03-01'))
+      const primo = await useCase.execute(
+        cmd('SCARICO', 'CONFERIMENTO_TRASPORTATORE', 100, '2026-03-02', 'KG', firId)
+      )
+      expect(primo.isSuccess).toBe(true)
+      const retry = await useCase.execute(
+        cmd('SCARICO', 'CONFERIMENTO_TRASPORTATORE', 100, '2026-03-02', 'KG', firId)
+      )
+      expect(retry.isSuccess).toBe(true)
+      expect(retry.value).toMatchObject({ id: primo.value.id, giaRegistrato: true })
+    })
+
+    it('una seconda ricopia con dati diversi è rifiutata', async () => {
+      const primo = await useCase.execute(
+        cmd('CARICO', 'INGRESSO_ESTERNO', 100, '2026-03-01', 'KG', firId)
+      )
+      const r = await useCase.execute(
+        cmd('CARICO', 'INGRESSO_ESTERNO', 90, '2026-03-01', 'KG', firId)
+      )
+      expect(r.error).toBe(
+        new FirGiaRegistratoError(primo.value.progressiveNumber, primo.value.progressiveYear)
+          .message
+      )
+      expect(await prisma.wasteMovement.count({ where: { tenantId, firId } })).toBe(1)
+    })
+
+    it("l'indice unico rifiuta un doppio scritto senza passare dallo use case", async () => {
+      await prisma.wasteMovement.create({ data: ricopiaDiretta(1, firId) })
+      const err = await prisma.wasteMovement
+        .create({ data: ricopiaDiretta(2, firId) })
+        .then(() => null)
+        .catch(e => e)
+      expect(err).toMatchObject({ code: 'P2002' })
+      // Il target del P2002 nomina la colonna: la rete di sicurezza dello use case lo riconosce così.
+      expect(JSON.stringify(err.meta?.target)).toMatch(/fir_?id_?ricopia/i)
+    })
+
+    it('i doppi storici (fir_id_ricopia NULL) restano ammessi', async () => {
+      await prisma.wasteMovement.create({ data: ricopiaDiretta(1) })
+      await prisma.wasteMovement.create({ data: ricopiaDiretta(2) })
+      expect(await prisma.wasteMovement.count({ where: { tenantId, firId, type: 'CARICO' } })).toBe(
+        2
+      )
+    })
   })
 })

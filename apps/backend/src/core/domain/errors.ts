@@ -104,3 +104,18 @@ export class MetodoLocaleNonConsentitoSuFirLegatoError extends DomainError {
     this.name = 'MetodoLocaleNonConsentitoSuFirLegatoError'
   }
 }
+
+/**
+ * Un FIR si ricopia nel registro una sola volta per tipo di movimento: un secondo
+ * movimento dello stesso FIR con dati diversi non è un retry, è un errore da
+ * correggere sul movimento già registrato.
+ */
+export class FirGiaRegistratoError extends DomainError {
+  constructor(progressiveNumber: number, progressiveYear: number) {
+    super(
+      `Il FIR è già registrato nel movimento n. ${progressiveNumber}/${progressiveYear} con dati ` +
+        'diversi: verificare quel movimento invece di registrarne un secondo'
+    )
+    this.name = 'FirGiaRegistratoError'
+  }
+}

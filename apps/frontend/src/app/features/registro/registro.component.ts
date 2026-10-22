@@ -56,6 +56,7 @@ import {
   STATI_FISICI,
   CausaleMovimento,
 } from './registro.service'
+import { messaggioMovimentoRegistrato } from './registro-messaggi'
 import { CerSelectComponent } from '../cer/cer-select.component'
 
 interface DropdownOption<T> {
@@ -1433,10 +1434,10 @@ export class RegistroComponent implements OnInit {
         next: m => {
           this.saving.set(false)
           this.chiudiForm()
-          this.toast.success(
-            `Movimento ${m.progressiveYear}/${m.progressiveNumber} registrato` +
-              (m.fuoriTermine ? ' — ATTENZIONE: fuori termine di legge' : '')
-          )
+          const messaggio = messaggioMovimentoRegistrato(m)
+          if (m.giaRegistrato) this.toast.info(messaggio)
+          else this.toast.success(messaggio)
+          for (const avviso of m.avvisi ?? []) this.toast.warn(avviso)
           this.ricarica()
         },
         error: err => {

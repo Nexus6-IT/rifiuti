@@ -53,6 +53,10 @@ export interface Movimento {
   createdAt: string
   fuoriTermine?: boolean
   ritardoGg?: number
+  /** Solo nella risposta di `registra`: il FIR era già ricopiato, nessun nuovo movimento. */
+  giaRegistrato?: boolean
+  /** Solo nella risposta di `registra`: avvisi non bloccanti per l'operatore. */
+  avvisi?: string[]
 }
 
 export interface PaginatedMovimenti {

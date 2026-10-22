@@ -5,6 +5,8 @@ import { LoggerService } from '../../../core/logger/logger.service'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import { giacenzaDisponibileAl } from '../giacenza-disponibile'
 import { annoSolareItaliano } from '../../../core/time/anno-italiano'
+import { Prisma } from '@prisma/client'
+import { FirGiaRegistratoError } from '../../../core/domain/errors'
 
 jest.mock('../giacenza-disponibile')
 const giacenzaMock = giacenzaDisponibileAl as jest.MockedFunction<typeof giacenzaDisponibileAl>
@@ -68,7 +70,7 @@ describe('RegistraMovimentoUseCase', () => {
 
   /** SCARICO CONFERIMENTO_TRASPORTATORE sul CER 20 03 01, 100 KG, oggi, senza FIR. */
   function scaricoCmd(
-    over: Partial<{ quantity: number; unit: string; movementDate: Date }> = {}
+    over: Partial<{ quantity: number; unit: string; movementDate: Date; firId: string }> = {}
   ): RegistraMovimentoCommand {
     return new RegistraMovimentoCommand(
       TENANT,
@@ -86,7 +88,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
+      over.firId,
       undefined
     )
   }
@@ -135,6 +137,7 @@ describe('RegistraMovimentoUseCase', () => {
       $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
       wasteMovement: {
         create: jest.fn().mockResolvedValue(record),
+        findMany: jest.fn().mockResolvedValue([]),
       },
     }
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => fn(tx))
@@ -747,6 +750,139 @@ describe('RegistraMovimentoUseCase', () => {
     expect(r2.value.progressiveNumber).toBe(2)
     // L'advisory lock deve essere stato chiamato per entrambe le transazioni
     expect(chiamate).toBe(2)
+  })
+
+  // ─── Ricopia FIR idempotente ─────────────────────────────────────────────────
+
+  it('la stessa ricopia ripetuta restituisce il movimento esistente', async () => {
+    const tx = _mockTransazione(recordScarico)
+    tx.wasteMovement.findMany.mockResolvedValue([
+      {
+        ...recordScarico,
+        progressiveNumber: 7,
+        progressiveYear: 2026,
+        firId: 'fir-id-001',
+        quantity: 100,
+        unit: 'KG',
+        movementDate: TODAY,
+      },
+    ])
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+    expect(r.isSuccess).toBe(true)
+    expect(r.value).toMatchObject({ progressiveNumber: 7, giaRegistrato: true, avvisi: [] })
+    expect(tx.wasteMovement.create).not.toHaveBeenCalled()
+    expect(giacenzaMock).not.toHaveBeenCalled()
+  })
+
+  it('il confronto usa la quantità arrotondata come la salva il database', async () => {
+    const tx = _mockTransazione(recordScarico)
+    tx.wasteMovement.findMany.mockResolvedValue([
+      {
+        ...recordScarico,
+        progressiveNumber: 7,
+        progressiveYear: 2026,
+        quantity: new Prisma.Decimal('1.01'),
+        unit: 'KG',
+        movementDate: TODAY,
+      },
+    ])
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001', quantity: 1.005 }))
+    expect(r.value).toMatchObject({ giaRegistrato: true })
+  })
+
+  it('una seconda ricopia con quantità diversa è rifiutata', async () => {
+    const tx = _mockTransazione(recordScarico)
+    tx.wasteMovement.findMany.mockResolvedValue([
+      {
+        ...recordScarico,
+        progressiveNumber: 7,
+        progressiveYear: 2026,
+        quantity: 100,
+        unit: 'KG',
+        movementDate: TODAY,
+      },
+    ])
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001', quantity: 90 }))
+    expect(r.error).toBe(new FirGiaRegistratoError(7, 2026).message)
+    expect(tx.wasteMovement.create).not.toHaveBeenCalled()
+  })
+
+  it('un movimento nuovo ha giaRegistrato false e salva firIdRicopia', async () => {
+    const tx = _mockTransazione(recordScarico)
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+    expect(r.value.giaRegistrato).toBe(false)
+    expect(tx.wasteMovement.create.mock.calls[0][0].data).toMatchObject({
+      firId: 'fir-id-001',
+      firIdRicopia: 'fir-id-001',
+    })
+  })
+
+  it('cerca le ricopie esistenti per tenant, FIR e tipo', async () => {
+    const tx = _mockTransazione(recordScarico)
+    await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+    expect(tx.wasteMovement.findMany.mock.calls[0][0]).toMatchObject({
+      where: { tenantId: TENANT, firId: 'fir-id-001', type: 'SCARICO' },
+      orderBy: { createdAt: 'asc' },
+    })
+  })
+
+  it('il lock del FIR si prende per primo, prima del progressivo e della giacenza', async () => {
+    const tx = _mockTransazione(recordScarico)
+    await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+    const chiavi = tx.$executeRaw.mock.calls.map((c: unknown[]) => String(c[1]))
+    expect(chiavi).toEqual([
+      `fir-registro|${TENANT}|fir-id-001`,
+      `${TENANT}-${annoSolareItaliano(TODAY)}`,
+      `giacenza|${TENANT}|20 03 01`,
+    ])
+  })
+
+  it('senza FIR non prende il lock del FIR e non cerca ricopie', async () => {
+    const tx = _mockTransazione(recordScarico)
+    const r = await useCase.execute(scaricoCmd())
+    expect(r.value.giaRegistrato).toBe(false)
+    expect(tx.wasteMovement.findMany).not.toHaveBeenCalled()
+    expect(tx.$executeRaw.mock.calls.map((c: unknown[]) => String(c[1]))).not.toContain(
+      expect.stringContaining('fir-registro')
+    )
+    expect(tx.wasteMovement.create.mock.calls[0][0].data.firIdRicopia).toBeUndefined()
+  })
+
+  it('una ricopia già registrata calcola il ritardo dalle date del movimento esistente', async () => {
+    const tx = _mockTransazione(recordScarico)
+    // Movimento esistente registrato 20 giorni dopo l'operazione: 6 giorni oltre il termine.
+    const operazione = new Date('2026-06-01T00:00:00.000Z')
+    tx.wasteMovement.findMany.mockResolvedValue([
+      {
+        ...recordScarico,
+        progressiveNumber: 7,
+        movementDate: operazione,
+        registrationDate: new Date('2026-06-21T00:00:00.000Z'),
+      },
+    ])
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001', movementDate: operazione }))
+    expect(r.value).toMatchObject({ giaRegistrato: true, fuoriTermine: true, ritardoGg: 6 })
+  })
+
+  it("un doppio sull'indice unico della ricopia diventa il messaggio del FIR già registrato", async () => {
+    const tx = _mockTransazione(recordScarico)
+    tx.wasteMovement.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['tenant_id', 'fir_id_ricopia', 'type'] },
+      })
+    )
+    prisma.wasteMovement.findFirst = jest
+      .fn()
+      .mockResolvedValue({ progressiveNumber: 9, progressiveYear: 2026 })
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+    expect(r.error).toBe(new FirGiaRegistratoError(9, 2026).message)
+    expect(prisma.wasteMovement.findFirst.mock.calls[0][0].where).toMatchObject({
+      tenantId: TENANT,
+      firIdRicopia: 'fir-id-001',
+      type: 'SCARICO',
+    })
   })
 })
 

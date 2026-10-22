@@ -1,13 +1,15 @@
 import { Injectable } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { Prisma, WasteMovement as WasteMovementRecord } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { Result } from '../../../core/application/result'
+import { DomainError, FirGiaRegistratoError } from '../../../core/domain/errors'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import {
   WasteMovement,
   CAUSALI_CARICO,
   CAUSALI_SCARICO,
+  CausaleMovimento,
   TERMINE_REGISTRAZIONE_PRODUTTORE_GG,
 } from '../../../domain/waste-movement/waste-movement.entity'
 import {
@@ -21,6 +23,7 @@ import {
   simboloUnita,
 } from '../../../domain/waste-movement/unita-misura-registro'
 import { giacenzaDisponibileAl } from '../giacenza-disponibile'
+import { stessiDatiRicopia } from '../ricopia-fir'
 
 export interface MovimentoRegistrato {
   id: string
@@ -49,6 +52,11 @@ export interface MovimentoRegistrato {
   ritardoGg: number
   /** Avvisi non bloccanti per l'operatore (vuoto se non ce ne sono). */
   avvisi: string[]
+  /**
+   * Vero se il FIR era già ricopiato con gli stessi dati: si restituisce il movimento
+   * esistente e non se ne crea un secondo (retry idempotente).
+   */
+  giaRegistrato: boolean
 }
 
 /**
@@ -63,6 +71,10 @@ export interface MovimentoRegistrato {
  * Per uno SCARICO di massa verifica la giacenza del CER dentro la transaction, sotto
  * lock: blocca se il saldo complessivo (in kg) non copre lo scarico; se lo copre ma
  * non alla data dello scarico, lo registra e restituisce un avviso in `avvisi`.
+ *
+ * Un FIR si ricopia una sola volta per tipo di movimento: ripetere la stessa ricopia
+ * restituisce il movimento esistente (`giaRegistrato: true`), una ricopia con dati
+ * diversi è rifiutata (FirGiaRegistratoError).
  */
 @Injectable()
 export class RegistraMovimentoUseCase {
@@ -139,6 +151,22 @@ export class RegistraMovimentoUseCase {
     let movimento: MovimentoRegistrato
     try {
       movimento = await this.prisma.$transaction(async tx => {
+        // Ricopia del FIR, per prima (ordine fisso dei lock: FIR, progressivo, giacenza):
+        // un retry di uno scarico deve trovare il movimento già registrato prima del
+        // controllo di giacenza, che altrimenti lo respingerebbe per la quantità che lui
+        // stesso ha consumato.
+        if (command.firId) {
+          const esistente = await this.ricopiaEsistente(tx, command, cerCode)
+          if (esistente) {
+            // Ritardo dalle date del movimento esistente, non da quelle del retry.
+            return {
+              ...this.movimentoDaRecord(esistente, this.ritardoGg(esistente)),
+              avvisi: [],
+              giaRegistrato: true,
+            }
+          }
+        }
+
         // Advisory lock per-tenant/anno: serializza le numerazioni dello stesso
         // tenant in transazioni concorrenti senza usare FOR UPDATE su aggregati
         // (PostgreSQL 0A000: "FOR UPDATE is not allowed with aggregate functions").
@@ -205,45 +233,33 @@ export class RegistraMovimentoUseCase {
             counterpartName: entity.counterpartName,
             counterpartAddress: entity.counterpartAddress,
             firId: entity.firId,
+            // Solo i movimenti registrati da qui in poi: lo storico resta NULL, e
+            // l'indice unico (tenant, fir_id_ricopia, type) ignora i NULL.
+            firIdRicopia: command.firId,
             recordedByUserId: entity.recordedByUserId,
             entryHash: entity.entryHash,
             notes: entity.notes,
           },
         })
 
-        return {
-          id: record.id,
-          tenantId: record.tenantId,
-          progressiveNumber: record.progressiveNumber,
-          progressiveYear: record.progressiveYear,
-          type: record.type,
-          movementDate: record.movementDate,
-          registrationDate: record.registrationDate,
-          causale: record.causale,
-          cerCode: record.cerCode,
-          wasteDescription: record.wasteDescription ?? undefined,
-          quantity: Number(record.quantity),
-          unit: record.unit,
-          wastePhysicalState: record.wastePhysicalState ?? undefined,
-          wasteHazardClasses: record.wasteHazardClasses ?? undefined,
-          operationCode: record.operationCode ?? undefined,
-          counterpartName: record.counterpartName ?? undefined,
-          counterpartAddress: record.counterpartAddress ?? undefined,
-          firId: record.firId ?? undefined,
-          recordedByUserId: record.recordedByUserId ?? undefined,
-          entryHash: record.entryHash,
-          notes: record.notes ?? undefined,
-          fuoriTermine: ritardoGg > 0,
-          ritardoGg,
-          avvisi,
-        }
+        return { ...this.movimentoDaRecord(record, ritardoGg), avvisi, giaRegistrato: false }
       })
     } catch (err) {
-      if (err instanceof GiacenzaInsufficienteError) {
+      if (err instanceof GiacenzaInsufficienteError || err instanceof DomainError) {
         return Result.fail(err.message)
       }
+      const doppio = await this.messaggioRicopiaDoppia(err, command)
+      if (doppio) return Result.fail(doppio)
       this.logger.error(`Errore registrazione movimento: ${err.message}`)
       return Result.fail(`Errore durante la registrazione: ${err.message}`)
+    }
+
+    if (movimento.giaRegistrato) {
+      this.logger.info(
+        `Ricopia del FIR ${command.firId} già registrata nel movimento ` +
+          `#${movimento.progressiveYear}/${movimento.progressiveNumber}: nessun nuovo movimento`
+      )
+      return Result.ok(movimento)
     }
 
     if (movimento.fuoriTermine) {
@@ -261,6 +277,107 @@ export class RegistraMovimentoUseCase {
     )
 
     return Result.ok(movimento)
+  }
+
+  /**
+   * Primo lock dell'ordine fisso, poi le ricopie dello stesso FIR e tipo (lette per
+   * `fir_id`, quindi anche quelle storiche, anche se doppie). Restituisce quella con gli
+   * stessi dati del comando; se ce ne sono ma nessuna coincide, FirGiaRegistratoError
+   * con la prima; null se il FIR non è ancora ricopiato.
+   */
+  private async ricopiaEsistente(
+    tx: Prisma.TransactionClient,
+    command: RegistraMovimentoCommand,
+    cerCode: string
+  ): Promise<WasteMovementRecord | null> {
+    const { tenantId, firId, type } = command
+    const chiaveFir = `fir-registro|${tenantId}|${firId}`
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveFir}))`
+
+    const ricopie = await tx.wasteMovement.findMany({
+      where: { tenantId, firId, type },
+      orderBy: { createdAt: 'asc' },
+    })
+    if (ricopie.length === 0) return null
+
+    const stessa = ricopie.find(r =>
+      stessiDatiRicopia(r, {
+        cerCode,
+        quantity: command.quantity,
+        unit: command.unit,
+        movementDate: command.movementDate,
+      })
+    )
+    if (!stessa) {
+      throw new FirGiaRegistratoError(ricopie[0].progressiveNumber, ricopie[0].progressiveYear)
+    }
+    return stessa
+  }
+
+  /**
+   * Rete di sicurezza per l'indice unico (tenant, fir_id_ricopia, type): il lock del FIR
+   * rende il doppio raro, ma se arriva si risponde come per una ricopia con dati diversi.
+   * Null se l'errore non è quella violazione.
+   */
+  private async messaggioRicopiaDoppia(
+    err: unknown,
+    command: RegistraMovimentoCommand
+  ): Promise<string | null> {
+    if (
+      !command.firId ||
+      !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+      err.code !== 'P2002' ||
+      !/fir_?id_?ricopia/i.test(JSON.stringify(err.meta?.target ?? ''))
+    ) {
+      return null
+    }
+    const esistente = await this.prisma.wasteMovement.findFirst({
+      where: { tenantId: command.tenantId, firIdRicopia: command.firId, type: command.type },
+      select: { progressiveNumber: true, progressiveYear: true },
+    })
+    if (!esistente) return null
+    return new FirGiaRegistratoError(esistente.progressiveNumber, esistente.progressiveYear).message
+  }
+
+  /** Ritardo sul termine di legge calcolato dalle date di un movimento salvato. */
+  private ritardoGg(record: WasteMovementRecord): number {
+    const m = this.movimentoDaRecord(record, 0)
+    return WasteMovement.reconstitute({
+      ...m,
+      type: record.type,
+      causale: m.causale as CausaleMovimento,
+    }).ritardoRegistrazioneGg
+  }
+
+  private movimentoDaRecord(
+    record: WasteMovementRecord,
+    ritardoGg: number
+  ): Omit<MovimentoRegistrato, 'avvisi' | 'giaRegistrato'> {
+    return {
+      id: record.id,
+      tenantId: record.tenantId,
+      progressiveNumber: record.progressiveNumber,
+      progressiveYear: record.progressiveYear,
+      type: record.type,
+      movementDate: record.movementDate,
+      registrationDate: record.registrationDate,
+      causale: record.causale,
+      cerCode: record.cerCode,
+      wasteDescription: record.wasteDescription ?? undefined,
+      quantity: Number(record.quantity),
+      unit: record.unit,
+      wastePhysicalState: record.wastePhysicalState ?? undefined,
+      wasteHazardClasses: record.wasteHazardClasses ?? undefined,
+      operationCode: record.operationCode ?? undefined,
+      counterpartName: record.counterpartName ?? undefined,
+      counterpartAddress: record.counterpartAddress ?? undefined,
+      firId: record.firId ?? undefined,
+      recordedByUserId: record.recordedByUserId ?? undefined,
+      entryHash: record.entryHash,
+      notes: record.notes ?? undefined,
+      fuoriTermine: ritardoGg > 0,
+      ritardoGg,
+    }
   }
 
   /**

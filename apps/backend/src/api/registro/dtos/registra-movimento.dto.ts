@@ -81,7 +81,7 @@ export class RegistraMovimentoDto {
   wasteDescription?: string
 
   @ApiProperty({ description: 'Quantità (kg o unità specificata)', example: 100.5 })
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   @Type(() => Number)
   quantity: number

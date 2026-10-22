@@ -1736,7 +1736,11 @@ model WasteMovement {
   counterpartAddress String? @map("counterpart_address") @db.VarChar(500)
 
   /// SCARICO: FIR collegato (uscita verso trasportatore/destinatario).
-  firId String? @map("fir_id") @db.Uuid
+  firId        String? @map("fir_id") @db.Uuid
+  /// Copia di firId valorizzata solo dai movimenti registrati dopo l'indice unico
+  /// della ricopia (i movimenti storici restano NULL, e i NULL non collidono):
+  /// un FIR si ricopia nel registro una sola volta per tipo di movimento.
+  firIdRicopia String? @map("fir_id_ricopia") @db.Uuid
 
   /// Utente (operatore) che ha registrato l'annotazione.
   recordedByUserId String? @map("recorded_by_user_id") @db.Uuid
@@ -1751,6 +1755,7 @@ model WasteMovement {
   recordedByUser User?  @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
 
   @@unique([tenantId, progressiveYear, progressiveNumber])
+  @@unique([tenantId, firIdRicopia, type])
   @@index([tenantId, cerCode])
   @@index([tenantId, movementDate])
   @@index([tenantId, type])
