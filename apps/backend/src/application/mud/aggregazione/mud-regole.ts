@@ -1,0 +1,94 @@
+import { createHash } from 'crypto'
+import type { MudRifiutoLine } from '../export/mud-export.types'
+
+// Regole pure dell'aggregazione MUD: nessun accesso a database, nessun I/O.
+// La conversione in kg sta in `convertiInKg` (domain/waste-movement/unita-misura-registro)
+// e gli stati del FIR in `domain/fir/stati-fir`.
+
+/**
+ * Finestra dell'anno di dichiarazione in anno solare italiano; `fine` è esclusa.
+ * Stessa regola di `annoSolareItaliano` (core/time/anno-italiano): il 1° gennaio l'Italia è
+ * in UTC+1, quindi l'anno comincia alle 23:00 UTC del 31 dicembre. Lo verifica il test.
+ */
+export function limitiAnnoMud(anno: number): { inizio: Date; fine: Date } {
+  return {
+    inizio: new Date(Date.UTC(anno - 1, 11, 31, 23)),
+    fine: new Date(Date.UTC(anno, 11, 31, 23)),
+  }
+}
+
+export type RuoloMovimento = 'PRODOTTO' | 'AVVIATO' | 'RICEVUTO_DA_TERZI' | 'ESCLUSO'
+
+// Mappa della decisione 4. Le costanti CAUSALI_CARICO/CAUSALI_SCARICO di
+// waste-movement.entity.ts sono solo di riferimento: una causale non elencata è ESCLUSA.
+const RUOLO_CARICO: Record<string, RuoloMovimento> = {
+  PRODUZIONE_INTERNA: 'PRODOTTO',
+  RECUPERO_PARZIALE: 'PRODOTTO',
+  INGRESSO_ESTERNO: 'RICEVUTO_DA_TERZI',
+}
+
+const RUOLO_SCARICO: Record<string, RuoloMovimento> = {
+  CONFERIMENTO_TRASPORTATORE: 'AVVIATO',
+  AVVIO_RECUPERO: 'AVVIATO',
+  AVVIO_SMALTIMENTO: 'AVVIATO',
+  CESSIONE: 'AVVIATO',
+}
+
+export function classificaMovimento(type: 'CARICO' | 'SCARICO', causale: string): RuoloMovimento {
+  const mappa = type === 'CARICO' ? RUOLO_CARICO : RUOLO_SCARICO
+  return Object.prototype.hasOwnProperty.call(mappa, causale) ? mappa[causale] : 'ESCLUSO'
+}
+
+/** 'R' o 'D' dalla prima lettera di un codice operazione (R13, D15...), altrimenti undefined. */
+export function operazioneDaCodice(codice: string | null | undefined): 'R' | 'D' | undefined {
+  const lettera = (codice ?? '').trim().charAt(0).toUpperCase()
+  return lettera === 'R' || lettera === 'D' ? lettera : undefined
+}
+
+export function operazioneDaCausale(causale: string): 'R' | 'D' | undefined {
+  if (causale === 'AVVIO_RECUPERO') return 'R'
+  if (causale === 'AVVIO_SMALTIMENTO') return 'D'
+  return undefined
+}
+
+const arrotonda3 = (n: number): number => Math.round(n * 1000) / 1000
+
+// Forma canonica: numeri a 3 decimali e chiavi degli oggetti in ordine alfabetico,
+// così il JSON non dipende dall'ordine di inserimento.
+function canonico(valore: unknown): unknown {
+  if (typeof valore === 'number') return arrotonda3(valore)
+  if (Array.isArray(valore)) return valore.map(canonico)
+  if (valore && typeof valore === 'object') {
+    const fuori: Record<string, unknown> = {}
+    for (const chiave of Object.keys(valore).sort()) {
+      const v = (valore as Record<string, unknown>)[chiave]
+      if (v !== undefined) fuori[chiave] = canonico(v)
+    }
+    return fuori
+  }
+  return valore
+}
+
+const confronta = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+
+const ordinaSoggetti = <T extends { codiceFiscale: string; ragioneSociale: string }>(
+  soggetti: T[] | undefined
+): T[] | undefined =>
+  soggetti &&
+  [...soggetti].sort(
+    (a, b) =>
+      confronta(a.codiceFiscale, b.codiceFiscale) || confronta(a.ragioneSociale, b.ragioneSociale)
+  )
+
+/**
+ * SHA-256 esadecimale dei dati aggregati. Righe ordinate per `cerCode`, `dr` e `te` per
+ * codice fiscale e ragione sociale, numeri a 3 decimali: non dipende dall'ordine di lettura.
+ */
+export function hashAggregato(righe: MudRifiutoLine[]): string {
+  const normalizzate = [...righe]
+    .sort((a, b) => confronta(a.cerCode, b.cerCode))
+    .map(riga => ({ ...riga, dr: ordinaSoggetti(riga.dr), te: ordinaSoggetti(riga.te) }))
+  return createHash('sha256')
+    .update(JSON.stringify(canonico(normalizzate)))
+    .digest('hex')
+}
