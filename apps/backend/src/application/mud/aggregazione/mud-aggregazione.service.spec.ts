@@ -1511,7 +1511,9 @@ describe('MudAggregazioneService', () => {
         movementDate: { lt: new Date('2025-12-31T23:00:00.000Z') },
       },
       select: chiamate[0].select,
-      orderBy: [{ movementDate: 'asc' }, { progressiveNumber: 'asc' }],
+      // stessa data e stesso numero in anni diversi: senza l'anno l'"originale" citato
+      // dipenderebbe dall'ordine fisico delle righe
+      orderBy: [{ movementDate: 'asc' }, { progressiveYear: 'asc' }, { progressiveNumber: 'asc' }],
     })
   })
 

@@ -191,7 +191,12 @@ export class MudAggregazioneService {
         ? await this.prisma.wasteMovement.findMany({
             where: { tenantId, firId: { in: firIds }, movementDate: { lt: inizio } },
             select: SELECT_MOVIMENTO,
-            orderBy: [{ movementDate: 'asc' }, { progressiveNumber: 'asc' }],
+            // più anni: a parità di data e numero decide l'anno del progressivo
+            orderBy: [
+              { movementDate: 'asc' },
+              { progressiveYear: 'asc' },
+              { progressiveNumber: 'asc' },
+            ],
           })
         : []
     const firCollegati: FirCollegato[] =
