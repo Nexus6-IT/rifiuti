@@ -285,12 +285,25 @@ jobs:
             export TAG="$DEPLOY_TAG"
             COMPOSE="docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml"
             $COMPOSE pull
+            # Backup verificato prima delle migration (forward-only): se fallisce,
+            # set -e ferma tutto e la produzione resta sulla versione precedente.
+            BACKUP_MODALITA=predeploy WASTEFLOW_COMPOSE_FILE="$PWD/docker-compose.prod.yml" bash ops/backup-offsite.sh
             # Migrazioni Prisma (forward-only) prima di avviare la nuova versione
             $COMPOSE run --rm backend npx prisma migrate deploy
             $COMPOSE up -d
-            # Smoke test: il frontend risponde sul loopback
-            sleep 12
-            curl -fsS http://127.0.0.1:3017/ >/dev/null && echo "Deploy OK (tag $DEPLOY_TAG)"
+            # Smoke test: risponde il database (503 se e' giu', quindi -f fallisce)
+            # e risponde il frontend. 30 tentativi a 3 secondi.
+            for i in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:3017/api/v1/health/db >/dev/null                 && curl -fsS http://127.0.0.1:3017/ >/dev/null; then
+                echo "Deploy OK (tag $DEPLOY_TAG)"
+                exit 0
+              fi
+              sleep 3
+            done
+            echo "Smoke test fallito dopo 30 tentativi"
+            $COMPOSE ps
+            $COMPOSE logs --since 5m backend
+            exit 1
         env:
           DEPLOY_TAG: ${{ needs.build.outputs.tag }}
           CR_TOKEN: ${{ secrets.CR_TOKEN }}

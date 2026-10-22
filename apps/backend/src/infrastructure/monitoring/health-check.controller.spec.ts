@@ -10,6 +10,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing'
 import { Reflector } from '@nestjs/core'
+import { ServiceUnavailableException } from '@nestjs/common'
 import { HealthCheckController } from './health-check.controller'
 import { PrismaService } from '../database/prisma.service'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -72,13 +73,16 @@ describe('HealthCheckController', () => {
       expect(result).toEqual({ status: 'ok', database: 'connected' })
     })
 
-    it('should report disconnected when the query fails', async () => {
+    it('GET /health/db risponde 503 se il database non risponde', async () => {
       prisma.$queryRaw.mockRejectedValue(new Error('connection refused'))
 
-      const result = await controller.databaseHealth()
+      await expect(controller.databaseHealth()).rejects.toBeInstanceOf(ServiceUnavailableException)
+    })
 
-      expect(result.status).toBe('error')
-      expect(result.database).toBe('disconnected')
+    it('GET /health/detailed resta unhealthy senza lanciare se il database non risponde', async () => {
+      prisma.$queryRaw.mockRejectedValue(new Error('connection refused'))
+
+      expect((await controller.detailedHealth()).status).toBe('unhealthy')
     })
   })
 

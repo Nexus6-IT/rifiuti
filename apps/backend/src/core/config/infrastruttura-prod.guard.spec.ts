@@ -166,3 +166,27 @@ describe('docker-compose.prod.yml: variabili del backend', () => {
     }
   )
 })
+
+describe('deploy.yml: rilascio in produzione', () => {
+  const deploy = leggiFile('.gitea/workflows/deploy.yml')
+  const BACKUP =
+    'BACKUP_MODALITA=predeploy WASTEFLOW_COMPOSE_FILE="$PWD/docker-compose.prod.yml" bash ops/backup-offsite.sh'
+
+  it('il deploy esegue il backup prima delle migration', () => {
+    const iReset = deploy.indexOf('git reset --hard origin/master')
+    const iBackup = deploy.indexOf(BACKUP)
+    const iMigrate = deploy.indexOf('npx prisma migrate deploy')
+    expect(iReset).toBeGreaterThan(-1)
+    expect(iBackup).toBeGreaterThan(iReset)
+    expect(iMigrate).toBeGreaterThan(iBackup)
+  })
+
+  it('un passo fallito ferma lo script remoto', () => {
+    expect(deploy).toContain('script_stop: true')
+    expect(deploy).toMatch(/script: \|\n\s+set -e\n/)
+  })
+
+  it('lo smoke test interroga /api/v1/health/db, che fallisce se il database non risponde', () => {
+    expect(deploy).toContain('curl -fsS http://127.0.0.1:3017/api/v1/health/db')
+  })
+})
