@@ -85,7 +85,9 @@ describe('opzioni-sentry', () => {
           ],
         },
       }
-      const r = ripulisciEventoSentry(evento, { originalException: { code: 'P2010' } })
+      const r = ripulisciEventoSentry(evento, {
+        originalException: { name: 'PrismaClientKnownRequestError', code: 'P2010' },
+      })
       expect(r.exception!.values![0].value).toBe('PrismaClientKnownRequestError P2010')
       expect(r.exception!.values![0].stacktrace!.frames![0].lineno).toBe(12)
     })
@@ -204,6 +206,167 @@ describe('opzioni-sentry', () => {
     it('mascheraDatiPersonali maschera email e partita IVA anche col prefisso IT', () => {
       expect(mascheraDatiPersonali('a: Mario.Rossi+fir@posta.example.it')).toBe('a: ***@***')
       expect(mascheraDatiPersonali(`piva ${PIVA} e IT${PIVA}`)).toBe('piva ***PIVA*** e ***PIVA***')
+    })
+  })
+
+  describe('altre vie di uscita (fix round 1)', () => {
+    const CF = 'RSSMRA80A01H501U'
+    const PIVA = '12345678903'
+
+    it('maschera CF e partita IVA attaccati a "_" e il prefisso "it" minuscolo', () => {
+      expect(mascheraDatiPersonali(`ENOENT: /storage/${CF}_fir.pdf`)).toBe(
+        'ENOENT: /storage/***CF***_fir.pdf'
+      )
+      expect(mascheraDatiPersonali(`ENOENT: /storage/${PIVA}_fir.pdf`)).toBe(
+        'ENOENT: /storage/***PIVA***_fir.pdf'
+      )
+      expect(mascheraDatiPersonali(`piva it${PIVA}`)).toBe('piva ***PIVA***')
+      expect(mascheraDatiPersonali(`fir_${CF}_${PIVA}.xml`)).toBe('fir_***CF***_***PIVA***.xml')
+    })
+
+    it('con i confini nuovi UUID e hash attaccati a "_" restano intatti', () => {
+      const intatti = [
+        'file_3f2a9c1e-7b4d-4e8a-9f10-2c3d4e5f6a7b.pdf',
+        'cache_9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08_v2',
+        'blob_12345678901234567890abcdef_x',
+        'ts_1729584000000_tmp',
+      ]
+      for (const t of intatti) expect(mascheraDatiPersonali(t)).toBe(t)
+    })
+
+    it('maschera evento.message e logentry (throw di un valore non Error)', () => {
+      const evento: any = {
+        message: `rifiutato ${CF}`,
+        logentry: { message: `a ${PIVA}`, formatted: `a ${PIVA}`, params: [CF] },
+      }
+      const r: any = ripulisciEventoSentry(evento)
+      expect(r.message).toBe('rifiutato ***CF***')
+      expect(r.logentry).toEqual({
+        message: 'a ***PIVA***',
+        formatted: 'a ***PIVA***',
+        params: ['***CF***'],
+      })
+    })
+
+    it('percorre extra in profondità, compreso __serialized__, senza cadere sui cicli', () => {
+      const ciclico: any = { nome: `mario.rossi@example.it` }
+      ciclico.se = ciclico
+      const evento: any = {
+        extra: {
+          __serialized__: { soggetto: { cf: CF, piva: [PIVA, 7] }, ok: true },
+          ciclico,
+        },
+      }
+      const r: any = ripulisciEventoSentry(evento)
+      expect(r.extra.__serialized__).toEqual({
+        soggetto: { cf: '***CF***', piva: ['***PIVA***', 7] },
+        ok: true,
+      })
+      expect(r.extra.ciclico.nome).toBe('***@***')
+      expect(JSON.stringify(r.extra.__serialized__)).not.toContain(CF)
+    })
+
+    it('oltre la profondità massima di extra non arriva niente in chiaro', () => {
+      let profondo: any = { cf: CF }
+      for (let i = 0; i < 30; i++) profondo = { giu: profondo }
+      const r: any = ripulisciEventoSentry({ extra: { profondo } } as any)
+      expect(JSON.stringify(r.extra)).not.toContain(CF)
+    })
+
+    it('maschera il percorso in request.url e in transaction', () => {
+      const evento: any = {
+        request: {
+          url: `https://wasteflow.example.it/api/v1/soggetti/${CF}?q=${PIVA}`,
+          method: 'GET',
+        },
+        transaction: `GET /api/v1/soggetti/${CF}`,
+      }
+      const r: any = ripulisciEventoSentry(evento)
+      expect(r.request.url).toBe('https://wasteflow.example.it/api/v1/soggetti/***CF***')
+      expect(r.transaction).toBe('GET /api/v1/soggetti/***CF***')
+    })
+
+    it('maschera il percorso degli URL nei breadcrumb HTTP in uscita', () => {
+      const evento: any = {
+        breadcrumbs: [
+          {
+            category: 'http',
+            data: {
+              url: `https://api.rentri.gov.it/anagrafiche/v1.0/operatore/${CF}/controllo-iscrizione?x=${PIVA}`,
+              method: 'GET',
+              status_code: 500,
+            },
+          },
+        ],
+      }
+      const r: any = ripulisciEventoSentry(evento)
+      expect(r.breadcrumbs[0].data).toEqual({
+        url: 'https://api.rentri.gov.it/anagrafiche/v1.0/operatore/***CF***/controllo-iscrizione',
+        method: 'GET',
+        status_code: 500,
+      })
+    })
+
+    it('il codice Prisma viene dall errore giusto della catena di cause', () => {
+      const prisma = { name: 'PrismaClientKnownRequestError', code: 'P2002' }
+      const wrapper = { name: 'DomainException', code: 'DOM_DUPLICATO', cause: prisma }
+      const evento: any = {
+        exception: {
+          values: [
+            { type: 'PrismaClientKnownRequestError', value: `Unique ... ${CF}` },
+            { type: 'DomainException', value: 'soggetto già presente' },
+          ],
+        },
+      }
+      const r = ripulisciEventoSentry(evento, { originalException: wrapper })
+      expect(r.exception!.values![0].value).toBe('PrismaClientKnownRequestError P2002')
+      expect(r.exception!.values![1].value).toBe('soggetto già presente')
+    })
+
+    it('un errore Prisma che non compare nella catena resta senza codice', () => {
+      const evento: any = {
+        exception: { values: [{ type: 'PrismaClientKnownRequestError', value: CF }] },
+      }
+      const r = ripulisciEventoSentry(evento, {
+        originalException: { name: 'DomainException', code: 'DOM_X' },
+      })
+      expect(r.exception!.values![0].value).toBe('PrismaClientKnownRequestError')
+    })
+
+    it('P2010 conserva SQLSTATE e nome del vincolo, non i valori', () => {
+      const messaggioPg = `ERROR: duplicate key value violates unique constraint "soggetto_tenant_id_cf_key"\nDETAIL: Key (tenant_id, cf)=(t1, ${CF}) already exists.`
+      const errore = {
+        name: 'PrismaClientKnownRequestError',
+        code: 'P2010',
+        meta: { code: '23505', message: messaggioPg },
+      }
+      const evento: any = {
+        exception: {
+          values: [
+            {
+              type: 'PrismaClientKnownRequestError',
+              value: `Raw query failed. Code: \`23505\`. Message: \`${messaggioPg}\``,
+            },
+          ],
+        },
+      }
+      const r = ripulisciEventoSentry(evento, { originalException: errore })
+      expect(r.exception!.values![0].value).toBe(
+        'PrismaClientKnownRequestError P2010 SQLSTATE 23505, vincolo soggetto_tenant_id_cf_key'
+      )
+    })
+
+    it('P2010 con meta di forma inattesa non riporta testo libero', () => {
+      const errore = {
+        name: 'PrismaClientKnownRequestError',
+        code: 'P2010',
+        meta: { code: `${CF} x`, message: `constraint "${CF} (x)"` },
+      }
+      const evento: any = {
+        exception: { values: [{ type: 'PrismaClientKnownRequestError', value: CF }] },
+      }
+      const r = ripulisciEventoSentry(evento, { originalException: errore })
+      expect(r.exception!.values![0].value).toBe('PrismaClientKnownRequestError P2010')
     })
   })
 })

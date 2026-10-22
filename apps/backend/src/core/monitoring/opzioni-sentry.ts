@@ -5,6 +5,12 @@ function senzaQuery(url: unknown): unknown {
   return typeof url === 'string' ? url.split('?')[0] : url
 }
 
+/** URL senza query string e con il percorso mascherato (può contenere un CF). */
+function urlRipulito(url: unknown): unknown {
+  const ridotto = senzaQuery(url)
+  return typeof ridotto === 'string' ? mascheraDatiPersonali(ridotto) : ridotto
+}
+
 // `Key (colonne)=(valori)` di Postgres: si tengono le colonne, si tolgono i valori. Prima
 // si cerca la chiusura seguita da una coda nota di Postgres (i valori possono contenere
 // parentesi), altrimenti si arriva all'ultima `)` della riga: meglio togliere troppo.
@@ -12,11 +18,13 @@ const CHIAVE_POSTGRES =
   /Key \(([^\n]*?)\)=\((?:[^\n]*?\)(?=\s+(?:already exists|is not present|conflicts with))|[^\n]*\))/g
 const RIGA_POSTGRES = /Failing row contains \([^\n]*\)/g
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,}/gi
-// codice fiscale di persona fisica, anche omocodico
+// Codice fiscale di persona fisica, anche omocodico. I confini sono "niente lettera o cifra
+// accanto" invece di `\b`, così il valore viene preso anche accanto a `_` (nomi di file),
+// ma non dentro un hash o un identificativo più lungo.
 const CODICE_FISCALE =
-  /\b[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]\b/gi
-// 11 cifre: partita IVA (o CF numerico), anche col prefisso `IT`
-const PARTITA_IVA = /\b(?:IT)?\d{11}\b/g
+  /(?<![A-Z0-9])[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z](?![A-Z0-9])/gi
+// 11 cifre: partita IVA (o CF numerico), anche col prefisso `IT`/`it`
+const PARTITA_IVA = /(?<![A-Z0-9])(?:IT)?\d{11}(?![A-Z0-9])/gi
 
 /**
  * Maschera nel testo i dati personali che PostgreSQL, RENTRI o SMTP possono riportare in un
@@ -32,10 +40,94 @@ export function mascheraDatiPersonali(testo: string): string {
     .replace(PARTITA_IVA, '***PIVA***')
 }
 
+// Oltre questa profondità il contenuto di `extra` non viene inviato: non si può mandare
+// in chiaro quello che non si è guardato.
+const PROFONDITA_MASSIMA = 10
+const TROPPO_PROFONDO = '[omesso: troppo profondo]'
+
+/**
+ * Copia di `valore` con ogni stringa mascherata, a qualunque profondità. I cicli tornano
+ * sulla copia già fatta; oltre {@link PROFONDITA_MASSIMA} il contenuto è omesso.
+ */
+function mascheraInProfondita(
+  valore: unknown,
+  profondita = 0,
+  copie: WeakMap<object, unknown> = new WeakMap()
+): unknown {
+  if (typeof valore === 'string') return mascheraDatiPersonali(valore)
+  if (valore === null || typeof valore !== 'object') return valore
+  const giaFatta = copie.get(valore)
+  if (giaFatta !== undefined) return giaFatta
+  if (profondita >= PROFONDITA_MASSIMA) return TROPPO_PROFONDO
+  if (Array.isArray(valore)) {
+    const copia: unknown[] = []
+    copie.set(valore, copia)
+    for (const elemento of valore) copia.push(mascheraInProfondita(elemento, profondita + 1, copie))
+    return copia
+  }
+  const copia: Record<string, unknown> = {}
+  copie.set(valore, copia)
+  for (const [chiave, interno] of Object.entries(valore)) {
+    copia[chiave] = mascheraInProfondita(interno, profondita + 1, copie)
+  }
+  return copia
+}
+
+type ErroreQualsiasi = Record<string, unknown>
+
+/** L'errore e le sue `cause`, al massimo 10 livelli, senza cadere sui cicli. */
+function catenaDiCause(errore: unknown): ErroreQualsiasi[] {
+  const catena: ErroreQualsiasi[] = []
+  let corrente = errore
+  while (
+    corrente &&
+    typeof corrente === 'object' &&
+    !catena.includes(corrente as ErroreQualsiasi) &&
+    catena.length < 10
+  ) {
+    catena.push(corrente as ErroreQualsiasi)
+    corrente = (corrente as ErroreQualsiasi).cause
+  }
+  return catena
+}
+
+/** Nome con cui l'SDK riporta l'errore in `exception.values[].type`. */
+function nomeErrore(errore: ErroreQualsiasi): unknown {
+  return typeof errore.name === 'string' ? errore.name : errore.constructor?.name
+}
+
+/**
+ * Descrizione di un errore Prisma senza dati: classe, codice `Pnnnn` e, per P2010 (raw
+ * query fallita), SQLSTATE e nome del vincolo di Postgres. Il testo libero non passa mai:
+ * ogni pezzo deve avere la forma attesa, altrimenti viene lasciato fuori.
+ */
+function descriviErrorePrisma(tipo: string, errore: ErroreQualsiasi | undefined): string {
+  const parti = [tipo]
+  const code = errore?.code
+  if (typeof code === 'string' && /^P\d{4}$/.test(code)) {
+    parti.push(code)
+    const meta = errore?.meta as ErroreQualsiasi | undefined
+    if (code === 'P2010' && meta) {
+      const dettagli: string[] = []
+      if (typeof meta.code === 'string' && /^[0-9A-Z]{5}$/.test(meta.code)) {
+        dettagli.push(`SQLSTATE ${meta.code}`)
+      }
+      const vincolo =
+        typeof meta.message === 'string'
+          ? /constraint "([A-Za-z0-9_.$]+)"/.exec(meta.message)?.[1]
+          : undefined
+      if (vincolo) dettagli.push(`vincolo ${vincolo}`)
+      if (dettagli.length) parti.push(dettagli.join(', '))
+    }
+  }
+  return mascheraDatiPersonali(parti.join(' '))
+}
+
 /**
  * Ripulisce un evento prima dell'invio a Bugsink: niente corpo, cookie, header né query
- * string della richiesta, URL tagliati al primo `?` (anche nei breadcrumb), utente ridotto
- * al solo `id`, testo delle eccezioni, messaggi dei breadcrumb ed `extra` senza dati
+ * string della richiesta, URL tagliati al primo `?` e con il percorso mascherato (anche nei
+ * breadcrumb e in `transaction`), utente ridotto al solo `id`, testo delle eccezioni,
+ * `message`/`logentry`, messaggi dei breadcrumb ed `extra` (a ogni profondità) senza dati
  * personali; le eccezioni Prisma ridotte a classe e codice. Non lancia mai: su un evento
  * di forma inattesa toglie quello che riesce.
  */
@@ -46,16 +138,38 @@ export function ripulisciEventoSentry(
   try {
     const eccezioni = evento.exception?.values
     if (Array.isArray(eccezioni)) {
-      const code = (hint?.originalException as { code?: string } | undefined)?.code
+      const catena = catenaDiCause(hint?.originalException)
       for (const eccezione of eccezioni) {
         if (!eccezione) continue
         if (typeof eccezione.type === 'string' && eccezione.type.startsWith('PrismaClient')) {
-          // il messaggio di Prisma riporta il testo di Postgres, con i valori della riga
-          eccezione.value = `${eccezione.type}${code ? ' ' + code : ''}`
+          // il messaggio di Prisma riporta il testo di Postgres, con i valori della riga;
+          // il codice si prende dall'errore della catena che ha proprio questo tipo
+          const errore = catena.find(e => nomeErrore(e) === eccezione.type)
+          eccezione.value = descriviErrorePrisma(eccezione.type, errore)
         } else if (typeof eccezione.value === 'string') {
           eccezione.value = mascheraDatiPersonali(eccezione.value)
         }
       }
+    }
+  } catch {
+    // forma inattesa: si prosegue con il resto
+  }
+  try {
+    // l'SDK riempie `message` quando viene lanciato un valore che non è un Error
+    const conMessaggio = evento as { message?: unknown; logentry?: unknown }
+    if (conMessaggio.message !== undefined) {
+      conMessaggio.message = mascheraInProfondita(conMessaggio.message)
+    }
+    if (conMessaggio.logentry !== undefined) {
+      conMessaggio.logentry = mascheraInProfondita(conMessaggio.logentry)
+    }
+  } catch {
+    // forma inattesa: si prosegue con il resto
+  }
+  try {
+    if (typeof evento.transaction === 'string') {
+      // senza tracing il nome è "METODO /percorso" della richiesta vera
+      evento.transaction = urlRipulito(evento.transaction) as string
     }
   } catch {
     // forma inattesa: si prosegue con il resto
@@ -72,12 +186,9 @@ export function ripulisciEventoSentry(
     // forma inattesa: si prosegue con il resto
   }
   try {
-    const extra = evento.extra as Record<string, unknown> | undefined
-    if (extra) {
-      for (const [chiave, valore] of Object.entries(extra)) {
-        if (typeof valore === 'string') extra[chiave] = mascheraDatiPersonali(valore)
-      }
-    }
+    // compreso `extra.__serialized__`, che l'SDK aggiunge per un oggetto lanciato
+    if (evento.extra)
+      evento.extra = mascheraInProfondita(evento.extra) as Sentry.ErrorEvent['extra']
   } catch {
     // forma inattesa: si prosegue con il resto
   }
@@ -88,7 +199,7 @@ export function ripulisciEventoSentry(
       delete richiesta.cookies
       delete richiesta.query_string
       delete richiesta.headers
-      if ('url' in richiesta) richiesta.url = senzaQuery(richiesta.url)
+      if ('url' in richiesta) richiesta.url = urlRipulito(richiesta.url)
     }
   } catch {
     // forma inattesa: si prosegue con il resto
@@ -97,7 +208,7 @@ export function ripulisciEventoSentry(
     if (Array.isArray(evento.breadcrumbs)) {
       for (const breadcrumb of evento.breadcrumbs) {
         const dati = breadcrumb?.data as Record<string, unknown> | undefined
-        if (dati && 'url' in dati) dati.url = senzaQuery(dati.url)
+        if (dati && 'url' in dati) dati.url = urlRipulito(dati.url)
         // l'SDK sposta query e fragment in chiavi a parte: vanno tolti anche quelli
         if (dati) {
           delete dati['http.query']
