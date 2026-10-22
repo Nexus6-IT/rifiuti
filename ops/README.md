@@ -153,7 +153,7 @@ Il progetto su Bugsink si crea con `docker exec bugsink bugsink-manage shell`
 
 ### Dati personali
 
-Gli eventi non portano corpo, header, cookie né query string della richiesta, e l'utente è
+Gli eventi non portano corpo, header, cookie né query string della richiesta (né query e fragment delle chiamate HTTP in uscita nei breadcrumb), e l'utente è
 ridotto al solo `id` (Decisione 5; `apps/backend/src/core/monitoring/opzioni-sentry.ts`).
 Ogni aggiornamento dell'SDK va seguito dalla lettura di un evento vero, come al passo 7.5,
 per verificare che le opzioni abbiano ancora l'effetto voluto.

@@ -47,4 +47,24 @@ describe('opzioni-sentry', () => {
   it('ripulisciEventoSentry non lancia su un evento senza request né user', () => {
     expect(() => ripulisciEventoSentry({ type: undefined } as any)).not.toThrow()
   })
+
+  it('ripulisciEventoSentry toglie query e fragment di un breadcrumb nella forma dell SDK', () => {
+    const evento: any = {
+      breadcrumbs: [
+        {
+          category: 'http',
+          data: {
+            url: 'https://api.rentri.gov.it/x',
+            'http.query': '?cf=RSSMRA80A01H501U',
+            'http.fragment': '#a',
+          },
+        },
+      ],
+    }
+    const r = ripulisciEventoSentry(evento)
+    expect(JSON.stringify(r)).not.toContain('RSSMRA80A01H501U')
+    expect(r.breadcrumbs![0].data).not.toHaveProperty('http.query')
+    expect(r.breadcrumbs![0].data).not.toHaveProperty('http.fragment')
+    expect(r.breadcrumbs![0].data!.url).toBe('https://api.rentri.gov.it/x')
+  })
 })

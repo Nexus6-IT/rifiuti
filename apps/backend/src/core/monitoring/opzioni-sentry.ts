@@ -28,6 +28,11 @@ export function ripulisciEventoSentry(evento: Sentry.ErrorEvent): Sentry.ErrorEv
       for (const breadcrumb of evento.breadcrumbs) {
         const dati = breadcrumb?.data as Record<string, unknown> | undefined
         if (dati && 'url' in dati) dati.url = senzaQuery(dati.url)
+        // l'SDK sposta query e fragment in chiavi a parte: vanno tolti anche quelli
+        if (dati) {
+          delete dati['http.query']
+          delete dati['http.fragment']
+        }
       }
     }
   } catch {
