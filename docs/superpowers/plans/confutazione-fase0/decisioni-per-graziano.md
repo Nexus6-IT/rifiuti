@@ -6,6 +6,22 @@ In ogni piano il codice è già scritto sulla scelta indicata come **predefinito
 
 Ordine di merge invariato: D → C → A. Ogni merge su `master` è un rilascio in produzione.
 
+## Esito (2026-10-22)
+
+Graziano ha confermato i **predefiniti** per tutte le decisioni tecniche e ha esaminato una per una le sette con peso di prodotto:
+
+| ID | Scelta |
+|---|---|
+| DG-01 | **Cambiato**: ogni merge su `master` lo approva Graziano, ma **nessuna nota di rilascio ai clienti** (in produzione ci sono solo dati di collaudo). Il riepilogo «Cosa vede l'utente» resta nei piani A e C come base per l'approvazione. Resta l'avviso preventivo previsto da DG-31 |
+| DG-14 | Predefinito: numero legale = vidimato RENTRI; `FIR-AAAA-NNNNNN` è il riferimento interno |
+| DG-15 | Predefinito: blocco solo sul saldo complessivo, ordine delle date come avviso |
+| DG-16 | Predefinito: «Altro carico» per i rifiuti già in deposito, da validare con un consulente |
+| DG-22 | Predefinito: MUD dal registro già in Fase 0 |
+| DG-31 | Predefinito: file bloccato con `REGISTRO_VUOTO_CON_FIR` e avviso ai clienti interessati prima del rilascio |
+| DG-32 | Predefinito: giacenze al 31/12 a zero con avviso; calcolo dallo storico come follow-up |
+
+Tutte le altre voci di questa pagina valgono come **confermate sul predefinito**.
+
 ## Da decidere PRIMA dell'esecuzione
 
 | ID | Domanda | Predefinito scritto nel piano | Piano / task | Conseguenza del predefinito |

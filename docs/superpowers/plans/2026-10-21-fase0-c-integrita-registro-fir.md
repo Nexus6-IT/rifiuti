@@ -54,7 +54,7 @@ Da confermare prima dell'esecuzione. Il piano è scritto con l'opzione indicata 
 - **Commit:** `fix(registro): …` / `fix(fir): …` / `test(…): …` in italiano, **senza righe `Co-Authored-By` né altre attribuzioni**.
 - **Rollback:** la migration aggiunge solo una colonna nullable e un indice, ignorati dal codice precedente, quindi tornare indietro non richiede un restore. Il workflow di deploy non accetta un tag (`workflow_dispatch` senza input, `git reset --hard origin/master`): il rollback è un `git revert -m 1 <merge>` su `master` più la pipeline intera (build di 30-40 minuti sul runner condiviso), come scritto in `ops/README.md`, sezione Rollback (piano D). **Caso limite di Capodanno:** se si torna indietro fra il 1° gennaio e il primo FIR emesso dal codice vecchio, `generateNumeroProgressivo` (che filtra per `createdAt` e ordina le stringhe) può ricalcolare un riferimento già assegnato dal codice di questo piano: l'emissione fallisce con P2002 su `[tenantId, firNumber]` (`schema.prisma:453`). Non si perdono dati, ma l'emissione resta bloccata finché non si rilascia di nuovo questo piano: evitare il rollback in quella finestra, o riemettere dopo il nuovo rilascio.
 - **Revert solo in ordine inverso (A → C → D)**, come in `ops/README.md` (piano D): un revert di C con A già in `master` rompe la build di A. Per rilasciare di nuovo dopo un revert serve il revert del revert.
-- **Il merge su `master` è un rilascio in produzione** (fa partire il deploy): lo fa Graziano o lo approva esplicitamente, dopo aver letto la nota di rilascio (sezione «Cosa vede l'utente dopo il rilascio» in fondo al piano), da mandare ai clienti lo stesso giorno.
+- **Il merge su `master` è un rilascio in produzione** (fa partire il deploy): lo fa Graziano o lo approva esplicitamente, dopo aver letto il riepilogo «Cosa vede l'utente dopo il rilascio» in fondo al piano. Nessuna nota ai clienti (DG-01, deciso da Graziano il 2026-10-22).
 - **Fuori ambito:** la regola ±10% sul peso a destino (`fir.aggregate.ts:552`), giacenze iniziali, unità locale, rettifiche, l'età del deposito temporaneo (`giacenze.service.ts:50-54`), il consumo del numero vidimato (piano della scorta).
 
 ## Review Focus
@@ -1351,9 +1351,9 @@ git commit -m "fix(registro): data di registrazione assegnata dal server, data d
 - [ ] Gli esiti delle query informative del Task 1 Step 6, Task 3 Step 8 e Task 4 Step 6 sono nella descrizione della PR, eseguite **prima** della conferma delle Decisioni 3, 4 e 8, con la nota che il VPS è di collaudo.
 - [ ] `git grep -n "rentriStatoFormulario" -- apps/backend/src/infrastructure/persistence/fir-prisma.repository.ts`: almeno due righe (scrittura in `rentriToPersistence` e lettura in `toDomain`).
 - [ ] `git grep -n "dataPresaCarico)" -- apps/frontend/src/app/features/registro`: nessun uso di `dataPresaCarico` come data dell'operazione (solo `dataPresaCaricoEffettiva`).
-- [ ] La nota di rilascio qui sotto è nella descrizione della PR, e Graziano ha approvato il merge (Global Constraints).
+- [ ] Il riepilogo qui sotto è nella descrizione della PR, e Graziano ha approvato il merge (Global Constraints).
 
-## Cosa vede l'utente dopo il rilascio (nota di rilascio da mandare ai clienti)
+## Cosa vede l'utente dopo il rilascio (riepilogo per l'approvazione del merge, non da inviare ai clienti: DG-01)
 
 Il merge su `master` mette in produzione queste modifiche lo stesso giorno. Testo proposto per i clienti, da adattare:
 
