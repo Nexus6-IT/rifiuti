@@ -328,7 +328,7 @@ describe('controlliMud', () => {
       'Il rifiuto CER 200304 è registrato con stati fisici diversi (liquido, non riconosciuto): il file indica "solido non polverulento". La divisione in più schede RIF non è ancora supportata.'
     )
     expect(controlliMud.statoFisicoNonUnivoco('200304', ['NON_RICONOSCIUTO']).messaggio).toBe(
-      'Il rifiuto CER 200304 è registrato con uno stato fisico non riconosciuto: il file indica "solido non polverulento". Correggere lo stato fisico nel registro.'
+      'Il rifiuto CER 200304 è registrato con uno stato fisico non riconosciuto: il file indica "solido non polverulento". Il registro non si modifica: verificare che lo stato fisico indicato nel file sia corretto; se non lo è, il valore si potrà sistemare solo con una rettifica, che non è ancora supportata (contattare l\'assistenza).'
     )
   })
 

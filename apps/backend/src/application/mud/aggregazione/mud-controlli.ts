@@ -391,7 +391,7 @@ export const controlliMud = {
       return {
         codice: 'STATO_FISICO_NON_UNIVOCO',
         gravita: AVVISO,
-        messaggio: `Il rifiuto CER ${cerCode6} è registrato con uno stato fisico non riconosciuto: il file indica "${predefinito}". Correggere lo stato fisico nel registro.`,
+        messaggio: `Il rifiuto CER ${cerCode6} è registrato con uno stato fisico non riconosciuto: il file indica "${predefinito}". Il registro non si modifica: verificare che lo stato fisico indicato nel file sia corretto; se non lo è, il valore si potrà sistemare solo con una rettifica, che non è ancora supportata (contattare l'assistenza).`,
       }
     }
     return {
