@@ -316,7 +316,9 @@ export class RegistraMovimentoUseCase {
     }
 
     // Terzo lock dell'ordine fisso (FIR, progressivo, giacenza): serializza gli scarichi
-    // dello stesso CER del tenant, con e senza asterisco.
+    // dello stesso CER del tenant, con e senza asterisco. `cerCode` arriva già da
+    // normalizeCerCode ("NN NN NN" per ogni formato di 6 cifre), quindi la chiave
+    // individua lo stesso CER che giacenzaDisponibileAl confronta sulle sole cifre.
     const cerSenzaStella = cerCode.replace(/\*$/, '')
     const chiaveGiacenza = `giacenza|${tenantId}|${cerSenzaStella}`
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveGiacenza}))`

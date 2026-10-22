@@ -31,15 +31,16 @@ const arrotonda3 = (v: unknown): number => Math.round(Number(v) * 1000) / 1000
 /**
  * Saldi in kg per giorno italiano di `movement_date` (colonna senza fuso, scritta in UTC).
  * Considera solo la famiglia di massa (alias di kg e t, unità vuota); il CER si confronta
- * con e senza asterisco. Le liste di alias arrivano da `unita-misura-registro.ts`.
+ * sulle sole cifre: con o senza asterisco, con o senza spazi (righe storiche scritte prima
+ * della normalizzazione "NN NN NN") è lo stesso rifiuto. Le liste di alias arrivano da
+ * `unita-misura-registro.ts`.
  * I valori possono essere negativi se lo storico è già incoerente.
  */
 export async function giacenzaDisponibileAl(
   tx: Prisma.TransactionClient,
   p: ParametriGiacenza
 ): Promise<GiacenzaDisponibile> {
-  const cerSenzaStella = p.cerCode.replace(/\*$/, '')
-  const cerConStella = `${cerSenzaStella}*`
+  const cerSoloCifre = p.cerCode.replace(/[^0-9]/g, '')
   const giornoAlla = giornoItaliano(p.alla)
   const aliasKg = [...ALIAS_KG]
   const aliasT = [...ALIAS_T]
@@ -51,7 +52,7 @@ export async function giacenzaDisponibileAl(
                  CASE WHEN upper(btrim(unit)) = ANY(${aliasT}::text[]) THEN 1000 ELSE 1 END) AS delta
       FROM waste_movements
       WHERE tenant_id = ${p.tenantId}::uuid
-        AND cer_code IN (${cerSenzaStella}, ${cerConStella})
+        AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cerSoloCifre}
         AND (upper(btrim(unit)) = ANY(${aliasKg}::text[])
              OR upper(btrim(unit)) = ANY(${aliasT}::text[])
              OR btrim(unit) = '')

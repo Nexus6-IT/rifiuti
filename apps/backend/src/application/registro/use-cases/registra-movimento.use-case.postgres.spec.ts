@@ -114,7 +114,9 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
       .spyOn(giacenzaModulo, 'giacenzaDisponibileAl')
       .mockImplementation(async (tx, p) => {
         if (++arrivate === 2) sblocca()
-        await Promise.race([entrambe, new Promise(r => setTimeout(r, 500))])
+        let timer: NodeJS.Timeout | undefined
+        await Promise.race([entrambe, new Promise(r => (timer = setTimeout(r, 500)))])
+        clearTimeout(timer)
         return reale(tx, p)
       })
     const [a, b] = await Promise.all([

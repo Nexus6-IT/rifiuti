@@ -136,6 +136,13 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
     expect((await disp(new Date('2026-03-05'), '99 99 01')).saldoComplessivoKg).toBe(80)
   })
 
+  it('conta i movimenti storici col CER scritto senza spazi', async () => {
+    // Righe scritte prima della normalizzazione "NN NN NN": il CER è lo stesso.
+    await carico('2026-03-01', 70, 'KG', '999901')
+    await carico('2026-03-01', 5, 'KG', '99 99 02')
+    expect((await disp(new Date('2026-03-05'), '99 99 01')).saldoComplessivoKg).toBe(70)
+  })
+
   it('ignora i movimenti di un altro tenant', async () => {
     await carico('2026-03-01', 500, 'KG', '99 99 01', altroTenantId)
     await scarico('2026-03-02', 20, 'KG', '99 99 01', altroTenantId)
