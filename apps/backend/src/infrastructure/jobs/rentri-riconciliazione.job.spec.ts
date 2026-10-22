@@ -101,4 +101,32 @@ describe('RentriRiconciliazioneJob', () => {
       tags: { job: 'eseguiRiconciliazione', tenantId: 't2' },
     })
   })
+
+  // Guardia di regressione: verde anche prima della modifica (il comportamento esiste già).
+  it('eseguiRiconciliazione non rilancia e segnala una volta', async () => {
+    mockPrisma.tenant.findMany.mockRejectedValue(new Error('db giù'))
+
+    await expect(job.eseguiRiconciliazione()).resolves.toBeUndefined()
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1)
+  })
+
+  it('riconcilia rilancia se la lettura dei tenant fallisce', async () => {
+    mockPrisma.tenant.findMany.mockRejectedValue(new Error('db giù'))
+
+    await expect(job.riconcilia()).rejects.toThrow('db giù')
+    // La segnalazione a Bugsink spetta solo all'handler @Cron, non al giro.
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('riconcilia restituisce i tenant con errore', async () => {
+    mockPrisma.tenant.findMany.mockResolvedValue([{ id: 't1' }, { id: 't2' }])
+    mockRiconciliaStatoRentri.execute.mockImplementation((tenantId: string) =>
+      tenantId === 't2'
+        ? Promise.reject(new Error('credenziale scaduta'))
+        : Promise.resolve({ controllati: 0, corretti: 0, segnalati: 0, nessunaDivergenza: 0 })
+    )
+
+    await expect(job.riconcilia()).resolves.toEqual({ tenantTotali: 2, tenantConErrore: 1 })
+  })
 })

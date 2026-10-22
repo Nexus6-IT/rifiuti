@@ -6,6 +6,12 @@ import { MetricsService } from '../../core/metrics/metrics.service'
 import { PrismaService } from '../persistence/prisma.service'
 import { calcolaGiorniAllaScadenzaCertificato } from '../rentri/rentri-certificato-scadenza.util'
 
+/** Esito di un giro per tenant: serve al rilancio manuale per distinguere completato e parziale. */
+export interface EsitoGiroRentri {
+  tenantTotali: number
+  tenantConErrore: number
+}
+
 /**
  * Job giornaliero di scadenza del certificato RENTRI (R5, Task 5).
  *
@@ -36,8 +42,22 @@ export class RentriCertificatoScadenzaJob {
     this.logger.setContext(RentriCertificatoScadenzaJob.name)
   }
 
+  /** Handler dello scheduler: non rilancia mai e segnala a Bugsink l'errore generale. */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async eseguiControlloScadenza(): Promise<void> {
+    try {
+      await this.controllaScadenze()
+    } catch (error: unknown) {
+      segnalaErroreJob('eseguiControlloScadenza', error)
+    }
+  }
+
+  /**
+   * Il giro vero e proprio, chiamabile anche dal rilancio manuale. Un errore
+   * generale si logga e si rilancia: lo registra l'audit come fallito; la
+   * segnalazione a Bugsink spetta all'handler @Cron.
+   */
+  async controllaScadenze(): Promise<EsitoGiroRentri> {
     this.logger.info('Avvio controllo giornaliero scadenza certificati RENTRI')
 
     try {
@@ -87,12 +107,14 @@ export class RentriCertificatoScadenzaJob {
         tenantConSuccesso,
         tenantConErrore,
       })
+
+      return { tenantTotali: credenziali.length, tenantConErrore }
     } catch (error: unknown) {
       this.logger.error(
         'Controllo giornaliero scadenza certificati RENTRI fallito',
         error instanceof Error ? error : new Error(String(error))
       )
-      segnalaErroreJob('eseguiControlloScadenza', error)
+      throw error
     }
   }
 }

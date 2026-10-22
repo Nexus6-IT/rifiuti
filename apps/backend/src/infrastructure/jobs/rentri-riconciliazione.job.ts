@@ -5,6 +5,12 @@ import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { PrismaService } from '../persistence/prisma.service'
 import { RiconciliaStatoRentriUseCase } from '../../application/rentri/riconcilia-stato-rentri.use-case'
 
+/** Esito di un giro per tenant: serve al rilancio manuale per distinguere completato e parziale. */
+export interface EsitoGiroRentri {
+  tenantTotali: number
+  tenantConErrore: number
+}
+
 /**
  * Job di riconciliazione periodica dello stato RENTRI (R5, Task 4).
  *
@@ -35,8 +41,22 @@ export class RentriRiconciliazioneJob {
     this.logger.setContext(RentriRiconciliazioneJob.name)
   }
 
+  /** Handler dello scheduler: non rilancia mai e segnala a Bugsink l'errore generale. */
   @Cron(CronExpression.EVERY_6_HOURS)
   async eseguiRiconciliazione(): Promise<void> {
+    try {
+      await this.riconcilia()
+    } catch (error: unknown) {
+      segnalaErroreJob('eseguiRiconciliazione', error)
+    }
+  }
+
+  /**
+   * Il giro vero e proprio, chiamabile anche dal rilancio manuale. Un errore
+   * generale (es. lettura dei tenant) si logga e si rilancia: lo registra
+   * l'audit come fallito; la segnalazione a Bugsink spetta all'handler @Cron.
+   */
+  async riconcilia(): Promise<EsitoGiroRentri> {
     this.logger.info('Avvio riconciliazione periodica stato RENTRI')
 
     try {
@@ -84,12 +104,14 @@ export class RentriRiconciliazioneJob {
         tenantConSuccesso,
         tenantConErrore,
       })
+
+      return { tenantTotali: tenants.length, tenantConErrore }
     } catch (error: unknown) {
       this.logger.error(
         'Riconciliazione periodica stato RENTRI fallita',
         error instanceof Error ? error : new Error(String(error))
       )
-      segnalaErroreJob('eseguiRiconciliazione', error)
+      throw error
     }
   }
 }

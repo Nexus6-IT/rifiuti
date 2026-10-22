@@ -1,7 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common'
 
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
-import { RentriRiconciliazioneJob } from '../../../infrastructure/jobs/rentri-riconciliazione.job'
+import {
+  EsitoGiroRentri,
+  RentriRiconciliazioneJob,
+} from '../../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../../infrastructure/jobs/rentri-certificato-scadenza.job'
 import { RentriCodificheSyncService } from '../../reference-data/rentri-codifiche-sync.service'
 import { ReferenceDataSeederService } from '../../reference-data/reference-data-seeder.service'
@@ -70,15 +73,18 @@ export class JobActionsService {
   ) {}
 
   /** Le chiavi rilanciabili, con la descrizione mostrata nell'audit. */
-  private get azioni(): Record<string, { descrizione: string; esegui: () => Promise<void> }> {
+  private get azioni(): Record<
+    string,
+    { descrizione: string; esegui: () => Promise<EsitoGiroRentri | void> }
+  > {
     return {
       'rentri-riconciliazione': {
         descrizione: 'Riconciliazione periodica RENTRI',
-        esegui: () => this.riconciliazione.eseguiRiconciliazione(),
+        esegui: () => this.riconciliazione.riconcilia(),
       },
       'rentri-certificato-scadenza': {
         descrizione: 'Controllo scadenza certificati RENTRI',
-        esegui: () => this.certificati.eseguiControlloScadenza(),
+        esegui: () => this.certificati.controllaScadenze(),
       },
       'codifiche-rentri': {
         descrizione: 'Allineamento codifiche RENTRI',
@@ -131,7 +137,17 @@ export class JobActionsService {
     // processo.
     void azione
       .esegui()
-      .then(() => this.registra(utente, jobKey, 'completato', `${azione.descrizione}: completato`))
+      .then(esito => {
+        if (esito && esito.tenantConErrore > 0) {
+          return this.registra(
+            utente,
+            jobKey,
+            'parziale',
+            `${azione.descrizione}: completato con errori su ${esito.tenantConErrore} aziende su ${esito.tenantTotali}`
+          )
+        }
+        return this.registra(utente, jobKey, 'completato', `${azione.descrizione}: completato`)
+      })
       .catch((errore: Error) => {
         this.logger.error(`Rilancio manuale di "${jobKey}" fallito`, errore)
         return this.registra(
