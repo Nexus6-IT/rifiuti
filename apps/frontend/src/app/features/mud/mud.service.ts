@@ -29,6 +29,8 @@ export interface VoceRiepilogoAvvisi {
   movimenti: number
   kgEsclusi: number
   kgAggiunti: number
+  /** Movimenti esclusi senza kg (unità non di massa): la voce cambia il file anche a 0 kg */
+  movimentiNonQuantificati: number
 }
 
 export interface RiepilogoAvvisi {

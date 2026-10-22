@@ -63,8 +63,22 @@ const conAvvisi = (r: Partial<MudRiepilogo> = {}) =>
       kgInPiu: 0,
       movimentiNonQuantificati: 0,
       voci: [
-        { codice: 'SCARICO_SENZA_FIR', casi: 1, movimenti: 1, kgEsclusi: 1234.5, kgAggiunti: 0 },
-        { codice: 'CAUSALE_ESCLUSA', casi: 1, movimenti: 0, kgEsclusi: 0, kgAggiunti: 0 },
+        {
+          codice: 'SCARICO_SENZA_FIR',
+          casi: 1,
+          movimenti: 1,
+          kgEsclusi: 1234.5,
+          kgAggiunti: 0,
+          movimentiNonQuantificati: 0,
+        },
+        {
+          codice: 'CAUSALE_ESCLUSA',
+          casi: 1,
+          movimenti: 0,
+          kgEsclusi: 0,
+          kgAggiunti: 0,
+          movimentiNonQuantificati: 0,
+        },
       ],
       testo: 'Il file dichiara 1.234,5 kg in meno del registro per i motivi elencati sotto.',
       cambianoQuantita: true,
@@ -324,8 +338,30 @@ describe('MudComponent', () => {
       expect(t).toContain('1 caso · 1.234,5 kg esclusi')
       expect(t).toContain('1 caso · informativo')
       expect(
-        component.intestazione({ codice: 'X', casi: 2, movimenti: 0, kgEsclusi: 0, kgAggiunti: 0 })
+        component.intestazione({
+          codice: 'X',
+          casi: 2,
+          movimenti: 0,
+          kgEsclusi: 0,
+          kgAggiunti: 0,
+          movimentiNonQuantificati: 0,
+        })
       ).toBe('2 casi · informativo')
+      // movimenti esclusi senza kg: la voce cambia il file, non è informativa
+      const senzaKg = {
+        codice: 'CAUSALE_ESCLUSA',
+        casi: 2,
+        movimenti: 2,
+        kgEsclusi: 0,
+        kgAggiunti: 0,
+      }
+      expect(component.intestazione({ ...senzaKg, movimentiNonQuantificati: 1 })).toBe(
+        '2 casi · 1 movimento escluso non quantificato'
+      )
+      expect(component.intestazione({ ...senzaKg, movimentiNonQuantificati: 2 })).toBe(
+        '2 casi · 2 movimenti esclusi non quantificati'
+      )
+      expect(component.cambiaKg({ ...senzaKg, movimentiNonQuantificati: 2 })).toBeTrue()
       expect(t).toContain('n. 5/2025 · CER 17 04 05 · 1.234,5 kg · escluso')
       expect(t).toContain(
         "I rifiuti prodotti fuori dall'unità locale (cantieri, manutenzioni: modulo RE) non sono distinti: il file li attribuisce all'unità locale."

@@ -487,6 +487,8 @@ export interface VoceRiepilogoAvvisi {
   movimenti: number
   kgEsclusi: number
   kgAggiunti: number
+  /** Movimenti esclusi senza kg (unità non di massa): la voce cambia il file anche a 0 kg */
+  movimentiNonQuantificati: number
 }
 
 export interface RiepilogoAvvisi {
@@ -528,6 +530,9 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
       movimenti: new Set(movimenti.map(chiaveSegnalato)).size,
       kgEsclusi: arrotondaGrammo(kgEsclusi),
       kgAggiunti: arrotondaGrammo(kgAggiunti),
+      movimentiNonQuantificati: new Set(
+        movimenti.filter(m => !m.incluso && m.kg === null).map(chiaveSegnalato)
+      ).size,
     })
   }
   const gruppo = (v: VoceRiepilogoAvvisi) => (v.kgEsclusi > 0 ? 0 : v.kgAggiunti > 0 ? 1 : 2)
@@ -582,7 +587,10 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
       ' per i motivi elencati sotto.'
   }
   if (movimentiNonQuantificati > 0) {
-    testo += ` Altri ${movimentiNonQuantificati} movimenti esclusi non sono in kg e non sono quantificati.`
+    testo +=
+      movimentiNonQuantificati === 1
+        ? ' Un altro movimento escluso non è in kg e non è quantificato.'
+        : ` Altri ${movimentiNonQuantificati} movimenti esclusi non sono in kg e non sono quantificati.`
   }
   return { kgInMeno, kgInPiu, movimentiNonQuantificati, voci, testo, cambianoQuantita }
 }

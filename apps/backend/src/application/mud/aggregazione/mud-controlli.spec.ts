@@ -262,6 +262,7 @@ describe('controlliMud', () => {
         movimenti: 1,
         kgEsclusi: 100,
         kgAggiunti: 0,
+        movimentiNonQuantificati: 0,
       },
       {
         codice: 'FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE',
@@ -269,6 +270,7 @@ describe('controlliMud', () => {
         movimenti: 1,
         kgEsclusi: 0,
         kgAggiunti: 0,
+        movimentiNonQuantificati: 0,
       },
     ])
   })
@@ -370,6 +372,7 @@ describe('controlliMud', () => {
       movimenti: 40,
       kgEsclusi: 0,
       kgAggiunti: 0,
+      movimentiNonQuantificati: 0,
     })
   })
 
@@ -388,8 +391,23 @@ describe('controlliMud', () => {
     ])
     expect(r).toMatchObject({ kgInMeno: 0, kgInPiu: 36, movimentiNonQuantificati: 1 })
     expect(r.testo).toBe(
-      'Il file dichiara 36 kg in più del registro (conversioni con il peso specifico) per i motivi elencati sotto. Altri 1 movimenti esclusi non sono in kg e non sono quantificati.'
+      'Il file dichiara 36 kg in più del registro (conversioni con il peso specifico) per i motivi elencati sotto. Un altro movimento escluso non è in kg e non è quantificato.'
     )
+    // la voce dice che esclude movimenti, anche se senza kg: non è informativa
+    expect(r.voci.find(v => v.codice === 'CAUSALE_ESCLUSA')).toEqual({
+      codice: 'CAUSALE_ESCLUSA',
+      casi: 1,
+      movimenti: 1,
+      kgEsclusi: 0,
+      kgAggiunti: 0,
+      movimentiNonQuantificati: 1,
+    })
+
+    const due = riepilogaAvvisi([
+      controlliMud.causaleEsclusa({ ...m, progressiveNumber: 5, quantity: 2, unit: 'M3' }),
+      controlliMud.causaleEsclusa({ ...m, progressiveNumber: 6, quantity: 3, unit: 'M3' }),
+    ])
+    expect(due.testo).toContain('Altri 2 movimenti esclusi non sono in kg e non sono quantificati.')
   })
 
   it('riepilogaAvvisi con kg in meno e in più li dice entrambi', () => {

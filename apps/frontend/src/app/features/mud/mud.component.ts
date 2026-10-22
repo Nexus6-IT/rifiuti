@@ -1007,8 +1007,9 @@ export class MudComponent implements OnInit {
     return iso ? formatoData.format(new Date(iso)) : ''
   }
 
+  /** La voce cambia quanto dichiara il file: kg esclusi o aggiunti, o movimenti esclusi senza kg. */
   cambiaKg(v: VoceRiepilogoAvvisi): boolean {
-    return v.kgEsclusi > 0 || v.kgAggiunti > 0
+    return v.kgEsclusi > 0 || v.kgAggiunti > 0 || v.movimentiNonQuantificati > 0
   }
 
   intestazione(v: VoceRiepilogoAvvisi): string {
@@ -1017,7 +1018,11 @@ export class MudComponent implements OnInit {
         ? `${formattaQuantita(v.kgEsclusi)} kg esclusi`
         : v.kgAggiunti > 0
           ? `${formattaQuantita(v.kgAggiunti)} kg aggiunti`
-          : 'informativo'
+          : v.movimentiNonQuantificati === 1
+            ? '1 movimento escluso non quantificato'
+            : v.movimentiNonQuantificati > 1
+              ? `${v.movimentiNonQuantificati} movimenti esclusi non quantificati`
+              : 'informativo'
     return `${v.casi} ${v.casi === 1 ? 'caso' : 'casi'} · ${dettaglio}`
   }
 
