@@ -86,7 +86,23 @@ export function mudCodiceFiscale(cf: string): string {
 }
 
 /** Unità di misura MUD: kg=1, t=2 (default kg). */
-export const MUD_UM_KG = 1
+export const MUD_UM_KG = 1 as const
+export const MUD_UM_T = 2 as const
+
+/**
+ * Quantità in kg con la relativa unità di misura. Il campo ha 7 cifre intere:
+ * da 10.000.000 kg in su la quantità esce in tonnellate (UM = 2), altrimenti
+ * il record sforerebbe la lunghezza fissa e il file verrebbe scartato.
+ */
+export function mudQtyUm(kg: number): [string, 1 | 2] {
+  const v = Math.round(Math.max(0, kg || 0) * 1000) / 1000
+  if (v < 10_000_000) return [mudQty(v), MUD_UM_KG]
+  const t = Math.round(v) / 1000
+  if (t >= 10_000_000) {
+    throw new Error(`Quantità di ${kg} kg fuori dal formato del tracciato MUD anche in tonnellate`)
+  }
+  return [mudQty(t), MUD_UM_T]
+}
 
 /**
  * Campo ISTAT a lunghezza fissa (provincia/comune, `num 3` nel tracciato).

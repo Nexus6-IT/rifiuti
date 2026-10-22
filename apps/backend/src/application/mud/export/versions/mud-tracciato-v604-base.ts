@@ -21,6 +21,7 @@ import {
   mudRecord,
   mudNum,
   mudQty,
+  mudQtyUm,
   mudAlfa,
   mudCodiceFiscale,
   mudDate,
@@ -29,9 +30,24 @@ import {
   mudFlag,
   mudOperazioni,
   mudDateOrZero,
-  MUD_UM_KG,
 } from '../mud-format.util'
 import { normalizeCer } from '../../../esg/emission-factors'
+
+/** Lunghezze totali dei record, da «Lunghezza totale record X» del tracciato. */
+export const LUNGHEZZE_RECORD_V604: Readonly<Record<string, number>> = {
+  XX: 488,
+  AA: 338,
+  AB: 257,
+  AU: 327,
+  AR: 201,
+  BA: 217,
+  BB: 310,
+  BC: 83,
+  BD: 245,
+  BE: 268,
+  DA: 93,
+  DB: 221,
+}
 
 /** Ordine dei 7 flag di stato fisico nei record BA e DA. */
 const STATO_FISICO_ORDER: StatoFisico[] = [
@@ -202,7 +218,17 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
     })
 
     const xx = this.recordXX(data, body)
-    return [xx, ...body].join('\r\n') + '\r\n'
+    const righe = [xx, ...body]
+    for (const riga of righe) {
+      const tipo = riga.slice(0, 2)
+      const attesa = LUNGHEZZE_RECORD_V604[tipo]
+      if (attesa !== undefined && riga.length !== attesa) {
+        throw new Error(
+          `Record ${tipo} di ${riga.length} caratteri invece di ${attesa}: file MUD non conforme`
+        )
+      }
+    }
+    return righe.join('\r\n') + '\r\n'
   }
 
   // ===================== Helper comuni =====================
@@ -256,7 +282,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
 
   /** Coppia «quantità + unità di misura», ricorrente in quasi tutti i record. */
   protected qtyUm(value: number | undefined): Array<string | number> {
-    return [mudQty(value ?? 0), MUD_UM_KG]
+    return mudQtyUm(value ?? 0)
   }
 
   // ===================== Sezione anagrafica =====================

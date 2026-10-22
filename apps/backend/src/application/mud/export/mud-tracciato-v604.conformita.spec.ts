@@ -15,7 +15,8 @@
 import { MudTracciatoV604_2024 } from './versions/mud-tracciato-v604-2024'
 import { MudTracciatoV604_2025 } from './versions/mud-tracciato-v604-2025'
 import { MudVersionRegistry } from './mud-version.registry'
-import { MudExportData } from './mud-export.types'
+import { MudExportData, MudRifiutoLine } from './mud-export.types'
+import { LUNGHEZZE_RECORD_V604 } from './versions/mud-tracciato-v604-base'
 
 /** Lunghezze totali dei record, da «Lunghezza totale record X» del tracciato. */
 const LUNGHEZZE: Record<string, number> = {
@@ -189,6 +190,14 @@ describe.each([
   const contenuto = tracciato.generate(datasetCompleto(anno))
   const linee = righe(contenuto)
 
+  it('una quantità di 10.000.000 kg esce in tonnellate senza allungare il record BA', () => {
+    const data = datasetCompleto(anno)
+    data.rifiuti[0].prodottoKg = 10000000
+    const ba = righe(tracciato.generate(data)).find(l => l.startsWith('BA;'))!
+    expect(ba.length).toBe(217)
+    expect(ba).toContain(';0010000,000;2;')
+  })
+
   it('dichiara versione e anno dei dati corretti', () => {
     expect(tracciato.version).toBe(versione)
     expect(tracciato.year).toBe(anno)
@@ -356,5 +365,21 @@ describe('Record AU — tipi di autorizzazione per annualità', () => {
     expect(tipoAut(t, 2025, 7)).toBe('7')
     expect(tipoAut(t, 2025, 8)).toBe('8')
     expect(tipoAut(t, 2025, 9)).toBe('9')
+  })
+})
+
+describe('Controllo di lunghezza in generate()', () => {
+  class TracciatoRotto extends MudTracciatoV604_2025 {
+    protected recordBA(data: MudExportData, r: MudRifiutoLine, progressivo: number): string {
+      return super.recordBA(data, r, progressivo) + 'X'
+    }
+  }
+  it('lancia se un record non ha la lunghezza del tracciato', () => {
+    expect(() => new TracciatoRotto().generate(datasetCompleto(2025))).toThrow(
+      'Record BA di 218 caratteri invece di 217: file MUD non conforme'
+    )
+  })
+  it('la tabella delle lunghezze del codice coincide con quella del test', () => {
+    expect(LUNGHEZZE_RECORD_V604).toEqual(LUNGHEZZE)
   })
 })
