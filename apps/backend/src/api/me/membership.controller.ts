@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { CurrentUser } from '../../auth/decorators/current-user.decorator'
 import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { MembershipService } from './membership.service'
+import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 
 class SwitchTenantDto {
   @IsUUID()
@@ -22,6 +23,8 @@ class SwitchTenantDto {
 export class MembershipController {
   constructor(private readonly membership: MembershipService) {}
 
+  // Rotta di recupero: risponde anche con una selezione d'azienda non più valida.
+  @ConsentiSelezioneNonValida()
   @Get('tenants')
   listTenants(@CurrentUser() user: CurrentUserPayload) {
     return this.membership.listTenants(user)
@@ -44,6 +47,8 @@ export class MembershipController {
     return this.membership.getActiveCompany(tenantId)
   }
 
+  // Rotta di recupero: risponde anche con una selezione d'azienda non più valida.
+  @ConsentiSelezioneNonValida()
   @Post('switch-tenant')
   switchTenant(@CurrentUser() user: CurrentUserPayload, @Body() dto: SwitchTenantDto) {
     return this.membership.switchTenant(user, dto.tenantId)

@@ -5,16 +5,34 @@
  *   1. Utente normale senza header → usa tenant primario (no-op).
  *   2. SUPER_ADMIN con header → passthrough (già gestito dal middleware).
  *   3. Utente con header X-Tenant-ID di un tenant DI CUI È MEMBRO → switch corretto.
- *   4. Utente con header X-Tenant-ID di un tenant NON SUO → fail-closed (anti-leak).
- *   5. Errore DB nella verifica → fail-closed (anti-leak).
+ *   4. Utente con header X-Tenant-ID di un tenant NON SUO → 403
+ *      AZIENDA_SELEZIONATA_NON_ACCESSIBILE, l'handler non gira (niente ripiego sul primario,
+ *      che scriverebbe nell'azienda sbagliata).
+ *   5. Errore DB nella verifica → stesso 403.
+ *   7. Rotta di recupero (@ConsentiSelezioneNonValida) → prosegue col tenant primario.
  *   6. Header pari al tenant primario → autorizzato senza query DB (ottimizzazione).
  */
 
-import { ExecutionContext, CallHandler } from '@nestjs/common'
+import { ExecutionContext, CallHandler, ForbiddenException } from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
 import { lastValueFrom, of } from 'rxjs'
 import { TenantSwitchInterceptor } from './tenant-switch.interceptor'
 import { MembershipService } from '../../api/me/membership.service'
 import { TenantContext } from '../context/tenant-context'
+import { ConsentiSelezioneNonValida } from '../decorators/consenti-selezione-non-valida.decorator'
+
+/** Risposta attesa per un'azienda selezionata non accessibile (inesistente o non autorizzata). */
+const RIFIUTO_ATTESO = {
+  message: "L'azienda selezionata non è più accessibile: selezionane un'altra.",
+  error: 'AZIENDA_SELEZIONATA_NON_ACCESSIBILE',
+}
+
+/** Rotte finte: una qualunque e una di recupero (elenco/switch delle aziende). */
+class RotteFinte {
+  qualunque() {}
+  @ConsentiSelezioneNonValida()
+  recupero() {}
+}
 
 const TENANT_A = 'tenant-A-primario-uuid'
 const TENANT_B = 'tenant-B-autorizzato-uuid'
@@ -36,7 +54,8 @@ const USER_SUPER_ADMIN = {
 function makeContext(
   headerTenantId: string | undefined,
   user: object | null,
-  reqTenantId?: string
+  reqTenantId?: string,
+  handler: () => void = RotteFinte.prototype.qualunque
 ): ExecutionContext {
   const req: any = {
     headers: {},
@@ -49,6 +68,8 @@ function makeContext(
 
   return {
     getType: () => 'http',
+    getHandler: () => handler,
+    getClass: () => RotteFinte,
     switchToHttp: () => ({
       getRequest: () => req,
     }),
@@ -81,7 +102,7 @@ describe('TenantSwitchInterceptor', () => {
       switchTenant: jest.fn(),
     } as unknown as jest.Mocked<MembershipService>
 
-    interceptor = new TenantSwitchInterceptor(membershipMock)
+    interceptor = new TenantSwitchInterceptor(membershipMock, new Reflector())
   })
 
   afterEach(() => {
@@ -140,30 +161,58 @@ describe('TenantSwitchInterceptor', () => {
   // ──────────────────────────────────────────────────────────────────────────
   // Scenario 4 (CRITICO ANTI-LEAK): header di tenant NON autorizzato → fail-closed
   // ──────────────────────────────────────────────────────────────────────────
-  it('ANTI-LEAK: header X-Tenant-ID di tenant non autorizzato → ignorato, usa tenant primario', async () => {
+  it('ANTI-LEAK: header X-Tenant-ID di tenant non autorizzato → 403, handler non eseguito, req.tenantId invariato', async () => {
     membershipMock.checkAccess.mockResolvedValue(false)
     const ctx = makeContext(TENANT_C, USER_NORMALE, TENANT_A)
-    let tenantInContesto: string | null = null
     const reqObj = ctx.switchToHttp().getRequest() as any
+    const handle = jest.fn(() => of('OK'))
 
-    const handler: CallHandler = {
-      handle: () => {
-        tenantInContesto = TenantContext.getTenantId()
-        return of('OK')
-      },
-    }
+    const errore: any = await runInterceptor(interceptor, ctx, { handle }).catch(e => e)
 
-    // L'interceptor deve chiamare next.handle() senza cambiare il TenantContext.
-    // Il TenantContext rimane quello impostato dal middleware (TENANT_A, dal JWT).
-    // Simuliamo: avvolgiamo l'esecuzione in TenantContext.run con TENANT_A.
-    await TenantContext.run({ tenantId: TENANT_A }, async () => {
-      await runInterceptor(interceptor, ctx, handler)
-      expect(tenantInContesto).toBe(TENANT_A) // Il contesto NON è stato sovrascritto con TENANT_C
-    })
-
-    // req.tenantId non deve essere stato aggiornato con il tenant C.
+    expect(errore).toBeInstanceOf(ForbiddenException)
+    expect(errore.getResponse()).toEqual(RIFIUTO_ATTESO)
+    // Niente ripiego sul tenant primario: l'handler non deve girare affatto.
+    expect(handle).not.toHaveBeenCalled()
     expect(reqObj.tenantId).toBe(TENANT_A)
     expect(membershipMock.checkAccess).toHaveBeenCalledWith(USER_NORMALE.id, TENANT_C, TENANT_A)
+  })
+
+  it('azienda inesistente e azienda non autorizzata danno la stessa risposta (nessuna enumerazione)', async () => {
+    // checkAccess restituisce false in entrambi i casi; la risposta non deve distinguerli.
+    membershipMock.checkAccess.mockResolvedValue(false)
+    const nonAutorizzata: any = await runInterceptor(
+      interceptor,
+      makeContext(TENANT_C, USER_NORMALE, TENANT_A),
+      makeHandler()
+    ).catch(e => e)
+    const inesistente: any = await runInterceptor(
+      interceptor,
+      makeContext('tenant-che-non-esiste', USER_NORMALE, TENANT_A),
+      makeHandler()
+    ).catch(e => e)
+
+    expect(inesistente.getStatus()).toBe(403)
+    expect(inesistente.getResponse()).toEqual(nonAutorizzata.getResponse())
+  })
+
+  it('rotta di recupero (@ConsentiSelezioneNonValida) con header non accessibile → prosegue col tenant primario', async () => {
+    membershipMock.checkAccess.mockResolvedValue(false)
+    const ctx = makeContext(TENANT_C, USER_NORMALE, TENANT_A, RotteFinte.prototype.recupero)
+    const reqObj = ctx.switchToHttp().getRequest() as any
+    let tenantInContesto: string | null = null
+
+    await TenantContext.run({ tenantId: TENANT_A }, async () => {
+      const result = await runInterceptor(interceptor, ctx, {
+        handle: () => {
+          tenantInContesto = TenantContext.getTenantId()
+          return of('ELENCO_AZIENDE')
+        },
+      })
+      expect(result).toBe('ELENCO_AZIENDE')
+    })
+
+    expect(tenantInContesto).toBe(TENANT_A)
+    expect(reqObj.tenantId).toBe(TENANT_A)
   })
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -198,24 +247,17 @@ describe('TenantSwitchInterceptor', () => {
   // ──────────────────────────────────────────────────────────────────────────
   // Scenario 6: errore DB → fail-closed (non espone l'errore al client)
   // ──────────────────────────────────────────────────────────────────────────
-  it('errore DB nella verifica → fail-closed, usa tenant primario senza eccezione', async () => {
+  it('errore DB nella verifica → 403 AZIENDA_SELEZIONATA_NON_ACCESSIBILE, handler non eseguito', async () => {
     membershipMock.checkAccess.mockRejectedValue(new Error('DB connection lost'))
     const ctx = makeContext(TENANT_B, USER_NORMALE, TENANT_A)
-    let tenantInContesto: string | null = null
+    const handle = jest.fn(() => of('OK'))
 
-    const handler: CallHandler = {
-      handle: () => {
-        tenantInContesto = TenantContext.getTenantId()
-        return of('OK')
-      },
-    }
+    const errore: any = await runInterceptor(interceptor, ctx, { handle }).catch(e => e)
 
-    await TenantContext.run({ tenantId: TENANT_A }, async () => {
-      // Non deve lanciare, deve ricadere silenziosamente sul tenant primario.
-      const result = await runInterceptor(interceptor, ctx, handler)
-      expect(result).toBe('OK')
-      expect(tenantInContesto).toBe(TENANT_A) // Non sovrascritto
-    })
+    expect(errore).toBeInstanceOf(ForbiddenException)
+    // Il messaggio dell'errore interno non arriva al client.
+    expect(errore.getResponse()).toEqual(RIFIUTO_ATTESO)
+    expect(handle).not.toHaveBeenCalled()
   })
 
   // ──────────────────────────────────────────────────────────────────────────

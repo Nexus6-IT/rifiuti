@@ -16,7 +16,10 @@ import { JwtTokensService } from '../services/jwt-tokens.service'
 import { RedisService } from '../services/redis.service'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { DevLoginDto } from '../dto/dev-login.dto'
+import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 
+// Login di sviluppo: come la sessione, non dipende dall'azienda selezionata.
+@ConsentiSelezioneNonValida()
 @Controller('auth')
 export class DevAuthController {
   constructor(

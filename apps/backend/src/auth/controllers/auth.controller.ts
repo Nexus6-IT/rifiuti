@@ -23,7 +23,11 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RefreshTokenDto } from '../dto/refresh-token.dto'
 import { LogoutDto } from '../dto/logout.dto'
 import { ConfigService } from '@nestjs/config'
+import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 
+// Sessione (login, refresh, logout, profilo): non dipende dall'azienda selezionata e deve
+// funzionare anche con una selezione non più valida, altrimenti l'utente resta bloccato.
+@ConsentiSelezioneNonValida()
 @Controller('auth')
 export class AuthController {
   constructor(

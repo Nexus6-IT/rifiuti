@@ -1,8 +1,27 @@
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common'
-import { Observable, from, switchMap } from 'rxjs'
+import {
+  Injectable,
+  NestInterceptor,
+  ExecutionContext,
+  CallHandler,
+  Logger,
+  ForbiddenException,
+} from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
+import { Observable, from, switchMap, throwError } from 'rxjs'
 import { Request } from 'express'
 import { TenantContext } from '../context/tenant-context'
 import { MembershipService } from '../../api/me/membership.service'
+import { CONSENTI_SELEZIONE_NON_VALIDA } from '../decorators/consenti-selezione-non-valida.decorator'
+
+/**
+ * Risposta per un'azienda selezionata che l'utente non può usare. Identica per un'azienda
+ * inesistente e per una non autorizzata (nessuna enumerazione), e per un errore della
+ * verifica (il dettaglio interno non arriva al client).
+ */
+export const AZIENDA_SELEZIONATA_NON_ACCESSIBILE = {
+  message: "L'azienda selezionata non è più accessibile: selezionane un'altra.",
+  error: 'AZIENDA_SELEZIONATA_NON_ACCESSIBILE',
+} as const
 
 /**
  * TenantSwitchInterceptor — validazione header `X-Tenant-ID` per TUTTI gli utenti.
@@ -22,10 +41,16 @@ import { MembershipService } from '../../api/me/membership.service'
  *        - Autorizzato → il TenantContext viene ri-eseguito con il tenant dell'header
  *          e `req.tenantId` viene aggiornato. Tutte le query dell'handler useranno
  *          il tenant selezionato dall'utente (switch senza nuovo JWT).
- *        - Non autorizzato → fail-closed: l'header viene ignorato silenziosamente,
- *          la richiesta prosegue col tenant primario del JWT. NESSUNA eccezione
- *          viene lanciata (non si rivela informazione sull'esistenza dell'altro tenant).
- *        - Errore nella verifica → fail-closed: ignora l'header, log di avviso.
+ *        - Non autorizzato, o errore nella verifica → 403
+ *          `AZIENDA_SELEZIONATA_NON_ACCESSIBILE`, con lo stesso messaggio per un'azienda
+ *          inesistente e per una non autorizzata (nessuna enumerazione). L'handler non gira.
+ *          Prima la richiesta proseguiva in silenzio sul tenant primario del JWT: con una
+ *          selezione scaduta (associazione consulente terminata) le scritture finivano
+ *          nell'azienda sbagliata, per esempio un movimento nel registro dello studio.
+ *          Il frontend, su questo codice, cancella la selezione e ricarica.
+ *        - Eccezione: le rotte di recupero marcate `@ConsentiSelezioneNonValida()` (elenco e
+ *          switch delle aziende, login/refresh/logout) proseguono col tenant primario, così
+ *          una selezione non valida non chiude l'utente fuori dal selettore.
  *
  * Sicurezza:
  *   - Non è possibile accedere a dati di un tenant non autorizzato forzando
@@ -40,7 +65,10 @@ import { MembershipService } from '../../api/me/membership.service'
 export class TenantSwitchInterceptor implements NestInterceptor {
   private readonly logger = new Logger(TenantSwitchInterceptor.name)
 
-  constructor(private readonly membership: MembershipService) {}
+  constructor(
+    private readonly membership: MembershipService,
+    private readonly reflector: Reflector
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     // Funziona solo su richieste HTTP (non su WebSocket/RPC).
@@ -73,17 +101,22 @@ export class TenantSwitchInterceptor implements NestInterceptor {
         this.logger.warn(
           `Errore verifica membership (utente=${user.id}, target=${targetTenantId}): ${err.message}`
         )
-        return false // fail-closed su errore DB
+        return false // fail-closed su errore DB: 403 come per un'azienda non accessibile
       })
     ).pipe(
       switchMap((isAllowed: boolean) => {
         if (!isAllowed) {
-          // Fail-closed: header non autorizzato → prosegui col tenant primario.
+          if (this.rottaDiRecupero(context)) {
+            // Elenco/switch delle aziende, sessione: si prosegue col tenant primario.
+            return next.handle()
+          }
           this.logger.warn(
-            `Header X-Tenant-ID="${targetTenantId}" rifiutato per utente ${user.id} ` +
-              `(non membro). Proseguo con tenant primario "${primaryTenantId}".`
+            `Header X-Tenant-ID="${targetTenantId}" rifiutato per utente ${user.id}: ` +
+              `azienda non accessibile, richiesta respinta (403).`
           )
-          return next.handle()
+          return throwError(
+            () => new ForbiddenException({ ...AZIENDA_SELEZIONATA_NON_ACCESSIBILE })
+          )
         }
 
         // Accesso autorizzato: sovrapponi il TenantContext con il tenant selezionato
@@ -103,6 +136,16 @@ export class TenantSwitchInterceptor implements NestInterceptor {
           )
         })
       })
+    )
+  }
+
+  /** Vero per le rotte marcate `@ConsentiSelezioneNonValida()` (sul metodo o sulla classe). */
+  private rottaDiRecupero(context: ExecutionContext): boolean {
+    return (
+      this.reflector.getAllAndOverride<boolean>(CONSENTI_SELEZIONE_NON_VALIDA, [
+        context.getHandler(),
+        context.getClass(),
+      ]) === true
     )
   }
 
