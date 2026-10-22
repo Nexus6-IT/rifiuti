@@ -5,9 +5,10 @@ import { MUDGeneratorService } from './mud-generator.service'
 import { MudExportService } from './export/mud-export.service'
 import { MudAggregazioneService } from './aggregazione/mud-aggregazione.service'
 import { MudController } from '../../api/mud/mud.controller'
+import { RuoloEffettivoService } from '../../api/me/ruolo-effettivo.service'
 
 describe('MUDModule (DI wiring)', () => {
-  it('risolve generator, export service, aggregazione e controller', async () => {
+  it('risolve generator, export service, aggregazione, controller e ruolo effettivo', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), MUDModule],
     }).compile()
@@ -16,6 +17,8 @@ describe('MUDModule (DI wiring)', () => {
     expect(moduleRef.get(MudExportService)).toBeDefined()
     expect(moduleRef.get(MudAggregazioneService)).toBeDefined()
     expect(moduleRef.get(MudController)).toBeDefined()
+    // ruolo nell'azienda selezionata, senza MeModule (che porta AuthModule e Redis)
+    expect(moduleRef.get(RuoloEffettivoService)).toBeDefined()
 
     await moduleRef.close()
   })

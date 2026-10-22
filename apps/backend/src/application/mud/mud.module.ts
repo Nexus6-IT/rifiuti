@@ -7,6 +7,7 @@ import { MudController } from '../../api/mud/mud.controller'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
 import { LoggerModule } from '../../core/logger/logger.module'
 import { ReferenceDataModule } from '../reference-data/reference-data.module'
+import { RuoloEffettivoModule } from '../../api/me/ruolo-effettivo.module'
 
 /**
  * MUD Module
@@ -15,7 +16,8 @@ import { ReferenceDataModule } from '../reference-data/reference-data.module'
  * telematico versionato per anno.
  */
 @Module({
-  imports: [PrismaModule, LoggerModule, ReferenceDataModule],
+  // RuoloEffettivoModule e non MeModule: MeModule porta AuthModule e Redis.
+  imports: [PrismaModule, LoggerModule, ReferenceDataModule, RuoloEffettivoModule],
   controllers: [MudController],
   providers: [MUDGeneratorService, MudExportService, MudVersionRegistry, MudAggregazioneService],
   exports: [MUDGeneratorService, MudExportService, MudAggregazioneService],

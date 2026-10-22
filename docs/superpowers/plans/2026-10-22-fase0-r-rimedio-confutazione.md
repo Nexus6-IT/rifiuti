@@ -542,14 +542,15 @@ Ruling del controller sulla ricerca `C-W-03-winwaste.md`: in Fase 0 si adattano 
 ### Task 18: il ruolo che conta è quello nell'azienda selezionata (A-C-06)
 
 **Files:**
-- Modify: `apps/backend/src/api/me/membership.service.ts`, `apps/backend/src/api/mud/mud.controller.ts`, `apps/backend/src/application/mud/mud.module.ts` (import di `MeModule`)
-- Test: `apps/backend/src/api/me/membership.service.spec.ts`, `apps/backend/src/api/mud/mud.controller.export.spec.ts`
+- Create: `apps/backend/src/api/me/ruolo-effettivo.service.ts`, `apps/backend/src/api/me/ruolo-effettivo.module.ts` (solo Prisma: `MeModule` porta `AuthModule` e Redis, preflight F26)
+- Modify: `apps/backend/src/api/me/membership.service.ts` (filtro dell'associazione condiviso), `apps/backend/src/api/mud/mud.controller.ts`, `apps/backend/src/application/mud/mud.module.ts` (import di `RuoloEffettivoModule`), `apps/backend/src/api/registro/registro.controller.ts`, `registro.module.ts` (F28)
+- Test: `apps/backend/src/api/me/ruolo-effettivo.service.spec.ts`, `apps/backend/src/api/mud/mud.controller.export.spec.ts`, `apps/backend/src/application/mud/mud.module.spec.ts`, `apps/backend/src/api/registro/registro.controller.spec.ts`
 
 **Interfaces:**
 - Produces:
   ```ts
   export type RuoloApplicativo = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'VIEWER'
-  // MembershipService
+  // RuoloEffettivoService (F26; nel MudController il parametro si chiama `membership`)
   ruoloEffettivo(utente: { id: string; role: string; tenantId?: string | null }, tenantId: string): Promise<RuoloApplicativo>
   ```
   Risoluzione, nello stesso ordine di `checkAccess`:
@@ -560,14 +561,15 @@ Ruling del controller sulla ricerca `C-W-03-winwaste.md`: in Fase 0 si adattano 
   5. discesa gerarchica: se il tenant ha `parentTenantId`, il ruolo effettivo sulla madre (un solo passo, come `checkAccess`);
   6. altrimenti `'VIEWER'` (fail-closed; non dovrebbe accadere, perché il `TenantSwitchInterceptor` scarta un header non autorizzato).
   Un valore di `utente.role` fuori da `RuoloApplicativo` vale `'VIEWER'`.
-- Controller: `MudController` riceve `MembershipService` come **ultimo** parametro del costruttore; in `exportTelematico`, `const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)` e il servizio riceve `{ id: req.user.id, role: ruolo }` (firma del servizio invariata). Perché qui e non in un guard: `RolesGuard` gira prima del `TenantSwitchInterceptor` globale e non vede l'azienda selezionata.
-- Follow-up di sicurezza (non in questo task): elencare nella PR, sezione "Fuori ambito", gli endpoint con `@Roles(` (`git grep -n "@Roles(" -- apps/backend/src/api`) che decidono sul ruolo globale, e i controller che usano `user.tenantId` invece di `requireRequestTenantId` (per esempio `registro.controller.ts`, `registra` e `lista`).
+- Controller: `MudController` riceve `RuoloEffettivoService` (parametro `membership`) come **ultimo** parametro del costruttore; in `exportTelematico`, `const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)` e il servizio riceve `{ id: req.user.id, role: ruolo }` (firma del servizio invariata). Perché qui e non in un guard: `RolesGuard` gira prima del `TenantSwitchInterceptor` globale e non vede l'azienda selezionata.
+- Registro (F28): `registra` e `lista` usano `@Req()` e `requireRequestTenantId(req)` invece di `user.tenantId`; `registra` non ha più `@Roles` e rifiuta con `ForbiddenException({ message: 'Solo un amministratore o un operatore dell\'azienda può registrare movimenti.', error: 'REGISTRO_RISERVATO_OPERATORI' })` se il ruolo effettivo non è `SUPER_ADMIN`, `ADMIN` o `OPERATOR`; `lista` resta aperta a ogni ruolo con accesso. Il `PUT registro/progressivo-iniziale/:anno` del Task 11 non ha più `@Roles` e richiede un ruolo effettivo `ADMIN`/`SUPER_ADMIN` (`error: 'REGISTRO_PROGRESSIVO_RISERVATO_AMMINISTRATORI'`); il `GET` calcola `puoImpostare` sul ruolo effettivo.
+- Follow-up di sicurezza (non in questo task): elencare nella PR, sezione "Fuori ambito", gli endpoint con `@Roles(` (`git grep -n "@Roles(" -- apps/backend/src/api`) che decidono sul ruolo globale, e i controller che usano `user.tenantId` invece di `requireRequestTenantId`.
 
 - [ ] **Step 1: test che falliscono:** `membership.service.spec.ts`, un caso per ciascun punto 1-6 (in particolare `consulente ADMIN del proprio studio associato come CONSULTANT vale VIEWER`, `associazione ADMIN vale ADMIN anche per un utente globale VIEWER`, `figlia di un'azienda associata: ruolo della madre`); controller `un consulente con ruolo di sola consultazione nell'azienda selezionata riceve 403` (membership finto che restituisce `'VIEWER'`, servizio reale con un aggregato che ha avvisi quantitativi → `ForbiddenException`) e `passa al servizio il ruolo effettivo, non quello del token`.
-- [ ] **Step 2: vederli fallire.** `… npx jest … src/api/me/membership.service.spec.ts src/api/mud`
+- [ ] **Step 2: vederli fallire.** `… npx jest … src/api/me src/api/mud src/api/registro src/application/mud/mud.module.spec.ts`
 - [ ] **Step 3: implementare**; aggiornare le costruzioni di `MudController` negli spec con un ultimo argomento.
-- [ ] **Step 4: vederli passare**, più `src/application/mud/mud.module.spec.ts` (il modulo deve risolvere `MembershipService`) e `npx tsc --noEmit -p tsconfig.json`.
-- [ ] **Step 5: commit** `HUSKY=0 git commit -m "fix(mud): la conferma degli avvisi dipende dal ruolo nell'azienda selezionata, anche per i consulenti"`
+- [ ] **Step 4: vederli passare**, più `src/application/mud/mud.module.spec.ts` (il modulo deve risolvere `RuoloEffettivoService`) e `npx tsc --noEmit -p tsconfig.json`.
+- [ ] **Step 5: commit** `HUSKY=0 git commit -m "fix(mud): la conferma degli avvisi dipende dal ruolo nell'azienda selezionata, anche per i consulenti, e il registro scrive nell'azienda selezionata"`
 
 ---
 
@@ -604,7 +606,7 @@ Ruling del controller sulla ricerca `C-W-03-winwaste.md`: in Fase 0 si adattano 
 ## Verifica finale (dopo il Task 19)
 
 - [ ] `bash ops/test/backup-verifica.test.sh` e `PG_EXEC="docker exec -i wasteflow-pg-test" bash ops/test/backup-verifica.test.sh`: falliti 0.
-- [ ] Backend: `cd apps/backend && JWT_SECRET=ci-dummy-jwt-secret-not-used-in-prod npx jest --runInBand --forceExit src/application/mud src/api/mud src/api/me src/application/registro src/application/anomaly src/infrastructure/jobs src/application/admin/system-health src/core/monitoring src/core/time src/infrastructure/pdf src/infrastructure/persistence/fir-prisma.repository.spec.ts src/application/rentri`: PASS.
+- [ ] Backend: `cd apps/backend && JWT_SECRET=ci-dummy-jwt-secret-not-used-in-prod npx jest --runInBand --forceExit src/application/mud src/api/mud src/api/me src/api/registro src/application/registro src/application/anomaly src/infrastructure/jobs src/application/admin/system-health src/core/monitoring src/core/time src/infrastructure/pdf src/infrastructure/persistence/fir-prisma.repository.spec.ts src/application/rentri`: PASS.
 - [ ] `TZ=UTC` … `src/application/notifications/deadline-checker.service.spec.ts`: PASS.
 - [ ] Postgres: `npx prisma migrate deploy` poi `npm run test:postgres -- registra-movimento giacenza-disponibile fir-prisma progressivo-iniziale mud-report-data`: PASS.
 - [ ] `npx tsc --noEmit -p tsconfig.json` (backend) e, nel frontend, `npx tsc --noEmit -p tsconfig.app.json` più Karma su `registro-fir.spec.ts` e `registro.service.spec.ts`: PASS.
@@ -623,7 +625,7 @@ Ruling del controller sulla ricerca `C-W-03-winwaste.md`: in Fase 0 si adattano 
 
 - **Flussi dei gestori dei rifiuti** (C-W-03): produttori percentuali (quote `prod:<unitaLocaleId>`), microraccolta master/dettagli, spurghi multiluogo, carichi dopo trattamento (`cer:<cer>`), con master e dettagli nella stessa transazione e `movimentoPadreId`, `ricopiaTipo` (`ORDINARIA | QUOTA_PRODUTTORE | DETTAGLIO | TOTALE`) ed esclusione del totale dal MUD, `Idempotency-Key` del client per le registrazioni multiple, `FIR_SCARICATO_PIU_VOLTE` per chiave.
 - **Punti aperti della ricerca C-W-03** (`C-W-03-winwaste.md` §3, "Incognite"): se la ricopia F6 di WinWaste esclude i FIR già `C7 = 'R'`; la query di "Cerca formulari duplicati"; il significato di TIP+OPE 52 e del ricarico `($$PARTENZA$$)`; se le percentuali devono sommare 100; quantità e trattamento MUD dei dettagli spurgo (`QCAT` `Z3`); cosa succede ai dettagli quando si modifica o cancella il master.
-- **Ruolo globale negli altri endpoint** (A-C-06): `@Roles` e `user.tenantId` nei controller elencati nella PR.
+- **Ruolo globale negli altri endpoint** (A-C-06): `@Roles` e `user.tenantId` nei controller elencati nella PR (il registro e il MUD sono corretti nel Task 18).
 - D-W-04 (conservazione oltre 30 giorni) e D-W-06 (backup di Keycloak): da decidere con il piano infrastruttura.
 - Tutte le obiezioni medie e minori non elencate nella sezione 1 dell'esito, con il loro id, nella sezione "Fuori ambito" della PR (D-C-08…D-C-18, D-W-02, D-W-07, D-W-09, D-W-10, C-C-04…C-C-10, C-W-04…C-W-11, A-C-08…A-C-13, A-W-14…A-W-18).
 - Esclusione dal TE del trasporto in proprio (A-W-08 punto a), da far confermare a un consulente.

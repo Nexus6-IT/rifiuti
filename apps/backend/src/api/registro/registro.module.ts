@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
 import { LoggerModule } from '../../core/logger/logger.module'
 import { AuthModule } from '../../auth/auth.module'
+import { RuoloEffettivoModule } from '../me/ruolo-effettivo.module'
 import { RegistroController } from './registro.controller'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { ListMovimentiHandler } from '../../application/registro/queries/list-movimenti.handler'
@@ -18,7 +19,7 @@ import { ProgressivoInizialeService } from '../../application/registro/progressi
  *   PUT  /api/v1/registro/progressivo-iniziale/:anno — lo imposta (una volta sola)
  */
 @Module({
-  imports: [PrismaModule, LoggerModule, AuthModule],
+  imports: [PrismaModule, LoggerModule, AuthModule, RuoloEffettivoModule],
   controllers: [RegistroController],
   providers: [RegistraMovimentoUseCase, ListMovimentiHandler, ProgressivoInizialeService],
   exports: [RegistraMovimentoUseCase, ListMovimentiHandler],

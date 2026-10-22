@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { MUDGeneratorService } from '../../application/mud/mud-generator.service'
 import { MudExportService } from '../../application/mud/export/mud-export.service'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 
 /**
  * MUD Controller
@@ -19,7 +20,8 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 export class MudController {
   constructor(
     private readonly mudGenerator: MUDGeneratorService,
-    private readonly mudExport: MudExportService
+    private readonly mudExport: MudExportService,
+    private readonly membership: RuoloEffettivoService
   ) {}
 
   @Get('generate')
@@ -62,10 +64,15 @@ export class MudController {
       .split(',')
       .map(s => s.trim())
       .filter(Boolean)
+    // La conferma degli avvisi dipende dal ruolo nell'azienda selezionata, non da quello del
+    // token (A-C-06): un consulente ADMIN del proprio studio, associato al cliente come
+    // CONSULTANT, nel MUD del cliente non è un amministratore. Si decide qui e non con un
+    // guard perché `RolesGuard` gira prima del `TenantSwitchInterceptor`.
+    const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
     const result = await this.mudExport.exportTelematico(
       tenantId,
       this.parseYear(year),
-      { id: req.user.id, role: req.user.role },
+      { id: req.user.id, role: ruolo },
       confermati
     )
 

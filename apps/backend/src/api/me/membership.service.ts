@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { JwtTokensService } from '../../auth/services/jwt-tokens.service'
 import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { associazioneConsulenteValida } from './ruolo-effettivo.service'
 
 /**
  * Gestione multi-azienda dell'utente autenticato: elenco delle aziende
@@ -17,21 +18,11 @@ export class MembershipService {
   ) {}
 
   /**
-   * Filtro di un'associazione consulente VALIDA: attiva **e non scaduta**.
-   *
-   * `isActive` da solo non basta: il dominio
-   * (`ConsultantTenantAssociation.isActiveAndNotExpired()`) considera scaduta =
-   * inattiva, ma la disattivazione non viene scritta a DB allo scadere. Senza
-   * il vincolo su `expiresAt` un consulente conserverebbe l'accesso all'azienda
-   * del cliente oltre la fine dell'incarico.
+   * Filtro di un'associazione consulente VALIDA (attiva e non scaduta): definito una sola
+   * volta in `ruolo-effettivo.service.ts`, così accesso e ruolo effettivo concordano.
    */
   private static associazioneValida(consultantUserId: string, tenantId?: string) {
-    return {
-      consultantUserId,
-      ...(tenantId ? { tenantId } : {}),
-      isActive: true,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-    }
+    return associazioneConsulenteValida(consultantUserId, tenantId)
   }
 
   /**

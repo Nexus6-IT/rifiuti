@@ -16,13 +16,11 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ForbiddenException,
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
-import { RolesGuard } from '../../auth/guards/roles.guard'
-import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { ListMovimentiHandler } from '../../application/registro/queries/list-movimenti.handler'
 import { RegistraMovimentoCommand } from '../../application/registro/commands/registra-movimento.command'
@@ -34,23 +32,26 @@ import {
   StatoProgressivoIniziale,
 } from '../../application/registro/progressivo-iniziale.service'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 
 /**
- * Ruoli che possono impostare il progressivo iniziale del registro (C-W-02).
- * Oggi si confrontano col ruolo del token; il Task 18 (F28) li confronterà col ruolo
- * effettivo nell'azienda selezionata, sostituendo @Roles e `puoImpostareProgressivo`.
+ * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono registrare movimenti e
+ * impostare il progressivo iniziale (C-W-02). Non si usa `@Roles`: `RolesGuard` vede solo il
+ * ruolo del token e gira prima del `TenantSwitchInterceptor`, che seleziona l'azienda.
  */
-const RUOLI_PROGRESSIVO_INIZIALE = ['SUPER_ADMIN', 'ADMIN'] as const
+const RUOLI_REGISTRAZIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
+const RUOLI_PROGRESSIVO_INIZIALE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
 
 @ApiTags('registro')
 @Controller('registro')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class RegistroController {
   constructor(
     private readonly registraMovimentoUseCase: RegistraMovimentoUseCase,
     private readonly listMovimentiHandler: ListMovimentiHandler,
-    private readonly progressivoIniziale: ProgressivoInizialeService
+    private readonly progressivoIniziale: ProgressivoInizialeService,
+    private readonly membership: RuoloEffettivoService
   ) {}
 
   /**
@@ -62,7 +63,6 @@ export class RegistroController {
    * sufficiente (anomaly detection: "scarico > carico" bloccante).
    */
   @Post()
-  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Registra movimento di carico/scarico nel registro cronologico',
@@ -79,15 +79,30 @@ export class RegistroController {
     status: 400,
     description: 'Dati non validi o giacenza insufficiente (per SCARICO)',
   })
-  async registra(@Body() dto: RegistraMovimentoDto, @CurrentUser() user: CurrentUserPayload) {
+  @ApiResponse({
+    status: 403,
+    description: "Ruolo di sola consultazione nell'azienda selezionata",
+  })
+  async registra(@Body() dto: RegistraMovimentoDto, @Req() req: any) {
+    // Azienda selezionata (switch di azienda), non il tenant primario del token: il token
+    // non viene riscritto dallo switch, e scrivere su `user.tenantId` metterebbe il movimento
+    // nel registro di un'altra azienda.
+    const tenantId = requireRequestTenantId(req)
+    if (!(await this.haRuolo(req, tenantId, RUOLI_REGISTRAZIONE))) {
+      throw new ForbiddenException({
+        message: "Solo un amministratore o un operatore dell'azienda può registrare movimenti.",
+        error: 'REGISTRO_RISERVATO_OPERATORI',
+      })
+    }
+
     const movementDate = new Date(dto.movementDate)
     // La data di registrazione è l'istante in cui il movimento viene scritto (Decisione 10):
     // la assegna il server, quella eventualmente inviata dal client si ignora.
     const registrationDate = new Date()
 
     const command = new RegistraMovimentoCommand(
-      user.tenantId,
-      user.id,
+      tenantId,
+      req.user.id,
       dto.type,
       movementDate,
       registrationDate,
@@ -128,9 +143,11 @@ export class RegistroController {
       'Ordinato per data operazione decrescente.',
   })
   @ApiResponse({ status: 200, description: 'Lista movimenti paginata' })
-  async lista(@Query() dto: ListMovimentiDto, @CurrentUser() user: CurrentUserPayload) {
+  async lista(@Query() dto: ListMovimentiDto, @Req() req: any) {
+    // Aperta a ogni ruolo con accesso all'azienda selezionata (l'accesso lo verifica il
+    // TenantSwitchInterceptor); si legge il registro dell'azienda selezionata.
     const query = new ListMovimentiQuery(
-      user.tenantId,
+      requireRequestTenantId(req),
       {
         type: dto.type,
         cerCode: dto.cerCode,
@@ -154,7 +171,8 @@ export class RegistroController {
   /**
    * Stato del progressivo iniziale del registro per l'anno (C-W-02), con quello che
    * serve al frontend per decidere se offrire l'impostazione: `haMovimenti` e
-   * `puoImpostare` (ruolo), così il client non deve dedurli da sé.
+   * `puoImpostare` (ruolo effettivo nell'azienda selezionata), così il client non deve
+   * dedurli da sé.
    */
   @Get('progressivo-iniziale/:anno')
   @HttpCode(HttpStatus.OK)
@@ -166,7 +184,8 @@ export class RegistroController {
   ): Promise<StatoProgressivoIniziale & { puoImpostare: boolean }> {
     const tenantId = requireRequestTenantId(req)
     const stato = await this.progressivoIniziale.leggi(tenantId, anno)
-    return { ...stato, puoImpostare: this.puoImpostareProgressivo(req) }
+    const puoImpostare = await this.haRuolo(req, tenantId, RUOLI_PROGRESSIVO_INIZIALE)
+    return { ...stato, puoImpostare }
   }
 
   /**
@@ -174,7 +193,6 @@ export class RegistroController {
    * in corso o il prossimo, prima del primo movimento dell'anno.
    */
   @Put('progressivo-iniziale/:anno')
-  @Roles(...RUOLI_PROGRESSIVO_INIZIALE)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "Imposta il progressivo iniziale del registro per l'anno",
@@ -184,6 +202,7 @@ export class RegistroController {
   })
   @ApiResponse({ status: 200, description: 'Progressivo iniziale impostato' })
   @ApiResponse({ status: 400, description: "Anno diverso dall'anno in corso o dal prossimo" })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
   @ApiResponse({ status: 409, description: "Già impostato, o l'anno ha già movimenti" })
   async impostaProgressivoIniziale(
     @Param('anno', ParseIntPipe) anno: number,
@@ -191,6 +210,13 @@ export class RegistroController {
     @Req() req: any
   ): Promise<{ anno: number; primoProgressivo: number }> {
     const tenantId = requireRequestTenantId(req)
+    if (!(await this.haRuolo(req, tenantId, RUOLI_PROGRESSIVO_INIZIALE))) {
+      throw new ForbiddenException({
+        message:
+          "Solo un amministratore dell'azienda può impostare il progressivo iniziale del registro.",
+        error: 'REGISTRO_PROGRESSIVO_RISERVATO_AMMINISTRATORI',
+      })
+    }
     return this.progressivoIniziale.imposta(
       tenantId,
       anno,
@@ -200,8 +226,12 @@ export class RegistroController {
     )
   }
 
-  /** Controllo del ruolo isolato qui: il Task 18 lo sostituisce col ruolo effettivo. */
-  private puoImpostareProgressivo(req: any): boolean {
-    return (RUOLI_PROGRESSIVO_INIZIALE as readonly string[]).includes(req?.user?.role)
+  /** Vero se il ruolo dell'utente nell'azienda selezionata è fra quelli indicati. */
+  private async haRuolo(
+    req: any,
+    tenantId: string,
+    ammessi: readonly RuoloApplicativo[]
+  ): Promise<boolean> {
+    return ammessi.includes(await this.membership.ruoloEffettivo(req.user, tenantId))
   }
 }
