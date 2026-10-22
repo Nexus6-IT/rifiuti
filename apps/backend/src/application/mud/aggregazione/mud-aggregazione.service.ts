@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
-import { ReferenceDataService } from '../../reference-data/reference-data.service'
+import { ReferenceDataService, normalizeAteco } from '../../reference-data/reference-data.service'
 import { cerCanonico, chiaveConfrontoCer } from '../../../domain/waste-movement/cer-registro'
 import {
   convertiInKg,
@@ -32,6 +32,8 @@ export interface MudAggregato {
   righe: MudRifiutoLine[]
   /** movimenti conteggiati (prodotto + avviato) per CER */
   movimentiPerCer: Record<string, number>
+  /** dati del dichiarante risolti una sola volta, riusati dall'export */
+  dichiarante: { atecoNormalizzato: string | null; comuneCode: string | null }
   /** aggregazione + dichiarante + profilo */
   controlli: MudEsitoControllo[]
 }
@@ -200,9 +202,15 @@ export class MudAggregazioneService {
       where: { id: tenantId },
       select: { city: true, province: true, atecoCode: true },
     })
-    const comuneDichiarante = tenant?.city
-      ? await this.referenceData.findComuneByName(tenant.city, tenant.province ?? undefined)
-      : undefined
+    // Il comune si cerca solo con città e provincia: senza provincia la ricerca sarebbe ambigua.
+    const comuneDichiarante =
+      tenant?.city?.trim() && tenant?.province?.trim()
+        ? await this.referenceData.findComuneByName(tenant.city, tenant.province)
+        : undefined
+    const comuneCode = /^\d{6}$/.test(comuneDichiarante?.code ?? '')
+      ? (comuneDichiarante?.code ?? null)
+      : null
+    const atecoNormalizzato = tenant?.atecoCode?.trim() ? normalizeAteco(tenant.atecoCode) : null
 
     const unitaLocali = await this.prisma.rentriUnitaLocale.findMany({
       where: { tenantId, attiva: true },
@@ -416,15 +424,25 @@ export class MudAggregazioneService {
     if (ricevuti.length > 0) controlli.push(controlliMud.profiloNonSupportato(anno, ricevuti))
     if (unitaLocali.length > 1) controlli.push(controlliMud.piuUnitaLocali(unitaLocali))
 
-    if (!comuneDichiarante?.code) {
+    if (!comuneCode) {
       controlli.push(controlliMud.dichiaranteSenzaComuneIstat(tenant?.city, tenant?.province))
     }
-    if (!tenant?.atecoCode?.trim()) controlli.push(controlliMud.dichiaranteSenzaAteco())
+    if (!atecoNormalizzato) {
+      controlli.push(controlliMud.dichiaranteSenzaAteco())
+    } else if (!/^\d{6}$/.test(atecoNormalizzato)) {
+      controlli.push(controlliMud.dichiaranteAtecoNonValido(tenant?.atecoCode ?? ''))
+    }
 
     this.logger.info(
       `MUD aggregato: tenant ${tenantId}, anno ${anno}, ${movimenti.length} movimenti, ${righeFinali.length} righe, ${controlli.length} controlli`
     )
-    return { anno, righe: righeFinali, movimentiPerCer, controlli }
+    return {
+      anno,
+      righe: righeFinali,
+      movimentiPerCer,
+      controlli,
+      dichiarante: { atecoNormalizzato, comuneCode },
+    }
   }
 
   /** Recupero o smaltimento di uno scarico, nell'ordine della Decisione 5. */

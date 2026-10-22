@@ -790,6 +790,50 @@ describe('MudAggregazioneService', () => {
     expect(haBloccanti(senzaComune.controlli)).toBe(true)
   })
 
+  it('senza provincia il comune non si risolve e il file non esce', async () => {
+    impostaDati({ movimenti: [mov({})] })
+    prisma.tenant.findUnique.mockResolvedValue({
+      city: 'Roma',
+      province: null,
+      atecoCode: '381100',
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(referenceData.findComuneByName).not.toHaveBeenCalled()
+    expect(r.dichiarante.comuneCode).toBeNull()
+    expect(r.controlli).toContainEqual(controlliMud.dichiaranteSenzaComuneIstat('Roma', null))
+    expect(haBloccanti(r.controlli)).toBe(true)
+  })
+
+  it('il comune risolto una volta è nel dichiarante', async () => {
+    impostaDati({ movimenti: [mov({})] })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(referenceData.findComuneByName).toHaveBeenCalledTimes(1)
+    expect(r.dichiarante.comuneCode).toBe('015146')
+  })
+
+  it('ATECO con i punti è normalizzato', async () => {
+    impostaDati({ movimenti: [mov({})] })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.dichiarante.atecoNormalizzato).toBe('381100')
+    expect(haBloccanti(r.controlli)).toBe(false)
+  })
+
+  it('ATECO di 4 cifre blocca', async () => {
+    impostaDati({ movimenti: [mov({})] })
+    prisma.tenant.findUnique.mockResolvedValue({ city: 'Roma', province: 'RM', atecoCode: '38.11' })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.controlli).toContainEqual(controlliMud.dichiaranteAtecoNonValido('38.11'))
+    expect(codici(r.controlli)).not.toContain('DICHIARANTE_SENZA_ATECO')
+  })
+
   // 31
   it('doppi storici con date diverse si contano una volta', async () => {
     impostaDati({

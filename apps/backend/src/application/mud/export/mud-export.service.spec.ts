@@ -10,7 +10,6 @@ import type { MudRifiutoLine } from './mud-export.types'
 describe('MudExportService', () => {
   let service: MudExportService
   let prisma: any
-  let referenceData: any
   let aggregazione: { aggrega: jest.Mock }
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 
@@ -48,6 +47,8 @@ describe('MudExportService', () => {
     unit: 'kg',
   }
 
+  const DICHIARANTE_OK = { atecoNormalizzato: '381100', comuneCode: '058091' }
+
   const tenantCompleto = {
     ragioneSociale: 'Acme Spa',
     partitaIva: '12345678901',
@@ -77,21 +78,46 @@ describe('MudExportService', () => {
       $executeRaw: jest.fn(),
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
     }
-    referenceData = { findComuneByName: jest.fn().mockResolvedValue({ code: '058091' }) }
     aggregazione = { aggrega: jest.fn() }
-    service = new MudExportService(
-      prisma,
-      new MudVersionRegistry(),
-      referenceData,
-      aggregazione as any,
-      logger
-    )
+    service = new MudExportService(prisma, new MudVersionRegistry(), aggregazione as any, logger)
+  })
+
+  it("il record AA porta l'ATECO senza punti", async () => {
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      dichiarante: { atecoNormalizzato: '381100', comuneCode: '058091' },
+      movimentiPerCer: { '170405': 2 },
+      controlli: [],
+    })
+    prisma.tenant.findUnique.mockResolvedValue({ ...tenantCompleto, atecoCode: '38.11.00' })
+
+    const result = await service.exportTelematico('t1', 2024, admin, [])
+
+    expect(result.content).toContain(';381100;')
+    expect(result.content).not.toContain('38.11.')
+  })
+
+  it("usa il comune già risolto dall'aggregazione, senza rifare la ricerca", async () => {
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      dichiarante: { atecoNormalizzato: '381100', comuneCode: '015146' },
+      movimentiPerCer: { '170405': 2 },
+      controlli: [],
+    })
+
+    const result = await service.exportTelematico('t1', 2024, admin, [])
+
+    expect(result.content).toContain(';015;146;')
+    expect(result.content).not.toContain(';058;091;')
   })
 
   it('genera il file MUD della versione corretta per anno', async () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 2 },
       controlli: [controlliMud.giacenzeNonCalcolate(2024)],
     })
@@ -131,6 +157,7 @@ describe('MudExportService', () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2025,
       righe: [],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: {},
       controlli: [controlliMud.nessunMovimento(2025)],
     })
@@ -151,6 +178,7 @@ describe('MudExportService', () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2025,
       righe: [],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: {},
       controlli,
     })
@@ -182,6 +210,7 @@ describe('MudExportService', () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli: [controlliMud.dichiaranteSenzaAteco()],
     })
@@ -202,6 +231,7 @@ describe('MudExportService', () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli,
     })
@@ -229,6 +259,7 @@ describe('MudExportService', () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli,
     })
@@ -255,6 +286,7 @@ describe('MudExportService', () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli: [],
     })
@@ -272,6 +304,7 @@ describe('MudExportService', () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli,
     })
@@ -290,6 +323,7 @@ describe('MudExportService', () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli,
     })
@@ -312,6 +346,7 @@ describe('MudExportService', () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli: [
         controlliMud.giacenzeNonCalcolate(2024),
@@ -368,6 +403,7 @@ describe('MudExportService', () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli: [],
     })
@@ -391,6 +427,7 @@ describe('MudExportService', () => {
           dr: [{ codiceFiscale: '', ragioneSociale: 'Ecologia Srl', quantitaKg: 300 }],
         },
       ],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli: [],
     })
@@ -410,6 +447,7 @@ describe('MudExportService', () => {
           te: [],
         },
       ],
+      dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli: [],
     })

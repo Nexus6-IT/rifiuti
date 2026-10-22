@@ -14,6 +14,7 @@ export type MudCodiceControllo =
   | 'REGISTRO_VUOTO_CON_FIR'
   | 'DICHIARANTE_SENZA_COMUNE_ISTAT'
   | 'DICHIARANTE_SENZA_ATECO'
+  | 'DICHIARANTE_ATECO_NON_VALIDO'
   | 'DESTINATARIO_SENZA_CF'
   | 'UNITA_NON_DI_MASSA'
   | 'PROFILO_NON_SUPPORTATO'
@@ -127,6 +128,12 @@ export const controlliMud = {
     codice: 'DICHIARANTE_SENZA_ATECO',
     gravita: BLOCCANTE,
     messaggio: `Codice ATECO dell'azienda mancante: è obbligatorio nella scheda anagrafica del MUD. Inserirlo nell'anagrafica dell'azienda ${DOVE_CORREGGERE_AZIENDA}.`,
+  }),
+
+  dichiaranteAtecoNonValido: (valore: string): MudEsitoControllo => ({
+    codice: 'DICHIARANTE_ATECO_NON_VALIDO',
+    gravita: BLOCCANTE,
+    messaggio: `Codice ATECO dell'azienda non valido ("${valore}"): nel MUD servono 6 cifre, senza punti (per esempio 381100). Correggerlo nell'anagrafica dell'azienda ${DOVE_CORREGGERE_AZIENDA}.`,
   }),
 
   destinatarioSenzaCf: (

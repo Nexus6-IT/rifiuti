@@ -229,6 +229,15 @@ describe('controlliMud', () => {
     )
   })
 
+  it('dichiaranteAtecoNonValido dice cosa serve e dove correggere', () => {
+    const c = controlliMud.dichiaranteAtecoNonValido('38.11')
+    expect(c.codice).toBe('DICHIARANTE_ATECO_NON_VALIDO')
+    expect(c.gravita).toBe('BLOCCANTE')
+    expect(c.messaggio).toBe(
+      "Codice ATECO dell'azienda non valido (\"38.11\"): nel MUD servono 6 cifre, senza punti (per esempio 381100). Correggerlo nell'anagrafica dell'azienda (Amministrazione > Aziende; se la voce non è visibile, chiederlo all'amministratore della piattaforma)."
+    )
+  })
+
   it('registroVuotoConFir e firNonRegistrato portano i FIR', () => {
     const v = controlliMud.registroVuotoConFir(2025, ['A', 'B'])
     expect(v.fir).toEqual(['A', 'B'])

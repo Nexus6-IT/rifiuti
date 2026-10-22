@@ -7,7 +7,6 @@ import {
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
-import { ReferenceDataService } from '../../reference-data/reference-data.service'
 import { MudVersionRegistry } from './mud-version.registry'
 import { MudAggregazioneService } from '../aggregazione/mud-aggregazione.service'
 import {
@@ -60,7 +59,6 @@ export class MudExportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: MudVersionRegistry,
-    private readonly referenceData: ReferenceDataService,
     private readonly aggregazione: MudAggregazioneService,
     private readonly logger: LoggerService
   ) {
@@ -131,14 +129,6 @@ export class MudExportService {
       })
     }
 
-    // Risolve il codice ISTAT del comune dalle tabelle di riferimento condivise.
-    // city/province potrebbero essere null per tenant creati via signup self-service
-    // (WS-G): in quel caso il comune non viene risolto (undefined).
-    const comune =
-      tenant.city && tenant.province
-        ? await this.referenceData.findComuneByName(tenant.city, tenant.province)
-        : undefined
-
     const data: MudExportData = {
       year,
       azienda: {
@@ -148,12 +138,12 @@ export class MudExportService {
         via: tenant.address ?? undefined,
         civico: tenant.civico ?? undefined,
         comune: tenant.city ?? undefined,
-        comuneCode: comune?.code,
+        comuneCode: aggregato.dichiarante.comuneCode ?? undefined,
         provincia: tenant.province ?? undefined,
         cap: tenant.postalCode ?? undefined,
         pec: tenant.pec ?? undefined,
         telefono: tenant.telefono ?? undefined,
-        atecoCode: tenant.atecoCode ?? undefined,
+        atecoCode: aggregato.dichiarante.atecoNormalizzato ?? undefined,
         reaNumber: tenant.reaNumber ?? undefined,
         numeroAddetti: tenant.numeroAddetti ?? undefined,
         legaleRappresentanteNome: tenant.legaleRappresentanteNome ?? undefined,
