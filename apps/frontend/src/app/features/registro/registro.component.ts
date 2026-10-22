@@ -57,6 +57,7 @@ import {
   CausaleMovimento,
 } from './registro.service'
 import { messaggioMovimentoRegistrato } from './registro-messaggi'
+import { giorniDiRitardo } from './registro-ritardo'
 import {
   causalePredefinitaDaFir,
   dataOperazioneDaFir,
@@ -1102,10 +1103,10 @@ export class RegistroComponent implements OnInit {
 
   readonly ritardoGgCalcolati = computed(() => {
     const mov = this.form?.get('movementDate')?.value as Date | null
-    // La registrazione avviene alla conferma: il ritardo si misura rispetto a oggi.
-    const reg = new Date()
+    // La registrazione avviene alla conferma: il ritardo si misura rispetto a oggi,
+    // in giorni di calendario italiani come fa il backend.
     if (!mov) return 0
-    return Math.max(0, Math.floor((reg.getTime() - mov.getTime()) / (1000 * 60 * 60 * 24)))
+    return giorniDiRitardo(mov)
   })
 
   readonly ritardoGgCalcolato = computed(() => this.ritardoGgCalcolati())

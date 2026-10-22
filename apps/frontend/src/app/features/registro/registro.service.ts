@@ -70,7 +70,6 @@ export interface PaginatedMovimenti {
 export interface RegistraMovimentoRequest {
   type: TipoMovimento
   movementDate: string
-  registrationDate?: string
   causale: CausaleMovimento
   cerCode: string
   wasteDescription?: string
