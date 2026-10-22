@@ -41,13 +41,31 @@ export class MudController {
       "ufficiale (mudtelematico.it) prima dell'invio.",
   })
   @ApiQuery({ name: 'year', required: true, type: Number, example: 2024 })
+  @ApiQuery({
+    name: 'avvisiConfermati',
+    required: false,
+    type: String,
+    description: 'Codici degli avvisi confermati, separati da virgola',
+  })
   async exportTelematico(
     @Req() req: any,
     @Res() res: Response,
-    @Query('year') year: string
+    @Query('year') year: string,
+    @Query('avvisiConfermati') avvisiConfermati?: string
   ): Promise<void> {
     const tenantId = requireRequestTenantId(req)
-    const result = await this.mudExport.exportTelematico(tenantId, this.parseYear(year))
+    // Codici degli avvisi confermati, separati da virgola. Senza avvisi il download resta
+    // aperto a tutti; con avvisi il servizio richiede ADMIN o SUPER_ADMIN.
+    const confermati = (avvisiConfermati ?? '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+    const result = await this.mudExport.exportTelematico(
+      tenantId,
+      this.parseYear(year),
+      { id: req.user.id, role: req.user.role },
+      confermati
+    )
 
     res.setHeader('Content-Type', 'text/plain; charset=us-ascii')
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`)

@@ -1,83 +1,104 @@
+import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
 import { MudExportService } from './mud-export.service'
 import { MudVersionRegistry } from './mud-version.registry'
+import { HttpExceptionFilter } from '../../../core/filters/http-exception.filter'
+import { controlliMud, riepilogaAvvisi, type RifMovimento } from '../aggregazione/mud-controlli'
+import { INTEGRAZIONI_VUOTE } from '../aggregazione/mud-integrazioni'
+import { hashAggregato } from '../aggregazione/mud-regole'
+import type { MudRifiutoLine } from './mud-export.types'
 
 describe('MudExportService', () => {
   let service: MudExportService
   let prisma: any
   let referenceData: any
+  let aggregazione: { aggrega: jest.Mock }
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+
+  const admin = { id: 'u1', role: 'ADMIN' }
+  const viewer = { id: 'u9', role: 'VIEWER' }
+
+  // metallo ferroso 170405: 80 a recupero e 20 a smaltimento, tutti al destinatario D1
+  // trasportati da T1
+  const rigaValida: MudRifiutoLine = {
+    cerCode: '170405',
+    prodottoKg: 100,
+    recuperoKg: 80,
+    smaltimentoKg: 20,
+    dr: [
+      {
+        codiceFiscale: '33333333333',
+        ragioneSociale: 'Recupero Metalli Srl',
+        istatProvincia: '015',
+        istatComune: '146',
+        indirizzo: 'Via Industria',
+        civico: '5',
+        cap: '20100',
+        quantitaKg: 100,
+      },
+    ],
+    te: [{ codiceFiscale: '22222222222', ragioneSociale: 'Trasporti Srl' }],
+  }
+
+  const rifMovimento: RifMovimento = {
+    progressiveNumber: 7,
+    progressiveYear: 2024,
+    cerCode: '170405',
+    causale: 'SCARICO',
+    quantity: 100,
+    unit: 'kg',
+  }
+
+  const tenantCompleto = {
+    ragioneSociale: 'Acme Spa',
+    partitaIva: '12345678901',
+    codiceFiscale: '12345678901',
+    address: 'Via Roma 1',
+    civico: '10',
+    city: 'Roma',
+    province: 'RM',
+    postalCode: '00100',
+    pec: 'acme@pec.it',
+    telefono: '0612345678',
+    atecoCode: '381100',
+    reaNumber: '123456',
+    numeroAddetti: 42,
+    legaleRappresentanteNome: 'Mario',
+    legaleRappresentanteCognome: 'Rossi',
+  }
 
   beforeEach(() => {
     prisma = {
-      tenant: { findUnique: jest.fn() },
-      fIR: { findMany: jest.fn().mockResolvedValue([]) },
-      destinatario: { findMany: jest.fn().mockResolvedValue([]) },
+      tenant: { findUnique: jest.fn().mockResolvedValue(tenantCompleto) },
       // Schede SA-AUT: senza autorizzazioni registrate nessun record AU è emesso.
       autorizzazioneImpianto: { findMany: jest.fn().mockResolvedValue([]) },
+      mUDReport: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() },
+      activityLog: { create: jest.fn() },
+      // lock di aggiornaReportData
+      $executeRaw: jest.fn(),
+      $transaction: jest.fn(async (fn: any) => fn(prisma)),
     }
     referenceData = { findComuneByName: jest.fn().mockResolvedValue({ code: '058091' }) }
-    service = new MudExportService(prisma, new MudVersionRegistry(), referenceData, logger)
+    aggregazione = { aggrega: jest.fn() }
+    service = new MudExportService(
+      prisma,
+      new MudVersionRegistry(),
+      referenceData,
+      aggregazione as any,
+      logger
+    )
   })
 
   it('genera il file MUD della versione corretta per anno', async () => {
-    prisma.tenant.findUnique.mockResolvedValue({
-      ragioneSociale: 'Acme Spa',
-      partitaIva: '12345678901',
-      codiceFiscale: '12345678901',
-      address: 'Via Roma 1',
-      civico: '10',
-      city: 'Roma',
-      province: 'RM',
-      postalCode: '00100',
-      pec: 'acme@pec.it',
-      telefono: '0612345678',
-      atecoCode: '381100',
-      reaNumber: '123456',
-      numeroAddetti: 42,
-      legaleRappresentanteNome: 'Mario',
-      legaleRappresentanteCognome: 'Rossi',
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      movimentiPerCer: { '170405': 2 },
+      controlli: [controlliMud.giacenzeNonCalcolate(2024)],
     })
-    // metallo ferroso 170405: 80 a recupero (al destinatario D1, trasportato da T1),
-    // 20 a smaltimento (destinatario D1).
-    prisma.fIR.findMany.mockResolvedValue([
-      {
-        cerCode: '170405',
-        quantity: 80,
-        wasteOperationType: 'RECOVERY',
-        carrierId: 'car-1',
-        carrierName: 'Trasporti Srl',
-        carrierPartitaIva: '22222222222',
-        receiverId: 'dest-1',
-        receiverName: 'Recupero Metalli Srl',
-        receiverPartitaIva: '33333333333',
-      },
-      {
-        cerCode: '170405',
-        quantity: 20,
-        wasteOperationType: 'DISPOSAL',
-        carrierId: 'car-1',
-        carrierName: 'Trasporti Srl',
-        carrierPartitaIva: '22222222222',
-        receiverId: 'dest-1',
-        receiverName: 'Recupero Metalli Srl',
-        receiverPartitaIva: '33333333333',
-      },
-    ])
-    prisma.destinatario.findMany.mockResolvedValue([
-      {
-        id: 'dest-1',
-        ragioneSociale: 'Recupero Metalli Srl',
-        partitaIVA: '33333333333',
-        via: 'Via Industria',
-        civico: '5',
-        cap: '20100',
-        comune: 'Milano',
-        provincia: 'MI',
-      },
-    ])
 
-    const result = await service.exportTelematico('tenant-1', 2024)
+    const result = await service.exportTelematico('t1', 2024, admin, ['GIACENZE_NON_CALCOLATE'])
 
+    expect(aggregazione.aggrega).toHaveBeenCalledWith('t1', 2024)
     expect(result.version).toBe('6.04/24')
     expect(result.filename).toBe('MUD_2024_12345678901.txt')
     expect(result.content).toContain(';170405;')
@@ -106,42 +127,255 @@ describe('MudExportService', () => {
     expect(te).toContain('22222222222')
   })
 
-  it('cerca i destinatari dei moduli DR solo dentro l’azienda del dichiarante', async () => {
-    // L'export gira sul client Prisma SENZA estensione RLS: il perimetro
-    // dell'azienda deve stare nella query, altrimenti l'anagrafica di un
-    // destinatario omonimo di un altro tenant finirebbe nel MUD.
-    prisma.tenant.findUnique.mockResolvedValue({
-      ragioneSociale: 'Acme Spa',
-      partitaIva: '12345678901',
-      city: 'Roma',
-      province: 'RM',
+  it('anno vuoto: 422 con NESSUN_MOVIMENTO in details', async () => {
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2025,
+      righe: [],
+      movimentiPerCer: {},
+      controlli: [controlliMud.nessunMovimento(2025)],
     })
-    prisma.fIR.findMany.mockResolvedValue([
-      {
-        cerCode: '170405',
-        quantity: 10,
-        wasteOperationType: 'RECOVERY',
-        carrierId: null,
-        carrierName: null,
-        carrierPartitaIva: null,
-        receiverId: 'dest-1',
-        receiverName: 'Recupero Metalli Srl',
-        receiverPartitaIva: '33333333333',
+    const errore = await service.exportTelematico('t1', 2025, admin).catch(e => e)
+    expect(errore).toBeInstanceOf(UnprocessableEntityException)
+    expect(errore.getResponse()).toEqual({
+      message: 'Il file MUD non può essere generato: ci sono errori da correggere (1).',
+      error: 'MUD_NON_GENERABILE',
+      details: { controlli: [controlliMud.nessunMovimento(2025)] },
+    })
+    expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
+    expect(prisma.activityLog.create).not.toHaveBeenCalled()
+  })
+
+  it('la 422 arriva al client con i controlli in details', async () => {
+    // attraverso il filtro globale, come in produzione
+    const controlli = [controlliMud.nessunMovimento(2025), controlliMud.giacenzeNonCalcolate(2025)]
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2025,
+      righe: [],
+      movimentiPerCer: {},
+      controlli,
+    })
+    const errore = await service.exportTelematico('t1', 2025, admin).catch(e => e)
+    const json = jest.fn()
+    const response = { status: jest.fn(() => ({ json })) }
+    const request = {
+      method: 'GET',
+      url: '/api/v1/mud/export?year=2025',
+      correlationId: 'c1',
+      user: { id: 'u1' },
+    }
+    const host: any = {
+      switchToHttp: () => ({ getResponse: () => response, getRequest: () => request }),
+    }
+    new HttpExceptionFilter({ setContext: jest.fn(), error: jest.fn() } as any).catch(errore, host)
+    expect(response.status).toHaveBeenCalledWith(422)
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 422,
+        message: 'Il file MUD non può essere generato: ci sono errori da correggere (1).',
+        details: { controlli },
+      })
+    )
+  })
+
+  it("un bloccante del dichiarante, arrivato dall'aggregazione, ferma il file anche con gli avvisi confermati", async () => {
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      movimentiPerCer: { '170405': 1 },
+      controlli: [controlliMud.dichiaranteSenzaAteco()],
+    })
+    const errore = await service
+      .exportTelematico('t1', 2024, admin, ['GIACENZE_NON_CALCOLATE'])
+      .catch(e => e)
+    expect(errore.getResponse().error).toBe('MUD_NON_GENERABILE')
+    expect(errore.getResponse().details.controlli).toContainEqual(
+      controlliMud.dichiaranteSenzaAteco()
+    )
+  })
+
+  it('con avvisi non confermati: 422 con i codici mancanti in details', async () => {
+    const controlli = [
+      controlliMud.giacenzeNonCalcolate(2024),
+      controlliMud.scaricoSenzaFir(rifMovimento),
+    ]
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      movimentiPerCer: { '170405': 1 },
+      controlli,
+    })
+    const errore = await service
+      .exportTelematico('t1', 2024, admin, ['SCARICO_SENZA_FIR'])
+      .catch(e => e)
+    expect(errore).toBeInstanceOf(UnprocessableEntityException)
+    expect(errore.getResponse()).toEqual({
+      message: 'Il file MUD non è stato generato: ci sono avvisi da confermare (1).',
+      error: 'MUD_AVVISI_DA_CONFERMARE',
+      details: {
+        controlli,
+        avvisiDaConfermare: ['GIACENZE_NON_CALCOLATE'],
+        riepilogo: riepilogaAvvisi(controlli),
       },
-    ])
-
-    await service.exportTelematico('tenant-1', 2024)
-
-    expect(prisma.destinatario.findMany).toHaveBeenCalledWith({
-      where: { id: { in: ['dest-1'] }, tenantId: 'tenant-1' },
     })
+    expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
+  })
+
+  it('con avvisi da confermare solo ADMIN e SUPER_ADMIN generano il file', async () => {
+    const controlli = [controlliMud.giacenzeNonCalcolate(2024)]
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      movimentiPerCer: { '170405': 1 },
+      controlli,
+    })
+    const errore = await service
+      .exportTelematico('t1', 2024, viewer, ['GIACENZE_NON_CALCOLATE'])
+      .catch(e => e)
+    expect(errore).toBeInstanceOf(ForbiddenException)
+    expect(errore.getResponse()).toMatchObject({
+      error: 'MUD_CONFERMA_RISERVATA_AMMINISTRATORI',
+      message: 'Il file MUD ha avvisi da confermare: chiedi a un amministratore di generarlo.',
+    })
+    expect(errore.getResponse().details).toEqual({
+      controlli,
+      riepilogo: riepilogaAvvisi(controlli),
+    })
+    expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
+
+    // SUPER_ADMIN genera
+    await expect(
+      service.exportTelematico('t1', 2024, { id: 'u2', role: 'SUPER_ADMIN' }, [
+        'GIACENZE_NON_CALCOLATE',
+      ])
+    ).resolves.toBeDefined()
+
+    // senza avvisi il VIEWER scarica come oggi
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      movimentiPerCer: { '170405': 1 },
+      controlli: [],
+    })
+    await expect(service.exportTelematico('t1', 2024, viewer)).resolves.toBeDefined()
+  })
+
+  it("con gli avvisi confermati genera il file e salva l'esportazione", async () => {
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      movimentiPerCer: { '170405': 1 },
+      controlli: [
+        controlliMud.giacenzeNonCalcolate(2024),
+        controlliMud.scaricoSenzaFir(rifMovimento),
+      ],
+    })
+    prisma.mUDReport.findUnique.mockResolvedValue({
+      status: 'SUBMITTED',
+      reportData: { hashAggregato: 'h0' },
+    })
+    const r = await service.exportTelematico('t1', 2024, admin, [
+      'SCARICO_SENZA_FIR',
+      'GIACENZE_NON_CALCOLATE',
+    ])
+    expect(r.content.startsWith('XX;')).toBe(true)
+    const upsert = prisma.mUDReport.upsert.mock.calls[0][0]
+    expect(upsert.where).toEqual({ tenantId_year: { tenantId: 't1', year: 2024 } })
+    expect(upsert.update.status).toBeUndefined()
+    expect(upsert.update.reportData).toEqual({
+      hashAggregato: 'h0',
+      esportazioni: [
+        expect.objectContaining({
+          generatoDa: 'u1',
+          versione: '6.04/24',
+          hashAggregato: hashAggregato([rigaValida]),
+          avvisiConfermati: ['GIACENZE_NON_CALCOLATE', 'SCARICO_SENZA_FIR'],
+          riepilogo: expect.objectContaining({ kgInMeno: 0, voci: expect.any(Array) }),
+          integrazioniUsate: INTEGRAZIONI_VUOTE,
+        }),
+      ],
+    })
+    const voce = upsert.update.reportData.esportazioni[0]
+    expect(new Date(voce.generatoIl).toISOString()).toBe(voce.generatoIl)
+    expect(prisma.$executeRaw).toHaveBeenCalled() // lock di aggiornaReportData prima della lettura
+    expect(prisma.activityLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ tenantId: 't1', userId: 'u1', action: 'MUD_ESPORTATO' }),
+    })
+    const log = prisma.activityLog.create.mock.calls[0][0].data
+    expect(log.description).toBe(
+      'File MUD dei dati 2024 generato (tracciato 6.04/24) con 2 avvisi confermati: ' +
+        'Il file dichiara le stesse quantità del registro: gli avvisi sono informativi.'
+    )
+    expect(log.metadata).toEqual(
+      expect.objectContaining({
+        year: 2024,
+        versione: '6.04/24',
+        hashAggregato: hashAggregato([rigaValida]),
+        avvisiConfermati: ['GIACENZE_NON_CALCOLATE', 'SCARICO_SENZA_FIR'],
+      })
+    )
+  })
+
+  it('accoda la nuova esportazione a quelle già registrate', async () => {
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      movimentiPerCer: { '170405': 1 },
+      controlli: [],
+    })
+    prisma.mUDReport.findUnique.mockResolvedValue({
+      status: 'DRAFT',
+      reportData: { esportazioni: [{ vecchia: true }] },
+    })
+    await service.exportTelematico('t1', 2024, admin)
+    const reportData = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData
+    expect(reportData.esportazioni).toHaveLength(2)
+    expect(reportData.esportazioni[0]).toEqual({ vecchia: true })
+  })
+
+  it('un DR senza codice fiscale non rompe la lunghezza dei record', async () => {
+    // l'aggregazione lo segnala come bloccante (Task 4); qui si prova solo il formato, quindi nessun controllo
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2025,
+      righe: [
+        {
+          ...rigaValida,
+          dr: [{ codiceFiscale: '', ragioneSociale: 'Ecologia Srl', quantitaKg: 300 }],
+        },
+      ],
+      movimentiPerCer: { '170405': 1 },
+      controlli: [],
+    })
+    await expect(service.exportTelematico('t1', 2025, admin)).resolves.toBeDefined() // generate() verifica le lunghezze (Task 1)
+  })
+
+  it('10.000.000 kg escono in tonnellate e il record BA resta di 217 caratteri', async () => {
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2025,
+      righe: [
+        {
+          cerCode: '170405',
+          prodottoKg: 10000000,
+          recuperoKg: 10000000,
+          smaltimentoKg: 0,
+          dr: [],
+          te: [],
+        },
+      ],
+      movimentiPerCer: { '170405': 1 },
+      controlli: [],
+    })
+    const r = await service.exportTelematico('t1', 2025, admin)
+    const ba = r.content.split('\r\n').find(l => l.startsWith('BA;'))!
+    expect(ba.length).toBe(217)
+    expect(ba).toContain(';0010000,000;2;')
   })
 
   it('propaga errore per anno non supportato (prima di toccare il DB)', async () => {
-    await expect(service.exportTelematico('tenant-1', 1999)).rejects.toThrow(
+    await expect(service.exportTelematico('t1', 1999, admin)).rejects.toThrow(
       'Versione tracciato MUD non disponibile'
     )
     expect(prisma.tenant.findUnique).not.toHaveBeenCalled()
+    expect(aggregazione.aggrega).not.toHaveBeenCalled()
   })
 
   it('supportedVersions elenca anno/versione', () => {
