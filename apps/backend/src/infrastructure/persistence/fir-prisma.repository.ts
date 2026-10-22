@@ -34,6 +34,7 @@ import {
   FirNonPiuInBozzaError,
 } from '../../core/domain/errors'
 import { formattaNumeroFir } from '../../domain/fir/numero-fir'
+import { STATO_RENTRI_ANNULLATO } from '../../domain/fir/stati-fir'
 import { PrismaService } from './prisma.service'
 
 @Injectable()
@@ -230,6 +231,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     // l'input "checked" che richiede la relazione (altrimenti: "Argument
     // `tenant` is missing"). Si estraggono quindi gli scalari e si collega.
     const { tenantId, producerUserId, ...scalars } = data
+    await this.conservaAnnullamentoEnte(client, fir.id, scalars)
 
     // I trasportatori aggiuntivi (tratte intermodali) sono uno snapshot fissato
     // alla creazione del FIR: si scrivono solo nel ramo `create` dell'upsert, mai
@@ -257,6 +259,27 @@ export class FIRPrismaRepository implements IFIRRepository {
     }
 
     await this.persistSignatures(client, fir)
+  }
+
+  /**
+   * Un FIR annullato all'ente resta annullato. L'upsert scrive tutti gli scalari con
+   * i valori che l'aggregate aveva quando è stato caricato: un salvataggio con dati
+   * vecchi (sync RENTRI in background, presa in carico, ...) che si sovrappone a chi
+   * scrive 'Annullato' lo riporterebbe indietro, e il FIR tornerebbe collegabile al
+   * registro. Il valore salvato si legge nella stessa transaction, con la riga
+   * bloccata fino al commit.
+   */
+  private async conservaAnnullamentoEnte(
+    client: Prisma.TransactionClient,
+    firId: string,
+    scalars: { rentriStatoFormulario?: unknown }
+  ): Promise<void> {
+    if (scalars.rentriStatoFormulario === STATO_RENTRI_ANNULLATO) return
+    const righe = await client.$queryRaw<Array<{ stato: string | null }>>`
+      SELECT rentri_stato_formulario AS stato FROM firs WHERE id = ${firId}::uuid FOR UPDATE`
+    if (righe?.[0]?.stato === STATO_RENTRI_ANNULLATO) {
+      scalars.rentriStatoFormulario = STATO_RENTRI_ANNULLATO
+    }
   }
 
   /**

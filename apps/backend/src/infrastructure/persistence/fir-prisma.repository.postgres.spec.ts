@@ -143,6 +143,23 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       )
     })
 
+    it("un salvataggio con dati vecchi non riporta indietro un FIR annullato all'ente", async () => {
+      const fir = buildFirAgganciato(`RENTRI-SF4-${Date.now()}`)
+      fir.applyRentriStato('Accettato')
+      await repoLettura.save(fir)
+      // Copia caricata prima dell'annullamento (es. sync RENTRI in background).
+      const copiaVecchia = (await repoLettura.findById(fir.id))!
+      const copiaNuova = (await repoLettura.findById(fir.id))!
+      copiaNuova.applyRentriStato('Annullato')
+      await repoLettura.save(copiaNuova)
+
+      await repoLettura.save(copiaVecchia)
+
+      expect(
+        (await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })).rentriStatoFormulario
+      ).toBe('Annullato')
+    })
+
     it('un FIR mai riconciliato resta con rentriStatoFormulario null', async () => {
       const fir = buildFirAgganciato(`RENTRI-SF3-${Date.now()}`)
       await repoLettura.save(fir)
