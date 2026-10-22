@@ -9,6 +9,11 @@ import {
   CAUSALI_SCARICO,
   TERMINE_REGISTRAZIONE_PRODUTTORE_GG,
 } from '../../../domain/waste-movement/waste-movement.entity'
+import {
+  annoSolareItaliano,
+  formattaDataItaliana,
+  giornoItaliano,
+} from '../../../core/time/anno-italiano'
 
 export interface MovimentoRegistrato {
   id: string
@@ -85,17 +90,21 @@ export class RegistraMovimentoUseCase {
     }
 
     // 0c. Le date di operazione/registrazione non possono essere nel futuro.
-    const now = new Date()
-    if (command.movementDate.getTime() > now.getTime()) {
+    // Il confronto è fra giorni del calendario italiano: il frontend manda date senza ora
+    // (AAAA-MM-GG), che il backend legge come mezzanotte UTC, cioè l'01:00 o le 02:00
+    // italiane. Confrontando gli istanti, la data di oggi fra le 00:00 e quell'ora
+    // risulterebbe nel futuro.
+    const oggi = giornoItaliano(new Date())
+    if (giornoItaliano(command.movementDate) > oggi) {
       return Result.fail(
         `La data dell'operazione non può essere nel futuro: ` +
-          `${command.movementDate.toISOString().slice(0, 10)}`
+          `${formattaDataItaliana(command.movementDate)}`
       )
     }
-    if (command.registrationDate.getTime() > now.getTime()) {
+    if (giornoItaliano(command.registrationDate) > oggi) {
       return Result.fail(
         `La data di registrazione non può essere nel futuro: ` +
-          `${command.registrationDate.toISOString().slice(0, 10)}`
+          `${formattaDataItaliana(command.registrationDate)}`
       )
     }
 
@@ -126,7 +135,9 @@ export class RegistraMovimentoUseCase {
     }
 
     // 2. Assegnazione numero progressivo (transazionale con SELECT FOR UPDATE)
-    const anno = command.registrationDate.getFullYear()
+    // Anno solare italiano (non quello del fuso del processo): il progressivo riparte
+    // alle 00:00 italiane del 1° gennaio.
+    const anno = annoSolareItaliano(command.registrationDate)
 
     let movimento: MovimentoRegistrato
     try {

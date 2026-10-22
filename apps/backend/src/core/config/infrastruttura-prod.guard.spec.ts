@@ -167,6 +167,15 @@ describe('docker-compose.prod.yml: variabili del backend', () => {
   )
 })
 
+describe('docker-compose.prod.yml: fuso orario', () => {
+  it('nessun servizio di produzione imposta TZ (il tempo italiano sta in core/time)', () => {
+    const compose = leggiFile('docker-compose.prod.yml')
+    for (const s of ['backend', 'postgres']) {
+      expect(ambienteServizio(compose, s).has('TZ')).toBe(false)
+    }
+  })
+})
+
 describe('deploy.yml: rilascio in produzione', () => {
   const deploy = leggiFile('.gitea/workflows/deploy.yml')
   const BACKUP =

@@ -630,3 +630,134 @@ describe('RegistraMovimentoUseCase', () => {
     expect(chiamate).toBe(2)
   })
 })
+
+describe('RegistraMovimentoUseCase: tempo italiano', () => {
+  const TENANT = 'tenant-uuid-001'
+  const USER = 'user-uuid-001'
+  let tzOriginale: string | undefined
+  let useCase: RegistraMovimentoUseCase
+  let capturedData: any
+  let lockArgs: any[]
+
+  beforeAll(() => {
+    tzOriginale = process.env.TZ
+    process.env.TZ = 'UTC'
+  })
+
+  afterAll(() => {
+    if (tzOriginale === undefined) delete process.env.TZ
+    else process.env.TZ = tzOriginale
+  })
+
+  beforeEach(async () => {
+    capturedData = undefined
+    lockArgs = []
+    const prisma: any = {
+      wasteMovement: { groupBy: jest.fn().mockResolvedValue([]), create: jest.fn() },
+      cERCode: { count: jest.fn().mockResolvedValue(1) },
+      fIR: { findFirst: jest.fn().mockResolvedValue({ id: 'fir-id-001' }) },
+      $transaction: jest.fn().mockImplementation(async (fn: (tx: any) => Promise<any>) => {
+        const tx = {
+          $executeRaw: jest.fn().mockImplementation(async (...args: any[]) => {
+            lockArgs.push(args)
+            return 0
+          }),
+          $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
+          wasteMovement: {
+            create: jest.fn().mockImplementation(async (args: any) => {
+              capturedData = args.data
+              return {
+                ...args.data,
+                id: 'id-001',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                wasteDescription: null,
+                wastePhysicalState: null,
+                wasteHazardClasses: null,
+                operationCode: null,
+                counterpartName: null,
+                counterpartAddress: null,
+                firId: null,
+                recordedByUserId: USER,
+                notes: null,
+              }
+            }),
+          },
+        }
+        return fn(tx)
+      }),
+    }
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RegistraMovimentoUseCase,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: LoggerService,
+          useValue: { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+        },
+      ],
+    }).compile()
+    useCase = module.get(RegistraMovimentoUseCase)
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  function comando(movementDate: string, registrationDate: string): RegistraMovimentoCommand {
+    return new RegistraMovimentoCommand(
+      TENANT,
+      USER,
+      'CARICO',
+      new Date(movementDate),
+      new Date(registrationDate),
+      'PRODUZIONE_INTERNA',
+      '20 03 01',
+      'Rifiuti urbani misti',
+      100,
+      'KG',
+      'Solido',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    )
+  }
+
+  async function esegui(adesso: string, movementDate: string, registrationDate = movementDate) {
+    jest.useFakeTimers()
+    jest.setSystemTime(new Date(adesso))
+    return useCase.execute(comando(movementDate, registrationDate))
+  }
+
+  it('attribuisce al 2026 un movimento registrato alle 00:30 del 1° gennaio, anche con il processo in UTC', async () => {
+    const r = await esegui('2025-12-31T23:40:00.000Z', '2025-12-31T23:30:00.000Z')
+    expect(r.isSuccess).toBe(true)
+    expect(capturedData.progressiveYear).toBe(2026)
+    expect(JSON.stringify(lockArgs)).toContain(`${TENANT}-2026`)
+  })
+
+  it('lascia al 2025 un movimento registrato alle 23:59 del 31 dicembre', async () => {
+    const r = await esegui('2025-12-31T23:10:00.000Z', '2025-12-31T22:59:59.999Z')
+    expect(r.isSuccess).toBe(true)
+    expect(capturedData.progressiveYear).toBe(2025)
+  })
+
+  it("accetta la data di oggi registrata fra le 00:00 e l'01:00 italiane", async () => {
+    const r = await esegui('2026-03-10T23:30:00.000Z', '2026-03-11T00:00:00.000Z')
+    expect(r.isSuccess).toBe(true)
+  })
+
+  it('accetta la data di oggi alle 00:30 anche in ora legale', async () => {
+    const r = await esegui('2026-07-10T22:30:00.000Z', '2026-07-11T00:00:00.000Z')
+    expect(r.isSuccess).toBe(true)
+  })
+
+  it('rifiuta la data di domani', async () => {
+    const r = await esegui('2026-03-10T23:30:00.000Z', '2026-03-12T00:00:00.000Z')
+    expect(r.isFailure).toBe(true)
+    expect(r.error).toContain('nel futuro: 12/03/2026')
+  })
+})
