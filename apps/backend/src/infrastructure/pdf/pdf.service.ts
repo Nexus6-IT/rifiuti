@@ -395,13 +395,18 @@ export class PDFService {
       })
     }
     if (haBloccanti(controlli)) {
-      const bloccanti = controlli.filter(c => c.gravita === 'BLOCCANTE').length
+      const bloccanti = controlli.filter(c => c.gravita === 'BLOCCANTE')
       content.push({
-        text: `Riepilogo NON utilizzabile per la dichiarazione: ci sono errori da correggere (${bloccanti}).`,
+        text: `Riepilogo NON utilizzabile per la dichiarazione: ci sono errori da correggere (${bloccanti.length}).`,
         bold: true,
         color: '#c0392b',
         margin: [0, 0, 0, 8],
       })
+      // i messaggi, come sulla pagina: senza, il PDF diceva quanti errori ma non quali
+      content.push({ text: 'Errori da correggere', bold: true, margin: [0, 0, 0, 4] })
+      for (const errore of bloccanti) {
+        content.push({ text: errore.messaggio, fontSize: 9, margin: [0, 0, 0, 4] })
+      }
     }
 
     const kg = (n: number) => `${formattaQuantita(n)} kg`

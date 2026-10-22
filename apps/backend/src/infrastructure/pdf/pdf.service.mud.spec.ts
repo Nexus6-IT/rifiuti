@@ -44,8 +44,28 @@ describe('PDFService.buildMUDContent - riepilogo dalla stessa aggregazione del f
     )
   })
 
+  it('elenca i messaggi degli errori bloccanti, come la pagina', () => {
+    const bloccante = controlliMud.dichiaranteSenzaAteco()
+    const testo = contenuto({
+      ...base,
+      controlli: [controlliMud.nessunMovimento(2025), bloccante, controlliMud.causaleEsclusa(m)],
+    })
+    expect(testo).toContain('Errori da correggere')
+    const pezzo = (s: string) => JSON.stringify(s).slice(1, -1)
+    const inizio = testo.indexOf('Errori da correggere')
+    expect(testo.indexOf(pezzo(controlliMud.nessunMovimento(2025).messaggio))).toBeGreaterThan(
+      inizio
+    )
+    expect(testo.indexOf(pezzo(bloccante.messaggio))).toBeGreaterThan(inizio)
+    // l'avviso resta nella sua sezione, non fra gli errori
+    expect(testo.indexOf(pezzo(controlliMud.causaleEsclusa(m).messaggio))).toBeGreaterThan(
+      testo.indexOf('"Avvisi"')
+    )
+  })
+
   it('senza errori bloccanti non c è il paragrafo rosso', () => {
     expect(contenuto(base)).not.toContain('Riepilogo NON utilizzabile')
+    expect(contenuto(base)).not.toContain('Errori da correggere')
   })
 
   it('elenca gli avvisi con i movimenti esclusi o segnalati', () => {
