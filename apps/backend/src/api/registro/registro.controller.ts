@@ -9,6 +9,10 @@ import {
   Get,
   Body,
   Query,
+  Param,
+  Put,
+  Req,
+  ParseIntPipe,
   HttpCode,
   HttpStatus,
   BadRequestException,
@@ -24,6 +28,19 @@ import { ListMovimentiHandler } from '../../application/registro/queries/list-mo
 import { RegistraMovimentoCommand } from '../../application/registro/commands/registra-movimento.command'
 import { ListMovimentiQuery } from '../../application/registro/queries/list-movimenti.query'
 import { RegistraMovimentoDto, ListMovimentiDto } from './dtos/registra-movimento.dto'
+import { ImpostaProgressivoInizialeDto } from './dtos/progressivo-iniziale.dto'
+import {
+  ProgressivoInizialeService,
+  StatoProgressivoIniziale,
+} from '../../application/registro/progressivo-iniziale.service'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+
+/**
+ * Ruoli che possono impostare il progressivo iniziale del registro (C-W-02).
+ * Oggi si confrontano col ruolo del token; il Task 18 (F28) li confronterà col ruolo
+ * effettivo nell'azienda selezionata, sostituendo @Roles e `puoImpostareProgressivo`.
+ */
+const RUOLI_PROGRESSIVO_INIZIALE = ['SUPER_ADMIN', 'ADMIN'] as const
 
 @ApiTags('registro')
 @Controller('registro')
@@ -32,7 +49,8 @@ import { RegistraMovimentoDto, ListMovimentiDto } from './dtos/registra-moviment
 export class RegistroController {
   constructor(
     private readonly registraMovimentoUseCase: RegistraMovimentoUseCase,
-    private readonly listMovimentiHandler: ListMovimentiHandler
+    private readonly listMovimentiHandler: ListMovimentiHandler,
+    private readonly progressivoIniziale: ProgressivoInizialeService
   ) {}
 
   /**
@@ -131,5 +149,59 @@ export class RegistroController {
     }
 
     return result.value
+  }
+
+  /**
+   * Stato del progressivo iniziale del registro per l'anno (C-W-02), con quello che
+   * serve al frontend per decidere se offrire l'impostazione: `haMovimenti` e
+   * `puoImpostare` (ruolo), così il client non deve dedurli da sé.
+   */
+  @Get('progressivo-iniziale/:anno')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Progressivo iniziale del registro per l'anno" })
+  @ApiResponse({ status: 200, description: 'Stato del progressivo iniziale' })
+  async leggiProgressivoIniziale(
+    @Param('anno', ParseIntPipe) anno: number,
+    @Req() req: any
+  ): Promise<StatoProgressivoIniziale & { puoImpostare: boolean }> {
+    const tenantId = requireRequestTenantId(req)
+    const stato = await this.progressivoIniziale.leggi(tenantId, anno)
+    return { ...stato, puoImpostare: this.puoImpostareProgressivo(req) }
+  }
+
+  /**
+   * Imposta il primo numero del registro dell'anno (C-W-02): una volta sola, per l'anno
+   * in corso o il prossimo, prima del primo movimento dell'anno.
+   */
+  @Put('progressivo-iniziale/:anno')
+  @Roles(...RUOLI_PROGRESSIVO_INIZIALE)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Imposta il progressivo iniziale del registro per l'anno",
+    description:
+      'Per chi arriva da un altro programma a metà anno: il primo movimento registrato qui ' +
+      'prende questo numero. Si imposta una volta sola, prima del primo movimento.',
+  })
+  @ApiResponse({ status: 200, description: 'Progressivo iniziale impostato' })
+  @ApiResponse({ status: 400, description: "Anno diverso dall'anno in corso o dal prossimo" })
+  @ApiResponse({ status: 409, description: "Già impostato, o l'anno ha già movimenti" })
+  async impostaProgressivoIniziale(
+    @Param('anno', ParseIntPipe) anno: number,
+    @Body() dto: ImpostaProgressivoInizialeDto,
+    @Req() req: any
+  ): Promise<{ anno: number; primoProgressivo: number }> {
+    const tenantId = requireRequestTenantId(req)
+    return this.progressivoIniziale.imposta(
+      tenantId,
+      anno,
+      dto.primoProgressivo,
+      dto.motivo,
+      req.user.id
+    )
+  }
+
+  /** Controllo del ruolo isolato qui: il Task 18 lo sostituisce col ruolo effettivo. */
+  private puoImpostareProgressivo(req: any): boolean {
+    return (RUOLI_PROGRESSIVO_INIZIALE as readonly string[]).includes(req?.user?.role)
   }
 }

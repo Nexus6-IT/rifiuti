@@ -220,7 +220,14 @@ export class RegistraMovimentoUseCase {
           WHERE tenant_id = ${command.tenantId}::uuid
             AND progressive_year = ${anno}
         `
-        const nextProgressivo = (row.max_num ?? 0) + 1
+        // Progressivo iniziale (C-W-02): chi arriva da un altro programma a metà anno
+        // prosegue la numerazione già trasmessa. Letto sotto lo stesso lock con cui
+        // ProgressivoInizialeService lo imposta, quindi non c'è corsa fra i due.
+        const iniziale = await tx.registroProgressivoIniziale.findUnique({
+          where: { tenantId_anno: { tenantId: command.tenantId, anno } },
+          select: { primoProgressivo: true },
+        })
+        const nextProgressivo = Math.max((row.max_num ?? 0) + 1, iniziale?.primoProgressivo ?? 1)
 
         // 3. Costruzione entità di dominio (con validazioni)
         const entity = WasteMovement.create({

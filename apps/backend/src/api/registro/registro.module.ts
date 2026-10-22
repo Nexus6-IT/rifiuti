@@ -5,6 +5,7 @@ import { AuthModule } from '../../auth/auth.module'
 import { RegistroController } from './registro.controller'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { ListMovimentiHandler } from '../../application/registro/queries/list-movimenti.handler'
+import { ProgressivoInizialeService } from '../../application/registro/progressivo-iniziale.service'
 
 /**
  * RegistroModule — registro cronologico di carico/scarico rifiuti.
@@ -13,11 +14,13 @@ import { ListMovimentiHandler } from '../../application/registro/queries/list-mo
  * Espone:
  *   POST /api/v1/registro    — registra un movimento (CARICO o SCARICO)
  *   GET  /api/v1/registro    — lista paginata con filtri
+ *   GET  /api/v1/registro/progressivo-iniziale/:anno — progressivo iniziale dell'anno
+ *   PUT  /api/v1/registro/progressivo-iniziale/:anno — lo imposta (una volta sola)
  */
 @Module({
   imports: [PrismaModule, LoggerModule, AuthModule],
   controllers: [RegistroController],
-  providers: [RegistraMovimentoUseCase, ListMovimentiHandler],
+  providers: [RegistraMovimentoUseCase, ListMovimentiHandler, ProgressivoInizialeService],
   exports: [RegistraMovimentoUseCase, ListMovimentiHandler],
 })
 export class RegistroModule {}

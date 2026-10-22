@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException } from '@nestjs/common'
 import { RegistroController } from './registro.controller'
 import { Result } from '../../core/application/result'
 import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
@@ -24,7 +24,7 @@ describe('RegistroController.registra — data di registrazione', () => {
 
   beforeEach(() => {
     useCase = { execute: jest.fn() }
-    controller = new RegistroController(useCase as any, {} as any)
+    controller = new RegistroController(useCase as any, {} as any, {} as any)
   })
 
   afterEach(() => {
@@ -62,5 +62,78 @@ describe('RegistroController.registra — data di registrazione', () => {
     await expect(controller.registra({ ...dtoMinimo } as any, utente)).rejects.toThrow(
       new BadRequestException('Giacenza insufficiente')
     )
+  })
+})
+
+describe('RegistroController — progressivo iniziale', () => {
+  let servizio: { leggi: jest.Mock; imposta: jest.Mock }
+  let controller: RegistroController
+
+  const richiesta = (role: string, tenantSelezionato?: string) => ({
+    tenantId: tenantSelezionato,
+    user: { id: 'user-1', tenantId: 'tenant-token', role },
+  })
+
+  beforeEach(() => {
+    servizio = {
+      leggi: jest.fn().mockResolvedValue({
+        anno: 2026,
+        primoProgressivo: null,
+        impostatoIl: null,
+        haMovimenti: false,
+      }),
+      imposta: jest.fn().mockResolvedValue({ anno: 2026, primoProgressivo: 812 }),
+    }
+    controller = new RegistroController({} as any, {} as any, servizio as any)
+  })
+
+  it("legge sull'azienda selezionata, non su quella del token", async () => {
+    await controller.leggiProgressivoIniziale(2026, richiesta('ADMIN', 'tenant-scelto'))
+    expect(servizio.leggi).toHaveBeenCalledWith('tenant-scelto', 2026)
+  })
+
+  it('puoImpostare è vero per ADMIN e SUPER_ADMIN, falso per gli altri ruoli', async () => {
+    for (const [ruolo, atteso] of [
+      ['ADMIN', true],
+      ['SUPER_ADMIN', true],
+      ['OPERATOR', false],
+      ['CONSULTANT', false],
+      ['VIEWER', false],
+    ] as const) {
+      const stato = await controller.leggiProgressivoIniziale(2026, richiesta(ruolo, 't1'))
+      expect({ ruolo, puoImpostare: stato.puoImpostare }).toEqual({
+        ruolo,
+        puoImpostare: atteso,
+      })
+      expect(stato.haMovimenti).toBe(false)
+    }
+  })
+
+  it("imposta sull'azienda selezionata con l'utente della richiesta", async () => {
+    await expect(
+      controller.impostaProgressivoIniziale(
+        2026,
+        { primoProgressivo: 812, motivo: 'Migrazione da WinWaste' },
+        richiesta('ADMIN', 'tenant-scelto')
+      )
+    ).resolves.toEqual({ anno: 2026, primoProgressivo: 812 })
+    expect(servizio.imposta).toHaveBeenCalledWith(
+      'tenant-scelto',
+      2026,
+      812,
+      'Migrazione da WinWaste',
+      'user-1'
+    )
+  })
+
+  it('senza azienda determinabile rifiuta con 403', async () => {
+    await expect(
+      controller.impostaProgressivoIniziale(
+        2026,
+        { primoProgressivo: 812, motivo: 'Migrazione' },
+        { user: { id: 'u', role: 'SUPER_ADMIN' } }
+      )
+    ).rejects.toBeInstanceOf(ForbiddenException)
+    expect(servizio.imposta).not.toHaveBeenCalled()
   })
 })

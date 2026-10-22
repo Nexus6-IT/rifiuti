@@ -138,4 +138,49 @@ export class RegistroService {
     if (params.limit) httpParams = httpParams.set('limit', params.limit.toString())
     return this.http.get<PaginatedMovimenti>(this.API_URL, { params: httpParams })
   }
+
+  /** Stato del progressivo iniziale del registro per l'anno (C-W-02). */
+  getProgressivoIniziale(anno: number): Observable<StatoProgressivoIniziale> {
+    return this.http.get<StatoProgressivoIniziale>(`${this.API_URL}/progressivo-iniziale/${anno}`)
+  }
+
+  /** Imposta il primo numero del registro dell'anno: una volta sola, prima del primo movimento. */
+  impostaProgressivoIniziale(
+    anno: number,
+    primoProgressivo: number,
+    motivo: string
+  ): Observable<{ anno: number; primoProgressivo: number }> {
+    return this.http.put<{ anno: number; primoProgressivo: number }>(
+      `${this.API_URL}/progressivo-iniziale/${anno}`,
+      { primoProgressivo, motivo }
+    )
+  }
+}
+
+// ─── Progressivo iniziale (C-W-02) ──────────────────────────────────────────
+
+/** Risposta di GET registro/progressivo-iniziale/:anno. */
+export interface StatoProgressivoIniziale {
+  anno: number
+  primoProgressivo: number | null
+  impostatoIl: string | null
+  /** Il registro dell'anno ha già movimenti: il progressivo iniziale non si imposta più. */
+  haMovimenti: boolean
+  /** Lo decide il backend in base al ruolo nell'azienda: il frontend non lo deduce dal token. */
+  puoImpostare: boolean
+}
+
+/** Si offre l'impostazione solo a chi può farla, se l'anno non ha movimenti né un iniziale. */
+export function offrireProgressivoIniziale(stato: StatoProgressivoIniziale | null): boolean {
+  return !!stato && stato.puoImpostare && !stato.haMovimenti && stato.primoProgressivo === null
+}
+
+const formatoAnnoRoma = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Europe/Rome',
+  year: 'numeric',
+})
+
+/** Anno del calendario italiano (come il backend): cambia alla mezzanotte di Roma. */
+export function annoItaliano(istante: Date): number {
+  return Number(formatoAnnoRoma.format(istante))
 }

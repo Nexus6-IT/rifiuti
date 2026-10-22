@@ -109,7 +109,8 @@ model Tenant {
   wasteMovements         WasteMovement[]
   rentriUnitaLocali      RentriUnitaLocale[]
   rentriNumeriVidimati   RentriNumeroVidimato[]
-  madre                  Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
+  registroProgressiviIniziali RegistroProgressivoIniziale[]
+  madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
@@ -770,6 +771,27 @@ enum NotificationSeverity {
   ERROR
 
   @@map("notification_severity")
+}
+
+/// Primo numero del registro di carico e scarico per azienda e anno (decisione C-W-02).
+/// Serve a chi arriva da un altro programma a meta' anno: il primo movimento registrato
+/// qui prende questo numero, cosi' la numerazione gia' trasmessa al RENTRI prosegue.
+/// Si imposta una volta sola, prima del primo movimento dell'anno, sotto lo stesso
+/// advisory lock `<tenantId>-<anno>` della numerazione. La migration aggiunge
+/// CHECK (primo_progressivo >= 1).
+model RegistroProgressivoIniziale {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  anno             Int
+  primoProgressivo Int      @map("primo_progressivo")
+  motivo           String   @db.VarChar(500)
+  impostatoDa      String   @map("impostato_da") @db.Uuid
+  impostatoIl      DateTime @default(now()) @map("impostato_il")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, anno])
+  @@map("registro_progressivi_iniziali")
 }
 
 model ActivityLog {

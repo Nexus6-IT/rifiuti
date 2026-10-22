@@ -142,6 +142,7 @@ describe('RegistraMovimentoUseCase', () => {
     const tx = {
       $executeRaw: jest.fn().mockResolvedValue(0), // advisory lock no-op nel test
       $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
+      registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
       wasteMovement: {
         create: jest.fn().mockResolvedValue(record),
         findMany: jest.fn().mockResolvedValue([]),
@@ -187,6 +188,7 @@ describe('RegistraMovimentoUseCase', () => {
       const tx = {
         $executeRaw: jest.fn().mockResolvedValue(0),
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
+        registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
         wasteMovement: {
           create: jest.fn().mockImplementation(async (args: any) => {
             capturedData = args.data
@@ -244,6 +246,7 @@ describe('RegistraMovimentoUseCase', () => {
       const tx = {
         $executeRaw: jest.fn().mockResolvedValue(0),
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: 42 }]),
+        registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
         wasteMovement: {
           create: jest.fn().mockImplementation(async (args: any) => {
             capturedData = args.data
@@ -279,6 +282,54 @@ describe('RegistraMovimentoUseCase', () => {
     expect(capturedData.progressiveNumber).toBe(43)
   })
 
+  // ─── Progressivo iniziale (C-W-02) ───────────────────────────────────────────
+
+  describe('progressivo iniziale', () => {
+    async function numeroAssegnato(maxNum: number | null, iniziale: number | null) {
+      const tx = _mockTransazione(recordCarico)
+      tx.$queryRaw.mockResolvedValue([{ max_num: maxNum }])
+      tx.registroProgressivoIniziale.findUnique.mockResolvedValue(
+        iniziale === null ? null : { primoProgressivo: iniziale }
+      )
+      const result = await useCase.execute(buildCommand())
+      expect(result.isSuccess).toBe(true)
+      return { tx, numero: tx.wasteMovement.create.mock.calls[0][0].data.progressiveNumber }
+    }
+
+    it('senza progressivo iniziale la numerazione è quella di oggi', async () => {
+      expect((await numeroAssegnato(null, null)).numero).toBe(1)
+      const { tx, numero } = await numeroAssegnato(42, null)
+      expect(numero).toBe(43)
+      expect(tx.registroProgressivoIniziale.findUnique).toHaveBeenCalledWith({
+        where: { tenantId_anno: { tenantId: TENANT, anno: 2026 } },
+        select: { primoProgressivo: true },
+      })
+    })
+
+    it("il primo movimento dell'anno prende il progressivo iniziale", async () => {
+      expect((await numeroAssegnato(null, 812)).numero).toBe(812)
+    })
+
+    it('con movimenti oltre il progressivo iniziale si prosegue dal massimo', async () => {
+      expect((await numeroAssegnato(812, 812)).numero).toBe(813)
+    })
+
+    it('legge il progressivo iniziale dopo il lock della numerazione', async () => {
+      const tx = _mockTransazione(recordCarico)
+      const ordine: string[] = []
+      tx.$executeRaw.mockImplementation(async () => {
+        ordine.push('lock')
+        return 0
+      })
+      tx.registroProgressivoIniziale.findUnique.mockImplementation(async () => {
+        ordine.push('iniziale')
+        return null
+      })
+      await useCase.execute(buildCommand())
+      expect(ordine).toEqual(['lock', 'iniziale'])
+    })
+  })
+
   // ─── Hash vidimazione ────────────────────────────────────────────────────────
 
   it('persiste un entryHash SHA-256 non vuoto', async () => {
@@ -287,6 +338,7 @@ describe('RegistraMovimentoUseCase', () => {
       const tx = {
         $executeRaw: jest.fn().mockResolvedValue(0),
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
+        registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
         wasteMovement: {
           create: jest.fn().mockImplementation(async (args: any) => {
             capturedData = args.data
@@ -568,6 +620,7 @@ describe('RegistraMovimentoUseCase', () => {
       const tx = {
         $executeRaw: jest.fn().mockResolvedValue(0),
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
+        registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
         wasteMovement: {
           create: jest.fn().mockResolvedValue({
             id: 'id-005',
@@ -816,6 +869,7 @@ describe('RegistraMovimentoUseCase', () => {
       const tx = {
         $executeRaw: jest.fn().mockResolvedValue(0), // advisory lock
         $queryRaw: jest.fn().mockResolvedValue([{ max_num: maxNum }]),
+        registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
         wasteMovement: {
           create: jest.fn().mockImplementation(async (args: any) => ({
             ...args.data,
@@ -1041,6 +1095,7 @@ describe('RegistraMovimentoUseCase: tempo italiano', () => {
             return 0
           }),
           $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
+          registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
           wasteMovement: {
             create: jest.fn().mockImplementation(async (args: any) => {
               capturedData = args.data
