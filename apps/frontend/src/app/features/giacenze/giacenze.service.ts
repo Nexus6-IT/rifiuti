@@ -10,6 +10,24 @@ export interface Giacenza {
   scaricoKg: number
   giacenzaKg: number
   oldestCaricoDate: string | null
+  /** Giacenze in unità diverse dai kg (litri, m³, ...): non si sommano ai kg. */
+  altreUnita: GiacenzaAltraUnita[]
+  /** Scarichi collegati a un FIR poi annullato: la giacenza li conta ancora, il MUD no. */
+  scarichiSuFirAnnullati: ScaricoSuFirAnnullato[]
+}
+
+export interface GiacenzaAltraUnita {
+  unita: string
+  carico: number
+  scarico: number
+  giacenza: number
+}
+
+export interface ScaricoSuFirAnnullato {
+  numero: string
+  quantita: number
+  unita: string
+  fir: string
 }
 
 /** Motivo per cui un CER supera le soglie del deposito temporaneo. */
