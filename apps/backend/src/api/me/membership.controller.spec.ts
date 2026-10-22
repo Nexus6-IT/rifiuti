@@ -25,7 +25,11 @@ describe('MembershipController.switchTenant', () => {
       tenantId: 'tenant-cliente',
     }
     const membership = { switchTenant: jest.fn().mockResolvedValue(tokens) }
-    const redis = { storeRefreshToken: jest.fn().mockResolvedValue(undefined) }
+    const ordine: string[] = []
+    const redis = {
+      revokeAllRefreshTokens: jest.fn(async () => void ordine.push('revoca')),
+      storeRefreshToken: jest.fn(async () => void ordine.push('registra')),
+    }
     const controller = new MembershipController(membership as any, redis as any)
 
     await expect(controller.switchTenant(utente, { tenantId: 'tenant-cliente' })).resolves.toEqual(
@@ -34,14 +38,19 @@ describe('MembershipController.switchTenant', () => {
 
     expect(membership.switchTenant).toHaveBeenCalledWith(utente, 'tenant-cliente')
     expect(redis.storeRefreshToken).toHaveBeenCalledWith('user-1', 'r-switch', 7 * 24 * 60 * 60)
+    // I refresh token precedenti (login, switch di prima) non devono più rinnovare la sessione
+    // su un'altra azienda: si revocano, poi si registra solo quello nuovo.
+    expect(redis.revokeAllRefreshTokens).toHaveBeenCalledWith('user-1')
+    expect(ordine).toEqual(['revoca', 'registra'])
   })
 
   it('se lo switch è rifiutato non registra nulla', async () => {
     const membership = { switchTenant: jest.fn().mockRejectedValue(new Error('403')) }
-    const redis = { storeRefreshToken: jest.fn() }
+    const redis = { storeRefreshToken: jest.fn(), revokeAllRefreshTokens: jest.fn() }
     const controller = new MembershipController(membership as any, redis as any)
 
     await expect(controller.switchTenant(utente, { tenantId: 'x' })).rejects.toThrow('403')
     expect(redis.storeRefreshToken).not.toHaveBeenCalled()
+    expect(redis.revokeAllRefreshTokens).not.toHaveBeenCalled()
   })
 })

@@ -62,6 +62,9 @@ export class MembershipController {
     // Il refresh token dello switch porta l'azienda scelta e va registrato come quello del
     // login (stessa durata): altrimenti `POST /auth/refresh` lo rifiuta come revocato e, con
     // il refresh token del login, l'utente tornerebbe in silenzio sull'azienda primaria.
+    // I refresh token precedenti si revocano: uno vecchio (del login o di uno switch di prima)
+    // rinnoverebbe la sessione su un'altra azienda.
+    await this.redis.revokeAllRefreshTokens(user.id)
     await this.redis.storeRefreshToken(user.id, tokens.refreshToken, SETTE_GIORNI_IN_SECONDI)
     return tokens
   }
