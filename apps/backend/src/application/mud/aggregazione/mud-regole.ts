@@ -84,7 +84,11 @@ const STATO_FISICO_DAL_REGISTRO: Record<string, StatoFisico> = {
  * non vuoto che non si riconosce vale `NON_RICONOSCIUTO`, così non sparisce in silenzio.
  */
 export function statoFisicoMud(valore: string | null | undefined): StatoFisicoRegistro | null {
-  const chiave = (valore ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_').replace(/_+/g, '_')
+  const chiave = (valore ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_')
+    .replace(/_+/g, '_')
   if (!chiave) return null
   return Object.prototype.hasOwnProperty.call(STATO_FISICO_DAL_REGISTRO, chiave)
     ? STATO_FISICO_DAL_REGISTRO[chiave]
