@@ -1,25 +1,61 @@
-import {
-  convertiInKg,
-  normalizzaUnitaRegistro,
-  simboloUnita,
-} from './unita-misura-registro'
+import { convertiInKg, normalizzaUnitaRegistro, simboloUnita } from './unita-misura-registro'
 
 describe('normalizzaUnitaRegistro', () => {
   it('kg e tonnellate sono massa, maiuscole e spazi ignorati', () => {
-    expect(normalizzaUnitaRegistro('KG')).toEqual({ unita: 'KG', massa: true, fattoreKg: 1, vuota: false })
-    expect(normalizzaUnitaRegistro(' kg ')).toEqual({ unita: 'KG', massa: true, fattoreKg: 1, vuota: false })
-    expect(normalizzaUnitaRegistro('Kilogrammi')).toEqual({ unita: 'KG', massa: true, fattoreKg: 1, vuota: false })
-    expect(normalizzaUnitaRegistro('t')).toEqual({ unita: 'T', massa: true, fattoreKg: 1000, vuota: false })
-    expect(normalizzaUnitaRegistro('Tonnellate')).toEqual({ unita: 'T', massa: true, fattoreKg: 1000, vuota: false })
+    expect(normalizzaUnitaRegistro('KG')).toEqual({
+      unita: 'KG',
+      massa: true,
+      fattoreKg: 1,
+      vuota: false,
+    })
+    expect(normalizzaUnitaRegistro(' kg ')).toEqual({
+      unita: 'KG',
+      massa: true,
+      fattoreKg: 1,
+      vuota: false,
+    })
+    expect(normalizzaUnitaRegistro('Kilogrammi')).toEqual({
+      unita: 'KG',
+      massa: true,
+      fattoreKg: 1,
+      vuota: false,
+    })
+    expect(normalizzaUnitaRegistro('t')).toEqual({
+      unita: 'T',
+      massa: true,
+      fattoreKg: 1000,
+      vuota: false,
+    })
+    expect(normalizzaUnitaRegistro('Tonnellate')).toEqual({
+      unita: 'T',
+      massa: true,
+      fattoreKg: 1000,
+      vuota: false,
+    })
   })
   it('unità vuota = KG, ma segnalata (default dello schema e del DTO)', () => {
     for (const u of ['', '  ', null, undefined]) {
-      expect(normalizzaUnitaRegistro(u as any)).toEqual({ unita: 'KG', massa: true, fattoreKg: 1, vuota: true })
+      expect(normalizzaUnitaRegistro(u as any)).toEqual({
+        unita: 'KG',
+        massa: true,
+        fattoreKg: 1,
+        vuota: true,
+      })
     }
   })
   it('le altre unità non sono di massa e non si convertono', () => {
-    expect(normalizzaUnitaRegistro('litri')).toEqual({ unita: 'LITRI', massa: false, fattoreKg: null, vuota: false })
-    expect(normalizzaUnitaRegistro('m3')).toEqual({ unita: 'M3', massa: false, fattoreKg: null, vuota: false })
+    expect(normalizzaUnitaRegistro('litri')).toEqual({
+      unita: 'LITRI',
+      massa: false,
+      fattoreKg: null,
+      vuota: false,
+    })
+    expect(normalizzaUnitaRegistro('m3')).toEqual({
+      unita: 'M3',
+      massa: false,
+      fattoreKg: null,
+      vuota: false,
+    })
   })
 })
 
