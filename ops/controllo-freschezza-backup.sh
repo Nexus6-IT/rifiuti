@@ -36,6 +36,16 @@ export BACKUP_ALERT_EMAIL
   exit 2
 }
 
+# Stato non scrivibile: errore esplicito ed esce 3 SENZA mandare mail (altrimenti lo
+# stato non si persisterebbe mai e la mail ripartirebbe ogni 30 minuti). Il guasto
+# resta visibile nel log del cron.
+DIR_STATO="$(dirname "${BACKUP_STATO_FILE}")"
+if ! mkdir -p "$DIR_STATO" 2>/dev/null || [ ! -w "$DIR_STATO" ] ||
+  { [ -e "${BACKUP_STATO_FILE}" ] && [ ! -w "${BACKUP_STATO_FILE}" ]; }; then
+  echo "ERRORE: file di stato non scrivibile: ${BACKUP_STATO_FILE}" >&2
+  exit 3
+fi
+
 ORA="${ORA_EPOCH:-$(date +%s)}"
 
 # mtime_epoch FILE — GNU stat, con ripiego BSD.
@@ -50,7 +60,7 @@ TROVATO=0
 for f in "${BACKUP_STAGING_DIR}/wasteflow_${DB_NAME}_"*.sql.gz \
   "${BACKUP_STAGING_DIR}/wasteflow_${DB_NAME}_"*.sql.gz.age; do
   [ -f "$f" ] || continue
-  m="$(mtime_epoch "$f")"
+  m="$(mtime_epoch "$f")" || continue
   if [ "$TROVATO" -eq 0 ] || [ "$m" -gt "$PIU_RECENTE" ]; then
     PIU_RECENTE="$m"
     TROVATO=1
@@ -74,6 +84,7 @@ if [ "$TROVATO" -eq 1 ]; then
   fi
 fi
 
+INVIATA=1
 if [ "$STATO" = "GUASTO" ] && [ "$STATO_PRECEDENTE" = "OK" ]; then
   if [ "$TROVATO" -eq 1 ]; then
     OGGETTO="ATTENZIONE backup WasteFlow fermo da ${ORE} ore"
@@ -82,17 +93,21 @@ if [ "$STATO" = "GUASTO" ] && [ "$STATO_PRECEDENTE" = "OK" ]; then
     OGGETTO="ATTENZIONE backup WasteFlow: nessun dump verificato"
     DETTAGLIO="Non c'e' nessun dump verificato per il database ${DB_NAME}."
   fi
-  notifica_fallimento "$OGGETTO" "Host: $(hostname)
+  invia_mail "$OGGETTO" "Host: $(hostname)
 Cartella: ${BACKUP_STAGING_DIR}
 ${DETTAGLIO}
-Controllare il cron del backup (/etc/cron.d/wasteflow-backup) e /var/log/wasteflow-backup.log."
+Controllare il cron del backup (/etc/cron.d/wasteflow-backup) e /var/log/wasteflow-backup.log." || INVIATA=0
 elif [ "$STATO" = "OK" ] && [ "$STATO_PRECEDENTE" = "GUASTO" ]; then
-  notifica_fallimento "Backup WasteFlow di nuovo regolare" "Host: $(hostname)
-L'ultimo dump verificato ha ${ORE} ore (soglia ${BACKUP_FRESCHEZZA_ORE})."
+  invia_mail "Backup WasteFlow di nuovo regolare" "Host: $(hostname)
+L'ultimo dump verificato ha ${ORE} ore (soglia ${BACKUP_FRESCHEZZA_ORE})." || INVIATA=0
 fi
 
-mkdir -p "$(dirname "${BACKUP_STATO_FILE}")"
-printf '%s\n' "$STATO" > "${BACKUP_STATO_FILE}"
+# Mail non partita: lo stato precedente resta, cosi' il giro dopo riprova.
+if [ "$INVIATA" -eq 1 ]; then
+  printf '%s\n' "$STATO" > "${BACKUP_STATO_FILE}"
+else
+  echo "ATTENZIONE: mail non inviata, stato ${STATO_PRECEDENTE} mantenuto, riprovo al prossimo giro" >&2
+fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] freschezza backup: ${STATO} (ultimo dump: ${ORE} ore)"
 [ "$STATO" = "OK" ]

@@ -105,6 +105,13 @@ nuovo regolare`. Lo stato sta in `BACKUP_STATO_FILE`
 */30 * * * * root bash /opt/rifiuti/site/ops/controllo-freschezza-backup.sh >> /var/log/wasteflow-backup-freschezza.log 2>&1
 ```
 
+Comportamenti da sapere: se la mail non parte (msmtp assente o in errore) lo
+stato **non** cambia e il giro successivo riprova; se la cartella o il file di
+stato non sono scrivibili il controllo scrive `ERRORE` sul log, esce con codice
+3 e non manda mail (altrimenti ne partirebbe una ogni 30 minuti): il guasto si
+vede nel log. Il log `/var/log/wasteflow-backup-freschezza.log` riceve una riga
+ogni 30 minuti: aggiungerlo alla rotazione di logrotate.
+
 L'installazione sul server è un passo del rilascio (con l'approvazione di
 Graziano). Prova: `BACKUP_FRESCHEZZA_ORE=0 bash .../controllo-freschezza-backup.sh`
 deve mandare una mail; poi si cancella `BACKUP_STATO_FILE` o si lascia girare

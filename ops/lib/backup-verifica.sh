@@ -215,15 +215,25 @@ dimensione_db() {
 # notifica_fallimento OGGETTO TESTO
 # Mail a ${BACKUP_ALERT_EMAIL:-root} via msmtp (sul VPS root e' inoltrato a Gmail
 # da /etc/aliases); senza msmtp scrive su stderr. Ritorna sempre 0.
-notifica_fallimento() {
+# invia_mail OGGETTO TESTO — come notifica_fallimento, ma ritorna 1 se la mail
+# non e' partita (msmtp assente o in errore), 0 se msmtp ha accettato l'invio.
+# Serve a chi deve ritentare (controllo-freschezza-backup.sh).
+invia_mail() {
   local oggetto="$1" testo="$2" dest="${BACKUP_ALERT_EMAIL:-root}"
   if command -v msmtp >/dev/null 2>&1; then
     if ! printf 'To: %s\nSubject: %s\nContent-Type: text/plain; charset=UTF-8\n\n%s\n' \
       "$dest" "$oggetto" "$testo" | msmtp -t >/dev/null 2>&1; then
       echo "ATTENZIONE: invio mail a ${dest} fallito: ${oggetto}" >&2
+      return 1
     fi
   else
     printf '%s\n%s\n' "$oggetto" "$testo" >&2
+    return 1
   fi
+  return 0
+}
+
+notifica_fallimento() {
+  invia_mail "$@" || true
   return 0
 }

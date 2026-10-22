@@ -248,6 +248,34 @@ verifica "freschezza: la soglia ORA_EPOCH e BACKUP_FRESCHEZZA_ORE sono rispettat
     BACKUP_STATO_FILE="$2" BACKUP_FRESCHEZZA_ORE=1 ORA_EPOCH=$(( $(date +%s) + 7200 )) \
     bash "$4/ops/controllo-freschezza-backup.sh"; test $? -eq 1' _ "$FRESC_STAGING" "$FRESC_STATO" "$TMP" "$RADICE"
 
+# ---- controllo-freschezza: mail fallita, stato corrotto, cartella dello stato non scrivibile
+mkdir -p "$TMP/fbin-ko"
+printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 75\n' > "$TMP/fbin-ko/msmtp"
+chmod +x "$TMP/fbin-ko/msmtp"
+rm -f "$FRESC_STAGING"/* "$FRESC_STATO"
+: > "$FRESC_STAGING/wasteflow_wf_fresc_20260101_030000.sql.gz"
+touch -d '30 hours ago' "$FRESC_STAGING/wasteflow_wf_fresc_20260101_030000.sql.gz"
+: > "$FRESC_MAIL"
+# invio fallito: lo stato NON passa a GUASTO, cosi' il giro dopo riprova
+env PATH="$TMP/fbin-ko:$PATH" WASTEFLOW_ENV_FILE="$TMP/env-fresc" BACKUP_STAGING_DIR="$FRESC_STAGING" \
+  BACKUP_STATO_FILE="$FRESC_STATO" bash "$RADICE/ops/controllo-freschezza-backup.sh" >/dev/null 2>&1
+verifica "freschezza: mail fallita, lo stato non viene scritto" 0 test ! -e "$FRESC_STATO"
+esegui_freschezza
+verifica "freschezza: mail fallita, il giro dopo rimanda la mail" 0 test "$(righe_mail)" -eq 1
+verifica "freschezza: mail fallita, poi stato GUASTO" 0 grep -qx 'GUASTO' "$FRESC_STATO"
+# stato corrotto = OK: con un dump vecchio scatta la mail
+printf 'spazzatura\n' > "$FRESC_STATO"
+: > "$FRESC_MAIL"
+esegui_freschezza
+verifica "freschezza: stato corrotto trattato come OK, mail" 0 test "$(righe_mail)" -eq 1
+# cartella dello stato non scrivibile: nessuna mail, errore esplicito, esce 3
+: > "$TMP/file-bloccante"
+: > "$FRESC_MAIL"
+esegui_freschezza BACKUP_STATO_FILE="$TMP/file-bloccante/sotto/freschezza.stato"
+verifica "freschezza: stato non scrivibile, esce 3" 0 test "$(cat "$TMP/esito-fresc")" -eq 3
+verifica "freschezza: stato non scrivibile, nessuna mail" 0 test "$(righe_mail)" -eq 0
+verifica "freschezza: stato non scrivibile, errore esplicito" 0 grep -q 'non scrivibile' "$TMP/err-fresc"
+
 # ---- Test con PostgreSQL finto (stub) ----------------------------------------
 # Lo stub risponde ai soli comandi usati da backup-offsite.sh. Variabili:
 #   FAKE_DROP_FAIL=1  il DROP DATABASE esce con errore
