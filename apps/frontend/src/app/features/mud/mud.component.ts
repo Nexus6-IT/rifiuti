@@ -465,9 +465,8 @@ function oggiIso(): string {
     >
       <!-- Download: dichiarazione sostitutiva e conferma degli avvisi -->
       <ng-container *ngIf="dialogo() === 'download' && report() as r">
-        <p *ngIf="presentazione()?.status === 'SUBMITTED'">
-          Il file sostituisce la dichiarazione presentata il
-          {{ data(presentazione()?.submittedAt ?? null) }}.
+        <p *ngIf="presentazione()?.prossimoFileSostituisce as sostituita">
+          Il file sostituisce la dichiarazione presentata il {{ data(sostituita) }}.
         </p>
         <ng-container *ngIf="avvisiPresenti()">
           <ng-container *ngTemplateOutlet="vociAvvisi; context: { $implicit: r }"></ng-container>
@@ -796,7 +795,8 @@ export class MudComponent implements OnInit {
   }
 
   /**
-   * Scarica il file: con avvisi, o con il MUD già presentato, prima il dialogo di conferma.
+   * Scarica il file: con avvisi, o se il file sarà una dichiarazione sostitutiva (MUD presentato,
+   * o presentazione annullata per sostituirla), prima il dialogo di conferma.
    * Senza riepilogo dell'anno lo carica prima, perché gli avvisi da confermare vengono da lì.
    */
   download(): void {
@@ -808,7 +808,7 @@ export class MudComponent implements OnInit {
     }
     // il riepilogo appena caricato può riservare il file agli amministratori: resta il testo
     if (!this.downloadVisibile()) return
-    if (this.avvisiPresenti() || this.presentazione()?.status === 'SUBMITTED') {
+    if (this.avvisiPresenti() || this.presentazione()?.prossimoFileSostituisce) {
       this.apriDialogo('download')
       return
     }

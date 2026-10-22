@@ -38,6 +38,7 @@ const STATO: StatoPresentazioneMud = {
   datiModificatiDopoPresentazione: false,
   fileTracciato: null,
   esportazioni: [],
+  prossimoFileSostituisce: null,
 }
 
 describe('MudService', () => {

@@ -84,6 +84,8 @@ export interface StatoPresentazioneMud {
   datiModificatiDopoPresentazione: boolean
   fileTracciato: boolean | null
   esportazioni: EsportazioneMud[]
+  /** Data della dichiarazione che il prossimo file annulla e sostituisce, o null (A-W-04) */
+  prossimoFileSostituisce: string | null
 }
 
 export type MotivoAnnullamento = 'SEGNATURA_ERRATA' | 'DICHIARAZIONE_DA_SOSTITUIRE'

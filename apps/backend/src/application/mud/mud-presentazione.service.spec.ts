@@ -170,6 +170,7 @@ describe('MudPresentazioneService', () => {
       datiModificatiDopoPresentazione: false,
       fileTracciato: null,
       esportazioni: [],
+      prossimoFileSostituisce: null,
     })
     expect(prisma.mUDReport.findUnique).toHaveBeenCalledWith({
       where: { tenantId_year: { tenantId: 't1', year: 2025 } },
@@ -609,6 +610,7 @@ describe('MudPresentazioneService', () => {
       datiModificatiDopoPresentazione: false,
       fileTracciato: false,
       esportazioni: [],
+      prossimoFileSostituisce: new Date('2026-04-30T10:00:00Z'),
     })
     expect(aggregazione.aggrega).not.toHaveBeenCalled()
   })
@@ -673,6 +675,42 @@ describe('MudPresentazioneService', () => {
       expect(aa.endsWith(';0;00000000;')).toBe(true)
       expect(aa).toHaveLength(338)
       expect(nuovaVoce.sostituisce).toBeNull()
+    })
+
+    it('lo stato dice quale comunicazione sostituirà il prossimo file', async () => {
+      const db = databaseFinto(
+        record({
+          status: 'SUBMITTED',
+          submittedAt: new Date('2026-06-30T10:00:00Z'),
+          submittedBy: 'u1',
+          reportData: { esportazioni: [voce()], hashAggregato: 'h-file' },
+        })
+      )
+      const agg = { aggrega: jest.fn().mockResolvedValue(aggregato([riga170405], [])) }
+      const s = new MudPresentazioneService(db, new MudVersionRegistry(), agg as any, logger)
+      const stato = await s.annullaPresentazione('t1', 2025, 'u2', 'DICHIARAZIONE_DA_SOSTITUIRE')
+      expect(stato.status).toBe('DRAFT')
+      expect(stato.prossimoFileSostituisce).toEqual(new Date('2026-06-30T10:00:00.000Z'))
+    })
+
+    it('S1 → DA_SOSTITUIRE → S2 → SEGNATURA_ERRATA: il nuovo file sostituisce ancora S1', async () => {
+      const db = databaseFinto(null)
+      const agg = { aggrega: jest.fn().mockResolvedValue(aggregato([riga170405], [])) }
+      const registry = new MudVersionRegistry()
+      const presentazione = new MudPresentazioneService(db, registry, agg as any, logger)
+      const esporta = new MudExportService(db, registry, agg as any, logger)
+      const admin = { id: 'u1', role: 'ADMIN' as const }
+
+      await esporta.exportTelematico('t1', 2025, admin)
+      await presentazione.segnaPresentato('t1', 2025, 'u1', new Date('2026-05-10T00:00:00Z'))
+      await presentazione.annullaPresentazione('t1', 2025, 'u1', 'DICHIARAZIONE_DA_SOSTITUIRE')
+      await presentazione.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-01T00:00:00Z'))
+      const stato = await presentazione.annullaPresentazione('t1', 2025, 'u1', 'SEGNATURA_ERRATA')
+
+      expect(stato.prossimoFileSostituisce).toEqual(new Date('2026-05-10T00:00:00.000Z'))
+      const file = await esporta.exportTelematico('t1', 2025, admin)
+      const aa = file.content.split('\r\n').find(l => l.startsWith('AA;'))!
+      expect(aa.endsWith(';1;20260510;')).toBe(true)
     })
   })
 })

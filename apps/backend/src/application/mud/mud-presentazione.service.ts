@@ -14,6 +14,7 @@ import { MudAggregazioneService, type MudAggregato } from './aggregazione/mud-ag
 import { hashAggregato, hashDichiarante } from './aggregazione/mud-regole'
 import {
   aggiornaReportData,
+  dataComunicazioneSostituita,
   type MotivoAnnullamento,
   type ReportDataJson,
   type RecordMudReport,
@@ -29,6 +30,11 @@ export interface StatoPresentazioneMud {
   fileTracciato: boolean | null
   /** File generati per l'anno, dal più vecchio: la segnatura si lega a uno di questi (A-W-03) */
   esportazioni: EsportazioneMud[]
+  /**
+   * Data della comunicazione che il prossimo file annulla e sostituisce (A-W-04), o null se
+   * sarà una prima dichiarazione: la stessa regola dell'export (`dataComunicazioneSostituita`).
+   */
+  prossimoFileSostituisce: Date | null
 }
 
 /** Esportazione registrata, come la pagina la propone per la segnatura. */
@@ -106,10 +112,12 @@ export class MudPresentazioneService {
         datiModificatiDopoPresentazione: false,
         fileTracciato: null,
         esportazioni: [],
+        prossimoFileSostituisce: null,
       }
     }
     const status = record.status as StatoPresentazioneMud['status']
     const esportazioni = esportazioniRegistrate(record.reportData)
+    const prossimoFileSostituisce = dataComunicazioneSostituita(record)
     if (status !== 'SUBMITTED') {
       return {
         year,
@@ -118,6 +126,7 @@ export class MudPresentazioneService {
         datiModificatiDopoPresentazione: false,
         fileTracciato: null,
         esportazioni,
+        prossimoFileSostituisce,
       }
     }
 
@@ -144,6 +153,7 @@ export class MudPresentazioneService {
       // un record segnato prima di questo piano non ha la chiave: vale false
       fileTracciato: reportData.fileTracciato === true,
       esportazioni,
+      prossimoFileSostituisce,
     }
   }
 

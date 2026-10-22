@@ -79,6 +79,7 @@ const stato = (s: Partial<StatoPresentazioneMud> = {}): StatoPresentazioneMud =>
   datiModificatiDopoPresentazione: false,
   fileTracciato: null,
   esportazioni: [],
+  prossimoFileSostituisce: null,
   ...s,
 })
 
@@ -363,7 +364,13 @@ describe('MudComponent', () => {
 
     it('con il MUD presentato la conferma dice che il file sostituisce la dichiarazione', () => {
       mud.getPresentazione.and.returnValue(
-        of(stato({ status: 'SUBMITTED', submittedAt: '2026-06-30T10:00:00.000Z' }))
+        of(
+          stato({
+            status: 'SUBMITTED',
+            submittedAt: '2026-06-30T10:00:00.000Z',
+            prossimoFileSostituisce: '2026-06-30T10:00:00.000Z',
+          })
+        )
       )
       crea()
       component.download()
@@ -372,6 +379,19 @@ describe('MudComponent', () => {
       expect(component.dialogo()).toBe('download')
       expect(testo()).toContain('Il file sostituisce la dichiarazione presentata il 30/06/2026.')
       expect(component.puoConfermare()).toBeTrue()
+    })
+
+    it('dopo un annullamento per sostituirla la conferma dice quale dichiarazione il file sostituisce', () => {
+      mud.getPresentazione.and.returnValue(
+        of(stato({ status: 'DRAFT', prossimoFileSostituisce: '2026-05-10T10:00:00.000Z' }))
+      )
+      crea()
+      component.download()
+      fixture.detectChanges()
+
+      expect(component.dialogo()).toBe('download')
+      expect(testo()).toContain('Il file sostituisce la dichiarazione presentata il 10/05/2026.')
+      expect(mud.downloadExport).not.toHaveBeenCalled()
     })
 
     it('422 avvisi cambiati: toast e riepilogo ricaricato', async () => {
