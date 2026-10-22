@@ -27,7 +27,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD richiesta}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backups:/backups
     networks:
       - wasteflow
     healthcheck:
@@ -53,6 +52,8 @@ services:
   backend:
     image: ${REGISTRY:-gitea.tail8be933.ts.net/graziano}/rifiuti-backend:${TAG:-latest}
     restart: always
+    # Ogni variabile letta dal codice deve stare qui o in NON_PASSATE di
+    # infrastruttura-prod.guard.spec.ts (apps/backend/src/core/config).
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -117,6 +118,15 @@ services:
       SPID_CALLBACK_URL: ${SPID_CALLBACK_URL:-https://rifiuti.ignicraft.com/api/v1/auth/spid/callback}
       SPID_IDP_CERT: ${SPID_IDP_CERT}
       DEFAULT_TENANT_ID: ${DEFAULT_TENANT_ID}
+      # Error tracking (Bugsink, progetto wasteflow). Vuota = SDK spento.
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      # Release su Bugsink e nella pagina "Stato del sistema": il tag dell'immagine.
+      APP_VERSION: ${TAG:-latest}
+      # Base dei link nelle mail di notifica (senza: https://wasteflow.app).
+      PUBLIC_URL: ${PUBLIC_URL:-https://rifiuti.ignicraft.com}
+      # Firma HMAC della cache permessi: senza, il codice usa 'change-me-in-production'.
+      PERMISSION_CACHE_HMAC_SECRET: ${PERMISSION_CACHE_HMAC_SECRET:?PERMISSION_CACHE_HMAC_SECRET richiesta}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:
         condition: service_healthy
@@ -125,8 +135,6 @@ services:
     networks:
       - wasteflow
       - monitoring
-    volumes:
-      - ./backups:/backups
 
   frontend:
     image: ${REGISTRY:-gitea.tail8be933.ts.net/graziano}/rifiuti-frontend:${TAG:-latest}
