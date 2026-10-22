@@ -306,8 +306,11 @@ describe('MudComponent', () => {
       expect(t).toContain(
         'Il file dichiara 1.234,5 kg in meno del registro per i motivi elencati sotto.'
       )
-      expect(t).toContain('1 casi · 1.234,5 kg esclusi')
-      expect(t).toContain('1 casi · informativo')
+      expect(t).toContain('1 caso · 1.234,5 kg esclusi')
+      expect(t).toContain('1 caso · informativo')
+      expect(
+        component.intestazione({ codice: 'X', casi: 2, movimenti: 0, kgEsclusi: 0, kgAggiunti: 0 })
+      ).toBe('2 casi · informativo')
       expect(t).toContain('n. 5/2025 · CER 17 04 05 · 1.234,5 kg · escluso')
       expect(t).toContain(
         "I rifiuti prodotti fuori dall'unità locale (cantieri, manutenzioni: modulo RE) non sono distinti: il file li attribuisce all'unità locale."

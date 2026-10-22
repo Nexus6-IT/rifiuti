@@ -165,7 +165,7 @@ export class DeadlineCheckerService {
                 userId: user.id,
                 type: 'MUD_DEADLINE_APPROACHING',
                 title: titolo,
-                message: `Mancano ${daysUntilDeadline} giorni alla scadenza del MUD ${previousYear + 1} (dati ${previousYear}), il ${dataScadenzaIt}: aprire la pagina MUD per i controlli e la conferma.`,
+                message: `${daysUntilDeadline === 1 ? 'Manca 1 giorno' : `Mancano ${daysUntilDeadline} giorni`} alla scadenza del MUD ${previousYear + 1} (dati ${previousYear}), il ${dataScadenzaIt}: aprire la pagina MUD per i controlli e la conferma.`,
                 severity: daysUntilDeadline <= 7 ? 'WARNING' : 'INFO',
                 actionUrl: urlPaginaMud,
                 isRead: false,

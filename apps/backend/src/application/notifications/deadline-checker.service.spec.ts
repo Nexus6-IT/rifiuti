@@ -825,7 +825,7 @@ describe('DeadlineCheckerService', () => {
       expect(dati.message).not.toContain('Completamento')
       expect(dati.title).toBe('Promemoria scadenza MUD 2026 (dati 2025)')
       expect(dati.message).toBe(
-        'Mancano 1 giorni alla scadenza del MUD 2026 (dati 2025), il 03/07/2026: aprire la pagina MUD per i controlli e la conferma.'
+        'Manca 1 giorno alla scadenza del MUD 2026 (dati 2025), il 03/07/2026: aprire la pagina MUD per i controlli e la conferma.'
       )
       expect(dati.actionUrl).toBe('/mud?anno=2025')
       const mail = (mockTemplateService.renderMudDeadlineReminder as jest.Mock).mock.calls[0][0]

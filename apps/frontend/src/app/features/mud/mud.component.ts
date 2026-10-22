@@ -1010,7 +1010,7 @@ export class MudComponent implements OnInit {
         : v.kgAggiunti > 0
           ? `${formattaQuantita(v.kgAggiunti)} kg aggiunti`
           : 'informativo'
-    return `${v.casi} casi · ${dettaglio}`
+    return `${v.casi} ${v.casi === 1 ? 'caso' : 'casi'} · ${dettaglio}`
   }
 
   avvisiDelCodice(r: MudRiepilogo, codice: string): MudControllo[] {

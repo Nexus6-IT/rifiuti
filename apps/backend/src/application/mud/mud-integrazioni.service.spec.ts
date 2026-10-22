@@ -324,7 +324,7 @@ describe('MudIntegrazioniService', () => {
     await service.salva('t1', 2025, 'u1', dati({}))
     expect(prisma.activityLog.create.mock.calls[0][0].data).toEqual(
       expect.objectContaining({
-        description: 'Integrazioni del MUD dei dati 2025 aggiornate (1 modifiche)',
+        description: 'Integrazioni del MUD dei dati 2025 aggiornate (1 modifica)',
         metadata: {
           year: 2025,
           modifiche: [

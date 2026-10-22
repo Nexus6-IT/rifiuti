@@ -226,7 +226,7 @@ export class MudIntegrazioniService {
           tenantId,
           userId,
           action: 'MUD_INTEGRAZIONI_MODIFICATE',
-          description: `Integrazioni del MUD dei dati ${year} aggiornate (${modifiche.length} modifiche)`,
+          description: `Integrazioni del MUD dei dati ${year} aggiornate (${modifiche.length} ${modifiche.length === 1 ? 'modifica' : 'modifiche'})`,
           metadata: { year, modifiche } as unknown as Prisma.InputJsonValue,
         },
       })
