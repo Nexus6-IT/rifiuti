@@ -1,7 +1,11 @@
 import { PrismaClient } from '@prisma/client'
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
-import { FirNonPiuInBozzaError, FormularioGiaAgganciatoError } from '../../core/domain/errors'
+import {
+  FirAnnullatoNelFrattempoError,
+  FirNonPiuInBozzaError,
+  FormularioGiaAgganciatoError,
+} from '../../core/domain/errors'
 
 /**
  * R2 Task 3, Step 4 — vincolo di unicità (tenant_id, rentri_numero_fir) su
@@ -153,17 +157,78 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       copiaNuova.applyRentriStato('Annullato')
       await repoLettura.save(copiaNuova)
 
-      await repoLettura.save(copiaVecchia)
+      // L'annullamento all'ente porta il FIR in CANCELLED: la copia vecchia
+      // (COMPLETED) viene rifiutata invece di riportarlo indietro.
+      await expect(repoLettura.save(copiaVecchia)).rejects.toBeInstanceOf(
+        FirAnnullatoNelFrattempoError
+      )
 
-      expect(
-        (await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })).rentriStatoFormulario
-      ).toBe('Annullato')
+      const riga = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riga.rentriStatoFormulario).toBe('Annullato')
+      expect(riga.status).toBe('CANCELLED')
     })
 
     it('un FIR mai riconciliato resta con rentriStatoFormulario null', async () => {
       const fir = buildFirAgganciato(`RENTRI-SF3-${Date.now()}`)
       await repoLettura.save(fir)
       expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBeNull()
+    })
+  })
+
+  describe('annullamento locale concorrente a un salvataggio con dati vecchi', () => {
+    // findById usa this.prisma.db: serve un client con la proprietà `db`.
+    let repoLettura: FIRPrismaRepository
+    beforeAll(() => {
+      repoLettura = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+    })
+
+    async function salvaFirEmesso(): Promise<FIR> {
+      const fir = FIR.create({
+        produttoreId: REGISTRO_PRODUTTORE,
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: REGISTRO_TRASPORTATORE,
+        destinatarioId: REGISTRO_DESTINATARIO,
+        tenantId,
+        creatoDaUserId: userId,
+      })
+      await repoLettura.save(fir)
+      fir.emetti(`FIR-ANN-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, {
+        firmatario: 'Mario Rossi',
+        timestamp: new Date(),
+        certificato: 'x',
+        userId,
+      })
+      await repoLettura.save(fir)
+      return fir
+    }
+
+    it('un save stantio non riporta in vita un FIR annullato', async () => {
+      const fir = await salvaFirEmesso()
+      // Copia caricata prima dell'annullamento (es. sync RENTRI in attesa dell'esito).
+      const copiaVecchia = (await repoLettura.findById(fir.id))!
+      const copiaNuova = (await repoLettura.findById(fir.id))!
+      copiaNuova.annulla('Errore di compilazione')
+      await repoLettura.save(copiaNuova)
+
+      await expect(repoLettura.save(copiaVecchia)).rejects.toBeInstanceOf(
+        FirAnnullatoNelFrattempoError
+      )
+
+      const riga = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riga.status).toBe('CANCELLED')
+    })
+
+    it('un FIR già annullato si può salvare di nuovo', async () => {
+      const fir = await salvaFirEmesso()
+      const copia = (await repoLettura.findById(fir.id))!
+      copia.annulla('Errore di compilazione')
+      await repoLettura.save(copia)
+
+      const riletto = (await repoLettura.findById(fir.id))!
+      await expect(repoLettura.save(riletto)).resolves.toBeUndefined()
+
+      const riga = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riga.status).toBe('CANCELLED')
     })
   })
 

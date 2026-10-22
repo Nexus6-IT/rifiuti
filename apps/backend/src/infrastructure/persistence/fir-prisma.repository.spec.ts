@@ -10,7 +10,11 @@
  */
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
-import { FirmaSenzaUtenteError, FirNonPiuInBozzaError } from '../../core/domain/errors'
+import {
+  FirAnnullatoNelFrattempoError,
+  FirmaSenzaUtenteError,
+  FirNonPiuInBozzaError,
+} from '../../core/domain/errors'
 
 function buildFirRecord(overrides: Partial<any> = {}) {
   return {
@@ -402,6 +406,26 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       )
 
       expect(numero).toBe('FIR-2026-000005')
+    })
+  })
+
+  describe('FIR annullato in locale mentre era in corso un salvataggio', () => {
+    it("il controllo su CANCELLED vale anche quando l'aggregate porta già 'Annullato' dell'ente", async () => {
+      // Copia vecchia: l'ente risulta già 'Annullato', ma lo stato interno è
+      // ancora EMESSO. La riga nel frattempo è stata annullata in locale.
+      prisma.db.fIR.findFirst.mockResolvedValue(
+        buildFirRecord({
+          status: 'AWAITING_CARRIER',
+          rentriNumeroFir: 'RENTRI-ANN-1',
+          rentriStatoFormulario: 'Annullato',
+        })
+      )
+      const copiaVecchia = (await repo.findById('fir-1'))!
+      prisma.$queryRaw = jest.fn().mockResolvedValue([{ stato: 'Annullato', status: 'CANCELLED' }])
+
+      await expect(repo.save(copiaVecchia)).rejects.toBeInstanceOf(FirAnnullatoNelFrattempoError)
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
+      expect(prisma.fIR.upsert).not.toHaveBeenCalled()
     })
   })
 })

@@ -1,6 +1,7 @@
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { costruttorePayloadFinto } from './mappatura/aiuti-test'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-api.client'
+import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
 
 /**
  * Unit tests for SyncFIRToRENTRI Use Case
@@ -768,6 +769,92 @@ describe('SyncFIRToRENTRIUseCase', () => {
       const publishedEvent = mockDomainEvents.publish.mock.calls[0][0]
       expect(publishedEvent.eventType).toBe('FIRSyncFailed')
       expect(publishedEvent.payload.willRetry).toBe(true)
+    })
+  })
+
+  describe('FIR annullato in locale durante la trasmissione', () => {
+    const firId = 'fir-ann'
+    const tenantId = 'tenant-456'
+
+    function firFinto() {
+      return {
+        id: firId,
+        tenantId,
+        rentriSyncStatus: {
+          getStatus: jest.fn().mockReturnValue('PENDING'),
+          getAttempts: jest.fn().mockReturnValue(1),
+        },
+        canSyncToRENTRI: jest.fn().mockReturnValue(true),
+        startRENTRISync: jest.fn(),
+        markRENTRISynced: jest.fn(),
+        markRENTRISyncFailed: jest.fn(),
+        needsRENTRIRetry: jest.fn().mockReturnValue(true),
+        getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
+        getDomainEvents: jest.fn().mockReturnValue([]),
+        clearDomainEvents: jest.fn(),
+      }
+    }
+
+    const logRiuscito = { id: 'log-ok', status: 'SUCCESS' }
+    const logFallito = { id: 'log-ko', status: 'FAILURE' }
+
+    beforeEach(() => {
+      mockFIRRepository.findById.mockResolvedValue(firFinto())
+      mockSyncLogRepository.createPending.mockResolvedValue({
+        markAsSuccess: jest.fn().mockReturnValue(logRiuscito),
+        markAsFailure: jest.fn().mockReturnValue(logFallito),
+      })
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({
+        transazioneId: 'tx-ann',
+        urlStato: '/formulari/v1.0/tx-ann/status',
+      })
+      mockFIRRepository.save.mockRejectedValue(new FirAnnullatoNelFrattempoError(firId))
+    })
+
+    it('la sync segnala il FIR annullato nel frattempo', async () => {
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+        errore: false,
+        validazione: [],
+        esito: { numero_fir: 'RENTRI-NUM-ANN' },
+      })
+
+      const result = await useCase.execute(firId, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: false, attempts: 1 })
+      expect(result.error).toContain(firId)
+      expect(mockFIRRepository.save).toHaveBeenCalledTimes(1)
+      // L'ente ha il formulario: il log di sincronizzazione riuscito si conserva.
+      expect(mockSyncLogRepository.save).toHaveBeenCalledWith(logRiuscito)
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "FIR annullato in locale durante la trasmissione: sull'ente esiste il formulario",
+        expect.any(FirAnnullatoNelFrattempoError),
+        expect.objectContaining({ firId, protocolNumber: 'RENTRI-NUM-ANN' })
+      )
+    })
+
+    it("con esito negativo dell'ente il FIR annullato nel frattempo non si ritenta", async () => {
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue({
+        errore: true,
+        validazione: [{ campo: 'cerCode', codice_messaggio: 'Invalid CER code' }],
+      })
+
+      const result = await useCase.execute(firId, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: false })
+      expect(mockFIRRepository.save).toHaveBeenCalledTimes(1)
+      expect(mockSyncLogRepository.save).toHaveBeenCalledWith(logFallito)
+      expect(mockLogger.error).toHaveBeenCalled()
+    })
+
+    it('con un errore di rete il FIR annullato nel frattempo non si ritenta', async () => {
+      mockRENTRIApiClient.attendiEsito.mockRejectedValue(new Error('timeout'))
+
+      const result = await useCase.execute(firId, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: false })
+      expect(result.nextRetryAt).toBeUndefined()
+      expect(mockFIRRepository.save).toHaveBeenCalledTimes(1)
+      expect(mockSyncLogRepository.save).toHaveBeenCalledWith(logFallito)
     })
   })
 })

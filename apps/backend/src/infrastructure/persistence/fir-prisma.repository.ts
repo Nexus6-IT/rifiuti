@@ -29,6 +29,7 @@ import {
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { RENTRISyncStatus } from '../../domain/fir/rentri-sync-status.vo'
 import {
+  FirAnnullatoNelFrattempoError,
   FormularioGiaAgganciatoError,
   FirmaSenzaUtenteError,
   FirNonPiuInBozzaError,
@@ -268,16 +269,29 @@ export class FIRPrismaRepository implements IFIRRepository {
    * scrive 'Annullato' lo riporterebbe indietro, e il FIR tornerebbe collegabile al
    * registro. Il valore salvato si legge nella stessa transaction, con la riga
    * bloccata fino al commit.
+   *
+   * Lo stesso vale per l'annullamento locale (stato CANCELLED): una copia caricata
+   * prima dell'annullamento non può riportare il FIR in uno stato attivo, e il
+   * salvataggio si rifiuta con `FirAnnullatoNelFrattempoError`. La SELECT si esegue
+   * sempre, anche quando l'aggregate porta già 'Annullato' dell'ente, perché il
+   * controllo su CANCELLED non dipende dallo stato RENTRI.
    */
   private async conservaAnnullamentoEnte(
     client: Prisma.TransactionClient,
     firId: string,
-    scalars: { rentriStatoFormulario?: unknown }
+    scalars: { rentriStatoFormulario?: unknown; status?: unknown }
   ): Promise<void> {
-    if (scalars.rentriStatoFormulario === STATO_RENTRI_ANNULLATO) return
-    const righe = await client.$queryRaw<Array<{ stato: string | null }>>`
-      SELECT rentri_stato_formulario AS stato FROM firs WHERE id = ${firId}::uuid FOR UPDATE`
-    if (righe?.[0]?.stato === STATO_RENTRI_ANNULLATO) {
+    const righe = await client.$queryRaw<Array<{ stato: string | null; status: string | null }>>`
+      SELECT rentri_stato_formulario AS stato, status::text AS status
+      FROM firs WHERE id = ${firId}::uuid FOR UPDATE`
+    const riga = righe?.[0]
+    if (
+      riga?.status === PrismaFIRStatus.CANCELLED &&
+      scalars.status !== PrismaFIRStatus.CANCELLED
+    ) {
+      throw new FirAnnullatoNelFrattempoError(firId)
+    }
+    if (riga?.stato === STATO_RENTRI_ANNULLATO) {
       scalars.rentriStatoFormulario = STATO_RENTRI_ANNULLATO
     }
   }

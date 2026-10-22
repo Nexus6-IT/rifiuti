@@ -72,6 +72,23 @@ export class FormularioGiaAgganciatoError extends DomainError {
 }
 
 /**
+ * Il FIR è stato annullato in locale (stato CANCELLED) mentre un'altra
+ * operazione lo teneva in memoria con i dati di prima (tipicamente la sync
+ * RENTRI, che attende l'esito per secondi o minuti). Salvare quella copia
+ * riporterebbe in vita il FIR e lo renderebbe di nuovo collegabile al
+ * registro: il repository rifiuta il salvataggio.
+ */
+export class FirAnnullatoNelFrattempoError extends DomainError {
+  constructor(firId: string) {
+    super(
+      `Il FIR ${firId} è stato annullato mentre era in corso un'altra operazione: ` +
+        'il salvataggio non viene eseguito'
+    )
+    this.name = 'FirAnnullatoNelFrattempoError'
+  }
+}
+
+/**
  * R3 Task 1 — `FIR.applyRentriStato` riconcilia lo `FIRStato` interno con lo
  * stato ente (`StatoFormulario`, contratto RENTRI), ma solo se il FIR ha già
  * un legame (`rentriNumeroFir` valorizzato): senza legame non c'è nulla da
