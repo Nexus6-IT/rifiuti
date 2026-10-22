@@ -1,4 +1,5 @@
 import { MudAggregazioneService } from './mud-aggregazione.service'
+import { limitiAnnoMud } from './mud-regole'
 import { controlliMud, haBloccanti, type MudEsitoControllo } from './mud-controlli'
 
 describe('MudAggregazioneService', () => {
@@ -84,7 +85,10 @@ describe('MudAggregazioneService', () => {
 
   beforeEach(() => {
     prisma = {
-      wasteMovement: { findMany: jest.fn().mockResolvedValue([]) },
+      wasteMovement: {
+        findMany: jest.fn().mockResolvedValue([]),
+        groupBy: jest.fn().mockResolvedValue([]),
+      },
       fIR: { findMany: jest.fn().mockResolvedValue([]) },
       destinatario: { findMany: jest.fn().mockResolvedValue([]) },
       trasportatore: { findMany: jest.fn().mockResolvedValue([]) },
@@ -983,12 +987,37 @@ describe('MudAggregazioneService', () => {
   })
 
   // 29
-  it('avviso sulle giacenze quando ci sono righe', async () => {
+  it('saldo al 31/12 dal registro: avviso con i kg in deposito', async () => {
     impostaDati({ movimenti: [mov({})] })
+    prisma.wasteMovement.groupBy.mockResolvedValue([
+      { cerCode: '17 04 05', type: 'CARICO', unit: 'KG', _sum: { quantity: 200 } },
+      { cerCode: '170405', type: 'SCARICO', unit: 'kg', _sum: { quantity: 80 } },
+    ])
 
     const r = await service.aggrega('t1', 2025)
 
-    expect(r.controlli).toContainEqual(controlliMud.giacenzeNonCalcolate(2025))
+    const g = conCodice(r.controlli, 'GIACENZE_NON_CALCOLATE')
+    expect(g).toEqual([controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 120 }])])
+    expect(g[0].kgNonDichiarati).toBe(120)
+    const args = prisma.wasteMovement.groupBy.mock.calls[0][0]
+    expect(args.by).toEqual(['cerCode', 'type', 'unit'])
+    expect(args.where.tenantId).toBe('t1')
+    expect(args.where.movementDate.lt).toEqual(limitiAnnoMud(2025).fine)
+    expect(args.where.movementDate.gte).toBeUndefined()
+  })
+
+  it('saldo zero o negativo, o solo unità non di massa: nessun avviso delle giacenze', async () => {
+    impostaDati({ movimenti: [mov({})] })
+    prisma.wasteMovement.groupBy.mockResolvedValue([
+      { cerCode: '170405', type: 'CARICO', unit: 'KG', _sum: { quantity: 80 } },
+      { cerCode: '170405', type: 'SCARICO', unit: 'KG', _sum: { quantity: 80 } },
+      { cerCode: '150110', type: 'SCARICO', unit: 'T', _sum: { quantity: 1 } },
+      { cerCode: '160101', type: 'CARICO', unit: 'LITRI', _sum: { quantity: 500 } },
+    ])
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(conCodice(r.controlli, 'GIACENZE_NON_CALCOLATE')).toEqual([])
   })
 
   // 30

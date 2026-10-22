@@ -119,7 +119,7 @@ describe('MudExportService', () => {
       righe: [rigaValida],
       dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 2 },
-      controlli: [controlliMud.giacenzeNonCalcolate(2024)],
+      controlli: [controlliMud.giacenzeNonCalcolate(2024, [{ cerCode6: '170405', kg: 120 }])],
     })
 
     const result = await service.exportTelematico('t1', 2024, admin, ['GIACENZE_NON_CALCOLATE'])
@@ -174,7 +174,10 @@ describe('MudExportService', () => {
 
   it('la 422 arriva al client con i controlli in details', async () => {
     // attraverso il filtro globale, come in produzione
-    const controlli = [controlliMud.nessunMovimento(2025), controlliMud.giacenzeNonCalcolate(2025)]
+    const controlli = [
+      controlliMud.nessunMovimento(2025),
+      controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 120 }]),
+    ]
     aggregazione.aggrega.mockResolvedValue({
       anno: 2025,
       righe: [],
@@ -225,7 +228,7 @@ describe('MudExportService', () => {
 
   it('con avvisi non confermati: 422 con i codici mancanti in details', async () => {
     const controlli = [
-      controlliMud.giacenzeNonCalcolate(2024),
+      controlliMud.giacenzeNonCalcolate(2024, [{ cerCode6: '170405', kg: 120 }]),
       controlliMud.scaricoSenzaFir(rifMovimento),
     ]
     aggregazione.aggrega.mockResolvedValue({
@@ -253,7 +256,7 @@ describe('MudExportService', () => {
 
   it('con avvisi che cambiano le quantità (kg esclusi) solo ADMIN e SUPER_ADMIN generano il file', async () => {
     const controlli = [
-      controlliMud.giacenzeNonCalcolate(2024),
+      controlliMud.giacenzeNonCalcolate(2024, [{ cerCode6: '170405', kg: 120 }]),
       controlliMud.firAnnullato(rifMovimento, 'ABC 123'),
     ]
     aggregazione.aggrega.mockResolvedValue({
@@ -315,11 +318,27 @@ describe('MudExportService', () => {
     expect(errore.getResponse().error).toBe('MUD_CONFERMA_RISERVATA_AMMINISTRATORI')
   })
 
+  it('un avviso R/D riserva il file agli amministratori', async () => {
+    const controlli = [controlliMud.operazioneNonIndicata(rifMovimento)]
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
+      movimentiPerCer: { '170405': 1 },
+      controlli,
+    })
+    const errore = await service
+      .exportTelematico('t1', 2024, viewer, ['OPERAZIONE_NON_INDICATA'])
+      .catch(e => e)
+    expect(errore).toBeInstanceOf(ForbiddenException)
+    expect(errore.getResponse().error).toBe('MUD_CONFERMA_RISERVATA_AMMINISTRATORI')
+    await expect(
+      service.exportTelematico('t1', 2024, admin, ['OPERAZIONE_NON_INDICATA'])
+    ).resolves.toBeDefined()
+  })
+
   it('con avvisi solo informativi anche un VIEWER genera il file, dopo averli confermati', async () => {
-    const controlli = [
-      controlliMud.giacenzeNonCalcolate(2024),
-      controlliMud.scaricoSenzaFir(rifMovimento),
-    ]
+    const controlli = [controlliMud.scaricoSenzaFir(rifMovimento)]
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
@@ -332,10 +351,7 @@ describe('MudExportService', () => {
     expect(errore).toBeInstanceOf(UnprocessableEntityException)
     expect(errore.getResponse().error).toBe('MUD_AVVISI_DA_CONFERMARE')
 
-    const r = await service.exportTelematico('t1', 2024, viewer, [
-      'GIACENZE_NON_CALCOLATE',
-      'SCARICO_SENZA_FIR',
-    ])
+    const r = await service.exportTelematico('t1', 2024, viewer, ['SCARICO_SENZA_FIR'])
     expect(r.content.startsWith('XX;')).toBe(true)
     expect(prisma.activityLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ userId: 'u9', action: 'MUD_ESPORTATO' }),
@@ -349,7 +365,7 @@ describe('MudExportService', () => {
       dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli: [
-        controlliMud.giacenzeNonCalcolate(2024),
+        controlliMud.giacenzeNonCalcolate(2024, [{ cerCode6: '170405', kg: 120 }]),
         controlliMud.scaricoSenzaFir(rifMovimento),
       ],
     })
@@ -373,7 +389,7 @@ describe('MudExportService', () => {
           versione: '6.04/24',
           hashAggregato: hashAggregato([rigaValida]),
           avvisiConfermati: ['GIACENZE_NON_CALCOLATE', 'SCARICO_SENZA_FIR'],
-          riepilogo: expect.objectContaining({ kgInMeno: 0, voci: expect.any(Array) }),
+          riepilogo: expect.objectContaining({ kgInMeno: 120, voci: expect.any(Array) }),
           integrazioniUsate: INTEGRAZIONI_VUOTE,
         }),
       ],
@@ -387,7 +403,7 @@ describe('MudExportService', () => {
     const log = prisma.activityLog.create.mock.calls[0][0].data
     expect(log.description).toBe(
       'File MUD dei dati 2024 generato (tracciato 6.04/24) con 2 avvisi confermati: ' +
-        'Il file dichiara le stesse quantità del registro: gli avvisi sono informativi.'
+        'Il file dichiara 120 kg in meno del registro per i motivi elencati sotto.'
     )
     expect(log.metadata).toEqual(
       expect.objectContaining({

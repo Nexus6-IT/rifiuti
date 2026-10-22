@@ -1,5 +1,6 @@
 import {
   avvisiNonConfermati,
+  avvisiCambianoQuantita,
   codiciAvvisoDaConfermare,
   controlliMud,
   haBloccanti,
@@ -313,12 +314,12 @@ describe('controlliMud', () => {
       ...Array.from({ length: 40 }, (_, i) => controlliMud.scaricoSenzaFir(kg(100 + i, 10))),
       controlliMud.firAnnullato(kg(1, 300), 'FIR-1'),
       controlliMud.causaleEsclusa(kg(2, 50)),
-      controlliMud.giacenzeNonCalcolate(2025),
+      controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 20 }]),
     ]
     const r = riepilogaAvvisi(controlli)
-    expect(r).toMatchObject({ kgInMeno: 350, kgInPiu: 0, movimentiNonQuantificati: 0 })
+    expect(r).toMatchObject({ kgInMeno: 370, kgInPiu: 0, movimentiNonQuantificati: 0 })
     expect(r.testo).toBe(
-      'Il file dichiara 350 kg in meno del registro per i motivi elencati sotto.'
+      'Il file dichiara 370 kg in meno del registro per i motivi elencati sotto.'
     )
     expect(r.voci.map(v => v.codice)).toEqual([
       'FIR_ANNULLATO',
@@ -366,9 +367,52 @@ describe('controlliMud', () => {
   })
 
   it('riepilogaAvvisi senza quantità in gioco lo dice', () => {
-    expect(riepilogaAvvisi([controlliMud.giacenzeNonCalcolate(2025)]).testo).toBe(
+    expect(riepilogaAvvisi([controlliMud.scaricoSenzaFir(m)]).testo).toBe(
       'Il file dichiara le stesse quantità del registro: gli avvisi sono informativi.'
     )
+  })
+
+  it('le giacenze quantificate contano come kg in meno', () => {
+    const c = controlliMud.giacenzeNonCalcolate(2025, [
+      { cerCode6: '170405', kg: 120 },
+      { cerCode6: '150110', kg: 30.5 },
+    ])
+    expect(c.kgNonDichiarati).toBe(150.5)
+    expect(c.messaggio).toBe(
+      'Secondo il registro, al 31/12/2025 risultano in deposito 150,5 kg (CER 17 04 05: 120 kg; CER 15 01 10: 30,5 kg) che il file non dichiara: le giacenze di fine anno nel file risultano zero.'
+    )
+    const r = riepilogaAvvisi([
+      controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 120 }]),
+    ])
+    expect(r).toMatchObject({ kgInMeno: 120, kgInPiu: 0, cambianoQuantita: true })
+    expect(r.voci[0]).toMatchObject({ codice: 'GIACENZE_NON_CALCOLATE', kgEsclusi: 120 })
+    expect(r.testo).toBe(
+      'Il file dichiara 120 kg in meno del registro per i motivi elencati sotto.'
+    )
+  })
+
+  it('gli avvisi R/D cambiano le quantità', () => {
+    const r = riepilogaAvvisi([controlliMud.operazioneNonIndicata(m)])
+    expect(r.cambianoQuantita).toBe(true)
+    expect(r.testo).toBe(
+      'Il file dichiara le stesse quantità del registro, ma per alcuni scarichi il recupero o lo smaltimento non è indicato nel registro: verificare la ripartizione elencata sotto.'
+    )
+    expect(avvisiCambianoQuantita([controlliMud.operazioneDedottaDalFir(m, 'F', 'R')])).toBe(true)
+  })
+
+  it('solo informativi: cambianoQuantita falso', () => {
+    const r = riepilogaAvvisi([controlliMud.scaricoSenzaFir(m)])
+    expect(r.cambianoQuantita).toBe(false)
+    expect(avvisiCambianoQuantita([controlliMud.scaricoSenzaFir(m)])).toBe(false)
+  })
+
+  it('cambianoQuantita vale anche per movimenti esclusi e conversioni', () => {
+    expect(avvisiCambianoQuantita([controlliMud.firAnnullato({ ...m, unit: 'L' }, 'F')])).toBe(true)
+    expect(
+      avvisiCambianoQuantita([
+        controlliMud.convertitoConPesoSpecifico('170405', 'LITRI', 1.2, [m], false),
+      ])
+    ).toBe(true)
   })
 
   it('riepilogaAvvisi ignora i bloccanti', () => {
@@ -419,7 +463,7 @@ describe('controlliMud', () => {
 
   it('nessun messaggio promette correzioni che l applicazione non permette', () => {
     const tutti = [
-      controlliMud.giacenzeNonCalcolate(2025),
+      controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 120 }]),
       controlliMud.operazioneNonIndicata(m),
       controlliMud.profiloNonSupportato(2025, [m]),
       controlliMud.firAnnullato(m, 'F'),
@@ -438,7 +482,7 @@ describe('controlliMud', () => {
   it('haBloccanti distingue avvisi e bloccanti', () => {
     expect(
       haBloccanti([
-        controlliMud.giacenzeNonCalcolate(2025),
+        controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 120 }]),
         controlliMud.profiloNonSupportato(2025, [m]),
       ])
     ).toBe(false)
@@ -449,7 +493,7 @@ describe('controlliMud', () => {
     const c = [
       controlliMud.scaricoSenzaFir(m),
       controlliMud.scaricoSenzaFir(m),
-      controlliMud.giacenzeNonCalcolate(2025),
+      controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 120 }]),
       controlliMud.nessunMovimento(2025),
     ]
     expect(codiciAvvisoDaConfermare(c)).toEqual(['GIACENZE_NON_CALCOLATE', 'SCARICO_SENZA_FIR'])

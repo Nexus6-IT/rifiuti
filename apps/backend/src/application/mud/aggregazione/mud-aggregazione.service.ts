@@ -486,7 +486,8 @@ export class MudAggregazioneService {
 
     const righeFinali = this.completaRighe(righe, integrazioni, anno, controlli)
 
-    if (righeFinali.length > 0) controlli.push(controlliMud.giacenzeNonCalcolate(anno))
+    const saldi = await this.saldiAl31Dicembre(tenantId, fine)
+    if (saldi.length > 0) controlli.push(controlliMud.giacenzeNonCalcolate(anno, saldi))
 
     if (movimenti.length === 0) {
       controlli.push(
@@ -524,6 +525,35 @@ export class MudAggregazioneService {
       controlli,
       dichiarante: { atecoNormalizzato, comuneCode },
     }
+  }
+
+  /**
+   * Saldo del registro a fine anno (carichi meno scarichi di tutti gli anni fino al 31/12 italiano),
+   * per CER, in kg. Solo le unità di massa: i movimenti in litri, mc o altro non hanno un peso
+   * senza peso specifico e non entrano nel saldo (le unità vuote valgono kg, come nel resto del
+   * MUD). Restano solo i CER con saldo positivo, ordinati per CER (A-W-06).
+   */
+  private async saldiAl31Dicembre(
+    tenantId: string,
+    fine: Date
+  ): Promise<Array<{ cerCode6: string; kg: number }>> {
+    const gruppi = await this.prisma.wasteMovement.groupBy({
+      by: ['cerCode', 'type', 'unit'],
+      where: { tenantId, movementDate: { lt: fine } },
+      _sum: { quantity: true },
+    })
+    const perCer = new Map<string, number>()
+    for (const g of gruppi) {
+      const kg = convertiInKg(Number(g._sum.quantity ?? 0), g.unit)
+      if (kg === null) continue
+      const cer6 = chiaveConfrontoCer(g.cerCode)
+      const segno = g.type === 'CARICO' ? 1 : -1
+      perCer.set(cer6, (perCer.get(cer6) ?? 0) + segno * kg)
+    }
+    return [...perCer.entries()]
+      .filter(([, kg]) => kg > 0.0005)
+      .map(([cerCode6, kg]) => ({ cerCode6, kg: arrotonda3(kg) }))
+      .sort((a, b) => (a.cerCode6 < b.cerCode6 ? -1 : a.cerCode6 > b.cerCode6 ? 1 : 0))
   }
 
   /** Recupero o smaltimento di uno scarico, nell'ordine della Decisione 5. */

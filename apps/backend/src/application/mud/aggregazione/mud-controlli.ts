@@ -1,5 +1,6 @@
 import { formattaQuantita } from '../../../core/format/formatta-quantita'
 import { formattaDataItaliana } from '../../../core/time/anno-italiano'
+import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
 import { convertiInKg } from '../../../domain/waste-movement/unita-misura-registro'
 import { chiaveDestinatario, chiaveMovimento, chiavePesoSpecifico } from './mud-integrazioni'
 
@@ -63,6 +64,8 @@ export interface MudEsitoControllo {
   movimenti?: MudMovimentoSegnalato[]
   fir?: string[]
   integrazione?: IntegrazioneRichiesta
+  /** GIACENZE_NON_CALCOLATE: kg in deposito al 31/12 secondo il registro e non dichiarati */
+  kgNonDichiarati?: number
 }
 
 export interface RifMovimento {
@@ -365,11 +368,20 @@ export const controlliMud = {
     movimenti: [segnala(m, true)],
   }),
 
-  giacenzeNonCalcolate: (anno: number): MudEsitoControllo => ({
-    codice: 'GIACENZE_NON_CALCOLATE',
-    gravita: AVVISO,
-    messaggio: `Le giacenze al 31/12/${anno} non sono calcolate dall'applicazione e nel file risultano zero: se a fine anno c'erano rifiuti in deposito, il file non li dichiara.`,
-  }),
+  // Chiamata solo con almeno un saldo positivo (A-W-06): senza, il file è coerente col registro.
+  giacenzeNonCalcolate: (
+    anno: number,
+    saldi: Array<{ cerCode6: string; kg: number }>
+  ): MudEsitoControllo => {
+    const totale = arrotondaGrammo(saldi.reduce((s, x) => s + x.kg, 0))
+    const elencoCer = saldi.map(x => `CER ${cerCanonico(x.cerCode6)}: ${q(x.kg)} kg`).join('; ')
+    return {
+      codice: 'GIACENZE_NON_CALCOLATE',
+      gravita: AVVISO,
+      messaggio: `Secondo il registro, al 31/12/${anno} risultano in deposito ${q(totale)} kg (${elencoCer}) che il file non dichiara: le giacenze di fine anno nel file risultano zero.`,
+      kgNonDichiarati: totale,
+    }
+  },
 }
 
 export function haBloccanti(c: MudEsitoControllo[]): boolean {
@@ -404,7 +416,15 @@ export interface RiepilogoAvvisi {
   movimentiNonQuantificati: number
   voci: VoceRiepilogoAvvisi[]
   testo: string
+  /** Vero se gli avvisi fanno dichiarare quantità diverse dal registro (regola dei 403) */
+  cambianoQuantita: boolean
 }
+
+/** Avvisi che spostano kg fra recupero e smaltimento senza cambiare il totale. */
+export const CODICI_RIPARTIZIONE_RD: readonly MudCodiceControllo[] = [
+  'OPERAZIONE_NON_INDICATA',
+  'OPERAZIONE_DEDOTTA_DAL_FIR',
+]
 
 const chiaveSegnalato = (m: MudMovimentoSegnalato) => chiaveMovimento(m.anno, m.numero)
 
@@ -416,7 +436,9 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
   const voci: VoceRiepilogoAvvisi[] = []
   for (const [codice, esiti] of perCodice) {
     const movimenti = esiti.flatMap(e => e.movimenti ?? [])
-    const kgEsclusi = movimenti.filter(m => !m.incluso).reduce((s, m) => s + (m.kg ?? 0), 0)
+    const kgGiacenze = esiti.reduce((s, e) => s + (e.kgNonDichiarati ?? 0), 0)
+    const kgEsclusi =
+      movimenti.filter(m => !m.incluso).reduce((s, m) => s + (m.kg ?? 0), 0) + kgGiacenze
     const kgAggiunti =
       codice === 'CONVERTITO_CON_PESO_SPECIFICO'
         ? movimenti.reduce((s, m) => s + (m.kg ?? 0), 0)
@@ -446,13 +468,25 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
   for (const e of avvisi) {
     for (const m of e.movimenti ?? []) if (!m.incluso) esclusi.set(chiaveSegnalato(m), m)
   }
-  const kgInMeno = arrotondaGrammo([...esclusi.values()].reduce((s, m) => s + (m.kg ?? 0), 0))
+  // Le giacenze non sono movimenti: si sommano senza deduplica
+  const kgGiacenzeTotali = avvisi.reduce((s, e) => s + (e.kgNonDichiarati ?? 0), 0)
+  const kgInMeno = arrotondaGrammo(
+    [...esclusi.values()].reduce((s, m) => s + (m.kg ?? 0), 0) + kgGiacenzeTotali
+  )
   const movimentiNonQuantificati = [...esclusi.values()].filter(m => m.kg === null).length
   const kgInPiu = arrotondaGrammo(voci.reduce((s, v) => s + v.kgAggiunti, 0))
 
+  const haRipartizioneRD = avvisi.some(e => CODICI_RIPARTIZIONE_RD.includes(e.codice))
+  const cambianoQuantita =
+    voci.some(v => v.kgEsclusi > 0 || v.kgAggiunti > 0) ||
+    avvisi.some(e => (e.movimenti ?? []).some(m => !m.incluso)) ||
+    haRipartizioneRD
+
   let testo: string
   if (kgInMeno === 0 && kgInPiu === 0) {
-    testo = 'Il file dichiara le stesse quantità del registro: gli avvisi sono informativi.'
+    testo = haRipartizioneRD
+      ? 'Il file dichiara le stesse quantità del registro, ma per alcuni scarichi il recupero o lo smaltimento non è indicato nel registro: verificare la ripartizione elencata sotto.'
+      : 'Il file dichiara le stesse quantità del registro: gli avvisi sono informativi.'
   } else {
     const parti: string[] = []
     if (kgInMeno > 0) parti.push(`${q(kgInMeno)} kg in meno`)
@@ -465,5 +499,10 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
   if (movimentiNonQuantificati > 0) {
     testo += ` Altri ${movimentiNonQuantificati} movimenti esclusi non sono in kg e non sono quantificati.`
   }
-  return { kgInMeno, kgInPiu, movimentiNonQuantificati, voci, testo }
+  return { kgInMeno, kgInPiu, movimentiNonQuantificati, voci, testo, cambianoQuantita }
+}
+
+/** Regola dei 403: solo un amministratore conferma avvisi che cambiano le quantità dichiarate. */
+export function avvisiCambianoQuantita(controlli: MudEsitoControllo[]): boolean {
+  return riepilogaAvvisi(controlli).cambianoQuantita
 }
