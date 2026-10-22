@@ -165,5 +165,17 @@ describe('AnomalyDetectionService', () => {
       // M3: scarico ricopiato da un FIR senza carichi nella stessa unità, nessun confronto
       expect(messaggi.some(m => m.includes('M3'))).toBe(false)
     })
+
+    it('una unità non di massa con scarichi entro i carichi non è segnalata', async () => {
+      setup(
+        [],
+        ['130205'],
+        [
+          { cerCode: '130205*', type: 'CARICO', unit: 'L', _sum: { quantity: 500 } },
+          { cerCode: '130205*', type: 'SCARICO', unit: 'l', _sum: { quantity: 500 } },
+        ]
+      )
+      await expect(service.detectAnomalies('t1')).resolves.toEqual([])
+    })
   })
 })
