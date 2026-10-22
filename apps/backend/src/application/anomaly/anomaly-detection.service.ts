@@ -163,6 +163,9 @@ export class AnomalyDetectionService {
     const anomalies: Anomaly[] = []
     for (const { cerCode, perUnita } of perCer.values()) {
       for (const [unita, { carico, scarico }] of perUnita) {
+        // Un'unità non di massa si confronta solo se ha almeno un carico: i carichi manuali sono
+        // sempre in kg, quindi uno scarico in litri o m3 ricopiato da un FIR non è confrontabile.
+        if (unita !== 'KG' && carico <= 0) continue
         if (scarico <= carico + 1e-9) continue
         const um = simboloUnita(normalizzaUnitaRegistro(unita))
         anomalies.push({

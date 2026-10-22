@@ -143,15 +143,14 @@ describe('AnomalyDetectionService', () => {
       expect(anomalies[0].message).toContain('1.000 kg')
     })
 
-    it('le unità non di massa si valutano a parte, mai sommate ai kg', async () => {
+    it('le unità non di massa si valutano a parte e solo se hanno almeno un carico', async () => {
       setup(
         [],
         ['130205'],
         [
           { cerCode: '130205*', type: 'CARICO', unit: 'L', _sum: { quantity: 500 } },
           { cerCode: '13 02 05*', type: 'SCARICO', unit: 'kg', _sum: { quantity: 100 } },
-          { cerCode: '130205*', type: 'SCARICO', unit: 'l', _sum: { quantity: 200 } },
-          { cerCode: '130205*', type: 'CARICO', unit: 'M3', _sum: { quantity: 1 } },
+          { cerCode: '130205*', type: 'SCARICO', unit: 'l', _sum: { quantity: 700 } },
           { cerCode: '130205*', type: 'SCARICO', unit: 'M3', _sum: { quantity: 3 } },
         ]
       )
@@ -159,11 +158,12 @@ describe('AnomalyDetectionService', () => {
       const messaggi = anomalies.map(a => a.message)
       expect(anomalies).toHaveLength(2)
       expect(anomalies.every(a => a.cerCode === '13 02 05*')).toBe(true)
-      // kg: 100 scaricati, 0 caricati (i 500 L non contano come massa)
+      // kg: 100 scaricati, 0 caricati (i 500 L non contano come massa): come oggi
       expect(messaggi.some(m => m.includes('100 kg'))).toBe(true)
-      // M3: 3 scaricati su 1 caricato; i litri (200 su 500) sono coerenti
-      expect(messaggi.some(m => m.includes('3 M3'))).toBe(true)
-      expect(messaggi.some(m => m.includes(' L'))).toBe(false)
+      // litri: 700 scaricati su 500 caricati
+      expect(messaggi.some(m => m.includes('700 L'))).toBe(true)
+      // M3: scarico ricopiato da un FIR senza carichi nella stessa unità, nessun confronto
+      expect(messaggi.some(m => m.includes('M3'))).toBe(false)
     })
   })
 })
