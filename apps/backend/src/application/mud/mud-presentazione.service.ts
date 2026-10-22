@@ -221,6 +221,18 @@ export class MudPresentazioneService {
         } else {
           // A-W-03: tutto dal file esportato, nessun controllo rifatto sui dati di oggi
           const voce = this.esportazioneScelta(esportazioni, esportazioneGenerataIl)
+          // un file non si presenta prima di averlo generato (giorni di Roma)
+          const generatoIl = typeof voce.generatoIl === 'string' ? new Date(voce.generatoIl) : null
+          if (
+            generatoIl &&
+            !Number.isNaN(generatoIl.getTime()) &&
+            giornoItaliano(submittedAt) < giornoItaliano(generatoIl)
+          ) {
+            throw new UnprocessableEntityException({
+              message: `La data di presentazione (${formattaDataItaliana(submittedAt)}) è precedente alla generazione del file scelto (${formattaDataItaliana(generatoIl)}).`,
+              error: 'MUD_DATA_PRECEDENTE_AL_FILE',
+            })
+          }
           presentazione = {
             // ripiego solo per una voce di forma inattesa: l'export scrive sempre l'hash
             hashAggregato: stringaONull(voce.hashAggregato) ?? hashAttuale,

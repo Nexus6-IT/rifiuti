@@ -317,6 +317,29 @@ describe('MudPresentazioneService', () => {
     expect(scritto().update.reportData.avvisiConfermatiAllaPresentazione).toEqual([])
   })
 
+  it('rifiuta una data di presentazione precedente alla generazione del file scelto (422)', async () => {
+    jest.useFakeTimers({ now: new Date('2026-07-01T10:00:00Z') })
+    prisma.mUDReport.findUnique.mockResolvedValue(
+      record({ reportData: { esportazioni: [voce({ generatoIl: '2026-04-02T08:00:00.000Z' })] } })
+    )
+
+    const errore = await service
+      .segnaPresentato('t1', 2025, 'u1', new Date('2026-04-01'))
+      .catch(e => e)
+
+    expect(errore).toBeInstanceOf(UnprocessableEntityException)
+    expect(errore.getResponse()).toEqual({
+      message:
+        'La data di presentazione (01/04/2026) è precedente alla generazione del file scelto (02/04/2026).',
+      error: 'MUD_DATA_PRECEDENTE_AL_FILE',
+    })
+    expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
+
+    // lo stesso giorno della generazione va bene
+    await service.segnaPresentato('t1', 2025, 'u1', new Date('2026-04-02'))
+    expect(scritto().update.submittedAt).toEqual(new Date('2026-04-02'))
+  })
+
   it('rifiuta un esportazione indicata che non esiste (422)', async () => {
     prisma.mUDReport.findUnique.mockResolvedValue(
       record({ reportData: { esportazioni: [voce()] } })
@@ -713,7 +736,10 @@ describe('MudPresentazioneService', () => {
       const esporta = new MudExportService(db, registry, agg as any, logger)
       const admin = { id: 'u1', role: 'ADMIN' as const }
 
+      // il file si genera prima delle date di presentazione usate sotto
+      jest.useFakeTimers({ now: new Date('2026-05-02T08:00:00Z') })
       await esporta.exportTelematico('t1', 2025, admin)
+      jest.setSystemTime(new Date('2026-07-01T08:00:00Z'))
       await presentazione.segnaPresentato('t1', 2025, 'u1', new Date('2026-05-10T00:00:00Z'))
       await presentazione.annullaPresentazione('t1', 2025, 'u1', 'DICHIARAZIONE_DA_SOSTITUIRE')
       await presentazione.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-01T00:00:00Z'))
