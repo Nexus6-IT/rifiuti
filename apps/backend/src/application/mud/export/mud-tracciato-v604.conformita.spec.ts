@@ -421,6 +421,16 @@ describe('Controllo di lunghezza in generate()', () => {
       'Record BA di 218 caratteri invece di 217: file MUD non conforme'
     )
   })
+  it('lancia anche su un tipo di record che la tabella non conosce', () => {
+    class TracciatoTipoIgnoto extends MudTracciatoV604_2025 {
+      protected recordBA(data: MudExportData, r: MudRifiutoLine, progressivo: number): string {
+        return 'ZZ' + super.recordBA(data, r, progressivo).slice(2)
+      }
+    }
+    expect(() => new TracciatoTipoIgnoto().generate(datasetCompleto(2025))).toThrow(
+      'Record di tipo ZZ senza lunghezza nel tracciato: file MUD non conforme'
+    )
+  })
   it('la tabella delle lunghezze del codice coincide con quella del test', () => {
     expect(LUNGHEZZE_RECORD_V604).toEqual(LUNGHEZZE)
   })

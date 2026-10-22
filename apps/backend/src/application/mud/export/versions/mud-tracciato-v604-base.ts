@@ -226,7 +226,13 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
     for (const riga of righe) {
       const tipo = riga.slice(0, 2)
       const attesa = LUNGHEZZE_RECORD_V604[tipo]
-      if (attesa !== undefined && riga.length !== attesa) {
+      // un tipo nuovo senza lunghezza in tabella non passa senza controllo
+      if (attesa === undefined) {
+        throw new Error(
+          `Record di tipo ${tipo} senza lunghezza nel tracciato: file MUD non conforme`
+        )
+      }
+      if (riga.length !== attesa) {
         throw new Error(
           `Record ${tipo} di ${riga.length} caratteri invece di ${attesa}: file MUD non conforme`
         )
