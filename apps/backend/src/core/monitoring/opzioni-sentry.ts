@@ -124,12 +124,27 @@ function descriviErrorePrisma(tipo: string, errore: ErroreQualsiasi | undefined)
 }
 
 /**
+ * Toglie il testo delle eccezioni che non si è riusciti a mascherare; se nemmeno questo
+ * riesce, toglie le eccezioni (resta l'evento, con il resto già ripulito).
+ */
+function togliTestoEccezioni(evento: Sentry.ErrorEvent): void {
+  try {
+    for (const eccezione of evento.exception?.values ?? []) {
+      if (eccezione) delete (eccezione as { value?: unknown }).value
+    }
+  } catch {
+    delete evento.exception
+  }
+}
+
+/**
  * Ripulisce un evento prima dell'invio a Bugsink: niente corpo, cookie, header né query
  * string della richiesta, URL tagliati al primo `?` e con il percorso mascherato (anche nei
  * breadcrumb e in `transaction`), utente ridotto al solo `id`, testo delle eccezioni,
  * `message`/`logentry`, messaggi dei breadcrumb ed `extra` (a ogni profondità) senza dati
  * personali; le eccezioni Prisma ridotte a classe e codice. Non lancia mai: su un evento
- * di forma inattesa toglie quello che riesce.
+ * di forma inattesa la parte che non si riesce a ripulire si toglie (fail closed), non parte
+ * così com'è.
  */
 export function ripulisciEventoSentry(
   evento: Sentry.ErrorEvent,
@@ -152,7 +167,8 @@ export function ripulisciEventoSentry(
       }
     }
   } catch {
-    // forma inattesa: si prosegue con il resto
+    // forma inattesa: senza il testo, che non si è potuto mascherare (fail closed)
+    togliTestoEccezioni(evento)
   }
   try {
     // l'SDK riempie `message` quando viene lanciato un valore che non è un Error
@@ -164,7 +180,10 @@ export function ripulisciEventoSentry(
       conMessaggio.logentry = mascheraInProfondita(conMessaggio.logentry)
     }
   } catch {
-    // forma inattesa: si prosegue con il resto
+    // forma inattesa: si tolgono invece di mandarli in chiaro (fail closed)
+    const conMessaggio = evento as { message?: unknown; logentry?: unknown }
+    delete conMessaggio.message
+    delete conMessaggio.logentry
   }
   try {
     if (typeof evento.transaction === 'string') {
@@ -172,7 +191,8 @@ export function ripulisciEventoSentry(
       evento.transaction = urlRipulito(evento.transaction) as string
     }
   } catch {
-    // forma inattesa: si prosegue con il resto
+    // forma inattesa: si toglie invece di mandarla in chiaro (fail closed)
+    delete evento.transaction
   }
   try {
     if (Array.isArray(evento.breadcrumbs)) {
@@ -183,14 +203,16 @@ export function ripulisciEventoSentry(
       }
     }
   } catch {
-    // forma inattesa: si prosegue con il resto
+    // forma inattesa: si tolgono invece di mandarli in chiaro (fail closed)
+    delete evento.breadcrumbs
   }
   try {
     // compreso `extra.__serialized__`, che l'SDK aggiunge per un oggetto lanciato
     if (evento.extra)
       evento.extra = mascheraInProfondita(evento.extra) as Sentry.ErrorEvent['extra']
   } catch {
-    // forma inattesa: si prosegue con il resto
+    // forma inattesa: si toglie invece di mandarlo in chiaro (fail closed)
+    delete evento.extra
   }
   try {
     const richiesta = evento.request as Record<string, unknown> | undefined
@@ -202,7 +224,8 @@ export function ripulisciEventoSentry(
       if ('url' in richiesta) richiesta.url = urlRipulito(richiesta.url)
     }
   } catch {
-    // forma inattesa: si prosegue con il resto
+    // forma inattesa: si toglie invece di mandarla in chiaro (fail closed)
+    delete evento.request
   }
   try {
     if (Array.isArray(evento.breadcrumbs)) {
@@ -217,7 +240,8 @@ export function ripulisciEventoSentry(
       }
     }
   } catch {
-    // forma inattesa: si prosegue con il resto
+    // forma inattesa: si tolgono invece di mandarli in chiaro (fail closed)
+    delete evento.breadcrumbs
   }
   try {
     if (evento.user) {
@@ -226,7 +250,8 @@ export function ripulisciEventoSentry(
       else evento.user = { id }
     }
   } catch {
-    // forma inattesa
+    // forma inattesa: si toglie invece di mandarlo in chiaro (fail closed)
+    delete evento.user
   }
   return evento
 }

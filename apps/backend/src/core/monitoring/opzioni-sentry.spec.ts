@@ -369,4 +369,64 @@ describe('opzioni-sentry', () => {
       expect(r.exception!.values![0].value).toBe('PrismaClientKnownRequestError P2010')
     })
   })
+
+  describe('mascheratura fallita: il campo si toglie invece di partire in chiaro', () => {
+    /** Oggetto che fa fallire ogni lettura delle sue chiavi, dopo averne mostrata una. */
+    const ostile = () =>
+      Object.defineProperty({}, 'cf', {
+        enumerable: true,
+        get() {
+          throw new Error('lettura impossibile')
+        },
+      })
+
+    it('extra, message e logentry non mascherabili vengono tolti', () => {
+      const evento: any = { extra: ostile(), message: ostile(), logentry: ostile() }
+      const r: any = ripulisciEventoSentry(evento)
+      expect(r.extra).toBeUndefined()
+      expect(r.message).toBeUndefined()
+      expect(r.logentry).toBeUndefined()
+    })
+
+    it("il testo di un'eccezione non mascherabile viene tolto, il tipo resta", () => {
+      const eccezione = { type: 'Error' }
+      Object.defineProperty(eccezione, 'value', {
+        enumerable: true,
+        configurable: true,
+        get() {
+          throw new Error('lettura impossibile')
+        },
+      })
+      const evento: any = { exception: { values: [eccezione] } }
+      const r: any = ripulisciEventoSentry(evento)
+      expect(r.exception.values[0].type).toBe('Error')
+      expect(Object.getOwnPropertyDescriptor(r.exception.values[0], 'value')).toBeUndefined()
+    })
+
+    it('breadcrumb, richiesta e utente non ripulibili vengono tolti', () => {
+      const breadcrumb = Object.defineProperty({}, 'message', {
+        enumerable: true,
+        get() {
+          throw new Error('lettura impossibile')
+        },
+      })
+      const richiesta = Object.defineProperty({}, 'url', {
+        enumerable: true,
+        get() {
+          throw new Error('lettura impossibile')
+        },
+      })
+      const utente = Object.defineProperty({}, 'id', {
+        enumerable: true,
+        get() {
+          throw new Error('lettura impossibile')
+        },
+      })
+      const evento: any = { breadcrumbs: [breadcrumb], request: richiesta, user: utente }
+      const r: any = ripulisciEventoSentry(evento)
+      expect(r.breadcrumbs).toBeUndefined()
+      expect(r.request).toBeUndefined()
+      expect(r.user).toBeUndefined()
+    })
+  })
 })
