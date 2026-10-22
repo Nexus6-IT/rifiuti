@@ -1,5 +1,6 @@
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-api.client'
+import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
 
 /**
  * Test unitari di RiconciliaStatoRentriUseCase (R5 Task 4).
@@ -208,6 +209,31 @@ describe('RiconciliaStatoRentriUseCase', () => {
       expect(fir.markRENTRISynced).not.toHaveBeenCalled()
       expect(mockFIRRepository.save).not.toHaveBeenCalled()
       expect(risultato.segnalati).toBe(1)
+    })
+
+    it('un FIR annullato in locale mentre era in SYNCING è segnalato come tale, non come errore di trasporto', async () => {
+      mockPrisma.fIR.findMany.mockImplementation((args: any) => {
+        if (args.where.rentriSyncStatus === 'SYNCING') {
+          return Promise.resolve([{ id: 'fir-annullato' }])
+        }
+        return Promise.resolve([])
+      })
+      const fir = firFake({ id: 'fir-annullato', rentriTransazioneId: 'trans-3' })
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRentriApiClient.attendiEsito.mockResolvedValue({
+        errore: false,
+        validazione: [],
+        esito: { numero_fir: 'NUM-111' },
+      })
+      mockFIRRepository.save.mockRejectedValue(new FirAnnullatoNelFrattempoError('fir-annullato'))
+
+      const risultato = await useCase.execute(tenantId)
+
+      expect(risultato.segnalati).toBe(1)
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ errorCode: 'RENTRI_RICONCILIAZIONE_FIR_ANNULLATO_IN_LOCALE' })
+      )
     })
   })
 
