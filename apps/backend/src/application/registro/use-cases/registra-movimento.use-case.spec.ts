@@ -32,6 +32,7 @@ describe('RegistraMovimentoUseCase', () => {
       wasteMovement: {
         groupBy: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       // Catalogo CER: per default il codice usato nei test ("20 03 01") esiste.
       cERCode: {
@@ -941,16 +942,33 @@ describe('RegistraMovimentoUseCase', () => {
         meta: { target: ['tenant_id', 'fir_id_ricopia', 'type'] },
       })
     )
-    prisma.wasteMovement.findFirst = jest
-      .fn()
+    const findFirst = jest
+      .spyOn(prisma.wasteMovement, 'findFirst')
       .mockResolvedValue({ progressiveNumber: 9, progressiveYear: 2026 })
     const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
     expect(r.error).toBe(new FirGiaRegistratoError(9, 2026).message)
-    expect(prisma.wasteMovement.findFirst.mock.calls[0][0].where).toMatchObject({
+    expect((findFirst.mock.calls[0][0] as any).where).toMatchObject({
       tenantId: TENANT,
       firIdRicopia: 'fir-id-001',
       type: 'SCARICO',
     })
+  })
+
+  it('se la lettura del doppio fallisce, execute risponde con un errore e non lancia', async () => {
+    const tx = _mockTransazione(recordScarico)
+    tx.wasteMovement.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['tenant_id', 'fir_id_ricopia', 'type'] },
+      })
+    )
+    jest.spyOn(prisma.wasteMovement, 'findFirst').mockRejectedValue(new Error('connessione persa'))
+
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+
+    expect(r.isFailure).toBe(true)
+    expect(r.error).toMatch(/^Errore durante la registrazione/)
   })
 })
 

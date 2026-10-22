@@ -360,10 +360,17 @@ export class RegistraMovimentoUseCase {
     ) {
       return null
     }
-    const esistente = await this.prisma.wasteMovement.findFirst({
-      where: { tenantId: command.tenantId, firIdRicopia: command.firId, type: command.type },
-      select: { progressiveNumber: true, progressiveYear: true },
-    })
+    let esistente: { progressiveNumber: number; progressiveYear: number } | null
+    try {
+      esistente = await this.prisma.wasteMovement.findFirst({
+        where: { tenantId: command.tenantId, firIdRicopia: command.firId, type: command.type },
+        select: { progressiveNumber: true, progressiveYear: true },
+      })
+    } catch (lettura) {
+      // Siamo già nella gestione di un errore: chi chiama risponde col messaggio generico.
+      this.logger.error(`Lettura della ricopia doppia non riuscita: ${lettura?.message}`)
+      return null
+    }
     if (!esistente) return null
     return new FirGiaRegistratoError(esistente.progressiveNumber, esistente.progressiveYear).message
   }
