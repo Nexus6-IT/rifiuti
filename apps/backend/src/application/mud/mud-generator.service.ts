@@ -1,87 +1,78 @@
 import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { MudAggregazioneService } from './aggregazione/mud-aggregazione.service'
+import {
+  riepilogaAvvisi,
+  type MudEsitoControllo,
+  type RiepilogoAvvisi,
+} from './aggregazione/mud-controlli'
+
+export interface MudRiepilogo {
+  year: number
+  tenantId: string
+  generatedAt: Date
+  /** Una riga per CER dell'aggregazione: `totalQuantity` = prodotto (kg), `count` = movimenti */
+  wasteProduced: Array<{ cerCode: string; totalQuantity: number; count: number }>
+  totals: { produced: number; recovery: number; disposal: number; recyclingRate: number }
+  controlli: MudEsitoControllo[]
+  riepilogoAvvisi: RiepilogoAvvisi
+  /** Azienda segnata come non tenuta al MUD (A-W-10) */
+  mudNonDovuto: boolean
+}
+
+const arrotondaGrammo = (n: number): number => Math.round(n * 1000) / 1000
 
 /**
- * MUD Generator Service
- *
- * Generates MUD (Modello Unico Dichiarazione) annual reports.
- * Aggregates FIR data for environmental compliance reporting.
+ * Riepilogo annuale del MUD, mostrato nella pagina e stampato nel PDF.
+ * Parte dalla stessa aggregazione del file telematico (stessa finestra di date, stesse righe
+ * per CER, stessi controlli): i numeri del riepilogo sono quelli che il file dichiara.
+ * Non lancia sui controlli: anche con errori bloccanti il riepilogo si mostra, con gli errori.
  */
 @Injectable()
 export class MUDGeneratorService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly aggregazione: MudAggregazioneService,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext(MUDGeneratorService.name)
   }
 
-  async generateMUDReport(tenantId: string, year: number) {
-    this.logger.info(`Generating MUD report for tenant ${tenantId}, year ${year}`)
+  async generateMUDReport(tenantId: string, year: number): Promise<MudRiepilogo> {
+    this.logger.info(`Riepilogo MUD per tenant ${tenantId}, anno ${year}`)
 
-    const startDate = new Date(`${year}-01-01`)
-    const endDate = new Date(`${year}-12-31`)
+    const aggregato = await this.aggregazione.aggrega(tenantId, year)
 
-    // Aggregate waste produced
-    const wasteProduced = await this.prisma.fIR.groupBy({
-      by: ['cerCode'],
-      where: {
-        tenantId,
-        createdAt: { gte: startDate, lte: endDate },
-      },
-      _sum: { quantity: true },
-      _count: true,
-    })
-
-    // Calculate totals - convert Decimal to number
-    const totalProduced = wasteProduced.reduce(
-      (sum: number, w: { _sum: { quantity: any } }) =>
-        sum + (w._sum.quantity ? Number(w._sum.quantity) : 0),
-      0
-    )
-
-    // Ripartizione recupero (R) / smaltimento (D) basata sul campo reale
-    // `wasteOperationType` dei FIR del periodo. Una sola groupBy invece di due
-    // aggregate separate.
-    const byOperation = await this.prisma.fIR.groupBy({
-      by: ['wasteOperationType'],
-      where: {
-        tenantId,
-        createdAt: { gte: startDate, lte: endDate },
-      },
-      _sum: { quantity: true },
-      _count: true,
-    })
-
+    let produced = 0
     let recovery = 0
     let disposal = 0
-    for (const group of byOperation) {
-      const quantity = group._sum.quantity ? Number(group._sum.quantity) : 0
-      if (group.wasteOperationType === 'RECOVERY') {
-        recovery = quantity
-      } else if (group.wasteOperationType === 'DISPOSAL') {
-        disposal = quantity
-      }
+    for (const riga of aggregato.righe) {
+      produced += riga.prodottoKg
+      recovery += riga.recuperoKg
+      disposal += riga.smaltimentoKg
     }
+    produced = arrotondaGrammo(produced)
+    recovery = arrotondaGrammo(recovery)
+    disposal = arrotondaGrammo(disposal)
+    const avviati = recovery + disposal
 
     return {
       year,
       tenantId,
       generatedAt: new Date(),
-      wasteProduced: wasteProduced.map(
-        (w: { cerCode: string; _sum: { quantity: any }; _count: number }) => ({
-          cerCode: w.cerCode,
-          totalQuantity: w._sum.quantity ? Number(w._sum.quantity) : 0,
-          count: w._count,
-        })
-      ),
+      wasteProduced: aggregato.righe.map(riga => ({
+        cerCode: riga.cerCode,
+        totalQuantity: riga.prodottoKg,
+        count: aggregato.movimentiPerCer[riga.cerCode] ?? 0,
+      })),
       totals: {
-        produced: totalProduced,
+        produced,
         recovery,
         disposal,
-        recyclingRate: totalProduced > 0 ? recovery / totalProduced : 0,
+        recyclingRate: avviati > 0 ? recovery / avviati : 0,
       },
+      controlli: aggregato.controlli,
+      riepilogoAvvisi: riepilogaAvvisi(aggregato.controlli),
+      mudNonDovuto: aggregato.mudNonDovuto,
     }
   }
 }

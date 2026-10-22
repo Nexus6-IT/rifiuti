@@ -6,6 +6,8 @@
  * e il testo è in MAIUSCOLO. I campi sono separati da `;` (anche l'ultimo).
  */
 
+import { giornoItaliano, orarioItaliano } from '../../../core/time/anno-italiano'
+
 const ACCENT_MAP: Record<string, string> = {
   à: "A'",
   á: "A'",
@@ -136,18 +138,12 @@ export function mudDateOrZero(d: Date | null | undefined): string {
   return d ? mudDate(d) : '00000000'
 }
 
-/** Data in formato MUD "AAAAMMGG". */
+/** Data in formato MUD "AAAAMMGG": il giorno di calendario di Roma, mai quello del server. */
 export function mudDate(d: Date): string {
-  const y = d.getFullYear().toString().padStart(4, '0')
-  const m = (d.getMonth() + 1).toString().padStart(2, '0')
-  const day = d.getDate().toString().padStart(2, '0')
-  return `${y}${m}${day}`
+  return giornoItaliano(d).replace(/-/g, '')
 }
 
-/** Ora in formato MUD "HHMMSS". */
+/** Ora in formato MUD "HHMMSS": l'ora di Roma, mai quella del server. */
 export function mudTime(d: Date): string {
-  const h = d.getHours().toString().padStart(2, '0')
-  const mi = d.getMinutes().toString().padStart(2, '0')
-  const s = d.getSeconds().toString().padStart(2, '0')
-  return `${h}${mi}${s}`
+  return orarioItaliano(d).replace(/:/g, '')
 }

@@ -207,7 +207,7 @@ export const controlliMud = {
   profiloNonSupportato: (anno: number, ms: RifMovimento[]): MudEsitoControllo => ({
     codice: 'PROFILO_NON_SUPPORTATO',
     gravita: AVVISO,
-    messaggio: `Nel ${anno} il registro contiene ${ms.length} carichi di rifiuti ricevuti da terzi (n. ${elenco(ms)}): non sono nel file, perché i moduli RT, RE e MG che un impianto o un intermediario deve compilare non sono ancora supportati. Se l'azienda gestisce rifiuti di terzi, la dichiarazione è incompleta per quella parte; se sono causali sbagliate, il file è corretto.`,
+    messaggio: `Nel ${anno} il registro contiene ${ms.length} carichi di rifiuti ricevuti da terzi (n. ${elenco(ms)}): non sono nel file, perché i moduli RT e MG che un impianto o un intermediario deve compilare non sono ancora supportati. Se l'azienda gestisce rifiuti di terzi, la dichiarazione è incompleta per quella parte; se sono causali sbagliate, il file è corretto.`,
     movimenti: ms.map(m => segnala(m, false)),
   }),
 

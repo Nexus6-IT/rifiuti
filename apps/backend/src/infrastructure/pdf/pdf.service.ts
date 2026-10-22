@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common'
 import { LoggerService } from '../../core/logger/logger.service'
 import { formattaDataItaliana, formattaDataOraItaliana } from '../../core/time/anno-italiano'
+import { formattaQuantita } from '../../core/format/formatta-quantita'
+import { cerCanonico } from '../../domain/waste-movement/cer-registro'
+import {
+  haBloccanti,
+  riepilogaAvvisi,
+  type MudEsitoControllo,
+  type RiepilogoAvvisi,
+} from '../../application/mud/aggregazione/mud-controlli'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PdfPrinter = require('pdfmake/src/printer')
 import { TDocumentDefinitions, Content } from 'pdfmake/interfaces'
@@ -372,10 +380,31 @@ export class PDFService {
   }
 
   /**
-   * Build MUD PDF content
+   * Contenuto del PDF MUD: lo stesso riepilogo della pagina (MUDGeneratorService), cioè le
+   * righe, i controlli e gli avvisi dell'aggregazione da cui nasce il file telematico.
    */
   private buildMUDContent(report: any): Content[] {
     const content: Content[] = []
+    const controlli: MudEsitoControllo[] = report.controlli ?? []
+
+    if (report.mudNonDovuto) {
+      content.push({
+        text: "L'azienda è segnata come non tenuta alla presentazione del MUD.",
+        bold: true,
+        margin: [0, 0, 0, 8],
+      })
+    }
+    if (haBloccanti(controlli)) {
+      const bloccanti = controlli.filter(c => c.gravita === 'BLOCCANTE').length
+      content.push({
+        text: `Riepilogo NON utilizzabile per la dichiarazione: ci sono errori da correggere (${bloccanti}).`,
+        bold: true,
+        color: '#c0392b',
+        margin: [0, 0, 0, 8],
+      })
+    }
+
+    const kg = (n: number) => `${formattaQuantita(n)} kg`
 
     // Summary
     content.push({ text: 'RIEPILOGO ANNUALE', style: 'sectionHeader' })
@@ -385,29 +414,21 @@ export class PDFService {
           width: '25%',
           stack: [
             { text: 'Totale Prodotto', fontSize: 10, color: '#7f8c8d' },
-            { text: `${report.totals.produced.toLocaleString('it-IT')} kg`, style: 'summaryValue' },
+            { text: kg(report.totals.produced), style: 'summaryValue' },
           ],
         },
         {
           width: '25%',
           stack: [
             { text: 'Recupero', fontSize: 10, color: '#7f8c8d' },
-            {
-              text: `${report.totals.recovery.toLocaleString('it-IT')} kg`,
-              style: 'summaryValue',
-              color: '#27ae60',
-            },
+            { text: kg(report.totals.recovery), style: 'summaryValue', color: '#27ae60' },
           ],
         },
         {
           width: '25%',
           stack: [
             { text: 'Smaltimento', fontSize: 10, color: '#7f8c8d' },
-            {
-              text: `${report.totals.disposal.toLocaleString('it-IT')} kg`,
-              style: 'summaryValue',
-              color: '#e67e22',
-            },
+            { text: kg(report.totals.disposal), style: 'summaryValue', color: '#e67e22' },
           ],
         },
         {
@@ -415,7 +436,7 @@ export class PDFService {
           stack: [
             { text: 'Tasso Riciclo', fontSize: 10, color: '#7f8c8d' },
             {
-              text: `${(report.totals.recyclingRate * 100).toFixed(1)}%`,
+              text: `${formattaQuantita(Math.round(report.totals.recyclingRate * 1000) / 10)}%`,
               style: 'summaryValue',
               color: '#3498db',
             },
@@ -430,16 +451,16 @@ export class PDFService {
     const tableBody: any[] = [
       [
         { text: 'Codice CER', bold: true },
-        { text: 'Numero FIR', bold: true, alignment: 'right' },
-        { text: 'Quantità Totale (kg)', bold: true, alignment: 'right' },
+        { text: 'Movimenti', bold: true, alignment: 'right' },
+        { text: 'Prodotto (kg)', bold: true, alignment: 'right' },
       ],
     ]
 
     report.wasteProduced?.forEach((w: any) => {
       tableBody.push([
-        w.cerCode,
-        { text: w.count.toString(), alignment: 'right' },
-        { text: w.totalQuantity.toLocaleString('it-IT'), alignment: 'right' },
+        cerCanonico(w.cerCode),
+        { text: String(w.count), alignment: 'right' },
+        { text: formattaQuantita(w.totalQuantity), alignment: 'right' },
       ])
     })
 
@@ -450,6 +471,30 @@ export class PDFService {
         body: tableBody,
       },
       layout: 'lightHorizontalLines',
+    })
+
+    // Avvisi: il testo del riepilogo, poi un paragrafo per avviso nell'ordine delle voci
+    const avvisi = controlli.filter(c => c.gravita === 'AVVISO')
+    if (avvisi.length > 0) {
+      content.push({ text: 'Avvisi', style: 'sectionHeader' })
+      const riepilogo: RiepilogoAvvisi | undefined = report.riepilogoAvvisi
+      if (riepilogo?.testo) content.push({ text: riepilogo.testo, margin: [0, 0, 0, 6] })
+      const ordine = (riepilogo ?? riepilogaAvvisi(avvisi)).voci.map(v => v.codice)
+      const posizione = (c: MudEsitoControllo) => {
+        const i = ordine.indexOf(c.codice)
+        return i === -1 ? ordine.length : i
+      }
+      // sort stabile: a parità di codice resta l'ordine dell'aggregazione
+      for (const avviso of [...avvisi].sort((a, b) => posizione(a) - posizione(b))) {
+        content.push({ text: avviso.messaggio, fontSize: 9, margin: [0, 0, 0, 4] })
+      }
+    }
+
+    content.push({
+      text: "I rifiuti prodotti fuori dall'unità locale (cantieri, manutenzioni: modulo RE) non sono distinti: il file li attribuisce all'unità locale.",
+      fontSize: 9,
+      italics: true,
+      margin: [0, 12, 0, 0],
     })
 
     return content

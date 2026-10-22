@@ -51,3 +51,18 @@ export function formattaDataOraItaliana(istante: Date): string {
   for (const parte of formatoDataOraRoma.formatToParts(istante)) parti[parte.type] = parte.value
   return `${parti.day}/${parti.month}/${parti.year} ${parti.hour}:${parti.minute}`
 }
+
+const formatoOrarioRoma = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Rome',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+})
+
+/** Ora di Roma dell'istante, nel formato 'HH:MM:SS', ricomposta dalle parti del formatter. */
+export function orarioItaliano(istante: Date): string {
+  const parti: Record<string, string> = {}
+  for (const parte of formatoOrarioRoma.formatToParts(istante)) parti[parte.type] = parte.value
+  return `${parti.hour}:${parti.minute}:${parti.second}`
+}

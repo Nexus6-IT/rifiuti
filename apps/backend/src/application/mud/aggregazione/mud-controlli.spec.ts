@@ -266,6 +266,10 @@ describe('controlliMud', () => {
 
   it('profilo non supportato e più unità locali sono avvisi', () => {
     expect(controlliMud.profiloNonSupportato(2025, [m]).gravita).toBe('AVVISO')
+    // RE non è un modulo dei gestori (A-W-12)
+    expect(controlliMud.profiloNonSupportato(2025, [m]).messaggio).toBe(
+      "Nel 2025 il registro contiene 1 carichi di rifiuti ricevuti da terzi (n. 4/2025): non sono nel file, perché i moduli RT e MG che un impianto o un intermediario deve compilare non sono ancora supportati. Se l'azienda gestisce rifiuti di terzi, la dichiarazione è incompleta per quella parte; se sono causali sbagliate, il file è corretto."
+    )
     const r = controlliMud.piuUnitaLocali([
       { denominazione: 'Sede', numIscrSito: 'OP1', principale: true },
       { denominazione: 'Cantiere Nord', numIscrSito: 'OP2', principale: false },
