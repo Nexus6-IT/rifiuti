@@ -695,6 +695,8 @@ export class MudComponent implements OnInit {
   readonly presentazione = signal<StatoPresentazioneMud | null>(null)
   readonly obbligo = signal<ObbligoMud | null>(null)
   readonly loadingReport = signal(false)
+  /** Richiesta di riepilogo in corso: una risposta di una richiesta superata si scarta. */
+  private richiestaReport = 0
   readonly downloading = signal(false)
   readonly dialogo = signal<Dialogo | null>(null)
 
@@ -771,6 +773,9 @@ export class MudComponent implements OnInit {
   }
 
   onYearChange(): void {
+    // un riepilogo ancora in arrivo è dell'anno precedente
+    this.richiestaReport++
+    this.loadingReport.set(false)
     this.report.set(null)
     this.presentazione.set(null)
     this.righe = []
@@ -779,15 +784,18 @@ export class MudComponent implements OnInit {
 
   loadReport(onLoaded?: (r: MudRiepilogo) => void): void {
     if (!this.selectedYear) return
+    const richiesta = ++this.richiestaReport
     this.loadingReport.set(true)
     this.mudService.getReport(this.selectedYear).subscribe({
       next: r => {
+        if (richiesta !== this.richiestaReport) return
         this.report.set(r)
         this.loadingReport.set(false)
         this.loadIntegrazioni(r)
         onLoaded?.(r)
       },
       error: () => {
+        if (richiesta !== this.richiestaReport) return
         this.loadingReport.set(false)
         this.toast.error('Errore nella generazione del report MUD')
       },

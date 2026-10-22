@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { HttpErrorResponse, HttpHeaders, HttpResponse } from '@angular/common/http'
 import { ActivatedRoute, convertToParamMap } from '@angular/router'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { MudComponent } from './mud.component'
 import {
   IntegrazioniMud,
@@ -258,6 +258,21 @@ describe('MudComponent', () => {
       component.onYearChange()
       expect(mud.getPresentazione).toHaveBeenCalledWith(2024)
       expect(component.report()).toBeNull()
+    })
+
+    it('un riepilogo arrivato dopo il cambio d anno non si mostra', () => {
+      const risposta = new Subject<MudRiepilogo>()
+      mud.getReport.and.returnValue(risposta)
+      crea()
+      component.loadReport()
+      component.selectedYear = 2024
+      component.onYearChange()
+
+      risposta.next(riepilogo({ year: 2025 }))
+
+      expect(component.report()).toBeNull()
+      expect(component.loadingReport()).toBeFalse()
+      expect(mud.getIntegrazioni).not.toHaveBeenCalled()
     })
   })
 
