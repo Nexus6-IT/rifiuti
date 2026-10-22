@@ -1020,6 +1020,20 @@ describe('MudAggregazioneService', () => {
     expect(conCodice(r.controlli, 'GIACENZE_NON_CALCOLATE')).toEqual([])
   })
 
+  it('saldo con tonnellate, unità vuota e CER pericoloso: kg e asterisco', async () => {
+    impostaDati({ movimenti: [mov({})] })
+    prisma.wasteMovement.groupBy.mockResolvedValue([
+      { cerCode: '17 05 03*', type: 'CARICO', unit: 't', _sum: { quantity: 0.5 } },
+      { cerCode: '170503', type: 'CARICO', unit: '', _sum: { quantity: 20 } },
+    ])
+
+    const r = await service.aggrega('t1', 2025)
+
+    const g = conCodice(r.controlli, 'GIACENZE_NON_CALCOLATE')
+    expect(g[0].kgNonDichiarati).toBe(520)
+    expect(g[0].messaggio).toContain('(CER 17 05 03*: 520 kg)')
+  })
+
   // 30
   it('dichiarante senza ATECO o senza comune ISTAT blocca', async () => {
     impostaDati({ movimenti: [mov({})] })

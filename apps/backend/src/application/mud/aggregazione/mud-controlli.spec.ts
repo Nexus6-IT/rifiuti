@@ -378,17 +378,27 @@ describe('controlliMud', () => {
       { cerCode6: '150110', kg: 30.5 },
     ])
     expect(c.kgNonDichiarati).toBe(150.5)
+    expect(
+      controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '17 05 03*', kg: 1 }]).messaggio
+    ).toContain('(CER 17 05 03*: 1 kg)')
     expect(c.messaggio).toBe(
       'Secondo il registro, al 31/12/2025 risultano in deposito 150,5 kg (CER 17 04 05: 120 kg; CER 15 01 10: 30,5 kg) che il file non dichiara: le giacenze di fine anno nel file risultano zero.'
     )
     const r = riepilogaAvvisi([
       controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 120 }]),
     ])
-    expect(r).toMatchObject({ kgInMeno: 120, kgInPiu: 0, cambianoQuantita: true })
+    expect(r).toMatchObject({ kgInMeno: 120, kgInPiu: 0, cambianoQuantita: false })
     expect(r.voci[0]).toMatchObject({ codice: 'GIACENZE_NON_CALCOLATE', kgEsclusi: 120 })
     expect(r.testo).toBe(
       'Il file dichiara 120 kg in meno del registro per i motivi elencati sotto.'
     )
+  })
+
+  it('le giacenze da sole non cambiano le quantità dichiarate (Decisione 19)', () => {
+    const g = [controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 120 }])]
+    expect(avvisiCambianoQuantita(g)).toBe(false)
+    expect(riepilogaAvvisi(g).kgInMeno).toBe(120)
+    expect(avvisiCambianoQuantita([...g, controlliMud.firAnnullato(m, 'F')])).toBe(true)
   })
 
   it('gli avvisi R/D cambiano le quantità', () => {

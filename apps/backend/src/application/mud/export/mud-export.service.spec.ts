@@ -318,6 +318,34 @@ describe('MudExportService', () => {
     expect(errore.getResponse().error).toBe('MUD_CONFERMA_RISERVATA_AMMINISTRATORI')
   })
 
+  it('con le sole giacenze quantificate un VIEWER genera il file, ma con un movimento escluso no', async () => {
+    const solo = [controlliMud.giacenzeNonCalcolate(2024, [{ cerCode6: '170405', kg: 120 }])]
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
+      movimentiPerCer: { '170405': 1 },
+      controlli: solo,
+    })
+    const nonConfermato = await service.exportTelematico('t1', 2024, viewer).catch(e => e)
+    expect(nonConfermato).toBeInstanceOf(UnprocessableEntityException)
+    await expect(
+      service.exportTelematico('t1', 2024, viewer, ['GIACENZE_NON_CALCOLATE'])
+    ).resolves.toBeDefined()
+
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
+      movimentiPerCer: { '170405': 1 },
+      controlli: [...solo, controlliMud.firAnnullato(rifMovimento, 'ABC 123')],
+    })
+    const errore = await service
+      .exportTelematico('t1', 2024, viewer, ['GIACENZE_NON_CALCOLATE', 'FIR_ANNULLATO'])
+      .catch(e => e)
+    expect(errore).toBeInstanceOf(ForbiddenException)
+  })
+
   it('un avviso R/D riserva il file agli amministratori', async () => {
     const controlli = [controlliMud.operazioneNonIndicata(rifMovimento)]
     aggregazione.aggrega.mockResolvedValue({

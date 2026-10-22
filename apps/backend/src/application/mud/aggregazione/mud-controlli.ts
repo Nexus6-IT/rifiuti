@@ -477,8 +477,14 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
   const kgInPiu = arrotondaGrammo(voci.reduce((s, v) => s + v.kgAggiunti, 0))
 
   const haRipartizioneRD = avvisi.some(e => CODICI_RIPARTIZIONE_RD.includes(e.codice))
+  // Le giacenze non dichiarate restano in kgInMeno e nel testo, ma da sole non cambiano le
+  // quantità nel senso della Decisione 19: non sono una scelta di esclusione del dichiarante e
+  // non si correggono nell'applicazione, quindi non riservano la conferma agli amministratori
+  // (quasi ogni produttore ha rifiuti in deposito a fine anno). Restano da confermare.
   const cambianoQuantita =
-    voci.some(v => v.kgEsclusi > 0 || v.kgAggiunti > 0) ||
+    voci.some(
+      v => v.codice !== 'GIACENZE_NON_CALCOLATE' && (v.kgEsclusi > 0 || v.kgAggiunti > 0)
+    ) ||
     avvisi.some(e => (e.movimenti ?? []).some(m => !m.incluso)) ||
     haRipartizioneRD
 

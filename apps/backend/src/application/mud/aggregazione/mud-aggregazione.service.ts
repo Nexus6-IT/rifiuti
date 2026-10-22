@@ -542,18 +542,27 @@ export class MudAggregazioneService {
       where: { tenantId, movementDate: { lt: fine } },
       _sum: { quantity: true },
     })
-    const perCer = new Map<string, number>()
+    // chiave = cifre del CER; l'asterisco dei pericolosi vince su qualunque formato del gruppo
+    const perCer = new Map<string, { kg: number; pericoloso: boolean; codice: string }>()
     for (const g of gruppi) {
       const kg = convertiInKg(Number(g._sum.quantity ?? 0), g.unit)
       if (kg === null) continue
       const cer6 = chiaveConfrontoCer(g.cerCode)
       const segno = g.type === 'CARICO' ? 1 : -1
-      perCer.set(cer6, (perCer.get(cer6) ?? 0) + segno * kg)
+      const prec = perCer.get(cer6) ?? { kg: 0, pericoloso: false, codice: g.cerCode }
+      perCer.set(cer6, {
+        kg: prec.kg + segno * kg,
+        pericoloso: prec.pericoloso || g.cerCode.includes('*'),
+        codice: prec.codice,
+      })
     }
     return [...perCer.entries()]
-      .filter(([, kg]) => kg > 0.0005)
-      .map(([cerCode6, kg]) => ({ cerCode6, kg: arrotonda3(kg) }))
-      .sort((a, b) => (a.cerCode6 < b.cerCode6 ? -1 : a.cerCode6 > b.cerCode6 ? 1 : 0))
+      .filter(([, v]) => v.kg > 0.0005)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([cer6, v]) => ({
+        cerCode6: cerCanonico(v.pericoloso && !v.codice.includes('*') ? `${cer6}*` : v.codice),
+        kg: arrotonda3(v.kg),
+      }))
   }
 
   /** Recupero o smaltimento di uno scarico, nell'ordine della Decisione 5. */
