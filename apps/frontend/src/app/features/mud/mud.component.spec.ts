@@ -262,6 +262,26 @@ describe('MudComponent', () => {
   })
 
   describe('riepilogo', () => {
+    it('totali e tabella CER con la stessa precisione del PDF e del file (al grammo)', () => {
+      mud.getReport.and.returnValue(
+        of(
+          riepilogo({
+            wasteProduced: [{ cerCode: '170405', totalQuantity: 1234.567, count: 2 }],
+            totals: { produced: 0.4, recovery: 1234.567, disposal: 0, recyclingRate: 0 },
+          })
+        )
+      )
+      crea()
+      component.loadReport()
+      fixture.detectChanges()
+
+      const valori = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('.stat-card__value')
+      ).map(e => e.textContent?.trim())
+      expect(valori.slice(0, 2)).toEqual(['0,4', '1.234,567'])
+      expect(testo()).toContain('1.234,567')
+    })
+
     it('colonna dei movimenti, controlli raggruppati e numeri in formato italiano', () => {
       mud.getReport.and.returnValue(
         of(

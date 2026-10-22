@@ -986,8 +986,9 @@ export class MudComponent implements OnInit {
 
   // Formattazione: numeri sempre con formattaQuantita (nessun locale `it` registrato)
 
+  /** Al grammo (fino a 3 decimali), come il PDF e il file: 0,4 kg non si legge «0». */
   kg(n: number | null | undefined): string {
-    return formattaQuantita(Math.round(n ?? 0))
+    return formattaQuantita(n ?? 0)
   }
 
   percentuale(rate: number | null | undefined): string {
