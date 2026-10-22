@@ -109,11 +109,13 @@ describe('quantitaDaFir', () => {
     })
   })
 
-  it('CARICO senza peso verificato usa la dichiarata', () => {
+  it('CARICO senza peso verificato usa la dichiarata e lo dice', () => {
     expect(quantitaDaFir(fir(null), 'CARICO', 'DESTINATARIO')).toEqual({
       quantita: 1234.5,
       unita: 'KG',
-      suggerimento: null,
+      suggerimento:
+        'Il FIR non ha ancora il peso verificato a destino: quantità dichiarata alla partenza ' +
+        '(1.234,5 KG). Se il peso rilevato è diverso, correggila.',
     })
     expect(quantitaDaFir(fir(0), 'CARICO', 'DESTINATARIO').quantita).toBe(1234.5)
   })

@@ -101,5 +101,15 @@ export function quantitaDaFir(
         `il FIR dichiarava ${formattaQuantita(dichiarata)} ${unita}.`,
     }
   }
+  if (tipo === 'CARICO' && ruolo === 'DESTINATARIO') {
+    // Il carico di un FIR non ancora confermato a destino: la dichiarata è un ripiego.
+    return {
+      quantita: dichiarata,
+      unita,
+      suggerimento:
+        'Il FIR non ha ancora il peso verificato a destino: quantità dichiarata alla partenza ' +
+        `(${formattaQuantita(dichiarata)} ${unita}). Se il peso rilevato è diverso, correggila.`,
+    }
+  }
   return { quantita: dichiarata, unita, suggerimento: null }
 }

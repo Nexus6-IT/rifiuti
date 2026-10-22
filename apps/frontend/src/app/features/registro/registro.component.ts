@@ -1287,10 +1287,13 @@ export class RegistroComponent implements OnInit {
     const tipo: TipoMovimento = this.form?.get('type')?.value ?? 'CARICO'
     this.tipoCorrente.set(tipo)
     this.form.get('causale')?.reset(null)
-    // Se è collegato un FIR, la controparte dipende dalla direzione: per un
-    // CARICO è il produttore/cedente, per uno SCARICO è il destinatario.
+    // Se è collegato un FIR, controparte e quantità dipendono dalla direzione: per un
+    // CARICO la controparte è il produttore/cedente, per uno SCARICO il destinatario; la
+    // quantità è il peso a destino solo per il carico del destinatario (C-W-01).
     if (this.firCollegato) {
       this.applicaControparteDaFir(this.firCollegato, tipo)
+      const q = quantitaDaFir(this.firCollegato, tipo, this.determinaRuolo(this.firCollegato))
+      this.form.patchValue({ quantity: q.quantita, unit: q.unita })
     }
   }
 
