@@ -57,6 +57,19 @@ describe('MudController integrazioni del MUD', () => {
     ).toBeUndefined()
   })
 
+  it('un VIEWER nell azienda selezionata non salva le integrazioni (403)', async () => {
+    const integrazioni = { salva: jest.fn() }
+    const controller = controllerCon('VIEWER', integrazioni)
+
+    const errore = await controller
+      .salvaIntegrazioni({ user: { id: 'u1', tenantId: 't1' } } as any, 2025, vuoto)
+      .catch(e => e)
+
+    expect(errore).toBeInstanceOf(ForbiddenException)
+    expect(errore.getResponse().error).toBe('MUD_INTEGRAZIONI_RISERVATE_AMMINISTRATORI')
+    expect(integrazioni.salva).not.toHaveBeenCalled()
+  })
+
   it.each(['ADMIN', 'SUPER_ADMIN'])(
     '%s nell azienda selezionata salva con tenant e utente',
     async ruolo => {

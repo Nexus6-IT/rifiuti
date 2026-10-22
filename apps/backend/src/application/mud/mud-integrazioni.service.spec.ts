@@ -48,6 +48,39 @@ describe('MudIntegrazioniService', () => {
     expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
   })
 
+  it('una nazione di soli spazi vale come assente: il CF vuoto si rifiuta', async () => {
+    const errore = await service
+      .salva(
+        't1',
+        2025,
+        'u1',
+        dati({
+          destinatari: [{ ragioneSociale: 'Ecologia Srl', codiceFiscale: '', nazione: '   ' }],
+        })
+      )
+      .catch(e => e)
+    expect(errore).toBeInstanceOf(BadRequestException)
+    expect(errore.message).toContain('di "Ecologia Srl" non valido')
+    expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
+  })
+
+  it('due righe con la stessa chiave nello stesso PUT: vale l ultima', async () => {
+    await service.salva(
+      't1',
+      2025,
+      'u1',
+      dati({
+        destinatari: [
+          { ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' },
+          { ragioneSociale: ' ecologia srl ', codiceFiscale: '', nazione: 'Germania' },
+        ],
+      })
+    )
+    expect(scritto().destinatari).toEqual({
+      'ECOLOGIA SRL': { ragioneSociale: 'ecologia srl', codiceFiscale: '', nazione: 'Germania' },
+    })
+  })
+
   it("rifiuta il codice dell'azienda stessa come destinatario", async () => {
     await expect(
       service.salva(
