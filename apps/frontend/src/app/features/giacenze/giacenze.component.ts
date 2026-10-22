@@ -4,6 +4,7 @@ import { ButtonModule } from 'primeng/button'
 import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { formattaQuantita } from '../../shared/format/formatta-quantita'
 import { ToastService } from '../../core/services/toast.service'
 import {
   GiacenzeService,
@@ -148,7 +149,7 @@ import {
                     <div *ngFor="let s of g.scarichiSuFirAnnullati" class="mt-1">
                       <p-tag
                         severity="warning"
-                        value="Scarico {{ s.numero }} ({{ s.quantita | number: '1.0-3' }} {{
+                        value="Scarico {{ s.numero }} ({{ formattaQuantita(s.quantita) }} {{
                           s.unita
                         }}) collegato al FIR {{
                           s.fir
@@ -161,7 +162,7 @@ import {
                   <td class="text-right">
                     <strong>{{ g.giacenzaKg | number: '1.0-2' }}</strong>
                     <div *ngFor="let a of g.altreUnita" class="giacenze-altra-unita">
-                      {{ a.giacenza | number: '1.0-2' }} {{ a.unita }}
+                      {{ formattaQuantita(a.giacenza) }} {{ a.unita }}
                     </div>
                   </td>
                   <td>
@@ -323,6 +324,8 @@ export class GiacenzeComponent implements OnInit {
       },
     })
   }
+
+  readonly formattaQuantita = formattaQuantita
 
   reasonLabel(reason: DepositoTemporaneoReason): string {
     return reason === 'DURATION' ? 'Durata superata' : 'Quantità superata'

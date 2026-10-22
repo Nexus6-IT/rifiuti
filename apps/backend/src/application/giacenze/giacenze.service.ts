@@ -3,7 +3,12 @@ import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DepositoTemporaneoConfig, DEFAULT_DEPOSITO_TEMPORANEO } from './deposito-temporaneo.config'
 import { normalizzaUnitaRegistro } from '../../domain/waste-movement/unita-misura-registro'
-import { firAnnullato, etichettaFir } from '../../domain/fir/stati-fir'
+import {
+  firAnnullato,
+  etichettaFir,
+  STATO_FIR_ANNULLATO,
+  STATO_RENTRI_ANNULLATO,
+} from '../../domain/fir/stati-fir'
 
 /** Giacenza in un'unità che non è di massa (litri, m³, ...): non si somma ai kg. */
 export interface GiacenzaAltraUnita {
@@ -164,7 +169,7 @@ export class GiacenzeService {
     const firs = await this.prisma.fIR.findMany({
       where: {
         tenantId,
-        OR: [{ status: 'CANCELLED' }, { rentriStatoFormulario: 'Annullato' }],
+        OR: [{ status: STATO_FIR_ANNULLATO }, { rentriStatoFormulario: STATO_RENTRI_ANNULLATO }],
       },
       select: {
         id: true,

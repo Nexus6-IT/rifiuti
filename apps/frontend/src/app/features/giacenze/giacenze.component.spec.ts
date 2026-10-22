@@ -61,4 +61,18 @@ describe('GiacenzeComponent', () => {
       'Scarico 2026/9 (200 KG) collegato al FIR FIR-2026-000003, poi annullato: la giacenza lo conta ancora.'
     )
   })
+
+  it('scrive le quantità aggiunte in formato italiano', () => {
+    setup([
+      giacenza({
+        altreUnita: [{ unita: 'LITRI', carico: 1234.5, scarico: 0, giacenza: 1234.5 }],
+        scarichiSuFirAnnullati: [
+          { numero: '2026/9', quantita: 12500, unita: 'KG', fir: 'FIR-2026-000003' },
+        ],
+      }),
+    ])
+    const testo = fixture.nativeElement.textContent
+    expect(testo).toContain('1.234,5 LITRI')
+    expect(testo).toContain('Scarico 2026/9 (12.500 KG)')
+  })
 })
