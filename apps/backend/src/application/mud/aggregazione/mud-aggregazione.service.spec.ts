@@ -635,6 +635,10 @@ describe('MudAggregazioneService', () => {
 
     expect(r.righe[0].dr![0].codiceFiscale).toBe('12345678903')
     expect(codici(r.controlli)).not.toContain('DESTINATARIO_SENZA_CF')
+    // le integrazioni lette restano nell'aggregato: la traccia dell'export registra queste
+    expect(r.integrazioni.destinatari['ECOLOGIA SRL']).toEqual(
+      expect.objectContaining({ codiceFiscale: '12345678903' })
+    )
   })
 
   // (confutazione dopo l'esecuzione, A-W-05)

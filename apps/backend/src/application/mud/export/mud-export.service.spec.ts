@@ -387,10 +387,37 @@ describe('MudExportService', () => {
     })
   })
 
+  it('la traccia registra le integrazioni usate dal file, non quelle salvate nel frattempo', async () => {
+    const usate = {
+      ...INTEGRAZIONI_VUOTE,
+      destinatari: {
+        'ECOLOGIA SRL': { ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' },
+      },
+    }
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
+      movimentiPerCer: { '170405': 1 },
+      controlli: [],
+      integrazioni: usate,
+    })
+    // un salvataggio delle integrazioni arrivato fra l'aggregazione e la scrittura della traccia
+    prisma.mUDReport.findUnique.mockResolvedValue({
+      status: 'DRAFT',
+      submittedAt: null,
+      reportData: { integrazioni: { destinatari: {}, pesiSpecifici: {} } },
+    })
+    await service.exportTelematico('t1', 2024, admin)
+    const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+    expect(voce.integrazioniUsate).toEqual(usate)
+  })
+
   it("con gli avvisi confermati genera il file e salva l'esportazione", async () => {
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
+      integrazioni: INTEGRAZIONI_VUOTE,
       dichiarante: DICHIARANTE_OK,
       movimentiPerCer: { '170405': 1 },
       controlli: [

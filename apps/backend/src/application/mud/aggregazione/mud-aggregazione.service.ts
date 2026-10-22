@@ -46,6 +46,8 @@ export interface MudAggregato {
   controlli: MudEsitoControllo[]
   /** azienda segnata come non tenuta al MUD (A-W-10): il file si genera comunque, con un avviso */
   mudNonDovuto: boolean
+  /** integrazioni dell'anno lette per questa aggregazione: la traccia dell'export registra queste */
+  integrazioni: IntegrazioniMud
 }
 
 interface Movimento {
@@ -570,6 +572,7 @@ export class MudAggregazioneService {
       controlli,
       dichiarante: { atecoNormalizzato, comuneCode },
       mudNonDovuto,
+      integrazioni,
     }
   }
 

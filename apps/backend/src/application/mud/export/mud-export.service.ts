@@ -16,7 +16,6 @@ import {
   haBloccanti,
   riepilogaAvvisi,
 } from '../aggregazione/mud-controlli'
-import { leggiIntegrazioni } from '../aggregazione/mud-integrazioni'
 import { hashAggregato, hashDichiarante } from '../aggregazione/mud-regole'
 import { aggiornaReportData, dataComunicazioneSostituita } from '../mud-report-data'
 import { MudExportData, MudExportResult } from './mud-export.types'
@@ -169,7 +168,9 @@ export class MudExportService {
           sostituisce: sostituita ? sostituita.toISOString() : null,
           avvisiConfermati: codiciAvviso,
           riepilogo: riepilogoQuantita,
-          integrazioniUsate: leggiIntegrazioni(p),
+          // quelle lette dall'aggregazione che ha fatto il file, non quelle di `p`: un
+          // salvataggio arrivato nel frattempo non è nel file
+          integrazioniUsate: aggregato.integrazioni,
         }
         return {
           reportData: {

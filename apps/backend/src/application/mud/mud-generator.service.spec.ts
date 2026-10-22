@@ -1,6 +1,7 @@
 import { MUDGeneratorService } from './mud-generator.service'
 import type { MudAggregato } from './aggregazione/mud-aggregazione.service'
 import { controlliMud, riepilogaAvvisi } from './aggregazione/mud-controlli'
+import { INTEGRAZIONI_VUOTE } from './aggregazione/mud-integrazioni'
 import type { LoggerService } from '../../core/logger/logger.service'
 
 /**
@@ -27,6 +28,7 @@ describe('MUDGeneratorService', () => {
     dichiarante: { atecoNormalizzato: '43.11.00', comuneCode: '058091' },
     controlli: [],
     mudNonDovuto: false,
+    integrazioni: INTEGRAZIONI_VUOTE,
     ...parziale,
   })
 
