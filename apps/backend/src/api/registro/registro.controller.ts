@@ -172,7 +172,8 @@ export class RegistroController {
    * Stato del progressivo iniziale del registro per l'anno (C-W-02), con quello che
    * serve al frontend per decidere se offrire l'impostazione: `haMovimenti` e
    * `puoImpostare` (ruolo effettivo nell'azienda selezionata), così il client non deve
-   * dedurli da sé.
+   * dedurli da sé. `puoRegistrare` dice, con lo stesso ruolo, se mostrare la registrazione
+   * di un movimento: chi è in sola consultazione riceverebbe comunque 403.
    */
   @Get('progressivo-iniziale/:anno')
   @HttpCode(HttpStatus.OK)
@@ -181,11 +182,15 @@ export class RegistroController {
   async leggiProgressivoIniziale(
     @Param('anno', ParseIntPipe) anno: number,
     @Req() req: any
-  ): Promise<StatoProgressivoIniziale & { puoImpostare: boolean }> {
+  ): Promise<StatoProgressivoIniziale & { puoImpostare: boolean; puoRegistrare: boolean }> {
     const tenantId = requireRequestTenantId(req)
     const stato = await this.progressivoIniziale.leggi(tenantId, anno)
-    const puoImpostare = await this.haRuolo(req, tenantId, RUOLI_PROGRESSIVO_INIZIALE)
-    return { ...stato, puoImpostare }
+    const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
+    return {
+      ...stato,
+      puoImpostare: RUOLI_PROGRESSIVO_INIZIALE.includes(ruolo),
+      puoRegistrare: RUOLI_REGISTRAZIONE.includes(ruolo),
+    }
   }
 
   /**

@@ -57,6 +57,7 @@ import {
   CausaleMovimento,
   StatoProgressivoIniziale,
   offrireProgressivoIniziale,
+  offrireRegistrazione,
   annoItaliano,
 } from './registro.service'
 import { messaggioMovimentoRegistrato } from './registro-messaggi'
@@ -135,6 +136,7 @@ interface FirOption {
             ariaLabel="Imposta il primo numero del registro dell'anno"
           ></p-button>
           <p-button
+            *ngIf="offriRegistrazione()"
             label="Registra movimento"
             icon="pi pi-plus"
             (onClick)="apriForm()"
@@ -1582,6 +1584,8 @@ export class RegistroComponent implements OnInit {
   readonly savingProgressivo = signal(false)
   /** Il pulsante dipende da ruolo e movimenti come li vede il backend, non dal token. */
   readonly offriProgressivo = computed(() => offrireProgressivoIniziale(this.statoProgressivo()))
+  /** Nasconde "Registra movimento" a chi è in sola consultazione nell'azienda selezionata. */
+  readonly offriRegistrazione = computed(() => offrireRegistrazione(this.statoProgressivo()))
   readonly annoCorrente = annoItaliano(new Date())
   progressivoVisible = false
 

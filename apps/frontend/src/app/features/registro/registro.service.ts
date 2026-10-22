@@ -168,11 +168,23 @@ export interface StatoProgressivoIniziale {
   haMovimenti: boolean
   /** Lo decide il backend in base al ruolo nell'azienda: il frontend non lo deduce dal token. */
   puoImpostare: boolean
+  /** Come sopra, per la registrazione di un movimento (amministratore o operatore). */
+  puoRegistrare: boolean
 }
 
 /** Si offre l'impostazione solo a chi può farla, se l'anno non ha movimenti né un iniziale. */
 export function offrireProgressivoIniziale(stato: StatoProgressivoIniziale | null): boolean {
   return !!stato && stato.puoImpostare && !stato.haMovimenti && stato.primoProgressivo === null
+}
+
+/**
+ * Si mostra la registrazione di un movimento a meno che il backend dica che l'utente è in
+ * sola consultazione nell'azienda selezionata. Senza stato si mostra: il salvataggio lo
+ * decide comunque il backend (403), e nasconderla per un errore di rete toglierebbe la
+ * funzione principale della pagina.
+ */
+export function offrireRegistrazione(stato: StatoProgressivoIniziale | null): boolean {
+  return stato?.puoRegistrare !== false
 }
 
 const formatoAnnoRoma = new Intl.DateTimeFormat('en-US', {

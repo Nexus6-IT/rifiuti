@@ -214,6 +214,24 @@ describe('RegistroController — progressivo iniziale', () => {
     }
   })
 
+  it('puoRegistrare dice al frontend se mostrare la registrazione, col ruolo effettivo', async () => {
+    for (const [ruoloEffettivo, ruoloToken, atteso] of [
+      ['OPERATOR', 'VIEWER', true],
+      ['ADMIN', 'ADMIN', true],
+      ['SUPER_ADMIN', 'SUPER_ADMIN', true],
+      ['VIEWER', 'OPERATOR', false],
+    ] as const) {
+      const stato = await crea(ruoloEffettivo).leggiProgressivoIniziale(
+        2026,
+        richiesta(ruoloToken, 't1')
+      )
+      expect({ ruoloEffettivo, puoRegistrare: stato.puoRegistrare }).toEqual({
+        ruoloEffettivo,
+        puoRegistrare: atteso,
+      })
+    }
+  })
+
   it("imposta sull'azienda selezionata con l'utente della richiesta", async () => {
     await expect(
       crea('ADMIN').impostaProgressivoIniziale(

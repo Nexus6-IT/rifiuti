@@ -5,6 +5,7 @@ import {
   StatoProgressivoIniziale,
   annoItaliano,
   offrireProgressivoIniziale,
+  offrireRegistrazione,
 } from './registro.service'
 import { environment } from '../../../environments/environment'
 
@@ -31,6 +32,7 @@ describe('RegistroService — progressivo iniziale', () => {
       impostatoIl: null,
       haMovimenti: false,
       puoImpostare: true,
+      puoRegistrare: true,
     }
     let ricevuto: StatoProgressivoIniziale | undefined
     service.getProgressivoIniziale(2026).subscribe(s => (ricevuto = s))
@@ -62,6 +64,7 @@ describe('offrireProgressivoIniziale', () => {
     impostatoIl: null,
     haMovimenti: false,
     puoImpostare: true,
+    puoRegistrare: true,
   }
 
   it("si offre solo a chi può impostarlo, se l'anno non ha movimenti né un iniziale", () => {
@@ -70,6 +73,26 @@ describe('offrireProgressivoIniziale', () => {
     expect(offrireProgressivoIniziale({ ...base, haMovimenti: true })).toBeFalse()
     expect(offrireProgressivoIniziale({ ...base, primoProgressivo: 812 })).toBeFalse()
     expect(offrireProgressivoIniziale(null)).toBeFalse()
+  })
+})
+
+describe('offrireRegistrazione', () => {
+  const base: StatoProgressivoIniziale = {
+    anno: 2026,
+    primoProgressivo: null,
+    impostatoIl: null,
+    haMovimenti: true,
+    puoImpostare: false,
+    puoRegistrare: true,
+  }
+
+  it("nasconde la registrazione a chi è in sola consultazione nell'azienda selezionata", () => {
+    expect(offrireRegistrazione(base)).toBeTrue()
+    expect(offrireRegistrazione({ ...base, puoRegistrare: false })).toBeFalse()
+  })
+
+  it('senza stato dal backend la mostra: decide comunque il backend (403)', () => {
+    expect(offrireRegistrazione(null)).toBeTrue()
   })
 })
 
