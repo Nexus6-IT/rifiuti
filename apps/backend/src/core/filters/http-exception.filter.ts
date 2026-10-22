@@ -7,6 +7,7 @@ import {
 } from '@prisma/client/runtime/library'
 import { LoggerService } from '../logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
+import { FirAnnullatoNelFrattempoError } from '../domain/errors'
 
 /**
  * Global HTTP Exception Filter
@@ -89,6 +90,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode = HttpStatus.BAD_REQUEST
       errorCode = 'BAD_REQUEST'
       message = 'Richiesta non valida: dati o formato non corretti.'
+    }
+    // FIR annullato mentre un'altra operazione lo salvava (FirAnnullatoNelFrattempoError,
+    // un DomainError): corsa prevista, si risponde 409 e non si segnala a Bugsink.
+    else if (exception instanceof FirAnnullatoNelFrattempoError) {
+      statusCode = HttpStatus.CONFLICT
+      errorCode = FirAnnullatoNelFrattempoError.CODICE
+      message = FirAnnullatoNelFrattempoError.MESSAGGIO_UTENTE
     }
     // Handle unexpected errors — messaggio generico, nessun leak di dettagli interni.
     else if (exception instanceof Error) {

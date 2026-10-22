@@ -8,7 +8,10 @@ import { RilasciaFormularioRENTRIUseCase } from '../../application/rentri/rilasc
 import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
-import { FormularioGiaAgganciatoError } from '../../core/domain/errors'
+import {
+  FirAnnullatoNelFrattempoError,
+  FormularioGiaAgganciatoError,
+} from '../../core/domain/errors'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-http-resilienza'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
@@ -229,6 +232,19 @@ describe('RentriFormulariController', () => {
         status: 409,
         message:
           'Questo formulario è già collegato a un altro FIR nel gestionale: rilascialo da lì prima di riprovare qui.',
+      })
+    })
+
+    it('mappa il FIR annullato nel frattempo su 409 con il suo codice, non su 400', async () => {
+      acquisisciUseCase.execute.mockRejectedValue(new FirAnnullatoNelFrattempoError('fir-1'))
+
+      const errore = await controller.aggancia('TVXYZ1234AB', dtoNuovo, user).catch(e => e)
+
+      expect(errore.status).toBe(409)
+      expect(errore.getResponse()).toMatchObject({
+        error: 'FIR_ANNULLATO_NEL_FRATTEMPO',
+        message:
+          "Il FIR è stato annullato nel frattempo da un'altra operazione: ricarica la pagina per vedere lo stato aggiornato.",
       })
     })
 

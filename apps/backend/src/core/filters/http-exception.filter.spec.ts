@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common'
 import * as Sentry from '@sentry/node'
 import { HttpExceptionFilter } from './http-exception.filter'
+import { FirAnnullatoNelFrattempoError } from '../domain/errors'
 
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
@@ -82,5 +83,20 @@ describe('HttpExceptionFilter - segnalazione a Bugsink', () => {
     })
     filter.catch(new Error('boom'), host)
     expect(response.status).toHaveBeenCalledWith(500)
+  })
+
+  it('un FIR annullato nel frattempo è un conflitto (409), non un errore imprevisto', () => {
+    filter.catch(new FirAnnullatoNelFrattempoError('fir-1'), host)
+
+    expect(response.status).toHaveBeenCalledWith(409)
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 409,
+        error: 'FIR_ANNULLATO_NEL_FRATTEMPO',
+        message:
+          "Il FIR è stato annullato nel frattempo da un'altra operazione: ricarica la pagina per vedere lo stato aggiornato.",
+      })
+    )
+    expect(Sentry.captureException).not.toHaveBeenCalled()
   })
 })

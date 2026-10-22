@@ -79,6 +79,11 @@ export class FormularioGiaAgganciatoError extends DomainError {
  * registro: il repository rifiuta il salvataggio.
  */
 export class FirAnnullatoNelFrattempoError extends DomainError {
+  /** Codice e messaggio della risposta HTTP (409): è una corsa prevista, non un guasto. */
+  static readonly CODICE = 'FIR_ANNULLATO_NEL_FRATTEMPO'
+  static readonly MESSAGGIO_UTENTE =
+    "Il FIR è stato annullato nel frattempo da un'altra operazione: ricarica la pagina per vedere lo stato aggiornato."
+
   constructor(firId: string) {
     super(
       `Il FIR ${firId} è stato annullato mentre era in corso un'altra operazione: ` +

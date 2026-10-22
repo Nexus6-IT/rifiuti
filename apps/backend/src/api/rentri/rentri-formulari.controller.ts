@@ -53,7 +53,11 @@ import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
-import { DomainError, FormularioGiaAgganciatoError } from '../../core/domain/errors'
+import {
+  DomainError,
+  FirAnnullatoNelFrattempoError,
+  FormularioGiaAgganciatoError,
+} from '../../core/domain/errors'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-http-resilienza'
 import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
 import {
@@ -277,6 +281,9 @@ export class RentriFormulariController {
    *   coinvolti" (`RENTRI_FORBIDDEN_ACQUISIZIONE`, R2 Task 7). 429/423/5xx con
    *   tentativi di resilienza esauriti (`retryable === true`) → 503, stesso
    *   messaggio di R1 (`RENTRI_RATE_LIMITED`, riusato senza duplicarlo).
+   * - `FirAnnullatoNelFrattempoError` (il FIR è stato annullato mentre
+   *   l'operazione lo salvava) → 409 con codice `FIR_ANNULLATO_NEL_FRATTEMPO`,
+   *   come nel filtro globale; verificato prima del generico `DomainError`.
    * - Qualunque altro `DomainError` (validazioni dell'aggregate FIR non
    *   coperte sopra) → 400, difensivo.
    * - Tutto il resto: ri-sollevato invariato (finisce nel
@@ -329,6 +336,13 @@ export class RentriFormulariController {
         traduciErroreRentri({ errorCode: 'RENTRI_RATE_LIMITED' }).messaggio,
         HttpStatus.SERVICE_UNAVAILABLE
       )
+    }
+
+    if (error instanceof FirAnnullatoNelFrattempoError) {
+      return new ConflictException({
+        message: FirAnnullatoNelFrattempoError.MESSAGGIO_UTENTE,
+        error: FirAnnullatoNelFrattempoError.CODICE,
+      })
     }
 
     if (error instanceof DomainError) {
