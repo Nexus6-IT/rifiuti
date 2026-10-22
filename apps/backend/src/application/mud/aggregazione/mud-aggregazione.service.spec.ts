@@ -184,6 +184,69 @@ describe('MudAggregazioneService', () => {
     expect(haBloccanti(r.controlli)).toBe(false)
   })
 
+  describe('stato fisico dal registro (A-W-11)', () => {
+    it('un CER tutto liquido esce liquido', async () => {
+      impostaDati({
+        movimenti: [
+          mov({ cerCode: '20 03 04', quantity: 10, unit: 'litri', wastePhysicalState: 'Liquido' }),
+          mov({
+            progressiveNumber: 2,
+            cerCode: '20 03 04',
+            quantity: 5,
+            unit: 'litri',
+            wastePhysicalState: 'liquido',
+          }),
+        ],
+      })
+      integrazioni({
+        destinatari: {},
+        pesiSpecifici: { '200304|LITRI': { cerCode: '200304', unita: 'LITRI', kgPerUnita: 1 } },
+      })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.righe[0].statoFisico).toBe('LIQUIDO')
+      expect(codici(r.controlli)).not.toContain('STATO_FISICO_NON_UNIVOCO')
+    })
+
+    it('senza stato nel registro la riga non lo valorizza (default del tracciato)', async () => {
+      impostaDati({ movimenti: [mov({ wastePhysicalState: null }), mov({ progressiveNumber: 2 })] })
+      const r = await service.aggrega('t1', 2025)
+      expect(r.righe[0].statoFisico).toBeUndefined()
+      expect(codici(r.controlli)).not.toContain('STATO_FISICO_NON_UNIVOCO')
+    })
+
+    it('stati diversi avvisano e non valorizzano lo stato', async () => {
+      impostaDati({
+        movimenti: [
+          mov({ wastePhysicalState: 'Liquido' }),
+          mov({ progressiveNumber: 2, wastePhysicalState: 'Solido' }),
+        ],
+      })
+      const r = await service.aggrega('t1', 2025)
+      expect(r.righe[0].statoFisico).toBeUndefined()
+      expect(conCodice(r.controlli, 'STATO_FISICO_NON_UNIVOCO')).toEqual([
+        controlliMud.statoFisicoNonUnivoco('170405', ['LIQUIDO', 'SOLIDO_NON_POLVERULENTO']),
+      ])
+    })
+
+    it('un movimento escluso non conta per lo stato', async () => {
+      impostaDati({
+        movimenti: [
+          mov({ wastePhysicalState: 'Liquido' }),
+          mov({
+            progressiveNumber: 2,
+            causale: 'CAUSALE_SCONOSCIUTA',
+            wastePhysicalState: 'Solido',
+          }),
+        ],
+      })
+      const r = await service.aggrega('t1', 2025)
+      expect(r.righe[0].statoFisico).toBe('LIQUIDO')
+      expect(codici(r.controlli)).not.toContain('STATO_FISICO_NON_UNIVOCO')
+    })
+  })
+
   // 4
   it('un CER tutto in m3 senza peso specifico non sparisce in silenzio', async () => {
     impostaDati({

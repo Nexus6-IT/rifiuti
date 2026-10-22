@@ -10,12 +10,18 @@ import {
 } from '../../../domain/waste-movement/unita-misura-registro'
 import { collegabilitaFir, etichettaFir, STATI_FIR_EMESSI } from '../../../domain/fir/stati-fir'
 import { stessiDatiRicopia } from '../../registro/ricopia-fir'
-import type { MudAllegatoDR, MudAllegatoTE, MudRifiutoLine } from '../export/mud-export.types'
+import type {
+  MudAllegatoDR,
+  MudAllegatoTE,
+  MudRifiutoLine,
+  StatoFisico,
+} from '../export/mud-export.types'
 import {
   classificaMovimento,
   limitiAnnoMud,
   operazioneDaCausale,
   operazioneDaCodice,
+  statoFisicoMud,
 } from './mud-regole'
 import { controlliMud, type MudEsitoControllo, type RifMovimento } from './mud-controlli'
 import {
@@ -52,6 +58,7 @@ interface Movimento {
   firIdRicopia: string | null
   ricopiaChiave: string
   counterpartName: string | null
+  wastePhysicalState: string | null
   movementDate: Date
 }
 
@@ -110,6 +117,8 @@ interface RigaInCorso {
   prodottoKg: number
   recuperoKg: number
   smaltimentoKg: number
+  /** stati fisici (non nulli) dei movimenti inclusi */
+  stati: Set<StatoFisico>
   dr: Map<string, VoceDr>
   te: Map<string, VoceTe>
 }
@@ -134,6 +143,7 @@ const SELECT_MOVIMENTO = {
   firIdRicopia: true,
   ricopiaChiave: true,
   counterpartName: true,
+  wastePhysicalState: true,
   movementDate: true,
 } as const
 
@@ -332,7 +342,14 @@ export class MudAggregazioneService {
     const riga = (cer6: string): RigaInCorso => {
       let r = righe.get(cer6)
       if (!r) {
-        r = { prodottoKg: 0, recuperoKg: 0, smaltimentoKg: 0, dr: new Map(), te: new Map() }
+        r = {
+          prodottoKg: 0,
+          recuperoKg: 0,
+          smaltimentoKg: 0,
+          stati: new Set(),
+          dr: new Map(),
+          te: new Map(),
+        }
         righe.set(cer6, r)
       }
       return r
@@ -405,6 +422,8 @@ export class MudAggregazioneService {
       const acc = riga(cer6)
       movimentiPerCer[cer6] = (movimentiPerCer[cer6] ?? 0) + 1
       inclusi.add(m)
+      const stato = statoFisicoMud(m.wastePhysicalState)
+      if (stato) acc.stati.add(stato)
 
       // 4. Prodotto
       if (ruolo === 'PRODOTTO') {
@@ -757,8 +776,12 @@ export class MudAggregazioneService {
         if (!d.istatComune) segnalaUnaVolta(controlliMud.destinatarioSenzaIstat(d.ragioneSociale))
       }
 
+      const stati = [...acc.stati]
+      if (stati.length > 1) controlli.push(controlliMud.statoFisicoNonUnivoco(cer6, stati))
+
       return {
         cerCode: cer6,
+        ...(stati.length === 1 ? { statoFisico: stati[0] } : {}),
         prodottoKg: arrotonda3(acc.prodottoKg),
         recuperoKg: arrotonda3(acc.recuperoKg),
         smaltimentoKg: arrotonda3(acc.smaltimentoKg),

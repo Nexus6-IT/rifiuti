@@ -6,6 +6,7 @@ import {
   limitiAnnoMud,
   operazioneDaCausale,
   operazioneDaCodice,
+  statoFisicoMud,
 } from './mud-regole'
 
 describe('limitiAnnoMud', () => {
@@ -122,5 +123,23 @@ describe('hashAggregato', () => {
   })
   it('è un SHA-256 esadecimale', () => {
     expect(hashAggregato([])).toMatch(/^[0-9a-f]{64}$/)
+  })
+})
+
+describe('statoFisicoMud', () => {
+  it.each([
+    ['Solido', 'SOLIDO_NON_POLVERULENTO'],
+    ['  LIQUIDO ', 'LIQUIDO'],
+    ['Polvere', 'SOLIDO_POLVERULENTO'],
+    ['polverulento', 'SOLIDO_POLVERULENTO'],
+    ['Fangoso', 'FANGOSO_PALABILE'],
+    ['Gassoso', 'AERIFORME'],
+    ['Misto', 'ALTRO'],
+    ['Vischioso', null],
+    ['', null],
+    [null, null],
+    [undefined, null],
+  ])('statoFisicoMud(%j) -> %j', (valore, atteso) => {
+    expect(statoFisicoMud(valore)).toBe(atteso)
   })
 })

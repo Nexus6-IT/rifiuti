@@ -308,6 +308,19 @@ describe('controlliMud', () => {
     ).toMatch(/verificarla\.$/)
   })
 
+  it('statoFisicoNonUnivoco è un avviso senza movimenti, con gli stati in ordine fisso', () => {
+    const r = controlliMud.statoFisicoNonUnivoco('200304', ['SOLIDO_NON_POLVERULENTO', 'LIQUIDO'])
+    expect(r).toEqual({
+      codice: 'STATO_FISICO_NON_UNIVOCO',
+      gravita: 'AVVISO',
+      messaggio:
+        'Il rifiuto CER 200304 è registrato con stati fisici diversi (liquido, solido non polverulento): il file indica "solido non polverulento". La divisione in più schede RIF non è ancora supportata.',
+    })
+    expect(
+      controlliMud.statoFisicoNonUnivoco('200304', ['LIQUIDO', 'SOLIDO_NON_POLVERULENTO']).messaggio
+    ).toBe(r.messaggio)
+  })
+
   it('riepilogaAvvisi mette prima i codici che riducono il dichiarato', () => {
     const kg = (n: number, q: number) => ({ ...m, progressiveNumber: n, quantity: q, unit: 'KG' })
     const controlli = [

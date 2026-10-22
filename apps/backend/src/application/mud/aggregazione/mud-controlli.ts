@@ -2,6 +2,7 @@ import { formattaQuantita } from '../../../core/format/formatta-quantita'
 import { formattaDataItaliana } from '../../../core/time/anno-italiano'
 import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
 import { convertiInKg } from '../../../domain/waste-movement/unita-misura-registro'
+import type { StatoFisico } from '../export/mud-export.types'
 import { chiaveDestinatario, chiaveMovimento, chiavePesoSpecifico } from './mud-integrazioni'
 
 // Catalogo dei controlli del MUD: il testo dei messaggi è quello concordato, i test lo
@@ -40,6 +41,7 @@ export type MudCodiceControllo =
   | 'FIR_NON_REGISTRATO'
   | 'ESITO_FIR_RESPINTO'
   | 'GIACENZE_NON_CALCOLATE'
+  | 'STATO_FISICO_NON_UNIVOCO'
 
 export type IntegrazioneRichiesta =
   | { tipo: 'CF_DESTINATARIO'; chiave: string; ragioneSociale: string }
@@ -85,6 +87,16 @@ export interface RifUnitaLocale {
 }
 
 const q = formattaQuantita
+
+const ETICHETTA_STATO_FISICO: Record<StatoFisico, string> = {
+  SOLIDO_POLVERULENTO: 'solido polverulento',
+  SOLIDO_NON_POLVERULENTO: 'solido non polverulento',
+  FANGOSO_PALABILE: 'fangoso palabile',
+  LIQUIDO: 'liquido',
+  AERIFORME: 'aeriforme',
+  VISCHIOSO_SCIROPPOSO: 'vischioso sciropposo',
+  ALTRO: 'altro',
+}
 
 function segnala(m: RifMovimento, incluso: boolean, kg?: number | null): MudMovimentoSegnalato {
   return {
@@ -366,6 +378,19 @@ export const controlliMud = {
     gravita: AVVISO,
     messaggio: `Movimento n. ${rif(m)} (CER ${m.cerCode}): il FIR ${fir} risulta respinto o accettato solo in parte dal destinatario; nel MUD c'è la quantità del registro. Verificare la quantità effettivamente conferita.`,
     movimenti: [segnala(m, true)],
+  }),
+
+  // Chiamata solo con più di uno stato fisico per lo stesso CER (A-W-11). Gli stati si elencano
+  // in ordine alfabetico di etichetta, così il testo non dipende dall'ordine dei movimenti.
+  statoFisicoNonUnivoco: (cerCode6: string, stati: StatoFisico[]): MudEsitoControllo => ({
+    codice: 'STATO_FISICO_NON_UNIVOCO',
+    gravita: AVVISO,
+    messaggio: `Il rifiuto CER ${cerCode6} è registrato con stati fisici diversi (${stati
+      .map(s => ETICHETTA_STATO_FISICO[s])
+      .sort()
+      .join(
+        ', '
+      )}): il file indica "solido non polverulento". La divisione in più schede RIF non è ancora supportata.`,
   }),
 
   // Chiamata solo con almeno un saldo positivo (A-W-06): senza, il file è coerente col registro.

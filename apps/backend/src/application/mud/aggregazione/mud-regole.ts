@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import type { MudRifiutoLine } from '../export/mud-export.types'
+import type { MudRifiutoLine, StatoFisico } from '../export/mud-export.types'
 
 // Regole pure dell'aggregazione MUD: nessun accesso a database, nessun I/O.
 // La conversione in kg sta in `convertiInKg` (domain/waste-movement/unita-misura-registro)
@@ -49,6 +49,28 @@ export function operazioneDaCausale(causale: string): 'R' | 'D' | undefined {
   if (causale === 'AVVIO_RECUPERO') return 'R'
   if (causale === 'AVVIO_SMALTIMENTO') return 'D'
   return undefined
+}
+
+const STATO_FISICO_DAL_REGISTRO: Record<string, StatoFisico> = {
+  solido: 'SOLIDO_NON_POLVERULENTO',
+  polvere: 'SOLIDO_POLVERULENTO',
+  polverulento: 'SOLIDO_POLVERULENTO',
+  fangoso: 'FANGOSO_PALABILE',
+  liquido: 'LIQUIDO',
+  gassoso: 'AERIFORME',
+  misto: 'ALTRO',
+}
+
+/**
+ * Stato fisico del tracciato dal valore scritto nel registro (`WasteMovement.wastePhysicalState`).
+ * Confronto senza maiuscole né spazi ai bordi; un valore non riconosciuto o vuoto vale `null`,
+ * cioè «non indicato» (il tracciato userà il suo predefinito).
+ */
+export function statoFisicoMud(valore: string | null | undefined): StatoFisico | null {
+  const chiave = (valore ?? '').trim().toLowerCase()
+  return Object.prototype.hasOwnProperty.call(STATO_FISICO_DAL_REGISTRO, chiave)
+    ? STATO_FISICO_DAL_REGISTRO[chiave]
+    : null
 }
 
 const arrotonda3 = (n: number): number => Math.round(n * 1000) / 1000
