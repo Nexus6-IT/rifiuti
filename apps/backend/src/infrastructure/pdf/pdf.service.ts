@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { LoggerService } from '../../core/logger/logger.service'
+import { formattaDataItaliana, formattaDataOraItaliana } from '../../core/time/anno-italiano'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PdfPrinter = require('pdfmake/src/printer')
 import { TDocumentDefinitions, Content } from 'pdfmake/interfaces'
@@ -54,7 +55,7 @@ export class PDFService {
       },
 
       footer: (currentPage: number, pageCount: number) => ({
-        text: `Pagina ${currentPage} di ${pageCount} - Generato il ${new Date().toLocaleDateString('it-IT')}`,
+        text: `Pagina ${currentPage} di ${pageCount} - Generato il ${formattaDataItaliana(new Date())}`,
         alignment: 'center',
         fontSize: 8,
         margin: [0, 0, 0, 20],
@@ -143,7 +144,7 @@ export class PDFService {
           width: 'auto',
           stack: [
             { text: 'Data Creazione', style: 'label' },
-            { text: new Date(fir.createdAt).toLocaleDateString('it-IT'), style: 'value' },
+            { text: formattaDataItaliana(new Date(fir.createdAt)), style: 'value' },
           ],
         },
       ],
@@ -235,7 +236,7 @@ export class PDFService {
               { text: 'Data restituzione 4ª copia', style: 'label' },
               {
                 text: fir.fourthCopyReturnedAt
-                  ? new Date(fir.fourthCopyReturnedAt).toLocaleDateString('it-IT')
+                  ? formattaDataItaliana(new Date(fir.fourthCopyReturnedAt))
                   : 'N/D',
                 style: 'value',
               },
@@ -254,7 +255,7 @@ export class PDFService {
     if (fir.signatures && fir.signatures.length > 0) {
       fir.signatures.forEach((sig: any) => {
         content.push({
-          text: `✓ ${sig.role}: ${sig.signerName} - ${new Date(sig.signedAt).toLocaleString('it-IT')}`,
+          text: `✓ ${sig.role}: ${sig.signerName} - ${formattaDataOraItaliana(new Date(sig.signedAt))}`,
           style: 'signature',
         })
       })

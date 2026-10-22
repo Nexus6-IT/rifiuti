@@ -31,3 +31,23 @@ export function formattaDataItaliana(istante: Date): string {
   const [anno, mese, giorno] = giornoItaliano(istante).split('-')
   return `${giorno}/${mese}/${anno}`
 }
+
+const formatoDataOraRoma = new Intl.DateTimeFormat('it-IT', {
+  timeZone: 'Europe/Rome',
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+/**
+ * Data e ora di Roma dell'istante, nel formato 'GG/MM/AAAA HH:MM'. Ricomposta dalle parti
+ * del formatter, così non dipende dalla punteggiatura che la versione di ICU mette tra data e ora.
+ */
+export function formattaDataOraItaliana(istante: Date): string {
+  const parti: Record<string, string> = {}
+  for (const parte of formatoDataOraRoma.formatToParts(istante)) parti[parte.type] = parte.value
+  return `${parti.day}/${parti.month}/${parti.year} ${parti.hour}:${parti.minute}`
+}
