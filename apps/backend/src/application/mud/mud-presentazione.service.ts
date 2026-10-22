@@ -7,7 +7,7 @@ import {
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
-import { formattaDataItaliana } from '../../core/time/anno-italiano'
+import { formattaDataItaliana, giornoItaliano } from '../../core/time/anno-italiano'
 import { MudVersionRegistry } from './export/mud-version.registry'
 import { caricaDichiaranteDellAzienda } from './export/mud-dichiarante'
 import { MudAggregazioneService, type MudAggregato } from './aggregazione/mud-aggregazione.service'
@@ -171,7 +171,9 @@ export class MudPresentazioneService {
     // anno non supportato: 404 col messaggio del registro
     this.registry.getForYear(year)
 
-    if (dataPresentazione && dataPresentazione.getTime() > Date.now()) {
+    // si confrontano giorni di Roma: 'AAAA-MM-GG' arriva come mezzanotte UTC, che fra le 00:00 e
+    // le 01:00/02:00 italiane è ancora «dopo adesso» anche se è la data di oggi
+    if (dataPresentazione && giornoItaliano(dataPresentazione) > giornoItaliano(new Date())) {
       throw new BadRequestException('La data di presentazione non può essere nel futuro.')
     }
     const submittedAt = dataPresentazione ?? new Date()

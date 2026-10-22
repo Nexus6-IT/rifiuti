@@ -374,6 +374,18 @@ describe('MudPresentazioneService', () => {
     expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
   })
 
+  it('subito dopo la mezzanotte italiana la data di oggi non è futura', async () => {
+    // 00:30 del 01/07 a Roma; la pagina manda '2026-07-01', cioè la mezzanotte UTC
+    jest.useFakeTimers({ now: new Date('2026-06-30T22:30:00Z') })
+    prisma.mUDReport.findUnique.mockResolvedValue(
+      record({ reportData: { esportazioni: [voce({ generatoIl: '2026-06-29T08:00:00.000Z' })] } })
+    )
+
+    await service.segnaPresentato('t1', 2025, 'u1', new Date('2026-07-01'))
+
+    expect(scritto().update.submittedAt).toEqual(new Date('2026-07-01'))
+  })
+
   it('rifiuta un anno senza tracciato', async () => {
     const errore = await service.segnaPresentato('t1', 2019, 'u1').catch(e => e)
 
