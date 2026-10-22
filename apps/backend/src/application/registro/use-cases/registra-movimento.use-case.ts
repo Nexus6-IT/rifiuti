@@ -163,11 +163,16 @@ export class RegistraMovimentoUseCase {
             return Result.fail(
               `Il FIR ${etichetta} è annullato: non si può collegare a un movimento del registro.`
             )
-          default:
+          case 'STATO_SCONOSCIUTO':
             return Result.fail(
               `Il FIR ${etichetta} ha uno stato non riconosciuto (${fir.status ?? 'assente'}): ` +
                 `non si può collegare a un movimento; contattare l'assistenza.`
             )
+          default: {
+            // Un nuovo motivo in CollegabilitaFir deve avere qui il suo messaggio.
+            const motivoNonGestito: never = collegabilita.motivo
+            return Result.fail(`Motivo di non collegabilità non gestito: ${motivoNonGestito}`)
+          }
         }
       }
     }
