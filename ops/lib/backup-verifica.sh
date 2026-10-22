@@ -61,6 +61,35 @@ verifica_completezza_dump() {
   return 0
 }
 
+# verifica_completezza_sql FILE
+# Come verifica_completezza_dump, per un dump .sql gia' decompresso (o decifrato):
+# 0 se il file non e' vuoto e una delle ultime 20 righe e' il marcatore finale di pg_dump.
+verifica_completezza_sql() {
+  local file="$1" coda
+  if [ ! -s "$file" ]; then
+    echo "file vuoto: $file" >&2
+    return 1
+  fi
+  coda=$(tail -n 20 "$file" 2>/dev/null)
+  if ! printf '%s\n' "$coda" | grep -qxF -- "$MARCATORE_DUMP"; then
+    echo "marcatore finale assente: dump troncato ($file)" >&2
+    return 1
+  fi
+  return 0
+}
+
+# valida_fattore_spazio NOME VALORE
+# 0 se VALORE e' un intero da 1 a 9999999 (fattore che moltiplica la dimensione del
+# database nel controllo dello spazio), altrimenti 1 con il motivo su stderr.
+valida_fattore_spazio() {
+  local nome="$1" valore="$2"
+  if ! [[ "$valore" =~ ^[1-9][0-9]{0,6}$ ]]; then
+    echo "${nome} non valido: '${valore}' (serve un intero da 1 a 9999999)" >&2
+    return 1
+  fi
+  return 0
+}
+
 # ripristino_di_prova FILE DB_USER DB_SORGENTE
 # Ripristina il dump in un database temporaneo, confronta con la sorgente e
 # elimina SEMPRE il database temporaneo.

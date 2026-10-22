@@ -75,6 +75,78 @@ verifica "predeploy: esce non zero se il dump fallisce" 0 test "$ESITO_PRE" -ne 
 verifica "predeploy: nessun .sql.gz al nome finale dopo il fallimento" 1 \
   bash -c 'ls "$1"/*.sql.gz >/dev/null 2>&1' _ "$TMP/staging-pre"
 
+# esito_e_messaggio ESITO_ATTESO MESSAGGIO FUNZIONE ARGS... — la funzione della libreria
+# esce con ESITO_ATTESO e (se MESSAGGIO non e' vuoto) scrive MESSAGGIO su stderr.
+# Gira in una shell nuova: se la funzione non esiste l'esito e' 127 e il caso fallisce.
+esito_e_messaggio() {
+  bash -c 'source "$1"; atteso="$2"; msg="$3"; shift 3; "$@" 2> "$ERRFILE" >/dev/null; e=$?
+    [ "$e" -eq "$atteso" ] && { [ -z "$msg" ] || grep -qF -- "$msg" "$ERRFILE"; }' \
+    _ "$RADICE/ops/lib/backup-verifica.sh" "$@"
+}
+export ERRFILE="$TMP/err-lib"
+printf '%s%s\n\n' "$SQL_BASE" "$MARCATORE_DUMP" > "$TMP/completo.sql"
+printf '%s' "$SQL_BASE" > "$TMP/senza-marcatore.sql"
+: > "$TMP/vuoto.sql"
+verifica "verifica_completezza_sql accetta un .sql completo" 0 esito_e_messaggio 0 '' verifica_completezza_sql "$TMP/completo.sql"
+verifica "verifica_completezza_sql rifiuta un .sql vuoto" 0 esito_e_messaggio 1 'file vuoto' verifica_completezza_sql "$TMP/vuoto.sql"
+verifica "verifica_completezza_sql rifiuta un .sql senza marcatore" 0 \
+  esito_e_messaggio 1 'marcatore finale assente' verifica_completezza_sql "$TMP/senza-marcatore.sql"
+verifica "valida_fattore_spazio accetta 2" 0 esito_e_messaggio 0 '' valida_fattore_spazio X 2
+verifica "valida_fattore_spazio rifiuta 0" 0 esito_e_messaggio 1 'X non valido' valida_fattore_spazio X 0
+verifica "valida_fattore_spazio rifiuta un non numero" 0 esito_e_messaggio 1 'X non valido' valida_fattore_spazio X 2x
+verifica "valida_fattore_spazio rifiuta 8 cifre" 0 esito_e_messaggio 1 'X non valido' valida_fattore_spazio X 12345678
+
+# ---- restore.sh con il compose finto ---------------------------------------------
+# esegui_restore NOME FILE [VAR=valore ...] — restore.sh con il compose finto (ogni
+# chiamata finisce in $TMP/dc-NOME.log, nessun docker vero), stdout in $TMP/out-NOME,
+# stderr in $TMP/err-NOME, esito in $TMP/esito-NOME. Il compose file punta a un file
+# inesistente: se lo script ignorasse WASTEFLOW_DC, docker compose fallirebbe subito.
+esegui_restore() {
+  local nome="$1" file="$2"
+  shift 2
+  : > "$TMP/dc-$nome.log"
+  env -u RIPRISTINO_TAG -u FINTO_DC_RUN_FALLISCE -u RIPRISTINO_FATTORE_SPAZIO \
+    WASTEFLOW_DC="bash $RADICE/ops/test/finto-dc.sh" FINTO_DC_LOG="$TMP/dc-$nome.log" \
+    WASTEFLOW_COMPOSE_FILE="$TMP/nessun-compose.yml" RIPRISTINO_CONFERMATO=YES BACKUP_DATI_DIR="$TMP" "$@" \
+    bash "$RADICE/ops/restore.sh" "$file" > "$TMP/out-$nome" 2> "$TMP/err-$nome"
+  echo $? > "$TMP/esito-$nome"
+}
+# esito_non_zero NOME — il ripristino NOME e' uscito con un codice diverso da zero.
+esito_non_zero() { [ "$(cat "$TMP/esito-$1")" -ne 0 ]; }
+
+# Casi negativi senza database: PG_EXEC=false e un database di nome fittizio. Ognuno deve
+# uscire con il suo messaggio e senza aver mai fermato il backend.
+printf 'DB_NAME=prova_restore_fittizio\nDB_USER=wasteflow\n' > "$TMP/env-restore-finto"
+cp "$TMP/completo.sql.gz" "$TMP/x.sql.gz.non-verificato"
+esegui_restore nonver "$TMP/x.sql.gz.non-verificato" PG_EXEC=false RIPRISTINO_TAG=sha-prova \
+  WASTEFLOW_ENV_FILE="$TMP/env-restore-finto"
+verifica "restore: rifiuta un .non-verificato" 0 esito_non_zero nonver
+verifica "restore: .non-verificato, messaggio Formato non ammesso" 0 grep -q 'Formato non ammesso' "$TMP/err-nonver"
+verifica "restore: .non-verificato senza fermare il backend" 1 grep -q 'stop backend' "$TMP/dc-nonver.log"
+
+esegui_restore tronc "$TMP/troncato.sql.gz" PG_EXEC=false RIPRISTINO_TAG=sha-prova \
+  WASTEFLOW_ENV_FILE="$TMP/env-restore-finto"
+verifica "restore: dump troncato rifiutato" 0 esito_non_zero tronc
+verifica "restore: dump troncato, messaggio Dump non utilizzabile" 0 \
+  grep -q 'Dump non utilizzabile: marcatore finale assente' "$TMP/err-tronc"
+verifica "restore: dump troncato, nessuno stop" 1 grep -q 'stop backend' "$TMP/dc-tronc.log"
+
+esegui_restore sqlko "$TMP/senza-marcatore.sql" PG_EXEC=false RIPRISTINO_TAG=sha-prova \
+  WASTEFLOW_ENV_FILE="$TMP/env-restore-finto"
+verifica "restore: .sql senza marcatore rifiutato" 0 esito_non_zero sqlko
+verifica "restore: .sql senza marcatore, messaggio Dump non utilizzabile" 0 grep -q 'Dump non utilizzabile' "$TMP/err-sqlko"
+verifica "restore: .sql senza marcatore, nessuno stop" 1 grep -q 'stop backend' "$TMP/dc-sqlko.log"
+
+esegui_restore notag "$TMP/completo.sql.gz" PG_EXEC=false WASTEFLOW_ENV_FILE="$TMP/env-restore-finto"
+verifica "restore: senza RIPRISTINO_TAG non parte" 0 esito_non_zero notag
+verifica "restore: senza RIPRISTINO_TAG, messaggio" 0 grep -q 'RIPRISTINO_TAG obbligatoria' "$TMP/err-notag"
+verifica "restore: senza RIPRISTINO_TAG, nessuno stop" 1 grep -q 'stop backend' "$TMP/dc-notag.log"
+
+esegui_restore fattore "$TMP/completo.sql.gz" PG_EXEC=false RIPRISTINO_TAG=sha-prova RIPRISTINO_FATTORE_SPAZIO=0 \
+  WASTEFLOW_ENV_FILE="$TMP/env-restore-finto"
+verifica "restore: fattore di spazio non valido, messaggio" 0 grep -q 'RIPRISTINO_FATTORE_SPAZIO non valido' "$TMP/err-fattore"
+verifica "restore: fattore di spazio non valido, nessuno stop" 1 grep -q 'stop backend' "$TMP/dc-fattore.log"
+
 verifica "verifica_spazio_libero accetta 1 byte" 0 verifica_spazio_libero "$TMP" 1
 verifica "verifica_spazio_libero rifiuta un'enormita'" 1 verifica_spazio_libero "$TMP" 999999999999999999
 
@@ -239,6 +311,69 @@ else
     _ "$TMP/staging-spazio" "$DB"
   verifica "notturno senza spazio: nessun database wasteflow_verifica_%" 0 \
     test "$(pg_exec psql -U "$DB_USER" -d postgres -Atc "SELECT count(*) FROM pg_database WHERE datname LIKE 'wasteflow_verifica_%'" | tr -d '[:space:]')" = "0"
+
+  # ---- restore.sh su un database di prova creato qui (mai wasteflow_ci) ----------
+  # sql_pg DB SQL — esegue SQL sul database DB e stampa il risultato senza spazi.
+  sql_pg() { pg_exec psql -U "$DB_USER" -d "$1" -v ON_ERROR_STOP=1 -Atc "$2" 2>/dev/null | tr -d '[:space:]'; }
+  # elenco_prova_restore — i nomi dei database prova_restore%, uno per riga.
+  elenco_prova_restore() {
+    pg_exec psql -U "$DB_USER" -d postgres -Atc "SELECT datname FROM pg_database WHERE datname LIKE 'prova\\_restore%'" 2>/dev/null | tr -d '\r'
+  }
+  # elimina_prova_restore — elimina ogni database prova_restore% (creati solo da questi casi).
+  elimina_prova_restore() {
+    local d
+    for d in $(elenco_prova_restore); do
+      pg_exec psql -U "$DB_USER" -d postgres -qAtc "DROP DATABASE IF EXISTS \"$d\" WITH (FORCE)" >/dev/null 2>&1
+    done
+  }
+  elimina_prova_restore
+  pg_exec psql -U "$DB_USER" -d postgres -qAtc 'CREATE DATABASE prova_restore' >/dev/null
+  pg_exec psql -U "$DB_USER" -d prova_restore -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
+CREATE TABLE t_prova (id int);
+INSERT INTO t_prova VALUES (1);
+CREATE TABLE _prisma_migrations (id text);
+INSERT INTO _prisma_migrations VALUES ('m1');
+SQL
+  printf 'DB_NAME=prova_restore\nDB_USER=%s\n' "$DB_USER" > "$TMP/env-restore"
+  pg_exec pg_dump -U "$DB_USER" prova_restore | gzip > "$TMP/prova_restore.sql.gz"
+  gzip -dc "$TMP/prova_restore.sql.gz" > "$TMP/prova_restore.sql"
+
+  printf 'CREATE TABLE a(id int);\nSELEC 1;\n%s\n' "$MARCATORE_DUMP" | gzip > "$TMP/istruzione-rotta.sql.gz"
+  esegui_restore rotta "$TMP/istruzione-rotta.sql.gz" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore"
+  verifica "restore: istruzione rotta, esce non zero" 0 esito_non_zero rotta
+  verifica "restore: istruzione rotta, produzione intatta" 0 test "$(sql_pg prova_restore 'SELECT count(*) FROM t_prova')" = "1"
+  verifica "restore: istruzione rotta, nessun database temporaneo" 0 \
+    test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_ripristino_%'")" = "0"
+  verifica "restore: istruzione rotta, backend fermato e riavviato" 0 \
+    bash -c 'grep -q "stop backend" "$1" && grep -q "start backend" "$1"' _ "$TMP/dc-rotta.log"
+  verifica "restore: istruzione rotta, messaggio produzione intatta" 0 \
+    grep -q 'Ripristino NON riuscito (esito 1): il database di produzione è intatto' "$TMP/err-rotta"
+
+  esegui_restore valido "$TMP/prova_restore.sql.gz" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore"
+  verifica "restore: dump valido, esce 0" 0 test "$(cat "$TMP/esito-valido")" -eq 0
+  verifica "restore: dump valido, il precedente resta come prova_restore_prima_del_ripristino_*" 0 \
+    test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_prima_del_ripristino_%'")" = "1"
+  verifica "restore: dump valido, il ripristinato ha i dati" 0 test "$(sql_pg prova_restore 'SELECT count(*) FROM t_prova')" = "1"
+  verifica "restore: dump valido, nessun database temporaneo" 0 \
+    test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_ripristino_%'")" = "0"
+  verifica "restore: dump valido, migrate con il tag" 0 \
+    grep -q 'TAG=sha-prova run --rm backend npx prisma migrate deploy' "$TMP/dc-valido.log"
+  verifica "restore: dump valido, backend riavviato" 0 grep -q 'start backend' "$TMP/dc-valido.log"
+
+  esegui_restore validosql "$TMP/prova_restore.sql" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore"
+  verifica "restore: .sql decompresso valido, esce 0" 0 test "$(cat "$TMP/esito-validosql")" -eq 0
+  verifica "restore: .sql decompresso, due database precedenti distinti" 0 \
+    test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_prima_del_ripristino_%'")" = "2"
+
+  esegui_restore migrateko "$TMP/prova_restore.sql.gz" RIPRISTINO_TAG=sha-prova FINTO_DC_RUN_FALLISCE=1 \
+    WASTEFLOW_ENV_FILE="$TMP/env-restore"
+  verifica "restore: migrate fallito esce non zero" 0 esito_non_zero migrateko
+  verifica "restore: migrate fallito, il migrate e' stato eseguito" 0 grep -q 'run --rm backend' "$TMP/dc-migrateko.log"
+  verifica "restore: migrate fallito, messaggio" 0 grep -q "prisma migrate deploy fallito con l'immagine sha-prova" "$TMP/err-migrateko"
+  verifica "restore: migrate fallito riavvia il backend" 0 grep -q 'start backend' "$TMP/dc-migrateko.log"
+
+  elimina_prova_restore
+  verifica "restore: nessun database prova_restore% residuo" 0 test -z "$(elenco_prova_restore)"
 fi
 
 echo "Test riusciti: $RIUSCITI, falliti: $FALLITI"
