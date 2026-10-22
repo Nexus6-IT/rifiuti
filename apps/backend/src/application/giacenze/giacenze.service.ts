@@ -3,6 +3,7 @@ import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DepositoTemporaneoConfig, DEFAULT_DEPOSITO_TEMPORANEO } from './deposito-temporaneo.config'
 import { normalizzaUnitaRegistro } from '../../domain/waste-movement/unita-misura-registro'
+import { cerCanonico, chiaveConfrontoCer } from '../../domain/waste-movement/cer-registro'
 import {
   firAnnullato,
   etichettaFir,
@@ -51,16 +52,6 @@ export interface DepositoTemporaneoAlert {
   oldestCaricoDate: Date | null
 }
 
-/** Chiave di confronto del CER: le sole cifre (con o senza spazi e asterisco è lo stesso rifiuto). */
-const cerSoloCifre = (cer: string): string => cer.replace(/[^0-9]/g, '')
-
-/** Forma canonica "NN NN NN", con asterisco se presente nella riga. */
-function cerCanonico(cer: string): string {
-  const cifre = cerSoloCifre(cer)
-  if (cifre.length !== 6) return cer
-  return `${cifre.slice(0, 2)} ${cifre.slice(2, 4)} ${cifre.slice(4)}${cer.includes('*') ? '*' : ''}`
-}
-
 const arrotonda3 = (v: number): number => Math.round(v * 1000) / 1000
 
 /**
@@ -93,7 +84,7 @@ export class GiacenzeService {
     })
     const oldestByCer = new Map<string, Date | null>()
     for (const row of oldestCarico) {
-      const chiave = cerSoloCifre(row.cerCode)
+      const chiave = chiaveConfrontoCer(row.cerCode)
       const data = row._min.movementDate ?? null
       const attuale = oldestByCer.get(chiave) ?? null
       oldestByCer.set(chiave, attuale && (!data || attuale < data) ? attuale : data)
@@ -107,7 +98,7 @@ export class GiacenzeService {
     }
     const perCer = new Map<string, Parziale>()
     for (const row of byType) {
-      const chiave = cerSoloCifre(row.cerCode)
+      const chiave = chiaveConfrontoCer(row.cerCode)
       const qty = row._sum.quantity ? Number(row._sum.quantity) : 0
       const entry = perCer.get(chiave) ?? {
         cerCode: cerCanonico(row.cerCode),
@@ -195,7 +186,7 @@ export class GiacenzeService {
       orderBy: [{ progressiveYear: 'asc' }, { progressiveNumber: 'asc' }],
     })
     for (const s of scarichi) {
-      const chiave = cerSoloCifre(s.cerCode)
+      const chiave = chiaveConfrontoCer(s.cerCode)
       const elenco = perCer.get(chiave) ?? []
       elenco.push({
         numero: `${s.progressiveYear}/${s.progressiveNumber}`,

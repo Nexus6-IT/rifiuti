@@ -23,6 +23,7 @@ import {
   normalizzaUnitaRegistro,
   simboloUnita,
 } from '../../../domain/waste-movement/unita-misura-registro'
+import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
 import { giacenzaDisponibileAl } from '../giacenza-disponibile'
 import { stessiDatiRicopia } from '../ricopia-fir'
 
@@ -416,12 +417,7 @@ export class RegistraMovimentoUseCase {
    */
   private normalizeCerCode(raw: string): string {
     if (!raw) return raw
-    const trimmed = raw.trim().toUpperCase()
-    const hazardous = trimmed.includes('*')
-    const digits = trimmed.replace(/[^0-9]/g, '')
-    if (digits.length !== 6) return trimmed
-    const spaced = `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 6)}`
-    return hazardous ? `${spaced}*` : spaced
+    return cerCanonico(raw.toUpperCase())
   }
 
   /**

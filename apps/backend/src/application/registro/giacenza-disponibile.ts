@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { giornoItaliano } from '../../core/time/anno-italiano'
 import { ALIAS_KG, ALIAS_T } from '../../domain/waste-movement/unita-misura-registro'
+import { cerSoloCifre } from '../../domain/waste-movement/cer-registro'
 
 export interface ParametriGiacenza {
   tenantId: string
@@ -40,7 +41,7 @@ export async function giacenzaDisponibileAl(
   tx: Prisma.TransactionClient,
   p: ParametriGiacenza
 ): Promise<GiacenzaDisponibile> {
-  const cerSoloCifre = p.cerCode.replace(/[^0-9]/g, '')
+  const cifreCer = cerSoloCifre(p.cerCode)
   const giornoAlla = giornoItaliano(p.alla)
   const aliasKg = [...ALIAS_KG]
   const aliasT = [...ALIAS_T]
@@ -52,7 +53,7 @@ export async function giacenzaDisponibileAl(
                  CASE WHEN upper(btrim(unit)) = ANY(${aliasT}::text[]) THEN 1000 ELSE 1 END) AS delta
       FROM waste_movements
       WHERE tenant_id = ${p.tenantId}::uuid
-        AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cerSoloCifre}
+        AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cifreCer}
         AND (upper(btrim(unit)) = ANY(${aliasKg}::text[])
              OR upper(btrim(unit)) = ANY(${aliasT}::text[])
              OR btrim(unit) = '')

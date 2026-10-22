@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { normalizzaUnitaRegistro } from '../../domain/waste-movement/unita-misura-registro'
+import { chiaveConfrontoCer } from '../../domain/waste-movement/cer-registro'
 
 /**
  * Ricopia di un FIR nel registro: confronto fra un movimento già registrato e uno
@@ -23,9 +24,8 @@ export function quantitaComeInDatabase(q: number | string | Prisma.Decimal): Pri
 
 /** Vero se i due movimenti hanno lo stesso CER (sulle cifre), quantità, unità e data. */
 export function stessiDatiRicopia(a: DatiRicopia, b: DatiRicopia): boolean {
-  const cifre = (cer: string) => cer.replace(/[^0-9]/g, '')
   return (
-    cifre(a.cerCode) === cifre(b.cerCode) &&
+    chiaveConfrontoCer(a.cerCode) === chiaveConfrontoCer(b.cerCode) &&
     quantitaComeInDatabase(a.quantity).equals(quantitaComeInDatabase(b.quantity)) &&
     normalizzaUnitaRegistro(a.unit).unita === normalizzaUnitaRegistro(b.unit).unita &&
     a.movementDate.getTime() === b.movementDate.getTime()
