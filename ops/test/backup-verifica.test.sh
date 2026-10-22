@@ -173,6 +173,81 @@ for f in ops/backup-offsite.sh ops/restore.sh ops/lib/backup-verifica.sh; do
   verifica "$f: ogni docker compose ha --env-file" 0 compose_senza_env_file "$RADICE/$f"
 done
 
+# ---- controllo-freschezza-backup.sh (senza database) ---------------------------
+# Stub msmtp in un PATH di prova: ogni mail finisce in $MAIL_FILE. Stato e cartella
+# di staging sono sempre sotto $TMP (mai i percorsi di sistema).
+mkdir -p "$TMP/fbin"
+cat > "$TMP/fbin/msmtp" <<'STUB'
+#!/usr/bin/env bash
+cat >> "$MAIL_FILE"
+STUB
+chmod +x "$TMP/fbin/msmtp"
+printf 'DB_NAME=wf_fresc\nDB_USER=wasteflow\n' > "$TMP/env-fresc"
+FRESC_STAGING="$TMP/staging-fresc"
+FRESC_STATO="$TMP/freschezza.stato"
+FRESC_MAIL="$TMP/mail-fresc"
+mkdir -p "$FRESC_STAGING"
+: > "$FRESC_MAIL"
+
+# esegui_freschezza — esegue il controllo; l'exit code finisce in $TMP/esito-fresc.
+esegui_freschezza() {
+  env PATH="$TMP/fbin:$PATH" MAIL_FILE="$FRESC_MAIL" WASTEFLOW_ENV_FILE="$TMP/env-fresc" \
+    BACKUP_STAGING_DIR="$FRESC_STAGING" BACKUP_STATO_FILE="$FRESC_STATO" "$@" \
+    bash "$RADICE/ops/controllo-freschezza-backup.sh" >"$TMP/out-fresc" 2>"$TMP/err-fresc"
+  echo $? > "$TMP/esito-fresc"
+}
+righe_mail() { grep -c '^Subject:' "$FRESC_MAIL"; }
+
+# 1. dump di 2 ore: OK, nessuna mail
+: > "$FRESC_STAGING/wasteflow_wf_fresc_20260101_030000.sql.gz"
+touch -d '2 hours ago' "$FRESC_STAGING/wasteflow_wf_fresc_20260101_030000.sql.gz"
+esegui_freschezza
+verifica "freschezza: dump di 2 ore, esce 0" 0 test "$(cat "$TMP/esito-fresc")" -eq 0
+verifica "freschezza: dump di 2 ore, nessuna mail" 0 test "$(righe_mail)" -eq 0
+verifica "freschezza: dump di 2 ore, stato OK" 0 grep -qx 'OK' "$FRESC_STATO"
+
+# 2. dump di 30 ore: GUASTO, una mail, esito 1
+touch -d '30 hours ago' "$FRESC_STAGING/wasteflow_wf_fresc_20260101_030000.sql.gz"
+esegui_freschezza
+verifica "freschezza: dump di 30 ore, esce 1" 0 test "$(cat "$TMP/esito-fresc")" -eq 1
+verifica "freschezza: dump di 30 ore, una mail" 0 test "$(righe_mail)" -eq 1
+verifica "freschezza: dump di 30 ore, oggetto con le ore" 0 grep -q '^Subject: ATTENZIONE backup WasteFlow fermo da 30 ore' "$FRESC_MAIL"
+verifica "freschezza: dump di 30 ore, stato GUASTO" 0 grep -qx 'GUASTO' "$FRESC_STATO"
+
+# 3. seconda esecuzione in GUASTO: nessuna nuova mail
+esegui_freschezza
+verifica "freschezza: seconda esecuzione in GUASTO, esce 1" 0 test "$(cat "$TMP/esito-fresc")" -eq 1
+verifica "freschezza: seconda esecuzione in GUASTO, nessuna nuova mail" 0 test "$(righe_mail)" -eq 1
+
+# 4. un dump nuovo (anche cifrato) riporta a OK con la mail di ripristino
+: > "$FRESC_STAGING/wasteflow_wf_fresc_20260102_030000.sql.gz.age"
+esegui_freschezza
+verifica "freschezza: dump nuovo, esce 0" 0 test "$(cat "$TMP/esito-fresc")" -eq 0
+verifica "freschezza: dump nuovo, mail di ripristino" 0 test "$(righe_mail)" -eq 2
+verifica "freschezza: dump nuovo, oggetto del ripristino" 0 grep -q '^Subject: Backup WasteFlow di nuovo regolare' "$FRESC_MAIL"
+verifica "freschezza: dump nuovo, stato OK" 0 grep -qx 'OK' "$FRESC_STATO"
+
+# 5. i file non verificati (e predeploy, scartati, parziali) non contano
+rm -f "$FRESC_STAGING"/*
+: > "$FRESC_MAIL"
+rm -f "$FRESC_STATO"
+for f in wasteflow_wf_fresc_20260103_030000.sql.gz.non-verificato \
+  wasteflow_wf_fresc_20260103_030000.sql.gz.scartato \
+  wasteflow_wf_fresc_20260103_030000.sql.gz.parziale \
+  wasteflow_predeploy_wf_fresc_20260103_030000.sql.gz; do
+  : > "$FRESC_STAGING/$f"
+done
+esegui_freschezza
+verifica "freschezza: solo file non verificati, esce 1" 0 test "$(cat "$TMP/esito-fresc")" -eq 1
+verifica "freschezza: solo file non verificati, mail 'nessun dump verificato'" 0 \
+  grep -q '^Subject: ATTENZIONE backup WasteFlow: nessun dump verificato' "$FRESC_MAIL"
+verifica "freschezza: la soglia ORA_EPOCH e BACKUP_FRESCHEZZA_ORE sono rispettate" 0 bash -c '
+  : > "$1/wasteflow_wf_fresc_20260104_030000.sql.gz"
+  rm -f "$2"
+  env PATH="$3/fbin:$PATH" MAIL_FILE="$3/mail-x" WASTEFLOW_ENV_FILE="$3/env-fresc" BACKUP_STAGING_DIR="$1" \
+    BACKUP_STATO_FILE="$2" BACKUP_FRESCHEZZA_ORE=1 ORA_EPOCH=$(( $(date +%s) + 7200 )) \
+    bash "$4/ops/controllo-freschezza-backup.sh"; test $? -eq 1' _ "$FRESC_STAGING" "$FRESC_STATO" "$TMP" "$RADICE"
+
 # ---- Test con PostgreSQL finto (stub) ----------------------------------------
 # Lo stub risponde ai soli comandi usati da backup-offsite.sh. Variabili:
 #   FAKE_DROP_FAIL=1  il DROP DATABASE esce con errore

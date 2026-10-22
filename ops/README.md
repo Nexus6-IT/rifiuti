@@ -88,6 +88,28 @@ bash /opt/rifiuti/site/ops/backup-offsite.sh
 30 3 * * * root bash /opt/rifiuti/site/ops/backup-offsite.sh >> /var/log/wasteflow-backup.log 2>&1
 ```
 
+### Allarme di freschezza: `controllo-freschezza-backup.sh`
+
+`backup-offsite.sh` manda una mail quando il backup **fallisce**; se invece il
+cron non parte (job rimosso, host spento) non scrive nessuno. Questo controllo
+guarda l'età dell'ultimo dump verificato (`wasteflow_<DB_NAME>_*.sql.gz` e
+`.sql.gz.age`; `predeploy`, `.scartato`, `.non-verificato` e `.parziale` non
+contano) e manda una mail **solo ai cambi di stato**: oltre 26 ore
+(`BACKUP_FRESCHEZZA_ORE`) arriva `ATTENZIONE backup WasteFlow fermo da <N> ore`
+(o `... nessun dump verificato`), al ritorno alla normalità `Backup WasteFlow di
+nuovo regolare`. Lo stato sta in `BACKUP_STATO_FILE`
+(`/var/lib/wasteflow-backup/freschezza.stato`); esce 0 se OK, 1 se GUASTO.
+
+```
+# /etc/cron.d/wasteflow-backup-freschezza
+*/30 * * * * root bash /opt/rifiuti/site/ops/controllo-freschezza-backup.sh >> /var/log/wasteflow-backup-freschezza.log 2>&1
+```
+
+L'installazione sul server è un passo del rilascio (con l'approvazione di
+Graziano). Prova: `BACKUP_FRESCHEZZA_ORE=0 bash .../controllo-freschezza-backup.sh`
+deve mandare una mail; poi si cancella `BACKUP_STATO_FILE` o si lascia girare
+con la soglia normale per ricevere il messaggio di ripristino.
+
 **Test degli script:** `bash ops/test/backup-verifica.test.sh` (la parte con
 PostgreSQL gira solo se `PG_EXEC` è impostata, ad esempio
 `PG_EXEC="docker exec -i <container>"`). Girano in CI (`ci.yml`, job `backend`
