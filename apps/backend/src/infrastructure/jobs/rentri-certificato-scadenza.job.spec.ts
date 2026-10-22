@@ -159,4 +159,19 @@ describe('RentriCertificatoScadenzaJob', () => {
 
     await expect(job.controllaScadenze()).resolves.toEqual({ tenantTotali: 2, tenantConErrore: 1 })
   })
+
+  it('un certificato non analizzabile conta come errore del tenant: il gauge resta vecchio', async () => {
+    mockPrisma.rentriCredential.findMany.mockResolvedValue([
+      { tenantId: 'tenant-rotto', certificatePem: 'PEM-NON-VALIDO' },
+      { tenantId: 'tenant-sano', certificatePem: 'PEM-VALIDO' },
+    ])
+    const validTo = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000 + 12 * 60 * 60 * 1000)
+    ;(X509Certificate as jest.Mock).mockImplementation((pem: string) => {
+      if (pem === 'PEM-NON-VALIDO') throw new Error('certificato non analizzabile')
+      return { validTo: validTo.toUTCString() }
+    })
+
+    await expect(job.controllaScadenze()).resolves.toEqual({ tenantTotali: 2, tenantConErrore: 1 })
+    expect(mockMetrics.rentriCertificateExpiryDays.set).toHaveBeenCalledTimes(1)
+  })
 })

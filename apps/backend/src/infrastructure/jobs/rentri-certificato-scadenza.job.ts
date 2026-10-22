@@ -76,6 +76,10 @@ export class RentriCertificatoScadenzaJob {
         try {
           const giorni = calcolaGiorniAllaScadenzaCertificato(credenziale.certificatePem)
           if (giorni === null) {
+            // Conta come errore: il gauge del tenant resta al valore vecchio (o manca), quindi
+            // l'allarme di scadenza non vede questo certificato e il rilancio manuale deve
+            // risultare parziale, non completato.
+            tenantConErrore++
             this.logger.warn('Certificato RENTRI non analizzabile: gauge non aggiornato', {
               tenantId: credenziale.tenantId,
             })
