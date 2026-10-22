@@ -59,6 +59,45 @@ describe('tenantInterceptor', () => {
     expect(errore).toBeTruthy() // l'errore prosegue verso il chiamante
   })
 
+  it('anche con una risposta blob (download) cancella la selezione e ricarica', async () => {
+    contesto.set('tenant-cliente', 'Cliente Srl')
+    let errore: unknown
+    const finito = new Promise<void>(fatto =>
+      http.get(url, { responseType: 'blob' }).subscribe({
+        error: e => {
+          errore = e
+          fatto()
+        },
+      })
+    )
+
+    backend
+      .expectOne(url)
+      .flush(new Blob([JSON.stringify(rifiuto)]), { status: 403, statusText: 'Forbidden' })
+    await finito
+
+    expect(contesto.selectedTenantId()).toBeNull()
+    expect(ricarica).toHaveBeenCalledTimes(1)
+    // il chiamante riceve l'errore originale, con il corpo Blob ancora leggibile
+    expect((errore as { error: unknown }).error).toEqual(jasmine.any(Blob))
+  })
+
+  it('un 403 blob con un altro codice non tocca la selezione', async () => {
+    contesto.set('tenant-cliente', 'Cliente Srl')
+    const finito = new Promise<void>(fatto =>
+      http.get(url, { responseType: 'blob' }).subscribe({ error: () => fatto() })
+    )
+
+    backend.expectOne(url).flush(new Blob([JSON.stringify({ error: 'ALTRO' })]), {
+      status: 403,
+      statusText: 'Forbidden',
+    })
+    await finito
+
+    expect(contesto.selectedTenantId()).toBe('tenant-cliente')
+    expect(ricarica).not.toHaveBeenCalled()
+  })
+
   it('più richieste respinte insieme ricaricano una volta sola', () => {
     contesto.set('tenant-cliente', 'Cliente Srl')
     http.get(url).subscribe({ error: () => undefined })

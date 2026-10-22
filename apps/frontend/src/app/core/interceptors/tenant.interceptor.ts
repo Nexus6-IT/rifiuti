@@ -1,6 +1,6 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http'
 import { InjectionToken, inject } from '@angular/core'
-import { catchError, throwError } from 'rxjs'
+import { Observable, catchError, from, mergeMap, of, throwError } from 'rxjs'
 import { AdminTenantContextService } from '../services/admin-tenant-context.service'
 import { environment } from '../../../environments/environment'
 
@@ -54,21 +54,51 @@ export const tenantInterceptor: HttpInterceptorFn = (req, next) => {
   })
 
   return next(tenantRequest).pipe(
-    catchError((errore: unknown) => {
-      if (
-        errore instanceof HttpErrorResponse &&
-        errore.status === 403 &&
-        errore.error?.error === AZIENDA_SELEZIONATA_NON_ACCESSIBILE &&
-        // Sul refresh del token decide l'authInterceptor (logout e login, senza ricarica).
-        !req.url.includes('/auth/') &&
-        // Solo la prima delle richieste respinte insieme: le altre trovano la selezione
-        // già cancellata e non ricaricano di nuovo.
-        tenantContext.selectedTenantId() === tenantId
-      ) {
-        tenantContext.clear()
-        ricaricaPagina()
-      }
-      return throwError(() => errore)
-    })
+    catchError((errore: unknown) =>
+      codiceErrore(errore).pipe(
+        mergeMap(codice => {
+          if (
+            errore instanceof HttpErrorResponse &&
+            errore.status === 403 &&
+            codice === AZIENDA_SELEZIONATA_NON_ACCESSIBILE &&
+            // Sul refresh del token decide l'authInterceptor (logout e login, senza ricarica).
+            !req.url.includes('/auth/') &&
+            // Solo la prima delle richieste respinte insieme: le altre trovano la selezione
+            // già cancellata e non ricaricano di nuovo.
+            tenantContext.selectedTenantId() === tenantId
+          ) {
+            tenantContext.clear()
+            ricaricaPagina()
+          }
+          return throwError(() => errore)
+        })
+      )
+    )
   )
+}
+
+/**
+ * Codice `error` del corpo di un errore HTTP. Con `responseType: 'blob'` (download) il corpo è
+ * un Blob e va letto: senza, il 403 di un download non attivava il ripristino. Il Blob non si
+ * consuma leggendolo, quindi il chiamante riceve l'errore originale ancora leggibile.
+ */
+function codiceErrore(errore: unknown): Observable<unknown> {
+  if (!(errore instanceof HttpErrorResponse)) return of(undefined)
+  const corpo: unknown = errore.error
+  if (corpo instanceof Blob) {
+    if (errore.status !== 403) return of(undefined)
+    return from(
+      corpo.text().then(
+        testo => {
+          try {
+            return (JSON.parse(testo) as { error?: unknown } | null)?.error
+          } catch {
+            return undefined
+          }
+        },
+        () => undefined
+      )
+    )
+  }
+  return of((corpo as { error?: unknown } | null)?.error)
 }
