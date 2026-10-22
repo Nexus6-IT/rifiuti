@@ -1,7 +1,7 @@
 import { formattaQuantita } from '../../../core/format/formatta-quantita'
 import { formattaDataItaliana } from '../../../core/time/anno-italiano'
 import { convertiInKg } from '../../../domain/waste-movement/unita-misura-registro'
-import { chiaveDestinatario, chiavePesoSpecifico } from './mud-integrazioni'
+import { chiaveDestinatario, chiaveMovimento, chiavePesoSpecifico } from './mud-integrazioni'
 
 // Catalogo dei controlli del MUD: il testo dei messaggi è quello concordato, i test lo
 // confrontano carattere per carattere. BLOCCANTE = dato correggibile dall'utente nell'applicazione;
@@ -16,6 +16,7 @@ export type MudCodiceControllo =
   | 'DICHIARANTE_SENZA_ATECO'
   | 'DICHIARANTE_ATECO_NON_VALIDO'
   | 'DESTINATARIO_SENZA_CF'
+  | 'TRASPORTATORE_SENZA_CF'
   | 'UNITA_NON_DI_MASSA'
   | 'PROFILO_NON_SUPPORTATO'
   | 'PIU_UNITA_LOCALI'
@@ -31,6 +32,7 @@ export type MudCodiceControllo =
   | 'FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE'
   | 'SCARICO_SENZA_FIR'
   | 'DESTINATARIO_NON_INDICATO'
+  | 'TRASPORTATORE_NON_INDICATO'
   | 'DESTINATARIO_SENZA_ISTAT'
   | 'OPERAZIONE_DEDOTTA_DAL_FIR'
   | 'OPERAZIONE_NON_INDICATA'
@@ -41,6 +43,8 @@ export type MudCodiceControllo =
 export type IntegrazioneRichiesta =
   | { tipo: 'CF_DESTINATARIO'; chiave: string; ragioneSociale: string }
   | { tipo: 'PESO_SPECIFICO'; chiave: string; cerCode: string; unita: string }
+  | { tipo: 'DESTINATARIO_MOVIMENTO'; chiave: string; numero: number; anno: number }
+  | { tipo: 'CF_TRASPORTATORE'; chiave: string; ragioneSociale: string }
 
 export interface MudMovimentoSegnalato {
   numero: number
@@ -290,14 +294,40 @@ export const controlliMud = {
   scaricoSenzaFir: (m: RifMovimento): MudEsitoControllo => ({
     codice: 'SCARICO_SENZA_FIR',
     gravita: AVVISO,
-    messaggio: `Movimento n. ${rif(m)} (scarico CER ${m.cerCode}, ${q(m.quantity)} ${unitaDi(m)}): nessun FIR collegato; per il modulo DR si usa il destinatario scritto nel registro.`,
+    messaggio: `Movimento n. ${rif(m)} (scarico CER ${m.cerCode}, ${q(m.quantity)} ${unitaDi(m)}): nessun FIR collegato; per il modulo DR si usa il destinatario scritto nel registro, e manca il modulo TE del trasportatore.`,
     movimenti: [segnala(m, true)],
   }),
 
-  destinatarioNonIndicato: (m: RifMovimento): MudEsitoControllo => ({
+  // Bloccante (A-W-07, A-C-04): senza DR il BA dichiarerebbe "consegnato a terzi" minore di
+  // recupero più smaltimento. Si corregge con il destinatario del movimento nelle integrazioni.
+  destinatarioNonIndicato: (m: RifMovimento, anno: number): MudEsitoControllo => ({
     codice: 'DESTINATARIO_NON_INDICATO',
+    gravita: BLOCCANTE,
+    messaggio: `Movimento n. ${rif(m)} (scarico CER ${m.cerCode}, ${q(m.quantity)} ${unitaDi(m)}): né FIR né destinatario nel registro, e il modulo DR è obbligatorio. Inserire destinatario e codice fiscale in MUD > Integrazioni ${anno}, riga "Movimento n. ${rif(m)}".`,
+    movimenti: [segnala(m, true)],
+    integrazione: {
+      tipo: 'DESTINATARIO_MOVIMENTO',
+      chiave: chiaveMovimento(m.progressiveYear, m.progressiveNumber),
+      numero: m.progressiveNumber,
+      anno: m.progressiveYear,
+    },
+  }),
+
+  trasportatoreSenzaCf: (ragioneSociale: string, fir: string, anno: number): MudEsitoControllo => ({
+    codice: 'TRASPORTATORE_SENZA_CF',
+    gravita: BLOCCANTE,
+    messaggio: `Trasportatore "${ragioneSociale}" (FIR ${fir}): manca il codice fiscale o la partita IVA, obbligatori nel modulo TE. Inserirlo in MUD > Integrazioni ${anno}, riga "${ragioneSociale}".`,
+    integrazione: {
+      tipo: 'CF_TRASPORTATORE',
+      chiave: chiaveDestinatario(ragioneSociale),
+      ragioneSociale,
+    },
+  }),
+
+  trasportatoreNonIndicato: (m: RifMovimento, fir: string): MudEsitoControllo => ({
+    codice: 'TRASPORTATORE_NON_INDICATO',
     gravita: AVVISO,
-    messaggio: `Movimento n. ${rif(m)} (scarico CER ${m.cerCode}, ${q(m.quantity)} ${unitaDi(m)}): né FIR né destinatario nel registro. La quantità è nel MUD, ma per questo conferimento manca il modulo DR.`,
+    messaggio: `Movimento n. ${rif(m)} (CER ${m.cerCode}): il FIR ${fir} non indica il trasportatore, quindi per questo conferimento manca il modulo TE.`,
     movimenti: [segnala(m, true)],
   }),
 
@@ -376,7 +406,7 @@ export interface RiepilogoAvvisi {
   testo: string
 }
 
-const chiaveMovimento = (m: MudMovimentoSegnalato) => `${m.anno}/${m.numero}`
+const chiaveSegnalato = (m: MudMovimentoSegnalato) => chiaveMovimento(m.anno, m.numero)
 
 export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
   const avvisi = c.filter(e => e.gravita === AVVISO)
@@ -394,7 +424,7 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
     voci.push({
       codice,
       casi: esiti.length,
-      movimenti: new Set(movimenti.map(chiaveMovimento)).size,
+      movimenti: new Set(movimenti.map(chiaveSegnalato)).size,
       kgEsclusi: arrotondaGrammo(kgEsclusi),
       kgAggiunti: arrotondaGrammo(kgAggiunti),
     })
@@ -414,7 +444,7 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
   // Movimenti esclusi, contati una volta sola anche se compaiono in più avvisi
   const esclusi = new Map<string, MudMovimentoSegnalato>()
   for (const e of avvisi) {
-    for (const m of e.movimenti ?? []) if (!m.incluso) esclusi.set(chiaveMovimento(m), m)
+    for (const m of e.movimenti ?? []) if (!m.incluso) esclusi.set(chiaveSegnalato(m), m)
   }
   const kgInMeno = arrotondaGrammo([...esclusi.values()].reduce((s, m) => s + (m.kg ?? 0), 0))
   const movimentiNonQuantificati = [...esclusi.values()].filter(m => m.kg === null).length

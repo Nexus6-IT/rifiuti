@@ -1,6 +1,7 @@
 import {
   INTEGRAZIONI_VUOTE,
   chiaveDestinatario,
+  chiaveMovimento,
   chiavePesoSpecifico,
   intervalloPesoSpecifico,
   leggiIntegrazioni,
@@ -11,6 +12,47 @@ describe('mud-integrazioni', () => {
   it('chiavi normalizzate', () => {
     expect(chiaveDestinatario('  Ecologia   srl ')).toBe('ECOLOGIA SRL')
     expect(chiavePesoSpecifico('170405', 'litri')).toBe('170405|LITRI')
+  })
+
+  it('chiave del movimento: anno e numero progressivo', () => {
+    expect(chiaveMovimento(2025, 5)).toBe('2025/5')
+  })
+
+  it('le integrazioni vuote hanno anche i destinatari dei movimenti e i trasportatori', () => {
+    expect(INTEGRAZIONI_VUOTE.destinatariMovimento).toEqual({})
+    expect(INTEGRAZIONI_VUOTE.trasportatori).toEqual({})
+  })
+
+  it('leggiIntegrazioni legge destinatari dei movimenti e trasportatori, scartando le voci incomplete', () => {
+    const r = leggiIntegrazioni({
+      integrazioni: {
+        destinatariMovimento: {
+          '2025/5': { ragioneSociale: ' Ecologia Srl ', codiceFiscale: ' 12345678903 ' },
+          '2025/6': { ragioneSociale: 'Senza CF', codiceFiscale: '' },
+          // senza ragione sociale il modulo DR non si compila: la voce vale come assente
+          '2025/7': { codiceFiscale: '12345678903' },
+          '2025/8': 'x',
+        },
+        trasportatori: {
+          'TRASPORTI SRL': { ragioneSociale: 'Trasporti Srl', codiceFiscale: ' 22222222222' },
+          'SOLO NOME': { codiceFiscale: '33333333333' },
+          X: { codiceFiscale: 7 },
+          Y: { ragioneSociale: 'Y', codiceFiscale: '  ' },
+        },
+      },
+    })
+    expect(r.destinatariMovimento).toEqual({
+      '2025/5': { ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' },
+    })
+    expect(r.trasportatori).toEqual({
+      'TRASPORTI SRL': { ragioneSociale: 'Trasporti Srl', codiceFiscale: '22222222222' },
+      'SOLO NOME': { ragioneSociale: 'SOLO NOME', codiceFiscale: '33333333333' },
+    })
+    const vuote = leggiIntegrazioni({
+      integrazioni: { destinatariMovimento: [], trasportatori: 'x' },
+    })
+    expect(vuote.destinatariMovimento).toEqual({})
+    expect(vuote.trasportatori).toEqual({})
   })
 
   it('la chiave del peso specifico non dipende dalla forma del CER', () => {

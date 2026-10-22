@@ -56,6 +56,72 @@ describe('controlliMud', () => {
     })
   })
 
+  const scaricoKg: RifMovimento = { ...m, causale: 'AVVIO_SMALTIMENTO', quantity: 300, unit: 'KG' }
+
+  it('destinatarioNonIndicato è un bloccante che porta la riga del movimento nelle integrazioni', () => {
+    expect(controlliMud.destinatarioNonIndicato(scaricoKg, 2025)).toEqual({
+      codice: 'DESTINATARIO_NON_INDICATO',
+      gravita: 'BLOCCANTE',
+      messaggio:
+        'Movimento n. 4/2025 (scarico CER 17 04 05, 300 KG): né FIR né destinatario nel registro, e il modulo DR è obbligatorio. Inserire destinatario e codice fiscale in MUD > Integrazioni 2025, riga "Movimento n. 4/2025".',
+      movimenti: [
+        {
+          numero: 4,
+          anno: 2025,
+          cerCode: '17 04 05',
+          quantita: 300,
+          unita: 'KG',
+          kg: 300,
+          incluso: true,
+        },
+      ],
+      integrazione: { tipo: 'DESTINATARIO_MOVIMENTO', chiave: '2025/4', numero: 4, anno: 2025 },
+    })
+  })
+
+  it('trasportatoreSenzaCf è un bloccante che porta la chiave delle integrazioni', () => {
+    expect(controlliMud.trasportatoreSenzaCf('Trasporti Srl', 'FIR-2025-000123', 2025)).toEqual({
+      codice: 'TRASPORTATORE_SENZA_CF',
+      gravita: 'BLOCCANTE',
+      messaggio:
+        'Trasportatore "Trasporti Srl" (FIR FIR-2025-000123): manca il codice fiscale o la partita IVA, obbligatori nel modulo TE. Inserirlo in MUD > Integrazioni 2025, riga "Trasporti Srl".',
+      integrazione: {
+        tipo: 'CF_TRASPORTATORE',
+        chiave: 'TRASPORTI SRL',
+        ragioneSociale: 'Trasporti Srl',
+      },
+    })
+  })
+
+  it('trasportatoreNonIndicato è un avviso sul movimento, che resta nel MUD', () => {
+    expect(controlliMud.trasportatoreNonIndicato(scaricoKg, 'FIR-2025-000123')).toEqual({
+      codice: 'TRASPORTATORE_NON_INDICATO',
+      gravita: 'AVVISO',
+      messaggio:
+        'Movimento n. 4/2025 (CER 17 04 05): il FIR FIR-2025-000123 non indica il trasportatore, quindi per questo conferimento manca il modulo TE.',
+      movimenti: [
+        {
+          numero: 4,
+          anno: 2025,
+          cerCode: '17 04 05',
+          quantita: 300,
+          unita: 'KG',
+          kg: 300,
+          incluso: true,
+        },
+      ],
+    })
+  })
+
+  it('scaricoSenzaFir dice che mancano anche il FIR e il modulo TE del trasportatore', () => {
+    const r = controlliMud.scaricoSenzaFir(scaricoKg)
+    expect(r.gravita).toBe('AVVISO')
+    expect(r.messaggio).toBe(
+      'Movimento n. 4/2025 (scarico CER 17 04 05, 300 KG): nessun FIR collegato; per il modulo DR si usa il destinatario scritto nel registro, e manca il modulo TE del trasportatore.'
+    )
+    expect(r.movimenti!.map(x => x.incluso)).toEqual([true])
+  })
+
   it('le quantità nei messaggi sono in formato italiano', () => {
     expect(
       controlliMud.scaricoSenzaFir({ ...m, quantity: 1234.5, unit: 'KG' }).messaggio
@@ -358,7 +424,9 @@ describe('controlliMud', () => {
       controlliMud.profiloNonSupportato(2025, [m]),
       controlliMud.firAnnullato(m, 'F'),
       controlliMud.firInBozza(m, 'F'),
-      controlliMud.destinatarioNonIndicato(m),
+      controlliMud.destinatarioNonIndicato(m, 2025),
+      controlliMud.trasportatoreNonIndicato(m, 'F'),
+      controlliMud.trasportatoreSenzaCf('X', 'F', 2025),
       controlliMud.esitoFirRespinto(m, 'F'),
       controlliMud.destinatarioSenzaIstat('X'),
     ]

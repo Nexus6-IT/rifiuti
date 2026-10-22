@@ -20,6 +20,7 @@ import {
 import { controlliMud, type MudEsitoControllo, type RifMovimento } from './mud-controlli'
 import {
   chiaveDestinatario,
+  chiaveMovimento,
   chiavePesoSpecifico,
   leggiIntegrazioni,
   pesoSpecificoPlausibile,
@@ -80,6 +81,24 @@ interface DestinatarioInfo {
   istatComune?: string
 }
 
+interface TrasportatoreInfo {
+  ragioneSociale: string
+  partitaIVA: string
+}
+
+/** Anagrafiche e integrazioni da cui si completano DR e TE. */
+interface FontiSoggetti {
+  destinatari: Map<string, DestinatarioInfo>
+  trasportatori: Map<string, TrasportatoreInfo>
+  integrazioni: IntegrazioniMud
+}
+
+interface VoceTe {
+  te: MudAllegatoTE
+  /** etichetta del FIR da cui viene, per il messaggio del CF mancante */
+  fir: string
+}
+
 interface VoceDr {
   dr: MudAllegatoDR
   /** per il messaggio del CF mancante: `FIR <etichetta>` o `dal registro` */
@@ -92,7 +111,7 @@ interface RigaInCorso {
   recuperoKg: number
   smaltimentoKg: number
   dr: Map<string, VoceDr>
-  te: Map<string, MudAllegatoTE>
+  te: Map<string, VoceTe>
 }
 
 interface GruppoUnita {
@@ -236,10 +255,14 @@ export class MudAggregazioneService {
     })
     const integrazioni = leggiIntegrazioni(record?.reportData)
 
-    const destinatari = await this.caricaDestinatari(
-      tenantId,
-      firCollegati.map(f => f.receiverId)
-    )
+    const fonti: FontiSoggetti = {
+      destinatari: await this.caricaDestinatari(
+        tenantId,
+        firCollegati.map(f => f.receiverId)
+      ),
+      trasportatori: await this.caricaTrasportatori(tenantId, firCollegati),
+      integrazioni,
+    }
 
     const controlli: MudEsitoControllo[] = []
     const rif = (m: Movimento): RifMovimento => ({
@@ -397,7 +420,7 @@ export class MudAggregazioneService {
       if (operazione === 'R') acc.recuperoKg += kg
       else acc.smaltimentoKg += kg
 
-      this.aggiungiDestinatario(acc, m, r, fir, kg, destinatari, controlli)
+      this.aggiungiDestinatario(acc, m, r, fir, kg, anno, fonti, controlli)
 
       if (fir?.rentriStatoFormulario === 'RespintoAccettatoParzialmente') {
         controlli.push(controlliMud.esitoFirRespinto(r, etichettaFir(fir)))
@@ -538,7 +561,8 @@ export class MudAggregazioneService {
     r: RifMovimento,
     fir: FirCollegato | undefined,
     kg: number,
-    destinatari: Map<string, DestinatarioInfo>,
+    anno: number,
+    { destinatari, trasportatori, integrazioni }: FontiSoggetti,
     controlli: MudEsitoControllo[]
   ): void {
     const nomeFir = fir?.receiverName?.trim()
@@ -568,10 +592,31 @@ export class MudAggregazioneService {
         })
       }
     } else {
-      // Senza FIR, o con un FIR che non indica il destinatario: quello del registro.
+      // Senza FIR, o con un FIR che non indica il destinatario: quello del registro, e in
+      // mancanza quello del movimento nelle integrazioni (A-W-07, A-C-04).
       const nome = m.counterpartName?.trim()
-      if (!nome) {
-        controlli.push(controlliMud.destinatarioNonIndicato(r))
+      const integrato = nome
+        ? undefined
+        : integrazioni.destinatariMovimento[chiaveMovimento(m.progressiveYear, m.progressiveNumber)]
+      if (integrato) {
+        // Chiave per CF: in completaRighe si fonde con gli altri DR dello stesso CF.
+        const chiave = `cf:${cfConfronto(integrato.codiceFiscale)}`
+        const esistente = acc.dr.get(chiave)
+        if (esistente) {
+          esistente.dr.quantitaKg += kg
+        } else {
+          acc.dr.set(chiave, {
+            dr: {
+              codiceFiscale: integrato.codiceFiscale,
+              ragioneSociale: integrato.ragioneSociale,
+              quantitaKg: kg,
+            },
+            origine: ORIGINE_REGISTRO,
+            conFir: false,
+          })
+        }
+      } else if (!nome) {
+        controlli.push(controlliMud.destinatarioNonIndicato(r, anno))
       } else {
         const chiave = `nome:${nome.toUpperCase()}`
         const esistente = acc.dr.get(chiave)
@@ -588,19 +633,33 @@ export class MudAggregazioneService {
     }
 
     if (fir) {
-      const chiaveTe = fir.carrierId || fir.carrierPartitaIva
-      if (chiaveTe && !acc.te.has(chiaveTe)) {
-        acc.te.set(chiaveTe, {
-          codiceFiscale: fir.carrierPartitaIva || '',
-          ragioneSociale: fir.carrierName || '',
-        })
+      // TE dal FIR (A-W-08). Nello schema i campi del trasportatore sono NOT NULL: "manca"
+      // vuol dire stringa vuota. Il CF mancante si cerca in anagrafica, poi nelle integrazioni.
+      const etichetta = etichettaFir(fir)
+      const pivaFir = fir.carrierPartitaIva?.trim() ?? ''
+      const nomeTrasportatore = fir.carrierName?.trim() ?? ''
+      if (!fir.carrierId && !pivaFir && !nomeTrasportatore) {
+        controlli.push(controlliMud.trasportatoreNonIndicato(r, etichetta))
+      } else {
+        const info = fir.carrierId ? trasportatori.get(fir.carrierId) : undefined
+        const ragioneSociale =
+          nomeTrasportatore || info?.ragioneSociale?.trim() || `trasportatore del FIR ${etichetta}`
+        // Preflight F24: con il solo nome, un modulo per ragione sociale normalizzata.
+        const chiaveTe = fir.carrierId || pivaFir || `nome:${chiaveDestinatario(ragioneSociale)}`
+        if (!acc.te.has(chiaveTe)) {
+          acc.te.set(chiaveTe, {
+            te: { codiceFiscale: pivaFir || info?.partitaIVA?.trim() || '', ragioneSociale },
+            fir: etichetta,
+          })
+        }
       }
     }
   }
 
   /**
-   * Righe finali, ordinate per CER: CF dei DR dalle integrazioni, fusione dei DR con lo
-   * stesso CF (rilievo G3-D-08), controlli sui DR senza CF o senza ISTAT, quantità al grammo.
+   * Righe finali, ordinate per CER: CF dei DR e dei TE dalle integrazioni, fusione dei DR con
+   * lo stesso CF (rilievo G3-D-08) e un solo TE per CF, controlli sui DR senza CF o senza ISTAT
+   * e sui TE senza CF, quantità al grammo.
    */
   private completaRighe(
     righe: Map<string, RigaInCorso>,
@@ -615,6 +674,9 @@ export class MudAggregazioneService {
       segnalati.add(esito.messaggio)
       controlli.push(esito)
     }
+    // Il messaggio del TE cita il FIR, quindi non basta deduplicarlo per testo (preflight F24):
+    // un solo controllo per ragione sociale normalizzata, come la riga delle integrazioni.
+    const trasportatoriSegnalati = new Set<string>()
 
     return [...righe.keys()].sort().map(cer6 => {
       const acc = righe.get(cer6) as RigaInCorso
@@ -662,9 +724,68 @@ export class MudAggregazioneService {
         recuperoKg: arrotonda3(acc.recuperoKg),
         smaltimentoKg: arrotonda3(acc.smaltimentoKg),
         dr,
-        te: [...acc.te.values()],
+        te: this.completaTe(acc, integrazioni, anno, trasportatoriSegnalati, controlli),
       }
     })
+  }
+
+  /** TE di una riga: CF dalle integrazioni, un solo modulo per CF, controllo sul CF mancante. */
+  private completaTe(
+    acc: RigaInCorso,
+    integrazioni: IntegrazioniMud,
+    anno: number,
+    segnalati: Set<string>,
+    controlli: MudEsitoControllo[]
+  ): MudAllegatoTE[] {
+    const te: MudAllegatoTE[] = []
+    const cfVisti = new Set<string>()
+    for (const v of acc.te.values()) {
+      const t = { ...v.te }
+      const chiave = chiaveDestinatario(t.ragioneSociale)
+      if (!t.codiceFiscale.trim()) {
+        const integrato = integrazioni.trasportatori[chiave]
+        if (integrato) {
+          t.codiceFiscale = integrato.codiceFiscale
+        } else if (!segnalati.has(chiave)) {
+          segnalati.add(chiave)
+          controlli.push(controlliMud.trasportatoreSenzaCf(t.ragioneSociale, v.fir, anno))
+        }
+      }
+      const cf = cfConfronto(t.codiceFiscale)
+      if (cf && cfVisti.has(cf)) continue
+      if (cf) cfVisti.add(cf)
+      te.push(t)
+    }
+    return te
+  }
+
+  /**
+   * CF e ragione sociale dei trasportatori in anagrafica, solo per i FIR che non li
+   * riportano (preflight F24): il dato che l'applicazione ha già non si chiede all'utente.
+   */
+  private async caricaTrasportatori(
+    tenantId: string,
+    firCollegati: FirCollegato[]
+  ): Promise<Map<string, TrasportatoreInfo>> {
+    const ids = Array.from(
+      new Set(
+        firCollegati
+          .filter(f => !f.carrierPartitaIva?.trim() || !f.carrierName?.trim())
+          .map(f => f.carrierId)
+          .filter((id): id is string => !!id)
+      )
+    )
+    const info = new Map<string, TrasportatoreInfo>()
+    if (ids.length === 0) return info
+    // Client senza estensione RLS: il perimetro dell'azienda sta nella query.
+    const trasportatori = await this.prisma.trasportatore.findMany({
+      where: { id: { in: ids }, tenantId },
+      select: { id: true, ragioneSociale: true, partitaIVA: true },
+    })
+    for (const t of trasportatori) {
+      info.set(t.id, { ragioneSociale: t.ragioneSociale, partitaIVA: t.partitaIVA })
+    }
+    return info
   }
 
   /**

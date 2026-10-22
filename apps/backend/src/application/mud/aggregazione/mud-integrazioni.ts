@@ -4,9 +4,18 @@ import { normalizzaUnitaRegistro } from '../../../domain/waste-movement/unita-mi
 // Integrazioni annuali del MUD (dati che il registro non ha): chiavi e lettura difensiva
 // di `MUDReport.reportData.integrazioni`. Funzioni pure.
 
+export interface SoggettoIntegrato {
+  ragioneSociale: string
+  codiceFiscale: string
+}
+
 export interface IntegrazioniMud {
   /** chiave = chiaveDestinatario */
-  destinatari: Record<string, { ragioneSociale: string; codiceFiscale: string }>
+  destinatari: Record<string, SoggettoIntegrato>
+  /** destinatario di uno scarico senza FIR né destinatario nel registro; chiave = chiaveMovimento */
+  destinatariMovimento: Record<string, SoggettoIntegrato>
+  /** CF del trasportatore (modulo TE); chiave = chiaveDestinatario della ragione sociale */
+  trasportatori: Record<string, SoggettoIntegrato>
   /** chiave = chiavePesoSpecifico */
   pesiSpecifici: Record<
     string,
@@ -18,6 +27,8 @@ export interface IntegrazioniMud {
 
 export const INTEGRAZIONI_VUOTE: IntegrazioniMud = {
   destinatari: {},
+  destinatariMovimento: {},
+  trasportatori: {},
   pesiSpecifici: {},
   aggiornateIl: null,
   aggiornateDa: null,
@@ -26,6 +37,11 @@ export const INTEGRAZIONI_VUOTE: IntegrazioniMud = {
 /** Ragione sociale senza spazi doppi o esterni, maiuscola. */
 export function chiaveDestinatario(ragioneSociale: string): string {
   return (ragioneSociale ?? '').trim().replace(/\s+/g, ' ').toUpperCase()
+}
+
+/** Movimento del registro: anno e numero progressivo (`2025/5`). */
+export function chiaveMovimento(anno: number, numero: number): string {
+  return `${anno}/${numero}`
 }
 
 export function chiavePesoSpecifico(cerCode6: string, unit: string): string {
@@ -64,22 +80,40 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
+/** Voci con un CF non vuoto; il nome lo decide il chiamante (null = voce scartata). */
+function leggiSoggetti(
+  grezze: unknown,
+  nome: (voce: Record<string, unknown>, chiave: string) => string | null
+): Record<string, SoggettoIntegrato> {
+  const soggetti: Record<string, SoggettoIntegrato> = {}
+  if (!isRecord(grezze)) return soggetti
+  for (const [chiave, voce] of Object.entries(grezze)) {
+    if (!isRecord(voce)) continue
+    const cf = voce.codiceFiscale
+    if (typeof cf !== 'string' || cf.trim() === '') continue
+    const ragioneSociale = nome(voce, chiave)
+    if (ragioneSociale === null) continue
+    soggetti[chiave] = { ragioneSociale, codiceFiscale: cf.trim() }
+  }
+  return soggetti
+}
+
 /** Lettura difensiva: un JSON di forma inattesa vale come assente. */
 export function leggiIntegrazioni(reportData: unknown): IntegrazioniMud {
   if (!isRecord(reportData) || !isRecord(reportData.integrazioni)) return INTEGRAZIONI_VUOTE
   const grezze = reportData.integrazioni
-  const destinatari: IntegrazioniMud['destinatari'] = {}
-  if (isRecord(grezze.destinatari)) {
-    for (const [chiave, voce] of Object.entries(grezze.destinatari)) {
-      if (!isRecord(voce)) continue
-      const cf = voce.codiceFiscale
-      if (typeof cf !== 'string' || cf.trim() === '') continue
-      destinatari[chiave] = {
-        ragioneSociale: typeof voce.ragioneSociale === 'string' ? voce.ragioneSociale : chiave,
-        codiceFiscale: cf.trim(),
-      }
-    }
-  }
+  const destinatari = leggiSoggetti(grezze.destinatari, (voce, chiave) =>
+    typeof voce.ragioneSociale === 'string' ? voce.ragioneSociale : chiave
+  )
+  const trasportatori = leggiSoggetti(grezze.trasportatori, (voce, chiave) =>
+    typeof voce.ragioneSociale === 'string' ? voce.ragioneSociale : chiave
+  )
+  // La chiave di un movimento non è un nome: senza ragione sociale il DR non si compila.
+  const destinatariMovimento = leggiSoggetti(grezze.destinatariMovimento, voce =>
+    typeof voce.ragioneSociale === 'string' && voce.ragioneSociale.trim()
+      ? voce.ragioneSociale.trim()
+      : null
+  )
   const pesiSpecifici: IntegrazioniMud['pesiSpecifici'] = {}
   if (isRecord(grezze.pesiSpecifici)) {
     for (const [chiave, voce] of Object.entries(grezze.pesiSpecifici)) {
@@ -97,6 +131,8 @@ export function leggiIntegrazioni(reportData: unknown): IntegrazioniMud {
   }
   return {
     destinatari,
+    destinatariMovimento,
+    trasportatori,
     pesiSpecifici,
     aggiornateIl: typeof grezze.aggiornateIl === 'string' ? grezze.aggiornateIl : null,
     aggiornateDa: typeof grezze.aggiornateDa === 'string' ? grezze.aggiornateDa : null,

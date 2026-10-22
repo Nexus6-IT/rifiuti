@@ -87,6 +87,7 @@ describe('MudAggregazioneService', () => {
       wasteMovement: { findMany: jest.fn().mockResolvedValue([]) },
       fIR: { findMany: jest.fn().mockResolvedValue([]) },
       destinatario: { findMany: jest.fn().mockResolvedValue([]) },
+      trasportatore: { findMany: jest.fn().mockResolvedValue([]) },
       tenant: {
         findUnique: jest
           .fn()
@@ -514,14 +515,232 @@ describe('MudAggregazioneService', () => {
   })
 
   // 19
-  it('scarico senza FIR né destinatario: quantità nel MUD, nessun DR', async () => {
+  it('scarico senza destinatario blocca con la voce del movimento', async () => {
     impostaDati({ movimenti: [scaricoSenzaFir({ counterpartName: null })] })
 
     const r = await service.aggrega('t1', 2025)
 
     expect(r.righe[0].smaltimentoKg).toBe(300)
     expect(r.righe[0].dr).toEqual([])
-    expect(codici(r.controlli)).toContain('DESTINATARIO_NON_INDICATO')
+    expect(conCodice(r.controlli, 'DESTINATARIO_NON_INDICATO')).toEqual([
+      expect.objectContaining({
+        gravita: 'BLOCCANTE',
+        messaggio:
+          'Movimento n. 5/2025 (scarico CER 17 04 05, 300 KG): né FIR né destinatario nel registro, e il modulo DR è obbligatorio. Inserire destinatario e codice fiscale in MUD > Integrazioni 2025, riga "Movimento n. 5/2025".',
+        integrazione: { tipo: 'DESTINATARIO_MOVIMENTO', chiave: '2025/5', numero: 5, anno: 2025 },
+      }),
+    ])
+    expect(haBloccanti(r.controlli)).toBe(true)
+  })
+
+  // 19-bis (A-W-07, A-C-04)
+  it('con il destinatario del movimento nelle integrazioni il BA è coerente', async () => {
+    impostaDati({ movimenti: [scaricoSenzaFir({ counterpartName: null })] })
+    integrazioni({
+      destinatariMovimento: {
+        '2025/5': { ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' },
+      },
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    const riga0 = r.righe[0]
+    expect(riga0.dr).toEqual([
+      { codiceFiscale: '12345678903', ragioneSociale: 'Ecologia Srl', quantitaKg: 300 },
+    ])
+    const consegnatoATerzi = riga0.dr!.reduce((s, d) => s + d.quantitaKg, 0)
+    expect(consegnatoATerzi).toBe(riga0.smaltimentoKg + riga0.recuperoKg)
+    expect(codici(r.controlli)).not.toContain('DESTINATARIO_NON_INDICATO')
+    expect(codici(r.controlli)).not.toContain('DESTINATARIO_SENZA_CF')
+    expect(haBloccanti(r.controlli)).toBe(false)
+  })
+
+  // 19-ter
+  it('il destinatario del movimento integrato si fonde per CF con quello del registro', async () => {
+    impostaDati({
+      movimenti: [
+        scaricoSenzaFir({ progressiveNumber: 5, counterpartName: 'Ecologia Srl' }),
+        scaricoSenzaFir({ progressiveNumber: 6, counterpartName: null }),
+      ],
+    })
+    integrazioni({
+      destinatari: {
+        'ECOLOGIA SRL': { ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' },
+      },
+      destinatariMovimento: {
+        '2025/6': { ragioneSociale: 'ECOLOGIA S.R.L.', codiceFiscale: 'IT12345678903' },
+      },
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.righe[0].dr).toEqual([
+      expect.objectContaining({ codiceFiscale: '12345678903', quantitaKg: 600 }),
+    ])
+    expect(r.righe[0].smaltimentoKg).toBe(600)
+  })
+
+  // 19-quater (A-W-08)
+  it('TE senza CF blocca, con le integrazioni si completa', async () => {
+    const firSenzaCf = fir({ carrierId: null, carrierPartitaIva: '', carrierName: 'Trasporti Srl' })
+    impostaDati({
+      movimenti: [scarico({ firId: 'f1' })],
+      firCollegati: [firSenzaCf],
+    })
+
+    const bloccato = await service.aggrega('t1', 2025)
+
+    expect(bloccato.righe[0].te).toEqual([{ codiceFiscale: '', ragioneSociale: 'Trasporti Srl' }])
+    expect(conCodice(bloccato.controlli, 'TRASPORTATORE_SENZA_CF')).toEqual([
+      controlliMud.trasportatoreSenzaCf('Trasporti Srl', 'FIR-2025-000123', 2025),
+    ])
+    expect(haBloccanti(bloccato.controlli)).toBe(true)
+
+    integrazioni({
+      trasportatori: {
+        'TRASPORTI SRL': { ragioneSociale: 'Trasporti Srl', codiceFiscale: '22222222222' },
+      },
+    })
+    const completato = await service.aggrega('t1', 2025)
+
+    expect(completato.righe[0].te).toEqual([
+      { codiceFiscale: '22222222222', ragioneSociale: 'Trasporti Srl' },
+    ])
+    expect(codici(completato.controlli)).not.toContain('TRASPORTATORE_SENZA_CF')
+    expect(haBloccanti(completato.controlli)).toBe(false)
+  })
+
+  it('un solo TRASPORTATORE_SENZA_CF per ragione sociale, anche da FIR e CER diversi', async () => {
+    impostaDati({
+      movimenti: [
+        scarico({ progressiveNumber: 7, firId: 'f1' }),
+        scarico({ progressiveNumber: 8, firId: 'f2', cerCode: '15 01 01' }),
+      ],
+      firCollegati: [
+        fir({ carrierId: null, carrierPartitaIva: '', carrierName: 'Trasporti Srl' }),
+        fir({
+          id: 'f2',
+          firNumber: 'FIR-2025-000124',
+          carrierId: null,
+          carrierPartitaIva: '',
+          carrierName: ' TRASPORTI   srl',
+        }),
+      ],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(conCodice(r.controlli, 'TRASPORTATORE_SENZA_CF')).toHaveLength(1)
+    // righe in ordine di CER: 150101 (FIR f2), poi 170405 (FIR f1)
+    expect(r.righe.map(x => x.te)).toEqual([
+      [{ codiceFiscale: '', ragioneSociale: 'TRASPORTI   srl' }],
+      [{ codiceFiscale: '', ragioneSociale: 'Trasporti Srl' }],
+    ])
+  })
+
+  it('TE con il solo nome: un modulo per ragione sociale nello stesso CER', async () => {
+    impostaDati({
+      movimenti: [
+        scarico({ progressiveNumber: 7, firId: 'f1' }),
+        scarico({ progressiveNumber: 8, firId: 'f2' }),
+      ],
+      firCollegati: [
+        fir({ carrierId: null, carrierPartitaIva: '', carrierName: 'Trasporti Srl' }),
+        fir({ id: 'f2', carrierId: null, carrierPartitaIva: '', carrierName: 'TRASPORTI SRL ' }),
+      ],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.righe[0].te).toHaveLength(1)
+  })
+
+  it("il CF del trasportatore senza partita IVA sul FIR si prende dall'anagrafica", async () => {
+    impostaDati({
+      movimenti: [scarico({ firId: 'f1' })],
+      firCollegati: [fir({ carrierId: 'car-9', carrierPartitaIva: '', carrierName: '' })],
+    })
+    prisma.trasportatore.findMany.mockResolvedValue([
+      { id: 'car-9', partitaIVA: '44444444444', ragioneSociale: 'Autotrasporti Rossi Srl' },
+    ])
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(prisma.trasportatore.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 't1', id: { in: ['car-9'] } } })
+    )
+    expect(r.righe[0].te).toEqual([
+      { codiceFiscale: '44444444444', ragioneSociale: 'Autotrasporti Rossi Srl' },
+    ])
+    expect(codici(r.controlli)).not.toContain('TRASPORTATORE_SENZA_CF')
+  })
+
+  it('trasportatore senza nome né anagrafica: il TE prende il nome dal FIR e chiede il CF', async () => {
+    impostaDati({
+      movimenti: [scarico({ firId: 'f1' })],
+      firCollegati: [fir({ carrierId: 'car-9', carrierPartitaIva: '', carrierName: ' ' })],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.righe[0].te).toEqual([
+      { codiceFiscale: '', ragioneSociale: 'trasportatore del FIR FIR-2025-000123' },
+    ])
+    expect(conCodice(r.controlli, 'TRASPORTATORE_SENZA_CF')).toEqual([
+      controlliMud.trasportatoreSenzaCf(
+        'trasportatore del FIR FIR-2025-000123',
+        'FIR-2025-000123',
+        2025
+      ),
+    ])
+  })
+
+  it('TE con lo stesso CF dopo le integrazioni: un solo modulo', async () => {
+    impostaDati({
+      movimenti: [
+        scarico({ progressiveNumber: 7, firId: 'f1' }),
+        scarico({ progressiveNumber: 8, firId: 'f2' }),
+      ],
+      firCollegati: [
+        fir({}),
+        fir({
+          id: 'f2',
+          carrierId: 'car-2',
+          carrierPartitaIva: '',
+          carrierName: 'Trasporti S.r.l.',
+        }),
+      ],
+    })
+    integrazioni({
+      trasportatori: {
+        'TRASPORTI S.R.L.': { ragioneSociale: 'Trasporti S.r.l.', codiceFiscale: 'IT22222222222' },
+      },
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.righe[0].te).toEqual([
+      { codiceFiscale: '22222222222', ragioneSociale: 'Trasporti Srl' },
+    ])
+  })
+
+  it('FIR senza trasportatore avvisa', async () => {
+    impostaDati({
+      movimenti: [scarico({ progressiveNumber: 7, firId: 'f1' })],
+      firCollegati: [fir({ carrierId: null, carrierPartitaIva: '', carrierName: '' })],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.righe[0].te).toEqual([])
+    expect(conCodice(r.controlli, 'TRASPORTATORE_NON_INDICATO')).toEqual([
+      expect.objectContaining({
+        gravita: 'AVVISO',
+        movimenti: [expect.objectContaining({ numero: 7, incluso: true })],
+      }),
+    ])
+    expect(codici(r.controlli)).not.toContain('TRASPORTATORE_SENZA_CF')
+    expect(prisma.trasportatore.findMany).not.toHaveBeenCalled()
   })
 
   // 20
