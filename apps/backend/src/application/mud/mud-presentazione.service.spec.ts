@@ -169,6 +169,7 @@ describe('MudPresentazioneService', () => {
       submittedAt: null,
       datiModificatiDopoPresentazione: false,
       fileTracciato: null,
+      esportazioni: [],
     })
     expect(prisma.mUDReport.findUnique).toHaveBeenCalledWith({
       where: { tenantId_year: { tenantId: 't1', year: 2025 } },
@@ -308,14 +309,7 @@ describe('MudPresentazioneService', () => {
     expect(scritto().update.reportData.esportazionePresentata).toBe('2026-04-02T08:00:00.000Z')
 
     prisma.mUDReport.upsert.mockClear()
-    await service.segnaPresentato(
-      't1',
-      2025,
-      'u1',
-      undefined,
-      undefined,
-      '2026-04-01T08:00:00.000Z'
-    )
+    await service.segnaPresentato('t1', 2025, 'u1', undefined, '2026-04-01T08:00:00.000Z')
     expect(scritto().update.reportData.hashAggregato).toBe('h-vecchio')
     expect(scritto().update.reportData.hashDichiarante).toBe('d0')
     expect(scritto().update.reportData.esportazionePresentata).toBe('2026-04-01T08:00:00.000Z')
@@ -328,7 +322,7 @@ describe('MudPresentazioneService', () => {
     )
 
     const errore = await service
-      .segnaPresentato('t1', 2025, 'u1', undefined, undefined, '2026-01-01')
+      .segnaPresentato('t1', 2025, 'u1', undefined, '2026-01-01')
       .catch(e => e)
 
     expect(errore).toBeInstanceOf(UnprocessableEntityException)
@@ -494,6 +488,44 @@ describe('MudPresentazioneService', () => {
     expect(prisma.$executeRaw.mock.calls[0].slice(1)).toEqual(['mud-report|t1|2025'])
   })
 
+  // (confutazione dopo l'esecuzione, A-W-03): la pagina sceglie a quale file legare la
+  // segnatura e mostra le quantità di quel file nella conferma
+  it('elenca le esportazioni dell anno con versione, avvisi confermati e quantità del file', async () => {
+    prisma.mUDReport.findUnique.mockResolvedValue(
+      record({
+        reportData: {
+          esportazioni: [
+            voce({
+              generatoIl: '2026-04-01T08:00:00.000Z',
+              riepilogo: { ...RIEPILOGO_FILE, kgInMeno: 350, kgInPiu: 36 },
+            }),
+            'voce di forma inattesa',
+            voce({ versione: 7, avvisiConfermati: 'X', riepilogo: null }),
+          ],
+        },
+      })
+    )
+
+    const stato = await service.stato('t1', 2025)
+
+    expect(stato.esportazioni).toEqual([
+      {
+        generatoIl: '2026-04-01T08:00:00.000Z',
+        versione: '6.04/25',
+        avvisiConfermati: ['SCARICO_SENZA_FIR'],
+        kgInMeno: 350,
+        kgInPiu: 36,
+      },
+      {
+        generatoIl: '2026-04-02T08:00:00.000Z',
+        versione: null,
+        avvisiConfermati: [],
+        kgInMeno: 0,
+        kgInPiu: 0,
+      },
+    ])
+  })
+
   it('segnala i dati modificati dopo la presentazione', async () => {
     prisma.mUDReport.findUnique.mockResolvedValue(
       record({
@@ -576,6 +608,7 @@ describe('MudPresentazioneService', () => {
       submittedAt: new Date('2026-04-30T10:00:00Z'),
       datiModificatiDopoPresentazione: false,
       fileTracciato: false,
+      esportazioni: [],
     })
     expect(aggregazione.aggrega).not.toHaveBeenCalled()
   })

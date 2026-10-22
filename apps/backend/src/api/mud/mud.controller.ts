@@ -19,7 +19,7 @@ import {
 import { Response } from 'express'
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiResponse } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
-import { MUDGeneratorService } from '../../application/mud/mud-generator.service'
+import { MUDGeneratorService, MudRiepilogo } from '../../application/mud/mud-generator.service'
 import { MudExportService } from '../../application/mud/export/mud-export.service'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
@@ -61,14 +61,26 @@ export class MudController {
     private readonly presentazione: MudPresentazioneService
   ) {}
 
+  /**
+   * Riepilogo dell'anno, con il ruolo dell'utente nell'azienda selezionata (A-C-06): la pagina
+   * lo usa per mostrare il download con avvisi, la presentazione e l'obbligo, perché il ruolo
+   * del token non è quello effettivo nell'azienda del cliente.
+   */
   @Get('generate')
   @ApiOperation({ summary: 'Generate MUD report for a specific year' })
   @ApiQuery({ name: 'year', required: true, type: Number, example: 2024 })
-  async generateReport(@Req() req: any, @Query('year') year: string) {
+  async generateReport(
+    @Req() req: any,
+    @Query('year') year: string
+  ): Promise<MudRiepilogo & { ruoloEffettivo: RuoloApplicativo }> {
     const tenantId = requireRequestTenantId(req)
     const reportYear = this.parseYear(year)
 
-    return await this.mudGenerator.generateMUDReport(tenantId, reportYear)
+    const [riepilogo, ruoloEffettivo] = await Promise.all([
+      this.mudGenerator.generateMUDReport(tenantId, reportYear),
+      this.membership.ruoloEffettivo(req.user, tenantId),
+    ])
+    return { ...riepilogo, ruoloEffettivo }
   }
 
   @Get('export')
@@ -203,7 +215,6 @@ export class MudController {
       year,
       req.user.id,
       dto.dataPresentazione ? new Date(dto.dataPresentazione) : undefined,
-      dto.avvisiConfermati,
       dto.esportazioneGenerataIl
     )
   }

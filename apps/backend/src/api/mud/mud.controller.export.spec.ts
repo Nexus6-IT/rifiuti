@@ -183,3 +183,27 @@ describe('MudController.exportTelematico', () => {
     expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
   })
 })
+
+describe('MudController.generateReport', () => {
+  // (confutazione dopo l'esecuzione, A-C-06): la pagina decide chi vede il download con avvisi,
+  // la presentazione e l'obbligo con il ruolo nell'azienda selezionata, non con quello del token
+  it('aggiunge al riepilogo il ruolo effettivo nell azienda selezionata', async () => {
+    const riepilogo = { year: 2025, controlli: [] }
+    const mudGenerator = { generateMUDReport: jest.fn().mockResolvedValue(riepilogo) }
+    const membership = ruoli('VIEWER')
+    const controller = new MudController(
+      mudGenerator as any,
+      {} as any,
+      membership as any,
+      {} as any,
+      {} as any
+    )
+    const req = { tenantId: 'cliente', user: { id: 'u1', tenantId: 'studio', role: 'ADMIN' } }
+
+    const r = await controller.generateReport(req as any, '2025')
+
+    expect(r).toEqual({ year: 2025, controlli: [], ruoloEffettivo: 'VIEWER' })
+    expect(mudGenerator.generateMUDReport).toHaveBeenCalledWith('cliente', 2025)
+    expect(membership.ruoloEffettivo).toHaveBeenCalledWith(req.user, 'cliente')
+  })
+})

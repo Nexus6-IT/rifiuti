@@ -1,7 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsArray, IsDateString, IsOptional, IsString } from 'class-validator'
+import { IsDateString, IsOptional, IsString } from 'class-validator'
 
-/** Corpo di `POST mud/:year/presentazione`: segna il MUD dell'anno come presentato. */
+/**
+ * Corpo di `POST mud/:year/presentazione`: segna il MUD dell'anno come presentato. Gli avvisi
+ * confermati non si mandano: sono quelli dell'esportazione a cui la segnatura si lega (A-W-03).
+ */
 export class SegnaPresentatoDto {
   @ApiPropertyOptional({
     description: 'Data della presentazione (ISO 8601); senza, la data di oggi. Mai nel futuro.',
@@ -10,16 +13,6 @@ export class SegnaPresentatoDto {
   @IsOptional()
   @IsDateString()
   dataPresentazione?: string
-
-  @ApiPropertyOptional({
-    description: 'Codici degli avvisi confermati',
-    type: [String],
-    example: ['SCARICO_SENZA_FIR'],
-  })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  avvisiConfermati?: string[]
 
   @ApiPropertyOptional({
     description:

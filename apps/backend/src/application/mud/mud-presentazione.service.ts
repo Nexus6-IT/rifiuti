@@ -27,6 +27,19 @@ export interface StatoPresentazioneMud {
   datiModificatiDopoPresentazione: boolean
   /** null se non SUBMITTED; false se il file non è uscito da questa versione (Decisione 22) */
   fileTracciato: boolean | null
+  /** File generati per l'anno, dal più vecchio: la segnatura si lega a uno di questi (A-W-03) */
+  esportazioni: EsportazioneMud[]
+}
+
+/** Esportazione registrata, come la pagina la propone per la segnatura. */
+export interface EsportazioneMud {
+  /** Chiave della voce: si rimanda come `esportazioneGenerataIl` */
+  generatoIl: string
+  versione: string | null
+  avvisiConfermati: string[]
+  /** Quantità dichiarate in meno e in più rispetto al registro, dal riepilogo del file */
+  kgInMeno: number
+  kgInPiu: number
 }
 
 const isRecord = (v: unknown): v is ReportDataJson =>
@@ -38,6 +51,26 @@ const elenco = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
 
 const elencoDiStringhe = (v: unknown): string[] =>
   elenco(v).filter((x): x is string => typeof x === 'string')
+
+const numeroOZero = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+
+/** Esportazioni di `reportData`, lette in modo difensivo: una voce senza `generatoIl` si salta. */
+function esportazioniRegistrate(reportData: unknown): EsportazioneMud[] {
+  const p = isRecord(reportData) ? reportData : {}
+  return elenco(p.esportazioni).flatMap(v => {
+    if (!isRecord(v) || typeof v.generatoIl !== 'string') return []
+    const riepilogo = isRecord(v.riepilogo) ? v.riepilogo : {}
+    return [
+      {
+        generatoIl: v.generatoIl,
+        versione: stringaONull(v.versione),
+        avvisiConfermati: elencoDiStringhe(v.avvisiConfermati),
+        kgInMeno: numeroOZero(riepilogo.kgInMeno),
+        kgInPiu: numeroOZero(riepilogo.kgInPiu),
+      },
+    ]
+  })
+}
 
 /**
  * Segnatura del MUD come presentato e suo annullamento, con lo storico in
@@ -72,9 +105,11 @@ export class MudPresentazioneService {
         submittedAt: null,
         datiModificatiDopoPresentazione: false,
         fileTracciato: null,
+        esportazioni: [],
       }
     }
     const status = record.status as StatoPresentazioneMud['status']
+    const esportazioni = esportazioniRegistrate(record.reportData)
     if (status !== 'SUBMITTED') {
       return {
         year,
@@ -82,6 +117,7 @@ export class MudPresentazioneService {
         submittedAt: record.submittedAt ?? null,
         datiModificatiDopoPresentazione: false,
         fileTracciato: null,
+        esportazioni,
       }
     }
 
@@ -107,20 +143,19 @@ export class MudPresentazioneService {
       datiModificatiDopoPresentazione,
       // un record segnato prima di questo piano non ha la chiave: vale false
       fileTracciato: reportData.fileTracciato === true,
+      esportazioni,
     }
   }
 
   /**
-   * `avvisiConfermati` non decide più nulla: con un'esportazione valgono quelli confermati alla
+   * Gli avvisi confermati non si chiedono: con un'esportazione valgono quelli confermati alla
    * generazione del file, senza esportazioni non c'è nulla da confermare (A-W-02, A-W-03).
-   * Resta nella firma per compatibilità con il client.
    */
   async segnaPresentato(
     tenantId: string,
     year: number,
     userId: string,
     dataPresentazione?: Date,
-    _avvisiConfermati?: readonly string[],
     esportazioneGenerataIl?: string
   ): Promise<StatoPresentazioneMud> {
     // anno non supportato: 404 col messaggio del registro

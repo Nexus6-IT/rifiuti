@@ -1,10 +1,11 @@
 import 'reflect-metadata'
-import { ForbiddenException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, ValidationPipe } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
 import { MudController } from './mud.controller'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
 import { AnnullaPresentazioneDto } from './dtos/annulla-presentazione.dto'
+import { SegnaPresentatoDto } from './dtos/segna-presentato.dto'
 
 describe('MudController presentazione del MUD', () => {
   // (confutazione dopo l'esecuzione, A-C-06): il ruolo è quello effettivo nell'azienda selezionata
@@ -58,14 +59,12 @@ describe('MudController presentazione del MUD', () => {
     )
     await controller.segnaPresentato({ user: { id: 'u1', tenantId: 't1' } } as any, 2025, {
       dataPresentazione: '2026-06-30',
-      avvisiConfermati: ['SCARICO_SENZA_FIR'],
     })
     expect(presentazione.segnaPresentato).toHaveBeenCalledWith(
       't1',
       2025,
       'u1',
       new Date('2026-06-30'),
-      ['SCARICO_SENZA_FIR'],
       undefined
     )
     await controller.annullaPresentazione({ user: { id: 'u2', tenantId: 't1' } } as any, 2025, {
@@ -98,7 +97,6 @@ describe('MudController presentazione del MUD', () => {
       'cliente',
       2025,
       'u1',
-      undefined,
       undefined,
       '2026-04-02T08:00:00Z'
     )
@@ -133,5 +131,27 @@ describe('MudController presentazione del MUD', () => {
   ])('l annullamento richiede un motivo valido: %j valido %s', async (corpo, valido) => {
     const errori = await validate(plainToInstance(AnnullaPresentazioneDto, corpo))
     expect(errori.length === 0).toBe(valido)
+  })
+
+  // La segnatura prende gli avvisi confermati dall'esportazione a cui si lega (A-W-03): il client
+  // non li manda più, e con la validazione globale un campo in più è un 400
+  it('il corpo della segnatura non accetta più avvisiConfermati', async () => {
+    // stesse opzioni della pipe globale di main.ts
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    })
+    const meta = { type: 'body' as const, metatype: SegnaPresentatoDto }
+
+    await expect(
+      pipe.transform({ avvisiConfermati: ['SCARICO_SENZA_FIR'] }, meta)
+    ).rejects.toBeInstanceOf(BadRequestException)
+    await expect(
+      pipe.transform(
+        { dataPresentazione: '2026-06-30', esportazioneGenerataIl: '2026-04-02T08:00:00Z' },
+        meta
+      )
+    ).resolves.toBeInstanceOf(SegnaPresentatoDto)
   })
 })
