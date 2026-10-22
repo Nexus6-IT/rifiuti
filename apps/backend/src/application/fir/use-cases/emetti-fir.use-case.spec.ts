@@ -397,6 +397,7 @@ describe('EmettiFIRUseCase', () => {
     describe('anno di emissione', () => {
       afterEach(() => {
         jest.useRealTimers()
+        jest.restoreAllMocks()
       })
 
       it("usa l'anno italiano dell'istante di emissione", async () => {
