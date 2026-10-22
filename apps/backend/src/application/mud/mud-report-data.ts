@@ -61,3 +61,30 @@ export async function aggiornaReportData(
   })
   return { precedente, record, scritto: true }
 }
+
+/**
+ * Motivo dell'annullamento di una presentazione (A-W-04): una segnatura sbagliata (il MUD non
+ * era stato presentato davvero) o una dichiarazione già presentata da sostituire con un file
+ * nuovo, che allora porta «annulla e sostituisce».
+ */
+export const MOTIVI_ANNULLAMENTO = ['SEGNATURA_ERRATA', 'DICHIARAZIONE_DA_SOSTITUIRE'] as const
+export type MotivoAnnullamento = (typeof MOTIVI_ANNULLAMENTO)[number]
+
+/**
+ * Data della comunicazione che un nuovo file annulla e sostituisce (A-W-04), o `null` se il
+ * file è una prima dichiarazione: il `submittedAt` del MUD se è presentato; altrimenti quello
+ * della presentazione annullata più di recente, se è stata annullata per sostituirla. Un
+ * annullamento per segnatura errata non lascia nessuna comunicazione da sostituire.
+ */
+export function dataComunicazioneSostituita(
+  record: (Pick<RecordMudReport, 'status' | 'submittedAt'> & { reportData?: unknown }) | null
+): Date | null {
+  if (!record) return null
+  if (record.status === 'SUBMITTED') return record.submittedAt
+  const reportData = isRecord(record.reportData) ? record.reportData : {}
+  const annullamenti = Array.isArray(reportData.annullamenti) ? reportData.annullamenti : []
+  const ultimo: unknown = annullamenti[annullamenti.length - 1]
+  if (!isRecord(ultimo) || ultimo.motivo !== 'DICHIARAZIONE_DA_SOSTITUIRE') return null
+  const data = typeof ultimo.submittedAt === 'string' ? new Date(ultimo.submittedAt) : null
+  return data && !Number.isNaN(data.getTime()) ? data : null
+}

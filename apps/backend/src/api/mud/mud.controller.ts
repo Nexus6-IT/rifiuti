@@ -30,6 +30,7 @@ import {
   StatoPresentazioneMud,
 } from '../../application/mud/mud-presentazione.service'
 import { SegnaPresentatoDto } from './dtos/segna-presentato.dto'
+import { AnnullaPresentazioneDto } from './dtos/annulla-presentazione.dto'
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono segnare l'azienda come non
@@ -187,9 +188,10 @@ export class MudController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Segna il MUD come presentato' })
   @ApiResponse({ status: 200, description: 'Stato della presentazione aggiornato' })
-  @ApiResponse({ status: 400, description: 'Data futura o esportazione non trovata' })
+  @ApiResponse({ status: 400, description: 'Data futura' })
   @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
-  @ApiResponse({ status: 422, description: 'Errori bloccanti o avvisi da confermare' })
+  @ApiResponse({ status: 409, description: 'MUD già presentato: annullare prima la segnatura' })
+  @ApiResponse({ status: 422, description: 'Esportazione indicata non trovata' })
   async segnaPresentato(
     @Req() req: any,
     @Param('year', ParseIntPipe) year: number,
@@ -206,17 +208,24 @@ export class MudController {
     )
   }
 
-  /** Annulla la presentazione del MUD dell'anno, conservandola nello storico. */
+  /**
+   * Annulla la presentazione del MUD dell'anno, conservandola nello storico con il motivo:
+   * con `DICHIARAZIONE_DA_SOSTITUIRE` il prossimo file annulla e sostituisce quella
+   * comunicazione (A-W-04).
+   */
   @Delete(':year/presentazione')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Annulla la presentazione del MUD' })
   @ApiResponse({ status: 200, description: 'Stato della presentazione aggiornato' })
+  @ApiResponse({ status: 400, description: 'Motivo mancante o non valido' })
   @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
   async annullaPresentazione(
     @Req() req: any,
-    @Param('year', ParseIntPipe) year: number
+    @Param('year', ParseIntPipe) year: number,
+    @Body() dto: AnnullaPresentazioneDto
   ): Promise<StatoPresentazioneMud> {
     const tenantId = await this.richiediAmministratorePresentazione(req)
-    return this.presentazione.annullaPresentazione(tenantId, year, req.user.id)
+    return this.presentazione.annullaPresentazione(tenantId, year, req.user.id, dto.motivo)
   }
 
   /**

@@ -1,5 +1,6 @@
 import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
-import { MudExportService, aziendaDichiarante } from './mud-export.service'
+import { MudExportService } from './mud-export.service'
+import { aziendaDichiarante } from './mud-dichiarante'
 import { MudVersionRegistry } from './mud-version.registry'
 import { HttpExceptionFilter } from '../../../core/filters/http-exception.filter'
 import { controlliMud, riepilogaAvvisi, type RifMovimento } from '../aggregazione/mud-controlli'
@@ -472,7 +473,10 @@ describe('MudExportService', () => {
     await service.exportTelematico('t1', 2024, admin)
     const voce = prisma.mUDReport.upsert.mock.calls[0][0].create.reportData.esportazioni[0]
     expect(voce.hashDichiarante).toBe(
-      hashDichiarante(aziendaDichiarante(tenantCompleto, DICHIARANTE_OK))
+      hashDichiarante({
+        azienda: aziendaDichiarante(tenantCompleto, DICHIARANTE_OK),
+        autorizzazioni: [],
+      })
     )
   })
 
@@ -498,11 +502,47 @@ describe('MudExportService', () => {
       const r = await service.exportTelematico('t1', 2024, admin)
       expect(prisma.mUDReport.findUnique).toHaveBeenCalledWith({
         where: { tenantId_year: { tenantId: 't1', year: 2024 } },
-        select: { status: true, submittedAt: true },
+        select: { status: true, submittedAt: true, reportData: true },
       })
+      const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+      expect(voce.sostituisce).toBe('2026-06-30T10:00:00.000Z')
       const aa = recordAA(r.content)
       expect(aa.endsWith(';1;20260630;')).toBe(true)
       expect(aa).toHaveLength(338)
+    })
+
+    it('dopo un annullamento per DICHIARAZIONE_DA_SOSTITUIRE il file sostituisce quella comunicazione', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue({
+        status: 'DRAFT',
+        submittedAt: null,
+        submittedBy: null,
+        reportData: {
+          annullamenti: [
+            { motivo: 'SEGNATURA_ERRATA', submittedAt: '2026-05-10T10:00:00.000Z' },
+            { motivo: 'DICHIARAZIONE_DA_SOSTITUIRE', submittedAt: '2026-06-30T10:00:00.000Z' },
+          ],
+        },
+      })
+      const r = await service.exportTelematico('t1', 2024, admin)
+      expect(recordAA(r.content).endsWith(';1;20260630;')).toBe(true)
+    })
+
+    it('conta solo l ultimo annullamento: se era una segnatura errata il file non sostituisce', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue({
+        status: 'DRAFT',
+        submittedAt: null,
+        submittedBy: null,
+        reportData: {
+          annullamenti: [
+            { motivo: 'DICHIARAZIONE_DA_SOSTITUIRE', submittedAt: '2026-05-10T10:00:00.000Z' },
+            { motivo: 'SEGNATURA_ERRATA', submittedAt: '2026-06-30T10:00:00.000Z' },
+          ],
+        },
+      })
+      const r = await service.exportTelematico('t1', 2024, admin)
+      expect(recordAA(r.content).endsWith(';0;00000000;')).toBe(true)
+      const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+      expect(voce.sostituisce).toBeNull()
     })
 
     it('senza una presentazione il record AA non sostituisce nulla', async () => {

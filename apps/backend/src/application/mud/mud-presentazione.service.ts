@@ -1,19 +1,23 @@
-import { BadRequestException, Injectable, UnprocessableEntityException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { formattaDataItaliana } from '../../core/time/anno-italiano'
 import { MudVersionRegistry } from './export/mud-version.registry'
-import { aziendaDichiarante } from './export/mud-export.service'
+import { caricaDichiaranteDellAzienda } from './export/mud-dichiarante'
 import { MudAggregazioneService, type MudAggregato } from './aggregazione/mud-aggregazione.service'
-import {
-  avvisiNonConfermati,
-  codiciAvvisoDaConfermare,
-  haBloccanti,
-  riepilogaAvvisi,
-} from './aggregazione/mud-controlli'
 import { hashAggregato, hashDichiarante } from './aggregazione/mud-regole'
-import { aggiornaReportData, type ReportDataJson, type RecordMudReport } from './mud-report-data'
+import {
+  aggiornaReportData,
+  type MotivoAnnullamento,
+  type ReportDataJson,
+  type RecordMudReport,
+} from './mud-report-data'
 
 export interface StatoPresentazioneMud {
   year: number
@@ -32,14 +36,19 @@ const stringaONull = (v: unknown): string | null => (typeof v === 'string' ? v :
 
 const elenco = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
 
+const elencoDiStringhe = (v: unknown): string[] =>
+  elenco(v).filter((x): x is string => typeof x === 'string')
+
 /**
  * Segnatura del MUD come presentato e suo annullamento, con lo storico in
  * `MUDReport.reportData` e nel registro attività.
  *
- * La segnatura si lega a una esportazione registrata (A-W-03): l'hash salvato è quello del file
- * uscito, non uno ricalcolato al momento, così `stato()` dice se i dati sono cambiati rispetto
- * a ciò che è stato davvero presentato. Senza esportazioni (file fatto altrove, A-W-02) si
- * salva l'hash attuale e una fotografia dei controlli.
+ * La segnatura si lega a una esportazione registrata (A-W-03): hash, avvisi confermati e
+ * riepilogo sono quelli del file uscito, che ha già superato i controlli quando è stato
+ * generato; se i dati sono cambiati dopo, la segnatura riesce e `stato()` lo dice. Senza
+ * esportazioni (file fatto altrove, A-W-02) si salvano l'hash attuale e una fotografia dei
+ * controlli. Un MUD già presentato non si segna di nuovo: prima si annulla (409), così lo
+ * storico resta in `annullamenti`.
  */
 @Injectable()
 export class MudPresentazioneService {
@@ -82,12 +91,13 @@ export class MudPresentazioneService {
     if (hashSalvato !== null) {
       const aggregato = await this.aggregazione.aggrega(tenantId, year)
       datiModificatiDopoPresentazione = hashAggregato(aggregato.righe) !== hashSalvato
-      // hashAggregato copre solo le righe: ATECO, comune e il resto dell'anagrafica si
-      // confrontano a parte (segnature precedenti a questo controllo non lo hanno)
+      // hashAggregato copre solo le righe: anagrafica (AA) e autorizzazioni (AU) si confrontano
+      // a parte (segnature precedenti a questo controllo non lo hanno). Senza azienda non c'è
+      // nulla da confrontare.
       const dichiaranteSalvato = stringaONull(reportData.hashDichiarante)
       if (!datiModificatiDopoPresentazione && dichiaranteSalvato !== null) {
         const attuale = await this.hashDichiaranteAttuale(tenantId, aggregato)
-        datiModificatiDopoPresentazione = attuale !== dichiaranteSalvato
+        datiModificatiDopoPresentazione = attuale !== null && attuale !== dichiaranteSalvato
       }
     }
     return {
@@ -100,12 +110,17 @@ export class MudPresentazioneService {
     }
   }
 
+  /**
+   * `avvisiConfermati` non decide più nulla: con un'esportazione valgono quelli confermati alla
+   * generazione del file, senza esportazioni non c'è nulla da confermare (A-W-02, A-W-03).
+   * Resta nella firma per compatibilità con il client.
+   */
   async segnaPresentato(
     tenantId: string,
     year: number,
     userId: string,
     dataPresentazione?: Date,
-    avvisiConfermati?: readonly string[],
+    _avvisiConfermati?: readonly string[],
     esportazioneGenerataIl?: string
   ): Promise<StatoPresentazioneMud> {
     // anno non supportato: 404 col messaggio del registro
@@ -117,15 +132,20 @@ export class MudPresentazioneService {
     const submittedAt = dataPresentazione ?? new Date()
 
     const aggregato = await this.aggregazione.aggrega(tenantId, year)
-    const controlli = aggregato.controlli
     const hashAttuale = hashAggregato(aggregato.righe)
     const dichiaranteAttuale = await this.hashDichiaranteAttuale(tenantId, aggregato)
 
     let traccia: Record<string, unknown> = {}
     await this.prisma.$transaction(async tx => {
-      // Le esportazioni si leggono sotto il lock del report: un'esportazione concorrente non
-      // può cambiare la voce a cui si lega la segnatura.
-      await aggiornaReportData(tx, tenantId, year, p => {
+      // Stato e esportazioni si leggono sotto il lock del report: due segnature concorrenti non
+      // passano entrambe, e un'esportazione concorrente non cambia la voce a cui ci si lega.
+      await aggiornaReportData(tx, tenantId, year, (p, record) => {
+        if (record?.status === 'SUBMITTED') {
+          throw new ConflictException({
+            message: `Il MUD dei dati ${year} risulta già presentato: per segnarlo di nuovo annullare prima la segnatura.`,
+            error: 'MUD_GIA_PRESENTATO',
+          })
+        }
         const esportazioni = elenco(p.esportazioni)
         const fileTracciato = esportazioni.length > 0
 
@@ -134,7 +154,7 @@ export class MudPresentazioneService {
           hashDichiarante: string | null
           esportazionePresentata: string | null
           avvisiConfermatiAllaPresentazione: string[]
-          riepilogoAllaPresentazione: Record<string, unknown> | null
+          riepilogoAllaPresentazione: ReportDataJson | null
           controlliAllaPresentazione: Array<{ codice: string; gravita: string }> | null
         }
         if (!fileTracciato) {
@@ -146,27 +166,21 @@ export class MudPresentazioneService {
             esportazionePresentata: null,
             avvisiConfermatiAllaPresentazione: [],
             riepilogoAllaPresentazione: null,
-            controlliAllaPresentazione: controlli.map(c => ({
+            controlliAllaPresentazione: aggregato.controlli.map(c => ({
               codice: c.codice,
               gravita: c.gravita,
             })),
           }
         } else {
+          // A-W-03: tutto dal file esportato, nessun controllo rifatto sui dati di oggi
           const voce = this.esportazioneScelta(esportazioni, esportazioneGenerataIl)
-          this.verificaControlli(aggregato, avvisiConfermati ?? [])
-          const riepilogo = riepilogaAvvisi(controlli)
           presentazione = {
-            // A-W-03: l'hash del file esportato, non quello ricalcolato adesso
+            // ripiego solo per una voce di forma inattesa: l'export scrive sempre l'hash
             hashAggregato: stringaONull(voce.hashAggregato) ?? hashAttuale,
             hashDichiarante: stringaONull(voce.hashDichiarante),
             esportazionePresentata: stringaONull(voce.generatoIl),
-            avvisiConfermatiAllaPresentazione: codiciAvvisoDaConfermare(controlli),
-            riepilogoAllaPresentazione: {
-              kgInMeno: riepilogo.kgInMeno,
-              kgInPiu: riepilogo.kgInPiu,
-              movimentiNonQuantificati: riepilogo.movimentiNonQuantificati,
-              voci: riepilogo.voci,
-            },
+            avvisiConfermatiAllaPresentazione: elencoDiStringhe(voce.avvisiConfermati),
+            riepilogoAllaPresentazione: isRecord(voce.riepilogo) ? voce.riepilogo : null,
             controlliAllaPresentazione: null,
           }
         }
@@ -209,10 +223,16 @@ export class MudPresentazioneService {
     return this.stato(tenantId, year)
   }
 
+  /**
+   * Annulla la presentazione, conservandola in `annullamenti` con il motivo: con
+   * `DICHIARAZIONE_DA_SOSTITUIRE` il prossimo file annulla e sostituisce quella comunicazione
+   * (A-W-04); con `SEGNATURA_ERRATA` il prossimo file è una prima dichiarazione.
+   */
   async annullaPresentazione(
     tenantId: string,
     year: number,
-    userId: string
+    userId: string,
+    motivo: MotivoAnnullamento
   ): Promise<StatoPresentazioneMud> {
     await this.prisma.$transaction(async tx => {
       // voce dello storico costruita sotto il lock, riusata nel registro attività
@@ -226,6 +246,7 @@ export class MudPresentazioneService {
           Object.assign(annullamento, {
             annullataIl: new Date().toISOString(),
             annullataDa: userId,
+            motivo,
             submittedAt: record.submittedAt?.toISOString() ?? null,
             submittedBy: record.submittedBy,
             hashAggregato: stringaONull(p.hashAggregato),
@@ -261,7 +282,11 @@ export class MudPresentazioneService {
           tenantId,
           userId,
           action: 'MUD_PRESENTAZIONE_ANNULLATA',
-          description: `Annullata la presentazione del MUD dei dati ${year}`,
+          description:
+            `Annullata la presentazione del MUD dei dati ${year}: ` +
+            (motivo === 'DICHIARAZIONE_DA_SOSTITUIRE'
+              ? 'dichiarazione da sostituire'
+              : 'segnatura errata'),
           metadata: { year, ...annullamento } as Prisma.InputJsonValue,
         },
       })
@@ -270,7 +295,7 @@ export class MudPresentazioneService {
     return this.stato(tenantId, year)
   }
 
-  /** Voce di `reportData.esportazioni` indicata, o l'ultima. */
+  /** Voce di `reportData.esportazioni` indicata, o l'ultima; 422 se quella indicata non c'è. */
   private esportazioneScelta(esportazioni: unknown[], generatoIl?: string): ReportDataJson {
     if (generatoIl === undefined) {
       const ultima = esportazioni[esportazioni.length - 1]
@@ -278,42 +303,24 @@ export class MudPresentazioneService {
     }
     const voce = esportazioni.find(v => isRecord(v) && v.generatoIl === generatoIl)
     if (!voce) {
-      throw new BadRequestException("Esportazione indicata non trovata fra quelle dell'anno.")
+      throw new UnprocessableEntityException({
+        message: "Esportazione indicata non trovata fra quelle dell'anno.",
+        error: 'MUD_ESPORTAZIONE_NON_TROVATA',
+      })
     }
     return voce as ReportDataJson
   }
 
-  /**
-   * Stesse regole dell'export: con bloccanti il file non si sarebbe potuto generare, e gli
-   * avvisi vanno confermati (Decisione 19). La riserva agli amministratori degli avvisi che
-   * cambiano le quantità è già coperta: solo un amministratore segna la presentazione.
-   */
-  private verificaControlli(aggregato: MudAggregato, avvisiConfermati: readonly string[]): void {
-    const controlli = aggregato.controlli
-    if (haBloccanti(controlli)) {
-      const n = controlli.filter(c => c.gravita === 'BLOCCANTE').length
-      throw new UnprocessableEntityException({
-        message: `Il MUD non può essere segnato come presentato: ci sono errori da correggere (${n}).`,
-        error: 'MUD_NON_GENERABILE',
-        details: { controlli },
-      })
-    }
-    const avvisiDaConfermare = avvisiNonConfermati(controlli, avvisiConfermati)
-    if (avvisiDaConfermare.length > 0) {
-      throw new UnprocessableEntityException({
-        message: `Il MUD non è stato segnato come presentato: ci sono avvisi da confermare (${avvisiDaConfermare.length}).`,
-        error: 'MUD_AVVISI_DA_CONFERMARE',
-        details: { controlli, avvisiDaConfermare },
-      })
-    }
-  }
-
-  /** Hash dell'anagrafica del dichiarante di oggi, come entrerebbe nel file. */
+  /** Hash dei dati del dichiarante di oggi (AA e AU), come entrerebbero nel file. */
   private async hashDichiaranteAttuale(
     tenantId: string,
     aggregato: MudAggregato
   ): Promise<string | null> {
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
-    return tenant ? hashDichiarante(aziendaDichiarante(tenant, aggregato.dichiarante)) : null
+    const dichiarante = await caricaDichiaranteDellAzienda(
+      this.prisma,
+      tenantId,
+      aggregato.dichiarante
+    )
+    return dichiarante ? hashDichiarante(dichiarante) : null
   }
 }

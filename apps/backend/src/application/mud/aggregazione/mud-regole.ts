@@ -1,5 +1,10 @@
 import { createHash } from 'crypto'
-import type { MudAzienda, MudRifiutoLine, StatoFisico } from '../export/mud-export.types'
+import type {
+  MudAutorizzazione,
+  MudAzienda,
+  MudRifiutoLine,
+  StatoFisico,
+} from '../export/mud-export.types'
 
 // Regole pure dell'aggregazione MUD: nessun accesso a database, nessun I/O.
 // La conversione in kg sta in `convertiInKg` (domain/waste-movement/unita-misura-registro)
@@ -156,12 +161,17 @@ export function hashAggregato(righe: MudRifiutoLine[]): string {
 }
 
 /**
- * SHA-256 esadecimale dell'anagrafica del dichiarante come entra nel file (ATECO, comune ISTAT,
- * indirizzo, legale rappresentante…), in forma canonica. Separato da `hashAggregato`, che
- * copre solo le righe: serve a capire se il dichiarante è cambiato dopo la presentazione.
+ * SHA-256 esadecimale dei dati del dichiarante come entrano nel file: anagrafica del record AA
+ * (ATECO, comune ISTAT, indirizzo, legale rappresentante…) e autorizzazioni dei record AU, in
+ * forma canonica. Separato da `hashAggregato`, che copre solo le righe: serve a capire se il
+ * dichiarante è cambiato dopo la presentazione. Le date passano dal JSON (ISO), altrimenti la
+ * forma canonica le ridurrebbe a oggetti vuoti; l'ordine delle autorizzazioni è quello del file.
  */
-export function hashDichiarante(azienda: MudAzienda): string {
+export function hashDichiarante(dichiarante: {
+  azienda: MudAzienda
+  autorizzazioni: MudAutorizzazione[]
+}): string {
   return createHash('sha256')
-    .update(json(canonico(azienda)))
+    .update(json(canonico(JSON.parse(json(dichiarante)))))
     .digest('hex')
 }
