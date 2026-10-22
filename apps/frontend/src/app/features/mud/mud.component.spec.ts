@@ -5,7 +5,9 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
 import { MudComponent } from './mud.component'
 import {
+  IntegrazioniMud,
   MudControllo,
+  MudMovimentoSegnalato,
   MudRiepilogo,
   MudService,
   ObbligoMud,
@@ -88,6 +90,68 @@ const OBBLIGO: ObbligoMud = {
   puoModificare: true,
 }
 
+const INTEGRAZIONI_VUOTE: IntegrazioniMud = {
+  destinatari: {},
+  destinatariMovimento: {},
+  trasportatori: {},
+  pesiSpecifici: {},
+  aggiornateIl: null,
+  aggiornateDa: null,
+  codiciAzienda: ['01234567897'],
+}
+
+const movimentoLitri = (quantita: number): MudMovimentoSegnalato => ({
+  numero: 3,
+  anno: 2025,
+  cerCode: '17 04 05',
+  quantita,
+  unita: 'litri',
+  kg: null,
+  incluso: false,
+})
+
+/** Bloccanti che chiedono un'integrazione, uno per tipo. */
+const BLOCCANTI_INTEGRAZIONE: MudControllo[] = [
+  {
+    codice: 'DESTINATARIO_SENZA_CF',
+    gravita: 'BLOCCANTE',
+    messaggio: 'Manca il CF di Ecologia Srl',
+    integrazione: {
+      tipo: 'CF_DESTINATARIO',
+      chiave: 'ECOLOGIA SRL',
+      ragioneSociale: 'Ecologia Srl',
+    },
+  },
+  {
+    codice: 'DESTINATARIO_NON_INDICATO',
+    gravita: 'BLOCCANTE',
+    messaggio: 'Movimento n. 5/2025 senza destinatario',
+    integrazione: { tipo: 'DESTINATARIO_MOVIMENTO', chiave: '2025/5', numero: 5, anno: 2025 },
+  },
+  {
+    codice: 'TRASPORTATORE_SENZA_CF',
+    gravita: 'BLOCCANTE',
+    messaggio: 'Manca il CF di Trasporti Srl',
+    integrazione: {
+      tipo: 'CF_TRASPORTATORE',
+      chiave: 'TRASPORTI SRL',
+      ragioneSociale: 'Trasporti Srl',
+    },
+  },
+  {
+    codice: 'UNITA_NON_DI_MASSA',
+    gravita: 'BLOCCANTE',
+    messaggio: 'CER 17 04 05 in litri',
+    movimenti: [movimentoLitri(1000), movimentoLitri(500)],
+    integrazione: {
+      tipo: 'PESO_SPECIFICO',
+      chiave: '170405|LITRI',
+      cerCode: '170405',
+      unita: 'LITRI',
+    },
+  },
+]
+
 /** Errore HTTP come lo restituisce HttpClient per una risposta blob. */
 const erroreBlob = (status: number, body: object) =>
   new HttpErrorResponse({ status, error: new Blob([JSON.stringify(body)]) })
@@ -136,7 +200,11 @@ describe('MudComponent', () => {
       'annullaPresentazione',
       'getObbligo',
       'impostaObbligo',
+      'getIntegrazioni',
+      'salvaIntegrazioni',
     ])
+    mud.getIntegrazioni.and.returnValue(of(INTEGRAZIONI_VUOTE))
+    mud.salvaIntegrazioni.and.returnValue(of(INTEGRAZIONI_VUOTE))
     mud.getVersions.and.returnValue(
       of({
         versions: [
@@ -534,6 +602,138 @@ describe('MudComponent', () => {
         'Impostazione salvata: promemoria e scadenze del MUD sono di nuovo attivi.'
       )
       expect(mud.getReport).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('integrazioni', () => {
+    const elemento = (sel: string) =>
+      (fixture.nativeElement as HTMLElement).querySelector(sel) as HTMLElement | null
+
+    function conBloccanti(ruoloEffettivo = 'ADMIN') {
+      mud.getReport.and.returnValue(
+        of(riepilogo({ controlli: BLOCCANTI_INTEGRAZIONE, ruoloEffettivo }))
+      )
+      crea()
+      component.loadReport()
+      fixture.detectChanges()
+    }
+
+    it('sezione con id mud-integrazioni: una riga per ogni bloccante, testo fisso', () => {
+      conBloccanti()
+      expect(mud.getIntegrazioni).toHaveBeenCalledWith(2025)
+      const sezione = elemento('#mud-integrazioni')
+      expect(sezione).not.toBeNull()
+      const t = sezione!.textContent ?? ''
+      expect(t).toContain('Integrazioni 2025')
+      expect(t).toContain(
+        "Questi dati completano il MUD dell'anno senza modificare il registro, che resta com'è."
+      )
+      expect(t).toContain('Ecologia Srl')
+      expect(t).toContain('Movimento n. 5/2025')
+      expect(t).toContain('Destinatario')
+      expect(t).toContain('Trasporti Srl (trasportatore)')
+      expect(t).toContain('CER 170405 – LITRI')
+      expect(t).toContain('kg per LITRI')
+      expect(t).toContain('Intervallo consueto: 0,1–3 kg per LITRI')
+      expect(t).toContain('Salva integrazioni')
+    })
+
+    it('niente sezione senza bloccanti né voci salvate', () => {
+      crea()
+      component.loadReport()
+      fixture.detectChanges()
+      expect(elemento('#mud-integrazioni')).toBeNull()
+    })
+
+    it('peso specifico: totale convertito in tempo reale e conferma fuori intervallo', () => {
+      conBloccanti()
+      const peso = component.righe.find(r => r.tipo === 'PESO_SPECIFICO')!
+      peso.kgPerUnita = 1.1
+      fixture.detectChanges()
+      expect(testo()).toContain('1.500 LITRI → 1.650 kg')
+      expect(testo()).not.toContain(
+        "Confermo questo peso specifico, anche se è fuori dall'intervallo consueto"
+      )
+
+      peso.kgPerUnita = 1100 // kg/m³ scritto in una riga in litri
+      fixture.detectChanges()
+      expect(testo()).toContain(
+        "Confermo questo peso specifico, anche se è fuori dall'intervallo consueto"
+      )
+    })
+
+    it('CF della propria azienda: compare la conferma; destinatario estero: la nazione', () => {
+      conBloccanti()
+      const destinatario = component.righe.find(r => r.tipo === 'CF_DESTINATARIO')!
+      destinatario.codiceFiscale = 'IT01234567897'
+      fixture.detectChanges()
+      expect(testo()).toContain('Confermo: il destinatario è un impianto della nostra azienda')
+
+      destinatario.estero = true
+      fixture.detectChanges()
+      expect(testo()).toContain('Nazione')
+      expect(testo()).not.toContain('Confermo: il destinatario è un impianto della nostra azienda')
+    })
+
+    it('il trasportatore con il codice dell azienda non chiede conferma', () => {
+      conBloccanti()
+      component.righe.find(r => r.tipo === 'CF_TRASPORTATORE')!.codiceFiscale = '01234567897'
+      fixture.detectChanges()
+      expect(testo()).not.toContain('Confermo: il destinatario è un impianto della nostra azienda')
+    })
+
+    it('salva tutte le voci con la chiave del backend, poi ricarica il riepilogo', () => {
+      conBloccanti()
+      const [destinatario, movimento, trasportatore, peso] = component.righe
+      destinatario.codiceFiscale = '12345678903'
+      movimento.ragioneSociale = 'Ecologia Srl'
+      movimento.codiceFiscale = '12345678903'
+      trasportatore.codiceFiscale = '12345678903'
+      peso.kgPerUnita = 1.1
+
+      component.salvaIntegrazioni()
+
+      expect(mud.salvaIntegrazioni).toHaveBeenCalledWith(2025, {
+        destinatari: [{ ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' }],
+        destinatariMovimento: [
+          { anno: 2025, numero: 5, ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' },
+        ],
+        trasportatori: [{ ragioneSociale: 'Trasporti Srl', codiceFiscale: '12345678903' }],
+        pesiSpecifici: [{ cerCode: '170405', unita: 'LITRI', kgPerUnita: 1.1 }],
+      })
+      expect(toast.success).toHaveBeenCalledWith(
+        'Integrazioni salvate: il riepilogo è stato ricalcolato.'
+      )
+      expect(mud.getReport).toHaveBeenCalledTimes(2)
+    })
+
+    it('errore del salvataggio: toast con il messaggio della risposta', async () => {
+      mud.salvaIntegrazioni.and.returnValue(
+        throwError(
+          () =>
+            new HttpErrorResponse({
+              status: 400,
+              error: { message: 'Codice fiscale o partita IVA "1" di "X" non valido' },
+            })
+        )
+      )
+      conBloccanti()
+      component.salvaIntegrazioni()
+      await attendi()
+      expect(toast.error).toHaveBeenCalledWith('Codice fiscale o partita IVA "1" di "X" non valido')
+    })
+
+    it('chi non è amministratore effettivo vede le righe ma non il pulsante', () => {
+      conBloccanti('OPERATOR')
+      expect(elemento('#mud-integrazioni')).not.toBeNull()
+      expect(testo()).not.toContain('Salva integrazioni')
+    })
+
+    it('al cambio d anno le righe dell anno precedente spariscono', () => {
+      conBloccanti()
+      component.selectedYear = 2024
+      component.onYearChange()
+      expect(component.righe).toEqual([])
     })
   })
 })

@@ -103,6 +103,47 @@ describe('mud-integrazioni', () => {
     expect(r.aggiornateDa).toBe('u1')
   })
 
+  it('legge il destinatario estero (nazione al posto del CF) e la conferma della propria azienda', () => {
+    const r = leggiIntegrazioni({
+      integrazioni: {
+        destinatari: {
+          'RECYCLING GMBH': {
+            ragioneSociale: 'Recycling GmbH',
+            codiceFiscale: '',
+            nazione: 'Germania',
+          },
+          'SENZA NULLA': { ragioneSociale: 'Senza nulla', codiceFiscale: '' },
+          'NAZIONE NON STRINGA': { ragioneSociale: 'X', codiceFiscale: '', nazione: 3 },
+          'IMPIANTO NOSTRO': {
+            ragioneSociale: 'Impianto nostro',
+            codiceFiscale: '01234567897',
+            confermatoPropriaAzienda: true,
+          },
+        },
+        destinatariMovimento: {
+          '2025/5': {
+            ragioneSociale: 'Impianto nostro',
+            codiceFiscale: '01234567897',
+            confermatoPropriaAzienda: true,
+          },
+        },
+      },
+    })
+    expect(r.destinatari).toEqual({
+      'RECYCLING GMBH': {
+        ragioneSociale: 'Recycling GmbH',
+        codiceFiscale: '',
+        nazione: 'Germania',
+      },
+      'IMPIANTO NOSTRO': {
+        ragioneSociale: 'Impianto nostro',
+        codiceFiscale: '01234567897',
+        confermatoPropriaAzienda: true,
+      },
+    })
+    expect(r.destinatariMovimento['2025/5'].confermatoPropriaAzienda).toBe(true)
+  })
+
   it('intervalli di plausibilità del peso specifico per unità', () => {
     expect(intervalloPesoSpecifico('litri')).toEqual({ min: 0.1, max: 3 })
     expect(intervalloPesoSpecifico('mc')).toEqual({ min: 10, max: 3000 })

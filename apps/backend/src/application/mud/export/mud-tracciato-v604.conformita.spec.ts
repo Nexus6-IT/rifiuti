@@ -190,6 +190,28 @@ describe.each([
   const contenuto = tracciato.generate(datasetCompleto(anno))
   const linee = righe(contenuto)
 
+  // (confutazione dopo l'esecuzione, A-W-05)
+  it('il DR di un destinatario estero porta la nazione al posto del codice fiscale', () => {
+    const campiDr = (c: string) =>
+      righe(c)
+        .find(l => l.startsWith('BB;') && l.includes(';DR;'))!
+        .split(';')
+    // tipo allegato, progressivo, CF, ragione sociale, ISTAT ×2, indirizzo, civico, CAP,
+    // quantità e unità, poi il nome della nazione
+    const nazione = (campi: string[]) => campi[campi.indexOf('DR') + 11]
+
+    expect(nazione(campiDr(contenuto))).toBe(' '.repeat(20))
+
+    const data = datasetCompleto(anno)
+    data.rifiuti[0].dr = [
+      { codiceFiscale: '', ragioneSociale: 'Recycling GmbH', nazione: 'Germania', quantitaKg: 5 },
+    ]
+    const campi = campiDr(tracciato.generate(data))
+    expect(campi.join(';')).toHaveLength(LUNGHEZZE.BB)
+    expect(nazione(campi)).toBe('GERMANIA'.padEnd(20, ' ')) // i campi alfanumerici escono maiuscoli
+    expect(campi[campi.indexOf('DR') + 2]).toBe(' '.repeat(16)) // CF vuoto
+  })
+
   it('una quantità di 10.000.000 kg esce in tonnellate senza allungare il record BA', () => {
     const data = datasetCompleto(anno)
     data.rifiuti[0].prodottoKg = 10000000

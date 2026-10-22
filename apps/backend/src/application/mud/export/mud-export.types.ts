@@ -275,6 +275,8 @@ export interface MudAllegatoDR {
   civico?: string
   cap?: string
   quantitaKg: number
+  /** Destinatario estero: nome della nazione, al posto del codice fiscale (A-W-05). */
+  nazione?: string
 }
 
 /** Modulo TE (BB) — rifiuto trasportato da terzi (trasportatore): solo CF + R.S. */

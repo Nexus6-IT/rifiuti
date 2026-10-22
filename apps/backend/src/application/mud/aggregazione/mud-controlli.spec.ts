@@ -80,6 +80,15 @@ describe('controlliMud', () => {
     })
   })
 
+  it('destinatarioEstero è un avviso con la nazione (A-W-05)', () => {
+    expect(controlliMud.destinatarioEstero('Recycling GmbH', 'Germania')).toEqual({
+      codice: 'DESTINATARIO_ESTERO',
+      gravita: 'AVVISO',
+      messaggio:
+        'Destinatario "Recycling GmbH" estero (Germania): nel modulo DR si indica la nazione al posto del codice fiscale. Il codice del Reg. 1013/2006 e le quantità per operazione non sono ancora supportati.',
+    })
+  })
+
   it('trasportatoreSenzaCf è un bloccante che porta la chiave delle integrazioni', () => {
     expect(controlliMud.trasportatoreSenzaCf('Trasporti Srl', 'FIR-2025-000123', 2025)).toEqual({
       codice: 'TRASPORTATORE_SENZA_CF',

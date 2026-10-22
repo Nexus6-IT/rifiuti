@@ -10,6 +10,7 @@ import { ReferenceDataModule } from '../reference-data/reference-data.module'
 import { RuoloEffettivoModule } from '../../api/me/ruolo-effettivo.module'
 import { MudObbligoService } from './mud-obbligo.service'
 import { MudPresentazioneService } from './mud-presentazione.service'
+import { MudIntegrazioniService } from './mud-integrazioni.service'
 
 /**
  * MUD Module
@@ -28,6 +29,7 @@ import { MudPresentazioneService } from './mud-presentazione.service'
     MudAggregazioneService,
     MudObbligoService,
     MudPresentazioneService,
+    MudIntegrazioniService,
   ],
   exports: [
     MUDGeneratorService,

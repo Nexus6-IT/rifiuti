@@ -637,6 +637,28 @@ describe('MudAggregazioneService', () => {
     expect(codici(r.controlli)).not.toContain('DESTINATARIO_SENZA_CF')
   })
 
+  // (confutazione dopo l'esecuzione, A-W-05)
+  it('un DR estero non blocca: nazione al posto del CF e avviso', async () => {
+    impostaDati({ movimenti: [scaricoSenzaFir()] })
+    integrazioni({
+      destinatari: {
+        'ECOLOGIA SRL': { ragioneSociale: 'Ecologia Srl', codiceFiscale: '', nazione: 'Germania' },
+      },
+      pesiSpecifici: {},
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.righe[0].dr).toEqual([
+      expect.objectContaining({ codiceFiscale: '', nazione: 'Germania', quantitaKg: 300 }),
+    ])
+    expect(r.controlli).toContainEqual(controlliMud.destinatarioEstero('Ecologia Srl', 'Germania'))
+    // il comune ISTAT non serve a un destinatario estero
+    expect(codici(r.controlli)).not.toContain('DESTINATARIO_SENZA_ISTAT')
+    expect(codici(r.controlli)).not.toContain('DESTINATARIO_SENZA_CF')
+    expect(haBloccanti(r.controlli)).toBe(false)
+  })
+
   // 19
   it('scarico senza destinatario blocca con la voce del movimento', async () => {
     impostaDati({ movimenti: [scaricoSenzaFir({ counterpartName: null })] })
@@ -798,7 +820,10 @@ describe('MudAggregazioneService', () => {
     expect(codici(r.controlli)).not.toContain('TRASPORTATORE_SENZA_CF')
   })
 
-  it('trasportatore senza nome né anagrafica: il TE prende il nome dal FIR e chiede il CF', async () => {
+  // Piano R, Minor 8 (deciso nel Task 10 del piano A): un nome segnaposto non diventa la chiave
+  // di un'integrazione. Senza nome, partita IVA né anagrafica il trasportatore non è
+  // identificato: avviso come per il FIR che non lo indica, nessun TE e nessuna riga da compilare.
+  it('trasportatore senza nome, partita IVA né anagrafica: non identificato, nessuna integrazione', async () => {
     impostaDati({
       movimenti: [scarico({ firId: 'f1' })],
       firCollegati: [fir({ carrierId: 'car-9', carrierPartitaIva: '', carrierName: ' ' })],
@@ -806,16 +831,24 @@ describe('MudAggregazioneService', () => {
 
     const r = await service.aggrega('t1', 2025)
 
+    expect(r.righe[0].te).toEqual([])
+    expect(codici(r.controlli)).not.toContain('TRASPORTATORE_SENZA_CF')
+    expect(conCodice(r.controlli, 'TRASPORTATORE_NON_INDICATO')).toHaveLength(1)
+    expect(r.controlli.some(c => c.integrazione?.tipo === 'CF_TRASPORTATORE')).toBe(false)
+  })
+
+  it('trasportatore con la sola partita IVA sul FIR: il TE ha il CF e nessuna integrazione', async () => {
+    impostaDati({
+      movimenti: [scarico({ firId: 'f1' })],
+      firCollegati: [fir({ carrierId: null, carrierPartitaIva: '22222222222', carrierName: '' })],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
     expect(r.righe[0].te).toEqual([
-      { codiceFiscale: '', ragioneSociale: 'trasportatore del FIR FIR-2025-000123' },
+      { codiceFiscale: '22222222222', ragioneSociale: 'trasportatore del FIR FIR-2025-000123' },
     ])
-    expect(conCodice(r.controlli, 'TRASPORTATORE_SENZA_CF')).toEqual([
-      controlliMud.trasportatoreSenzaCf(
-        'trasportatore del FIR FIR-2025-000123',
-        'FIR-2025-000123',
-        2025
-      ),
-    ])
+    expect(codici(r.controlli)).not.toContain('TRASPORTATORE_SENZA_CF')
   })
 
   it('TE con lo stesso CF dopo le integrazioni: un solo modulo', async () => {

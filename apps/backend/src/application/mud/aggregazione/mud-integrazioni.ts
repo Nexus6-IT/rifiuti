@@ -6,7 +6,12 @@ import { normalizzaUnitaRegistro } from '../../../domain/waste-movement/unita-mi
 
 export interface SoggettoIntegrato {
   ragioneSociale: string
+  /** Vuoto solo per un destinatario estero, che ha la nazione (A-W-05) */
   codiceFiscale: string
+  /** Destinatario estero: nel modulo DR la nazione sostituisce il codice fiscale (A-W-05) */
+  nazione?: string
+  /** Il codice è quello dell'azienda dichiarante, confermato dall'utente (A-W-13) */
+  confermatoPropriaAzienda?: boolean
 }
 
 export interface IntegrazioniMud {
@@ -80,20 +85,33 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-/** Voci con un CF non vuoto; il nome lo decide il chiamante (null = voce scartata). */
+/**
+ * Voci con un CF non vuoto (o, se `conNazione`, con la nazione di un destinatario estero); il
+ * nome lo decide il chiamante (null = voce scartata).
+ */
 function leggiSoggetti(
   grezze: unknown,
-  nome: (voce: Record<string, unknown>, chiave: string) => string | null
+  nome: (voce: Record<string, unknown>, chiave: string) => string | null,
+  conNazione = false
 ): Record<string, SoggettoIntegrato> {
   const soggetti: Record<string, SoggettoIntegrato> = {}
   if (!isRecord(grezze)) return soggetti
   for (const [chiave, voce] of Object.entries(grezze)) {
     if (!isRecord(voce)) continue
-    const cf = voce.codiceFiscale
-    if (typeof cf !== 'string' || cf.trim() === '') continue
+    const cf = typeof voce.codiceFiscale === 'string' ? voce.codiceFiscale.trim() : ''
+    const nazione =
+      conNazione && typeof voce.nazione === 'string' && voce.nazione.trim()
+        ? voce.nazione.trim()
+        : ''
+    if (cf === '' && nazione === '') continue
     const ragioneSociale = nome(voce, chiave)
     if (ragioneSociale === null) continue
-    soggetti[chiave] = { ragioneSociale, codiceFiscale: cf.trim() }
+    soggetti[chiave] = {
+      ragioneSociale,
+      codiceFiscale: nazione ? '' : cf,
+      ...(nazione ? { nazione } : {}),
+      ...(voce.confermatoPropriaAzienda === true ? { confermatoPropriaAzienda: true } : {}),
+    }
   }
   return soggetti
 }
@@ -102,8 +120,10 @@ function leggiSoggetti(
 export function leggiIntegrazioni(reportData: unknown): IntegrazioniMud {
   if (!isRecord(reportData) || !isRecord(reportData.integrazioni)) return INTEGRAZIONI_VUOTE
   const grezze = reportData.integrazioni
-  const destinatari = leggiSoggetti(grezze.destinatari, (voce, chiave) =>
-    typeof voce.ragioneSociale === 'string' ? voce.ragioneSociale : chiave
+  const destinatari = leggiSoggetti(
+    grezze.destinatari,
+    (voce, chiave) => (typeof voce.ragioneSociale === 'string' ? voce.ragioneSociale : chiave),
+    true
   )
   const trasportatori = leggiSoggetti(grezze.trasportatori, (voce, chiave) =>
     typeof voce.ragioneSociale === 'string' ? voce.ragioneSociale : chiave

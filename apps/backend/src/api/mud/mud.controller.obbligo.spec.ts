@@ -22,7 +22,7 @@ describe('MudController obbligo del MUD (A-W-10)', () => {
   })
 
   const controller = (ruolo: string, membership = ruoli(ruolo)) =>
-    new MudController({} as any, {} as any, membership as any, obbligo, {} as any)
+    new MudController({} as any, {} as any, membership as any, obbligo, {} as any, {} as any)
 
   it("GET aperto a tutti: anche un VIEWER legge il flag dell'azienda selezionata", async () => {
     const membership = ruoli('VIEWER')

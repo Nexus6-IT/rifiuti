@@ -19,6 +19,7 @@ describe('MudController.exportTelematico', () => {
       mudExport as any,
       ruoli('ADMIN') as any,
       {} as any,
+      {} as any,
       {} as any
     )
     const res: any = { setHeader: jest.fn(), send: jest.fn() }
@@ -48,6 +49,7 @@ describe('MudController.exportTelematico', () => {
       mudExport as any,
       ruoli('ADMIN') as any,
       {} as any,
+      {} as any,
       {} as any
     )
     const res: any = { setHeader: jest.fn(), send: jest.fn() }
@@ -74,6 +76,7 @@ describe('MudController.exportTelematico', () => {
       {} as any,
       mudExport as any,
       ruoli('ADMIN') as any,
+      {} as any,
       {} as any,
       {} as any
     )
@@ -104,6 +107,7 @@ describe('MudController.exportTelematico', () => {
       {} as any,
       mudExport as any,
       membership as any,
+      {} as any,
       {} as any,
       {} as any
     )
@@ -161,6 +165,7 @@ describe('MudController.exportTelematico', () => {
       servizio,
       ruoli('VIEWER') as any,
       {} as any,
+      {} as any,
       {} as any
     )
     const res: any = { setHeader: jest.fn(), send: jest.fn() }
@@ -195,6 +200,7 @@ describe('MudController.generateReport', () => {
       mudGenerator as any,
       {} as any,
       membership as any,
+      {} as any,
       {} as any,
       {} as any
     )

@@ -8,6 +8,7 @@ import { ButtonModule } from 'primeng/button'
 import { CheckboxModule } from 'primeng/checkbox'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
+import { InputNumberModule } from 'primeng/inputnumber'
 import { InputSwitchModule } from 'primeng/inputswitch'
 import { InputTextModule } from 'primeng/inputtext'
 import { RadioButtonModule } from 'primeng/radiobutton'
@@ -24,11 +25,17 @@ import {
   MudService,
   MudVersion,
   ObbligoMud,
+  RigaIntegrazione,
   StatoPresentazioneMud,
   VoceRiepilogoAvvisi,
+  codiceDellAzienda,
   codiciAvvisi,
+  corpoIntegrazioni,
   eAmministratore,
+  intervalloPesoSpecifico,
+  pesoSpecificoPlausibile,
   puoGenerareConAvvisi,
+  righeIntegrazioni,
   testoConferma,
 } from './mud.service'
 
@@ -84,6 +91,7 @@ function oggiIso(): string {
     CheckboxModule,
     DialogModule,
     DropdownModule,
+    InputNumberModule,
     InputSwitchModule,
     InputTextModule,
     RadioButtonModule,
@@ -274,6 +282,110 @@ function oggiIso(): string {
           <ng-container *ngIf="avvisiPresenti()">
             <ng-container *ngTemplateOutlet="vociAvvisi; context: { $implicit: r }"></ng-container>
           </ng-container>
+        </section>
+
+        <!-- Integrazioni dell'anno (Decisione 18): i bloccanti rimandano qui -->
+        <section *ngIf="righe.length" id="mud-integrazioni" class="surface-card mb-4">
+          <h3 class="mud-section-title mb-2">Integrazioni {{ r.year }}</h3>
+          <p class="text-tertiary mb-3">
+            Questi dati completano il MUD dell'anno senza modificare il registro, che resta com'è.
+          </p>
+          <div *ngFor="let riga of righe; let i = index" class="mud-integrazione">
+            <strong class="mud-integrazione__etichetta">{{ riga.etichetta }}</strong>
+
+            <!-- Peso specifico: kg per unità, conversione e intervallo consueto -->
+            <ng-container *ngIf="riga.tipo === 'PESO_SPECIFICO'; else soggetto">
+              <div class="mud-integrazione__campo">
+                <label [for]="'mud-int-kg-' + i">kg per {{ riga.unita }}</label>
+                <p-inputNumber
+                  [inputId]="'mud-int-kg-' + i"
+                  [(ngModel)]="riga.kgPerUnita"
+                  mode="decimal"
+                  locale="it-IT"
+                  [minFractionDigits]="0"
+                  [maxFractionDigits]="3"
+                  [min]="0"
+                  [disabled]="!amministratore()"
+                ></p-inputNumber>
+              </div>
+              <small *ngIf="conversione(riga) as c" class="block">{{ c }}</small>
+              <small class="block text-tertiary">{{ testoIntervallo(riga) }}</small>
+              <div *ngIf="fuoriIntervallo(riga)" class="mud-conferma">
+                <p-checkbox
+                  [inputId]="'mud-int-fuori-' + i"
+                  [binary]="true"
+                  [(ngModel)]="riga.confermaFuoriIntervallo"
+                  [disabled]="!amministratore()"
+                ></p-checkbox>
+                <label [for]="'mud-int-fuori-' + i"
+                  >Confermo questo peso specifico, anche se è fuori dall'intervallo consueto</label
+                >
+              </div>
+            </ng-container>
+
+            <!-- Soggetti: destinatario, destinatario del movimento, trasportatore -->
+            <ng-template #soggetto>
+              <div *ngIf="riga.tipo === 'DESTINATARIO_MOVIMENTO'" class="mud-integrazione__campo">
+                <label [for]="'mud-int-rs-' + i">Destinatario</label>
+                <input
+                  [id]="'mud-int-rs-' + i"
+                  pInputText
+                  maxlength="255"
+                  [(ngModel)]="riga.ragioneSociale"
+                  [disabled]="!amministratore()"
+                />
+              </div>
+              <div *ngIf="riga.tipo === 'CF_DESTINATARIO'" class="mud-conferma">
+                <p-checkbox
+                  [inputId]="'mud-int-estero-' + i"
+                  [binary]="true"
+                  [(ngModel)]="riga.estero"
+                  [disabled]="!amministratore()"
+                ></p-checkbox>
+                <label [for]="'mud-int-estero-' + i">Destinatario estero</label>
+              </div>
+              <div *ngIf="riga.estero; else campoCf" class="mud-integrazione__campo">
+                <label [for]="'mud-int-nazione-' + i">Nazione</label>
+                <input
+                  [id]="'mud-int-nazione-' + i"
+                  pInputText
+                  maxlength="20"
+                  [(ngModel)]="riga.nazione"
+                  [disabled]="!amministratore()"
+                />
+              </div>
+              <ng-template #campoCf>
+                <div class="mud-integrazione__campo">
+                  <label [for]="'mud-int-cf-' + i">Codice fiscale o partita IVA</label>
+                  <input
+                    [id]="'mud-int-cf-' + i"
+                    pInputText
+                    maxlength="18"
+                    [(ngModel)]="riga.codiceFiscale"
+                    [disabled]="!amministratore()"
+                  />
+                </div>
+                <div *ngIf="chiedeConfermaPropriaAzienda(riga)" class="mud-conferma">
+                  <p-checkbox
+                    [inputId]="'mud-int-propria-' + i"
+                    [binary]="true"
+                    [(ngModel)]="riga.confermaPropriaAzienda"
+                    [disabled]="!amministratore()"
+                  ></p-checkbox>
+                  <label [for]="'mud-int-propria-' + i"
+                    >Confermo: il destinatario è un impianto della nostra azienda</label
+                  >
+                </div>
+              </ng-template>
+            </ng-template>
+          </div>
+          <p-button
+            *ngIf="amministratore()"
+            label="Salva integrazioni"
+            icon="pi pi-save"
+            [loading]="salvataggioIntegrazioni()"
+            (onClick)="salvaIntegrazioni()"
+          ></p-button>
         </section>
 
         <section class="surface-card">
@@ -529,6 +641,20 @@ function oggiIso(): string {
         padding: var(--spacing-sm) var(--spacing-md);
         border-radius: var(--radius-md, 6px);
       }
+      .mud-integrazione {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-sm) 0;
+        margin-bottom: var(--spacing-sm);
+        border-bottom: 1px solid var(--surface-border, transparent);
+      }
+      .mud-integrazione__campo {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        max-width: 320px;
+      }
       .mud-movimenti {
         margin: 0 0 var(--spacing-base);
         padding-left: var(--spacing-xl);
@@ -587,6 +713,11 @@ export class MudComponent implements OnInit {
   obbligoNonDovuto = false
   obbligoMotivo = ''
 
+  // Integrazioni dell'anno: righe modificabili, ricostruite a ogni riepilogo
+  righe: RigaIntegrazione[] = []
+  private codiciAzienda: string[] = []
+  readonly salvataggioIntegrazioni = signal(false)
+
   readonly bloccanti = computed(() =>
     (this.report()?.controlli ?? []).filter(c => c.gravita === 'BLOCCANTE')
   )
@@ -644,6 +775,7 @@ export class MudComponent implements OnInit {
   onYearChange(): void {
     this.report.set(null)
     this.presentazione.set(null)
+    this.righe = []
     this.loadPresentazione()
   }
 
@@ -654,6 +786,7 @@ export class MudComponent implements OnInit {
       next: r => {
         this.report.set(r)
         this.loadingReport.set(false)
+        this.loadIntegrazioni(r)
         onLoaded?.(r)
       },
       error: () => {
@@ -801,6 +934,57 @@ export class MudComponent implements OnInit {
     document.getElementById('mud-integrazioni')?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  /**
+   * Salva tutte le righe (il PUT sostituisce le integrazioni dell'anno), poi ricalcola il
+   * riepilogo. Gli errori del backend (CF, conferme, CER) arrivano nel messaggio della risposta.
+   */
+  salvaIntegrazioni(): void {
+    const year = this.report()?.year
+    if (!year) return
+    this.salvataggioIntegrazioni.set(true)
+    this.mudService
+      .salvaIntegrazioni(year, corpoIntegrazioni(this.righe, this.codiciAzienda))
+      .subscribe({
+        next: () => {
+          this.salvataggioIntegrazioni.set(false)
+          this.toast.success('Integrazioni salvate: il riepilogo è stato ricalcolato.')
+          this.loadReport()
+        },
+        error: async (err: unknown) => {
+          this.salvataggioIntegrazioni.set(false)
+          const corpo = await corpoErrore(err)
+          this.toast.error(corpo.message ?? 'Errore nel salvataggio delle integrazioni del MUD')
+        },
+      })
+  }
+
+  /** `{totale} {unita} → {kg} kg` per il peso specifico, dai movimenti del bloccante. */
+  conversione(riga: RigaIntegrazione): string | null {
+    if (riga.totaleUnita === null || !riga.kgPerUnita) return null
+    const kg = Math.round(riga.totaleUnita * riga.kgPerUnita * 1000) / 1000
+    return `${formattaQuantita(riga.totaleUnita)} ${riga.unita} → ${formattaQuantita(kg)} kg`
+  }
+
+  testoIntervallo(riga: RigaIntegrazione): string {
+    const i = intervalloPesoSpecifico(riga.unita ?? '')
+    return i
+      ? `Intervallo consueto: ${formattaQuantita(i.min)}–${formattaQuantita(i.max)} kg per ${riga.unita}`
+      : `Per ${riga.unita} non c'è un intervallo consueto: il valore va confermato.`
+  }
+
+  fuoriIntervallo(riga: RigaIntegrazione): boolean {
+    return !!riga.kgPerUnita && !pesoSpecificoPlausibile(riga.unita ?? '', riga.kgPerUnita)
+  }
+
+  /** Il codice di un destinatario coincide con quello dell'azienda (non per i trasportatori). */
+  chiedeConfermaPropriaAzienda(riga: RigaIntegrazione): boolean {
+    return (
+      riga.tipo !== 'CF_TRASPORTATORE' &&
+      !riga.estero &&
+      codiceDellAzienda(riga.codiceFiscale, this.codiciAzienda)
+    )
+  }
+
   // Formattazione: numeri sempre con formattaQuantita (nessun locale `it` registrato)
 
   kg(n: number | null | undefined): string {
@@ -854,6 +1038,19 @@ export class MudComponent implements OnInit {
         if (this.selectedYear === year) this.presentazione.set(p)
       },
       error: () => this.toast.error('Impossibile caricare lo stato della presentazione del MUD'),
+    })
+  }
+
+  /** Integrazioni dell'anno del riepilogo: righe dai bloccanti e dalle voci salvate. */
+  private loadIntegrazioni(r: MudRiepilogo): void {
+    this.mudService.getIntegrazioni(r.year).subscribe({
+      next: i => {
+        // una risposta arrivata dopo un cambio d'anno o un altro riepilogo non vale più
+        if (this.report() !== r) return
+        this.codiciAzienda = i.codiciAzienda ?? []
+        this.righe = righeIntegrazioni(r.controlli, i)
+      },
+      error: () => this.toast.error('Impossibile caricare le integrazioni del MUD'),
     })
   }
 

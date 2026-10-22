@@ -723,10 +723,16 @@ export class MudAggregazioneService {
       const etichetta = etichettaFir(fir)
       const pivaFir = fir.carrierPartitaIva?.trim() ?? ''
       const nomeTrasportatore = fir.carrierName?.trim() ?? ''
-      if (!fir.carrierId && !pivaFir && !nomeTrasportatore) {
+      const info = fir.carrierId ? trasportatori.get(fir.carrierId) : undefined
+      // Piano R, Minor 8: un trasportatore senza nome né partita IVA, sul FIR o in anagrafica
+      // (id che non si risolve), non è identificato. Non si emette un TE con un nome
+      // segnaposto, che diventerebbe la chiave di un'integrazione legata all'etichetta del FIR.
+      const identificato =
+        pivaFir || nomeTrasportatore || info?.ragioneSociale?.trim() || info?.partitaIVA?.trim()
+      if (!identificato) {
         controlli.push(controlliMud.trasportatoreNonIndicato(r, etichetta))
       } else {
-        const info = fir.carrierId ? trasportatori.get(fir.carrierId) : undefined
+        // Il segnaposto resta solo con la partita IVA nota: non chiede nessuna integrazione.
         const ragioneSociale =
           nomeTrasportatore || info?.ragioneSociale?.trim() || `trasportatore del FIR ${etichetta}`
         // Preflight F24: con il solo nome, un modulo per ragione sociale normalizzata.
@@ -770,8 +776,15 @@ export class MudAggregazioneService {
       for (const v of voci) {
         if (v.dr.codiceFiscale.trim()) continue
         const integrato = integrazioni.destinatari[chiaveDestinatario(v.dr.ragioneSociale)]
-        if (integrato) v.dr.codiceFiscale = integrato.codiceFiscale
-        else segnalaUnaVolta(controlliMud.destinatarioSenzaCf(v.dr.ragioneSociale, v.origine, anno))
+        if (integrato?.nazione) {
+          // Destinatario estero (A-W-05): nazione al posto del CF, con un avviso
+          v.dr.nazione = integrato.nazione
+          segnalaUnaVolta(controlliMud.destinatarioEstero(v.dr.ragioneSociale, integrato.nazione))
+        } else if (integrato) {
+          v.dr.codiceFiscale = integrato.codiceFiscale
+        } else {
+          segnalaUnaVolta(controlliMud.destinatarioSenzaCf(v.dr.ragioneSociale, v.origine, anno))
+        }
       }
 
       // Stesso CF: un solo DR, quantità sommate, anagrafica del primo con FIR (o del primo).
@@ -800,7 +813,9 @@ export class MudAggregazioneService {
 
       for (const d of dr) {
         d.quantitaKg = arrotonda3(d.quantitaKg)
-        if (!d.istatComune) segnalaUnaVolta(controlliMud.destinatarioSenzaIstat(d.ragioneSociale))
+        // un destinatario estero non ha il comune ISTAT
+        if (!d.istatComune && !d.nazione)
+          segnalaUnaVolta(controlliMud.destinatarioSenzaIstat(d.ragioneSociale))
       }
 
       const stati = [...acc.stati]

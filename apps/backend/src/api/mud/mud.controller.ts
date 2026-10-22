@@ -31,6 +31,9 @@ import {
 } from '../../application/mud/mud-presentazione.service'
 import { SegnaPresentatoDto } from './dtos/segna-presentato.dto'
 import { AnnullaPresentazioneDto } from './dtos/annulla-presentazione.dto'
+import { MudIntegrazioniService } from '../../application/mud/mud-integrazioni.service'
+import type { IntegrazioniMud } from '../../application/mud/aggregazione/mud-integrazioni'
+import { IntegrazioniMudDto } from './dtos/integrazioni-mud.dto'
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono segnare l'azienda come non
@@ -41,6 +44,9 @@ const RUOLI_OBBLIGO_MUD: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
 
 /** Ruoli EFFETTIVI che possono segnare o annullare la presentazione del MUD (A-C-06). */
 const RUOLI_PRESENTAZIONE_MUD: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
+
+/** Ruoli EFFETTIVI che possono modificare le integrazioni del MUD (A-C-06). */
+const RUOLI_INTEGRAZIONI_MUD: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
 
 /**
  * MUD Controller
@@ -58,7 +64,8 @@ export class MudController {
     private readonly mudExport: MudExportService,
     private readonly membership: RuoloEffettivoService,
     private readonly obbligo: MudObbligoService,
-    private readonly presentazione: MudPresentazioneService
+    private readonly presentazione: MudPresentazioneService,
+    private readonly integrazioni: MudIntegrazioniService
   ) {}
 
   /**
@@ -237,6 +244,57 @@ export class MudController {
   ): Promise<StatoPresentazioneMud> {
     const tenantId = await this.richiediAmministratorePresentazione(req)
     return this.presentazione.annullaPresentazione(tenantId, year, req.user.id, dto.motivo)
+  }
+
+  /**
+   * Integrazioni del MUD dell'anno dei dati: le leggono tutti i ruoli. `codiciAzienda` (partita
+   * IVA e CF dell'azienda) serve alla pagina per chiedere la conferma quando un destinatario ha
+   * il codice dell'azienda stessa (A-W-13), con la stessa regola del PUT.
+   */
+  @Get(':year/integrazioni')
+  @ApiOperation({ summary: 'Integrazioni del MUD (anno dei dati)' })
+  async leggiIntegrazioni(
+    @Req() req: any,
+    @Param('year', ParseIntPipe) year: number
+  ): Promise<IntegrazioniMud & { codiciAzienda: string[] }> {
+    const tenantId = requireRequestTenantId(req)
+    const [integrazioni, codiciAzienda] = await Promise.all([
+      this.integrazioni.leggi(tenantId, year),
+      this.integrazioni.codiciAzienda(tenantId),
+    ])
+    return { ...integrazioni, codiciAzienda }
+  }
+
+  /**
+   * Sostituisce le integrazioni del MUD dell'anno (Decisione 18): CF dei destinatari e dei
+   * trasportatori, destinatario degli scarichi senza FIR, peso specifico per le unità non di
+   * massa. Solo un amministratore nell'azienda selezionata (ruolo effettivo, A-C-06): niente
+   * `@Roles`, che vedrebbe solo il ruolo del token.
+   */
+  @Put(':year/integrazioni')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Salva le integrazioni del MUD' })
+  @ApiResponse({ status: 200, description: 'Integrazioni salvate' })
+  @ApiResponse({
+    status: 400,
+    description: 'CF non valido, codice della propria azienda o peso specifico non confermati',
+  })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  @ApiResponse({ status: 404, description: 'Anno senza tracciato' })
+  async salvaIntegrazioni(
+    @Req() req: any,
+    @Param('year', ParseIntPipe) year: number,
+    @Body() dto: IntegrazioniMudDto
+  ): Promise<IntegrazioniMud> {
+    const tenantId = requireRequestTenantId(req)
+    const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
+    if (!RUOLI_INTEGRAZIONI_MUD.includes(ruolo)) {
+      throw new ForbiddenException({
+        message: "Solo un amministratore dell'azienda può modificare le integrazioni del MUD.",
+        error: 'MUD_INTEGRAZIONI_RISERVATE_AMMINISTRATORI',
+      })
+    }
+    return this.integrazioni.salva(tenantId, year, req.user.id, dto)
   }
 
   /**

@@ -19,6 +19,7 @@ export type MudCodiceControllo =
   | 'DICHIARANTE_SENZA_ATECO'
   | 'DICHIARANTE_ATECO_NON_VALIDO'
   | 'DESTINATARIO_SENZA_CF'
+  | 'DESTINATARIO_ESTERO'
   | 'TRASPORTATORE_SENZA_CF'
   | 'UNITA_NON_DI_MASSA'
   | 'PROFILO_NON_SUPPORTATO'
@@ -362,6 +363,14 @@ export const controlliMud = {
     codice: 'DESTINATARIO_SENZA_ISTAT',
     gravita: AVVISO,
     messaggio: `Destinatario "${ragioneSociale}": comune non trovato nelle tabelle ISTAT, nel modulo DR il comune risulterà 000 (non dichiarato).`,
+  }),
+
+  // Avviso (A-W-05): il DR estero si compila con la nazione, ma il resto dei campi per l'estero
+  // (codice del Reg. 1013/2006, quantità per operazione) resta vuoto.
+  destinatarioEstero: (ragioneSociale: string, nazione: string): MudEsitoControllo => ({
+    codice: 'DESTINATARIO_ESTERO',
+    gravita: AVVISO,
+    messaggio: `Destinatario "${ragioneSociale}" estero (${nazione}): nel modulo DR si indica la nazione al posto del codice fiscale. Il codice del Reg. 1013/2006 e le quantità per operazione non sono ancora supportati.`,
   }),
 
   operazioneDedottaDalFir: (m: RifMovimento, fir: string, op: 'R' | 'D'): MudEsitoControllo => ({

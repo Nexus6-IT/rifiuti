@@ -19,7 +19,8 @@ describe('MudController presentazione del MUD', () => {
         {} as any,
         membership as any,
         {} as any,
-        presentazione as any
+        presentazione as any,
+        {} as any
       )
       const req = { user: { id: 'u1', tenantId: 't1', role: 'ADMIN' } } as any // ADMIN globale, VIEWER qui
 
@@ -55,7 +56,8 @@ describe('MudController presentazione del MUD', () => {
       {} as any,
       membership as any,
       {} as any,
-      presentazione as any
+      presentazione as any,
+      {} as any
     )
     await controller.segnaPresentato({ user: { id: 'u1', tenantId: 't1' } } as any, 2025, {
       dataPresentazione: '2026-06-30',
@@ -86,7 +88,8 @@ describe('MudController presentazione del MUD', () => {
       {} as any,
       membership as any,
       {} as any,
-      presentazione as any
+      presentazione as any,
+      {} as any
     )
     const req = { tenantId: 'cliente', user: { id: 'u1', tenantId: 'studio' } } as any
 
@@ -111,7 +114,8 @@ describe('MudController presentazione del MUD', () => {
       {} as any,
       membership as any,
       {} as any,
-      presentazione as any
+      presentazione as any,
+      {} as any
     )
 
     const r = await controller.statoPresentazione(

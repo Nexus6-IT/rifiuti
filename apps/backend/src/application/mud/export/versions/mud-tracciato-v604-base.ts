@@ -527,6 +527,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
       civico: dr.civico,
       cap: dr.cap,
       quantitaKg: dr.quantitaKg,
+      nazione: dr.nazione,
     })
   }
 
@@ -586,6 +587,8 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
       ricevutoDaPrivati?: boolean
       origineUrbana?: boolean
       pileAccumulatori?: boolean
+      /** solo DR estero (A-W-05) */
+      nazione?: string
     }
   ): string {
     return mudRecord('BB', [
@@ -600,7 +603,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
       mudAlfa(f.civico ?? '', 6),
       mudAlfa(f.cap ?? '', 5),
       ...this.qtyUm(f.quantitaKg), // quantità dichiarata
-      mudAlfa('', 20), // nome nazione (estero)
+      mudAlfa(f.nazione ?? '', 20), // nome nazione (estero)
       mudAlfa('', 6), // codice reg. CEE 1013/2006
       mudFlag(f.ricevutoDaPrivati), // ricevuto da privati (solo RT)
       ...this.qtyUm(0), // altre op. smaltimento (estero)
