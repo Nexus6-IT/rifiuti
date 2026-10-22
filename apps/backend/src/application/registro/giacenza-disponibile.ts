@@ -19,12 +19,18 @@ export interface GiacenzaDisponibile {
   disponibileAllaDataKg: number
   /** Giorno (mezzanotte UTC) del saldo che fa da limite: il giorno di `alla` o uno successivo. */
   vincoloAl: Date
+  /**
+   * Unità (maiuscole, senza spazi ai bordi, ordinate, distinte) dei CARICHI dello stesso CER che
+   * non sono kg, t o vuote: non entrano nei saldi, quindi chi scarica in kg non può contare su di loro.
+   */
+  unitaNonDiMassaCaricate: string[]
 }
 
 interface RigaGiacenza {
   vincolo_al: Date
   saldo: Prisma.Decimal | number | string
   saldo_totale: Prisma.Decimal | number | string
+  unita_non_massa: string[] | null
 }
 
 const arrotonda3 = (v: unknown): number => Math.round(Number(v) * 1000) / 1000
@@ -66,7 +72,15 @@ export async function giacenzaDisponibileAl(
       UNION ALL
       SELECT g, saldo FROM saldi WHERE g > ${giornoAlla}::date
     )
-    SELECT c.g AS vincolo_al, c.saldo, (SELECT COALESCE(SUM(delta), 0) FROM mov) AS saldo_totale
+    SELECT c.g AS vincolo_al, c.saldo, (SELECT COALESCE(SUM(delta), 0) FROM mov) AS saldo_totale,
+           (SELECT COALESCE(array_agg(DISTINCT upper(btrim(unit)) ORDER BY upper(btrim(unit))), ARRAY[]::text[])
+            FROM waste_movements
+            WHERE tenant_id = ${p.tenantId}::uuid
+              AND type = 'CARICO'
+              AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cifreCer}
+              AND NOT (upper(btrim(unit)) = ANY(${aliasKg}::text[])
+                       OR upper(btrim(unit)) = ANY(${aliasT}::text[])
+                       OR btrim(unit) = '')) AS unita_non_massa
     FROM candidati c ORDER BY c.saldo ASC, c.g ASC LIMIT 1
   `
 
@@ -76,10 +90,12 @@ export async function giacenzaDisponibileAl(
     vincolo_al: new Date(`${giornoAlla}T00:00:00Z`),
     saldo: 0,
     saldo_totale: 0,
+    unita_non_massa: [],
   }
   return {
     saldoComplessivoKg: arrotonda3(r.saldo_totale),
     disponibileAllaDataKg: arrotonda3(r.saldo),
     vincoloAl: new Date(r.vincolo_al),
+    unitaNonDiMassaCaricate: Array.isArray(r.unita_non_massa) ? [...r.unita_non_massa] : [],
   }
 }

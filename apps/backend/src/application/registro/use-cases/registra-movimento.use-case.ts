@@ -495,6 +495,23 @@ export class RegistraMovimentoUseCase {
 
     const um = simboloUnita(u)
     if (g.saldoComplessivoKg + 1e-9 < richiestoKg) {
+      const nonDiMassa = g.unitaNonDiMassaCaricate ?? []
+      if (nonDiMassa.length > 0) {
+        // Carichi in litri o m³ non si confrontano con i kg: bloccare su un saldo di zero
+        // spingerebbe a registrare un secondo carico dello stesso rifiuto in un registro
+        // immutabile. Si registra e si avvisa che la giacenza va verificata a mano.
+        const avviso =
+          `Il CER ${cerCode} ha carichi registrati in ${nonDiMassa.join(', ')} che non si ` +
+          `possono confrontare con i kg: lo scarico è registrato, ma la giacenza va verificata ` +
+          `a mano (i carichi in kg o tonnellate coprono ` +
+          `${formattaQuantita(Math.max(0, g.saldoComplessivoKg) / fattore)} ${um}).`
+        this.logger.warn('Scarico in kg registrato con carichi in unità non di massa', {
+          tenantId,
+          cerCode,
+          unitaNonDiMassaCaricate: nonDiMassa,
+        })
+        return [avviso]
+      }
       const dettaglio =
         g.saldoComplessivoKg >= 0
           ? `nel registro restano ${formattaQuantita(g.saldoComplessivoKg / fattore)} ${um}, ` +

@@ -14,6 +14,7 @@ describe('giacenzaDisponibileAl', () => {
       saldoComplessivoKg: 0,
       disponibileAllaDataKg: 0,
       vincoloAl: new Date('2026-10-21T00:00:00Z'),
+      unitaNonDiMassaCaricate: [],
     })
   })
 })

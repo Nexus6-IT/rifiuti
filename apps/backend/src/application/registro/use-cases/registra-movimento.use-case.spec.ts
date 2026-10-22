@@ -155,6 +155,7 @@ describe('RegistraMovimentoUseCase', () => {
     saldoComplessivoKg: complessivo,
     disponibileAllaDataKg: allaData,
     vincoloAl,
+    unitaNonDiMassaCaricate: [] as string[],
   })
 
   beforeEach(async () => {
@@ -162,6 +163,7 @@ describe('RegistraMovimentoUseCase', () => {
       saldoComplessivoKg: 1_000_000,
       disponibileAllaDataKg: 1_000_000,
       vincoloAl: TODAY,
+      unitaNonDiMassaCaricate: [],
     })
     prisma = buildPrisma()
     const module: TestingModule = await Test.createTestingModule({
@@ -440,6 +442,32 @@ describe('RegistraMovimentoUseCase', () => {
     expect(r.error).toContain('se è stato prodotto ora, usa Produzione interna.')
   })
 
+  it('scarico in kg con carichi solo in litri: registrato con avviso', async () => {
+    giacenzaMock.mockResolvedValue({ ...g(0), unitaNonDiMassaCaricate: ['LITRI', 'M3'] })
+    const tx = _mockTransazione(recordScarico)
+    const r = await useCase.execute(scaricoCmd({ quantity: 4800 }))
+    expect(r.isSuccess).toBe(true)
+    expect(tx.wasteMovement.create).toHaveBeenCalled()
+    expect(r.value.avvisi).toEqual([
+      'Il CER 20 03 01 ha carichi registrati in LITRI, M3 che non si possono confrontare con i kg: ' +
+        'lo scarico è registrato, ma la giacenza va verificata a mano ' +
+        '(i carichi in kg o tonnellate coprono 0 kg).',
+    ])
+    expect(r.value.avvisi[0]).not.toContain('Altro carico')
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('non di massa'),
+      expect.objectContaining({ cerCode: '20 03 01' })
+    )
+  })
+
+  it("con carichi in kg insufficienti e carichi in litri l'avviso riporta i kg coperti", async () => {
+    giacenzaMock.mockResolvedValue({ ...g(1234.5), unitaNonDiMassaCaricate: ['LITRI'] })
+    _mockTransazione(recordScarico)
+    const r = await useCase.execute(scaricoCmd({ quantity: 5000 }))
+    expect(r.isSuccess).toBe(true)
+    expect(r.value.avvisi[0]).toContain('coprono 1.234,5 kg')
+  })
+
   it('uno scarico retrodatato coperto dal saldo complessivo si registra con un avviso', async () => {
     giacenzaMock.mockResolvedValue(g(100, 0))
     const tx = _mockTransazione(recordScarico)
@@ -492,6 +520,7 @@ describe('RegistraMovimentoUseCase', () => {
         saldoComplessivoKg: valore as any,
         disponibileAllaDataKg: 1000,
         vincoloAl: TODAY,
+        unitaNonDiMassaCaricate: [],
       })
       const tx = _mockTransazione(recordScarico)
       const r = await useCase.execute(scaricoCmd({ quantity: 1 }))

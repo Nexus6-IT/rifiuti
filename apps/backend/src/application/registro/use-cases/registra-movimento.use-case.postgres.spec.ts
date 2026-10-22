@@ -151,6 +151,21 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
     ).toBe(true)
   })
 
+  it('carico 5.000 L e scarico 4.800 kg dello stesso CER: registrato con avviso', async () => {
+    expect(
+      (await useCase.execute(cmd('CARICO', 'PRODUZIONE_INTERNA', 5000, '2026-03-01', 'LITRI')))
+        .isSuccess
+    ).toBe(true)
+    const r = await useCase.execute(cmd('SCARICO', 'AVVIO_RECUPERO', 4800, '2026-03-02', 'KG'))
+    expect(r.isSuccess).toBe(true)
+    expect(r.value.avvisi).toEqual([
+      `Il CER ${CER} ha carichi registrati in LITRI che non si possono confrontare con i kg: ` +
+        'lo scarico è registrato, ma la giacenza va verificata a mano ' +
+        '(i carichi in kg o tonnellate coprono 0 kg).',
+    ])
+    expect(await prisma.wasteMovement.count({ where: { tenantId, type: 'SCARICO' } })).toBe(1)
+  })
+
   it("uno scarico retrodatato prima dell'unico carico si registra con un avviso", async () => {
     await useCase.execute(cmd('CARICO', 'PRODUZIONE_INTERNA', 100, '2026-03-10'))
     const r = await useCase.execute(cmd('SCARICO', 'AVVIO_RECUPERO', 50, '2026-03-05'))

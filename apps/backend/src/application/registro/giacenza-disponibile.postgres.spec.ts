@@ -86,6 +86,7 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
       saldoComplessivoKg: 100,
       disponibileAllaDataKg: 0,
       vincoloAl: new Date('2026-03-05T00:00:00Z'),
+      unitaNonDiMassaCaricate: [],
     })
   })
 
@@ -96,6 +97,7 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
       saldoComplessivoKg: 0,
       disponibileAllaDataKg: 0,
       vincoloAl: new Date('2026-03-03T00:00:00Z'),
+      unitaNonDiMassaCaricate: [],
     })
   })
 
@@ -124,6 +126,14 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
       saldoComplessivoKg: 400,
       disponibileAllaDataKg: 400,
     })
+  })
+
+  it('riporta le unità non di massa dei carichi', async () => {
+    await carico('2026-03-01', 5000, 'LITRI')
+    await carico('2026-03-01', 2, ' m3 ')
+    await carico('2026-03-01', 10, 'KG')
+    await scarico('2026-03-02', 5, 'GALLONI')
+    expect((await disp(new Date('2026-03-05'))).unitaNonDiMassaCaricate).toEqual(['LITRI', 'M3'])
   })
 
   it("l'unità vuota vale kg", async () => {
