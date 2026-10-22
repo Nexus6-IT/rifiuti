@@ -101,6 +101,100 @@ for f in ops/backup-offsite.sh ops/restore.sh ops/lib/backup-verifica.sh; do
   verifica "$f: ogni docker compose ha --env-file" 0 compose_senza_env_file "$RADICE/$f"
 done
 
+# ---- Test con PostgreSQL finto (stub) ----------------------------------------
+# Lo stub risponde ai soli comandi usati da backup-offsite.sh. Variabili:
+#   FAKE_DROP_FAIL=1  il DROP DATABASE esce con errore
+#   FAKE_DUMP_FAIL=1  pg_dump scrive un po' di output e poi esce con errore
+cat > "$TMP/fakepg.sh" <<'STUB'
+#!/usr/bin/env bash
+tutti="$*"
+case "$tutti" in
+  pg_dump*)
+    printf -- '-- dump finto\nCREATE TABLE t (id int);\n'
+    if [ "${FAKE_DUMP_FAIL:-0}" = "1" ]; then exit 1; fi
+    printf -- '-- PostgreSQL database dump complete\n\n'
+    ;;
+  *pg_database_size*) echo 1000 ;;
+  *"DROP DATABASE"*) if [ "${FAKE_DROP_FAIL:-0}" = "1" ]; then echo "drop negato" >&2; exit 1; fi ;;
+  *"CREATE DATABASE"*) ;;
+  *"SELECT count"*) echo 3 ;;
+  *) cat >/dev/null ;;
+esac
+exit 0
+STUB
+mkdir -p "$TMP/bin"
+cat > "$TMP/bin/msmtp" <<'STUB'
+#!/usr/bin/env bash
+cat >> "$MAIL_FILE"
+STUB
+chmod +x "$TMP/fakepg.sh" "$TMP/bin/msmtp"
+printf 'DB_NAME=wf_stub\nDB_USER=wasteflow\n' > "$TMP/env-stub"
+
+# esegui_stub STAGING [VAR=valore ...] — backup notturno con lo stub; l'output va in
+# $TMP/out-STAGING e le mail (msmtp finto) in $TMP/mail-STAGING. La cartella di staging
+# viene creata dallo script stesso, salvo che esista gia'.
+esegui_stub() {
+  local staging="$1"
+  shift
+  : > "$TMP/mail-$staging"
+  env PATH="$TMP/bin:$PATH" MAIL_FILE="$TMP/mail-$staging" PG_EXEC="bash $TMP/fakepg.sh" \
+    BACKUP_MODALITA=notturno BACKUP_ALERT_EMAIL=prova@example.com BACKUP_DATI_DIR="$TMP" \
+    WASTEFLOW_ENV_FILE="$TMP/env-stub" BACKUP_STAGING_DIR="$TMP/$staging" "$@" \
+    bash "$RADICE/ops/backup-offsite.sh" > "$TMP/out-$staging" 2>&1
+}
+
+# Finding 1: DROP fallito dopo un ripristino riuscito -> dump accettato, avviso nel log e mail.
+esegui_stub staging-drop FAKE_DROP_FAIL=1 OFFSITE_MODE=disabled
+ESITO_DROP=$?
+verifica "DROP fallito: il backup esce 0 (dump accettato)" 0 test "$ESITO_DROP" -eq 0
+verifica "DROP fallito: un dump al nome finale" 0 \
+  bash -c 'n=$(ls "$1"/wasteflow_wf_stub_*.sql.gz 2>/dev/null | wc -l); [ "$n" -eq 1 ]' _ "$TMP/staging-drop"
+verifica "DROP fallito: l'avviso e' nel log" 0 grep -q 'ATTENZIONE.*eliminazione del database temporaneo' "$TMP/out-staging-drop"
+verifica "DROP fallito: parte la mail di avviso" 0 grep -q 'database temporaneo non eliminato' "$TMP/mail-staging-drop"
+
+esegui_stub staging-ok OFFSITE_MODE=disabled
+verifica "senza errori: nessuna mail" 0 test ! -s "$TMP/mail-staging-ok"
+
+# Finding 2: permessi (significativi solo su filesystem POSIX).
+( umask 077; : > "$TMP/prova-permessi" )
+if [ "$(stat -c %a "$TMP/prova-permessi" 2>/dev/null)" = "600" ]; then
+  verifica "dump in staging solo per il proprietario (600)" 0 \
+    bash -c 'for f in "$1"/wasteflow_wf_stub_*.sql.gz; do [ "$(stat -c %a "$f")" = "600" ] || exit 1; done' _ "$TMP/staging-ok"
+  verifica "cartella di staging creata dallo script: 700" 0 test "$(stat -c %a "$TMP/staging-ok")" = "700"
+else
+  echo "SALTATI: permessi dei dump (filesystem senza permessi POSIX, es. Git Bash su NTFS)"
+fi
+
+# Finding 3: OFFSITE_MODE di default disabled, letto dal .env, l'ambiente vince.
+esegui_stub staging-def
+verifica "OFFSITE_MODE assente ovunque: default disabled" 0 grep -q 'Copia off-site disabilitata' "$TMP/out-staging-def"
+printf 'DB_NAME=wf_stub\nDB_USER=wasteflow\nOFFSITE_MODE=rsync\n' > "$TMP/env-rsync"
+env -u OFFSITE_MODE PATH="$TMP/bin:$PATH" MAIL_FILE="$TMP/m" PG_EXEC="bash $TMP/fakepg.sh" BACKUP_MODALITA=notturno \
+  BACKUP_DATI_DIR="$TMP" WASTEFLOW_ENV_FILE="$TMP/env-rsync" BACKUP_STAGING_DIR="$TMP/staging-rsync" \
+  bash "$RADICE/ops/backup-offsite.sh" > "$TMP/out-rsync" 2>&1
+verifica "OFFSITE_MODE=rsync nel .env viene letto (senza RSYNC_TARGET fallisce)" 0 grep -q 'RSYNC_TARGET non impostato' "$TMP/out-rsync"
+env PATH="$TMP/bin:$PATH" MAIL_FILE="$TMP/m" PG_EXEC="bash $TMP/fakepg.sh" BACKUP_MODALITA=notturno OFFSITE_MODE=disabled \
+  BACKUP_DATI_DIR="$TMP" WASTEFLOW_ENV_FILE="$TMP/env-rsync" BACKUP_STAGING_DIR="$TMP/staging-envvince" \
+  bash "$RADICE/ops/backup-offsite.sh" > "$TMP/out-envvince" 2>&1
+verifica "l'ambiente vince sul .env" 0 grep -q 'Copia off-site disabilitata' "$TMP/out-envvince"
+
+# Finding 4: pg_dump fallito -> .parziale rinominato in .scartato; parziali vecchi ruotati.
+esegui_stub staging-dumpko FAKE_DUMP_FAIL=1 OFFSITE_MODE=disabled
+ESITO_DUMPKO=$?
+verifica "pg_dump fallito: esce non zero" 0 test "$ESITO_DUMPKO" -ne 0
+verifica "pg_dump fallito: nessun .parziale rimasto" 1 \
+  bash -c 'ls "$1"/*.parziale >/dev/null 2>&1' _ "$TMP/staging-dumpko"
+verifica "pg_dump fallito: un .scartato" 0 \
+  bash -c 'ls "$1"/*.sql.gz.scartato >/dev/null 2>&1' _ "$TMP/staging-dumpko"
+
+mkdir -p "$TMP/staging-rot"
+: > "$TMP/staging-rot/wasteflow_wf_stub_20200101_000000.sql.gz.parziale"
+: > "$TMP/staging-rot/wasteflow_wf_stub_20990101_000000.sql.gz.parziale"
+touch -d '10 days ago' "$TMP/staging-rot/wasteflow_wf_stub_20200101_000000.sql.gz.parziale"
+esegui_stub staging-rot OFFSITE_MODE=disabled
+verifica "rotazione: .parziale vecchio eliminato" 1 test -e "$TMP/staging-rot/wasteflow_wf_stub_20200101_000000.sql.gz.parziale"
+verifica "rotazione: .parziale recente conservato" 0 test -e "$TMP/staging-rot/wasteflow_wf_stub_20990101_000000.sql.gz.parziale"
+
 # ---- Test con database -------------------------------------------------------
 if [ -z "${PG_EXEC:-}" ]; then
   echo "salto i test con PostgreSQL: PG_EXEC non impostata"

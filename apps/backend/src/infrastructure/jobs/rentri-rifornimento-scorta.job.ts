@@ -56,7 +56,19 @@ export class RentriRifornimentoScortaJob {
       let sediInErrore = 0
 
       for (const tenant of tenants) {
-        const unitaLocali = await this.unitaLocaleService.listForTenant(tenant.id)
+        let unitaLocali: Awaited<ReturnType<RentriUnitaLocaleService['listForTenant']>>
+        try {
+          unitaLocali = await this.unitaLocaleService.listForTenant(tenant.id)
+        } catch (error: unknown) {
+          sediInErrore++
+          this.logger.error(
+            'Elenco sedi RENTRI non disponibile per il tenant, si prosegue con gli altri',
+            error instanceof Error ? error : new Error(String(error)),
+            { tenantId: tenant.id }
+          )
+          segnalaErroreJob('eseguiRifornimento', error, { tenantId: tenant.id })
+          continue
+        }
 
         for (const sede of unitaLocali) {
           if (!sede.dimensioneScortaDesiderata) {

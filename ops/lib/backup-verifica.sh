@@ -63,11 +63,14 @@ verifica_completezza_dump() {
 
 # ripristino_di_prova FILE DB_USER DB_SORGENTE
 # Ripristina il dump in un database temporaneo, confronta con la sorgente e
-# elimina SEMPRE il database temporaneo. 0 solo se ripristino e confronti riusciti.
+# elimina SEMPRE il database temporaneo.
+# Codici di ritorno: 0 = ripristino e confronti riusciti; 1 = ripristino o confronti
+# falliti; 2 = ripristino e confronti riusciti ma eliminazione del database
+# temporaneo fallita (il dump e' valido, il chiamante deve solo avvisare).
 ripristino_di_prova() {
   local file="$1" utente="$2" sorgente="$3"
   local temp="wasteflow_verifica_$(date +%s)_$$"
-  local esito=0 creato=0
+  local esito=0 creato=0 pulizia_fallita=0
   local n_src n_cpy m_src m_cpy w_src w_cpy
   local stati
 
@@ -134,9 +137,13 @@ ripristino_di_prova() {
   if [ "$creato" -eq 1 ] || [ "$esito" -ne 0 ]; then
     if ! pg_exec psql -U "$utente" -d postgres -v ON_ERROR_STOP=1 -qAtc "DROP DATABASE IF EXISTS \"${temp}\" WITH (FORCE)" >/dev/null; then
       echo "ATTENZIONE: eliminazione del database temporaneo ${temp} fallita" >&2
+      pulizia_fallita=1
     fi
   fi
 
+  if [ "$esito" -eq 0 ] && [ "$pulizia_fallita" -eq 1 ]; then
+    return 2
+  fi
   return "$esito"
 }
 

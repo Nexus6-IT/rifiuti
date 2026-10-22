@@ -1,4 +1,7 @@
+import * as Sentry from '@sentry/node'
 import { RentriRifornimentoScortaJob } from './rentri-rifornimento-scorta.job'
+
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
 describe('RentriRifornimentoScortaJob', () => {
   const mockLogger = {
@@ -101,5 +104,26 @@ describe('RentriRifornimentoScortaJob', () => {
 
     expect(avviaVidimazione.execute).toHaveBeenCalledTimes(2)
     expect(mockLogger.error).toHaveBeenCalled()
+  })
+
+  it('un tenant che fallisce in listForTenant non ferma i successivi e viene segnalato con tenantId', async () => {
+    const { job, scortaRepo, avviaVidimazione, unitaLocaleService } = build({ t1: [], t2: [] })
+    unitaLocaleService.listForTenant.mockImplementation((tenantId: string) =>
+      tenantId === 't1'
+        ? Promise.reject(new Error('credenziale scaduta'))
+        : Promise.resolve([
+            { numIscrSito: 'OP2', codiceBloccoPredefinito: 'BLK-B', dimensioneScortaDesiderata: 5 },
+          ])
+    )
+    scortaRepo.contaTotaleDisponibili.mockResolvedValue(0)
+
+    await expect(job.eseguiRifornimento()).resolves.toBeUndefined()
+
+    expect(avviaVidimazione.execute).toHaveBeenCalledTimes(1)
+    expect(avviaVidimazione.execute).toHaveBeenCalledWith('t2', 'BLK-B', 5)
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1)
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { job: 'eseguiRifornimento', tenantId: 't1' },
+    })
   })
 })

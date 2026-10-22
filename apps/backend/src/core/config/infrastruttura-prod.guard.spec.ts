@@ -207,6 +207,11 @@ describe('deploy.yml: rilascio in produzione', () => {
     expect(deploy).toMatch(/script: \|\n\s+set -e\n/)
   })
 
+  it('il passo SSH ha un command_timeout che copre pull, backup, migration e smoke test', () => {
+    // Il default di appleboy/ssh-action e' 10 minuti; il job ha timeout-minutes: 30.
+    expect(deploy).toMatch(/command_timeout: 25m/)
+  })
+
   it('lo smoke test interroga /api/v1/health/db, che fallisce se il database non risponde', () => {
     expect(deploy).toContain('curl -fsS http://127.0.0.1:3017/api/v1/health/db')
   })

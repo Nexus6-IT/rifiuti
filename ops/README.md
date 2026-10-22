@@ -85,7 +85,7 @@ bash /opt/rifiuti/site/ops/backup-offsite.sh
 
 ```
 # /etc/cron.d/wasteflow-backup
-30 3 * * * root OFFSITE_MODE=disabled bash /opt/rifiuti/site/ops/backup-offsite.sh >> /var/log/wasteflow-backup.log 2>&1
+30 3 * * * root bash /opt/rifiuti/site/ops/backup-offsite.sh >> /var/log/wasteflow-backup.log 2>&1
 ```
 
 **Test degli script:** `bash ops/test/backup-verifica.test.sh` (la parte con
@@ -139,7 +139,7 @@ Se lo smoke test fallisce dopo `migrate` e `up -d`, i container nuovi restano
 su. Il workflow di deploy **non** può rilasciare un tag precedente:
 `workflow_dispatch` non ha input e lo script fa sempre
 `git reset --hard origin/master` e rilascia l'immagine di `github.sha`
-(`deploy.yml:35`, `:274-286`).
+(`deploy.yml`: trigger `workflow_dispatch` e passo "Deploy via SSH").
 
 Il rollback reale è quindi `git revert -m 1 <commit di merge>` su `master` e la
 pipeline intera (build delle immagini di 30-40 minuti sul runner condiviso, più
@@ -240,13 +240,13 @@ Il progetto su Bugsink si crea con `docker exec bugsink bugsink-manage shell`
   `id`), `tenantId` e percorso senza query string.
 - Gli errori dei job schedulati (`@Cron`), con il tag `job` (il nome del metodo) e, per gli
   errori per tenant dei tre job RENTRI, il tag `tenantId`.
-- Prova d'invio: come al passo 7.5 del piano, provocare un errore e leggere l'evento in Bugsink.
+- Prova d'invio: come al passo 7.5 del piano (`docs/superpowers/plans/2026-10-21-fase0-d-esercizio.md`), provocare un errore e leggere l'evento in Bugsink.
 
 ### Dati personali
 
 Gli eventi non portano corpo, header, cookie né query string della richiesta (né query e fragment delle chiamate HTTP in uscita nei breadcrumb), e l'utente è
 ridotto al solo `id` (Decisione 5; `apps/backend/src/core/monitoring/opzioni-sentry.ts`).
-Ogni aggiornamento dell'SDK va seguito dalla lettura di un evento vero, come al passo 7.5,
+Ogni aggiornamento dell'SDK va seguito dalla lettura di un evento vero, come al passo 7.5 del piano `docs/superpowers/plans/2026-10-21-fase0-d-esercizio.md`,
 per verificare che le opzioni abbiano ancora l'effetto voluto.
 
 ### Limite del guardiano dei job

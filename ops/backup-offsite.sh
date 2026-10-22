@@ -28,13 +28,16 @@
 #   bash /opt/rifiuti/site/ops/backup-offsite.sh
 #
 # CRON (ogni notte alle 03:30, nessun "source" del .env):
-#   30 3 * * * root OFFSITE_MODE=disabled bash /opt/rifiuti/site/ops/backup-offsite.sh >> /var/log/wasteflow-backup.log 2>&1
+#   (OFFSITE_MODE si legge dal .env, default disabled: non metterlo nella riga cron)
+#   30 3 * * * root bash /opt/rifiuti/site/ops/backup-offsite.sh >> /var/log/wasteflow-backup.log 2>&1
 #
 # Prima di un deploy: BACKUP_MODALITA=predeploy (niente restore di prova, niente
 # mail, niente copia off-site: l'esito lo segnala il job di deploy).
 # ==============================================================================
 
 set -euo pipefail
+# I dump contengono dati personali: file e cartelle creati solo per il proprietario.
+umask 077
 
 # shellcheck source=lib/backup-verifica.sh
 source "$(dirname "$0")/lib/backup-verifica.sh"
@@ -62,7 +65,7 @@ DB_NAME="${DB_NAME:-wasteflow_prod}"
 DB_USER="${DB_USER:-wasteflow}"
 
 # Valore dall'ambiente se impostato, altrimenti dal .env, altrimenti default.
-OFFSITE_MODE="${OFFSITE_MODE:-$(leggi_env "${WASTEFLOW_ENV_FILE}" OFFSITE_MODE rsync)}"
+OFFSITE_MODE="${OFFSITE_MODE:-$(leggi_env "${WASTEFLOW_ENV_FILE}" OFFSITE_MODE disabled)}"
 RSYNC_TARGET="${RSYNC_TARGET:-$(leggi_env "${WASTEFLOW_ENV_FILE}" RSYNC_TARGET '')}"
 RSYNC_SSH_KEY="${RSYNC_SSH_KEY:-$(leggi_env "${WASTEFLOW_ENV_FILE}" RSYNC_SSH_KEY /root/.ssh/id_ed25519_backup)}"
 RCLONE_REMOTE="${RCLONE_REMOTE:-$(leggi_env "${WASTEFLOW_ENV_FILE}" RCLONE_REMOTE '')}"
@@ -125,7 +128,11 @@ if ! ERR=$(verifica_spazio_libero "${BACKUP_STAGING_DIR}" $((DIM * BACKUP_FATTOR
   die "${ERR}"
 fi
 
-pg_exec pg_dump -U "${DB_USER}" "${DB_NAME}" | gzip > "${PARZIALE}" || die "pg_dump fallito"
+if ! pg_exec pg_dump -U "${DB_USER}" "${DB_NAME}" | gzip > "${PARZIALE}"; then
+  # Il parziale contiene dati personali: non deve restare con un nome che nessuna rotazione tocca.
+  if [[ -e "${PARZIALE}" ]]; then mv -f "${PARZIALE}" "${STAGING_PATH}.scartato"; fi
+  die "pg_dump fallito (parziale conservato come ${STAGING_PATH}.scartato)"
+fi
 
 if ! ERR=$(verifica_completezza_dump "${PARZIALE}" 2>&1); then
   mv -f "${PARZIALE}" "${STAGING_PATH}.scartato"
@@ -144,7 +151,19 @@ File conservato come: ${STAGING_PATH}.non-verificato"
     die "ripristino di prova non eseguito: ${ERR}"
   fi
   log "Ripristino di prova in un database temporaneo..."
-  if ! ERR=$(ripristino_di_prova "${PARZIALE}" "${DB_USER}" "${DB_NAME}" 2>&1); then
+  RC_RIPRISTINO=0
+  ERR=$(ripristino_di_prova "${PARZIALE}" "${DB_USER}" "${DB_NAME}" 2>&1) || RC_RIPRISTINO=$?
+  if [[ ${RC_RIPRISTINO} -eq 2 ]]; then
+    # Ripristino riuscito ma database temporaneo rimasto: il dump e' valido e si accetta,
+    # il problema pero' deve restare visibile (log + mail), altrimenti i database si accumulano.
+    log "ATTENZIONE: ${ERR}"
+    notifica_fallimento "ATTENZIONE backup WasteFlow: database temporaneo non eliminato" \
+"Host: $(hostname)
+Il ripristino di prova e' riuscito e il dump e' stato accettato, ma il database temporaneo
+non e' stato eliminato. Va rimosso a mano (DROP DATABASE wasteflow_verifica_...).
+
+${ERR}"
+  elif [[ ${RC_RIPRISTINO} -ne 0 ]]; then
     mv -f "${PARZIALE}" "${STAGING_PATH}.scartato"
     die "ripristino di prova fallito, dump scartato (${STAGING_PATH}.scartato): ${ERR}"
   fi
@@ -210,7 +229,7 @@ else
     \( -name "wasteflow_${DB_NAME}_*.sql.gz" -o -name "wasteflow_${DB_NAME}_*.sql.gz.age" \) \
     -mtime "+${RETENTION_DAYS}" -delete
   find "${BACKUP_STAGING_DIR}" \
-    \( -name "wasteflow_*.sql.gz.scartato" -o -name "wasteflow_*.sql.gz.non-verificato" \) \
+    \( -name "wasteflow_*.sql.gz.scartato" -o -name "wasteflow_*.sql.gz.non-verificato" -o -name "wasteflow_*.sql.gz.parziale" \) \
     -mtime +7 -delete
 fi
 

@@ -274,6 +274,7 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           envs: DEPLOY_TAG,CR_TOKEN
           script_stop: true
+          command_timeout: 25m
           script: |
             set -e
             export DEPLOY_TAG="${{ needs.build.outputs.tag }}"
@@ -294,7 +295,7 @@ jobs:
             # Smoke test: risponde il database (503 se e' giu', quindi -f fallisce)
             # e risponde il frontend. 30 tentativi a 3 secondi.
             for i in $(seq 1 30); do
-              if curl -fsS http://127.0.0.1:3017/api/v1/health/db >/dev/null                 && curl -fsS http://127.0.0.1:3017/ >/dev/null; then
+              if curl -fsS http://127.0.0.1:3017/api/v1/health/db >/dev/null && curl -fsS http://127.0.0.1:3017/ >/dev/null; then
                 echo "Deploy OK (tag $DEPLOY_TAG)"
                 exit 0
               fi
