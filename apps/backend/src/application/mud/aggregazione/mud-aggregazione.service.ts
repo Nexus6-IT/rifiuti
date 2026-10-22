@@ -35,6 +35,11 @@ export interface MudAggregato {
   righe: MudRifiutoLine[]
   /** movimenti conteggiati (prodotto + avviato) per CER */
   movimentiPerCer: Record<string, number>
+  /**
+   * CER (chiave a 6 cifre) con almeno un movimento conteggiato pericoloso, solo per mostrarli
+   * con l'asterisco: fuori dalle righe, quindi il file telematico e hashAggregato non cambiano
+   */
+  pericolosiPerCer: Record<string, true>
   /** dati del dichiarante risolti una sola volta, riusati dall'export */
   dichiarante: { atecoNormalizzato: string | null; comuneCode: string | null }
   /** aggregazione + dichiarante + profilo */
@@ -367,6 +372,7 @@ export class MudAggregazioneService {
       return r
     }
     const movimentiPerCer: Record<string, number> = {}
+    const pericolosiPerCer: Record<string, true> = {}
     const inclusi = new Set<Movimento>()
     const avviatiPerFir = new Map<string, Movimento[]>()
     const ricevuti: RifMovimento[] = []
@@ -432,7 +438,10 @@ export class MudAggregazioneService {
       }
 
       const acc = riga(cer6)
-      if (m.cerCode.includes('*')) acc.pericoloso = true
+      if (m.cerCode.includes('*')) {
+        acc.pericoloso = true
+        pericolosiPerCer[cer6] = true
+      }
       movimentiPerCer[cer6] = (movimentiPerCer[cer6] ?? 0) + 1
       inclusi.add(m)
       const stato = statoFisicoMud(m.wastePhysicalState)
@@ -557,6 +566,7 @@ export class MudAggregazioneService {
       anno,
       righe: righeFinali,
       movimentiPerCer,
+      pericolosiPerCer,
       controlli,
       dichiarante: { atecoNormalizzato, comuneCode },
       mudNonDovuto,

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { LoggerService } from '../../core/logger/logger.service'
 import { MudAggregazioneService } from './aggregazione/mud-aggregazione.service'
+import { cerCanonico } from '../../domain/waste-movement/cer-registro'
 import {
   riepilogaAvvisi,
   type MudEsitoControllo,
@@ -11,7 +12,7 @@ export interface MudRiepilogo {
   year: number
   tenantId: string
   generatedAt: Date
-  /** Una riga per CER dell'aggregazione: `totalQuantity` = prodotto (kg), `count` = movimenti */
+  /** Una riga per CER: `cerCode` canonico (con `*` se pericoloso), `totalQuantity` = prodotto (kg), `count` = movimenti */
   wasteProduced: Array<{ cerCode: string; totalQuantity: number; count: number }>
   totals: { produced: number; recovery: number; disposal: number; recyclingRate: number }
   controlli: MudEsitoControllo[]
@@ -60,7 +61,10 @@ export class MUDGeneratorService {
       tenantId,
       generatedAt: new Date(),
       wasteProduced: aggregato.righe.map(riga => ({
-        cerCode: riga.cerCode,
+        // CER come lo legge l'utente, con l'asterisco se pericoloso (come nei controlli)
+        cerCode: cerCanonico(
+          aggregato.pericolosiPerCer[riga.cerCode] ? `${riga.cerCode}*` : riga.cerCode
+        ),
         totalQuantity: riga.prodottoKg,
         count: aggregato.movimentiPerCer[riga.cerCode] ?? 0,
       })),

@@ -1,5 +1,5 @@
 import { MudAggregazioneService } from './mud-aggregazione.service'
-import { limitiAnnoMud } from './mud-regole'
+import { hashAggregato, limitiAnnoMud } from './mud-regole'
 import { controlliMud, haBloccanti, type MudEsitoControllo } from './mud-controlli'
 
 describe('MudAggregazioneService', () => {
@@ -322,6 +322,29 @@ describe('MudAggregazioneService', () => {
     expect(r.righe).toHaveLength(1)
     expect(r.righe[0].prodottoKg).toBe(200)
     expect(r.movimentiPerCer).toEqual({ '170405': 2 })
+    expect(r.pericolosiPerCer).toEqual({})
+  })
+
+  it("il CER pericoloso è segnato a parte, senza cambiare le righe del file né l'hash", async () => {
+    impostaDati({
+      movimenti: [
+        mov({ progressiveNumber: 1, cerCode: '17 04 05' }),
+        mov({ progressiveNumber: 2, cerCode: '170405*' }),
+      ],
+    })
+    const pericoloso = await service.aggrega('t1', 2025)
+    expect(pericoloso.pericolosiPerCer).toEqual({ '170405': true })
+
+    impostaDati({
+      movimenti: [
+        mov({ progressiveNumber: 1, cerCode: '17 04 05' }),
+        mov({ progressiveNumber: 2, cerCode: '170405' }),
+      ],
+    })
+    const nonPericoloso = await service.aggrega('t1', 2025)
+    expect(nonPericoloso.pericolosiPerCer).toEqual({})
+    expect(pericoloso.righe).toEqual(nonPericoloso.righe)
+    expect(hashAggregato(pericoloso.righe)).toBe(hashAggregato(nonPericoloso.righe))
   })
 
   // 7

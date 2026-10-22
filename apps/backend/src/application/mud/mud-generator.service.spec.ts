@@ -23,6 +23,7 @@ describe('MUDGeneratorService', () => {
     anno: 2025,
     righe: [],
     movimentiPerCer: {},
+    pericolosiPerCer: {},
     dichiarante: { atecoNormalizzato: '43.11.00', comuneCode: '058091' },
     controlli: [],
     mudNonDovuto: false,
@@ -49,13 +50,15 @@ describe('MUDGeneratorService', () => {
           { cerCode: '150101', prodottoKg: 300, recuperoKg: 0, smaltimentoKg: 0, dr: [], te: [] },
         ],
         movimentiPerCer: { '170405': 4, '150101': 1 },
+        pericolosiPerCer: { '170405': true },
       })
     )
     const r = await service.generateMUDReport('t1', 2025)
     expect(aggregazione.aggrega).toHaveBeenCalledWith('t1', 2025)
+    // CER come lo legge l'utente: forma canonica, con l'asterisco se pericoloso
     expect(r.wasteProduced).toEqual([
-      { cerCode: '170405', totalQuantity: 1700, count: 4 },
-      { cerCode: '150101', totalQuantity: 300, count: 1 },
+      { cerCode: '17 04 05*', totalQuantity: 1700, count: 4 },
+      { cerCode: '15 01 01', totalQuantity: 300, count: 1 },
     ])
     expect(r.totals).toEqual({ produced: 2000, recovery: 2000, disposal: 500, recyclingRate: 0.8 })
     expect(r.year).toBe(2025)

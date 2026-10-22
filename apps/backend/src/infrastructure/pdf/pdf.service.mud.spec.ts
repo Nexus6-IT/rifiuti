@@ -1,6 +1,7 @@
 import { PDFService } from './pdf.service'
 import type { LoggerService } from '../../core/logger/logger.service'
 import { controlliMud, riepilogaAvvisi } from '../../application/mud/aggregazione/mud-controlli'
+import { MUDGeneratorService } from '../../application/mud/mud-generator.service'
 
 describe('PDFService.buildMUDContent - riepilogo dalla stessa aggregazione del file', () => {
   const logger = {
@@ -93,5 +94,30 @@ describe('PDFService.buildMUDContent - riepilogo dalla stessa aggregazione del f
     expect(testo).toContain('1.000 kg')
     expect(testo).toContain('"1.234,5"')
     expect(testo).toContain('17 04 05')
+  })
+
+  it("dal riepilogo al PDF il CER pericoloso resta con l'asterisco, l'altro senza", async () => {
+    const aggregazione = {
+      aggrega: jest.fn().mockResolvedValue({
+        anno: 2025,
+        righe: [
+          { cerCode: '170405', prodottoKg: 10, recuperoKg: 10, smaltimentoKg: 0, dr: [], te: [] },
+          { cerCode: '150101', prodottoKg: 5, recuperoKg: 5, smaltimentoKg: 0, dr: [], te: [] },
+        ],
+        movimentiPerCer: { '170405': 1, '150101': 1 },
+        pericolosiPerCer: { '170405': true },
+        dichiarante: { atecoNormalizzato: null, comuneCode: null },
+        controlli: [],
+        mudNonDovuto: false,
+      }),
+    }
+    const report = await new MUDGeneratorService(aggregazione as any, logger).generateMUDReport(
+      't1',
+      2025
+    )
+    const testo = contenuto(report)
+    expect(testo).toContain('"17 04 05*"')
+    expect(testo).toContain('"15 01 01"')
+    expect(testo).not.toContain('15 01 01*')
   })
 })
