@@ -489,6 +489,8 @@ SQL
 
   esegui_restore validosql "$TMP/prova_restore.sql" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore"
   verifica "restore: .sql decompresso valido, esce 0" 0 test "$(cat "$TMP/esito-validosql")" -eq 0
+  verifica "restore: immagine del backend non rilevata, avviso nel log" 0 \
+    grep -q "ATTENZIONE: immagine del backend non rilevata" "$TMP/out-validosql"
   verifica "restore: .sql decompresso, due database precedenti distinti" 0 \
     test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_prima_del_ripristino_%'")" = "2"
 

@@ -212,12 +212,11 @@ dimensione_db() {
   printf '%s\n' "$(printf '%s' "$out" | tr -d '[:space:]')"
 }
 
-# notifica_fallimento OGGETTO TESTO
+# invia_mail OGGETTO TESTO
 # Mail a ${BACKUP_ALERT_EMAIL:-root} via msmtp (sul VPS root e' inoltrato a Gmail
-# da /etc/aliases); senza msmtp scrive su stderr. Ritorna sempre 0.
-# invia_mail OGGETTO TESTO — come notifica_fallimento, ma ritorna 1 se la mail
-# non e' partita (msmtp assente o in errore), 0 se msmtp ha accettato l'invio.
-# Serve a chi deve ritentare (controllo-freschezza-backup.sh).
+# da /etc/aliases); senza msmtp scrive su stderr. Ritorna 1 se la mail non e'
+# partita (msmtp assente o in errore), 0 se msmtp ha accettato l'invio. Serve a chi
+# deve ritentare (controllo-freschezza-backup.sh).
 invia_mail() {
   local oggetto="$1" testo="$2" dest="${BACKUP_ALERT_EMAIL:-root}"
   if command -v msmtp >/dev/null 2>&1; then
@@ -233,6 +232,8 @@ invia_mail() {
   return 0
 }
 
+# notifica_fallimento OGGETTO TESTO — come invia_mail, ma ritorna sempre 0: per chi
+# avvisa e prosegue (o esce comunque con il proprio errore) senza ritentare.
 notifica_fallimento() {
   invia_mail "$@" || true
   return 0

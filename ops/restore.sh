@@ -266,6 +266,10 @@ IMMAGINE="$("${DC[@]}" ps --format '{{.Image}}' backend 2>/dev/null | tr -d '\r'
 if [[ -n "${IMMAGINE}" && "${IMMAGINE}" != *":${TAG}" ]]; then
   die "Il backend gira con l'immagine ${IMMAGINE}, non con il tag ${TAG}"
 fi
+if [[ -z "${IMMAGINE}" ]]; then
+  # Non è un errore (il backend è stato ricreato), ma il controllo del tag non c'è stato.
+  log "ATTENZIONE: immagine del backend non rilevata da '${DC[*]} ps': verificare a mano che giri il tag ${TAG}."
+fi
 log "Backend avviato con l'immagine: ${IMMAGINE:-non rilevata (atteso tag ${TAG})}"
 
 if [[ "${ESISTE}" -ge 1 ]]; then
