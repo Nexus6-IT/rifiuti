@@ -59,7 +59,8 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
   afterAll(async () => {
     await prisma.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await prisma.wasteMovement.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-    await prisma.user.deleteMany({ where: { id: userId } })
+    // senza id deleteMany non avrebbe filtro e cancellerebbe tutti gli utenti
+    if (userId) await prisma.user.deleteMany({ where: { id: userId } })
     await prisma.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
     if (cerCreato) await prisma.cERCode.deleteMany({ where: { code: CER } })
     await prisma.$disconnect()

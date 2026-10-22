@@ -34,15 +34,17 @@ describe('MudAggregazioneService.saldiAl31Dicembre — Postgres reale', () => {
 
   afterAll(async () => {
     await prisma.wasteMovement.deleteMany({
-      where: { tenantId: { in: [tenantId, altroTenantId] } },
+      where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
-    await prisma.tenant.deleteMany({ where: { id: { in: [tenantId, altroTenantId] } } })
+    await prisma.tenant.deleteMany({
+      where: { id: { in: [tenantId, altroTenantId].filter(Boolean) } },
+    })
     await prisma.$disconnect()
   })
 
   beforeEach(async () => {
     await prisma.wasteMovement.deleteMany({
-      where: { tenantId: { in: [tenantId, altroTenantId] } },
+      where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
   })
 

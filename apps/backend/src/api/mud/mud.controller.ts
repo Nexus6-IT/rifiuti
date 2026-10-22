@@ -111,12 +111,23 @@ export class MudController {
     return { versions: this.mudExport.supportedVersions() }
   }
 
-  /** Obbligo del MUD dell'azienda selezionata (A-W-10): lo leggono tutti i ruoli. */
+  /**
+   * Obbligo del MUD dell'azienda selezionata (A-W-10): lo leggono tutti i ruoli. `puoModificare`
+   * applica la stessa regola del PUT, così il frontend non la ripete.
+   */
   @Get('obbligo')
   @ApiOperation({ summary: "Se l'azienda è segnata come non tenuta al MUD" })
-  @ApiResponse({ status: 200, description: 'Flag, motivo, data e utente che lo ha impostato' })
-  async leggiObbligo(@Req() req: any): Promise<ObbligoMud> {
-    return this.obbligo.leggi(requireRequestTenantId(req))
+  @ApiResponse({
+    status: 200,
+    description: "Flag, motivo, data, utente che lo ha impostato e se l'utente può modificarlo",
+  })
+  async leggiObbligo(@Req() req: any): Promise<ObbligoMud & { puoModificare: boolean }> {
+    const tenantId = requireRequestTenantId(req)
+    const [obbligo, puoModificare] = await Promise.all([
+      this.obbligo.leggi(tenantId),
+      this.puoModificareObbligo(req, tenantId),
+    ])
+    return { ...obbligo, puoModificare }
   }
 
   /**
@@ -136,14 +147,18 @@ export class MudController {
   @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
   async impostaObbligo(@Body() dto: ImpostaObbligoMudDto, @Req() req: any): Promise<ObbligoMud> {
     const tenantId = requireRequestTenantId(req)
-    const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
-    if (!RUOLI_OBBLIGO_MUD.includes(ruolo)) {
+    if (!(await this.puoModificareObbligo(req, tenantId))) {
       throw new ForbiddenException({
         message: "Solo un amministratore dell'azienda può modificare l'obbligo del MUD.",
         error: 'MUD_OBBLIGO_RISERVATO_AMMINISTRATORI',
       })
     }
     return this.obbligo.imposta(tenantId, req.user.id, dto.mudNonDovuto, dto.motivo ?? null)
+  }
+
+  /** Vero se il ruolo nell'azienda selezionata permette di modificare l'obbligo del MUD. */
+  private async puoModificareObbligo(req: any, tenantId: string): Promise<boolean> {
+    return RUOLI_OBBLIGO_MUD.includes(await this.membership.ruoloEffettivo(req.user, tenantId))
   }
 
   /**

@@ -43,14 +43,18 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
   })
 
   afterAll(async () => {
-    await prisma.wasteMovement.deleteMany({ where: { tenantId } })
-    await prisma.tenant.deleteMany({ where: { id: tenantId } })
+    // Con un id `undefined` (beforeAll fallito) Prisma toglie il filtro e deleteMany
+    // cancellerebbe l'intera tabella: senza id non si cancella nulla.
+    if (tenantId) {
+      await prisma.wasteMovement.deleteMany({ where: { tenantId } })
+      await prisma.tenant.deleteMany({ where: { id: tenantId } })
+    }
     if (cerCreato) await prisma.cERCode.deleteMany({ where: { code: CER } })
     await prisma.$disconnect()
   })
 
   beforeEach(async () => {
-    await prisma.wasteMovement.deleteMany({ where: { tenantId } })
+    if (tenantId) await prisma.wasteMovement.deleteMany({ where: { tenantId } })
   })
 
   function cmd(
@@ -234,6 +238,7 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
     })
 
     afterAll(async () => {
+      if (!tenantId) return // senza id deleteMany non avrebbe filtro
       await prisma.wasteMovement.deleteMany({ where: { tenantId } })
       await prisma.fIR.deleteMany({ where: { tenantId } })
       await prisma.user.deleteMany({ where: { tenantId } })

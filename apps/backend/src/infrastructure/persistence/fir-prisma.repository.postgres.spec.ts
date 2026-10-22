@@ -53,9 +53,13 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
   })
 
   afterAll(async () => {
-    await prisma.fIR.deleteMany({ where: { tenantId } })
-    await prisma.user.deleteMany({ where: { tenantId } })
-    await prisma.tenant.deleteMany({ where: { id: tenantId } })
+    // Con un id `undefined` (beforeAll fallito) Prisma toglie il filtro e deleteMany
+    // cancellerebbe l'intera tabella: senza id non si cancella nulla.
+    if (tenantId) {
+      await prisma.fIR.deleteMany({ where: { tenantId } })
+      await prisma.user.deleteMany({ where: { tenantId } })
+      await prisma.tenant.deleteMany({ where: { id: tenantId } })
+    }
     await prisma.$disconnect()
   })
 
@@ -315,6 +319,7 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
     })
 
     afterAll(async () => {
+      if (!tenantNumeri) return // senza id deleteMany non avrebbe filtro
       await prisma.fIR.deleteMany({ where: { tenantId: tenantNumeri } })
       await prisma.user.deleteMany({ where: { tenantId: tenantNumeri } })
       await prisma.tenant.deleteMany({ where: { id: tenantNumeri } })

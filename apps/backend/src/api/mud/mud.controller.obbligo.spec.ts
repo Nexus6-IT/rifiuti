@@ -31,7 +31,22 @@ describe('MudController obbligo del MUD (A-W-10)', () => {
     const r = await controller('VIEWER', membership).leggiObbligo(req as any)
 
     expect(obbligo.leggi).toHaveBeenCalledWith('cliente')
-    expect(r).toEqual(OBBLIGO)
+    // stessa regola del PUT, sul ruolo nell'azienda selezionata
+    expect(membership.ruoloEffettivo).toHaveBeenCalledWith(req.user, 'cliente')
+    expect(r).toEqual({ ...OBBLIGO, puoModificare: false })
+  })
+
+  it.each([
+    ['SUPER_ADMIN', true],
+    ['ADMIN', true],
+    ['OPERATOR', false],
+    ['VIEWER', false],
+  ])('GET con ruolo effettivo %s: puoModificare %s', async (ruolo, atteso) => {
+    const req = { tenantId: 'cliente', user: { id: 'u1', tenantId: 'cliente', role: ruolo } }
+
+    const r = await controller(ruolo).leggiObbligo(req as any)
+
+    expect(r.puoModificare).toBe(atteso)
   })
 
   it('un ADMIN imposta il flag', async () => {
