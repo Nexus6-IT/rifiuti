@@ -684,6 +684,11 @@ jobs:
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
           SIGNATURE_PROVIDER: sandbox
           TSA_PROVIDER: mock
+          # Tutto il traffico E2E (pagine + API, due worker) arriva da
+          # 127.0.0.1 e supera il rate limit globale di 100/min per IP: i
+          # login ricevevano 429 a caso. Ignorato con NODE_ENV=production
+          # (vedi rateLimitDisattivato in apps/backend/src/api/config/rate-limit.config.ts).
+          RATE_LIMIT_DISATTIVATO: "1"
         run: |
           nohup node dist/main.js > /tmp/backend-e2e-devlogin.log 2>&1 &
           echo $! > /tmp/backend-e2e-devlogin.pid

@@ -119,9 +119,29 @@ function fraUnAnnoIso(): string {
 // in una run hanno la stessa ragione sociale col prefisso della run e restano
 // in archivio fino al teardown, quindi `.first()` sul nome prendeva quella di
 // un test precedente (es. senza scadenza) e l'avviso atteso non compariva.
-async function selezionaDropdown(page: Page, inputId: string, testoOpzione: string) {
-  await page.locator(`#${inputId}`).click()
-  await page.locator('.p-dropdown-item', { hasText: testoOpzione }).first().click()
+//
+// Il form FIR carica le anagrafiche in modo asincrono all'apertura della
+// pagina: se l'elenco arriva a menu aperto PrimeNG ridisegna le opzioni e il
+// clic puo' andare perso (riprodotto il 22/10 ripetendo i test con 2 worker:
+// menu rimasto su "Cerca destinatario…"). Per questo la selezione viene
+// verificata sull'etichetta del menu e, se non ha preso, ripetuta.
+async function selezionaDropdown(
+  page: Page,
+  inputId: string,
+  testoOpzione: string,
+  etichettaAttesa: string
+) {
+  const etichetta = page.locator(`p-dropdown:has(#${inputId}) .p-dropdown-label`)
+  await expect(async () => {
+    if ((await etichetta.textContent())?.trim() !== etichettaAttesa) {
+      await page.locator(`#${inputId}`).click()
+      await page
+        .locator('.p-dropdown-item', { hasText: testoOpzione })
+        .first()
+        .click({ timeout: 3000 })
+    }
+    await expect(etichetta).toHaveText(etichettaAttesa, { timeout: 1000 })
+  }).toPass({ timeout: 20000 })
 }
 
 test.describe('Trasportatore — CRUD via UI (operator)', () => {
@@ -132,6 +152,10 @@ test.describe('Trasportatore — CRUD via UI (operator)', () => {
     context,
   }) => {
     await loginAndSaveState(page, context, 'operator')
+    // Token API preso PRIMA di creare dalla UI: se il login API fallisse (es.
+    // 429) dopo la creazione, il record resterebbe orfano, non registrato per
+    // il teardown.
+    const token = await apiLogin('operator')
     const anagrafiche = new AnagrafichePage(page, 'trasportatori')
     await anagrafiche.goto()
     await anagrafiche.expectLoaded()
@@ -154,7 +178,6 @@ test.describe('Trasportatore — CRUD via UI (operator)', () => {
     await anagrafiche.salva()
     await expect(anagrafiche.formDialog).toBeHidden()
 
-    const token = await apiLogin('operator')
     const lista = await apiGet<{ items: TrasportatoreResponse[] }>('/registry/trasportatori', token)
     const creato = lista.items.find(t => t.numeroIscrizione === numeroIscrizione)
     expect(
@@ -202,6 +225,10 @@ test.describe('Destinatario — CRUD via UI (operator)', () => {
     context,
   }) => {
     await loginAndSaveState(page, context, 'operator')
+    // Token API preso PRIMA di creare dalla UI: se il login API fallisse (es.
+    // 429) dopo la creazione, il record resterebbe orfano, non registrato per
+    // il teardown.
+    const token = await apiLogin('operator')
     const anagrafiche = new AnagrafichePage(page, 'destinatari')
     await anagrafiche.goto()
     await anagrafiche.expectLoaded()
@@ -224,7 +251,6 @@ test.describe('Destinatario — CRUD via UI (operator)', () => {
     await anagrafiche.salva()
     await expect(anagrafiche.formDialog).toBeHidden()
 
-    const token = await apiLogin('operator')
     const lista = await apiGet<{ items: DestinatarioResponse[] }>('/registry/destinatari', token)
     const creato = lista.items.find(d => d.numeroAutorizzazione === numeroAutorizzazione)
     expect(
@@ -259,7 +285,12 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'new-trasportatore', trasportatore.partitaIVA)
+    await selezionaDropdown(
+      page,
+      'new-trasportatore',
+      trasportatore.partitaIVA,
+      trasportatore.ragioneSociale
+    )
 
     await expect(page.getByTestId('fir-trasportatore-iscrizione-scaduta')).toHaveCount(0)
   })
@@ -278,7 +309,12 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'new-destinatario', destinatario.partitaIVA)
+    await selezionaDropdown(
+      page,
+      'new-destinatario',
+      destinatario.partitaIVA,
+      destinatario.ragioneSociale
+    )
 
     await expect(page.getByTestId('fir-destinatario-autorizzazione-scaduta')).toHaveCount(0)
   })
@@ -322,7 +358,12 @@ test.describe('Scadenze — avviso alla scelta della parte, emissione non impedi
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'new-trasportatore', trasportatore.partitaIVA)
+    await selezionaDropdown(
+      page,
+      'new-trasportatore',
+      trasportatore.partitaIVA,
+      trasportatore.ragioneSociale
+    )
     await expect(page.getByTestId('fir-trasportatore-iscrizione-scaduta')).toBeVisible()
 
     await page.getByRole('button', { name: /crea fir/i }).click()
@@ -347,7 +388,12 @@ test.describe('Scadenze — avviso alla scelta della parte, emissione non impedi
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'new-destinatario', destinatario.partitaIVA)
+    await selezionaDropdown(
+      page,
+      'new-destinatario',
+      destinatario.partitaIVA,
+      destinatario.ragioneSociale
+    )
     await expect(page.getByTestId('fir-destinatario-autorizzazione-scaduta')).toBeVisible()
 
     await page.getByRole('button', { name: /crea fir/i }).click()

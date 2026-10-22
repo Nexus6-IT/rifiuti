@@ -81,6 +81,10 @@ test.describe('Produttore — CRUD via UI (operator)', () => {
 
   test('happy path: crea e modifica un produttore dalla UI', async ({ page, context }) => {
     await loginAndSaveState(page, context, 'operator')
+    // Token API preso PRIMA di creare dalla UI: se il login API fallisse (es.
+    // 429) dopo la creazione, il record resterebbe orfano, non registrato per
+    // il teardown.
+    const token = await apiLogin('operator')
     const anagrafiche = new AnagrafichePage(page, 'produttori')
     await anagrafiche.goto()
     await anagrafiche.expectLoaded()
@@ -102,7 +106,6 @@ test.describe('Produttore — CRUD via UI (operator)', () => {
     // L'id è assegnato dal backend: lo recuperiamo via API (delta sulla
     // partita IVA appena creata, non un id inventato) per registrarlo al
     // teardown e per interagire con la riga tramite il suo data-testid.
-    const token = await apiLogin('operator')
     const lista = await apiGet<ListaPaginata<ProduttoreResponse>>('/registry/produttori', token)
     const creato = lista.items.find(p => p.partitaIVA === partitaIVA)
     expect(

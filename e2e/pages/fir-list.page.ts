@@ -39,6 +39,12 @@ export class FirListPage {
 
   async openNuovoFirDialog() {
     await this.nuovoFirButton.click()
+    // Si aspetta solo che il dialog sia visibile. A differenza dei dialog
+    // delle anagrafiche, qui il focus non si sposta sempre dentro il dialog,
+    // quindi non e' un segnale affidabile. La corsa vera (anagrafiche caricate
+    // in modo asincrono mentre il menu e' aperto) la gestisce chi seleziona,
+    // verificando la scelta (vedi selezionaDropdown nei test registry).
+    await expect(this.page.getByRole('dialog', { name: /nuovo fir/i })).toBeVisible()
   }
 
   // Azioni di ciclo vita — bottoni per riga, testo osservato nell'audit.

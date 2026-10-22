@@ -11,6 +11,17 @@
 import { ThrottlerModuleOptions } from '@nestjs/throttler'
 
 /**
+ * true se il rate limit globale va spento: solo con RATE_LIMIT_DISATTIVATO=1
+ * e MAI con NODE_ENV=production. Serve alla passata 2 E2E della CI, dove tutto
+ * il traffico (pagine + API, due worker) arriva da 127.0.0.1 e supera i
+ * 100/min per IP: i login venivano respinti con 429 e un record appena creato
+ * dalla UI restava orfano (vedi .gitea/workflows/ci.yml).
+ */
+export function rateLimitDisattivato(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.RATE_LIMIT_DISATTIVATO?.trim() === '1' && env.NODE_ENV !== 'production'
+}
+
+/**
  * Global rate limit configuration
  */
 export const rateLimitConfig: ThrottlerModuleOptions = {
