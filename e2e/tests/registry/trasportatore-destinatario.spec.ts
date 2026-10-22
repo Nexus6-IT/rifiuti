@@ -50,12 +50,14 @@ function nuovaPartitaIVA(): string {
 interface TrasportatoreResponse {
   id: string
   ragioneSociale: string
+  partitaIVA: string
   numeroIscrizione: string
 }
 
 interface DestinatarioResponse {
   id: string
   ragioneSociale: string
+  partitaIVA: string
   numeroAutorizzazione: string
 }
 
@@ -113,6 +115,10 @@ function fraUnAnnoIso(): string {
  * / `new-destinatario`, l'`inputId` dichiarato in `fir-list.component.ts`)
  * è invece univoco nel DOM: si usa un locator per id esatto.
  */
+// Si seleziona per partita IVA, non per ragione sociale: tutte le parti create
+// in una run hanno la stessa ragione sociale col prefisso della run e restano
+// in archivio fino al teardown, quindi `.first()` sul nome prendeva quella di
+// un test precedente (es. senza scadenza) e l'avviso atteso non compariva.
 async function selezionaDropdown(page: Page, inputId: string, testoOpzione: string) {
   await page.locator(`#${inputId}`).click()
   await page.locator('.p-dropdown-item', { hasText: testoOpzione }).first().click()
@@ -253,7 +259,7 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'new-trasportatore', trasportatore.ragioneSociale)
+    await selezionaDropdown(page, 'new-trasportatore', trasportatore.partitaIVA)
 
     await expect(page.getByTestId('fir-trasportatore-iscrizione-scaduta')).toHaveCount(0)
   })
@@ -272,7 +278,7 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'new-destinatario', destinatario.ragioneSociale)
+    await selezionaDropdown(page, 'new-destinatario', destinatario.partitaIVA)
 
     await expect(page.getByTestId('fir-destinatario-autorizzazione-scaduta')).toHaveCount(0)
   })
@@ -316,7 +322,7 @@ test.describe('Scadenze — avviso alla scelta della parte, emissione non impedi
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'new-trasportatore', trasportatore.ragioneSociale)
+    await selezionaDropdown(page, 'new-trasportatore', trasportatore.partitaIVA)
     await expect(page.getByTestId('fir-trasportatore-iscrizione-scaduta')).toBeVisible()
 
     await page.getByRole('button', { name: /crea fir/i }).click()
@@ -341,7 +347,7 @@ test.describe('Scadenze — avviso alla scelta della parte, emissione non impedi
     await firList.goto()
     await firList.openNuovoFirDialog()
 
-    await selezionaDropdown(page, 'new-destinatario', destinatario.ragioneSociale)
+    await selezionaDropdown(page, 'new-destinatario', destinatario.partitaIVA)
     await expect(page.getByTestId('fir-destinatario-autorizzazione-scaduta')).toBeVisible()
 
     await page.getByRole('button', { name: /crea fir/i }).click()

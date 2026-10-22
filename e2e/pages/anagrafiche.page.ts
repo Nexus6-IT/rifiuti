@@ -47,10 +47,18 @@ export class AnagrafichePage {
     this.page = page
     this.area = area
     this.nuovoButton = page.getByTestId(`${area}-nuovo-button`)
-    this.formDialog = page.getByTestId(`${area}-form-dialog`)
+    // Il data-testid sta sul tag host <p-dialog>/<p-confirmDialog>, che non ha
+    // dimensioni proprie: PrimeNG disegna la finestra in un elemento interno
+    // a posizione fissa (role="dialog"/"alertdialog"), presente solo quando
+    // e' aperta. Puntare all'host dava "hidden" anche a finestra aperta.
+    this.formDialog = page
+      .getByTestId(`${area}-form-dialog`)
+      .locator('[role="dialog"], [role="alertdialog"]')
     this.saveButton = page.getByTestId(`${area}-form-save-button`)
     this.cancelButton = page.getByTestId(`${area}-form-cancel-button`)
-    this.confirmDialog = page.getByTestId(`${area}-confirm-dialog`)
+    this.confirmDialog = page
+      .getByTestId(`${area}-confirm-dialog`)
+      .locator('[role="dialog"], [role="alertdialog"]')
   }
 
   async goto() {
@@ -75,16 +83,30 @@ export class AnagrafichePage {
     return this.page.getByTestId(`${this.area}-elimina-${id}`)
   }
 
-  /** Apre il dialog di creazione e attende che sia visibile. */
+  /** Apre il dialog di creazione e attende che sia pronto per la compilazione. */
   async apriNuovo() {
     await this.nuovoButton.click()
-    await expect(this.formDialog).toBeVisible()
+    await this.attendiDialogPronto()
   }
 
-  /** Apre il dialog di modifica per l'id indicato e attende che sia visibile. */
+  /** Apre il dialog di modifica per l'id indicato e attende che sia pronto per la compilazione. */
   async apriModifica(id: string) {
     await this.editButton(id).click()
+    await this.attendiDialogPronto()
+  }
+
+  /**
+   * Visibile non basta: a fine animazione di apertura p-dialog porta il focus
+   * sul primo campo (focusOnShow). Se si comincia a compilare prima, quel
+   * cambio di focus arriva a meta' di un fill() e il testo finisce nel primo
+   * campo invece che in quello voluto (visto il 22/10: il CAP accodato alla
+   * ragione sociale). Si aspetta quindi che il focus sia gia' dentro il dialog.
+   */
+  private async attendiDialogPronto() {
     await expect(this.formDialog).toBeVisible()
+    await expect(this.formDialog.locator('input:focus, textarea:focus, button:focus')).toHaveCount(
+      1
+    )
   }
 
   /** Clic su "Salva": il dialog resta responsabilità del chiamante da verificare (si chiude solo se il salvataggio va a buon fine). */
