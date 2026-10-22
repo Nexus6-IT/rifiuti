@@ -96,6 +96,107 @@ describe('controlliMud', () => {
     expect(r.messaggio).toContain('(n. 4/2025, 5/2025)')
   })
 
+  const precedente: RifMovimento = {
+    ...m,
+    progressiveNumber: 812,
+    quantity: 100,
+    unit: 'kg',
+    movementDate: new Date('2025-12-30T08:00:00Z'),
+  }
+  const corrente: RifMovimento = {
+    ...m,
+    progressiveNumber: 4,
+    progressiveYear: 2026,
+    quantity: 100,
+    unit: 'kg',
+    movementDate: new Date('2026-01-03T08:00:00Z'),
+  }
+
+  it("firDoppioAnnoPrecedente esclude il movimento dell'anno e cita le date", () => {
+    expect(controlliMud.firDoppioAnnoPrecedente('FIR-1', precedente, corrente)).toEqual({
+      codice: 'FIR_DOPPIO_ANNO_PRECEDENTE',
+      gravita: 'AVVISO',
+      messaggio:
+        'Il FIR FIR-1 risulta già scaricato con gli stessi dati nel movimento n. 812/2025 del 30/12/2025: il movimento n. 4/2026 del 03/01/2026 è un doppio ed è escluso da questo MUD.',
+      movimenti: [
+        {
+          numero: 4,
+          anno: 2026,
+          cerCode: '17 04 05',
+          quantita: 100,
+          unita: 'kg',
+          kg: 100,
+          incluso: false,
+        },
+      ],
+    })
+  })
+
+  it('firDoppioAnnoPrecedente senza date cita solo i numeri', () => {
+    const r = controlliMud.firDoppioAnnoPrecedente(
+      'FIR-1',
+      { ...precedente, movementDate: undefined },
+      { ...corrente, movementDate: undefined }
+    )
+    expect(r.messaggio).toBe(
+      'Il FIR FIR-1 risulta già scaricato con gli stessi dati nel movimento n. 812/2025: il movimento n. 4/2026 è un doppio ed è escluso da questo MUD.'
+    )
+  })
+
+  it("firScaricatoAncheAnnoPrecedente lascia nel MUD il solo movimento dell'anno", () => {
+    expect(
+      controlliMud.firScaricatoAncheAnnoPrecedente(
+        'FIR-1',
+        [precedente, { ...precedente, progressiveNumber: 3, progressiveYear: 2024 }],
+        corrente
+      )
+    ).toEqual({
+      codice: 'FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE',
+      gravita: 'AVVISO',
+      messaggio:
+        'Il FIR FIR-1 risulta scaricato anche in anni precedenti (n. 812/2025, 3/2024): il movimento n. 4/2026 è nel MUD. Verificare che non sia lo stesso conferimento dichiarato due volte.',
+      movimenti: [
+        {
+          numero: 4,
+          anno: 2026,
+          cerCode: '17 04 05',
+          quantita: 100,
+          unita: 'kg',
+          kg: 100,
+          incluso: true,
+        },
+      ],
+    })
+  })
+
+  it('nel riepilogo solo il doppio di un anno precedente cambia le quantità', () => {
+    const r = riepilogaAvvisi([
+      controlliMud.firDoppioAnnoPrecedente('FIR-1', precedente, corrente),
+      controlliMud.firScaricatoAncheAnnoPrecedente('FIR-2', [precedente], {
+        ...corrente,
+        progressiveNumber: 5,
+      }),
+    ])
+    expect(r.kgInMeno).toBe(100)
+    expect(r.kgInPiu).toBe(0)
+    expect(r.voci).toEqual([
+      {
+        codice: 'FIR_DOPPIO_ANNO_PRECEDENTE',
+        casi: 1,
+        movimenti: 1,
+        kgEsclusi: 100,
+        kgAggiunti: 0,
+      },
+      {
+        codice: 'FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE',
+        casi: 1,
+        movimenti: 1,
+        kgEsclusi: 0,
+        kgAggiunti: 0,
+      },
+    ])
+  })
+
   it('profilo non supportato e più unità locali sono avvisi', () => {
     expect(controlliMud.profiloNonSupportato(2025, [m]).gravita).toBe('AVVISO')
     const r = controlliMud.piuUnitaLocali([

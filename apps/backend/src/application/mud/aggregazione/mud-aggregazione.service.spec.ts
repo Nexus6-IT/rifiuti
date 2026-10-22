@@ -60,10 +60,16 @@ describe('MudAggregazioneService', () => {
     firCollegati?: any[]
     firAnno?: any[]
     scarichiDeiFirAnno?: any[]
+    /** movimenti registrati prima dell'anno, restituiti per i FIR richiesti */
+    precedenti?: any[]
   }) => {
-    prisma.wasteMovement.findMany.mockImplementation(async (args: any) =>
-      args.where.type === 'SCARICO' ? (d.scarichiDeiFirAnno ?? []) : (d.movimenti ?? [])
-    )
+    prisma.wasteMovement.findMany.mockImplementation(async (args: any) => {
+      if (args.where.type === 'SCARICO') return d.scarichiDeiFirAnno ?? []
+      if (args.where.movementDate && !args.where.movementDate.gte) {
+        return (d.precedenti ?? []).filter(p => args.where.firId.in.includes(p.firId))
+      }
+      return d.movimenti ?? []
+    })
     prisma.fIR.findMany.mockImplementation(async (args: any) => {
       if (args.where.id?.in) {
         return (d.firCollegati ?? []).filter(f => args.where.id.in.includes(f.id))
@@ -960,5 +966,236 @@ describe('MudAggregazioneService', () => {
     expect(r.righe[0].dr![0]).toEqual(
       expect.objectContaining({ codiceFiscale: '33333333333', quantitaKg: 150, cap: '20100' })
     )
+  })
+
+  // Task 14 (A-C-03, A-C-05): doppi fra movimenti con lo stesso ruolo, anche negli anni precedenti
+  it('una causale sbagliata e il conferimento sullo stesso FIR non sono doppi', async () => {
+    impostaDati({
+      movimenti: [
+        scarico({
+          progressiveNumber: 1,
+          causale: 'ALTRO_SCARICO',
+          firId: 'f1',
+          movementDate: new Date('2025-03-01T08:00:00Z'),
+        }),
+        scarico({
+          progressiveNumber: 2,
+          firId: 'f1',
+          movementDate: new Date('2025-03-05T08:00:00Z'),
+        }),
+      ],
+      firCollegati: [fir({})],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.righe[0].smaltimentoKg).toBe(100)
+    expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')).toHaveLength(1)
+    expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')[0].movimenti![0].numero).toBe(1)
+    expect(codici(r.controlli)).not.toContain('FIR_DOPPIO_IDENTICO')
+  })
+
+  const precedente812 = (p: Partial<any> = {}) =>
+    scarico({
+      progressiveNumber: 812,
+      progressiveYear: 2025,
+      firId: 'f1',
+      movementDate: new Date('2025-12-30T08:00:00Z'),
+      ...p,
+    })
+  const corrente4 = (p: Partial<any> = {}) =>
+    scarico({
+      progressiveNumber: 4,
+      progressiveYear: 2026,
+      firId: 'f1',
+      movementDate: new Date('2026-01-03T08:00:00Z'),
+      ...p,
+    })
+
+  it("un doppio pre-piano C nell'anno dopo è escluso", async () => {
+    impostaDati({
+      movimenti: [corrente4()],
+      precedenti: [precedente812()],
+      firCollegati: [fir({})],
+    })
+
+    const r = await service.aggrega('t1', 2026)
+
+    expect(r.righe).toEqual([])
+    expect(r.movimentiPerCer).toEqual({})
+    expect(conCodice(r.controlli, 'FIR_DOPPIO_ANNO_PRECEDENTE')).toEqual([
+      {
+        codice: 'FIR_DOPPIO_ANNO_PRECEDENTE',
+        gravita: 'AVVISO',
+        messaggio:
+          'Il FIR FIR-2025-000123 risulta già scaricato con gli stessi dati nel movimento n. 812/2025 del 30/12/2025: il movimento n. 4/2026 del 03/01/2026 è un doppio ed è escluso da questo MUD.',
+        movimenti: [expect.objectContaining({ numero: 4, anno: 2026, kg: 100, incluso: false })],
+      },
+    ])
+    expect(codici(r.controlli)).not.toContain('FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE')
+    expect(codici(r.controlli)).not.toContain('FIR_DOPPIO_IDENTICO')
+  })
+
+  it('dopo il piano C lo stesso FIR in due anni con date diverse non è un doppio', async () => {
+    impostaDati({
+      movimenti: [corrente4({ firIdRicopia: 'f1' })],
+      precedenti: [precedente812()],
+      firCollegati: [fir({})],
+    })
+
+    const r = await service.aggrega('t1', 2026)
+
+    expect(r.righe[0].smaltimentoKg).toBe(100)
+    expect(codici(r.controlli)).not.toContain('FIR_DOPPIO_ANNO_PRECEDENTE')
+    expect(codici(r.controlli)).toContain('FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE')
+  })
+
+  it('stesso FIR scaricato in due anni con dati diversi avvisa', async () => {
+    impostaDati({
+      movimenti: [corrente4()],
+      precedenti: [precedente812({ quantity: 80 })],
+      firCollegati: [fir({})],
+    })
+
+    const r = await service.aggrega('t1', 2026)
+
+    expect(r.righe[0].smaltimentoKg).toBe(100)
+    expect(conCodice(r.controlli, 'FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE')).toEqual([
+      {
+        codice: 'FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE',
+        gravita: 'AVVISO',
+        messaggio:
+          'Il FIR FIR-2025-000123 risulta scaricato anche in anni precedenti (n. 812/2025): il movimento n. 4/2026 è nel MUD. Verificare che non sia lo stesso conferimento dichiarato due volte.',
+        movimenti: [expect.objectContaining({ numero: 4, anno: 2026, kg: 100, incluso: true })],
+      },
+    ])
+    expect(codici(r.controlli)).not.toContain('FIR_DOPPIO_ANNO_PRECEDENTE')
+  })
+
+  it("un precedente con un altro ruolo non riguarda il movimento dell'anno", async () => {
+    impostaDati({
+      movimenti: [corrente4()],
+      precedenti: [precedente812({ causale: 'ALTRO_SCARICO' })],
+      firCollegati: [fir({})],
+    })
+
+    const r = await service.aggrega('t1', 2026)
+
+    expect(r.righe[0].smaltimentoKg).toBe(100)
+    expect(codici(r.controlli)).not.toContain('FIR_DOPPIO_ANNO_PRECEDENTE')
+    expect(codici(r.controlli)).not.toContain('FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE')
+  })
+
+  it('fra gli anni precedenti si elencano solo i movimenti contati', async () => {
+    // 811 e 812, storici con gli stessi dati: 812 era un doppio di 811 e non è stato dichiarato.
+    impostaDati({
+      movimenti: [corrente4({ quantity: 90 })],
+      precedenti: [
+        precedente812({ progressiveNumber: 811, movementDate: new Date('2025-12-01T08:00:00Z') }),
+        precedente812(),
+      ],
+      firCollegati: [fir({})],
+    })
+
+    const r = await service.aggrega('t1', 2026)
+
+    expect(r.righe[0].smaltimentoKg).toBe(90)
+    expect(codici(r.controlli)).not.toContain('FIR_DOPPIO_ANNO_PRECEDENTE')
+    expect(conCodice(r.controlli, 'FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE')[0].messaggio).toContain(
+      '(n. 811/2025)'
+    )
+  })
+
+  it("la query dei precedenti porta tenantId e il limite dell'anno", async () => {
+    impostaDati({
+      movimenti: [corrente4(), corrente4({ progressiveNumber: 5, firId: 'f2', quantity: 7 })],
+      firCollegati: [fir({}), fir({ id: 'f2' })],
+    })
+
+    await service.aggrega('t1', 2026)
+
+    const chiamate = prisma.wasteMovement.findMany.mock.calls.map((c: any[]) => c[0])
+    expect(chiamate).toContainEqual({
+      where: {
+        tenantId: 't1',
+        firId: { in: ['f1', 'f2'] },
+        movementDate: { lt: new Date('2025-12-31T23:00:00.000Z') },
+      },
+      select: chiamate[0].select,
+      orderBy: [{ movementDate: 'asc' }, { progressiveNumber: 'asc' }],
+    })
+  })
+
+  it("senza FIR nei movimenti dell'anno la query dei precedenti non parte", async () => {
+    impostaDati({ movimenti: [mov({})] })
+
+    await service.aggrega('t1', 2025)
+
+    const chiamate = prisma.wasteMovement.findMany.mock.calls.map((c: any[]) => c[0])
+    expect(chiamate.filter((a: any) => a.where.movementDate && !a.where.movementDate.gte)).toEqual(
+      []
+    )
+  })
+
+  // Rinviato dalla revisione del Task 4 del piano A: la data si ignora solo se ENTRAMBI i
+  // movimenti precedono il piano C, e un doppio si confronta solo con i movimenti contati.
+  it('un movimento storico e una ricopia dopo il piano C dello stesso FIR non sono doppi', async () => {
+    impostaDati({
+      movimenti: [
+        scarico({
+          progressiveNumber: 1,
+          firId: 'f1',
+          movementDate: new Date('2025-06-10T08:00:00Z'),
+        }),
+        scarico({
+          progressiveNumber: 2,
+          firId: 'f1',
+          movementDate: new Date('2025-06-12T08:00:00Z'),
+        }),
+        scarico({
+          progressiveNumber: 3,
+          firId: 'f1',
+          firIdRicopia: 'f1',
+          movementDate: new Date('2025-06-12T08:00:00Z'),
+        }),
+      ],
+      firCollegati: [fir({})],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.righe[0].smaltimentoKg).toBe(200)
+    const numeri = (codice: string) =>
+      conCodice(r.controlli, codice).map(e => e.movimenti!.map(m => m.numero))
+    expect(numeri('FIR_DOPPIO_IDENTICO')).toEqual([[1, 2]])
+    expect(numeri('FIR_SCARICATO_PIU_VOLTE')).toEqual([[1, 3]])
+  })
+
+  it("un movimento dell'anno escluso per altri motivi non avvisa degli anni precedenti", async () => {
+    impostaDati({
+      movimenti: [corrente4()],
+      precedenti: [precedente812({ quantity: 80 })],
+      firCollegati: [fir({ status: 'CANCELLED' })],
+    })
+
+    const r = await service.aggrega('t1', 2026)
+
+    expect(codici(r.controlli)).toContain('FIR_ANNULLATO')
+    expect(codici(r.controlli)).not.toContain('FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE')
+  })
+
+  it('due scarichi con causale esclusa non partecipano ai doppi', async () => {
+    impostaDati({
+      movimenti: [
+        scarico({ progressiveNumber: 1, causale: 'ALTRO_SCARICO', firId: 'f1' }),
+        scarico({ progressiveNumber: 2, causale: 'ALTRO_SCARICO', firId: 'f1' }),
+      ],
+      firCollegati: [fir({})],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')).toHaveLength(2)
+    expect(codici(r.controlli)).not.toContain('FIR_DOPPIO_IDENTICO')
   })
 })

@@ -102,6 +102,22 @@ interface GruppoUnita {
   movimenti: RifMovimento[]
 }
 
+const SELECT_MOVIMENTO = {
+  progressiveNumber: true,
+  progressiveYear: true,
+  type: true,
+  causale: true,
+  cerCode: true,
+  quantity: true,
+  unit: true,
+  operationCode: true,
+  firId: true,
+  firIdRicopia: true,
+  ricopiaChiave: true,
+  counterpartName: true,
+  movementDate: true,
+} as const
+
 // Confronto dei doppi storici senza la data (Decisione 20).
 const EPOCA = new Date(0)
 const ORIGINE_REGISTRO = 'dal registro'
@@ -134,25 +150,21 @@ export class MudAggregazioneService {
     // Il servizio usa il client Prisma senza estensione RLS: ogni query porta il tenantId.
     const movimenti: Movimento[] = await this.prisma.wasteMovement.findMany({
       where: { tenantId, movementDate: { gte: inizio, lt: fine } },
-      select: {
-        progressiveNumber: true,
-        progressiveYear: true,
-        type: true,
-        causale: true,
-        cerCode: true,
-        quantity: true,
-        unit: true,
-        operationCode: true,
-        firId: true,
-        firIdRicopia: true,
-        ricopiaChiave: true,
-        counterpartName: true,
-        movementDate: true,
-      },
+      select: SELECT_MOVIMENTO,
       orderBy: [{ movementDate: 'asc' }, { progressiveNumber: 'asc' }],
     })
 
     const firIds = [...new Set(movimenti.map(m => m.firId).filter((id): id is string => !!id))]
+    // Gli stessi FIR negli anni precedenti (A-C-05): un doppio registrato a cavallo d'anno
+    // finirebbe in due MUD. Solo i FIR che compaiono nell'anno, quindi una query limitata.
+    const precedenti: Movimento[] =
+      firIds.length > 0
+        ? await this.prisma.wasteMovement.findMany({
+            where: { tenantId, firId: { in: firIds }, movementDate: { lt: inizio } },
+            select: SELECT_MOVIMENTO,
+            orderBy: [{ movementDate: 'asc' }, { progressiveNumber: 'asc' }],
+          })
+        : []
     const firCollegati: FirCollegato[] =
       firIds.length > 0
         ? await this.prisma.fIR.findMany({
@@ -242,28 +254,53 @@ export class MudAggregazioneService {
     const etichettaPerId = (firId: string): string =>
       etichettaFir(firPerId.get(firId) ?? { id: firId, firNumber: null })
 
-    // Passo 0: doppi identici dello stesso FIR, tipo e chiave di ricopia (Decisione 20,
-    // C-W-03): due quote con chiavi diverse sono movimenti distinti anche se uguali. Un
+    // Passo 0: doppi identici dello stesso FIR, tipo, chiave di ricopia e ruolo (Decisione 20,
+    // C-W-03, A-C-03): due quote con chiavi diverse sono movimenti distinti anche se uguali, e
+    // uno scarico con una causale esclusa non nasconde il conferimento dello stesso FIR. Un
     // doppio si confronta con i movimenti già contati del gruppo, mai con quelli scartati.
+    const gruppoDoppi = (m: Movimento): string | undefined => {
+      if (!m.firId) return undefined
+      const ruolo = classificaMovimento(m.type as 'CARICO' | 'SCARICO', m.causale)
+      if (ruolo !== 'PRODOTTO' && ruolo !== 'AVVIATO') return undefined
+      return `${m.firId}|${m.type}|${m.ricopiaChiave ?? ''}|${ruolo}`
+    }
+    const stessoMovimento = (c: Movimento, m: Movimento): boolean =>
+      stessiDatiRicopia(c, m) ||
+      // Registrati prima del piano C: la ricopia prendeva la data di oggi.
+      (c.firIdRicopia === null &&
+        m.firIdRicopia === null &&
+        stessiDatiRicopia({ ...c, movementDate: EPOCA }, { ...m, movementDate: EPOCA }))
+    const contatiPerGruppo = new Map<string, Movimento[]>()
+
+    // Prima gli anni precedenti, con la stessa regola: restano i movimenti contati allora.
+    const precedentiContati = new Set<Movimento>()
+    for (const p of precedenti) {
+      const gruppo = gruppoDoppi(p)
+      if (!gruppo) continue
+      const contati = contatiPerGruppo.get(gruppo) ?? []
+      if (contati.some(c => stessoMovimento(c, p))) continue
+      contatiPerGruppo.set(gruppo, [...contati, p])
+      precedentiContati.add(p)
+    }
+
     const doppiDi = new Map<Movimento, Movimento[]>()
     const doppi = new Set<Movimento>()
-    const contatiPerGruppo = new Map<string, Movimento[]>()
+    const doppiAnnoPrecedente = new Map<Movimento, Movimento>()
+    const scaricatiAnchePrima = new Map<Movimento, Movimento[]>()
     for (const m of movimenti) {
-      if (!m.firId) continue
-      const gruppo = `${m.firId}|${m.type}|${m.ricopiaChiave}`
+      const gruppo = gruppoDoppi(m)
+      if (!gruppo) continue
       const contati = contatiPerGruppo.get(gruppo) ?? []
-      const originale = contati.find(
-        c =>
-          stessiDatiRicopia(c, m) ||
-          // Registrati prima del piano C: la ricopia prendeva la data di oggi.
-          (c.firIdRicopia === null &&
-            m.firIdRicopia === null &&
-            stessiDatiRicopia({ ...c, movementDate: EPOCA }, { ...m, movementDate: EPOCA }))
-      )
-      if (originale) {
+      const originale = contati.find(c => stessoMovimento(c, m))
+      if (originale && precedentiContati.has(originale)) {
+        doppi.add(m)
+        doppiAnnoPrecedente.set(m, originale)
+      } else if (originale) {
         doppi.add(m)
         doppiDi.set(originale, [...(doppiDi.get(originale) ?? []), m])
       } else {
+        const giaContati = contati.filter(c => precedentiContati.has(c))
+        if (giaContati.length > 0) scaricatiAnchePrima.set(m, giaContati)
         contatiPerGruppo.set(gruppo, [...contati, m])
       }
     }
@@ -395,6 +432,27 @@ export class MudAggregazioneService {
         esito.movimenti[0] = { ...esito.movimenti[0], incluso: false }
       }
       controlli.push(esito)
+    }
+
+    for (const [m, precedente] of doppiAnnoPrecedente) {
+      controlli.push(
+        controlliMud.firDoppioAnnoPrecedente(
+          etichettaPerId(m.firId as string),
+          rif(precedente),
+          rif(m)
+        )
+      )
+    }
+    for (const [m, giaContati] of scaricatiAnchePrima) {
+      // Solo se il movimento è davvero nel MUD: escluso per altri motivi, non è dichiarato due volte.
+      if (!inclusi.has(m)) continue
+      controlli.push(
+        controlliMud.firScaricatoAncheAnnoPrecedente(
+          etichettaPerId(m.firId as string),
+          giaContati.map(rif),
+          rif(m)
+        )
+      )
     }
 
     for (const [firId, ms] of avviatiPerFir) {

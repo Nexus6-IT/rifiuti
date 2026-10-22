@@ -27,6 +27,8 @@ export type MudCodiceControllo =
   | 'FIR_NON_TROVATO'
   | 'FIR_SCARICATO_PIU_VOLTE'
   | 'FIR_DOPPIO_IDENTICO'
+  | 'FIR_DOPPIO_ANNO_PRECEDENTE'
+  | 'FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE'
   | 'SCARICO_SENZA_FIR'
   | 'DESTINATARIO_NON_INDICATO'
   | 'DESTINATARIO_SENZA_ISTAT'
@@ -92,6 +94,8 @@ function segnala(m: RifMovimento, incluso: boolean, kg?: number | null): MudMovi
 const rif = (m: RifMovimento) => `${m.progressiveNumber}/${m.progressiveYear}`
 const unitaDi = (m: RifMovimento) => m.unit || 'kg'
 const elenco = (ms: RifMovimento[]) => ms.map(rif).join(', ')
+const rifConData = (m: RifMovimento) =>
+  m.movementDate ? `${rif(m)} del ${formattaDataItaliana(m.movementDate)}` : rif(m)
 const sommaQuantita = (ms: RifMovimento[]) => ms.reduce((s, m) => s + m.quantity, 0)
 const arrotondaGrammo = (n: number) => Math.round(n * 1000) / 1000
 
@@ -250,9 +254,7 @@ export const controlliMud = {
   }),
 
   firDoppioIdentico: (fir: string, ms: RifMovimento[]): MudEsitoControllo => {
-    const conDate = ms
-      .map(m => (m.movementDate ? `${rif(m)} del ${formattaDataItaliana(m.movementDate)}` : rif(m)))
-      .join(', ')
+    const conDate = ms.map(rifConData).join(', ')
     return {
       codice: 'FIR_DOPPIO_IDENTICO',
       gravita: AVVISO,
@@ -260,6 +262,30 @@ export const controlliMud = {
       movimenti: ms.map((m, i) => segnala(m, i === 0)),
     }
   },
+
+  // I due avvisi sugli anni precedenti segnalano solo il movimento dell'anno: i kg già
+  // dichiarati in un altro MUD non entrano nel riepilogo di questo.
+  firDoppioAnnoPrecedente: (
+    fir: string,
+    precedente: RifMovimento,
+    m: RifMovimento
+  ): MudEsitoControllo => ({
+    codice: 'FIR_DOPPIO_ANNO_PRECEDENTE',
+    gravita: AVVISO,
+    messaggio: `Il FIR ${fir} risulta già scaricato con gli stessi dati nel movimento n. ${rifConData(precedente)}: il movimento n. ${rifConData(m)} è un doppio ed è escluso da questo MUD.`,
+    movimenti: [segnala(m, false)],
+  }),
+
+  firScaricatoAncheAnnoPrecedente: (
+    fir: string,
+    precedenti: RifMovimento[],
+    m: RifMovimento
+  ): MudEsitoControllo => ({
+    codice: 'FIR_SCARICATO_ANCHE_ANNO_PRECEDENTE',
+    gravita: AVVISO,
+    messaggio: `Il FIR ${fir} risulta scaricato anche in anni precedenti (n. ${elenco(precedenti)}): il movimento n. ${rif(m)} è nel MUD. Verificare che non sia lo stesso conferimento dichiarato due volte.`,
+    movimenti: [segnala(m, true)],
+  }),
 
   scaricoSenzaFir: (m: RifMovimento): MudEsitoControllo => ({
     codice: 'SCARICO_SENZA_FIR',
