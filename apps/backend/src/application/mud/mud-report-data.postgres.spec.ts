@@ -58,4 +58,37 @@ describe('aggiornaReportData — concorrenza su Postgres reale', () => {
       expect(r.reportData).toEqual({ integrazioni: { giro }, esportazioni: [{ giro }] })
     }
   })
+
+  it('con il record già presente gli aggiornamenti concorrenti conservano tutte le chiavi', async () => {
+    for (let giro = 0; giro < 5; giro++) {
+      await prisma.mUDReport.deleteMany({ where: { tenantId } })
+      await prisma.mUDReport.create({
+        data: { tenantId, year: 2025, status: 'SUBMITTED', reportData: { hashAggregato: 'h0' } },
+      })
+      await Promise.all([
+        prisma.$transaction(tx =>
+          aggiornaReportData(tx, tenantId, 2025, p => ({
+            reportData: { ...p, integrazioni: { giro } },
+          }))
+        ),
+        prisma.$transaction(tx =>
+          aggiornaReportData(tx, tenantId, 2025, p => ({
+            reportData: {
+              ...p,
+              esportazioni: [...(Array.isArray(p.esportazioni) ? p.esportazioni : []), { giro }],
+            },
+          }))
+        ),
+      ])
+      const r = await prisma.mUDReport.findUniqueOrThrow({
+        where: { tenantId_year: { tenantId, year: 2025 } },
+      })
+      expect(r.status).toBe('SUBMITTED')
+      expect(r.reportData).toEqual({
+        hashAggregato: 'h0',
+        integrazioni: { giro },
+        esportazioni: [{ giro }],
+      })
+    }
+  })
 })

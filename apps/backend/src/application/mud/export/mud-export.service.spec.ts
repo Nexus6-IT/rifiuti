@@ -171,6 +171,7 @@ describe('MudExportService', () => {
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
         statusCode: 422,
+        error: 'MUD_NON_GENERABILE',
         message: 'Il file MUD non può essere generato: ci sono errori da correggere (1).',
         details: { controlli },
       })
@@ -220,17 +221,19 @@ describe('MudExportService', () => {
     expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
   })
 
-  it('con avvisi da confermare solo ADMIN e SUPER_ADMIN generano il file', async () => {
-    const controlli = [controlliMud.giacenzeNonCalcolate(2024)]
+  it('con avvisi che cambiano le quantità (kg esclusi) solo ADMIN e SUPER_ADMIN generano il file', async () => {
+    const controlli = [
+      controlliMud.giacenzeNonCalcolate(2024),
+      controlliMud.firAnnullato(rifMovimento, 'ABC 123'),
+    ]
     aggregazione.aggrega.mockResolvedValue({
       anno: 2024,
       righe: [rigaValida],
       movimentiPerCer: { '170405': 1 },
       controlli,
     })
-    const errore = await service
-      .exportTelematico('t1', 2024, viewer, ['GIACENZE_NON_CALCOLATE'])
-      .catch(e => e)
+    const confermati = ['FIR_ANNULLATO', 'GIACENZE_NON_CALCOLATE']
+    const errore = await service.exportTelematico('t1', 2024, viewer, confermati).catch(e => e)
     expect(errore).toBeInstanceOf(ForbiddenException)
     expect(errore.getResponse()).toMatchObject({
       error: 'MUD_CONFERMA_RISERVATA_AMMINISTRATORI',
@@ -242,11 +245,10 @@ describe('MudExportService', () => {
     })
     expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
 
-    // SUPER_ADMIN genera
+    // ADMIN e SUPER_ADMIN generano
+    await expect(service.exportTelematico('t1', 2024, admin, confermati)).resolves.toBeDefined()
     await expect(
-      service.exportTelematico('t1', 2024, { id: 'u2', role: 'SUPER_ADMIN' }, [
-        'GIACENZE_NON_CALCOLATE',
-      ])
+      service.exportTelematico('t1', 2024, { id: 'u2', role: 'SUPER_ADMIN' }, confermati)
     ).resolves.toBeDefined()
 
     // senza avvisi il VIEWER scarica come oggi
@@ -257,6 +259,53 @@ describe('MudExportService', () => {
       controlli: [],
     })
     await expect(service.exportTelematico('t1', 2024, viewer)).resolves.toBeDefined()
+  })
+
+  it('un movimento escluso che non è in kg (quantità non quantificata) riserva il file agli amministratori', async () => {
+    const inLitri: RifMovimento = { ...rifMovimento, causale: 'XYZ', quantity: 50, unit: 'L' }
+    const controlli = [controlliMud.causaleEsclusa(inLitri)]
+    expect(riepilogaAvvisi(controlli)).toMatchObject({
+      kgInMeno: 0,
+      kgInPiu: 0,
+      movimentiNonQuantificati: 1,
+    })
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      movimentiPerCer: { '170405': 1 },
+      controlli,
+    })
+    const errore = await service
+      .exportTelematico('t1', 2024, viewer, ['CAUSALE_ESCLUSA'])
+      .catch(e => e)
+    expect(errore).toBeInstanceOf(ForbiddenException)
+    expect(errore.getResponse().error).toBe('MUD_CONFERMA_RISERVATA_AMMINISTRATORI')
+  })
+
+  it('con avvisi solo informativi anche un VIEWER genera il file, dopo averli confermati', async () => {
+    const controlli = [
+      controlliMud.giacenzeNonCalcolate(2024),
+      controlliMud.scaricoSenzaFir(rifMovimento),
+    ]
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      movimentiPerCer: { '170405': 1 },
+      controlli,
+    })
+    // la conferma resta obbligatoria
+    const errore = await service.exportTelematico('t1', 2024, viewer).catch(e => e)
+    expect(errore).toBeInstanceOf(UnprocessableEntityException)
+    expect(errore.getResponse().error).toBe('MUD_AVVISI_DA_CONFERMARE')
+
+    const r = await service.exportTelematico('t1', 2024, viewer, [
+      'GIACENZE_NON_CALCOLATE',
+      'SCARICO_SENZA_FIR',
+    ])
+    expect(r.content.startsWith('XX;')).toBe(true)
+    expect(prisma.activityLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ userId: 'u9', action: 'MUD_ESPORTATO' }),
+    })
   })
 
   it("con gli avvisi confermati genera il file e salva l'esportazione", async () => {

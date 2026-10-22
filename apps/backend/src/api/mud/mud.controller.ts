@@ -51,12 +51,14 @@ export class MudController {
     @Req() req: any,
     @Res() res: Response,
     @Query('year') year: string,
-    @Query('avvisiConfermati') avvisiConfermati?: string
+    @Query('avvisiConfermati') avvisiConfermati?: string | string[]
   ): Promise<void> {
     const tenantId = requireRequestTenantId(req)
-    // Codici degli avvisi confermati, separati da virgola. Senza avvisi il download resta
-    // aperto a tutti; con avvisi il servizio richiede ADMIN o SUPER_ADMIN.
-    const confermati = (avvisiConfermati ?? '')
+    // Codici degli avvisi confermati, separati da virgola; il parametro ripetuto arriva da
+    // Express come array e vale come lo stesso elenco.
+    const confermati = [avvisiConfermati ?? []]
+      .flat()
+      .join(',')
       .split(',')
       .map(s => s.trim())
       .filter(Boolean)

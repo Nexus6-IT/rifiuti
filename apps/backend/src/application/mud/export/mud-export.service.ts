@@ -15,6 +15,8 @@ import {
   codiciAvvisoDaConfermare,
   haBloccanti,
   riepilogaAvvisi,
+  type MudEsitoControllo,
+  type RiepilogoAvvisi,
 } from '../aggregazione/mud-controlli'
 import { leggiIntegrazioni } from '../aggregazione/mud-integrazioni'
 import { hashAggregato } from '../aggregazione/mud-regole'
@@ -28,8 +30,22 @@ import {
   MudClassificazioneDiscarica,
 } from './mud-export.types'
 
-/** Ruoli che possono generare il file confermando gli avvisi (Decisione 19). */
+/** Ruoli che possono confermare gli avvisi che cambiano le quantità (Decisione 19). */
 export const RUOLI_CONFERMA_AVVISI = ['ADMIN', 'SUPER_ADMIN'] as const
+
+/**
+ * Vero se almeno un avviso fa dichiarare quantità diverse dal registro: kg esclusi o
+ * aggiunti, oppure movimenti esclusi la cui quantità in kg non è nota.
+ */
+function avvisiCambianoQuantita(
+  controlli: MudEsitoControllo[],
+  riepilogo: RiepilogoAvvisi
+): boolean {
+  return (
+    riepilogo.voci.some(v => v.kgEsclusi > 0 || v.kgAggiunti > 0) ||
+    controlli.some(c => c.gravita === 'AVVISO' && (c.movimenti ?? []).some(m => !m.incluso))
+  )
+}
 
 /**
  * Orchestratore dell'export telematico MUD, **versionato e diviso per anno**.
@@ -93,8 +109,12 @@ export class MudExportService {
     }
 
     const codiciAvviso = codiciAvvisoDaConfermare(controlli)
+    // Decisione 19: la conferma di un avviso che fa dichiarare quantità diverse dal registro
+    // è una scelta sul contenuto della dichiarazione e spetta a un amministratore. Gli avvisi
+    // solo informativi (per esempio le giacenze non calcolate, presenti in ogni anno con
+    // movimenti) li conferma chiunque: altrimenti nessun altro utente scaricherebbe il MUD.
     const puoConfermare = (RUOLI_CONFERMA_AVVISI as readonly string[]).includes(utente.role)
-    if (codiciAvviso.length > 0 && !puoConfermare) {
+    if (avvisiCambianoQuantita(controlli, riepilogo) && !puoConfermare) {
       throw new ForbiddenException({
         message: 'Il file MUD ha avvisi da confermare: chiedi a un amministratore di generarlo.',
         error: 'MUD_CONFERMA_RISERVATA_AMMINISTRATORI',
