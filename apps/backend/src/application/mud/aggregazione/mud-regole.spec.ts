@@ -1,4 +1,5 @@
 import { annoSolareItaliano } from '../../../core/time/anno-italiano'
+import type { MudModuloGestione } from '../export/mud-export.types'
 import {
   classificaMovimento,
   hashAggregato,
@@ -86,6 +87,35 @@ describe('hashAggregato', () => {
     expect(hashAggregato([{ ...base, dr: [a, b], te: [t1, t2] }])).toBe(
       hashAggregato([{ ...base, dr: [b, a], te: [t2, t1] }])
     )
+  })
+  it("non dipende dall'ordine di rt, re, mg e dei dr a parità di chiave", () => {
+    const base = { cerCode: '170405', prodottoKg: 3, recuperoKg: 0, smaltimentoKg: 3, te: [] }
+    const dr = [
+      { codiceFiscale: '111', ragioneSociale: 'A', quantitaKg: 1 },
+      { codiceFiscale: '111', ragioneSociale: 'A', quantitaKg: 2 },
+    ]
+    const rt = [
+      { codiceFiscale: '222', ragioneSociale: 'B', quantitaKg: 1 },
+      { codiceFiscale: '111', ragioneSociale: 'C', quantitaKg: 5 },
+    ]
+    const re = [
+      { istatProvincia: '001', istatComune: '002', quantitaKg: 1 },
+      { istatProvincia: '001', istatComune: '002', quantitaKg: 4 },
+    ]
+    const mg = [{ tipologiaImpianto: 21 }, { tipologiaImpianto: 22 }] as MudModuloGestione[]
+    const invertita = {
+      ...base,
+      dr: [...dr].reverse(),
+      rt: [...rt].reverse(),
+      re: [...re].reverse(),
+      mg: [...mg].reverse(),
+    }
+    expect(hashAggregato([{ ...base, dr, rt, re, mg }])).toBe(hashAggregato([invertita]))
+  })
+  it('righe con lo stesso cerCode: ordine di lettura irrilevante', () => {
+    const a = riga('170405', 1)
+    const b = riga('170405', 2)
+    expect(hashAggregato([a, b])).toBe(hashAggregato([b, a]))
   })
   it('ignora le differenze oltre il terzo decimale', () => {
     expect(hashAggregato([riga('170405', 1.0001)])).toBe(hashAggregato([riga('170405', 1)]))
