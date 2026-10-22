@@ -84,9 +84,9 @@ export class RegistroController {
     description: "Ruolo di sola consultazione nell'azienda selezionata",
   })
   async registra(@Body() dto: RegistraMovimentoDto, @Req() req: any) {
-    // Azienda selezionata (switch di azienda), non il tenant primario del token: il token
-    // non viene riscritto dallo switch, e scrivere su `user.tenantId` metterebbe il movimento
-    // nel registro di un'altra azienda.
+    // Azienda selezionata, non il tenant del token: la selezione arriva con l'header
+    // `X-Tenant-ID` (validato dal `TenantSwitchInterceptor`) e `user.tenantId` resta il
+    // tenant del token; scrivere lì metterebbe il movimento nel registro di un'altra azienda.
     const tenantId = requireRequestTenantId(req)
     if (!(await this.haRuolo(req, tenantId, RUOLI_REGISTRAZIONE))) {
       throw new ForbiddenException({

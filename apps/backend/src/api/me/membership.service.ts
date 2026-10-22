@@ -98,8 +98,10 @@ export class MembershipService {
    *   3. Associazioni consulente attive (`ConsultantTenantAssociation`).
    *   4. Discesa gerarchica: abilitazione all'azienda MADRE del target.
    *
-   * Fail-closed: qualunque errore interno è propagato al chiamante, che deve
-   * ignorare l'header e ricadere sul tenant primario.
+   * Fail-closed: qualunque errore interno è propagato al chiamante. Il
+   * `TenantSwitchInterceptor` risponde allora 503 `VERIFICA_AZIENDA_NON_DISPONIBILE`
+   * (la selezione si conserva e la richiesta si può ripetere): non ricade mai sul
+   * tenant primario, che metterebbe la scrittura in un'altra azienda.
    */
   async checkAccess(
     userId: string,

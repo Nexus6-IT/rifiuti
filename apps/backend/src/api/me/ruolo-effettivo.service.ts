@@ -61,8 +61,9 @@ export class RuoloEffettivoService {
    *   4. associazione consulente valida → ruolo dell'associazione (`ADMIN`, `OPERATOR`;
    *      ogni altro nome — `CONSULTANT`, `COMPLIANCE_OFFICER`, ruoli personalizzati — `VIEWER`);
    *   5. figlia: ruolo sull'azienda madre (un solo passo, la gerarchia è a un livello);
-   *   6. altrimenti VIEWER (fail-closed: il `TenantSwitchInterceptor` scarta già un header
-   *      non autorizzato, quindi qui non si dovrebbe arrivare).
+   *   6. altrimenti VIEWER (fail-closed: il `TenantSwitchInterceptor` risponde già 403
+   *      `AZIENDA_SELEZIONATA_NON_ACCESSIBILE` a un header non autorizzato, quindi qui non si
+   *      dovrebbe arrivare).
    */
   async ruoloEffettivo(utente: UtenteRuolo, tenantId: string): Promise<RuoloApplicativo> {
     return (await this.accesso(utente, tenantId)) ?? 'VIEWER'
