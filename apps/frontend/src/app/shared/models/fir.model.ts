@@ -63,7 +63,13 @@ export interface FIR {
   }
   /** Campo 17 FIR (DM 59/2023): annotazioni libere. */
   annotazioni?: string | null
+  /**
+   * Colonna `transport_date`: per un FIR non preso in carico in WasteFlow contiene il
+   * ripiego del primo salvataggio. Come data dell'operazione usare `dataPresaCaricoEffettiva`.
+   */
   dataPresaCarico?: string | null
+  /** Data della presa in carico solo se registrata in WasteFlow (firma del trasportatore). */
+  dataPresaCaricoEffettiva?: string | null
   dataConsegna?: string | null
   /** Peso effettivo rilevato alla destinazione (4ª copia). */
   pesoEffettivo?: number | null

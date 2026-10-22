@@ -1,4 +1,5 @@
 import { createHash } from 'crypto'
+import { giornoItaliano } from '../../core/time/anno-italiano'
 
 /**
  * Tipi di movimento del registro cronologico di carico/scarico.
@@ -43,6 +44,16 @@ export type CausaleMovimento = CausaleCarico | CausaleScarico
  */
 export const TERMINE_REGISTRAZIONE_PRODUTTORE_GG = 14
 export const TERMINE_REGISTRAZIONE_GESTORE_GG = 3
+
+/**
+ * Giorni di calendario italiani da `da` ad `a`. La differenza fra gli istanti, arrotondata
+ * per difetto, perderebbe un giorno per una registrazione fatta fra le 00:00 e l'01:00
+ * (02:00 con l'ora legale) italiane.
+ */
+function giorniItalianiFra(da: Date, a: Date): number {
+  const giornoUtc = (istante: Date) => Date.parse(`${giornoItaliano(istante)}T00:00:00Z`)
+  return (giornoUtc(a) - giornoUtc(da)) / 86_400_000
+}
 
 export interface WasteMovementProps {
   id?: string
@@ -91,11 +102,13 @@ export class WasteMovement {
     const regDate = props.registrationDate ?? new Date()
     const movDate = props.movementDate
 
-    if (regDate < movDate) {
+    // La registrazione è un istante, l'operazione un giorno: si confrontano i giorni di
+    // calendario italiani (alle 00:30 di Roma l'istante UTC è ancora del giorno prima).
+    if (giornoItaliano(regDate) < giornoItaliano(movDate)) {
       throw new Error('La data di registrazione non può precedere la data di operazione')
     }
 
-    const diffGg = Math.floor((regDate.getTime() - movDate.getTime()) / (1000 * 60 * 60 * 24))
+    const diffGg = giorniItalianiFra(movDate, regDate)
     if (diffGg > TERMINE_REGISTRAZIONE_PRODUTTORE_GG) {
       // Emette un warning ma non blocca: la normativa prevede sanzioni
       // amministrative, non il rifiuto del dato. L'applicazione deve segnalare
@@ -165,10 +178,7 @@ export class WasteMovement {
    * Valore positivo = fuori termine (segnalare all'operatore).
    */
   get ritardoRegistrazioneGg(): number {
-    const diffGg = Math.floor(
-      (this.props.registrationDate.getTime() - this.props.movementDate.getTime()) /
-        (1000 * 60 * 60 * 24)
-    )
+    const diffGg = giorniItalianiFra(this.props.movementDate, this.props.registrationDate)
     return Math.max(0, diffGg - TERMINE_REGISTRAZIONE_PRODUTTORE_GG)
   }
 

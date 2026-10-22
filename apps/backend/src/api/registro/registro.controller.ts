@@ -63,7 +63,9 @@ export class RegistroController {
   })
   async registra(@Body() dto: RegistraMovimentoDto, @CurrentUser() user: CurrentUserPayload) {
     const movementDate = new Date(dto.movementDate)
-    const registrationDate = dto.registrationDate ? new Date(dto.registrationDate) : new Date()
+    // La data di registrazione è l'istante in cui il movimento viene scritto (Decisione 10):
+    // la assegna il server, quella eventualmente inviata dal client si ignora.
+    const registrationDate = new Date()
 
     const command = new RegistraMovimentoCommand(
       user.tenantId,

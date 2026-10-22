@@ -98,3 +98,28 @@ describe('FIRResponseDto.fromDomain — stato RENTRI', () => {
     expect(dto.canSyncToRENTRI).toBe(true)
   })
 })
+
+describe('FIRResponseDto.fromDomain — data di presa in carico effettiva', () => {
+  it('dataPresaCaricoEffettiva è nulla senza la firma del trasportatore', () => {
+    const fir = FIR.create(createValidFIRProps())
+    fir.emetti('FIR-2026-000005', createMockFirma('Produttore SRL'))
+    // Come fa il repository: emesso, mai preso in carico, ma `transport_date` contiene il
+    // ripiego `new Date()` del primo salvataggio.
+    Object.assign(fir, { _dataPresaCarico: new Date('2026-01-08T10:00:00Z') })
+
+    const dto = FIRResponseDto.fromDomain(fir)
+
+    expect(dto.dataPresaCaricoEffettiva).toBeNull()
+    expect(dto.dataPresaCarico).toEqual(new Date('2026-01-08T10:00:00Z'))
+  })
+
+  it('dataPresaCaricoEffettiva è la data della presa in carico registrata in WasteFlow', () => {
+    const fir = FIR.create(createValidFIRProps())
+    fir.emetti('FIR-2026-000006', createMockFirma('Produttore SRL'))
+    fir.presaInCarico(new Date('2025-12-28T09:00:00Z'), createMockFirma('TRASPORTATORE'))
+
+    expect(FIRResponseDto.fromDomain(fir).dataPresaCaricoEffettiva).toEqual(
+      new Date('2025-12-28T09:00:00Z')
+    )
+  })
+})

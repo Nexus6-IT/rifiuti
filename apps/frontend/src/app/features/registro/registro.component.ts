@@ -57,7 +57,11 @@ import {
   CausaleMovimento,
 } from './registro.service'
 import { messaggioMovimentoRegistrato } from './registro-messaggi'
-import { firCollegabileNelRegistro } from './registro-fir'
+import {
+  causalePredefinitaDaFir,
+  dataOperazioneDaFir,
+  firCollegabileNelRegistro,
+} from './registro-fir'
 import { CerSelectComponent } from '../cer/cer-select.component'
 
 interface DropdownOption<T> {
@@ -456,20 +460,17 @@ interface FirOption {
               </div>
               <div class="col-12 sm:col-6">
                 <div class="field">
-                  <label for="registrationDate"
-                    >Data registrazione <span class="req" aria-hidden="true">*</span></label
-                  >
+                  <label for="registrationDate">Data registrazione</label>
+                  <!-- In sola lettura: la data di registrazione la assegna il server. -->
                   <p-calendar
                     formControlName="registrationDate"
                     [showIcon]="true"
                     dateFormat="dd/mm/yy"
-                    [maxDate]="oggi"
                     inputId="registrationDate"
-                    aria-required="true"
-                    ariaLabel="Data di annotazione nel registro"
+                    ariaLabel="Data di annotazione nel registro, assegnata dal sistema"
                     styleClass="w-full"
                   ></p-calendar>
-                  <small class="field-hint">Termine: 10 gg lav. per produttori (art. 190).</small>
+                  <small class="field-hint">Assegnata dal sistema alla conferma.</small>
                 </div>
               </div>
             </div>
@@ -1101,8 +1102,9 @@ export class RegistroComponent implements OnInit {
 
   readonly ritardoGgCalcolati = computed(() => {
     const mov = this.form?.get('movementDate')?.value as Date | null
-    const reg = this.form?.get('registrationDate')?.value as Date | null
-    if (!mov || !reg) return 0
+    // La registrazione avviene alla conferma: il ritardo si misura rispetto a oggi.
+    const reg = new Date()
+    if (!mov) return 0
     return Math.max(0, Math.floor((reg.getTime() - mov.getTime()) / (1000 * 60 * 60 * 24)))
   })
 
@@ -1125,7 +1127,8 @@ export class RegistroComponent implements OnInit {
     this.form = this.fb.group({
       type: ['CARICO', Validators.required],
       movementDate: [new Date(), Validators.required],
-      registrationDate: [new Date(), Validators.required],
+      // Sola lettura: mostra la data di oggi, il server assegna quella vera alla conferma.
+      registrationDate: [{ value: new Date(), disabled: true }],
       causale: [null, Validators.required],
       cerCode: ['', [Validators.required, Validators.maxLength(10)]],
       wasteDescription: [''],
@@ -1255,12 +1258,24 @@ export class RegistroComponent implements OnInit {
     this.form.get('type')?.setValue(tipo)
     this.tipoCorrente.set(tipo)
 
-    // Causale di default coerente: la impostiamo se il ruolo è determinato
-    // oppure se l'utente non ne ha ancora scelta una (resta modificabile).
-    const causaleDefault: CausaleMovimento =
-      tipo === 'SCARICO' ? 'CONFERIMENTO_TRASPORTATORE' : 'INGRESSO_ESTERNO'
-    if (ruolo || !this.form.get('causale')?.value) {
+    // Causale di default solo con il ruolo riconosciuto (Decisione 13): altrimenti il
+    // campo resta com'è e, se vuoto, la sceglie l'utente (è obbligatorio).
+    const causaleDefault = causalePredefinitaDaFir(tipo, ruolo)
+    if (causaleDefault) {
       this.form.get('causale')?.setValue(causaleDefault)
+    }
+
+    // Data dell'operazione solo se WasteFlow la conosce davvero e non è nel futuro;
+    // altrimenti resta quella del form e il suggerimento spiega dove trovarla.
+    const esito = dataOperazioneDaFir(fir, tipo)
+    let suggerimentoData: string | null = esito.suggerimento
+    if (esito.data) {
+      if (this.giornoLocale(esito.data) > this.giornoLocale(new Date())) {
+        suggerimentoData =
+          'La data del FIR è successiva a oggi: inserisci la data effettiva dell’operazione.'
+      } else {
+        this.form.get('movementDate')?.setValue(esito.data)
+      }
     }
 
     // Auto-compilazione dei dati del rifiuto dal FIR (campi modificabili).
@@ -1279,21 +1294,25 @@ export class RegistroComponent implements OnInit {
     // Controparte in base alla direzione del movimento.
     this.applicaControparteDaFir(fir, tipo)
 
-    // Hint sul ruolo determinato.
+    // Hint sul ruolo determinato, seguito dall'eventuale suggerimento sulla data.
+    let hint: string
     if (ruolo === 'PRODUTTORE') {
-      this.ruoloHint.set(
-        'La società attiva risulta PRODUTTORE del FIR: movimento impostato come SCARICO.'
-      )
+      hint = 'La società attiva risulta PRODUTTORE del FIR: movimento impostato come SCARICO.'
     } else if (ruolo === 'DESTINATARIO') {
-      this.ruoloHint.set(
-        'La società attiva risulta DESTINATARIO del FIR: movimento impostato come CARICO.'
-      )
+      hint = 'La società attiva risulta DESTINATARIO del FIR: movimento impostato come CARICO.'
     } else {
-      this.ruoloHint.set(
-        'Ruolo della società non determinabile dal FIR: verifica il tipo (carico/scarico). ' +
-          'I dati del rifiuto sono stati comunque precompilati.'
-      )
+      hint =
+        'Ruolo della società non determinabile dal FIR: verifica il tipo (carico/scarico) ' +
+        'e scegli la causale. I dati del rifiuto sono stati comunque precompilati.'
     }
+    this.ruoloHint.set(suggerimentoData ? `${hint} ${suggerimentoData}` : hint)
+  }
+
+  /** Giorno di calendario locale ('AAAA-MM-GG'), come lo invia `toIsoDate` al backend. */
+  private giornoLocale(d: Date): string {
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${d.getFullYear()}-${mm}-${dd}`
   }
 
   /** Rimozione del FIR collegato: azzera il riferimento e l'hint. */
@@ -1417,7 +1436,6 @@ export class RegistroComponent implements OnInit {
       .registra({
         type: v.type,
         movementDate: toIsoDate(v.movementDate),
-        registrationDate: toIsoDate(v.registrationDate),
         causale: v.causale,
         cerCode: v.cerCode?.trim(),
         wasteDescription: v.wasteDescription || undefined,
