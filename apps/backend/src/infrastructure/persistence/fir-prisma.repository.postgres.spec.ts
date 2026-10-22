@@ -126,7 +126,9 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       await repoLettura.save(fir)
       fir.applyRentriStato('Annullato')
       await repoLettura.save(fir)
-      expect((await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })).rentriStatoFormulario).toBe('Annullato')
+      expect(
+        (await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })).rentriStatoFormulario
+      ).toBe('Annullato')
       expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBe('Annullato')
     })
 
@@ -136,13 +138,65 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       await repoLettura.save(fir)
       const riletto = (await repoLettura.findById(fir.id))!
       await repoLettura.save(riletto) // salvataggio per un altro motivo
-      expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBe('RespintoAccettatoParzialmente')
+      expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBe(
+        'RespintoAccettatoParzialmente'
+      )
     })
 
     it('un FIR mai riconciliato resta con rentriStatoFormulario null', async () => {
       const fir = buildFirAgganciato(`RENTRI-SF3-${Date.now()}`)
       await repoLettura.save(fir)
       expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBeNull()
+    })
+  })
+
+  describe('atomicità di stato e firme', () => {
+    function buildFirBozza(): FIR {
+      return FIR.create({
+        produttoreId: REGISTRO_PRODUTTORE,
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: REGISTRO_TRASPORTATORE,
+        destinatarioId: REGISTRO_DESTINATARIO,
+        tenantId,
+        creatoDaUserId: userId,
+      })
+    }
+
+    it('se la firma non si può scrivere, lo stato del FIR non cambia', async () => {
+      const fir = buildFirBozza()
+      await repo.save(fir) // BOZZA
+      fir.emetti('FIR-2099-000001', {
+        firmatario: 'Mario Rossi',
+        timestamp: new Date(),
+        certificato: 'x',
+        // utente inesistente: la scrittura della firma viola la FK, dopo l'upsert del FIR
+        userId: '99999999-9999-4999-8999-999999999999',
+      })
+
+      await expect(repo.save(fir)).rejects.toThrow()
+
+      const riletto = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riletto.status).toBe('DRAFT')
+      expect(riletto.firNumber).toBeNull()
+      expect(await prisma.fIRSignature.count({ where: { firId: fir.id } })).toBe(0)
+    })
+
+    it('con una firma scrivibile, stato e firma risultano salvati insieme', async () => {
+      const fir = buildFirBozza()
+      await repo.save(fir)
+      fir.emetti('FIR-2099-000002', {
+        firmatario: 'Mario Rossi',
+        timestamp: new Date(),
+        certificato: 'x',
+        userId,
+      })
+
+      await repo.save(fir)
+
+      const riletto = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riletto.status).toBe('AWAITING_CARRIER')
+      expect(riletto.firNumber).toBe('FIR-2099-000002')
+      expect(await prisma.fIRSignature.count({ where: { firId: fir.id } })).toBe(1)
     })
   })
 })

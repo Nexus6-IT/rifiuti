@@ -119,3 +119,17 @@ export class FirGiaRegistratoError extends DomainError {
     this.name = 'FirGiaRegistratoError'
   }
 }
+
+/**
+ * Una firma del ciclo di vita senza l'utente che l'ha apposta non si può scrivere
+ * (fir_signatures.user_id è obbligatorio). Il salvataggio si ferma prima di
+ * toccare il database: stato e firme si salvano insieme o per niente.
+ */
+export class FirmaSenzaUtenteError extends DomainError {
+  constructor(ruolo: string, firId: string) {
+    super(
+      `La firma ${ruolo} del FIR ${firId} non indica l'utente che l'ha apposta: il FIR non viene salvato`
+    )
+    this.name = 'FirmaSenzaUtenteError'
+  }
+}

@@ -28,7 +28,7 @@ import {
 } from '../../domain/fir/repositories/fir-repository.interface'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { RENTRISyncStatus } from '../../domain/fir/rentri-sync-status.vo'
-import { FormularioGiaAgganciatoError } from '../../core/domain/errors'
+import { FormularioGiaAgganciatoError, FirmaSenzaUtenteError } from '../../core/domain/errors'
 import { PrismaService } from './prisma.service'
 
 @Injectable()
@@ -200,7 +200,25 @@ export class FIRPrismaRepository implements IFIRRepository {
     return records.map((r: any) => this.toDomain(r))
   }
 
+  /**
+   * Stato del FIR e firme si scrivono nella stessa transaction: o entrambi o
+   * nessuno. Prima l'upsert e le firme erano due scritture separate, e una
+   * firma rifiutata dal database lasciava il FIR già avanzato di stato (con il
+   * numero assegnato) ma senza firma.
+   */
   async save(fir: FIR): Promise<void> {
+    await this.prisma.$transaction(tx => this.salvaCon(tx, fir))
+  }
+
+  /**
+   * Upsert del FIR e firme sullo stesso client (transazionale): usato da `save`
+   * e dai chiamanti che devono aggiungere altre scritture alla stessa transaction.
+   */
+  private async salvaCon(client: Prisma.TransactionClient, fir: FIR): Promise<void> {
+    // Il controllo sulle firme precede ogni scrittura: un FIR con una firma
+    // senza utente non deve nemmeno arrivare all'upsert.
+    this.verificaFirmeScrivibili(fir)
+
     const data = this.toPersistence(fir)
     // Le relazioni obbligatorie (tenant, producerUser) vanno fornite a Prisma in
     // forma `connect`, non come FK scalari: l'upsert con write annidati usa
@@ -224,7 +242,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     // Le transizioni di stato aggiornano solo i campi scalari: tenant e
     // produttore-utente non cambiano dopo la creazione.
     try {
-      await this.prisma.fIR.upsert({
+      await client.fIR.upsert({
         where: { id: fir.id },
         create: createData,
         update: scalars,
@@ -233,7 +251,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       throw this.translateUniqueConstraintError(error, fir)
     }
 
-    await this.persistSignatures(fir)
+    await this.persistSignatures(client, fir)
   }
 
   /**
@@ -260,6 +278,27 @@ export class FIRPrismaRepository implements IFIRRepository {
     return error
   }
 
+  private firmeCandidate(fir: FIR): Array<{ role: string; firma?: FirmaDigitale }> {
+    return [
+      { role: FIRPrismaRepository.RUOLO_PRODUTTORE, firma: fir.firme.produttore },
+      { role: FIRPrismaRepository.RUOLO_TRASPORTATORE, firma: fir.firme.trasportatore },
+      { role: FIRPrismaRepository.RUOLO_DESTINATARIO, firma: fir.firme.destinatario },
+    ]
+  }
+
+  /**
+   * Senza userId non si può valorizzare la FK obbligatoria
+   * fir_signatures.user_id. Non dovrebbe accadere nel flusso reale (i tre
+   * use-case lifecycle valorizzano sempre userId dal comando): se accade il
+   * salvataggio fallisce con un errore esplicito, invece di scartare la firma
+   * in silenzio e salvare lo stato senza di essa.
+   */
+  private verificaFirmeScrivibili(fir: FIR): void {
+    for (const { role, firma } of this.firmeCandidate(fir)) {
+      if (firma && !firma.userId) throw new FirmaSenzaUtenteError(role, fir.id)
+    }
+  }
+
   /**
    * Persiste le firme del ciclo di vita presenti sull'aggregate in
    * `fir_signatures`. Senza questo passaggio le firme applicate da
@@ -281,30 +320,13 @@ export class FIRPrismaRepository implements IFIRRepository {
    * FirmaDigitale costruite a mano (es. fixture di test) che non passano dal
    * provider di firma.
    */
-  private async persistSignatures(fir: FIR): Promise<void> {
-    const candidati: Array<{ role: string; firma?: FirmaDigitale }> = [
-      { role: FIRPrismaRepository.RUOLO_PRODUTTORE, firma: fir.firme.produttore },
-      { role: FIRPrismaRepository.RUOLO_TRASPORTATORE, firma: fir.firme.trasportatore },
-      { role: FIRPrismaRepository.RUOLO_DESTINATARIO, firma: fir.firme.destinatario },
-    ]
-
-    for (const { role, firma } of candidati) {
+  private async persistSignatures(client: Prisma.TransactionClient, fir: FIR): Promise<void> {
+    for (const { role, firma } of this.firmeCandidate(fir)) {
       if (!firma) continue
-      // Senza userId non si può valorizzare la FK obbligatoria
-      // fir_signatures.user_id. Non dovrebbe accadere nel flusso reale (i tre
-      // use-case lifecycle valorizzano sempre userId dal comando). Non si fa
-      // fallire la transizione di stato del FIR, ma NON si scarta in silenzio:
-      // una firma persa senza traccia e' esattamente il difetto che questa
-      // pipeline sta correggendo — chi legge i log deve poterlo scoprire.
-      if (!firma.userId) {
-        FIRPrismaRepository.logger.warn(
-          `Firma ${role} del FIR ${fir.id} NON persistita: userId assente. ` +
-            "La transizione di stato prosegue, ma la firma non sara' rileggibile."
-        )
-        continue
-      }
+      // Già escluso da verificaFirmeScrivibili: serve a restringere il tipo.
+      if (!firma.userId) throw new FirmaSenzaUtenteError(role, fir.id)
 
-      const existing = await this.prisma.fIRSignature.findFirst({ where: { firId: fir.id, role } })
+      const existing = await client.fIRSignature.findFirst({ where: { firId: fir.id, role } })
       if (existing) continue
 
       // Firma crittografica reale (Task 4): gli use-case lifecycle valorizzano
@@ -324,7 +346,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       const signatureMethod =
         firma.signatureMethod ?? FIRPrismaRepository.LIFECYCLE_SIGNATURE_METHOD
 
-      await this.prisma.fIRSignature.create({
+      await client.fIRSignature.create({
         data: {
           firId: fir.id,
           userId: firma.userId,
@@ -664,7 +686,8 @@ export class FIRPrismaRepository implements IFIRRepository {
       rentriNumeroFirProposto: fir.rentriNumeroFirProposto ?? null,
       // Stato del formulario presso RENTRI (applyRentriStato): senza questa
       // riga la colonna restava sempre NULL.
-      rentriStatoFormulario: (fir.rentriStatoFormulario ?? null) as PrismaRentriStatoFormulario | null,
+      rentriStatoFormulario: (fir.rentriStatoFormulario ??
+        null) as PrismaRentriStatoFormulario | null,
     }
   }
 

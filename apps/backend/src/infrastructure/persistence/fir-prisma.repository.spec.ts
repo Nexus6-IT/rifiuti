@@ -10,6 +10,7 @@
  */
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
+import { FirmaSenzaUtenteError } from '../../core/domain/errors'
 
 function buildFirRecord(overrides: Partial<any> = {}) {
   return {
@@ -88,6 +89,7 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({}),
       },
+      $transaction: jest.fn(async (fn: any) => fn(prisma)),
     }
     repo = new FIRPrismaRepository(prisma)
   })
@@ -335,14 +337,21 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       expect(prisma.fIRSignature.create).not.toHaveBeenCalled()
     })
 
-    it('non tenta di persistere una firma priva di userId (difensivo, niente FK rotta)', async () => {
+    it('rifiuta il salvataggio di una firma priva di userId, senza scrivere nulla', async () => {
       const fir = buildFirWithFirmaProduttore()
       // Simula un aggregate costruito senza userId (es. da un test di dominio).
       ;(fir.firme.produttore as any).userId = undefined
 
-      await repo.save(fir)
+      await expect(repo.save(fir)).rejects.toThrow(FirmaSenzaUtenteError)
 
+      expect(prisma.fIR.upsert).not.toHaveBeenCalled()
       expect(prisma.fIRSignature.create).not.toHaveBeenCalled()
+    })
+
+    it('save esegue upsert e firme nella stessa transaction', async () => {
+      await repo.save(buildFirWithFirmaProduttore())
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1)
     })
   })
 })
