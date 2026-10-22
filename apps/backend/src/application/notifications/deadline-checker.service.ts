@@ -62,11 +62,6 @@ export class DeadlineCheckerService {
       const { data: dataScadenza, fonte } = this.registry.scadenzaPresentazione(previousYear)
       const [annoScad, meseScad, giornoScad] = dataScadenza.split('-').map(Number)
       const deadline = new Date(Date.UTC(annoScad, meseScad - 1, giornoScad, 12))
-      if (fonte === 'ORDINARIA') {
-        this.logger.warn(
-          `Scadenza MUD per i dati ${previousYear} non censita nel registro dei tracciati: uso la scadenza ordinaria del ${formattaDataItaliana(deadline)}`
-        )
-      }
       const [annoOggi, meseOggi, giornoOggi] = oggi.split('-').map(Number)
       const daysUntilDeadline = Math.round(
         (deadline.getTime() - Date.UTC(annoOggi, meseOggi - 1, giornoOggi, 12)) /
@@ -78,11 +73,17 @@ export class DeadlineCheckerService {
         this.logger.debug(`MUD deadline is ${daysUntilDeadline} days away, skipping notifications`)
         return
       }
-
       // Check if we should send notifications today
       if (!this.NOTIFICATION_INTERVALS.includes(daysUntilDeadline)) {
         this.logger.debug(`No notification scheduled for ${daysUntilDeadline} days before deadline`)
         return
+      }
+
+      // solo nei giorni in cui la scadenza si usa davvero: il job gira ogni giorno
+      if (fonte === 'ORDINARIA') {
+        this.logger.warn(
+          `Scadenza MUD per i dati ${previousYear} non censita nel registro dei tracciati: uso la scadenza ordinaria del ${formattaDataItaliana(deadline)}`
+        )
       }
 
       this.logger.info(`Sending MUD deadline reminders: ${daysUntilDeadline} days remaining`)

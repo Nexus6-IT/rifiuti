@@ -790,6 +790,31 @@ describe('DeadlineCheckerService', () => {
       expect(mockPrisma.notification.create).toHaveBeenCalled()
     })
 
+    it('nei giorni senza promemoria la scadenza ordinaria non riempie il log', async () => {
+      jest.useFakeTimers()
+      // fuori dalla finestra, e dentro la finestra ma non a 30/15/7/3/1 giorni
+      for (const giorno of [new Date(2030, 0, 15), new Date(2030, 3, 20)]) {
+        jest.setSystemTime(giorno)
+        await service.checkMudDeadlines()
+      }
+      expect(mockLogger.warn).not.toHaveBeenCalledWith(
+        expect.stringContaining('non censita nel registro dei tracciati')
+      )
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+    })
+
+    it('il giorno si conta sul calendario di Roma: alle 00:30 del 02/07 manca 1 giorno', async () => {
+      jest.useFakeTimers()
+      // 22:30 UTC del 01/07 = 00:30 del 02/07 a Roma; scadenza 03/07/2026 (dati 2025)
+      jest.setSystemTime(new Date('2026-07-01T22:30:00Z'))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([
+        { id: 't1', ragioneSociale: 'Alfa', mudReports: [], users: [utenteFixture()] },
+      ])
+      await service.checkMudDeadlines()
+      const dati = (mockPrisma.notification.create as jest.Mock).mock.calls[0][0].data
+      expect(dati.message).toContain('Manca 1 giorno alla scadenza del MUD 2026')
+    })
+
     it('se il record MUD è creato da un altro processo nello stesso momento, rilegge e prosegue', async () => {
       jest.useFakeTimers()
       jest.setSystemTime(new Date(2026, 6, 2))
