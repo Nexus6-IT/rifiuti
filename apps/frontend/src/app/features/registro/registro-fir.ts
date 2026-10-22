@@ -1,5 +1,9 @@
 import { FIR, FIRStato } from '../../shared/models/fir.model'
-import { CausaleMovimento } from './registro.service'
+import { formattaQuantita } from '../../shared/format/formatta-quantita'
+import { CausaleMovimento, TipoMovimento } from './registro.service'
+
+/** Ruolo della società attiva rispetto alle parti di un FIR. */
+export type RuoloFir = 'PRODUTTORE' | 'DESTINATARIO'
 
 /** Data dell'operazione ricavata da un FIR, o il motivo per cui non si può ricavare. */
 export interface DataDaFir {
@@ -40,7 +44,7 @@ export function dataOperazioneDaFir(
  */
 export function causalePredefinitaDaFir(
   tipo: 'CARICO' | 'SCARICO',
-  ruolo: 'PRODUTTORE' | 'DESTINATARIO' | null
+  ruolo: RuoloFir | null
 ): CausaleMovimento | null {
   if (ruolo === null) return null
   return tipo === 'SCARICO' ? 'CONFERIMENTO_TRASPORTATORE' : 'INGRESSO_ESTERNO'
@@ -64,4 +68,38 @@ export function firCollegabileNelRegistro(
   }
   if (fir.stato === FIRStato.BOZZA) return !!fir.rentriNumeroFir?.trim()
   return false
+}
+
+/** Quantità da ricopiare nel registro, con l'eventuale spiegazione per l'utente. */
+export interface QuantitaDaFir {
+  quantita: number
+  unita: string
+  suggerimento: string | null
+}
+
+/**
+ * Quantità da ricopiare nel registro secondo il verso, come RENTRI e WinWaste (C-W-01).
+ * CARICO del destinatario con il peso verificato a destino: quel peso, nell'unità del FIR
+ * (`confermaConsegna` lo confronta con la quantità dichiarata, quindi è nella stessa unità).
+ * In ogni altro caso la quantità dichiarata alla partenza: lo SCARICO del produttore riporta
+ * sempre quella, e il peso verificato resta sul FIR come esito.
+ */
+export function quantitaDaFir(
+  fir: Pick<FIR, 'rifiuto' | 'pesoEffettivo'>,
+  tipo: TipoMovimento,
+  ruolo: RuoloFir | null
+): QuantitaDaFir {
+  const unita = (fir.rifiuto.unitaMisura || 'KG').toUpperCase()
+  const dichiarata = fir.rifiuto.quantita
+  const peso = fir.pesoEffettivo
+  if (tipo === 'CARICO' && ruolo === 'DESTINATARIO' && peso != null && peso > 0) {
+    return {
+      quantita: peso,
+      unita,
+      suggerimento:
+        `Quantità dal peso verificato a destino (${formattaQuantita(peso)} ${unita}); ` +
+        `il FIR dichiarava ${formattaQuantita(dichiarata)} ${unita}.`,
+    }
+  }
+  return { quantita: dichiarata, unita, suggerimento: null }
 }

@@ -62,6 +62,8 @@ import {
   causalePredefinitaDaFir,
   dataOperazioneDaFir,
   firCollegabileNelRegistro,
+  quantitaDaFir,
+  RuoloFir,
 } from './registro-fir'
 import { CerSelectComponent } from '../cer/cer-select.component'
 
@@ -1279,13 +1281,15 @@ export class RegistroComponent implements OnInit {
       }
     }
 
-    // Auto-compilazione dei dati del rifiuto dal FIR (campi modificabili).
+    // Auto-compilazione dei dati del rifiuto dal FIR (campi modificabili). La quantità
+    // dipende dal verso: il carico del destinatario prende il peso verificato a destino.
     const r = fir.rifiuto
+    const q = quantitaDaFir(fir, tipo, ruolo)
     this.form.patchValue({
       firId: fir.id,
       cerCode: r.cerCode,
-      quantity: r.quantita,
-      unit: (r.unitaMisura || 'KG').toUpperCase(),
+      quantity: q.quantita,
+      unit: q.unita,
       wasteDescription: r.descrizione ?? '',
       wastePhysicalState: this.matchStatoFisico(r.statoFisico),
       wasteHazardClasses: r.caratteristichePericolo ?? '',
@@ -1295,7 +1299,7 @@ export class RegistroComponent implements OnInit {
     // Controparte in base alla direzione del movimento.
     this.applicaControparteDaFir(fir, tipo)
 
-    // Hint sul ruolo determinato, seguito dall'eventuale suggerimento sulla data.
+    // Hint sul ruolo determinato, seguito dagli eventuali suggerimenti su data e quantità.
     let hint: string
     if (ruolo === 'PRODUTTORE') {
       hint = 'La società attiva risulta PRODUTTORE del FIR: movimento impostato come SCARICO.'
@@ -1306,7 +1310,7 @@ export class RegistroComponent implements OnInit {
         'Ruolo della società non determinabile dal FIR: verifica il tipo (carico/scarico) ' +
         'e scegli la causale. I dati del rifiuto sono stati comunque precompilati.'
     }
-    this.ruoloHint.set(suggerimentoData ? `${hint} ${suggerimentoData}` : hint)
+    this.ruoloHint.set([hint, suggerimentoData, q.suggerimento].filter(Boolean).join(' '))
   }
 
   /** Giorno di calendario locale ('AAAA-MM-GG'), come lo invia `toIsoDate` al backend. */
@@ -1349,7 +1353,7 @@ export class RegistroComponent implements OnInit {
    * dello snapshot con l'identità della società attiva. `null` se non
    * determinabile in modo affidabile.
    */
-  private determinaRuolo(fir: FIR): 'PRODUTTORE' | 'DESTINATARIO' | null {
+  private determinaRuolo(fir: FIR): RuoloFir | null {
     const azienda = this.company.activeCompany()
     if (!azienda) return null
     const piva = this.normalizza(azienda.partitaIva)

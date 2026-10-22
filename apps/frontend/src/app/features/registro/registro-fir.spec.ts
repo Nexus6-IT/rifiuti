@@ -3,6 +3,7 @@ import {
   causalePredefinitaDaFir,
   dataOperazioneDaFir,
   firCollegabileNelRegistro,
+  quantitaDaFir,
   SUGGERIMENTO_SENZA_ARRIVO,
   SUGGERIMENTO_SENZA_PRESA_IN_CARICO,
 } from './registro-fir'
@@ -81,5 +82,64 @@ describe('causalePredefinitaDaFir', () => {
     expect(causalePredefinitaDaFir('SCARICO', null)).toBeNull()
     expect(causalePredefinitaDaFir('SCARICO', 'PRODUTTORE')).toBe('CONFERIMENTO_TRASPORTATORE')
     expect(causalePredefinitaDaFir('CARICO', 'DESTINATARIO')).toBe('INGRESSO_ESTERNO')
+  })
+})
+
+describe('quantitaDaFir', () => {
+  const fir = (pesoEffettivo: number | null) =>
+    ({
+      rifiuto: { cerCode: '150101', quantita: 1234.5, unitaMisura: 'kg' },
+      pesoEffettivo,
+    }) as FIR
+
+  it('CARICO del destinatario con peso verificato usa il peso a destino', () => {
+    expect(quantitaDaFir(fir(1200), 'CARICO', 'DESTINATARIO')).toEqual({
+      quantita: 1200,
+      unita: 'KG',
+      suggerimento:
+        'Quantità dal peso verificato a destino (1.200 KG); il FIR dichiarava 1.234,5 KG.',
+    })
+  })
+
+  it('SCARICO del produttore usa la quantità dichiarata anche con il peso verificato', () => {
+    expect(quantitaDaFir(fir(1200), 'SCARICO', 'PRODUTTORE')).toEqual({
+      quantita: 1234.5,
+      unita: 'KG',
+      suggerimento: null,
+    })
+  })
+
+  it('CARICO senza peso verificato usa la dichiarata', () => {
+    expect(quantitaDaFir(fir(null), 'CARICO', 'DESTINATARIO')).toEqual({
+      quantita: 1234.5,
+      unita: 'KG',
+      suggerimento: null,
+    })
+    expect(quantitaDaFir(fir(0), 'CARICO', 'DESTINATARIO').quantita).toBe(1234.5)
+  })
+
+  it('CARICO di ruolo non determinato usa la dichiarata', () => {
+    expect(quantitaDaFir(fir(1200), 'CARICO', null)).toEqual({
+      quantita: 1234.5,
+      unita: 'KG',
+      suggerimento: null,
+    })
+  })
+
+  it("il peso a destino resta nell'unità del FIR; senza unità vale KG", () => {
+    const inLitri = {
+      rifiuto: { cerCode: '130205', quantita: 500, unitaMisura: 'l' },
+      pesoEffettivo: 480,
+    } as FIR
+    expect(quantitaDaFir(inLitri, 'CARICO', 'DESTINATARIO')).toEqual({
+      quantita: 480,
+      unita: 'L',
+      suggerimento: 'Quantità dal peso verificato a destino (480 L); il FIR dichiarava 500 L.',
+    })
+    const senzaUnita = {
+      rifiuto: { cerCode: '150101', quantita: 10, unitaMisura: '' },
+      pesoEffettivo: null,
+    } as FIR
+    expect(quantitaDaFir(senzaUnita, 'SCARICO', 'PRODUTTORE').unita).toBe('KG')
   })
 })
