@@ -427,5 +427,21 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
       expect(prisma.fIR.upsert).not.toHaveBeenCalled()
     })
+
+    it('il blocco della riga resta nel tenant del FIR e non serializza le scritture del registro', async () => {
+      prisma.db.fIR.findFirst.mockResolvedValue(buildFirRecord({ status: 'AWAITING_CARRIER' }))
+      const fir = (await repo.findById('fir-1'))!
+      prisma.$queryRaw = jest.fn().mockResolvedValue([{ stato: null, status: 'AWAITING_CARRIER' }])
+
+      await repo.save(fir)
+
+      const [frammenti, ...valori] = prisma.$queryRaw.mock.calls[0]
+      const sql = (frammenti as string[]).join('?').replace(/s+/g, ' ')
+      // FOR NO KEY UPDATE: protegge la riga come FOR UPDATE ma non entra in conflitto con il
+      // FOR KEY SHARE che l'insert di un movimento prende sul FIR collegato (fir_id).
+      expect(sql).toContain('FOR NO KEY UPDATE')
+      expect(sql).toContain('tenant_id = ?::uuid')
+      expect(valori).toContain('tenant-1')
+    })
   })
 })

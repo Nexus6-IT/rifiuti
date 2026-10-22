@@ -232,7 +232,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     // l'input "checked" che richiede la relazione (altrimenti: "Argument
     // `tenant` is missing"). Si estraggono quindi gli scalari e si collega.
     const { tenantId, producerUserId, ...scalars } = data
-    await this.conservaAnnullamentoEnte(client, fir.id, scalars)
+    await this.conservaAnnullamentoEnte(client, fir.id, tenantId, scalars)
 
     // I trasportatori aggiuntivi (tratte intermodali) sono uno snapshot fissato
     // alla creazione del FIR: si scrivono solo nel ramo `create` dell'upsert, mai
@@ -275,15 +275,23 @@ export class FIRPrismaRepository implements IFIRRepository {
    * salvataggio si rifiuta con `FirAnnullatoNelFrattempoError`. La SELECT si esegue
    * sempre, anche quando l'aggregate porta già 'Annullato' dell'ente, perché il
    * controllo su CANCELLED non dipende dallo stato RENTRI.
+   *
+   * Il blocco è `FOR NO KEY UPDATE`, non `FOR UPDATE`: protegge la riga da un altro
+   * salvataggio allo stesso modo, ma non entra in conflitto con il `FOR KEY SHARE` che
+   * l'insert di un movimento del registro prende sul FIR collegato (`fir_id`,
+   * `fir_id_ricopia`), quindi un salvataggio del FIR e una registrazione non si aspettano.
+   * La riga si cerca anche per tenant, come ogni altra query del repository.
    */
   private async conservaAnnullamentoEnte(
     client: Prisma.TransactionClient,
     firId: string,
+    tenantId: string,
     scalars: { rentriStatoFormulario?: unknown; status?: unknown }
   ): Promise<void> {
     const righe = await client.$queryRaw<Array<{ stato: string | null; status: string | null }>>`
       SELECT rentri_stato_formulario AS stato, status::text AS status
-      FROM firs WHERE id = ${firId}::uuid FOR UPDATE`
+      FROM firs WHERE id = ${firId}::uuid AND tenant_id = ${tenantId}::uuid
+      FOR NO KEY UPDATE`
     const riga = righe?.[0]
     if (
       riga?.status === PrismaFIRStatus.CANCELLED &&

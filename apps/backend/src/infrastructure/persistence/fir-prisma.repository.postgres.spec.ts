@@ -222,6 +222,51 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       expect(riga.status).toBe('CANCELLED')
     })
 
+    it('due salvataggi concorrenti dello stesso FIR si serializzano senza errori', async () => {
+      const fir = await salvaFirEmesso()
+      const a = (await repoLettura.findById(fir.id))!
+      const b = (await repoLettura.findById(fir.id))!
+
+      await expect(Promise.all([repoLettura.save(a), repoLettura.save(b)])).resolves.toEqual([
+        undefined,
+        undefined,
+      ])
+
+      const riga = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riga.status).not.toBe('CANCELLED')
+    })
+
+    it('un salvataggio non aspetta il FOR KEY SHARE di una registrazione aperta sul FIR', async () => {
+      const fir = await salvaFirEmesso()
+      const copia = (await repoLettura.findById(fir.id))!
+      let rilascia!: () => void
+      const attesa = new Promise<void>(r => (rilascia = r))
+      let bloccato!: () => void
+      const bloccatoPronto = new Promise<void>(r => (bloccato = r))
+
+      // È il lock che l'insert di un movimento con fir_id prende sulla riga del FIR.
+      const registrazione = prisma.$transaction(
+        async tx => {
+          await tx.$queryRaw`SELECT id FROM firs WHERE id = ${fir.id}::uuid FOR KEY SHARE`
+          bloccato()
+          await attesa
+        },
+        { timeout: 20_000 }
+      )
+      await bloccatoPronto
+
+      try {
+        const esito = await Promise.race([
+          repoLettura.save(copia).then(() => 'salvato'),
+          new Promise(r => setTimeout(() => r('in attesa del lock'), 3_000)),
+        ])
+        expect(esito).toBe('salvato')
+      } finally {
+        rilascia()
+        await registrazione
+      }
+    })
+
     it('un FIR già annullato si può salvare di nuovo', async () => {
       const fir = await salvaFirEmesso()
       const copia = (await repoLettura.findById(fir.id))!
