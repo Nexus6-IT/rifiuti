@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { RegistraMovimentoUseCase } from './registra-movimento.use-case'
+import { RegistraMovimentoUseCase, RICOPIA_ORDINARIA } from './registra-movimento.use-case'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
@@ -959,21 +959,26 @@ describe('RegistraMovimentoUseCase', () => {
     expect(tx.wasteMovement.create).not.toHaveBeenCalled()
   })
 
-  it('un movimento nuovo ha giaRegistrato false e salva firIdRicopia', async () => {
+  it('un movimento nuovo ha giaRegistrato false e salva firIdRicopia con la chiave ordinaria', async () => {
     const tx = _mockTransazione(recordScarico)
     const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
     expect(r.value.giaRegistrato).toBe(false)
     expect(tx.wasteMovement.create.mock.calls[0][0].data).toMatchObject({
       firId: 'fir-id-001',
       firIdRicopia: 'fir-id-001',
+      ricopiaChiave: '',
     })
   })
 
-  it('cerca le ricopie esistenti per tenant, FIR e tipo', async () => {
+  it('la chiave della ricopia ordinaria è la stringa vuota, come il default della colonna', () => {
+    expect(RICOPIA_ORDINARIA).toBe('')
+  })
+
+  it('cerca le ricopie esistenti per tenant, FIR, tipo e chiave ordinaria', async () => {
     const tx = _mockTransazione(recordScarico)
     await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
     expect(tx.wasteMovement.findMany.mock.calls[0][0]).toMatchObject({
-      where: { tenantId: TENANT, firId: 'fir-id-001', type: 'SCARICO' },
+      where: { tenantId: TENANT, firId: 'fir-id-001', type: 'SCARICO', ricopiaChiave: '' },
       orderBy: { createdAt: 'asc' },
     })
   })
@@ -1022,7 +1027,7 @@ describe('RegistraMovimentoUseCase', () => {
       new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
         code: 'P2002',
         clientVersion: 'test',
-        meta: { target: ['tenant_id', 'fir_id_ricopia', 'type'] },
+        meta: { target: ['tenant_id', 'fir_id_ricopia', 'type', 'ricopia_chiave'] },
       })
     )
     const findFirst = jest
@@ -1034,6 +1039,7 @@ describe('RegistraMovimentoUseCase', () => {
       tenantId: TENANT,
       firIdRicopia: 'fir-id-001',
       type: 'SCARICO',
+      ricopiaChiave: '',
     })
   })
 
@@ -1043,7 +1049,7 @@ describe('RegistraMovimentoUseCase', () => {
       new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
         code: 'P2002',
         clientVersion: 'test',
-        meta: { target: ['tenant_id', 'fir_id_ricopia', 'type'] },
+        meta: { target: ['tenant_id', 'fir_id_ricopia', 'type', 'ricopia_chiave'] },
       })
     )
     jest.spyOn(prisma.wasteMovement, 'findFirst').mockRejectedValue(new Error('connessione persa'))

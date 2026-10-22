@@ -1758,11 +1758,15 @@ model WasteMovement {
   counterpartAddress String? @map("counterpart_address") @db.VarChar(500)
 
   /// SCARICO: FIR collegato (uscita verso trasportatore/destinatario).
-  firId        String? @map("fir_id") @db.Uuid
+  firId         String? @map("fir_id") @db.Uuid
   /// Copia di firId valorizzata solo dai movimenti registrati dopo l'indice unico
   /// della ricopia (i movimenti storici restano NULL, e i NULL non collidono):
-  /// un FIR si ricopia nel registro una sola volta per tipo di movimento.
-  firIdRicopia String? @map("fir_id_ricopia") @db.Uuid
+  /// un FIR si ricopia nel registro una sola volta per tipo di movimento e chiave.
+  firIdRicopia  String? @map("fir_id_ricopia") @db.Uuid
+  /// Chiave che distingue più movimenti dello stesso FIR e tipo (C-W-03, come WinWaste):
+  /// '' per la ricopia ordinaria, l'unica usata oggi. Lo schema delle chiavi riservate è
+  /// in RICOPIA_ORDINARIA (registra-movimento.use-case.ts); la chiave la impone il flusso.
+  ricopiaChiave String  @default("") @map("ricopia_chiave") @db.VarChar(100)
 
   /// Utente (operatore) che ha registrato l'annotazione.
   recordedByUserId String? @map("recorded_by_user_id") @db.Uuid
@@ -1777,7 +1781,7 @@ model WasteMovement {
   recordedByUser User?  @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
 
   @@unique([tenantId, progressiveYear, progressiveNumber])
-  @@unique([tenantId, firIdRicopia, type])
+  @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
   @@index([tenantId, cerCode])
   @@index([tenantId, movementDate])
   @@index([tenantId, type])

@@ -240,11 +240,12 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
     })
 
     /** Movimento collegato al FIR scritto senza use case. */
-    function ricopiaDiretta(n: number, firIdRicopia?: string) {
+    function ricopiaDiretta(n: number, firIdRicopia?: string, ricopiaChiave?: string) {
       return {
         ...movimentoDiretto('CARICO', 100, '2026-03-01', n),
         firId,
         firIdRicopia,
+        ricopiaChiave,
       }
     }
 
@@ -305,6 +306,42 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
       expect(JSON.stringify(err.meta?.target)).toMatch(/fir_?id_?ricopia/i)
     })
 
+    it('due movimenti dello stesso FIR e tipo con chiavi diverse sono ammessi dal database', async () => {
+      await prisma.wasteMovement.create({ data: ricopiaDiretta(1, firId, 'prod:a') })
+      await prisma.wasteMovement.create({ data: ricopiaDiretta(2, firId, 'prod:b') })
+      expect(await prisma.wasteMovement.count({ where: { tenantId, firId, type: 'CARICO' } })).toBe(
+        2
+      )
+      // La stessa chiave resta unica.
+      const err = await prisma.wasteMovement
+        .create({ data: ricopiaDiretta(3, firId, 'prod:a') })
+        .then(() => null)
+        .catch(e => e)
+      expect(err).toMatchObject({ code: 'P2002' })
+    })
+
+    // Guardia di regressione (preflight F9): verde anche prima della chiave di ricopia.
+    it('il retry idempotente della ricopia è invariato', async () => {
+      const primo = await useCase.execute(
+        cmd('CARICO', 'INGRESSO_ESTERNO', 100, '2026-03-01', 'KG', firId)
+      )
+      const retry = await useCase.execute(
+        cmd('CARICO', 'INGRESSO_ESTERNO', 100, '2026-03-01', 'KG', firId)
+      )
+      expect(primo.value.giaRegistrato).toBe(false)
+      expect(retry.value).toMatchObject({ id: primo.value.id, giaRegistrato: true })
+      expect(await prisma.wasteMovement.count({ where: { tenantId, firId } })).toBe(1)
+
+      const diverso = await useCase.execute(
+        cmd('CARICO', 'INGRESSO_ESTERNO', 80, '2026-03-01', 'KG', firId)
+      )
+      expect(diverso.error).toBe(
+        new FirGiaRegistratoError(primo.value.progressiveNumber, primo.value.progressiveYear)
+          .message
+      )
+      expect(await prisma.wasteMovement.count({ where: { tenantId, firId } })).toBe(1)
+    })
+
     it('i doppi storici (fir_id_ricopia NULL) restano ammessi', async () => {
       await prisma.wasteMovement.create({ data: ricopiaDiretta(1) })
       await prisma.wasteMovement.create({ data: ricopiaDiretta(2) })
@@ -312,5 +349,46 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
         2
       )
     })
+  })
+
+  // Preflight F19: legge lo schema reale, quindi fallisce se la migration manca o è diversa.
+  it('la migration lascia le righe esistenti con chiave vuota', async () => {
+    const colonne = await prisma.$queryRaw<
+      Array<{
+        is_nullable: string
+        column_default: string | null
+        character_maximum_length: number
+      }>
+    >`
+      SELECT is_nullable, column_default, character_maximum_length
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'waste_movements'
+        AND column_name = 'ricopia_chiave'
+    `
+    expect(colonne).toHaveLength(1)
+    expect(colonne[0].is_nullable).toBe('NO')
+    expect(colonne[0].column_default).toBe("''::character varying")
+    expect(Number(colonne[0].character_maximum_length)).toBe(100)
+
+    const indici = await prisma.$queryRaw<Array<{ indexname: string; indexdef: string }>>`
+      SELECT indexname, indexdef
+      FROM pg_indexes
+      WHERE schemaname = current_schema()
+        AND tablename = 'waste_movements'
+        AND indexname LIKE 'waste_movements_tenant_id_fir_id_ricopia%'
+    `
+    expect(indici.map(i => i.indexname)).toEqual([
+      'waste_movements_tenant_id_fir_id_ricopia_type_ricopia_chiav_key',
+    ])
+    expect(indici[0].indexdef).toMatch(
+      /^CREATE UNIQUE INDEX .* \(tenant_id, fir_id_ricopia, type, ricopia_chiave\)$/
+    )
+
+    // Una riga scritta senza chiave, come quelle già presenti alla migration, vale ''.
+    const riga = await prisma.wasteMovement.create({
+      data: movimentoDiretto('CARICO', 1, '2026-03-01', 50),
+    })
+    expect(riga.ricopiaChiave).toBe('')
   })
 })

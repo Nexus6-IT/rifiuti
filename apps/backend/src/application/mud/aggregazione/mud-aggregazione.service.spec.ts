@@ -18,6 +18,7 @@ describe('MudAggregazioneService', () => {
     operationCode: null,
     firId: null,
     firIdRicopia: null,
+    ricopiaChiave: '',
     counterpartName: null,
     movementDate: new Date('2025-06-10T08:00:00Z'),
     ...p,
@@ -593,6 +594,39 @@ describe('MudAggregazioneService', () => {
     expect(r.righe[0].smaltimentoKg).toBe(600)
     expect(codici(r.controlli)).not.toContain('FIR_DOPPIO_IDENTICO')
     expect(codici(r.controlli)).toContain('FIR_SCARICATO_PIU_VOLTE')
+  })
+
+  it('due quote uguali con chiavi diverse contano entrambe', async () => {
+    impostaDati({
+      movimenti: [
+        scarico({
+          progressiveNumber: 7,
+          quantity: 300,
+          firId: 'f1',
+          firIdRicopia: 'f1',
+          ricopiaChiave: 'prod:a',
+        }),
+        scarico({
+          progressiveNumber: 9,
+          quantity: 300,
+          firId: 'f1',
+          firIdRicopia: 'f1',
+          ricopiaChiave: 'prod:b',
+        }),
+      ],
+      firCollegati: [fir({})],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.righe[0].smaltimentoKg).toBe(600)
+    expect(codici(r.controlli)).not.toContain('FIR_DOPPIO_IDENTICO')
+    // Preflight F21: l'avviso dei più scarichi dello stesso FIR resta per FIR, anche per le quote.
+    expect(codici(r.controlli)).toContain('FIR_SCARICATO_PIU_VOLTE')
+    // La chiave si legge dal database: senza la select i movimenti reali non l'avrebbero.
+    expect(prisma.wasteMovement.findMany.mock.calls[0][0].select).toMatchObject({
+      ricopiaChiave: true,
+    })
   })
 
   // 22

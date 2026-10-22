@@ -47,6 +47,7 @@ interface Movimento {
   operationCode: string | null
   firId: string | null
   firIdRicopia: string | null
+  ricopiaChiave: string
   counterpartName: string | null
   movementDate: Date
 }
@@ -142,6 +143,7 @@ export class MudAggregazioneService {
         operationCode: true,
         firId: true,
         firIdRicopia: true,
+        ricopiaChiave: true,
         counterpartName: true,
         movementDate: true,
       },
@@ -232,14 +234,15 @@ export class MudAggregazioneService {
     const etichettaPerId = (firId: string): string =>
       etichettaFir(firPerId.get(firId) ?? { id: firId, firNumber: null })
 
-    // Passo 0: doppi identici dello stesso FIR e tipo (Decisione 20). Un doppio si
-    // confronta con i movimenti già contati del gruppo, mai con quelli già scartati.
+    // Passo 0: doppi identici dello stesso FIR, tipo e chiave di ricopia (Decisione 20,
+    // C-W-03): due quote con chiavi diverse sono movimenti distinti anche se uguali. Un
+    // doppio si confronta con i movimenti già contati del gruppo, mai con quelli scartati.
     const doppiDi = new Map<Movimento, Movimento[]>()
     const doppi = new Set<Movimento>()
     const contatiPerGruppo = new Map<string, Movimento[]>()
     for (const m of movimenti) {
       if (!m.firId) continue
-      const gruppo = `${m.firId}|${m.type}`
+      const gruppo = `${m.firId}|${m.type}|${m.ricopiaChiave}`
       const contati = contatiPerGruppo.get(gruppo) ?? []
       const originale = contati.find(
         c =>

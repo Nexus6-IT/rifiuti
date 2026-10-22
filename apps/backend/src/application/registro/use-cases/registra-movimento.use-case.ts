@@ -27,6 +27,21 @@ import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
 import { giacenzaDisponibileAl } from '../giacenza-disponibile'
 import { stessiDatiRicopia } from '../ricopia-fir'
 
+/**
+ * Chiave di ricopia della ricopia ordinaria di un FIR (C-W-03, come WinWaste).
+ *
+ * L'indice unico è (tenant, fir_id_ricopia, type, ricopia_chiave): dallo stesso FIR
+ * possono nascere più movimenti dello stesso verso purché con chiavi diverse.
+ * Schema delle chiavi riservate:
+ * - `''`                   ricopia ordinaria (un movimento per FIR e tipo);
+ * - `prod:<unitaLocaleId>` quota di un produttore percentuale;
+ * - `cer:<cer>`            carico generato da un trattamento;
+ * - `dett:<n>`             dettaglio senza altra chiave.
+ * La chiave la impone il flusso, mai l'utente; oggi nessun flusso ne usa una diversa
+ * da `''`, quindi per i produttori la regola resta "una ricopia per FIR e tipo".
+ */
+export const RICOPIA_ORDINARIA = ''
+
 export interface MovimentoRegistrato {
   id: string
   tenantId: string
@@ -275,8 +290,9 @@ export class RegistraMovimentoUseCase {
             counterpartAddress: entity.counterpartAddress,
             firId: entity.firId,
             // Solo i movimenti registrati da qui in poi: lo storico resta NULL, e
-            // l'indice unico (tenant, fir_id_ricopia, type) ignora i NULL.
+            // l'indice unico (tenant, fir_id_ricopia, type, ricopia_chiave) ignora i NULL.
             firIdRicopia: command.firId,
+            ricopiaChiave: RICOPIA_ORDINARIA,
             recordedByUserId: entity.recordedByUserId,
             entryHash: entity.entryHash,
             notes: entity.notes,
@@ -336,7 +352,7 @@ export class RegistraMovimentoUseCase {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveFir}))`
 
     const ricopie = await tx.wasteMovement.findMany({
-      where: { tenantId, firId, type },
+      where: { tenantId, firId, type, ricopiaChiave: RICOPIA_ORDINARIA },
       orderBy: { createdAt: 'asc' },
     })
     if (ricopie.length === 0) return null
@@ -356,8 +372,8 @@ export class RegistraMovimentoUseCase {
   }
 
   /**
-   * Rete di sicurezza per l'indice unico (tenant, fir_id_ricopia, type): il lock del FIR
-   * rende il doppio raro, ma se arriva si risponde come per una ricopia con dati diversi.
+   * Rete di sicurezza per l'indice unico (tenant, fir_id_ricopia, type, ricopia_chiave):
+   * il lock del FIR rende il doppio raro, ma se arriva si risponde come per una ricopia con dati diversi.
    * Null se l'errore non è quella violazione.
    */
   private async messaggioRicopiaDoppia(
@@ -375,7 +391,12 @@ export class RegistraMovimentoUseCase {
     let esistente: { progressiveNumber: number; progressiveYear: number } | null
     try {
       esistente = await this.prisma.wasteMovement.findFirst({
-        where: { tenantId: command.tenantId, firIdRicopia: command.firId, type: command.type },
+        where: {
+          tenantId: command.tenantId,
+          firIdRicopia: command.firId,
+          type: command.type,
+          ricopiaChiave: RICOPIA_ORDINARIA,
+        },
         select: { progressiveNumber: true, progressiveYear: true },
       })
     } catch (lettura) {
