@@ -113,4 +113,36 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
     await expect(repo.save(primoFir)).resolves.not.toThrow()
     await expect(repo.save(secondoFir)).resolves.not.toThrow()
   })
+
+  describe('rentriStatoFormulario', () => {
+    // findById usa this.prisma.db: serve un client con la proprietà `db`.
+    let repoLettura: FIRPrismaRepository
+    beforeAll(() => {
+      repoLettura = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+    })
+
+    it('rentriStatoFormulario sopravvive a save e findById', async () => {
+      const fir = buildFirAgganciato(`RENTRI-SF-${Date.now()}`)
+      await repoLettura.save(fir)
+      fir.applyRentriStato('Annullato')
+      await repoLettura.save(fir)
+      expect((await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })).rentriStatoFormulario).toBe('Annullato')
+      expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBe('Annullato')
+    })
+
+    it('un salvataggio successivo non cancella lo stato dell ente', async () => {
+      const fir = buildFirAgganciato(`RENTRI-SF2-${Date.now()}`)
+      fir.applyRentriStato('RespintoAccettatoParzialmente')
+      await repoLettura.save(fir)
+      const riletto = (await repoLettura.findById(fir.id))!
+      await repoLettura.save(riletto) // salvataggio per un altro motivo
+      expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBe('RespintoAccettatoParzialmente')
+    })
+
+    it('un FIR mai riconciliato resta con rentriStatoFormulario null', async () => {
+      const fir = buildFirAgganciato(`RENTRI-SF3-${Date.now()}`)
+      await repoLettura.save(fir)
+      expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBeNull()
+    })
+  })
 })

@@ -10,6 +10,7 @@ import {
   FIRStatus as PrismaFIRStatus,
   RENTRISyncStatus as PrismaRENTRISyncStatus,
   RentriOrigineLegame as PrismaRentriOrigineLegame,
+  RentriStatoFormulario as PrismaRentriStatoFormulario,
 } from '@prisma/client'
 import {
   FIR,
@@ -17,6 +18,7 @@ import {
   FirmaDigitale,
   FirmeDigitali,
   RentriOrigineLegame,
+  StatoFormulario,
   ProvenienzaRifiuto,
   TipoTratta,
 } from '../../domain/fir/aggregates/fir.aggregate'
@@ -502,6 +504,9 @@ export class FIRPrismaRepository implements IFIRRepository {
       _rentriTransazioneId: record.rentriTransazioneId || null,
       _rentriOrigineLegame: (record.rentriOrigineLegame as RentriOrigineLegame) || null,
       _rentriNumeroFirProposto: record.rentriNumeroFirProposto || null,
+      // Stato del formulario presso l'ente: stesso tranello (scrittura e lettura
+      // dimenticate), la riconciliazione lo confrontava sempre con null.
+      _rentriStatoFormulario: (record.rentriStatoFormulario as StatoFormulario | null) ?? null,
     })
 
     return fir
@@ -657,6 +662,9 @@ export class FIRPrismaRepository implements IFIRRepository {
       // Legame in attesa di conferma (modalità IBRIDA, R1 Task 2): distinto
       // da rentriNumeroFir, che resta null finché l'utente non conferma.
       rentriNumeroFirProposto: fir.rentriNumeroFirProposto ?? null,
+      // Stato del formulario presso RENTRI (applyRentriStato): senza questa
+      // riga la colonna restava sempre NULL.
+      rentriStatoFormulario: (fir.rentriStatoFormulario ?? null) as PrismaRentriStatoFormulario | null,
     }
   }
 
