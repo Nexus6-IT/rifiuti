@@ -255,13 +255,13 @@ export class MudAggregazioneService {
       },
     })
     // Il comune si cerca solo con città e provincia: senza provincia la ricerca sarebbe ambigua.
+    // Si cerca con i valori senza spazi attorno: la ricerca confronta solo in maiuscolo.
+    const citta = tenant?.city?.trim() ?? ''
+    const provincia = tenant?.province?.trim() ?? ''
     const comuneDichiarante =
-      tenant?.city?.trim() && tenant?.province?.trim()
-        ? await this.referenceData.findComuneByName(tenant.city, tenant.province)
-        : undefined
-    const comuneCode = /^\d{6}$/.test(comuneDichiarante?.code ?? '')
-      ? (comuneDichiarante?.code ?? null)
-      : null
+      citta && provincia ? await this.referenceData.findComuneByName(citta, provincia) : undefined
+    const codiceComune = comuneDichiarante?.code ?? ''
+    const comuneCode = /^\d{6}$/.test(codiceComune) ? codiceComune : null
     const atecoNormalizzato = tenant?.atecoCode?.trim() ? normalizeAteco(tenant.atecoCode) : null
 
     const unitaLocali = await this.prisma.rentriUnitaLocale.findMany({
