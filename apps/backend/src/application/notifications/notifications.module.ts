@@ -6,6 +6,7 @@ import { EmailService } from '../../infrastructure/email/email.service'
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
 import { LoggerModule } from '../../core/logger/logger.module'
+import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 
 /**
  * Notifications Module
@@ -20,6 +21,7 @@ import { LoggerModule } from '../../core/logger/logger.module'
     NotificationEscalationService,
     EmailService,
     TemplateService,
+    MudVersionRegistry,
   ],
   exports: [
     NotificationService,

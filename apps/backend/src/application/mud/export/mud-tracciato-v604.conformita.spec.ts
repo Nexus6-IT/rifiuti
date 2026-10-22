@@ -315,6 +315,12 @@ describe.each([
 describe('Registry versioni MUD', () => {
   const registry = new MudVersionRegistry()
 
+  it('conosce la scadenza di presentazione per anno dei dati, con il 30 aprile come ripiego', () => {
+    expect(registry.scadenzaPresentazione(2024)).toEqual({ data: '2025-06-28', fonte: 'TRACCIATO' })
+    expect(registry.scadenzaPresentazione(2025)).toEqual({ data: '2026-07-03', fonte: 'TRACCIATO' })
+    expect(registry.scadenzaPresentazione(2030)).toEqual({ data: '2031-04-30', fonte: 'ORDINARIA' })
+  })
+
   it('espone entrambe le annualità', () => {
     expect(registry.listVersions()).toEqual(
       expect.arrayContaining([

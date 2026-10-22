@@ -167,6 +167,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
   abstract readonly version: string
   /** Anno **dei dati** dichiarati (la dichiarazione si presenta l'anno dopo). */
   abstract readonly year: number
+  abstract readonly scadenzaPresentazione: string
 
   /**
    * Tipi di autorizzazione ammessi nel record AU per questa annualità.

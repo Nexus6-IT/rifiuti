@@ -345,6 +345,8 @@ export interface MudTracciatoVersion {
   readonly version: string
   /** Anno di dichiarazione coperto (es. 2024). */
   readonly year: number
+  /** Scadenza di presentazione della dichiarazione, 'AAAA-MM-GG' (da DPCM/GU del tracciato). */
+  readonly scadenzaPresentazione: string
   /** Produce il contenuto del file telematico dai dati aggregati. */
   generate(data: MudExportData): string
 }

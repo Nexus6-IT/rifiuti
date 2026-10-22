@@ -8,21 +8,20 @@ import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 import { calcolaScadenza } from './scadenza-controparte.util'
 import { FILTRO_AZIENDE_TENUTE_AL_MUD } from '../mud/mud-obbligo.service'
+import { MudVersionRegistry } from '../mud/export/mud-version.registry'
+import { formattaDataItaliana, giornoItaliano } from '../../core/time/anno-italiano'
 
 /**
  * Deadline Checker Service
  *
  * Scheduled jobs for monitoring compliance deadlines:
- * - MUD report submission deadlines
+ * - MUD report submission deadlines (scadenza dal registro dei tracciati, per anno dei dati;
+ *   30 aprile dell'anno dopo come ripiego se l'anno non è censito)
  * - Register vidimazione deadlines
  * - Authorization expiration dates
  */
 @Injectable()
 export class DeadlineCheckerService {
-  // MUD deadline: April 30th each year
-  private readonly MUD_DEADLINE_MONTH = 3 // April (0-indexed)
-  private readonly MUD_DEADLINE_DAY = 30
-
   // Notification intervals (days before deadline)
   private readonly NOTIFICATION_INTERVALS = [30, 15, 7, 3, 1]
 
@@ -37,14 +36,17 @@ export class DeadlineCheckerService {
     private readonly prisma: PrismaService,
     private readonly templateService: TemplateService,
     private readonly emailService: EmailService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly registry: MudVersionRegistry
   ) {
     this.logger.setContext(DeadlineCheckerService.name)
   }
 
   /**
    * Check MUD deadlines daily at 8:00 AM
-   * Sends reminder notifications at 30, 15, 7, 3, and 1 days before deadline
+   * Sends reminder notifications at 30, 15, 7, 3, and 1 days before deadline.
+   * La scadenza viene dal registro dei tracciati (`MudVersionRegistry`), con il 30 aprile
+   * dell'anno dopo come ripiego (scritto nel log). Nessun promemoria dopo la presentazione.
    */
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
   async checkMudDeadlines(): Promise<void> {
@@ -52,13 +54,23 @@ export class DeadlineCheckerService {
 
     try {
       const today = new Date()
-      const currentYear = today.getFullYear()
-      const previousYear = currentYear - 1
+      // Calendario di Roma, non l'orario del server (il processo gira in UTC).
+      const oggi = giornoItaliano(today) // 'AAAA-MM-GG'
+      const previousYear = Number(oggi.slice(0, 4)) - 1
 
-      // Calculate this year's MUD deadline (April 30th)
-      const deadline = new Date(currentYear, this.MUD_DEADLINE_MONTH, this.MUD_DEADLINE_DAY)
-      const daysUntilDeadline = Math.ceil(
-        (deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      // Scadenza di presentazione dei dati dell'anno precedente, dal registro dei tracciati
+      const { data: dataScadenza, fonte } = this.registry.scadenzaPresentazione(previousYear)
+      const [annoScad, meseScad, giornoScad] = dataScadenza.split('-').map(Number)
+      const deadline = new Date(Date.UTC(annoScad, meseScad - 1, giornoScad, 12))
+      if (fonte === 'ORDINARIA') {
+        this.logger.warn(
+          `Scadenza MUD per i dati ${previousYear} non censita nel registro dei tracciati: uso la scadenza ordinaria del ${formattaDataItaliana(deadline)}`
+        )
+      }
+      const [annoOggi, meseOggi, giornoOggi] = oggi.split('-').map(Number)
+      const daysUntilDeadline = Math.round(
+        (deadline.getTime() - Date.UTC(annoOggi, meseOggi - 1, giornoOggi, 12)) /
+          (1000 * 60 * 60 * 24)
       )
 
       // Skip if deadline has passed or too far in future
@@ -110,21 +122,35 @@ export class DeadlineCheckerService {
           this.logger.info(
             `Creating draft MUD report for tenant ${tenant.id}, year ${previousYear}`
           )
-          mudReport = await this.prisma.mUDReport.create({
-            data: {
-              tenantId: tenant.id,
-              year: previousYear,
-              status: 'DRAFT',
-              reportData: {},
-            },
-          })
+          try {
+            // upsert: un export o un salvataggio di integrazioni può creare il record
+            // nello stesso momento (G3-C-03)
+            mudReport = await this.prisma.mUDReport.upsert({
+              where: { tenantId_year: { tenantId: tenant.id, year: previousYear } },
+              create: {
+                tenantId: tenant.id,
+                year: previousYear,
+                status: 'DRAFT',
+                reportData: {},
+              },
+              update: {},
+            })
+          } catch (error) {
+            if ((error as { code?: string })?.code !== 'P2002') throw error
+            const esistente = await this.prisma.mUDReport.findUnique({
+              where: { tenantId_year: { tenantId: tenant.id, year: previousYear } },
+            })
+            if (!esistente) throw error
+            mudReport = esistente
+          }
         }
 
-        // Determine completion status
-        const isComplete = mudReport.status === 'SUBMITTED'
-        const reportData = mudReport.reportData as any
-        const completionPercentage = this.calculateMudCompletionPercentage(reportData)
-        const missingData = this.getMudMissingData(reportData)
+        // Nessun promemoria dopo la presentazione
+        if (mudReport.status === 'SUBMITTED') continue
+
+        const urlPaginaMud = `/mud?anno=${previousYear}`
+        const titolo = `Promemoria scadenza MUD ${previousYear + 1} (dati ${previousYear})`
+        const dataScadenzaIt = formattaDataItaliana(deadline)
 
         // Send notifications to all admin/operator users
         for (const user of tenant.users) {
@@ -138,10 +164,10 @@ export class DeadlineCheckerService {
                 tenantId: tenant.id,
                 userId: user.id,
                 type: 'MUD_DEADLINE_APPROACHING',
-                title: `Promemoria Scadenza MUD ${previousYear}`,
-                message: `Mancano ${daysUntilDeadline} giorni alla scadenza del MUD. ${isComplete ? "Il MUD è pronto per l'invio." : `Completamento: ${completionPercentage}%`}`,
+                title: titolo,
+                message: `Mancano ${daysUntilDeadline} giorni alla scadenza del MUD ${previousYear + 1} (dati ${previousYear}), il ${dataScadenzaIt}: aprire la pagina MUD per i controlli e la conferma.`,
                 severity: daysUntilDeadline <= 7 ? 'WARNING' : 'INFO',
-                actionUrl: `/mud/${mudReport.id}`,
+                actionUrl: urlPaginaMud,
                 isRead: false,
               },
             })
@@ -156,24 +182,17 @@ export class DeadlineCheckerService {
           try {
             const html = await this.templateService.renderMudDeadlineReminder({
               recipientName: `${user.firstName} ${user.lastName}`,
-              year: currentYear,
-              deadline: deadline.toLocaleDateString('it-IT', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-              }),
+              year: previousYear + 1,
+              deadline: dataScadenzaIt,
               daysRemaining: daysUntilDeadline,
               companyName: tenant.ragioneSociale,
               referenceYear: previousYear,
-              isComplete,
-              completionPercentage,
-              missingData,
-              mudUrl: `${process.env.PUBLIC_URL || 'https://wasteflow.app'}/mud/${mudReport.id}`,
+              mudUrl: `${process.env.PUBLIC_URL || 'https://wasteflow.app'}${urlPaginaMud}`,
             })
 
             await this.emailService.sendEmail({
               to: user.email,
-              subject: `[WasteFlow] Promemoria Scadenza MUD ${previousYear}`,
+              subject: `[WasteFlow] ${titolo}`,
               html,
             })
 
@@ -889,75 +908,5 @@ export class DeadlineCheckerService {
     })
 
     return notificaRecente !== null
-  }
-
-  /**
-   * Calculate MUD completion percentage based on reportData
-   */
-  private calculateMudCompletionPercentage(reportData: any): number {
-    if (!reportData || typeof reportData !== 'object') {
-      return 0
-    }
-
-    const requiredFields = [
-      'companyInfo',
-      'legalRepresentative',
-      'wasteProduced',
-      'wasteReceived',
-      'wasteTransported',
-      'certificates',
-    ]
-
-    let completedFields = 0
-
-    for (const field of requiredFields) {
-      if (reportData[field] && Object.keys(reportData[field]).length > 0) {
-        completedFields++
-      }
-    }
-
-    return Math.round((completedFields / requiredFields.length) * 100)
-  }
-
-  /**
-   * Get list of missing data sections for MUD report
-   */
-  private getMudMissingData(reportData: any): string[] {
-    if (!reportData || typeof reportData !== 'object') {
-      return [
-        'Dati azienda',
-        'Rappresentante legale',
-        'Rifiuti prodotti',
-        'Rifiuti ricevuti',
-        'Rifiuti trasportati',
-        'Certificati analitici',
-      ]
-    }
-
-    const missing: string[] = []
-
-    if (!reportData.companyInfo || Object.keys(reportData.companyInfo).length === 0) {
-      missing.push('Dati azienda')
-    }
-    if (
-      !reportData.legalRepresentative ||
-      Object.keys(reportData.legalRepresentative).length === 0
-    ) {
-      missing.push('Rappresentante legale')
-    }
-    if (!reportData.wasteProduced || Object.keys(reportData.wasteProduced).length === 0) {
-      missing.push('Rifiuti prodotti')
-    }
-    if (!reportData.wasteReceived || Object.keys(reportData.wasteReceived).length === 0) {
-      missing.push('Rifiuti ricevuti')
-    }
-    if (!reportData.wasteTransported || Object.keys(reportData.wasteTransported).length === 0) {
-      missing.push('Rifiuti trasportati')
-    }
-    if (!reportData.certificates || Object.keys(reportData.certificates).length === 0) {
-      missing.push('Certificati analitici')
-    }
-
-    return missing
   }
 }
