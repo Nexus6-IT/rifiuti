@@ -5,12 +5,7 @@ import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { MetricsService } from '../../core/metrics/metrics.service'
 import { PrismaService } from '../persistence/prisma.service'
 import { calcolaGiorniAllaScadenzaCertificato } from '../rentri/rentri-certificato-scadenza.util'
-
-/** Esito di un giro per tenant: serve al rilancio manuale per distinguere completato e parziale. */
-export interface EsitoGiroRentri {
-  tenantTotali: number
-  tenantConErrore: number
-}
+import { EsitoGiroRentri } from './esito-giro-rentri'
 
 /**
  * Job giornaliero di scadenza del certificato RENTRI (R5, Task 5).

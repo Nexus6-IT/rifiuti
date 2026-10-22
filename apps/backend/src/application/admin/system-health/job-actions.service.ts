@@ -1,10 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common'
 
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
-import {
-  EsitoGiroRentri,
-  RentriRiconciliazioneJob,
-} from '../../../infrastructure/jobs/rentri-riconciliazione.job'
+import { EsitoGiroRentri } from '../../../infrastructure/jobs/esito-giro-rentri'
+import { RentriRiconciliazioneJob } from '../../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../../infrastructure/jobs/rentri-certificato-scadenza.job'
 import { RentriCodificheSyncService } from '../../reference-data/rentri-codifiche-sync.service'
 import { ReferenceDataSeederService } from '../../reference-data/reference-data-seeder.service'

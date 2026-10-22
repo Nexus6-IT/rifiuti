@@ -4,12 +4,7 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { PrismaService } from '../persistence/prisma.service'
 import { RiconciliaStatoRentriUseCase } from '../../application/rentri/riconcilia-stato-rentri.use-case'
-
-/** Esito di un giro per tenant: serve al rilancio manuale per distinguere completato e parziale. */
-export interface EsitoGiroRentri {
-  tenantTotali: number
-  tenantConErrore: number
-}
+import { EsitoGiroRentri } from './esito-giro-rentri'
 
 /**
  * Job di riconciliazione periodica dello stato RENTRI (R5, Task 4).
