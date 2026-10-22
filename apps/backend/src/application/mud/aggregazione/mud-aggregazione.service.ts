@@ -117,6 +117,8 @@ interface RigaInCorso {
   smaltimentoKg: number
   /** stati fisici (non nulli) dei movimenti inclusi */
   stati: Set<StatoFisicoRegistro>
+  /** almeno un movimento incluso porta l'asterisco: serve solo a mostrare il CER */
+  pericoloso: boolean
   dr: Map<string, VoceDr>
   te: Map<string, VoceTe>
 }
@@ -351,6 +353,7 @@ export class MudAggregazioneService {
           recuperoKg: 0,
           smaltimentoKg: 0,
           stati: new Set(),
+          pericoloso: false,
           dr: new Map(),
           te: new Map(),
         }
@@ -424,6 +427,7 @@ export class MudAggregazioneService {
       }
 
       const acc = riga(cer6)
+      if (m.cerCode.includes('*')) acc.pericoloso = true
       movimentiPerCer[cer6] = (movimentiPerCer[cer6] ?? 0) + 1
       inclusi.add(m)
       const stato = statoFisicoMud(m.wastePhysicalState)
@@ -786,7 +790,9 @@ export class MudAggregazioneService {
 
       const stati = [...acc.stati]
       if (stati.length > 1 || stati[0] === 'NON_RICONOSCIUTO') {
-        controlli.push(controlliMud.statoFisicoNonUnivoco(cer6, stati))
+        controlli.push(
+          controlliMud.statoFisicoNonUnivoco(acc.pericoloso ? `${cer6}*` : cer6, stati)
+        )
       }
 
       return {

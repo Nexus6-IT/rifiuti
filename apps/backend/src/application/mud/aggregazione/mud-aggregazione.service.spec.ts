@@ -230,6 +230,19 @@ describe('MudAggregazioneService', () => {
       ])
     })
 
+    it("un CER pericoloso con stati diversi è mostrato con l'asterisco", async () => {
+      impostaDati({
+        movimenti: [
+          mov({ cerCode: '160601', wastePhysicalState: 'Liquido' }),
+          mov({ progressiveNumber: 2, cerCode: '16 06 01*', wastePhysicalState: 'Solido' }),
+        ],
+      })
+      const r = await service.aggrega('t1', 2025)
+      expect(conCodice(r.controlli, 'STATO_FISICO_NON_UNIVOCO')[0].messaggio).toMatch(
+        /^Il rifiuto CER 16 06 01\* è registrato con stati fisici diversi/
+      )
+    })
+
     it('uno stato non riconosciuto avvisa invece di cadere in silenzio sul predefinito', async () => {
       impostaDati({ movimenti: [mov({ wastePhysicalState: 'Rifiuto strano' })] })
       const r = await service.aggrega('t1', 2025)

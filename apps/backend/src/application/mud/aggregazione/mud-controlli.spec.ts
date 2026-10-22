@@ -23,7 +23,7 @@ describe('controlliMud', () => {
       codice: 'UNITA_NON_DI_MASSA',
       gravita: 'BLOCCANTE',
       messaggio:
-        'Il rifiuto CER 170405 ha 1 movimenti in "LITRI" per 30 LITRI (n. 4/2025): il MUD accetta solo kg o tonnellate, e senza conversione questo rifiuto mancherebbe dal file. Inserire il peso specifico (kg per LITRI) in MUD > Integrazioni 2025, riga "CER 170405 – LITRI".',
+        'Il rifiuto CER 17 04 05 ha 1 movimenti in "LITRI" per 30 LITRI (n. 4/2025): il MUD accetta solo kg o tonnellate, e senza conversione questo rifiuto mancherebbe dal file. Inserire il peso specifico (kg per LITRI) in MUD > Integrazioni 2025, riga "CER 170405 – LITRI".',
       movimenti: [
         {
           numero: 4,
@@ -290,7 +290,7 @@ describe('controlliMud', () => {
   it('convertitoConPesoSpecifico include i movimenti con i kg convertiti e segnala il fuori intervallo', () => {
     const r = controlliMud.convertitoConPesoSpecifico('170405', 'LITRI', 1.2, [m], true)
     expect(r.messaggio).toBe(
-      "Il rifiuto CER 170405: 30 LITRI convertiti in 36 kg con il peso specifico delle integrazioni (1,2 kg per LITRI). È una stima: verificarla. Il peso specifico è fuori dall'intervallo consueto per questa unità ed è stato confermato a mano."
+      "Il rifiuto CER 17 04 05: 30 LITRI convertiti in 36 kg con il peso specifico delle integrazioni (1,2 kg per LITRI). È una stima: verificarla. Il peso specifico è fuori dall'intervallo consueto per questa unità ed è stato confermato a mano."
     )
     expect(r.movimenti).toEqual([
       {
@@ -314,7 +314,7 @@ describe('controlliMud', () => {
       codice: 'STATO_FISICO_NON_UNIVOCO',
       gravita: 'AVVISO',
       messaggio:
-        'Il rifiuto CER 200304 è registrato con stati fisici diversi (liquido, solido non polverulento): il file indica "solido non polverulento". La divisione in più schede RIF non è ancora supportata.',
+        'Il rifiuto CER 20 03 04 è registrato con stati fisici diversi (liquido, solido non polverulento): il file indica "solido non polverulento". La divisione in più schede RIF non è ancora supportata.',
     })
     expect(
       controlliMud.statoFisicoNonUnivoco('200304', ['LIQUIDO', 'SOLIDO_NON_POLVERULENTO']).messaggio
@@ -325,10 +325,10 @@ describe('controlliMud', () => {
     expect(
       controlliMud.statoFisicoNonUnivoco('200304', ['LIQUIDO', 'NON_RICONOSCIUTO']).messaggio
     ).toBe(
-      'Il rifiuto CER 200304 è registrato con stati fisici diversi (liquido, non riconosciuto): il file indica "solido non polverulento". La divisione in più schede RIF non è ancora supportata.'
+      'Il rifiuto CER 20 03 04 è registrato con stati fisici diversi (liquido, non riconosciuto): il file indica "solido non polverulento". La divisione in più schede RIF non è ancora supportata.'
     )
     expect(controlliMud.statoFisicoNonUnivoco('200304', ['NON_RICONOSCIUTO']).messaggio).toBe(
-      'Il rifiuto CER 200304 è registrato con uno stato fisico non riconosciuto: il file indica "solido non polverulento". Il registro non si modifica: verificare che lo stato fisico indicato nel file sia corretto; se non lo è, il valore si potrà sistemare solo con una rettifica, che non è ancora supportata (contattare l\'assistenza).'
+      'Il rifiuto CER 20 03 04 è registrato con uno stato fisico non riconosciuto: il file indica "solido non polverulento". Il registro non si modifica: verificare che lo stato fisico indicato nel file sia corretto; se non lo è, il valore si potrà sistemare solo con una rettifica, che non è ancora supportata (contattare l\'assistenza).'
     )
   })
 
@@ -547,5 +547,21 @@ describe('controlliMud', () => {
     expect(
       avvisiNonConfermati(c, ['GIACENZE_NON_CALCOLATE', 'SCARICO_SENZA_FIR', 'ALTRO'])
     ).toEqual([])
+  })
+
+  it("i messaggi per CER mostrano la forma canonica, con l'asterisco dei pericolosi, e tengono le cifre nella chiave e nella riga da compilare", () => {
+    const pericoloso: RifMovimento = { ...m, cerCode: '160601*' }
+
+    const nonDiMassa = controlliMud.unitaNonDiMassa(2025, '160601', 'LITRI', [m, pericoloso])
+    expect(nonDiMassa.messaggio).toMatch(/^Il rifiuto CER 16 06 01\* ha 2 movimenti/)
+    expect(nonDiMassa.messaggio).toContain('riga "CER 160601 – LITRI".')
+    expect(nonDiMassa.integrazione).toMatchObject({ cerCode: '160601' })
+
+    expect(
+      controlliMud.convertitoConPesoSpecifico('160601', 'LITRI', 1.2, [pericoloso], false).messaggio
+    ).toMatch(/^Il rifiuto CER 16 06 01\*: /)
+    expect(controlliMud.statoFisicoNonUnivoco('160601*', ['NON_RICONOSCIUTO']).messaggio).toMatch(
+      /^Il rifiuto CER 16 06 01\* è registrato/
+    )
   })
 })

@@ -72,6 +72,15 @@ export interface MudEsitoControllo {
   kgNonDichiarati?: number
 }
 
+/**
+ * CER di un gruppo di movimenti come lo legge l'utente: forma canonica "NN NN NN", con
+ * l'asterisco se almeno un movimento del gruppo lo porta (pericoloso). Le cifre restano solo
+ * nella chiave d'integrazione e nell'etichetta della riga da compilare.
+ */
+function cerDaMostrare(cerCode6: string, ms: RifMovimento[]): string {
+  return cerCanonico(ms.some(m => (m.cerCode ?? '').includes('*')) ? `${cerCode6}*` : cerCode6)
+}
+
 export interface RifMovimento {
   progressiveNumber: number
   progressiveYear: number
@@ -185,7 +194,7 @@ export const controlliMud = {
   ): MudEsitoControllo => ({
     codice: 'UNITA_NON_DI_MASSA',
     gravita: BLOCCANTE,
-    messaggio: `Il rifiuto CER ${cerCode6} ha ${ms.length} movimenti in "${unita}" per ${q(sommaQuantita(ms))} ${unita} (n. ${elenco(ms)}): il MUD accetta solo kg o tonnellate, e senza conversione questo rifiuto mancherebbe dal file. Inserire il peso specifico (kg per ${unita}) in MUD > Integrazioni ${anno}, riga "CER ${cerCode6} – ${unita}".`,
+    messaggio: `Il rifiuto CER ${cerDaMostrare(cerCode6, ms)} ha ${ms.length} movimenti in "${unita}" per ${q(sommaQuantita(ms))} ${unita} (n. ${elenco(ms)}): il MUD accetta solo kg o tonnellate, e senza conversione questo rifiuto mancherebbe dal file. Inserire il peso specifico (kg per ${unita}) in MUD > Integrazioni ${anno}, riga "CER ${cerCode6} – ${unita}".`,
     movimenti: ms.map(m => segnala(m, false)),
     integrazione: {
       tipo: 'PESO_SPECIFICO',
@@ -225,7 +234,7 @@ export const controlliMud = {
       codice: 'CONVERTITO_CON_PESO_SPECIFICO',
       gravita: AVVISO,
       messaggio:
-        `Il rifiuto CER ${cerCode6}: ${q(sommaQuantita(ms))} ${unita} convertiti in ${q(kg)} kg con il peso specifico delle integrazioni (${q(kgPerUnita)} kg per ${unita}). È una stima: verificarla.` +
+        `Il rifiuto CER ${cerDaMostrare(cerCode6, ms)}: ${q(sommaQuantita(ms))} ${unita} convertiti in ${q(kg)} kg con il peso specifico delle integrazioni (${q(kgPerUnita)} kg per ${unita}). È una stima: verificarla.` +
         (fuoriIntervallo
           ? " Il peso specifico è fuori dall'intervallo consueto per questa unità ed è stato confermato a mano."
           : ''),
@@ -385,19 +394,21 @@ export const controlliMud = {
 
   // Chiamata solo con più di uno stato fisico per lo stesso CER (A-W-11). Gli stati si elencano
   // in ordine alfabetico di etichetta, così il testo non dipende dall'ordine dei movimenti.
-  statoFisicoNonUnivoco: (cerCode6: string, stati: StatoFisicoRegistro[]): MudEsitoControllo => {
+  // `cerCode`: il codice con l'asterisco se il rifiuto è pericoloso (lo decide il chiamante, che
+  // vede i movimenti); qui si mostra solo in forma canonica.
+  statoFisicoNonUnivoco: (cerCode: string, stati: StatoFisicoRegistro[]): MudEsitoControllo => {
     const predefinito = ETICHETTA_STATO_FISICO[STATO_FISICO_PREDEFINITO]
     if (stati.length === 1 && stati[0] === 'NON_RICONOSCIUTO') {
       return {
         codice: 'STATO_FISICO_NON_UNIVOCO',
         gravita: AVVISO,
-        messaggio: `Il rifiuto CER ${cerCode6} è registrato con uno stato fisico non riconosciuto: il file indica "${predefinito}". Il registro non si modifica: verificare che lo stato fisico indicato nel file sia corretto; se non lo è, il valore si potrà sistemare solo con una rettifica, che non è ancora supportata (contattare l'assistenza).`,
+        messaggio: `Il rifiuto CER ${cerCanonico(cerCode)} è registrato con uno stato fisico non riconosciuto: il file indica "${predefinito}". Il registro non si modifica: verificare che lo stato fisico indicato nel file sia corretto; se non lo è, il valore si potrà sistemare solo con una rettifica, che non è ancora supportata (contattare l'assistenza).`,
       }
     }
     return {
       codice: 'STATO_FISICO_NON_UNIVOCO',
       gravita: AVVISO,
-      messaggio: `Il rifiuto CER ${cerCode6} è registrato con stati fisici diversi (${stati
+      messaggio: `Il rifiuto CER ${cerCanonico(cerCode)} è registrato con stati fisici diversi (${stati
         .map(s => ETICHETTA_STATO_FISICO[s])
         .sort()
         .join(
