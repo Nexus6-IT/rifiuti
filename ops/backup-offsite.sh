@@ -114,6 +114,11 @@ BACKUP_FILE="${PREFISSO}${TIMESTAMP}.sql.gz"
 STAGING_PATH="${BACKUP_STAGING_DIR}/${BACKUP_FILE}"
 PARZIALE="${STAGING_PATH}.parziale"
 FILE_IN_CORSO="${STAGING_PATH}"
+# I fattori moltiplicano la dimensione del database: validarli evita un overflow
+# dell'aritmetica a 64 bit di bash (e un controllo dello spazio senza senso).
+for nome in BACKUP_FATTORE_SPAZIO_DUMP BACKUP_FATTORE_SPAZIO_RIPRISTINO; do
+  ERR=$(valida_fattore_spazio "${nome}" "${!nome}" 2>&1) || die "${ERR}"
+done
 
 # La cartella deve esistere prima del controllo dello spazio (df su un percorso
 # inesistente fallirebbe e il primo backup pre-deploy si fermerebbe).
@@ -124,7 +129,7 @@ log "Avvio backup '${BACKUP_MODALITA}' del DB '${DB_NAME}'"
 DIM=$(dimensione_db "${DB_USER}" "${DB_NAME}") || die "impossibile leggere la dimensione del database (Postgres non raggiungibile?)"
 [[ "${DIM}" =~ ^[0-9]+$ ]] || die "dimensione del database non valida: '${DIM}'"
 
-if ! ERR=$(verifica_spazio_libero "${BACKUP_STAGING_DIR}" $((DIM * BACKUP_FATTORE_SPAZIO_DUMP)) 2>&1); then
+if ! ERR=$(verifica_spazio_libero "${BACKUP_STAGING_DIR}" "$(awk -v d="${DIM}" -v f="${BACKUP_FATTORE_SPAZIO_DUMP}" 'BEGIN{printf "%.0f", d*f}')" 2>&1); then
   die "${ERR}"
 fi
 
@@ -141,7 +146,7 @@ fi
 log "Dump completo (marcatore finale presente)"
 
 if [[ "${BACKUP_MODALITA}" == "notturno" ]]; then
-  if ! ERR=$(verifica_spazio_libero "${BACKUP_DATI_DIR}" $((DIM * BACKUP_FATTORE_SPAZIO_RIPRISTINO)) 2>&1); then
+  if ! ERR=$(verifica_spazio_libero "${BACKUP_DATI_DIR}" "$(awk -v d="${DIM}" -v f="${BACKUP_FATTORE_SPAZIO_RIPRISTINO}" 'BEGIN{printf "%.0f", d*f}')" 2>&1); then
     mv -f "${PARZIALE}" "${STAGING_PATH}.non-verificato"
     notifica_fallimento "ATTENZIONE backup WasteFlow non verificato: spazio insufficiente" \
 "Host: $(hostname)

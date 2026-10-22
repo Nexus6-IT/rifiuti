@@ -215,6 +215,12 @@ esegui_stub() {
     bash "$RADICE/ops/backup-offsite.sh" > "$TMP/out-$staging" 2>&1
 }
 
+# Fattori di spazio non validi: l'avvio si ferma prima di toccare il database.
+esegui_stub fattore-dump BACKUP_FATTORE_SPAZIO_DUMP=abc
+verifica "fattore dump non valido: il backup si ferma" 0 grep -q "BACKUP_FATTORE_SPAZIO_DUMP non valido" "$TMP/out-fattore-dump"
+esegui_stub fattore-ripr BACKUP_FATTORE_SPAZIO_RIPRISTINO=0
+verifica "fattore ripristino non valido: il backup si ferma" 0 grep -q "BACKUP_FATTORE_SPAZIO_RIPRISTINO non valido" "$TMP/out-fattore-ripr"
+
 # Finding 1: DROP fallito dopo un ripristino riuscito -> dump accettato, avviso nel log e mail.
 esegui_stub staging-drop FAKE_DROP_FAIL=1 OFFSITE_MODE=disabled
 ESITO_DROP=$?
@@ -301,7 +307,7 @@ else
 
   mkdir -p "$TMP/staging-spazio"
   BACKUP_MODALITA=notturno OFFSITE_MODE=disabled BACKUP_ALERT_EMAIL=nessuno BACKUP_DATI_DIR="$TMP" \
-    BACKUP_FATTORE_SPAZIO_RIPRISTINO=1000000000000 \
+    BACKUP_FATTORE_SPAZIO_RIPRISTINO=1000000 \
     WASTEFLOW_ENV_FILE="$TMP/env-db" BACKUP_STAGING_DIR="$TMP/staging-spazio" \
     bash "$RADICE/ops/backup-offsite.sh" >/dev/null 2>&1
   ESITO_SPAZIO=$?
