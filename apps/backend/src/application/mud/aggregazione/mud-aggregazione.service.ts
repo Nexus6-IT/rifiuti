@@ -44,6 +44,8 @@ export interface MudAggregato {
   dichiarante: { atecoNormalizzato: string | null; comuneCode: string | null }
   /** aggregazione + dichiarante + profilo */
   controlli: MudEsitoControllo[]
+  /** azienda segnata come non tenuta al MUD (A-W-10): il file si genera comunque, con un avviso */
+  mudNonDovuto: boolean
 }
 
 interface Movimento {
@@ -242,7 +244,13 @@ export class MudAggregazioneService {
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { city: true, province: true, atecoCode: true },
+      select: {
+        city: true,
+        province: true,
+        atecoCode: true,
+        mudNonDovuto: true,
+        mudNonDovutoMotivo: true,
+      },
     })
     // Il comune si cerca solo con città e provincia: senza provincia la ricerca sarebbe ambigua.
     const comuneDichiarante =
@@ -535,6 +543,9 @@ export class MudAggregazioneService {
       controlli.push(controlliMud.dichiaranteAtecoNonValido(tenant?.atecoCode ?? ''))
     }
 
+    const mudNonDovuto = tenant?.mudNonDovuto === true
+    if (mudNonDovuto) controlli.push(controlliMud.mudNonDovuto(tenant?.mudNonDovutoMotivo ?? '-'))
+
     this.logger.info(
       `MUD aggregato: tenant ${tenantId}, anno ${anno}, ${movimenti.length} movimenti, ${righeFinali.length} righe, ${controlli.length} controlli`
     )
@@ -544,6 +555,7 @@ export class MudAggregazioneService {
       movimentiPerCer,
       controlli,
       dichiarante: { atecoNormalizzato, comuneCode },
+      mudNonDovuto,
     }
   }
 

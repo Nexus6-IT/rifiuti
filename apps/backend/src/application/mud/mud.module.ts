@@ -8,6 +8,7 @@ import { PrismaModule } from '../../infrastructure/database/prisma.module'
 import { LoggerModule } from '../../core/logger/logger.module'
 import { ReferenceDataModule } from '../reference-data/reference-data.module'
 import { RuoloEffettivoModule } from '../../api/me/ruolo-effettivo.module'
+import { MudObbligoService } from './mud-obbligo.service'
 
 /**
  * MUD Module
@@ -19,7 +20,13 @@ import { RuoloEffettivoModule } from '../../api/me/ruolo-effettivo.module'
   // RuoloEffettivoModule e non MeModule: MeModule porta AuthModule e Redis.
   imports: [PrismaModule, LoggerModule, ReferenceDataModule, RuoloEffettivoModule],
   controllers: [MudController],
-  providers: [MUDGeneratorService, MudExportService, MudVersionRegistry, MudAggregazioneService],
-  exports: [MUDGeneratorService, MudExportService, MudAggregazioneService],
+  providers: [
+    MUDGeneratorService,
+    MudExportService,
+    MudVersionRegistry,
+    MudAggregazioneService,
+    MudObbligoService,
+  ],
+  exports: [MUDGeneratorService, MudExportService, MudAggregazioneService, MudObbligoService],
 })
 export class MUDModule {}

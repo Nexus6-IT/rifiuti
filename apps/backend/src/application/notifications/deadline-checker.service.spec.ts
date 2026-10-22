@@ -725,6 +725,19 @@ describe('DeadlineCheckerService', () => {
         tags: { job: 'checkMudDeadlines' },
       })
     })
+
+    it("un'azienda non tenuta al MUD non riceve promemoria", async () => {
+      // A-W-10: con il flag "MUD non dovuto" non si crea il MUDReport e non partono
+      // notifiche né email. Il filtro sta nella query, così l'azienda non arriva al ciclo.
+      jest.useFakeTimers().setSystemTime(new Date(2026, 3, 29))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([])
+
+      await service.checkMudDeadlines()
+
+      expect(mockPrisma.tenant.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ mudNonDovuto: false }) })
+      )
+    })
   })
 
   describe('checkRentriCertificateExpiration', () => {

@@ -14,7 +14,12 @@ describe('MudController.exportTelematico', () => {
         .fn()
         .mockResolvedValue({ filename: 'f', version: '6.04/25', content: 'XX;' }),
     }
-    const controller = new MudController({} as any, mudExport as any, ruoli('ADMIN') as any)
+    const controller = new MudController(
+      {} as any,
+      mudExport as any,
+      ruoli('ADMIN') as any,
+      {} as any
+    )
     const res: any = { setHeader: jest.fn(), send: jest.fn() }
     await controller.exportTelematico(
       { user: { id: 'u1', tenantId: 't1', role: 'ADMIN' } } as any,
@@ -37,7 +42,12 @@ describe('MudController.exportTelematico', () => {
         .fn()
         .mockResolvedValue({ filename: 'f', version: '6.04/25', content: 'XX;' }),
     }
-    const controller = new MudController({} as any, mudExport as any, ruoli('ADMIN') as any)
+    const controller = new MudController(
+      {} as any,
+      mudExport as any,
+      ruoli('ADMIN') as any,
+      {} as any
+    )
     const res: any = { setHeader: jest.fn(), send: jest.fn() }
     await controller.exportTelematico(
       { user: { id: 'u9', tenantId: 't1', role: 'VIEWER' } } as any,
@@ -58,7 +68,12 @@ describe('MudController.exportTelematico', () => {
         .fn()
         .mockResolvedValue({ filename: 'f', version: '6.04/25', content: 'XX;' }),
     }
-    const controller = new MudController({} as any, mudExport as any, ruoli('ADMIN') as any)
+    const controller = new MudController(
+      {} as any,
+      mudExport as any,
+      ruoli('ADMIN') as any,
+      {} as any
+    )
     const res: any = { setHeader: jest.fn(), send: jest.fn() }
     // ?avvisiConfermati=A&avvisiConfermati=B,C : Express passa un array
     await controller.exportTelematico(
@@ -82,7 +97,7 @@ describe('MudController.exportTelematico', () => {
         .mockResolvedValue({ filename: 'f', version: '6.04/25', content: 'XX;' }),
     }
     const membership = ruoli('VIEWER')
-    const controller = new MudController({} as any, mudExport as any, membership as any)
+    const controller = new MudController({} as any, mudExport as any, membership as any, {} as any)
     const req = { tenantId: 'cliente', user: { id: 'u1', tenantId: 'studio', role: 'ADMIN' } }
     const res: any = { setHeader: jest.fn(), send: jest.fn() }
     await controller.exportTelematico(req as any, res, '2025')
@@ -132,7 +147,7 @@ describe('MudController.exportTelematico', () => {
       aggregazione as any,
       logger
     )
-    const controller = new MudController({} as any, servizio, ruoli('VIEWER') as any)
+    const controller = new MudController({} as any, servizio, ruoli('VIEWER') as any, {} as any)
     const res: any = { setHeader: jest.fn(), send: jest.fn() }
 
     // ADMIN del proprio studio (ruolo del token), ma nell'azienda del cliente ha un ruolo di

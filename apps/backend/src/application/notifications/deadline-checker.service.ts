@@ -7,6 +7,7 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 import { calcolaScadenza } from './scadenza-controparte.util'
+import { FILTRO_AZIENDE_TENUTE_AL_MUD } from '../mud/mud-obbligo.service'
 
 /**
  * Deadline Checker Service
@@ -74,12 +75,14 @@ export class DeadlineCheckerService {
 
       this.logger.info(`Sending MUD deadline reminders: ${daysUntilDeadline} days remaining`)
 
-      // Find all active tenants with MUD reports for previous year
+      // Find all active tenants with MUD reports for previous year. Le aziende segnate come
+      // non tenute al MUD (A-W-10) restano fuori: niente MUDReport, notifiche né email.
       const tenants = await this.prisma.tenant.findMany({
         where: {
           subscriptionStatus: {
             in: ['ACTIVE', 'TRIAL'], // Include active and trial subscriptions
           },
+          ...FILTRO_AZIENDE_TENUTE_AL_MUD,
         },
         include: {
           mudReports: {

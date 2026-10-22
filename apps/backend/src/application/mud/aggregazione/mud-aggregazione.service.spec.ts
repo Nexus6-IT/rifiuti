@@ -1175,6 +1175,37 @@ describe('MudAggregazioneService', () => {
     expect(haBloccanti(r.controlli)).toBe(false)
   })
 
+  it('azienda non tenuta: avviso e mudNonDovuto true', async () => {
+    impostaDati({ movimenti: [mov({})] })
+    prisma.tenant.findUnique.mockResolvedValue({
+      city: 'Roma',
+      province: 'RM',
+      atecoCode: '381100',
+      mudNonDovuto: true,
+      mudNonDovutoMotivo: 'Meno di 10 dipendenti',
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(prisma.tenant.findUnique).toHaveBeenCalledWith({
+      where: { id: 't1' },
+      select: expect.objectContaining({ mudNonDovuto: true, mudNonDovutoMotivo: true }),
+    })
+    expect(r.mudNonDovuto).toBe(true)
+    expect(r.controlli).toContainEqual(controlliMud.mudNonDovuto('Meno di 10 dipendenti'))
+    // il file si genera comunque: nessun bloccante in più
+    expect(haBloccanti(r.controlli)).toBe(false)
+  })
+
+  it('azienda tenuta al MUD: nessun avviso e mudNonDovuto false', async () => {
+    impostaDati({ movimenti: [mov({})] })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.mudNonDovuto).toBe(false)
+    expect(codici(r.controlli)).not.toContain('MUD_NON_DOVUTO')
+  })
+
   it('ATECO di 4 cifre blocca', async () => {
     impostaDati({ movimenti: [mov({})] })
     prisma.tenant.findUnique.mockResolvedValue({ city: 'Roma', province: 'RM', atecoCode: '38.11' })

@@ -44,6 +44,7 @@ export type MudCodiceControllo =
   | 'ESITO_FIR_RESPINTO'
   | 'GIACENZE_NON_CALCOLATE'
   | 'STATO_FISICO_NON_UNIVOCO'
+  | 'MUD_NON_DOVUTO'
 
 export type IntegrazioneRichiesta =
   | { tipo: 'CF_DESTINATARIO'; chiave: string; ragioneSociale: string }
@@ -405,6 +406,13 @@ export const controlliMud = {
         )}): il file indica "${predefinito}". La divisione in più schede RIF non è ancora supportata.`,
     }
   },
+
+  // A-W-10: informativo, senza movimenti; non cambia le quantità dichiarate.
+  mudNonDovuto: (motivo: string): MudEsitoControllo => ({
+    codice: 'MUD_NON_DOVUTO',
+    gravita: AVVISO,
+    messaggio: `L'azienda è segnata come non tenuta alla presentazione del MUD (${motivo}): il file si può generare comunque, ma promemoria e scadenze del MUD sono disattivati.`,
+  }),
 
   // Chiamata solo con almeno un saldo positivo (A-W-06): senza, il file è coerente col registro.
   giacenzeNonCalcolate: (

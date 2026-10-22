@@ -1,11 +1,33 @@
-import { Controller, Get, Query, UseGuards, Req, Res, BadRequestException } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Put,
+  Body,
+  Query,
+  UseGuards,
+  Req,
+  Res,
+  BadRequestException,
+  ForbiddenException,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common'
 import { Response } from 'express'
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiResponse } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { MUDGeneratorService } from '../../application/mud/mud-generator.service'
 import { MudExportService } from '../../application/mud/export/mud-export.service'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
-import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { MudObbligoService, ObbligoMud } from '../../application/mud/mud-obbligo.service'
+import { ImpostaObbligoMudDto } from './dtos/obbligo-mud.dto'
+
+/**
+ * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono segnare l'azienda come non
+ * tenuta al MUD (A-W-10). Non si usa `@Roles`: `RolesGuard` vede solo il ruolo del token e
+ * gira prima del `TenantSwitchInterceptor`, che seleziona l'azienda.
+ */
+const RUOLI_OBBLIGO_MUD: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
 
 /**
  * MUD Controller
@@ -21,7 +43,8 @@ export class MudController {
   constructor(
     private readonly mudGenerator: MUDGeneratorService,
     private readonly mudExport: MudExportService,
-    private readonly membership: RuoloEffettivoService
+    private readonly membership: RuoloEffettivoService,
+    private readonly obbligo: MudObbligoService
   ) {}
 
   @Get('generate')
@@ -86,6 +109,41 @@ export class MudController {
   @ApiOperation({ summary: 'Versioni tracciato MUD supportate (per anno)' })
   async exportVersions() {
     return { versions: this.mudExport.supportedVersions() }
+  }
+
+  /** Obbligo del MUD dell'azienda selezionata (A-W-10): lo leggono tutti i ruoli. */
+  @Get('obbligo')
+  @ApiOperation({ summary: "Se l'azienda è segnata come non tenuta al MUD" })
+  @ApiResponse({ status: 200, description: 'Flag, motivo, data e utente che lo ha impostato' })
+  async leggiObbligo(@Req() req: any): Promise<ObbligoMud> {
+    return this.obbligo.leggi(requireRequestTenantId(req))
+  }
+
+  /**
+   * Segna l'azienda selezionata come non tenuta al MUD, o di nuovo tenuta (A-W-10). Solo un
+   * amministratore nell'azienda selezionata (ruolo effettivo, non quello del token).
+   */
+  @Put('obbligo')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Imposta se l'azienda è tenuta al MUD",
+    description:
+      'Con il flag attivo lo scadenzario non manda promemoria del MUD; il file si può ' +
+      'generare comunque, con un avviso. Il motivo è obbligatorio con il flag attivo.',
+  })
+  @ApiResponse({ status: 200, description: 'Obbligo aggiornato' })
+  @ApiResponse({ status: 400, description: 'Motivo mancante o non valido' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  async impostaObbligo(@Body() dto: ImpostaObbligoMudDto, @Req() req: any): Promise<ObbligoMud> {
+    const tenantId = requireRequestTenantId(req)
+    const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
+    if (!RUOLI_OBBLIGO_MUD.includes(ruolo)) {
+      throw new ForbiddenException({
+        message: "Solo un amministratore dell'azienda può modificare l'obbligo del MUD.",
+        error: 'MUD_OBBLIGO_RISERVATO_AMMINISTRATORI',
+      })
+    }
+    return this.obbligo.imposta(tenantId, req.user.id, dto.mudNonDovuto, dto.motivo ?? null)
   }
 
   /**

@@ -483,6 +483,18 @@ describe('controlliMud', () => {
     )
   })
 
+  it('mudNonDovuto è un avviso informativo, senza movimenti, col motivo nel testo (A-W-10)', () => {
+    const c = controlliMud.mudNonDovuto('Meno di 10 dipendenti')
+    expect(c).toEqual({
+      codice: 'MUD_NON_DOVUTO',
+      gravita: 'AVVISO',
+      messaggio:
+        "L'azienda è segnata come non tenuta alla presentazione del MUD (Meno di 10 dipendenti): il file si può generare comunque, ma promemoria e scadenze del MUD sono disattivati.",
+    })
+    // informativo: non cambia le quantità dichiarate
+    expect(riepilogaAvvisi([c]).cambianoQuantita).toBe(false)
+  })
+
   it('registroVuotoConFir e firNonRegistrato portano i FIR', () => {
     const v = controlliMud.registroVuotoConFir(2025, ['A', 'B'])
     expect(v.fir).toEqual(['A', 'B'])
