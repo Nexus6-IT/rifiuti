@@ -1,10 +1,10 @@
 import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
-import { MudExportService } from './mud-export.service'
+import { MudExportService, aziendaDichiarante } from './mud-export.service'
 import { MudVersionRegistry } from './mud-version.registry'
 import { HttpExceptionFilter } from '../../../core/filters/http-exception.filter'
 import { controlliMud, riepilogaAvvisi, type RifMovimento } from '../aggregazione/mud-controlli'
 import { INTEGRAZIONI_VUOTE } from '../aggregazione/mud-integrazioni'
-import { hashAggregato } from '../aggregazione/mud-regole'
+import { hashAggregato, hashDichiarante } from '../aggregazione/mud-regole'
 import type { MudRifiutoLine } from './mud-export.types'
 
 describe('MudExportService', () => {
@@ -459,6 +459,62 @@ describe('MudExportService', () => {
     const reportData = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData
     expect(reportData.esportazioni).toHaveLength(2)
     expect(reportData.esportazioni[0]).toEqual({ vecchia: true })
+  })
+
+  it("l'esportazione registra anche l'hash dei dati del dichiarante usati nel file", async () => {
+    aggregazione.aggrega.mockResolvedValue({
+      anno: 2024,
+      righe: [rigaValida],
+      dichiarante: DICHIARANTE_OK,
+      movimentiPerCer: { '170405': 1 },
+      controlli: [],
+    })
+    await service.exportTelematico('t1', 2024, admin)
+    const voce = prisma.mUDReport.upsert.mock.calls[0][0].create.reportData.esportazioni[0]
+    expect(voce.hashDichiarante).toBe(
+      hashDichiarante(aziendaDichiarante(tenantCompleto, DICHIARANTE_OK))
+    )
+  })
+
+  describe('dichiarazione sostitutiva (A-W-04)', () => {
+    beforeEach(() => {
+      aggregazione.aggrega.mockResolvedValue({
+        anno: 2024,
+        righe: [rigaValida],
+        dichiarante: DICHIARANTE_OK,
+        movimentiPerCer: { '170405': 1 },
+        controlli: [],
+      })
+    })
+    const recordAA = (contenuto: string) => contenuto.split('\r\n').find(l => l.startsWith('AA;'))!
+
+    it('con un MUD già presentato il record AA dichiara la sostituzione', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue({
+        status: 'SUBMITTED',
+        submittedAt: new Date('2026-06-30T10:00:00Z'),
+        submittedBy: 'u1',
+        reportData: {},
+      })
+      const r = await service.exportTelematico('t1', 2024, admin)
+      expect(prisma.mUDReport.findUnique).toHaveBeenCalledWith({
+        where: { tenantId_year: { tenantId: 't1', year: 2024 } },
+        select: { status: true, submittedAt: true },
+      })
+      const aa = recordAA(r.content)
+      expect(aa.endsWith(';1;20260630;')).toBe(true)
+      expect(aa).toHaveLength(338)
+    })
+
+    it('senza una presentazione il record AA non sostituisce nulla', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue({
+        status: 'DRAFT',
+        submittedAt: null,
+        submittedBy: null,
+        reportData: {},
+      })
+      const r = await service.exportTelematico('t1', 2024, admin)
+      expect(recordAA(r.content).endsWith(';0;00000000;')).toBe(true)
+    })
   })
 
   it('un DR senza codice fiscale non rompe la lunghezza dei record', async () => {

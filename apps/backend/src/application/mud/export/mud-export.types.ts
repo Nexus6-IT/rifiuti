@@ -325,6 +325,11 @@ export interface MudExportData {
   intermediazioni?: MudIntermediazione[]
   /** Istante di creazione del file (testata XX); default: ora corrente. */
   generatedAt?: Date
+  /**
+   * Dichiarazione sostitutiva (A-W-04): presente se per l'anno risulta già una comunicazione
+   * presentata. Il record AA porta allora «annulla e sostituisce» = 1 e la sua data.
+   */
+  sostituisce?: { dataComunicazione: Date }
 }
 
 /** Risultato dell'export: contenuto del file + metadati. */

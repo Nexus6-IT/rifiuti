@@ -7,6 +7,7 @@ import { MudAggregazioneService } from './aggregazione/mud-aggregazione.service'
 import { MudController } from '../../api/mud/mud.controller'
 import { RuoloEffettivoService } from '../../api/me/ruolo-effettivo.service'
 import { MudObbligoService } from './mud-obbligo.service'
+import { MudPresentazioneService } from './mud-presentazione.service'
 
 describe('MUDModule (DI wiring)', () => {
   it('risolve generator, export service, aggregazione, controller e ruolo effettivo', async () => {
@@ -22,6 +23,8 @@ describe('MUDModule (DI wiring)', () => {
     expect(moduleRef.get(RuoloEffettivoService)).toBeDefined()
     // flag "MUD non dovuto" (A-W-10)
     expect(moduleRef.get(MudObbligoService)).toBeDefined()
+    // segnatura della presentazione (Task 8)
+    expect(moduleRef.get(MudPresentazioneService)).toBeDefined()
 
     await moduleRef.close()
   })

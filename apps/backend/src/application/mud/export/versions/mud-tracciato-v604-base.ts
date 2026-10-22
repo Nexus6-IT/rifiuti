@@ -353,8 +353,9 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
       mudAlfa(a.legaleRappresentanteNome ?? '', 25),
       mudDate(data.generatedAt ?? new Date()), // data compilazione AAAAMMGG
       mudNum(12, 2), // mesi di attività nell'anno (default 12)
-      mudNum(0, 1), // annulla e sostituisce
-      mudNum(0, 8), // data comunicazione sostituita
+      // annulla e sostituisce + data della comunicazione sostituita (giorno italiano AAAAMMGG)
+      mudNum(data.sostituisce ? 1 : 0, 1),
+      data.sostituisce ? mudDate(data.sostituisce.dataComunicazione) : mudNum(0, 8),
     ])
   }
 

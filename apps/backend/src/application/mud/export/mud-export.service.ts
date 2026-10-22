@@ -4,11 +4,11 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
-import type { Prisma } from '@prisma/client'
+import type { Prisma, Tenant } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { MudVersionRegistry } from './mud-version.registry'
-import { MudAggregazioneService } from '../aggregazione/mud-aggregazione.service'
+import { MudAggregazioneService, type MudAggregato } from '../aggregazione/mud-aggregazione.service'
 import {
   avvisiCambianoQuantita,
   avvisiNonConfermati,
@@ -17,9 +17,10 @@ import {
   riepilogaAvvisi,
 } from '../aggregazione/mud-controlli'
 import { leggiIntegrazioni } from '../aggregazione/mud-integrazioni'
-import { hashAggregato } from '../aggregazione/mud-regole'
+import { hashAggregato, hashDichiarante } from '../aggregazione/mud-regole'
 import { aggiornaReportData } from '../mud-report-data'
 import {
+  MudAzienda,
   MudExportData,
   MudExportResult,
   MudAutorizzazione,
@@ -27,6 +28,54 @@ import {
   MudTipoAutorizzazione,
   MudClassificazioneDiscarica,
 } from './mud-export.types'
+
+/** Campi dell'azienda che entrano nell'anagrafica del dichiarante del file MUD. */
+export type TenantDichiarante = Pick<
+  Tenant,
+  | 'ragioneSociale'
+  | 'partitaIva'
+  | 'codiceFiscale'
+  | 'address'
+  | 'civico'
+  | 'city'
+  | 'province'
+  | 'postalCode'
+  | 'pec'
+  | 'telefono'
+  | 'reaNumber'
+  | 'numeroAddetti'
+  | 'legaleRappresentanteNome'
+  | 'legaleRappresentanteCognome'
+>
+
+/**
+ * Anagrafica del dichiarante come entra nel file: dati dell'azienda più ATECO e comune ISTAT
+ * già risolti dall'aggregazione. La usa anche la segnatura della presentazione per capire se
+ * il dichiarante è cambiato dopo (`hashDichiarante`).
+ */
+export function aziendaDichiarante(
+  tenant: TenantDichiarante,
+  dichiarante: MudAggregato['dichiarante']
+): MudAzienda {
+  return {
+    ragioneSociale: tenant.ragioneSociale,
+    partitaIva: tenant.partitaIva,
+    codiceFiscale: tenant.codiceFiscale ?? undefined,
+    via: tenant.address ?? undefined,
+    civico: tenant.civico ?? undefined,
+    comune: tenant.city ?? undefined,
+    comuneCode: dichiarante.comuneCode ?? undefined,
+    provincia: tenant.province ?? undefined,
+    cap: tenant.postalCode ?? undefined,
+    pec: tenant.pec ?? undefined,
+    telefono: tenant.telefono ?? undefined,
+    atecoCode: dichiarante.atecoNormalizzato ?? undefined,
+    reaNumber: tenant.reaNumber ?? undefined,
+    numeroAddetti: tenant.numeroAddetti ?? undefined,
+    legaleRappresentanteNome: tenant.legaleRappresentanteNome ?? undefined,
+    legaleRappresentanteCognome: tenant.legaleRappresentanteCognome ?? undefined,
+  }
+}
 
 /** Ruoli che possono confermare gli avvisi che cambiano le quantità (Decisione 19). */
 export const RUOLI_CONFERMA_AVVISI = ['ADMIN', 'SUPER_ADMIN'] as const
@@ -114,31 +163,24 @@ export class MudExportService {
       })
     }
 
+    // Dichiarazione sostitutiva (A-W-04): se l'anno risulta già presentato, il file annulla e
+    // sostituisce quella comunicazione.
+    const presentato = await this.prisma.mUDReport.findUnique({
+      where: { tenantId_year: { tenantId, year } },
+      select: { status: true, submittedAt: true },
+    })
+
     const data: MudExportData = {
       year,
-      azienda: {
-        ragioneSociale: tenant.ragioneSociale,
-        partitaIva: tenant.partitaIva,
-        codiceFiscale: tenant.codiceFiscale ?? undefined,
-        via: tenant.address ?? undefined,
-        civico: tenant.civico ?? undefined,
-        comune: tenant.city ?? undefined,
-        comuneCode: aggregato.dichiarante.comuneCode ?? undefined,
-        provincia: tenant.province ?? undefined,
-        cap: tenant.postalCode ?? undefined,
-        pec: tenant.pec ?? undefined,
-        telefono: tenant.telefono ?? undefined,
-        atecoCode: aggregato.dichiarante.atecoNormalizzato ?? undefined,
-        reaNumber: tenant.reaNumber ?? undefined,
-        numeroAddetti: tenant.numeroAddetti ?? undefined,
-        legaleRappresentanteNome: tenant.legaleRappresentanteNome ?? undefined,
-        legaleRappresentanteCognome: tenant.legaleRappresentanteCognome ?? undefined,
-      },
+      azienda: aziendaDichiarante(tenant, aggregato.dichiarante),
       rifiuti: aggregato.righe,
       // Schede SA-AUT: emesse solo se l'impianto ha autorizzazioni registrate.
       // Per i soggetti estranei alla gestione rifiuti la lista è vuota e il
       // record AU non viene prodotto, come richiede il tracciato.
       autorizzazioni: await this.caricaAutorizzazioni(tenantId),
+      ...(presentato?.status === 'SUBMITTED' && presentato.submittedAt
+        ? { sostituisce: { dataComunicazione: presentato.submittedAt } }
+        : {}),
     }
 
     const content = tracciato.generate(data)
@@ -169,6 +211,9 @@ export class MudExportService {
           generatoDa: utente.id,
           versione: result.version,
           hashAggregato: hash,
+          // i dati del dichiarante non entrano in hashAggregato (solo righe): la segnatura
+          // della presentazione li confronta a parte
+          hashDichiarante: hashDichiarante(data.azienda),
           avvisiConfermati: codiciAvviso,
           riepilogo: riepilogoQuantita,
           integrazioniUsate: leggiIntegrazioni(p),

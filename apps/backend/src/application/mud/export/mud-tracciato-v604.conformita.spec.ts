@@ -278,6 +278,20 @@ describe.each([
     })
   })
 
+  it('con un MUD già presentato il record AA dichiara la sostituzione', () => {
+    const data = datasetCompleto(anno)
+    // 30/06/2026 alle 01:30 di Roma è ancora il 29 giugno in UTC: conta il giorno italiano
+    data.sostituisce = { dataComunicazione: new Date('2026-06-29T23:30:00Z') }
+    const aa = righe(tracciato.generate(data)).find(l => l.startsWith('AA;'))!
+    expect(aa.endsWith(';1;20260630;')).toBe(true)
+    expect(aa).toHaveLength(LUNGHEZZE.AA)
+  })
+
+  it('senza una presentazione precedente il record AA non sostituisce nulla', () => {
+    const aa = linee.find(l => l.startsWith('AA;'))!
+    expect(aa.endsWith(';0;00000000;')).toBe(true)
+  })
+
   it('i campi ISTAT sono numerici zero-paddati, mai spazi', () => {
     // ISTAT provincia/comune sono `num 3` da tracciato: uno spazio in un campo
     // numerico fa scartare il file in acquisizione.

@@ -9,6 +9,7 @@ import { LoggerModule } from '../../core/logger/logger.module'
 import { ReferenceDataModule } from '../reference-data/reference-data.module'
 import { RuoloEffettivoModule } from '../../api/me/ruolo-effettivo.module'
 import { MudObbligoService } from './mud-obbligo.service'
+import { MudPresentazioneService } from './mud-presentazione.service'
 
 /**
  * MUD Module
@@ -26,7 +27,14 @@ import { MudObbligoService } from './mud-obbligo.service'
     MudVersionRegistry,
     MudAggregazioneService,
     MudObbligoService,
+    MudPresentazioneService,
   ],
-  exports: [MUDGeneratorService, MudExportService, MudAggregazioneService, MudObbligoService],
+  exports: [
+    MUDGeneratorService,
+    MudExportService,
+    MudAggregazioneService,
+    MudObbligoService,
+    MudPresentazioneService,
+  ],
 })
 export class MUDModule {}

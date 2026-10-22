@@ -2,7 +2,11 @@ import {
   Controller,
   Get,
   Put,
+  Post,
+  Delete,
   Body,
+  Param,
+  ParseIntPipe,
   Query,
   UseGuards,
   Req,
@@ -21,6 +25,11 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { MudObbligoService, ObbligoMud } from '../../application/mud/mud-obbligo.service'
 import { ImpostaObbligoMudDto } from './dtos/obbligo-mud.dto'
+import {
+  MudPresentazioneService,
+  StatoPresentazioneMud,
+} from '../../application/mud/mud-presentazione.service'
+import { SegnaPresentatoDto } from './dtos/segna-presentato.dto'
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono segnare l'azienda come non
@@ -28,6 +37,9 @@ import { ImpostaObbligoMudDto } from './dtos/obbligo-mud.dto'
  * gira prima del `TenantSwitchInterceptor`, che seleziona l'azienda.
  */
 const RUOLI_OBBLIGO_MUD: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
+
+/** Ruoli EFFETTIVI che possono segnare o annullare la presentazione del MUD (A-C-06). */
+const RUOLI_PRESENTAZIONE_MUD: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
 
 /**
  * MUD Controller
@@ -44,7 +56,8 @@ export class MudController {
     private readonly mudGenerator: MUDGeneratorService,
     private readonly mudExport: MudExportService,
     private readonly membership: RuoloEffettivoService,
-    private readonly obbligo: MudObbligoService
+    private readonly obbligo: MudObbligoService,
+    private readonly presentazione: MudPresentazioneService
   ) {}
 
   @Get('generate')
@@ -154,6 +167,72 @@ export class MudController {
       })
     }
     return this.obbligo.imposta(tenantId, req.user.id, dto.mudNonDovuto, dto.motivo ?? null)
+  }
+
+  /** Stato della presentazione del MUD dell'anno dei dati: lo leggono tutti i ruoli. */
+  @Get(':year/presentazione')
+  @ApiOperation({ summary: 'Stato della presentazione del MUD (anno dei dati)' })
+  async statoPresentazione(
+    @Req() req: any,
+    @Param('year', ParseIntPipe) year: number
+  ): Promise<StatoPresentazioneMud> {
+    return this.presentazione.stato(requireRequestTenantId(req), year)
+  }
+
+  /**
+   * Segna il MUD dell'anno come presentato, legato a un'esportazione registrata. Solo un
+   * amministratore nell'azienda selezionata (ruolo effettivo, non quello del token, A-C-06).
+   */
+  @Post(':year/presentazione')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Segna il MUD come presentato' })
+  @ApiResponse({ status: 200, description: 'Stato della presentazione aggiornato' })
+  @ApiResponse({ status: 400, description: 'Data futura o esportazione non trovata' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  @ApiResponse({ status: 422, description: 'Errori bloccanti o avvisi da confermare' })
+  async segnaPresentato(
+    @Req() req: any,
+    @Param('year', ParseIntPipe) year: number,
+    @Body() dto: SegnaPresentatoDto
+  ): Promise<StatoPresentazioneMud> {
+    const tenantId = await this.richiediAmministratorePresentazione(req)
+    return this.presentazione.segnaPresentato(
+      tenantId,
+      year,
+      req.user.id,
+      dto.dataPresentazione ? new Date(dto.dataPresentazione) : undefined,
+      dto.avvisiConfermati,
+      dto.esportazioneGenerataIl
+    )
+  }
+
+  /** Annulla la presentazione del MUD dell'anno, conservandola nello storico. */
+  @Delete(':year/presentazione')
+  @ApiOperation({ summary: 'Annulla la presentazione del MUD' })
+  @ApiResponse({ status: 200, description: 'Stato della presentazione aggiornato' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  async annullaPresentazione(
+    @Req() req: any,
+    @Param('year', ParseIntPipe) year: number
+  ): Promise<StatoPresentazioneMud> {
+    const tenantId = await this.richiediAmministratorePresentazione(req)
+    return this.presentazione.annullaPresentazione(tenantId, year, req.user.id)
+  }
+
+  /**
+   * Azienda selezionata, se l'utente vi è amministratore; altrimenti 403. Niente `@Roles`:
+   * `RolesGuard` gira prima del `TenantSwitchInterceptor` e vede solo il ruolo del token.
+   */
+  private async richiediAmministratorePresentazione(req: any): Promise<string> {
+    const tenantId = requireRequestTenantId(req)
+    const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
+    if (!RUOLI_PRESENTAZIONE_MUD.includes(ruolo)) {
+      throw new ForbiddenException({
+        message: "Solo un amministratore dell'azienda può segnare o annullare la presentazione.",
+        error: 'MUD_PRESENTAZIONE_RISERVATA_AMMINISTRATORI',
+      })
+    }
+    return tenantId
   }
 
   /** Vero se il ruolo nell'azienda selezionata permette di modificare l'obbligo del MUD. */
