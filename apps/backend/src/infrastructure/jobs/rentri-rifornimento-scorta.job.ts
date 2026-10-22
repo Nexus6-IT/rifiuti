@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
+import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { PrismaService } from '../persistence/prisma.service'
 import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
 import { RentriScortaRepository } from '../persistence/rentri-scorta.repository'
@@ -45,75 +46,84 @@ export class RentriRifornimentoScortaJob {
   async eseguiRifornimento(): Promise<void> {
     this.logger.info('Avvio rifornimento periodico scorta RENTRI')
 
-    const tenants = await this.prisma.tenant.findMany({
-      where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
-      select: { id: true },
-    })
+    try {
+      const tenants = await this.prisma.tenant.findMany({
+        where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
+        select: { id: true },
+      })
 
-    let sediRifornite = 0
-    let sediInErrore = 0
+      let sediRifornite = 0
+      let sediInErrore = 0
 
-    for (const tenant of tenants) {
-      const unitaLocali = await this.unitaLocaleService.listForTenant(tenant.id)
+      for (const tenant of tenants) {
+        const unitaLocali = await this.unitaLocaleService.listForTenant(tenant.id)
 
-      for (const sede of unitaLocali) {
-        if (!sede.dimensioneScortaDesiderata) {
-          this.logger.debug(
-            'Nessuna soglia di scorta configurata per questa sede, nessun rifornimento',
-            {
-              tenantId: tenant.id,
-              numIscrSito: sede.numIscrSito,
-            }
-          )
-          continue
-        }
-
-        if (!sede.codiceBloccoPredefinito) {
-          this.logger.debug(
-            'Nessun blocco predefinito configurato per questa sede: nessun rifornimento (fail-closed, mai un blocco indovinato)',
-            { tenantId: tenant.id, numIscrSito: sede.numIscrSito }
-          )
-          continue
-        }
-
-        try {
-          const disponibili = await this.scortaRepo.contaTotaleDisponibili(
-            tenant.id,
-            sede.numIscrSito
-          )
-          const mancanti = sede.dimensioneScortaDesiderata - disponibili
-
-          if (mancanti <= 0) {
+        for (const sede of unitaLocali) {
+          if (!sede.dimensioneScortaDesiderata) {
+            this.logger.debug(
+              'Nessuna soglia di scorta configurata per questa sede, nessun rifornimento',
+              {
+                tenantId: tenant.id,
+                numIscrSito: sede.numIscrSito,
+              }
+            )
             continue
           }
 
-          const esito = await this.avviaVidimazione.execute(
-            tenant.id,
-            sede.codiceBloccoPredefinito,
-            mancanti
-          )
-          sediRifornite++
-          this.logger.info('Rifornimento scorta RENTRI eseguito per la sede', {
-            tenantId: tenant.id,
-            numIscrSito: sede.numIscrSito,
-            codiceBlocco: sede.codiceBloccoPredefinito,
-            ...esito,
-          })
-        } catch (error: unknown) {
-          sediInErrore++
-          this.logger.error(
-            'Rifornimento scorta RENTRI fallito per la sede, si prosegue con le altre',
-            error instanceof Error ? error : new Error(String(error)),
-            { tenantId: tenant.id, numIscrSito: sede.numIscrSito }
-          )
+          if (!sede.codiceBloccoPredefinito) {
+            this.logger.debug(
+              'Nessun blocco predefinito configurato per questa sede: nessun rifornimento (fail-closed, mai un blocco indovinato)',
+              { tenantId: tenant.id, numIscrSito: sede.numIscrSito }
+            )
+            continue
+          }
+
+          try {
+            const disponibili = await this.scortaRepo.contaTotaleDisponibili(
+              tenant.id,
+              sede.numIscrSito
+            )
+            const mancanti = sede.dimensioneScortaDesiderata - disponibili
+
+            if (mancanti <= 0) {
+              continue
+            }
+
+            const esito = await this.avviaVidimazione.execute(
+              tenant.id,
+              sede.codiceBloccoPredefinito,
+              mancanti
+            )
+            sediRifornite++
+            this.logger.info('Rifornimento scorta RENTRI eseguito per la sede', {
+              tenantId: tenant.id,
+              numIscrSito: sede.numIscrSito,
+              codiceBlocco: sede.codiceBloccoPredefinito,
+              ...esito,
+            })
+          } catch (error: unknown) {
+            sediInErrore++
+            this.logger.error(
+              'Rifornimento scorta RENTRI fallito per la sede, si prosegue con le altre',
+              error instanceof Error ? error : new Error(String(error)),
+              { tenantId: tenant.id, numIscrSito: sede.numIscrSito }
+            )
+            segnalaErroreJob('eseguiRifornimento', error, { tenantId: tenant.id })
+          }
         }
       }
-    }
 
-    this.logger.info('Rifornimento periodico scorta RENTRI completato', {
-      tenantTotali: tenants.length,
-      sediRifornite,
-      sediInErrore,
-    })
+      this.logger.info('Rifornimento periodico scorta RENTRI completato', {
+        tenantTotali: tenants.length,
+        sediRifornite,
+        sediInErrore,
+      })
+    } catch (error: unknown) {
+      this.logger.error(
+        'Rifornimento periodico scorta RENTRI fallito',
+        error instanceof Error ? error : new Error(String(error))
+      )
+      segnalaErroreJob('eseguiRifornimento', error)
+    }
   }
 }

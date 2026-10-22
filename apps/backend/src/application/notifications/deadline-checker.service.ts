@@ -4,6 +4,7 @@ import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 import { calcolaScadenza } from './scadenza-controparte.util'
 
@@ -186,7 +187,7 @@ export class DeadlineCheckerService {
       this.logger.info(`MUD deadline check completed: ${notificationsSent} notifications sent`)
     } catch (error) {
       this.logger.error('Failed to check MUD deadlines', error)
-      throw error
+      segnalaErroreJob('checkMudDeadlines', error)
     }
   }
 
@@ -207,6 +208,7 @@ export class DeadlineCheckerService {
       this.logger.debug('Vidimazione deadline check not yet implemented (awaiting Register schema)')
     } catch (error) {
       this.logger.error('Failed to check vidimazione deadlines', error)
+      segnalaErroreJob('checkVidimazioneDeadlines', error)
     }
   }
 
@@ -443,6 +445,7 @@ export class DeadlineCheckerService {
       )
     } catch (error) {
       this.logger.error('Controllo scadenza autorizzazioni impianto fallito', error)
+      segnalaErroreJob('checkAuthorizationExpirations', error)
     }
   }
 
@@ -797,6 +800,7 @@ export class DeadlineCheckerService {
       )
     } catch (error) {
       this.logger.error('Controllo scadenza certificato RENTRI fallito', error)
+      segnalaErroreJob('checkRentriCertificateExpiration', error)
     }
   }
 
@@ -822,6 +826,7 @@ export class DeadlineCheckerService {
       this.logger.info(`Cleaned up ${result.count} old notifications`)
     } catch (error) {
       this.logger.error('Failed to cleanup old notifications', error)
+      segnalaErroreJob('cleanupOldNotifications', error)
     }
   }
 

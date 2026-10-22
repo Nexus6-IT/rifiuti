@@ -42,6 +42,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing'
+import * as Sentry from '@sentry/node'
 import { DeadlineCheckerService } from './deadline-checker.service'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { TemplateService } from '../../infrastructure/email/template.service'
@@ -50,6 +51,7 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 
 jest.mock('../../infrastructure/rentri/rentri-certificato-scadenza.util')
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
 const mockCalcolaGiorni = calcolaGiorniAllaScadenzaCertificato as jest.Mock
 
@@ -710,6 +712,18 @@ describe('DeadlineCheckerService', () => {
         expect.stringContaining('Invio email'),
         expect.any(Error)
       )
+    })
+
+    it('un errore del job delle scadenze MUD arriva a Bugsink', async () => {
+      // 29 aprile: giorno di invio con la scadenza del 30 aprile di domani.
+      jest.useFakeTimers().setSystemTime(new Date(2026, 3, 29))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockRejectedValue(new Error('db giù'))
+
+      await expect(service.checkMudDeadlines()).resolves.toBeUndefined()
+
+      expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+        tags: { job: 'checkMudDeadlines' },
+      })
     })
   })
 

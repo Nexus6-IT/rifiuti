@@ -1,4 +1,7 @@
+import * as Sentry from '@sentry/node'
 import { RentriRiconciliazioneJob } from './rentri-riconciliazione.job'
+
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
 /**
  * Test unitari di RentriRiconciliazioneJob (R5 Task 4).
@@ -14,6 +17,7 @@ describe('RentriRiconciliazioneJob', () => {
   let mockLogger: any
 
   beforeEach(() => {
+    jest.clearAllMocks()
     mockPrisma = {
       tenant: { findMany: jest.fn() },
     }
@@ -80,5 +84,21 @@ describe('RentriRiconciliazioneJob', () => {
     mockRiconciliaStatoRentri.execute.mockRejectedValue(new Error('boom'))
 
     await expect(job.eseguiRiconciliazione()).resolves.toBeUndefined()
+  })
+
+  it('un errore di un solo tenant della riconciliazione arriva a Bugsink con il tenant', async () => {
+    mockPrisma.tenant.findMany.mockResolvedValue([{ id: 't1' }, { id: 't2' }])
+    mockRiconciliaStatoRentri.execute.mockImplementation((tenantId: string) =>
+      tenantId === 't2'
+        ? Promise.reject(new Error('credenziale scaduta'))
+        : Promise.resolve({ controllati: 0, corretti: 0, segnalati: 0, nessunaDivergenza: 0 })
+    )
+
+    await expect(job.eseguiRiconciliazione()).resolves.toBeUndefined()
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1)
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { job: 'eseguiRiconciliazione', tenantId: 't2' },
+    })
   })
 })

@@ -6,6 +6,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { ReferenceDataConfig, REFERENCE_DATA_CONFIG, DatasetSource } from './reference-data.config'
 import { parseCsv } from './csv.util'
 
@@ -74,7 +75,12 @@ export class ReferenceDataSeederService implements OnModuleInit {
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async scheduledRefresh(): Promise<void> {
     this.logger.info('Refresh schedulato dei dati di riferimento')
-    await this.reseedAll()
+    try {
+      await this.reseedAll()
+    } catch (error) {
+      this.logger.error('Refresh schedulato dei dati di riferimento fallito', error as Error)
+      segnalaErroreJob('scheduledRefresh', error)
+    }
   }
 
   /** Seed dei soli dataset attualmente vuoti. */
@@ -258,6 +264,7 @@ export class ReferenceDataSeederService implements OnModuleInit {
       this.logger.info(`Reference data '${name}': ${n} righe popolate`)
     } catch (e: any) {
       this.logger.error(`Seed reference data '${name}' fallito: ${e.message}`)
+      segnalaErroreJob('seedDatiDiRiferimento', e, { dataset: name })
     }
   }
 }

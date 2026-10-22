@@ -131,11 +131,43 @@ SENTRY_DSN=http://<32hex-senza-trattini>@bugsink:8000/<project_id>
 Ottenere il DSN: pannello Bugsink → Projects → [progetto wasteflow] →
 SDK Setup → DSN. Strippare i trattini dall'UUID.
 
-Dopo aver impostato il DSN, riavviare il backend:
+La variabile arriva al container perché è elencata nel compose di produzione (prima
+non c'era, come le variabili SMTP). Dopo averla impostata va **ricreato** il backend:
+`restart` non rilegge l'ambiente, serve `up -d`.
 
 ```bash
-docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml restart backend
+docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml up -d backend
 ```
+
+Il progetto su Bugsink si crea con `docker exec bugsink bugsink-manage shell`
+(`from projects.models import Project`); la chiave del DSN va scritta senza trattini.
+
+### Cosa viene inviato
+
+- I 5xx dell'API, tranne i 503 delle rotte `/health` (sono il segnale normale di un
+  controllo che fallisce; Decisione 4). Tag `correlationId` e `statusCode`, utente (solo
+  `id`), `tenantId` e percorso senza query string.
+- Gli errori dei job schedulati (`@Cron`), con il tag `job` (il nome del metodo) e, per gli
+  errori per tenant dei tre job RENTRI, il tag `tenantId`.
+- Prova d'invio: come al passo 7.5 del piano, provocare un errore e leggere l'evento in Bugsink.
+
+### Dati personali
+
+Gli eventi non portano corpo, header, cookie né query string della richiesta, e l'utente è
+ridotto al solo `id` (Decisione 5; `apps/backend/src/core/monitoring/opzioni-sentry.ts`).
+Ogni aggiornamento dell'SDK va seguito dalla lettura di un evento vero, come al passo 7.5,
+per verificare che le opzioni abbiano ancora l'effetto voluto.
+
+### Limite del guardiano dei job
+
+Il test `segnala-errore-job.spec.ts` verifica che ogni metodo `@Cron` chiami
+`segnalaErroreJob`. È un controllo testuale: non vede gli errori inghiottiti da un `catch`
+interno (i `catch` per utente di `checkMudDeadlines` restano solo nel log).
+
+### Orari dei job
+
+Sono in UTC, perché il backend non ha `TZ` (Decisione 10): `EVERY_DAY_AT_8AM` sono le 09:00
+italiane d'inverno e le 10:00 d'estate.
 
 ---
 
