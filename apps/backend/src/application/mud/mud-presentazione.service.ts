@@ -261,7 +261,8 @@ export class MudPresentazioneService {
   /**
    * Annulla la presentazione, conservandola in `annullamenti` con il motivo: con
    * `DICHIARAZIONE_DA_SOSTITUIRE` il prossimo file annulla e sostituisce quella comunicazione
-   * (A-W-04); con `SEGNATURA_ERRATA` il prossimo file è una prima dichiarazione.
+   * (A-W-04); `SEGNATURA_ERRATA` non era una presentazione, quindi non cambia cosa sostituisce
+   * il prossimo file (vedi `dataComunicazioneSostituita`).
    */
   async annullaPresentazione(
     tenantId: string,

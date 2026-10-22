@@ -10,7 +10,8 @@ export class AnnullaPresentazioneDto {
   @ApiProperty({
     enum: MOTIVI_ANNULLAMENTO,
     description:
-      'SEGNATURA_ERRATA: il MUD non era stato presentato davvero; il prossimo file è una prima ' +
+      'SEGNATURA_ERRATA: il MUD non era stato presentato davvero; il prossimo file sostituisce ' +
+      'solo una dichiarazione annullata prima per sostituirla, altrimenti è una prima ' +
       'dichiarazione. DICHIARAZIONE_DA_SOSTITUIRE: il MUD presentato va sostituito; il ' +
       'prossimo file annulla e sostituisce quella comunicazione.',
   })

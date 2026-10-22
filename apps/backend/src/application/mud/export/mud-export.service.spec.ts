@@ -527,7 +527,10 @@ describe('MudExportService', () => {
       expect(recordAA(r.content).endsWith(';1;20260630;')).toBe(true)
     })
 
-    it('conta solo l ultimo annullamento: se era una segnatura errata il file non sostituisce', async () => {
+    it('una segnatura errata più recente non cancella la dichiarazione da sostituire (S1 → DA_SOSTITUIRE → S2 → ERRATA)', async () => {
+      // 1. S1 presentata davvero e annullata per sostituirla; 2. S2 segnata troppo presto;
+      // 3. S2 annullata come segnatura errata (non era stata inviata). S1 resta in Camera di
+      // Commercio: il file deve ancora annullare e sostituire S1, non uscire come prima.
       prisma.mUDReport.findUnique.mockResolvedValue({
         status: 'DRAFT',
         submittedAt: null,
@@ -540,9 +543,44 @@ describe('MudExportService', () => {
         },
       })
       const r = await service.exportTelematico('t1', 2024, admin)
+      expect(recordAA(r.content).endsWith(';1;20260510;')).toBe(true)
+      const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+      expect(voce.sostituisce).toBe('2026-05-10T10:00:00.000Z')
+    })
+
+    it('con sole segnature errate annullate il file è una prima dichiarazione', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue({
+        status: 'DRAFT',
+        submittedAt: null,
+        submittedBy: null,
+        reportData: {
+          annullamenti: [
+            { motivo: 'SEGNATURA_ERRATA', submittedAt: '2026-05-10T10:00:00.000Z' },
+            { motivo: 'SEGNATURA_ERRATA', submittedAt: '2026-06-30T10:00:00.000Z' },
+          ],
+        },
+      })
+      const r = await service.exportTelematico('t1', 2024, admin)
       expect(recordAA(r.content).endsWith(';0;00000000;')).toBe(true)
       const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
       expect(voce.sostituisce).toBeNull()
+    })
+
+    it('tra più dichiarazioni da sostituire vale la più recente', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue({
+        status: 'DRAFT',
+        submittedAt: null,
+        submittedBy: null,
+        reportData: {
+          annullamenti: [
+            { motivo: 'DICHIARAZIONE_DA_SOSTITUIRE', submittedAt: '2026-05-10T10:00:00.000Z' },
+            { motivo: 'DICHIARAZIONE_DA_SOSTITUIRE', submittedAt: '2026-06-30T10:00:00.000Z' },
+            { motivo: 'SEGNATURA_ERRATA', submittedAt: '2026-07-02T10:00:00.000Z' },
+          ],
+        },
+      })
+      const r = await service.exportTelematico('t1', 2024, admin)
+      expect(recordAA(r.content).endsWith(';1;20260630;')).toBe(true)
     })
 
     it('senza una presentazione il record AA non sostituisce nulla', async () => {

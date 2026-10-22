@@ -73,8 +73,10 @@ export type MotivoAnnullamento = (typeof MOTIVI_ANNULLAMENTO)[number]
 /**
  * Data della comunicazione che un nuovo file annulla e sostituisce (A-W-04), o `null` se il
  * file è una prima dichiarazione: il `submittedAt` del MUD se è presentato; altrimenti quello
- * della presentazione annullata più di recente, se è stata annullata per sostituirla. Un
- * annullamento per segnatura errata non lascia nessuna comunicazione da sostituire.
+ * dell'annullamento più recente fatto per sostituire la dichiarazione. Gli annullamenti per
+ * segnatura errata si saltano: quella segnatura non era una presentazione, quindi non cancella
+ * una dichiarazione da sostituire annullata prima (S1 → DA_SOSTITUIRE → S2 → ERRATA: S1 è
+ * ancora agli atti e il file la deve sostituire).
  */
 export function dataComunicazioneSostituita(
   record: (Pick<RecordMudReport, 'status' | 'submittedAt'> & { reportData?: unknown }) | null
@@ -83,8 +85,11 @@ export function dataComunicazioneSostituita(
   if (record.status === 'SUBMITTED') return record.submittedAt
   const reportData = isRecord(record.reportData) ? record.reportData : {}
   const annullamenti = Array.isArray(reportData.annullamenti) ? reportData.annullamenti : []
-  const ultimo: unknown = annullamenti[annullamenti.length - 1]
-  if (!isRecord(ultimo) || ultimo.motivo !== 'DICHIARAZIONE_DA_SOSTITUIRE') return null
-  const data = typeof ultimo.submittedAt === 'string' ? new Date(ultimo.submittedAt) : null
-  return data && !Number.isNaN(data.getTime()) ? data : null
+  for (let i = annullamenti.length - 1; i >= 0; i--) {
+    const voce: unknown = annullamenti[i]
+    if (!isRecord(voce) || voce.motivo !== 'DICHIARAZIONE_DA_SOSTITUIRE') continue
+    const data = typeof voce.submittedAt === 'string' ? new Date(voce.submittedAt) : null
+    return data && !Number.isNaN(data.getTime()) ? data : null
+  }
+  return null
 }

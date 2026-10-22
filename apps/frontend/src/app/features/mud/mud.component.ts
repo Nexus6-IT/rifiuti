@@ -536,8 +536,7 @@ function oggiIso(): string {
             [(ngModel)]="motivoAnnullamento"
           ></p-radioButton>
           <label for="motivo-errata"
-            >Segnatura errata: il MUD non era stato presentato; il prossimo file è una prima
-            dichiarazione.</label
+            >Segnatura errata: la segnatura annullata non era una presentazione.</label
           >
         </div>
         <div class="mud-motivo mt-3">
