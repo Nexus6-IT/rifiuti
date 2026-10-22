@@ -539,6 +539,9 @@ export class MudAggregazioneService {
           : controlliMud.nessunMovimento(anno)
       )
     } else {
+      if (righeFinali.length === 0) {
+        controlli.push(controlliMud.nessunRifiutoDichiarabile(anno, movimenti.length))
+      }
       const scaricati = new Set(scarichiDeiFirAnno.map(s => s.firId))
       const nonRegistrati = firAnno.filter(f => !scaricati.has(f.id))
       if (nonRegistrati.length > 0) {

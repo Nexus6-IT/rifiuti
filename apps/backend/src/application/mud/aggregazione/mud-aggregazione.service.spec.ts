@@ -519,7 +519,10 @@ describe('MudAggregazioneService', () => {
       }),
     ])
     expect(annullati[0].messaggio).toContain('FIR FIR-2025-000123')
-    expect(haBloccanti(r.controlli)).toBe(false)
+    // l'unico bloccante è che non resta nulla da dichiarare, non il FIR annullato
+    expect(r.controlli.filter(c => c.gravita === 'BLOCCANTE').map(c => c.codice)).toEqual([
+      'NESSUN_RIFIUTO_DICHIARABILE',
+    ])
   })
 
   // 13
@@ -1142,6 +1145,43 @@ describe('MudAggregazioneService', () => {
     expect(r.controlli).toEqual([controlliMud.nessunMovimento(2025)])
   })
 
+  it('movimenti tutti esclusi: nessun rifiuto da dichiarare, il file non si genera', async () => {
+    impostaDati({
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 40, causale: 'RICLASSIFICAZIONE' }),
+        mov({ progressiveNumber: 2, quantity: 50, causale: 'INGRESSO_ESTERNO' }),
+      ],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.righe).toEqual([])
+    expect(r.controlli).toContainEqual({
+      codice: 'NESSUN_RIFIUTO_DICHIARABILE',
+      gravita: 'BLOCCANTE',
+      messaggio:
+        'Nel 2025 il registro ha 2 movimenti, ma nessuno entra nel MUD (i motivi sono negli avvisi): il file non dichiarerebbe alcun rifiuto.',
+    })
+    expect(codici(r.controlli)).not.toContain('NESSUN_MOVIMENTO')
+    expect(haBloccanti(r.controlli)).toBe(true)
+  })
+
+  it('un solo movimento escluso: messaggio al singolare', async () => {
+    impostaDati({
+      movimenti: [mov({ progressiveNumber: 1, quantity: 40, causale: 'RICLASSIFICAZIONE' })],
+    })
+
+    const r = await service.aggrega('t1', 2025)
+
+    expect(r.controlli).toContainEqual(
+      expect.objectContaining({
+        codice: 'NESSUN_RIFIUTO_DICHIARABILE',
+        messaggio:
+          'Nel 2025 il registro ha 1 movimento, ma non entra nel MUD (il motivo è negli avvisi): il file non dichiarerebbe alcun rifiuto.',
+      })
+    )
+  })
+
   // 29
   it('saldo al 31/12 dal registro: avviso con i kg in deposito', async () => {
     impostaDati({ movimenti: [mov({})] })
@@ -1424,7 +1464,10 @@ describe('MudAggregazioneService', () => {
 
     expect(codici(r.controlli)).toContain('FIR_ANNULLATO')
     expect(codici(r.controlli)).not.toContain('UNITA_NON_DI_MASSA')
-    expect(haBloccanti(r.controlli)).toBe(false)
+    // l'unico bloccante è che non resta nulla da dichiarare, non il FIR annullato
+    expect(r.controlli.filter(c => c.gravita === 'BLOCCANTE').map(c => c.codice)).toEqual([
+      'NESSUN_RIFIUTO_DICHIARABILE',
+    ])
   })
 
   // 34

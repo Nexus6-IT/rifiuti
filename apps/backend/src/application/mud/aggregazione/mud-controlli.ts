@@ -14,6 +14,7 @@ export type MudGravita = 'BLOCCANTE' | 'AVVISO'
 
 export type MudCodiceControllo =
   | 'NESSUN_MOVIMENTO'
+  | 'NESSUN_RIFIUTO_DICHIARABILE'
   | 'REGISTRO_VUOTO_CON_FIR'
   | 'DICHIARANTE_SENZA_COMUNE_ISTAT'
   | 'DICHIARANTE_SENZA_ATECO'
@@ -142,6 +143,19 @@ export const controlliMud = {
     codice: 'NESSUN_MOVIMENTO',
     gravita: BLOCCANTE,
     messaggio: `Nessun movimento nel registro di carico e scarico del ${anno}: non c'è nulla da dichiarare.`,
+  }),
+
+  /**
+   * Movimenti nell'anno, ma tutti esclusi (causali escluse, FIR annullati, carichi da terzi,
+   * unità senza peso): senza questo il file uscirebbe con AA e AB e senza sezione rifiuti.
+   */
+  nessunRifiutoDichiarabile: (anno: number, movimenti: number): MudEsitoControllo => ({
+    codice: 'NESSUN_RIFIUTO_DICHIARABILE',
+    gravita: BLOCCANTE,
+    messaggio:
+      movimenti === 1
+        ? `Nel ${anno} il registro ha 1 movimento, ma non entra nel MUD (il motivo è negli avvisi): il file non dichiarerebbe alcun rifiuto.`
+        : `Nel ${anno} il registro ha ${movimenti} movimenti, ma nessuno entra nel MUD (i motivi sono negli avvisi): il file non dichiarerebbe alcun rifiuto.`,
   }),
 
   registroVuotoConFir: (anno: number, fir: string[]): MudEsitoControllo => ({
