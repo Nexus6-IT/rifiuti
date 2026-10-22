@@ -5,7 +5,11 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { CurrentUser } from '../../auth/decorators/current-user.decorator'
 import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { MembershipService } from './membership.service'
+import { RedisService } from '../../auth/services/redis.service'
 import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
+
+/** Durata del refresh token, la stessa del login (`auth.controller.ts`). */
+const SETTE_GIORNI_IN_SECONDI = 7 * 24 * 60 * 60
 
 class SwitchTenantDto {
   @IsUUID()
@@ -21,7 +25,10 @@ class SwitchTenantDto {
 @Controller('me')
 @UseGuards(JwtAuthGuard)
 export class MembershipController {
-  constructor(private readonly membership: MembershipService) {}
+  constructor(
+    private readonly membership: MembershipService,
+    private readonly redis: RedisService
+  ) {}
 
   // Rotta di recupero: risponde anche con una selezione d'azienda non più valida.
   @ConsentiSelezioneNonValida()
@@ -50,7 +57,12 @@ export class MembershipController {
   // Rotta di recupero: risponde anche con una selezione d'azienda non più valida.
   @ConsentiSelezioneNonValida()
   @Post('switch-tenant')
-  switchTenant(@CurrentUser() user: CurrentUserPayload, @Body() dto: SwitchTenantDto) {
-    return this.membership.switchTenant(user, dto.tenantId)
+  async switchTenant(@CurrentUser() user: CurrentUserPayload, @Body() dto: SwitchTenantDto) {
+    const tokens = await this.membership.switchTenant(user, dto.tenantId)
+    // Il refresh token dello switch porta l'azienda scelta e va registrato come quello del
+    // login (stessa durata): altrimenti `POST /auth/refresh` lo rifiuta come revocato e, con
+    // il refresh token del login, l'utente tornerebbe in silenzio sull'azienda primaria.
+    await this.redis.storeRefreshToken(user.id, tokens.refreshToken, SETTE_GIORNI_IN_SECONDI)
+    return tokens
   }
 }

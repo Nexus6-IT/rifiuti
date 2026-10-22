@@ -65,6 +65,15 @@ export class RuoloEffettivoService {
    *      non autorizzato, quindi qui non si dovrebbe arrivare).
    */
   async ruoloEffettivo(utente: UtenteRuolo, tenantId: string): Promise<RuoloApplicativo> {
+    return (await this.accesso(utente, tenantId)) ?? 'VIEWER'
+  }
+
+  /**
+   * Come `ruoloEffettivo`, ma `null` se l'utente non ha alcun legame con l'azienda (stesse
+   * sorgenti di `MembershipService.checkAccess`). Serve dove "nessun accesso" va distinto da
+   * "accesso in sola consultazione", per esempio al refresh di un token emesso dallo switch.
+   */
+  async accesso(utente: UtenteRuolo, tenantId: string): Promise<RuoloApplicativo | null> {
     if (utente.role === 'SUPER_ADMIN') return 'SUPER_ADMIN'
     return this.risolvi(utente, tenantId, true)
   }
@@ -73,7 +82,7 @@ export class RuoloEffettivoService {
     utente: UtenteRuolo,
     tenantId: string,
     risaliAllaMadre: boolean
-  ): Promise<RuoloApplicativo> {
+  ): Promise<RuoloApplicativo | null> {
     if (utente.tenantId && utente.tenantId === tenantId) {
       return comeRuoloApplicativo(utente.role)
     }
@@ -93,12 +102,12 @@ export class RuoloEffettivoService {
       return nome === 'ADMIN' || nome === 'OPERATOR' ? nome : 'VIEWER'
     }
 
-    if (!risaliAllaMadre) return 'VIEWER'
+    if (!risaliAllaMadre) return null
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { parentTenantId: true },
     })
-    if (!tenant?.parentTenantId) return 'VIEWER'
+    if (!tenant?.parentTenantId) return null
     return this.risolvi(utente, tenant.parentTenantId, false)
   }
 }

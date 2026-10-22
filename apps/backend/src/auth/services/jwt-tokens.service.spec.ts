@@ -122,6 +122,18 @@ describe('JwtTokensService', () => {
 
       expect(jwtService.sign).toHaveBeenCalledTimes(2)
     })
+
+    it("il refresh token porta l'azienda dell'access token, così il refresh la conserva", () => {
+      jwtService.sign.mockReturnValue('token')
+
+      service.generateTokenPair({ ...mockUser, tenantId: 'tenant-cliente' })
+
+      expect(jwtService.sign).toHaveBeenNthCalledWith(
+        2,
+        { sub: 'user-123', tenantId: 'tenant-cliente', type: 'refresh' },
+        { expiresIn: '7d' }
+      )
+    })
   })
 
   describe('verifyAccessToken', () => {

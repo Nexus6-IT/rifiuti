@@ -5,23 +5,22 @@ import {
   CallHandler,
   Logger,
   ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common'
+import { isUUID } from 'class-validator'
 import { Reflector } from '@nestjs/core'
 import { Observable, from, switchMap, throwError } from 'rxjs'
 import { Request } from 'express'
 import { TenantContext } from '../context/tenant-context'
 import { MembershipService } from '../../api/me/membership.service'
 import { CONSENTI_SELEZIONE_NON_VALIDA } from '../decorators/consenti-selezione-non-valida.decorator'
+import {
+  AZIENDA_SELEZIONATA_NON_ACCESSIBILE,
+  VERIFICA_AZIENDA_NON_DISPONIBILE,
+} from '../context/azienda-selezionata-errori'
 
-/**
- * Risposta per un'azienda selezionata che l'utente non può usare. Identica per un'azienda
- * inesistente e per una non autorizzata (nessuna enumerazione), e per un errore della
- * verifica (il dettaglio interno non arriva al client).
- */
-export const AZIENDA_SELEZIONATA_NON_ACCESSIBILE = {
-  message: "L'azienda selezionata non è più accessibile: selezionane un'altra.",
-  error: 'AZIENDA_SELEZIONATA_NON_ACCESSIBILE',
-} as const
+/** Esito della verifica dell'header: accessibile, non accessibile, verifica fallita. */
+type EsitoVerifica = 'ACCESSIBILE' | 'NON_ACCESSIBILE' | 'ERRORE'
 
 /**
  * TenantSwitchInterceptor — validazione header `X-Tenant-ID` per TUTTI gli utenti.
@@ -41,9 +40,11 @@ export const AZIENDA_SELEZIONATA_NON_ACCESSIBILE = {
  *        - Autorizzato → il TenantContext viene ri-eseguito con il tenant dell'header
  *          e `req.tenantId` viene aggiornato. Tutte le query dell'handler useranno
  *          il tenant selezionato dall'utente (switch senza nuovo JWT).
- *        - Non autorizzato, o errore nella verifica → 403
+ *        - Header che non è un UUID, o non autorizzato → 403
  *          `AZIENDA_SELEZIONATA_NON_ACCESSIBILE`, con lo stesso messaggio per un'azienda
  *          inesistente e per una non autorizzata (nessuna enumerazione). L'handler non gira.
+ *        - Errore nella verifica (database) → 503 `VERIFICA_AZIENDA_NON_DISPONIBILE`: la
+ *          selezione resta, il frontend non la cancella e l'utente riprova.
  *          Prima la richiesta proseguiva in silenzio sul tenant primario del JWT: con una
  *          selezione scaduta (associazione consulente terminata) le scritture finivano
  *          nell'azienda sbagliata, per esempio un movimento nel registro dello studio.
@@ -95,20 +96,34 @@ export class TenantSwitchInterceptor implements NestInterceptor {
     // Tenant primario dell'utente (risolto dal middleware dal JWT).
     const primaryTenantId: string = (req as any).tenantId || user.tenantId || ''
 
-    // Validazione asincrona della membership, poi switch del contesto.
-    return from(
-      this.membership.checkAccess(user.id, targetTenantId, primaryTenantId).catch((err: Error) => {
-        this.logger.warn(
-          `Errore verifica membership (utente=${user.id}, target=${targetTenantId}): ${err.message}`
+    // Gli id delle aziende sono UUID (colonne @db.Uuid): un header di altra forma non
+    // corrisponde a nessuna azienda. Si rifiuta come un'azienda inesistente, senza interrogare
+    // il database (Prisma lo rifiuterebbe con P2023, cioè con un errore e non con un "no").
+    const verifica: Promise<EsitoVerifica> = !isUUID(targetTenantId, 'all')
+      ? Promise.resolve('NON_ACCESSIBILE')
+      : this.membership.checkAccess(user.id, targetTenantId, primaryTenantId).then(
+          (ok): EsitoVerifica => (ok ? 'ACCESSIBILE' : 'NON_ACCESSIBILE'),
+          (err: Error): EsitoVerifica => {
+            this.logger.warn(
+              `Errore verifica membership (utente=${user.id}, target=${targetTenantId}): ${err.message}`
+            )
+            return 'ERRORE'
+          }
         )
-        return false // fail-closed su errore DB: 403 come per un'azienda non accessibile
-      })
-    ).pipe(
-      switchMap((isAllowed: boolean) => {
-        if (!isAllowed) {
+
+    // Validazione asincrona della membership, poi switch del contesto.
+    return from(verifica).pipe(
+      switchMap((esito: EsitoVerifica) => {
+        if (esito !== 'ACCESSIBILE') {
           if (this.rottaDiRecupero(context)) {
             // Elenco/switch delle aziende, sessione: si prosegue col tenant primario.
             return next.handle()
+          }
+          if (esito === 'ERRORE') {
+            // Mai il tenant primario al posto di quello scelto: si riprova.
+            return throwError(
+              () => new ServiceUnavailableException({ ...VERIFICA_AZIENDA_NON_DISPONIBILE })
+            )
           }
           this.logger.warn(
             `Header X-Tenant-ID="${targetTenantId}" rifiutato per utente ${user.id}: ` +

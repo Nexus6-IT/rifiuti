@@ -8,12 +8,18 @@
  *   4. Utente con header X-Tenant-ID di un tenant NON SUO → 403
  *      AZIENDA_SELEZIONATA_NON_ACCESSIBILE, l'handler non gira (niente ripiego sul primario,
  *      che scriverebbe nell'azienda sbagliata).
- *   5. Errore DB nella verifica → stesso 403.
+ *   5. Errore DB nella verifica → 503 VERIFICA_AZIENDA_NON_DISPONIBILE (la selezione resta).
  *   7. Rotta di recupero (@ConsentiSelezioneNonValida) → prosegue col tenant primario.
+ *   8. Header che non è un UUID → stesso 403 di un'azienda inesistente, nessuna query.
  *   6. Header pari al tenant primario → autorizzato senza query DB (ottimizzazione).
  */
 
-import { ExecutionContext, CallHandler, ForbiddenException } from '@nestjs/common'
+import {
+  ExecutionContext,
+  CallHandler,
+  ForbiddenException,
+  ServiceUnavailableException,
+} from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { lastValueFrom, of } from 'rxjs'
 import { TenantSwitchInterceptor } from './tenant-switch.interceptor'
@@ -34,9 +40,18 @@ class RotteFinte {
   recupero() {}
 }
 
-const TENANT_A = 'tenant-A-primario-uuid'
-const TENANT_B = 'tenant-B-autorizzato-uuid'
-const TENANT_C = 'tenant-C-non-autorizzato-uuid'
+/** Risposta attesa quando la verifica non si può fare (errore del database). */
+const VERIFICA_NON_DISPONIBILE = {
+  message: "Verifica dell'azienda selezionata non disponibile, riprova.",
+  error: 'VERIFICA_AZIENDA_NON_DISPONIBILE',
+}
+
+// Gli id delle aziende sono UUID (colonne `@db.Uuid`): un header di altra forma si rifiuta
+// prima di interrogare il database.
+const TENANT_A = 'aaaaaaaa-0000-4000-8000-00000000000a' // primario
+const TENANT_B = 'bbbbbbbb-0000-4000-8000-00000000000b' // autorizzato
+const TENANT_C = 'cccccccc-0000-4000-8000-00000000000c' // non autorizzato
+const TENANT_INESISTENTE = 'dddddddd-0000-4000-8000-00000000000d'
 
 const USER_NORMALE = {
   id: 'user-normale-uuid',
@@ -187,12 +202,30 @@ describe('TenantSwitchInterceptor', () => {
     ).catch(e => e)
     const inesistente: any = await runInterceptor(
       interceptor,
-      makeContext('tenant-che-non-esiste', USER_NORMALE, TENANT_A),
+      makeContext(TENANT_INESISTENTE, USER_NORMALE, TENANT_A),
       makeHandler()
     ).catch(e => e)
 
     expect(inesistente.getStatus()).toBe(403)
     expect(inesistente.getResponse()).toEqual(nonAutorizzata.getResponse())
+  })
+
+  it('header che non è un UUID → stesso 403, senza interrogare il database', async () => {
+    // Su una colonna @db.Uuid Prisma rifiuterebbe il valore (P2023): non deve diventare un
+    // errore del database né distinguersi da un'azienda inesistente.
+    for (const header of ['tenant-che-non-esiste', "1' OR '1'='1", '12345']) {
+      const handle = jest.fn(() => of('OK'))
+      const errore: any = await runInterceptor(
+        interceptor,
+        makeContext(header, USER_NORMALE, TENANT_A),
+        { handle }
+      ).catch(e => e)
+
+      expect({ header, status: errore.getStatus?.() }).toEqual({ header, status: 403 })
+      expect(errore.getResponse()).toEqual(RIFIUTO_ATTESO)
+      expect(handle).not.toHaveBeenCalled()
+    }
+    expect(membershipMock.checkAccess).not.toHaveBeenCalled()
   })
 
   it('rotta di recupero (@ConsentiSelezioneNonValida) con header non accessibile → prosegue col tenant primario', async () => {
@@ -245,19 +278,31 @@ describe('TenantSwitchInterceptor', () => {
   })
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Scenario 6: errore DB → fail-closed (non espone l'errore al client)
+  // Scenario 6: errore DB → 503 (la selezione resta valida, si riprova)
   // ──────────────────────────────────────────────────────────────────────────
-  it('errore DB nella verifica → 403 AZIENDA_SELEZIONATA_NON_ACCESSIBILE, handler non eseguito', async () => {
+  it('errore DB nella verifica → 503 VERIFICA_AZIENDA_NON_DISPONIBILE, handler non eseguito', async () => {
     membershipMock.checkAccess.mockRejectedValue(new Error('DB connection lost'))
     const ctx = makeContext(TENANT_B, USER_NORMALE, TENANT_A)
+    const reqObj = ctx.switchToHttp().getRequest() as any
     const handle = jest.fn(() => of('OK'))
 
     const errore: any = await runInterceptor(interceptor, ctx, { handle }).catch(e => e)
 
-    expect(errore).toBeInstanceOf(ForbiddenException)
+    expect(errore).toBeInstanceOf(ServiceUnavailableException)
     // Il messaggio dell'errore interno non arriva al client.
-    expect(errore.getResponse()).toEqual(RIFIUTO_ATTESO)
+    expect(errore.getResponse()).toEqual(VERIFICA_NON_DISPONIBILE)
     expect(handle).not.toHaveBeenCalled()
+    expect(reqObj.tenantId).toBe(TENANT_A)
+  })
+
+  it('errore DB su una rotta di recupero → prosegue col tenant primario', async () => {
+    membershipMock.checkAccess.mockRejectedValue(new Error('DB connection lost'))
+    const ctx = makeContext(TENANT_B, USER_NORMALE, TENANT_A, RotteFinte.prototype.recupero)
+
+    const result = await runInterceptor(interceptor, ctx, makeHandler('ELENCO_AZIENDE'))
+
+    expect(result).toBe('ELENCO_AZIENDE')
+    expect((ctx.switchToHttp().getRequest() as any).tenantId).toBe(TENANT_A)
   })
 
   // ──────────────────────────────────────────────────────────────────────────

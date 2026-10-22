@@ -23,9 +23,9 @@ import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { Result } from '../../core/application/result'
 
-const STUDIO = 'tenant-studio'
-const CLIENTE = 'tenant-cliente'
-const CONSULENTE = 'consulente-1'
+const STUDIO = '5a5a5a5a-0000-4000-8000-000000000001'
+const CLIENTE = 'c1c1c1c1-0000-4000-8000-000000000002'
+const CONSULENTE = 'e1e1e1e1-0000-4000-8000-000000000003'
 const IERI = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
 interface Associazione {

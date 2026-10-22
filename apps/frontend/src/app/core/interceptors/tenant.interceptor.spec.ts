@@ -85,4 +85,23 @@ describe('tenantInterceptor', () => {
     expect(contesto.selectedTenantId()).toBe('tenant-cliente')
     expect(ricarica).not.toHaveBeenCalled()
   })
+
+  it('503 VERIFICA_AZIENDA_NON_DISPONIBILE (errore del database): selezione conservata, nessuna ricarica', () => {
+    contesto.set('tenant-cliente', 'Cliente Srl')
+    let errore: unknown
+    http.get(url).subscribe({ error: e => (errore = e) })
+
+    backend.expectOne(url).flush(
+      {
+        statusCode: 503,
+        error: 'VERIFICA_AZIENDA_NON_DISPONIBILE',
+        message: "Verifica dell'azienda selezionata non disponibile, riprova.",
+      },
+      { status: 503, statusText: 'Service Unavailable' }
+    )
+
+    expect(errore).toBeTruthy()
+    expect(contesto.selectedTenantId()).toBe('tenant-cliente')
+    expect(ricarica).not.toHaveBeenCalled()
+  })
 })

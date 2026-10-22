@@ -203,14 +203,22 @@ describe('RuoloEffettivoService — parità con MembershipService.checkAccess (F
     await expect(ruoli.ruoloEffettivo(utente('ADMIN'), tenant)).resolves.toBe(
       accesso ? 'ADMIN' : 'VIEWER'
     )
+    // accesso(): null esattamente dove checkAccess nega (lo usa il refresh del token)
+    await expect(ruoli.accesso(utente('ADMIN'), tenant)).resolves.toBe(accesso ? 'ADMIN' : null)
   })
 
-  it('associazione scaduta: checkAccess nega e il ruolo è VIEWER', async () => {
+  it('associazione scaduta: checkAccess nega, il ruolo è VIEWER e accesso() è null', async () => {
     const prisma = makePrisma(TENANTS, [associazione('ADMIN', { expiresAt: IERI })])
     const membership = new MembershipService(prisma, jwtTokens)
     const ruoli = new RuoloEffettivoService(prisma)
 
     await expect(membership.checkAccess(UTENTE, CLIENTE, PRIMARIO)).resolves.toBe(false)
     await expect(ruoli.ruoloEffettivo(utente('ADMIN'), CLIENTE)).resolves.toBe('VIEWER')
+    await expect(ruoli.accesso(utente('ADMIN'), CLIENTE)).resolves.toBeNull()
+  })
+
+  it('accesso(): associazione di sola consultazione dà VIEWER, non null', async () => {
+    const ruoli = new RuoloEffettivoService(makePrisma(TENANTS, [associazione('CONSULTANT')]))
+    await expect(ruoli.accesso(utente('ADMIN'), CLIENTE)).resolves.toBe('VIEWER')
   })
 })

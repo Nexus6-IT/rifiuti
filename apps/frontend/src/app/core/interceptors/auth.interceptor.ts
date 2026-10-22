@@ -4,6 +4,7 @@ import { Router } from '@angular/router'
 import { throwError } from 'rxjs'
 import { catchError, switchMap } from 'rxjs/operators'
 import { AuthService } from '../services/auth.service'
+import { AdminTenantContextService } from '../services/admin-tenant-context.service'
 
 /**
  * Auth Interceptor
@@ -17,6 +18,7 @@ import { AuthService } from '../services/auth.service'
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const router = inject(Router)
   const authService = inject(AuthService)
+  const tenantContext = inject(AdminTenantContextService)
 
   const publicEndpoints = [
     '/auth/spid',
@@ -38,6 +40,9 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   const redirectToLogin = (): void => {
     authService.clearSession()
+    // Anche la selezione dell'azienda in memoria: un refresh rifiutato perché l'azienda scelta
+    // non è più accessibile (403 AZIENDA_SELEZIONATA_NON_ACCESSIBILE) non deve ripartire da lì.
+    tenantContext.clear()
     if (!router.url.startsWith('/login')) {
       const returnUrl = router.url && router.url !== '/' ? router.url : undefined
       router.navigate(['/login'], returnUrl ? { queryParams: { returnUrl } } : {})

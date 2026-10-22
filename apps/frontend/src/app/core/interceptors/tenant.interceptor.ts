@@ -59,6 +59,8 @@ export const tenantInterceptor: HttpInterceptorFn = (req, next) => {
         errore instanceof HttpErrorResponse &&
         errore.status === 403 &&
         errore.error?.error === AZIENDA_SELEZIONATA_NON_ACCESSIBILE &&
+        // Sul refresh del token decide l'authInterceptor (logout e login, senza ricarica).
+        !req.url.includes('/auth/') &&
         // Solo la prima delle richieste respinte insieme: le altre trovano la selezione
         // già cancellata e non ricaricano di nuovo.
         tenantContext.selectedTenantId() === tenantId
