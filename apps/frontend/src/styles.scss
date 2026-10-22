@@ -563,7 +563,7 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
   padding: var(--spacing-sm) var(--spacing-md); font-size: var(--font-size-xs);
   text-transform: uppercase; letter-spacing: 0.06em;
 }
-.p-datatable .p-datatable-tbody > tr { transition: background-color var(--transition-fast); color: var(--text-primary); }
+.p-datatable .p-datatable-tbody > tr { transition: background-color var(--transition-fast); color: var(--text-primary); background: var(--surface-card); }
 .p-datatable .p-datatable-tbody > tr:hover { background: var(--brand-primary-50) !important; }
 .p-datatable .p-datatable-tbody > tr > td { padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--surface-border); font-size: var(--font-size-sm); }
 .p-datatable.p-datatable-sm .p-datatable-tbody > tr > td { padding: var(--spacing-xs) var(--spacing-md); }
@@ -620,6 +620,7 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 
 /* Progress */
 .p-progress-spinner-circle { stroke: var(--brand-primary) !important; }
+.p-progressbar { background: var(--color-gray-200); }
 .p-progressbar .p-progressbar-value { background: var(--brand-primary-dark); }
 
 /* ===== Responsive ===== */
