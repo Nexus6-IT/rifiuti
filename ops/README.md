@@ -195,6 +195,28 @@ l'applicazione va eliminato a mano con `DROP DATABASE "<nome>"` (il nome è
 nell'ultima riga del log); fino ad allora occupa quanto il database di
 produzione.
 
+**Prima e dopo il ripristino, tre cose che lo script non fa:**
+
+- **Non sovrapporlo al backup notturno.** Lo scambio dei nomi termina le
+  connessioni al database (`pg_terminate_backend`): un `pg_dump` del cron
+  `wasteflow-backup` (03:30) in corso viene interrotto e manda una mail di
+  fallimento. Evitare la finestra 03:15-04:30, oppure commentare la riga di
+  `/etc/cron.d/wasteflow-backup` per la durata del ripristino e rimetterla dopo.
+- **Le cache Redis restano quelle di prima.** Permessi (`perm-check:*`), sessioni
+  (`session:*`, `session_epoch:*`) e refresh token (`refresh_token:*`) descrivono
+  il database sostituito: un utente disattivato o un ruolo tolto dopo la data del
+  dump torna valido nel database, ma una sessione aperta dopo quella data resta
+  in Redis. Se il dump è vecchio, togliere quelle chiavi (forza un nuovo login per
+  tutti), dal container `redis` (`docker compose ... exec redis sh`): `redis-cli -a "$REDIS_PASSWORD" --scan --pattern 'perm-check:*' | xargs -r redis-cli -a "$REDIS_PASSWORD" DEL`,
+  e lo stesso per gli altri prefissi. **Mai `FLUSHALL`**: Redis contiene anche
+  le code dei job. Altrimenti accettarle sapendo che scadono da sole, ciascuna con
+  la propria durata.
+- **Il frontend resta sul tag del deploy.** `restore.sh` ricrea solo il backend
+  con `RIPRISTINO_TAG`; il frontend continua con l'immagine dell'ultimo deploy
+  fino al deploy successivo. Se i due tag differiscono, verificare che il
+  frontend funzioni con quel backend, oppure ricrearlo con lo stesso tag
+  (`TAG=<RIPRISTINO_TAG> docker compose ... up -d --no-deps frontend`).
+
 Il ripristino di prova notturno già verifica ogni backup su un database
 temporaneo; resta utile provare `restore.sh` su un ambiente di staging.
 
@@ -213,6 +235,11 @@ pipeline intera (build delle immagini di 30-40 minuti sul runner condiviso, più
 il deploy). È possibile solo se le migration del rilascio sono additive (per la
 Fase 0 lo sono: il piano C aggiunge una colonna nullable e un indice, ignorati
 dal codice vecchio; vedere nel piano C il caso limite di Capodanno).
+Vale per lo schema, non per un dato: se un'azienda ha impostato il **progressivo
+iniziale** del registro (piano R) e il codice torna indietro **prima** del primo
+movimento di quell'anno, il codice vecchio numera da 1 e ignora l'impostazione
+senza dirlo. Prima del rollback controllare `registro_progressivi_iniziali`
+per l'anno in corso e avvisare le aziende interessate.
 
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa
