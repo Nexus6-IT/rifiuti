@@ -72,4 +72,25 @@ describe('authInterceptor — refresh rifiutato per azienda non accessibile', ()
     // il login è la ripartenza: nessuna ricarica che si sovrapponga alla navigazione
     expect(ricarica).not.toHaveBeenCalled()
   })
+
+  it('refresh con verifica non disponibile (503): sessione e selezione restano, si riprova', () => {
+    contesto.set('tenant-cliente', 'Cliente Srl')
+    let errore: any
+    http.post(urlRegistro, {}).subscribe({ error: e => (errore = e) })
+
+    backend.expectOne(urlRegistro).flush(null, { status: 401, statusText: 'Unauthorized' })
+    backend.expectOne(urlRefresh).flush(
+      {
+        statusCode: 503,
+        error: 'VERIFICA_AZIENDA_NON_DISPONIBILE',
+        message: "Verifica dell'azienda selezionata non disponibile, riprova.",
+      },
+      { status: 503, statusText: 'Service Unavailable' }
+    )
+
+    expect(errore?.status).toBe(503)
+    expect(localStorage.getItem('refreshToken')).toBe('refresh-dello-switch')
+    expect(contesto.selectedTenantId()).toBe('tenant-cliente')
+    expect(router.navigate).not.toHaveBeenCalled()
+  })
 })

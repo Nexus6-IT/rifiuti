@@ -9,7 +9,11 @@ import { JwtTokensService } from '../services/jwt-tokens.service'
 import { RedisService } from '../services/redis.service'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { ConfigService } from '@nestjs/config'
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common'
+import {
+  ForbiddenException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common'
 import { RuoloEffettivoService } from '../../api/me/ruolo-effettivo.service'
 import { createPrismaMock, MockPrisma } from '../../../test/utils/prisma-mock'
 import {
@@ -339,6 +343,24 @@ describe('AuthController', () => {
         expect(errore.getResponse()).toEqual({
           message: "L'azienda selezionata non è più accessibile: selezionane un'altra.",
           error: 'AZIENDA_SELEZIONATA_NON_ACCESSIBILE',
+        })
+        expect(jwtTokensService.generateAccessToken).not.toHaveBeenCalled()
+      })
+
+      it('errore del database nella verifica: 503 VERIFICA_AZIENDA_NON_DISPONIBILE, non 500', async () => {
+        jwtTokensService.verifyRefreshToken.mockReturnValue({
+          sub: 'user-123',
+          tenantId: CLIENTE,
+          type: 'refresh',
+        })
+        ruoloEffettivo.accesso.mockRejectedValue(new Error('connessione al database persa'))
+
+        const errore: any = await controller.refresh({ refreshToken: 'rt' }).catch(e => e)
+
+        expect(errore).toBeInstanceOf(ServiceUnavailableException)
+        expect(errore.getResponse()).toEqual({
+          message: "Verifica dell'azienda selezionata non disponibile, riprova.",
+          error: 'VERIFICA_AZIENDA_NON_DISPONIBILE',
         })
         expect(jwtTokensService.generateAccessToken).not.toHaveBeenCalled()
       })

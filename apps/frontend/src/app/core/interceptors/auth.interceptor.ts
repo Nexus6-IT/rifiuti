@@ -64,7 +64,13 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       // Tenta il refresh UNA volta e ritenta la richiesta originale col nuovo token.
       return authService.refreshAccessToken().pipe(
         switchMap(newToken => next(withToken(req, newToken))),
-        catchError(() => {
+        catchError((erroreRefresh: unknown) => {
+          // 503 VERIFICA_AZIENDA_NON_DISPONIBILE: il backend non ha potuto verificare l'azienda
+          // (database). Il refresh token resta valido e la selezione pure: si riprova, niente
+          // logout.
+          if (erroreRefresh instanceof HttpErrorResponse && erroreRefresh.status === 503) {
+            return throwError(() => erroreRefresh)
+          }
           // Refresh fallito/revocato: logout pulito.
           redirectToLogin()
           return throwError(() => error)

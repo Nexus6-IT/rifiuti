@@ -13,6 +13,7 @@ import {
   Body,
   UnauthorizedException,
   ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common'
 import { Response } from 'express'
 import { AuthGuard } from '@nestjs/passport'
@@ -25,7 +26,10 @@ import { RefreshTokenDto } from '../dto/refresh-token.dto'
 import { LogoutDto } from '../dto/logout.dto'
 import { ConfigService } from '@nestjs/config'
 import { RuoloEffettivoService } from '../../api/me/ruolo-effettivo.service'
-import { AZIENDA_SELEZIONATA_NON_ACCESSIBILE } from '../../core/context/azienda-selezionata-errori'
+import {
+  AZIENDA_SELEZIONATA_NON_ACCESSIBILE,
+  VERIFICA_AZIENDA_NON_DISPONIBILE,
+} from '../../core/context/azienda-selezionata-errori'
 import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 
 // Sessione (login, refresh, logout, profilo): non dipende dall'azienda selezionata e deve
@@ -156,10 +160,13 @@ export class AuthController {
     // dopo il refresh scriverebbe nell'azienda sbagliata. Il SUPER_ADMIN, come nello switch,
     // non ha vincoli di appartenenza.
     if (tenantId !== tenantPrimario && role !== 'SUPER_ADMIN') {
-      const accesso = await this.ruoloEffettivo.accesso(
-        { id: user.id, role, tenantId: tenantPrimario },
-        tenantId
-      )
+      // Un errore del database non dice niente sull'accesso: 503 come il
+      // TenantSwitchInterceptor, così il frontend riprova e non cancella la selezione.
+      const accesso = await this.ruoloEffettivo
+        .accesso({ id: user.id, role, tenantId: tenantPrimario }, tenantId)
+        .catch(() => {
+          throw new ServiceUnavailableException({ ...VERIFICA_AZIENDA_NON_DISPONIBILE })
+        })
       if (accesso === null) {
         throw new ForbiddenException({ ...AZIENDA_SELEZIONATA_NON_ACCESSIBILE })
       }
