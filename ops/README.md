@@ -4,14 +4,58 @@
 
 ### Script: `backup-offsite.sh`
 
-Produce un dump gzip del database PostgreSQL e lo copia su una destinazione
-remota (rsync+SSH o rclone/S3). Da eseguire sul VPS come root.
+Produce un dump gzip del database PostgreSQL, lo **verifica** e solo dopo lo
+accetta; poi lo copia su una destinazione remota (rsync+SSH o rclone/S3). Da
+eseguire sul VPS come root. Il `.env` è letto con `leggi_env` (libreria
+`ops/lib/backup-verifica.sh`) e **mai eseguito**: niente `source` nel cron.
 
-**Configurazione variabili** (aggiungere a `/opt/rifiuti/.env`):
+> `scripts/backup.sh` (percorsi `/opt/wasteflow`) **non** è lo script in uso:
+> quello in uso è `ops/backup-offsite.sh`.
+
+**Cosa viene verificato prima di accettare un backup:**
+
+1. Il file deve essere un gzip integro e la sua coda deve contenere il marcatore
+   finale di `pg_dump` (`-- PostgreSQL database dump complete`): un dump
+   troncato può essere un gzip valido, ma senza marcatore viene scartato.
+2. Di notte, un **ripristino di prova** in un database temporaneo
+   (`wasteflow_verifica_<epoch>_<pid>`, sempre eliminato alla fine) con
+   confronto di numero di tabelle, righe di `_prisma_migrations` e righe di
+   `waste_movements` rispetto alla sorgente.
+3. **Spazio libero** (Decisione 14): prima del dump servono 2 volte la
+   dimensione del database nella cartella dei backup; prima del ripristino di
+   prova 3 volte in `BACKUP_DATI_DIR` (default `/var/lib/docker`). Fattori
+   regolabili con `BACKUP_FATTORE_SPAZIO_DUMP` e
+   `BACKUP_FATTORE_SPAZIO_RIPRISTINO`.
+
+**Stati dei file** in `/opt/rifiuti/backups`:
+
+| Suffisso | Significato |
+|----------|-------------|
+| `.sql.gz.parziale` | dump in corso o interrotto |
+| `.sql.gz.scartato` | dump incompleto o ripristino di prova fallito |
+| `.sql.gz.non-verificato` | dump completo ma senza spazio per il ripristino di prova (può servire) |
+| `.sql.gz` | backup verificato, nome finale |
+
+Gli `.scartato` e `.non-verificato` più vecchi di 7 giorni vengono eliminati
+dalla rotazione. Se un backup notturno fallisce parte una **mail a `root`**
+(sul VPS inoltrata a Gmail da `/etc/aliases`, invio con `msmtp`); l'indirizzo si
+cambia con `BACKUP_ALERT_EMAIL`.
+
+**Modalità** (`BACKUP_MODALITA`):
+
+- `notturno` (default): flusso completo, restore di prova, mail se fallisce,
+  copia off-site, rotazione per `BACKUP_RETENTION_DAYS`.
+- `predeploy`: dump + controllo di completezza, file `wasteflow_predeploy_*`
+  (ne restano 10), nessun restore di prova, nessuna mail e nessuna copia
+  off-site. Esce con codice diverso da zero se il dump fallisce: lo segnala il
+  job di deploy.
+
+**Configurazione** (variabili d'ambiente oppure righe nel `/opt/rifiuti/.env`):
 
 ```bash
 # Modalità off-site: rsync | rclone | disabled
-OFFSITE_MODE=rsync
+# Lasciare "disabled" finché la destinazione off-site non è decisa.
+OFFSITE_MODE=disabled
 
 # rsync: destinazione SSH
 RSYNC_TARGET="backup@backup-server.example.com:/backups/wasteflow/"
@@ -25,18 +69,29 @@ ENCRYPT_BACKUP=false
 # AGE_RECIPIENT="age1..."   # chiave pubblica age del destinatario
 ```
 
+Percorsi (sovrascrivibili): `WASTEFLOW_ENV_FILE` (`/opt/rifiuti/.env`),
+`WASTEFLOW_COMPOSE_FILE` (`/opt/rifiuti/site/docker-compose.prod.yml`, quello
+usato dal deploy), `BACKUP_STAGING_DIR` (`/opt/rifiuti/backups`). Ogni
+`docker compose` passa `--env-file`: il compose di produzione ha variabili
+obbligatorie interpolate anche da `exec`.
+
 **Esecuzione manuale:**
 
 ```bash
-source /opt/rifiuti/.env && bash /opt/rifiuti/ops/backup-offsite.sh
+bash /opt/rifiuti/site/ops/backup-offsite.sh
 ```
 
-**Cron suggerito** (ogni notte alle 03:30):
+**Cron suggerito** (ogni notte alle 03:30, senza `source`):
 
 ```
 # /etc/cron.d/wasteflow-backup
-30 3 * * * root source /opt/rifiuti/.env && bash /opt/rifiuti/ops/backup-offsite.sh >> /var/log/wasteflow-backup.log 2>&1
+30 3 * * * root OFFSITE_MODE=disabled bash /opt/rifiuti/site/ops/backup-offsite.sh >> /var/log/wasteflow-backup.log 2>&1
 ```
+
+**Test degli script:** `bash ops/test/backup-verifica.test.sh` (la parte con
+PostgreSQL gira solo se `PG_EXEC` è impostata, ad esempio
+`PG_EXEC="docker exec -i <container>"`). Girano in CI (`ci.yml`, job `backend`
+e `test-postgres`) e nel gate del deploy (`deploy.yml`, job `quality`).
 
 ---
 
@@ -55,9 +110,13 @@ rsync -az backup@backup-server.example.com:/backups/wasteflow/wasteflow_..._2026
 # age -d -i ~/.age/key.txt dump.sql.gz.age > dump.sql.gz
 
 # 3. Eseguire il ripristino (chiede conferma interattiva):
-source /opt/rifiuti/.env && bash /opt/rifiuti/ops/restore.sh \
+bash /opt/rifiuti/site/ops/restore.sh \
   /opt/rifiuti/backups/wasteflow_wasteflow_prod_20260610_033000.sql.gz
 ```
+
+`RIPRISTINO_CONFERMATO=YES` salta la conferma (solo per procedure
+automatizzate). Nessuna `DB_PASSWORD` richiesta: `DB_NAME` e `DB_USER` si
+leggono dal `.env` senza eseguirlo.
 
 Il restore:
 
@@ -69,7 +128,39 @@ Il restore:
 6. Riavvia il backend
 7. Suggerisce un health check di verifica
 
-**Testa il restore periodicamente** su un DB di staging per validare l'integrità dei backup.
+Il ripristino di prova notturno già verifica ogni backup su un database
+temporaneo; resta utile provare `restore.sh` su un ambiente di staging.
+
+---
+
+## Rollback
+
+Se lo smoke test fallisce dopo `migrate` e `up -d`, i container nuovi restano
+su. Il workflow di deploy **non** può rilasciare un tag precedente:
+`workflow_dispatch` non ha input e lo script fa sempre
+`git reset --hard origin/master` e rilascia l'immagine di `github.sha`
+(`deploy.yml:35`, `:274-286`).
+
+Il rollback reale è quindi `git revert -m 1 <commit di merge>` su `master` e la
+pipeline intera (build delle immagini di 30-40 minuti sul runner condiviso, più
+il deploy). È possibile solo se le migration del rilascio sono additive (per la
+Fase 0 lo sono: il piano C aggiunge una colonna nullable e un indice, ignorati
+dal codice vecchio; vedere nel piano C il caso limite di Capodanno).
+
+Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
+una migration ha alterato dati, ed è distruttivo per le scritture successive al
+backup.
+
+Aggiungere a `deploy.yml` un input `tag` che salti la build è una decisione
+aperta (Decisioni aperte, 9).
+
+- I revert dei piani della Fase 0 vanno **solo in ordine inverso** (A, poi C,
+  poi D), perché C importa da D e A da C.
+- Per rilasciare di nuovo un piano revertito serve il **revert del revert**, non
+  un nuovo merge del branch.
+- Dopo un revert di A le chiavi scritte in `MUDReport.reportData`
+  (`integrazioni`, `esportazioni`, `annullamenti`, ...) restano e il codice
+  vecchio le ignora.
 
 ---
 

@@ -125,6 +125,11 @@ jobs:
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
         run: npm run test:cov
 
+      # Script di backup/restore: una libreria rotta blocca il rilascio.
+      - name: Test script di backup (bash)
+        working-directory: ${{ github.workspace }}
+        run: bash ops/test/backup-verifica.test.sh
+
       # Test di CONFORMITA' contro la fake API RENTRI (tools/rentri-fake).
       # Sono l'unica prova che il client parli davvero il protocollo dell'ente
       # (auth ID_AUTH_REST_02, ciclo 202/200/303, 403 non ritentato): senza

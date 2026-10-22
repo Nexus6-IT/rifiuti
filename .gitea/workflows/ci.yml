@@ -102,6 +102,11 @@ jobs:
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
         run: npm run test:cov
 
+      # Script di backup/restore (ops/): test bash senza database.
+      - name: Test script di backup (bash)
+        working-directory: ${{ github.workspace }}
+        run: bash ops/test/backup-verifica.test.sh
+
       # Build di produzione NestJS.
       - name: Build (nest build)
         run: npm run build
@@ -282,6 +287,15 @@ jobs:
       # *.postgres.spec.ts), non toccato da questo commit.
       - name: Test integrazione Postgres (*.postgres.spec.ts)
         run: npm run test:postgres
+
+      # Backup verificato e ripristino di prova contro il PostgreSQL reale del
+      # job. PGPORT serve perche' qui Postgres ascolta sulla 55432 anche dentro
+      # il container (-c port=55432).
+      - name: Test backup e ripristino di prova (PostgreSQL reale)
+        working-directory: ${{ github.workspace }}
+        env:
+          PG_EXEC: "docker exec -i -e PGPORT=55432 ${{ env.POSTGRES_CI_CONTAINER }}"
+        run: bash ops/test/backup-verifica.test.sh
 
       # Cleanup garantito: gira sempre, anche se un passo precedente e'
       # fallito, altrimenti il container Postgres resta orfano sul runner
