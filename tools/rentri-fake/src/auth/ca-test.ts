@@ -137,9 +137,14 @@ export function emettiCertificatoAltraCa(commonName: string): CertificatoEmesso 
  * certificato EC P-256 usato per provare ES256. Il simulatore si fida anche
  * di questa, oltre alla CA effimera di processo.
  *
- * La fixture sta in test/, che l'immagine Docker NON copia: se il file non
- * c'e' (build di produzione del finto) la CA fissa semplicemente non si
- * aggiunge e resta valida solo la CA effimera.
+ * ATTENZIONE: la chiave privata di questa CA e' pubblica nel repository
+ * (test/fixture/ec/ca-prova.key), quindi chiunque puo' emettere certificati
+ * che la CA fissa considera validi. Un finto avviato dal repository (npm start,
+ * ts-node, CI con working-directory tools/rentri-fake) si fida percio' di
+ * certificati che chiunque puo' produrre: il finto NON e' un confine di
+ * sicurezza. Ne e' esente solo l'immagine Docker: la fixture sta in test/, che
+ * l'immagine NON copia, e se il file non c'e' la CA fissa non si aggiunge e
+ * resta valida solo la CA effimera.
  */
 const PERCORSO_CA_FISSA = join(__dirname, '..', '..', 'test', 'fixture', 'ec', 'ca-prova.crt')
 

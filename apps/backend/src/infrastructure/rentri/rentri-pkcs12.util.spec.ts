@@ -107,6 +107,27 @@ describe('parsePkcs12', () => {
       expect(r.curva).toBe('prime256v1')
     })
 
+    it('p12 EC coi default di OpenSSL 3 (PBES2/PBKDF2/AES-256-CBC, MAC SHA-256)', () => {
+      const r = parsePkcs12(leggi('operatore-test-ec-openssl3.p12'), 'prova-ec')
+
+      expect(r.tipoChiave).toBe('ec')
+      expect(r.curva).toBe('prime256v1')
+      expect(new crypto.X509Certificate(r.certificatePem).subject).toBe('CN=operatore-test-ec')
+    })
+
+    it('p12 EC con keyBag non cifrato (con MAC e senza MAC)', () => {
+      for (const [nome, pass] of [
+        ['operatore-test-ec-keybag-in-chiaro.p12', 'prova-ec'],
+        ['operatore-test-ec-keybag-in-chiaro-senza-mac.p12', ''],
+      ]) {
+        const r = parsePkcs12(leggi(nome), pass)
+
+        expect(r.tipoChiave).toBe('ec')
+        expect(r.curva).toBe('prime256v1')
+        expect(new crypto.X509Certificate(r.certificatePem).subject).toBe('CN=operatore-test-ec')
+      }
+    })
+
     it('p12 EC con passphrase errata: messaggio generico di oggi', () => {
       expect(() => parsePkcs12(leggi('operatore-test-ec.p12'), 'sbagliata')).toThrow(
         'PKCS#12 non leggibile: file non valido oppure passphrase errata'
