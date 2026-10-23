@@ -4,6 +4,7 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { FIRPrismaRepository } from '../persistence/fir-prisma.repository'
 import { RENTRISyncQueue } from '../queue/rentri-sync.queue'
+import { RentriModalitaLegameService } from '../rentri/rentri-modalita-legame.service'
 import { SOGLIA_STALLO_RENTRI_MS } from '../../application/rentri/sync-fir-to-rentri.use-case'
 
 /**
@@ -13,6 +14,12 @@ import { SOGLIA_STALLO_RENTRI_MS } from '../../application/rentri/sync-fir-to-re
  * vecchia di `SOGLIA_STALLO_RENTRI_MS` e li riaccoda con priorità low: il use
  * case di sync è idempotente (riprende la transazione già aperta invece di
  * fare una nuova POST) e il jobId per FIR impedisce doppioni in coda.
+ *
+ * In un tenant IBRIDA la ripresa accoda con `richiedeConferma`, come la
+ * trasmissione partita all'emissione: un esito positivo resta una proposta di
+ * legame da confermare, non un legame chiuso in silenzio. La modalità si legge
+ * con lo stesso servizio di `TrasmettiFIRSecondoModalitaUseCase`, una volta
+ * per tenant e per giro; se non si legge, quel FIR resta al giro successivo.
  *
  * Al massimo 100 FIR per giro: il resto viene ripreso al giro successivo.
  * Un errore su un FIR non ferma gli altri.
@@ -24,7 +31,8 @@ export class RentriTrasmissioniSospeseJob {
   constructor(
     private readonly firRepo: FIRPrismaRepository,
     private readonly queue: RENTRISyncQueue,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly modalitaLegame: RentriModalitaLegameService
   ) {
     this.logger.setContext(RentriTrasmissioniSospeseJob.name)
   }
@@ -39,9 +47,19 @@ export class RentriTrasmissioniSospeseJob {
 
       let accodate = 0
       let inErrore = 0
+      const ibridaPerTenant = new Map<string, Promise<boolean>>()
       for (const { firId, tenantId } of sospese) {
         try {
-          await this.queue.addSyncJob({ firId, tenantId, priority: 'low' })
+          if (!ibridaPerTenant.has(tenantId)) {
+            ibridaPerTenant.set(
+              tenantId,
+              this.modalitaLegame
+                .getForTenant(tenantId)
+                .then(({ modalitaLegame }) => modalitaLegame === 'IBRIDA')
+            )
+          }
+          const richiedeConferma = await ibridaPerTenant.get(tenantId)!
+          await this.queue.addSyncJob({ firId, tenantId, priority: 'low', richiedeConferma })
           accodate++
         } catch (error: unknown) {
           inErrore++

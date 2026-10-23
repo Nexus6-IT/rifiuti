@@ -5,13 +5,19 @@ describe('RentriTrasmissioniSospeseJob', () => {
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   let firRepo: { elencaTrasmissioniRentriSospese: jest.Mock }
   let queue: { addSyncJob: jest.Mock }
+  let modalita: { getForTenant: jest.Mock }
   let job: RentriTrasmissioniSospeseJob
 
   beforeEach(() => {
     jest.clearAllMocks()
     firRepo = { elencaTrasmissioniRentriSospese: jest.fn() }
     queue = { addSyncJob: jest.fn().mockResolvedValue('id') }
-    job = new RentriTrasmissioniSospeseJob(firRepo as any, queue as any, logger)
+    modalita = {
+      getForTenant: jest
+        .fn()
+        .mockResolvedValue({ modalitaLegame: 'AUTOMATICA', certificatoConfigurato: true }),
+    }
+    job = new RentriTrasmissioniSospeseJob(firRepo as any, queue as any, logger, modalita as any)
   })
 
   it('accoda i FIR sospesi con priorità low', async () => {
@@ -26,8 +32,61 @@ describe('RentriTrasmissioniSospeseJob', () => {
     const [soglia, limite] = firRepo.elencaTrasmissioniRentriSospese.mock.calls[0]
     expect(limite).toBe(100)
     expect(Math.abs(soglia.getTime() - (prima - SOGLIA_STALLO_RENTRI_MS))).toBeLessThan(5000)
-    expect(queue.addSyncJob).toHaveBeenCalledWith({ firId: 'f1', tenantId: 't1', priority: 'low' })
-    expect(queue.addSyncJob).toHaveBeenCalledWith({ firId: 'f2', tenantId: 't2', priority: 'low' })
+    expect(queue.addSyncJob).toHaveBeenCalledWith({
+      firId: 'f1',
+      tenantId: 't1',
+      priority: 'low',
+      richiedeConferma: false,
+    })
+    expect(queue.addSyncJob).toHaveBeenCalledWith({
+      firId: 'f2',
+      tenantId: 't2',
+      priority: 'low',
+      richiedeConferma: false,
+    })
+  })
+
+  it('tenant IBRIDA: la ripresa chiede la conferma del legame, AUTOMATICA no', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f-ibrida', tenantId: 't-ibrida' },
+      { firId: 'f-auto', tenantId: 't-auto' },
+      { firId: 'f-ibrida-2', tenantId: 't-ibrida' },
+    ])
+    modalita.getForTenant.mockImplementation(async (tenantId: string) => ({
+      modalitaLegame: tenantId === 't-ibrida' ? 'IBRIDA' : 'AUTOMATICA',
+      certificatoConfigurato: true,
+    }))
+
+    await job.riprendi()
+
+    expect(queue.addSyncJob).toHaveBeenCalledWith(
+      expect.objectContaining({ firId: 'f-ibrida', richiedeConferma: true })
+    )
+    expect(queue.addSyncJob).toHaveBeenCalledWith(
+      expect.objectContaining({ firId: 'f-ibrida-2', richiedeConferma: true })
+    )
+    expect(queue.addSyncJob).toHaveBeenCalledWith(
+      expect.objectContaining({ firId: 'f-auto', richiedeConferma: false })
+    )
+    // Una lettura della modalità per tenant, non per FIR.
+    expect(modalita.getForTenant).toHaveBeenCalledTimes(2)
+  })
+
+  it('modalità non leggibile: quel FIR non si accoda, gli altri sì', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f1', tenantId: 't1' },
+      { firId: 'f2', tenantId: 't2' },
+    ])
+    modalita.getForTenant.mockImplementation(async (tenantId: string) => {
+      if (tenantId === 't1') throw new Error('db')
+      return { modalitaLegame: 'AUTOMATICA', certificatoConfigurato: true }
+    })
+
+    await job.riprendi()
+
+    expect(queue.addSyncJob).toHaveBeenCalledTimes(1)
+    expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f2' }))
+    expect(logger.error).toHaveBeenCalled()
   })
 
   it('un errore di accodamento su un FIR non ferma gli altri', async () => {
