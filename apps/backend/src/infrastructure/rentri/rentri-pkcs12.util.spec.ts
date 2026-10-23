@@ -1,3 +1,6 @@
+import * as crypto from 'crypto'
+import * as fs from 'fs'
+import * as path from 'path'
 import * as forge from 'node-forge'
 import { parsePkcs12 } from './rentri-pkcs12.util'
 
@@ -80,5 +83,61 @@ describe('parsePkcs12', () => {
 
   it('lancia un errore su contenuto vuoto', () => {
     expect(() => parsePkcs12('', passphrase)).toThrow(/non valido/i)
+  })
+
+  describe('chiavi EC (fixture versionate in tools/rentri-fake/test/fixture/ec)', () => {
+    const dirFixture = path.resolve(__dirname, '../../../../../tools/rentri-fake/test/fixture/ec')
+    const leggi = (nome: string) => fs.readFileSync(path.join(dirFixture, nome))
+
+    it('p12 EC P-256 cifrato: chiave e certificato in PEM, tipoChiave ec, curva prime256v1', () => {
+      const r = parsePkcs12(leggi('operatore-test-ec.p12'), 'prova-ec')
+
+      expect(r.tipoChiave).toBe('ec')
+      expect(r.curva).toBe('prime256v1')
+      expect(r.privateKeyPem).toContain('-----BEGIN PRIVATE KEY-----')
+      expect(r.certificatePem).toContain('-----BEGIN CERTIFICATE-----')
+      // Il certificato restituito è quello foglia (non la CA allegata).
+      expect(new crypto.X509Certificate(r.certificatePem).subject).toBe('CN=operatore-test-ec')
+    })
+
+    it('p12 EC senza password', () => {
+      const r = parsePkcs12(leggi('operatore-test-ec-senza-password.p12'), '')
+
+      expect(r.tipoChiave).toBe('ec')
+      expect(r.curva).toBe('prime256v1')
+    })
+
+    it('p12 EC con passphrase errata: messaggio generico di oggi', () => {
+      expect(() => parsePkcs12(leggi('operatore-test-ec.p12'), 'sbagliata')).toThrow(
+        'PKCS#12 non leggibile: file non valido oppure passphrase errata'
+      )
+    })
+
+    it('p12 EC P-384: riconosciuto con la sua curva (il rifiuto spetta a chi usa il risultato)', () => {
+      const r = parsePkcs12(leggi('operatore-test-ec384.p12'), 'prova-ec')
+
+      expect(r.tipoChiave).toBe('ec')
+      expect(r.curva).toBe('secp384r1')
+    })
+
+    it('p12 RSA esistente: invariato', () => {
+      const fixture = makePkcs12(passphrase)
+
+      const r = parsePkcs12(fixture.pkcs12Base64, passphrase)
+
+      expect(r.tipoChiave).toBe('rsa')
+      expect(r.curva).toBeUndefined()
+      expect(r.privateKeyPem).toContain('-----BEGIN RSA PRIVATE KEY-----')
+    })
+
+    it('la chiave EC estratta firma e il certificato la verifica', () => {
+      const r = parsePkcs12(leggi('operatore-test-ec.p12'), 'prova-ec')
+      const dati = Buffer.from('dati da firmare')
+
+      const firma = crypto.sign('sha256', dati, crypto.createPrivateKey(r.privateKeyPem))
+      const pubblica = new crypto.X509Certificate(r.certificatePem).publicKey
+
+      expect(crypto.verify('sha256', dati, pubblica, firma)).toBe(true)
+    })
   })
 })
