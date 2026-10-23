@@ -8,6 +8,7 @@ import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri
 import { IDomainEvent } from '../../domain/shared/domain-event.interface'
 import { CostruisciPayloadRentri } from './mappatura/costruisci-payload-rentri'
 import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
+import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
 import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
 import {
   RENTRIApiClient,
@@ -67,6 +68,9 @@ export const SOGLIA_STALLO_RENTRI_MS = 15 * 60 * 1000
  *   transazione in attesa diventa RENTRI_ESITO_NON_ACQUISITO: la transazione
  *   resta salvata e «Rileggi esito» (stessa riapertura) la riprende senza POST.
  */
+/** Codice dell'esito definitivo per un'azienda priva di certificato RENTRI. */
+const CODICE_CERTIFICATO_MANCANTE = 'RENTRI_CERTIFICATO_MANCANTE'
+
 @Injectable()
 export class SyncFIRToRENTRIUseCase {
   constructor(
@@ -97,6 +101,9 @@ export class SyncFIRToRENTRIUseCase {
     opzioni?: SyncFIRToRENTRIOpzioni
   ): Promise<SyncFIRToRENTRIResult> {
     const startTime = Date.now()
+    // Ultima versione dell'aggregate caricata: serve al catch finale per fissare
+    // lo stato definitivo di un'azienda senza certificato, ovunque emerga l'errore.
+    let firCorrente: FIR | undefined
 
     try {
       // Load FIR aggregate (riletto dopo la prenotazione, v. sotto)
@@ -105,6 +112,7 @@ export class SyncFIRToRENTRIUseCase {
       if (!fir) {
         throw DomainException.notFound('FIR', firId)
       }
+      firCorrente = fir
 
       // Tenant isolation check
       if (fir.tenantId !== tenantId) {
@@ -165,6 +173,7 @@ export class SyncFIRToRENTRIUseCase {
       const riletto = await this.firRepository.findById(firId)
       if (!riletto) throw DomainException.notFound('FIR', firId)
       fir = riletto
+      firCorrente = riletto
       const firPrenotato = riletto
       const transazioneInAttesa = fir.rentriTransazioneInAttesa ?? null
 
@@ -380,6 +389,34 @@ export class SyncFIRToRENTRIUseCase {
         // secondo salvataggio, che verrebbe rifiutato allo stesso modo.
         if (apiError instanceof FirAnnullatoNelFrattempoError) throw apiError
 
+        // Azienda senza certificato: esito definitivo, nessuna POST è partita.
+        if (apiError instanceof TenantSenzaCertificatoRentriError) {
+          fir.markRENTRISyncFailed(apiError.message, CODICE_CERTIFICATO_MANCANTE, correlationId)
+          const failureLog = syncLog.markAsFailure({
+            responsePayload: rispostaDaRegistrare(undefined, transazionePersa),
+            errorMessage: apiError.message,
+            errorCode: CODICE_CERTIFICATO_MANCANTE,
+            durationMs: Date.now() - startTime,
+          })
+          const annullato = await this.salvaFirSeNonAnnullato(fir, failureLog, ESITO_NON_SALVATO, {
+            firId,
+            errorCode: CODICE_CERTIFICATO_MANCANTE,
+          })
+          if (annullato) return annullato
+          await this.syncLogRepository.save(failureLog)
+          await this.publishDomainEvents(fir)
+          this.logger.warn(`FIR non trasmesso a RENTRI: azienda senza certificato`, {
+            firId,
+            tenantId,
+          })
+          return {
+            success: false,
+            error: apiError.message,
+            willRetry: false,
+            attempts: fir.rentriSyncStatus.getAttempts(),
+          }
+        }
+
         // Creazione dall'esito incerto (5xx, nessuna risposta, 202 senza
         // transazione) o transazione che RENTRI non conosce (404): il formulario
         // può esistere o no, e solo il portale lo dice. Non ritentabile.
@@ -494,6 +531,35 @@ export class SyncFIRToRENTRIUseCase {
         }
       }
     } catch (error: any) {
+      // Azienda senza certificato emersa fuori dalla POST (costruzione del corpo,
+      // passi fra prenotazione e POST): esito definitivo anche qui, mai un 500 né
+      // un FAILED ritentabile. Se il rilascio di primaDellaPost ha già fissato il
+      // codice non si salva due volte.
+      if (error instanceof TenantSenzaCertificatoRentriError && firCorrente) {
+        const fir = firCorrente
+        try {
+          if (fir.rentriSyncStatus.getLastErrorCode() !== CODICE_CERTIFICATO_MANCANTE) {
+            fir.markRENTRISyncFailed(error.message, CODICE_CERTIFICATO_MANCANTE, correlationId)
+            await this.firRepository.save(fir)
+            await this.publishDomainEvents(fir)
+          }
+        } catch (salvataggio) {
+          this.logger.error(`Salvataggio dell'esito "certificato mancante" non riuscito`, salvataggio, {
+            firId,
+          })
+        }
+        this.logger.warn(`FIR non trasmesso a RENTRI: azienda senza certificato`, {
+          firId,
+          tenantId,
+        })
+        return {
+          success: false,
+          error: error.message,
+          willRetry: false,
+          attempts: fir.rentriSyncStatus.getAttempts(),
+        }
+      }
+
       this.logger.error(`Failed to sync FIR to RENTRI`, error, {
         firId,
         tenantId,
@@ -649,7 +715,10 @@ export class SyncFIRToRENTRIUseCase {
       try {
         fir.markRENTRISyncFailed(
           errore?.message || 'Errore prima della trasmissione a RENTRI',
-          'RENTRI_API_ERROR',
+          // Senza certificato il fallimento è definitivo, non ritentabile.
+          errore instanceof TenantSenzaCertificatoRentriError
+            ? CODICE_CERTIFICATO_MANCANTE
+            : 'RENTRI_API_ERROR',
           correlationId
         )
         await this.firRepository.save(fir)

@@ -1,4 +1,5 @@
-import { Injectable, Inject, BadRequestException } from '@nestjs/common'
+import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common'
+import { RENTRISyncStatus as PrismaRentriSyncStatus } from '@prisma/client'
 import { PrismaService } from '../persistence/prisma.service'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { encryptSecret, decryptSecret } from './rentri-crypto.util'
@@ -65,6 +66,8 @@ export interface RentriCredentialInput {
  */
 @Injectable()
 export class RentriCredentialService {
+  private readonly logger = new Logger(RentriCredentialService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig
@@ -107,6 +110,30 @@ export class RentriCredentialService {
       create: { tenantId, ...data },
       update: data,
     })
+
+    // Il certificato c'è: i FIR di QUESTA azienda fermi perché ne era privo
+    // tornano trasmissibili (tentativi azzerati), così al prossimo invio o al
+    // job di ripresa ripartono senza interventi manuali. Il filtro su tenant e
+    // codice non tocca gli altri fallimenti permanenti (403, validazione...).
+    const riaperti = await this.prisma.fIR.updateMany({
+      where: {
+        tenantId,
+        rentriSyncStatus: PrismaRentriSyncStatus.PERMANENTLY_FAILED,
+        rentriLastSyncErrorCode: 'RENTRI_CERTIFICATO_MANCANTE',
+      },
+      data: {
+        rentriSyncStatus: PrismaRentriSyncStatus.PENDING,
+        rentriSyncAttempts: 0,
+        rentriLastSyncError: null,
+        rentriLastSyncErrorCode: null,
+        rentriNextRetryAt: null,
+      },
+    })
+    if (riaperti.count > 0) {
+      this.logger.log(
+        `Certificato RENTRI caricato: ${riaperti.count} FIR fermi per certificato mancante riaperti (tenant ${tenantId})`
+      )
+    }
   }
 
   /** Ritorna la credenziale in chiaro del tenant, o null se non configurata. */

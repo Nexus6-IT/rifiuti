@@ -83,6 +83,16 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
         azione: 'VEDI_CERTIFICATO',
       }
 
+    case 'RENTRI_CERTIFICATO_MANCANTE':
+      // Esito definitivo: l'azienda non ha un certificato proprio e non si presta
+      // quello di un'altra. Stesso testo di TenantSenzaCertificatoRentriError; la
+      // trasmissione riparte da sola quando il certificato viene caricato.
+      return {
+        messaggio:
+          "L'azienda non ha un certificato RENTRI configurato: caricalo nella pagina del certificato RENTRI.",
+        azione: 'VEDI_CERTIFICATO',
+      }
+
     case 'RENTRI_RATE_LIMITED':
       return {
         messaggio:

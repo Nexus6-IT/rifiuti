@@ -252,4 +252,13 @@ describe('traduciErroreRentri', () => {
     expect(risultato.messaggio.toLowerCase()).not.toContain('ente')
     expect(risultato.azione).toBe('NESSUNA')
   })
+
+  it('traduciErroreRentri RENTRI_CERTIFICATO_MANCANTE → VEDI_CERTIFICATO', () => {
+    const risultato = traduciErroreRentri({ errorCode: 'RENTRI_CERTIFICATO_MANCANTE' })
+
+    expect(risultato.messaggio).toBe(
+      "L'azienda non ha un certificato RENTRI configurato: caricalo nella pagina del certificato RENTRI."
+    )
+    expect(risultato.azione).toBe('VEDI_CERTIFICATO')
+  })
 })

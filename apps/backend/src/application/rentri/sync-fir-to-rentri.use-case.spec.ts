@@ -9,6 +9,7 @@ import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
 import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
+import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
 
 /**
  * Unit tests for SyncFIRToRENTRI Use Case
@@ -1279,6 +1280,90 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_API_ERROR')
       expect(fir.needsRENTRIRetry()).toBe(true)
       expect(mockFIRRepository.save).toHaveBeenCalledWith(fir)
+    })
+  })
+
+  describe('Azienda senza certificato RENTRI', () => {
+    const tenantId = 'tenant-senza-cert'
+
+    function firReale(): FIR {
+      const fir = FIR.create({
+        produttoreId: 'produttore-1',
+        rifiuto: {
+          cerCode: '13 02 05*',
+          quantita: 120,
+          unitaMisura: UnitaMisura.KG,
+          statoFisico: 'Liquido',
+          caratteristichePericolo: 'HP14',
+        },
+        trasportatoreId: 'trasportatore-1',
+        destinatarioId: 'destinatario-1',
+        tenantId,
+      })
+      fir.emetti('FIR-2026-000009', {
+        firmatario: 'Produttore',
+        timestamp: new Date(),
+        certificato: 'cert',
+      })
+      fir.clearDomainEvents()
+      return fir
+    }
+
+    function attesoDefinitivo(fir: FIR, result: any) {
+      expect(result).toMatchObject({ success: false, willRetry: false })
+      expect(result.error).toContain('non ha un certificato RENTRI')
+      expect(fir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_CERTIFICATO_MANCANTE')
+      expect(mockFIRRepository.save).toHaveBeenCalledWith(fir)
+      expect(mockRENTRIApiClient.attendiEsito).not.toHaveBeenCalled()
+    }
+
+    beforeEach(() => {
+      mockSyncLogRepository.createPending.mockImplementation(async (p: any) =>
+        RENTRISyncLog.createPending(p)
+      )
+      mockSyncLogRepository.save.mockImplementation(async (l: any) => l)
+      mockFIRRepository.save.mockResolvedValue(undefined)
+    })
+
+    it('resolver senza certificato: PERMANENTLY_FAILED RENTRI_CERTIFICATO_MANCANTE, nessuna POST, willRetry false', async () => {
+      const fir = firReale()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.creaFormulario.mockRejectedValue(new TenantSenzaCertificatoRentriError())
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      attesoDefinitivo(fir, result)
+      expect(mockRENTRIApiClient.creaFormulario).toHaveBeenCalledTimes(1)
+    })
+
+    it('errore prima della prenotazione (costruzione del corpo): stato definitivo salvato comunque', async () => {
+      const fir = firReale()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      const uc = new SyncFIRToRENTRIUseCase(
+        mockFIRRepository,
+        mockRENTRIApiClient,
+        mockSyncLogRepository,
+        mockDomainEvents,
+        mockLogger,
+        { costruisci: jest.fn().mockRejectedValue(new TenantSenzaCertificatoRentriError()) } as any
+      )
+
+      const result = await uc.execute(fir.id, tenantId)
+
+      attesoDefinitivo(fir, result)
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+    })
+
+    it('errore fra prenotazione e POST: stato definitivo, non FAILED ritentabile', async () => {
+      const fir = firReale()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockSyncLogRepository.createPending.mockRejectedValue(new TenantSenzaCertificatoRentriError())
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      attesoDefinitivo(fir, result)
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
     })
   })
 })

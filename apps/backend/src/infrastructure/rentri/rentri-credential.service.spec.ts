@@ -21,6 +21,7 @@ describe('RentriCredentialService', () => {
         count: jest.fn(),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      fIR: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     }
     service = new RentriCredentialService(prisma, config)
   })
@@ -188,5 +189,44 @@ describe('RentriCredentialService', () => {
       expect(valore.getTime()).toBeGreaterThanOrEqual(prima)
       expect(valore.getTime()).toBeLessThanOrEqual(dopo)
     })
+  })
+
+  it('caricamento del certificato riapre i FIR fermi per certificato mancante di quel tenant, non di altri', async () => {
+    prisma.fIR.updateMany.mockResolvedValue({ count: 2 })
+
+    await service.upsertForTenant('tenant-1', {
+      clientId: 'op-1',
+      certificatePem: 'CERT',
+      privateKeyPem: 'KEY',
+    })
+
+    expect(prisma.fIR.updateMany).toHaveBeenCalledTimes(1)
+    const args = prisma.fIR.updateMany.mock.calls[0][0]
+    expect(args.where).toEqual({
+      tenantId: 'tenant-1',
+      rentriSyncStatus: 'PERMANENTLY_FAILED',
+      rentriLastSyncErrorCode: 'RENTRI_CERTIFICATO_MANCANTE',
+    })
+    expect(args.data).toEqual({
+      rentriSyncStatus: 'PENDING',
+      rentriSyncAttempts: 0,
+      rentriLastSyncError: null,
+      rentriLastSyncErrorCode: null,
+      rentriNextRetryAt: null,
+    })
+  })
+
+  it('upsert non riuscito: nessuna riapertura dei FIR', async () => {
+    prisma.rentriCredential.upsert.mockRejectedValue(new Error('db'))
+
+    await expect(
+      service.upsertForTenant('tenant-1', {
+        clientId: 'op-1',
+        certificatePem: 'CERT',
+        privateKeyPem: 'KEY',
+      })
+    ).rejects.toThrow('db')
+
+    expect(prisma.fIR.updateMany).not.toHaveBeenCalled()
   })
 })
