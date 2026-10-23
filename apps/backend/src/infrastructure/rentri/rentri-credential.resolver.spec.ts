@@ -180,4 +180,52 @@ describe('RentriCredentialResolver', () => {
     const dalContesto = warn.mock.calls.filter(c => String(c[0]).includes('dal contesto'))
     expect(dalContesto).toHaveLength(1)
   })
+
+  it("haCredenziale: propria → true; legata all'env → true; altra → false", async () => {
+    const resolver = makeResolver()
+    credentialService.getForTenant.mockImplementation(async (t: string) =>
+      t === 'tenant-A' ? credTenant() : null
+    )
+    const warn = jest.spyOn((resolver as any).logger, 'warn').mockImplementation(() => undefined)
+
+    expect(await resolver.haCredenziale('tenant-A')).toBe(true)
+    expect(await resolver.haCredenziale('tenant-pilota')).toBe(true)
+    expect(await resolver.haCredenziale('tenant-altro')).toBe(false)
+    // Un controllo non e' un uso: niente warn e nessun conteggio del fallback env.
+    expect(warn).not.toHaveBeenCalled()
+    expect(metrics.rentriCredentialEnvFallback.inc).not.toHaveBeenCalled()
+  })
+
+  it("haCredenziale: tenant legato con PEM env vuoti → true (l'errore vero lo da' resolve)", async () => {
+    const senzaPem = makeResolver({ ...envConfig, certificatePem: '', privateKeyPem: '' })
+    credentialService.getForTenant.mockResolvedValue(null)
+    expect(await senzaPem.haCredenziale('tenant-pilota')).toBe(true)
+    await expect(senzaPem.resolve('tenant-pilota')).rejects.not.toBeInstanceOf(
+      TenantSenzaCertificatoRentriError
+    )
+  })
+
+  it.each([
+    ['credenziale propria', envConfig, 'tenant-A', true],
+    ['env legato con PEM', envConfig, 'tenant-pilota', true],
+    [
+      'env legato con PEM vuoti',
+      { ...envConfig, certificatePem: '', privateKeyPem: '' },
+      'tenant-pilota',
+      true,
+    ],
+    ['altro tenant', envConfig, 'tenant-altro', true],
+    ['envTenantId non impostato', { ...envConfig, envTenantId: '' }, 'tenant-pilota', true],
+  ])('haCredenziale coerente con resolve: %s', async (_nome, config, tenantId, _x) => {
+    const resolver = makeResolver(config)
+    credentialService.getForTenant.mockImplementation(async (t: string) =>
+      t === 'tenant-A' ? credTenant() : null
+    )
+    const ha = await resolver.haCredenziale(tenantId)
+    const senzaCertificato = await resolver.resolve(tenantId).then(
+      () => false,
+      e => e instanceof TenantSenzaCertificatoRentriError
+    )
+    expect(ha).toBe(!senzaCertificato)
+  })
 })

@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { PrismaService } from '../persistence/prisma.service'
+import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
 import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
 import { RentriScortaRepository } from '../persistence/rentri-scorta.repository'
 import { AvviaVidimazioneScortaUseCase } from '../../application/rentri/scorta/avvia-vidimazione-scorta.use-case'
@@ -37,7 +38,8 @@ export class RentriRifornimentoScortaJob {
     private readonly unitaLocaleService: RentriUnitaLocaleService,
     private readonly scortaRepo: RentriScortaRepository,
     private readonly avviaVidimazione: AvviaVidimazioneScortaUseCase,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly credenziali: RentriCredentialResolver
   ) {
     this.logger.setContext(RentriRifornimentoScortaJob.name)
   }
@@ -58,6 +60,14 @@ export class RentriRifornimentoScortaJob {
       for (const tenant of tenants) {
         let unitaLocali: Awaited<ReturnType<RentriUnitaLocaleService['listForTenant']>>
         try {
+          // Azienda senza certificato RENTRI (e non legata all'env): non e' un guasto,
+          // si salta con un info e senza segnalazione a Bugsink.
+          if (!(await this.credenziali.haCredenziale(tenant.id))) {
+            this.logger.info(`azienda ${tenant.id} senza certificato RENTRI: saltata`, {
+              tenantId: tenant.id,
+            })
+            continue
+          }
           unitaLocali = await this.unitaLocaleService.listForTenant(tenant.id)
         } catch (error: unknown) {
           sediInErrore++

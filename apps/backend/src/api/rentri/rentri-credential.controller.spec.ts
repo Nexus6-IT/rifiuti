@@ -8,6 +8,9 @@ import { RentriCredentialController } from './rentri-credential.controller'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { SetRentriCredentialDto } from './dto/set-rentri-credential.dto'
+import * as Sentry from '@sentry/node'
+
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
 const user: CurrentUserPayload = {
   id: 'user-1',
@@ -60,16 +63,20 @@ const p12Base64 = (nome: string): string =>
 describe('RentriCredentialController', () => {
   let controller: RentriCredentialController
   let service: jest.Mocked<RentriCredentialService>
+  let modalita: { getForTenant: jest.Mock }
+  let coda: { addSyncJob: jest.Mock }
 
   beforeEach(() => {
     service = {
-      upsertForTenant: jest.fn().mockResolvedValue(undefined),
+      upsertForTenant: jest.fn().mockResolvedValue([]),
       getForTenant: jest.fn(),
       hasForTenant: jest.fn(),
       removeForTenant: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<RentriCredentialService>
 
-    controller = new RentriCredentialController(service)
+    modalita = { getForTenant: jest.fn() }
+    coda = { addSyncJob: jest.fn().mockResolvedValue('job-1') }
+    controller = new RentriCredentialController(service, modalita as any, coda as any)
   })
 
   describe('PUT (set)', () => {
@@ -307,6 +314,93 @@ describe('RentriCredentialController', () => {
 
       expect(res).toEqual({ success: true })
       expect(service.removeForTenant).toHaveBeenCalledWith('tenant-1')
+    })
+  })
+
+  describe('ripartenza dei FIR riaperti dal caricamento del certificato', () => {
+    const dto = (): SetRentriCredentialDto => ({ clientId: 'client-1', ...makePemPair() })
+
+    beforeEach(() => {
+      service.upsertForTenant.mockResolvedValue(['fir-1', 'fir-2'])
+    })
+
+    it('AUTOMATICA: accoda i FIR riaperti, senza conferma, a priorita bassa', async () => {
+      modalita.getForTenant.mockResolvedValue({
+        modalitaLegame: 'AUTOMATICA',
+        certificatoConfigurato: true,
+      })
+
+      await controller.set(dto(), user)
+
+      expect(coda.addSyncJob).toHaveBeenCalledTimes(2)
+      expect(coda.addSyncJob).toHaveBeenCalledWith({
+        firId: 'fir-1',
+        tenantId: 'tenant-1',
+        richiedeConferma: false,
+        priority: 'low',
+      })
+      expect(coda.addSyncJob).toHaveBeenCalledWith({
+        firId: 'fir-2',
+        tenantId: 'tenant-1',
+        richiedeConferma: false,
+        priority: 'low',
+      })
+    })
+
+    it('IBRIDA: accoda i FIR riaperti con richiedeConferma', async () => {
+      modalita.getForTenant.mockResolvedValue({
+        modalitaLegame: 'IBRIDA',
+        certificatoConfigurato: true,
+      })
+
+      await controller.set(dto(), user)
+
+      expect(coda.addSyncJob).toHaveBeenCalledTimes(2)
+      expect(coda.addSyncJob).toHaveBeenCalledWith(
+        expect.objectContaining({ firId: 'fir-1', richiedeConferma: true, priority: 'low' })
+      )
+    })
+
+    it('MANUALE: nessun accodamento (l utente preme «Trasmetti a RENTRI»)', async () => {
+      modalita.getForTenant.mockResolvedValue({
+        modalitaLegame: 'MANUALE',
+        certificatoConfigurato: true,
+      })
+
+      await controller.set(dto(), user)
+
+      expect(coda.addSyncJob).not.toHaveBeenCalled()
+    })
+
+    it('nessun FIR riaperto: non legge nemmeno la modalita', async () => {
+      service.upsertForTenant.mockResolvedValue([])
+
+      await controller.set(dto(), user)
+
+      expect(modalita.getForTenant).not.toHaveBeenCalled()
+      expect(coda.addSyncJob).not.toHaveBeenCalled()
+    })
+
+    it('errore di accodamento: il caricamento riesce comunque, errore segnalato', async () => {
+      modalita.getForTenant.mockResolvedValue({
+        modalitaLegame: 'AUTOMATICA',
+        certificatoConfigurato: true,
+      })
+      coda.addSyncJob.mockRejectedValue(new Error('redis giu'))
+
+      const res = await controller.set(dto(), user)
+
+      expect(res.success).toBe(true)
+      expect(Sentry.captureException).toHaveBeenCalled()
+    })
+
+    it('errore nella lettura della modalita: il caricamento riesce comunque', async () => {
+      modalita.getForTenant.mockRejectedValue(new Error('db giu'))
+
+      const res = await controller.set(dto(), user)
+
+      expect(res.success).toBe(true)
+      expect(coda.addSyncJob).not.toHaveBeenCalled()
     })
   })
 

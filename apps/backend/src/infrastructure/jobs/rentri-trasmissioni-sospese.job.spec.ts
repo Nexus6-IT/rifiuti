@@ -20,6 +20,19 @@ describe('RentriTrasmissioniSospeseJob', () => {
     job = new RentriTrasmissioniSospeseJob(firRepo as any, queue as any, logger, modalita as any)
   })
 
+  it('trasmissioni sospese: FIR di azienda senza certificato accodato comunque (lo chiude lo use case)', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f-senza', tenantId: 't-senza' },
+    ])
+
+    await job.riprendi()
+
+    // Il job non controlla il certificato: saltare il FIR lo lascerebbe SYNCING per sempre
+    // e, in testa all'elenco, affamerebbe le altre aziende. Lo chiude il use case.
+    expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-senza' }))
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
   it('accoda i FIR sospesi con priorità low', async () => {
     firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
       { firId: 'f1', tenantId: 't1' },

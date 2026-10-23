@@ -7,6 +7,7 @@ import {
 import * as Sentry from '@sentry/node'
 import { HttpExceptionFilter } from './http-exception.filter'
 import { FirAnnullatoNelFrattempoError } from '../domain/errors'
+import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
 
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
@@ -95,6 +96,23 @@ describe('HttpExceptionFilter - segnalazione a Bugsink', () => {
         error: 'FIR_ANNULLATO_NEL_FRATTEMPO',
         message:
           "Il FIR è stato annullato nel frattempo da un'altra operazione: ricarica la pagina per vedere lo stato aggiornato.",
+      })
+    )
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('un tenant senza certificato RENTRI è un 422 azionabile, non un errore imprevisto', () => {
+    const errore = new TenantSenzaCertificatoRentriError()
+    filter.catch(errore, host)
+
+    expect(response.status).toHaveBeenCalledWith(422)
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 422,
+        error: 'RENTRI_CERTIFICATO_MANCANTE',
+        message: errore.message,
+        correlationId: 'corr-1',
+        path: expect.any(String),
       })
     )
     expect(Sentry.captureException).not.toHaveBeenCalled()

@@ -1060,10 +1060,10 @@ export class FirDetailComponent implements OnInit {
     )
   }
 
-  /** «Vai al certificato»: unica azione utile quando RENTRI ha rifiutato per un certificato non valido (403). */
+  /** «Vai al certificato»: unica azione utile quando il certificato manca o RENTRI l'ha rifiutato (403). Un codice non ritentabile produce sempre PERMANENTLY_FAILED; FAILED resta ammesso per prudenza. */
   mostraVaiAlCertificato(fir: FIR): boolean {
     return (
-      fir.rentriSyncStatus === 'FAILED' &&
+      (fir.rentriSyncStatus === 'FAILED' || fir.rentriSyncStatus === 'PERMANENTLY_FAILED') &&
       fir.rentriAzioneErrore === 'VEDI_CERTIFICATO' &&
       this.canManageRENTRI()
     )

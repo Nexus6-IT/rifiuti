@@ -193,6 +193,14 @@ describe('RENTRISyncStatus', () => {
       expect(status.riapriDopoVerificaManuale().getStatus()).toBe('PENDING')
     })
 
+    it('RENTRI_CERTIFICATO_MANCANTE ferma subito il ciclo ed è riapribile', () => {
+      const status = RENTRISyncStatus.failed(1, 'x', 'RENTRI_CERTIFICATO_MANCANTE')
+
+      expect(status.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(status.canRetry()).toBe(false)
+      expect(status.riapriDopoVerificaManuale().getStatus()).toBe('PENDING')
+    })
+
     it('riapriDopoVerificaManuale rifiuta un altro codice', () => {
       const status = RENTRISyncStatus.failed(1, 'x', 'RENTRI_FORBIDDEN')
 

@@ -67,6 +67,10 @@ export class RENTRISyncStatus {
     // (o 403 sul polling): la transazione resta salvata e si rilegge solo su
     // richiesta dell'utente («Rileggi esito»), senza nuova POST.
     'RENTRI_ESITO_NON_ACQUISITO',
+    // L'azienda non ha un certificato RENTRI proprio: ritentare non lo crea. Si riapre
+    // al caricamento del certificato (v. RentriCredentialService): in AUTOMATICA/IBRIDA ripartono
+    // da soli, in MANUALE con «Trasmetti a RENTRI».
+    'RENTRI_CERTIFICATO_MANCANTE',
   ])
 
   private constructor(
@@ -176,10 +180,11 @@ export class RENTRISyncStatus {
     if (
       this.lastErrorCode !== 'RENTRI_TRASMISSIONE_INCERTA' &&
       this.lastErrorCode !== 'RENTRI_MISSING_NUMERO_FIR' &&
-      this.lastErrorCode !== 'RENTRI_ESITO_NON_ACQUISITO'
+      this.lastErrorCode !== 'RENTRI_ESITO_NON_ACQUISITO' &&
+      this.lastErrorCode !== 'RENTRI_CERTIFICATO_MANCANTE'
     ) {
       throw new DomainException(
-        'Solo una trasmissione incerta, un esito senza numero FIR o un esito non acquisito può essere riaperto dopo verifica manuale'
+        'Solo una trasmissione incerta, un esito senza numero FIR, un esito non acquisito o un certificato mancante può essere riaperto dopo verifica manuale'
       )
     }
     return RENTRISyncStatus.pending()

@@ -1,3 +1,7 @@
+import {
+  MESSAGGIO_CERTIFICATO_MANCANTE,
+  TenantSenzaCertificatoRentriError,
+} from '../../infrastructure/rentri/rentri-credential.resolver'
 /**
  * Traduzione errori RENTRI (R1 Task 5) — TDD, un test per famiglia.
  *
@@ -251,5 +255,13 @@ describe('traduciErroreRentri', () => {
     expect(risultato.messaggio).not.toContain('RENTRI')
     expect(risultato.messaggio.toLowerCase()).not.toContain('ente')
     expect(risultato.azione).toBe('NESSUNA')
+  })
+
+  it('traduciErroreRentri RENTRI_CERTIFICATO_MANCANTE → VEDI_CERTIFICATO', () => {
+    const risultato = traduciErroreRentri({ errorCode: 'RENTRI_CERTIFICATO_MANCANTE' })
+
+    expect(risultato.messaggio).toBe(MESSAGGIO_CERTIFICATO_MANCANTE)
+    expect(risultato.messaggio).toBe(new TenantSenzaCertificatoRentriError().message)
+    expect(risultato.azione).toBe('VEDI_CERTIFICATO')
   })
 })
