@@ -238,9 +238,16 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
       useFactory: (
         modalitaLegameService: RentriModalitaLegameService,
         rentriSyncQueue: RENTRISyncQueue,
+        firRepo: FIRPrismaRepository,
         logger: LoggerService
-      ) => new TrasmettiFIRSecondoModalitaUseCase(modalitaLegameService, rentriSyncQueue, logger),
-      inject: [RentriModalitaLegameService, RENTRISyncQueue, LoggerService],
+      ) =>
+        new TrasmettiFIRSecondoModalitaUseCase(
+          modalitaLegameService,
+          rentriSyncQueue,
+          firRepo,
+          logger
+        ),
+      inject: [RentriModalitaLegameService, RENTRISyncQueue, FIRPrismaRepository, LoggerService],
     },
     {
       provide: ConfermaLegameRENTRIUseCase,
