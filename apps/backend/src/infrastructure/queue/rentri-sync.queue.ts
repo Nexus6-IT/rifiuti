@@ -87,9 +87,10 @@ export class RENTRISyncQueue implements OnModuleInit {
      * (trigger manuale, batch, modalità automatica).
      */
     richiedeConferma?: boolean
-    /** Conferma esplicita di una nuova trasmissione (v. `SyncFIRToRENTRIOpzioni`). */
-    confermaNuovaTrasmissione?: boolean
   }): Promise<string> {
+    // Nessuna conferma di nuova trasmissione nel data del job: la riapertura si
+    // consuma nel controller (RiapriTrasmissioneRentriUseCase), altrimenti ogni
+    // retry di BullMQ la rileggerebbe.
     const {
       firId,
       tenantId,
@@ -97,7 +98,6 @@ export class RENTRISyncQueue implements OnModuleInit {
       delay = 0,
       priority = 'normal',
       richiedeConferma = false,
-      confermaNuovaTrasmissione = false,
     } = params
 
     // Un solo job per FIR: il jobId è deterministico. Un job ancora vivo
@@ -110,14 +110,11 @@ export class RENTRISyncQueue implements OnModuleInit {
     if (esistente) {
       const stato = await esistente.getState()
       if (['waiting', 'delayed', 'active', 'prioritized', 'waiting-children'].includes(stato)) {
-        // Una richiesta con un flag di conferma che il job vivo non porta non
-        // può essere assorbita in silenzio: il job vecchio girerebbe senza.
-        const flagMancanti = [
-          confermaNuovaTrasmissione && !esistente.data?.confermaNuovaTrasmissione
-            ? 'confermaNuovaTrasmissione'
-            : null,
-          richiedeConferma && !esistente.data?.richiedeConferma ? 'richiedeConferma' : null,
-        ].filter((f): f is string => f !== null)
+        // Una richiesta di conferma del legame (IBRIDA) che il job vivo non
+        // porta non può essere assorbita in silenzio: il job vecchio girerebbe
+        // senza e chiuderebbe il legame senza conferma.
+        const flagMancanti =
+          richiedeConferma && !esistente.data?.richiedeConferma ? ['richiedeConferma'] : []
 
         if (flagMancanti.length > 0) {
           if (stato === 'active') {
@@ -151,7 +148,6 @@ export class RENTRISyncQueue implements OnModuleInit {
         correlationId: correlationId || this.generateCorrelationId(),
         type: 'single',
         richiedeConferma,
-        confermaNuovaTrasmissione,
       },
       {
         delay,

@@ -13,6 +13,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
+  ConflictException,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { TenantId } from '../../core/decorators/tenant.decorator'
@@ -24,6 +25,7 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { TriggerBatchSyncUseCase } from '../../application/rentri/trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from '../../application/rentri/get-sync-status.use-case'
 import { ConfermaLegameRENTRIUseCase } from '../../application/rentri/conferma-legame-rentri.use-case'
+import { RiapriTrasmissioneRentriUseCase } from '../../application/rentri/riapri-trasmissione-rentri.use-case'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { DomainException } from '../../domain/shared/domain-exception'
@@ -81,7 +83,8 @@ export class RENTRISyncController {
     private readonly rentriSyncQueue: RENTRISyncQueue,
     private readonly rentriSyncLogRepository: RENTRISyncLogRepository,
     private readonly logger: LoggerService,
-    private readonly ruoloEffettivo: RuoloEffettivoService
+    private readonly ruoloEffettivo: RuoloEffettivoService,
+    private readonly riapriTrasmissione: RiapriTrasmissioneRentriUseCase
   ) {
     this.logger.setContext('RENTRISyncController')
   }
@@ -177,6 +180,27 @@ export class RENTRISyncController {
           error: 'RENTRI_RITRASMISSIONE_RISERVATA_AMMINISTRATORI',
         })
       }
+
+      // La conferma si consuma QUI, prima di accodare: il job che segue è un
+      // job normale senza flag, quindi un retry di BullMQ non riapre nulla.
+      try {
+        await this.riapriTrasmissione.execute(firId, tenantId)
+      } catch (error: any) {
+        if (error instanceof DomainException && error.code === 'NOT_FOUND') {
+          throw new NotFoundException(`FIR with ID ${firId} not found`)
+        }
+        if (error instanceof DomainException) {
+          this.logger.info('Riapertura della trasmissione RENTRI rifiutata', {
+            firId,
+            tenantId,
+            motivo: error.message,
+          })
+          throw new ConflictException(
+            'Questo FIR non è in uno stato che consente la ritrasmissione dopo la verifica.'
+          )
+        }
+        throw error
+      }
     }
 
     try {
@@ -187,7 +211,6 @@ export class RENTRISyncController {
         correlationId: dto.correlationId,
         delay: dto.delay || 0,
         priority: dto.priority || 'normal',
-        ...(dto.confermaNuovaTrasmissione === true ? { confermaNuovaTrasmissione: true } : {}),
       })
 
       const estimatedStartTime = dto.delay

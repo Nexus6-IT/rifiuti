@@ -22,6 +22,7 @@ import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
 import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
 import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
+import { RiapriTrasmissioneRentriUseCase } from './riapri-trasmissione-rentri.use-case'
 import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
 import { CostruisciPayloadRentri } from './mappatura/costruisci-payload-rentri'
 import { CercaFormulariRENTRIUseCase } from './cerca-formulari-rentri.use-case'
@@ -242,6 +243,14 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
       provide: ConfermaLegameRENTRIUseCase,
       useFactory: (firRepo: FIRPrismaRepository, logger: LoggerService) =>
         new ConfermaLegameRENTRIUseCase(firRepo, logger),
+      inject: [FIRPrismaRepository, LoggerService],
+    },
+    // Riapertura dopo verifica sul portale: consumata in modo sincrono dal
+    // controller, cosi' nessun retry di job puo' riaprire da solo.
+    {
+      provide: RiapriTrasmissioneRentriUseCase,
+      useFactory: (firRepo: FIRPrismaRepository, logger: LoggerService) =>
+        new RiapriTrasmissioneRentriUseCase(firRepo, logger),
       inject: [FIRPrismaRepository, LoggerService],
     },
     {

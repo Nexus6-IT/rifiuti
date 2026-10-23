@@ -76,8 +76,9 @@ describe('RENTRISyncQueue.addSyncJob', () => {
     expect(mockBull.add).toHaveBeenCalledTimes(1)
   })
 
+
   it.each(['waiting', 'delayed', 'prioritized', 'waiting-children'])(
-    'job %s e richiesta con confermaNuovaTrasmissione: il job si sostituisce e il flag arriva nel data',
+    'job %s e richiesta con richiedeConferma: il job si sostituisce e il flag arriva nel data',
     async stato => {
       const remove = jest.fn().mockResolvedValue(undefined)
       mockBull.getJob.mockResolvedValue({
@@ -87,12 +88,12 @@ describe('RENTRISyncQueue.addSyncJob', () => {
         remove,
       })
 
-      await queue.addSyncJob({ firId: 'fir-1', tenantId: 't-1', confermaNuovaTrasmissione: true })
+      await queue.addSyncJob({ firId: 'fir-1', tenantId: 't-1', richiedeConferma: true })
 
       expect(remove).toHaveBeenCalledTimes(1)
       expect(mockBull.add).toHaveBeenCalledWith(
         'sync-fir',
-        expect.objectContaining({ confermaNuovaTrasmissione: true }),
+        expect.objectContaining({ richiedeConferma: true }),
         expect.objectContaining({ jobId: 'sync-fir-1' })
       )
     }
@@ -101,17 +102,17 @@ describe('RENTRISyncQueue.addSyncJob', () => {
   it('job in attesa che porta già il flag: nessuna sostituzione', async () => {
     mockBull.getJob.mockResolvedValue({
       id: 'sync-fir-1',
-      data: { confermaNuovaTrasmissione: true },
+      data: { richiedeConferma: true },
       getState: jest.fn().mockResolvedValue('waiting'),
       remove: jest.fn(),
     })
 
-    await queue.addSyncJob({ firId: 'fir-1', tenantId: 't-1', confermaNuovaTrasmissione: true })
+    await queue.addSyncJob({ firId: 'fir-1', tenantId: 't-1', richiedeConferma: true })
 
     expect(mockBull.add).not.toHaveBeenCalled()
   })
 
-  it('job active e richiesta con confermaNuovaTrasmissione: nessun add, warn', async () => {
+  it('job active e richiesta con richiedeConferma: nessun add, warn', async () => {
     const remove = jest.fn()
     mockBull.getJob.mockResolvedValue({
       id: 'sync-fir-1',
@@ -120,11 +121,7 @@ describe('RENTRISyncQueue.addSyncJob', () => {
       remove,
     })
 
-    const id = await queue.addSyncJob({
-      firId: 'fir-1',
-      tenantId: 't-1',
-      confermaNuovaTrasmissione: true,
-    })
+    const id = await queue.addSyncJob({ firId: 'fir-1', tenantId: 't-1', richiedeConferma: true })
 
     expect(id).toBe('sync-fir-1')
     expect(remove).not.toHaveBeenCalled()
@@ -132,13 +129,9 @@ describe('RENTRISyncQueue.addSyncJob', () => {
     expect(logger.warn).toHaveBeenCalled()
   })
 
-  it('confermaNuovaTrasmissione passa nel data del job', async () => {
-    await queue.addSyncJob({ firId: 'fir-1', tenantId: 't-1', confermaNuovaTrasmissione: true })
+  it('il data del job non porta mai confermaNuovaTrasmissione (la conferma si consuma nel controller)', async () => {
+    await queue.addSyncJob({ firId: 'fir-1', tenantId: 't-1' })
 
-    expect(mockBull.add).toHaveBeenCalledWith(
-      'sync-fir',
-      expect.objectContaining({ confermaNuovaTrasmissione: true }),
-      expect.anything()
-    )
+    expect(mockBull.add.mock.calls[0][1]).not.toHaveProperty('confermaNuovaTrasmissione')
   })
 })

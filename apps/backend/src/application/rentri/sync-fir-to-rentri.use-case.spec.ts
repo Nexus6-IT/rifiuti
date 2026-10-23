@@ -1105,39 +1105,36 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(fir.rentriTransazioneInAttesa).toBeNull()
     })
 
-    it('confermaNuovaTrasmissione su trasmissione incerta → nuova POST', async () => {
+    it('trasmissione incerta già riaperta (dal controller) → nuova POST', async () => {
       const fir = firReale()
       fir.avviaTentativoRentri(unOraFa())
       fir.segnaTrasmissioneIncerta('esito incerto')
+      fir.riapriTrasmissioneDopoVerifica()
       fir.clearDomainEvents()
       mockFIRRepository.findById.mockResolvedValue(fir)
       mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-nuova' })
       mockRENTRIApiClient.attendiEsito.mockResolvedValue(esitoPositivo)
 
-      const result = await useCase.execute(fir.id, tenantId, undefined, {
-        confermaNuovaTrasmissione: true,
-      })
+      const result = await useCase.execute(fir.id, tenantId)
 
       expect(result.success).toBe(true)
       expect(mockRENTRIApiClient.creaFormulario).toHaveBeenCalledTimes(1)
-      // La riapertura è salvata prima della prenotazione, che altrimenti
-      // troverebbe in DB un PERMANENTLY_FAILED.
-      expect(mockFIRRepository.save.mock.invocationCallOrder[0]).toBeLessThan(
-        mockFIRRepository.prenotaTrasmissioneRentri.mock.invocationCallOrder[0]
-      )
     })
 
-    it('confermaNuovaTrasmissione su FIR non incerto → CANNOT_SYNC_FIR', async () => {
-      mockFIRRepository.findById.mockResolvedValue(firReale())
+    it('trasmissione incerta non riaperta (es. retry di un job) → CANNOT_SYNC_FIR, nessuna POST', async () => {
+      const fir = firReale()
+      fir.avviaTentativoRentri(unOraFa())
+      fir.segnaTrasmissioneIncerta('esito incerto')
+      fir.clearDomainEvents()
+      mockFIRRepository.findById.mockResolvedValue(fir)
 
-      await expect(
-        useCase.execute('fir-x', tenantId, undefined, { confermaNuovaTrasmissione: true })
-      ).rejects.toMatchObject({
+      await expect(useCase.execute(fir.id, tenantId)).rejects.toMatchObject({
         code: 'BUSINESS_RULE_VIOLATION',
         metadata: expect.objectContaining({ rule: 'CANNOT_SYNC_FIR' }),
       })
       expect(mockFIRRepository.save).not.toHaveBeenCalled()
       expect(mockFIRRepository.prenotaTrasmissioneRentri).not.toHaveBeenCalled()
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
     })
 
     it('prenotazione persa dopo la POST: si prosegue il polling e il legame si salva', async () => {

@@ -133,7 +133,10 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
    * Process single FIR sync
    */
   private async processSingleSync(job: Job): Promise<SyncJobResult> {
-    const { firId, tenantId, correlationId, richiedeConferma, confermaNuovaTrasmissione } = job.data
+    // Un eventuale `confermaNuovaTrasmissione` rimasto nel data di un job
+    // vecchio si ignora: la riapertura si consuma nel controller, mai qui, così
+    // un retry non può riaprire una trasmissione ferma per verifica.
+    const { firId, tenantId, correlationId, richiedeConferma } = job.data
     const startTime = Date.now()
 
     try {
@@ -144,14 +147,9 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
       // TrasmettiFIRSecondoModalitaUseCase) passa un'opzione esplicita in
       // più solo quando serve: i job esistenti (trigger manuale/batch, senza
       // il campo) mantengono l'invocazione a 3 argomenti.
-      const opzioni = {
-        ...(richiedeConferma ? { richiedeConferma } : {}),
-        ...(confermaNuovaTrasmissione ? { confermaNuovaTrasmissione } : {}),
-      }
-      const result =
-        Object.keys(opzioni).length > 0
-          ? await this.syncFIRUseCase.execute(firId, tenantId, correlationId, opzioni)
-          : await this.syncFIRUseCase.execute(firId, tenantId, correlationId)
+      const result = richiedeConferma
+        ? await this.syncFIRUseCase.execute(firId, tenantId, correlationId, { richiedeConferma })
+        : await this.syncFIRUseCase.execute(firId, tenantId, correlationId)
 
       const duration = Date.now() - startTime
 

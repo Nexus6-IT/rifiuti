@@ -7,7 +7,7 @@ import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.int
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import { IDomainEvent } from '../../domain/shared/domain-event.interface'
 import { CostruisciPayloadRentri } from './mappatura/costruisci-payload-rentri'
-import { DomainError, FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
+import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
 import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
 import {
   RENTRIApiClient,
@@ -61,7 +61,8 @@ export const SOGLIA_STALLO_RENTRI_MS = 15 * 60 * 1000
  * - Un SYNCING scaduto senza transazione (worker morto fra POST e 202) e ogni
  *   esito incerto della creazione (5xx, nessuna risposta, 404 della
  *   transazione) diventano RENTRI_TRASMISSIONE_INCERTA, non ritentabile: si
- *   riparte solo dopo verifica sul portale (`confermaNuovaTrasmissione`).
+ *   riparte solo dopo verifica sul portale, con la riapertura consumata dal
+ *   controller (`RiapriTrasmissioneRentriUseCase`), mai dentro un job.
  */
 @Injectable()
 export class SyncFIRToRENTRIUseCase {
@@ -105,21 +106,6 @@ export class SyncFIRToRENTRIUseCase {
       // Tenant isolation check
       if (fir.tenantId !== tenantId) {
         throw new DomainException('Unauthorized access to FIR', 'UNAUTHORIZED')
-      }
-
-      // Riapertura dopo verifica sul portale: l'operatore ha controllato che il
-      // formulario non esista e chiede esplicitamente una nuova POST. Si salva
-      // subito, altrimenti la prenotazione troverebbe in DB il blocco.
-      if (opzioni?.confermaNuovaTrasmissione) {
-        try {
-          fir.riapriTrasmissioneDopoVerifica()
-        } catch (e) {
-          if (e instanceof DomainError || e instanceof DomainException) {
-            throw DomainException.businessRuleViolation('CANNOT_SYNC_FIR', e.message)
-          }
-          throw e
-        }
-        await this.firRepository.save(fir)
       }
 
       // Un SYNCING non passa canSyncToRENTRI ma può essere uno stallo da
@@ -787,10 +773,4 @@ export interface SyncFIRToRENTRIOpzioni {
    * attesa di conferma esplicita dell'utente.
    */
   richiedeConferma?: boolean
-  /**
-   * Un operatore ha verificato sul portale che il formulario non esiste:
-   * riapre una trasmissione incerta (o un esito senza numero_fir) e consente
-   * una nuova `POST /`. Su un FIR non bloccato così è CANNOT_SYNC_FIR.
-   */
-  confermaNuovaTrasmissione?: boolean
 }
