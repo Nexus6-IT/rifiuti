@@ -39,6 +39,23 @@ export const INTERVALLO_POLLING_AUTORIZZAZIONE_MS = 2000
 export const ATTESA_MASSIMA_INVOCAZIONE_MS = 20000
 
 /**
+ * Limite (secondi) dell'attesa della conferma sul dispositivo quando
+ * `authorize` non porta `expires_in`. Per il contratto (ca-rentri.yaml:2665)
+ * `expires_in` arriva solo a autorizzazione concessa, quindi alla richiesta
+ * di norma non c'è: si attende al più `expires_in` se presente, altrimenti
+ * questo valore. I 60 secondi che il contratto dà sono la durata del SAD, non
+ * il tempo concesso all'utente per confermare.
+ */
+export const ATTESA_CONFERMA_FIRMA_PREDEFINITA_S = 120
+
+/** Esito interno dell'attesa; il sad esiste solo se AUTORIZZATA. */
+type EsitoAttesa =
+  | { esito: 'AUTORIZZATA'; sad: string }
+  | { esito: 'SCADUTA'; rilevataDa: 'ente' | 'orologio-locale' }
+  | { esito: 'RIFIUTATA' }
+  | { esito: 'IN_ATTESA'; scadenza: Date }
+
+/**
  * Esito di {@link CompletaOperazioneConFirmaUseCase}. Unione discriminata,
  * NON una stringa da confrontare: i tre esiti non-eccezionali sono
  * distinguibili a livello di tipo dal chiamante (i Task 4-7), che deve
@@ -71,7 +88,7 @@ export type EsitoCompletamentoFirma =
       /**
        * Chi ha rilevato la scadenza — distinzione che il chiamante deve poter
        * fare a livello di tipo, senza ispezionare stringhe:
-       * - `'ente'` → `authorize-check` ha risposto **410**. È la verità:
+       * - `'ente'` → `authorize-check` ha risposto **400**. È la verità:
        *   l'ente considera morta l'autorizzazione.
        * - `'orologio-locale'` → il nostro `expires_in` calcolato è trascorso
        *   prima che l'ente ce lo dicesse. È un'inferenza sul NOSTRO orologio,
@@ -82,7 +99,7 @@ export type EsitoCompletamentoFirma =
   | {
       /**
        * L'utente ha **rifiutato** la firma sul proprio dispositivo
-       * (`authorize-check` → 400). Diverso da `SCADUTA`: non è il tempo a
+       * (`authorize-check` → 403). Diverso da `SCADUTA`: non è il tempo a
        * essere finito, è una decisione esplicita — riproporre la stessa
        * operazione senza dirlo all'utente significherebbe insistere su un
        * rifiuto. Nessuno stato è stato scritto.
@@ -265,8 +282,15 @@ export class CompletaOperazioneConFirmaUseCase {
     })
 
     // --- 5. Attesa della conferma dell'utente ---
+    //
+    // Se `authorize` ha già concesso (porta il `sad`) non c'è nulla da
+    // attendere; altrimenti il `sad` arriva dall'esito AUTORIZZATA di
+    // `authorize-check`.
 
-    const statoAutorizzazione = await this.attendiAutorizzazione(tenantId, autorizzazione, comando)
+    const statoAutorizzazione: EsitoAttesa =
+      autorizzazione.sad !== undefined
+        ? { esito: 'AUTORIZZATA', sad: autorizzazione.sad }
+        : await this.attendiAutorizzazione(tenantId, autorizzazione, comando)
 
     if (statoAutorizzazione.esito !== 'AUTORIZZATA') {
       // Né errore né successo: nessuna scrittura di stato, in NESSUNO di
@@ -304,7 +328,7 @@ export class CompletaOperazioneConFirmaUseCase {
 
     const firma = await this.rentriApiClient.firmaHashRemoto(tenantId, {
       credentialsId,
-      sad: autorizzazione.sad,
+      sad: statoAutorizzazione.sad,
       digestToSign,
     })
 
@@ -371,13 +395,14 @@ export class CompletaOperazioneConFirmaUseCase {
    * Attende la conferma dell'utente interrogando `authorize-check`.
    *
    * Il ciclo termina per una di QUATTRO ragioni, tutte tipizzate:
-   * - l'ente conferma → `AUTORIZZATA`;
-   * - l'ente dichiara scaduta l'autorizzazione (410) → `SCADUTA`
+   * - l'ente conferma → `AUTORIZZATA`, con il `sad` da usare per la firma;
+   * - l'ente dichiara scaduta l'autorizzazione (400) → `SCADUTA`
    *   (`rilevataDa: 'ente'`) — è la verità, e ha la precedenza sul nostro
    *   orologio: si esce SUBITO, senza attendere che scada anche il nostro
    *   `expires_in` calcolato;
-   * - l'utente rifiuta sul dispositivo (400) → `RIFIUTATA`;
-   * - scade un nostro limite: `expires_in` calcolato localmente → `SCADUTA`
+   * - l'utente rifiuta sul dispositivo (403) → `RIFIUTATA`;
+   * - scade un nostro limite: `expires_in` (o, se assente,
+   *   {@link ATTESA_CONFERMA_FIRMA_PREDEFINITA_S}) calcolato localmente → `SCADUTA`
    *   (`rilevataDa: 'orologio-locale'`), oppure il tetto di questa
    *   invocazione ({@link ATTESA_MASSIMA_INVOCAZIONE_MS}) → `IN_ATTESA`, con
    *   l'autorizzazione ancora valida.
@@ -392,31 +417,27 @@ export class CompletaOperazioneConFirmaUseCase {
    */
   private async attendiAutorizzazione(
     tenantId: string,
-    autorizzazione: { handle: string; expiresIn: number },
+    autorizzazione: { handle: string; expiresIn?: number },
     comando: ComandoCompletaOperazioneConFirma
-  ): Promise<
-    | { esito: 'AUTORIZZATA' }
-    | { esito: 'SCADUTA'; rilevataDa: 'ente' | 'orologio-locale' }
-    | { esito: 'RIFIUTATA' }
-    | { esito: 'IN_ATTESA'; scadenza: Date }
-  > {
+  ): Promise<EsitoAttesa> {
     const intervalloMs = comando.intervalloPollingMs ?? INTERVALLO_POLLING_AUTORIZZAZIONE_MS
     const attesaMassimaMs = comando.attesaMassimaMs ?? ATTESA_MASSIMA_INVOCAZIONE_MS
 
-    const scadenzaEnteMs = Date.now() + autorizzazione.expiresIn * 1000
+    const attesaConfermaS = autorizzazione.expiresIn ?? ATTESA_CONFERMA_FIRMA_PREDEFINITA_S
+    const scadenzaEnteMs = Date.now() + attesaConfermaS * 1000
     const scadenzaInvocazioneMs = Date.now() + attesaMassimaMs
 
     for (;;) {
       const stato = await this.interrogaAutorizzazione(tenantId, autorizzazione.handle)
-      if (stato === 'AUTORIZZATA') {
-        return { esito: 'AUTORIZZATA' }
+      if (stato.stato === 'AUTORIZZATA') {
+        return { esito: 'AUTORIZZATA', sad: stato.sad }
       }
       // L'ente ha parlato: la sua parola vince sul nostro orologio, e si esce
       // subito invece di continuare a interrogare un'autorizzazione morta.
-      if (stato === 'SCADUTA') {
+      if (stato.stato === 'SCADUTA') {
         return { esito: 'SCADUTA', rilevataDa: 'ente' }
       }
-      if (stato === 'RIFIUTATA') {
+      if (stato.stato === 'RIFIUTATA') {
         return { esito: 'RIFIUTATA' }
       }
 

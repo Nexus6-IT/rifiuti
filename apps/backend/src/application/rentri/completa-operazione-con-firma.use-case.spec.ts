@@ -1,4 +1,7 @@
-import { CompletaOperazioneConFirmaUseCase } from './completa-operazione-con-firma.use-case'
+import {
+  ATTESA_CONFERMA_FIRMA_PREDEFINITA_S,
+  CompletaOperazioneConFirmaUseCase,
+} from './completa-operazione-con-firma.use-case'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { descrizioneAutorizzazioneFirma } from './descrizione-autorizzazione-firma'
@@ -66,8 +69,10 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
       richiediHashPerFirma: jest.fn().mockResolvedValue({ digestToSign: DIGEST, token: TOKEN }),
       autorizzaFirmaRemota: jest
         .fn()
-        .mockResolvedValue({ sad: 'sad-1', handle: 'handle-1', expiresIn: 120 }),
-      verificaAutorizzazioneFirma: jest.fn().mockResolvedValue('AUTORIZZATA'),
+        .mockResolvedValue({ handle: 'handle-1', expiresIn: 120 }),
+      verificaAutorizzazioneFirma: jest
+        .fn()
+        .mockResolvedValue({ stato: 'AUTORIZZATA', sad: 'sad-check-1' }),
       firmaHashRemoto: jest.fn().mockResolvedValue(FIRMA),
       inviaAcquisizioneFirma: jest.fn().mockResolvedValue({ errore: false, validazione: [] }),
       leggiStato: jest.fn().mockResolvedValue({ versione: 2, stato_formulario: 'Accettato' }),
@@ -216,8 +221,8 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
       // minimo): il ramo «scaduta» vince su quello «ancora in attesa».
       autorizzaFirmaRemota: jest
         .fn()
-        .mockResolvedValue({ sad: 'sad-1', handle: 'handle-scaduto', expiresIn: 0.001 }),
-      verificaAutorizzazioneFirma: jest.fn().mockResolvedValue('IN_ATTESA'),
+        .mockResolvedValue({ handle: 'handle-scaduto', expiresIn: 0.001 }),
+      verificaAutorizzazioneFirma: jest.fn().mockResolvedValue({ stato: 'IN_ATTESA' }),
     })
     const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
 
@@ -241,14 +246,14 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     // l'autorizzazione PRIMA che scada il nostro orologio locale. Deve
     // produrre un esito tipizzato, non un'eccezione indistinguibile da un
     // guasto di rete.
-    const verifica = jest.fn().mockResolvedValue('SCADUTA')
+    const verifica = jest.fn().mockResolvedValue({ stato: 'SCADUTA' })
     const client = creaClient({
       // `expires_in` lunghissimo: se il codice si affidasse solo al proprio
       // orologio, resterebbe in attesa fino al tetto di invocazione e
       // l'esito riporterebbe `orologio-locale`.
       autorizzaFirmaRemota: jest
         .fn()
-        .mockResolvedValue({ sad: 'sad-1', handle: 'handle-410', expiresIn: 3600 }),
+        .mockResolvedValue({ handle: 'handle-410', expiresIn: 3600 }),
       verificaAutorizzazioneFirma: verifica,
     })
     const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
@@ -265,11 +270,11 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
   })
 
   it('esito RIFIUTATA (400): l’utente ha rifiutato sul dispositivo → tipizzato e distinto da SCADUTA', async () => {
-    const verifica = jest.fn().mockResolvedValue('RIFIUTATA')
+    const verifica = jest.fn().mockResolvedValue({ stato: 'RIFIUTATA' })
     const client = creaClient({
       autorizzaFirmaRemota: jest
         .fn()
-        .mockResolvedValue({ sad: 'sad-1', handle: 'handle-rifiuto', expiresIn: 3600 }),
+        .mockResolvedValue({ handle: 'handle-rifiuto', expiresIn: 3600 }),
       verificaAutorizzazioneFirma: verifica,
     })
     const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
@@ -289,8 +294,8 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     const client = creaClient({
       autorizzaFirmaRemota: jest
         .fn()
-        .mockResolvedValue({ sad: 'sad-1', handle: 'handle-attesa', expiresIn: 600 }),
-      verificaAutorizzazioneFirma: jest.fn().mockResolvedValue('IN_ATTESA'),
+        .mockResolvedValue({ handle: 'handle-attesa', expiresIn: 600 }),
+      verificaAutorizzazioneFirma: jest.fn().mockResolvedValue({ stato: 'IN_ATTESA' }),
     })
     const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
 
@@ -313,9 +318,9 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
   it('polling: più tentativi 202 seguiti da 200 → completa, e rilascia la capacità ad ogni giro', async () => {
     const verifica = jest
       .fn()
-      .mockResolvedValueOnce('IN_ATTESA')
-      .mockResolvedValueOnce('IN_ATTESA')
-      .mockResolvedValue('AUTORIZZATA')
+      .mockResolvedValueOnce({ stato: 'IN_ATTESA' })
+      .mockResolvedValueOnce({ stato: 'IN_ATTESA' })
+      .mockResolvedValue({ stato: 'AUTORIZZATA', sad: 'sad-check-1' })
     const client = creaClient({ verificaAutorizzazioneFirma: verifica })
     const { useCase, rateLimiter } = creaAmbiente({ client })
 
@@ -397,5 +402,70 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     expect(richiesta.description).toBe(descrizioneAutorizzazioneFirma(NUMERO_FIR, 'ANNULLAMENTO'))
     expect(richiesta.description).toContain(NUMERO_FIR)
     expect(richiesta.description).toContain('ANNULLAMENTO')
+  })
+
+  it('il SAD di sign-hash è quello di authorize-check', async () => {
+    const { useCase, client } = creaAmbiente({})
+
+    const risultato = await useCase.execute(comando)
+
+    expect(risultato.esito).toBe('COMPLETATA')
+    expect(client.firmaHashRemoto).toHaveBeenCalledWith(TENANT_ID, {
+      credentialsId: CREDENTIALS_ID,
+      sad: 'sad-check-1',
+      digestToSign: DIGEST,
+    })
+  })
+
+  it('authorize con sad immediato: firma senza polling', async () => {
+    const client = creaClient({
+      autorizzaFirmaRemota: jest
+        .fn()
+        .mockResolvedValue({ handle: 'handle-1', sad: 'sad-immediato', expiresIn: 60 }),
+    })
+    const { useCase, rateLimiter } = creaAmbiente({ client })
+
+    const risultato = await useCase.execute(comando)
+
+    expect(risultato.esito).toBe('COMPLETATA')
+    expect(client.verificaAutorizzazioneFirma).not.toHaveBeenCalled()
+    expect(rateLimiter.acquisisci).not.toHaveBeenCalled()
+    expect(client.firmaHashRemoto).toHaveBeenCalledWith(TENANT_ID, {
+      credentialsId: CREDENTIALS_ID,
+      sad: 'sad-immediato',
+      digestToSign: DIGEST,
+    })
+  })
+
+  it('senza expires_in il limite di attesa è 120 secondi', async () => {
+    expect(ATTESA_CONFERMA_FIRMA_PREDEFINITA_S).toBe(120)
+
+    // Orologio pilotato: ogni interrogazione fa avanzare il tempo di 60 s.
+    // Alla seconda il limite di 120 s è raggiunto → SCADUTA (orologio locale);
+    // alla prima no, quindi il ciclo non esce prima del dovuto.
+    let adesso = 1_700_000_000_000
+    const dateNow = jest.spyOn(Date, 'now').mockImplementation(() => adesso)
+    try {
+      const verifica = jest.fn().mockImplementation(async () => {
+        adesso += 60_000
+        return { stato: 'IN_ATTESA' }
+      })
+      const client = creaClient({
+        autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'handle-senza-scadenza' }),
+        verificaAutorizzazioneFirma: verifica,
+      })
+      const { useCase } = creaAmbiente({ client })
+
+      const risultato = await useCase.execute({ ...comando, attesaMassimaMs: 1_000_000_000 })
+
+      expect(risultato).toEqual({
+        esito: 'SCADUTA',
+        handle: 'handle-senza-scadenza',
+        rilevataDa: 'orologio-locale',
+      })
+      expect(verifica).toHaveBeenCalledTimes(2)
+    } finally {
+      dateNow.mockRestore()
+    }
   })
 })

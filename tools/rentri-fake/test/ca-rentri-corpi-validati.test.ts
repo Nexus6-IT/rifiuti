@@ -87,20 +87,18 @@ describe('ca-rentri: validazione dei corpi sul contratto', () => {
     expect(r.statusCode).toBe(422)
   })
 
-  it('sign-hash con sessione non ancora confermata → 422; con hash diverso da quello autorizzato → 422', async () => {
+  it('sign-hash con hash diverso da quello autorizzato → 422', async () => {
     const app = creaApp()
     const auth = await post(app, '/credentials/authorize', corpoAuthorize())
-    const { sad, handle } = auth.json()
-
-    const nonConfermata = await post(app, '/signatures/sign-hash', {
-      credentials_id: CREDENTIALS_ID,
-      sad,
-      hashes: [DIGEST],
-      sign_algo: ALGO_FIRMA,
-    })
-    expect(nonConfermata.statusCode).toBe(422)
+    const { handle } = auth.json()
 
     await app.inject({ method: 'POST', url: `/__controllo/ca-rentri/autorizza/${handle}` })
+    const check = await app.inject({
+      method: 'GET',
+      url: `/ca-rentri/v1.0/credentials/authorize-check/${handle}`,
+      headers: await intestazioniAutenticate(),
+    })
+    const { sad } = check.json()
     const altroHash = await post(app, '/signatures/sign-hash', {
       credentials_id: CREDENTIALS_ID,
       sad,

@@ -58,12 +58,12 @@ export class RENTRIApiClient {
    *
    * Confermato da `docs/contracts/rentri/ca-rentri.yaml` (v. `MANIFEST.md`,
    * v1.0.20260831). Il percorso di firma e' `POST /signatures/sign-hash`
-   * (ca-rentri.yaml:2019), non `/credentials/sign-hash`. **Allineato**: `GET /credentials/info`
+   * (ca-rentri.yaml:2019), non `/credentials/sign-hash`. **Allineati**: `GET /credentials/info`
    * (:1294; `CredentialsInfoResponse` a :2779, certificato in
-   * `cert.certificates[]`). **Non ancora allineati**: `POST
-   * /credentials/authorize` + `authorize-check` (:825, :906; pattern della `description`, semantica di `sad`/`expires_in`, codici
-   * 400/403; schemi a :2617 e :2665): allineamento in un pezzo successivo del
-   * Piano B. Concatenato allo stesso `config.baseUrl` degli altri servizi (es.
+   * `cert.certificates[]`), `POST /credentials/authorize` (:825) e
+   * `authorize-check` (:906; schemi a :2617 e :2665). Non verificato contro
+   * l'ente reale resta solo il formato della firma (la fake firma con RSA,
+   * l'ente con ECDSA). Concatenato allo stesso `config.baseUrl` degli altri servizi (es.
    * `https://demoapi.rentri.gov.it/ca-rentri/v1.0`).
    */
   private static readonly CA_RENTRI_PATH = '/ca-rentri/v1.0'
@@ -919,8 +919,11 @@ export class RENTRIApiClient {
    * l'autorizzazione allineata alla firma evita un `sad` valido per un
    * insieme diverso da quello che si firmerà.
    *
-   * `expires_in` è in **secondi**: è il tempo che l'utente ha per confermare,
-   * e l'unico limite legittimo del polling del chiamante.
+   * Risposta (`CredentialsAuthorizeResponse`, ca-rentri.yaml:2665): `handle`
+   * sempre; `sad` ed `expires_in` (secondi di validità del SAD) **solo se
+   * l'autorizzazione è già concessa**, cioè di norma NON qui ma da
+   * {@link verificaAutorizzazioneFirma}. Il chiamante usa `expires_in` come
+   * limite dell'attesa se presente, altrimenti un limite predefinito suo.
    */
   async autorizzaFirmaRemota(
     tenantId: string,
@@ -948,22 +951,23 @@ export class RENTRIApiClient {
       contesto
     )
 
-    const sad = risposta.data?.sad
     const handle = risposta.data?.handle
+    if (typeof handle !== 'string' || handle.trim() === '') {
+      throw new Error(
+        `Risposta di ${contesto} priva di 'handle': l'autorizzazione alla firma non è utilizzabile.`
+      )
+    }
+
+    const esito: AutorizzazioneFirmaRemota = { handle }
+    const sad = risposta.data?.sad
+    if (typeof sad === 'string' && sad.trim() !== '') {
+      esito.sad = sad
+    }
     const expiresIn = Number(risposta.data?.expires_in)
-
-    if (typeof sad !== 'string' || sad.trim() === '' || typeof handle !== 'string') {
-      throw new Error(
-        `Risposta di ${contesto} priva di 'sad'/'handle': l'autorizzazione alla firma non è utilizzabile.`
-      )
+    if (risposta.data?.expires_in != null && Number.isFinite(expiresIn) && expiresIn > 0) {
+      esito.expiresIn = expiresIn
     }
-    if (!Number.isFinite(expiresIn) || expiresIn <= 0) {
-      throw new Error(
-        `Risposta di ${contesto} con 'expires_in' non valido (${risposta.data?.expires_in}): senza una scadenza nota il polling non avrebbe alcun limite legittimo.`
-      )
-    }
-
-    return { sad, handle, expiresIn }
+    return esito
   }
 
   /**
@@ -977,38 +981,28 @@ export class RENTRIApiClient {
    * distinguere «ancora in attesa» da «scaduta» e lo lascerebbe bloccato per
    * un tempo che non ha scelto.
    *
-   * **I quattro esiti sono tutti TIPIZZATI, nessuno è un'eccezione generica:**
+   * **Gli esiti sono tutti TIPIZZATI, nessuno è un'eccezione generica**
+   * (codici di ca-rentri.yaml:906-987):
    * - **202** → `IN_ATTESA`: l'utente non ha ancora confermato sul dispositivo.
-   * - **200** → `AUTORIZZATA`.
-   * - **410** → `SCADUTA`: l'autorizzazione non è più valida **secondo l'ente**.
-   * - **400** → `RIFIUTATA`: l'utente ha rifiutato la firma sul dispositivo.
+   * - **200** → `AUTORIZZATA`, con `sad` (obbligatorio: senza è un errore
+   *   esplicito) ed `expires_in` (facoltativo) letti dal corpo.
+   * - **400** → `SCADUTA`: «autorizzazione scaduta» (il contratto usa il 400
+   *   anche per «richiesta non valida»: un difetto di chiamata, qui, si
+   *   presenterebbe come scadenza; rischio accettato, l'alternativa renderebbe
+   *   indistinguibili due casi invece di uno).
+   * - **403** → `RIFIUTATA`: «autorizzazione non concessa».
+   * - **422** → errore esplicito: la notifica al dispositivo non è stata
+   *   inviata, quindi l'utente non ha nulla da confermare e attendere non ha senso.
+   * Il **410 non esiste** nel contratto: cade nella gestione generica.
    *
-   * Perché 410 e 400 sono intercettati QUI, prima di
-   * {@link gestisciRispostaNonPrevista}: quella funzione, per uno status non
-   * ritentabile e diverso da 403, solleva un `Error` **generico**
-   * (`Risposta inattesa da ...: HTTP 410`), indistinguibile a livello di tipo
-   * da un errore di rete o da un guasto. Un'autorizzazione scaduta o
-   * rifiutata NON è un guasto: è un esito normale e previsto del ciclo, che
-   * il chiamante deve poter tradurre in un messaggio utile («l'autorizzazione
-   * è scaduta, riprova»). Senza questa mappatura, la scadenza rilevata
-   * dall'ente si maschererebbe da errore tecnico ogni volta che l'ente scade
-   * un istante prima del nostro tick di polling — e l'unico esito `SCADUTA`
-   * sarebbe quello calcolato sul NOSTRO orologio, che l'ente non conosce.
-   *
-   * 403 resta deliberatamente NON mappato: su questo endpoint significa
-   * credenziale non valida, non un esito del ciclo di firma, e deve continuare
-   * a propagare come `RentriApiError` non ritentabile.
-   *
-   * **Mappatura del 400 non confermata da fonte ufficiale** (stessa onestà
-   * del resto di `ca-rentri`): è la lettura che ne dà la nostra fake. Se
-   * l'ente usasse il 400 anche per una richiesta malformata, un difetto di
-   * chiamata si presenterebbe qui come «l'utente ha rifiutato». Il rischio è
-   * accettato perché l'alternativa — lasciarlo cadere nell'errore generico —
-   * rende indistinguibili DUE casi invece di uno.
+   * 400 e 403 sono intercettati QUI, prima di {@link gestisciRispostaNonPrevista},
+   * che per uno status non ritentabile solleva un `Error` generico
+   * indistinguibile da un guasto: scadenza e rifiuto sono esiti normali del
+   * ciclo, che il chiamante traduce in un messaggio utile.
    *
    * `validateStatus` permissivo (come {@link interrogaStatoTransazione}) per
-   * poter leggere 202/410/400 come dati invece che come eccezioni;
-   * 403/429/423/5xx restano riconosciuti da {@link gestisciRispostaNonPrevista}.
+   * poter leggere 202/400/403/422 come dati invece che come eccezioni;
+   * 429/423/5xx restano riconosciuti da {@link gestisciRispostaNonPrevista}.
    */
   async verificaAutorizzazioneFirma(
     tenantId: string,
@@ -1033,18 +1027,32 @@ export class RENTRIApiClient {
       })
 
       if (response.status === 202) {
-        return 'IN_ATTESA'
+        return { stato: 'IN_ATTESA' }
       }
       if (response.status === 200) {
-        return 'AUTORIZZATA'
+        const sad = response.data?.sad
+        if (typeof sad !== 'string' || sad.trim() === '') {
+          throw new Error(
+            `Risposta di ${contesto} con 200 ma priva di 'sad': l'autorizzazione alla firma non è utilizzabile.`
+          )
+        }
+        const expiresIn = Number(response.data?.expires_in)
+        const esito: EsitoVerificaAutorizzazione = { stato: 'AUTORIZZATA', sad }
+        if (response.data?.expires_in != null && Number.isFinite(expiresIn) && expiresIn > 0) {
+          esito.expiresIn = expiresIn
+        }
+        return esito
       }
       // V. commento del metodo: esiti normali del ciclo, non guasti — mappati
       // PRIMA della gestione generica, che li ridurrebbe a un Error anonimo.
-      if (response.status === 410) {
-        return 'SCADUTA'
-      }
       if (response.status === 400) {
-        return 'RIFIUTATA'
+        return { stato: 'SCADUTA' }
+      }
+      if (response.status === 403) {
+        return { stato: 'RIFIUTATA' }
+      }
+      if (response.status === 422) {
+        throw new Error('La notifica al dispositivo per la firma non è stata inviata')
       }
 
       await this.gestisciRispostaNonPrevista(response, contesto, tentativo)
@@ -1759,21 +1767,25 @@ export interface RichiestaAutorizzazioneFirma {
 
 /** Risposta di `POST /ca-rentri/v1.0/credentials/authorize`. */
 export interface AutorizzazioneFirmaRemota {
-  /** Signature Activation Data: lega l'autorizzazione a quello specifico hash. */
-  sad: string
   /** Identificativo dell'autorizzazione, da interrogare con `authorize-check/{handle}`. */
   handle: string
-  /** Secondi di validità del `sad`: il tempo che l'utente ha per confermare. */
-  expiresIn: number
+  /** Signature Activation Data: presente solo se l'autorizzazione è già concessa. */
+  sad?: string
+  /** Secondi di validità del `sad`: presente solo se l'autorizzazione è già concessa. */
+  expiresIn?: number
 }
 
 /**
- * Esiti di {@link RENTRIApiClient.verificaAutorizzazioneFirma}. Tutti e
- * quattro tipizzati: `SCADUTA` e `RIFIUTATA` sono esiti NORMALI del ciclo di
- * firma (l'ente li comunica con 410/400), non guasti, e vanno distinguibili a
- * livello di tipo — mai una stringa di errore da confrontare.
+ * Esiti di {@link RENTRIApiClient.verificaAutorizzazioneFirma}. Tutti tipizzati:
+ * `SCADUTA` e `RIFIUTATA` sono esiti NORMALI del ciclo di firma (l'ente li
+ * comunica con 400/403), non guasti, e vanno distinguibili a livello di tipo.
+ * Il `sad` esiste solo in `AUTORIZZATA`.
  */
-export type EsitoVerificaAutorizzazione = 'IN_ATTESA' | 'AUTORIZZATA' | 'SCADUTA' | 'RIFIUTATA'
+export type EsitoVerificaAutorizzazione =
+  | { stato: 'IN_ATTESA' }
+  | { stato: 'AUTORIZZATA'; sad: string; expiresIn?: number }
+  | { stato: 'SCADUTA' }
+  | { stato: 'RIFIUTATA' }
 
 /** Parametri di {@link RENTRIApiClient.firmaHashRemoto}. */
 export interface RichiestaFirmaHash {

@@ -34,15 +34,18 @@ function certificatoCaBase64Der(): string {
  *   `/credentials/sign-hash` NON esiste nel contratto e qui risponde 404; la
  *   guardia `test/rotte-allineate-ai-contratti.test.ts` verifica metodo e path
  *   delle rotte contro il contratto.
- * - **NON ancora allineato** (pezzo successivo del Piano B):
- *   - `POST /credentials/authorize` (:825) e `authorize-check` (:906): il
- *     CORPO della richiesta e' ora validato su `CredentialsAuthorizeRequest`
- *     (:2617) e quello di sign-hash su `SignatureRequest` (:3517), con 422
- *     dove il contratto lo prevede; restano da allineare la semantica di
- *     `sad`/`expires_in` e i codici di `authorize-check`;
+ * - **Allineato**: `POST /credentials/authorize` (:825; risponde `{ handle }`,
+ *   corpo validato su `CredentialsAuthorizeRequest` :2617) e
+ *   `GET /credentials/authorize-check/{handle}` (:906; 202 in attesa, 200 con
+ *   `sad`/`expires_in`/`handle` se concessa, 400 scaduta, 403 non concessa;
+ *   `CredentialsAuthorizeResponse` :2665). Il 422 «notifica non inviata» non
+ *   e' simulato (la fake non ha un servizio di notifica).
+ * - **Ancora non verificato**: la fake firma con RSA, l'ente con ECDSA
+ *   (`sign_algo` 1.2.840.10045.4.3.2); la coincidenza del formato della firma
+ *   con quella dell'ente non e' dimostrata.
  *
- * Questa fake dimostra che il nostro client percorre il CICLO; dove sopra e'
- * indicato "NON ancora allineato" non dimostra la coincidenza con l'ente.
+ * Questa fake dimostra che il nostro client percorre il CICLO; sulla voce
+ * "Ancora non verificato" non dimostra la coincidenza con l'ente.
  *
  * ## Cosa la fake NON simula
  *
@@ -174,19 +177,20 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
       const expiresIn = Number(scadenzaDiTest ?? EXPIRES_IN_DEFAULT_SECONDI)
       const sessione = archivio.creaSessioneFirma(credentialsId, hashes, expiresIn)
 
-      return {
-        sad: sessione.sad,
-        handle: sessione.handle,
-        expires_in: expiresIn,
-      }
+      // `CredentialsAuthorizeResponse` (ca-rentri.yaml:2665): alla richiesta
+      // l'ente restituisce solo `handle`; `sad` ed `expires_in` arrivano da
+      // `authorize-check` quando l'autorizzazione e' concessa.
+      return { handle: sessione.handle }
     }
   )
 
-  // GET /credentials/authorize-check/{handle} — 202 in attesa, 200 autorizzata.
-  // La scadenza e' calcolata dal TEMPO (creazione + expires_in), non da un
-  // contatore di tentativi: un contatore renderebbe l'esito dipendente da
-  // quanto spesso il client interroga, che non e' come si comporta una
-  // scadenza reale.
+  // GET /credentials/authorize-check/{handle} (ca-rentri.yaml:906-987):
+  // 202 in attesa, 200 concessa (`sad`, `expires_in`, `handle`), 400
+  // scaduta, 403 non concessa. (Il 422 «notifica non inviata» non e'
+  // simulato: la fake non ha un servizio di notifica.) La scadenza e'
+  // calcolata dal TEMPO (creazione + expires_in), non da un contatore di
+  // tentativi: un contatore renderebbe l'esito dipendente da quanto spesso il
+  // client interroga, che non e' come si comporta una scadenza reale.
   app.get<{ Params: { handle: string } }>(
     `${PREFISSO}/credentials/authorize-check/:handle`,
     async (richiesta, risposta) => {
@@ -201,24 +205,29 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
       }
 
       if (sessione.stato === 'RIFIUTATA') {
-        return inviaProblemDetails(risposta, 400, {
-          title: 'Autorizzazione rifiutata',
+        return inviaProblemDetails(risposta, 403, {
+          title: 'Autorizzazione non concessa',
           detail: "L'utente ha rifiutato la richiesta di firma sul proprio dispositivo.",
         })
       }
 
       if (archivio.sessioneFirmaScaduta(sessione)) {
-        return inviaProblemDetails(risposta, 410, {
+        return inviaProblemDetails(risposta, 400, {
           title: 'Autorizzazione scaduta',
           detail: "L'autorizzazione non e' stata confermata entro 'expires_in'.",
         })
       }
 
       if (sessione.stato === 'AUTORIZZATA') {
-        return risposta.status(200).send({ stato: 'AUTORIZZATA', handle: sessione.handle })
+        // `expires_in` e' un intero (ca-rentri.yaml:2672): secondi residui,
+        // almeno 1 finche' la sessione e' valida.
+        const expiresIn = Math.max(1, Math.ceil((sessione.scadenzaMs - Date.now()) / 1000))
+        return risposta
+          .status(200)
+          .send({ sad: sessione.sad, expires_in: expiresIn, handle: sessione.handle })
       }
 
-      return risposta.status(202).send()
+      return risposta.status(202).send({ handle: sessione.handle })
     }
   )
 
@@ -258,10 +267,12 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
             "L'utente non ha ancora confermato l'autorizzazione sul proprio dispositivo: la firma non puo' essere apposta.",
         })
       }
+      // Il contratto non ha 410 su sign-hash (:2019-2089): un SAD scaduto e'
+      // un «SAD senza autorizzazione», quindi 422.
       if (archivio.sessioneFirmaScaduta(trovata)) {
-        return inviaProblemDetails(risposta, 410, {
-          title: 'Autorizzazione scaduta',
-          detail: "Il 'sad' non e' piu' valido.",
+        return inviaProblemDetails(risposta, 422, {
+          title: 'SAD senza autorizzazione',
+          detail: "Il 'sad' non e' piu' valido: l'autorizzazione e' scaduta.",
         })
       }
       if (trovata.hashes[0] !== hashes[0]) {

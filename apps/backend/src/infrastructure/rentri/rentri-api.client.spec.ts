@@ -1414,4 +1414,101 @@ describe('RENTRIApiClient', () => {
       )
     })
   })
+
+  describe('authorize e authorize-check — semantica del contratto ca-rentri', () => {
+    const risposta = (status: number, data: unknown = {}): AxiosResponse => ({
+      data,
+      status,
+      statusText: '',
+      headers: {},
+      config: {} as any,
+    })
+    const richiesta = {
+      credentialsId: 'CRED00001',
+      digestToSign: 'digest-1',
+      description: 'Firma del formulario X - operazione ACCETTAZIONE',
+    }
+
+    it('authorize senza sad né expires_in è valido: restituisce handle', async () => {
+      mockHttpService.post.mockReturnValue(of(risposta(200, { handle: 'h-1' })))
+
+      await expect(client.autorizzaFirmaRemota('tenant-1', richiesta)).resolves.toEqual({
+        handle: 'h-1',
+      })
+    })
+
+    it('authorize con sad ed expires_in: li restituisce', async () => {
+      mockHttpService.post.mockReturnValue(
+        of(risposta(200, { handle: 'h-1', sad: 'sad-1', expires_in: 60 }))
+      )
+
+      await expect(client.autorizzaFirmaRemota('tenant-1', richiesta)).resolves.toEqual({
+        handle: 'h-1',
+        sad: 'sad-1',
+        expiresIn: 60,
+      })
+    })
+
+    it('authorize senza handle → errore esplicito', async () => {
+      mockHttpService.post.mockReturnValue(of(risposta(200, { sad: 'sad-1' })))
+
+      await expect(client.autorizzaFirmaRemota('tenant-1', richiesta)).rejects.toThrow(/handle/)
+    })
+
+    it('authorize-check 202 → IN_ATTESA', async () => {
+      mockHttpService.get.mockReturnValue(of(risposta(202, { handle: 'h-1' })))
+
+      await expect(client.verificaAutorizzazioneFirma('tenant-1', 'h-1')).resolves.toEqual({
+        stato: 'IN_ATTESA',
+      })
+    })
+
+    it('authorize-check 200 → AUTORIZZATA con sad dal corpo', async () => {
+      mockHttpService.get.mockReturnValue(
+        of(risposta(200, { handle: 'h-1', sad: 'sad-9', expires_in: 60 }))
+      )
+
+      await expect(client.verificaAutorizzazioneFirma('tenant-1', 'h-1')).resolves.toEqual({
+        stato: 'AUTORIZZATA',
+        sad: 'sad-9',
+        expiresIn: 60,
+      })
+    })
+
+    it('authorize-check 200 senza sad → errore esplicito', async () => {
+      mockHttpService.get.mockReturnValue(of(risposta(200, { handle: 'h-1' })))
+
+      await expect(client.verificaAutorizzazioneFirma('tenant-1', 'h-1')).rejects.toThrow(/sad/)
+    })
+
+    it('authorize-check 400 → SCADUTA', async () => {
+      mockHttpService.get.mockReturnValue(of(risposta(400)))
+
+      await expect(client.verificaAutorizzazioneFirma('tenant-1', 'h-1')).resolves.toEqual({
+        stato: 'SCADUTA',
+      })
+    })
+
+    it('authorize-check 403 → RIFIUTATA', async () => {
+      mockHttpService.get.mockReturnValue(of(risposta(403)))
+
+      await expect(client.verificaAutorizzazioneFirma('tenant-1', 'h-1')).resolves.toEqual({
+        stato: 'RIFIUTATA',
+      })
+    })
+
+    it('authorize-check 422 → errore notifica non inviata', async () => {
+      mockHttpService.get.mockReturnValue(of(risposta(422)))
+
+      await expect(client.verificaAutorizzazioneFirma('tenant-1', 'h-1')).rejects.toThrow(
+        'La notifica al dispositivo per la firma non è stata inviata'
+      )
+    })
+
+    it('authorize-check 410 non è più un esito: cade nella gestione generica', async () => {
+      mockHttpService.get.mockReturnValue(of(risposta(410)))
+
+      await expect(client.verificaAutorizzazioneFirma('tenant-1', 'h-1')).rejects.toThrow(/410/)
+    })
+  })
 })

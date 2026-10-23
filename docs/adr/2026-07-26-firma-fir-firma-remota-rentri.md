@@ -127,10 +127,12 @@ modello scelto.
 
 > **Correzione 2026-10-23**: il percorso del contratto è
 > `POST /ca-rentri/v1.0/signatures/sign-hash` (`docs/contracts/rentri/ca-rentri.yaml`
-> riga 2019); `/credentials/sign-hash` non esiste. Restano da allineare al
-> contratto `credentials/info` e `credentials/authorize`/`authorize-check`
-> (campo `certificato` vs `cert.certificates[]`, `description`, `sad`/`expires_in`,
-> codici 400/403): pezzo successivo del Piano B.
+> riga 2019); `/credentials/sign-hash` non esiste. Allineati al contratto anche
+> `credentials/info` (`cert.certificates[]`) e `credentials/authorize`/`authorize-check`:
+> `authorize` restituisce `handle` (`sad`/`expires_in` solo se concessa), `authorize-check`
+> risponde 202 in attesa, 200 con `sad`, 400 scaduta, 403 non concessa, 422 notifica
+> non inviata. Resta non verificato solo il formato della firma (la fake firma con
+> RSA, l'ente con ECDSA).
 
 ### Il certificato: correzione a quanto scritto sopra
 

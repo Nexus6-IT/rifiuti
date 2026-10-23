@@ -323,7 +323,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
       .spyOn(client, 'verificaAutorizzazioneFirma')
       .mockImplementation(async (tenant: string, handle: string) => {
         const esito = await originale(tenant, handle)
-        if (esito === 'IN_ATTESA' && !confermata) {
+        if (esito.stato === 'IN_ATTESA' && !confermata) {
           confermata = true
           await app.inject({
             method: 'POST',
