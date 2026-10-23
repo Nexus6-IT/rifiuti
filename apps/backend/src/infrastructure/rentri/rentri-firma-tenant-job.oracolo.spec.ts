@@ -94,6 +94,9 @@ describe("Firma di integrita' con tenant esplicito, da job (fake RENTRI in-proce
       algorithm: 'RS256',
       jwtTtlSeconds: 300,
       credentialEncKey: 'test-enc-key',
+      // La credenziale env e' legata a un'azienda DIVERSA da A, B e C: nessuna delle
+      // tre deve poterla usare (se succedesse, il test sui x5c lo vedrebbe).
+      envTenantId: 'tenant-env-altro',
     }
 
     const logger: any = {
@@ -150,6 +153,7 @@ describe("Firma di integrita' con tenant esplicito, da job (fake RENTRI in-proce
     const { transazioneId } = await daJob('tenant-a')
     expect(transazioneId).toBeTruthy()
 
+    expect(richieste).toHaveLength(1)
     const h = richieste[0].headers
     const x5cAuth = x5cDi(h['Authorization'].replace('Bearer ', ''))
     const x5cFirma = x5cDi(h['Agid-JWT-Signature'])
@@ -164,6 +168,7 @@ describe("Firma di integrita' con tenant esplicito, da job (fake RENTRI in-proce
     await daJob('tenant-b')
     await daJob('tenant-a')
 
+    expect(richieste).toHaveLength(3)
     const x5c = richieste.map(r => ({
       auth: x5cDi(r.headers['Authorization'].replace('Bearer ', '')),
       firma: x5cDi(r.headers['Agid-JWT-Signature']),
@@ -174,11 +179,22 @@ describe("Firma di integrita' con tenant esplicito, da job (fake RENTRI in-proce
     expect(x5c[2]).toEqual({ auth: b64Di(certA), firma: b64Di(certA) })
   }, 30000)
 
+  it('tenant C senza certificato e non legato all env: errore esplicito, nessuna richiesta parte', async () => {
+    richieste.length = 0
+
+    await expect(daJob('tenant-c')).rejects.toThrow(
+      "L'azienda non ha un certificato RENTRI configurato"
+    )
+
+    expect(richieste).toHaveLength(0)
+  }, 30000)
+
   it('Agid-JWT-Signature verificata con il certificato del tenant (compactVerify)', async () => {
     richieste.length = 0
     await daJob('tenant-a')
     await daJob('tenant-b')
 
+    expect(richieste).toHaveLength(2)
     const jwsA = richieste[0].headers['Agid-JWT-Signature']
     const jwsB = richieste[1].headers['Agid-JWT-Signature']
 

@@ -40,6 +40,11 @@ describe('RentriAuthService', () => {
     credentialService = { getForTenant: jest.fn() }
   })
 
+  // Ripristina gli spy (Logger.prototype.warn, HttpService...) anche se un expect fallisce.
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
   function makeService(config: RentriConfig = baseConfig()) {
     return new RentriAuthService(
       new RentriCredentialResolver(credentialService as any, config),
@@ -165,12 +170,13 @@ describe('RentriAuthService', () => {
   })
 
   describe('risoluzione della credenziale', () => {
-    it('usa il certificato di fallback da env se il tenant non ha una credenziale configurata', async () => {
+    it('usa il certificato da env se il tenant senza credenziale è quello legato (RENTRI_ENV_TENANT_ID)', async () => {
       credentialService.getForTenant.mockResolvedValue(null)
       const config = baseConfig({
         clientId: 'env-operator',
         certificatePem: cert.certificatePem,
         privateKeyPem: cert.privateKeyPem,
+        envTenantId: 'tenant-senza-credenziale',
       })
       service = makeService(config)
 
@@ -181,12 +187,18 @@ describe('RentriAuthService', () => {
       expect(decoded.iss).toBe('env-operator')
     })
 
-    it('lancia se non c’è né credenziale del tenant né fallback da env', async () => {
+    it('lancia se il tenant non ha credenziale e non è legato all env (fail-closed)', async () => {
       credentialService.getForTenant.mockResolvedValue(null)
-      service = makeService(baseConfig({ certificatePem: '', privateKeyPem: '' }))
+      service = makeService(
+        baseConfig({
+          certificatePem: cert.certificatePem,
+          privateKeyPem: cert.privateKeyPem,
+          envTenantId: 'tenant-pilota',
+        })
+      )
 
       await expect(service.creaAuthorizationHeader('tenant-senza-nulla')).rejects.toThrow(
-        'nessuna credenziale'
+        'non ha un certificato RENTRI configurato'
       )
     })
   })
