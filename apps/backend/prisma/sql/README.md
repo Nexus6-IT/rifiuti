@@ -12,7 +12,17 @@ sequence, solo `SELECT` su `_prisma_migrations`, nessun `TRUNCATE`, nessun
 `CREATE`. I diritti sulle tabelle future sono dati con `ALTER DEFAULT
 PRIVILEGES` per l'utente che esegue lo script. Nessuna policy RLS.
 
-Chi lo esegue: l'owner delle tabelle (`wasteflow`), dopo `prisma migrate deploy`.
+Chi lo esegue: l'owner delle tabelle (`wasteflow`), che deve essere anche
+**superuser** (in PostgreSQL 16 serve per assegnare `BYPASSRLS`); altrimenti lo
+script si ferma con un errore.
+
+**Ordine**: sempre DOPO `prisma migrate deploy` (dev, CI, deploy, restore). Se
+`_prisma_migrations` non esiste lo script fallisce con un errore esplicito,
+perche' i diritti di default darebbero CRUD completo a quella tabella.
+
+"Nessun `CREATE`" riguarda lo schema `public`: `PUBLIC` mantiene `TEMP` sul
+database, quindi i ruoli possono creare tabelle temporanee.
+
 Idempotente: rilanciarlo aggiorna le password.
 
 ```

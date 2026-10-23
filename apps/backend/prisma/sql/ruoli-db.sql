@@ -10,6 +10,12 @@
 -- (sostituisce i due `:'...'` con letterali e lo spezza in statement).
 -- Non usare meta-comandi psql (\gexec, \set...) in questo file.
 --
+-- ORDINE: va eseguito DOPO `prisma migrate deploy`, ovunque (dev, CI, deploy,
+-- restore). Se `_prisma_migrations` non esiste lo script si ferma: i default
+-- privileges darebbero CRUD completo a quella tabella, quando verra' creata.
+-- Va eseguito da un SUPERUSER (oggi `wasteflow`, bootstrap): in PostgreSQL 16
+-- solo un superuser puo' assegnare BYPASSRLS.
+--
 -- Nessuna policy: ENABLE ROW LEVEL SECURITY / CREATE POLICY non fanno parte
 -- di questo pezzo.
 
@@ -24,6 +30,13 @@ DECLARE
   v_pwd     text;
   v_tabella text;
 BEGIN
+  IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+    RAISE EXCEPTION 'lo script va eseguito da un superuser (serve per BYPASSRLS), non da %', current_user;
+  END IF;
+  IF to_regclass('public._prisma_migrations') IS NULL THEN
+    RAISE EXCEPTION 'public._prisma_migrations non esiste: eseguire dopo prisma migrate deploy';
+  END IF;
+
   -- Creazione o aggiornamento password dei due ruoli.
   FOR v_ruolo, v_pwd IN
     SELECT 'wasteflow_app', current_setting('ruoli.app_password')
@@ -64,12 +77,10 @@ BEGIN
       'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', v_ruolo);
 
     -- _prisma_migrations: solo lettura (la scrive solo `prisma migrate`).
-    IF to_regclass('public._prisma_migrations') IS NOT NULL THEN
-      EXECUTE format(
-        'REVOKE ALL ON TABLE public._prisma_migrations FROM %I', v_ruolo);
-      EXECUTE format(
-        'GRANT SELECT ON TABLE public._prisma_migrations TO %I', v_ruolo);
-    END IF;
+    EXECUTE format(
+      'REVOKE ALL ON TABLE public._prisma_migrations FROM %I', v_ruolo);
+    EXECUTE format(
+      'GRANT SELECT ON TABLE public._prisma_migrations TO %I', v_ruolo);
 
     -- Oggetti futuri creati dall'owner (le nuove migration).
     EXECUTE format(

@@ -9,6 +9,11 @@
  * I ruoli sono validi per tutto il cluster: lo script e' idempotente e il
  * test non li elimina (resterebbero i GRANT sul database in uso).
  *
+ * A fine test il file viene rieseguito con le password vere (DB_APP_PASSWORD /
+ * DB_SISTEMA_PASSWORD se impostate, altrimenti i valori di sviluppo
+ * `wasteflow_app_dev` / `wasteflow_sistema_dev`): le password di prova non
+ * restano sui ruoli, che sono validi per tutto il cluster.
+ *
  * Eseguire con `npm run test:postgres`.
  */
 import { readFileSync } from 'fs'
@@ -69,15 +74,19 @@ function spezza(sql: string): string[] {
 
 const lett = (v: string) => `'${v.replace(/'/g, "''")}'`
 
-async function eseguiScript(owner: PrismaClient, appPwd: string, sistemaPwd: string) {
+type Tx = Pick<PrismaClient, '$executeRawUnsafe'>
+
+async function eseguiNellaTx(tx: Tx, appPwd: string, sistemaPwd: string) {
   const sql = readFileSync(SCRIPT, 'utf8')
     .replace(":'app_password'", lett(appPwd))
     .replace(":'sistema_password'", lett(sistemaPwd))
+  for (const stmt of spezza(sql)) await tx.$executeRawUnsafe(stmt)
+}
+
+async function eseguiScript(owner: PrismaClient, appPwd: string, sistemaPwd: string) {
   // Un'unica transazione interattiva = un'unica connessione: set_config di
   // sessione e RESET finale devono stare sulla stessa.
-  await owner.$transaction(async tx => {
-    for (const stmt of spezza(sql)) await tx.$executeRawUnsafe(stmt)
-  })
+  await owner.$transaction(async tx => eseguiNellaTx(tx, appPwd, sistemaPwd))
 }
 
 describe('Ruoli database (Postgres reale)', () => {
@@ -117,6 +126,11 @@ describe('Ruoli database (Postgres reale)', () => {
     await Promise.all(aperti.map(c => c.$disconnect()))
     await owner.$executeRawUnsafe(`DROP TABLE IF EXISTS ${T_ESISTENTE}`)
     await owner.$executeRawUnsafe(`DROP TABLE IF EXISTS ${T_FUTURA}`)
+    await eseguiScript(
+      owner,
+      process.env.DB_APP_PASSWORD || 'wasteflow_app_dev',
+      process.env.DB_SISTEMA_PASSWORD || 'wasteflow_sistema_dev'
+    )
     await owner.$disconnect()
   })
 
@@ -182,9 +196,37 @@ describe('Ruoli database (Postgres reale)', () => {
       const ok = comeRuolo(ruolo, nuova)
       await ok.$queryRawUnsafe(`SELECT 1 FROM ${T_ESISTENTE}`)
       const ko = comeRuolo(ruolo, vecchia)
-      await expect(ko.$queryRawUnsafe(`SELECT 1`)).rejects.toThrow()
+      await expect(ko.$queryRawUnsafe(`SELECT 1`)).rejects.toThrow(/authentication failed/i)
     }
     // I GRANT restano identici dopo la seconda esecuzione.
     await crud(comeRuolo('wasteflow_app', PWD_APP_2), T_ESISTENTE)
+  })
+
+  it('senza _prisma_migrations lo script fallisce (da eseguire dopo migrate deploy)', async () => {
+    // Transazione che rinomina la tabella e poi viene annullata: nessun
+    // effetto sul DB condiviso (il rename tiene un lock solo per la durata).
+    const SENTINELLA = new Error('rollback voluto')
+    const esito = owner
+      .$transaction(async tx => {
+        await tx.$executeRawUnsafe(`ALTER TABLE _prisma_migrations RENAME TO _pm_tmp_test`)
+        await eseguiNellaTx(tx, PWD_APP_2, PWD_SIS_2)
+        throw SENTINELLA
+      })
+      .catch(e => e as Error)
+    const errore = await esito
+    expect(errore).not.toBe(SENTINELLA)
+    expect(String(errore.message)).toMatch(/eseguire dopo prisma migrate deploy/)
+    const [t] = await owner.$queryRawUnsafe<{ ok: boolean }[]>(
+      `SELECT to_regclass('public._prisma_migrations') IS NOT NULL AS ok`
+    )
+    expect(t.ok).toBe(true)
+  })
+
+  it('da un ruolo non superuser lo script fallisce', async () => {
+    const app = comeRuolo('wasteflow_app', PWD_APP_2)
+    const errore = await app
+      .$transaction(async tx => eseguiNellaTx(tx, PWD_APP_2, PWD_SIS_2))
+      .catch(e => e as Error)
+    expect(String((errore as Error).message)).toMatch(/superuser|permission denied|must be/i)
   })
 })
