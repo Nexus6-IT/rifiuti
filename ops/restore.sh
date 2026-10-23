@@ -254,8 +254,20 @@ fi
 # ---- 9. Migration con l'immagine coerente con il dump --------------------------
 STATO_PRODUZIONE="quello ripristinato, con lo schema NON allineato; ${PRECEDENTE_TESTO}; il backend resta FERMO"
 log "Esecuzione di prisma migrate deploy con l'immagine ${TAG}..."
-"${DC[@]}" run --rm backend npx prisma migrate deploy \
-  || die "prisma migrate deploy fallito con l'immagine ${TAG}: il database ripristinato resta in uso con lo schema non allineato, ${PRECEDENTE_TESTO}. Il backend resta FERMO. Correggere la causa, poi rilanciare con TAG=${TAG}: '${DC[*]} run --rm backend npx prisma migrate deploy' e '${DC[*]} up -d --no-deps backend'; per tornare al database precedente, rinominarlo in ${DB_NAME} a backend fermo."
+# Come in deploy.yml: SEMPRE come owner (DATABASE_URL_MIGRAZIONI), perche' l'URL
+# dell'applicazione puo' puntare a un ruolo senza diritti DDL. Le virgolette
+# singole fanno espandere la variabile dentro il container, non qui.
+"${DC[@]}" run --rm backend sh -c 'DATABASE_URL="$DATABASE_URL_MIGRAZIONI" npx prisma migrate deploy' \
+  || die "prisma migrate deploy fallito con l'immagine ${TAG}: il database ripristinato resta in uso con lo schema non allineato, ${PRECEDENTE_TESTO}. Il backend resta FERMO. Correggere la causa, poi rilanciare con TAG=${TAG}: '${DC[*]} run --rm backend sh -c \"DATABASE_URL=\\\"\\\$DATABASE_URL_MIGRAZIONI\\\" npx prisma migrate deploy\"' e '${DC[*]} up -d --no-deps backend'; per tornare al database precedente, rinominarlo in ${DB_NAME} a backend fermo."
+
+# ---- 9b. Ruoli DB (dopo le migration) ------------------------------------------
+# Il dump porta con se' i GRANT (pg_dump senza --no-privileges), ma l'ambiente
+# puo' avere ruoli disallineati: si rieseguono i ruoli, script idempotente. Le
+# password restano nell'ambiente del container postgres. Se non sono nel .env lo
+# script stampa che salta e prosegue.
+log "Ruoli DB (ops/db-ruoli.sh)..."
+PG_EXEC="${PG_EXEC}" bash "$(dirname "$0")/db-ruoli.sh" \
+  || die "Creazione dei ruoli DB fallita: il database ripristinato resta in uso, il backend resta FERMO. Rilanciare 'bash ops/db-ruoli.sh' con PG_EXEC=\"${PG_EXEC}\" e poi '${DC[*]} up -d --no-deps backend'."
 
 # ---- 10. Backend ricreato con l'immagine RIPRISTINO_TAG -------------------------
 STATO_PRODUZIONE="quello ripristinato, con lo schema allineato; ${PRECEDENTE_TESTO}; il backend non è partito con l'immagine ${TAG}"

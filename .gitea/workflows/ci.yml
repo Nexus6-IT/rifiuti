@@ -205,6 +205,11 @@ jobs:
       # attese in sviluppo/produzione.
       DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public"
       POSTGRES_CI_CONTAINER: "postgres-ci-${{ github.run_id }}"
+      # Password dei ruoli DB creati da ops/db-ruoli.sh: valgono solo per il
+      # container effimero di questo job. Le legge anche lo spec
+      # ruoli-db.postgres.spec.ts per ripristinarle a fine test.
+      DB_APP_PASSWORD: "wasteflow_app_ci"
+      DB_SISTEMA_PASSWORD: "wasteflow_sistema_ci"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -280,6 +285,19 @@ jobs:
           done
           echo "Impossibile applicare le migrazioni dopo 10 tentativi" >&2
           exit 1
+
+      # Ruoli DB (wasteflow_app / wasteflow_sistema): DOPO le migrazioni, come in
+      # produzione. Passa dal VERO percorso psql con `-v` (non dalla
+      # sostituzione dello spec): le password sono nell'ambiente del container
+      # (`-e NOME` senza valore) e non compaiono nella riga di comando. Il test
+      # ruoli-db.postgres.spec.ts li esige gia' presenti. I test esistenti restano
+      # sull'owner (cleanDatabase usa TRUNCATE): il passaggio al ruolo app e' del
+      # pezzo 3.
+      - name: Crea i ruoli DB (ops/db-ruoli.sh, psql nel container)
+        working-directory: ${{ github.workspace }}
+        env:
+          PG_EXEC: "docker exec -i -e PGPORT=55432 -e DB_APP_PASSWORD -e DB_SISTEMA_PASSWORD ${{ env.POSTGRES_CI_CONTAINER }}"
+        run: bash ops/db-ruoli.sh
 
       # Suite di integrazione su Postgres reale: isolamento fra aziende
       # sorelle, gerarchia tenant, repository Prisma (CER, FIR, RENTRI).

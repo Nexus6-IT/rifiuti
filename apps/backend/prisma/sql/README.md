@@ -33,3 +33,36 @@ Variabili: `app_password`, `sistema_password` (obbligatorie, non vuote). Vengono
 passate al blocco `DO` con `set_config`, perche' psql non interpola le variabili
 dentro i dollar-quoted string. Il test `ruoli-db.postgres.spec.ts` esegue questo
 stesso file senza psql, sostituendo i due `:'...'` con letterali.
+
+## Come si esegue (un solo punto d'ingresso: `ops/db-ruoli.sh`)
+
+Lo script `ops/db-ruoli.sh` esegue `ruoli-db.sql` con `psql` DENTRO il container
+postgres (sull'host non serve psql), come owner. Le password le legge dall'ambiente
+del container e non compaiono mai nella riga di comando ne' nei log; se mancano
+stampa `ruoli DB non configurati: salto` ed esce con 0. Lo usano deploy, restore e CI.
+
+- **Sviluppo** (password `wasteflow_app_dev` / `wasteflow_sistema_dev`), dopo
+  `prisma migrate deploy`, con il container `wasteflow-postgres` acceso:
+
+  ```
+  cd apps/backend && npm run db:ruoli
+  ```
+
+  Vale anche per un volume gia' esistente: e' idempotente, rilanciarlo non rompe
+  nulla. NON e' in `docker-entrypoint-initdb.d`: quella cartella gira prima delle
+  migration e lo script si fermerebbe.
+- **Produzione**: aggiungere a `/opt/rifiuti/.env` `DB_APP_PASSWORD`,
+  `DB_SISTEMA_PASSWORD` (casuali, esadecimali) e `DB_APP_USER=wasteflow_app`
+  (obbligatoria insieme alla password: senza, `docker compose` si ferma con un
+  errore prima di toccare qualcosa). Il deploy successivo crea i ruoli e passa
+  `DATABASE_URL` al ruolo non owner. Le migration girano sempre con
+  `DATABASE_URL_MIGRAZIONI` (owner).
+- **CI** (`test-postgres`): stesso script, dopo le migration, con
+  `PG_EXEC="docker exec -i -e PGPORT=55432 -e DB_APP_PASSWORD -e DB_SISTEMA_PASSWORD <container>"`.
+- **Altro container**: `PG_EXEC="docker exec -i -e DB_APP_PASSWORD -e DB_SISTEMA_PASSWORD <nome>" bash ops/db-ruoli.sh`
+  con le due variabili esportate.
+
+Nota sul restore: `pg_dump` (in `ops/backup-offsite.sh`) non usa `--no-privileges`,
+quindi il dump contiene i GRANT ai due ruoli. Su un cluster nuovo, dove i ruoli non
+esistono ancora, il caricamento del dump fallirebbe (`ON_ERROR_STOP`): caso NON
+coperto da questo pezzo, da gestire a parte (creare i ruoli a mano prima del restore).

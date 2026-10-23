@@ -479,11 +479,13 @@ SQL
   verifica "restore: dump valido, nessun database temporaneo" 0 \
     test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_ripristino_%'")" = "0"
   verifica "restore: dump valido, migrate con il tag" 0 \
-    grep -q 'TAG=sha-prova run --rm backend npx prisma migrate deploy' "$TMP/dc-valido.log"
+    grep -qF 'TAG=sha-prova run --rm backend sh -c DATABASE_URL="$DATABASE_URL_MIGRAZIONI" npx prisma migrate deploy' "$TMP/dc-valido.log"
   verifica "restore: dump valido, backend ricreato con il tag dopo il migrate" 0 \
     bash -c 'grep -n "" "$1" | grep -q "TAG=sha-prova up -d --no-deps backend" &&
       [ "$(grep -n "up -d" "$1" | cut -d: -f1)" -gt "$(grep -n "run --rm" "$1" | cut -d: -f1)" ] &&
       ! grep -q "start backend" "$1"' _ "$TMP/dc-valido.log"
+  verifica "restore: dump valido, ruoli DB dopo il migrate (senza password: salto)" 0 \
+    bash -c 'grep -q "Ruoli DB (ops/db-ruoli.sh)" "$1" && grep -q "ruoli DB non configurati: salto" "$1"' _ "$TMP/out-valido"
   verifica "restore: dump valido, immagine del backend nel log" 0 \
     grep -q "Backend avviato con l'immagine: registro.prova/rifiuti-backend:sha-prova" "$TMP/out-valido"
 
@@ -519,7 +521,7 @@ SQL
   verifica "restore DR: nessun database precedente ne' temporaneo" 0 \
     test "$(sql_pg postgres "SELECT count(*) FROM pg_database WHERE datname LIKE 'prova_restore_dr_%'")" = "0"
   verifica "restore DR: migrate e backend ricreato con il tag" 0 \
-    bash -c 'grep -q "TAG=sha-prova run --rm backend npx prisma migrate deploy" "$1" && grep -q "TAG=sha-prova up -d --no-deps backend" "$1"' \
+    bash -c 'grep -qF "TAG=sha-prova run --rm backend sh -c DATABASE_URL=\"\$DATABASE_URL_MIGRAZIONI\" npx prisma migrate deploy" "$1" && grep -q "TAG=sha-prova up -d --no-deps backend" "$1"' \
     _ "$TMP/dc-dr.log"
   verifica "restore DR: messaggio senza database precedente" 0 grep -q "Non c'era un database precedente" "$TMP/out-dr"
 

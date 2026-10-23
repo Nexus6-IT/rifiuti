@@ -36,6 +36,16 @@ services:
       POSTGRES_DB: ${DB_NAME:-wasteflow_prod}
       POSTGRES_USER: ${DB_USER:-wasteflow}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD richiesta}
+      # Password dei ruoli applicativi: servono a ops/db-ruoli.sh, che le legge
+      # DENTRO il container (`exec ... sh -c`) cosi' non compaiono mai nella
+      # riga di comando stampata dal runner. Vuote = ruoli non configurati.
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-}
+      # Guardia: con DB_APP_PASSWORD serve anche DB_APP_USER (wasteflow_app).
+      # Compose non sa scegliere lo username in base alla password, e una
+      # password dell'app usata con lo username dell'owner farebbe cadere il
+      # backend al deploy: cosi' invece `pull` si ferma PRIMA di toccare nulla.
+      DB_APP_USER: ${DB_APP_PASSWORD:+${DB_APP_USER:?DB_APP_USER richiesta insieme a DB_APP_PASSWORD (wasteflow_app)}}
+      DB_SISTEMA_PASSWORD: ${DB_SISTEMA_PASSWORD:-}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -70,7 +80,18 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
-      DATABASE_URL: postgresql://${DB_USER:-wasteflow}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-wasteflow_prod}
+      # Ruoli DB (RLS pezzo 1). L'applicazione si collega col ruolo `wasteflow_app`
+      # (NOBYPASSRLS) quando DB_APP_PASSWORD e' valorizzata; senza, resta
+      # sull'owner come prima. DB_APP_USER (wasteflow_app) va impostata insieme
+      # alla password (vedi la guardia sul servizio postgres). Le password nei
+      # URL vanno senza caratteri riservati (generarle in esadecimale).
+      DATABASE_URL: postgresql://${DB_APP_USER:-${DB_USER:-wasteflow}}:${DB_APP_PASSWORD:-${DB_PASSWORD}}@postgres:5432/${DB_NAME:-wasteflow_prod}
+      # Client di sistema (job, BYPASSRLS): stessa regola con DB_SISTEMA_*.
+      # Senza DB_SISTEMA_PASSWORD e' vuota e PrismaSistemaService ripiega su DATABASE_URL.
+      DATABASE_URL_SISTEMA: ${DB_SISTEMA_PASSWORD:+postgresql://${DB_SISTEMA_USER:-wasteflow_sistema}:${DB_SISTEMA_PASSWORD}@postgres:5432/${DB_NAME:-wasteflow_prod}}
+      # Migration: SEMPRE owner (serve DDL). Non la legge il codice: la usa
+      # `prisma migrate deploy` di deploy.yml e ops/restore.sh.
+      DATABASE_URL_MIGRAZIONI: postgresql://${DB_USER:-wasteflow}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-wasteflow_prod}
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: ${DB_NAME:-wasteflow_prod}
