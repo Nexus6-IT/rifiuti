@@ -118,6 +118,8 @@ const NON_PASSATE: Record<string, string> = {
   RENTRI_AUDIENCE: RENTRI_DEMO,
   RENTRI_CERTIFICATE_PEM: RENTRI_DEMO,
   RENTRI_CLIENT_ID: RENTRI_DEMO,
+  RENTRI_ENV_TENANT_ID:
+    'vale solo con le credenziali RENTRI da env, che in produzione non sono passate: ogni azienda carica il proprio certificato',
   RENTRI_JWT_ALG: RENTRI_DEMO,
   RENTRI_JWT_TTL_SECONDS: RENTRI_DEMO,
   RENTRI_PRIVATE_KEY_PEM: RENTRI_DEMO,

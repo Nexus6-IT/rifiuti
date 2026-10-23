@@ -8,6 +8,7 @@ import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rate-limiter.service'
+import { RENTRI_CONFIG } from '../../infrastructure/rentri/rentri-config'
 import { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 
 const user: CurrentUserPayload = {
@@ -25,6 +26,7 @@ function diagnosticaFinta(overrides: Partial<RentriDiagnostica> = {}): RentriDia
       scadenza: '2027-01-01T00:00:00.000Z',
       giorniAllaScadenza: 100,
       livelloAvviso: 'ok',
+      origineCredenziale: 'tenant',
     },
     trasmissioniRecenti: [],
     formulariAttenzione: [],
@@ -149,6 +151,8 @@ describe('RentriDiagnosticaController', () => {
             { provide: PrismaService, useValue: prisma },
             { provide: RentriCredentialService, useValue: credentialService },
             { provide: RentriRateLimiterService, useValue: rateLimiter },
+            // Nessuna credenziale da env: la diagnostica legge solo questi campi.
+            { provide: RENTRI_CONFIG, useValue: {} },
             // Presente nel container (come lo sarebbe in RentriModule reale),
             // ma MAI iniettato in GetRentriDiagnosticaUseCase: se qualcosa lo
             // toccasse comunque, questo provider lancerebbe immediatamente.

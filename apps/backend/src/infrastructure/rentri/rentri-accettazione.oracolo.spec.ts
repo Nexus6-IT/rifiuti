@@ -369,13 +369,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
     const client = creaClient()
     agganciaConfermaAutomatica(client)
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ACC000001',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ACC000001', rateLimiter)
 
     const completatore = avviaCompletatoreOperazioni({ digestToSign: DIGEST, token: TOKEN })
 
@@ -418,13 +412,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
     const client = creaClient()
     agganciaConfermaAutomatica(client)
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ACC000002',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ACC000002', rateLimiter)
 
     const completatore = avviaCompletatoreOperazioni({ digestToSign: DIGEST, token: TOKEN })
 
@@ -464,13 +452,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ACC000003',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ACC000003', rateLimiter)
     const spy = jest.spyOn(client, 'inviaAccettazione')
 
     await expect(
@@ -501,13 +483,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ACC000004',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ACC000004', rateLimiter)
     const spyAzioni = jest.spyOn(client, 'leggiAzioniDisponibili')
     const spyAccettazione = jest.spyOn(client, 'inviaAccettazione')
 
@@ -541,13 +517,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ACC000005',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ACC000005', rateLimiter)
 
     // La precondizione da /azioni è mockata (nessuna rete reale): questo
     // scenario isola il guasto sulla chiamata /accettazione, non sulla

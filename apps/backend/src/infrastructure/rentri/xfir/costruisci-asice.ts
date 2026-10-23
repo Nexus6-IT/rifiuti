@@ -143,13 +143,18 @@ function costruisciFirmaXades(documenti: DocumentoAsicE[], firma: MaterialeFirma
   const chiavePrivata = crypto.createPrivateKey(firma.chiavePrivataPem)
   const tipoChiave = chiavePrivata.asymmetricKeyType
   if (tipoChiave !== 'rsa' && tipoChiave !== 'ec') {
-    throw new Error(`Tipo di chiave non supportato per la firma XAdES: ${tipoChiave ?? 'sconosciuto'}`)
+    throw new Error(
+      `Tipo di chiave non supportato per la firma XAdES: ${tipoChiave ?? 'sconosciuto'}`
+    )
   }
   const certificatoBase64 = new crypto.X509Certificate(firma.certificatoPem).raw.toString('base64')
 
   const riferimentiXml = documenti
     .map(documento => {
-      const digest = crypto.createHash('sha256').update(documento.contenuto, 'utf8').digest('base64')
+      const digest = crypto
+        .createHash('sha256')
+        .update(documento.contenuto, 'utf8')
+        .digest('base64')
       return `<ds:Reference URI="${escapeXml(documento.nome)}"><ds:DigestValue>${digest}</ds:DigestValue></ds:Reference>`
     })
     .join('')

@@ -314,6 +314,7 @@ describe('TrasmettiFIRSecondoModalitaUseCase — modalità di trasmissione contr
     const trasmettiUseCase = new TrasmettiFIRSecondoModalitaUseCase(
       modalitaLegameService,
       rentriSyncQueue,
+      firRepository as any,
       creaLoggerOrchestrazione()
     )
 
@@ -393,6 +394,7 @@ describe('TrasmettiFIRSecondoModalitaUseCase — modalità di trasmissione contr
     const trasmettiUseCase = new TrasmettiFIRSecondoModalitaUseCase(
       modalitaLegameService,
       rentriSyncQueue,
+      firRepository as any,
       creaLoggerOrchestrazione()
     )
 

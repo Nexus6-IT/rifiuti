@@ -216,7 +216,11 @@ describe('RiconciliaStatoRentriUseCase', () => {
       const risultato = await useCase.execute(tenantId)
 
       expect(mockModalita.getForTenant).toHaveBeenCalledWith(tenantId)
-      expect(fir.proporreLegameRENTRI).toHaveBeenCalledWith('NUM-IB', 'trans-ib', expect.any(String))
+      expect(fir.proporreLegameRENTRI).toHaveBeenCalledWith(
+        'NUM-IB',
+        'trans-ib',
+        expect.any(String)
+      )
       expect(fir.markRENTRISynced).not.toHaveBeenCalled()
       expect(mockFIRRepository.save).toHaveBeenCalledWith(fir)
       expect(risultato.corretti).toBe(1)

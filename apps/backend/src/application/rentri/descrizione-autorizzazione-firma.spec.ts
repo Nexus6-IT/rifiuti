@@ -1,7 +1,7 @@
 import { descrizioneAutorizzazioneFirma } from './descrizione-autorizzazione-firma'
 
 /** Pattern e limiti di `CredentialsAuthorizeRequest.description`, copiati dal contratto (ca-rentri.yaml:2650). */
-const PATTERN_CONTRATTO = /^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s\.,;:!?\-\(\)/€%&@]*$/
+const PATTERN_CONTRATTO = /^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s.,;:!?\-()/€%&@]*$/
 
 describe('descrizioneAutorizzazioneFirma', () => {
   const casi: Array<[string, string, string]> = [
@@ -30,6 +30,8 @@ describe('descrizioneAutorizzazioneFirma', () => {
 
   it('rispetta il pattern del contratto: nessuna eccezione con ingressi non stringa', () => {
     expect(() => descrizioneAutorizzazioneFirma(undefined as never, null as never)).not.toThrow()
-    expect(descrizioneAutorizzazioneFirma(undefined as never, null as never)).toMatch(PATTERN_CONTRATTO)
+    expect(descrizioneAutorizzazioneFirma(undefined as never, null as never)).toMatch(
+      PATTERN_CONTRATTO
+    )
   })
 })

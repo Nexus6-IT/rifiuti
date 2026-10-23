@@ -391,13 +391,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
     const client = creaClient()
     agganciaConfermaAutomatica(client)
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ANN000001',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000001', rateLimiter)
 
     // Precondizione iniziale: 'Annulla' compare nella fase di lavorazione iniziale.
     const azioniIniziali = await client.leggiAzioniDisponibili(tenantId, numeroFir, cf)
@@ -450,13 +444,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ANN000002',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000002', rateLimiter)
     const spy = jest.spyOn(client, 'annullaFormulario')
 
     await expect(
@@ -486,13 +474,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ANN000003',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000003', rateLimiter)
     const spyAzioni = jest.spyOn(client, 'leggiAzioniDisponibili')
     const spyAnnulla = jest.spyOn(client, 'annullaFormulario')
 
@@ -524,13 +506,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ANN000004',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000004', rateLimiter)
 
     const completatore = avviaCompletatoreOperazioni({
       digestToSign: DIGEST,
@@ -569,13 +545,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
     const client = creaClient()
     agganciaConfermaAutomatica(client)
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ANN000005',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000005', rateLimiter)
 
     const completatore = avviaCompletatoreOperazioni({
       digestToSign: DIGEST,
@@ -620,13 +590,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'ANN000006',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000006', rateLimiter)
 
     // Precondizione da /azioni mockata (nessuna rete reale): questo scenario
     // isola il guasto sulla chiamata /annulla-fir, non sulla lettura delle
