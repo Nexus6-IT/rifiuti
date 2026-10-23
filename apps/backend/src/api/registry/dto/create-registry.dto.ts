@@ -8,6 +8,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsEmail,
+  IsDateString,
   ValidateNested,
   IsDefined,
   IsNotEmptyObject,
@@ -98,6 +99,12 @@ export class CreateTrasportatoreDto {
   @IsString()
   @IsOptional()
   pec?: string
+
+  // Scadenza dell'iscrizione all'Albo Gestori: facoltativa, non tutte le
+  // anagrafiche la hanno ancora valorizzata (Task 3 dello scadenzario).
+  @IsDateString()
+  @IsOptional()
+  scadenzaIscrizione?: string
 }
 
 export class CreateDestinatarioDto {
@@ -130,6 +137,12 @@ export class CreateDestinatarioDto {
   @IsString()
   @IsOptional()
   pec?: string
+
+  // Scadenza dell'autorizzazione: facoltativa, non tutte le anagrafiche la
+  // hanno ancora valorizzata (Task 3 dello scadenzario).
+  @IsDateString()
+  @IsOptional()
+  scadenzaAutorizzazione?: string
 }
 
 // Update DTOs
@@ -182,6 +195,13 @@ export class UpdateTrasportatoreDto {
   @IsString()
   @IsOptional()
   pec?: string
+
+  // Assente = campo non toccato; `null` = azzeramento esplicito della
+  // scadenza; stringa ISO = nuova scadenza. `@IsOptional()` di
+  // class-validator salta la validazione sia per undefined sia per null.
+  @IsDateString()
+  @IsOptional()
+  scadenzaIscrizione?: string | null
 }
 
 export class UpdateDestinatarioDto {
@@ -209,4 +229,11 @@ export class UpdateDestinatarioDto {
   @IsString()
   @IsOptional()
   pec?: string
+
+  // Assente = campo non toccato; `null` = azzeramento esplicito della
+  // scadenza; stringa ISO = nuova scadenza. `@IsOptional()` di
+  // class-validator salta la validazione sia per undefined sia per null.
+  @IsDateString()
+  @IsOptional()
+  scadenzaAutorizzazione?: string | null
 }

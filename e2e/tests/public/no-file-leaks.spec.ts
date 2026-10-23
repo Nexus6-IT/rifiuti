@@ -28,6 +28,12 @@ test.describe('Nessuna fuga di file sensibili (fallback SPA)', () => {
       // file .env/.git, che non conterrebbe questi tag).
       expect(body).toMatch(/<html|<app-root|<!doctype html/i)
       expect(body).not.toMatch(/DATABASE_URL|JWT_SECRET|\[core\]/i)
+      // Confronto esplicito col Content-Length della root (vedi beforeAll):
+      // non basta che il body "assomigli" all'HTML Angular, deve essere
+      // BYTE PER BYTE lo stesso documento servito dal fallback SPA — altrimenti
+      // il path sensibile potrebbe star restituendo una pagina di errore
+      // diversa che contiene per caso gli stessi marker.
+      expect(Number(response.headers()['content-length'] ?? -1)).toBe(rootContentLength)
     })
   }
 })

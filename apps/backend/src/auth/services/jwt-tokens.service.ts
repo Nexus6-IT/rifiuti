@@ -62,10 +62,15 @@ export class JwtTokensService {
 
   /**
    * Generate refresh token (long-lived, 7 days)
+   *
+   * Porta l'azienda dell'access token emesso insieme (`tenantId`): dopo uno switch di
+   * azienda il refresh deve rinnovare l'accesso su quella, ricontrollandolo, e mai ricadere in
+   * silenzio sull'azienda primaria dell'utente.
    */
-  generateRefreshToken(userId: string): string {
+  generateRefreshToken(userId: string, tenantId?: string): string {
     const payload: JwtPayload = {
       sub: userId,
+      ...(tenantId ? { tenantId } : {}),
       type: 'refresh',
     }
 
@@ -79,7 +84,7 @@ export class JwtTokensService {
    */
   generateTokenPair(user: UserTokenPayload, impersonatorId?: string): TokenPair {
     const accessToken = this.generateAccessToken(user, impersonatorId)
-    const refreshToken = this.generateRefreshToken(user.id)
+    const refreshToken = this.generateRefreshToken(user.id, user.tenantId)
 
     // Parse expiration time to seconds
     const expiresIn = this.parseExpirationToSeconds(

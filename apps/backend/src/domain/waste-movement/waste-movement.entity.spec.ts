@@ -56,11 +56,33 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     )
   })
 
-  it('lancia errore se data registrazione precede data operazione', () => {
-    const earlier = new Date(TODAY.getTime() - 60 * 60 * 1000) // 1 ora prima
-    expect(() => WasteMovement.create(buildProps({ registrationDate: earlier }))).toThrow(
-      'La data di registrazione non può precedere la data di operazione'
-    )
+  // La data di registrazione è un istante (assegnato dal server), quella di operazione un
+  // giorno: il confronto si fa sui giorni di calendario italiani.
+  it('accetta una registrazione dello stesso giorno italiano anche se in un istante precedente', () => {
+    const earlier = new Date(TODAY.getTime() - 60 * 60 * 1000) // 1 ora prima, stesso giorno
+    expect(() => WasteMovement.create(buildProps({ registrationDate: earlier }))).not.toThrow()
+  })
+
+  it('accetta un movimento del giorno registrato alle 00:30 italiane (istante del giorno prima in UTC)', () => {
+    expect(() =>
+      WasteMovement.create(
+        buildProps({
+          movementDate: new Date('2026-03-11T00:00:00Z'),
+          registrationDate: new Date('2026-03-10T23:30:00Z'),
+        })
+      )
+    ).not.toThrow()
+  })
+
+  it('rifiuta una registrazione del giorno prima', () => {
+    expect(() =>
+      WasteMovement.create(
+        buildProps({
+          movementDate: new Date('2026-03-11T00:00:00Z'),
+          registrationDate: new Date('2026-03-10T12:00:00Z'),
+        })
+      )
+    ).toThrow('La data di registrazione non può precedere la data di operazione')
   })
 
   it('lancia errore per causale CARICO usata su SCARICO', () => {
@@ -121,6 +143,27 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     const reg = new Date('2026-06-21T00:00:00.000Z')
     const m = WasteMovement.create(buildProps({ movementDate: mov, registrationDate: reg }))
     expect(m.ritardoRegistrazioneGg).toBe(20 - TERMINE_REGISTRAZIONE_PRODUTTORE_GG)
+  })
+
+  it('il ritardo si conta in giorni italiani di calendario', () => {
+    const m = WasteMovement.create(
+      buildProps({
+        movementDate: new Date('2026-03-01T00:00:00Z'),
+        registrationDate: new Date('2026-03-31T22:30:00Z'), // 01/04 00:30 a Roma
+      })
+    )
+    expect(m.ritardoRegistrazioneGg).toBe(31 - TERMINE_REGISTRAZIONE_PRODUTTORE_GG)
+  })
+
+  it('il ritardo di un movimento ricostituito si conta in giorni italiani di calendario', () => {
+    const m = WasteMovement.reconstitute({
+      ...buildProps({
+        movementDate: new Date('2026-03-01T00:00:00Z'),
+        registrationDate: new Date('2026-03-31T22:30:00Z'),
+      }),
+      entryHash: 'x',
+    })
+    expect(m.ritardoRegistrazioneGg).toBe(31 - TERMINE_REGISTRAZIONE_PRODUTTORE_GG)
   })
 
   // ─── Ricostituzione ──────────────────────────────────────────────────────────

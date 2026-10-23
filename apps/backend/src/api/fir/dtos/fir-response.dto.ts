@@ -111,6 +111,17 @@ export class FIRResponseDto {
   @ApiPropertyOptional({ description: 'Data presa in carico trasportatore' })
   dataPresaCarico: Date | null
 
+  /**
+   * Data della presa in carico solo se registrata davvero in WasteFlow: la firma del
+   * trasportatore la scrive soltanto `FIR.presaInCarico`, insieme alla data. Senza firma
+   * `dataPresaCarico` è il ripiego `new Date()` del primo salvataggio (Decisione 10).
+   */
+  @ApiPropertyOptional({
+    description:
+      'Data della presa in carico registrata in WasteFlow (con firma del trasportatore); null se non è nota',
+  })
+  dataPresaCaricoEffettiva: Date | null
+
   @ApiPropertyOptional({ description: 'Data consegna destinatario' })
   dataConsegna: Date | null
 
@@ -153,6 +164,12 @@ export class FIRResponseDto {
     description: 'Numero FIR ufficiale RENTRI (legame confermato)',
   })
   rentriNumeroFir: string | null
+
+  @ApiPropertyOptional({
+    example: 'Annullato',
+    description: "Stato del formulario all'ente RENTRI (ultimo noto), se acquisito",
+  })
+  rentriStatoFormulario: string | null
 
   @ApiPropertyOptional({
     example: 'RENTRI-000123',
@@ -243,6 +260,7 @@ export class FIRResponseDto {
         mezzo: t.mezzo,
       })),
       dataPresaCarico: fir.dataPresaCarico,
+      dataPresaCaricoEffettiva: fir.firme.trasportatore ? fir.dataPresaCarico : null,
       dataConsegna: fir.dataConsegna,
       pesoEffettivo: fir.pesoEffettivo,
       annotazioni: fir.annotazioni,
@@ -251,6 +269,7 @@ export class FIRResponseDto {
       createdAt: fir.createdAt,
       rentriSyncStatus: fir.rentriSyncStatus.getStatus(),
       rentriNumeroFir: fir.rentriNumeroFir,
+      rentriStatoFormulario: fir.rentriStatoFormulario,
       rentriNumeroFirProposto: fir.rentriNumeroFirProposto,
       rentriOrigineLegame: fir.rentriOrigineLegame,
       rentriLastSyncError: lastError ?? null,

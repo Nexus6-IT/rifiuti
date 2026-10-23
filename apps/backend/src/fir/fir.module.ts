@@ -27,6 +27,7 @@ import { FIR_REPOSITORY, FIRRepository as CryptoFIRRepository } from '../domain/
 import { DigitalSignatureService } from '../application/signatures/digital-signature.service'
 import { TrasmettiFIRSecondoModalitaUseCase } from '../application/rentri/trasmetti-fir-secondo-modalita.use-case'
 import { LoggerService } from '../core/logger/logger.service'
+import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
 
 @Module({
   // SignaturesModule: collega il ciclo di vita (emetti/presaInCarico/
@@ -37,7 +38,8 @@ import { LoggerService } from '../core/logger/logger.service'
   // fornisce TrasmettiFIRSecondoModalitaUseCase, il punto di aggancio tra
   // l'emissione del FIR e la trasmissione a RENTRI secondo la modalità del
   // tenant.
-  imports: [PrismaModule, BillingModule, SignaturesModule, RentriSyncModule],
+  // RuoloEffettivoModule: ruolo nell'azienda selezionata per la creazione dei FIR (I1).
+  imports: [PrismaModule, BillingModule, SignaturesModule, RentriSyncModule, RuoloEffettivoModule],
   controllers: [FIRControllerV2],
   providers: [
     // Repositories (provide as concrete classes)

@@ -60,6 +60,10 @@ import { RentriCodificheSyncService } from './rentri-codifiche-sync.service'
     RentriTerritorialiSyncService,
     RentriCodificheSyncService,
   ],
-  exports: [ReferenceDataService],
+  // Esportati per il rilancio manuale dalla pagina «Stato del sistema»
+  // (JobActionsService): l'alternativa — riprovvederli in quel modulo —
+  // creerebbe una SECONDA istanza con i propri @Cron registrati, cioe'
+  // raddoppierebbe i job schedulati.
+  exports: [ReferenceDataService, ReferenceDataSeederService, RentriCodificheSyncService],
 })
 export class ReferenceDataModule {}

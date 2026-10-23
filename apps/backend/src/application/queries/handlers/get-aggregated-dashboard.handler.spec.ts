@@ -116,4 +116,32 @@ describe('GetAggregatedDashboardHandler', () => {
       { tenantId: ALFA, tenantName: 'Alfa Srl', pendingCount: 1 },
     ])
   })
+
+  it("un'azienda segnata come non tenuta al MUD non compare fra le scadenze MUD (A-W-10)", async () => {
+    // Bozze MUD di entrambe le figlie (create prima del flag o dall'export): il doppio di
+    // `mUDReport.findMany` applica il filtro sulla relazione `tenant`, come farebbe Postgres.
+    const flag: Record<string, boolean> = { [ALFA]: true, [BETA]: false }
+    const bozze = [
+      { tenantId: ALFA, year: 2025, status: 'DRAFT' },
+      { tenantId: BETA, year: 2025, status: 'DRAFT' },
+    ]
+    const prisma = makePrisma()
+    prisma.mUDReport.findMany = jest.fn(({ where }: any) =>
+      Promise.resolve(
+        bozze.filter(
+          b =>
+            where.tenantId.in.includes(b.tenantId) &&
+            (where.tenant?.is?.mudNonDovuto === undefined ||
+              where.tenant.is.mudNonDovuto === flag[b.tenantId])
+        )
+      )
+    )
+    const handler = new GetAggregatedDashboardHandler(prisma)
+
+    const risultato = await handler.execute({ tenantIdMadre: MADRE } as any)
+
+    expect(risultato.upcomingDeadlines).toEqual([
+      { tenantId: BETA, tenantName: 'Beta Srl', year: 2025, status: 'DRAFT' },
+    ])
+  })
 })

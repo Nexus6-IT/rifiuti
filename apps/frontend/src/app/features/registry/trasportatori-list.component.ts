@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core'
+import { Component, OnInit, computed, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MessageService } from 'primeng/api'
@@ -16,6 +16,8 @@ import { IconFieldModule } from 'primeng/iconfield'
 import { InputIconModule } from 'primeng/inputicon'
 import { RegistryService, CreateTrasportatoreDto } from './registry.service'
 import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
+import { AuthService } from '../../core/services/auth.service'
+import { puoGestireAnagrafiche } from './registry-permissions'
 
 @Component({
   selector: 'app-trasportatori-list',
@@ -47,12 +49,15 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
           </p>
         </div>
         <div class="page-actions">
-          <p-button
-            label="Nuovo trasportatore"
-            icon="pi pi-plus"
-            (onClick)="showCreateDialog()"
-            ariaLabel="Crea nuovo trasportatore"
-          />
+          @if (puoGestire()) {
+            <p-button
+              label="Nuovo trasportatore"
+              icon="pi pi-plus"
+              (onClick)="showCreateDialog()"
+              ariaLabel="Crea nuovo trasportatore"
+              data-testid="trasportatori-nuovo-button"
+            />
+          }
         </div>
       </header>
 
@@ -111,7 +116,7 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-trasportatore>
-              <tr>
+              <tr [attr.data-testid]="'trasportatori-row-' + trasportatore.id">
                 <td>
                   <span class="cell-label">Ragione sociale</span>
                   <span class="font-semibold">{{ trasportatore.ragioneSociale }}</span>
@@ -136,27 +141,31 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
                 </td>
                 <td>
                   <span class="cell-label">Azioni</span>
-                  <div class="row-actions">
-                    <p-button
-                      icon="pi pi-pencil"
-                      [rounded]="true"
-                      [text]="true"
-                      (onClick)="editTrasportatore(trasportatore)"
-                      pTooltip="Modifica"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Modifica ' + trasportatore.ragioneSociale"
-                    />
-                    <p-button
-                      icon="pi pi-trash"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="danger"
-                      (onClick)="deleteTrasportatore(trasportatore)"
-                      pTooltip="Elimina"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Elimina ' + trasportatore.ragioneSociale"
-                    />
-                  </div>
+                  @if (puoGestire()) {
+                    <div class="row-actions">
+                      <p-button
+                        icon="pi pi-pencil"
+                        [rounded]="true"
+                        [text]="true"
+                        (onClick)="editTrasportatore(trasportatore)"
+                        pTooltip="Modifica"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Modifica ' + trasportatore.ragioneSociale"
+                        [attr.data-testid]="'trasportatori-modifica-' + trasportatore.id"
+                      />
+                      <p-button
+                        icon="pi pi-trash"
+                        [rounded]="true"
+                        [text]="true"
+                        severity="danger"
+                        (onClick)="deleteTrasportatore(trasportatore)"
+                        pTooltip="Elimina"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Elimina ' + trasportatore.ragioneSociale"
+                        [attr.data-testid]="'trasportatori-elimina-' + trasportatore.id"
+                      />
+                    </div>
+                  }
                 </td>
               </tr>
             </ng-template>
@@ -167,12 +176,14 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
                     <i class="pi pi-truck empty-state__icon" aria-hidden="true"></i>
                     <p class="empty-state__title">Nessun trasportatore trovato</p>
                     <p>Crea il primo trasportatore per associarlo ai formulari.</p>
-                    <p-button
-                      label="Nuovo trasportatore"
-                      icon="pi pi-plus"
-                      (onClick)="showCreateDialog()"
-                      ariaLabel="Crea nuovo trasportatore"
-                    />
+                    @if (puoGestire()) {
+                      <p-button
+                        label="Nuovo trasportatore"
+                        icon="pi pi-plus"
+                        (onClick)="showCreateDialog()"
+                        ariaLabel="Crea nuovo trasportatore"
+                      />
+                    }
                   </div>
                 </td>
               </tr>
@@ -204,6 +215,7 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
         [breakpoints]="{ '768px': '95vw' }"
         [header]="editMode ? 'Modifica trasportatore' : 'Nuovo trasportatore'"
         [dismissableMask]="true"
+        data-testid="trasportatori-form-dialog"
       >
         <form class="dialog-form" (ngSubmit)="saveTrasportatore()">
           <fieldset class="form-fieldset">
@@ -236,7 +248,15 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
                   maxlength="11"
                   inputmode="numeric"
                   required
+                  [disabled]="editMode"
+                  data-testid="trasportatori-piva-input"
                 />
+                <!-- La partita IVA è l'identità fiscale del soggetto: non
+                     modificabile dopo la creazione, il backend la rifiuta in
+                     modifica (400 forbidNonWhitelisted). -->
+                <small class="field-hint" *ngIf="editMode"
+                  >Non modificabile: è l'identità fiscale del soggetto.</small
+                >
               </div>
               <div class="field col-12 md:col-6">
                 <label for="tra-iscrizione"
@@ -262,6 +282,22 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
                   placeholder="pec@esempio.it"
                   autocomplete="email"
                 />
+              </div>
+              <!-- Scadenza iscrizione — facoltativa (Task 3 scadenzario): il
+                   dato può mancare per le anagrafiche già esistenti. -->
+              <div class="field col-12 md:col-6">
+                <label for="tra-scad-iscrizione">Scadenza iscrizione Albo</label>
+                <input
+                  pInputText
+                  type="date"
+                  id="tra-scad-iscrizione"
+                  name="scadenzaIscrizione"
+                  [(ngModel)]="formData.scadenzaIscrizione"
+                  data-testid="trasportatori-scadenza-iscrizione-input"
+                />
+                <small class="field-hint"
+                  >Facoltativa: se nota, abilita il promemoria di scadenza.</small
+                >
               </div>
             </div>
           </fieldset>
@@ -343,17 +379,19 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
             [text]="true"
             icon="pi pi-times"
             (onClick)="displayDialog = false"
+            data-testid="trasportatori-form-cancel-button"
           />
           <p-button
             label="Salva"
             icon="pi pi-check"
             (onClick)="saveTrasportatore()"
             [loading]="saving"
+            data-testid="trasportatori-form-save-button"
           />
         </ng-template>
       </p-dialog>
 
-      <p-confirmDialog />
+      <p-confirmDialog data-testid="trasportatori-confirm-dialog" />
     </div>
   `,
   styles: [
@@ -466,6 +504,12 @@ import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
         color: var(--color-danger);
         margin-left: 0.15rem;
       }
+      .field-hint {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        display: block;
+        margin-top: var(--spacing-xs);
+      }
 
       @media (max-width: 768px) {
         :host ::ng-deep .p-datatable .p-datatable-thead {
@@ -510,6 +554,14 @@ export class TrasportatoriListComponent implements OnInit {
   selectedTrasportatore: Trasportatore | null = null
 
   formData: CreateTrasportatoreDto = this.getEmptyFormData()
+
+  private readonly authService = inject(AuthService)
+  // Ricalcola il gating in base al ruolo dell'utente autenticato: stesso
+  // schema di `fir-list.component.ts` (`puoCreareFir`). Il backend è
+  // l'unica fonte di verità (RegistryController, @Roles su POST/PUT/DELETE
+  // trasportatori), qui si evita solo di mostrare un'azione che il server
+  // rifiuterebbe con 403.
+  readonly puoGestire = computed(() => puoGestireAnagrafiche(this.authService.currentUser()?.role))
 
   constructor(
     private registryService: RegistryService,
@@ -578,6 +630,9 @@ export class TrasportatoriListComponent implements OnInit {
       numeroIscrizione: trasportatore.numeroIscrizione,
       sedeLegale: { ...trasportatore.sedeLegale },
       pec: trasportatore.pec,
+      // Il backend restituisce una stringa ISO (yyyy-MM-dd): compatibile
+      // direttamente con l'input HTML type="date".
+      scadenzaIscrizione: trasportatore.scadenzaIscrizione ?? '',
     }
     this.displayDialog = true
   }
@@ -593,10 +648,30 @@ export class TrasportatoriListComponent implements OnInit {
     }
 
     this.saving = true
+    // Facoltativa: campo vuoto = azzeramento esplicito in modifica (`null`),
+    // semplicemente non inviato in creazione (`undefined`).
+    const scadenzaIscrizione =
+      this.formData.scadenzaIscrizione || (this.editMode ? null : undefined)
+
     const operation =
       this.editMode && this.selectedTrasportatore
-        ? this.registryService.updateTrasportatore(this.selectedTrasportatore.id, this.formData)
-        : this.registryService.createTrasportatore(this.formData)
+        ? this.registryService.updateTrasportatore(
+            this.selectedTrasportatore.id,
+            // NON includere partitaIVA: è l'identità fiscale del soggetto,
+            // UpdateTrasportatoreDto non la accetta (400
+            // forbidNonWhitelisted) e non deve essere modificabile da qui.
+            {
+              ragioneSociale: this.formData.ragioneSociale,
+              sedeLegale: this.formData.sedeLegale,
+              numeroIscrizione: this.formData.numeroIscrizione,
+              pec: this.formData.pec,
+              scadenzaIscrizione,
+            }
+          )
+        : this.registryService.createTrasportatore({
+            ...this.formData,
+            scadenzaIscrizione,
+          })
 
     operation.subscribe({
       next: () => {
@@ -684,6 +759,7 @@ export class TrasportatoriListComponent implements OnInit {
         provincia: '',
       },
       pec: '',
+      scadenzaIscrizione: '',
     }
   }
 }

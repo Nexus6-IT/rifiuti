@@ -12,6 +12,7 @@ import { RentriSignatureService } from './rentri-signature.service'
 import { RentriModalitaLegameService } from './rentri-modalita-legame.service'
 import { RentriUnitaLocaleService } from './rentri-unita-locale.service'
 import { RENTRIApiClient } from './rentri-api.client'
+import { RentriVidimazioneClient } from './rentri-vidimazione.client'
 import { RentriCodificheClient } from './codifiche/rentri-codifiche.client'
 import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
@@ -56,6 +57,11 @@ import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica
     RentriModalitaLegameService,
     RentriUnitaLocaleService,
     RENTRIApiClient,
+    // R6 — scorta di numeri pre-vidimati: v. `docs/audits/rentri-vidimazione-e-qr-2026-09-10.md`
+    // §6 (client corretto e provato contro l'oracolo, ma mai registrato in
+    // alcun modulo prima d'ora — inerte, stesso difetto già chiuso per
+    // l'annullamento del formulario).
+    RentriVidimazioneClient,
     RentriCodificheClient,
     RentriAnagraficheClient,
     SincronizzaSitiUseCase,
@@ -72,6 +78,7 @@ import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica
   ],
   exports: [
     RENTRIApiClient,
+    RentriVidimazioneClient,
     RentriCodificheClient,
     RentriAnagraficheClient,
     RentriAuthService,

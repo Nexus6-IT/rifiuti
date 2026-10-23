@@ -12,6 +12,8 @@ import {
   Res,
   Body,
   UnauthorizedException,
+  ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common'
 import { Response } from 'express'
 import { AuthGuard } from '@nestjs/passport'
@@ -23,14 +25,24 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RefreshTokenDto } from '../dto/refresh-token.dto'
 import { LogoutDto } from '../dto/logout.dto'
 import { ConfigService } from '@nestjs/config'
+import { RuoloEffettivoService } from '../../api/me/ruolo-effettivo.service'
+import {
+  AZIENDA_SELEZIONATA_NON_ACCESSIBILE,
+  VERIFICA_AZIENDA_NON_DISPONIBILE,
+} from '../../core/context/azienda-selezionata-errori'
+import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 
+// Sessione (login, refresh, logout, profilo): non dipende dall'azienda selezionata e deve
+// funzionare anche con una selezione non più valida, altrimenti l'utente resta bloccato.
+@ConsentiSelezioneNonValida()
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly jwtTokensService: JwtTokensService,
     private readonly redisService: RedisService,
     private readonly prismaService: PrismaService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly ruoloEffettivo: RuoloEffettivoService
   ) {}
 
   /**
@@ -136,9 +148,29 @@ export class AuthController {
       throw new UnauthorizedException('User not found')
     }
 
-    // Get tenant and role
-    const tenantId = user.tenantId || ''
     const role = user.role || 'VIEWER'
+    const tenantPrimario = user.tenantId || ''
+    // Azienda del token che si rinnova: quella scelta con lo switch, se il refresh token la
+    // porta; altrimenti (token del login, o emessi prima di questa modifica) la primaria.
+    const tenantId = payload.tenantId || tenantPrimario
+
+    // Un'azienda diversa dalla primaria si ricontrolla a ogni refresh (associazione scaduta o
+    // revocata nel frattempo), con la stessa regola dello switch. Se non è più accessibile si
+    // rifiuta: mai rinnovare in silenzio sull'azienda primaria, dove una richiesta ripetuta
+    // dopo il refresh scriverebbe nell'azienda sbagliata. Il SUPER_ADMIN, come nello switch,
+    // non ha vincoli di appartenenza.
+    if (tenantId !== tenantPrimario && role !== 'SUPER_ADMIN') {
+      // Un errore del database non dice niente sull'accesso: 503 come il
+      // TenantSwitchInterceptor, così il frontend riprova e non cancella la selezione.
+      const accesso = await this.ruoloEffettivo
+        .accesso({ id: user.id, role, tenantId: tenantPrimario }, tenantId)
+        .catch(() => {
+          throw new ServiceUnavailableException({ ...VERIFICA_AZIENDA_NON_DISPONIBILE })
+        })
+      if (accesso === null) {
+        throw new ForbiddenException({ ...AZIENDA_SELEZIONATA_NON_ACCESSIBILE })
+      }
+    }
 
     // Generate new access token
     const accessToken = this.jwtTokensService.generateAccessToken({

@@ -23,6 +23,9 @@ export interface CreateTrasportatoreDto {
   sedeLegale: Indirizzo
   numeroIscrizione: string
   pec?: string
+  // Scadenza dell'iscrizione (ISO, solo data), facoltativa. `null` in update
+  // azzera esplicitamente una scadenza già impostata.
+  scadenzaIscrizione?: string | null
 }
 
 export interface CreateDestinatarioDto {
@@ -31,6 +34,9 @@ export interface CreateDestinatarioDto {
   sede: Indirizzo
   numeroAutorizzazione: string
   pec?: string
+  // Scadenza dell'autorizzazione (ISO, solo data), facoltativa. `null` in
+  // update azzera esplicitamente una scadenza già impostata.
+  scadenzaAutorizzazione?: string | null
 }
 
 @Injectable({

@@ -4,6 +4,7 @@ import { Router } from '@angular/router'
 import { throwError } from 'rxjs'
 import { catchError, switchMap } from 'rxjs/operators'
 import { AuthService } from '../services/auth.service'
+import { AdminTenantContextService } from '../services/admin-tenant-context.service'
 
 /**
  * Auth Interceptor
@@ -17,6 +18,7 @@ import { AuthService } from '../services/auth.service'
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const router = inject(Router)
   const authService = inject(AuthService)
+  const tenantContext = inject(AdminTenantContextService)
 
   const publicEndpoints = [
     '/auth/spid',
@@ -38,6 +40,9 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   const redirectToLogin = (): void => {
     authService.clearSession()
+    // Anche la selezione dell'azienda in memoria: un refresh rifiutato perché l'azienda scelta
+    // non è più accessibile (403 AZIENDA_SELEZIONATA_NON_ACCESSIBILE) non deve ripartire da lì.
+    tenantContext.clear()
     if (!router.url.startsWith('/login')) {
       const returnUrl = router.url && router.url !== '/' ? router.url : undefined
       router.navigate(['/login'], returnUrl ? { queryParams: { returnUrl } } : {})
@@ -59,7 +64,13 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       // Tenta il refresh UNA volta e ritenta la richiesta originale col nuovo token.
       return authService.refreshAccessToken().pipe(
         switchMap(newToken => next(withToken(req, newToken))),
-        catchError(() => {
+        catchError((erroreRefresh: unknown) => {
+          // 503 VERIFICA_AZIENDA_NON_DISPONIBILE: il backend non ha potuto verificare l'azienda
+          // (database). Il refresh token resta valido e la selezione pure: si riprova, niente
+          // logout.
+          if (erroreRefresh instanceof HttpErrorResponse && erroreRefresh.status === 503) {
+            return throwError(() => erroreRefresh)
+          }
           // Refresh fallito/revocato: logout pulito.
           redirectToLogin()
           return throwError(() => error)

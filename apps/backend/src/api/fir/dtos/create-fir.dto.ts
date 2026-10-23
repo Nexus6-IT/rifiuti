@@ -17,19 +17,22 @@ import {
 import { Type } from 'class-transformer'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
-import { TipoTratta } from '../../../domain/fir/aggregates/fir.aggregate'
+import { TipoTratta, ProvenienzaRifiuto } from '../../../domain/fir/aggregates/fir.aggregate'
 
 /**
  * Valori ammessi per lo stato fisico del rifiuto (norma tecnica, art. 193
  * D.Lgs 152/2006 e allegati DM 59/2023).
+ *
+ * GASSOSO e MISTO rimossi (2026-09): il contratto RENTRI (`StatiFisici`) non
+ * prevede alcun codice corrispondente, quindi un FIR marcato così non
+ * sarebbe mai trasmissibile. Verificato che nessun formulario in produzione
+ * usa questi due valori prima della rimozione.
  */
 export enum StatoFisicoRifiuto {
   SOLIDO = 'Solido',
   LIQUIDO = 'Liquido',
   FANGOSO = 'Fangoso',
-  GASSOSO = 'Gassoso',
   POLVERE = 'Polvere',
-  MISTO = 'Misto',
 }
 
 export class RifiutoDto {
@@ -183,4 +186,33 @@ export class CreateFIRDto {
   @IsString()
   @IsOptional()
   annotazioni?: string
+
+  /**
+   * Provenienza del rifiuto (D.Lgs 152/2006): urbano o speciale. Richiesta
+   * dal contratto RENTRI (enum `ProvenienzaRifiuto` dell'ente, codici 'U'/'S'
+   * — la traduzione è compito del mappatore RENTRI, non di questo DTO).
+   * Obbligatoria per i FIR nuovi: senza questo dato l'invio a RENTRI verrebbe
+   * comunque rifiutato dal mappatore, meglio chiederlo subito in creazione.
+   */
+  @ApiProperty({
+    enum: ProvenienzaRifiuto,
+    example: ProvenienzaRifiuto.SPECIALE,
+    description: 'Provenienza del rifiuto: urbano o speciale (richiesta dal contratto RENTRI)',
+  })
+  @IsEnum(ProvenienzaRifiuto)
+  provenienza: ProvenienzaRifiuto
+
+  /**
+   * Modalità di trasporto della tratta principale (Campo 4, trasportatore
+   * inline): riusa lo stesso enum `TipoTratta` già in uso per le tratte
+   * intermodali aggiuntive. Richiesta dal contratto RENTRI, stessa ragione di
+   * `provenienza` sopra.
+   */
+  @ApiProperty({
+    enum: TipoTratta,
+    example: TipoTratta.TERRESTRE,
+    description: 'Modalità di trasporto della tratta principale (richiesta dal contratto RENTRI)',
+  })
+  @IsEnum(TipoTratta)
+  tipoTrattaPrincipale: TipoTratta
 }

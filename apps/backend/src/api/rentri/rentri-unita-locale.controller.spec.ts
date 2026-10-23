@@ -19,6 +19,8 @@ const row = {
   attiva: true,
   createdAt: new Date(),
   updatedAt: new Date(),
+  codiceBloccoPredefinito: null,
+  dimensioneScortaDesiderata: null,
 }
 
 describe('RentriUnitaLocaleController', () => {

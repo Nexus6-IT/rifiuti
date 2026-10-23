@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common'
+import { Controller, Get, ServiceUnavailableException, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger'
 import { PrismaService } from '../database/prisma.service'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -34,8 +34,20 @@ export class HealthCheckController {
   }
 
   @Get('db')
-  @ApiOperation({ summary: 'Database health check' })
+  @ApiOperation({ summary: 'Database health check (503 se il database non risponde)' })
   async databaseHealth() {
+    const stato = await this.statoDb()
+    if (stato.status !== 'ok') {
+      // Il dettaglio dell'errore non esce dalla rotta pubblica: lo tiene solo `detailed`.
+      throw new ServiceUnavailableException({
+        message: 'Database non raggiungibile',
+        error: 'SERVICE_UNAVAILABLE',
+      })
+    }
+    return { status: 'ok', database: 'connected' }
+  }
+
+  private async statoDb(): Promise<{ status: 'ok' | 'error'; database: string; error?: string }> {
     try {
       await this.prisma.$queryRaw`SELECT 1`
       return { status: 'ok', database: 'connected' }
@@ -50,7 +62,7 @@ export class HealthCheckController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Detailed health metrics (SUPER_ADMIN/ADMIN only)' })
   async detailedHealth() {
-    const dbHealth = await this.databaseHealth()
+    const dbHealth = await this.statoDb()
 
     return {
       status: dbHealth.status === 'ok' ? 'healthy' : 'unhealthy',

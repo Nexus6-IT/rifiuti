@@ -11,12 +11,12 @@ import {
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { Response } from 'express'
-import * as QRCode from 'qrcode'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { PDFService } from '../../infrastructure/pdf/pdf.service'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { MUDGeneratorService } from '../../application/mud/mud-generator.service'
 import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case'
+import { generaQrVidimazione } from '../../infrastructure/rentri/qr/qr-vidimazione'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 
 /**
@@ -63,15 +63,27 @@ export class PdfController {
       throw new HttpException('FIR not found', HttpStatus.NOT_FOUND)
     }
 
-    // QR ISO/IEC 18004 verso la verifica pubblica firme: RENTRI prevede solo
-    // codici bidimensionali (nessun barcode 1D). L'URL è la stessa generata
-    // per GET /fir/:id/verify-url — unica fonte di verità, non un valore
-    // ricostruito qui a mano.
-    const verificationUrl = this.verifySignaturesUseCase.generateVerificationUrl(fir.id)
-    const qrCodeDataUrl = await QRCode.toDataURL(verificationUrl, {
-      errorCorrectionLevel: 'M',
-      type: 'image/png',
-    })
+    // QR del formulario: SOSTITUITO (non affiancato) al precedente QR verso
+    // la nostra verifica firme. La documentazione RENTRI vieta di includere
+    // qualunque URL nel QR di un formulario, proprio per impedire che una
+    // copia rimandi a un servizio di verifica non ufficiale — v.
+    // `docs/audits/rentri-vidimazione-e-qr-2026-09-10.md`. Il contenuto
+    // corretto è quello restituito dall'ente alla vidimazione
+    // (`fir.rentriQrCodeBytes`, Base64), ricodificato in Base45 e disegnato
+    // a livello di correzione H da `generaQrVidimazione`.
+    //
+    // **Decisione dichiarata**: se il FIR non è (ancora) vidimato dall'ente
+    // (`rentriQrCodeBytes` nullo — nessun flusso di questo programma lo
+    // valorizza ancora, v. l'audit), il PDF esce SENZA QR, non con un QR
+    // "di ripiego". Un QR con una dicitura testuale tipo "copia non
+    // vidimata" resterebbe comunque un codice bidimensionale stampato su un
+    // formulario, leggibile da chi non legge la dicitura accanto: il rischio
+    // che una copia non vidimata *sembri* vidimata (l'esatto problema che
+    // questa modifica corregge) è più alto del beneficio di un QR "parlante".
+    // L'assenza di QR è un segnale univoco, verificabile a colpo d'occhio.
+    const qrCodeDataUrl = fir.rentriQrCodeBytes
+      ? await generaQrVidimazione(fir.rentriQrCodeBytes)
+      : undefined
 
     const pdfBuffer = await this.pdfService.generateFIRPDF(fir, qrCodeDataUrl)
 

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
+import { FILTRO_AZIENDE_TENUTE_AL_MUD } from '../../mud/mud-obbligo.service'
 
 export interface VistaGruppo {
   totalTenants: number
@@ -72,7 +73,13 @@ export class GetAggregatedDashboardHandler {
         _count: { _all: true },
       }),
       this.prisma.mUDReport.findMany({
-        where: { tenantId: { in: ids }, status: { not: 'SUBMITTED' } },
+        // Le aziende segnate come non tenute al MUD (A-W-10) non hanno scadenze MUD, anche se
+        // hanno una bozza (creata prima del flag o da un'esportazione).
+        where: {
+          tenantId: { in: ids },
+          status: { not: 'SUBMITTED' },
+          tenant: { is: FILTRO_AZIENDE_TENUTE_AL_MUD },
+        },
         select: { tenantId: true, year: true, status: true },
         orderBy: { year: 'desc' },
         take: 20,

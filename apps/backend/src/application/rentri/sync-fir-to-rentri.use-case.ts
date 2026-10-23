@@ -6,6 +6,8 @@ import { FIR, FIRStato } from '../../domain/fir/aggregates/fir.aggregate'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import { IDomainEvent } from '../../domain/shared/domain-event.interface'
+import { CostruisciPayloadRentri } from './mappatura/costruisci-payload-rentri'
+import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
 import {
   RENTRIApiClient,
   RentriApiError,
@@ -54,7 +56,8 @@ export class SyncFIRToRENTRIUseCase {
     private readonly rentriApiClient: RENTRIApiClient,
     private readonly syncLogRepository: RENTRISyncLogRepository,
     private readonly domainEvents: DomainEventsService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly costruisciPayload: CostruisciPayloadRentri
   ) {
     this.logger.setContext('SyncFIRToRENTRIUseCase')
   }
@@ -92,8 +95,15 @@ export class SyncFIRToRENTRIUseCase {
       // Mark sync as starting
       fir.startRENTRISync()
 
+      // Il corpo si costruisce PRIMA del log e prima della chiamata: e' la
+      // stessa struttura che finisce nel registro delle trasmissioni e sulla
+      // rete, quindi il log non puo' divergere da cio' che e' stato spedito.
+      // Se il FIR non ha i dati che il contratto richiede, qui si solleva un
+      // errore e la trasmissione non parte affatto.
+      const payload = await this.costruisciPayload.costruisci(fir, tenantId)
+
       // Create sync log
-      const syncLog = await this.createSyncLog(fir, startTime)
+      const syncLog = await this.createSyncLog(fir, startTime, payload)
 
       try {
         // Call RENTRI API
@@ -109,10 +119,7 @@ export class SyncFIRToRENTRIUseCase {
         // Un errore qui (rete, timeout, superamento tentativi di polling)
         // finisce nel catch sottostante: stessa semantica retry-abile che
         // aveva un errore di rete del vecchio submitFIR.
-        const { transazioneId } = await this.rentriApiClient.creaFormulario(
-          tenantId,
-          this.convertFIRToPayload(fir)
-        )
+        const { transazioneId } = await this.rentriApiClient.creaFormulario(tenantId, payload)
         const esito = await this.rentriApiClient.attendiEsito(tenantId, transazioneId)
 
         if (!esito.errore) {
@@ -142,7 +149,13 @@ export class SyncFIRToRENTRIUseCase {
               durationMs: duration,
             })
 
-            await this.firRepository.save(fir)
+            const annullatoSenzaNumero = await this.salvaFirSeNonAnnullato(
+              fir,
+              failureLog,
+              ESITO_NON_SALVATO,
+              { firId, transazioneId }
+            )
+            if (annullatoSenzaNumero) return annullatoSenzaNumero
             await this.syncLogRepository.save(failureLog)
             await this.publishDomainEvents(fir)
 
@@ -182,8 +195,16 @@ export class SyncFIRToRENTRIUseCase {
             durationMs: duration,
           })
 
-          // Persist changes
-          await this.firRepository.save(fir)
+          // Persist changes. Se il FIR è stato annullato in locale durante
+          // l'attesa dell'esito, l'ente ha comunque il formulario: si conserva il
+          // log riuscito e lo si segnala, senza riportare in vita il FIR.
+          const annullatoDopoSuccesso = await this.salvaFirSeNonAnnullato(
+            fir,
+            successLog,
+            "FIR annullato in locale durante la trasmissione: sull'ente esiste il formulario",
+            { firId, protocolNumber: numeroFir }
+          )
+          if (annullatoDopoSuccesso) return annullatoDopoSuccesso
           await this.syncLogRepository.save(successLog)
 
           // Publish domain events
@@ -222,7 +243,13 @@ export class SyncFIRToRENTRIUseCase {
             durationMs: duration,
           })
 
-          await this.firRepository.save(fir)
+          const annullatoDopoRifiuto = await this.salvaFirSeNonAnnullato(
+            fir,
+            failureLog,
+            ESITO_NON_SALVATO,
+            { firId, transazioneId }
+          )
+          if (annullatoDopoRifiuto) return annullatoDopoRifiuto
           await this.syncLogRepository.save(failureLog)
           await this.publishDomainEvents(fir)
 
@@ -234,6 +261,10 @@ export class SyncFIRToRENTRIUseCase {
           }
         }
       } catch (apiError: any) {
+        // Un FIR annullato nel frattempo non è un errore dell'ente: niente
+        // secondo salvataggio, che verrebbe rifiutato allo stesso modo.
+        if (apiError instanceof FirAnnullatoNelFrattempoError) throw apiError
+
         // 403 (RentriApiError.retryable === false): credenziale non valida o
         // operazione non consentita. Ritentare non ha senso — la credenziale
         // resterà invalida al tentativo successivo — quindi l'esito è
@@ -275,7 +306,13 @@ export class SyncFIRToRENTRIUseCase {
           durationMs: duration,
         })
 
-        await this.firRepository.save(fir)
+        const annullatoDopoErrore = await this.salvaFirSeNonAnnullato(
+          fir,
+          failureLog,
+          ESITO_NON_SALVATO,
+          { firId, errorCode }
+        )
+        if (annullatoDopoErrore) return annullatoDopoErrore
         await this.syncLogRepository.save(failureLog)
         await this.publishDomainEvents(fir)
 
@@ -308,15 +345,45 @@ export class SyncFIRToRENTRIUseCase {
   }
 
   /**
+   * Salva il FIR dopo la trasmissione. Se nel frattempo è stato annullato in
+   * locale, il repository rifiuta il salvataggio (`FirAnnullatoNelFrattempoError`):
+   * si conserva il log di sincronizzazione, si scrive un errore nel log applicativo
+   * e si restituisce un esito definitivo, senza nuovi tentativi (un retry
+   * troverebbe lo stesso FIR annullato). Restituisce `null` se il salvataggio è
+   * riuscito; ogni altro errore risale invariato.
+   */
+  private async salvaFirSeNonAnnullato(
+    fir: FIR,
+    logSincronizzazione: any,
+    messaggio: string,
+    contesto: Record<string, unknown>
+  ): Promise<SyncFIRToRENTRIResult | null> {
+    try {
+      await this.firRepository.save(fir)
+      return null
+    } catch (e) {
+      if (!(e instanceof FirAnnullatoNelFrattempoError)) throw e
+      await this.syncLogRepository.save(logSincronizzazione)
+      this.logger.error(messaggio, e, contesto)
+      return {
+        success: false,
+        error: e.message,
+        willRetry: false,
+        attempts: fir.rentriSyncStatus.getAttempts(),
+      }
+    }
+  }
+
+  /**
    * Create sync log entry
    */
-  private async createSyncLog(fir: FIR, _startTime: number) {
+  private async createSyncLog(fir: FIR, _startTime: number, payload: Record<string, unknown>) {
     const syncLog = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       firId: fir.id,
       tenantId: fir.tenantId ?? '',
       attempt: fir.rentriSyncStatus.getAttempts() + 1,
-      requestPayload: JSON.stringify(this.convertFIRToPayload(fir)),
+      requestPayload: JSON.stringify(payload),
     }
 
     return this.syncLogRepository.createPending(syncLog)
@@ -387,18 +454,10 @@ export class SyncFIRToRENTRIUseCase {
       .map(v => `${v.campo ?? v.field ?? '?'}: ${v.codice_messaggio ?? v.message ?? 'errore'}`)
       .join('; ')
   }
-
-  /**
-   * Convert FIR to RENTRI payload (simplified - actual conversion in API client)
-   */
-  private convertFIRToPayload(fir: FIR): any {
-    return {
-      firId: fir.id,
-      firNumber: fir.numeroProgressivo,
-      // ... other fields
-    }
-  }
 }
+
+const ESITO_NON_SALVATO =
+  "FIR annullato in locale durante la trasmissione: l'esito dell'ente non viene salvato sul FIR"
 
 /**
  * Result of sync operation

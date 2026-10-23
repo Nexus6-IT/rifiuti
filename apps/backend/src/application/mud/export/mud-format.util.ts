@@ -6,6 +6,8 @@
  * e il testo è in MAIUSCOLO. I campi sono separati da `;` (anche l'ultimo).
  */
 
+import { giornoItaliano, orarioItaliano } from '../../../core/time/anno-italiano'
+
 const ACCENT_MAP: Record<string, string> = {
   à: "A'",
   á: "A'",
@@ -86,7 +88,23 @@ export function mudCodiceFiscale(cf: string): string {
 }
 
 /** Unità di misura MUD: kg=1, t=2 (default kg). */
-export const MUD_UM_KG = 1
+export const MUD_UM_KG = 1 as const
+export const MUD_UM_T = 2 as const
+
+/**
+ * Quantità in kg con la relativa unità di misura. Il campo ha 7 cifre intere:
+ * da 10.000.000 kg in su la quantità esce in tonnellate (UM = 2), altrimenti
+ * il record sforerebbe la lunghezza fissa e il file verrebbe scartato.
+ */
+export function mudQtyUm(kg: number): [string, 1 | 2] {
+  const v = Math.round(Math.max(0, kg || 0) * 1000) / 1000
+  if (v < 10_000_000) return [mudQty(v), MUD_UM_KG]
+  const t = Math.round(v) / 1000
+  if (t >= 10_000_000) {
+    throw new Error(`Quantità di ${kg} kg fuori dal formato del tracciato MUD anche in tonnellate`)
+  }
+  return [mudQty(t), MUD_UM_T]
+}
 
 /**
  * Campo ISTAT a lunghezza fissa (provincia/comune, `num 3` nel tracciato).
@@ -120,18 +138,12 @@ export function mudDateOrZero(d: Date | null | undefined): string {
   return d ? mudDate(d) : '00000000'
 }
 
-/** Data in formato MUD "AAAAMMGG". */
+/** Data in formato MUD "AAAAMMGG": il giorno di calendario di Roma, mai quello del server. */
 export function mudDate(d: Date): string {
-  const y = d.getFullYear().toString().padStart(4, '0')
-  const m = (d.getMonth() + 1).toString().padStart(2, '0')
-  const day = d.getDate().toString().padStart(2, '0')
-  return `${y}${m}${day}`
+  return giornoItaliano(d).replace(/-/g, '')
 }
 
-/** Ora in formato MUD "HHMMSS". */
+/** Ora in formato MUD "HHMMSS": l'ora di Roma, mai quella del server. */
 export function mudTime(d: Date): string {
-  const h = d.getHours().toString().padStart(2, '0')
-  const mi = d.getMinutes().toString().padStart(2, '0')
-  const s = d.getSeconds().toString().padStart(2, '0')
-  return `${h}${mi}${s}`
+  return orarioItaliano(d).replace(/:/g, '')
 }

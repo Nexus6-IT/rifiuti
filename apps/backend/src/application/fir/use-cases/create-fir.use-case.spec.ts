@@ -14,11 +14,18 @@ import { Trasportatore } from '../../../domain/registry/entities/trasportatore'
 import { Destinatario } from '../../../domain/registry/entities/destinatario'
 import { PartitaIVA } from '../../../domain/registry/value-objects/partita-iva'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
-import { FIR, FIRStato, TipoTratta } from '../../../domain/fir/aggregates/fir.aggregate'
+import {
+  FIR,
+  FIRStato,
+  TipoTratta,
+  ProvenienzaRifiuto,
+} from '../../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 
 // Mock Repositories
 class MockFIRRepository implements IFIRRepository {
+  private progressiveCounter = 0
   private firs: Map<string, FIR> = new Map()
 
   async findById(id: string): Promise<FIR | null> {
@@ -64,9 +71,16 @@ class MockFIRRepository implements IFIRRepository {
     return (await this.findByNumeroProgressivo(numeroProgressivo)) !== null
   }
 
-  async generateNumeroProgressivo(tenantId: string, anno: number): Promise<string> {
-    const count = this.firs.size + 1
-    return `FIR-${anno}-${String(count).padStart(6, '0')}`
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applica: (n: string) => void
+  ): Promise<string> {
+    this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+    const numero = formattaNumeroFir(anno, this.progressiveCounter)
+    applica(numero)
+    await this.save(fir)
+    return numero
   }
 
   async count(_filters?: any): Promise<number> {
@@ -273,7 +287,9 @@ describe('CreateFIRUseCase', () => {
       'tenant-transporter-456',
       'tenant-destination-789',
       'user-123',
-      'tenant-1'
+      'tenant-1',
+      ProvenienzaRifiuto.SPECIALE,
+      TipoTratta.TERRESTRE
     )
   }
 
@@ -367,7 +383,9 @@ describe('CreateFIRUseCase', () => {
         'tenant-transporter-456',
         'tenant-destination-789',
         'user-123',
-        'tenant-1'
+        'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE
       )
 
       const result = await useCase.execute(command)
@@ -384,7 +402,9 @@ describe('CreateFIRUseCase', () => {
         '', // Empty trasportatoreId
         'tenant-destination-789',
         'user-123',
-        'tenant-1'
+        'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE
       )
 
       const result = await useCase.execute(command)
@@ -401,7 +421,9 @@ describe('CreateFIRUseCase', () => {
         'tenant-transporter-456',
         '', // Empty destinatarioId
         'user-123',
-        'tenant-1'
+        'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE
       )
 
       const result = await useCase.execute(command)
@@ -418,7 +440,9 @@ describe('CreateFIRUseCase', () => {
         'tenant-transporter-456',
         'tenant-destination-789',
         'user-123',
-        'tenant-1'
+        'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE
       )
 
       const result = await useCase.execute(command)
@@ -435,7 +459,9 @@ describe('CreateFIRUseCase', () => {
         'tenant-transporter-456',
         'tenant-destination-789',
         'user-123',
-        'tenant-1'
+        'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE
       )
 
       const result = await useCase.execute(command)
@@ -453,6 +479,8 @@ describe('CreateFIRUseCase', () => {
         'tenant-destination-789',
         'user-123',
         'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE,
         [
           { trasportatoreId: 'carrier-rail', tipoTratta: TipoTratta.FERROVIARIA, ordine: 2 },
           { trasportatoreId: 'carrier-sea', tipoTratta: TipoTratta.MARITTIMA, ordine: 3 },
@@ -485,6 +513,8 @@ describe('CreateFIRUseCase', () => {
         'tenant-destination-789',
         'user-123',
         'tenant-1',
+        ProvenienzaRifiuto.SPECIALE,
+        TipoTratta.TERRESTRE,
         [{ trasportatoreId: 'carrier-missing', tipoTratta: TipoTratta.TERRESTRE, ordine: 2 }]
       )
 

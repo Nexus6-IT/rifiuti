@@ -21,6 +21,7 @@ import {
   mudRecord,
   mudNum,
   mudQty,
+  mudQtyUm,
   mudAlfa,
   mudCodiceFiscale,
   mudDate,
@@ -29,9 +30,27 @@ import {
   mudFlag,
   mudOperazioni,
   mudDateOrZero,
-  MUD_UM_KG,
 } from '../mud-format.util'
 import { normalizeCer } from '../../../esg/emission-factors'
+
+/** Lunghezze totali dei record, da «Lunghezza totale record X» del tracciato. */
+export const LUNGHEZZE_RECORD_V604: Readonly<Record<string, number>> = {
+  XX: 488,
+  AA: 338,
+  AB: 257,
+  AU: 327,
+  AR: 201,
+  BA: 217,
+  BB: 310,
+  BC: 83,
+  BD: 245,
+  BE: 268,
+  DA: 93,
+  DB: 221,
+}
+
+/** Stato fisico che il tracciato indica quando la riga non ne ha uno. */
+export const STATO_FISICO_PREDEFINITO: StatoFisico = 'SOLIDO_NON_POLVERULENTO'
 
 /** Ordine dei 7 flag di stato fisico nei record BA e DA. */
 const STATO_FISICO_ORDER: StatoFisico[] = [
@@ -148,6 +167,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
   abstract readonly version: string
   /** Anno **dei dati** dichiarati (la dichiarazione si presenta l'anno dopo). */
   abstract readonly year: number
+  abstract readonly scadenzaPresentazione: string
 
   /**
    * Tipi di autorizzazione ammessi nel record AU per questa annualità.
@@ -202,7 +222,23 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
     })
 
     const xx = this.recordXX(data, body)
-    return [xx, ...body].join('\r\n') + '\r\n'
+    const righe = [xx, ...body]
+    for (const riga of righe) {
+      const tipo = riga.slice(0, 2)
+      const attesa = LUNGHEZZE_RECORD_V604[tipo]
+      // un tipo nuovo senza lunghezza in tabella non passa senza controllo
+      if (attesa === undefined) {
+        throw new Error(
+          `Record di tipo ${tipo} senza lunghezza nel tracciato: file MUD non conforme`
+        )
+      }
+      if (riga.length !== attesa) {
+        throw new Error(
+          `Record ${tipo} di ${riga.length} caratteri invece di ${attesa}: file MUD non conforme`
+        )
+      }
+    }
+    return righe.join('\r\n') + '\r\n'
   }
 
   // ===================== Helper comuni =====================
@@ -250,13 +286,13 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
 
   /** 7 flag (0/1) di stato fisico; default solido NON polverulento. */
   protected statoFisicoFlags(stato?: StatoFisico): string[] {
-    const selected = stato ?? 'SOLIDO_NON_POLVERULENTO'
+    const selected = stato ?? STATO_FISICO_PREDEFINITO
     return STATO_FISICO_ORDER.map(s => (s === selected ? '1' : '0'))
   }
 
   /** Coppia «quantità + unità di misura», ricorrente in quasi tutti i record. */
   protected qtyUm(value: number | undefined): Array<string | number> {
-    return [mudQty(value ?? 0), MUD_UM_KG]
+    return mudQtyUm(value ?? 0)
   }
 
   // ===================== Sezione anagrafica =====================
@@ -323,8 +359,9 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
       mudAlfa(a.legaleRappresentanteNome ?? '', 25),
       mudDate(data.generatedAt ?? new Date()), // data compilazione AAAAMMGG
       mudNum(12, 2), // mesi di attività nell'anno (default 12)
-      mudNum(0, 1), // annulla e sostituisce
-      mudNum(0, 8), // data comunicazione sostituita
+      // annulla e sostituisce + data della comunicazione sostituita (giorno italiano AAAAMMGG)
+      mudNum(data.sostituisce ? 1 : 0, 1),
+      data.sostituisce ? mudDate(data.sostituisce.dataComunicazione) : mudNum(0, 8),
     ])
   }
 
@@ -496,6 +533,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
       civico: dr.civico,
       cap: dr.cap,
       quantitaKg: dr.quantitaKg,
+      nazione: dr.nazione,
     })
   }
 
@@ -555,6 +593,8 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
       ricevutoDaPrivati?: boolean
       origineUrbana?: boolean
       pileAccumulatori?: boolean
+      /** solo DR estero (A-W-05) */
+      nazione?: string
     }
   ): string {
     return mudRecord('BB', [
@@ -569,7 +609,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
       mudAlfa(f.civico ?? '', 6),
       mudAlfa(f.cap ?? '', 5),
       ...this.qtyUm(f.quantitaKg), // quantità dichiarata
-      mudAlfa('', 20), // nome nazione (estero)
+      mudAlfa(f.nazione ?? '', 20), // nome nazione (estero)
       mudAlfa('', 6), // codice reg. CEE 1013/2006
       mudFlag(f.ricevutoDaPrivati), // ricevuto da privati (solo RT)
       ...this.qtyUm(0), // altre op. smaltimento (estero)

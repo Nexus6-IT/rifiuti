@@ -1,4 +1,7 @@
+import * as Sentry from '@sentry/node'
 import { RentriRiconciliazioneJob } from './rentri-riconciliazione.job'
+
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
 /**
  * Test unitari di RentriRiconciliazioneJob (R5 Task 4).
@@ -14,6 +17,7 @@ describe('RentriRiconciliazioneJob', () => {
   let mockLogger: any
 
   beforeEach(() => {
+    jest.clearAllMocks()
     mockPrisma = {
       tenant: { findMany: jest.fn() },
     }
@@ -80,5 +84,49 @@ describe('RentriRiconciliazioneJob', () => {
     mockRiconciliaStatoRentri.execute.mockRejectedValue(new Error('boom'))
 
     await expect(job.eseguiRiconciliazione()).resolves.toBeUndefined()
+  })
+
+  it('un errore di un solo tenant della riconciliazione arriva a Bugsink con il tenant', async () => {
+    mockPrisma.tenant.findMany.mockResolvedValue([{ id: 't1' }, { id: 't2' }])
+    mockRiconciliaStatoRentri.execute.mockImplementation((tenantId: string) =>
+      tenantId === 't2'
+        ? Promise.reject(new Error('credenziale scaduta'))
+        : Promise.resolve({ controllati: 0, corretti: 0, segnalati: 0, nessunaDivergenza: 0 })
+    )
+
+    await expect(job.eseguiRiconciliazione()).resolves.toBeUndefined()
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1)
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { job: 'eseguiRiconciliazione', tenantId: 't2' },
+    })
+  })
+
+  // Guardia di regressione: verde anche prima della modifica (il comportamento esiste già).
+  it('eseguiRiconciliazione non rilancia e segnala una volta', async () => {
+    mockPrisma.tenant.findMany.mockRejectedValue(new Error('db giù'))
+
+    await expect(job.eseguiRiconciliazione()).resolves.toBeUndefined()
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1)
+  })
+
+  it('riconcilia rilancia se la lettura dei tenant fallisce', async () => {
+    mockPrisma.tenant.findMany.mockRejectedValue(new Error('db giù'))
+
+    await expect(job.riconcilia()).rejects.toThrow('db giù')
+    // La segnalazione a Bugsink spetta solo all'handler @Cron, non al giro.
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('riconcilia restituisce i tenant con errore', async () => {
+    mockPrisma.tenant.findMany.mockResolvedValue([{ id: 't1' }, { id: 't2' }])
+    mockRiconciliaStatoRentri.execute.mockImplementation((tenantId: string) =>
+      tenantId === 't2'
+        ? Promise.reject(new Error('credenziale scaduta'))
+        : Promise.resolve({ controllati: 0, corretti: 0, segnalati: 0, nessunaDivergenza: 0 })
+    )
+
+    await expect(job.riconcilia()).resolves.toEqual({ tenantTotali: 2, tenantConErrore: 1 })
   })
 })

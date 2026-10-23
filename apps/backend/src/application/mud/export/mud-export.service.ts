@@ -1,33 +1,43 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
+import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
-import { ReferenceDataService } from '../../reference-data/reference-data.service'
 import { MudVersionRegistry } from './mud-version.registry'
+import { MudAggregazioneService } from '../aggregazione/mud-aggregazione.service'
 import {
-  MudExportData,
-  MudExportResult,
-  MudRifiutoLine,
-  MudAllegatoDR,
-  MudAllegatoTE,
-  MudAutorizzazione,
-  MudEnteAutorizzante,
-  MudTipoAutorizzazione,
-  MudClassificazioneDiscarica,
-} from './mud-export.types'
+  avvisiCambianoQuantita,
+  avvisiNonConfermati,
+  codiciAvvisoDaConfermare,
+  haBloccanti,
+  riepilogaAvvisi,
+} from '../aggregazione/mud-controlli'
+import { hashAggregato, hashDichiarante } from '../aggregazione/mud-regole'
+import { aggiornaReportData, dataComunicazioneSostituita } from '../mud-report-data'
+import { MudExportData, MudExportResult } from './mud-export.types'
+import { caricaDichiarante } from './mud-dichiarante'
+
+/** Ruoli che possono confermare gli avvisi che cambiano le quantità (Decisione 19). */
+export const RUOLI_CONFERMA_AVVISI = ['ADMIN', 'SUPER_ADMIN'] as const
 
 /**
  * Orchestratore dell'export telematico MUD, **versionato e diviso per anno**.
  *
  * Dato (tenant, anno): seleziona il tracciato della versione corretta (per
- * anno), recupera l'anagrafica del dichiarante e aggrega i dati rifiuti
- * (prodotto + recupero/smaltimento per CER), poi genera il file conforme.
+ * anno), recupera l'anagrafica del dichiarante e l'aggregazione dal registro
+ * (con i controlli), si ferma sui bloccanti, chiede la conferma degli avvisi,
+ * genera il file conforme e registra l'esportazione.
  */
 @Injectable()
 export class MudExportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: MudVersionRegistry,
-    private readonly referenceData: ReferenceDataService,
+    private readonly aggregazione: MudAggregazioneService,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext(MudExportService.name)
@@ -38,8 +48,20 @@ export class MudExportService {
     return this.registry.listVersions()
   }
 
-  /** Genera il file MUD telematico per il tenant e l'anno indicati. */
-  async exportTelematico(tenantId: string, year: number): Promise<MudExportResult> {
+  /**
+   * Genera il file MUD telematico per il tenant e l'anno indicati.
+   *
+   * Con errori bloccanti → 422 `MUD_NON_GENERABILE`; con avvisi e un utente che non è
+   * amministratore → 403; con avvisi non confermati → 422 `MUD_AVVISI_DA_CONFERMARE`.
+   * I controlli viaggiano in `details`, l'unico campo strutturato che il filtro globale
+   * copia nella risposta.
+   */
+  async exportTelematico(
+    tenantId: string,
+    year: number,
+    utente: { id: string; role: string },
+    avvisiConfermati: readonly string[] = []
+  ): Promise<MudExportResult> {
     // Seleziona la versione per anno (lancia se anno non supportato).
     const tracciato = this.registry.getForYear(year)
 
@@ -48,242 +70,132 @@ export class MudExportService {
       throw new NotFoundException('Tenant non trovato')
     }
 
-    // Risolve il codice ISTAT del comune dalle tabelle di riferimento condivise.
-    // city/province potrebbero essere null per tenant creati via signup self-service
-    // (WS-G): in quel caso il comune non viene risolto (undefined).
-    const comune =
-      tenant.city && tenant.province
-        ? await this.referenceData.findComuneByName(tenant.city, tenant.province)
-        : undefined
+    // Righe dal registro e controlli (aggregazione, dichiarante e profilo).
+    const aggregato = await this.aggregazione.aggrega(tenantId, year)
+    const controlli = aggregato.controlli
+    const riepilogo = riepilogaAvvisi(controlli)
 
+    if (haBloccanti(controlli)) {
+      const bloccanti = controlli.filter(c => c.gravita === 'BLOCCANTE')
+      throw new UnprocessableEntityException({
+        message: `Il file MUD non può essere generato: ci sono errori da correggere (${bloccanti.length}).`,
+        error: 'MUD_NON_GENERABILE',
+        details: { controlli },
+      })
+    }
+
+    const codiciAvviso = codiciAvvisoDaConfermare(controlli)
+    // Decisione 19: la conferma di un avviso che fa dichiarare quantità diverse dal registro
+    // è una scelta sul contenuto della dichiarazione e spetta a un amministratore. Gli avvisi
+    // solo informativi (per esempio gli scarichi senza FIR) li conferma chiunque: altrimenti
+    // nessun altro utente scaricherebbe il MUD.
+    const puoConfermare = (RUOLI_CONFERMA_AVVISI as readonly string[]).includes(utente.role)
+    if (avvisiCambianoQuantita(controlli) && !puoConfermare) {
+      throw new ForbiddenException({
+        message: 'Il file MUD ha avvisi da confermare: chiedi a un amministratore di generarlo.',
+        error: 'MUD_CONFERMA_RISERVATA_AMMINISTRATORI',
+        details: { controlli, riepilogo },
+      })
+    }
+
+    const avvisiDaConfermare = avvisiNonConfermati(controlli, avvisiConfermati)
+    if (avvisiDaConfermare.length > 0) {
+      throw new UnprocessableEntityException({
+        message: `Il file MUD non è stato generato: ci sono avvisi da confermare (${avvisiDaConfermare.length}).`,
+        error: 'MUD_AVVISI_DA_CONFERMARE',
+        details: { controlli, avvisiDaConfermare, riepilogo },
+      })
+    }
+
+    // Dichiarazione sostitutiva (A-W-04): se l'anno risulta presentato, o la presentazione è
+    // stata annullata per sostituirla, il file annulla e sostituisce quella comunicazione. La
+    // lettura è fuori dal lock del report: la voce registra comunque cosa dice il file.
+    const sostituita = dataComunicazioneSostituita(
+      await this.prisma.mUDReport.findUnique({
+        where: { tenantId_year: { tenantId, year } },
+        select: { status: true, submittedAt: true, reportData: true },
+      })
+    )
+
+    // Anagrafica (AA) e schede SA-AUT (AU): le autorizzazioni escono solo se registrate; per i
+    // soggetti estranei alla gestione rifiuti la lista è vuota e il record AU non c'è.
+    const dichiarante = await caricaDichiarante(
+      this.prisma,
+      tenantId,
+      tenant,
+      aggregato.dichiarante
+    )
     const data: MudExportData = {
       year,
-      azienda: {
-        ragioneSociale: tenant.ragioneSociale,
-        partitaIva: tenant.partitaIva,
-        codiceFiscale: tenant.codiceFiscale ?? undefined,
-        via: tenant.address ?? undefined,
-        civico: tenant.civico ?? undefined,
-        comune: tenant.city ?? undefined,
-        comuneCode: comune?.code,
-        provincia: tenant.province ?? undefined,
-        cap: tenant.postalCode ?? undefined,
-        pec: tenant.pec ?? undefined,
-        telefono: tenant.telefono ?? undefined,
-        atecoCode: tenant.atecoCode ?? undefined,
-        reaNumber: tenant.reaNumber ?? undefined,
-        numeroAddetti: tenant.numeroAddetti ?? undefined,
-        legaleRappresentanteNome: tenant.legaleRappresentanteNome ?? undefined,
-        legaleRappresentanteCognome: tenant.legaleRappresentanteCognome ?? undefined,
-      },
-      rifiuti: await this.aggregaRifiuti(tenantId, year),
-      // Schede SA-AUT: emesse solo se l'impianto ha autorizzazioni registrate.
-      // Per i soggetti estranei alla gestione rifiuti la lista è vuota e il
-      // record AU non viene prodotto, come richiede il tracciato.
-      autorizzazioni: await this.caricaAutorizzazioni(tenantId),
+      azienda: dichiarante.azienda,
+      rifiuti: aggregato.righe,
+      autorizzazioni: dichiarante.autorizzazioni,
+      ...(sostituita ? { sostituisce: { dataComunicazione: sostituita } } : {}),
     }
 
     const content = tracciato.generate(data)
     this.logger.info(
-      `MUD export generato: tenant ${tenantId}, anno ${year}, versione ${tracciato.version}, ${data.rifiuti.length} righe`
+      `MUD export generato: tenant ${tenantId}, anno ${year}, versione ${tracciato.version}, ${data.rifiuti.length} righe, ${codiciAvviso.length} avvisi confermati`
     )
 
-    return {
+    const result: MudExportResult = {
       filename: `MUD_${year}_${tenant.partitaIva}.txt`,
       content,
       version: tracciato.version,
       year,
     }
-  }
 
-  /**
-   * Carica le schede SA-AUT (record AU) del dichiarante.
-   *
-   * Il tracciato prevede una scheda per ogni autorizzazione o certificazione
-   * posseduta dall'impianto che effettua la gestione dei rifiuti; in assenza,
-   * nessun record AU va trasmesso e `AB` riporta `00` schede AUT.
-   */
-  private async caricaAutorizzazioni(tenantId: string): Promise<MudAutorizzazione[]> {
-    const righe = await this.prisma.autorizzazioneImpianto.findMany({
-      where: { tenantId },
-      include: { discariche: true },
-      orderBy: { createdAt: 'asc' },
-    })
-
-    return righe.map(a => ({
-      estremi: a.estremi,
-      dataRilascio: a.dataRilascio ?? undefined,
-      dataScadenza: a.dataScadenza ?? undefined,
-      enteAutorizzante: a.enteAutorizzante as MudEnteAutorizzante,
-      tipoAutorizzazione: a.tipoAutorizzazione as MudTipoAutorizzazione,
-      rinnovoAutocertificazione: a.rinnovoAutocertificazione,
-      operazioniRecupero: a.operazioniRecupero,
-      operazioniSmaltimento: a.operazioniSmaltimento,
-      gestisceVFU: a.gestisceVfu,
-      gestisceRAEE: a.gestisceRaee,
-      autorizzazioneEoW: a.autorizzazioneEow,
-      impiantoIncenerimento: a.impiantoIncenerimento,
-      capacitaComplessivaTa: a.capacitaComplessivaTa,
-      capacitaPericolosiTa: a.capacitaPericolosiTa,
-      capacitaNonPericolosiTa: a.capacitaNonPericolosiTa,
-      impiantoCoincenerimento: a.impiantoCoincenerimento,
-      capacitaCoincComplessivaTa: a.capacitaCoincComplessivaTa,
-      capacitaCoincPericolosiTa: a.capacitaCoincPericolosiTa,
-      capacitaCoincNonPericolosiTa: a.capacitaCoincNonPericolosiTa,
-      discariche: a.discariche.map(d => ({
-        classificazione: d.classificazione as MudClassificazioneDiscarica,
-        capacitaResiduaMc: d.capacitaResiduaMc,
-      })),
-      emasPrimaRegistrazione: a.emasPrimaRegistrazione ?? undefined,
-      emasNumeroRegistrazione: a.emasNumeroRegistrazione ?? undefined,
-      iso14001Emissione: a.iso14001Emissione ?? undefined,
-    }))
-  }
-
-  /**
-   * Aggrega i rifiuti del tenant per l'anno dai FIR del periodo: per ogni CER
-   * calcola prodotto/recupero/smaltimento e costruisce i moduli BB allegati:
-   *  - DR (conferiti a terzi): per destinatario, con anagrafica + codice ISTAT;
-   *  - TE (trasportatori): per trasportatore (solo CF + ragione sociale).
-   */
-  private async aggregaRifiuti(tenantId: string, year: number): Promise<MudRifiutoLine[]> {
-    const start = new Date(year, 0, 1)
-    const end = new Date(year, 11, 31, 23, 59, 59)
-
-    const firs = await this.prisma.fIR.findMany({
-      where: { tenantId, createdAt: { gte: start, lte: end } },
-      select: {
-        cerCode: true,
-        quantity: true,
-        wasteOperationType: true,
-        carrierId: true,
-        carrierName: true,
-        carrierPartitaIva: true,
-        receiverId: true,
-        receiverName: true,
-        receiverPartitaIva: true,
-      },
-    })
-
-    // Anagrafica + codici ISTAT dei destinatari (per i moduli DR).
-    const destInfo = await this.loadDestinatariInfo(
-      tenantId,
-      firs.map(f => f.receiverId)
-    )
-
-    interface Acc {
-      recuperoKg: number
-      smaltimentoKg: number
-      dr: Map<string, MudAllegatoDR>
-      te: Map<string, MudAllegatoTE>
+    // Traccia dell'esportazione, solo dopo un file generato: con quali avvisi confermati,
+    // quale aggregato e quali integrazioni è uscito (rilievo G3-D-06).
+    const hash = hashAggregato(aggregato.righe)
+    const riepilogoQuantita = {
+      kgInMeno: riepilogo.kgInMeno,
+      kgInPiu: riepilogo.kgInPiu,
+      movimentiNonQuantificati: riepilogo.movimentiNonQuantificati,
+      voci: riepilogo.voci,
     }
-    const perCer = new Map<string, Acc>()
-
-    for (const f of firs) {
-      const qty = f.quantity ? Number(f.quantity) : 0
-      const acc =
-        perCer.get(f.cerCode) ??
-        ({ recuperoKg: 0, smaltimentoKg: 0, dr: new Map(), te: new Map() } as Acc)
-
-      if (f.wasteOperationType === 'RECOVERY') acc.recuperoKg += qty
-      else if (f.wasteOperationType === 'DISPOSAL') acc.smaltimentoKg += qty
-
-      // DR — per destinatario (merge quantità).
-      const drKey = f.receiverId || f.receiverPartitaIva
-      if (drKey) {
-        const info = f.receiverId ? destInfo.get(f.receiverId) : undefined
-        const existing = acc.dr.get(drKey)
-        if (existing) {
-          existing.quantitaKg += qty
-        } else {
-          acc.dr.set(drKey, {
-            codiceFiscale: info?.partitaIVA || f.receiverPartitaIva || '',
-            ragioneSociale: info?.ragioneSociale || f.receiverName || '',
-            istatProvincia: info?.istatProvincia,
-            istatComune: info?.istatComune,
-            indirizzo: info?.via,
-            civico: info?.civico,
-            cap: info?.cap,
-            quantitaKg: qty,
-          })
+    await this.prisma.$transaction(async tx => {
+      await aggiornaReportData(tx, tenantId, year, p => {
+        const voce = {
+          generatoIl: new Date().toISOString(),
+          generatoDa: utente.id,
+          versione: result.version,
+          hashAggregato: hash,
+          // i dati del dichiarante (AA e AU) non entrano in hashAggregato (solo righe): la
+          // segnatura della presentazione li confronta a parte
+          hashDichiarante: hashDichiarante(dichiarante),
+          // comunicazione che il file annulla e sostituisce (record AA), o null
+          sostituisce: sostituita ? sostituita.toISOString() : null,
+          avvisiConfermati: codiciAvviso,
+          riepilogo: riepilogoQuantita,
+          // quelle lette dall'aggregazione che ha fatto il file, non quelle di `p`: un
+          // salvataggio arrivato nel frattempo non è nel file
+          integrazioniUsate: aggregato.integrazioni,
         }
-      }
-
-      // TE — per trasportatore (distinti, solo identità).
-      const teKey = f.carrierId || f.carrierPartitaIva
-      if (teKey && !acc.te.has(teKey)) {
-        acc.te.set(teKey, {
-          codiceFiscale: f.carrierPartitaIva || '',
-          ragioneSociale: f.carrierName || '',
-        })
-      }
-
-      perCer.set(f.cerCode, acc)
-    }
-
-    return Array.from(perCer.entries()).map(([cerCode, v]) => ({
-      cerCode,
-      prodottoKg: v.recuperoKg + v.smaltimentoKg,
-      recuperoKg: v.recuperoKg,
-      smaltimentoKg: v.smaltimentoKg,
-      dr: Array.from(v.dr.values()),
-      te: Array.from(v.te.values()),
-    }))
-  }
-
-  /**
-   * Carica anagrafica + codice ISTAT (provincia 3 + comune 3) dei destinatari
-   * indicati, risolvendo il comune dalle tabelle di riferimento condivise.
-   */
-  private async loadDestinatariInfo(tenantId: string, receiverIds: Array<string | null>) {
-    const ids = Array.from(new Set(receiverIds.filter((id): id is string => !!id)))
-    const info = new Map<
-      string,
-      {
-        ragioneSociale: string
-        partitaIVA: string
-        via: string
-        civico: string
-        cap: string
-        istatProvincia?: string
-        istatComune?: string
-      }
-    >()
-    if (ids.length === 0) return info
-
-    // Il `tenantId` è obbligatorio anche se gli id arrivano dai FIR del tenant:
-    // questo service usa il client Prisma senza estensione RLS, quindi il
-    // perimetro dell'azienda esiste solo se sta scritto nella query.
-    const destinatari = await this.prisma.destinatario.findMany({
-      where: { id: { in: ids }, tenantId },
+        return {
+          reportData: {
+            ...p,
+            esportazioni: [...(Array.isArray(p.esportazioni) ? p.esportazioni : []), voce],
+          },
+        }
+      })
+      await tx.activityLog.create({
+        data: {
+          tenantId,
+          userId: utente.id,
+          action: 'MUD_ESPORTATO',
+          description: `File MUD dei dati ${year} generato (tracciato ${result.version}) con ${codiciAvviso.length} avvisi confermati: ${riepilogo.testo}`,
+          metadata: {
+            year,
+            versione: result.version,
+            hashAggregato: hash,
+            avvisiConfermati: codiciAvviso,
+            riepilogo: riepilogoQuantita,
+          } as unknown as Prisma.InputJsonValue,
+        },
+      })
     })
 
-    // Risolve i comuni una sola volta per coppia (comune, provincia) distinta:
-    // con N destinatari nello stesso comune si faceva una lookup per ciascuno.
-    const comuni = new Map<
-      string,
-      Awaited<ReturnType<typeof this.referenceData.findComuneByName>>
-    >()
-    for (const d of destinatari) {
-      const chiave = `${d.comune}|${d.provincia}`
-      if (!comuni.has(chiave)) {
-        comuni.set(chiave, await this.referenceData.findComuneByName(d.comune, d.provincia))
-      }
-    }
-
-    for (const d of destinatari) {
-      const comune = comuni.get(`${d.comune}|${d.provincia}`)
-      info.set(d.id, {
-        ragioneSociale: d.ragioneSociale,
-        partitaIVA: d.partitaIVA,
-        via: d.via,
-        civico: d.civico,
-        cap: d.cap,
-        // Codice ISTAT 6 cifre = provincia(3) + comune(3).
-        istatProvincia: comune?.code?.slice(0, 3),
-        istatComune: comune?.code?.slice(3, 6),
-      })
-    }
-    return info
+    return result
   }
 }

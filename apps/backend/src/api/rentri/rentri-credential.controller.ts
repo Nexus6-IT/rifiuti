@@ -28,11 +28,19 @@ import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { parsePkcs12 } from '../../infrastructure/rentri/rentri-pkcs12.util'
+import { validaCertificato } from '../../infrastructure/rentri/certificato/valida-certificato'
 import { SetRentriCredentialDto } from './dto/set-rentri-credential.dto'
 
 /** Esito generico delle operazioni di scrittura (mai segreti). */
 interface SuccessResponse {
   success: true
+  /**
+   * Avvertimenti non bloccanti dalla validazione statica del certificato
+   * (es. catena non verificabile, revoca non verificabile, certificato
+   * auto-firmato, scadenza vicina). Assente se nessun avvertimento.
+   * V. `infrastructure/rentri/certificato/valida-certificato.ts`.
+   */
+  avvertimenti?: string[]
 }
 
 /** Stato della credenziale del tenant (mai chiave né certificato completo). */
@@ -102,6 +110,25 @@ export class RentriCredentialController {
       )
     }
 
+    // Validazione statica del certificato (scadenza, coerenza con la chiave
+    // privata, catena, presenza di endpoint di revoca). Va fatta QUI,
+    // all'upload, non solo alla prima chiamata a RENTRI: un certificato
+    // scaduto o una chiave non corrispondente devono essere segnalati subito
+    // all'utente. Solo gli esiti 'errore' bloccano il salvataggio — gli
+    // 'avvertimento' (es. certificato auto-firmato, catena non verificabile,
+    // revoca non verificabile) sono restituiti ma non impediscono di
+    // proseguire: v. `valida-certificato.ts` per le ragioni di ogni scelta.
+    const validazione = validaCertificato(certificatePem, privateKeyPem)
+    if (!validazione.valido) {
+      const errori = Object.values(validazione.controlli)
+        .filter(controllo => controllo.esito === 'errore')
+        .map(controllo => controllo.messaggio)
+      throw new BadRequestException(`Certificato non valido: ${errori.join('; ')}`)
+    }
+    const avvertimenti = Object.values(validazione.controlli)
+      .filter(controllo => controllo.esito === 'avvertimento')
+      .map(controllo => controllo.messaggio)
+
     await this.credentialService.upsertForTenant(user.tenantId, {
       clientId: dto.clientId,
       certificatePem,
@@ -114,7 +141,7 @@ export class RentriCredentialController {
     })
 
     // NON restituire mai chiave/cert.
-    return { success: true }
+    return avvertimenti.length > 0 ? { success: true, avvertimenti } : { success: true }
   }
 
   @Get()

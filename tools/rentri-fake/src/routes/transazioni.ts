@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { verificaJwt } from '../auth/jwt-verifier'
 import { Archivio } from '../stato/archivio'
 import { inviaProblemDetails } from '../errori/problem-details'
+import { validaNuovoFormulario } from '../dominio/nuovo-formulario'
 
 const AUDIENCE = process.env.RENTRI_AUDIENCE ?? 'rentrigov.demo.api'
 const PREFISSO = '/formulari/v1.0'
@@ -61,6 +62,14 @@ async function autentica(
 export function registraRotteTransazioni(app: FastifyInstance, archivio: Archivio): void {
   app.post(`${PREFISSO}/`, async (richiesta, risposta) => {
     if (!(await autentica(richiesta, risposta, archivio))) return
+
+    const motivo = validaNuovoFormulario(richiesta.body)
+    if (motivo) {
+      return inviaProblemDetails(risposta, 400, {
+        title: 'Modello dati non valido',
+        detail: motivo,
+      })
+    }
 
     const id = archivio.creaTransazione(richiesta.body as Record<string, unknown>)
     return risposta

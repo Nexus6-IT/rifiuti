@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, MaxLength } from 'class-validator'
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsInt, Min, MaxLength } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
 
 /**
@@ -24,4 +24,14 @@ export class UpdateRentriUnitaLocaleDto {
   @IsOptional()
   @IsBoolean()
   attiva?: boolean
+
+  @ApiPropertyOptional({
+    description:
+      'Soglia di scorta di numeri FIR vidimati da mantenere sempre pronti per questa sede (R6). ' +
+      'Omesso o null = nessuna soglia: il job periodico non vidima nulla per questa sede.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  dimensioneScortaDesiderata?: number | null
 }

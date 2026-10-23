@@ -1,0 +1,1356 @@
+openapi: 3.0.4
+info:
+  title: vidimazione-formulari
+  description: Servizio vidimazione formulari RENTRI
+  termsOfService: https://www.rentri.gov.it
+  contact:
+    email: techref@rentri.it
+  version: 1.0.20260831-1024
+  x-summary: Servizio vidimazione formulari RENTRI
+  x-api-id: rentrigov.vivifir
+servers:
+- url: https://demoapi.rentri.gov.it/vidimazione-formulari/v1.0
+  description: Demo
+paths:
+  /:
+    get:
+      tags:
+      - Vidimazione
+      summary: Elenco blocchi
+      description: >+
+        Restituisce l'elenco dei blocchi del soggetto specificato.
+
+
+        Se si indica anche il numero iscrizione unità locale, vengono restituiti solo i blocchi dell'unità locale specificata.
+
+
+        La creazione dei blocchi è possibile solo nell'area web Operatori, tramite la funzionalità Interoperabilità/Gestione blocchi virtuali dei FIR.
+
+
+        Nell'ambiente DEMO è possibile creare al massimo 100 blocchi per operatore.
+
+
+        Nell'ambiente PRODUZIONE è possibile creare al massimo 500 blocchi per operatore.
+      parameters:
+      - name: identificativo
+        in: query
+        description: Codice fiscale del soggetto per il quale recuperare i blocchi
+        required: true
+        schema:
+          type: string
+      - name: num_iscr_sito
+        in: query
+        description: Numero iscrizione unità locale per il quale recuperare i blocchi
+        schema:
+          type: string
+      - name: codice_blocco
+        in: query
+        description: Codice del singolo blocco da recuperare
+        schema:
+          type: string
+      - name: anche_disattivi
+        in: query
+        description: Parametro booleano per recuperare anche i blocchi disattivati
+        schema:
+          type: boolean
+      - name: Paging-Page
+        in: header
+        description: Valore per l'header Paging-Page.
+        schema:
+          maximum: 2147483647
+          minimum: 1
+          type: integer
+          format: int32
+          default: 1
+      - name: Paging-PageSize
+        in: header
+        description: Valore per l'header Paging-PageSize.
+        schema:
+          maximum: 1000
+          minimum: 1
+          type: integer
+          format: int32
+          default: 100
+      responses:
+        200:
+          description: OK
+          headers:
+            Paging-PageCount:
+              description: Numero totale di pagine.
+              schema:
+                type: integer
+                description: Numero totale di pagine.
+                format: $int32
+            Paging-Page:
+              description: Numero di pagina.
+              schema:
+                type: integer
+                description: Numero di pagina.
+                format: $int32
+            Paging-PageSize:
+              description: Dimensione della pagina.
+              schema:
+                type: integer
+                description: Dimensione della pagina.
+                format: $int32
+            Paging-TotalRecordCount:
+              description: Numero totale di record.
+              schema:
+                type: integer
+                description: Numero totale di record.
+                format: $int32
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BloccoModel'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /{codice_blocco}:
+    get:
+      tags:
+      - Vidimazione
+      summary: Elenco FIR vidimati
+      description: Restituisce l'elenco dei FIR vidimati per il blocco specificato.
+      parameters:
+      - name: codice_blocco
+        in: path
+        description: Codice del blocco per il quale si richiede l'elenco delle vidimazioni FIR.
+        required: true
+        schema:
+          type: string
+      - name: progressivo_iniziale
+        in: query
+        description: Progressivo iniziale a partire dal quale restituire l'elenco delle vidimazioni FIR.
+        schema:
+          type: integer
+          format: int32
+      - name: progressivo_finale
+        in: query
+        description: Progressivo finale fino al quale restituire l'elenco dei numeri FIR.
+        schema:
+          type: integer
+          format: int32
+      - name: Paging-Page
+        in: header
+        description: Valore per l'header Paging-Page.
+        schema:
+          maximum: 2147483647
+          minimum: 1
+          type: integer
+          format: int32
+          default: 1
+      - name: Paging-PageSize
+        in: header
+        description: Valore per l'header Paging-PageSize.
+        schema:
+          maximum: 1000
+          minimum: 1
+          type: integer
+          format: int32
+          default: 100
+      responses:
+        200:
+          description: OK
+          headers:
+            Paging-PageCount:
+              description: Numero totale di pagine.
+              schema:
+                type: integer
+                description: Numero totale di pagine.
+                format: $int32
+            Paging-Page:
+              description: Numero di pagina.
+              schema:
+                type: integer
+                description: Numero di pagina.
+                format: $int32
+            Paging-PageSize:
+              description: Dimensione della pagina.
+              schema:
+                type: integer
+                description: Dimensione della pagina.
+                format: $int32
+            Paging-TotalRecordCount:
+              description: Numero totale di record.
+              schema:
+                type: integer
+                description: Numero totale di record.
+                format: $int32
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EfirModel'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+    post:
+      tags:
+      - Vidimazione
+      summary: "\U0001F501[ASYNC] Vidimazione nuovo FIR"
+      description: >-
+        Acquisisce la richiesta di vidimazione di un nuovo FIR per il blocco specificato.
+
+
+        Il servizio di vidimazione è soggetto a limiti giornalieri in funzione del tipo di blocco per cui si richiede la vidimazione.
+
+
+        Nell'ambiente DEMO le richieste giornaliere effettuabili per operatore sono 500 sull'insieme dei blocchi non associati a unità locali e 500 sull'insieme dei blocchi associati ad una stessa unità locale.
+
+
+        Nell'ambiente PRODUZIONE le richieste giornaliere effettuabili per operatore sono 1000 sull'insieme dei blocchi non associati a unità locali e 1000 sull'insieme dei blocchi associati ad una stessa unità locale.
+
+        <br/>Se viene specificato un URL nell'header <i>X-ReplyTo</i>, al termine dell'elaborazione dei dati, il fruitore riceverà una notifica con l'esito dell'elaborazione all'URL specificato.
+      parameters:
+      - name: codice_blocco
+        in: path
+        description: Codice blocco dal nuovo FIR da vidimare.
+        required: true
+        schema:
+          type: string
+      - name: X-ReplyTo
+        in: header
+        description: URL di callback alla quale verrà inviata la notifica di fine elaborazione.
+        schema:
+          type: string
+      responses:
+        202:
+          description: Richiesta accettata.
+          headers:
+            Location:
+              description: URL per verificare lo stato dell'elaborazione. Restituito solo se non viene specificata una URL di callback nell'header <i>X-ReplyTo</i>.
+              schema:
+                type: string
+                description: URL per verificare lo stato dell'elaborazione.
+                format: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransazioneModel'
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Codice blocco trovato.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      callbacks:
+        Callback di notifica di fine elaborazione:
+          https://example.com:
+            post:
+              summary: Callback esposta pubblicamente in cui verranno inviate le notifiche di fine elaborazione
+              requestBody:
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/EsitoVidimazioneModel'
+              responses:
+                200:
+                  description: Il fruitore restituisce questo Status Code in caso di avvenuta ricezione.
+                400:
+                  description: Il fruitore restituisce questo Status Code in caso di formato non corretto della richiesta.
+                500:
+                  description: Il fruitore restituisce questo Status Code in caso di errori non dipendenti dalla richiesta.
+  /{codice_blocco}/{progressivo}:
+    get:
+      tags:
+      - Vidimazione
+      summary: Dati di vidimazione FIR
+      description: Restituisce tutti i dati relativi alla vidimazione del FIR.
+      parameters:
+      - name: codice_blocco
+        in: path
+        description: Codice del blocco a cui appartiene il FIR per cui si richiedono i dati.
+        required: true
+        schema:
+          type: string
+      - name: progressivo
+        in: path
+        description: Numero progressivo del FIR per cui si richiedono i dati.
+        required: true
+        schema:
+          type: string
+      - name: xml
+        in: query
+        description: Se valorizzato a true nella struttura dati restituita viene valorizzato anche la proprietà xml contenente il file XML firmato che rappresenta la validazione.
+        schema:
+          type: boolean
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EfirModel'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /{codice_blocco}/{progressivo}/annulla:
+    put:
+      tags:
+      - Vidimazione
+      summary: Annulla vidimazione FIR
+      description: >-
+        Imposta ad annullata la vidimazione del FIR specificato.
+
+
+        Le condizioni affinché l'annullamento del numero FIR venga eseguito sono:
+
+        <ul><li>Non deve risultare presente tra quelli in compilazione nei servizi di supporto</li><li>Non deve risultare presente tra le copie cartacee dei FIR riconsegnate dal trasportatore</li><li>Non deve risultare presente tra le copie digitali dei FIR riconsegnate dal destinatario</li><li>Non deve risultare alcuna trasmissione dati FIR effettuata da alcun soggetto (per rifiuti pericolosi)</li></ul>
+      parameters:
+      - name: codice_blocco
+        in: path
+        description: Codice del blocco a cui appartiene il FIR per cui si richiede l'annullamento.
+        required: true
+        schema:
+          type: string
+      - name: progressivo
+        in: path
+        description: Numero progressivo del FIR per cui si richiede l'annullamento.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: OK
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /{codice_blocco}/{progressivo}/pdf:
+    get:
+      tags:
+      - Vidimazione
+      summary: Modello FIR PDF
+      description: Restituisce un file PDF firmato precompilato con i dati di vidimazione del FIR da riportare nella stampa.
+      parameters:
+      - name: codice_blocco
+        in: path
+        description: Codice del blocco a cui appartiene il FIR per cui si richiedono i dati.
+        required: true
+        schema:
+          type: string
+      - name: progressivo
+        in: path
+        description: Numero progressivo del FIR per cui si richiedono i dati.
+        required: true
+        schema:
+          type: string
+      - name: senza_numero_pagina
+        in: query
+        description: Se valorizzato a true il numero di pagina non è presente.
+        schema:
+          type: boolean
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadableBaseResponse'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /{transazione_id}/result:
+    get:
+      summary: Esito transazione
+      description: Ottiene l'esito dell'elaborazione di una richiesta di vidimazione FIR.
+      parameters:
+      - name: transazione_id
+        in: path
+        description: Id della richiesta.
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        200:
+          description: Esito dell'elaborazione con eventuali errori.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EsitoVidimazioneModel'
+        400:
+          description: Richiesta non ancora elaborata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Richiesta non trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /{transazione_id}/status:
+    get:
+      summary: Stato transazione
+      description: Ottiene lo stato di elaborazione di una richiesta di vidimazione FIR.
+      parameters:
+      - name: transazione_id
+        in: path
+        description: Id della richiesta.
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        200:
+          description: Richiesta non ancora elaborata.
+        303:
+          description: La richiesta è stata elaborata e l'URL per il recupero dell'esito si trova nell'header Location.
+          headers:
+            Location:
+              description: URL per verificare lo stato dell'elaborazione.
+              schema:
+                type: string
+                description: URL per verificare lo stato dell'elaborazione.
+                format: ''
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Richiesta non trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /certificati/{certificato_id}:
+    get:
+      tags:
+      - Vidimazione
+      summary: Certificato di firma
+      description: Recupera il certificato di firma della vidimazione con l'identificativo specificato.
+      parameters:
+      - name: certificato_id
+        in: path
+        description: Stringa identificativa del certificato.
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Certificato recuperato.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CertificateModel'
+        404:
+          description: Certificato non trovato.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /status:
+    get:
+      summary: Stato API
+      description: Verifica dello stato dell'API.
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        500:
+          description: Errore non gestito (contattare l'assistenza).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        400:
+          description: La richiesta non è valida. La proprietà `model_state` contiene un dizionario in cui ogni chiave identifica il dato per il quale è stato rilevato un errore e il relativo valore contiene un array con i codici degli errori riscontrati.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /verifica/{numero_fir}:
+    get:
+      tags:
+      - Vidimazione
+      summary: Verifica numero FIR
+      description: Verifica l'esistenza del numero FIR.
+      parameters:
+      - name: numero_fir
+        in: path
+        description: Numero del FIR
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Dettaglio dei dati di vidimazione
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EfirPublicModel'
+        400:
+          description: Dettaglio degli errori di validazione in caso di modello dati non valido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Errore non gestito (contattare l'assistenza)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        403:
+          description: Operazione non consentita.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: La risorsa richiesta non è stata trovata.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        503:
+          description: Servizio temporaneamente non disponibile. La risposta può essere restituita anche durante i periodi di chiusura programmata dei servizi, in questo caso nella proprietà `model_state` verrà riportato il codice di errore `sys.maintenance`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        423:
+          description: >-
+            Sono state eseguite troppe richieste non valide.
+                                Questa risposta viene restituita quando viene rilevato un numero eccessivo di richieste concorrenti, autenticate ma non valide.
+                                In questo caso, le eventuali richieste valide continueranno ad essere accettate, mentre solo le richieste non valide verranno bloccate applicando un meccanismo di `ban` a livello di chiamante (`issuer`) e nella proprietà `model_state` verrà riportato il codice di errore `sys.issuerIsBanned`.
+                                Il servizio di assistenza per l'interoperabilità RENTRI potrà essere contattato dal fruitore del servizio per i chiarimenti relativi alle richieste non valide, al fine di apportare le correzioni necessarie ai client.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        429:
+          description: "Il chiamante (issuer) ha superato i limiti di rate limiting: 100 richieste in 5 secondi complessive oppure 50 richieste in 5 secondi verso lo stesso endpoint. La risposta include l'header `Retry-After`, espresso in secondi, che indica il tempo di attesa prima di ripetere la richiesta."
+          headers:
+            Retry-After:
+              description: Indica quanto tempo, espresso in secondi, il chiamante deve attendere prima di effettuare una nuova richiesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+components:
+  schemas:
+    BloccoModel:
+      type: object
+      properties:
+        disattivo:
+          type: boolean
+          description: Stato di attivazione del blocco virtuale
+        identificativo_soggetto:
+          maxLength: 255
+          type: string
+          description: Codice fiscale del soggetto a cui è associato il blocco
+          nullable: true
+        denominazione_soggetto:
+          type: string
+          description: Denominazione del soggetto a cui è associato il blocco
+          nullable: true
+        codice_blocco:
+          type: string
+          description: Codice del blocco virtuale
+          nullable: true
+        descrizione:
+          type: string
+          description: Descrizione del blocco virtuale
+          nullable: true
+        codice_fiscale_utente:
+          type: string
+          description: Codice fiscale dell'utente che ha creato il blocco
+          nullable: true
+        data_creazione:
+          type: string
+          description: Formato ISO 8601 UTC
+          format: date-time
+          nullable: true
+        numero_fir_vidimati:
+          type: integer
+          description: Contatore dei FIR vidimati sul blocco virtuale
+          format: int32
+        data_ultimo_utilizzo:
+          type: string
+          description: Formato ISO 8601 UTC
+          format: date-time
+          nullable: true
+        num_iscr_sito:
+          type: string
+          description: Numero di iscrizione dell'unità locale a cui è associato il blocco virtuale
+          nullable: true
+        indirizzo:
+          type: string
+          description: Indirizzo dell'unità locale a cui è associato il blocco virtuale
+          nullable: true
+        civico:
+          type: string
+          description: Numero civico dell'indirizzo dell'unità locale a cui è associato il blocco virtuale
+          nullable: true
+        comune_id:
+          type: string
+          description: Codice ISTAT del comune dell'unità locale a cui è associato il blocco virtuale
+          nullable: true
+      additionalProperties: false
+    CertificateModel:
+      type: object
+      properties:
+        certificato:
+          type: string
+          nullable: true
+        subject:
+          type: string
+          nullable: true
+      additionalProperties: false
+    DownloadableBaseResponse:
+      type: object
+      properties:
+        nome_file:
+          type: string
+          description: Nome del file
+          nullable: true
+        mime:
+          type: string
+          description: Tipo MIME del file
+          nullable: true
+        content:
+          type: string
+          description: Contenuto del file
+          format: byte
+          nullable: true
+      additionalProperties: false
+    EfirModel:
+      type: object
+      properties:
+        utente_richiesta:
+          type: string
+          description: Codice fiscale dell'utente che ha richiesto la vidimazione del FIR
+          nullable: true
+        denominazione_utente_richiesta:
+          type: string
+          description: Denominazione dell'utente che ha richiesto la vidimazione del FIR
+          nullable: true
+        utente_annullamento:
+          type: string
+          description: Autore dell'eventuale annullamento del FIR
+          nullable: true
+        origine:
+          allOf:
+          - $ref: '#/components/schemas/Origine'
+          description: Indica se il FIR sia stato generato attraverso il sistema di interoperabilità (API) o attraverso il portale
+          nullable: true
+        xml:
+          type: string
+          description: Xml firmato del FIR in fase di vidimazione. Il dato è eventualmente restituito dalla richiesta dei dati di vidimazione FIR.
+          nullable: true
+        progressivo:
+          type: integer
+          description: Numero progressivo del FIR all'interno del blocco di appartenenza
+          format: int32
+        numero_fir:
+          type: string
+          description: Codice seriale del FIR contenente la concatenazione del codice di blocco, il progressivo ed il checksum
+          nullable: true
+        qr_code_bytes:
+          type: string
+          description: >-
+            Array di byte contenuto nel codice QR Code che consente di verificare la validità del FIR.
+
+            L'array di byte viene restituito codificato in Base64 dall'endpoint in una proprietà JSON di tipo stringa.
+
+            Il formato del contenuto del QR Code è conforme allo standard CBOR Object Signing and Encryption (COSE), RFC 8152.
+          format: byte
+          nullable: true
+        check_sum:
+          type: string
+          description: Caratteri alfanumerici utilizzati come codice univoco associato in sede di vidimazione al numero FIR
+          nullable: true
+        data_richiesta:
+          type: string
+          description: Data e ora in cui è stata effettuata la richiesta di vidimazione del FIR (formato ISO 8601 UTC)
+          format: date-time
+        denominazione_soggetto:
+          type: string
+          description: Ragione sociale del soggetto per conto del quale è stato vidimato il FIR
+          nullable: true
+        codice_fiscale_soggetto:
+          type: string
+          description: Codice fiscale del soggetto per conto del quale è stato vidimato il FIR
+          nullable: true
+        num_iscr_sito:
+          type: string
+          description: Numero di iscrizione dell'unità locale del soggetto per conto del quale è stato vidimato il FIR
+          nullable: true
+        codice_blocco:
+          type: string
+          description: Codice del blocco a cui appartiene il FIR
+          nullable: true
+        cciaa_nome:
+          type: string
+          description: Nome della CCIAA di competenza del FIR
+          nullable: true
+        is_annullato:
+          type: boolean
+          description: Stato di annullamento del FIR
+          nullable: true
+        data_annullamento:
+          type: string
+          description: Data dell'eventuale annullamento del FIR (formato ISO 8601 UTC)
+          format: date-time
+          nullable: true
+      additionalProperties: false
+    EfirPublicModel:
+      type: object
+      properties:
+        progressivo:
+          type: integer
+          description: Numero progressivo del FIR all'interno del blocco di appartenenza
+          format: int32
+        numero_fir:
+          type: string
+          description: Codice seriale del FIR contenente la concatenazione del codice di blocco, il progressivo ed il checksum
+          nullable: true
+        qr_code_bytes:
+          type: string
+          description: >-
+            Array di byte contenuto nel codice QR Code che consente di verificare la validità del FIR.
+
+            L'array di byte viene restituito codificato in Base64 dall'endpoint in una proprietà JSON di tipo stringa.
+
+            Il formato del contenuto del QR Code è conforme allo standard CBOR Object Signing and Encryption (COSE), RFC 8152.
+          format: byte
+          nullable: true
+        check_sum:
+          type: string
+          description: Caratteri alfanumerici utilizzati come codice univoco associato in sede di vidimazione al numero FIR
+          nullable: true
+        data_richiesta:
+          type: string
+          description: Data e ora in cui è stata effettuata la richiesta di vidimazione del FIR (formato ISO 8601 UTC)
+          format: date-time
+        denominazione_soggetto:
+          type: string
+          description: Ragione sociale del soggetto per conto del quale è stato vidimato il FIR
+          nullable: true
+        codice_fiscale_soggetto:
+          type: string
+          description: Codice fiscale del soggetto per conto del quale è stato vidimato il FIR
+          nullable: true
+        num_iscr_sito:
+          type: string
+          description: Numero di iscrizione dell'unità locale del soggetto per conto del quale è stato vidimato il FIR
+          nullable: true
+        codice_blocco:
+          type: string
+          description: Codice del blocco a cui appartiene il FIR
+          nullable: true
+        cciaa_nome:
+          type: string
+          description: Nome della CCIAA di competenza del FIR
+          nullable: true
+        is_annullato:
+          type: boolean
+          description: Stato di annullamento del FIR
+          nullable: true
+        data_annullamento:
+          type: string
+          description: Data dell'eventuale annullamento del FIR (formato ISO 8601 UTC)
+          format: date-time
+          nullable: true
+      additionalProperties: false
+    EsitoMessaggioModel:
+      type: object
+      properties:
+        indice:
+          type: integer
+          description: Indice dell'elemento di input relativo al messaggio di validazione
+          format: int32
+          nullable: true
+        campo:
+          type: string
+          description: Campo dell'elemento di input relativo al messaggio di validazione
+          nullable: true
+        tipo:
+          allOf:
+          - $ref: '#/components/schemas/EsitoMessaggioTipo'
+          description: Tipo del messaggio (avvertimento o errore)
+        codice_messaggio:
+          type: string
+          description: Codice del messaggio
+          nullable: true
+        parametri:
+          type: array
+          items: {}
+          description: Parametri del messaggio
+          nullable: true
+      additionalProperties: false
+      description: Messaggio di validazione
+    EsitoMessaggioTipo:
+      enum:
+      - Errore
+      - Avvertimento
+      type: string
+    EsitoVidimazioneModel:
+      type: object
+      properties:
+        esito:
+          allOf:
+          - $ref: '#/components/schemas/EfirPublicModel'
+          description: Esito
+          nullable: true
+        tipo:
+          type: string
+          description: Tipo di esito
+          nullable: true
+        transazione_id:
+          type: string
+          description: Identificativo della transazione asincrona
+          format: uuid
+        validazione:
+          type: array
+          items:
+            $ref: '#/components/schemas/EsitoMessaggioModel'
+          description: Messaggi di validazione
+          nullable: true
+        errore:
+          type: boolean
+        tempo_elaborazione:
+          type: string
+          format: date-span
+          nullable: true
+      additionalProperties: false
+    Origine:
+      enum:
+      - Portale
+      - Api
+      type: string
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: integer
+          format: int32
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+      additionalProperties: {}
+    StatusResponse:
+      type: object
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusResponseEnum'
+          description: Stato corrente dell'API<p>Valori ammessi:<ul style="margin:0"><li><i>Ok</i> - L'API è pienamente operativa e non sono presenti segnalazioni</li><li><i>Warning</i> - L'API è operativa, ma sono presenti avvisi relativi a potenziali disservizi o anomalie</li><li><i>Planned</i> - L'API è operativa, ma sono previsti interventi o disservizi programmati</li></ul></p>
+        warnings:
+          type: array
+          items:
+            type: string
+          description: >-
+            Elenco degli avvisi relativi a potenziali disservizi,
+
+            anomalie o situazioni che potrebbero influire sul servizio.
+          nullable: true
+        planned_notices:
+          type: array
+          items:
+            type: string
+          description: >-
+            Elenco delle comunicazioni relative a interventi,
+
+            manutenzioni o disservizi programmati.
+          nullable: true
+      additionalProperties: false
+      description: Informazioni sullo stato operativo dell'API
+    StatusResponseEnum:
+      enum:
+      - Ok
+      - Warning
+      - Planned
+      type: string
+      description: Enumerazione che rappresenta lo stato operativo dell'API
+    TransazioneModel:
+      type: object
+      properties:
+        transazione_id:
+          type: string
+          format: uuid
+      additionalProperties: false
+  securitySchemes:
+    Bearer:
+      type: http
+      description: Bearer JWT
+      scheme: bearer
+      bearerFormat: JWT
+security:
+- Bearer: []
+tags:
+- name: Vidimazione

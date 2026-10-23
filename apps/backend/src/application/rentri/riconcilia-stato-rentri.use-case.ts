@@ -14,6 +14,7 @@ import {
   RentriApiError,
   estraiNumeroFirDaEsito,
 } from '../../infrastructure/rentri/rentri-api.client'
+import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
 
 /**
  * Riconciliazione periodica dello stato RENTRI (R5, Task 4).
@@ -351,10 +352,15 @@ export class RiconciliaStatoRentriUseCase {
           transazioneId: fir.rentriTransazioneId,
         },
         errorMessage: this.messaggioErrore(error),
+        // Un FIR annullato in locale prima che l'ente rispondesse non si riporta in SYNCED
+        // (il repository lo rifiuta) e resta in SYNCING: serve una persona, non un nuovo
+        // tentativo, quindi il codice lo dice invece di sembrare un errore di rete.
         errorCode:
-          error instanceof RentriApiError && error.status === 404
-            ? 'RENTRI_RICONCILIAZIONE_TRANSAZIONE_NON_TROVATA'
-            : 'RENTRI_RICONCILIAZIONE_ERRORE_TRASPORTO',
+          error instanceof FirAnnullatoNelFrattempoError
+            ? 'RENTRI_RICONCILIAZIONE_FIR_ANNULLATO_IN_LOCALE'
+            : error instanceof RentriApiError && error.status === 404
+              ? 'RENTRI_RICONCILIAZIONE_TRANSAZIONE_NON_TROVATA'
+              : 'RENTRI_RICONCILIAZIONE_ERRORE_TRASPORTO',
         durationMs: Date.now() - startTime,
       })
     }

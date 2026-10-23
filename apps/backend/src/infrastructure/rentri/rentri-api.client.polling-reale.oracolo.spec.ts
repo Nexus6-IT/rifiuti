@@ -3,6 +3,7 @@ import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriConfig } from './rentri-config'
+import { corpoFormularioValido } from '../../application/rentri/mappatura/aiuti-test'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -120,7 +121,7 @@ describe('RENTRIApiClient — attendiEsito guida da solo il polling reale contro
       const client = creaClient()
 
       // 1) Crea il formulario contro la fake: 202 + transazione reale.
-      const { transazioneId } = await client.creaFormulario('', { dati: 'qualsiasi' })
+      const { transazioneId } = await client.creaFormulario('', corpoFormularioValido())
 
       // 2) Completa la transazione con un timer REALE (non un fake timer di
       // Jest, che bloccherebbe app.inject() — v. nota nello spec sorella),

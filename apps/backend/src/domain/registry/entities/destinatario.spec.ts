@@ -262,4 +262,85 @@ describe('Destinatario Entity', () => {
       )
     })
   })
+
+  // Task 3 scadenzario: scadenzaAutorizzazione è facoltativa perché le
+  // anagrafiche esistenti non hanno questo dato — non va inventata una
+  // scadenza per chi non l'ha mai fornita.
+  describe('scadenzaAutorizzazione', () => {
+    it('should create without scadenzaAutorizzazione (anagrafiche esistenti)', () => {
+      const destinatario = Destinatario.create({
+        ragioneSociale: 'Smaltimento Rifiuti SpA',
+        partitaIVA: PartitaIVA.create('11122233344'),
+        sede: Indirizzo.create({
+          via: 'Via Napoli',
+          civico: '100',
+          cap: '80100',
+          citta: 'Napoli',
+          provincia: 'NA',
+        }),
+        numeroAutorizzazione: 'NA/AUT/2023/001',
+      })
+
+      expect(destinatario.scadenzaAutorizzazione).toBeUndefined()
+    })
+
+    it('should create with scadenzaAutorizzazione', () => {
+      const scadenza = new Date('2027-01-15')
+      const destinatario = Destinatario.create({
+        ragioneSociale: 'Smaltimento Rifiuti SpA',
+        partitaIVA: PartitaIVA.create('11122233344'),
+        sede: Indirizzo.create({
+          via: 'Via Napoli',
+          civico: '100',
+          cap: '80100',
+          citta: 'Napoli',
+          provincia: 'NA',
+        }),
+        numeroAutorizzazione: 'NA/AUT/2023/001',
+        scadenzaAutorizzazione: scadenza,
+      })
+
+      expect(destinatario.scadenzaAutorizzazione).toBe(scadenza)
+    })
+
+    it('should update scadenzaAutorizzazione', () => {
+      const destinatario = Destinatario.create({
+        ragioneSociale: 'Smaltimento Rifiuti SpA',
+        partitaIVA: PartitaIVA.create('11122233344'),
+        sede: Indirizzo.create({
+          via: 'Via Napoli',
+          civico: '100',
+          cap: '80100',
+          citta: 'Napoli',
+          provincia: 'NA',
+        }),
+        numeroAutorizzazione: 'NA/AUT/2023/001',
+      })
+
+      const nuovaScadenza = new Date('2028-06-30')
+      destinatario.updateScadenzaAutorizzazione(nuovaScadenza)
+
+      expect(destinatario.scadenzaAutorizzazione).toBe(nuovaScadenza)
+    })
+
+    it('should clear scadenzaAutorizzazione when updated with undefined', () => {
+      const destinatario = Destinatario.create({
+        ragioneSociale: 'Smaltimento Rifiuti SpA',
+        partitaIVA: PartitaIVA.create('11122233344'),
+        sede: Indirizzo.create({
+          via: 'Via Napoli',
+          civico: '100',
+          cap: '80100',
+          citta: 'Napoli',
+          provincia: 'NA',
+        }),
+        numeroAutorizzazione: 'NA/AUT/2023/001',
+        scadenzaAutorizzazione: new Date('2027-01-15'),
+      })
+
+      destinatario.updateScadenzaAutorizzazione(undefined)
+
+      expect(destinatario.scadenzaAutorizzazione).toBeUndefined()
+    })
+  })
 })

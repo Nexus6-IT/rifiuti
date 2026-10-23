@@ -10,6 +10,11 @@
  */
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
+import {
+  FirAnnullatoNelFrattempoError,
+  FirmaSenzaUtenteError,
+  FirNonPiuInBozzaError,
+} from '../../core/domain/errors'
 
 function buildFirRecord(overrides: Partial<any> = {}) {
   return {
@@ -88,6 +93,8 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({}),
       },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: jest.fn(async (fn: any) => fn(prisma)),
     }
     repo = new FIRPrismaRepository(prisma)
   })
@@ -335,14 +342,106 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       expect(prisma.fIRSignature.create).not.toHaveBeenCalled()
     })
 
-    it('non tenta di persistere una firma priva di userId (difensivo, niente FK rotta)', async () => {
+    it('rifiuta il salvataggio di una firma priva di userId, senza scrivere nulla', async () => {
       const fir = buildFirWithFirmaProduttore()
       // Simula un aggregate costruito senza userId (es. da un test di dominio).
       ;(fir.firme.produttore as any).userId = undefined
 
+      await expect(repo.save(fir)).rejects.toThrow(FirmaSenzaUtenteError)
+
+      expect(prisma.fIR.upsert).not.toHaveBeenCalled()
+      expect(prisma.fIRSignature.create).not.toHaveBeenCalled()
+    })
+
+    it('save esegue upsert e firme nella stessa transaction', async () => {
+      await repo.save(buildFirWithFirmaProduttore())
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('emettiConNumerazione — controllo della bozza sullo stato grezzo', () => {
+    function bozza(): FIR {
+      return FIR.create({
+        produttoreId: 'reg-produttore',
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: 'reg-trasportatore',
+        destinatarioId: 'reg-destinatario',
+        tenantId: 'tenant-1',
+        creatoDaUserId: 'user-produttore',
+      })
+    }
+
+    beforeEach(() => {
+      prisma.$executeRaw = jest.fn().mockResolvedValue(1)
+      prisma.$transaction = jest.fn(async (fn: any) => fn(prisma))
+    })
+
+    it('uno stato sconosciuto non vale come bozza: emissione rifiutata', async () => {
+      prisma.$queryRaw = jest.fn().mockResolvedValueOnce([{ status: 'STATO_INATTESO' }])
+      const applica = jest.fn()
+
+      await expect(repo.emettiConNumerazione(bozza(), 2026, applica)).rejects.toThrow(
+        FirNonPiuInBozzaError
+      )
+      expect(applica).not.toHaveBeenCalled()
+      expect(prisma.fIR.upsert).not.toHaveBeenCalled()
+    })
+
+    it.each(['DRAFT', 'AWAITING_PRODUCER'])('lo stato %s è una bozza emettibile', async status => {
+      prisma.$queryRaw = jest
+        .fn()
+        .mockResolvedValueOnce([{ status }])
+        .mockResolvedValueOnce([{ max_num: 4 }])
+        .mockResolvedValue([])
+      const fir = bozza()
+
+      const numero = await repo.emettiConNumerazione(fir, 2026, n =>
+        fir.emetti(n, {
+          firmatario: 'Mario Rossi',
+          timestamp: new Date(),
+          certificato: 'x',
+          userId: 'user-produttore',
+        })
+      )
+
+      expect(numero).toBe('FIR-2026-000005')
+    })
+  })
+
+  describe('FIR annullato in locale mentre era in corso un salvataggio', () => {
+    it("il controllo su CANCELLED vale anche quando l'aggregate porta già 'Annullato' dell'ente", async () => {
+      // Copia vecchia: l'ente risulta già 'Annullato', ma lo stato interno è
+      // ancora EMESSO. La riga nel frattempo è stata annullata in locale.
+      prisma.db.fIR.findFirst.mockResolvedValue(
+        buildFirRecord({
+          status: 'AWAITING_CARRIER',
+          rentriNumeroFir: 'RENTRI-ANN-1',
+          rentriStatoFormulario: 'Annullato',
+        })
+      )
+      const copiaVecchia = (await repo.findById('fir-1'))!
+      prisma.$queryRaw = jest.fn().mockResolvedValue([{ stato: 'Annullato', status: 'CANCELLED' }])
+
+      await expect(repo.save(copiaVecchia)).rejects.toBeInstanceOf(FirAnnullatoNelFrattempoError)
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
+      expect(prisma.fIR.upsert).not.toHaveBeenCalled()
+    })
+
+    it('il blocco della riga resta nel tenant del FIR e non serializza le scritture del registro', async () => {
+      prisma.db.fIR.findFirst.mockResolvedValue(buildFirRecord({ status: 'AWAITING_CARRIER' }))
+      const fir = (await repo.findById('fir-1'))!
+      prisma.$queryRaw = jest.fn().mockResolvedValue([{ stato: null, status: 'AWAITING_CARRIER' }])
+
       await repo.save(fir)
 
-      expect(prisma.fIRSignature.create).not.toHaveBeenCalled()
+      const [frammenti, ...valori] = prisma.$queryRaw.mock.calls[0]
+      const sql = (frammenti as string[]).join('?').replace(/\s+/g, ' ')
+      // FOR NO KEY UPDATE: protegge la riga come FOR UPDATE ma non entra in conflitto con il
+      // FOR KEY SHARE che l'insert di un movimento prende sul FIR collegato (fir_id).
+      expect(sql).toContain('FOR NO KEY UPDATE')
+      expect(sql).toContain('tenant_id = ?::uuid')
+      expect(valori).toContain('tenant-1')
     })
   })
 })

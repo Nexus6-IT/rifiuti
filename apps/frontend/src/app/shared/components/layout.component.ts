@@ -381,6 +381,22 @@ export function ordinaAziendePerGruppo(
               <span class="nav-item__label">Utenti</span>
             </a>
           </li>
+          <!-- Stato del sistema: dati aggregati di TUTTE le aziende, quindi
+               solo SUPER_ADMIN (l'ADMIN ha la diagnostica della sua azienda). -->
+          @if (isSuperAdmin()) {
+            <li>
+              <a
+                routerLink="/admin/stato-sistema"
+                routerLinkActive="nav-item--active"
+                class="nav-item"
+                [attr.aria-current]="isActiveRoute('/admin/stato-sistema') ? 'page' : null"
+                (click)="mobile ? closeMobileSidebar() : null"
+              >
+                <i class="nav-item__icon pi pi-heart" aria-hidden="true"></i>
+                <span class="nav-item__label">Stato del sistema</span>
+              </a>
+            </li>
+          }
         </ul>
       }
     </ng-template>
@@ -1190,6 +1206,16 @@ export class LayoutComponent implements OnInit {
       adminOnly: true,
     },
     {
+      // Blocchi virtuali e scorta di numeri vidimati: lettura per
+      // SUPER_ADMIN/ADMIN/OPERATOR (gate fine sui ruoli nel componente stesso),
+      // quindi NON adminOnly qui — altrimenti l'OPERATOR non vedrebbe la voce
+      // che gli serve ogni giorno per sapere se può emettere un FIR.
+      label: 'Blocchi e vidimazione RENTRI',
+      route: '/rentri/blocchi',
+      icon: 'pi pi-verified',
+      feature: 'rentri',
+    },
+    {
       // Manutenzione di tabelle di piattaforma: solo SUPER_ADMIN (2026-07-28).
       label: 'Dati di riferimento',
       route: '/reference-data',
@@ -1384,6 +1410,7 @@ export class LayoutComponent implements OnInit {
     const navAmministrazione = [
       { label: this.tenantsMenuLabel(), route: '/admin/tenants' },
       { label: 'Utenti', route: '/admin/utenti' },
+      { label: 'Stato del sistema', route: '/admin/stato-sistema' },
     ]
     const navAccount = [{ label: 'Abbonamento', route: '/abbonamento' }]
     const all = [

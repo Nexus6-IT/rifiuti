@@ -1,7 +1,11 @@
 import { PrismaClient } from '@prisma/client'
 import { FIRPrismaRepository } from './fir-prisma.repository'
-import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
-import { FormularioGiaAgganciatoError } from '../../core/domain/errors'
+import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
+import {
+  FirAnnullatoNelFrattempoError,
+  FirNonPiuInBozzaError,
+  FormularioGiaAgganciatoError,
+} from '../../core/domain/errors'
 
 /**
  * R2 Task 3, Step 4 — vincolo di unicità (tenant_id, rentri_numero_fir) su
@@ -49,9 +53,13 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
   })
 
   afterAll(async () => {
-    await prisma.fIR.deleteMany({ where: { tenantId } })
-    await prisma.user.deleteMany({ where: { tenantId } })
-    await prisma.tenant.deleteMany({ where: { id: tenantId } })
+    // Con un id `undefined` (beforeAll fallito) Prisma toglie il filtro e deleteMany
+    // cancellerebbe l'intera tabella: senza id non si cancella nulla.
+    if (tenantId) {
+      await prisma.fIR.deleteMany({ where: { tenantId } })
+      await prisma.user.deleteMany({ where: { tenantId } })
+      await prisma.tenant.deleteMany({ where: { id: tenantId } })
+    }
     await prisma.$disconnect()
   })
 
@@ -112,5 +120,340 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
 
     await expect(repo.save(primoFir)).resolves.not.toThrow()
     await expect(repo.save(secondoFir)).resolves.not.toThrow()
+  })
+
+  describe('rentriStatoFormulario', () => {
+    // findById usa this.prisma.db: serve un client con la proprietà `db`.
+    let repoLettura: FIRPrismaRepository
+    beforeAll(() => {
+      repoLettura = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+    })
+
+    it('rentriStatoFormulario sopravvive a save e findById', async () => {
+      const fir = buildFirAgganciato(`RENTRI-SF-${Date.now()}`)
+      await repoLettura.save(fir)
+      fir.applyRentriStato('Annullato')
+      await repoLettura.save(fir)
+      expect(
+        (await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })).rentriStatoFormulario
+      ).toBe('Annullato')
+      expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBe('Annullato')
+    })
+
+    it('un salvataggio successivo non cancella lo stato dell ente', async () => {
+      const fir = buildFirAgganciato(`RENTRI-SF2-${Date.now()}`)
+      fir.applyRentriStato('RespintoAccettatoParzialmente')
+      await repoLettura.save(fir)
+      const riletto = (await repoLettura.findById(fir.id))!
+      await repoLettura.save(riletto) // salvataggio per un altro motivo
+      expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBe(
+        'RespintoAccettatoParzialmente'
+      )
+    })
+
+    it("un salvataggio con dati vecchi non riporta indietro un FIR annullato all'ente", async () => {
+      const fir = buildFirAgganciato(`RENTRI-SF4-${Date.now()}`)
+      fir.applyRentriStato('Accettato')
+      await repoLettura.save(fir)
+      // Copia caricata prima dell'annullamento (es. sync RENTRI in background).
+      const copiaVecchia = (await repoLettura.findById(fir.id))!
+      const copiaNuova = (await repoLettura.findById(fir.id))!
+      copiaNuova.applyRentriStato('Annullato')
+      await repoLettura.save(copiaNuova)
+
+      // L'annullamento all'ente porta il FIR in CANCELLED: la copia vecchia
+      // (COMPLETED) viene rifiutata invece di riportarlo indietro.
+      await expect(repoLettura.save(copiaVecchia)).rejects.toBeInstanceOf(
+        FirAnnullatoNelFrattempoError
+      )
+
+      const riga = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riga.rentriStatoFormulario).toBe('Annullato')
+      expect(riga.status).toBe('CANCELLED')
+    })
+
+    it('un FIR mai riconciliato resta con rentriStatoFormulario null', async () => {
+      const fir = buildFirAgganciato(`RENTRI-SF3-${Date.now()}`)
+      await repoLettura.save(fir)
+      expect((await repoLettura.findById(fir.id))!.rentriStatoFormulario).toBeNull()
+    })
+  })
+
+  describe('annullamento locale concorrente a un salvataggio con dati vecchi', () => {
+    // findById usa this.prisma.db: serve un client con la proprietà `db`.
+    let repoLettura: FIRPrismaRepository
+    beforeAll(() => {
+      repoLettura = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+    })
+
+    async function salvaFirEmesso(): Promise<FIR> {
+      const fir = FIR.create({
+        produttoreId: REGISTRO_PRODUTTORE,
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: REGISTRO_TRASPORTATORE,
+        destinatarioId: REGISTRO_DESTINATARIO,
+        tenantId,
+        creatoDaUserId: userId,
+      })
+      await repoLettura.save(fir)
+      fir.emetti(`FIR-ANN-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, {
+        firmatario: 'Mario Rossi',
+        timestamp: new Date(),
+        certificato: 'x',
+        userId,
+      })
+      await repoLettura.save(fir)
+      return fir
+    }
+
+    it('un save stantio non riporta in vita un FIR annullato', async () => {
+      const fir = await salvaFirEmesso()
+      // Copia caricata prima dell'annullamento (es. sync RENTRI in attesa dell'esito).
+      const copiaVecchia = (await repoLettura.findById(fir.id))!
+      const copiaNuova = (await repoLettura.findById(fir.id))!
+      copiaNuova.annulla('Errore di compilazione')
+      await repoLettura.save(copiaNuova)
+
+      await expect(repoLettura.save(copiaVecchia)).rejects.toBeInstanceOf(
+        FirAnnullatoNelFrattempoError
+      )
+
+      const riga = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riga.status).toBe('CANCELLED')
+    })
+
+    it('due salvataggi concorrenti dello stesso FIR si serializzano senza errori', async () => {
+      const fir = await salvaFirEmesso()
+      const a = (await repoLettura.findById(fir.id))!
+      const b = (await repoLettura.findById(fir.id))!
+
+      await expect(Promise.all([repoLettura.save(a), repoLettura.save(b)])).resolves.toEqual([
+        undefined,
+        undefined,
+      ])
+
+      const riga = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riga.status).not.toBe('CANCELLED')
+    })
+
+    it('un salvataggio non aspetta il FOR KEY SHARE di una registrazione aperta sul FIR', async () => {
+      const fir = await salvaFirEmesso()
+      const copia = (await repoLettura.findById(fir.id))!
+      let rilascia!: () => void
+      const attesa = new Promise<void>(r => (rilascia = r))
+      let bloccato!: () => void
+      const bloccatoPronto = new Promise<void>(r => (bloccato = r))
+
+      // È il lock che l'insert di un movimento con fir_id prende sulla riga del FIR.
+      const registrazione = prisma.$transaction(
+        async tx => {
+          await tx.$queryRaw`SELECT id FROM firs WHERE id = ${fir.id}::uuid FOR KEY SHARE`
+          bloccato()
+          await attesa
+        },
+        { timeout: 20_000 }
+      )
+      await bloccatoPronto
+
+      try {
+        const esito = await Promise.race([
+          repoLettura.save(copia).then(() => 'salvato'),
+          new Promise(r => setTimeout(() => r('in attesa del lock'), 3_000)),
+        ])
+        expect(esito).toBe('salvato')
+      } finally {
+        rilascia()
+        await registrazione
+      }
+    })
+
+    it('un FIR già annullato si può salvare di nuovo', async () => {
+      const fir = await salvaFirEmesso()
+      const copia = (await repoLettura.findById(fir.id))!
+      copia.annulla('Errore di compilazione')
+      await repoLettura.save(copia)
+
+      const riletto = (await repoLettura.findById(fir.id))!
+      await expect(repoLettura.save(riletto)).resolves.toBeUndefined()
+
+      const riga = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riga.status).toBe('CANCELLED')
+    })
+  })
+
+  describe('atomicità di stato e firme', () => {
+    function buildFirBozza(): FIR {
+      return FIR.create({
+        produttoreId: REGISTRO_PRODUTTORE,
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: REGISTRO_TRASPORTATORE,
+        destinatarioId: REGISTRO_DESTINATARIO,
+        tenantId,
+        creatoDaUserId: userId,
+      })
+    }
+
+    it('se la firma non si può scrivere, lo stato del FIR non cambia', async () => {
+      const fir = buildFirBozza()
+      await repo.save(fir) // BOZZA
+      fir.emetti('FIR-2099-000001', {
+        firmatario: 'Mario Rossi',
+        timestamp: new Date(),
+        certificato: 'x',
+        // utente inesistente: la scrittura della firma viola la FK, dopo l'upsert del FIR
+        userId: '99999999-9999-4999-8999-999999999999',
+      })
+
+      await expect(repo.save(fir)).rejects.toThrow()
+
+      const riletto = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riletto.status).toBe('DRAFT')
+      expect(riletto.firNumber).toBeNull()
+      expect(await prisma.fIRSignature.count({ where: { firId: fir.id } })).toBe(0)
+    })
+
+    it('con una firma scrivibile, stato e firma risultano salvati insieme', async () => {
+      const fir = buildFirBozza()
+      await repo.save(fir)
+      fir.emetti('FIR-2099-000002', {
+        firmatario: 'Mario Rossi',
+        timestamp: new Date(),
+        certificato: 'x',
+        userId,
+      })
+
+      await repo.save(fir)
+
+      const riletto = await prisma.fIR.findUniqueOrThrow({ where: { id: fir.id } })
+      expect(riletto.status).toBe('AWAITING_CARRIER')
+      expect(riletto.firNumber).toBe('FIR-2099-000002')
+      expect(await prisma.fIRSignature.count({ where: { firId: fir.id } })).toBe(1)
+    })
+  })
+
+  describe('riferimento interno del FIR per tenant e anno di emissione', () => {
+    // Tenant dedicato: il progressivo conta solo i FIR di questo tenant, quindi
+    // i FIR creati dagli altri test non lo falsano.
+    let repoNumeri: FIRPrismaRepository
+    let tenantNumeri: string
+    let utenteNumeri: string
+
+    beforeAll(async () => {
+      // findById usa this.prisma.db: serve un client con la proprietà `db`.
+      repoNumeri = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+      const tenant = await prisma.tenant.create({
+        data: {
+          partitaIva: `NF${Date.now().toString().slice(-9)}`,
+          ragioneSociale: 'Numerazione FIR Test SRL',
+          country: 'IT',
+        },
+      })
+      tenantNumeri = tenant.id
+      const user = await prisma.user.create({
+        data: {
+          tenantId: tenantNumeri,
+          keycloakId: `keycloak-nf-${Date.now()}`,
+          fiscalCode: 'RSSMRA80A01H501U',
+          firstName: 'Mario',
+          lastName: 'Rossi',
+          email: `nf-${Date.now()}@example.com`,
+          role: 'OPERATOR',
+        },
+      })
+      utenteNumeri = user.id
+    })
+
+    afterAll(async () => {
+      if (!tenantNumeri) return // senza id deleteMany non avrebbe filtro
+      await prisma.fIR.deleteMany({ where: { tenantId: tenantNumeri } })
+      await prisma.user.deleteMany({ where: { tenantId: tenantNumeri } })
+      await prisma.tenant.deleteMany({ where: { id: tenantNumeri } })
+    })
+
+    function firma(uid: string): FirmaDigitale {
+      return { firmatario: 'Mario Rossi', timestamp: new Date(), certificato: 'x', userId: uid }
+    }
+
+    async function bozza(): Promise<FIR> {
+      const fir = FIR.create({
+        produttoreId: REGISTRO_PRODUTTORE,
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: REGISTRO_TRASPORTATORE,
+        destinatarioId: REGISTRO_DESTINATARIO,
+        tenantId: tenantNumeri,
+        creatoDaUserId: utenteNumeri,
+      })
+      await repoNumeri.save(fir)
+      return fir
+    }
+
+    it("una bozza creata a dicembre ed emessa a gennaio conta nel progressivo dell'anno di emissione", async () => {
+      const a = await bozza()
+      await prisma.fIR.update({
+        where: { id: a.id },
+        data: { createdAt: new Date('2026-12-31T10:00:00Z') },
+      })
+      expect(
+        await repoNumeri.emettiConNumerazione(a, 2027, n => a.emetti(n, firma(utenteNumeri)))
+      ).toBe('FIR-2027-000001')
+      const b = await bozza()
+      expect(
+        await repoNumeri.emettiConNumerazione(b, 2027, n => b.emetti(n, firma(utenteNumeri)))
+      ).toBe('FIR-2027-000002')
+    })
+
+    it('due emissioni concorrenti di bozze diverse prendono numeri consecutivi senza errori', async () => {
+      const [x, y] = [await bozza(), await bozza()]
+      const numeri = await Promise.all([
+        repoNumeri.emettiConNumerazione(x, 2028, n => x.emetti(n, firma(utenteNumeri))),
+        repoNumeri.emettiConNumerazione(y, 2028, n => y.emetti(n, firma(utenteNumeri))),
+      ])
+      expect(numeri.sort()).toEqual(['FIR-2028-000001', 'FIR-2028-000002'])
+    })
+
+    it('la stessa bozza emessa due volte in parallelo: una sola emissione', async () => {
+      const f = await bozza()
+      const copia1 = (await repoNumeri.findById(f.id))!
+      const copia2 = (await repoNumeri.findById(f.id))!
+      const esiti = await Promise.allSettled([
+        repoNumeri.emettiConNumerazione(copia1, 2029, n => copia1.emetti(n, firma(utenteNumeri))),
+        repoNumeri.emettiConNumerazione(copia2, 2029, n => copia2.emetti(n, firma(utenteNumeri))),
+      ])
+      expect(esiti.filter(e => e.status === 'fulfilled')).toHaveLength(1)
+      const rifiutato = esiti.find(e => e.status === 'rejected') as PromiseRejectedResult
+      expect(rifiutato.reason).toBeInstanceOf(FirNonPiuInBozzaError)
+      expect(await prisma.fIRSignature.count({ where: { firId: f.id } })).toBe(1)
+    })
+
+    it('il progressivo ignora i numeri che non hanno il formato FIR-AAAA-N', async () => {
+      // Un FIR del tenant con un riferimento fuori formato (dati storici o
+      // importati) non deve far fallire il cast né contare nel massimo.
+      const vecchio = await bozza()
+      await prisma.fIR.update({ where: { id: vecchio.id }, data: { firNumber: 'FIR-2030-ABC' } })
+
+      const f = await bozza()
+      expect(
+        await repoNumeri.emettiConNumerazione(f, 2030, n => f.emetti(n, firma(utenteNumeri)))
+      ).toBe('FIR-2030-000001')
+    })
+
+    it('un riferimento con troppe cifre non blocca l emissione e non conta nel massimo', async () => {
+      // 11 cifre: fuori dal campo di un integer, il cast farebbe fallire ogni emissione.
+      const importato = await bozza()
+      await prisma.fIR.update({
+        where: { id: importato.id },
+        data: { firNumber: 'FIR-2031-12345678901' },
+      })
+      const regolare = await bozza()
+      await prisma.fIR.update({
+        where: { id: regolare.id },
+        data: { firNumber: 'FIR-2031-000005' },
+      })
+
+      const f = await bozza()
+      expect(
+        await repoNumeri.emettiConNumerazione(f, 2031, n => f.emetti(n, firma(utenteNumeri)))
+      ).toBe('FIR-2031-000006')
+    })
   })
 })

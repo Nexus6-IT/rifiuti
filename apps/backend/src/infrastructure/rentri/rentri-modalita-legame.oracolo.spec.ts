@@ -4,6 +4,7 @@ import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriConfig } from './rentri-config'
 import { SyncFIRToRENTRIUseCase } from '../../application/rentri/sync-fir-to-rentri.use-case'
+import { costruttorePayloadFinto } from '../../application/rentri/mappatura/aiuti-test'
 import { TrasmettiFIRSecondoModalitaUseCase } from '../../application/rentri/trasmetti-fir-secondo-modalita.use-case'
 import { FIR, FIRStato, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
@@ -255,7 +256,8 @@ describe('TrasmettiFIRSecondoModalitaUseCase — modalità di trasmissione contr
       client,
       syncLogRepository,
       domainEvents,
-      syncLogger
+      syncLogger,
+      costruttorePayloadFinto()
     )
 
     // La coda finta: al posto di Redis/BullMQ, invoca direttamente il

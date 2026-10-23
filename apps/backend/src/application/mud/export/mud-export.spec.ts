@@ -1,9 +1,34 @@
-import { toMudAscii, mudRecord, mudNum, mudQty, mudAlfa, mudCodiceFiscale } from './mud-format.util'
+import {
+  toMudAscii,
+  mudRecord,
+  mudNum,
+  mudQty,
+  mudQtyUm,
+  mudAlfa,
+  mudCodiceFiscale,
+} from './mud-format.util'
 import { MudVersionRegistry } from './mud-version.registry'
 import { MudTracciatoV604_2024 } from './versions/mud-tracciato-v604-2024'
 import { MudExportData } from './mud-export.types'
 
 describe('mud-format.util', () => {
+  it('mudQtyUm resta in kg fino a 9.999.999,999', () => {
+    expect(mudQtyUm(0)).toEqual(['0000000,000', 1])
+    expect(mudQtyUm(1700)).toEqual(['0001700,000', 1])
+    expect(mudQtyUm(9999999.999)).toEqual(['9999999,999', 1])
+  })
+
+  it('mudQtyUm passa in tonnellate da 10.000.000 kg', () => {
+    expect(mudQtyUm(10000000)).toEqual(['0010000,000', 2])
+    // arrotondato al grammo vale 10.000.000: non sta in 7 cifre intere
+    expect(mudQtyUm(9999999.9996)).toEqual(['0010000,000', 2])
+    expect(mudQtyUm(12345678.9)).toEqual(['0012345,679', 2])
+  })
+
+  it('mudQtyUm lancia oltre 9.999.999,999 tonnellate', () => {
+    expect(() => mudQtyUm(1e13)).toThrow('fuori dal formato del tracciato MUD anche in tonnellate')
+  })
+
   it('converte accenti in vocale+apice e in MAIUSCOLO', () => {
     expect(toMudAscii('Società Rifiuti àèìòù')).toBe("SOCIETA' RIFIUTI A'E'I'O'U'")
   })

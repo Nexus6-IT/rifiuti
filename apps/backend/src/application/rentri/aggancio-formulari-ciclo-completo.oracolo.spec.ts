@@ -1,9 +1,11 @@
 import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
+import { corpoFormularioValido } from './mappatura/aiuti-test'
 import { RentriAuthService } from '../../infrastructure/rentri/rentri-auth.service'
 import { RentriConfig } from '../../infrastructure/rentri/rentri-config'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../domain/fir/numero-fir'
 import {
   IFIRRepository,
   FIRSearchFilters,
@@ -149,10 +151,26 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
     identificativoSoggetto: string,
     numeroFir: string
   ): Promise<string> {
-    const { transazioneId } = await client.creaFormulario('', {
-      identificativo_soggetto: identificativoSoggetto,
-      produttore: 'Produttore di prova SRL',
-    })
+    // Il soggetto per cui il formulario sara' cercabile non e' piu' un campo
+    // inventato alla radice: la fake lo ricava da `dati_partenza`, come fa
+    // l'ente vero. Qui si mette quindi nel codice fiscale del produttore.
+    const corpo = corpoFormularioValido()
+    const partenza = corpo.dati_partenza as Record<string, unknown>
+    // Il produttore in variante COMPLETA (denominazione + codice fiscale +
+    // indirizzo): e' da li' che la fake ricava il soggetto per cui il
+    // formulario sara' cercabile.
+    partenza.produttore = {
+      denominazione: 'Produttore di prova SRL',
+      codice_fiscale: identificativoSoggetto,
+      indirizzo: {
+        citta: { comune_id: '063049' },
+        indirizzo: 'Via Roma',
+        civico: '1',
+        cap: '80100',
+      },
+    }
+
+    const { transazioneId } = await client.creaFormulario('', corpo)
 
     const completamento = await app.inject({
       method: 'POST',
@@ -217,6 +235,7 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
    * il campo in `agganciaManualmente`, questo repository lo scoprirebbe.
    */
   class InMemoryFIRRepository implements IFIRRepository {
+    private progressiveCounter = 0
     private readonly store = new Map<string, FIR>()
 
     seed(fir: FIR): void {
@@ -270,8 +289,16 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
       return false
     }
 
-    async generateNumeroProgressivo(): Promise<string> {
-      return 'N/D'
+    async emettiConNumerazione(
+      fir: FIR,
+      anno: number,
+      applica: (n: string) => void
+    ): Promise<string> {
+      this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+      const numero = formattaNumeroFir(anno, this.progressiveCounter)
+      applica(numero)
+      await this.save(fir)
+      return numero
     }
 
     async count(): Promise<number> {

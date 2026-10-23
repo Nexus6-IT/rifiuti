@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger'
 import { CERCatalogService } from '../../domain/cer/services/cer-catalog.service'
+import { cerCanonico } from '../../domain/waste-movement/cer-registro'
 
 export class CERResponseDto {
   id: string
@@ -167,13 +168,7 @@ export class CERController {
 
   /** Riformatta un codice CER a 6 cifre nel formato canonico "NN NN NN". */
   private normalizeCerCode(input: string): string {
-    const raw = (input ?? '').trim()
-    const digits = raw.replace(/[^0-9]/g, '')
-    if (digits.length === 6) {
-      const spaced = digits.match(/.{1,2}/g)!.join(' ')
-      return raw.endsWith('*') ? `${spaced}*` : spaced
-    }
-    return raw
+    return cerCanonico(input ?? '')
   }
 
   @Get('statistics')

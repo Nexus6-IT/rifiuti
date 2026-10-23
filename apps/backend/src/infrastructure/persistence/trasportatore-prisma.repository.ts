@@ -28,6 +28,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
       email: trasportatore.email || null,
       telefono: trasportatore.telefono || null,
       pec: trasportatore.pec || null,
+      scadenzaIscrizione: trasportatore.scadenzaIscrizione || null,
       updatedAt: new Date(),
     }
 
@@ -127,6 +128,7 @@ export class TrasportatorePrismaRepository implements TrasportatoreRepository {
       email: record.email || undefined,
       telefono: record.telefono || undefined,
       pec: record.pec || undefined,
+      scadenzaIscrizione: record.scadenzaIscrizione || undefined,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     })

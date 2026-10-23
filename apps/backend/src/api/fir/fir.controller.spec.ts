@@ -7,7 +7,12 @@ import { BadRequestException } from '@nestjs/common'
 import { FIRController } from './fir.controller'
 import { CreateFIRUseCase } from '../../application/fir/use-cases/create-fir.use-case'
 import { ListFIRsQueryHandler } from '../../application/fir/queries/list-firs.handler'
-import { FIR, FIRStato } from '../../domain/fir/aggregates/fir.aggregate'
+import {
+  FIR,
+  FIRStato,
+  ProvenienzaRifiuto,
+  TipoTratta,
+} from '../../domain/fir/aggregates/fir.aggregate'
 import { Result } from '../../core/application/result'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { CreateFIRDto } from './dtos/create-fir.dto'
@@ -70,6 +75,8 @@ describe('FIRController', () => {
       },
       trasportatoreId: 'tenant-transporter-456',
       destinatarioId: 'tenant-destination-789',
+      provenienza: ProvenienzaRifiuto.SPECIALE,
+      tipoTrattaPrincipale: TipoTratta.TERRESTRE,
     }
 
     it('should create FIR and return response DTO', async () => {

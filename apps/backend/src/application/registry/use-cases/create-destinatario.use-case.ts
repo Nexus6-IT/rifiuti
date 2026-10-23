@@ -29,6 +29,7 @@ export interface CreateDestinatarioCommand {
   email?: string
   telefono?: string
   pec?: string
+  scadenzaAutorizzazione?: Date
 }
 
 @Injectable()
@@ -79,6 +80,7 @@ export class CreateDestinatarioUseCase {
         email: command.email,
         telefono: command.telefono,
         pec: command.pec,
+        scadenzaAutorizzazione: command.scadenzaAutorizzazione,
       })
 
       // Save to repository

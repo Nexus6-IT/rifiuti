@@ -14,6 +14,8 @@ import {
   HttpStatus,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
+  Req,
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
@@ -41,6 +43,15 @@ import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { SubscriptionEnforcementService } from '../../application/billing/subscription-enforcement.service'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+
+/**
+ * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono creare un FIR. Come nel
+ * registro non si usa `@Roles`: `RolesGuard` vede solo il ruolo del token e gira prima del
+ * `TenantSwitchInterceptor`, che seleziona l'azienda.
+ */
+const RUOLI_CREAZIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
 
 // La firma (produttore/trasportatore/destinatario) NON è più fornita dal
 // client (Task 4, pipeline P3): il frontend non costruisce firme, chiede al
@@ -66,10 +77,13 @@ export class AnnullaFIRDto {
 
 @ApiTags('fir')
 @Controller('fir')
-// RolesGuard oltre a JwtAuthGuard: le scritture (create/emetti/presa-in-carico/
-// conferma-consegna/annulla) richiedono un ruolo operativo tramite @Roles; le
-// letture (list/get) restano accessibili a qualsiasi utente autenticato (il
-// RolesGuard lascia passare i metodi privi di @Roles).
+// RolesGuard oltre a JwtAuthGuard: le azioni sul ciclo di vita (emetti/presa-in-carico/
+// conferma-consegna/annulla) richiedono un ruolo operativo tramite @Roles. La creazione
+// decide invece sul ruolo EFFETTIVO nell'azienda selezionata, dentro il controller. Le
+// letture (list/get) restano aperte a chi ha accesso all'azienda selezionata (il RolesGuard
+// lascia passare i metodi privi di @Roles).
+// List, get e create operano sull'azienda selezionata (`requireRequestTenantId`), come il
+// registro: il picker FIR del registro deve elencare i FIR dell'azienda su cui si registra.
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class FIRControllerV2 {
@@ -81,11 +95,11 @@ export class FIRControllerV2 {
     private readonly annullaFIRUseCase: AnnullaFIRUseCase,
     private readonly getFIRByIdHandler: GetFIRByIdQueryHandler,
     private readonly listFIRsHandler: ListFIRsQueryHandler,
-    private readonly enforcement: SubscriptionEnforcementService
+    private readonly enforcement: SubscriptionEnforcementService,
+    private readonly membership: RuoloEffettivoService
   ) {}
 
   @Post()
-  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Crea nuovo FIR in stato BOZZA',
@@ -93,13 +107,22 @@ export class FIRControllerV2 {
   })
   @ApiResponse({ status: 201, description: 'FIR creato con successo', type: FIRResponseDto })
   @ApiResponse({ status: 400, description: 'Dati non validi' })
-  async create(
-    @Body() dto: CreateFIRDto,
-    @CurrentUser() user: CurrentUserPayload
-  ): Promise<FIRResponseDto> {
+  @ApiResponse({ status: 403, description: "Ruolo di sola consultazione nell'azienda selezionata" })
+  async create(@Body() dto: CreateFIRDto, @Req() req: any): Promise<FIRResponseDto> {
+    const user: CurrentUserPayload = req.user
+    // Azienda selezionata, non il tenant primario del token: con un cliente selezionato il
+    // FIR appartiene al cliente (e al suo registro e MUD), non allo studio del consulente.
+    const tenantId = requireRequestTenantId(req)
+    if (!RUOLI_CREAZIONE.includes(await this.membership.ruoloEffettivo(user, tenantId))) {
+      throw new ForbiddenException({
+        message: "Solo un amministratore o un operatore dell'azienda può creare FIR.",
+        error: 'FIR_RISERVATO_OPERATORI',
+      })
+    }
+
     // Enforcement abbonamento: blocca se tenant sospeso/scaduto o FIR limit raggiunto.
-    await this.enforcement.assertNotSuspended(user.tenantId)
-    await this.enforcement.assertFirLimitNotReached(user.tenantId)
+    await this.enforcement.assertNotSuspended(tenantId)
+    await this.enforcement.assertFirLimitNotReached(tenantId)
 
     const command = new CreateFIRCommand(
       dto.produttoreId,
@@ -107,7 +130,9 @@ export class FIRControllerV2 {
       dto.trasportatoreId,
       dto.destinatarioId,
       user.id,
-      user.tenantId,
+      tenantId,
+      dto.provenienza,
+      dto.tipoTrattaPrincipale,
       dto.trasportatoriAggiuntivi ?? [],
       dto.annotazioni
     )
@@ -133,10 +158,8 @@ export class FIRControllerV2 {
     type: PaginatedFIRResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Parametri non validi' })
-  async list(
-    @Query() dto: ListFIRsDto,
-    @CurrentUser() user: CurrentUserPayload
-  ): Promise<PaginatedFIRResponseDto> {
+  async list(@Query() dto: ListFIRsDto, @Req() req: any): Promise<PaginatedFIRResponseDto> {
+    const tenantId = requireRequestTenantId(req)
     // Build filters object
     const filters: any = {}
     if (dto.stato) {
@@ -159,8 +182,8 @@ export class FIRControllerV2 {
     }
 
     const query = new ListFIRsQuery(
-      user.tenantId,
-      user.id,
+      tenantId,
+      req.user.id,
       Object.keys(filters).length > 0 ? filters : undefined,
       pagination
     )
@@ -191,11 +214,8 @@ export class FIRControllerV2 {
   @ApiResponse({ status: 200, description: 'FIR trovato', type: FIRResponseDto })
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
   @ApiResponse({ status: 403, description: 'Non autorizzato' })
-  async getById(
-    @Param('id') id: string,
-    @CurrentUser() user: CurrentUserPayload
-  ): Promise<FIRResponseDto> {
-    const query = new GetFIRByIdQuery(id, user.id, user.tenantId)
+  async getById(@Param('id') id: string, @Req() req: any): Promise<FIRResponseDto> {
+    const query = new GetFIRByIdQuery(id, req.user.id, requireRequestTenantId(req))
 
     const result = await this.getFIRByIdHandler.execute(query)
 

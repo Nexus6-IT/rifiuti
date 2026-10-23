@@ -3,6 +3,7 @@ import { AxiosResponse } from 'axios'
 import { RENTRIApiClient, estraiNumeroFirDaEsito } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriConfig } from './rentri-config'
+import { corpoFormularioValido } from '../../application/rentri/mappatura/aiuti-test'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -114,7 +115,7 @@ describe("RENTRIApiClient — numero_fir emerge dall'esito (contro la fake RENTR
   it('caso positivo: esito con numero_fir — attendiEsito lo restituisce intatto e estraiNumeroFirDaEsito lo legge', async () => {
     const client = creaClient()
 
-    const { transazioneId } = await client.creaFormulario('', { dati: 'qualsiasi' })
+    const { transazioneId } = await client.creaFormulario('', corpoFormularioValido())
 
     // Ogni chiamata verso la fake richiede un JWT nuovo: il registro
     // anti-replay rifiuta un `jti` già visto (v. spec sorelle).
@@ -144,7 +145,7 @@ describe("RENTRIApiClient — numero_fir emerge dall'esito (contro la fake RENTR
   it('caso negativo: esito senza numero_fir — estraiNumeroFirDaEsito non inventa un legame', async () => {
     const client = creaClient()
 
-    const { transazioneId } = await client.creaFormulario('', { dati: 'qualsiasi' })
+    const { transazioneId } = await client.creaFormulario('', corpoFormularioValido())
 
     // Nessun campo `esito`: rappresenta una variante del `oneOf` diversa
     // dalla creazione di un formulario (es. l'esito "comune", senza

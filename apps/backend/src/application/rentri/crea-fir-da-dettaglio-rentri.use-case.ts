@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { DomainException } from '../../domain/shared/domain-exception'
+import { cerCanonico } from '../../domain/waste-movement/cer-registro'
 import {
   CreateFIRProps,
   FIR,
@@ -316,12 +317,7 @@ export class CreaFIRDaDettaglioRENTRIUseCase implements CreaFIRDaFormularioRENTR
    * non dovrebbe accadere su un formulario reale già vidimato dall'ente).
    */
   private normalizzaCodiceEER(raw: string): string {
-    const trimmed = raw.trim().toUpperCase()
-    const hazardous = trimmed.endsWith('*')
-    const digits = trimmed.replace(/[^0-9]/g, '')
-    if (digits.length !== 6) return trimmed
-    const spaced = `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 6)}`
-    return hazardous ? `${spaced}*` : spaced
+    return cerCanonico(raw.toUpperCase())
   }
 
   /**

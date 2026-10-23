@@ -53,6 +53,10 @@ export interface Movimento {
   createdAt: string
   fuoriTermine?: boolean
   ritardoGg?: number
+  /** Solo nella risposta di `registra`: il FIR era già ricopiato, nessun nuovo movimento. */
+  giaRegistrato?: boolean
+  /** Solo nella risposta di `registra`: avvisi non bloccanti per l'operatore. */
+  avvisi?: string[]
 }
 
 export interface PaginatedMovimenti {
@@ -66,7 +70,6 @@ export interface PaginatedMovimenti {
 export interface RegistraMovimentoRequest {
   type: TipoMovimento
   movementDate: string
-  registrationDate?: string
   causale: CausaleMovimento
   cerCode: string
   wasteDescription?: string
@@ -107,7 +110,7 @@ export const CAUSALE_LABELS: Record<CausaleMovimento, string> = {
   ALTRO_SCARICO: 'Altro scarico',
 }
 
-export const STATI_FISICI = ['Solido', 'Liquido', 'Fangoso', 'Gassoso', 'Polvere', 'Misto'] as const
+export const STATI_FISICI = ['Solido', 'Liquido', 'Fangoso', 'Polvere'] as const
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -135,4 +138,61 @@ export class RegistroService {
     if (params.limit) httpParams = httpParams.set('limit', params.limit.toString())
     return this.http.get<PaginatedMovimenti>(this.API_URL, { params: httpParams })
   }
+
+  /** Stato del progressivo iniziale del registro per l'anno (C-W-02). */
+  getProgressivoIniziale(anno: number): Observable<StatoProgressivoIniziale> {
+    return this.http.get<StatoProgressivoIniziale>(`${this.API_URL}/progressivo-iniziale/${anno}`)
+  }
+
+  /** Imposta il primo numero del registro dell'anno: una volta sola, prima del primo movimento. */
+  impostaProgressivoIniziale(
+    anno: number,
+    primoProgressivo: number,
+    motivo: string
+  ): Observable<{ anno: number; primoProgressivo: number }> {
+    return this.http.put<{ anno: number; primoProgressivo: number }>(
+      `${this.API_URL}/progressivo-iniziale/${anno}`,
+      { primoProgressivo, motivo }
+    )
+  }
+}
+
+// ─── Progressivo iniziale (C-W-02) ──────────────────────────────────────────
+
+/** Risposta di GET registro/progressivo-iniziale/:anno. */
+export interface StatoProgressivoIniziale {
+  anno: number
+  primoProgressivo: number | null
+  impostatoIl: string | null
+  /** Il registro dell'anno ha già movimenti: il progressivo iniziale non si imposta più. */
+  haMovimenti: boolean
+  /** Lo decide il backend in base al ruolo nell'azienda: il frontend non lo deduce dal token. */
+  puoImpostare: boolean
+  /** Come sopra, per la registrazione di un movimento (amministratore o operatore). */
+  puoRegistrare: boolean
+}
+
+/** Si offre l'impostazione solo a chi può farla, se l'anno non ha movimenti né un iniziale. */
+export function offrireProgressivoIniziale(stato: StatoProgressivoIniziale | null): boolean {
+  return !!stato && stato.puoImpostare && !stato.haMovimenti && stato.primoProgressivo === null
+}
+
+/**
+ * Si mostra la registrazione di un movimento a meno che il backend dica che l'utente è in
+ * sola consultazione nell'azienda selezionata. Senza stato si mostra: il salvataggio lo
+ * decide comunque il backend (403), e nasconderla per un errore di rete toglierebbe la
+ * funzione principale della pagina.
+ */
+export function offrireRegistrazione(stato: StatoProgressivoIniziale | null): boolean {
+  return stato?.puoRegistrare !== false
+}
+
+const formatoAnnoRoma = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Europe/Rome',
+  year: 'numeric',
+})
+
+/** Anno del calendario italiano (come il backend): cambia alla mezzanotte di Roma. */
+export function annoItaliano(istante: Date): number {
+  return Number(formatoAnnoRoma.format(istante))
 }

@@ -3,6 +3,7 @@ import { AxiosResponse } from 'axios'
 import { RENTRIApiClient, RentriApiError } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriConfig } from './rentri-config'
+import { corpoFormularioValido } from '../../application/rentri/mappatura/aiuti-test'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -144,10 +145,26 @@ describe('RENTRIApiClient — ricerca e aggancio contro la fake RENTRI (in-proce
     client: RENTRIApiClient,
     identificativoSoggetto: string
   ): Promise<string> {
-    const { transazioneId } = await client.creaFormulario('', {
-      identificativo_soggetto: identificativoSoggetto,
-      produttore: 'Produttore di prova SRL',
-    })
+    // Il soggetto per cui il formulario sara' cercabile non e' piu' un campo
+    // inventato alla radice: la fake lo ricava da `dati_partenza`, come fa
+    // l'ente vero. Qui si mette quindi nel codice fiscale del produttore.
+    const corpo = corpoFormularioValido()
+    const partenza = corpo.dati_partenza as Record<string, unknown>
+    // Il produttore in variante COMPLETA (denominazione + codice fiscale +
+    // indirizzo): e' da li' che la fake ricava il soggetto per cui il
+    // formulario sara' cercabile.
+    partenza.produttore = {
+      denominazione: 'Produttore di prova SRL',
+      codice_fiscale: identificativoSoggetto,
+      indirizzo: {
+        citta: { comune_id: '063049' },
+        indirizzo: 'Via Roma',
+        civico: '1',
+        cap: '80100',
+      },
+    }
+
+    const { transazioneId } = await client.creaFormulario('', corpo)
 
     const numeroFir = 'BCDFGH00010ZZ'
     const completamento = await app.inject({

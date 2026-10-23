@@ -80,6 +80,9 @@ ruvector.db
 /e2e/test-results/
 /e2e/blob-report/
 /e2e/playwright/.cache/
+# Registro persistito delle risorse create da una run (fixtures/risorse.ts),
+# consumato dal teardown — non è mai da versionare.
+/e2e/.artifacts/
 # crash dump di Git Bash su Windows, mai da versionare
 *.stackdump
 
@@ -88,3 +91,6 @@ ruvector.db
 
 # Credenziali della suite E2E (mai committare)
 .env.e2e
+
+# Area di lavoro degli agenti (ledger, briefing, pacchetti di revisione)
+.superpowers/

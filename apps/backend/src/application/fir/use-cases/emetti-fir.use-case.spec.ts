@@ -11,11 +11,14 @@ import { EmettiFIRUseCase } from './emetti-fir.use-case'
 import { EmettiFIRCommand } from '../commands/emetti-fir.command'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
 import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
 import { LoggerService } from '../../../core/logger/logger.service'
+import { annoSolareItaliano } from '../../../core/time/anno-italiano'
+import { FirNonPiuInBozzaError } from '../../../core/domain/errors'
 
 // Mock Repository (ciclo di vita)
 class MockFIRRepository implements IFIRRepository {
@@ -63,9 +66,16 @@ class MockFIRRepository implements IFIRRepository {
     return (await this.findByNumeroProgressivo(numeroProgressivo)) !== null
   }
 
-  async generateNumeroProgressivo(tenantId: string, anno: number): Promise<string> {
-    this.progressiveCounter++
-    return `FIR-${anno}-${String(this.progressiveCounter).padStart(6, '0')}`
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applica: (n: string) => void
+  ): Promise<string> {
+    this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+    const numero = formattaNumeroFir(anno, this.progressiveCounter)
+    applica(numero)
+    await this.save(fir)
+    return numero
   }
 
   async count(): Promise<number> {
@@ -362,7 +372,7 @@ describe('EmettiFIRUseCase', () => {
       repository.addFIR(fir1)
       repository.addFIR(fir2)
 
-      const spy = jest.spyOn(repository, 'generateNumeroProgressivo')
+      const spy = jest.spyOn(repository, 'emettiConNumerazione')
 
       const cmd1 = new EmettiFIRCommand(fir1.id, 'u1', 'A')
       const cmd2 = new EmettiFIRCommand(fir2.id, 'u2', 'B')
@@ -378,9 +388,61 @@ describe('EmettiFIRUseCase', () => {
 
       const calls = spy.mock.calls
       expect(calls.length).toBe(2)
-      expect(calls[0][0]).toBe(TENANT_ID)
-      expect(calls[0][0]).not.toBe(PRODUTTORE_ID)
-      expect(calls[1][0]).toBe(TENANT_ID)
+      expect(calls[0][0].tenantId).toBe(TENANT_ID)
+      expect(calls[0][0].tenantId).not.toBe(PRODUTTORE_ID)
+      expect(calls[0][1]).toBe(annoSolareItaliano(new Date()))
+      expect(calls[1][0].tenantId).toBe(TENANT_ID)
+    })
+
+    describe('anno di emissione', () => {
+      afterEach(() => {
+        jest.useRealTimers()
+        jest.restoreAllMocks()
+      })
+
+      it("usa l'anno italiano dell'istante di emissione", async () => {
+        // 23:30 UTC del 31/12/2026 = 00:30 del 1/1/2027 in Italia
+        jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] })
+        jest.setSystemTime(new Date('2026-12-31T23:30:00Z'))
+        const fir = createBozzaFIR()
+        repository.addFIR(fir)
+        const spy = jest.spyOn(repository, 'emettiConNumerazione')
+
+        const r = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+
+        expect(r.isSuccess).toBe(true)
+        expect(spy).toHaveBeenCalledTimes(1)
+        expect(spy.mock.calls[0][1]).toBe(2027)
+        expect(r.value.numeroProgressivo).toMatch(/^FIR-2027-/)
+      })
+
+      it('un FIR non più in bozza nel database dà un errore leggibile, non salva e non avvia RENTRI', async () => {
+        const fir = createBozzaFIR()
+        repository.addFIR(fir)
+        jest
+          .spyOn(repository, 'emettiConNumerazione')
+          .mockRejectedValue(new FirNonPiuInBozzaError(fir.id))
+        const saveSpy = jest.spyOn(repository, 'save')
+
+        const r = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+
+        expect(r.isFailure).toBe(true)
+        expect(r.error).toContain('non è più in bozza')
+        expect(r.error).toContain('Failed to emit FIR:')
+        expect(saveSpy).not.toHaveBeenCalled()
+        expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
+      })
+
+      it('un errore non di dominio si rilancia', async () => {
+        const fir = createBozzaFIR()
+        repository.addFIR(fir)
+        jest.spyOn(repository, 'emettiConNumerazione').mockRejectedValue(new Error('db giù'))
+
+        await expect(
+          useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        ).rejects.toThrow('db giù')
+        expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
+      })
     })
 
     it('should include numero progressivo in current year', async () => {

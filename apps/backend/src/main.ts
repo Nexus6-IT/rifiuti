@@ -9,17 +9,13 @@ import { ValidationPipe } from '@nestjs/common'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import helmet from 'helmet'
 import { AppModule } from './app.module'
+import { opzioniSentry } from './core/monitoring/opzioni-sentry'
 
 // Error tracking Bugsink/Sentry — attivo solo se SENTRY_DSN è impostato.
 // In assenza della variabile l'SDK è un no-op completo: nessun impatto runtime.
 if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV ?? 'development',
-    release: process.env.APP_VERSION,
-    // Campionamento 100% in produzione (Bugsink self-hosted: nessun costo)
-    tracesSampleRate: 1.0,
-  })
+  // Niente tracing e niente dati personali (Decisione 5 della Fase 0): v. opzioni-sentry.ts
+  Sentry.init(opzioniSentry(process.env))
 }
 
 async function bootstrap() {

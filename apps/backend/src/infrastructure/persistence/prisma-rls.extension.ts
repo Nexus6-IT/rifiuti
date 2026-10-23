@@ -64,10 +64,15 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'PermissionRequest',
   'RentriCredential',
   'RentriUnitaLocale',
+  // Scorta di numeri FIR pre-vidimati dall'ente (R6): appartiene all'azienda
+  // che li ha fatti vidimare, non è un dato condiviso.
+  'RentriNumeroVidimato',
   // Log delle sincronizzazioni verso l'ente: contiene il tracciato delle
   // trasmissioni di un'azienda, non è un dato condiviso.
   'RENTRISyncLog',
   'WasteMovement',
+  // Primo numero del registro per azienda e anno (C-W-02): dato dell'azienda.
+  'RegistroProgressivoIniziale',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   // (Le discariche collegate non hanno tenantId: sono raggiunte solo via

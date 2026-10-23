@@ -96,6 +96,15 @@ model Tenant {
   // un'azione esplicita, dopo aver configurato la credenziale (RentriCredential).
   rentriModalitaLegame RentriModalitaLegame @default(MANUALE) @map("rentri_modalita_legame")
 
+  // Azienda non tenuta alla presentazione del MUD (A-W-10, come il flag MUD S/N di
+  // WinWaste). Lo imposta un amministratore dell'azienda (PUT mud/obbligo): niente
+  // promemoria né scadenze del MUD; il file si può generare comunque, con un avviso.
+  // Motivo, data e utente sono valorizzati solo con il flag attivo.
+  mudNonDovuto       Boolean   @default(false) @map("mud_non_dovuto")
+  mudNonDovutoMotivo String?   @map("mud_non_dovuto_motivo") @db.VarChar(500)
+  mudNonDovutoIl     DateTime? @map("mud_non_dovuto_il")
+  mudNonDovutoDa     String?   @map("mud_non_dovuto_da") @db.Uuid
+
   // Relationships
   users                  User[]
   firs                   FIR[]
@@ -108,8 +117,10 @@ model Tenant {
   autorizzazioniImpianto AutorizzazioneImpianto[]
   wasteMovements         WasteMovement[]
   rentriUnitaLocali      RentriUnitaLocale[]
-  madre                  Tenant?                   @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
-  figlie                 Tenant[]                  @relation("GruppoAziende")
+  rentriNumeriVidimati   RentriNumeroVidimato[]
+  registroProgressiviIniziali RegistroProgressivoIniziale[]
+  madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
+  figlie                 Tenant[]                 @relation("GruppoAziende")
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -307,7 +318,8 @@ model FIR {
   wasteOperationType WasteOperationType @default(DISPOSAL) @map("waste_operation_type")
 
   // ---- Campi obbligatori FIR (DM 59/2023, art. 193 D.Lgs 152/2006) ----
-  // Campo 2: stato fisico del rifiuto (Solido/Liquido/Fangoso/Gassoso/Polvere/Misto)
+  // Campo 2: stato fisico del rifiuto (Solido/Liquido/Fangoso/Polvere — Gassoso
+  // e Misto rimossi 2026-09: nessun codice RENTRI corrispondente, v. StatoFisicoRifiuto)
   wastePhysicalState   String?   @map("waste_physical_state") @db.VarChar(50)
   // Campo 2: caratteristiche di pericolo HP (Reg. UE 1357/2014, All. III D.Lgs 152/2006)
   // Multi-valore, memorizzato come lista separata da virgole es. "HP4,HP14"
@@ -330,6 +342,20 @@ model FIR {
   /// RENTRI (NoteAnnullamentoModel.note, maxLength 1024) perché lo stesso testo
   /// viene anche inviato all'ente per un FIR legato.
   motivoAnnullamento   String?   @map("motivo_annullamento") @db.VarChar(1024)
+
+  /// Provenienza del rifiuto (D.Lgs 152/2006): URBANO o SPECIALE. Richiesta dal
+  /// contratto RENTRI (enum `ProvenienzaRifiuto`, codici 'U'/'S') per poter
+  /// trasmettere un formulario: la traduzione ai codici ente resta compito del
+  /// mappatore RENTRI, non di questo modello. Nullable: additiva, i FIR già in
+  /// produzione (12 al 2026-09-10) non hanno questo dato e non viene inventato
+  /// a posteriori — obbligatoria solo per i FIR creati da qui in avanti (DTO).
+  provenienza ProvenienzaRifiuto? @map("provenienza")
+
+  /// Modalità di trasporto della tratta principale (Campo 4, trasportatore
+  /// inline su questo modello): riusa lo stesso enum `TipoTratta` già in uso
+  /// per le tratte aggiuntive (`FIRTransporter.tipoTratta`), richiesto dal
+  /// contratto RENTRI. Nullable per lo stesso motivo di `provenienza` sopra.
+  tipoTrattaPrincipale TipoTratta? @map("tipo_tratta_principale")
 
   transportDate        DateTime  @map("transport_date")
   estimatedArrivalDate DateTime? @map("estimated_arrival_date")
@@ -394,6 +420,19 @@ model FIR {
   // un'altra operazione: un campo dedicato, distinto da updatedAt (che
   // cambia per qualunque modifica al FIR, non solo per la riconciliazione).
   rentriLastReconciledAt  DateTime?              @map("rentri_last_reconciled_at")
+
+  /// Byte del QR Code restituiti dall'ente alla vidimazione
+  /// (`EfirModel.qr_code_bytes`/`EfirPublicModel.qr_code_bytes`, servizio
+  /// `vidimazione-formulari`), Base64 COSI' COME li restituisce RENTRI —
+  /// nessuna ricodifica qui, quella (Base64 -> Base45 -> disegno QR livello
+  /// H) avviene a valle in `infrastructure/rentri/qr/` al momento di
+  /// stampare il PDF. Prova della vidimazione: va conservata come si
+  /// conserva `rentriNumeroFir`, non ricostruita. Nullable: un FIR non
+  /// (ancora) vidimato dall'ente non ce l'ha — `pdf.controller.ts` decide
+  /// di conseguenza se stampare il QR ufficiale o nessun QR (mai il vecchio
+  /// QR con URL di verifica su un documento che sembrerebbe vidimato senza
+  /// esserlo, v. `docs/audits/rentri-vidimazione-e-qr-2026-09-10.md`).
+  rentriQrCodeBytes String? @map("rentri_qr_code_bytes") @db.Text
 
   /// SUPERATO da `FIRAllegatoRentri` (sotto), R3 Task 6 — non "il campo già
   /// in uso": verificato il 2026-07-27 che ha ZERO riferimenti in tutto il
@@ -568,6 +607,16 @@ model FIRSignature {
   @@map("fir_signatures")
 }
 
+/// Provenienza del rifiuto (D.Lgs 152/2006): urbano o speciale. Valori leggibili
+/// di dominio — il contratto RENTRI usa i codici 'U'/'S' (`ProvenienzaRifiuto`
+/// del contratto), tradotti dal mappatore RENTRI, non da questo enum.
+enum ProvenienzaRifiuto {
+  URBANO
+  SPECIALE
+
+  @@map("provenienza_rifiuto")
+}
+
 /// Tipo di tratta di un trasporto intermodale (D.Lgs 152/2006, FIR multimodale):
 /// trasporto su gomma (TERRESTRE), su rotaia (FERROVIARIA) o via mare (MARITTIMA).
 enum TipoTratta {
@@ -717,6 +766,10 @@ enum NotificationType {
   SUBSCRIPTION_EXPIRING
   SIGNATURE_REQUIRED
   SYSTEM_ERROR
+  AUTORIZZAZIONE_IN_SCADENZA
+  CERTIFICATO_RENTRI_IN_SCADENZA
+  TRASPORTATORE_ISCRIZIONE_IN_SCADENZA
+  DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA
 
   @@map("notification_type")
 }
@@ -727,6 +780,27 @@ enum NotificationSeverity {
   ERROR
 
   @@map("notification_severity")
+}
+
+/// Primo numero del registro di carico e scarico per azienda e anno (decisione C-W-02).
+/// Serve a chi arriva da un altro programma a meta' anno: il primo movimento registrato
+/// qui prende questo numero, cosi' la numerazione gia' trasmessa al RENTRI prosegue.
+/// Si imposta una volta sola, prima del primo movimento dell'anno, sotto lo stesso
+/// advisory lock `<tenantId>-<anno>` della numerazione. La migration aggiunge
+/// CHECK (primo_progressivo >= 1).
+model RegistroProgressivoIniziale {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  anno             Int
+  primoProgressivo Int      @map("primo_progressivo")
+  motivo           String   @db.VarChar(500)
+  impostatoDa      String   @map("impostato_da") @db.Uuid
+  impostatoIl      DateTime @default(now()) @map("impostato_il")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, anno])
+  @@map("registro_progressivi_iniziali")
 }
 
 model ActivityLog {
@@ -1118,6 +1192,12 @@ model Trasportatore {
   telefono String? @db.VarChar(20)
   pec      String? @db.VarChar(255)
 
+  /// Scadenza dell'iscrizione all'Albo Gestori Ambientali. Nullable: le
+  /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
+  /// dello scadenzario, 2026-09-11). Senza valore, nessun avviso di
+  /// scadenza viene generato per questo trasportatore.
+  scadenzaIscrizione DateTime? @map("scadenza_iscrizione") @db.Date
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, partitaIVA])
@@ -1146,6 +1226,12 @@ model Destinatario {
   email    String? @db.VarChar(255)
   telefono String? @db.VarChar(20)
   pec      String? @db.VarChar(255)
+
+  /// Scadenza dell'autorizzazione allo smaltimento/recupero. Nullable: le
+  /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
+  /// dello scadenzario, 2026-09-11). Senza valore, nessun avviso di
+  /// scadenza viene generato per questo destinatario.
+  scadenzaAutorizzazione DateTime? @map("scadenza_autorizzazione") @db.Date
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1681,7 +1767,15 @@ model WasteMovement {
   counterpartAddress String? @map("counterpart_address") @db.VarChar(500)
 
   /// SCARICO: FIR collegato (uscita verso trasportatore/destinatario).
-  firId String? @map("fir_id") @db.Uuid
+  firId         String? @map("fir_id") @db.Uuid
+  /// Copia di firId valorizzata solo dai movimenti registrati dopo l'indice unico
+  /// della ricopia (i movimenti storici restano NULL, e i NULL non collidono):
+  /// un FIR si ricopia nel registro una sola volta per tipo di movimento e chiave.
+  firIdRicopia  String? @map("fir_id_ricopia") @db.Uuid
+  /// Chiave che distingue più movimenti dello stesso FIR e tipo (C-W-03, come WinWaste):
+  /// '' per la ricopia ordinaria, l'unica usata oggi. Lo schema delle chiavi riservate è
+  /// in RICOPIA_ORDINARIA (registra-movimento.use-case.ts); la chiave la impone il flusso.
+  ricopiaChiave String  @default("") @map("ricopia_chiave") @db.VarChar(100)
 
   /// Utente (operatore) che ha registrato l'annotazione.
   recordedByUserId String? @map("recorded_by_user_id") @db.Uuid
@@ -1696,6 +1790,7 @@ model WasteMovement {
   recordedByUser User?  @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
 
   @@unique([tenantId, progressiveYear, progressiveNumber])
+  @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
   @@index([tenantId, cerCode])
   @@index([tenantId, movementDate])
   @@index([tenantId, type])
@@ -1818,11 +1913,89 @@ model RentriUnitaLocale {
   /// per nuovi agganci.
   attiva        Boolean @default(true)
 
+  /// Blocco virtuale (RENTRI) usato di default per vidimare i FIR emessi da
+  /// questa unità locale (R6, scorta vidimazioni — v. `RentriNumeroVidimato`
+  /// e `docs/audits/rentri-blocchi-come-fanno-gli-altri-2026-09-11.md`).
+  /// Nessuna FK verso RENTRI (il blocco vive solo lato ente, letto via
+  /// `RentriVidimazioneClient.elencaBlocchi`): qui è solo il codice scelto
+  /// dall'utente quando c'è ambiguità fra più blocchi attivi sulla stessa
+  /// sede. Null finché nessuno lo imposta esplicitamente — in quel caso il
+  /// job di rifornimento non vidima nulla per questa sede (fail-closed, mai
+  /// un blocco indovinato).
+  codiceBloccoPredefinito String? @map("codice_blocco_predefinito") @db.VarChar(50)
+
+  /// Quanti numeri vidimati tenere sempre pronti in scorta per questa sede
+  /// (soglia di rifornimento, R6). Null = nessuna soglia configurata: il job
+  /// periodico non rifornisce nulla per questa sede e lo scrive nel log,
+  /// mai un valore di ripiego inventato.
+  dimensioneScortaDesiderata Int? @map("dimensione_scorta_desiderata")
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, numIscrSito])
   @@index([tenantId])
   @@map("rentri_unita_locali")
+}
+
+/// Stato di un numero FIR già vidimato dall'ente e tenuto in scorta (R6).
+enum RentriNumeroVidimatoStato {
+  /// Vidimato dall'ente, non ancora assegnato a nessun FIR: pronto all'uso.
+  DISPONIBILE
+  /// Consumato da un'emissione locale (`firId` valorizzato).
+  USATO
+  /// Annullato presso l'ente (`RentriVidimazioneClient.annullaFir`) prima di
+  /// essere usato — resta per audit, mai cancellato.
+  ANNULLATO
+}
+
+/// Scorta di numeri FIR pre-vidimati dall'ente RENTRI (R6 — "chi fa i FIR
+/// cartacei con supporto interoperabilità vidima IN ANTICIPO, a lotti, e
+/// consuma dalla scorta all'emissione": v.
+/// `docs/audits/rentri-blocchi-come-fanno-gli-altri-2026-09-11.md`).
+///
+/// Popolata da `RentriRifornimentoScortaJob`/`AvviaVidimazioneScortaUseCase`
+/// chiamando `RentriVidimazioneClient.vidimaFir` + `attendiEsitoVidimazione`
+/// (esito = `EfirPublicModel`, incluso `qr_code_bytes` firmato dall'ente).
+/// Consumata SOLO tramite `RentriScortaRepository.consumaProssimoDisponibile`
+/// (UPDATE...WHERE id = (SELECT...FOR UPDATE SKIP LOCKED LIMIT 1) in un solo
+/// statement: due emissioni concorrenti non possono mai ricevere lo stesso
+/// numero, v. commento di classe del repository).
+///
+/// Isolamento: tenantId basta (= l'azienda, v. `Tenant`/`TENANT_SCOPED_MODELS`
+/// — questo progetto non ha un concetto di "azienda" separato dal tenant).
+model RentriNumeroVidimato {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Unità locale (num_iscr_sito) su cui è stato vidimato il numero.
+  numIscrSito String @map("num_iscr_sito") @db.VarChar(30)
+  /// Codice del blocco virtuale RENTRI su cui è stato vidimato.
+  codiceBlocco String @map("codice_blocco") @db.VarChar(50)
+  /// Progressivo del numero all'interno del blocco (`EfirPublicModel.progressivo`).
+  progressivo Int
+  /// Numero FIR assegnato dall'ente (`EfirPublicModel.numero_fir`).
+  numeroFir String @map("numero_fir") @db.VarChar(100)
+  /// Byte firmati dall'ente per il QR (Base64, `EfirPublicModel.qr_code_bytes`)
+  /// — v. `docs/audits/rentri-vidimazione-e-qr-2026-09-10.md` §1: si
+  /// decodificano da Base64 e si ricodificano in Base45 per il disegno del
+  /// QR (`infrastructure/rentri/qr/`), nessun contenuto costruito da noi.
+  qrCodeBytes String @map("qr_code_bytes") @db.Text
+
+  stato RentriNumeroVidimatoStato @default(DISPONIBILE)
+
+  /// FIR locale che ha consumato questo numero (valorizzato solo se stato = USATO).
+  firId String? @map("fir_id") @db.Uuid
+
+  dataVidimazione DateTime  @map("data_vidimazione")
+  dataConsumo     DateTime? @map("data_consumo")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, codiceBlocco, progressivo])
+  @@index([tenantId, numIscrSito, stato])
+  @@map("rentri_numeri_vidimati")
 }
 
 /// Log di sincronizzazione RENTRI: un record per ogni tentativo di

@@ -140,6 +140,18 @@ export enum TipoTratta {
 }
 
 /**
+ * Provenienza del rifiuto (D.Lgs 152/2006): urbano o speciale. Valori
+ * leggibili di dominio — il contratto RENTRI usa i codici 'U'/'S'
+ * (`ProvenienzaRifiuto` del contratto ente): la traduzione a quei codici è
+ * compito del mappatore RENTRI (`application/rentri/mappatura`), non di
+ * questo enum.
+ */
+export enum ProvenienzaRifiuto {
+  URBANO = 'URBANO',
+  SPECIALE = 'SPECIALE',
+}
+
+/**
  * Snapshot anagrafico immutabile di un trasportatore aggiuntivo (tratta
  * intermodale), "congelato" alla creazione del FIR a partire dal registro
  * Trasportatore. Il trasportatore principale resta inline (vedi ParteFIR);
@@ -223,6 +235,17 @@ export interface CreateFIRProps {
   destinatario?: ParteFIR
   /** Trasportatori aggiuntivi (tratte intermodali), snapshot ordinati. */
   trasportatoriAggiuntivi?: TrattaTrasportoFIR[]
+  /**
+   * Provenienza del rifiuto (URBANO/SPECIALE), richiesta dal contratto RENTRI.
+   * Opzionale qui solo per i FIR legacy ricostruiti dal repository: il DTO di
+   * creazione (`CreateFIRDto`) la rende obbligatoria per i FIR nuovi.
+   */
+  provenienza?: ProvenienzaRifiuto
+  /**
+   * Modalità di trasporto della tratta principale (Campo 4), richiesta dal
+   * contratto RENTRI. Stessa nota di opzionalità di `provenienza` sopra.
+   */
+  tipoTrattaPrincipale?: TipoTratta
 }
 
 // Domain Events
@@ -413,7 +436,11 @@ export class FIR extends AggregateRoot {
      * testo trasmesso all'ente con `POST /{numero_fir}/note-annullamento`).
      * `null` per un FIR mai annullato.
      */
-    private _motivoAnnullamento: string | null = null
+    private _motivoAnnullamento: string | null = null,
+    /** Provenienza del rifiuto (URBANO/SPECIALE). `null` per i FIR legacy privi del dato. */
+    private readonly _provenienza: ProvenienzaRifiuto | null = null,
+    /** Modalità di trasporto della tratta principale (Campo 4). `null` per i FIR legacy privi del dato. */
+    private readonly _tipoTrattaPrincipale: TipoTratta | null = null
   ) {
     super()
   }
@@ -453,7 +480,18 @@ export class FIR extends AggregateRoot {
       props.destinatario ?? null,
       props.tenantId ?? null,
       props.trasportatoriAggiuntivi ?? [],
-      props.annotazioni ?? null
+      props.annotazioni ?? null,
+      null, // fourthCopyReturnedAt
+      null, // fourthCopyNotes
+      undefined, // rentriSyncStatus (default RENTRISyncStatus.pending())
+      null, // rentriNumeroFir
+      null, // rentriTransazioneId
+      null, // rentriOrigineLegame
+      null, // rentriNumeroFirProposto
+      null, // rentriStatoFormulario
+      null, // motivoAnnullamento
+      props.provenienza ?? null,
+      props.tipoTrattaPrincipale ?? null
     )
   }
 
@@ -1128,6 +1166,23 @@ export class FIR extends AggregateRoot {
    */
   get motivoAnnullamento(): string | null {
     return this._motivoAnnullamento
+  }
+
+  /**
+   * Provenienza del rifiuto (URBANO/SPECIALE). `null` per i FIR creati prima
+   * dell'introduzione del campo (colonna nullable, mai valorizzata a posteriori).
+   */
+  get provenienza(): ProvenienzaRifiuto | null {
+    return this._provenienza
+  }
+
+  /**
+   * Modalità di trasporto della tratta principale (Campo 4). `null` per i FIR
+   * creati prima dell'introduzione del campo (colonna nullable, mai
+   * valorizzata a posteriori).
+   */
+  get tipoTrattaPrincipale(): TipoTratta | null {
+    return this._tipoTrattaPrincipale
   }
 
   private static generateId(): string {

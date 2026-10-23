@@ -19,6 +19,7 @@ import {
   BadRequestException,
 } from '@nestjs/common'
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
+import { calcolaScadenza } from '../../application/notifications/scadenza-controparte.util'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
@@ -103,6 +104,7 @@ export class RegistryController {
       partitaIVA: result.value.partitaIVA.getValue(),
       sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       numeroIscrizione: result.value.numeroIscrizione,
+      scadenzaIscrizione: this.dateToIso(result.value.scadenzaIscrizione),
     }
   }
 
@@ -122,6 +124,7 @@ export class RegistryController {
       partitaIVA: result.value.partitaIVA.getValue(),
       sede: this.indirizzoToObject(result.value.sede),
       numeroAutorizzazione: result.value.numeroAutorizzazione,
+      scadenzaAutorizzazione: this.dateToIso(result.value.scadenzaAutorizzazione),
     }
   }
 
@@ -216,16 +219,26 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
-    const items = result.value.map(t => ({
-      id: t.id,
-      ragioneSociale: t.ragioneSociale,
-      partitaIVA: t.partitaIVA.getValue(),
-      sedeLegale: this.indirizzoToObject(t.sedeLegale),
-      numeroIscrizione: t.numeroIscrizione,
-      email: t.email,
-      telefono: t.telefono,
-      pec: t.pec,
-    }))
+    const items = result.value.map(t => {
+      // Task 4 dello scadenzario: l'operatore va avvisato SUBITO quando
+      // sceglie il trasportatore in un formulario, non solo via email il
+      // giorno dopo. Stessa `calcolaScadenza` del controllo periodico
+      // (Task 1/3): senza data (`undefined`), niente avviso inventato.
+      const { giorniAllaScadenza, scaduta } = calcolaScadenza(t.scadenzaIscrizione)
+      return {
+        id: t.id,
+        ragioneSociale: t.ragioneSociale,
+        partitaIVA: t.partitaIVA.getValue(),
+        sedeLegale: this.indirizzoToObject(t.sedeLegale),
+        numeroIscrizione: t.numeroIscrizione,
+        email: t.email,
+        telefono: t.telefono,
+        pec: t.pec,
+        scadenzaIscrizione: this.dateToIso(t.scadenzaIscrizione),
+        iscrizioneScaduta: scaduta,
+        giorniAllaScadenza,
+      }
+    })
     return this.toPaginated(items)
   }
 
@@ -246,6 +259,7 @@ export class RegistryController {
       email: result.value.email,
       telefono: result.value.telefono,
       pec: result.value.pec,
+      scadenzaIscrizione: this.dateToIso(result.value.scadenzaIscrizione),
     }
   }
 
@@ -270,6 +284,7 @@ export class RegistryController {
       email: result.value.email,
       telefono: result.value.telefono,
       pec: result.value.pec,
+      scadenzaIscrizione: this.dateToIso(result.value.scadenzaIscrizione),
     }
   }
 
@@ -295,16 +310,24 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
-    const items = result.value.map(d => ({
-      id: d.id,
-      ragioneSociale: d.ragioneSociale,
-      partitaIVA: d.partitaIVA.getValue(),
-      sede: this.indirizzoToObject(d.sede),
-      numeroAutorizzazione: d.numeroAutorizzazione,
-      email: d.email,
-      telefono: d.telefono,
-      pec: d.pec,
-    }))
+    const items = result.value.map(d => {
+      // Task 4 dello scadenzario: stessa logica dei trasportatori sopra —
+      // l'avviso compare alla scelta del destinatario, non solo via email.
+      const { giorniAllaScadenza, scaduta } = calcolaScadenza(d.scadenzaAutorizzazione)
+      return {
+        id: d.id,
+        ragioneSociale: d.ragioneSociale,
+        partitaIVA: d.partitaIVA.getValue(),
+        sede: this.indirizzoToObject(d.sede),
+        numeroAutorizzazione: d.numeroAutorizzazione,
+        email: d.email,
+        telefono: d.telefono,
+        pec: d.pec,
+        scadenzaAutorizzazione: this.dateToIso(d.scadenzaAutorizzazione),
+        autorizzazioneScaduta: scaduta,
+        giorniAllaScadenza,
+      }
+    })
     return this.toPaginated(items)
   }
 
@@ -325,6 +348,7 @@ export class RegistryController {
       email: result.value.email,
       telefono: result.value.telefono,
       pec: result.value.pec,
+      scadenzaAutorizzazione: this.dateToIso(result.value.scadenzaAutorizzazione),
     }
   }
 
@@ -349,6 +373,7 @@ export class RegistryController {
       email: result.value.email,
       telefono: result.value.telefono,
       pec: result.value.pec,
+      scadenzaAutorizzazione: this.dateToIso(result.value.scadenzaAutorizzazione),
     }
   }
 
@@ -393,6 +418,16 @@ export class RegistryController {
       comune: indirizzo.getCitta?.() ?? indirizzo.citta ?? indirizzo.comune ?? '',
       provincia: indirizzo.getProvincia?.() ?? indirizzo.provincia ?? '',
     }
+  }
+
+  /**
+   * Converte una data di dominio nella stringa ISO (solo giorno) attesa dal
+   * frontend, o `undefined` se la scadenza non è impostata (campo
+   * facoltativo, Task 3 dello scadenzario).
+   */
+  private dateToIso(date?: Date): string | undefined {
+    if (!date) return undefined
+    return date.toISOString().slice(0, 10)
   }
 
   /**
@@ -445,6 +480,7 @@ export class RegistryController {
       email: dto.email,
       telefono: dto.telefono,
       pec: dto.pec,
+      scadenzaIscrizione: dto.scadenzaIscrizione ? new Date(dto.scadenzaIscrizione) : undefined,
     }
   }
 
@@ -457,6 +493,9 @@ export class RegistryController {
       email: dto.email,
       telefono: dto.telefono,
       pec: dto.pec,
+      scadenzaAutorizzazione: dto.scadenzaAutorizzazione
+        ? new Date(dto.scadenzaAutorizzazione)
+        : undefined,
     }
   }
 
@@ -478,6 +517,7 @@ export class RegistryController {
       email: dto.email,
       telefono: dto.telefono,
       pec: dto.pec,
+      scadenzaIscrizione: this.mapScadenzaUpdate(dto.scadenzaIscrizione),
     }
   }
 
@@ -489,6 +529,18 @@ export class RegistryController {
       email: dto.email,
       telefono: dto.telefono,
       pec: dto.pec,
+      scadenzaAutorizzazione: this.mapScadenzaUpdate(dto.scadenzaAutorizzazione),
     }
+  }
+
+  /**
+   * Mappa il valore ISO/null/assente di una scadenza in update al comando:
+   * assente → `undefined` (campo non toccato), `null` → `null` (azzeramento
+   * esplicito), stringa ISO → `Date`.
+   */
+  private mapScadenzaUpdate(value: string | null | undefined): Date | null | undefined {
+    if (value === undefined) return undefined
+    if (value === null) return null
+    return new Date(value)
   }
 }

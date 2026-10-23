@@ -25,7 +25,7 @@ async function installGuardrail(page: Page) {
   blockedAttempt = null
   const productionRun = isProductionTarget()
 
-  await page.route('**/*', async (route) => {
+  await page.route('**/*', async route => {
     const request = route.request()
     const method = request.method()
     const url = request.url()
@@ -35,7 +35,7 @@ async function installGuardrail(page: Page) {
       blockedAttempt = { method, url, label: hit.label }
       // eslint-disable-next-line no-console
       console.error(
-        `[GUARDRAIL] Richiesta BLOCCATA verso endpoint distruttivo in produzione: ${method} ${url} (${hit.label})`,
+        `[GUARDRAIL] Richiesta BLOCCATA verso endpoint distruttivo in produzione: ${method} ${url} (${hit.label})`
       )
       await route.abort('blockedbyclient')
       return
@@ -60,7 +60,7 @@ export const test = base.extend<{ guardedPage: Page }>({
         `Il test ha tentato di invocare un endpoint distruttivo su produzione: ` +
           `${attempt.method} ${attempt.url} (${attempt.label}). ` +
           `Operazione abortita dal guardrail (e2e/fixtures/guardrail.ts). ` +
-          `Questo tipo di richiesta NON deve mai essere eseguito contro ${getBaseUrl()}.`,
+          `Questo tipo di richiesta NON deve mai essere eseguito contro ${getBaseUrl()}.`
       ).toBe(true)
     }
   },
