@@ -1,3 +1,6 @@
+import * as crypto from 'crypto'
+import * as fs from 'fs'
+import * as path from 'path'
 import JSZip from 'jszip'
 import forge from 'node-forge'
 import { costruisciAsicE, MaterialeFirmaTest, MIMETYPE_ASICE } from './costruisci-asice'
@@ -161,5 +164,77 @@ describe('costruisciAsicE', () => {
     const zip = await JSZip.loadAsync(buffer)
     expect(zip.files['META-INF/firma-fir.xml']).toBeDefined()
     expect(zip.files['META-INF/signatures.xml']).toBeUndefined()
+  })
+
+  describe('firma con chiave EC P-256 (fixture di prova)', () => {
+    const dirFixture = path.resolve(
+      __dirname,
+      '../../../../../../tools/rentri-fake/test/fixture/ec'
+    )
+    const leggi = (nome: string) => fs.readFileSync(path.join(dirFixture, nome), 'utf8')
+
+    async function estraiFirma(materiale: MaterialeFirmaTest) {
+      const buffer = await costruisciAsicE({
+        documenti: [
+          { nome: 'formulario.xml', contenuto: '<formulario numeroFir="TEST00000004A"/>' },
+        ],
+        firma: materiale,
+      })
+      const zip = await JSZip.loadAsync(buffer)
+      const xml = await zip.files['META-INF/signatures.xml'].async('string')
+      return {
+        xml,
+        signedInfo: xml.slice(
+          xml.indexOf('<ds:SignedInfo'),
+          xml.indexOf('</ds:SignedInfo>') + '</ds:SignedInfo>'.length
+        ),
+        signatureValue: /<ds:SignatureValue>([^<]+)<\/ds:SignatureValue>/.exec(xml)?.[1] as string,
+        certificatoBase64: /<ds:X509Certificate>([^<]+)<\/ds:X509Certificate>/.exec(
+          xml
+        )?.[1] as string,
+      }
+    }
+
+    it('ASiC con chiave EC: SignatureMethod ecdsa-sha256 e firma di 64 byte verificabile', async () => {
+      const certificatoPem = leggi('operatore-test-ec.crt')
+      const { xml, signedInfo, signatureValue, certificatoBase64 } = await estraiFirma({
+        certificatoPem,
+        chiavePrivataPem: leggi('operatore-test-ec.key'),
+      })
+
+      expect(xml).toContain('http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256')
+      expect(xml).not.toContain('rsa-sha256')
+
+      const firma = Buffer.from(signatureValue, 'base64')
+      expect(firma.length).toBe(64) // r||s IEEE P1363, non DER
+
+      // Il certificato in KeyInfo e' quello fornito (stessi byte DER).
+      const x509 = new crypto.X509Certificate(certificatoPem)
+      expect(certificatoBase64).toBe(x509.raw.toString('base64'))
+      expect(
+        crypto.verify(
+          'sha256',
+          Buffer.from(signedInfo, 'utf8'),
+          { key: x509.publicKey, dsaEncoding: 'ieee-p1363' },
+          firma
+        )
+      ).toBe(true)
+    })
+
+    it('ASiC con chiave RSA: invariato', async () => {
+      const { xml, signedInfo, signatureValue, certificatoBase64 } = await estraiFirma(
+        materialeFirmaDiTest()
+      )
+
+      expect(xml).not.toContain('ecdsa-sha256')
+      const firma = Buffer.from(signatureValue, 'base64')
+      expect(firma.length).toBe(128) // RSA-1024 del materiale di test
+      const chiavePubblica = new crypto.X509Certificate(
+        `-----BEGIN CERTIFICATE-----\n${certificatoBase64}\n-----END CERTIFICATE-----`
+      ).publicKey
+      expect(crypto.verify('sha256', Buffer.from(signedInfo, 'utf8'), chiavePubblica, firma)).toBe(
+        true
+      )
+    })
   })
 })

@@ -1,3 +1,5 @@
+import * as fs from 'fs'
+import * as path from 'path'
 import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import JSZip from 'jszip'
@@ -131,6 +133,27 @@ describe('RentriXfirClient — validazione/upload/download xFIR contro la fake (
     const buffer = await costruisciAsicE({
       documenti: [{ nome: 'formulario.xml', contenuto: '<formulario numeroFir="BCDF123456B"/>' }],
       firma: materialeFirmaDiTest(),
+    })
+
+    const { transazioneId } = await client.validaXfir('operatore-test', buffer.toString('base64'))
+    const esito = await client.attendiEsitoValidazione('operatore-test', transazioneId, {
+      intervalloMs: 20,
+      maxTentativi: 10,
+    })
+
+    expect(esito.errore).toBe(false)
+    expect(esito.validazione ?? []).toEqual([])
+  })
+
+  it('xFIR firmato con certificato EC P-256 (ecdsa-sha256, P1363): validato dal vero validatore del finto', async () => {
+    const dir = path.resolve(__dirname, '../../../../../../tools/rentri-fake/test/fixture/ec')
+    const client = creaClient()
+    const buffer = await costruisciAsicE({
+      documenti: [{ nome: 'formulario.xml', contenuto: '<formulario numeroFir="BCDF111111B"/>' }],
+      firma: {
+        certificatoPem: fs.readFileSync(path.join(dir, 'operatore-test-ec.crt'), 'utf8'),
+        chiavePrivataPem: fs.readFileSync(path.join(dir, 'operatore-test-ec.key'), 'utf8'),
+      },
     })
 
     const { transazioneId } = await client.validaXfir('operatore-test', buffer.toString('base64'))
