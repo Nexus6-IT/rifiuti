@@ -243,7 +243,7 @@ export class Archivio {
   /**
    * Materiale crittografico di test della "CA RENTRI" simulata: il
    * certificato restituito da `GET /credentials/info` e la chiave con cui
-   * `POST /credentials/sign-hash` firma DAVVERO.
+   * `POST /signatures/sign-hash` firma DAVVERO.
    *
    * Generato una volta sola per istanza di `Archivio` (pigro: la generazione
    * di una coppia RSA 2048 costa ~centinaia di ms, e la maggior parte dei
@@ -376,7 +376,7 @@ export class Archivio {
   }
 
   /**
-   * `POST /ca-rentri/v1.0/credentials/sign-hash`: firma DAVVERO il digest con
+   * `POST /ca-rentri/v1.0/signatures/sign-hash`: firma DAVVERO il digest con
    * la chiave privata di test.
    *
    * **Divergenza dichiarata dall'ente reale**: RENTRI dichiara `sign_algo`

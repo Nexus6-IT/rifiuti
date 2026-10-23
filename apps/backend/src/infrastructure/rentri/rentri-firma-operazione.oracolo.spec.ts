@@ -22,17 +22,17 @@ const { intestazioniAutenticate } = require('../../../../../tools/rentri-fake/te
  * `GET /ca-rentri/.../credentials/info` → `POST /{numero_fir}/hash` (202 +
  * NONBLOCK_PULL) → `POST /credentials/authorize` → polling
  * `authorize-check` (202 → 200, con la conferma dell'utente simulata dal
- * canale di controllo a metà polling) → `POST /credentials/sign-hash` →
+ * canale di controllo a metà polling) → `POST /signatures/sign-hash` →
  * `POST /{numero_fir}/acquisizione-firma` (202 + NONBLOCK_PULL) →
  * rilettura di `/stato` → `FIR.applyRentriStato`.
  *
  * **Limite dichiarato di questa suite** (stessa onestà di
- * `docs/contracts/rentri/FEDELTA.md`): il servizio `ca-rentri` non ha alcun
- * contratto OpenAPI pubblico, quindi la fake ne è una RICOSTRUZIONE da fonti
- * secondarie (v. il commento di testata di `tools/rentri-fake/src/routes/ca-rentri.ts`).
- * Questi test dimostrano che il nostro client percorre correttamente il ciclo
- * come lo abbiamo ricostruito; NON che quel ciclo coincida con quello
- * dell'ente reale.
+ * `docs/contracts/rentri/FEDELTA.md`): il contratto `ca-rentri` esiste
+ * (`docs/contracts/rentri/ca-rentri.yaml`) e `sign-hash` vi è allineato
+ * (riga 2019), ma `credentials/info` e `credentials/authorize`/`authorize-check`
+ * NON ancora (v. il commento di testata di `tools/rentri-fake/src/routes/ca-rentri.ts`):
+ * su quei passi questi test dimostrano che il client percorre il ciclo come
+ * lo abbiamo ricostruito, non che coincida con quello dell'ente reale.
  */
 describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la fake RENTRI (in-process)', () => {
   let app: any

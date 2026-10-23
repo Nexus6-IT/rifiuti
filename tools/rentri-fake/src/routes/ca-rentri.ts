@@ -9,25 +9,28 @@ const PREFISSO = '/ca-rentri/v1.0'
 /**
  * Servizio `ca-rentri` — FIRMA REMOTA RENTRI (R3 Task 3).
  *
- * ## Avvertenza sulla fedeltà, diversa da quella delle altre rotte
+ * ## Fedeltà al contratto
  *
- * Ogni altra rotta di questa fake è verificata contro un **contratto OpenAPI
- * ufficiale** (`docs/contracts/rentri/*.yaml`), citato riga per riga nei
- * commenti. **`ca-rentri` non ha alcun contratto pubblico**: la
- * documentazione vive in una pagina che richiede rendering JavaScript e nei
- * PDF degli incontri di formazione per Software House (v.
- * `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`, «Lacune ancora
- * aperte»).
+ * Il contratto ufficiale esiste ed e' versionato in
+ * `docs/contracts/rentri/ca-rentri.yaml` (v. `MANIFEST.md`, v1.0.20260831).
+ * - **Allineato**: `POST /signatures/sign-hash` (ca-rentri.yaml:2019; risposta
+ *   `SignatureResponse` a :3560, `{ signatures: string[] }`). Il vecchio
+ *   `/credentials/sign-hash` NON esiste nel contratto e qui risponde 404; la
+ *   guardia `test/rotte-allineate-ai-contratti.test.ts` verifica metodo e path
+ *   delle rotte contro il contratto.
+ * - **NON ancora allineato** (pezzo successivo del Piano B):
+ *   - `GET /credentials/info` (:1294, `CredentialsInfoResponse` a :2779): la
+ *     fake espone un campo `certificato` che nel contratto non esiste (il
+ *     contratto ha `cert.certificates[]`), e il `credentials_id` in query e'
+ *     da riverificare;
+ *   - `POST /credentials/authorize` (:825, `CredentialsAuthorizeRequest` a
+ *     :2617, `CredentialsAuthorizeResponse` a :2665) e `authorize-check`
+ *     (:906): pattern della `description`, semantica di `sad`/`expires_in` e
+ *     codici 400/403 non verificati riga per riga;
+ *   - `SignatureRequest` di sign-hash e' validata solo in parte.
  *
- * Di conseguenza, nomi dei campi, forme delle risposte e codici di stato
- * qui sotto sono **la nostra migliore ricostruzione da fonti secondarie**,
- * non una trascrizione. Questa fake dimostra che il nostro client percorre
- * correttamente il CICLO che abbiamo ricostruito; **non** dimostra che
- * quel ciclo sia identico a quello dell'ente. Le due assunzioni più esposte,
- * entrambe segnalate anche lato client:
- * - `credentials_id` passato in **query** su `GET /credentials/info`
- *   (nessuna fonte dice se query o header);
- * - risposta di `sign-hash` nella forma CSC `{ signatures: [...] }`.
+ * Questa fake dimostra che il nostro client percorre il CICLO; dove sopra e'
+ * indicato "NON ancora allineato" non dimostra la coincidenza con l'ente.
  *
  * ## Cosa la fake NON simula
  *
@@ -192,9 +195,9 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
     }
   )
 
-  // POST /credentials/sign-hash — firma davvero, solo se autorizzata.
+  // POST /signatures/sign-hash — firma davvero, solo se autorizzata.
   app.post<{ Body: CorpoSignHash }>(
-    `${PREFISSO}/credentials/sign-hash`,
+    `${PREFISSO}/signatures/sign-hash`,
     async (richiesta, risposta) => {
       if (!(await autentica(richiesta, risposta, archivio))) return
 
@@ -244,7 +247,7 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
         })
       }
 
-      // Forma CSC assunta (v. avvertenza in testa al file).
+      // Risposta `SignatureResponse` (ca-rentri.yaml:3560).
       return { signatures: [archivio.firmaHash(hashes[0])] }
     }
   )

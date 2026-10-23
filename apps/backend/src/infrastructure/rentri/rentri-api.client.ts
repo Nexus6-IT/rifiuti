@@ -56,13 +56,15 @@ export class RENTRIApiClient {
   /**
    * Path base del servizio `ca-rentri` v1.0 (firma remota RENTRI, R3 Task 3).
    *
-   * **A differenza di `FORMULARI_PATH`, questo valore NON è confermato da un
-   * file OpenAPI**: `ca-rentri` non ha alcun contratto pubblico (v.
-   * `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`, «Lacune ancora
-   * aperte»). È ricavato dai PDF ufficiali degli incontri di formazione RENTRI
-   * per Software House, che citano testualmente path come
-   * `GET /ca-rentri/v1.0/credentials/boarding/{qrcode_token}`. Concatenato
-   * allo stesso `config.baseUrl` degli altri servizi (es.
+   * Confermato da `docs/contracts/rentri/ca-rentri.yaml` (v. `MANIFEST.md`,
+   * v1.0.20260831). Il percorso di firma e' `POST /signatures/sign-hash`
+   * (ca-rentri.yaml:2019), non `/credentials/sign-hash`. **Non ancora
+   * allineati al contratto**: `GET /credentials/info` (:1294; il contratto ha
+   * `cert.certificates[]`, non `certificato`; `CredentialsInfoResponse` a
+   * :2779) e `POST /credentials/authorize` + `authorize-check` (:825, :906;
+   * pattern della `description`, semantica di `sad`/`expires_in`, codici
+   * 400/403; schemi a :2617 e :2665): allineamento in un pezzo successivo del
+   * Piano B. Concatenato allo stesso `config.baseUrl` degli altri servizi (es.
    * `https://demoapi.rentri.gov.it/ca-rentri/v1.0`).
    */
   private static readonly CA_RENTRI_PATH = '/ca-rentri/v1.0'
@@ -74,7 +76,7 @@ export class RENTRIApiClient {
   static readonly HASH_ALGO_SHA256 = '2.16.840.1.101.3.4.2.1'
 
   /**
-   * OID dell'algoritmo di firma dichiarato per `POST /credentials/sign-hash`:
+   * OID dell'algoritmo di firma dichiarato per `POST /signatures/sign-hash`:
    * ECDSA con SHA-256. Costante, mai calcolata.
    */
   static readonly SIGN_ALGO_ECDSA_SHA256 = '1.2.840.10045.4.3.2'
@@ -1047,20 +1049,18 @@ export class RENTRIApiClient {
 
   /**
    * Fa firmare il digest all'HSM di RENTRI
-   * (`POST /ca-rentri/v1.0/credentials/sign-hash`). **Un solo hash per
+   * (`POST /ca-rentri/v1.0/signatures/sign-hash`). **Un solo hash per
    * richiesta**, come dichiarato dalla documentazione ufficiale.
    *
-   * **Forma della risposta assunta, non confermata da fonte ufficiale**
-   * (dichiarata come tale): `{ signatures: string[] }`, convenzione del
-   * Cloud Signature Consortium (CSC), di cui `ca-rentri` è presumibilmente
-   * un'implementazione. Gli elementi corrispondono in ordine a `hashes`:
-   * essendone stato inviato uno solo, si legge `signatures[0]`. Una risposta
-   * di forma diversa solleva un errore esplicito invece di produrre una
-   * "firma" `undefined` che l'ente rifiuterebbe più avanti con un messaggio
+   * **Forma della risposta dal contratto**: `SignatureResponse { signatures: string[] }`
+   * (ca-rentri.yaml righe 3560-3569). Gli elementi corrispondono in ordine a
+   * `hashes`: essendone stato inviato uno solo, si legge `signatures[0]`. Una
+   * risposta di forma diversa solleva un errore esplicito invece di produrre
+   * una "firma" `undefined` che l'ente rifiuterebbe più avanti con un messaggio
    * molto meno comprensibile.
    */
   async firmaHashRemoto(tenantId: string, richiesta: RichiestaFirmaHash): Promise<string> {
-    const contesto = '/ca-rentri/credentials/sign-hash'
+    const contesto = '/ca-rentri/signatures/sign-hash'
     const corpo = {
       credentials_id: richiesta.credentialsId,
       sad: richiesta.sad,
@@ -1071,7 +1071,7 @@ export class RENTRIApiClient {
     const risposta = await this.eseguiRichiestaConResilienza(
       () =>
         this.post(
-          `${RENTRIApiClient.CA_RENTRI_PATH}/credentials/sign-hash`,
+          `${RENTRIApiClient.CA_RENTRI_PATH}/signatures/sign-hash`,
           corpo,
           contesto,
           tenantId
