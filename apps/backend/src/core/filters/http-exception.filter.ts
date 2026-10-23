@@ -8,6 +8,7 @@ import {
 import { LoggerService } from '../logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { FirAnnullatoNelFrattempoError } from '../domain/errors'
+import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
 
 /**
  * Global HTTP Exception Filter
@@ -97,6 +98,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode = HttpStatus.CONFLICT
       errorCode = FirAnnullatoNelFrattempoError.CODICE
       message = FirAnnullatoNelFrattempoError.MESSAGGIO_UTENTE
+    }
+    // Azienda senza certificato RENTRI: non e' un guasto del server ma serve un'azione
+    // dell'utente (caricare il certificato). 422 col messaggio gia' pensato per l'utente
+    // (senza id del tenant) e nessuna segnalazione a Bugsink (sotto 500).
+    else if (exception instanceof TenantSenzaCertificatoRentriError) {
+      statusCode = HttpStatus.UNPROCESSABLE_ENTITY
+      errorCode = 'RENTRI_CERTIFICATO_MANCANTE'
+      message = exception.message
     }
     // Handle unexpected errors — messaggio generico, nessun leak di dettagli interni.
     else if (exception instanceof Error) {

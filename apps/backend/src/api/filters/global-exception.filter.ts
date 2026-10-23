@@ -11,7 +11,6 @@ import {
   PrismaClientKnownRequestError,
   PrismaClientValidationError,
 } from '@prisma/client/runtime/library'
-import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
 import { ErrorAggregationService } from '../../infrastructure/monitoring/error-aggregation.service'
 
 /**
@@ -87,17 +86,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         message: this.extractMessage(exceptionResponse),
         error: exception.name,
         details: typeof exceptionResponse === 'object' ? exceptionResponse : undefined,
-      }
-    }
-
-    // Azienda senza certificato RENTRI: non è un guasto del server, serve
-    // un'azione dell'utente (caricare il certificato). Il messaggio è già
-    // pensato per l'utente e non contiene l'id del tenant.
-    if (exception instanceof TenantSenzaCertificatoRentriError) {
-      return {
-        statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-        message: exception.message,
-        error: 'RENTRI_CERTIFICATO_MANCANTE',
       }
     }
 
