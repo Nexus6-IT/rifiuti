@@ -263,7 +263,7 @@ export function ripulisciEventoSentry(
 export function opzioniSentry(env: NodeJS.ProcessEnv): Sentry.NodeOptions {
   return {
     dsn: env.SENTRY_DSN,
-    environment: env.NODE_ENV ?? 'development',
+    environment: env.SENTRY_ENVIRONMENT ?? env.NODE_ENV ?? 'development',
     release: env.APP_VERSION,
     sendDefaultPii: false,
     integrations: [

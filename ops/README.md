@@ -310,23 +310,31 @@ http://grafana.ignicraft.com/explore → selezionare datasource prometheus-infra
 
 ## Error tracking (Bugsink)
 
-Impostare la variabile `SENTRY_DSN` in `/opt/rifiuti/.env` con il DSN del
-progetto creato su Bugsink (`http://bugsink:8000`). Formato:
+**Attivo dal 23/10/2026.** Progetto Bugsink `wasteflow` (id 5), UI su
+`https://error.ignicraft.com`.
 
-```
-SENTRY_DSN=http://<32hex-senza-trattini>@bugsink:8000/<project_id>
-```
+- **Backend**: `SENTRY_DSN` in `/opt/rifiuti/.env`, passata al container da
+  `docker-compose.prod.yml` (con `SENTRY_ENVIRONMENT`, default `production`).
+  Usa il DSN interno, perche' il backend e' sulla rete `monitoring`:
 
-Ottenere il DSN: pannello Bugsink → Projects → [progetto wasteflow] →
-SDK Setup → DSN. Strippare i trattini dall'UUID.
+  ```
+  SENTRY_DSN=http://<32hex-senza-trattini>@bugsink:8000/5
+  ```
 
-La variabile arriva al container perché è elencata nel compose di produzione (prima
-non c'era, come le variabili SMTP). Dopo averla impostata va **ricreato** il backend:
-`restart` non rilegge l'ambiente, serve `up -d`.
+  Dopo una modifica al DSN il container va **ricreato** (`restart` non rilegge
+  l'env):
 
-```bash
-docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml up -d backend
-```
+  ```bash
+  docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml up -d backend
+  ```
+
+- **Frontend**: il DSN pubblico (`https://<chiave>@error.ignicraft.com/5`) sta
+  in `apps/frontend/src/environments/environment.prod.ts` ed entra nel bundle
+  alla build; la CSP di `apps/frontend/nginx.conf` ammette
+  `https://error.ignicraft.com` in `connect-src`.
+
+La chiave del DSN si legge dal progetto Bugsink (`sentry_key` con i trattini
+tolti).
 
 Il progetto su Bugsink si crea con `docker exec bugsink bugsink-manage shell`
 (`from projects.models import Project`); la chiave del DSN va scritta senza trattini.

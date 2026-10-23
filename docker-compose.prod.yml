@@ -140,6 +140,7 @@ services:
       # Firma HMAC della cache permessi: senza, il codice usa 'change-me-in-production'.
       PERMISSION_CACHE_HMAC_SECRET: ${PERMISSION_CACHE_HMAC_SECRET:?PERMISSION_CACHE_HMAC_SECRET richiesta}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
     depends_on:
       postgres:
         condition: service_healthy
