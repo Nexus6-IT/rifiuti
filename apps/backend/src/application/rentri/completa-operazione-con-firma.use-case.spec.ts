@@ -241,19 +241,17 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     expect(firRepository.save).not.toHaveBeenCalled()
   })
 
-  it('esito SCADUTA rilevata dall’ENTE (410): esce subito, senza attendere il nostro expires_in', async () => {
+  it('esito SCADUTA rilevata dall’ENTE (400): esce subito, senza attendere il limite di attesa locale', async () => {
     // È il caso che l'errore generico mascherava: l'ente considera morta
     // l'autorizzazione PRIMA che scada il nostro orologio locale. Deve
     // produrre un esito tipizzato, non un'eccezione indistinguibile da un
     // guasto di rete.
     const verifica = jest.fn().mockResolvedValue({ stato: 'SCADUTA' })
     const client = creaClient({
-      // `expires_in` lunghissimo: se il codice si affidasse solo al proprio
-      // orologio, resterebbe in attesa fino al tetto di invocazione e
-      // l'esito riporterebbe `orologio-locale`.
-      autorizzaFirmaRemota: jest
-        .fn()
-        .mockResolvedValue({ handle: 'handle-410', expiresIn: 3600 }),
+      // Se il codice si affidasse solo al proprio orologio, resterebbe in
+      // attesa fino al tetto di invocazione e l'esito riporterebbe
+      // `orologio-locale`.
+      autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'handle-410' }),
       verificaAutorizzazioneFirma: verifica,
     })
     const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
@@ -269,12 +267,10 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     expect(firRepository.save).not.toHaveBeenCalled()
   })
 
-  it('esito RIFIUTATA (400): l’utente ha rifiutato sul dispositivo → tipizzato e distinto da SCADUTA', async () => {
+  it('esito RIFIUTATA (403): l’ente non ha concesso l’autorizzazione → tipizzato e distinto da SCADUTA', async () => {
     const verifica = jest.fn().mockResolvedValue({ stato: 'RIFIUTATA' })
     const client = creaClient({
-      autorizzaFirmaRemota: jest
-        .fn()
-        .mockResolvedValue({ handle: 'handle-rifiuto', expiresIn: 3600 }),
+      autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'handle-rifiuto' }),
       verificaAutorizzazioneFirma: verifica,
     })
     const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
@@ -288,6 +284,37 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     expect(client.firmaHashRemoto).not.toHaveBeenCalled()
     expect(applyRentriStato).not.toHaveBeenCalled()
     expect(firRepository.save).not.toHaveBeenCalled()
+  })
+
+  it('dettaglioEnte di authorize-check arriva all’esito SCADUTA e RIFIUTATA', async () => {
+    const scaduta = creaAmbiente({
+      client: creaClient({
+        autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'h-s' }),
+        verificaAutorizzazioneFirma: jest
+          .fn()
+          .mockResolvedValue({ stato: 'SCADUTA', dettaglioEnte: 'Autorizzazione scaduta' }),
+      }),
+    })
+    await expect(scaduta.useCase.execute(comando)).resolves.toEqual({
+      esito: 'SCADUTA',
+      handle: 'h-s',
+      rilevataDa: 'ente',
+      dettaglioEnte: 'Autorizzazione scaduta',
+    })
+
+    const rifiutata = creaAmbiente({
+      client: creaClient({
+        autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'h-r' }),
+        verificaAutorizzazioneFirma: jest
+          .fn()
+          .mockResolvedValue({ stato: 'RIFIUTATA', dettaglioEnte: 'Operazione non consentita' }),
+      }),
+    })
+    await expect(rifiutata.useCase.execute(comando)).resolves.toEqual({
+      esito: 'RIFIUTATA',
+      handle: 'h-r',
+      dettaglioEnte: 'Operazione non consentita',
+    })
   })
 
   it('esito IN_ATTESA: utente non ancora confermato ma autorizzazione ancora valida → NON è un errore', async () => {

@@ -1497,6 +1497,51 @@ describe('RENTRIApiClient', () => {
       })
     })
 
+    it('authorize-check 400 con ProblemDetails → SCADUTA con dettaglioEnte (title, detail, model_state)', async () => {
+      mockHttpService.get.mockReturnValue(
+        of(
+          risposta(400, {
+            title: 'Autorizzazione scaduta',
+            detail: 'Il tempo per confermare è terminato',
+            model_state: { handle: ['non più valido'] },
+          })
+        )
+      )
+
+      const esito = await client.verificaAutorizzazioneFirma('tenant-1', 'h-1')
+
+      expect(esito.stato).toBe('SCADUTA')
+      const dettaglio = (esito as { dettaglioEnte?: string }).dettaglioEnte
+      expect(dettaglio).toContain('Autorizzazione scaduta')
+      expect(dettaglio).toContain('Il tempo per confermare è terminato')
+      expect(dettaglio).toContain('non più valido')
+    })
+
+    it('authorize-check 403 con ProblemDetails → RIFIUTATA con dettaglioEnte', async () => {
+      mockHttpService.get.mockReturnValue(
+        of(risposta(403, { title: 'Operazione non consentita', detail: 'Credenziali non attive' }))
+      )
+
+      const esito = await client.verificaAutorizzazioneFirma('tenant-1', 'h-1')
+
+      expect(esito.stato).toBe('RIFIUTATA')
+      const dettaglio = (esito as { dettaglioEnte?: string }).dettaglioEnte
+      expect(dettaglio).toContain('Operazione non consentita')
+      expect(dettaglio).toContain('Credenziali non attive')
+    })
+
+    it('authorize-check 400 e 403 senza corpo → nessun dettaglioEnte', async () => {
+      mockHttpService.get.mockReturnValueOnce(of(risposta(400)))
+      mockHttpService.get.mockReturnValueOnce(of(risposta(403)))
+
+      const scaduta = await client.verificaAutorizzazioneFirma('tenant-1', 'h-1')
+      const rifiutata = await client.verificaAutorizzazioneFirma('tenant-1', 'h-1')
+
+      expect(scaduta).toEqual({ stato: 'SCADUTA' })
+      expect(rifiutata).toEqual({ stato: 'RIFIUTATA' })
+      expect('dettaglioEnte' in scaduta).toBe(false)
+    })
+
     it('authorize-check 422 → errore notifica non inviata', async () => {
       mockHttpService.get.mockReturnValue(of(risposta(422)))
 

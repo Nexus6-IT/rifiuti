@@ -936,7 +936,6 @@ export class RENTRIApiClient {
       hashes: [richiesta.digestToSign],
       hash_algo: RENTRIApiClient.HASH_ALGO_SHA256,
       description: richiesta.description,
-      auth_data: richiesta.authData ?? null,
       client_data: richiesta.clientData ?? null,
     }
 
@@ -971,6 +970,26 @@ export class RENTRIApiClient {
   }
 
   /**
+   * Riassume un `ProblemDetails` dell'ente in una riga (`title`, `detail`,
+   * `model_state`), o `undefined` se il corpo non ne porta. Non restituisce
+   * mai il corpo grezzo.
+   */
+  private estraiDettaglioProblema(corpo: unknown): string | undefined {
+    if (!corpo || typeof corpo !== 'object') return undefined
+    const { title, detail, model_state: modelState } = corpo as Record<string, unknown>
+    const parti: string[] = []
+    if (typeof title === 'string' && title.trim() !== '') parti.push(title.trim())
+    if (typeof detail === 'string' && detail.trim() !== '') parti.push(detail.trim())
+    if (modelState && typeof modelState === 'object') {
+      for (const [campo, messaggi] of Object.entries(modelState as Record<string, unknown>)) {
+        const testo = Array.isArray(messaggi) ? messaggi.join('; ') : String(messaggi)
+        parti.push(`${campo}: ${testo}`)
+      }
+    }
+    return parti.length > 0 ? parti.join(' - ') : undefined
+  }
+
+  /**
    * **UNA SOLA** interrogazione dello stato dell'autorizzazione
    * (`GET /ca-rentri/v1.0/credentials/authorize-check/{handle}`).
    *
@@ -994,6 +1013,13 @@ export class RENTRIApiClient {
    * - **422** → errore esplicito: la notifica al dispositivo non è stata
    *   inviata, quindi l'utente non ha nulla da confermare e attendere non ha senso.
    * Il **410 non esiste** nel contratto: cade nella gestione generica.
+   *
+   * Su 400 e 403 il contratto (ca-rentri.yaml:953-962) accorpa più cause
+   * (400: richiesta non valida, credenziali non attive o autorizzazione
+   * scaduta; 403: operazione non consentita o autorizzazione non concessa):
+   * il `ProblemDetails` dell'ente, se presente, viene riassunto in
+   * `dettaglioEnte` (title/detail/model_state) perché il chiamante possa
+   * mostrare la causa vera; senza corpo il campo è assente.
    *
    * 400 e 403 sono intercettati QUI, prima di {@link gestisciRispostaNonPrevista},
    * che per uno status non ritentabile solleva un `Error` generico
@@ -1045,11 +1071,17 @@ export class RENTRIApiClient {
       }
       // V. commento del metodo: esiti normali del ciclo, non guasti — mappati
       // PRIMA della gestione generica, che li ridurrebbe a un Error anonimo.
-      if (response.status === 400) {
-        return { stato: 'SCADUTA' }
-      }
-      if (response.status === 403) {
-        return { stato: 'RIFIUTATA' }
+      if (response.status === 400 || response.status === 403) {
+        const stato = response.status === 400 ? 'SCADUTA' : 'RIFIUTATA'
+        const dettaglioEnte = this.estraiDettaglioProblema(response.data)
+        if (dettaglioEnte) {
+          // Mai il corpo grezzo: solo title/detail/model_state del ProblemDetails.
+          this.logger.warn(`${contesto}: l'ente risponde ${response.status} (${stato})`, {
+            dettaglioEnte,
+          })
+          return { stato, dettaglioEnte }
+        }
+        return { stato }
       }
       if (response.status === 422) {
         throw new Error('La notifica al dispositivo per la firma non è stata inviata')
@@ -1759,8 +1791,6 @@ export interface RichiestaAutorizzazioneFirma {
    * operazione), mai un identificativo tecnico.
    */
   description: string
-  /** Dati di autenticazione aggiuntivi previsti dal corpo `authorize`, se il ciclo del tenant ne richiede. */
-  authData?: string | null
   /** Dati applicativi opzionali del chiamante previsti dal corpo `authorize`. */
   clientData?: string | null
 }
@@ -1784,8 +1814,8 @@ export interface AutorizzazioneFirmaRemota {
 export type EsitoVerificaAutorizzazione =
   | { stato: 'IN_ATTESA' }
   | { stato: 'AUTORIZZATA'; sad: string; expiresIn?: number }
-  | { stato: 'SCADUTA' }
-  | { stato: 'RIFIUTATA' }
+  | { stato: 'SCADUTA'; dettaglioEnte?: string }
+  | { stato: 'RIFIUTATA'; dettaglioEnte?: string }
 
 /** Parametri di {@link RENTRIApiClient.firmaHashRemoto}. */
 export interface RichiestaFirmaHash {

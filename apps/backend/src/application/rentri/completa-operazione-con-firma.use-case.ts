@@ -51,8 +51,8 @@ export const ATTESA_CONFERMA_FIRMA_PREDEFINITA_S = 120
 /** Esito interno dell'attesa; il sad esiste solo se AUTORIZZATA. */
 type EsitoAttesa =
   | { esito: 'AUTORIZZATA'; sad: string }
-  | { esito: 'SCADUTA'; rilevataDa: 'ente' | 'orologio-locale' }
-  | { esito: 'RIFIUTATA' }
+  | { esito: 'SCADUTA'; rilevataDa: 'ente' | 'orologio-locale'; dettaglioEnte?: string }
+  | { esito: 'RIFIUTATA'; dettaglioEnte?: string }
   | { esito: 'IN_ATTESA'; scadenza: Date }
 
 /**
@@ -95,17 +95,21 @@ export type EsitoCompletamentoFirma =
        *   che potrebbe non coincidere con quello dell'ente.
        */
       rilevataDa: 'ente' | 'orologio-locale'
+      /** Causa comunicata dall'ente nel ProblemDetails (title/detail/model_state), se presente. */
+      dettaglioEnte?: string
     }
   | {
       /**
-       * L'utente ha **rifiutato** la firma sul proprio dispositivo
-       * (`authorize-check` → 403). Diverso da `SCADUTA`: non è il tempo a
-       * essere finito, è una decisione esplicita — riproporre la stessa
-       * operazione senza dirlo all'utente significherebbe insistere su un
-       * rifiuto. Nessuno stato è stato scritto.
+       * L'ente non ha concesso l'autorizzazione (`authorize-check` → 403):
+       * rifiuto dell'utente o operazione non consentita, vedi `dettaglioEnte`.
+       * Diverso da `SCADUTA`: non è il tempo a essere finito — riproporre la
+       * stessa operazione senza dirlo all'utente significherebbe insistere su
+       * un rifiuto. Nessuno stato è stato scritto.
        */
       esito: 'RIFIUTATA'
       handle: string
+      /** Causa comunicata dall'ente nel ProblemDetails (title/detail/model_state), se presente. */
+      dettaglioEnte?: string
     }
 
 /** Parametri di {@link CompletaOperazioneConFirmaUseCase.execute}. */
@@ -312,9 +316,22 @@ export class CompletaOperazioneConFirmaUseCase {
       const handle = autorizzazione.handle
       switch (statoAutorizzazione.esito) {
         case 'SCADUTA':
-          return { esito: 'SCADUTA', handle, rilevataDa: statoAutorizzazione.rilevataDa }
+          return {
+            esito: 'SCADUTA',
+            handle,
+            rilevataDa: statoAutorizzazione.rilevataDa,
+            ...(statoAutorizzazione.dettaglioEnte && {
+              dettaglioEnte: statoAutorizzazione.dettaglioEnte,
+            }),
+          }
         case 'RIFIUTATA':
-          return { esito: 'RIFIUTATA', handle }
+          return {
+            esito: 'RIFIUTATA',
+            handle,
+            ...(statoAutorizzazione.dettaglioEnte && {
+              dettaglioEnte: statoAutorizzazione.dettaglioEnte,
+            }),
+          }
         default:
           return {
             esito: 'IN_ATTESA',
@@ -435,10 +452,10 @@ export class CompletaOperazioneConFirmaUseCase {
       // L'ente ha parlato: la sua parola vince sul nostro orologio, e si esce
       // subito invece di continuare a interrogare un'autorizzazione morta.
       if (stato.stato === 'SCADUTA') {
-        return { esito: 'SCADUTA', rilevataDa: 'ente' }
+        return { esito: 'SCADUTA', rilevataDa: 'ente', dettaglioEnte: stato.dettaglioEnte }
       }
       if (stato.stato === 'RIFIUTATA') {
-        return { esito: 'RIFIUTATA' }
+        return { esito: 'RIFIUTATA', dettaglioEnte: stato.dettaglioEnte }
       }
 
       const adesso = Date.now()
