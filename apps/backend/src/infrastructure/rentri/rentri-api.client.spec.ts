@@ -1,4 +1,9 @@
-import { RENTRIApiClient, RentriApiError } from './rentri-api.client'
+import {
+  RENTRIApiClient,
+  RentriApiError,
+  TrasmissioneRentriIncertaError,
+  TransazioneRentriNonTrovataError,
+} from './rentri-api.client'
 import { of, throwError } from 'rxjs'
 import { AxiosResponse } from 'axios'
 
@@ -830,6 +835,92 @@ describe('RENTRIApiClient', () => {
   })
 
   /**
+   * La POST di creazione non è idempotente: su 5xx o timeout RENTRI può aver
+   * già registrato il FIR, quindi ritentare alla cieca produrrebbe un doppione.
+   * 429/423 invece dicono che la richiesta NON è stata elaborata: ritentare
+   * resta sicuro.
+   */
+  describe('creaFormulario: nessun ritentativo cieco', () => {
+    beforeEach(() => {
+      jest.useFakeTimers()
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('5xx sulla POST: una sola chiamata e TrasmissioneRentriIncertaError HTTP_5XX', async () => {
+      mockHttpService.post.mockReturnValue(throwError(() => ({ response: { status: 502 } })))
+
+      const errore = await client.creaFormulario('tenant-1', { dati: 'x' }).catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).causa).toBe('HTTP_5XX')
+      expect((errore as TrasmissioneRentriIncertaError).status).toBe(502)
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('timeout senza risposta: TrasmissioneRentriIncertaError NESSUNA_RISPOSTA', async () => {
+      mockHttpService.post.mockReturnValue(throwError(() => ({ code: 'ECONNABORTED' })))
+
+      const errore = await client.creaFormulario('tenant-1', { dati: 'x' }).catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).causa).toBe('NESSUNA_RISPOSTA')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('202 senza transazione_id: TrasmissioneRentriIncertaError RISPOSTA_SENZA_TRANSAZIONE', async () => {
+      mockHttpService.post.mockReturnValue(
+        of({ data: {}, status: 202, statusText: 'Accepted', headers: {}, config: {} as any })
+      )
+
+      const errore = await client.creaFormulario('tenant-1', { dati: 'x' }).catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect((errore as TrasmissioneRentriIncertaError).causa).toBe('RISPOSTA_SENZA_TRANSAZIONE')
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('429 sulla POST si ritenta ancora', async () => {
+      mockHttpService.post
+        .mockReturnValueOnce(
+          throwError(() =>
+            erroreProblemDetails(429, { title: 'Troppe richieste' }, { 'retry-after': '0' })
+          )
+        )
+        .mockReturnValueOnce(
+          of({
+            data: { transazione_id: 't-1' },
+            status: 202,
+            statusText: 'Accepted',
+            headers: { location: '/formulari/v1.0/t-1/status' },
+            config: {} as any,
+          })
+        )
+
+      const promessa = client.creaFormulario('tenant-1', { dati: 'x' })
+      await jest.runAllTimersAsync()
+      const risultato = await promessa
+
+      expect(mockHttpService.post).toHaveBeenCalledTimes(2)
+      expect(risultato.transazioneId).toBe('t-1')
+    })
+
+    it('403 sulla POST resta RentriApiError non ritentabile', async () => {
+      mockHttpService.post.mockReturnValue(
+        throwError(() => erroreProblemDetails(403, { title: 'Operazione non consentita' }))
+      )
+
+      const errore = await client.creaFormulario('tenant-1', { dati: 'x' }).catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(RentriApiError)
+      expect((errore as RentriApiError).retryable).toBe(false)
+      expect(mockHttpService.post).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  /**
    * Ciclo NONBLOCK_PULL (formulari.yaml righe 2801-2897): `GET /status`
    * risponde 200 senza corpo finché l'elaborazione è in corso e 303 con
    * header `Location` quando l'esito è pronto; `GET /result` risponde 400
@@ -872,6 +963,18 @@ describe('RENTRIApiClient', () => {
         config: {} as any,
       }
     }
+
+    it('404 su /status: TransazioneRentriNonTrovataError con il transazioneId', async () => {
+      mockHttpService.get.mockReturnValueOnce(of(statusResponse(404)))
+
+      const errore = await client
+        .attendiEsito('tenant-1', 'tx-sconosciuta', { intervalloMs: 0, maxTentativi: 3 })
+        .catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TransazioneRentriNonTrovataError)
+      expect((errore as TransazioneRentriNonTrovataError).transazioneId).toBe('tx-sconosciuta')
+      expect(mockHttpService.get).toHaveBeenCalledTimes(1)
+    })
 
     it('200 su /status significa "ancora in elaborazione": riprova senza seguire redirect automaticamente', async () => {
       mockHttpService.get

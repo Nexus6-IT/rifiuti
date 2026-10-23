@@ -141,8 +141,10 @@ export class RENTRIApiClient {
    * l'identificativo e l'URL di stato così come li legge dalla risposta,
    * senza attendere l'esito dell'elaborazione.
    *
-   * Errori 403/429/423/5xx sono gestiti da {@link eseguiRichiestaConResilienza}
-   * (v. commento lì per il dettaglio della politica di retry).
+   * Errori 403/429/423 sono gestiti da {@link eseguiRichiestaConResilienza}
+   * (v. commento lì per il dettaglio della politica di retry). La POST non è
+   * idempotente: su 5xx, timeout o risposta senza `transazione_id` NON si
+   * ritenta e si solleva {@link TrasmissioneRentriIncertaError}.
    */
   async creaFormulario(
     tenantId: string,
@@ -151,10 +153,14 @@ export class RENTRIApiClient {
     const response = await this.eseguiRichiestaConResilienza(
       () => this.post(`${RENTRIApiClient.FORMULARI_PATH}/`, dati, '/formulari (crea)', tenantId),
       '/formulari (crea)',
-      tenantId
+      tenantId,
+      { creazione: true }
     )
 
     const transazioneId = response.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new TrasmissioneRentriIncertaError('RISPOSTA_SENZA_TRANSAZIONE')
+    }
     const urlStato = (response.headers?.location ?? response.headers?.Location) as string
 
     return { transazioneId, urlStato }
@@ -1120,7 +1126,7 @@ export class RENTRIApiClient {
       const stato = await this.interrogaStatoTransazione(tenantId, transazioneId)
 
       if (stato.pronto) {
-        const esito = await this.leggiEsitoTransazione(tenantId, stato.urlEsito)
+        const esito = await this.leggiEsitoTransazione(tenantId, stato.urlEsito, transazioneId)
         // `null` = /result ha risposto 400 ("richiesta anticipata"): non è un
         // errore definitivo, si continua il polling come se fosse ancora in
         // elaborazione.
@@ -1176,6 +1182,10 @@ export class RENTRIApiClient {
         return { pronto: false }
       }
 
+      if (response.status === 404) {
+        throw new TransazioneRentriNonTrovataError(transazioneId)
+      }
+
       if (response.status === 303) {
         this.metrics.rentriTenantLocked.set({ tenant_id: tenantEffettivo }, 0)
         const urlEsito = (response.headers?.location ?? response.headers?.Location) as string
@@ -1204,7 +1214,8 @@ export class RENTRIApiClient {
    */
   private async leggiEsitoTransazione(
     tenantId: string,
-    urlEsito?: string
+    urlEsito?: string,
+    transazioneId?: string
   ): Promise<EsitoFormulario | null> {
     if (!urlEsito) {
       throw new Error('Risposta 303 da /status priva di header Location')
@@ -1225,6 +1236,10 @@ export class RENTRIApiClient {
           })
         )
       })
+
+      if (response.status === 404) {
+        throw new TransazioneRentriNonTrovataError(transazioneId ?? url)
+      }
 
       if (response.status === 400) {
         this.metrics.rentriTenantLocked.set({ tenant_id: tenantEffettivo }, 0)
@@ -1296,11 +1311,16 @@ export class RENTRIApiClient {
    * rieseguita per intero a ogni tentativo, quindi ogni ritentativo costruisce
    * una nuova autenticazione (nuovo JWT self-issued/`jti`, nuova firma di
    * integrità) invece di riusare quella del tentativo precedente.
+   *
+   * `opzioni.creazione`: per la POST non idempotente di creazione, 5xx e
+   * assenza di risposta non si ritentano ma sollevano
+   * {@link TrasmissioneRentriIncertaError}.
    */
   private async eseguiRichiestaConResilienza(
     azione: () => Promise<AxiosResponse>,
     contesto: string,
-    tenantId?: string
+    tenantId?: string,
+    opzioni?: { creazione?: boolean }
   ): Promise<AxiosResponse> {
     const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
     for (let tentativo = 1; tentativo <= RENTRIApiClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
@@ -1311,9 +1331,20 @@ export class RENTRIApiClient {
       } catch (error: any) {
         const risposta = error?.response
         if (!risposta || typeof risposta.status !== 'number') {
+          // Creazione: senza risposta non si sa se RENTRI abbia registrato il
+          // FIR, quindi niente ritentativo e errore tipizzato per il chiamante.
+          if (opzioni?.creazione) {
+            throw new TrasmissioneRentriIncertaError('NESSUNA_RISPOSTA')
+          }
           // Nessuna risposta HTTP riconoscibile (es. timeout, errore di rete):
           // comportamento preesistente, invariato.
           throw error
+        }
+
+        // Creazione: un 5xx non prova che il FIR non sia stato registrato.
+        // 403/429/423 restano com'erano (richiesta non elaborata: ritentare è sicuro).
+        if (opzioni?.creazione && risposta.status >= 500) {
+          throw new TrasmissioneRentriIncertaError('HTTP_5XX', risposta.status)
         }
 
         await this.gestisciRispostaNonPrevista(risposta, contesto, tentativo, tenantEffettivo)
@@ -1429,6 +1460,44 @@ export class RENTRIApiClient {
  * esistenti (`import { RentriApiError } from './rentri-api.client'`).
  */
 export { RentriApiError } from './rentri-http-resilienza'
+
+/**
+ * Esito della creazione di un formulario NON noto: la POST (non idempotente)
+ * può essere stata elaborata da RENTRI anche se il client non ne ha ricevuto
+ * conferma. Ritentare alla cieca creerebbe un doppione, quindi il chiamante
+ * deve prima verificare lo stato (es. con la transazione, o cercando il FIR).
+ *
+ * - `HTTP_5XX`: RENTRI ha risposto 5xx (`status`), ma può aver registrato il FIR.
+ * - `NESSUNA_RISPOSTA`: timeout o errore di rete, nessuna risposta HTTP.
+ * - `RISPOSTA_SENZA_TRANSAZIONE`: risposta 2xx priva di `transazione_id`.
+ */
+export class TrasmissioneRentriIncertaError extends Error {
+  constructor(
+    readonly causa: 'HTTP_5XX' | 'NESSUNA_RISPOSTA' | 'RISPOSTA_SENZA_TRANSAZIONE',
+    readonly status?: number
+  ) {
+    super(
+      causa === 'HTTP_5XX'
+        ? `RENTRI ha risposto ${status} alla creazione del formulario: esito della trasmissione incerto`
+        : causa === 'NESSUNA_RISPOSTA'
+          ? 'Nessuna risposta da RENTRI alla creazione del formulario: esito della trasmissione incerto'
+          : 'RENTRI ha risposto alla creazione del formulario senza transazione_id: esito della trasmissione incerto'
+    )
+    this.name = 'TrasmissioneRentriIncertaError'
+  }
+}
+
+/**
+ * RENTRI non conosce la transazione richiesta (404 su `/status` o `/result`,
+ * formulari.yaml righe 2847-2897): la creazione non è mai stata registrata
+ * oppure l'identificativo non è valido.
+ */
+export class TransazioneRentriNonTrovataError extends Error {
+  constructor(readonly transazioneId: string) {
+    super(`RENTRI non ha trovato la transazione ${transazioneId}`)
+    this.name = 'TransazioneRentriNonTrovataError'
+  }
+}
 
 /**
  * Corpo di `POST /{numero_fir}/accettazione` (`DatiAccettazioneModel`,
