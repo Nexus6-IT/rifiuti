@@ -321,7 +321,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, 'cred-oracolo-1', rateLimiter)
+    const useCase = creaUseCase(firRepository, client, 'FIR000001', rateLimiter)
 
     const completatore = avviaCompletatoreTransazioni({ digestToSign: DIGEST, token: TOKEN })
 
@@ -381,10 +381,10 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
     // `/credentials/info`, firma ottenuta da `sign-hash`) e non su materiale
     // costruito ad arte dentro il proprio test.
     const client = creaClient()
-    const certificato = await client.leggiCertificatoFirmaRemota('', 'cred-verifica')
+    const certificato = await client.leggiCertificatoFirmaRemota('', 'VERIFICA1')
 
     const autorizzazione = await client.autorizzaFirmaRemota('', {
-      credentialsId: 'cred-verifica',
+      credentialsId: 'VERIFICA1',
       digestToSign: DIGEST,
       description: 'Verifica locale della firma',
     })
@@ -394,7 +394,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
     })
 
     const firma = await client.firmaHashRemoto('', {
-      credentialsId: 'cred-verifica',
+      credentialsId: 'VERIFICA1',
       sad: autorizzazione.sad,
       digestToSign: DIGEST,
     })
@@ -423,7 +423,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
       // alla fake.
       headers: await intestazioniAutenticate(),
       payload: {
-        credentials_id: 'cred-scadenza',
+        credentials_id: 'SCADENZA1',
         num_signatures: 1,
         hashes: [DIGEST],
         hash_algo: '2.16.840.1.101.3.4.2.1',
@@ -444,7 +444,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
   it('authorize-check su sessione rifiutata dall’utente: 400 mappato a RIFIUTATA, distinto da SCADUTA', async () => {
     const client = creaClient()
     const autorizzazione = await client.autorizzaFirmaRemota('', {
-      credentialsId: 'cred-rifiuto',
+      credentialsId: 'RIFIUTO01',
       digestToSign: DIGEST,
       description: 'Prova di rifiuto',
     })
@@ -469,7 +469,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, 'cred-oracolo-2', rateLimiter)
+    const useCase = creaUseCase(firRepository, client, 'FIR000002', rateLimiter)
     const saveSpy = jest.spyOn(firRepository, 'save')
 
     const completatore = avviaCompletatoreTransazioni({ digestToSign: DIGEST, token: TOKEN })
@@ -526,7 +526,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, 'cred-oracolo-3', rateLimiter)
+    const useCase = creaUseCase(firRepository, client, 'FIR000003', rateLimiter)
     const saveSpy = jest.spyOn(firRepository, 'save')
 
     const completatore = avviaCompletatoreTransazioni({ digestToSign: DIGEST, token: TOKEN })
@@ -571,7 +571,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, 'cred-oracolo-4', rateLimiter)
+    const useCase = creaUseCase(firRepository, client, 'FIR000004', rateLimiter)
     const saveSpy = jest.spyOn(firRepository, 'save')
 
     const completatore = avviaCompletatoreTransazioni({

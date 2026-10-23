@@ -1330,7 +1330,7 @@ describe('RENTRIApiClient', () => {
       headers: {},
       config: {} as any,
     })
-    const richiesta = { credentialsId: 'cred-1', sad: 'sad-1', digestToSign: 'digest-1' }
+    const richiesta = { credentialsId: 'CRED00001', sad: 'sad-1', digestToSign: 'digest-1' }
 
     it('firmaHashRemoto chiama POST /ca-rentri/v1.0/signatures/sign-hash', async () => {
       mockHttpService.post.mockReturnValue(of(rispostaFirma()))
@@ -1348,7 +1348,7 @@ describe('RENTRIApiClient', () => {
       await client.firmaHashRemoto('tenant-1', richiesta)
 
       expect(mockHttpService.post.mock.calls[0][1]).toEqual({
-        credentials_id: 'cred-1',
+        credentials_id: 'CRED00001',
         sad: 'sad-1',
         hashes: ['digest-1'],
         sign_algo: '1.2.840.10045.4.3.2',

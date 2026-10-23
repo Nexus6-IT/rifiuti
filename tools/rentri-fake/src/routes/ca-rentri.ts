@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { verificaJwt } from '../auth/jwt-verifier'
 import { Archivio, EXPIRES_IN_DEFAULT_SECONDI } from '../stato/archivio'
 import { inviaProblemDetails } from '../errori/problem-details'
+import { validaCredentialsAuthorize, validaSignHash } from '../dominio/ca-rentri'
 
 const AUDIENCE = process.env.RENTRI_AUDIENCE ?? 'rentrigov.demo.api'
 const PREFISSO = '/ca-rentri/v1.0'
@@ -23,11 +24,11 @@ const PREFISSO = '/ca-rentri/v1.0'
  *     fake espone un campo `certificato` che nel contratto non esiste (il
  *     contratto ha `cert.certificates[]`), e il `credentials_id` in query e'
  *     da riverificare;
- *   - `POST /credentials/authorize` (:825, `CredentialsAuthorizeRequest` a
- *     :2617, `CredentialsAuthorizeResponse` a :2665) e `authorize-check`
- *     (:906): pattern della `description`, semantica di `sad`/`expires_in` e
- *     codici 400/403 non verificati riga per riga;
- *   - `SignatureRequest` di sign-hash e' validata solo in parte.
+ *   - `POST /credentials/authorize` (:825) e `authorize-check` (:906): il
+ *     CORPO della richiesta e' ora validato su `CredentialsAuthorizeRequest`
+ *     (:2617) e quello di sign-hash su `SignatureRequest` (:3517), con 422
+ *     dove il contratto lo prevede; restano da allineare la semantica di
+ *     `sad`/`expires_in` e i codici di `authorize-check`;
  *
  * Questa fake dimostra che il nostro client percorre il CICLO; dove sopra e'
  * indicato "NON ancora allineato" non dimostra la coincidenza con l'ente.
@@ -117,34 +118,24 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
     async (richiesta, risposta) => {
       if (!(await autentica(richiesta, risposta, archivio))) return
 
-      const corpo = richiesta.body ?? {}
-      const credentialsId = corpo.credentials_id
-      const hashes = corpo.hashes
-
-      if (!credentialsId || credentialsId.trim() === '') {
+      // `__expires_in_test` e' un'estensione della sola fake: si toglie prima
+      // di validare, perche' il contratto ha `additionalProperties: false`.
+      const { __expires_in_test: scadenzaDiTest, ...corpoUfficiale } = (richiesta.body ??
+        {}) as CorpoAuthorize
+      const motivo = validaCredentialsAuthorize(corpoUfficiale)
+      if (motivo) {
         return inviaProblemDetails(risposta, 400, {
-          title: 'Parametro richiesto non specificato',
-          detail: "'credentials_id' e' obbligatorio.",
-        })
-      }
-      if (!Array.isArray(hashes) || hashes.length === 0) {
-        return inviaProblemDetails(risposta, 400, {
-          title: 'Parametro richiesto non specificato',
-          detail: "'hashes' deve contenere almeno un digest.",
-        })
-      }
-      // "Massimo un hash per richiesta" e' l'unico vincolo quantitativo
-      // dichiarato esplicitamente dalla documentazione ufficiale: la fake lo
-      // applica, cosi' un client che un domani ne inviasse due se ne
-      // accorgerebbe qui invece che in produzione.
-      if (hashes.length > 1) {
-        return inviaProblemDetails(risposta, 400, {
-          title: 'Troppi hash nella richiesta',
-          detail: "E' ammesso al massimo un hash per richiesta di autorizzazione.",
+          title: 'Modello dati non valido',
+          detail: motivo,
         })
       }
 
-      const expiresIn = Number(corpo.__expires_in_test ?? EXPIRES_IN_DEFAULT_SECONDI)
+      // Il contratto ammette esattamente un hash (minItems = maxItems = 1) e
+      // un `credentials_id` di 9 caratteri: la validazione sopra li garantisce.
+      const credentialsId = corpoUfficiale.credentials_id as string
+      const hashes = corpoUfficiale.hashes as string[]
+
+      const expiresIn = Number(scadenzaDiTest ?? EXPIRES_IN_DEFAULT_SECONDI)
       const sessione = archivio.creaSessioneFirma(credentialsId, hashes, expiresIn)
 
       return {
@@ -201,34 +192,31 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
     async (richiesta, risposta) => {
       if (!(await autentica(richiesta, risposta, archivio))) return
 
-      const corpo = richiesta.body ?? {}
+      const motivo = validaSignHash(richiesta.body)
+      if (motivo) {
+        return inviaProblemDetails(risposta, 400, {
+          title: 'Modello dati non valido',
+          detail: motivo,
+        })
+      }
+
+      const corpo = richiesta.body as Required<CorpoSignHash>
       const hashes = corpo.hashes
 
-      if (!Array.isArray(hashes) || hashes.length !== 1) {
-        return inviaProblemDetails(risposta, 400, {
-          title: 'Numero di hash non ammesso',
-          detail: "'hashes' deve contenere esattamente un digest.",
-        })
-      }
-      if (!corpo.sad) {
-        return inviaProblemDetails(risposta, 400, {
-          title: 'Parametro richiesto non specificato',
-          detail: "'sad' e' obbligatorio.",
-        })
-      }
-
+      // Contratto (ca-rentri.yaml:2048-2049): 422 = «SAD senza autorizzazione,
+      // mancato invio della notifica o mancata corrispondenza degli hash».
       // Il `sad` lega l'autorizzazione a QUEGLI hash: una firma richiesta con
       // un sad valido ma su un digest diverso da quello autorizzato e'
       // precisamente cio' che il meccanismo esiste per impedire.
       const trovata = trovaSessionePerSad(archivio, corpo.sad)
       if (!trovata) {
-        return inviaProblemDetails(risposta, 403, {
+        return inviaProblemDetails(risposta, 422, {
           title: 'Autorizzazione non valida',
           detail: "Nessuna autorizzazione corrisponde al 'sad' indicato.",
         })
       }
       if (trovata.stato !== 'AUTORIZZATA') {
-        return inviaProblemDetails(risposta, 403, {
+        return inviaProblemDetails(risposta, 422, {
           title: 'Firma non autorizzata',
           detail:
             "L'utente non ha ancora confermato l'autorizzazione sul proprio dispositivo: la firma non puo' essere apposta.",
@@ -241,7 +229,7 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
         })
       }
       if (trovata.hashes[0] !== hashes[0]) {
-        return inviaProblemDetails(risposta, 403, {
+        return inviaProblemDetails(risposta, 422, {
           title: 'Hash non corrispondente',
           detail: "Il digest richiesto non e' quello per cui l'autorizzazione e' stata concessa.",
         })

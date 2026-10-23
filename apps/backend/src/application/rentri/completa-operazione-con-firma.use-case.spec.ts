@@ -1,6 +1,7 @@
 import { CompletaOperazioneConFirmaUseCase } from './completa-operazione-con-firma.use-case'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { DomainException } from '../../domain/shared/domain-exception'
+import { descrizioneAutorizzazioneFirma } from './descrizione-autorizzazione-firma'
 
 /**
  * R3 Task 3 — `CompletaOperazioneConFirmaUseCase`, rami fail-closed.
@@ -18,7 +19,7 @@ import { DomainException } from '../../domain/shared/domain-exception'
 describe('CompletaOperazioneConFirmaUseCase', () => {
   const TENANT_ID = 'tenant-firma-1'
   const NUMERO_FIR = 'BCDFGH00010ZH'
-  const CREDENTIALS_ID = 'cred-firma-remota-test'
+  const CREDENTIALS_ID = 'CRED00001' // 9 caratteri, come vuole il contratto
   const CERTIFICATO = Buffer.from('certificato-di-prova').toString('base64')
   const DIGEST = Buffer.from('digest-di-prova').toString('base64')
   const TOKEN = 'token-hash-123'
@@ -393,6 +394,7 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     const richiesta = client.autorizzaFirmaRemota.mock.calls[0][1]
     expect(richiesta.credentialsId).toBe(CREDENTIALS_ID)
     expect(richiesta.digestToSign).toBe(DIGEST)
+    expect(richiesta.description).toBe(descrizioneAutorizzazioneFirma(NUMERO_FIR, 'ANNULLAMENTO'))
     expect(richiesta.description).toContain(NUMERO_FIR)
     expect(richiesta.description).toContain('ANNULLAMENTO')
   })

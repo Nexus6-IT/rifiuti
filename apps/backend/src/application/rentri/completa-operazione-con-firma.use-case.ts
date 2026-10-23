@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { descrizioneAutorizzazioneFirma } from './descrizione-autorizzazione-firma'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
@@ -247,8 +248,10 @@ export class CompletaOperazioneConFirmaUseCase {
       credentialsId,
       digestToSign,
       // È l'unico testo che l'utente vede prima di confermare: deve dirgli
-      // COSA sta firmando, in italiano, non un identificativo tecnico.
-      description: `Firma del formulario ${numeroFir} — operazione ${tipoOperazione}`,
+      // COSA sta firmando, in italiano, non un identificativo tecnico. I
+      // caratteri che il contratto non ammette (es. `_` del numero FIR) sono
+      // già sostituiti dalla funzione.
+      description: descrizioneAutorizzazioneFirma(numeroFir, tipoOperazione),
     })
 
     this.logger.debug('Autorizzazione alla firma remota richiesta', {

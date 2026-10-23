@@ -225,7 +225,7 @@ describe('RentriCredentialController', () => {
         // transita mai da noi), quindi è legittimo esporlo — le due
         // asserzioni sotto continuano comunque a garantire che certificato e
         // chiave privata non escano mai da questo endpoint.
-        credentialsIdFirmaRemota: 'cred-firma-remota-1',
+        credentialsIdFirmaRemota: 'CRED00001',
       })
 
       const res = await controller.status(user)
@@ -236,7 +236,7 @@ describe('RentriCredentialController', () => {
         environment: 'produzione',
         numIscrSito: 'OP1234ABC123456-RM1234',
         numIscrOperatore: 'MI00001234',
-        credentialsIdFirmaRemota: 'cred-firma-remota-1',
+        credentialsIdFirmaRemota: 'CRED00001',
       })
       const serialized = JSON.stringify(res)
       expect(serialized).not.toContain('SECRET-CERT')
