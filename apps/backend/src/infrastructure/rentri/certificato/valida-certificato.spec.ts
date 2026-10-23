@@ -136,4 +136,22 @@ describe('validaCertificato', () => {
     expect(risultato.controlli.catena.esito).toBe('avvertimento')
     expect(risultato.controlli.revoca.esito).toBe('avvertimento')
   })
+
+  it("errore di ASN.1 nelle estensioni: la revoca degrada ad avvertimento, il caricamento non e' bloccato", () => {
+    const { certificatePem, privateKeyPem } = makeCert({})
+    const spia = jest.spyOn(forge.asn1, 'fromDer').mockImplementation(() => {
+      throw new Error('ASN.1 corrotto')
+    })
+    try {
+      const risultato = validaCertificato(certificatePem, privateKeyPem)
+
+      expect(risultato.controlli.revoca.esito).toBe('avvertimento')
+      expect(risultato.controlli.revoca.messaggio).toBe(
+        'estensioni del certificato non analizzabili: lo stato di revoca non è verificabile'
+      )
+      expect(risultato.valido).toBe(true)
+    } finally {
+      spia.mockRestore()
+    }
+  })
 })

@@ -195,9 +195,12 @@ function validaRevoca(certificatePem: string): ControlloCertificato {
         'il certificato non dichiara alcun endpoint di revoca (CRL/OCSP): anche in futuro non sarebbe possibile verificarne la revoca automaticamente',
     }
   } catch {
+    // Il controllo e' informativo per contratto (sempre avvertimento): un errore di
+    // ASN.1 sulle estensioni non deve bloccare il caricamento, gli altri controlli
+    // (scadenza, coerenza chiave) restano quelli che decidono la validita'.
     return {
-      esito: 'errore',
-      messaggio: 'certificato illeggibile: impossibile rilevare gli endpoint di revoca',
+      esito: 'avvertimento',
+      messaggio: 'estensioni del certificato non analizzabili: lo stato di revoca non è verificabile',
     }
   }
 }
