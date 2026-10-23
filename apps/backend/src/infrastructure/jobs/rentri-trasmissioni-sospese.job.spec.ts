@@ -6,7 +6,6 @@ describe('RentriTrasmissioniSospeseJob', () => {
   let firRepo: { elencaTrasmissioniRentriSospese: jest.Mock }
   let queue: { addSyncJob: jest.Mock }
   let modalita: { getForTenant: jest.Mock }
-  let resolver: { haCredenziale: jest.Mock }
   let job: RentriTrasmissioniSospeseJob
 
   beforeEach(() => {
@@ -18,31 +17,19 @@ describe('RentriTrasmissioniSospeseJob', () => {
         .fn()
         .mockResolvedValue({ modalitaLegame: 'AUTOMATICA', certificatoConfigurato: true }),
     }
-    resolver = { haCredenziale: jest.fn().mockResolvedValue(true) }
-    job = new RentriTrasmissioniSospeseJob(
-      firRepo as any,
-      queue as any,
-      logger,
-      modalita as any,
-      resolver as any
-    )
+    job = new RentriTrasmissioniSospeseJob(firRepo as any, queue as any, logger, modalita as any)
   })
 
-  it('trasmissioni sospese: FIR di azienda senza certificato non accodato', async () => {
+  it('trasmissioni sospese: FIR di azienda senza certificato accodato comunque (lo chiude lo use case)', async () => {
     firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
-      { firId: 'f1', tenantId: 't1' },
       { firId: 'f-senza', tenantId: 't-senza' },
     ])
-    resolver.haCredenziale.mockImplementation(async (id: string) => id !== 't-senza')
 
     await job.riprendi()
 
-    expect(queue.addSyncJob).toHaveBeenCalledTimes(1)
-    expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f1' }))
-    expect(logger.info).toHaveBeenCalledWith(
-      'azienda t-senza senza certificato RENTRI: saltata',
-      expect.anything()
-    )
+    // Il job non controlla il certificato: saltare il FIR lo lascerebbe SYNCING per sempre
+    // e, in testa all'elenco, affamerebbe le altre aziende. Lo chiude il use case.
+    expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-senza' }))
     expect(logger.error).not.toHaveBeenCalled()
   })
 

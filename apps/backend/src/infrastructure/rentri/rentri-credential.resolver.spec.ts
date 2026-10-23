@@ -196,13 +196,36 @@ describe('RentriCredentialResolver', () => {
     expect(metrics.rentriCredentialEnvFallback.inc).not.toHaveBeenCalled()
   })
 
-  it('haCredenziale: tenant legato ma senza PEM env → false; variabile vuota → false', async () => {
+  it("haCredenziale: tenant legato con PEM env vuoti → true (l'errore vero lo da' resolve)", async () => {
     const senzaPem = makeResolver({ ...envConfig, certificatePem: '', privateKeyPem: '' })
     credentialService.getForTenant.mockResolvedValue(null)
-    expect(await senzaPem.haCredenziale('tenant-pilota')).toBe(false)
+    expect(await senzaPem.haCredenziale('tenant-pilota')).toBe(true)
+    await expect(senzaPem.resolve('tenant-pilota')).rejects.not.toBeInstanceOf(
+      TenantSenzaCertificatoRentriError
+    )
+  })
 
-    const senzaLegame = makeResolver({ ...envConfig, envTenantId: '' })
-    credentialService.getForTenant.mockResolvedValue(null)
-    expect(await senzaLegame.haCredenziale('tenant-pilota')).toBe(false)
+  it.each([
+    ['credenziale propria', envConfig, 'tenant-A', true],
+    ['env legato con PEM', envConfig, 'tenant-pilota', true],
+    [
+      'env legato con PEM vuoti',
+      { ...envConfig, certificatePem: '', privateKeyPem: '' },
+      'tenant-pilota',
+      true,
+    ],
+    ['altro tenant', envConfig, 'tenant-altro', true],
+    ['envTenantId non impostato', { ...envConfig, envTenantId: '' }, 'tenant-pilota', true],
+  ])('haCredenziale coerente con resolve: %s', async (_nome, config, tenantId, _x) => {
+    const resolver = makeResolver(config)
+    credentialService.getForTenant.mockImplementation(async (t: string) =>
+      t === 'tenant-A' ? credTenant() : null
+    )
+    const ha = await resolver.haCredenziale(tenantId)
+    const senzaCertificato = await resolver.resolve(tenantId).then(
+      () => false,
+      e => e instanceof TenantSenzaCertificatoRentriError
+    )
+    expect(ha).toBe(!senzaCertificato)
   })
 })

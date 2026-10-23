@@ -92,7 +92,7 @@ export class RentriCredentialResolver {
       }
 
       // Tenant senza credenziale propria: l'env vale solo per l'azienda legata.
-      if (!this.config.envTenantId || tenantId !== this.config.envTenantId) {
+      if (!this.legatoAllEnv(tenantId)) {
         if (!this.warnSenzaCertFatto.has(tenantId)) {
           this.warnSenzaCertFatto.add(tenantId)
           this.logger.warn(
@@ -137,19 +137,21 @@ export class RentriCredentialResolver {
   /**
    * Il tenant ha una credenziale utilizzabile? Stessa regola di {@link resolve}
    * (credenziale propria; altrimenti env solo per il tenant legato da
-   * `RENTRI_ENV_TENANT_ID` e con i PEM env presenti), ma non solleva e non ha
+   * `RENTRI_ENV_TENANT_ID`, anche se i PEM env mancano: li' resolve da' un errore di configurazione), ma non solleva e non ha
    * effetti collaterali: niente warn, niente conteggio del fallback env (un
    * controllo dei job periodici non e' un uso). Se la lettura della credenziale
    * fallisce l'errore si propaga: non e' un "no" e va trattato come guasto vero.
    */
   async haCredenziale(tenantId: string): Promise<boolean> {
     if (await this.credentialService.getForTenant(tenantId)) return true
-    return Boolean(
-      this.config.envTenantId &&
-        tenantId === this.config.envTenantId &&
-        this.config.certificatePem &&
-        this.config.privateKeyPem
-    )
+    // Legato all'env ma con PEM mancanti: true, cosi' il cron procede e resolve
+    // solleva l'errore di configurazione vero (che si segnala), non un "senza certificato".
+    return this.legatoAllEnv(tenantId)
+  }
+
+  /** Unica regola "l'env vale per questo tenant": solo l'azienda legata da RENTRI_ENV_TENANT_ID. */
+  private legatoAllEnv(tenantId: string): boolean {
+    return Boolean(this.config.envTenantId) && tenantId === this.config.envTenantId
   }
 
   /** Algoritmo di firma = quello della chiave; la colonna `algorithm` e' solo informativa. */

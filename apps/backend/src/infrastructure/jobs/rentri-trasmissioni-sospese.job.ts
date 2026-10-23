@@ -5,7 +5,6 @@ import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { FIRPrismaRepository } from '../persistence/fir-prisma.repository'
 import { RENTRISyncQueue } from '../queue/rentri-sync.queue'
 import { RentriModalitaLegameService } from '../rentri/rentri-modalita-legame.service'
-import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
 import { SOGLIA_STALLO_RENTRI_MS } from '../../application/rentri/sync-fir-to-rentri.use-case'
 
 /**
@@ -33,8 +32,7 @@ export class RentriTrasmissioniSospeseJob {
     private readonly firRepo: FIRPrismaRepository,
     private readonly queue: RENTRISyncQueue,
     private readonly logger: LoggerService,
-    private readonly modalitaLegame: RentriModalitaLegameService,
-    private readonly credenziali: RentriCredentialResolver
+    private readonly modalitaLegame: RentriModalitaLegameService
   ) {
     this.logger.setContext(RentriTrasmissioniSospeseJob.name)
   }
@@ -50,21 +48,8 @@ export class RentriTrasmissioniSospeseJob {
       let accodate = 0
       let inErrore = 0
       const ibridaPerTenant = new Map<string, Promise<boolean>>()
-      // Esito del controllo certificato, una volta per tenant e per giro.
-      const certificatoPerTenant = new Map<string, boolean>()
       for (const { firId, tenantId } of sospese) {
         try {
-          if (!certificatoPerTenant.has(tenantId)) {
-            const ha = await this.credenziali.haCredenziale(tenantId)
-            certificatoPerTenant.set(tenantId, ha)
-            if (!ha) {
-              this.logger.info(`azienda ${tenantId} senza certificato RENTRI: saltata`, {
-                tenantId,
-              })
-            }
-          }
-          // Senza certificato il FIR non si accoda: lo chiude l'invio quando arriva comunque.
-          if (!certificatoPerTenant.get(tenantId)) continue
           if (!ibridaPerTenant.has(tenantId)) {
             ibridaPerTenant.set(
               tenantId,
