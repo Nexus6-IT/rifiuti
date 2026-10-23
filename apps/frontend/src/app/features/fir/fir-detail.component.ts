@@ -1041,6 +1041,7 @@ export class FirDetailComponent implements OnInit {
     return (
       fir.rentriSyncStatus === 'PERMANENTLY_FAILED' &&
       fir.rentriAzioneErrore === 'VERIFICA_SU_RENTRI' &&
+      !fir.rentriNumeroFir &&
       this.canManageRENTRI()
     )
   }

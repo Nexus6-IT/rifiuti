@@ -657,5 +657,12 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       // senza data per primo (NULLS FIRST)
       expect(ids.indexOf(senzaData.id)).toBeLessThan(ids.indexOf(scaduto.id))
     })
+
+    it('rentri_sync_avviato_at è TIMESTAMPTZ: la soglia di stallo non dipende dal fuso della sessione', async () => {
+      const [colonna] = await prisma.$queryRaw<{ data_type: string; datetime_precision: number }[]>`
+        SELECT data_type, datetime_precision FROM information_schema.columns
+        WHERE table_name = 'firs' AND column_name = 'rentri_sync_avviato_at'`
+      expect(colonna).toEqual({ data_type: 'timestamp with time zone', datetime_precision: 3 })
+    })
   })
 })

@@ -396,7 +396,7 @@ model FIR {
   rentriTransazioneInAttesa String?              @map("rentri_transazione_in_attesa") @db.VarChar(100)
   // Quando un processo ha prenotato la trasmissione (SYNCING): oltre la soglia di stallo
   // la prenotazione è riprendibile e il job di recupero la elenca.
-  rentriSyncAvviatoAt     DateTime?              @map("rentri_sync_avviato_at")
+  rentriSyncAvviatoAt     DateTime?              @map("rentri_sync_avviato_at") @db.Timestamptz(3)
   // Come è nato il legame con rentriNumeroFir: rilevante per cosa l'utente può
   // fare dopo (es. un legame acquisito da terzi non è ritrasmissibile) e in
   // caso di contestazione su chi ha originato/confermato l'aggancio.

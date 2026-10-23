@@ -367,6 +367,10 @@ describe('FirDetailComponent', () => {
       expect(
         component.mostraRitrasmettiDopoVerifica({ ...firIncerto, rentriAzioneErrore: 'NESSUNA' })
       ).toBeFalse()
+      // Un FIR già legato (es. collegato con «Cerca su RENTRI») non si ritrasmette.
+      expect(
+        component.mostraRitrasmettiDopoVerifica({ ...firIncerto, rentriNumeroFir: 'RENTRI-1' })
+      ).toBeFalse()
     })
 
     it('Ritrasmetti non compare a chi non gestisce RENTRI', () => {
