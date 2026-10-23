@@ -289,22 +289,19 @@ jobs:
             # Backup verificato prima delle migration (forward-only): se fallisce,
             # set -e ferma tutto e la produzione resta sulla versione precedente.
             BACKUP_MODALITA=predeploy WASTEFLOW_COMPOSE_FILE="$PWD/docker-compose.prod.yml" bash ops/backup-offsite.sh
-            # Il container postgres legge le password dei ruoli DB dal proprio
-            # ambiente, fissato alla creazione: se il compose o il .env sono
-            # cambiati (nuove variabili) va ricreato PRIMA di eseguire i ruoli,
-            # altrimenti vedrebbe ancora l'ambiente vecchio. Senza modifiche e' un
-            # no-op.
-            $COMPOSE up -d --no-deps --wait postgres
             # Migrazioni Prisma (forward-only) prima di avviare la nuova versione,
             # SEMPRE come owner (DATABASE_URL_MIGRAZIONI): l'URL dell'applicazione
             # puo' puntare a un ruolo senza diritti DDL. Le virgolette singole
-            # fanno espandere la variabile dentro il container, non qui.
+            # fanno espandere la variabile dentro il container, non qui. `run`
+            # avvia da solo postgres (depends_on con healthcheck) se non gira.
             $COMPOSE run --rm backend sh -c 'DATABASE_URL="$DATABASE_URL_MIGRAZIONI" npx prisma migrate deploy'
             # Ruoli DB (wasteflow_app / wasteflow_sistema), DOPO le migrazioni: lo
-            # script SQL esige _prisma_migrations. Le password restano nell'ambiente
-            # del container postgres e non compaiono qui; se mancano nel .env
-            # stampa "ruoli DB non configurati: salto" e prosegue.
-            PG_EXEC="$COMPOSE exec -T postgres" bash ops/db-ruoli.sh
+            # script SQL esige _prisma_migrations. db-ruoli.sh legge le password dal
+            # .env SENZA eseguirlo ne' stamparle e le passa a psql sullo stdin: non
+            # compaiono in alcun argv ne' nel log. Senza password nel .env stampa
+            # "ruoli DB non configurati: salto" e prosegue; con una sola (o uno user
+            # sbagliato) si ferma con errore PRIMA di `up -d`, a produzione intatta.
+            RUOLI_ENV_FILE=/opt/rifiuti/.env PG_EXEC="$COMPOSE exec -T postgres" bash ops/db-ruoli.sh
             $COMPOSE up -d
             # Smoke test: risponde il database (503 se e' giu', quindi -f fallisce)
             # e risponde il frontend. 30 tentativi a 3 secondi.

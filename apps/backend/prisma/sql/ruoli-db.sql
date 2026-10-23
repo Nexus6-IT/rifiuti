@@ -1,7 +1,9 @@
 -- Ruoli database di WasteFlow e relativi GRANT (RLS pezzo 1).
 --
 -- Eseguito dall'OWNER delle tabelle (oggi `wasteflow`), idempotente:
---   psql -v ON_ERROR_STOP=1 -v app_password=... -v sistema_password=... -f ruoli-db.sql
+--   ops/db-ruoli.sh (anteponendo a questo file due righe \set app_password '...'
+--   e \set sistema_password '...' sullo stdin di psql: cosi' le password non
+--   stanno in nessun argv)
 --
 -- Le password arrivano come variabili psql e vengono passate al blocco DO
 -- tramite set_config: psql NON interpola le variabili dentro i dollar-quoted
@@ -46,11 +48,17 @@ BEGIN
     IF v_pwd IS NULL OR v_pwd = '' THEN
       RAISE EXCEPTION 'password vuota per il ruolo %', v_ruolo;
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_ruolo) THEN
-      EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', v_ruolo, v_pwd);
-    ELSE
-      EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', v_ruolo, v_pwd);
-    END IF;
+    -- Il messaggio d'errore NON deve contenere lo statement (c'e' la password):
+    -- si riraise con un testo fisso, senza SQLERRM.
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_ruolo) THEN
+        EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', v_ruolo, v_pwd);
+      ELSE
+        EXECUTE format('ALTER ROLE %I LOGIN PASSWORD %L', v_ruolo, v_pwd);
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE EXCEPTION 'creazione/aggiornamento ruolo % fallita', v_ruolo;
+    END;
   END LOOP;
 
   -- Attributi (riallineati a ogni esecuzione).

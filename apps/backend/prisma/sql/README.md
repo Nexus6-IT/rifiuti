@@ -36,10 +36,23 @@ stesso file senza psql, sostituendo i due `:'...'` con letterali.
 
 ## Come si esegue (un solo punto d'ingresso: `ops/db-ruoli.sh`)
 
-Lo script `ops/db-ruoli.sh` esegue `ruoli-db.sql` con `psql` DENTRO il container
-postgres (sull'host non serve psql), come owner. Le password le legge dall'ambiente
-del container e non compaiono mai nella riga di comando ne' nei log; se mancano
-stampa `ruoli DB non configurati: salto` ed esce con 0. Lo usano deploy, restore e CI.
+Lo script `ops/db-ruoli.sh [NOME_DATABASE]` esegue `ruoli-db.sql` con `psql`
+DENTRO il container postgres (sull'host non serve psql), come owner. Lo usano
+deploy, restore e CI.
+
+- **Password fuori da ogni argv e dai log**: arrivano a psql come righe `set`
+  sullo stdin, costruite col `printf` builtin di bash, seguite dal file SQL. Non
+  stanno nella riga di comando (niente `/proc/<pid>/cmdline`, niente log del
+  runner). Caratteri ammessi: `A-Za-z0-9 _ . : , @ % + = / -` (meglio esadecimale).
+  psql gira con `VERBOSITY=terse`, `SHOW_CONTEXT=never` e `-o /dev/null`, e il blocco
+  SQL non riporta lo statement negli errori.
+- **Da dove le prende**: dall'ambiente; per quelle mancanti dal file indicato da
+  `RUOLI_ENV_FILE` (letto, non eseguito: deploy e restore passano
+  `/opt/rifiuti/.env`).
+- **Esito**: nessuna password -> `ruoli DB non configurati: salto`, exit 0.
+  Configurazione a meta' (una sola password, `DB_APP_USER` diverso da
+  `wasteflow_app`, `DB_SISTEMA_USER` diverso da `wasteflow_sistema`, user senza
+  password) -> errore, exit 1.
 
 - **Sviluppo** (password `wasteflow_app_dev` / `wasteflow_sistema_dev`), dopo
   `prisma migrate deploy`, con il container `wasteflow-postgres` acceso:
@@ -48,21 +61,23 @@ stampa `ruoli DB non configurati: salto` ed esce con 0. Lo usano deploy, restore
   cd apps/backend && npm run db:ruoli
   ```
 
-  Vale anche per un volume gia' esistente: e' idempotente, rilanciarlo non rompe
-  nulla. NON e' in `docker-entrypoint-initdb.d`: quella cartella gira prima delle
-  migration e lo script si fermerebbe.
-- **Produzione**: aggiungere a `/opt/rifiuti/.env` `DB_APP_PASSWORD`,
-  `DB_SISTEMA_PASSWORD` (casuali, esadecimali) e `DB_APP_USER=wasteflow_app`
-  (obbligatoria insieme alla password: senza, `docker compose` si ferma con un
-  errore prima di toccare qualcosa). Il deploy successivo crea i ruoli e passa
-  `DATABASE_URL` al ruolo non owner. Le migration girano sempre con
-  `DATABASE_URL_MIGRAZIONI` (owner).
-- **CI** (`test-postgres`): stesso script, dopo le migration, con
-  `PG_EXEC="docker exec -i -e PGPORT=55432 -e DB_APP_PASSWORD -e DB_SISTEMA_PASSWORD <container>"`.
-- **Altro container**: `PG_EXEC="docker exec -i -e DB_APP_PASSWORD -e DB_SISTEMA_PASSWORD <nome>" bash ops/db-ruoli.sh`
-  con le due variabili esportate.
+  Vale anche per un volume gia' esistente: e' idempotente. NON e' in
+  `docker-entrypoint-initdb.d`: quella cartella gira prima delle migration e lo
+  script si fermerebbe.
+- **Produzione**: in `/opt/rifiuti/.env` si impostano TUTTE E TRE `DB_APP_USER=wasteflow_app`,
+  `DB_APP_PASSWORD`, `DB_SISTEMA_PASSWORD` (password casuali), oppure nessuna.
+  Una configurazione a meta' fa fallire `docker compose` (gia' al `pull`, prima di
+  backup e migration) e lo script. Le migration girano sempre con
+  `DATABASE_URL_MIGRAZIONI` (owner). Rollback: togliere le tre variabili e rifare il
+  deploy; i ruoli possono restare.
+- **CI** (`test-postgres`): stesso script dopo le migration, con
+  `PG_EXEC="docker exec -i -e PGPORT=55432 <container>"` e le password nell'env del job.
+- **Altro container**: `DB_APP_PASSWORD=... DB_SISTEMA_PASSWORD=... PG_EXEC="docker exec -i <nome>" bash ops/db-ruoli.sh [database]`.
 
-Nota sul restore: `pg_dump` (in `ops/backup-offsite.sh`) non usa `--no-privileges`,
-quindi il dump contiene i GRANT ai due ruoli. Su un cluster nuovo, dove i ruoli non
-esistono ancora, il caricamento del dump fallirebbe (`ON_ERROR_STOP`): caso NON
-coperto da questo pezzo, da gestire a parte (creare i ruoli a mano prima del restore).
+## Restore su un cluster nuovo
+
+`pg_dump` (in `ops/backup-offsite.sh`) non usa `--no-privileges`, quindi il dump
+contiene i GRANT a `wasteflow_app` e `wasteflow_sistema`, ma i ruoli sono del
+cluster e non stanno nel dump. `ops/restore.sh` li crea `NOLOGIN`, senza password,
+se mancano, PRIMA di caricare il dump (no-op se esistono); LOGIN, password e diritti
+li da' poi `ops/db-ruoli.sh` dopo le migration. Nessun intervento a mano.

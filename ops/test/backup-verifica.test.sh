@@ -525,7 +525,46 @@ SQL
     _ "$TMP/dc-dr.log"
   verifica "restore DR: messaggio senza database precedente" 0 grep -q "Non c'era un database precedente" "$TMP/out-dr"
 
+  # Disaster recovery su un cluster NUOVO: il dump ha GRANT a ruoli che sul server
+  # di destinazione non esistono. Il restore deve crearli (NOLOGIN) prima di caricare
+  # il dump. RESTORE_RUOLI sostituisce i nomi di produzione con ruoli di prova, per
+  # non toccare wasteflow_app/wasteflow_sistema del cluster di test.
+  RUOLI_PROVA="prova_ruolo_a prova_ruolo_b"
+  for r in $RUOLI_PROVA; do
+    pg_exec psql -U "$DB_USER" -d postgres -qAtc "DROP ROLE IF EXISTS $r" >/dev/null 2>&1
+  done
+  pg_exec psql -U "$DB_USER" -d postgres -qAtc 'CREATE DATABASE prova_restore_grant' >/dev/null
+  for r in $RUOLI_PROVA; do
+    pg_exec psql -U "$DB_USER" -d postgres -qAtc "CREATE ROLE $r NOLOGIN" >/dev/null
+  done
+  pg_exec psql -U "$DB_USER" -d prova_restore_grant -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
+CREATE TABLE t_prova (id int);
+INSERT INTO t_prova VALUES (1);
+CREATE TABLE _prisma_migrations (id text);
+INSERT INTO _prisma_migrations VALUES ('m1');
+GRANT SELECT ON t_prova TO prova_ruolo_a;
+GRANT SELECT, INSERT ON t_prova TO prova_ruolo_b;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO prova_ruolo_a;
+SQL
+  pg_exec pg_dump -U "$DB_USER" prova_restore_grant | gzip > "$TMP/prova_restore_grant.sql.gz"
+  verifica "restore DR ruoli: il dump contiene i GRANT ai ruoli" 0     bash -c 'gzip -dc "$1" | grep -q "GRANT SELECT ON TABLE public.t_prova TO prova_ruolo_a"' _ "$TMP/prova_restore_grant.sql.gz"
+  pg_exec psql -U "$DB_USER" -d postgres -qAtc 'DROP DATABASE prova_restore_grant WITH (FORCE)' >/dev/null
+  for r in $RUOLI_PROVA; do
+    pg_exec psql -U "$DB_USER" -d postgres -qAtc "DROP ROLE $r" >/dev/null
+  done
+  verifica "restore DR ruoli: i ruoli di prova non esistono sul cluster" 0     test "$(sql_pg postgres "SELECT count(*) FROM pg_roles WHERE rolname IN ('prova_ruolo_a','prova_ruolo_b')")" = "0"
+  printf 'DB_NAME=prova_restore_grantdr
+DB_USER=%s
+' "$DB_USER" > "$TMP/env-restore-grant"
+  esegui_restore grant "$TMP/prova_restore_grant.sql.gz" RIPRISTINO_TAG=sha-prova     WASTEFLOW_ENV_FILE="$TMP/env-restore-grant" RESTORE_RUOLI="$RUOLI_PROVA"
+  verifica "restore DR ruoli: dump con GRANT a ruoli mancanti, esce 0" 0 test "$(cat "$TMP/esito-grant")" -eq 0
+  verifica "restore DR ruoli: i ruoli sono stati creati NOLOGIN" 0     test "$(sql_pg postgres "SELECT count(*) FROM pg_roles WHERE rolname IN ('prova_ruolo_a','prova_ruolo_b') AND NOT rolcanlogin")" = "2"
+  verifica "restore DR ruoli: i GRANT del dump sono applicati" 0     test "$(sql_pg prova_restore_grantdr "SELECT has_table_privilege('prova_ruolo_b','t_prova','INSERT')")" = "t"
+  verifica "restore DR ruoli: i dati ci sono" 0     test "$(sql_pg prova_restore_grantdr 'SELECT count(*) FROM t_prova')" = "1"
   elimina_prova_restore
+  for r in $RUOLI_PROVA; do
+    pg_exec psql -U "$DB_USER" -d postgres -qAtc "DROP ROLE IF EXISTS $r" >/dev/null 2>&1
+  done
   verifica "restore: nessun database prova_restore% residuo" 0 test -z "$(elenco_prova_restore)"
 fi
 
