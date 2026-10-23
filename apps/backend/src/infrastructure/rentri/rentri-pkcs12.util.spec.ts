@@ -151,6 +151,31 @@ describe('parsePkcs12', () => {
       expect(r.privateKeyPem).toContain('-----BEGIN RSA PRIVATE KEY-----')
     })
 
+    it('p12 RSA con la CA allegata prima della foglia: sceglie la foglia che combacia con la chiave', () => {
+      const chiaviCa = forge.pki.rsa.generateKeyPair(2048)
+      const ca = forge.pki.createCertificate()
+      ca.publicKey = chiaviCa.publicKey
+      ca.serialNumber = '02'
+      ca.validity.notBefore = new Date()
+      ca.validity.notAfter = new Date(Date.now() + 86400000)
+      ca.setSubject([{ name: 'commonName', value: 'ca-rsa-test' }])
+      ca.setIssuer([{ name: 'commonName', value: 'ca-rsa-test' }])
+      ca.sign(chiaviCa.privateKey, forge.md.sha256.create())
+
+      const fixture = makePkcs12(passphrase)
+      const foglia = forge.pki.certificateFromPem(fixture.certificatePem)
+      const chiave = forge.pki.privateKeyFromPem(fixture.privateKeyPem) as forge.pki.rsa.PrivateKey
+      // Ordine dei certificati: prima la CA, poi la foglia.
+      const der = forge.asn1
+        .toDer(forge.pkcs12.toPkcs12Asn1(chiave, [ca, foglia], passphrase, { algorithm: '3des' }))
+        .getBytes()
+
+      const r = parsePkcs12(Buffer.from(der, 'binary'), passphrase)
+
+      expect(r.tipoChiave).toBe('rsa')
+      expect(new crypto.X509Certificate(r.certificatePem).subject).toBe('CN=rentri-test')
+    })
+
     it('la chiave EC estratta firma e il certificato la verifica', () => {
       const r = parsePkcs12(leggi('operatore-test-ec.p12'), 'prova-ec')
       const dati = Buffer.from('dati da firmare')

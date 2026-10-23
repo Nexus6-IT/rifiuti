@@ -64,40 +64,36 @@ export function parsePkcs12(base64OrBuffer: string | Buffer, passphrase: string)
   const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })
   const certBagList = certBags[forge.pki.oids.certBag] || []
 
-  // 3a. Percorso RSA, invariato: node-forge converte chiave e certificato.
-  const privateKey = keyBagList.find(bag => bag.key)?.key
-  if (privateKey) {
-    const certificate = certBagList.find(bag => bag.cert)?.cert
-    if (!certificate) {
-      throw new Error('PKCS#12 privo di certificato')
-    }
-    const privateKeyPem = forge.pki.privateKeyToPem(privateKey)
-    return {
-      certificatePem: forge.pki.certificateToPem(certificate),
-      privateKeyPem,
-      tipoChiave: 'rsa',
-    }
-  }
-
-  // 3b. Percorso EC: node-forge apre il contenitore (MAC e decifratura) ma non sa
-  // convertire chiavi e certificati EC, quindi lascia nel bag solo l'ASN.1 (campo asn1 del bag).
-  // Lo si serializza in DER e lo si passa a Node crypto.
-  let ecKey: crypto.KeyObject | undefined
-  for (const bag of keyBagList) {
-    if (!bag.asn1) continue
-    try {
-      const der = Buffer.from(forge.asn1.toDer(bag.asn1).getBytes(), 'binary')
-      ecKey = crypto.createPrivateKey({ key: der, format: 'der', type: 'pkcs8' })
-      break
-    } catch {
-      // bag non convertibile: si prova il successivo (nessun dettaglio nel messaggio)
+  // 3a. Chiave privata. RSA: node-forge la converte (PEM PKCS#1, formato invariato).
+  // EC: node-forge apre il contenitore (MAC e decifratura) ma non sa convertire le
+  // chiavi EC, quindi lascia nel bag solo l'ASN.1 (campo asn1 del bag): lo si
+  // serializza in DER e lo si passa a Node crypto (PKCS#8).
+  let chiave: crypto.KeyObject | undefined
+  let privateKeyPem: string | undefined
+  const chiaveRsa = keyBagList.find(bag => bag.key)?.key
+  if (chiaveRsa) {
+    privateKeyPem = forge.pki.privateKeyToPem(chiaveRsa)
+    chiave = crypto.createPrivateKey(privateKeyPem)
+  } else {
+    for (const bag of keyBagList) {
+      if (!bag.asn1) continue
+      try {
+        const der = Buffer.from(forge.asn1.toDer(bag.asn1).getBytes(), 'binary')
+        chiave = crypto.createPrivateKey({ key: der, format: 'der', type: 'pkcs8' })
+        privateKeyPem = chiave.export({ type: 'pkcs8', format: 'pem' }).toString()
+        break
+      } catch {
+        // bag non convertibile: si prova il successivo (nessun dettaglio nel messaggio)
+      }
     }
   }
-  if (!ecKey) {
+  if (!chiave || !privateKeyPem) {
     throw new Error('PKCS#12 privo di chiave privata')
   }
 
-  if (ecKey.asymmetricKeyType !== 'ec') {
+  // Il tipo si ricava dalla chiave (Node crypto), non e' fissato dal percorso.
+  const tipo = chiave.asymmetricKeyType
+  if (tipo !== 'rsa' && tipo !== 'ec') {
     throw new Error('PKCS#12 con tipo di chiave non supportato')
   }
 
@@ -106,13 +102,16 @@ export function parsePkcs12(base64OrBuffer: string | Buffer, passphrase: string)
   let certificatePem: string | undefined
   for (const bag of certBagList) {
     try {
-      const x509 = bag.cert
-        ? new crypto.X509Certificate(forge.pki.certificateToPem(bag.cert))
+      // Se node-forge ha gia' decodificato il certificato (RSA) si restituisce il suo
+      // PEM, invariato; altrimenti (EC) si riparte dall'ASN.1 grezzo.
+      const pemForge = bag.cert ? forge.pki.certificateToPem(bag.cert) : undefined
+      const x509 = pemForge
+        ? new crypto.X509Certificate(pemForge)
         : bag.asn1
           ? new crypto.X509Certificate(Buffer.from(forge.asn1.toDer(bag.asn1).getBytes(), 'binary'))
           : undefined
-      if (x509?.checkPrivateKey(ecKey)) {
-        certificatePem = x509.toString()
+      if (x509?.checkPrivateKey(chiave)) {
+        certificatePem = pemForge ?? x509.toString()
         break
       }
     } catch {
@@ -125,8 +124,8 @@ export function parsePkcs12(base64OrBuffer: string | Buffer, passphrase: string)
 
   return {
     certificatePem,
-    privateKeyPem: ecKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
-    tipoChiave: 'ec',
-    curva: ecKey.asymmetricKeyDetails?.namedCurve,
+    privateKeyPem,
+    tipoChiave: tipo,
+    curva: tipo === 'ec' ? chiave.asymmetricKeyDetails?.namedCurve : undefined,
   }
 }

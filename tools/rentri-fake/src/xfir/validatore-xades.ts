@@ -59,7 +59,7 @@ export function estraiRiferimenti(nomeFile: string, xml: string): FirmaXades {
 
   const signatureValueNodi = seleziona('//ds:SignatureValue', documento as unknown as Node) as Node[]
   const certNodi = seleziona('//ds:X509Certificate', documento as unknown as Node) as Node[]
-  const metodoNodi = seleziona('//ds:SignatureMethod', documento as unknown as Node) as Element[]
+  const metodoNodi = seleziona('//ds:SignedInfo/ds:SignatureMethod', documento as unknown as Node) as Element[]
 
   return {
     nomeFile,
