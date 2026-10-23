@@ -11,6 +11,9 @@ import { algoritmoDaChiave } from './certificato/algoritmo-da-chiave'
 import { corpoFormularioValido } from '../../application/rentri/mappatura/aiuti-test'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
+// jose sta solo tra le dipendenze del finto: lo si usa da li' per la verifica crittografica.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { compactVerify, importX509 } = require('../../../../../tools/rentri-fake/node_modules/jose')
 
 /**
  * Pezzo 4, Task 3: prova end-to-end con certificato EC. Il .p12 EC P-256 di
@@ -124,5 +127,13 @@ describe('RENTRIApiClient con certificato EC (contro la fake RENTRI, in-process)
       JSON.parse(Buffer.from(jwt.split('.')[0], 'base64url').toString('utf8')).alg
     expect(alg(intestazioniInviate['Authorization'].replace('Bearer ', ''))).toBe('ES256')
     expect(alg(intestazioniInviate['Agid-JWT-Signature'])).toBe('ES256')
+
+    // Verifica crittografica dell'header Agid-JWT-Signature: la firma ES256 deve
+    // tornare con la chiave pubblica del certificato (non basta che l'alg dichiari ES256)
+    // ed essere in formato IEEE P1363 (r||s, 64 byte per P-256), non DER.
+    const jws = intestazioniInviate['Agid-JWT-Signature']
+    const verificato = await compactVerify(jws, await importX509(certificatePem, 'ES256'))
+    expect(verificato.protectedHeader.alg).toBe('ES256')
+    expect(Buffer.from(jws.split('.')[2], 'base64url')).toHaveLength(64)
   }, 30000)
 })
