@@ -27,7 +27,11 @@
     "rxjs": "~7.8.0"
   },
   "overrides": {
-    "rxjs": "$rxjs"
+    "rxjs": "$rxjs",
+    "multer": "^2.3.0",
+    "lodash": "^4.18.1",
+    "js-yaml": "^4.3.2",
+    "express": "^4.22.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",
@@ -43,5 +47,6 @@
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
-  }
+  },
+  "overridesNote": "multer/lodash/js-yaml/express: transitivi di @nestjs/platform-express 10 e @nestjs/swagger 7 (nessuna fix dentro la major Nest 10; le versioni indicate chiudono gli avvisi high rimanendo nella stessa major del pacchetto)."
 }
