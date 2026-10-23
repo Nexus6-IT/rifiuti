@@ -54,7 +54,9 @@ const PREFISSI_TECNICI_ESCLUSI = ['/__controllo', '/__salute', '/token']
 
 /**
  * Scostamenti gia' presenti in servizi diversi da ca-rentri: non si correggono
- * in questo piano. Ogni voce e' `METODO /path-con-{param}` e dice perche' resta.
+ * in questo piano. Ogni voce e' `METODO /path` e dice perche' resta. Le chiavi
+ * usano i nomi di parametro e lo slash ESATTI della fake (`{identificativo}`,
+ * senza slash finale), non la forma normalizzata usata per il confronto.
  * Il test fallisce se una voce non e' piu' uno scostamento, cosi' l'elenco non
  * invecchia.
  */
@@ -80,20 +82,28 @@ function chiaviContratto(prefisso: string): Set<string> {
   return chiavi
 }
 
+/** Raccoglie le rotte di una sola app, chiusa subito dopo `ready()`. */
+async function raccogliRotte(): Promise<void> {
+  ROTTE_REGISTRATE.length = 0
+  const app = creaApp()
+  await app.ready() // i plugin registrati con `prefix` aggiungono le rotte solo qui
+  await app.close()
+}
+
 /** Scostamenti correnti, come `METODO path` con i parametri scritti `{nome}`. */
 function calcolaScostamenti(): string[] {
-  creaApp()
-
   const contratti = new Map<string, Set<string>>()
   const scostamenti = new Set<string>()
 
   for (const { metodo, url } of ROTTE_REGISTRATE) {
-    if (metodo === 'HEAD') continue // aggiunti da Fastify per ogni GET
+    // Assunzione: ogni HEAD e' quello che Fastify aggiunge in automatico per i
+    // GET (exposeHeadRoutes) e i contratti non definiscono HEAD.
+    if (metodo === 'HEAD') continue
     if (PREFISSI_TECNICI_ESCLUSI.some(p => url === p || url.startsWith(`${p}/`))) continue
 
     const prefisso = Object.keys(CONTRATTO_PER_PREFISSO).find(p => url.startsWith(`${p}/`) || url === p)
-    // Ne' nella mappa ne' fra gli esclusi: va classificata esplicitamente.
     const etichetta = `${metodo} ${url.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '{$1}')}`
+    // Ne' nella mappa ne' fra gli esclusi: va classificata esplicitamente.
     if (!prefisso) {
       scostamenti.add(`${etichetta} (servizio non mappato)`)
       continue
@@ -107,14 +117,28 @@ function calcolaScostamenti(): string[] {
 }
 
 describe('rotte della fake allineate ai contratti RENTRI', () => {
+  let scostamenti: string[]
+
+  beforeAll(async () => {
+    await raccogliRotte()
+    scostamenti = calcolaScostamenti()
+  })
+
+  it('la raccolta delle rotte vede ogni servizio mappato', () => {
+    // Senza questo la guardia passerebbe a vuoto se l'hook non scattasse.
+    expect(ROTTE_REGISTRATE.some(r => r.url === '/__salute')).toBe(true)
+    for (const prefisso of Object.keys(CONTRATTO_PER_PREFISSO)) {
+      const viste = ROTTE_REGISTRATE.filter(r => r.url === prefisso || r.url.startsWith(`${prefisso}/`)).length
+      expect({ prefisso, viste: viste > 0 }).toEqual({ prefisso, viste: true })
+    }
+  })
+
   it('ogni rotta della fake esiste nel contratto del suo servizio', () => {
-    const inattesi = calcolaScostamenti().filter(voce => !(voce in SCOSTAMENTI_NOTI))
-    expect(inattesi).toEqual([])
+    expect(scostamenti.filter(voce => !(voce in SCOSTAMENTI_NOTI))).toEqual([])
   })
 
   it('nessuna voce di SCOSTAMENTI_NOTI è superata', () => {
-    const correnti = new Set(calcolaScostamenti())
-    const superate = Object.keys(SCOSTAMENTI_NOTI).filter(voce => !correnti.has(voce))
-    expect(superate).toEqual([])
+    const correnti = new Set(scostamenti)
+    expect(Object.keys(SCOSTAMENTI_NOTI).filter(voce => !correnti.has(voce))).toEqual([])
   })
 })
