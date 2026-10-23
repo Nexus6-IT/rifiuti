@@ -3,6 +3,7 @@ import { AxiosResponse } from 'axios'
 import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
 import { RentriApiError } from './rentri-http-resilienza'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { creaApp } = require('../../../../../tools/rentri-fake/src/app')
@@ -66,7 +67,11 @@ describe('RentriAnagraficheClient — verifica reale contro la fake RENTRI (in-p
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const metrics: any = { rentriApiErrors: { inc: jest.fn() } }
 
     // httpService reale sostituito da un adattatore su app.inject(): esegue

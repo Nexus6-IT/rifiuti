@@ -2,17 +2,8 @@ import { Injectable, Inject } from '@nestjs/common'
 import { randomUUID } from 'crypto'
 import { LoggerService } from '../../core/logger/logger.service'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
-import { RentriCredentialService } from './rentri-credential.service'
-import { algoritmoEffettivo } from './certificato/algoritmo-da-chiave'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { signJws } from './rentri-jws.util'
-
-/** Credenziale (certificato + chiave privata) usata per firmare il JWT self-issued. */
-interface CredenzialeOperatore {
-  clientId: string
-  certificatePem: string
-  privateKeyPem: string
-  algorithm: 'RS256' | 'ES256'
-}
 
 /**
  * Autenticazione RENTRI secondo **ID_AUTH_REST_02** (Modello di
@@ -33,7 +24,7 @@ interface CredenzialeOperatore {
 @Injectable()
 export class RentriAuthService {
   constructor(
-    private readonly credentialService: RentriCredentialService,
+    private readonly credentialResolver: RentriCredentialResolver,
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
     private readonly logger: LoggerService
   ) {
@@ -45,7 +36,7 @@ export class RentriAuthService {
    * firmando un nuovo JWT self-issued (ID_AUTH_REST_02) a ogni chiamata.
    */
   async creaAuthorizationHeader(tenantId: string): Promise<string> {
-    const credenziale = await this.risolviCredenziale(tenantId)
+    const credenziale = await this.credentialResolver.resolve(tenantId)
     const now = Math.floor(Date.now() / 1000)
 
     const token = signJws({
@@ -67,51 +58,5 @@ export class RentriAuthService {
     )
 
     return `Bearer ${token}`
-  }
-
-  /**
-   * Risolve la credenziale (certificato + chiave privata) da usare per la
-   * firma: quella del tenant se configurata, altrimenti il fallback da env
-   * (pilota single-operator / sviluppo). Lancia se nessuna delle due esiste
-   * (fail-closed: senza certificato non si può firmare nulla).
-   */
-  private async risolviCredenziale(tenantId: string): Promise<CredenzialeOperatore> {
-    if (tenantId) {
-      const cred = await this.credentialService.getForTenant(tenantId)
-      if (cred) {
-        return {
-          clientId: cred.clientId,
-          certificatePem: cred.certificatePem,
-          privateKeyPem: cred.privateKeyPem,
-          algorithm: this.algoritmo(cred.privateKeyPem, cred.algorithm),
-        }
-      }
-    }
-
-    if (this.config.certificatePem && this.config.privateKeyPem) {
-      return {
-        clientId: this.config.clientId,
-        certificatePem: this.config.certificatePem,
-        privateKeyPem: this.config.privateKeyPem,
-        algorithm: this.algoritmo(this.config.privateKeyPem, this.config.algorithm),
-      }
-    }
-
-    throw new Error(
-      tenantId
-        ? `RENTRI: nessuna credenziale per il tenant ${tenantId} e nessun fallback da env`
-        : 'RENTRI: nessun tenant indicato e nessuna credenziale di fallback da env'
-    )
-  }
-
-  /** Algoritmo di firma = quello della chiave; la colonna `algorithm` e' solo informativa. */
-  private algoritmo(privateKeyPem: string, dichiarato: 'RS256' | 'ES256'): 'RS256' | 'ES256' {
-    const { algoritmo, discordante } = algoritmoEffettivo(privateKeyPem, dichiarato)
-    if (discordante) {
-      this.logger.warn(
-        `Algoritmo RENTRI salvato (${dichiarato}) diverso da quello della chiave (${algoritmo}): si firma con ${algoritmo}`
-      )
-    }
-    return algoritmo
   }
 }

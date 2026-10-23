@@ -13,8 +13,9 @@ import { signJws } from './rentri-jws.util'
  * includono `signed_headers` con il digest, legando così la firma al contenuto
  * effettivamente trasmesso (anti-tampering).
  *
- * La firma usa il certificato del TENANT corrente (risolto dal resolver), così
- * ogni messaggio è firmato per conto dell'operatore giusto.
+ * La firma usa il certificato del TENANT indicato esplicitamente (stessa
+ * risoluzione del JWT `Authorization`), così ogni messaggio è firmato per conto
+ * dell'operatore giusto anche nei job senza TenantContext.
  */
 @Injectable()
 export class RentriSignatureService {
@@ -40,13 +41,18 @@ export class RentriSignatureService {
    * - `Digest`: digest RFC 3230 del body
    * - `Agid-JWT-Signature`: JWS che firma `signed_headers` (digest + content-type)
    *
-   * Async perché risolve la credenziale del tenant corrente.
+   * Async perché risolve la credenziale del tenant. `tenantId` è obbligatorio:
+   * vuoto → errore, senza ripiegare in silenzio sul contesto.
    */
   async buildIntegrityHeaders(
     rawBody: string,
+    tenantId: string,
     contentType = 'application/json'
   ): Promise<Record<string, string>> {
-    const cred = await this.credentialResolver.resolve()
+    if (!tenantId) {
+      throw new Error('Firma di integrità RENTRI senza tenant')
+    }
+    const cred = await this.credentialResolver.resolve(tenantId)
     const digest = this.computeDigest(rawBody)
     const now = Math.floor(Date.now() / 1000)
 
