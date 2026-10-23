@@ -166,9 +166,11 @@ export class RENTRISyncStatus {
 
   /**
    * Riapre un fallimento da verifica manuale (trasmissione incerta, esito
-   * senza numero_fir, esito non acquisito): torna PENDING conservando i
-   * tentativi già consumati. Per qualunque altro codice è un errore: gli altri
-   * fallimenti permanenti non si sbloccano a mano da qui.
+   * senza numero_fir, esito non acquisito): torna PENDING con i tentativi
+   * azzerati, perché la riapertura è una decisione dell'utente e il nuovo ciclo
+   * deve avere tutti i suoi tentativi (lo storico resta nei log di sync). Per
+   * qualunque altro codice è un errore: gli altri fallimenti permanenti non si
+   * sbloccano a mano da qui.
    */
   riapriDopoVerificaManuale(): RENTRISyncStatus {
     if (
@@ -180,7 +182,7 @@ export class RENTRISyncStatus {
         'Solo una trasmissione incerta, un esito senza numero FIR o un esito non acquisito può essere riaperto dopo verifica manuale'
       )
     }
-    return new RENTRISyncStatus('PENDING', this.attempts)
+    return RENTRISyncStatus.pending()
   }
 
   /**

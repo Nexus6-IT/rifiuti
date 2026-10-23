@@ -167,13 +167,15 @@ describe('RENTRISyncStatus', () => {
       expect(status.canRetry()).toBe(false)
     })
 
-    it('riapriDopoVerificaManuale torna PENDING e conserva i tentativi', () => {
-      const status = RENTRISyncStatus.failed(3, 'x', 'RENTRI_TRASMISSIONE_INCERTA')
+    it('riapriDopoVerificaManuale torna PENDING e azzera i tentativi', () => {
+      const status = RENTRISyncStatus.failed(5, 'x', 'RENTRI_TRASMISSIONE_INCERTA')
 
       const riaperto = status.riapriDopoVerificaManuale()
 
       expect(riaperto.getStatus()).toBe('PENDING')
-      expect(riaperto.getAttempts()).toBe(3)
+      // Una riapertura decisa dall'utente riparte con tutti i tentativi: lo
+      // storico resta nei log di sync.
+      expect(riaperto.getAttempts()).toBe(0)
       expect(riaperto.canRetry()).toBe(true)
     })
 
