@@ -1,6 +1,8 @@
 import { BadRequestException } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
+import * as fs from 'fs'
+import * as path from 'path'
 import * as forge from 'node-forge'
 import { RentriCredentialController } from './rentri-credential.controller'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
@@ -50,6 +52,10 @@ function makePemPair(giorniAllaScadenza = 365): { certificatePem: string; privat
     privateKeyPem: forge.pki.privateKeyToPem(keys.privateKey),
   }
 }
+
+const dirFixtureEc = path.resolve(__dirname, '../../../../../tools/rentri-fake/test/fixture/ec')
+const p12Base64 = (nome: string): string =>
+  fs.readFileSync(path.join(dirFixtureEc, nome)).toString('base64')
 
 describe('RentriCredentialController', () => {
   let controller: RentriCredentialController
@@ -185,6 +191,54 @@ describe('RentriCredentialController', () => {
       expect(input.privateKeyPem).toContain('-----BEGIN RSA PRIVATE KEY-----')
     })
 
+    it('caricamento p12 EC: algorithm salvato ES256', async () => {
+      const dto: SetRentriCredentialDto = {
+        clientId: 'client-ec',
+        pkcs12Base64: p12Base64('operatore-test-ec.p12'),
+        pkcs12Passphrase: 'prova-ec',
+      }
+
+      const res = await controller.set(dto, user)
+
+      expect(res.success).toBe(true)
+      expect(res.algorithm).toBe('ES256')
+      expect(service.upsertForTenant.mock.calls[0][1].algorithm).toBe('ES256')
+    })
+
+    it('caricamento con algorithm RS256 su chiave EC → 400', async () => {
+      const dto: SetRentriCredentialDto = {
+        clientId: 'client-ec',
+        pkcs12Base64: p12Base64('operatore-test-ec.p12'),
+        pkcs12Passphrase: 'prova-ec',
+        algorithm: 'RS256',
+      }
+
+      await expect(controller.set(dto, user)).rejects.toThrow(
+        "L'algoritmo indicato (RS256) non corrisponde alla chiave del certificato (ES256)"
+      )
+      expect(service.upsertForTenant).not.toHaveBeenCalled()
+    })
+
+    it('caricamento p12 P-384 → 400 con messaggio', async () => {
+      const dto: SetRentriCredentialDto = {
+        clientId: 'client-ec',
+        pkcs12Base64: p12Base64('operatore-test-ec384.p12'),
+        pkcs12Passphrase: 'prova-ec',
+      }
+
+      await expect(controller.set(dto, user)).rejects.toThrow(
+        'Tipo di chiave non supportato da RENTRI: EC secp384r1'
+      )
+      expect(service.upsertForTenant).not.toHaveBeenCalled()
+    })
+
+    it('PEM RSA senza algorithm: salvato RS256', async () => {
+      const res = await controller.set({ clientId: 'c', ...makePemPair() }, user)
+
+      expect(res.algorithm).toBe('RS256')
+      expect(service.upsertForTenant.mock.calls[0][1].algorithm).toBe('RS256')
+    })
+
     it('rifiuta un PKCS#12 con passphrase errata (400, niente segreti)', async () => {
       const dto: SetRentriCredentialDto = {
         clientId: 'client-3',
@@ -239,6 +293,7 @@ describe('RentriCredentialController', () => {
         numIscrSito: 'OP1234ABC123456-RM1234',
         numIscrOperatore: 'MI00001234',
         credentialsIdFirmaRemota: 'CRED00001',
+        algorithm: 'RS256',
       })
       const serialized = JSON.stringify(res)
       expect(serialized).not.toContain('SECRET-CERT')
@@ -264,10 +319,10 @@ describe('RentriCredentialController', () => {
         credentialsIdFirmaRemota: valore,
       })
       const errori = await validate(dto)
-      return errori.filter((e) => e.property === 'credentialsIdFirmaRemota')
+      return errori.filter(e => e.property === 'credentialsIdFirmaRemota')
     }
 
-    it.each(['12345678', '1234567890'])('rifiuta %s (non 9 caratteri)', async (valore) => {
+    it.each(['12345678', '1234567890'])('rifiuta %s (non 9 caratteri)', async valore => {
       const errori = await erroriSuCredentialsId(valore)
       expect(errori).toHaveLength(1)
       expect(Object.values(errori[0].constraints ?? {})).toContain(

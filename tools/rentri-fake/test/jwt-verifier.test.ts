@@ -1,4 +1,6 @@
-import { randomUUID } from 'crypto'
+import { createPrivateKey, randomUUID, sign as firmaCrypto } from 'crypto'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { importPKCS8, SignJWT } from 'jose'
 import {
   creaCertificatoDiTest,
@@ -257,6 +259,64 @@ describe('Verifica JWT ID_AUTH_REST_02', () => {
     expect(esito).toEqual({
       valido: false,
       motivo: "soggetto 'soggetto-non-accreditato' non accreditato presso RENTRI",
+    })
+  })
+
+  describe('ES256 con certificato EC (Decisione 1 del pezzo 4)', () => {
+    const dirEc = join(__dirname, 'fixture', 'ec')
+    const chiaveEcPem = readFileSync(join(dirEc, 'operatore-test-ec.key'), 'utf8')
+    const certEcDer = readFileSync(join(dirEc, 'operatore-test-ec.crt'), 'utf8')
+      .replace(/-----(BEGIN|END) CERTIFICATE-----/g, '')
+      .replace(/\s+/g, '')
+
+    function claim() {
+      const adesso = Math.floor(Date.now() / 1000)
+      return {
+        sub: 'operatore-test',
+        iss: 'operatore-test',
+        aud: AUDIENCE,
+        iat: adesso,
+        exp: adesso + 300,
+        jti: randomUUID(),
+      }
+    }
+
+    it('JWT ES256 con x5c EC emesso dalla CA di prova fissa: valido', async () => {
+      const chiave = createPrivateKey(chiaveEcPem)
+      const token = await new SignJWT(claim())
+        .setProtectedHeader({ alg: 'ES256', x5c: [certEcDer] })
+        .sign(chiave)
+      const esito = await verificaJwt(`Bearer ${token}`, { audienceAttesa: AUDIENCE })
+
+      expect(esito).toEqual({ valido: true, soggetto: 'operatore-test' })
+    })
+
+    it('JWT ES256 con firma in formato DER invece di P1363: rifiutato', async () => {
+      const intestazione = Buffer.from(
+        JSON.stringify({ alg: 'ES256', x5c: [certEcDer] })
+      ).toString('base64url')
+      const corpo = Buffer.from(JSON.stringify(claim())).toString('base64url')
+      const firmaDer = firmaCrypto('sha256', Buffer.from(`${intestazione}.${corpo}`), {
+        key: createPrivateKey(chiaveEcPem),
+        dsaEncoding: 'der',
+      }).toString('base64url')
+      const esito = await verificaJwt(`Bearer ${intestazione}.${corpo}.${firmaDer}`, {
+        audienceAttesa: AUDIENCE,
+      })
+
+      expect(esito.valido).toBe(false)
+    })
+
+    it('JWT ES256 con certificato RSA: rifiutato', async () => {
+      // alg dichiarato ES256, ma x5c porta il certificato RSA: alg incoerente con la chiave.
+      const rsa = creaCertificatoDiTest()
+      const chiaveEc = createPrivateKey(chiaveEcPem)
+      const token = await new SignJWT(claim())
+        .setProtectedHeader({ alg: 'ES256', x5c: [rsa.certificatoBase64Der] })
+        .sign(chiaveEc)
+      const esito = await verificaJwt(`Bearer ${token}`, { audienceAttesa: AUDIENCE })
+
+      expect(esito.valido).toBe(false)
     })
   })
 })

@@ -131,4 +131,32 @@ describe('Validazione xFIR', () => {
 
     expect(esito.valido).toBe(true)
   })
+
+  it('XAdES ecdsa-sha256 valida accettata; in formato DER rifiutata', async () => {
+    const valido = await creaContainerXfir({
+      xml: ['fir.xml'],
+      firme: [{ nomeFile: 'signatures001.xml', copre: ['fir.xml'], ec: { formato: 'p1363' } }],
+    })
+    expect((await validaAsicE(valido)).valido).toBe(true)
+
+    const der = await creaContainerXfir({
+      xml: ['fir.xml'],
+      firme: [{ nomeFile: 'signatures001.xml', copre: ['fir.xml'], ec: { formato: 'der' } }],
+    })
+    const esito = await validaAsicE(der)
+    expect(esito.valido).toBe(false)
+    if (!esito.valido) {
+      expect(esito.motivo).toContain('crittografica')
+    }
+  })
+
+  it('XAdES ecdsa-sha256 con firma EC manomessa rifiutata', async () => {
+    const contenuto = await creaContainerXfir({
+      xml: ['fir.xml'],
+      firme: [
+        { nomeFile: 'signatures001.xml', copre: ['fir.xml'], ec: { formato: 'p1363' }, firmaCorrotta: true },
+      ],
+    })
+    expect((await validaAsicE(contenuto)).valido).toBe(false)
+  })
 })

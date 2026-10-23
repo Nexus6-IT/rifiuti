@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { LoggerService } from '../../core/logger/logger.service'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriCredentialService } from './rentri-credential.service'
+import { algoritmoEffettivo } from './certificato/algoritmo-da-chiave'
 import { signJws } from './rentri-jws.util'
 
 /** Credenziale (certificato + chiave privata) usata per firmare il JWT self-issued. */
@@ -82,7 +83,7 @@ export class RentriAuthService {
           clientId: cred.clientId,
           certificatePem: cred.certificatePem,
           privateKeyPem: cred.privateKeyPem,
-          algorithm: cred.algorithm,
+          algorithm: this.algoritmo(cred.privateKeyPem, cred.algorithm),
         }
       }
     }
@@ -92,7 +93,7 @@ export class RentriAuthService {
         clientId: this.config.clientId,
         certificatePem: this.config.certificatePem,
         privateKeyPem: this.config.privateKeyPem,
-        algorithm: this.config.algorithm,
+        algorithm: this.algoritmo(this.config.privateKeyPem, this.config.algorithm),
       }
     }
 
@@ -101,5 +102,16 @@ export class RentriAuthService {
         ? `RENTRI: nessuna credenziale per il tenant ${tenantId} e nessun fallback da env`
         : 'RENTRI: nessun tenant indicato e nessuna credenziale di fallback da env'
     )
+  }
+
+  /** Algoritmo di firma = quello della chiave; la colonna `algorithm` e' solo informativa. */
+  private algoritmo(privateKeyPem: string, dichiarato: 'RS256' | 'ES256'): 'RS256' | 'ES256' {
+    const { algoritmo, discordante } = algoritmoEffettivo(privateKeyPem, dichiarato)
+    if (discordante) {
+      this.logger.warn(
+        `Algoritmo RENTRI salvato (${dichiarato}) diverso da quello della chiave (${algoritmo}): si firma con ${algoritmo}`
+      )
+    }
+    return algoritmo
   }
 }

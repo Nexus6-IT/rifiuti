@@ -75,8 +75,8 @@ export class SetRentriCredentialDto {
 
   @ApiPropertyOptional({
     enum: ['RS256', 'ES256'],
-    default: 'RS256',
-    description: 'Algoritmo di firma',
+    description:
+      "Facoltativo, solo di controllo: l'algoritmo si ricava dalla chiave (RSA → RS256, EC P-256 → ES256). Se indicato e diverso da quello ricavato, il caricamento è rifiutato (400).",
   })
   @IsOptional()
   @IsIn(['RS256', 'ES256'])

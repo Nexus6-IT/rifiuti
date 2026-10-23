@@ -41,6 +41,29 @@ describe('RentriAuthService', () => {
     return new RentriAuthService(credentialService as any, config, logger)
   }
 
+  describe('algoritmo ricavato dalla chiave', () => {
+    it('riga con chiave RSA ed ES256 scelto per errore: firma RS256 e logga un warn senza materiale di chiave', async () => {
+      logger.warn = jest.fn()
+      credentialService.getForTenant.mockResolvedValue({
+        clientId: 'operatore-test',
+        certificatePem: cert.certificatePem,
+        privateKeyPem: cert.privateKeyPem,
+        algorithm: 'ES256',
+        environment: 'demo',
+      })
+
+      const header = await makeService().creaAuthorizationHeader('tenant-1')
+
+      const decoded: any = jwt.decode(header.replace('Bearer ', ''), { complete: true })
+      expect(decoded.header.alg).toBe('RS256')
+      expect(logger.warn).toHaveBeenCalledTimes(1)
+      const messaggio = JSON.stringify(logger.warn.mock.calls)
+      expect(messaggio).toContain('ES256')
+      expect(messaggio).toContain('RS256')
+      expect(messaggio).not.toContain('PRIVATE KEY')
+    })
+  })
+
   describe('JWT self-issued (ID_AUTH_REST_02)', () => {
     beforeEach(() => {
       credentialService.getForTenant.mockResolvedValue({

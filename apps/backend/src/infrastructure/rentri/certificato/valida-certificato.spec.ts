@@ -1,3 +1,5 @@
+import * as fs from 'fs'
+import * as path from 'path'
 import * as forge from 'node-forge'
 import { validaCertificato } from './valida-certificato'
 
@@ -119,5 +121,37 @@ describe('validaCertificato', () => {
     expect(risultato.valido).toBe(false)
     expect(risultato.controlli.scadenza.esito).toBe('errore')
     expect(risultato.controlli.coerenzaChiave.esito).toBe('errore')
+  })
+
+  it('certificato EC: scadenza, catena e revoca valutati senza errori', () => {
+    const dir = path.resolve(__dirname, '../../../../../../tools/rentri-fake/test/fixture/ec')
+    const certificatePem = fs.readFileSync(path.join(dir, 'operatore-test-ec.crt'), 'utf8')
+    const privateKeyPem = fs.readFileSync(path.join(dir, 'operatore-test-ec.key'), 'utf8')
+
+    const risultato = validaCertificato(certificatePem, privateKeyPem)
+
+    expect(risultato.valido).toBe(true)
+    expect(risultato.controlli.scadenza.esito).not.toBe('errore')
+    expect(risultato.controlli.coerenzaChiave.esito).toBe('ok')
+    expect(risultato.controlli.catena.esito).toBe('avvertimento')
+    expect(risultato.controlli.revoca.esito).toBe('avvertimento')
+  })
+
+  it("errore di ASN.1 nelle estensioni: la revoca degrada ad avvertimento, il caricamento non e' bloccato", () => {
+    const { certificatePem, privateKeyPem } = makeCert({})
+    const spia = jest.spyOn(forge.asn1, 'fromDer').mockImplementation(() => {
+      throw new Error('ASN.1 corrotto')
+    })
+    try {
+      const risultato = validaCertificato(certificatePem, privateKeyPem)
+
+      expect(risultato.controlli.revoca.esito).toBe('avvertimento')
+      expect(risultato.controlli.revoca.messaggio).toBe(
+        'estensioni del certificato non analizzabili: lo stato di revoca non è verificabile'
+      )
+      expect(risultato.valido).toBe(true)
+    } finally {
+      spia.mockRestore()
+    }
   })
 })

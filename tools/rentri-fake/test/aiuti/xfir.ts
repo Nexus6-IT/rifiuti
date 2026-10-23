@@ -1,4 +1,7 @@
 import JSZip from 'jszip'
+import * as crypto from 'crypto'
+import * as fs from 'fs'
+import * as path from 'path'
 import forge from 'node-forge'
 
 export interface SpecificaFirma {
@@ -8,6 +11,11 @@ export interface SpecificaFirma {
   digestErrato?: boolean
   /** Caso negativo: SignatureValue manomesso dopo la firma (verifica crittografica deve fallire). */
   firmaCorrotta?: boolean
+  /**
+   * Firma con la chiave EC P-256 di fixture (ecdsa-sha256). `p1363` e' il formato
+   * XMLDSig (r||s, 64 byte); `der` e' il formato ASN.1 che il validatore deve rifiutare.
+   */
+  ec?: { formato: 'p1363' | 'der' }
 }
 
 /**
@@ -45,6 +53,9 @@ export async function creaContainerXfir(opzioni: {
 }
 
 function costruisciXmlFirma(firma: SpecificaFirma, contenuti: Map<string, string>): string {
+  if (firma.ec) {
+    return costruisciXmlFirmaEc(firma, contenuti, firma.ec.formato)
+  }
   // Certificato "firmatario" ad hoc: autofirmato di proposito, perche' qui
   // si verifica solo la validita' crittografica della firma XAdES rispetto
   // al certificato che essa stessa dichiara (FEDELTA.md §5.2 punto 6), non
@@ -96,6 +107,55 @@ function costruisciXmlFirma(firma: SpecificaFirma, contenuti: Map<string, string
     const ultimo = bytes.charCodeAt(bytes.length - 1) ^ 0xff
     const alterato = bytes.slice(0, -1) + String.fromCharCode(ultimo)
     signatureValue = forge.util.encode64(alterato)
+  }
+
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<asic:XAdESSignatures xmlns:asic="http://uri.etsi.org/02918/v1.2.1#" ' +
+    'xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
+    `<ds:Signature>${signedInfo}` +
+    `<ds:SignatureValue>${signatureValue}</ds:SignatureValue>` +
+    `<ds:KeyInfo><ds:X509Certificate>${certificatoBase64}</ds:X509Certificate></ds:KeyInfo>` +
+    '</ds:Signature>' +
+    '</asic:XAdESSignatures>'
+  )
+}
+
+/** Variante EC: certificato e chiave P-256 di fixture (`test/fixture/ec`), SignatureMethod ecdsa-sha256. */
+function costruisciXmlFirmaEc(
+  firma: SpecificaFirma,
+  contenuti: Map<string, string>,
+  formato: 'p1363' | 'der'
+): string {
+  const dir = path.resolve(__dirname, '../fixture/ec')
+  const certificatoPem = fs.readFileSync(path.join(dir, 'operatore-test-ec.crt'), 'utf8')
+  const chiavePem = fs.readFileSync(path.join(dir, 'operatore-test-ec.key'), 'utf8')
+  const certificatoBase64 = new crypto.X509Certificate(certificatoPem).raw.toString('base64')
+
+  const riferimentiXml = firma.copre
+    .map((bersaglio) => {
+      const digest = crypto
+        .createHash('sha256')
+        .update(contenuti.get(bersaglio) ?? '', 'utf8')
+        .digest('base64')
+      return `<ds:Reference URI="${bersaglio}"><ds:DigestValue>${digest}</ds:DigestValue></ds:Reference>`
+    })
+    .join('')
+  const signedInfo =
+    '<ds:SignedInfo><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256"/>' +
+    `${riferimentiXml}</ds:SignedInfo>`
+
+  let signatureValue = crypto
+    .sign('sha256', Buffer.from(signedInfo, 'utf8'), {
+      key: chiavePem,
+      dsaEncoding: formato === 'p1363' ? 'ieee-p1363' : 'der',
+    })
+    .toString('base64')
+
+  if (firma.firmaCorrotta) {
+    const bytes = Buffer.from(signatureValue, 'base64')
+    bytes[bytes.length - 1] ^= 0xff
+    signatureValue = bytes.toString('base64')
   }
 
   return (

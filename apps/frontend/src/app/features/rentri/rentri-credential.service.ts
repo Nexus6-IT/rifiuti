@@ -24,6 +24,8 @@ export interface RentriCredentialStatus {
    * tabella vuota silenziosa.
    */
   numIscrOperatore?: string | null
+  /** Algoritmo di firma ricavato dalla chiave del certificato (sola lettura). */
+  algorithm?: 'RS256' | 'ES256'
 }
 
 /** Payload PEM diretto. */
@@ -31,7 +33,6 @@ export interface SetCredentialPem {
   clientId: string
   certificatePem: string
   privateKeyPem: string
-  algorithm?: 'RS256' | 'ES256'
   environment?: string
 }
 
@@ -40,7 +41,6 @@ export interface SetCredentialPkcs12 {
   clientId: string
   pkcs12Base64: string
   pkcs12Passphrase: string
-  algorithm?: 'RS256' | 'ES256'
   environment?: string
 }
 
@@ -58,8 +58,10 @@ export class RentriCredentialService {
     return this.http.get<RentriCredentialStatus>(this.API_URL)
   }
 
-  setCredential(payload: SetCredentialPem | SetCredentialPkcs12): Observable<{ success: boolean }> {
-    return this.http.put<{ success: boolean }>(this.API_URL, payload)
+  setCredential(
+    payload: SetCredentialPem | SetCredentialPkcs12
+  ): Observable<{ success: boolean; algorithm?: 'RS256' | 'ES256' }> {
+    return this.http.put<{ success: boolean; algorithm?: 'RS256' | 'ES256' }>(this.API_URL, payload)
   }
 
   remove(): Observable<{ success: boolean }> {
