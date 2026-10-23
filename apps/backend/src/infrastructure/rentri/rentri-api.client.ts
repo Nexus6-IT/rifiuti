@@ -56,13 +56,15 @@ export class RENTRIApiClient {
   /**
    * Path base del servizio `ca-rentri` v1.0 (firma remota RENTRI, R3 Task 3).
    *
-   * **A differenza di `FORMULARI_PATH`, questo valore NON è confermato da un
-   * file OpenAPI**: `ca-rentri` non ha alcun contratto pubblico (v.
-   * `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`, «Lacune ancora
-   * aperte»). È ricavato dai PDF ufficiali degli incontri di formazione RENTRI
-   * per Software House, che citano testualmente path come
-   * `GET /ca-rentri/v1.0/credentials/boarding/{qrcode_token}`. Concatenato
-   * allo stesso `config.baseUrl` degli altri servizi (es.
+   * Confermato da `docs/contracts/rentri/ca-rentri.yaml` (v. `MANIFEST.md`,
+   * v1.0.20260831). Il percorso di firma e' `POST /signatures/sign-hash`
+   * (ca-rentri.yaml:2019), non `/credentials/sign-hash`. **Non ancora
+   * allineati al contratto**: `GET /credentials/info` (:1294; il contratto ha
+   * `cert.certificates[]`, non `certificato`; `CredentialsInfoResponse` a
+   * :2779) e `POST /credentials/authorize` + `authorize-check` (:825, :906;
+   * pattern della `description`, semantica di `sad`/`expires_in`, codici
+   * 400/403; schemi a :2617 e :2665): allineamento in un pezzo successivo del
+   * Piano B. Concatenato allo stesso `config.baseUrl` degli altri servizi (es.
    * `https://demoapi.rentri.gov.it/ca-rentri/v1.0`).
    */
   private static readonly CA_RENTRI_PATH = '/ca-rentri/v1.0'

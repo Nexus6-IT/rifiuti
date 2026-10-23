@@ -2,6 +2,8 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { load } from 'js-yaml'
 
+// Portata: la guardia confronta metodo e path delle rotte, non query, corpi né codici di stato.
+
 /**
  * Raccolta delle rotte registrate dalla fake, senza toccare `creaApp()`:
  * `fastify` e' sostituito da un wrapper che, subito dopo la creazione

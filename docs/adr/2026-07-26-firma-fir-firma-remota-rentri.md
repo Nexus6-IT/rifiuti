@@ -125,6 +125,13 @@ da luglio 2024.
 RENTRI, previa conferma dell'utente sul proprio dispositivo. È esattamente il
 modello scelto.
 
+> **Correzione 2026-10-23**: il percorso del contratto è
+> `POST /ca-rentri/v1.0/signatures/sign-hash` (`docs/contracts/rentri/ca-rentri.yaml`
+> riga 2019); `/credentials/sign-hash` non esiste. Restano da allineare al
+> contratto `credentials/info` e `credentials/authorize`/`authorize-check`
+> (campo `certificato` vs `cert.certificates[]`, `description`, `sad`/`expires_in`,
+> codici 400/403): pezzo successivo del Piano B.
+
 ### Il certificato: correzione a quanto scritto sopra
 
 - È un certificato di **tipo sigillo, «M.O. 16»** (Modalità Operative allegate
