@@ -15,7 +15,7 @@ describe('ca-rentri: percorso della firma remota', () => {
       method: 'POST',
       url: '/ca-rentri/v1.0/credentials/sign-hash',
       headers: { authorization: `Bearer ${await tokenValido()}` },
-      payload: { credentials_id: 'c', sad: 's', hashes: ['h'], sign_algo: '1.2.840.10045.4.3.2' },
+      payload: { credentials_id: 'CRED00001', sad: 's', hashes: ['h'], sign_algo: '1.2.840.10045.4.3.2' },
     })
 
     expect(risposta.statusCode).toBe(404)

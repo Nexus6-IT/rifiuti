@@ -345,7 +345,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
       .spyOn(client, 'verificaAutorizzazioneFirma')
       .mockImplementation(async (tenant: string, handle: string) => {
         const esito = await originale(tenant, handle)
-        if (esito === 'IN_ATTESA' && !confermata) {
+        if (esito.stato === 'IN_ATTESA' && !confermata) {
           confermata = true
           await app.inject({
             method: 'POST',
@@ -380,7 +380,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
       firRepository,
       client,
       cf,
-      'cred-oracolo-annullamento-1',
+      'ANN000001',
       rateLimiter
     )
 
@@ -439,7 +439,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
       firRepository,
       client,
       cf,
-      'cred-oracolo-annullamento-2',
+      'ANN000002',
       rateLimiter
     )
     const spy = jest.spyOn(client, 'annullaFormulario')
@@ -475,7 +475,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
       firRepository,
       client,
       cf,
-      'cred-oracolo-annullamento-3',
+      'ANN000003',
       rateLimiter
     )
     const spyAzioni = jest.spyOn(client, 'leggiAzioniDisponibili')
@@ -513,7 +513,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
       firRepository,
       client,
       cf,
-      'cred-oracolo-annullamento-4',
+      'ANN000004',
       rateLimiter
     )
 
@@ -558,7 +558,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
       firRepository,
       client,
       cf,
-      'cred-oracolo-annullamento-5',
+      'ANN000005',
       rateLimiter
     )
 
@@ -609,7 +609,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
       firRepository,
       client,
       cf,
-      'cred-oracolo-annullamento-6',
+      'ANN000006',
       rateLimiter
     )
 

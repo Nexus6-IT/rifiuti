@@ -102,7 +102,7 @@ const contenuto = `/**
  * GENERATO da \`scripts/genera-schema.js\` — NON modificare a mano.
  *
  * Copia verbatim di \`${RADICE}\` e della chiusura transitiva dei suoi
- * \`$ref\`, dal contratto ufficiale \`docs/contracts/rentri/formulari.yaml\`.
+ * \`$ref\`, dal contratto ufficiale \`docs/contracts/rentri/${argContratto || 'formulari.yaml'}\`.
  * L'allineamento e' imposto da \`test/schema-allineato-al-contratto.test.ts\`.
  */
 export const SCHEMA_${NOME_COSTANTE} = ${JSON.stringify(modello, null, 2)} as const

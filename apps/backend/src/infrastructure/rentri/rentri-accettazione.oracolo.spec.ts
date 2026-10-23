@@ -323,7 +323,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
       .spyOn(client, 'verificaAutorizzazioneFirma')
       .mockImplementation(async (tenant: string, handle: string) => {
         const esito = await originale(tenant, handle)
-        if (esito === 'IN_ATTESA' && !confermata) {
+        if (esito.stato === 'IN_ATTESA' && !confermata) {
           confermata = true
           await app.inject({
             method: 'POST',
@@ -358,7 +358,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
       firRepository,
       client,
       cf,
-      'cred-oracolo-accettazione-1',
+      'ACC000001',
       rateLimiter
     )
 
@@ -407,7 +407,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
       firRepository,
       client,
       cf,
-      'cred-oracolo-accettazione-2',
+      'ACC000002',
       rateLimiter
     )
 
@@ -453,7 +453,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
       firRepository,
       client,
       cf,
-      'cred-oracolo-accettazione-3',
+      'ACC000003',
       rateLimiter
     )
     const spy = jest.spyOn(client, 'inviaAccettazione')
@@ -490,7 +490,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
       firRepository,
       client,
       cf,
-      'cred-oracolo-accettazione-4',
+      'ACC000004',
       rateLimiter
     )
     const spyAzioni = jest.spyOn(client, 'leggiAzioniDisponibili')
@@ -530,7 +530,7 @@ describe('AccettaORespingiFIRUseCase — ciclo di accettazione/respingimento con
       firRepository,
       client,
       cf,
-      'cred-oracolo-accettazione-5',
+      'ACC000005',
       rateLimiter
     )
 

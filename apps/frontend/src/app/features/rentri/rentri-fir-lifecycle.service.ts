@@ -30,8 +30,13 @@ export interface AccettaFirRentriPayload {
 export type EsitoFirmaRemota =
   | { esito: 'COMPLETATA'; statoFormulario: string }
   | { esito: 'IN_ATTESA'; handle: string; scadenzaAutorizzazione: string }
-  | { esito: 'SCADUTA'; handle: string; rilevataDa: 'ente' | 'orologio-locale' }
-  | { esito: 'RIFIUTATA'; handle: string }
+  | {
+      esito: 'SCADUTA'
+      handle: string
+      rilevataDa: 'ente' | 'orologio-locale'
+      dettaglioEnte?: string
+    }
+  | { esito: 'RIFIUTATA'; handle: string; dettaglioEnte?: string }
 
 export interface EsitoAccettaFirRentri {
   tipoAccettazione: 'A' | 'P' | 'R'

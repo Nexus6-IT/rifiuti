@@ -29,10 +29,10 @@ const { intestazioniAutenticate } = require('../../../../../tools/rentri-fake/te
  * **Limite dichiarato di questa suite** (stessa onestà di
  * `docs/contracts/rentri/FEDELTA.md`): il contratto `ca-rentri` esiste
  * (`docs/contracts/rentri/ca-rentri.yaml`) e `sign-hash` vi è allineato
- * (riga 2019), ma `credentials/info` e `credentials/authorize`/`authorize-check`
- * NON ancora (v. il commento di testata di `tools/rentri-fake/src/routes/ca-rentri.ts`):
- * su quei passi questi test dimostrano che il client percorre il ciclo come
- * lo abbiamo ricostruito, non che coincida con quello dell'ente reale.
+ * (riga 2019), come `credentials/info` e `credentials/authorize`/`authorize-check`
+ * (v. il commento di testata di `tools/rentri-fake/src/routes/ca-rentri.ts`).
+ * Resta non verificato solo il formato della firma: la fake firma con RSA,
+ * l'ente con ECDSA.
  */
 describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la fake RENTRI (in-process)', () => {
   let app: any
@@ -321,7 +321,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, 'cred-oracolo-1', rateLimiter)
+    const useCase = creaUseCase(firRepository, client, 'FIR000001', rateLimiter)
 
     const completatore = avviaCompletatoreTransazioni({ digestToSign: DIGEST, token: TOKEN })
 
@@ -336,7 +336,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
       .spyOn(client, 'verificaAutorizzazioneFirma')
       .mockImplementation(async (tenant: string, handle: string) => {
         const esito = await verificaOriginale(tenant, handle)
-        if (esito === 'IN_ATTESA' && !confermaEffettuata) {
+        if (esito.stato === 'IN_ATTESA' && !confermaEffettuata) {
           confermaEffettuata = true
           await app.inject({
             method: 'POST',
@@ -381,10 +381,10 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
     // `/credentials/info`, firma ottenuta da `sign-hash`) e non su materiale
     // costruito ad arte dentro il proprio test.
     const client = creaClient()
-    const certificato = await client.leggiCertificatoFirmaRemota('', 'cred-verifica')
+    const certificato = await client.leggiCertificatoFirmaRemota('', 'VERIFICA1')
 
     const autorizzazione = await client.autorizzaFirmaRemota('', {
-      credentialsId: 'cred-verifica',
+      credentialsId: 'VERIFICA1',
       digestToSign: DIGEST,
       description: 'Verifica locale della firma',
     })
@@ -393,9 +393,13 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
       url: `/__controllo/ca-rentri/autorizza/${autorizzazione.handle}`,
     })
 
+    // Il SAD arriva da authorize-check a concessione avvenuta, non da authorize.
+    const esito = await client.verificaAutorizzazioneFirma('', autorizzazione.handle)
+    if (esito.stato !== 'AUTORIZZATA') throw new Error('autorizzazione non concessa')
+
     const firma = await client.firmaHashRemoto('', {
-      credentialsId: 'cred-verifica',
-      sad: autorizzazione.sad,
+      credentialsId: 'VERIFICA1',
+      sad: esito.sad,
       digestToSign: DIGEST,
     })
 
@@ -406,12 +410,12 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
     ).toBe(false)
   }, 60000)
 
-  it('authorize-check su sessione scaduta: la fake risponde 410 e il client lo mappa a SCADUTA, non a un errore generico', async () => {
+  it('authorize-check su sessione scaduta: la fake risponde 400 e il client lo mappa a SCADUTA, non a un errore generico', async () => {
     // Livello CLIENT, deterministico: usa `__expires_in_test` della fake per
     // ottenere una scadenza di 50ms invece di attendere il default di 120s.
-    // Verifica il finding corretto in questo round: prima, il 410 finiva
-    // nella gestione generica degli errori e diventava un `Error` anonimo
-    // («Risposta inattesa da ...: HTTP 410»), indistinguibile da un guasto.
+    // Il 400 (contratto: «autorizzazione scaduta») non deve finire nella
+    // gestione generica degli errori come `Error` anonimo, indistinguibile
+    // da un guasto.
     const client = creaClient()
 
     const risposta = await app.inject({
@@ -423,7 +427,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
       // alla fake.
       headers: await intestazioniAutenticate(),
       payload: {
-        credentials_id: 'cred-scadenza',
+        credentials_id: 'SCADENZA1',
         num_signatures: 1,
         hashes: [DIGEST],
         hash_algo: '2.16.840.1.101.3.4.2.1',
@@ -432,19 +436,22 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
       },
     })
     expect(risposta.statusCode).toBe(200)
-    const { handle, expires_in: expiresIn } = risposta.json()
-    expect(expiresIn).toBe(0.05)
+    const { handle } = risposta.json()
 
     // Oltre la scadenza dichiarata dalla fake.
     await new Promise(resolve => setTimeout(resolve, 120))
 
-    expect(await client.verificaAutorizzazioneFirma('', handle)).toBe('SCADUTA')
+    // Il ProblemDetails della fake arriva come `dettaglioEnte`.
+    expect(await client.verificaAutorizzazioneFirma('', handle)).toEqual({
+      stato: 'SCADUTA',
+      dettaglioEnte: expect.stringContaining('Autorizzazione scaduta'),
+    })
   }, 60000)
 
-  it('authorize-check su sessione rifiutata dall’utente: 400 mappato a RIFIUTATA, distinto da SCADUTA', async () => {
+  it('authorize-check su sessione rifiutata dall’utente: 403 mappato a RIFIUTATA, distinto da SCADUTA', async () => {
     const client = creaClient()
     const autorizzazione = await client.autorizzaFirmaRemota('', {
-      credentialsId: 'cred-rifiuto',
+      credentialsId: 'RIFIUTO01',
       digestToSign: DIGEST,
       description: 'Prova di rifiuto',
     })
@@ -454,7 +461,10 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
       url: `/__controllo/ca-rentri/rifiuta/${autorizzazione.handle}`,
     })
 
-    expect(await client.verificaAutorizzazioneFirma('', autorizzazione.handle)).toBe('RIFIUTATA')
+    expect(await client.verificaAutorizzazioneFirma('', autorizzazione.handle)).toEqual({
+      stato: 'RIFIUTATA',
+      dettaglioEnte: expect.stringContaining('Autorizzazione non concessa'),
+    })
   }, 60000)
 
   it('scadenza lato ente durante il ciclo: UN SOLO esito, SCADUTA rilevata dall’ente, nessuna corruzione di stato', async () => {
@@ -469,17 +479,17 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, 'cred-oracolo-2', rateLimiter)
+    const useCase = creaUseCase(firRepository, client, 'FIR000002', rateLimiter)
     const saveSpy = jest.spyOn(firRepository, 'save')
 
     const completatore = avviaCompletatoreTransazioni({ digestToSign: DIGEST, token: TOKEN })
 
     // Deterministico: la sessione viene fatta scadere SUBITO DOPO che
     // `authorize` l'ha creata e PRIMA che parta il primo `authorize-check`.
-    // Il primo controllo trova quindi certamente un 410, e l'esito atteso è
+    // Il primo controllo trova quindi certamente un 400, e l'esito atteso è
     // uno solo. (La versione precedente di questo test usava un timer e
     // ammetteva tre esiti alternativi: con tre su tre ammessi non verificava
-    // nulla, ed è ciò che ha nascosto il difetto del 410.)
+    // nulla, ed è ciò che ha nascosto il difetto della scadenza dell'ente.)
     const autorizzaOriginale = client.autorizzaFirmaRemota.bind(client)
     jest.spyOn(client, 'autorizzaFirmaRemota').mockImplementation(async (tenant, richiesta) => {
       const autorizzazione = await autorizzaOriginale(tenant, richiesta)
@@ -497,7 +507,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
         tipoOperazione: 'ANNULLAMENTO',
         intervalloPollingMs: 100,
         // Tetto di invocazione ampio: se l'esito dipendesse dal nostro
-        // orologio invece che dal 410 dell'ente, questo test attenderebbe
+        // orologio invece che dalla scadenza dell'ente, questo test attenderebbe
         // 15s e riporterebbe `orologio-locale`, fallendo l'asserzione.
         attesaMassimaMs: 15000,
       })
@@ -526,7 +536,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, 'cred-oracolo-3', rateLimiter)
+    const useCase = creaUseCase(firRepository, client, 'FIR000003', rateLimiter)
     const saveSpy = jest.spyOn(firRepository, 'save')
 
     const completatore = avviaCompletatoreTransazioni({ digestToSign: DIGEST, token: TOKEN })
@@ -571,7 +581,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(firRepository, client, 'cred-oracolo-4', rateLimiter)
+    const useCase = creaUseCase(firRepository, client, 'FIR000004', rateLimiter)
     const saveSpy = jest.spyOn(firRepository, 'save')
 
     const completatore = avviaCompletatoreTransazioni({
