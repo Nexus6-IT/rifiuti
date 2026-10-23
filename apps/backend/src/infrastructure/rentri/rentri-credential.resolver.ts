@@ -15,6 +15,10 @@ export interface ResolvedRentriCredential {
   source: 'tenant' | 'env'
 }
 
+/** Messaggio per l'utente (mai l'id del tenant): unica fonte, usata anche da `traduciErroreRentri`. */
+export const MESSAGGIO_CERTIFICATO_MANCANTE =
+  "L'azienda non ha un certificato RENTRI configurato: caricalo nella pagina del certificato RENTRI."
+
 /**
  * Il tenant non ha un certificato RENTRI proprio e non e' l'azienda legata alla
  * credenziale env: non si firma. Il messaggio e' pensato per l'utente e NON
@@ -22,9 +26,7 @@ export interface ResolvedRentriCredential {
  */
 export class TenantSenzaCertificatoRentriError extends Error {
   constructor() {
-    super(
-      "L'azienda non ha un certificato RENTRI configurato: caricalo nella pagina del certificato RENTRI."
-    )
+    super(MESSAGGIO_CERTIFICATO_MANCANTE)
     this.name = 'TenantSenzaCertificatoRentriError'
   }
 }

@@ -389,7 +389,8 @@ export class SyncFIRToRENTRIUseCase {
         // secondo salvataggio, che verrebbe rifiutato allo stesso modo.
         if (apiError instanceof FirAnnullatoNelFrattempoError) throw apiError
 
-        // Azienda senza certificato: esito definitivo, nessuna POST è partita.
+        // Azienda senza certificato: esito definitivo. Di norma nessuna POST è partita; il try copre
+        // però anche il polling dopo il 202, e in quel caso la transazione resta salvata.
         if (apiError instanceof TenantSenzaCertificatoRentriError) {
           fir.markRENTRISyncFailed(apiError.message, CODICE_CERTIFICATO_MANCANTE, correlationId)
           const failureLog = syncLog.markAsFailure({
@@ -559,6 +560,16 @@ export class SyncFIRToRENTRIUseCase {
           attempts: fir.rentriSyncStatus.getAttempts(),
         }
       }
+
+    // FIR annullato nel frattempo: corsa prevista (il filtro HTTP risponde 409), non un
+    // guasto da segnalare. Lascia passare l'eccezione con una riga informativa.
+    if (error instanceof FirAnnullatoNelFrattempoError) {
+      this.logger.info(`FIR annullato nel frattempo: sincronizzazione RENTRI interrotta`, {
+        firId,
+        tenantId,
+      })
+      throw error
+    }
 
       this.logger.error(`Failed to sync FIR to RENTRI`, error, {
         firId,

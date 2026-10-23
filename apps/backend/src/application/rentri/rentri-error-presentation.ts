@@ -34,6 +34,8 @@
  *   trasmissione riprenderà comunque da sola (5xx/rete, in attesa dei
  *   tentativi automatici già pianificati).
  */
+import { MESSAGGIO_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-credential.resolver'
+
 export type RentriAzioneUtente =
   | 'RIPROVA'
   | 'VEDI_CERTIFICATO'
@@ -85,11 +87,10 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
 
     case 'RENTRI_CERTIFICATO_MANCANTE':
       // Esito definitivo: l'azienda non ha un certificato proprio e non si presta
-      // quello di un'altra. Stesso testo di TenantSenzaCertificatoRentriError; la
-      // trasmissione riparte da sola quando il certificato viene caricato.
+      // quello di un'altra. Dopo il caricamento del certificato i FIR tornano PENDING:
+      // in AUTOMATICA/IBRIDA ripartono da soli, in MANUALE con «Trasmetti a RENTRI».
       return {
-        messaggio:
-          "L'azienda non ha un certificato RENTRI configurato: caricalo nella pagina del certificato RENTRI.",
+        messaggio: MESSAGGIO_CERTIFICATO_MANCANTE,
         azione: 'VEDI_CERTIFICATO',
       }
 

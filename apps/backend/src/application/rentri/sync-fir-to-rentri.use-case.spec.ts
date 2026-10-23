@@ -884,6 +884,19 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(mockLogger.error).toHaveBeenCalled()
     })
 
+    it('un FIR annullato nel frattempo che risale al catch esterno non si registra come errore', async () => {
+      mockRENTRIApiClient.creaFormulario.mockRejectedValue(new FirAnnullatoNelFrattempoError(firId))
+
+      await expect(useCase.execute(firId, tenantId)).rejects.toBeInstanceOf(
+        FirAnnullatoNelFrattempoError
+      )
+      expect(mockLogger.error).not.toHaveBeenCalledWith(
+        'Failed to sync FIR to RENTRI',
+        expect.anything(),
+        expect.anything()
+      )
+    })
+
     it('con un errore di rete il FIR annullato nel frattempo non si ritenta', async () => {
       mockRENTRIApiClient.attendiEsito.mockRejectedValue(new Error('timeout'))
 
