@@ -56,7 +56,9 @@ class MockFIRRepository implements IFIRRepository {
     return true
   }
 
-  async registraTransazioneInAttesa(): Promise<void> {}
+  async registraTransazioneInAttesa(): Promise<boolean> {
+    return true
+  }
 
   async elencaTrasmissioniRentriSospese(): Promise<Array<{ firId: string; tenantId: string }>> {
     return []

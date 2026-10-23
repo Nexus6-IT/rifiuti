@@ -493,11 +493,27 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
 
     it('due prenotazioni concorrenti: una sola vince', async () => {
       const fir = await nuovoFir()
-      const esiti = await Promise.all([
-        repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA),
-        repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA),
-      ])
-      expect(esiti.filter(e => e === true)).toHaveLength(1)
+      // La prima prenotazione resta in una transaction aperta (riga bloccata): la
+      // seconda deve aspettarla, poi rileggere la riga già prenotata e perdere.
+      let rilascia!: () => void
+      const via = new Promise<void>(r => (rilascia = r))
+      let primaFatta!: (v: boolean) => void
+      const prima = new Promise<boolean>(r => (primaFatta = r))
+      const trans = prisma.$transaction(async tx => {
+        primaFatta(await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA, tx))
+        await via
+      })
+      expect(await prima).toBe(true)
+      let seconda: boolean | undefined
+      const secondaP = repoLettura
+        .prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)
+        .then(v => (seconda = v))
+      await new Promise(r => setTimeout(r, 300))
+      expect(seconda).toBeUndefined() // ancora in attesa del lock della prima
+      rilascia()
+      await trans
+      await secondaP
+      expect(seconda).toBe(false)
       const r = await riga(fir.id)
       expect(r.rentriSyncStatus).toBe('SYNCING')
       expect(r.rentriSyncAvviatoAt).toEqual(ORA)
@@ -550,15 +566,65 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
     it("registraTransazioneInAttesa e reload: rentriTransazioneInAttesa e rentriSyncAvviatoAt riletti dall'aggregate", async () => {
       const fir = await nuovoFir()
       // fuori da SYNCING la scrittura non deve avere effetto
-      await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-ignorata')
+      expect(
+        await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-ignorata', ORA)
+      ).toBe(false)
       expect((await riga(fir.id)).rentriTransazioneInAttesa).toBeNull()
 
       expect(await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)).toBe(true)
-      await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-123')
+      expect(await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-123', ORA)).toBe(
+        true
+      )
       const riletto = (await repoLettura.findById(fir.id))!
       expect(riletto.rentriTransazioneInAttesa).toBe('tx-123')
       expect(riletto.rentriTransazioneId).toBe('tx-123')
       expect(riletto.rentriSyncAvviatoAt).toEqual(ORA)
+    })
+
+    it('registraTransazioneInAttesa con un avviatoAt diverso non scrive e restituisce false', async () => {
+      const fir = await nuovoFir()
+      await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)
+      const altro = new Date('2026-10-23T10:05:00.000Z')
+      expect(await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-x', altro)).toBe(
+        false
+      )
+      expect((await riga(fir.id)).rentriTransazioneInAttesa).toBeNull()
+    })
+
+    it('prenotaTrasmissioneRentri con ora non successiva alla soglia e un errore', async () => {
+      const fir = await nuovoFir()
+      await expect(
+        repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, SOGLIA, ORA)
+      ).rejects.toThrow()
+    })
+
+    it('save di un aggregate caricato prima della prenotazione non cancella la prenotazione né la transazione in attesa', async () => {
+      const fir = await nuovoFir()
+      const vecchio = (await repoLettura.findById(fir.id))!
+      expect(await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)).toBe(true)
+      await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-viva', ORA)
+      // campo non di trasmissione: il legame resta scritto dall'aggregate (fuori ambito)
+      vecchio.agganciaFormularioAcquisito(`RENTRI-STANTIO-${Date.now()}`)
+      await repoLettura.save(vecchio)
+      const r = await riga(fir.id)
+      expect(r.rentriSyncStatus).toBe('SYNCING')
+      expect(r.rentriSyncAvviatoAt).toEqual(ORA)
+      expect(r.rentriTransazioneInAttesa).toBe('tx-viva')
+      expect(r.rentriTransazioneId).toBe('tx-viva')
+      expect(r.rentriNumeroFir).toMatch(/^RENTRI-STANTIO-/)
+    })
+
+    it("save dell'aggregate che possiede il tentativo scrive il suo stato", async () => {
+      const fir = await nuovoFir()
+      await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)
+      await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-mia', ORA)
+      const mio = (await repoLettura.findById(fir.id))!
+      expect(mio.rentriSyncAvviatoAt).toEqual(ORA)
+      mio.chiudiTransazioneInAttesa()
+      await repoLettura.save(mio)
+      const r = await riga(fir.id)
+      expect(r.rentriTransazioneInAttesa).toBeNull()
+      expect(r.rentriSyncAvviatoAt).toEqual(ORA)
     })
 
     it('save di un aggregate con transazione in attesa azzerata la scrive NULL', async () => {

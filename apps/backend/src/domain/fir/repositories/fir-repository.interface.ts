@@ -66,8 +66,17 @@ export interface IFIRRepository {
     sogliaStallo: Date
   ): Promise<boolean>
 
-  /** Scrive subito la transazione di creazione accettata dall'ente (solo se SYNCING). */
-  registraTransazioneInAttesa(firId: string, tenantId: string, transazioneId: string): Promise<void>
+  /**
+   * Scrive subito la transazione di creazione accettata dall'ente. Solo se il FIR è
+   * ancora SYNCING con lo stesso `avviatoAt` (testimone del tentativo): false se la
+   * prenotazione è andata persa.
+   */
+  registraTransazioneInAttesa(
+    firId: string,
+    tenantId: string,
+    transazioneId: string,
+    avviatoAt: Date
+  ): Promise<boolean>
 
   /** FIR in SYNCING oltre la soglia di stallo, su tutti i tenant (job di recupero). */
   elencaTrasmissioniRentriSospese(
