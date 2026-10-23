@@ -25,11 +25,16 @@ database, quindi i ruoli possono creare tabelle temporanee.
 
 Idempotente: rilanciarlo aggiorna le password.
 
+Si esegue con `ops/db-ruoli.sh` (vedi sotto), che passa le password sullo stdin di
+psql come righe `\set` prima del file, cosi' non stanno in nessun argv:
+
 ```
-psql -v ON_ERROR_STOP=1 -v app_password=... -v sistema_password=... -f ruoli-db.sql
+\set app_password '...'
+\set sistema_password '...'
+<contenuto di ruoli-db.sql>
 ```
 
-Variabili: `app_password`, `sistema_password` (obbligatorie, non vuote). Vengono
+Variabili psql: `app_password`, `sistema_password` (obbligatorie, non vuote). Vengono
 passate al blocco `DO` con `set_config`, perche' psql non interpola le variabili
 dentro i dollar-quoted string. Il test `ruoli-db.postgres.spec.ts` esegue questo
 stesso file senza psql, sostituendo i due `:'...'` con letterali.
@@ -43,7 +48,8 @@ deploy, restore e CI.
 - **Password fuori da ogni argv e dai log**: arrivano a psql come righe `\set`
   sullo stdin, costruite col `printf` builtin di bash, seguite dal file SQL. Non
   stanno nella riga di comando (niente `/proc/<pid>/cmdline`, niente log del
-  runner). Caratteri ammessi: `A-Za-z0-9 _ . : , @ % + = / -` (meglio esadecimale).
+  runner). Password: almeno 16 caratteri, solo `A-Za-z0-9 _ . -` (altrimenti compose
+  costruirebbe URL non validi); generarle con `openssl rand -hex 32`.
   psql gira con `VERBOSITY=terse`, `SHOW_CONTEXT=never` e `-o /dev/null`, e il blocco
   SQL non riporta lo statement negli errori.
 - **Da dove le prende**: dall'ambiente; per quelle mancanti dal file indicato da

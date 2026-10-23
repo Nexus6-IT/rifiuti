@@ -105,7 +105,9 @@ esegui_restore() {
   local nome="$1" file="$2"
   shift 2
   : > "$TMP/dc-$nome.log"
+  # -u DB_*: in CI il job le imposta per i ruoli e db-ruoli.sh le leggerebbe (niente "salto").
   env -u RIPRISTINO_TAG -u FINTO_DC_RUN_FALLISCE -u RIPRISTINO_FATTORE_SPAZIO \
+    -u DB_APP_PASSWORD -u DB_SISTEMA_PASSWORD -u DB_APP_USER -u DB_SISTEMA_USER \
     WASTEFLOW_DC="bash $RADICE/ops/test/finto-dc.sh" FINTO_DC_LOG="$TMP/dc-$nome.log" \
     WASTEFLOW_COMPOSE_FILE="$TMP/nessun-compose.yml" RIPRISTINO_CONFERMATO=YES BACKUP_DATI_DIR="$TMP" "$@" \
     bash "$RADICE/ops/restore.sh" "$file" > "$TMP/out-$nome" 2> "$TMP/err-$nome"
@@ -113,6 +115,57 @@ esegui_restore() {
 }
 # esito_non_zero NOME — il ripristino NOME e' uscito con un codice diverso da zero.
 esito_non_zero() { [ "$(cat "$TMP/esito-$1")" -ne 0 ]; }
+
+# ops/db-ruoli.sh senza database: PG_EXEC finto che salva lo stdin. Si controlla la
+# lettura del .env (stesse forme di compose), i rifiuti e l'assenza delle password in argv.
+PWD_A=aaaaaaaaaaaaaaaa1111
+PWD_S=ssssssssssssssss2222
+ruoli_prova() {  # ruoli_prova NOME ENV_FILE [VAR=valore...] — esito in $TMP/ruoli-NOME.{rc,out,err,stdin}
+  local nome="$1" envf="$2"
+  shift 2
+  : > "$TMP/ruoli-$nome.stdin"
+  env -u DB_APP_PASSWORD -u DB_SISTEMA_PASSWORD -u DB_APP_USER -u DB_SISTEMA_USER "$@" \
+    RUOLI_ENV_FILE="$envf" PG_EXEC="bash $RADICE/ops/test/finto-pg.sh" FINTO_PG_OUT="$TMP/ruoli-$nome.stdin" \
+    bash "$RADICE/ops/db-ruoli.sh" > "$TMP/ruoli-$nome.out" 2> "$TMP/ruoli-$nome.err"
+  echo $? > "$TMP/ruoli-$nome.rc"
+}
+ruoli_rc() { [ "$(cat "$TMP/ruoli-$1.rc")" -eq "$2" ]; }
+ruoli_ha() { grep -qF -- "$2" "$TMP/ruoli-$1.stdin"; }
+
+printf 'DB_APP_USER=wasteflow_app\nDB_APP_PASSWORD=%s\nDB_SISTEMA_PASSWORD=%s\n' "$PWD_A" "$PWD_S" > "$TMP/ruoli-semplice.env"
+ruoli_prova semplice "$TMP/ruoli-semplice.env"
+verifica "db-ruoli: .env semplice, esce 0" 0 ruoli_rc semplice 0
+verifica "db-ruoli: .env semplice, password sullo stdin" 0 ruoli_ha semplice "set app_password '$PWD_A'"
+verifica "db-ruoli: .env semplice, include il file SQL" 0 ruoli_ha semplice "CREATE ROLE"
+
+printf '  export DB_APP_PASSWORD = "%s"\r\n\texport  DB_SISTEMA_PASSWORD=%s   # commento\r\n' "$PWD_A" "$PWD_S" > "$TMP/ruoli-forme.env"
+ruoli_prova forme "$TMP/ruoli-forme.env"
+verifica "db-ruoli: export, spazi iniziali, spazi attorno a =, CRLF, commento" 0 ruoli_rc forme 0
+verifica "db-ruoli: forme compose, password app letta" 0 ruoli_ha forme "set app_password '$PWD_A'"
+verifica "db-ruoli: forme compose, password sistema letta (senza commento)" 0 ruoli_ha forme "set sistema_password '$PWD_S'"
+
+printf 'DB_APP_PASSWORD=vecchiavecchia123456\nDB_APP_PASSWORD=%s\nDB_SISTEMA_PASSWORD=%s\n' "$PWD_A" "$PWD_S" > "$TMP/ruoli-ultima.env"
+ruoli_prova ultima "$TMP/ruoli-ultima.env"
+verifica "db-ruoli: vince l'ultima definizione" 0 ruoli_ha ultima "set app_password '$PWD_A'"
+
+: > "$TMP/ruoli-vuoto.env"
+ruoli_prova vuoto "$TMP/ruoli-vuoto.env"
+verifica "db-ruoli: senza password salta con exit 0" 0 grep -q "ruoli DB non configurati: salto" "$TMP/ruoli-vuoto.out"
+
+printf 'DB_APP_PASSWORD=%s\n' "$PWD_A" > "$TMP/ruoli-meta.env"
+ruoli_prova meta "$TMP/ruoli-meta.env"
+verifica "db-ruoli: una sola password, exit 1" 0 ruoli_rc meta 1
+printf 'DB_APP_PASSWORD=corta\nDB_SISTEMA_PASSWORD=%s\n' "$PWD_S" > "$TMP/ruoli-corta.env"
+ruoli_prova corta "$TMP/ruoli-corta.env"
+verifica "db-ruoli: password troppo corta, exit 1" 0 ruoli_rc corta 1
+verifica "db-ruoli: password troppo corta, messaggio" 0 grep -q "troppo corta" "$TMP/ruoli-corta.err"
+printf 'DB_APP_PASSWORD=%s/xx\nDB_SISTEMA_PASSWORD=%s\n' "$PWD_A" "$PWD_S" > "$TMP/ruoli-slash.env"
+ruoli_prova slash "$TMP/ruoli-slash.env"
+verifica "db-ruoli: carattere '/' non ammesso, exit 1" 0 ruoli_rc slash 1
+printf 'DB_APP_USER=pippo\nDB_APP_PASSWORD=%s\nDB_SISTEMA_PASSWORD=%s\n' "$PWD_A" "$PWD_S" > "$TMP/ruoli-user.env"
+ruoli_prova user "$TMP/ruoli-user.env"
+verifica "db-ruoli: DB_APP_USER sbagliato, exit 1" 0 ruoli_rc user 1
+verifica "db-ruoli: nessuna password nei messaggi di errore" 1 grep -q "$PWD_A" "$TMP/ruoli-corta.err" "$TMP/ruoli-slash.err" "$TMP/ruoli-user.err" "$TMP/ruoli-meta.err"
 
 # Casi negativi senza database: PG_EXEC=false e un database di nome fittizio. Ognuno deve
 # uscire con il suo messaggio e senza aver mai fermato il backend.
@@ -547,20 +600,20 @@ GRANT SELECT, INSERT ON t_prova TO prova_ruolo_b;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO prova_ruolo_a;
 SQL
   pg_exec pg_dump -U "$DB_USER" prova_restore_grant | gzip > "$TMP/prova_restore_grant.sql.gz"
-  verifica "restore DR ruoli: il dump contiene i GRANT ai ruoli" 0     bash -c 'gzip -dc "$1" | grep -q "GRANT SELECT ON TABLE public.t_prova TO prova_ruolo_a"' _ "$TMP/prova_restore_grant.sql.gz"
+  verifica "restore DR ruoli: il dump contiene i GRANT ai ruoli" 0 bash -c 'gzip -dc "$1" | grep -q "GRANT SELECT ON TABLE public.t_prova TO prova_ruolo_a"' _ "$TMP/prova_restore_grant.sql.gz"
   pg_exec psql -U "$DB_USER" -d postgres -qAtc 'DROP DATABASE prova_restore_grant WITH (FORCE)' >/dev/null
   for r in $RUOLI_PROVA; do
     pg_exec psql -U "$DB_USER" -d postgres -qAtc "DROP ROLE $r" >/dev/null
   done
-  verifica "restore DR ruoli: i ruoli di prova non esistono sul cluster" 0     test "$(sql_pg postgres "SELECT count(*) FROM pg_roles WHERE rolname IN ('prova_ruolo_a','prova_ruolo_b')")" = "0"
-  printf 'DB_NAME=prova_restore_grantdr
-DB_USER=%s
-' "$DB_USER" > "$TMP/env-restore-grant"
-  esegui_restore grant "$TMP/prova_restore_grant.sql.gz" RIPRISTINO_TAG=sha-prova     WASTEFLOW_ENV_FILE="$TMP/env-restore-grant" RESTORE_RUOLI="$RUOLI_PROVA"
+  verifica "restore DR ruoli: i ruoli di prova non esistono sul cluster" 0 test "$(sql_pg postgres "SELECT count(*) FROM pg_roles WHERE rolname IN ('prova_ruolo_a','prova_ruolo_b')")" = "0"
+  # Nome corto: DB_PRECEDENTE = <nome>_prima_del_ripristino_<data>_<ora>_<pid> deve stare in 63 caratteri
+  # anche con un pid a 7 cifre (22 + 16 + 7 = 45 + nome <= 63 -> nome <= 18).
+  printf 'DB_NAME=prova_restore_g\nDB_USER=%s\n' "$DB_USER" > "$TMP/env-restore-grant"
+  esegui_restore grant "$TMP/prova_restore_grant.sql.gz" RIPRISTINO_TAG=sha-prova WASTEFLOW_ENV_FILE="$TMP/env-restore-grant" RESTORE_RUOLI="$RUOLI_PROVA"
   verifica "restore DR ruoli: dump con GRANT a ruoli mancanti, esce 0" 0 test "$(cat "$TMP/esito-grant")" -eq 0
-  verifica "restore DR ruoli: i ruoli sono stati creati NOLOGIN" 0     test "$(sql_pg postgres "SELECT count(*) FROM pg_roles WHERE rolname IN ('prova_ruolo_a','prova_ruolo_b') AND NOT rolcanlogin")" = "2"
-  verifica "restore DR ruoli: i GRANT del dump sono applicati" 0     test "$(sql_pg prova_restore_grantdr "SELECT has_table_privilege('prova_ruolo_b','t_prova','INSERT')")" = "t"
-  verifica "restore DR ruoli: i dati ci sono" 0     test "$(sql_pg prova_restore_grantdr 'SELECT count(*) FROM t_prova')" = "1"
+  verifica "restore DR ruoli: i ruoli sono stati creati NOLOGIN" 0 test "$(sql_pg postgres "SELECT count(*) FROM pg_roles WHERE rolname IN ('prova_ruolo_a','prova_ruolo_b') AND NOT rolcanlogin")" = "2"
+  verifica "restore DR ruoli: i GRANT del dump sono applicati" 0 test "$(sql_pg prova_restore_g "SELECT has_table_privilege('prova_ruolo_b','t_prova','INSERT')")" = "t"
+  verifica "restore DR ruoli: i dati ci sono" 0 test "$(sql_pg prova_restore_g 'SELECT count(*) FROM t_prova')" = "1"
   elimina_prova_restore
   for r in $RUOLI_PROVA; do
     pg_exec psql -U "$DB_USER" -d postgres -qAtc "DROP ROLE IF EXISTS $r" >/dev/null 2>&1

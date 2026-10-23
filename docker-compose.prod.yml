@@ -76,7 +76,7 @@ services:
       # Ruoli DB (RLS pezzo 1). L'applicazione si collega col ruolo `wasteflow_app`
       # (NOBYPASSRLS) quando DB_APP_PASSWORD e' valorizzata; senza, resta
       # sull'owner come prima. Le password nei URL vanno senza caratteri
-      # riservati (generarle in esadecimale).
+      # riservati (openssl rand -hex 32; db-ruoli.sh accetta solo A-Za-z0-9 _ . -, minimo 16).
       #
       # CONFIGURAZIONE A META' = errore di compose, a ogni comando e quindi al
       # `pull`, PRIMA di backup e migration (e non un backend che cade dopo).

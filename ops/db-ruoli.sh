@@ -26,7 +26,8 @@
 # costruite con il printf BUILTIN di bash (nessun processo esterno, quindi niente
 # /proc/<pid>/cmdline) e seguite dal file SQL. Non compaiono nel comando che
 # stampa il runner. Niente `set -x`. Per questo sono ammessi solo i caratteri
-# [A-Za-z0-9_.:,@%+=/-] (esadecimale consigliato): evita ogni problema di quoting.
+# [A-Za-z0-9_.-], almeno 16 (consigliato: openssl rand -hex 32): niente quoting da
+# gestire e nessun carattere che rompa gli URL che compose costruisce con le password.
 #
 # Il container fornisce POSTGRES_USER, POSTGRES_DB e (in CI) PGPORT.
 # ==============================================================================
@@ -49,8 +50,14 @@ carica_da_file() {
   [[ -r "${file}" ]] || return 0
   for nome in DB_APP_PASSWORD DB_SISTEMA_PASSWORD DB_APP_USER DB_SISTEMA_USER; do
     [[ -n "${!nome:-}" ]] && continue
-    valore="$(sed -n "s/^${nome}=//p" "${file}" | tail -n 1 | tr -d '\r')"
-    valore="${valore%\"}"; valore="${valore#\"}"; valore="${valore%\'}"; valore="${valore#\'}"
+    # Stesse forme del .env di compose: "export NOME=v", spazi iniziali, spazi
+    # attorno a "=". Vince l'ultima definizione.
+    valore="$(sed -nE "s/^[[:space:]]*(export[[:space:]]+)?${nome}[[:space:]]*=[[:space:]]*//p" "${file}" | tail -n 1 | tr -d '\r')"
+    case "${valore}" in
+      \"*) valore="${valore#\"}"; valore="${valore%%\"*}" ;;
+      \'*) valore="${valore#\'}"; valore="${valore%%\'*}" ;;
+      *)   valore="${valore%%[[:space:]]#*}"; valore="${valore%"${valore##*[![:space:]]}"}" ;;
+    esac
     printf -v "${nome}" '%s' "${valore}"
   done
 }
@@ -88,14 +95,19 @@ if [[ -n "${SIS_USER}" && "${SIS_USER}" != "wasteflow_sistema" ]]; then
   echo "ERRORE: DB_SISTEMA_USER deve essere wasteflow_sistema (nome fisso in ruoli-db.sql), trovato '${SIS_USER}'" >&2
   exit 1
 fi
-CARATTERI_AMMESSI='*[!A-Za-z0-9_.:,@%+=/-]*'
-# shellcheck disable=SC2254 # il pattern in variabile e' voluto
-case "${APP_PWD}${SIS_PWD}" in
-  ${CARATTERI_AMMESSI})
-    echo "ERRORE: le password dei ruoli DB contengono caratteri non ammessi (usare solo A-Za-z0-9 _ . : , @ % + = / -; meglio esadecimale)" >&2
+controlla_password() {
+  local nome="$1" valore="$2"
+  if [[ "${#valore}" -lt 16 ]]; then
+    echo "ERRORE: ${nome} troppo corta (minimo 16 caratteri; usare 'openssl rand -hex 32')" >&2
     exit 1
-    ;;
-esac
+  fi
+  if [[ ! "${valore}" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+    echo "ERRORE: ${nome} contiene caratteri non ammessi (solo A-Za-z0-9 _ . -; usare 'openssl rand -hex 32')" >&2
+    exit 1
+  fi
+}
+controlla_password DB_APP_PASSWORD "${APP_PWD}"
+controlla_password DB_SISTEMA_PASSWORD "${SIS_PWD}"
 
 [[ -n "${PG_EXEC:-}" ]] || { echo "ERRORE: PG_EXEC non impostato (oppure usare --dev)" >&2; exit 2; }
 [[ -f "${SQL}" ]] || { echo "ERRORE: ${SQL} non trovato" >&2; exit 2; }

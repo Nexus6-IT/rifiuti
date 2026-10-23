@@ -133,5 +133,5 @@ L'analisi dello stato attuale è nel ledger di questo piano, voce "Analisi inizi
 
 ## Dopo il pezzo (a Graziano, non al codice)
 
-- **Sul server** aggiungere a `/opt/rifiuti/.env` **tutte e tre** `DB_APP_USER=wasteflow_app`, `DB_APP_PASSWORD` e `DB_SISTEMA_PASSWORD` (password casuali, esadecimali), poi fare il deploy: crea i ruoli e l'app passa al ruolo non owner. Una configurazione a meta' ferma il deploy prima di toccare nulla.
+- **Sul server** aggiungere a `/opt/rifiuti/.env` **tutte e tre** `DB_APP_USER=wasteflow_app`, `DB_APP_PASSWORD` e `DB_SISTEMA_PASSWORD` (password generate con `openssl rand -hex 32`), poi fare il deploy: crea i ruoli e l'app passa al ruolo non owner. Una configurazione a meta' ferma il deploy prima di toccare nulla.
 - **Rollback**: togliere `DB_APP_USER`, `DB_APP_PASSWORD` e `DB_SISTEMA_PASSWORD` dal `.env` e rifare il deploy; i ruoli nel database possono restare.
