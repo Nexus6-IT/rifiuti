@@ -28,6 +28,10 @@ import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { parsePkcs12 } from '../../infrastructure/rentri/rentri-pkcs12.util'
+import {
+  algoritmoDaChiave,
+  TipoChiaveNonSupportatoError,
+} from '../../infrastructure/rentri/certificato/algoritmo-da-chiave'
 import { validaCertificato } from '../../infrastructure/rentri/certificato/valida-certificato'
 import { SetRentriCredentialDto } from './dto/set-rentri-credential.dto'
 
@@ -41,6 +45,8 @@ interface SuccessResponse {
    * V. `infrastructure/rentri/certificato/valida-certificato.ts`.
    */
   avvertimenti?: string[]
+  /** Algoritmo JOSE ricavato dalla chiave del certificato (RS256 per RSA, ES256 per EC P-256). */
+  algorithm?: 'RS256' | 'ES256'
 }
 
 /** Stato della credenziale del tenant (mai chiave né certificato completo). */
@@ -57,6 +63,8 @@ interface CredentialStatusResponse {
    * (v. `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`).
    */
   credentialsIdFirmaRemota?: string | null
+  /** Algoritmo JOSE della credenziale salvata (RS256/ES256): non è un segreto. */
+  algorithm?: 'RS256' | 'ES256'
 }
 
 @ApiTags('rentri')
@@ -129,11 +137,29 @@ export class RentriCredentialController {
       .filter(controllo => controllo.esito === 'avvertimento')
       .map(controllo => controllo.messaggio)
 
+    // L'algoritmo si ricava dalla chiave, non lo sceglie l'utente. Va dopo la
+    // validazione: una chiave illeggibile o non coerente è già stata segnalata
+    // col suo messaggio. `dto.algorithm` resta solo come controllo incrociato.
+    let algorithm: 'RS256' | 'ES256'
+    try {
+      algorithm = algoritmoDaChiave(privateKeyPem)
+    } catch (error) {
+      if (error instanceof TipoChiaveNonSupportatoError) {
+        throw new BadRequestException(error.message)
+      }
+      throw error
+    }
+    if (dto.algorithm && dto.algorithm !== algorithm) {
+      throw new BadRequestException(
+        `L'algoritmo indicato (${dto.algorithm}) non corrisponde alla chiave del certificato (${algorithm})`
+      )
+    }
+
     await this.credentialService.upsertForTenant(user.tenantId, {
       clientId: dto.clientId,
       certificatePem,
       privateKeyPem,
-      algorithm: dto.algorithm,
+      algorithm,
       environment: dto.environment,
       numIscrSito: dto.numIscrSito,
       numIscrOperatore: dto.numIscrOperatore,
@@ -141,7 +167,9 @@ export class RentriCredentialController {
     })
 
     // NON restituire mai chiave/cert.
-    return avvertimenti.length > 0 ? { success: true, avvertimenti } : { success: true }
+    return avvertimenti.length > 0
+      ? { success: true, algorithm, avvertimenti }
+      : { success: true, algorithm }
   }
 
   @Get()
@@ -166,6 +194,7 @@ export class RentriCredentialController {
       numIscrSito: cred.numIscrSito ?? null,
       numIscrOperatore: cred.numIscrOperatore ?? null,
       credentialsIdFirmaRemota: cred.credentialsIdFirmaRemota ?? null,
+      algorithm: cred.algorithm,
     }
   }
 
