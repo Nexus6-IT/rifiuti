@@ -1355,4 +1355,63 @@ describe('RENTRIApiClient', () => {
       })
     })
   })
+
+  describe('leggiCertificatoFirmaRemota — CredentialsInfoResponse', () => {
+    const rispostaInfo = (data: unknown): AxiosResponse => ({
+      data,
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    })
+
+    it('credentials/info: query credentials_id, cert_info=true, certificates=Single', async () => {
+      mockHttpService.get.mockReturnValue(
+        of(rispostaInfo({ cert: { status: 'Valid', certificates: ['CERT-B64'] } }))
+      )
+
+      await client.leggiCertificatoFirmaRemota('tenant-1', 'CRED00001')
+
+      const url = new URL(mockHttpService.get.mock.calls[0][0])
+      expect(url.pathname).toBe('/ca-rentri/v1.0/credentials/info')
+      expect(url.searchParams.get('credentials_id')).toBe('CRED00001')
+      expect(url.searchParams.get('cert_info')).toBe('true')
+      expect(url.searchParams.get('certificates')).toBe('Single')
+    })
+
+    it('credentials/info: restituisce cert.certificates[0]', async () => {
+      mockHttpService.get.mockReturnValue(
+        of(rispostaInfo({ cert: { status: 'Valid', certificates: ['CERT-B64', 'ALTRO'] } }))
+      )
+
+      await expect(client.leggiCertificatoFirmaRemota('tenant-1', 'CRED00001')).resolves.toBe(
+        'CERT-B64'
+      )
+    })
+
+    it.each([
+      ['cert assente', {}],
+      ['certificates assente', { cert: { status: 'Valid' } }],
+      ['certificates vuoto', { cert: { status: 'Valid', certificates: [] } }],
+    ])(
+      'credentials/info senza cert.certificates o con array vuoto → errore esplicito (%s)',
+      async (_nome, data) => {
+        mockHttpService.get.mockReturnValue(of(rispostaInfo(data)))
+
+        await expect(client.leggiCertificatoFirmaRemota('tenant-1', 'CRED00001')).rejects.toThrow(
+          /cert\.certificates/
+        )
+      }
+    )
+
+    it('credentials/info con cert.status Expired → errore "Il certificato di firma remota non è valido (stato: Expired)"', async () => {
+      mockHttpService.get.mockReturnValue(
+        of(rispostaInfo({ cert: { status: 'Expired', certificates: ['CERT-B64'] } }))
+      )
+
+      await expect(client.leggiCertificatoFirmaRemota('tenant-1', 'CRED00001')).rejects.toThrow(
+        'Il certificato di firma remota non è valido (stato: Expired)'
+      )
+    })
+  })
 })

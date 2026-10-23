@@ -58,11 +58,10 @@ export class RENTRIApiClient {
    *
    * Confermato da `docs/contracts/rentri/ca-rentri.yaml` (v. `MANIFEST.md`,
    * v1.0.20260831). Il percorso di firma e' `POST /signatures/sign-hash`
-   * (ca-rentri.yaml:2019), non `/credentials/sign-hash`. **Non ancora
-   * allineati al contratto**: `GET /credentials/info` (:1294; il contratto ha
-   * `cert.certificates[]`, non `certificato`; `CredentialsInfoResponse` a
-   * :2779) e `POST /credentials/authorize` + `authorize-check` (:825, :906;
-   * pattern della `description`, semantica di `sad`/`expires_in`, codici
+   * (ca-rentri.yaml:2019), non `/credentials/sign-hash`. **Allineato**: `GET /credentials/info`
+   * (:1294; `CredentialsInfoResponse` a :2779, certificato in
+   * `cert.certificates[]`). **Non ancora allineati**: `POST
+   * /credentials/authorize` + `authorize-check` (:825, :906; pattern della `description`, semantica di `sad`/`expires_in`, codici
    * 400/403; schemi a :2617 e :2665): allineamento in un pezzo successivo del
    * Piano B. Concatenato allo stesso `config.baseUrl` degli altri servizi (es.
    * `https://demoapi.rentri.gov.it/ca-rentri/v1.0`).
@@ -859,24 +858,28 @@ export class RENTRIApiClient {
 
   /**
    * Legge il certificato X.509 della credenziale di firma remota
-   * (`GET /ca-rentri/v1.0/credentials/info?cert_info=true`). Serve per
-   * ottenere il `certificato` base64 da passare a
-   * {@link richiediHashPerFirma} e {@link inviaAcquisizioneFirma}: senza,
-   * quei due endpoint non si possono nemmeno chiamare.
+   * (`GET /ca-rentri/v1.0/credentials/info`, ca-rentri.yaml:1294). Serve per
+   * ottenere il certificato base64 da passare a {@link richiediHashPerFirma} e
+   * {@link inviaAcquisizioneFirma}: senza, quei due endpoint non si possono
+   * nemmeno chiamare.
    *
-   * **Scelta NON confermata da alcuna fonte ufficiale** (dichiarata come tale,
-   * stesso stile di onestà dell'ADR): nessuna fonte specifica se
-   * `credentials_id` vada in query o in header. Si usa la **query**
-   * `credentials_id`, coerente con lo stile REST degli altri endpoint
-   * `ca-rentri` documentati. Se l'ente dovesse rifiutare, è QUESTA riga da
-   * cambiare — non un difetto sparso nel resto della sequenza.
+   * Contratto: `credentials_id` e' un parametro di **query** obbligatorio
+   * (9 caratteri). Si chiede `cert_info=true&certificates=Single`
+   * (`CredentialsCertificate`, :2682), cosi' la risposta
+   * `CredentialsInfoResponse` (:2779) porta in `cert` (`CertData`, :2346) lo
+   * `status` e il solo certificato dell'ente finale in `cert.certificates[0]`
+   * (base64 DER). Gli altri campi della risposta vengono ignorati.
    *
-   * Risposta assunta: `{ certificato: string }` (base64). Eventuali altri
-   * campi del certificato vengono ignorati; l'assenza di `certificato` è un
-   * errore esplicito, mai una stringa vuota silenziosa.
+   * Errori espliciti, mai una stringa vuota silenziosa: `cert.status` presente
+   * e diverso da `Valid` (Expired, Revoked, Suspended) blocca PRIMA di chiedere
+   * l'autorizzazione; `cert.certificates` assente o vuoto impedisce di firmare.
    */
   async leggiCertificatoFirmaRemota(tenantId: string, credentialsId: string): Promise<string> {
-    const query = new URLSearchParams({ cert_info: 'true', credentials_id: credentialsId })
+    const query = new URLSearchParams({
+      credentials_id: credentialsId,
+      cert_info: 'true',
+      certificates: 'Single',
+    })
     const contesto = '/ca-rentri/credentials/info'
     const risposta = await this.eseguiRichiestaConResilienza(
       () =>
@@ -887,10 +890,16 @@ export class RENTRIApiClient {
       contesto
     )
 
-    const certificato = risposta.data?.certificato
+    const cert = risposta.data?.cert
+    const stato = cert?.status
+    if (stato !== undefined && stato !== null && stato !== 'Valid') {
+      throw new Error(`Il certificato di firma remota non è valido (stato: ${stato})`)
+    }
+
+    const certificato = cert?.certificates?.[0]
     if (typeof certificato !== 'string' || certificato.trim() === '') {
       throw new Error(
-        `Risposta di ${contesto} priva del campo 'certificato': impossibile richiedere il digest da firmare.`
+        `Risposta di ${contesto} priva di 'cert.certificates': impossibile richiedere il digest da firmare.`
       )
     }
     return certificato

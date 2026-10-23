@@ -2,10 +2,22 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { verificaJwt } from '../auth/jwt-verifier'
 import { Archivio, EXPIRES_IN_DEFAULT_SECONDI } from '../stato/archivio'
 import { inviaProblemDetails } from '../errori/problem-details'
+import forge from 'node-forge'
+import { certificatoCaPem } from '../auth/ca-test'
 import { validaCredentialsAuthorize, validaSignHash } from '../dominio/ca-rentri'
 
 const AUDIENCE = process.env.RENTRI_AUDIENCE ?? 'rentrigov.demo.api'
 const PREFISSO = '/ca-rentri/v1.0'
+/** Valori di `CredentialsCertificate` (ca-rentri.yaml:2682). */
+const CERTIFICATI_AMMESSI = ['None', 'Single', 'Chain']
+
+/** Certificato della CA di prova della fake, in base64 DER (secondo anello della catena). */
+function certificatoCaBase64Der(): string {
+  const der = forge.asn1.toDer(
+    forge.pki.certificateToAsn1(forge.pki.certificateFromPem(certificatoCaPem()))
+  )
+  return forge.util.encode64(der.getBytes())
+}
 
 /**
  * Servizio `ca-rentri` — FIRMA REMOTA RENTRI (R3 Task 3).
@@ -14,16 +26,15 @@ const PREFISSO = '/ca-rentri/v1.0'
  *
  * Il contratto ufficiale esiste ed e' versionato in
  * `docs/contracts/rentri/ca-rentri.yaml` (v. `MANIFEST.md`, v1.0.20260831).
- * - **Allineato**: `POST /signatures/sign-hash` (ca-rentri.yaml:2019; risposta
+ * - **Allineato**: `GET /credentials/info` (ca-rentri.yaml:1294; risposta
+ *   `CredentialsInfoResponse` a :2779, certificato in `cert.certificates[]`
+ *   scelto da `certificates`, `credentials_id` in query obbligatorio di 9
+ *   caratteri) e `POST /signatures/sign-hash` (ca-rentri.yaml:2019; risposta
  *   `SignatureResponse` a :3560, `{ signatures: string[] }`). Il vecchio
  *   `/credentials/sign-hash` NON esiste nel contratto e qui risponde 404; la
  *   guardia `test/rotte-allineate-ai-contratti.test.ts` verifica metodo e path
  *   delle rotte contro il contratto.
  * - **NON ancora allineato** (pezzo successivo del Piano B):
- *   - `GET /credentials/info` (:1294, `CredentialsInfoResponse` a :2779): la
- *     fake espone un campo `certificato` che nel contratto non esiste (il
- *     contratto ha `cert.certificates[]`), e il `credentials_id` in query e'
- *     da riverificare;
  *   - `POST /credentials/authorize` (:825) e `authorize-check` (:906): il
  *     CORPO della richiesta e' ora validato su `CredentialsAuthorizeRequest`
  *     (:2617) e quello di sign-hash su `SignatureRequest` (:3517), con 422
@@ -92,24 +103,49 @@ interface CorpoSignHash {
 }
 
 export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio): void {
-  // GET /credentials/info?cert_info=true&credentials_id=...
-  // Restituisce il certificato X.509 della credenziale di firma remota:
-  // senza, /hash e /acquisizione-firma non si possono nemmeno chiamare.
-  app.get<{ Querystring: { cert_info?: string; credentials_id?: string } }>(
-    `${PREFISSO}/credentials/info`,
-    async (richiesta, risposta) => {
-      if (!(await autentica(richiesta, risposta, archivio))) return
+  // GET /credentials/info — risponde con `CredentialsInfoResponse`
+  // (ca-rentri.yaml:2779). Il certificato di firma remota sta in
+  // `cert.certificates[]` (`CertData`, :2346), scelto dal parametro
+  // `certificates` (`CredentialsCertificate`, :2682): `None` nessuno, `Single`
+  // solo l'ente finale, `Chain` ente finale per primo e poi la CA di prova.
+  // Senza `cert_info=true` il blocco `cert` non c'e' (e' nullable nel
+  // contratto). Senza `certificates` vale `Single`, come nel CSC.
+  app.get<{
+    Querystring: { cert_info?: string; credentials_id?: string; certificates?: string }
+  }>(`${PREFISSO}/credentials/info`, async (richiesta, risposta) => {
+    if (!(await autentica(richiesta, risposta, archivio))) return
 
-      if (!richiesta.query.credentials_id) {
-        return inviaProblemDetails(risposta, 400, {
-          title: 'Parametro richiesto non specificato',
-          detail: "'credentials_id' e' obbligatorio.",
-        })
-      }
-
-      return { certificato: archivio.certificatoFirmaRemota() }
+    const { credentials_id: credentialsId, cert_info: certInfo, certificates } = richiesta.query
+    if (!credentialsId || credentialsId.length !== 9) {
+      return inviaProblemDetails(risposta, 400, {
+        title: 'Parametro richiesto non specificato',
+        detail: "'credentials_id' e' obbligatorio e di 9 caratteri.",
+      })
     }
-  )
+
+    const scelta = certificates ?? 'Single'
+    if (!CERTIFICATI_AMMESSI.includes(scelta)) {
+      return inviaProblemDetails(risposta, 400, {
+        title: 'Modello dati non valido',
+        detail: "'certificates' ammette None, Single o Chain.",
+      })
+    }
+
+    if (certInfo !== 'true') return { description: 'Credenziale di firma remota (fake)' }
+
+    const enteFinale = archivio.certificatoFirmaRemota()
+    const elenco =
+      scelta === 'None'
+        ? []
+        : scelta === 'Single'
+          ? [enteFinale]
+          : [enteFinale, certificatoCaBase64Der()]
+
+    return {
+      description: 'Credenziale di firma remota (fake)',
+      cert: { status: 'Valid', certificates: elenco },
+    }
+  })
 
   // POST /credentials/authorize — crea la sessione di autorizzazione. NON la
   // conferma: la conferma e' un gesto dell'utente sul proprio dispositivo.
