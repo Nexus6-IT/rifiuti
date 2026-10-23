@@ -882,6 +882,27 @@ describe('RENTRIApiClient', () => {
       expect(mockHttpService.post).toHaveBeenCalledTimes(1)
     })
 
+    it('creaAuthorizationHeader che fallisce: errore originale rilanciato, POST mai chiamata, non incerta', async () => {
+      const originale = new Error('certificato mancante')
+      mockAuth.creaAuthorizationHeader.mockRejectedValue(originale)
+
+      const errore = await client.creaFormulario('tenant-1', { dati: 'x' }).catch((e: unknown) => e)
+
+      expect(errore).toBe(originale)
+      expect(errore).not.toBeInstanceOf(TrasmissioneRentriIncertaError)
+      expect(mockHttpService.post).not.toHaveBeenCalled()
+    })
+
+    it('buildIntegrityHeaders che fallisce: errore originale rilanciato, POST mai chiamata', async () => {
+      const originale = new Error('chiave di firma assente')
+      mockSignature.buildIntegrityHeaders.mockRejectedValue(originale)
+
+      const errore = await client.creaFormulario('tenant-1', { dati: 'x' }).catch((e: unknown) => e)
+
+      expect(errore).toBe(originale)
+      expect(mockHttpService.post).not.toHaveBeenCalled()
+    })
+
     it('429 sulla POST si ritenta ancora', async () => {
       mockHttpService.post
         .mockReturnValueOnce(
@@ -974,6 +995,19 @@ describe('RENTRIApiClient', () => {
       expect(errore).toBeInstanceOf(TransazioneRentriNonTrovataError)
       expect((errore as TransazioneRentriNonTrovataError).transazioneId).toBe('tx-sconosciuta')
       expect(mockHttpService.get).toHaveBeenCalledTimes(1)
+    })
+
+    it('404 su /result: TransazioneRentriNonTrovataError con il transazioneId', async () => {
+      mockHttpService.get
+        .mockReturnValueOnce(of(statusResponse(303, '/formulari/v1.0/tx-r/result')))
+        .mockReturnValueOnce(of(resultResponse(404)))
+
+      const errore = await client
+        .attendiEsito('tenant-1', 'tx-r', { intervalloMs: 0, maxTentativi: 3 })
+        .catch((e: unknown) => e)
+
+      expect(errore).toBeInstanceOf(TransazioneRentriNonTrovataError)
+      expect((errore as TransazioneRentriNonTrovataError).transazioneId).toBe('tx-r')
     })
 
     it('200 su /status significa "ancora in elaborazione": riprova senza seguire redirect automaticamente', async () => {

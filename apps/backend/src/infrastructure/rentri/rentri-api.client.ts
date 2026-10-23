@@ -36,6 +36,12 @@ import type { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
  *
  * ATTIVARE: caricare certificato + completare iscrizione RENTRI (area operatori).
  */
+/**
+ * Errori sollevati dalla chiamata `httpService.post` stessa (richiesta
+ * effettivamente inviata), per distinguerli dai fallimenti precedenti l'invio.
+ */
+const erroriChiamataHttp = new WeakSet<object>()
+
 @Injectable()
 export class RENTRIApiClient {
   private readonly timeout = 30000 // 30s
@@ -1214,8 +1220,8 @@ export class RENTRIApiClient {
    */
   private async leggiEsitoTransazione(
     tenantId: string,
-    urlEsito?: string,
-    transazioneId?: string
+    urlEsito: string | undefined,
+    transazioneId: string
   ): Promise<EsitoFormulario | null> {
     if (!urlEsito) {
       throw new Error('Risposta 303 da /status priva di header Location')
@@ -1238,7 +1244,7 @@ export class RENTRIApiClient {
       })
 
       if (response.status === 404) {
-        throw new TransazioneRentriNonTrovataError(transazioneId ?? url)
+        throw new TransazioneRentriNonTrovataError(transazioneId)
       }
 
       if (response.status === 400) {
@@ -1333,7 +1339,15 @@ export class RENTRIApiClient {
         if (!risposta || typeof risposta.status !== 'number') {
           // Creazione: senza risposta non si sa se RENTRI abbia registrato il
           // FIR, quindi niente ritentativo e errore tipizzato per il chiamante.
-          if (opzioni?.creazione) {
+          // Solo se a fallire è la chiamata HTTP (richiesta partita): errori
+          // PRIMA dell'invio (auth, firma, rate limiter, bug locali) non hanno
+          // raggiunto RENTRI e si rilanciano invariati.
+          if (
+            opzioni?.creazione &&
+            error &&
+            typeof error === 'object' &&
+            erroriChiamataHttp.has(error)
+          ) {
             throw new TrasmissioneRentriIncertaError('NESSUNA_RISPOSTA')
           }
           // Nessuna risposta HTTP riconoscibile (es. timeout, errore di rete):
@@ -1387,6 +1401,11 @@ export class RENTRIApiClient {
       return response
     } catch (error: any) {
       this.metrics.rentriApiErrors.inc({ endpoint: metricEndpoint, error_type: 'HTTP' })
+      // Marca l'errore come rifiuto della chiamata HTTP vera e propria (la
+      // richiesta è partita): v. `eseguiRichiestaConResilienza`, opzione creazione.
+      if (error && typeof error === 'object') {
+        erroriChiamataHttp.add(error)
+      }
       throw error
     }
   }
