@@ -4,6 +4,7 @@ import { RENTRISyncStatus as PrismaRentriSyncStatus } from '@prisma/client'
 import { PrismaService } from '../persistence/prisma.service'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { encryptSecret, decryptSecret } from './rentri-crypto.util'
+import { CODICE_CERTIFICATO_MANCANTE } from './rentri-certificato.costanti'
 
 /**
  * Formato del numero di iscrizione dell'unità locale RENTRI (`num_iscr_sito`),
@@ -131,7 +132,7 @@ export class RentriCredentialService {
       const filtro = {
         tenantId,
         rentriSyncStatus: PrismaRentriSyncStatus.PERMANENTLY_FAILED,
-        rentriLastSyncErrorCode: 'RENTRI_CERTIFICATO_MANCANTE',
+        rentriLastSyncErrorCode: CODICE_CERTIFICATO_MANCANTE,
         status: { not: 'CANCELLED' as const },
       }
       const fermi = await this.prisma.fIR.findMany({ where: filtro, select: { id: true } })

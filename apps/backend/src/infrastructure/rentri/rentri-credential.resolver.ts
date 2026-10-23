@@ -15,6 +15,8 @@ export interface ResolvedRentriCredential {
   source: 'tenant' | 'env'
 }
 
+export { CODICE_CERTIFICATO_MANCANTE } from './rentri-certificato.costanti'
+
 /** Messaggio per l'utente (mai l'id del tenant): unica fonte, usata anche da `traduciErroreRentri`. */
 export const MESSAGGIO_CERTIFICATO_MANCANTE =
   "L'azienda non ha un certificato RENTRI configurato: caricalo nella pagina del certificato RENTRI."

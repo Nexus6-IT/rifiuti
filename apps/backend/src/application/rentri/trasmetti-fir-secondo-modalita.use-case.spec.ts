@@ -1,5 +1,10 @@
 import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
-import { MESSAGGIO_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-credential.resolver'
+import {
+  CODICE_CERTIFICATO_MANCANTE,
+  MESSAGGIO_CERTIFICATO_MANCANTE,
+} from '../../infrastructure/rentri/rentri-credential.resolver'
+import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
+import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
 
 /**
@@ -23,7 +28,7 @@ describe('TrasmettiFIRSecondoModalitaUseCase', () => {
   let mockRentriSyncQueue: any
   let mockLogger: any
   let mockFirRepository: any
-  let mockFir: any
+  let mockFir: FIR
 
   const FIR_ID = 'fir-123'
   const TENANT_ID = 'tenant-456'
@@ -43,7 +48,22 @@ describe('TrasmettiFIRSecondoModalitaUseCase', () => {
       error: jest.fn(),
     }
 
-    mockFir = { markRENTRISyncFailed: jest.fn() }
+    // FIR reale e gia' EMESSO (come dopo EmettiFIRUseCase): l'esito si verifica sullo stato di dominio.
+    mockFir = FIR.create({
+      produttoreId: 'produttore-1',
+      tenantId: TENANT_ID,
+      rifiuto: { cerCode: '13 02 05*', quantita: 120, unitaMisura: UnitaMisura.KG },
+      trasportatoreId: 'trasportatore-1',
+      destinatarioId: 'destinatario-1',
+    })
+    mockFir.emetti('FIR-2026-000001', {
+      firmatario: 'Mario Rossi',
+      timestamp: new Date(),
+      certificato: 'firma',
+      userId: 'user-1',
+      documentHash: 'h1',
+      certificateHash: 'h2',
+    } as any)
     mockFirRepository = {
       findById: jest.fn().mockResolvedValue(mockFir),
       save: jest.fn().mockResolvedValue(undefined),
@@ -127,10 +147,9 @@ describe('TrasmettiFIRSecondoModalitaUseCase', () => {
     const esito = await useCase.eseguiSeAutomatica({ firId: FIR_ID, tenantId: TENANT_ID })
 
     expect(mockFirRepository.findById).toHaveBeenCalledWith(FIR_ID)
-    expect(mockFir.markRENTRISyncFailed).toHaveBeenCalledWith(
-      MESSAGGIO_CERTIFICATO_MANCANTE,
-      'RENTRI_CERTIFICATO_MANCANTE'
-    )
+    expect(mockFir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+    expect(mockFir.rentriSyncStatus.getLastErrorCode()).toBe(CODICE_CERTIFICATO_MANCANTE)
+    expect(mockFir.rentriSyncStatus.getLastError()).toBe(MESSAGGIO_CERTIFICATO_MANCANTE)
     expect(mockFirRepository.save).toHaveBeenCalledWith(mockFir)
     expect(mockRentriSyncQueue.addSyncJob).not.toHaveBeenCalled()
     expect(esito).toEqual({
@@ -148,12 +167,12 @@ describe('TrasmettiFIRSecondoModalitaUseCase', () => {
 
     const esito = await useCase.eseguiSeAutomatica({ firId: FIR_ID, tenantId: TENANT_ID })
 
-    expect(mockFir.markRENTRISyncFailed).toHaveBeenCalledWith(
-      MESSAGGIO_CERTIFICATO_MANCANTE,
-      'RENTRI_CERTIFICATO_MANCANTE'
-    )
+    expect(mockFir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+    expect(mockFir.rentriSyncStatus.getLastErrorCode()).toBe(CODICE_CERTIFICATO_MANCANTE)
     expect(mockFirRepository.save).toHaveBeenCalledWith(mockFir)
     expect(mockRentriSyncQueue.addSyncJob).not.toHaveBeenCalled()
+    expect(esito.avviata).toBe(false)
+    expect(esito.motivo).toBe('CERTIFICATO_MANCANTE')
     expect(esito.esitoRegistrato).toBe(true)
   })
 
@@ -166,7 +185,7 @@ describe('TrasmettiFIRSecondoModalitaUseCase', () => {
     await useCase.eseguiSeAutomatica({ firId: FIR_ID, tenantId: TENANT_ID })
 
     expect(mockFirRepository.findById).not.toHaveBeenCalled()
-    expect(mockFir.markRENTRISyncFailed).not.toHaveBeenCalled()
+    expect(mockFir.rentriSyncStatus.getStatus()).toBe('PENDING')
     expect(mockFirRepository.save).not.toHaveBeenCalled()
   })
 
@@ -199,19 +218,6 @@ describe('TrasmettiFIRSecondoModalitaUseCase', () => {
     expect(esito.esitoRegistrato).toBe(false)
     expect(mockLogger.error).not.toHaveBeenCalled()
     expect(mockLogger.info).toHaveBeenCalled()
-  })
-
-  it('IBRIDA senza certificato: fail-closed, nessuna trasmissione accodata', async () => {
-    mockModalitaLegameService.getForTenant.mockResolvedValue({
-      modalitaLegame: 'IBRIDA',
-      certificatoConfigurato: false,
-    })
-
-    const esito = await useCase.eseguiSeAutomatica({ firId: FIR_ID, tenantId: TENANT_ID })
-
-    expect(esito.avviata).toBe(false)
-    expect(esito.motivo).toBe('CERTIFICATO_MANCANTE')
-    expect(mockRentriSyncQueue.addSyncJob).not.toHaveBeenCalled()
   })
 
   it('passa il correlationId ricevuto alla coda, quando presente', async () => {

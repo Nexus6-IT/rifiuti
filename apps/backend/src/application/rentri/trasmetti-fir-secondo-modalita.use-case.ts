@@ -4,10 +4,7 @@ import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
 import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
-import { MESSAGGIO_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-credential.resolver'
-
-/** Stesso codice che la trasmissione assegna (v. SyncFIRToRENTRIUseCase) e che la riapertura al caricamento del certificato filtra. */
-const CODICE_CERTIFICATO_MANCANTE = 'RENTRI_CERTIFICATO_MANCANTE'
+import { CODICE_CERTIFICATO_MANCANTE, MESSAGGIO_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-credential.resolver'
 
 /**
  * Trasmetti FIR Secondo Modalità — Use Case

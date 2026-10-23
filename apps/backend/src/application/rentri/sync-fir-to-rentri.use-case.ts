@@ -8,7 +8,10 @@ import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri
 import { IDomainEvent } from '../../domain/shared/domain-event.interface'
 import { CostruisciPayloadRentri } from './mappatura/costruisci-payload-rentri'
 import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
-import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
+import {
+  CODICE_CERTIFICATO_MANCANTE,
+  TenantSenzaCertificatoRentriError,
+} from '../../infrastructure/rentri/rentri-credential.resolver'
 import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
 import {
   RENTRIApiClient,
@@ -68,8 +71,6 @@ export const SOGLIA_STALLO_RENTRI_MS = 15 * 60 * 1000
  *   transazione in attesa diventa RENTRI_ESITO_NON_ACQUISITO: la transazione
  *   resta salvata e «Rileggi esito» (stessa riapertura) la riprende senza POST.
  */
-/** Codice dell'esito definitivo per un'azienda priva di certificato RENTRI. */
-const CODICE_CERTIFICATO_MANCANTE = 'RENTRI_CERTIFICATO_MANCANTE'
 
 @Injectable()
 export class SyncFIRToRENTRIUseCase {

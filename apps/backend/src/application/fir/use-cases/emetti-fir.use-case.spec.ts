@@ -11,6 +11,10 @@ import { EmettiFIRUseCase } from './emetti-fir.use-case'
 import { EmettiFIRCommand } from '../commands/emetti-fir.command'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
+import {
+  CODICE_CERTIFICATO_MANCANTE,
+  MESSAGGIO_CERTIFICATO_MANCANTE,
+} from '../../../infrastructure/rentri/rentri-credential.resolver'
 import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
@@ -273,6 +277,56 @@ describe('EmettiFIRUseCase', () => {
       expect(trasmissioneRentri.eseguiSeAutomatica).toHaveBeenCalledWith({
         firId: fir.id,
         tenantId: TENANT_ID,
+      })
+    })
+
+    describe('esito RENTRI registrato durante l’emissione', () => {
+      const preparaEmissione = () => {
+        const fir = createBozzaFIR()
+        repository.addFIR(fir)
+        cryptoRepository = new FakeCryptoFIRRepository(fir.id)
+        useCase = new EmettiFIRUseCase(
+          repository,
+          cryptoRepository,
+          signatureService,
+          trasmissioneRentri as any,
+          logger
+        )
+        return fir
+      }
+
+      it("AUTOMATICA senza certificato: la risposta dell'emissione porta già PERMANENTLY_FAILED RENTRI_CERTIFICATO_MANCANTE", async () => {
+        const fir = preparaEmissione()
+        // L'orchestrazione salva l'esito su una propria istanza (come in produzione, dove
+        // rilegge dal DB): quella in memoria dell'emissione resta PENDING.
+        const riletto = createBozzaFIR()
+        riletto.markRENTRISyncFailed(MESSAGGIO_CERTIFICATO_MANCANTE, CODICE_CERTIFICATO_MANCANTE)
+        trasmissioneRentri.eseguiSeAutomatica.mockImplementation(async () => {
+          jest.spyOn(repository, 'findById').mockResolvedValue(riletto)
+          return { avviata: false, motivo: 'CERTIFICATO_MANCANTE', esitoRegistrato: true }
+        })
+
+        const result = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi'))
+
+        expect(result.isSuccess).toBe(true)
+        expect(result.value).toBe(riletto)
+        expect(result.value.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+        expect(result.value.rentriSyncStatus.getLastErrorCode()).toBe(CODICE_CERTIFICATO_MANCANTE)
+      })
+
+      it('rilettura che fallisce: ripiega sul FIR in memoria, con un warn', async () => {
+        const fir = preparaEmissione()
+        trasmissioneRentri.eseguiSeAutomatica.mockImplementation(async () => {
+          jest.spyOn(repository, 'findById').mockRejectedValue(new Error('db giu'))
+          return { avviata: false, motivo: 'CERTIFICATO_MANCANTE', esitoRegistrato: true }
+        })
+
+        const result = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi'))
+
+        expect(result.isSuccess).toBe(true)
+        expect(result.value.id).toBe(fir.id)
+        expect(result.value.stato).toBe(FIRStato.EMESSO)
+        expect(logger.warn).toHaveBeenCalled()
       })
     })
 
