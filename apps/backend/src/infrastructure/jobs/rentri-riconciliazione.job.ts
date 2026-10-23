@@ -4,6 +4,7 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { PrismaService } from '../persistence/prisma.service'
 import { RiconciliaStatoRentriUseCase } from '../../application/rentri/riconcilia-stato-rentri.use-case'
+import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
 import { EsitoGiroRentri } from './esito-giro-rentri'
 
 /**
@@ -31,7 +32,8 @@ export class RentriRiconciliazioneJob {
   constructor(
     private readonly prisma: PrismaService,
     private readonly riconciliaStatoRentri: RiconciliaStatoRentriUseCase,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly credenziali: RentriCredentialResolver
   ) {
     this.logger.setContext(RentriRiconciliazioneJob.name)
   }
@@ -66,7 +68,15 @@ export class RentriRiconciliazioneJob {
       let tenantConErrore = 0
 
       for (const tenant of tenants) {
+        // Azienda senza certificato RENTRI (e non legata all'env): non e' un guasto,
+        // si salta con un info e senza segnalazione a Bugsink.
         try {
+          if (!(await this.credenziali.haCredenziale(tenant.id))) {
+            this.logger.info(`azienda ${tenant.id} senza certificato RENTRI: saltata`, {
+              tenantId: tenant.id,
+            })
+            continue
+          }
           const risultato = await this.riconciliaStatoRentri.execute(tenant.id)
           tenantConSuccesso++
 

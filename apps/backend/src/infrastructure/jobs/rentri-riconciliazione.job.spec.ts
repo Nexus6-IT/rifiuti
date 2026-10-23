@@ -15,6 +15,7 @@ describe('RentriRiconciliazioneJob', () => {
   let mockPrisma: any
   let mockRiconciliaStatoRentri: any
   let mockLogger: any
+  let mockResolver: any
 
   beforeEach(() => {
     jest.clearAllMocks()
@@ -30,7 +31,37 @@ describe('RentriRiconciliazioneJob', () => {
       debug: jest.fn(),
     }
 
-    job = new RentriRiconciliazioneJob(mockPrisma, mockRiconciliaStatoRentri, mockLogger)
+    mockResolver = { haCredenziale: jest.fn().mockResolvedValue(true) }
+
+    job = new RentriRiconciliazioneJob(
+      mockPrisma,
+      mockRiconciliaStatoRentri,
+      mockLogger,
+      mockResolver
+    )
+  })
+
+  it('riconciliazione: 3 aziende, una senza certificato → le altre riconciliate, info, nessuna segnalazione', async () => {
+    mockPrisma.tenant.findMany.mockResolvedValue([{ id: 't1' }, { id: 't-senza' }, { id: 't3' }])
+    mockResolver.haCredenziale.mockImplementation(async (id: string) => id !== 't-senza')
+    mockRiconciliaStatoRentri.execute.mockResolvedValue({
+      controllati: 1,
+      corretti: 0,
+      segnalati: 0,
+      nessunaDivergenza: 1,
+    })
+
+    const esito = await job.riconcilia()
+
+    expect(mockRiconciliaStatoRentri.execute).toHaveBeenCalledTimes(2)
+    expect(mockRiconciliaStatoRentri.execute).not.toHaveBeenCalledWith('t-senza')
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'azienda t-senza senza certificato RENTRI: saltata',
+      expect.anything()
+    )
+    expect(mockLogger.error).not.toHaveBeenCalled()
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+    expect(esito.tenantConErrore).toBe(0)
   })
 
   it('interroga solo i tenant attivi/in prova (ACTIVE/TRIAL)', async () => {

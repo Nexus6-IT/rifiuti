@@ -180,4 +180,29 @@ describe('RentriCredentialResolver', () => {
     const dalContesto = warn.mock.calls.filter(c => String(c[0]).includes('dal contesto'))
     expect(dalContesto).toHaveLength(1)
   })
+
+  it("haCredenziale: propria → true; legata all'env → true; altra → false", async () => {
+    const resolver = makeResolver()
+    credentialService.getForTenant.mockImplementation(async (t: string) =>
+      t === 'tenant-A' ? credTenant() : null
+    )
+    const warn = jest.spyOn((resolver as any).logger, 'warn').mockImplementation(() => undefined)
+
+    expect(await resolver.haCredenziale('tenant-A')).toBe(true)
+    expect(await resolver.haCredenziale('tenant-pilota')).toBe(true)
+    expect(await resolver.haCredenziale('tenant-altro')).toBe(false)
+    // Un controllo non e' un uso: niente warn e nessun conteggio del fallback env.
+    expect(warn).not.toHaveBeenCalled()
+    expect(metrics.rentriCredentialEnvFallback.inc).not.toHaveBeenCalled()
+  })
+
+  it('haCredenziale: tenant legato ma senza PEM env → false; variabile vuota → false', async () => {
+    const senzaPem = makeResolver({ ...envConfig, certificatePem: '', privateKeyPem: '' })
+    credentialService.getForTenant.mockResolvedValue(null)
+    expect(await senzaPem.haCredenziale('tenant-pilota')).toBe(false)
+
+    const senzaLegame = makeResolver({ ...envConfig, envTenantId: '' })
+    credentialService.getForTenant.mockResolvedValue(null)
+    expect(await senzaLegame.haCredenziale('tenant-pilota')).toBe(false)
+  })
 })
