@@ -25,26 +25,26 @@ import { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
 export const INTERVALLO_POLLING_AUTORIZZAZIONE_MS = 2000
 
 /**
- * Tetto (ms) di attesa dell'INVOCAZIONE, distinto dal tetto dell'ente
- * (`expires_in`).
+ * Tetto (ms) di attesa dell'INVOCAZIONE, distinto dal limite di attesa della
+ * conferma ({@link ATTESA_CONFERMA_FIRMA_PREDEFINITA_S}).
  *
- * `expires_in` dice per quanto l'autorizzazione resta valida (può essere
- * minuti); questo dice per quanto QUESTA chiamata resta ad aspettare prima
+ * Quel limite dice per quanto l'autorizzazione resta in attesa (minuti);
+ * questo dice per quanto QUESTA chiamata resta ad aspettare prima
  * di restituire `IN_ATTESA` e lasciare che sia il chiamante a decidere se
  * ripresentarsi. Senza, una richiesta HTTP interattiva resterebbe appesa
- * per l'intera durata di `expires_in` — precisamente lo spinner indefinito
+ * per l'intero limite di attesa della conferma — precisamente lo spinner indefinito
  * che il piano vieta. 20 s è la soglia oltre la quale un'attesa sincrona
  * smette di essere accettabile per un utente davanti a una schermata.
  */
 export const ATTESA_MASSIMA_INVOCAZIONE_MS = 20000
 
 /**
- * Limite (secondi) dell'attesa della conferma sul dispositivo quando
- * `authorize` non porta `expires_in`. Per il contratto (ca-rentri.yaml:2665)
- * `expires_in` arriva solo a autorizzazione concessa, quindi alla richiesta
- * di norma non c'è: si attende al più `expires_in` se presente, altrimenti
- * questo valore. I 60 secondi che il contratto dà sono la durata del SAD, non
- * il tempo concesso all'utente per confermare.
+ * Limite (secondi) dell'attesa della conferma sul dispositivo, SEMPRE questo.
+ * Per il contratto (ca-rentri.yaml:2665) `expires_in` è la durata del SAD e
+ * arriva solo insieme al `sad`, cioè quando l'autorizzazione è già concessa e
+ * non c'è nulla da attendere: non dice per quanto l'utente può confermare. I
+ * 60 secondi del contratto sono la durata del SAD, non il tempo concesso
+ * all'utente; il limite è una scelta di WasteFlow.
  */
 export const ATTESA_CONFERMA_FIRMA_PREDEFINITA_S = 120
 
@@ -75,7 +75,10 @@ export type EsitoCompletamentoFirma =
        */
       esito: 'IN_ATTESA'
       handle: string
-      /** Istante oltre il quale l'autorizzazione non sarà più valida. */
+      /**
+       * Limite di attesa calcolato da WasteFlow (120 s dalla richiesta), NON
+       * una scadenza comunicata dall'ente: l'ente non ne dichiara una.
+       */
       scadenzaAutorizzazione: Date
     }
   | {
@@ -90,8 +93,8 @@ export type EsitoCompletamentoFirma =
        * fare a livello di tipo, senza ispezionare stringhe:
        * - `'ente'` → `authorize-check` ha risposto **400**. È la verità:
        *   l'ente considera morta l'autorizzazione.
-       * - `'orologio-locale'` → il nostro `expires_in` calcolato è trascorso
-       *   prima che l'ente ce lo dicesse. È un'inferenza sul NOSTRO orologio,
+       * - `'orologio-locale'` → il nostro limite di attesa (120 s) è trascorso
+       *   prima che l'ente ci dicesse qualcosa. È un'inferenza sul NOSTRO orologio,
        *   che potrebbe non coincidere con quello dell'ente.
        */
       rilevataDa: 'ente' | 'orologio-locale'
@@ -159,8 +162,8 @@ export interface ComandoCompletaOperazioneConFirma {
  * 1. Precondizioni locali (FIR, tenant, `rentriNumeroFir`, `credentials_id`).
  * 2. `GET /ca-rentri/.../credentials/info` → certificato.
  * 3. `POST /{numero_fir}/hash` → `digest_to_sign`, `token`.
- * 4. `POST /ca-rentri/.../credentials/authorize` → `sad`, `handle`, `expires_in`.
- * 5. Polling di `authorize-check` (202 → attendi, 200 → autorizzata).
+ * 4. `POST /ca-rentri/.../credentials/authorize` → `handle`.
+ * 5. Polling di `authorize-check` (202 → attendi, 200 → `sad`, autorizzata).
  * 6. `POST /ca-rentri/.../signatures/sign-hash` → firma.
  * 7. Verifica locale della firma (indicativa, mai bloccante — v.
  *    `verificaFirmaLocale`).
@@ -186,7 +189,7 @@ export interface ComandoCompletaOperazioneConFirma {
  *
  * Perché è un problema reale e non teorico: coi valori di default il tetto di
  * invocazione ({@link ATTESA_MASSIMA_INVOCAZIONE_MS}, 20 s) è quasi sempre
- * **più corto** di `expires_in` dell'ente, quindi l'esito `IN_ATTESA` è il
+ * **più corto** del limite di attesa della conferma (120 s), quindi l'esito `IN_ATTESA` è il
  * caso NORMALE, non l'eccezione. Se il chiamante reagisce a `IN_ATTESA`
  * reinvocando `execute()`, la seconda invocazione **abbandona
  * l'autorizzazione che l'utente sta in quel momento per confermare sul
@@ -281,7 +284,6 @@ export class CompletaOperazioneConFirmaUseCase {
       numeroFir,
       tipoOperazione,
       handle: autorizzazione.handle,
-      expiresIn: autorizzazione.expiresIn,
       correlationId,
     })
 
@@ -416,10 +418,11 @@ export class CompletaOperazioneConFirmaUseCase {
    * - l'ente dichiara scaduta l'autorizzazione (400) → `SCADUTA`
    *   (`rilevataDa: 'ente'`) — è la verità, e ha la precedenza sul nostro
    *   orologio: si esce SUBITO, senza attendere che scada anche il nostro
-   *   `expires_in` calcolato;
-   * - l'utente rifiuta sul dispositivo (403) → `RIFIUTATA`;
-   * - scade un nostro limite: `expires_in` (o, se assente,
-   *   {@link ATTESA_CONFERMA_FIRMA_PREDEFINITA_S}) calcolato localmente → `SCADUTA`
+   *   limite di attesa calcolato;
+   * - l'ente non concede l'autorizzazione (403: rifiuto dell'utente o operazione
+   *   non consentita) → `RIFIUTATA`;
+   * - scade un nostro limite: {@link ATTESA_CONFERMA_FIRMA_PREDEFINITA_S}
+   *   (120 s, mai un `expires_in`) calcolato localmente → `SCADUTA`
    *   (`rilevataDa: 'orologio-locale'`), oppure il tetto di questa
    *   invocazione ({@link ATTESA_MASSIMA_INVOCAZIONE_MS}) → `IN_ATTESA`, con
    *   l'autorizzazione ancora valida.
@@ -434,14 +437,13 @@ export class CompletaOperazioneConFirmaUseCase {
    */
   private async attendiAutorizzazione(
     tenantId: string,
-    autorizzazione: { handle: string; expiresIn?: number },
+    autorizzazione: { handle: string },
     comando: ComandoCompletaOperazioneConFirma
   ): Promise<EsitoAttesa> {
     const intervalloMs = comando.intervalloPollingMs ?? INTERVALLO_POLLING_AUTORIZZAZIONE_MS
     const attesaMassimaMs = comando.attesaMassimaMs ?? ATTESA_MASSIMA_INVOCAZIONE_MS
 
-    const attesaConfermaS = autorizzazione.expiresIn ?? ATTESA_CONFERMA_FIRMA_PREDEFINITA_S
-    const scadenzaEnteMs = Date.now() + attesaConfermaS * 1000
+    const scadenzaEnteMs = Date.now() + ATTESA_CONFERMA_FIRMA_PREDEFINITA_S * 1000
     const scadenzaInvocazioneMs = Date.now() + attesaMassimaMs
 
     for (;;) {

@@ -67,9 +67,8 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     return {
       leggiCertificatoFirmaRemota: jest.fn().mockResolvedValue(CERTIFICATO),
       richiediHashPerFirma: jest.fn().mockResolvedValue({ digestToSign: DIGEST, token: TOKEN }),
-      autorizzaFirmaRemota: jest
-        .fn()
-        .mockResolvedValue({ handle: 'handle-1', expiresIn: 120 }),
+      // Forma del contratto: authorize risponde con il solo `handle`.
+      autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'handle-1' }),
       verificaAutorizzazioneFirma: jest
         .fn()
         .mockResolvedValue({ stato: 'AUTORIZZATA', sad: 'sad-check-1' }),
@@ -215,30 +214,40 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     expect(firRepository.save).not.toHaveBeenCalled()
   })
 
-  it('esito SCADUTA: expires_in trascorso senza conferma → esito tipizzato, nessuna firma, nessuna scrittura', async () => {
-    const client = creaClient({
-      // Scadenza dell'ente già trascorsa al primo controllo (expires_in
-      // minimo): il ramo «scaduta» vince su quello «ancora in attesa».
-      autorizzaFirmaRemota: jest
-        .fn()
-        .mockResolvedValue({ handle: 'handle-scaduto', expiresIn: 0.001 }),
-      verificaAutorizzazioneFirma: jest.fn().mockResolvedValue({ stato: 'IN_ATTESA' }),
-    })
-    const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
+  it('esito SCADUTA: limite di attesa di 120 s trascorso senza conferma → esito tipizzato, nessuna firma, nessuna scrittura', async () => {
+    // Orologio pilotato: la prima interrogazione fa superare il limite di
+    // attesa calcolato da WasteFlow (120 s), il ramo «scaduta» vince su
+    // quello «ancora in attesa».
+    let adesso = 1_700_000_000_000
+    const dateNow = jest.spyOn(Date, 'now').mockImplementation(() => adesso)
+    try {
+      const client = creaClient({
+        // Un `expires_in` (durata del SAD) senza `sad` non cambia il limite: 120 s.
+        autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'handle-scaduto', expiresIn: 3600 }),
+        verificaAutorizzazioneFirma: jest.fn().mockImplementation(async () => {
+          adesso += 121_000
+          return { stato: 'IN_ATTESA' }
+        }),
+      })
+      const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
 
-    const risultato = await useCase.execute(comando)
+      const risultato = await useCase.execute({ ...comando, attesaMassimaMs: 1_000_000_000 })
 
-    // `rilevataDa` distingue questa scadenza (inferita dal NOSTRO orologio)
-    // da quella dichiarata dall'ente col 410 — v. il test successivo.
-    expect(risultato).toEqual({
-      esito: 'SCADUTA',
-      handle: 'handle-scaduto',
-      rilevataDa: 'orologio-locale',
-    })
-    expect(client.firmaHashRemoto).not.toHaveBeenCalled()
-    expect(client.inviaAcquisizioneFirma).not.toHaveBeenCalled()
-    expect(applyRentriStato).not.toHaveBeenCalled()
-    expect(firRepository.save).not.toHaveBeenCalled()
+      // `rilevataDa` distingue questa scadenza (inferita dal NOSTRO orologio)
+      // da quella dichiarata dall'ente col 400 — v. il test successivo.
+      expect(risultato).toEqual({
+        esito: 'SCADUTA',
+        handle: 'handle-scaduto',
+        rilevataDa: 'orologio-locale',
+      })
+      expect(client.verificaAutorizzazioneFirma).toHaveBeenCalledTimes(1)
+      expect(client.firmaHashRemoto).not.toHaveBeenCalled()
+      expect(client.inviaAcquisizioneFirma).not.toHaveBeenCalled()
+      expect(applyRentriStato).not.toHaveBeenCalled()
+      expect(firRepository.save).not.toHaveBeenCalled()
+    } finally {
+      dateNow.mockRestore()
+    }
   })
 
   it('esito SCADUTA rilevata dall’ENTE (400): esce subito, senza attendere il limite di attesa locale', async () => {
@@ -319,9 +328,7 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
 
   it('esito IN_ATTESA: utente non ancora confermato ma autorizzazione ancora valida → NON è un errore', async () => {
     const client = creaClient({
-      autorizzaFirmaRemota: jest
-        .fn()
-        .mockResolvedValue({ handle: 'handle-attesa', expiresIn: 600 }),
+      autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'handle-attesa' }),
       verificaAutorizzazioneFirma: jest.fn().mockResolvedValue({ stato: 'IN_ATTESA' }),
     })
     const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
@@ -331,10 +338,13 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     expect(risultato.esito).toBe('IN_ATTESA')
     if (risultato.esito === 'IN_ATTESA') {
       expect(risultato.handle).toBe('handle-attesa')
-      // La scadenza comunicata al chiamante è quella dell'ENTE, non il tetto
-      // di questa invocazione: è ciò che l'utente deve sapere per decidere
+      // La scadenza comunicata al chiamante è il limite di attesa calcolato da
+      // WasteFlow (120 s dalla richiesta), non il tetto di questa invocazione
+      // né una scadenza dell'ente: è ciò che l'utente deve sapere per decidere
       // se fare ancora in tempo a confermare.
-      expect(risultato.scadenzaAutorizzazione.getTime()).toBeGreaterThan(Date.now() + 500 * 1000)
+      const residuoMs = risultato.scadenzaAutorizzazione.getTime() - Date.now()
+      expect(residuoMs).toBeGreaterThan(100 * 1000)
+      expect(residuoMs).toBeLessThanOrEqual(120 * 1000)
     }
 
     expect(client.firmaHashRemoto).not.toHaveBeenCalled()
@@ -464,17 +474,18 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     })
   })
 
-  it('senza expires_in il limite di attesa è 120 secondi', async () => {
+  it('il limite di attesa è sempre 120 secondi: 119 s poi 1 s → nessuna verifica oltre il limite', async () => {
     expect(ATTESA_CONFERMA_FIRMA_PREDEFINITA_S).toBe(120)
 
-    // Orologio pilotato: ogni interrogazione fa avanzare il tempo di 60 s.
-    // Alla seconda il limite di 120 s è raggiunto → SCADUTA (orologio locale);
-    // alla prima no, quindi il ciclo non esce prima del dovuto.
+    // Orologio pilotato con passi che stringono il limite: la prima
+    // interrogazione porta a 119 s (limite non raggiunto, il ciclo continua),
+    // la seconda a 120 s → SCADUTA (orologio locale), senza una terza.
     let adesso = 1_700_000_000_000
     const dateNow = jest.spyOn(Date, 'now').mockImplementation(() => adesso)
     try {
+      const passi = [119_000, 1_000]
       const verifica = jest.fn().mockImplementation(async () => {
-        adesso += 60_000
+        adesso += passi.shift() ?? 60_000
         return { stato: 'IN_ATTESA' }
       })
       const client = creaClient({
@@ -494,5 +505,20 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     } finally {
       dateNow.mockRestore()
     }
+  })
+
+  it('certificato non valido: il flusso si ferma prima di authorize', async () => {
+    const client = creaClient({
+      leggiCertificatoFirmaRemota: jest
+        .fn()
+        .mockRejectedValue(new Error('Il certificato di firma remota non è valido (stato: Revoked)')),
+    })
+    const { useCase, firRepository } = creaAmbiente({ client })
+
+    await expect(useCase.execute(comando)).rejects.toThrow(/non è valido/)
+
+    expect(client.richiediHashPerFirma).not.toHaveBeenCalled()
+    expect(client.autorizzaFirmaRemota).not.toHaveBeenCalled()
+    expect(firRepository.save).not.toHaveBeenCalled()
   })
 })
