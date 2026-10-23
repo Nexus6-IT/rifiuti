@@ -307,7 +307,7 @@ describe('FirDetailComponent', () => {
     firService.getFIRById.and.returnValue(
       of({
         ...baseFIR,
-        rentriSyncStatus: 'FAILED',
+        rentriSyncStatus: 'PERMANENTLY_FAILED',
         rentriAzioneErrore: 'VEDI_CERTIFICATO',
         rentriMessaggioErrore:
           'Il certificato della tua azienda non è valido per questa operazione: verifica il certificato nella pagina dedicata. Ritentare non risolve il problema.',
@@ -319,6 +319,24 @@ describe('FirDetailComponent', () => {
     expect(el.querySelector('[data-testid="fir-detail-rentri-riprova"]')).toBeFalsy()
     expect(el.querySelector('[data-testid="fir-detail-rentri-vedi-certificato"]')).toBeTruthy()
     expect(el.textContent).toContain('certificato')
+  })
+
+  it('mostra "Vai al certificato" (e non "Riprova") per un FIR fermo per certificato mancante', () => {
+    setup({ role: 'ADMIN' })
+    firService.getFIRById.and.returnValue(
+      of({
+        ...baseFIR,
+        rentriSyncStatus: 'PERMANENTLY_FAILED',
+        rentriAzioneErrore: 'VEDI_CERTIFICATO',
+        rentriMessaggioErrore:
+          "L'azienda non ha un certificato RENTRI configurato: caricalo nella pagina del certificato RENTRI.",
+      })
+    )
+    fixture.detectChanges()
+
+    const el: HTMLElement = fixture.nativeElement
+    expect(el.querySelector('[data-testid="fir-detail-rentri-vedi-certificato"]')).toBeTruthy()
+    expect(el.querySelector('[data-testid="fir-detail-rentri-riprova"]')).toBeFalsy()
   })
 
   it('NON mostra "Riprova" dopo un 429/423 (RENTRI ha sospeso le richieste)', () => {
