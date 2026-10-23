@@ -1,8 +1,26 @@
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common'
-import { Observable, from, switchMap } from 'rxjs'
+import {
+  Injectable,
+  NestInterceptor,
+  ExecutionContext,
+  CallHandler,
+  Logger,
+  ForbiddenException,
+  ServiceUnavailableException,
+} from '@nestjs/common'
+import { isUUID } from 'class-validator'
+import { Reflector } from '@nestjs/core'
+import { Observable, from, switchMap, throwError } from 'rxjs'
 import { Request } from 'express'
 import { TenantContext } from '../context/tenant-context'
 import { MembershipService } from '../../api/me/membership.service'
+import { CONSENTI_SELEZIONE_NON_VALIDA } from '../decorators/consenti-selezione-non-valida.decorator'
+import {
+  AZIENDA_SELEZIONATA_NON_ACCESSIBILE,
+  VERIFICA_AZIENDA_NON_DISPONIBILE,
+} from '../context/azienda-selezionata-errori'
+
+/** Esito della verifica dell'header: accessibile, non accessibile, verifica fallita. */
+type EsitoVerifica = 'ACCESSIBILE' | 'NON_ACCESSIBILE' | 'ERRORE'
 
 /**
  * TenantSwitchInterceptor — validazione header `X-Tenant-ID` per TUTTI gli utenti.
@@ -22,10 +40,18 @@ import { MembershipService } from '../../api/me/membership.service'
  *        - Autorizzato → il TenantContext viene ri-eseguito con il tenant dell'header
  *          e `req.tenantId` viene aggiornato. Tutte le query dell'handler useranno
  *          il tenant selezionato dall'utente (switch senza nuovo JWT).
- *        - Non autorizzato → fail-closed: l'header viene ignorato silenziosamente,
- *          la richiesta prosegue col tenant primario del JWT. NESSUNA eccezione
- *          viene lanciata (non si rivela informazione sull'esistenza dell'altro tenant).
- *        - Errore nella verifica → fail-closed: ignora l'header, log di avviso.
+ *        - Header che non è un UUID, o non autorizzato → 403
+ *          `AZIENDA_SELEZIONATA_NON_ACCESSIBILE`, con lo stesso messaggio per un'azienda
+ *          inesistente e per una non autorizzata (nessuna enumerazione). L'handler non gira.
+ *        - Errore nella verifica (database) → 503 `VERIFICA_AZIENDA_NON_DISPONIBILE`: la
+ *          selezione resta, il frontend non la cancella e l'utente riprova.
+ *          Prima la richiesta proseguiva in silenzio sul tenant primario del JWT: con una
+ *          selezione scaduta (associazione consulente terminata) le scritture finivano
+ *          nell'azienda sbagliata, per esempio un movimento nel registro dello studio.
+ *          Il frontend, su questo codice, cancella la selezione e ricarica.
+ *        - Eccezione: le rotte di recupero marcate `@ConsentiSelezioneNonValida()` (elenco e
+ *          switch delle aziende, login/refresh/logout) proseguono col tenant primario, così
+ *          una selezione non valida non chiude l'utente fuori dal selettore.
  *
  * Sicurezza:
  *   - Non è possibile accedere a dati di un tenant non autorizzato forzando
@@ -40,7 +66,10 @@ import { MembershipService } from '../../api/me/membership.service'
 export class TenantSwitchInterceptor implements NestInterceptor {
   private readonly logger = new Logger(TenantSwitchInterceptor.name)
 
-  constructor(private readonly membership: MembershipService) {}
+  constructor(
+    private readonly membership: MembershipService,
+    private readonly reflector: Reflector
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     // Funziona solo su richieste HTTP (non su WebSocket/RPC).
@@ -67,23 +96,42 @@ export class TenantSwitchInterceptor implements NestInterceptor {
     // Tenant primario dell'utente (risolto dal middleware dal JWT).
     const primaryTenantId: string = (req as any).tenantId || user.tenantId || ''
 
-    // Validazione asincrona della membership, poi switch del contesto.
-    return from(
-      this.membership.checkAccess(user.id, targetTenantId, primaryTenantId).catch((err: Error) => {
-        this.logger.warn(
-          `Errore verifica membership (utente=${user.id}, target=${targetTenantId}): ${err.message}`
+    // Gli id delle aziende sono UUID (colonne @db.Uuid): un header di altra forma non
+    // corrisponde a nessuna azienda. Si rifiuta come un'azienda inesistente, senza interrogare
+    // il database (Prisma lo rifiuterebbe con P2023, cioè con un errore e non con un "no").
+    const verifica: Promise<EsitoVerifica> = !isUUID(targetTenantId, 'all')
+      ? Promise.resolve('NON_ACCESSIBILE')
+      : this.membership.checkAccess(user.id, targetTenantId, primaryTenantId).then(
+          (ok): EsitoVerifica => (ok ? 'ACCESSIBILE' : 'NON_ACCESSIBILE'),
+          (err: Error): EsitoVerifica => {
+            this.logger.warn(
+              `Errore verifica membership (utente=${user.id}, target=${targetTenantId}): ${err.message}`
+            )
+            return 'ERRORE'
+          }
         )
-        return false // fail-closed su errore DB
-      })
-    ).pipe(
-      switchMap((isAllowed: boolean) => {
-        if (!isAllowed) {
-          // Fail-closed: header non autorizzato → prosegui col tenant primario.
+
+    // Validazione asincrona della membership, poi switch del contesto.
+    return from(verifica).pipe(
+      switchMap((esito: EsitoVerifica) => {
+        if (esito !== 'ACCESSIBILE') {
+          if (this.rottaDiRecupero(context)) {
+            // Elenco/switch delle aziende, sessione: si prosegue col tenant primario.
+            return next.handle()
+          }
+          if (esito === 'ERRORE') {
+            // Mai il tenant primario al posto di quello scelto: si riprova.
+            return throwError(
+              () => new ServiceUnavailableException({ ...VERIFICA_AZIENDA_NON_DISPONIBILE })
+            )
+          }
           this.logger.warn(
-            `Header X-Tenant-ID="${targetTenantId}" rifiutato per utente ${user.id} ` +
-              `(non membro). Proseguo con tenant primario "${primaryTenantId}".`
+            `Header X-Tenant-ID="${targetTenantId}" rifiutato per utente ${user.id}: ` +
+              `azienda non accessibile, richiesta respinta (403).`
           )
-          return next.handle()
+          return throwError(
+            () => new ForbiddenException({ ...AZIENDA_SELEZIONATA_NON_ACCESSIBILE })
+          )
         }
 
         // Accesso autorizzato: sovrapponi il TenantContext con il tenant selezionato
@@ -103,6 +151,16 @@ export class TenantSwitchInterceptor implements NestInterceptor {
           )
         })
       })
+    )
+  }
+
+  /** Vero per le rotte marcate `@ConsentiSelezioneNonValida()` (sul metodo o sulla classe). */
+  private rottaDiRecupero(context: ExecutionContext): boolean {
+    return (
+      this.reflector.getAllAndOverride<boolean>(CONSENTI_SELEZIONE_NON_VALIDA, [
+        context.getHandler(),
+        context.getClass(),
+      ]) === true
     )
   }
 

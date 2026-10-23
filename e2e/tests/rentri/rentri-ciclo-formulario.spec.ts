@@ -376,3 +376,43 @@ test.describe('RENTRI — ciclo di vita del formulario (accettazione, annullamen
     await expect(detail.rentriAccettaCarico).toHaveCount(0)
   })
 })
+
+/**
+ * Regressione — trovata dal revisore (2026-09-14): `rentriAccettazioneConfirmButton`/
+ * `rentriAnnullaConfirmButton` avevano `data-testid` sull'host `<p-button>`
+ * (v. `fir-detail.component.ts:606-612` e `:654-660`, `[disabled]="!…Valida()"`
+ * applicato da PrimeNG solo al `<button>` nativo interno). Le righe 171 e
+ * 202 di questo file facevano `toBeEnabled()` su quei locator: su un host
+ * non nativo quell'asserzione è sempre vera, proprio nel punto in cui
+ * verificano che il bottone si sblocchi dopo aver compilato il form — due
+ * righe sopra lo stesso file usa già `.locator('input')` per lo stesso
+ * motivo su un altro campo, quindi la correzione era nota a chi l'ha
+ * scritto. Corretto scendendo al `<button>` nativo in `fir-detail.page.ts`
+ * (stessa scelta di `rentri-blocchi.page.ts` per `vidimaConferma`).
+ *
+ * DOM statico via `page.setContent`, nessuna app viva: riproduce lo stesso
+ * host/bottone di `fir-detail.component.ts` e prova che l'host non riflette
+ * MAI `disabled` mentre il bottone nativo lo fa.
+ */
+test.describe('RENTRI ciclo formulario — regressione: toBeEnabled su host p-button non è mai attendibile', () => {
+  test('host p-button con bottone nativo disabled: toBeEnabled() sull’host mente, sul nativo è corretto', async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <div data-testid="fir-detail-rentri-accettazione-confirm-button">
+        <button type="button" disabled>Conferma</button>
+      </div>
+    `)
+
+    // Prova diretta della trappola: l'host non è un vero form control,
+    // Playwright lo considera sempre "enabled" a prescindere dal bottone
+    // nativo al suo interno.
+    await expect(page.getByTestId('fir-detail-rentri-accettazione-confirm-button')).toBeEnabled()
+
+    // Il locator corretto, scoped al bottone nativo (come ora in
+    // `fir-detail.page.ts`), riconosce davvero lo stato disabilitato.
+    await expect(
+      page.getByTestId('fir-detail-rentri-accettazione-confirm-button').locator('button')
+    ).toBeDisabled()
+  })
+})

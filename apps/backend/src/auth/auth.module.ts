@@ -16,6 +16,7 @@ import { RolesGuard } from './guards/roles.guard'
 import { AuthController } from './controllers/auth.controller'
 import { DevAuthController } from './controllers/dev-auth.controller'
 import { PrismaModule } from '../infrastructure/persistence/prisma.module'
+import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
 
 // Difesa in profondità (2026-07-25): POST /auth/dev/login non deve nemmeno
 // esistere come rotta in produzione. Il controller mantiene comunque il
@@ -39,6 +40,8 @@ const devOnlyControllers = process.env.NODE_ENV === 'production' ? [] : [DevAuth
       inject: [ConfigService],
     }),
     PrismaModule,
+    // Ricontrollo dell'azienda del token al refresh (solo Prisma, nessun ciclo con MeModule).
+    RuoloEffettivoModule,
   ],
   controllers: [AuthController, ...devOnlyControllers],
   providers: [

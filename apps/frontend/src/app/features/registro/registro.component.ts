@@ -55,7 +55,20 @@ import {
   CAUSALE_LABELS,
   STATI_FISICI,
   CausaleMovimento,
+  StatoProgressivoIniziale,
+  offrireProgressivoIniziale,
+  offrireRegistrazione,
+  annoItaliano,
 } from './registro.service'
+import { messaggioMovimentoRegistrato } from './registro-messaggi'
+import { giorniDiRitardo } from './registro-ritardo'
+import {
+  causalePredefinitaDaFir,
+  dataOperazioneDaFir,
+  firCollegabileNelRegistro,
+  quantitaDaFir,
+  RuoloFir,
+} from './registro-fir'
 import { CerSelectComponent } from '../cer/cer-select.component'
 
 interface DropdownOption<T> {
@@ -115,6 +128,15 @@ interface FirOption {
             pTooltip="Esporta il registro cronologico filtrato"
           ></p-splitButton>
           <p-button
+            *ngIf="offriProgressivo()"
+            label="Imposta il primo numero dell'anno"
+            icon="pi pi-sort-numeric-up"
+            [outlined]="true"
+            (onClick)="apriProgressivo()"
+            ariaLabel="Imposta il primo numero del registro dell'anno"
+          ></p-button>
+          <p-button
+            *ngIf="offriRegistrazione()"
             label="Registra movimento"
             icon="pi pi-plus"
             (onClick)="apriForm()"
@@ -454,20 +476,17 @@ interface FirOption {
               </div>
               <div class="col-12 sm:col-6">
                 <div class="field">
-                  <label for="registrationDate"
-                    >Data registrazione <span class="req" aria-hidden="true">*</span></label
-                  >
+                  <label for="registrationDate">Data registrazione</label>
+                  <!-- In sola lettura: la data di registrazione la assegna il server. -->
                   <p-calendar
                     formControlName="registrationDate"
                     [showIcon]="true"
                     dateFormat="dd/mm/yy"
-                    [maxDate]="oggi"
                     inputId="registrationDate"
-                    aria-required="true"
-                    ariaLabel="Data di annotazione nel registro"
+                    ariaLabel="Data di annotazione nel registro, assegnata dal sistema"
                     styleClass="w-full"
                   ></p-calendar>
-                  <small class="field-hint">Termine: 10 gg lav. per produttori (art. 190).</small>
+                  <small class="field-hint">Assegnata dal sistema alla conferma.</small>
                 </div>
               </div>
             </div>
@@ -708,6 +727,89 @@ interface FirOption {
           ></p-button>
         </ng-template>
       </p-dialog>
+
+      <!-- Dialog progressivo iniziale (C-W-02) ---------------------------------->
+      <p-dialog
+        [(visible)]="progressivoVisible"
+        header="Primo numero del registro {{ annoCorrente }}"
+        [modal]="true"
+        [closable]="true"
+        [style]="{ width: '480px', maxWidth: '95vw' }"
+        (onHide)="chiudiProgressivo()"
+        closeAriaLabel="Chiudi la finestra del primo numero del registro"
+      >
+        <form [formGroup]="progressivoForm" class="mov-form">
+          <p class="progressivo-nota">
+            Serve solo a chi arriva da un altro programma a metà anno: il primo movimento registrato
+            qui prenderà questo numero. Si imposta una volta sola.
+          </p>
+          <div class="field">
+            <label for="primoProgressivo"
+              >Primo numero <span class="req" aria-hidden="true">*</span></label
+            >
+            <p-inputNumber
+              formControlName="primoProgressivo"
+              inputId="primoProgressivo"
+              [min]="1"
+              [max]="9999999"
+              [useGrouping]="false"
+              ariaRequired="true"
+              [styleClass]="errorProgressivo('primoProgressivo') ? 'w-full p-invalid' : 'w-full'"
+              [attr.aria-invalid]="errorProgressivo('primoProgressivo') ? true : null"
+              [attr.aria-describedby]="
+                errorProgressivo('primoProgressivo') ? 'primo-progressivo-err' : null
+              "
+            ></p-inputNumber>
+            <small
+              *ngIf="errorProgressivo('primoProgressivo')"
+              id="primo-progressivo-err"
+              class="field-error"
+              role="alert"
+              >Indica un numero intero da 1 a 9999999.</small
+            >
+          </div>
+          <div class="field">
+            <label for="motivoProgressivo"
+              >Motivo <span class="req" aria-hidden="true">*</span></label
+            >
+            <textarea
+              id="motivoProgressivo"
+              pInputTextarea
+              formControlName="motivo"
+              rows="3"
+              maxlength="500"
+              placeholder="Es. migrazione da WinWaste: ultimo movimento trasmesso il n. 811"
+              aria-required="true"
+              [class.p-invalid]="errorProgressivo('motivo')"
+              [attr.aria-invalid]="errorProgressivo('motivo') ? true : null"
+              [attr.aria-describedby]="errorProgressivo('motivo') ? 'motivo-progressivo-err' : null"
+            ></textarea>
+            <small
+              *ngIf="errorProgressivo('motivo')"
+              id="motivo-progressivo-err"
+              class="field-error"
+              role="alert"
+              >Scrivi il motivo (da 5 a 500 caratteri).</small
+            >
+          </div>
+        </form>
+
+        <ng-template pTemplate="footer">
+          <p-button
+            label="Annulla"
+            [text]="true"
+            (onClick)="chiudiProgressivo()"
+            ariaLabel="Annulla e chiudi"
+          ></p-button>
+          <p-button
+            label="Imposta"
+            icon="pi pi-check"
+            [loading]="savingProgressivo()"
+            (onClick)="salvaProgressivo()"
+            ariaLabel="Imposta il primo numero del registro"
+          ></p-button>
+        </ng-template>
+      </p-dialog>
     </div>
   `,
   styles: [
@@ -839,6 +941,12 @@ interface FirOption {
       .form-legend .req {
         color: var(--color-danger);
         font-weight: var(--font-weight-bold);
+      }
+      .progressivo-nota {
+        margin: 0;
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        line-height: 1.5;
       }
       .form-section {
         display: flex;
@@ -1099,9 +1207,10 @@ export class RegistroComponent implements OnInit {
 
   readonly ritardoGgCalcolati = computed(() => {
     const mov = this.form?.get('movementDate')?.value as Date | null
-    const reg = this.form?.get('registrationDate')?.value as Date | null
-    if (!mov || !reg) return 0
-    return Math.max(0, Math.floor((reg.getTime() - mov.getTime()) / (1000 * 60 * 60 * 24)))
+    // La registrazione avviene alla conferma: il ritardo si misura rispetto a oggi,
+    // in giorni di calendario italiani come fa il backend.
+    if (!mov) return 0
+    return giorniDiRitardo(mov)
   })
 
   readonly ritardoGgCalcolato = computed(() => this.ritardoGgCalcolati())
@@ -1113,6 +1222,7 @@ export class RegistroComponent implements OnInit {
   ngOnInit(): void {
     this.initForm()
     this.ricarica()
+    this.caricaProgressivo()
     // Identità della società attiva: serve all'auto-tipo carico/scarico dal FIR.
     this.company.loadActiveCompany().subscribe()
   }
@@ -1123,7 +1233,8 @@ export class RegistroComponent implements OnInit {
     this.form = this.fb.group({
       type: ['CARICO', Validators.required],
       movementDate: [new Date(), Validators.required],
-      registrationDate: [new Date(), Validators.required],
+      // Sola lettura: mostra la data di oggi, il server assegna quella vera alla conferma.
+      registrationDate: [{ value: new Date(), disabled: true }],
       causale: [null, Validators.required],
       cerCode: ['', [Validators.required, Validators.maxLength(10)]],
       wasteDescription: [''],
@@ -1176,10 +1287,13 @@ export class RegistroComponent implements OnInit {
     const tipo: TipoMovimento = this.form?.get('type')?.value ?? 'CARICO'
     this.tipoCorrente.set(tipo)
     this.form.get('causale')?.reset(null)
-    // Se è collegato un FIR, la controparte dipende dalla direzione: per un
-    // CARICO è il produttore/cedente, per uno SCARICO è il destinatario.
+    // Se è collegato un FIR, controparte e quantità dipendono dalla direzione: per un
+    // CARICO la controparte è il produttore/cedente, per uno SCARICO il destinatario; la
+    // quantità è il peso a destino solo per il carico del destinatario (C-W-01).
     if (this.firCollegato) {
       this.applicaControparteDaFir(this.firCollegato, tipo)
+      const q = quantitaDaFir(this.firCollegato, tipo, this.determinaRuolo(this.firCollegato))
+      this.form.patchValue({ quantity: q.quantita, unit: q.unita })
     }
   }
 
@@ -1190,7 +1304,7 @@ export class RegistroComponent implements OnInit {
     if (this.tuttiFir.length > 0) return
     this.firService.getFIRList(1, 200).subscribe({
       next: res => {
-        this.tuttiFir = res.items ?? []
+        this.tuttiFir = (res.items ?? []).filter(firCollegabileNelRegistro)
       },
       error: () => {
         this.tuttiFir = []
@@ -1253,21 +1367,35 @@ export class RegistroComponent implements OnInit {
     this.form.get('type')?.setValue(tipo)
     this.tipoCorrente.set(tipo)
 
-    // Causale di default coerente: la impostiamo se il ruolo è determinato
-    // oppure se l'utente non ne ha ancora scelta una (resta modificabile).
-    const causaleDefault: CausaleMovimento =
-      tipo === 'SCARICO' ? 'CONFERIMENTO_TRASPORTATORE' : 'INGRESSO_ESTERNO'
-    if (ruolo || !this.form.get('causale')?.value) {
+    // Causale di default solo con il ruolo riconosciuto (Decisione 13): altrimenti il
+    // campo resta com'è e, se vuoto, la sceglie l'utente (è obbligatorio).
+    const causaleDefault = causalePredefinitaDaFir(tipo, ruolo)
+    if (causaleDefault) {
       this.form.get('causale')?.setValue(causaleDefault)
     }
 
-    // Auto-compilazione dei dati del rifiuto dal FIR (campi modificabili).
+    // Data dell'operazione solo se WasteFlow la conosce davvero e non è nel futuro;
+    // altrimenti resta quella del form e il suggerimento spiega dove trovarla.
+    const esito = dataOperazioneDaFir(fir, tipo)
+    let suggerimentoData: string | null = esito.suggerimento
+    if (esito.data) {
+      if (this.giornoLocale(esito.data) > this.giornoLocale(new Date())) {
+        suggerimentoData =
+          'La data del FIR è successiva a oggi: inserisci la data effettiva dell’operazione.'
+      } else {
+        this.form.get('movementDate')?.setValue(esito.data)
+      }
+    }
+
+    // Auto-compilazione dei dati del rifiuto dal FIR (campi modificabili). La quantità
+    // dipende dal verso: il carico del destinatario prende il peso verificato a destino.
     const r = fir.rifiuto
+    const q = quantitaDaFir(fir, tipo, ruolo)
     this.form.patchValue({
       firId: fir.id,
       cerCode: r.cerCode,
-      quantity: r.quantita,
-      unit: (r.unitaMisura || 'KG').toUpperCase(),
+      quantity: q.quantita,
+      unit: q.unita,
       wasteDescription: r.descrizione ?? '',
       wastePhysicalState: this.matchStatoFisico(r.statoFisico),
       wasteHazardClasses: r.caratteristichePericolo ?? '',
@@ -1277,21 +1405,25 @@ export class RegistroComponent implements OnInit {
     // Controparte in base alla direzione del movimento.
     this.applicaControparteDaFir(fir, tipo)
 
-    // Hint sul ruolo determinato.
+    // Hint sul ruolo determinato, seguito dagli eventuali suggerimenti su data e quantità.
+    let hint: string
     if (ruolo === 'PRODUTTORE') {
-      this.ruoloHint.set(
-        'La società attiva risulta PRODUTTORE del FIR: movimento impostato come SCARICO.'
-      )
+      hint = 'La società attiva risulta PRODUTTORE del FIR: movimento impostato come SCARICO.'
     } else if (ruolo === 'DESTINATARIO') {
-      this.ruoloHint.set(
-        'La società attiva risulta DESTINATARIO del FIR: movimento impostato come CARICO.'
-      )
+      hint = 'La società attiva risulta DESTINATARIO del FIR: movimento impostato come CARICO.'
     } else {
-      this.ruoloHint.set(
-        'Ruolo della società non determinabile dal FIR: verifica il tipo (carico/scarico). ' +
-          'I dati del rifiuto sono stati comunque precompilati.'
-      )
+      hint =
+        'Ruolo della società non determinabile dal FIR: verifica il tipo (carico/scarico) ' +
+        'e scegli la causale. I dati del rifiuto sono stati comunque precompilati.'
     }
+    this.ruoloHint.set([hint, suggerimentoData, q.suggerimento].filter(Boolean).join(' '))
+  }
+
+  /** Giorno di calendario locale ('AAAA-MM-GG'), come lo invia `toIsoDate` al backend. */
+  private giornoLocale(d: Date): string {
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${d.getFullYear()}-${mm}-${dd}`
   }
 
   /** Rimozione del FIR collegato: azzera il riferimento e l'hint. */
@@ -1327,7 +1459,7 @@ export class RegistroComponent implements OnInit {
    * dello snapshot con l'identità della società attiva. `null` se non
    * determinabile in modo affidabile.
    */
-  private determinaRuolo(fir: FIR): 'PRODUTTORE' | 'DESTINATARIO' | null {
+  private determinaRuolo(fir: FIR): RuoloFir | null {
     const azienda = this.company.activeCompany()
     if (!azienda) return null
     const piva = this.normalizza(azienda.partitaIva)
@@ -1415,7 +1547,6 @@ export class RegistroComponent implements OnInit {
       .registra({
         type: v.type,
         movementDate: toIsoDate(v.movementDate),
-        registrationDate: toIsoDate(v.registrationDate),
         causale: v.causale,
         cerCode: v.cerCode?.trim(),
         wasteDescription: v.wasteDescription || undefined,
@@ -1433,16 +1564,94 @@ export class RegistroComponent implements OnInit {
         next: m => {
           this.saving.set(false)
           this.chiudiForm()
-          this.toast.success(
-            `Movimento ${m.progressiveYear}/${m.progressiveNumber} registrato` +
-              (m.fuoriTermine ? ' — ATTENZIONE: fuori termine di legge' : '')
-          )
+          const messaggio = messaggioMovimentoRegistrato(m)
+          if (m.giaRegistrato) this.toast.info(messaggio)
+          else this.toast.success(messaggio)
+          for (const avviso of m.avvisi ?? []) this.toast.warn(avviso)
           this.ricarica()
+          // Dopo il primo movimento dell'anno il progressivo iniziale non si offre più.
+          this.caricaProgressivo()
         },
         error: err => {
           this.saving.set(false)
           const msg = err?.error?.message ?? err?.message ?? 'Errore durante la registrazione'
           this.toast.error(msg)
+        },
+      })
+  }
+
+  // ─── Progressivo iniziale (C-W-02) ─────────────────────────────────────────
+
+  /** Stato letto dal backend; null finché non arriva o se la lettura fallisce. */
+  readonly statoProgressivo = signal<StatoProgressivoIniziale | null>(null)
+  readonly savingProgressivo = signal(false)
+  /** Il pulsante dipende da ruolo e movimenti come li vede il backend, non dal token. */
+  readonly offriProgressivo = computed(() => offrireProgressivoIniziale(this.statoProgressivo()))
+  /** Nasconde "Registra movimento" a chi è in sola consultazione nell'azienda selezionata. */
+  readonly offriRegistrazione = computed(() => offrireRegistrazione(this.statoProgressivo()))
+  readonly annoCorrente = annoItaliano(new Date())
+  progressivoVisible = false
+
+  readonly progressivoForm: FormGroup = this.fb.group({
+    primoProgressivo: [
+      null,
+      [
+        Validators.required,
+        Validators.min(1),
+        Validators.max(9999999),
+        Validators.pattern(/^\d+$/),
+      ],
+    ],
+    motivo: ['', [Validators.required, Validators.minLength(5), Validators.maxLength(500)]],
+  })
+
+  caricaProgressivo(): void {
+    this.registroService.getProgressivoIniziale(this.annoCorrente).subscribe({
+      next: stato => this.statoProgressivo.set(stato),
+      // Senza stato il pulsante resta nascosto: non è una funzione di uso quotidiano.
+      error: () => this.statoProgressivo.set(null),
+    })
+  }
+
+  apriProgressivo(): void {
+    this.progressivoForm.reset({ primoProgressivo: null, motivo: '' })
+    this.progressivoVisible = true
+  }
+
+  chiudiProgressivo(): void {
+    this.progressivoVisible = false
+  }
+
+  errorProgressivo(controlName: string): boolean {
+    const control = this.progressivoForm.get(controlName)
+    return !!(control && control.invalid && control.touched)
+  }
+
+  salvaProgressivo(): void {
+    if (this.progressivoForm.invalid) {
+      this.progressivoForm.markAllAsTouched()
+      this.toast.error('Controlla i campi evidenziati e riprova.')
+      return
+    }
+    const { primoProgressivo, motivo } = this.progressivoForm.value
+    this.savingProgressivo.set(true)
+    this.registroService
+      .impostaProgressivoIniziale(this.annoCorrente, primoProgressivo, String(motivo).trim())
+      .subscribe({
+        next: r => {
+          this.savingProgressivo.set(false)
+          this.chiudiProgressivo()
+          this.toast.success(
+            `Il primo movimento del ${r.anno} registrato qui prenderà il numero ${r.primoProgressivo}.`
+          )
+          this.caricaProgressivo()
+        },
+        error: err => {
+          this.savingProgressivo.set(false)
+          const msg =
+            err?.error?.message ?? err?.message ?? "Impossibile impostare il primo numero dell'anno"
+          this.toast.error(msg)
+          this.caricaProgressivo()
         },
       })
   }

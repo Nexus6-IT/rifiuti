@@ -63,7 +63,13 @@ export interface FIR {
   }
   /** Campo 17 FIR (DM 59/2023): annotazioni libere. */
   annotazioni?: string | null
+  /**
+   * Colonna `transport_date`: per un FIR non preso in carico in WasteFlow contiene il
+   * ripiego del primo salvataggio. Come data dell'operazione usare `dataPresaCaricoEffettiva`.
+   */
   dataPresaCarico?: string | null
+  /** Data della presa in carico solo se registrata in WasteFlow (firma del trasportatore). */
+  dataPresaCaricoEffettiva?: string | null
   dataConsegna?: string | null
   /** Peso effettivo rilevato alla destinazione (4ª copia). */
   pesoEffettivo?: number | null
@@ -83,6 +89,8 @@ export interface FIR {
   rentriSyncStatus?: RENTRISyncStatusValue
   /** Numero FIR ufficiale RENTRI (legame confermato). */
   rentriNumeroFir?: string | null
+  /** Stato del formulario all'ente RENTRI (ultimo noto), es. 'Annullato'. */
+  rentriStatoFormulario?: string | null
   /**
    * Numero FIR proposto in modalità ibrida, in attesa di conferma esplicita
    * dell'operatore: NON è ancora il legame ufficiale (v. rentriNumeroFir).
@@ -101,9 +109,18 @@ export interface FIR {
   /**
    * Azione proposta per l'ultimo fallimento: RIPROVA abilita il pulsante
    * «Riprova», VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA
-   * nasconde qualunque azione manuale (v. backend rentri-error-presentation.ts).
+   * nasconde qualunque azione manuale, VERIFICA_SU_RENTRI chiede di controllare
+   * il portale e propone «Ritrasmetti» solo dopo conferma, RILEGGI_ESITO
+   * propone «Rileggi esito» (stessa transazione, nessun nuovo formulario) (v.
+   * backend rentri-error-presentation.ts).
    */
-  rentriAzioneErrore?: 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA' | null
+  rentriAzioneErrore?:
+    | 'RIPROVA'
+    | 'VEDI_CERTIFICATO'
+    | 'NESSUNA'
+    | 'VERIFICA_SU_RENTRI'
+    | 'RILEGGI_ESITO'
+    | null
   /** Numero di tentativi di trasmissione effettuati. */
   rentriSyncAttempts?: number
   /** Se true, il FIR è trasmissibile ora a RENTRI (stato + non già legato + nessun fallimento permanente). */

@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 
 /**
  * Notification Escalation Service
@@ -42,6 +43,7 @@ export class NotificationEscalationService {
       this.logger.info('Notification escalation check completed')
     } catch (error) {
       this.logger.error('Failed to check notification escalations', error)
+      segnalaErroreJob('checkEscalations', error)
     }
   }
 

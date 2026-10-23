@@ -1,3 +1,5 @@
+import { cerSoloCifre } from '../../domain/waste-movement/cer-registro'
+
 /**
  * Fattori di CO₂ evitata per il recupero dei rifiuti.
  *
@@ -21,7 +23,7 @@ export const DEFAULT_CO2_AVOIDED_FACTOR = 0.5
 
 /** Normalizza un codice CER/EER a sole cifre (rimuove spazi e asterisco). */
 export function normalizeCer(cerCode: string): string {
-  return (cerCode || '').replace(/[^0-9]/g, '')
+  return cerSoloCifre(cerCode || '')
 }
 
 /**

@@ -23,7 +23,6 @@ import { CERModule } from './cer/cer.module'
 import { AnalyticsModule } from './application/analytics/analytics.module'
 import { NotificationsModule } from './application/notifications/notifications.module'
 import { MUDModule } from './application/mud/mud.module'
-import { BackupModule } from './infrastructure/backup/backup.module'
 import { PDFModule } from './infrastructure/pdf/pdf.module'
 import { MonitoringModule } from './infrastructure/monitoring/monitoring.module'
 import { DashboardModule } from './api/dashboard/dashboard.module'
@@ -127,7 +126,6 @@ import { AccessRequestModule } from './application/access-request/access-request
     PDFModule,
 
     // Operations
-    BackupModule,
     MonitoringModule,
 
     // API Modules

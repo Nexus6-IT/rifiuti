@@ -125,6 +125,15 @@ da luglio 2024.
 RENTRI, previa conferma dell'utente sul proprio dispositivo. È esattamente il
 modello scelto.
 
+> **Correzione 2026-10-23**: il percorso del contratto è
+> `POST /ca-rentri/v1.0/signatures/sign-hash` (`docs/contracts/rentri/ca-rentri.yaml`
+> riga 2019); `/credentials/sign-hash` non esiste. Allineati al contratto anche
+> `credentials/info` (`cert.certificates[]`) e `credentials/authorize`/`authorize-check`:
+> `authorize` restituisce `handle` (`sad`/`expires_in` solo se concessa), `authorize-check`
+> risponde 202 in attesa, 200 con `sad`, 400 scaduta, 403 non concessa, 422 notifica
+> non inviata. Resta non verificato solo il formato della firma (la fake firma con
+> RSA, l'ente con ECDSA).
+
 ### Il certificato: correzione a quanto scritto sopra
 
 - È un certificato di **tipo sigillo, «M.O. 16»** (Modalità Operative allegate

@@ -88,6 +88,9 @@ export class RENTRISyncQueue implements OnModuleInit {
      */
     richiedeConferma?: boolean
   }): Promise<string> {
+    // Nessuna conferma di nuova trasmissione nel data del job: la riapertura si
+    // consuma nel controller (RiapriTrasmissioneRentriUseCase), altrimenti ogni
+    // retry di BullMQ la rileggerebbe.
     const {
       firId,
       tenantId,
@@ -97,6 +100,46 @@ export class RENTRISyncQueue implements OnModuleInit {
       richiedeConferma = false,
     } = params
 
+    // Un solo job per FIR: il jobId è deterministico. Un job ancora vivo
+    // (in attesa, ritardato, attivo) è già quello giusto e si restituisce
+    // senza riaccodare. Uno concluso (completed/failed) va rimosso, altrimenti
+    // BullMQ scarterebbe in silenzio il nuovo tentativo legittimo finché il
+    // vecchio non scade da removeOnComplete/removeOnFail.
+    const jobId = `sync-${firId}`
+    const esistente = await this.queue.getJob(jobId)
+    if (esistente) {
+      const stato = await esistente.getState()
+      if (['waiting', 'delayed', 'active', 'prioritized', 'waiting-children'].includes(stato)) {
+        // Una richiesta di conferma del legame (IBRIDA) che il job vivo non
+        // porta non può essere assorbita in silenzio: il job vecchio girerebbe
+        // senza e chiuderebbe il legame senza conferma.
+        const flagMancanti =
+          richiedeConferma && !esistente.data?.richiedeConferma ? ['richiedeConferma'] : []
+
+        if (flagMancanti.length > 0) {
+          if (stato === 'active') {
+            this.logger.warn(
+              'RENTRI sync job già in esecuzione: le opzioni richieste non possono essere applicate',
+              { jobId, firId, tenantId, flagMancanti }
+            )
+            return esistente.id as string
+          }
+          // In attesa/ritardato (es. backoff dopo un errore): si sostituisce
+          // con un job che porta i flag richiesti, stesso jobId.
+          await esistente.remove()
+        } else {
+          this.logger.info('RENTRI sync job già presente per il FIR, non riaccodato', {
+            jobId,
+            firId,
+            tenantId,
+            stato,
+          })
+          return esistente.id as string
+        }
+      } else if (stato === 'completed' || stato === 'failed') {
+        await esistente.remove()
+      }
+    }
     const job = await this.queue.add(
       'sync-fir',
       {
@@ -109,7 +152,7 @@ export class RENTRISyncQueue implements OnModuleInit {
       {
         delay,
         priority: this.getPriorityValue(priority),
-        jobId: `sync-${firId}-${Date.now()}`, // Unique job ID
+        jobId,
       }
     )
 

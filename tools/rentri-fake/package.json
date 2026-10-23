@@ -18,7 +18,9 @@
     "genera-schema:copia-cartacea-conferma": "node scripts/genera-schema.js CopiaCartaceaConfermaModel src/dominio/schema-copia-cartacea-conferma.ts COPIA_CARTACEA_CONFERMA",
     "genera-schema:copia-digitale": "node scripts/genera-schema.js CopiaDigitaleModel src/dominio/schema-copia-digitale.ts COPIA_DIGITALE",
     "genera-schema:efir": "node scripts/genera-schema.js EfirModel src/dominio/schema-efir.ts EFIR vidimazione-formulari.yaml",
-    "genera-schema:blocco": "node scripts/genera-schema.js BloccoModel src/dominio/schema-blocco.ts BLOCCO vidimazione-formulari.yaml"
+    "genera-schema:blocco": "node scripts/genera-schema.js BloccoModel src/dominio/schema-blocco.ts BLOCCO vidimazione-formulari.yaml",
+    "genera-schema:ca-rentri-authorize": "node scripts/genera-schema.js CredentialsAuthorizeRequest src/dominio/schema-ca-rentri-authorize.ts CA_RENTRI_AUTHORIZE ca-rentri.yaml",
+    "genera-schema:ca-rentri-sign-hash": "node scripts/genera-schema.js SignatureRequest src/dominio/schema-ca-rentri-sign-hash.ts CA_RENTRI_SIGN_HASH ca-rentri.yaml"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.5",

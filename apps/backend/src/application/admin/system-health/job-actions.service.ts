@@ -1,10 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common'
 
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
+import { EsitoGiroRentri } from '../../../infrastructure/jobs/esito-giro-rentri'
 import { RentriRiconciliazioneJob } from '../../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../../infrastructure/jobs/rentri-certificato-scadenza.job'
 import { RentriCodificheSyncService } from '../../reference-data/rentri-codifiche-sync.service'
 import { ReferenceDataSeederService } from '../../reference-data/reference-data-seeder.service'
+import { DeadlineCheckerService } from '../../notifications/deadline-checker.service'
 
 /**
  * Rilancio manuale dei job dalla pagina «Stato del sistema».
@@ -64,19 +66,23 @@ export class JobActionsService {
     private readonly riconciliazione: RentriRiconciliazioneJob,
     private readonly certificati: RentriCertificatoScadenzaJob,
     private readonly codifiche: RentriCodificheSyncService,
-    private readonly datiRiferimento: ReferenceDataSeederService
+    private readonly datiRiferimento: ReferenceDataSeederService,
+    private readonly scadenzario: DeadlineCheckerService
   ) {}
 
   /** Le chiavi rilanciabili, con la descrizione mostrata nell'audit. */
-  private get azioni(): Record<string, { descrizione: string; esegui: () => Promise<void> }> {
+  private get azioni(): Record<
+    string,
+    { descrizione: string; esegui: () => Promise<EsitoGiroRentri | void> }
+  > {
     return {
       'rentri-riconciliazione': {
         descrizione: 'Riconciliazione periodica RENTRI',
-        esegui: () => this.riconciliazione.eseguiRiconciliazione(),
+        esegui: () => this.riconciliazione.riconcilia(),
       },
       'rentri-certificato-scadenza': {
         descrizione: 'Controllo scadenza certificati RENTRI',
-        esegui: () => this.certificati.eseguiControlloScadenza(),
+        esegui: () => this.certificati.controllaScadenze(),
       },
       'codifiche-rentri': {
         descrizione: 'Allineamento codifiche RENTRI',
@@ -85,6 +91,19 @@ export class JobActionsService {
       'dati-riferimento': {
         descrizione: 'Refresh dei dati di riferimento',
         esegui: () => this.datiRiferimento.reseedAll(),
+      },
+      // Aggiunta per lo scadenzario (piano UAT/E2E, Task 5): prima di questa
+      // voce nessuna delle quattro azioni sopra innescava
+      // `DeadlineCheckerService.checkAuthorizationExpirations` — il cron
+      // giornaliero delle scadenze di autorizzazioni impianto, iscrizione
+      // Albo Gestori dei trasportatori e autorizzazione dei destinatari.
+      // Se quel cron salta una notte, prima d'ora non c'era modo di
+      // recuperare se non aspettare il giorno successivo: stesso valore
+      // operativo delle quattro voci sopra, non superficie aggiunta per
+      // comodita' dei test.
+      'scadenzario-autorizzazioni': {
+        descrizione: 'Controllo scadenze autorizzazioni impianti e controparti',
+        esegui: () => this.scadenzario.checkAuthorizationExpirations(),
       },
     }
   }
@@ -116,7 +135,17 @@ export class JobActionsService {
     // processo.
     void azione
       .esegui()
-      .then(() => this.registra(utente, jobKey, 'completato', `${azione.descrizione}: completato`))
+      .then(esito => {
+        if (esito && esito.tenantConErrore > 0) {
+          return this.registra(
+            utente,
+            jobKey,
+            'parziale',
+            `${azione.descrizione}: completato con errori su ${esito.tenantConErrore} aziende su ${esito.tenantTotali}`
+          )
+        }
+        return this.registra(utente, jobKey, 'completato', `${azione.descrizione}: completato`)
+      })
       .catch((errore: Error) => {
         this.logger.error(`Rilancio manuale di "${jobKey}" fallito`, errore)
         return this.registra(

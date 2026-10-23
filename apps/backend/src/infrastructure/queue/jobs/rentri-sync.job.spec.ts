@@ -170,6 +170,50 @@ describe('RENTRISyncJobProcessor', () => {
       })
     })
 
+    it('giaInCorso: il job non lancia', async () => {
+      const mockJob = {
+        id: 'job-1',
+        data: { type: 'single', firId: 'fir-456', tenantId: 'tenant-789' },
+        attemptsMade: 0,
+        updateProgress: jest.fn(),
+      } as unknown as Job
+      mockSyncUseCase.execute.mockResolvedValue({
+        success: false,
+        willRetry: true,
+        giaInCorso: true,
+        error: 'trasmissione di un altro job',
+      })
+
+      const result = await processor['processSingleSync'](mockJob)
+
+      expect(result.success).toBe(false)
+      expect(mockLogger.info).toHaveBeenCalled()
+      expect(mockJob.updateProgress).not.toHaveBeenCalledWith(100)
+      expect(mockMetrics.firSyncDuration.observe).not.toHaveBeenCalled()
+    })
+
+    it('retry di un job con confermaNuovaTrasmissione nel data: nessuna riapertura, solo la sync', async () => {
+      // La conferma si consuma nel controller (RiapriTrasmissioneRentriUseCase):
+      // un job rimasto in Redis col vecchio flag, al secondo tentativo, non deve
+      // riaprire nulla né forzare una nuova POST.
+      const mockJob = {
+        id: 'job-1',
+        data: {
+          type: 'single',
+          firId: 'fir-456',
+          tenantId: 'tenant-789',
+          confermaNuovaTrasmissione: true,
+        },
+        attemptsMade: 1,
+        updateProgress: jest.fn(),
+      } as unknown as Job
+      mockSyncUseCase.execute.mockResolvedValue({ success: true })
+
+      await processor['processSingleSync'](mockJob)
+
+      expect(mockSyncUseCase.execute).toHaveBeenCalledWith('fir-456', 'tenant-789', undefined)
+    })
+
     it('willRetry: false (fallimento definitivo, es. 403) — NON rilancia: il job si considera concluso', async () => {
       const mockJob = {
         id: 'job-forbidden',

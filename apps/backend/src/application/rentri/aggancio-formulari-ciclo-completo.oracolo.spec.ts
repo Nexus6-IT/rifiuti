@@ -3,8 +3,10 @@ import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
 import { corpoFormularioValido } from './mappatura/aiuti-test'
 import { RentriAuthService } from '../../infrastructure/rentri/rentri-auth.service'
+import { RentriCredentialResolver } from '../../infrastructure/rentri/rentri-credential.resolver'
 import { RentriConfig } from '../../infrastructure/rentri/rentri-config'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../domain/fir/numero-fir'
 import {
   IFIRRepository,
   FIRSearchFilters,
@@ -75,7 +77,17 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
       credentialEncKey: 'test-enc-key',
     }
 
-    const credentialService = { getForTenant: jest.fn().mockResolvedValue(null) }
+    // Ogni azienda del test ha un certificato proprio (uguale a quello di prova): la
+    // credenziale env e' legata a una sola azienda (RENTRI_ENV_TENANT_ID).
+    const credentialService = {
+      getForTenant: jest.fn().mockResolvedValue({
+        clientId: config.clientId,
+        certificatePem: config.certificatePem,
+        privateKeyPem: config.privateKeyPem,
+        algorithm: config.algorithm,
+        environment: 'demo',
+      }),
+    }
     const logger: any = {
       setContext: jest.fn(),
       debug: jest.fn(),
@@ -83,7 +95,11 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
@@ -234,6 +250,7 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
    * il campo in `agganciaManualmente`, questo repository lo scoprirebbe.
    */
   class InMemoryFIRRepository implements IFIRRepository {
+    private progressiveCounter = 0
     private readonly store = new Map<string, FIR>()
 
     seed(fir: FIR): void {
@@ -263,6 +280,18 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
       return [...this.store.values()].filter(f => ids.includes(f.id) && f.tenantId === tenantId)
     }
 
+    async prenotaTrasmissioneRentri(): Promise<boolean> {
+      return true
+    }
+
+    async registraTransazioneInAttesa(): Promise<boolean> {
+      return true
+    }
+
+    async elencaTrasmissioniRentriSospese(): Promise<Array<{ firId: string; tenantId: string }>> {
+      return []
+    }
+
     /** Il metodo su cui poggia davvero il vincolo di non-doppio-aggancio dell'use case. */
     async findByRentriNumeroFir(tenantId: string, numeroFir: string): Promise<FIR | null> {
       for (const fir of this.store.values()) {
@@ -287,8 +316,16 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
       return false
     }
 
-    async generateNumeroProgressivo(): Promise<string> {
-      return 'N/D'
+    async emettiConNumerazione(
+      fir: FIR,
+      anno: number,
+      applica: (n: string) => void
+    ): Promise<string> {
+      this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+      const numero = formattaNumeroFir(anno, this.progressiveCounter)
+      applica(numero)
+      await this.save(fir)
+      return numero
     }
 
     async count(): Promise<number> {

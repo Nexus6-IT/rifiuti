@@ -129,15 +129,30 @@ export class FirDetailPage {
     this.rentriAccettazioneCancelButton = page.getByTestId(
       'fir-detail-rentri-accettazione-cancel-button'
     )
-    this.rentriAccettazioneConfirmButton = page.getByTestId(
-      'fir-detail-rentri-accettazione-confirm-button'
-    )
+    // `data-testid` sull'host `<p-button>` (v. fir-detail.component.ts:606-612):
+    // `rentri-ciclo-formulario.spec.ts` fa `toBeEnabled()` su questo
+    // locator per verificare che si sblocchi dopo aver compilato il form —
+    // su un host non nativo quell'asserzione è sempre vera, a prescindere
+    // dal vero `[disabled]="!accettazioneValida()"` applicato da PrimeNG
+    // solo al `<button>` interno (stessa classe di difetto corretta in
+    // `rentri-blocchi.page.ts` per `vidimaConferma`). `.locator('button')`
+    // scende all'elemento nativo per entrambi i casi d'uso (`.click()`
+    // continua a funzionare, `toBeEnabled()`/`toBeDisabled()` diventano
+    // affidabili).
+    this.rentriAccettazioneConfirmButton = page
+      .getByTestId('fir-detail-rentri-accettazione-confirm-button')
+      .locator('button')
 
     this.rentriAnnullaFormulario = page.getByTestId('fir-detail-rentri-annulla-formulario')
     this.rentriAnnullaDialog = page.getByTestId('fir-detail-rentri-annulla-dialog')
     this.rentriAnnullaMotivoInput = page.getByTestId('fir-detail-rentri-annulla-motivo-input')
     this.rentriAnnullaCancelButton = page.getByTestId('fir-detail-rentri-annulla-cancel-button')
-    this.rentriAnnullaConfirmButton = page.getByTestId('fir-detail-rentri-annulla-confirm-button')
+    // Stesso principio del blocco sopra: host `<p-button>`
+    // (fir-detail.component.ts:654-660), `toBeEnabled()` in
+    // rentri-ciclo-formulario.spec.ts va scoped al bottone nativo.
+    this.rentriAnnullaConfirmButton = page
+      .getByTestId('fir-detail-rentri-annulla-confirm-button')
+      .locator('button')
 
     this.allegatiUploadInput = page.getByTestId('fir-detail-allegati-upload-input')
     this.allegatiList = page.getByTestId('fir-detail-allegati-list')

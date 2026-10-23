@@ -72,12 +72,35 @@ describe('JobSchedulatiProbe', () => {
     expect(voce?.actionable).toBe(false)
   })
 
+  it('lo scadenzario MUD non cita più il 30 aprile fisso: la scadenza viene dal tracciato', async () => {
+    const voci = await probe.raccogli(registroCompleto(), evidenzeFinte({}))
+    const voce = voci.find(v => v.key === 'job.scadenzario-mud')
+
+    expect(voce?.detail).not.toContain('scadenza del 30 aprile')
+    expect(voce?.detail).toContain('scadenza del tracciato')
+  })
+
   it('dichiara unknown il job senza effetto osservabile, spiegando il perche', async () => {
     const voci = await probe.raccogli(registroCompleto(), evidenzeFinte({}))
     const voce = voci.find(v => v.key === 'job.rentri-certificato-scadenza')
 
     expect(voce?.state).toBe('unknown')
     expect(voce?.detail).toContain('non lascia traccia in banca dati')
+  })
+
+  it('offre il pulsante «esegui ora» sullo scadenzario autorizzazioni/controparti (Task 5 UAT/E2E)', async () => {
+    // DeadlineCheckerService.checkAuthorizationExpirations e' implementato
+    // da tempo (autorizzazioni impianto, iscrizione Albo trasportatori,
+    // autorizzazione destinatari): il descrittore non puo' piu' dichiararlo
+    // "non implementato" ne' negare il pulsante, altrimenti la nuova azione
+    // 'scadenzario-autorizzazioni' di JobActionsService resterebbe invisibile
+    // in questa pagina nonostante funzioni davvero.
+    const voci = await probe.raccogli(registroCompleto(), evidenzeFinte({}))
+    const voce = voci.find(v => v.key === 'job.scadenzario-autorizzazioni')
+
+    expect(voce?.state).not.toBe('off')
+    expect(voce?.actionable).toBe(true)
+    expect(voce?.actionKey).toBe('scadenzario-autorizzazioni')
   })
 
   it('valuta il ritardo del job con evidenza in banca dati', async () => {

@@ -2,6 +2,7 @@ import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
 import { SyncFIRToRENTRIUseCase } from '../../application/rentri/sync-fir-to-rentri.use-case'
 import { costruttorePayloadFinto } from '../../application/rentri/mappatura/aiuti-test'
@@ -74,7 +75,13 @@ describe('SyncFIRToRENTRIUseCase — ciclo end-to-end contro la fake RENTRI (in-
    * indipendente — non solo che l'istanza passata a `save` è stata mutata
    * in place (v. nota sul limite dichiarato in testa al file).
    */
-  class FIRRepositoryFake implements Pick<IFIRRepository, 'findById' | 'save'> {
+  class FIRRepositoryFake
+    implements
+      Pick<
+        IFIRRepository,
+        'findById' | 'save' | 'prenotaTrasmissioneRentri' | 'registraTransazioneInAttesa'
+      >
+  {
     private readonly memoria = new Map<string, FIR>()
 
     async findById(id: string): Promise<FIR | null> {
@@ -83,6 +90,16 @@ describe('SyncFIRToRENTRIUseCase — ciclo end-to-end contro la fake RENTRI (in-
 
     async save(fir: FIR): Promise<void> {
       this.memoria.set(fir.id, fir)
+    }
+
+    // Un solo processo e un solo oggetto per FIR: la prenotazione riesce sempre.
+    // La semantica concorrente e' provata in sync-fir-idempotenza.oracolo.spec.ts.
+    async prenotaTrasmissioneRentri(): Promise<boolean> {
+      return true
+    }
+
+    async registraTransazioneInAttesa(): Promise<boolean> {
+      return true
     }
   }
 
@@ -129,7 +146,17 @@ describe('SyncFIRToRENTRIUseCase — ciclo end-to-end contro la fake RENTRI (in-
       credentialEncKey: 'test-enc-key',
     }
 
-    const credentialService = { getForTenant: jest.fn().mockResolvedValue(null) }
+    // Ogni azienda del test ha un certificato proprio (uguale a quello di prova): la
+    // credenziale env e' legata a una sola azienda (RENTRI_ENV_TENANT_ID).
+    const credentialService = {
+      getForTenant: jest.fn().mockResolvedValue({
+        clientId: config.clientId,
+        certificatePem: config.certificatePem,
+        privateKeyPem: config.privateKeyPem,
+        algorithm: config.algorithm,
+        environment: 'demo',
+      }),
+    }
     const logger: any = {
       setContext: jest.fn(),
       debug: jest.fn(),
@@ -137,7 +164,11 @@ describe('SyncFIRToRENTRIUseCase — ciclo end-to-end contro la fake RENTRI (in-
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },

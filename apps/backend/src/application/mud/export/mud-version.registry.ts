@@ -35,6 +35,17 @@ export class MudVersionRegistry {
     return version
   }
 
+  /**
+   * Scadenza di presentazione del MUD sui dati dell'anno `annoDati`: quella del tracciato se
+   * l'anno è censito, altrimenti la scadenza ordinaria del 30 aprile dell'anno dopo
+   * (art. 189 c. 3 D.Lgs. 152/2006).
+   */
+  scadenzaPresentazione(annoDati: number): { data: string; fonte: 'TRACCIATO' | 'ORDINARIA' } {
+    const versione = this.versions.find(v => v.year === annoDati)
+    if (versione) return { data: versione.scadenzaPresentazione, fonte: 'TRACCIATO' }
+    return { data: `${annoDati + 1}-04-30`, fonte: 'ORDINARIA' }
+  }
+
   /** Anni di dichiarazione supportati (con relativa versione tracciato). */
   supportedYears(): number[] {
     return this.versions.map(v => v.year).sort((a, b) => b - a)

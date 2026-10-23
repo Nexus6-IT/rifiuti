@@ -42,14 +42,17 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing'
+import * as Sentry from '@sentry/node'
 import { DeadlineCheckerService } from './deadline-checker.service'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 
 jest.mock('../../infrastructure/rentri/rentri-certificato-scadenza.util')
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
 const mockCalcolaGiorni = calcolaGiorniAllaScadenzaCertificato as jest.Mock
 
@@ -72,6 +75,11 @@ const mockPrisma = {
   user: {
     findMany: jest.fn(),
   },
+  mUDReport: {
+    create: jest.fn(),
+    upsert: jest.fn(),
+    findUnique: jest.fn(),
+  },
   notification: {
     create: jest.fn(),
     findFirst: jest.fn(),
@@ -81,6 +89,7 @@ const mockPrisma = {
 const mockTemplateService = {
   renderAuthorizationExpiration: jest.fn().mockResolvedValue('<html></html>'),
   renderCounterpartyExpiration: jest.fn().mockResolvedValue('<html></html>'),
+  renderMudDeadlineReminder: jest.fn().mockResolvedValue('<html></html>'),
 } as unknown as TemplateService
 
 const mockEmailService = {
@@ -122,10 +131,17 @@ describe('DeadlineCheckerService', () => {
     // Default: nessuna notifica recente per la stessa entità, così i test
     // esistenti (senza dedup) restano validi senza doverlo mockare ovunque.
     ;(mockPrisma.notification.findFirst as jest.Mock).mockResolvedValue(null)
+    // Default: il MUDReport mancante viene creato (upsert) come bozza.
+    ;(mockPrisma.mUDReport.upsert as jest.Mock).mockResolvedValue({
+      id: 'mud1',
+      status: 'DRAFT',
+      reportData: {},
+    })
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DeadlineCheckerService,
+        MudVersionRegistry,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: TemplateService, useValue: mockTemplateService },
         { provide: EmailService, useValue: mockEmailService },
@@ -588,6 +604,273 @@ describe('DeadlineCheckerService', () => {
         })
       )
       expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+    })
+
+    it('un guasto SMTP non sopprime la notifica in applicazione: la notifica nasce anche se sendEmail fallisce', async () => {
+      // Difetto di revisione: la notifica in-app veniva creata DOPO
+      // sendEmail, nello stesso try. In un ambiente senza SMTP l'eccezione
+      // veniva loggata e la notifica non nasceva mai — l'unico canale che
+      // funziona sempre restava silenzioso proprio quando la posta è rotta.
+      const fra30 = new Date()
+      fra30.setDate(fra30.getDate() + 30)
+      ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
+        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+      ])
+      ;(mockEmailService.sendEmail as jest.Mock).mockRejectedValueOnce(
+        new Error('connessione SMTP rifiutata')
+      )
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA',
+            relatedEntityId: 'tr1',
+          }),
+        })
+      )
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Invio email'),
+        expect.any(Error)
+      )
+    })
+
+    it("un guasto SMTP non sopprime la notifica in applicazione per un'autorizzazione impianto scaduta", async () => {
+      // Stesso difetto del test precedente ma nel ramo AUTORIZZAZIONI
+      // IMPIANTO dello stesso metodo checkAuthorizationExpirations, dove la
+      // revisione ha trovato sendEmail e notification.create ancora nello
+      // stesso try/catch, nello stesso ordine sbagliato — non basta
+      // correggere un ramo su tre.
+      const ieri = new Date()
+      ieri.setDate(ieri.getDate() - 1)
+      ;(mockPrisma.autorizzazioneImpianto.findMany as jest.Mock).mockResolvedValue([
+        { id: 'a1', tenantId: 't1', estremi: 'AUT/123', dataScadenza: ieri },
+      ])
+      ;(mockEmailService.sendEmail as jest.Mock).mockRejectedValueOnce(
+        new Error('connessione SMTP rifiutata')
+      )
+
+      await service.checkAuthorizationExpirations()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'AUTORIZZAZIONE_IN_SCADENZA',
+            relatedEntityId: 'a1',
+            severity: 'ERROR',
+          }),
+        })
+      )
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Invio email'),
+        expect.any(Error)
+      )
+    })
+  })
+
+  describe('checkMudDeadlines', () => {
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('un guasto SMTP non sopprime la notifica in applicazione per il promemoria MUD', async () => {
+      // Terzo ramo con lo stesso difetto: checkMudDeadlines creava la
+      // notifica DOPO sendEmail, nello stesso try/catch — correggere solo
+      // elaboraScadenzaControparte lasciava in piedi esattamente lo stesso
+      // problema qui (SMTP giù + scadenza MUD del 30 aprile = nessun
+      // avviso in applicazione).
+      jest.useFakeTimers()
+      // 1 giorno prima della scadenza MUD (30 aprile): 29 aprile. Non 30
+      // giorni prima (31 marzo): quell'intervallo attraversa il cambio d'ora
+      // legale di fine marzo, e in un fuso dove l'ora torna indietro fra
+      // quella data e il 30 aprile (Auckland, Sydney, Santiago) la differenza
+      // di `daysUntilDeadline` non è più 30 giorni esatti in millisecondi ma
+      // 30 giorni e un'ora: `Math.ceil` arrotonda a 31 e il metodo esce
+      // subito, facendo fallire il test. Un solo giorno di distanza resta
+      // dentro un unico offset in qualunque fuso: il test non dipende dal
+      // fuso orario di chi lo esegue.
+      jest.setSystemTime(new Date(2030, 3, 29))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 't1',
+          ragioneSociale: 'Alfa Ambiente Srl',
+          mudReports: [],
+          users: [utenteFixture()],
+        },
+      ])
+      ;(mockPrisma.mUDReport.upsert as jest.Mock).mockResolvedValue({
+        id: 'mud1',
+        status: 'DRAFT',
+        reportData: {},
+      })
+      ;(mockEmailService.sendEmail as jest.Mock).mockRejectedValueOnce(
+        new Error('connessione SMTP rifiutata')
+      )
+
+      await service.checkMudDeadlines()
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'MUD_DEADLINE_APPROACHING',
+            tenantId: 't1',
+          }),
+        })
+      )
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Invio email'),
+        expect.any(Error)
+      )
+    })
+
+    it('un errore del job delle scadenze MUD arriva a Bugsink', async () => {
+      // 2 luglio: giorno di invio con la scadenza del 3 luglio 2026 (tracciato 6.04/25) di domani.
+      jest.useFakeTimers().setSystemTime(new Date(2026, 6, 2))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockRejectedValue(new Error('db giù'))
+
+      await expect(service.checkMudDeadlines()).resolves.toBeUndefined()
+
+      expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+        tags: { job: 'checkMudDeadlines' },
+      })
+    })
+
+    it('usa la scadenza del registro dei tracciati, non il 30 aprile', async () => {
+      jest.useFakeTimers()
+      jest.setSystemTime(new Date(2026, 3, 29)) // il vecchio "giorno prima del 30 aprile"
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([
+        { id: 't1', ragioneSociale: 'Alfa', mudReports: [], users: [utenteFixture()] },
+      ])
+      await service.checkMudDeadlines()
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+      // "nessuna notifica" deve venire dal salto per data, non da un errore inghiottito
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'MUD deadline is 65 days away, skipping notifications'
+      )
+      expect(mockLogger.error).not.toHaveBeenCalled()
+      expect(Sentry.captureException).not.toHaveBeenCalled()
+    })
+
+    it('non manda promemoria per un MUD già presentato, ma sì agli altri', async () => {
+      jest.useFakeTimers()
+      jest.setSystemTime(new Date(2026, 6, 2)) // il giorno prima del 3 luglio 2026
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 't1',
+          ragioneSociale: 'Alfa',
+          mudReports: [{ id: 'mud1', status: 'SUBMITTED', reportData: {} }],
+          users: [utenteFixture()],
+        },
+        {
+          id: 't2',
+          ragioneSociale: 'Beta',
+          mudReports: [{ id: 'mud2', status: 'DRAFT', reportData: {} }],
+          users: [utenteFixture()],
+        },
+      ])
+      await service.checkMudDeadlines()
+      expect(mockPrisma.tenant.findMany).toHaveBeenCalled()
+      expect(mockPrisma.notification.create).toHaveBeenCalledTimes(1)
+      expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ tenantId: 't2' }) })
+      )
+    })
+
+    it('senza scadenza censita usa il 30 aprile e lo scrive nel log', async () => {
+      jest.useFakeTimers()
+      jest.setSystemTime(new Date(2030, 3, 29))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([
+        { id: 't1', ragioneSociale: 'Alfa', mudReports: [], users: [utenteFixture()] },
+      ])
+      await service.checkMudDeadlines()
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Scadenza MUD per i dati 2029 non censita nel registro dei tracciati: uso la scadenza ordinaria del 30/04/2030'
+      )
+      expect(mockPrisma.notification.create).toHaveBeenCalled()
+    })
+
+    it('nei giorni senza promemoria la scadenza ordinaria non riempie il log', async () => {
+      jest.useFakeTimers()
+      // fuori dalla finestra, e dentro la finestra ma non a 30/15/7/3/1 giorni
+      for (const giorno of [new Date(2030, 0, 15), new Date(2030, 3, 20)]) {
+        jest.setSystemTime(giorno)
+        await service.checkMudDeadlines()
+      }
+      expect(mockLogger.warn).not.toHaveBeenCalledWith(
+        expect.stringContaining('non censita nel registro dei tracciati')
+      )
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled()
+    })
+
+    it('il giorno si conta sul calendario di Roma: alle 00:30 del 02/07 manca 1 giorno', async () => {
+      jest.useFakeTimers()
+      // 22:30 UTC del 01/07 = 00:30 del 02/07 a Roma; scadenza 03/07/2026 (dati 2025)
+      jest.setSystemTime(new Date('2026-07-01T22:30:00Z'))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([
+        { id: 't1', ragioneSociale: 'Alfa', mudReports: [], users: [utenteFixture()] },
+      ])
+      await service.checkMudDeadlines()
+      const dati = (mockPrisma.notification.create as jest.Mock).mock.calls[0][0].data
+      expect(dati.message).toContain('Manca 1 giorno alla scadenza del MUD 2026')
+    })
+
+    it('se il record MUD è creato da un altro processo nello stesso momento, rilegge e prosegue', async () => {
+      jest.useFakeTimers()
+      jest.setSystemTime(new Date(2026, 6, 2))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([
+        { id: 't2', ragioneSociale: 'Beta', mudReports: [], users: [utenteFixture()] },
+      ])
+      ;(mockPrisma.mUDReport.upsert as jest.Mock).mockRejectedValue(
+        Object.assign(new Error('unique'), { code: 'P2002' })
+      )
+      ;(mockPrisma.mUDReport.findUnique as jest.Mock).mockResolvedValue({
+        id: 'mud2',
+        status: 'DRAFT',
+        reportData: {},
+      })
+      await service.checkMudDeadlines()
+      expect(mockPrisma.notification.create).toHaveBeenCalledTimes(1)
+      expect(mockLogger.error).not.toHaveBeenCalled()
+    })
+
+    it("il promemoria non parla di completamento e porta alla pagina MUD dell'anno", async () => {
+      jest.useFakeTimers()
+      jest.setSystemTime(new Date(2026, 6, 2))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 't1',
+          ragioneSociale: 'Alfa',
+          mudReports: [{ id: 'mud1', status: 'DRAFT', reportData: {} }],
+          users: [utenteFixture()],
+        },
+      ])
+      await service.checkMudDeadlines()
+      const dati = (mockPrisma.notification.create as jest.Mock).mock.calls[0][0].data
+      expect(dati.message).not.toContain('Completamento')
+      expect(dati.title).toBe('Promemoria scadenza MUD 2026 (dati 2025)')
+      expect(dati.message).toBe(
+        'Manca 1 giorno alla scadenza del MUD 2026 (dati 2025), il 03/07/2026: aprire la pagina MUD per i controlli e la conferma.'
+      )
+      expect(dati.actionUrl).toBe('/mud?anno=2025')
+      const mail = (mockTemplateService.renderMudDeadlineReminder as jest.Mock).mock.calls[0][0]
+      expect(mail.mudUrl).toMatch(/\/mud\?anno=2025$/)
+      expect(mail).not.toHaveProperty('completionPercentage')
+      expect(mail).not.toHaveProperty('missingData')
+      expect(mail).not.toHaveProperty('isComplete')
+    })
+
+    it("un'azienda non tenuta al MUD non riceve promemoria", async () => {
+      // A-W-10: con il flag "MUD non dovuto" non si crea il MUDReport e non partono
+      // notifiche né email. Il filtro sta nella query, così l'azienda non arriva al ciclo.
+      jest.useFakeTimers().setSystemTime(new Date(2026, 6, 2))
+      ;(mockPrisma.tenant.findMany as jest.Mock).mockResolvedValue([])
+
+      await service.checkMudDeadlines()
+
+      expect(mockPrisma.tenant.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ mudNonDovuto: false }) })
+      )
     })
   })
 

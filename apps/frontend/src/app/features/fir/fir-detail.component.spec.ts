@@ -307,7 +307,7 @@ describe('FirDetailComponent', () => {
     firService.getFIRById.and.returnValue(
       of({
         ...baseFIR,
-        rentriSyncStatus: 'FAILED',
+        rentriSyncStatus: 'PERMANENTLY_FAILED',
         rentriAzioneErrore: 'VEDI_CERTIFICATO',
         rentriMessaggioErrore:
           'Il certificato della tua azienda non è valido per questa operazione: verifica il certificato nella pagina dedicata. Ritentare non risolve il problema.',
@@ -319,6 +319,24 @@ describe('FirDetailComponent', () => {
     expect(el.querySelector('[data-testid="fir-detail-rentri-riprova"]')).toBeFalsy()
     expect(el.querySelector('[data-testid="fir-detail-rentri-vedi-certificato"]')).toBeTruthy()
     expect(el.textContent).toContain('certificato')
+  })
+
+  it('mostra "Vai al certificato" (e non "Riprova") per un FIR fermo per certificato mancante', () => {
+    setup({ role: 'ADMIN' })
+    firService.getFIRById.and.returnValue(
+      of({
+        ...baseFIR,
+        rentriSyncStatus: 'PERMANENTLY_FAILED',
+        rentriAzioneErrore: 'VEDI_CERTIFICATO',
+        rentriMessaggioErrore:
+          "L'azienda non ha un certificato RENTRI configurato: caricalo nella pagina del certificato RENTRI.",
+      })
+    )
+    fixture.detectChanges()
+
+    const el: HTMLElement = fixture.nativeElement
+    expect(el.querySelector('[data-testid="fir-detail-rentri-vedi-certificato"]')).toBeTruthy()
+    expect(el.querySelector('[data-testid="fir-detail-rentri-riprova"]')).toBeFalsy()
   })
 
   it('NON mostra "Riprova" dopo un 429/423 (RENTRI ha sospeso le richieste)', () => {
@@ -340,21 +358,148 @@ describe('FirDetailComponent', () => {
     expect(el.textContent).toContain('riprenderà')
   })
 
-  it('mostra "Riprova" quando manca il numero ufficiale nell\'esito (RENTRI_MISSING_NUMERO_FIR)', () => {
-    setup({ role: 'ADMIN' })
-    firService.getFIRById.and.returnValue(
-      of({
-        ...baseFIR,
-        rentriSyncStatus: 'FAILED',
-        rentriAzioneErrore: 'RIPROVA',
-        rentriMessaggioErrore:
-          'RENTRI ha accettato la trasmissione ma non ha restituito il numero ufficiale del formulario: il FIR non risulta ancora legato. Riprova la trasmissione.',
-      })
-    )
-    fixture.detectChanges()
+  describe('Ritrasmetti dopo la verifica sul portale RENTRI', () => {
+    const firIncerto: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'PERMANENTLY_FAILED',
+      rentriAzioneErrore: 'VERIFICA_SU_RENTRI',
+      rentriMessaggioErrore:
+        'Non sappiamo se RENTRI ha ricevuto il formulario: controlla sul portale RENTRI.',
+    }
+    const RITRASMETTI = '[data-testid="fir-detail-rentri-ritrasmetti-dopo-verifica"]'
+    const RIPROVA = '[data-testid="fir-detail-rentri-riprova"]'
 
-    const el: HTMLElement = fixture.nativeElement
-    expect(el.querySelector('[data-testid="fir-detail-rentri-riprova"]')).toBeTruthy()
+    it('Ritrasmetti visibile solo con VERIFICA_SU_RENTRI e PERMANENTLY_FAILED', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firIncerto))
+      fixture.detectChanges()
+      expect((fixture.nativeElement as HTMLElement).querySelector(RITRASMETTI)).toBeTruthy()
+
+      expect(component.mostraRitrasmettiDopoVerifica(firIncerto)).toBeTrue()
+      expect(
+        component.mostraRitrasmettiDopoVerifica({ ...firIncerto, rentriSyncStatus: 'FAILED' })
+      ).toBeFalse()
+      expect(
+        component.mostraRitrasmettiDopoVerifica({ ...firIncerto, rentriAzioneErrore: 'RIPROVA' })
+      ).toBeFalse()
+      expect(
+        component.mostraRitrasmettiDopoVerifica({ ...firIncerto, rentriAzioneErrore: 'NESSUNA' })
+      ).toBeFalse()
+      // Un FIR già legato (es. collegato con «Cerca su RENTRI») non si ritrasmette.
+      expect(
+        component.mostraRitrasmettiDopoVerifica({ ...firIncerto, rentriNumeroFir: 'RENTRI-1' })
+      ).toBeFalse()
+    })
+
+    it('Ritrasmetti non compare a chi non gestisce RENTRI', () => {
+      setup({ role: 'VIEWER' })
+      firService.getFIRById.and.returnValue(of(firIncerto))
+      fixture.detectChanges()
+      expect((fixture.nativeElement as HTMLElement).querySelector(RITRASMETTI)).toBeFalsy()
+    })
+
+    it('Riprova non compare per VERIFICA_SU_RENTRI', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of({ ...firIncerto, rentriSyncStatus: 'FAILED' }))
+      fixture.detectChanges()
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector(RIPROVA)).toBeFalsy()
+      expect(el.querySelector(RITRASMETTI)).toBeFalsy()
+    })
+
+    it('conferma del dialog → syncFIR con confermaNuovaTrasmissione true', () => {
+      setup({ role: 'ADMIN', autoConfirm: true })
+      firService.getFIRById.and.returnValue(of(firIncerto))
+      rentriSyncService.syncFIR.and.returnValue(
+        of({ jobId: 'job-1', firId: 'fir-1', message: 'ok' })
+      )
+      fixture.detectChanges()
+      const confirmation = fixture.debugElement.injector.get(ConfirmationService)
+
+      component.ritrasmettiDopoVerifica(firIncerto)
+
+      expect(confirmation.confirm).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          message:
+            'Hai controllato sul portale RENTRI che il formulario non esiste? Se esiste, ritrasmettere crea un doppione.',
+        })
+      )
+      expect(rentriSyncService.syncFIR).toHaveBeenCalledWith('fir-1', {
+        confermaNuovaTrasmissione: true,
+      })
+    })
+
+    it('senza conferma non trasmette nulla', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firIncerto))
+      fixture.detectChanges()
+      const confirmation = fixture.debugElement.injector.get(ConfirmationService)
+      spyOn(confirmation, 'confirm').and.returnValue(confirmation)
+
+      component.ritrasmettiDopoVerifica(firIncerto)
+
+      expect(rentriSyncService.syncFIR).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Rileggi esito (esito non acquisito)', () => {
+    const firNonAcquisito: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'PERMANENTLY_FAILED',
+      rentriAzioneErrore: 'RILEGGI_ESITO',
+      rentriMessaggioErrore:
+        "RENTRI ha ricevuto il formulario ma non siamo riusciti a leggerne l'esito. Premi «Rileggi esito»: non verrà creato un nuovo formulario.",
+    }
+    const RILEGGI = '[data-testid="fir-detail-rentri-rileggi-esito"]'
+    const RITRASMETTI = '[data-testid="fir-detail-rentri-ritrasmetti-dopo-verifica"]'
+
+    it('visibile con RILEGGI_ESITO e PERMANENTLY_FAILED; Ritrasmetti no', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firNonAcquisito))
+      fixture.detectChanges()
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector(RILEGGI)).toBeTruthy()
+      expect(el.querySelector(RITRASMETTI)).toBeFalsy()
+
+      expect(component.mostraRileggiEsito(firNonAcquisito)).toBeTrue()
+      expect(
+        component.mostraRileggiEsito({ ...firNonAcquisito, rentriSyncStatus: 'FAILED' })
+      ).toBeFalse()
+      expect(
+        component.mostraRileggiEsito({
+          ...firNonAcquisito,
+          rentriAzioneErrore: 'VERIFICA_SU_RENTRI',
+        })
+      ).toBeFalse()
+      expect(
+        component.mostraRileggiEsito({ ...firNonAcquisito, rentriNumeroFir: 'RENTRI-1' })
+      ).toBeFalse()
+    })
+
+    it('non compare a chi non gestisce RENTRI', () => {
+      setup({ role: 'VIEWER' })
+      firService.getFIRById.and.returnValue(of(firNonAcquisito))
+      fixture.detectChanges()
+      expect((fixture.nativeElement as HTMLElement).querySelector(RILEGGI)).toBeFalsy()
+    })
+
+    it('senza dialog: chiama la riapertura (confermaNuovaTrasmissione true)', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firNonAcquisito))
+      rentriSyncService.syncFIR.and.returnValue(
+        of({ jobId: 'job-1', firId: 'fir-1', message: 'ok' })
+      )
+      fixture.detectChanges()
+      const confirmation = fixture.debugElement.injector.get(ConfirmationService)
+      spyOn(confirmation, 'confirm').and.returnValue(confirmation)
+
+      component.rileggiEsito(firNonAcquisito)
+
+      expect(confirmation.confirm).not.toHaveBeenCalled()
+      expect(rentriSyncService.syncFIR).toHaveBeenCalledWith('fir-1', {
+        confermaNuovaTrasmissione: true,
+      })
+    })
   })
 
   it('trasmette il FIR a RENTRI quando si preme "Trasmetti a RENTRI"', () => {

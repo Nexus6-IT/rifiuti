@@ -1,7 +1,10 @@
 import { of } from 'rxjs'
+import * as Sentry from '@sentry/node'
 import { ReferenceDataSeederService } from './reference-data-seeder.service'
 import { parseCsv } from './csv.util'
 import { ReferenceDataConfig } from './reference-data.config'
+
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
 describe('csv.util', () => {
   it('parsa righe con separatore ; e gestisce le virgolette', () => {
@@ -20,6 +23,7 @@ describe('ReferenceDataSeederService', () => {
   const baseSource = { separator: ';', hasHeader: true, localFile: null as string | null }
 
   beforeEach(() => {
+    jest.clearAllMocks()
     http = { get: jest.fn() }
     prisma = {
       atecoCode: { upsert: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
@@ -127,5 +131,25 @@ describe('ReferenceDataSeederService', () => {
 
     expect(prisma.atecoCode.upsert).not.toHaveBeenCalled() // ateco saltato
     expect(prisma.istatNazione.upsert).toHaveBeenCalled() // nazioni popolato
+  })
+
+  it('scheduledRefresh segnala a Bugsink un errore del refresh', async () => {
+    const service = make()
+    jest.spyOn(service, 'reseedAll').mockRejectedValue(new Error('rete'))
+    await expect(service.scheduledRefresh()).resolves.toBeUndefined()
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { job: 'scheduledRefresh' },
+    })
+  })
+
+  it('un dataset che fallisce dentro safe() arriva a Bugsink con il nome del dataset', async () => {
+    config.comuni.url = 'https://example/comuni.csv'
+    http.get.mockImplementation(() => {
+      throw new Error('rete')
+    })
+    await make().reseedAll('comuni')
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { job: 'seedDatiDiRiferimento', dataset: 'comuni' },
+    })
   })
 })

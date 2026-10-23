@@ -5,20 +5,53 @@
  *   1. Utente normale senza header → usa tenant primario (no-op).
  *   2. SUPER_ADMIN con header → passthrough (già gestito dal middleware).
  *   3. Utente con header X-Tenant-ID di un tenant DI CUI È MEMBRO → switch corretto.
- *   4. Utente con header X-Tenant-ID di un tenant NON SUO → fail-closed (anti-leak).
- *   5. Errore DB nella verifica → fail-closed (anti-leak).
+ *   4. Utente con header X-Tenant-ID di un tenant NON SUO → 403
+ *      AZIENDA_SELEZIONATA_NON_ACCESSIBILE, l'handler non gira (niente ripiego sul primario,
+ *      che scriverebbe nell'azienda sbagliata).
+ *   5. Errore DB nella verifica → 503 VERIFICA_AZIENDA_NON_DISPONIBILE (la selezione resta).
+ *   7. Rotta di recupero (@ConsentiSelezioneNonValida) → prosegue col tenant primario.
+ *   8. Header che non è un UUID → stesso 403 di un'azienda inesistente, nessuna query.
  *   6. Header pari al tenant primario → autorizzato senza query DB (ottimizzazione).
  */
 
-import { ExecutionContext, CallHandler } from '@nestjs/common'
+import {
+  ExecutionContext,
+  CallHandler,
+  ForbiddenException,
+  ServiceUnavailableException,
+} from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
 import { lastValueFrom, of } from 'rxjs'
 import { TenantSwitchInterceptor } from './tenant-switch.interceptor'
 import { MembershipService } from '../../api/me/membership.service'
 import { TenantContext } from '../context/tenant-context'
+import { ConsentiSelezioneNonValida } from '../decorators/consenti-selezione-non-valida.decorator'
 
-const TENANT_A = 'tenant-A-primario-uuid'
-const TENANT_B = 'tenant-B-autorizzato-uuid'
-const TENANT_C = 'tenant-C-non-autorizzato-uuid'
+/** Risposta attesa per un'azienda selezionata non accessibile (inesistente o non autorizzata). */
+const RIFIUTO_ATTESO = {
+  message: "L'azienda selezionata non è più accessibile: selezionane un'altra.",
+  error: 'AZIENDA_SELEZIONATA_NON_ACCESSIBILE',
+}
+
+/** Rotte finte: una qualunque e una di recupero (elenco/switch delle aziende). */
+class RotteFinte {
+  qualunque() {}
+  @ConsentiSelezioneNonValida()
+  recupero() {}
+}
+
+/** Risposta attesa quando la verifica non si può fare (errore del database). */
+const VERIFICA_NON_DISPONIBILE = {
+  message: "Verifica dell'azienda selezionata non disponibile, riprova.",
+  error: 'VERIFICA_AZIENDA_NON_DISPONIBILE',
+}
+
+// Gli id delle aziende sono UUID (colonne `@db.Uuid`): un header di altra forma si rifiuta
+// prima di interrogare il database.
+const TENANT_A = 'aaaaaaaa-0000-4000-8000-00000000000a' // primario
+const TENANT_B = 'bbbbbbbb-0000-4000-8000-00000000000b' // autorizzato
+const TENANT_C = 'cccccccc-0000-4000-8000-00000000000c' // non autorizzato
+const TENANT_INESISTENTE = 'dddddddd-0000-4000-8000-00000000000d'
 
 const USER_NORMALE = {
   id: 'user-normale-uuid',
@@ -36,7 +69,8 @@ const USER_SUPER_ADMIN = {
 function makeContext(
   headerTenantId: string | undefined,
   user: object | null,
-  reqTenantId?: string
+  reqTenantId?: string,
+  handler: () => void = RotteFinte.prototype.qualunque
 ): ExecutionContext {
   const req: any = {
     headers: {},
@@ -49,6 +83,8 @@ function makeContext(
 
   return {
     getType: () => 'http',
+    getHandler: () => handler,
+    getClass: () => RotteFinte,
     switchToHttp: () => ({
       getRequest: () => req,
     }),
@@ -81,7 +117,7 @@ describe('TenantSwitchInterceptor', () => {
       switchTenant: jest.fn(),
     } as unknown as jest.Mocked<MembershipService>
 
-    interceptor = new TenantSwitchInterceptor(membershipMock)
+    interceptor = new TenantSwitchInterceptor(membershipMock, new Reflector())
   })
 
   afterEach(() => {
@@ -140,30 +176,76 @@ describe('TenantSwitchInterceptor', () => {
   // ──────────────────────────────────────────────────────────────────────────
   // Scenario 4 (CRITICO ANTI-LEAK): header di tenant NON autorizzato → fail-closed
   // ──────────────────────────────────────────────────────────────────────────
-  it('ANTI-LEAK: header X-Tenant-ID di tenant non autorizzato → ignorato, usa tenant primario', async () => {
+  it('ANTI-LEAK: header X-Tenant-ID di tenant non autorizzato → 403, handler non eseguito, req.tenantId invariato', async () => {
     membershipMock.checkAccess.mockResolvedValue(false)
     const ctx = makeContext(TENANT_C, USER_NORMALE, TENANT_A)
-    let tenantInContesto: string | null = null
     const reqObj = ctx.switchToHttp().getRequest() as any
+    const handle = jest.fn(() => of('OK'))
 
-    const handler: CallHandler = {
-      handle: () => {
-        tenantInContesto = TenantContext.getTenantId()
-        return of('OK')
-      },
-    }
+    const errore: any = await runInterceptor(interceptor, ctx, { handle }).catch(e => e)
 
-    // L'interceptor deve chiamare next.handle() senza cambiare il TenantContext.
-    // Il TenantContext rimane quello impostato dal middleware (TENANT_A, dal JWT).
-    // Simuliamo: avvolgiamo l'esecuzione in TenantContext.run con TENANT_A.
-    await TenantContext.run({ tenantId: TENANT_A }, async () => {
-      await runInterceptor(interceptor, ctx, handler)
-      expect(tenantInContesto).toBe(TENANT_A) // Il contesto NON è stato sovrascritto con TENANT_C
-    })
-
-    // req.tenantId non deve essere stato aggiornato con il tenant C.
+    expect(errore).toBeInstanceOf(ForbiddenException)
+    expect(errore.getResponse()).toEqual(RIFIUTO_ATTESO)
+    // Niente ripiego sul tenant primario: l'handler non deve girare affatto.
+    expect(handle).not.toHaveBeenCalled()
     expect(reqObj.tenantId).toBe(TENANT_A)
     expect(membershipMock.checkAccess).toHaveBeenCalledWith(USER_NORMALE.id, TENANT_C, TENANT_A)
+  })
+
+  it('azienda inesistente e azienda non autorizzata danno la stessa risposta (nessuna enumerazione)', async () => {
+    // checkAccess restituisce false in entrambi i casi; la risposta non deve distinguerli.
+    membershipMock.checkAccess.mockResolvedValue(false)
+    const nonAutorizzata: any = await runInterceptor(
+      interceptor,
+      makeContext(TENANT_C, USER_NORMALE, TENANT_A),
+      makeHandler()
+    ).catch(e => e)
+    const inesistente: any = await runInterceptor(
+      interceptor,
+      makeContext(TENANT_INESISTENTE, USER_NORMALE, TENANT_A),
+      makeHandler()
+    ).catch(e => e)
+
+    expect(inesistente.getStatus()).toBe(403)
+    expect(inesistente.getResponse()).toEqual(nonAutorizzata.getResponse())
+  })
+
+  it('header che non è un UUID → stesso 403, senza interrogare il database', async () => {
+    // Su una colonna @db.Uuid Prisma rifiuterebbe il valore (P2023): non deve diventare un
+    // errore del database né distinguersi da un'azienda inesistente.
+    for (const header of ['tenant-che-non-esiste', "1' OR '1'='1", '12345']) {
+      const handle = jest.fn(() => of('OK'))
+      const errore: any = await runInterceptor(
+        interceptor,
+        makeContext(header, USER_NORMALE, TENANT_A),
+        { handle }
+      ).catch(e => e)
+
+      expect({ header, status: errore.getStatus?.() }).toEqual({ header, status: 403 })
+      expect(errore.getResponse()).toEqual(RIFIUTO_ATTESO)
+      expect(handle).not.toHaveBeenCalled()
+    }
+    expect(membershipMock.checkAccess).not.toHaveBeenCalled()
+  })
+
+  it('rotta di recupero (@ConsentiSelezioneNonValida) con header non accessibile → prosegue col tenant primario', async () => {
+    membershipMock.checkAccess.mockResolvedValue(false)
+    const ctx = makeContext(TENANT_C, USER_NORMALE, TENANT_A, RotteFinte.prototype.recupero)
+    const reqObj = ctx.switchToHttp().getRequest() as any
+    let tenantInContesto: string | null = null
+
+    await TenantContext.run({ tenantId: TENANT_A }, async () => {
+      const result = await runInterceptor(interceptor, ctx, {
+        handle: () => {
+          tenantInContesto = TenantContext.getTenantId()
+          return of('ELENCO_AZIENDE')
+        },
+      })
+      expect(result).toBe('ELENCO_AZIENDE')
+    })
+
+    expect(tenantInContesto).toBe(TENANT_A)
+    expect(reqObj.tenantId).toBe(TENANT_A)
   })
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -196,26 +278,31 @@ describe('TenantSwitchInterceptor', () => {
   })
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Scenario 6: errore DB → fail-closed (non espone l'errore al client)
+  // Scenario 6: errore DB → 503 (la selezione resta valida, si riprova)
   // ──────────────────────────────────────────────────────────────────────────
-  it('errore DB nella verifica → fail-closed, usa tenant primario senza eccezione', async () => {
+  it('errore DB nella verifica → 503 VERIFICA_AZIENDA_NON_DISPONIBILE, handler non eseguito', async () => {
     membershipMock.checkAccess.mockRejectedValue(new Error('DB connection lost'))
     const ctx = makeContext(TENANT_B, USER_NORMALE, TENANT_A)
-    let tenantInContesto: string | null = null
+    const reqObj = ctx.switchToHttp().getRequest() as any
+    const handle = jest.fn(() => of('OK'))
 
-    const handler: CallHandler = {
-      handle: () => {
-        tenantInContesto = TenantContext.getTenantId()
-        return of('OK')
-      },
-    }
+    const errore: any = await runInterceptor(interceptor, ctx, { handle }).catch(e => e)
 
-    await TenantContext.run({ tenantId: TENANT_A }, async () => {
-      // Non deve lanciare, deve ricadere silenziosamente sul tenant primario.
-      const result = await runInterceptor(interceptor, ctx, handler)
-      expect(result).toBe('OK')
-      expect(tenantInContesto).toBe(TENANT_A) // Non sovrascritto
-    })
+    expect(errore).toBeInstanceOf(ServiceUnavailableException)
+    // Il messaggio dell'errore interno non arriva al client.
+    expect(errore.getResponse()).toEqual(VERIFICA_NON_DISPONIBILE)
+    expect(handle).not.toHaveBeenCalled()
+    expect(reqObj.tenantId).toBe(TENANT_A)
+  })
+
+  it('errore DB su una rotta di recupero → prosegue col tenant primario', async () => {
+    membershipMock.checkAccess.mockRejectedValue(new Error('DB connection lost'))
+    const ctx = makeContext(TENANT_B, USER_NORMALE, TENANT_A, RotteFinte.prototype.recupero)
+
+    const result = await runInterceptor(interceptor, ctx, makeHandler('ELENCO_AZIENDE'))
+
+    expect(result).toBe('ELENCO_AZIENDE')
+    expect((ctx.switchToHttp().getRequest() as any).tenantId).toBe(TENANT_A)
   })
 
   // ──────────────────────────────────────────────────────────────────────────

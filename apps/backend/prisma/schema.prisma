@@ -96,6 +96,15 @@ model Tenant {
   // un'azione esplicita, dopo aver configurato la credenziale (RentriCredential).
   rentriModalitaLegame RentriModalitaLegame @default(MANUALE) @map("rentri_modalita_legame")
 
+  // Azienda non tenuta alla presentazione del MUD (A-W-10, come il flag MUD S/N di
+  // WinWaste). Lo imposta un amministratore dell'azienda (PUT mud/obbligo): niente
+  // promemoria né scadenze del MUD; il file si può generare comunque, con un avviso.
+  // Motivo, data e utente sono valorizzati solo con il flag attivo.
+  mudNonDovuto       Boolean   @default(false) @map("mud_non_dovuto")
+  mudNonDovutoMotivo String?   @map("mud_non_dovuto_motivo") @db.VarChar(500)
+  mudNonDovutoIl     DateTime? @map("mud_non_dovuto_il")
+  mudNonDovutoDa     String?   @map("mud_non_dovuto_da") @db.Uuid
+
   // Relationships
   users                  User[]
   firs                   FIR[]
@@ -109,7 +118,8 @@ model Tenant {
   wasteMovements         WasteMovement[]
   rentriUnitaLocali      RentriUnitaLocale[]
   rentriNumeriVidimati   RentriNumeroVidimato[]
-  madre                  Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
+  registroProgressiviIniziali RegistroProgressivoIniziale[]
+  madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
@@ -381,6 +391,12 @@ model FIR {
   // di aggancio, serve solo per correlare la trasmissione con il suo esito
   // (polling GET /{transazione_id}/status) e per il supporto.
   rentriTransazioneId     String?                @map("rentri_transazione_id") @db.VarChar(100)
+  // Transazione di creazione accettata dall'ente e non ancora letta fino all'esito:
+  // salvata subito, così un tentativo successivo la riprende invece di creare un doppione.
+  rentriTransazioneInAttesa String?              @map("rentri_transazione_in_attesa") @db.VarChar(100)
+  // Quando un processo ha prenotato la trasmissione (SYNCING): oltre la soglia di stallo
+  // la prenotazione è riprendibile e il job di recupero la elenca.
+  rentriSyncAvviatoAt     DateTime?              @map("rentri_sync_avviato_at") @db.Timestamptz(3)
   // Come è nato il legame con rentriNumeroFir: rilevante per cosa l'utente può
   // fare dopo (es. un legame acquisito da terzi non è ritrasmissibile) e in
   // caso di contestazione su chi ha originato/confermato l'aggancio.
@@ -464,6 +480,7 @@ model FIR {
   @@index([tenantId])
   @@index([status])
   @@index([rentriSyncStatus])
+  @@index([rentriSyncStatus, rentriSyncAvviatoAt])
   @@index([transportDate])
   @@index([cerCode])
   @@index([tenantId, wasteOperationType])
@@ -770,6 +787,27 @@ enum NotificationSeverity {
   ERROR
 
   @@map("notification_severity")
+}
+
+/// Primo numero del registro di carico e scarico per azienda e anno (decisione C-W-02).
+/// Serve a chi arriva da un altro programma a meta' anno: il primo movimento registrato
+/// qui prende questo numero, cosi' la numerazione gia' trasmessa al RENTRI prosegue.
+/// Si imposta una volta sola, prima del primo movimento dell'anno, sotto lo stesso
+/// advisory lock `<tenantId>-<anno>` della numerazione. La migration aggiunge
+/// CHECK (primo_progressivo >= 1).
+model RegistroProgressivoIniziale {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  anno             Int
+  primoProgressivo Int      @map("primo_progressivo")
+  motivo           String   @db.VarChar(500)
+  impostatoDa      String   @map("impostato_da") @db.Uuid
+  impostatoIl      DateTime @default(now()) @map("impostato_il")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, anno])
+  @@map("registro_progressivi_iniziali")
 }
 
 model ActivityLog {
@@ -1736,7 +1774,15 @@ model WasteMovement {
   counterpartAddress String? @map("counterpart_address") @db.VarChar(500)
 
   /// SCARICO: FIR collegato (uscita verso trasportatore/destinatario).
-  firId String? @map("fir_id") @db.Uuid
+  firId         String? @map("fir_id") @db.Uuid
+  /// Copia di firId valorizzata solo dai movimenti registrati dopo l'indice unico
+  /// della ricopia (i movimenti storici restano NULL, e i NULL non collidono):
+  /// un FIR si ricopia nel registro una sola volta per tipo di movimento e chiave.
+  firIdRicopia  String? @map("fir_id_ricopia") @db.Uuid
+  /// Chiave che distingue più movimenti dello stesso FIR e tipo (C-W-03, come WinWaste):
+  /// '' per la ricopia ordinaria, l'unica usata oggi. Lo schema delle chiavi riservate è
+  /// in RICOPIA_ORDINARIA (registra-movimento.use-case.ts); la chiave la impone il flusso.
+  ricopiaChiave String  @default("") @map("ricopia_chiave") @db.VarChar(100)
 
   /// Utente (operatore) che ha registrato l'annotazione.
   recordedByUserId String? @map("recorded_by_user_id") @db.Uuid
@@ -1751,6 +1797,7 @@ model WasteMovement {
   recordedByUser User?  @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
 
   @@unique([tenantId, progressiveYear, progressiveNumber])
+  @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
   @@index([tenantId, cerCode])
   @@index([tenantId, movementDate])
   @@index([tenantId, type])

@@ -417,23 +417,115 @@ describe('FIR Aggregate', () => {
       })
     })
 
-    describe('startRENTRISync', () => {
+    describe('avviaTentativoRentri', () => {
       it('should transition sync status to SYNCING when allowed', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         expect(fir.rentriSyncStatus.getStatus()).toBe('SYNCING')
       })
 
       it('should throw when the FIR cannot be synced (still in BOZZA)', () => {
         const fir = FIR.create(createValidFIRProps())
-        expect(() => fir.startRENTRISync()).toThrow(DomainError)
+        expect(() => fir.avviaTentativoRentri(new Date())).toThrow(DomainError)
+      })
+    })
+
+    describe('transazione in attesa e trasmissione incerta', () => {
+      it('avviaTentativoRentri riprende un SYNCING', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date('2026-10-23T10:00:00Z'))
+        const ora = new Date('2026-10-23T10:05:00Z')
+
+        fir.avviaTentativoRentri(ora)
+
+        expect(fir.rentriSyncStatus.getStatus()).toBe('SYNCING')
+        expect(fir.rentriSyncAvviatoAt).toEqual(ora)
+      })
+
+      it('avviaTentativoRentri rifiuta un FIR legato', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.markRENTRISynced('RENTRI-NUM-1', 'tx-1')
+
+        expect(() => fir.avviaTentativoRentri(new Date())).toThrow(DomainError)
+      })
+
+      it('registraTransazioneInAttesa imposta attesa e transazioneId', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+
+        fir.registraTransazioneInAttesa('tx-attesa')
+
+        expect(fir.rentriTransazioneInAttesa).toBe('tx-attesa')
+        expect(fir.rentriTransazioneId).toBe('tx-attesa')
+      })
+
+      it('markRENTRISynced azzera la transazione in attesa', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.registraTransazioneInAttesa('tx-attesa')
+
+        fir.markRENTRISynced('RENTRI-NUM-2', 'tx-attesa')
+
+        expect(fir.rentriTransazioneInAttesa).toBeNull()
+      })
+
+      it('proporreLegameRENTRI azzera la transazione in attesa', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.registraTransazioneInAttesa('tx-attesa')
+
+        fir.proporreLegameRENTRI('RENTRI-NUM-3', 'tx-attesa')
+
+        expect(fir.rentriTransazioneInAttesa).toBeNull()
+      })
+
+      it('chiudiTransazioneInAttesa azzera la transazione in attesa', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.registraTransazioneInAttesa('tx-attesa')
+
+        fir.chiudiTransazioneInAttesa()
+
+        expect(fir.rentriTransazioneInAttesa).toBeNull()
+      })
+
+      it('segnaTrasmissioneIncerta: PERMANENTLY_FAILED, codice RENTRI_TRASMISSIONE_INCERTA, transazione in attesa null', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.registraTransazioneInAttesa('tx-attesa')
+
+        fir.segnaTrasmissioneIncerta('timeout in creazione')
+
+        expect(fir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+        expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
+        expect(fir.rentriTransazioneInAttesa).toBeNull()
+      })
+
+      it('riapriTrasmissioneDopoVerifica: canSyncToRENTRI torna true', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.segnaTrasmissioneIncerta('timeout in creazione')
+        expect(fir.canSyncToRENTRI()).toBe(false)
+
+        fir.riapriTrasmissioneDopoVerifica()
+
+        expect(fir.canSyncToRENTRI()).toBe(true)
+      })
+
+      it('riapriTrasmissioneDopoVerifica rifiuta un FIR già legato', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.markRENTRISynced('RENTRI-NUM-4', 'tx-1')
+
+        expect(() => fir.riapriTrasmissioneDopoVerifica()).toThrow(DomainError)
       })
     })
 
     describe('markRENTRISynced — regola 4: registra il numero ufficiale', () => {
       it('should store the numero ufficiale (rentriNumeroFir), not only the transazioneId', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.markRENTRISynced('RENTRI-NUM-000123', 'tx-abc-789')
 
@@ -446,14 +538,14 @@ describe('FIR Aggregate', () => {
 
       it('should throw if numero ufficiale is missing/empty', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         expect(() => fir.markRENTRISynced('')).toThrow(DomainError)
       })
 
       it('should work without a transazioneId (optional)', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.markRENTRISynced('RENTRI-NUM-000999')
 
@@ -465,18 +557,18 @@ describe('FIR Aggregate', () => {
     describe('regola 2: un FIR già legato non è ritrasmissibile (anti-duplicazione)', () => {
       it('should reject a second sync attempt after a successful markRENTRISynced', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123', 'tx-1')
 
         expect(fir.canSyncToRENTRI()).toBe(false)
-        expect(() => fir.startRENTRISync()).toThrow(DomainError)
+        expect(() => fir.avviaTentativoRentri(new Date())).toThrow(DomainError)
       })
     })
 
     describe('markRENTRISyncFailed / needsRENTRIRetry / getNextRENTRIRetryAt — regola 3: tentativi e backoff', () => {
       it('should allow retry after a first failure (attempts below the max)', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.markRENTRISyncFailed('Errore di rete', 'RENTRI_API_ERROR')
 
@@ -487,7 +579,7 @@ describe('FIR Aggregate', () => {
 
       it('should schedule the next retry strictly in the future using exponential backoff', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         const before = Date.now()
 
         fir.markRENTRISyncFailed('Errore di rete', 'RENTRI_API_ERROR')
@@ -500,7 +592,7 @@ describe('FIR Aggregate', () => {
 
       it('should stop allowing retries after exhausting the maximum number of attempts', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         // RENTRISyncStatus.MAX_ATTEMPTS = 5: il quinto fallimento consecutivo
         // porta a PERMANENTLY_FAILED (richiede intervento manuale).
@@ -522,7 +614,7 @@ describe('FIR Aggregate', () => {
        */
       it('un errore non ritentabile (403 → RENTRI_FORBIDDEN) ferma il ciclo al primo fallimento, senza consumare tutti i tentativi', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.markRENTRISyncFailed('Certificato non valido', 'RENTRI_FORBIDDEN')
 
@@ -543,7 +635,7 @@ describe('FIR Aggregate', () => {
     describe('proporreLegameRENTRI / confermaLegameRENTRI / rifiutaLegameRENTRI — modalità IBRIDA', () => {
       it('proporreLegameRENTRI registra il numero proposto senza legare ancora il FIR', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.proporreLegameRENTRI('RENTRI-NUM-000555', 'tx-ibrida-1')
 
@@ -555,7 +647,7 @@ describe('FIR Aggregate', () => {
 
       it('proporreLegameRENTRI blocca nuovi tentativi automatici mentre la proposta è pendente', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.proporreLegameRENTRI('RENTRI-NUM-000555')
 
@@ -565,14 +657,14 @@ describe('FIR Aggregate', () => {
 
       it('proporreLegameRENTRI rifiuta un numero ufficiale mancante/vuoto', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         expect(() => fir.proporreLegameRENTRI('')).toThrow(DomainError)
       })
 
       it('confermaLegameRENTRI promuove la proposta al legame ufficiale (origine TRASMESSO_DA_NOI)', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.proporreLegameRENTRI('RENTRI-NUM-000555', 'tx-ibrida-1')
 
         fir.confermaLegameRENTRI()
@@ -589,7 +681,7 @@ describe('FIR Aggregate', () => {
 
       it('rifiutaLegameRENTRI cancella la proposta e riporta il FIR a PENDING (ritrasmissibile)', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.proporreLegameRENTRI('RENTRI-NUM-000555')
 
         fir.rifiutaLegameRENTRI()
@@ -658,7 +750,7 @@ describe('FIR Aggregate', () => {
 
       it("agganciaManualmente rifiuta un FIR già legato (anche da TRASMESSO_DA_NOI), citando l'origine esistente", () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-NOSTRO')
 
         expect(() => fir.agganciaManualmente('RENTRI-NUM-ALTRO')).toThrow(/TRASMESSO_DA_NOI/)
@@ -705,7 +797,7 @@ describe('FIR Aggregate', () => {
 
       it('rifiuta il rilascio di un legame TRASMESSO_DA_NOI', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-NOSTRO-006')
 
         expect(() => fir.rilasciaLegameRENTRI()).toThrow(DomainError)
@@ -768,7 +860,7 @@ describe('FIR Aggregate', () => {
         "'%s' → FIRStato.IN_TRANSITO (il FIR è in lavorazione presso l'ente)",
         statoRentri => {
           const fir = emettiFIR()
-          fir.startRENTRISync()
+          fir.avviaTentativoRentri(new Date())
           fir.markRENTRISynced('RENTRI-NUM-000123')
 
           fir.applyRentriStato(statoRentri)
@@ -782,7 +874,7 @@ describe('FIR Aggregate', () => {
         "'%s' → FIRStato.CONSEGNATO (esito finale di accettazione)",
         statoRentri => {
           const fir = emettiFIR()
-          fir.startRENTRISync()
+          fir.avviaTentativoRentri(new Date())
           fir.markRENTRISynced('RENTRI-NUM-000123')
 
           fir.applyRentriStato(statoRentri)
@@ -794,7 +886,7 @@ describe('FIR Aggregate', () => {
 
       it("'Annullato' → FIRStato.ANNULLATO", () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
 
         fir.applyRentriStato('Annullato')
@@ -811,7 +903,7 @@ describe('FIR Aggregate', () => {
 
       it('emette RentriStatoRiconciliato con il payload atteso', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.clearDomainEvents() // pulizia eventi pregressi (emissione, sync, ecc.)
 
@@ -831,7 +923,7 @@ describe('FIR Aggregate', () => {
 
       it('registra sempre statoRentriPrecedente = valore precedente su una seconda riconciliazione', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('FirmaAnnotazione')
 
@@ -854,7 +946,7 @@ describe('FIR Aggregate', () => {
        */
       it('non fa regredire FIRStato da CONSEGNATO a IN_TRANSITO per una risposta di polling obsoleta', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('Accettato') // FIRStato → CONSEGNATO (terminale)
 
@@ -866,7 +958,7 @@ describe('FIR Aggregate', () => {
 
       it('non fa regredire FIRStato da ANNULLATO a IN_TRANSITO per una risposta di polling obsoleta', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('Annullato') // FIRStato → ANNULLATO (terminale)
 
@@ -886,7 +978,7 @@ describe('FIR Aggregate', () => {
        */
       it('accetta il passaggio fra due stati terminali: un formulario accettato che l’ente annulla diventa ANNULLATO', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('Accettato')
         expect(fir.stato).toBe(FIRStato.CONSEGNATO)
@@ -899,7 +991,7 @@ describe('FIR Aggregate', () => {
 
       it('accetta anche il passaggio inverso fra terminali (annullato poi accettato dall’ente)', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('Annullato')
 
@@ -920,7 +1012,7 @@ describe('FIR Aggregate', () => {
     describe('metodi locali bloccati su un FIR legato a RENTRI', () => {
       it('presaInCarico rifiuta un FIR legato', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
 
         expect(() => fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))).toThrow(
@@ -931,7 +1023,7 @@ describe('FIR Aggregate', () => {
       it('confermaConsegna rifiuta un FIR legato', () => {
         const fir = emettiFIR()
         fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
 
         expect(() => fir.confermaConsegna(120, createMockFirma('Destinatario'))).toThrow(
@@ -941,7 +1033,7 @@ describe('FIR Aggregate', () => {
 
       it('annulla rifiuta un FIR legato', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
 
         expect(() => fir.annulla('tentativo locale')).toThrow(
@@ -957,7 +1049,7 @@ describe('FIR Aggregate', () => {
     describe('registraNoteAnnullamentoRentri', () => {
       const firLegatoEAnnullato = (): FIR => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('Annullato')
         return fir
@@ -980,7 +1072,7 @@ describe('FIR Aggregate', () => {
 
       it('rifiuta un FIR legato ma non ancora ANNULLATO', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
 
         expect(() => fir.registraNoteAnnullamentoRentri('motivo')).toThrow(

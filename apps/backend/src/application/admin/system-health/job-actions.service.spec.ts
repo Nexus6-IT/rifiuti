@@ -21,27 +21,30 @@ function promessaControllata() {
 
 describe('JobActionsService', () => {
   let prisma: { activityLog: { create: jest.Mock; findMany: jest.Mock } }
-  let riconciliazione: { eseguiRiconciliazione: jest.Mock }
-  let certificati: { eseguiControlloScadenza: jest.Mock }
+  let riconciliazione: { riconcilia: jest.Mock }
+  let certificati: { controllaScadenze: jest.Mock }
   let codifiche: { allineaTutto: jest.Mock }
   let datiRiferimento: { reseedAll: jest.Mock }
+  let scadenzario: { checkAuthorizationExpirations: jest.Mock }
   let service: JobActionsService
 
   beforeEach(() => {
     prisma = {
       activityLog: { create: jest.fn().mockResolvedValue({}), findMany: jest.fn() },
     }
-    riconciliazione = { eseguiRiconciliazione: jest.fn().mockResolvedValue(undefined) }
-    certificati = { eseguiControlloScadenza: jest.fn().mockResolvedValue(undefined) }
+    riconciliazione = { riconcilia: jest.fn().mockResolvedValue(undefined) }
+    certificati = { controllaScadenze: jest.fn().mockResolvedValue(undefined) }
     codifiche = { allineaTutto: jest.fn().mockResolvedValue(undefined) }
     datiRiferimento = { reseedAll: jest.fn().mockResolvedValue(undefined) }
+    scadenzario = { checkAuthorizationExpirations: jest.fn().mockResolvedValue(undefined) }
 
     service = new JobActionsService(
       prisma as never,
       riconciliazione as never,
       certificati as never,
       codifiche as never,
-      datiRiferimento as never
+      datiRiferimento as never,
+      scadenzario as never
     )
   })
 
@@ -55,17 +58,31 @@ describe('JobActionsService', () => {
       'rentri-certificato-scadenza',
       'codifiche-rentri',
       'dati-riferimento',
+      'scadenzario-autorizzazioni',
     ])
+  })
+
+  it('rilancia a mano il controllo scadenze autorizzazioni/controparti (DeadlineCheckerService)', async () => {
+    const { promessa, risolvi } = promessaControllata()
+    scadenzario.checkAuthorizationExpirations.mockReturnValue(promessa)
+
+    const esito = await service.avvia('scadenzario-autorizzazioni', UTENTE)
+
+    expect(esito).toMatchObject({ jobKey: 'scadenzario-autorizzazioni', stato: 'avviato' })
+    expect(scadenzario.checkAuthorizationExpirations).toHaveBeenCalledTimes(1)
+
+    risolvi()
+    await promessa
   })
 
   it('risponde AVVIATO senza attendere la fine del giro', async () => {
     const { promessa, risolvi } = promessaControllata()
-    riconciliazione.eseguiRiconciliazione.mockReturnValue(promessa)
+    riconciliazione.riconcilia.mockReturnValue(promessa)
 
     const esito = await service.avvia('rentri-riconciliazione', UTENTE)
 
     expect(esito).toMatchObject({ jobKey: 'rentri-riconciliazione', stato: 'avviato' })
-    expect(riconciliazione.eseguiRiconciliazione).toHaveBeenCalledTimes(1)
+    expect(riconciliazione.riconcilia).toHaveBeenCalledTimes(1)
 
     risolvi()
     await promessa
@@ -73,7 +90,7 @@ describe('JobActionsService', () => {
 
   it('rifiuta con 409 un secondo avvio mentre il primo e ancora in corso', async () => {
     const { promessa, risolvi } = promessaControllata()
-    riconciliazione.eseguiRiconciliazione.mockReturnValue(promessa)
+    riconciliazione.riconcilia.mockReturnValue(promessa)
 
     await service.avvia('rentri-riconciliazione', UTENTE)
     await expect(service.avvia('rentri-riconciliazione', UTENTE)).rejects.toBeInstanceOf(
@@ -92,7 +109,7 @@ describe('JobActionsService', () => {
 
   it('il lucchetto e per chiave: un altro job resta avviabile', async () => {
     const { promessa, risolvi } = promessaControllata()
-    riconciliazione.eseguiRiconciliazione.mockReturnValue(promessa)
+    riconciliazione.riconcilia.mockReturnValue(promessa)
 
     await service.avvia('rentri-riconciliazione', UTENTE)
     await expect(service.avvia('codifiche-rentri', UTENTE)).resolves.toMatchObject({
@@ -127,6 +144,39 @@ describe('JobActionsService', () => {
     const ultima = prisma.activityLog.create.mock.calls.at(-1)?.[0].data
     expect(ultima.metadata).toMatchObject({ esito: 'fallito' })
     expect(ultima.description).toContain('RENTRI irraggiungibile')
+  })
+
+  it('un giro con un errore generale finisce nell audit come fallito', async () => {
+    riconciliazione.riconcilia.mockRejectedValue(new Error('lettura tenant fallita'))
+
+    await service.avvia('rentri-riconciliazione', UTENTE)
+    await new Promise(process.nextTick)
+
+    const ultima = prisma.activityLog.create.mock.calls.at(-1)?.[0].data
+    expect(ultima.metadata).toMatchObject({ esito: 'fallito' })
+  })
+
+  it('un giro con tenant falliti finisce come parziale', async () => {
+    riconciliazione.riconcilia.mockResolvedValue({ tenantTotali: 3, tenantConErrore: 1 })
+
+    await service.avvia('rentri-riconciliazione', UTENTE)
+    await new Promise(process.nextTick)
+
+    const ultima = prisma.activityLog.create.mock.calls.at(-1)?.[0].data
+    expect(ultima.metadata).toMatchObject({ esito: 'parziale' })
+    expect(ultima.description).toBe(
+      'Riconciliazione periodica RENTRI: completato con errori su 1 aziende su 3'
+    )
+  })
+
+  it('un giro senza tenant falliti finisce come completato', async () => {
+    certificati.controllaScadenze.mockResolvedValue({ tenantTotali: 2, tenantConErrore: 0 })
+
+    await service.avvia('rentri-certificato-scadenza', UTENTE)
+    await new Promise(process.nextTick)
+
+    const ultima = prisma.activityLog.create.mock.calls.at(-1)?.[0].data
+    expect(ultima.metadata).toMatchObject({ esito: 'completato' })
   })
 
   it('non fa fallire l avvio se l audit non riesce a scrivere', async () => {

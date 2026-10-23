@@ -22,13 +22,26 @@
  *   da una condizione che il tempo/i tentativi automatici risolvono da soli).
  * - `VEDI_CERTIFICATO`: serve un intervento sul certificato dell'azienda,
  *   non un nuovo tentativo.
+ * - `VERIFICA_SU_RENTRI`: l'esito della trasmissione è incerto o incompleto
+ *   (RENTRI potrebbe aver già creato il formulario): niente «Riprova»
+ *   automatico, l'utente controlla sul portale e solo dopo può ritrasmettere
+ *   con una conferma esplicita (o collegare il formulario esistente).
+ * - `RILEGGI_ESITO`: RENTRI ha la transazione ma l'esito non si è letto:
+ *   l'utente chiede di rileggerlo, senza creare un nuovo formulario.
  * - `NESSUNA`: nessuna azione manuale utile in questo momento — o perché
  *   ritentare non cambierebbe nulla (403, dati non validi), o perché un
  *   ritentativo manuale peggiorerebbe la situazione (429/423), o perché la
  *   trasmissione riprenderà comunque da sola (5xx/rete, in attesa dei
  *   tentativi automatici già pianificati).
  */
-export type RentriAzioneUtente = 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA'
+import { MESSAGGIO_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-credential.resolver'
+
+export type RentriAzioneUtente =
+  | 'RIPROVA'
+  | 'VEDI_CERTIFICATO'
+  | 'NESSUNA'
+  | 'VERIFICA_SU_RENTRI'
+  | 'RILEGGI_ESITO'
 
 export interface RentriErrorePresentabile {
   /** Testo in italiano pronto per l'utente: mai un codice, mai lo status HTTP. */
@@ -69,6 +82,15 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
       return {
         messaggio:
           'Il certificato della tua azienda non è valido per questa operazione: verifica il certificato nella pagina dedicata. Ritentare non risolve il problema.',
+        azione: 'VEDI_CERTIFICATO',
+      }
+
+    case 'RENTRI_CERTIFICATO_MANCANTE':
+      // Esito definitivo: l'azienda non ha un certificato proprio e non si presta
+      // quello di un'altra. Dopo il caricamento del certificato i FIR tornano PENDING:
+      // in AUTOMATICA/IBRIDA ripartono da soli, in MANUALE con «Trasmetti a RENTRI».
+      return {
+        messaggio: MESSAGGIO_CERTIFICATO_MANCANTE,
         azione: 'VEDI_CERTIFICATO',
       }
 
@@ -131,8 +153,26 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
     case 'RENTRI_MISSING_NUMERO_FIR':
       return {
         messaggio:
-          'RENTRI ha accettato la trasmissione ma non ha restituito il numero ufficiale del formulario: il FIR non risulta ancora legato. Riprova la trasmissione.',
-        azione: 'RIPROVA',
+          'RENTRI ha accettato la trasmissione ma non ha restituito il numero del formulario: controlla sul portale RENTRI prima di ritrasmettere, il formulario potrebbe già esistere.',
+        azione: 'VERIFICA_SU_RENTRI',
+      }
+
+    case 'RENTRI_TRASMISSIONE_INCERTA':
+      // La POST è partita ma non sappiamo se RENTRI l'ha ricevuta (timeout, rete
+      // caduta dopo l'invio): ritrasmettere alla cieca può creare un doppione.
+      return {
+        messaggio:
+          "Non sappiamo se RENTRI ha ricevuto il formulario: controlla sul portale RENTRI. Se il formulario non c'è, ritrasmetti il FIR; se c'è, non ritrasmettere e collegalo con «Cerca su RENTRI».",
+        azione: 'VERIFICA_SU_RENTRI',
+      }
+
+    case 'RENTRI_ESITO_NON_ACQUISITO':
+      // L'ente ha accettato la transazione, è la lettura dell'esito che non è
+      // riuscita: si rilegge la stessa transazione, nessuna nuova POST.
+      return {
+        messaggio:
+          "RENTRI ha ricevuto il formulario ma non siamo riusciti a leggerne l'esito. Premi «Rileggi esito»: non verrà creato un nuovo formulario.",
+        azione: 'RILEGGI_ESITO',
       }
 
     case 'ACCETTAZIONE_NON_DISPONIBILE':

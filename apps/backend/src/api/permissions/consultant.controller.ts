@@ -27,6 +27,7 @@ import { GetConsultantTenantsQueryHandler } from '../../application/queries/hand
 import { GetAggregatedDashboardHandler } from '../../application/queries/handlers/get-aggregated-dashboard.handler'
 import { ConsultantTenantAssociationRepository } from '../../domain/identity-access/consultant-tenant-association.repository.interface'
 import { ConsultantTenantAssociation } from '../../domain/identity-access/consultant-tenant-association.entity'
+import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 
 /**
  * ConsultantController
@@ -79,6 +80,8 @@ export class ConsultantController {
    * - Total count of active associations
    * - Ordered by most recently added
    */
+  // Rotta di recupero: risponde anche con una selezione d'azienda non più valida.
+  @ConsentiSelezioneNonValida()
   @Get('tenants')
   @HttpCode(HttpStatus.OK)
   @AuditAction('list_consultant_tenants')
@@ -112,6 +115,8 @@ export class ConsultantController {
    * - Role cache warmed for target tenant
    * - Audit trail logged
    */
+  // Rotta di recupero: risponde anche con una selezione d'azienda non più valida.
+  @ConsentiSelezioneNonValida()
   @Post('switch-tenant')
   @HttpCode(HttpStatus.OK)
   @AuditAction('switch_tenant_context')

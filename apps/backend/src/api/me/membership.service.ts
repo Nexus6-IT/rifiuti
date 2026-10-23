@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { JwtTokensService } from '../../auth/services/jwt-tokens.service'
 import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { associazioneConsulenteValida } from './ruolo-effettivo.service'
 
 /**
  * Gestione multi-azienda dell'utente autenticato: elenco delle aziende
@@ -17,21 +18,11 @@ export class MembershipService {
   ) {}
 
   /**
-   * Filtro di un'associazione consulente VALIDA: attiva **e non scaduta**.
-   *
-   * `isActive` da solo non basta: il dominio
-   * (`ConsultantTenantAssociation.isActiveAndNotExpired()`) considera scaduta =
-   * inattiva, ma la disattivazione non viene scritta a DB allo scadere. Senza
-   * il vincolo su `expiresAt` un consulente conserverebbe l'accesso all'azienda
-   * del cliente oltre la fine dell'incarico.
+   * Filtro di un'associazione consulente VALIDA (attiva e non scaduta): definito una sola
+   * volta in `ruolo-effettivo.service.ts`, così accesso e ruolo effettivo concordano.
    */
   private static associazioneValida(consultantUserId: string, tenantId?: string) {
-    return {
-      consultantUserId,
-      ...(tenantId ? { tenantId } : {}),
-      isActive: true,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-    }
+    return associazioneConsulenteValida(consultantUserId, tenantId)
   }
 
   /**
@@ -107,8 +98,10 @@ export class MembershipService {
    *   3. Associazioni consulente attive (`ConsultantTenantAssociation`).
    *   4. Discesa gerarchica: abilitazione all'azienda MADRE del target.
    *
-   * Fail-closed: qualunque errore interno è propagato al chiamante, che deve
-   * ignorare l'header e ricadere sul tenant primario.
+   * Fail-closed: qualunque errore interno è propagato al chiamante. Il
+   * `TenantSwitchInterceptor` risponde allora 503 `VERIFICA_AZIENDA_NON_DISPONIBILE`
+   * (la selezione si conserva e la richiesta si può ripetere): non ricade mai sul
+   * tenant primario, che metterebbe la scrittura in un'altra azienda.
    */
   async checkAccess(
     userId: string,

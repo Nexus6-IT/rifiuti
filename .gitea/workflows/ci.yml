@@ -102,6 +102,11 @@ jobs:
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
         run: npm run test:cov
 
+      # Script di backup/restore (ops/): test bash senza database.
+      - name: Test script di backup (bash)
+        working-directory: ${{ github.workspace }}
+        run: bash ops/test/backup-verifica.test.sh
+
       # Build di produzione NestJS.
       - name: Build (nest build)
         run: npm run build
@@ -283,6 +288,15 @@ jobs:
       - name: Test integrazione Postgres (*.postgres.spec.ts)
         run: npm run test:postgres
 
+      # Backup verificato e ripristino di prova contro il PostgreSQL reale del
+      # job. PGPORT serve perche' qui Postgres ascolta sulla 55432 anche dentro
+      # il container (-c port=55432).
+      - name: Test backup e ripristino di prova (PostgreSQL reale)
+        working-directory: ${{ github.workspace }}
+        env:
+          PG_EXEC: "docker exec -i -e PGPORT=55432 ${{ env.POSTGRES_CI_CONTAINER }}"
+        run: bash ops/test/backup-verifica.test.sh
+
       # Cleanup garantito: gira sempre, anche se un passo precedente e'
       # fallito, altrimenti il container Postgres resta orfano sul runner
       # (gia' successo con i volumi buildx — v. cron gitea-runner-cleanup
@@ -291,6 +305,445 @@ jobs:
       - name: Rimuovi il container PostgreSQL (sempre)
         if: always()
         run: docker rm -f "$POSTGRES_CI_CONTAINER" 2>/dev/null || true
+
+  # ==========================================================================
+  # E2E - Playwright (Task 7 del piano UAT/E2E; ampliato oltre tests/public
+  # dal task "rendi eseguibile la suite E2E" del 2026-09-14)
+  # ----------------------------------------------------------------------------
+  # Fino a questo commit nessun workflow eseguiva Playwright: una suite che
+  # nessuno esegue si degrada senza che nulla diventi rosso (e' successo in
+  # questa stessa base di codice con le prove Postgres, vedi il job sopra).
+  #
+  # Fattibilita' sul runner (misurata il 2026-09-14, non tramite installazione
+  # reale — vedi il rapporto del task): 114 GB liberi su 148 GB (20% d'uso),
+  # 6.0 GiB di RAM totale con ~4.7 GiB disponibili, 2 vCPU. Il download di
+  # Chromium + le librerie di sistema (`--with-deps`) pesano tipicamente
+  # centinaia di MB, non GB: il disco non e' un vincolo. La RAM e' sufficiente
+  # per Postgres + Redis + backend Node + un singolo worker Chromium headless
+  # in sequenza; i 2 vCPU allungano i tempi di build ma non bloccano nulla.
+  # Il rischio reale e' la CONCORRENZA fra job sullo stesso runner (capacity=2
+  # in ops/setup-gitea-runner.sh): gia' vera oggi con backend/frontend/
+  # test-postgres/security nello stesso workflow, non introdotta da questo job.
+  #
+  # SCOPE (aggiornato 2026-09-14): due passate di Playwright, non una sola.
+  # La prima (tests/public) e' quella storica, invariata. La seconda copre
+  # tutto il resto TRANNE tests/rentri/, che resta fuori perche' richiede la
+  # fake RENTRI (tools/rentri-fake) non avviata in questo job — cablarla e'
+  # un task a parte, non di questo commit; includerla oggi significherebbe un
+  # job rosso permanente su quelle spec, il difetto che questo job esiste
+  # apposta per evitare. La seconda passata e' resa possibile dal bypass
+  # dev-login (POST /auth/dev/login, vedi e2e/fixtures/auth.ts e
+  # apps/backend/src/auth/controllers/dev-auth.controller.ts): prima di
+  # questo task TUTTA la suite autenticata era skip permanente per mancanza
+  # di credenziali Keycloak, che qui non proviamo a provisionare.
+  #
+  # CONFLITTO NODE_ENV RISOLTO CON DUE AVVII DEL BACKEND (il dettaglio che
+  # costava un'ora a chi arrivava dopo, vedi task brief): la prima passata
+  # richiede NODE_ENV=production per far vedere a
+  # tests/public/{security-headers,swagger-exposure}.spec.ts il comportamento
+  # di produzione vero (CSP rigida, Swagger spento — vedi commento piu' sotto
+  # sullo step "Avvia il backend"). Ma con NODE_ENV=production
+  # DevAuthController non viene nemmeno REGISTRATO (auth.module.ts,
+  # `devOnlyControllers`) e csrf-protection.middleware.ts marca i cookie
+  # Secure-only, inaccettabili su http:// semplice: la seconda passata, che
+  # usa il dev-login, non puo' girare con quello stesso processo backend.
+  # Soluzione: dopo la prima passata si TERMINA il backend "produzione" e se
+  # ne avvia un secondo, identico per porta/config, ma SENZA NODE_ENV=production
+  # (dev-login attivo, cookie non Secure-only) — non un backend "diverso", lo
+  # stesso build, un env diverso. Vedi gli step "Ferma il backend..." e
+  # "Riavvia il backend..." sotto.
+  #
+  # SEED UTENTI DI TEST: il dev-login autentica un utente ESISTENTE per sola
+  # email (nessuna password, vedi dev-auth.controller.ts) — serve quindi che
+  # admin@test.com/operator@test.com/viewer@test.com esistano gia' nel DB del
+  # job PRIMA di qualunque test che li usi. Eseguito con
+  # `npx ts-node prisma/seed-test-user.ts` (mai compilato in dist/, a
+  # differenza di seed:permissions/seed:roles) dopo "Build backend" — quello
+  # script referenzia la tabella `permissions`, quindi seed:rbac (permessi +
+  # ruoli di sistema) deve girare PRIMA, non dopo.
+  #
+  # Stessa infrastruttura del job "test-postgres": docker run esplicito (mai
+  # `services:`, per il motivo li' commentato su --network host e la
+  # pubblicazione delle porte), attesa attiva su condizione via /dev/tcp,
+  # rimozione garantita con `if: always()`. Porta Postgres diversa (55433)
+  # da quella del job "test-postgres" (55432): entrambi i job sono
+  # indipendenti (nessun `needs`) e possono girare in parallelo sullo stesso
+  # runner in rete host, dove una porta duplicata collidirebbe.
+  #
+  # LIMITE NOTO (non risolto in questo task): il reporter HTML di Playwright
+  # scrive sempre nella stessa cartella (e2e-report/, vedi playwright.config.ts)
+  # per entrambe le passate — la seconda sovrascrive il report della prima.
+  # Se la prima passata fallisce il job si ferma li' (step successivi non
+  # eseguiti) e il suo report resta quello pubblicato; se fallisce la seconda,
+  # solo il SUO report viene pubblicato. Accettato come compromesso: separare
+  # gli output richiederebbe un config Playwright dedicato per passata, fuori
+  # scope per questo task.
+  # ==========================================================================
+  e2e:
+    name: E2E (Playwright, tests/public + resto via dev-login)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55433/wasteflow_ci?schema=public"
+      POSTGRES_CI_CONTAINER: "postgres-e2e-${{ github.run_id }}"
+      REDIS_CI_CONTAINER: "redis-e2e-${{ github.run_id }}"
+      FRONTEND_CI_CONTAINER: "frontend-e2e-${{ github.run_id }}"
+      # Il frontend e' servito da nginx sulla porta 80 del container (vedi
+      # step "Avvia il frontend"): con --network host quella e' anche la
+      # porta host, nessun mapping da fare (stesso motivo di Postgres sopra).
+      # localhost:3000 (default di e2e/utils/env.ts) resta il backend diretto,
+      # usato dalle spec che chiamano l'API senza passare dal browser.
+      E2E_BASE_URL: "http://localhost"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20 + cache npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dipendenze (monorepo)
+        run: npm ci
+
+      - name: Prisma generate
+        working-directory: apps/backend
+        run: npm run prisma:generate
+
+      # Lint dedicato di e2e/, PRIMA di accendere qualunque infrastruttura
+      # applicativa (Postgres/Redis/backend/frontend/Chromium): fino a un
+      # commit precedente .eslintrc.json non includeva e2e/tsconfig.json in
+      # parserOptions.project (vedi e2e/.eslintrc.js), quindi la cartella non
+      # veniva analizzata da nessun gate — tutto il codice della suite E2E non
+      # e' mai stato passato al linter. E' il posto piu' economico per
+      # fermarsi se il codice dei test e' rotto, prima del costo di Postgres/
+      # Redis/build/Playwright.
+      #
+      # ATTENZIONE ALL'ORDINE (rilievo critico della revisione finale,
+      # 2026-09-14): questo step DEVE girare DOPO "Setup Node 20", "Install
+      # dipendenze" e "Prisma generate", non prima. `npx eslint` senza
+      # `node_modules` installato scarica una eslint v9 isolata con
+      # configurazione "flat" di default, che ignora .eslintrc.json/
+      # e2e/.eslintrc.js del progetto e termina con "couldn't find an
+      # eslint.config.js" — il job restava rosso per sempre, esattamente il
+      # difetto che il commento sopra dichiara di voler evitare. In piu' il
+      # linting qui e' TYPE-AWARE (parserOptions.project in e2e/.eslintrc.js):
+      # e2e/utils/db-locale.ts importa `@prisma/client`, i cui tipi esistono
+      # solo dopo "Prisma generate" — lintare prima romperebbe la
+      # risoluzione dei tipi anche con node_modules gia' installato.
+      - name: Lint e2e (check-only)
+        run: npx eslint "e2e/**/*.ts" --max-warnings=-1
+
+      # `docker run` esplicito invece di `services:` (vedi nota del job
+      # "test-postgres": con rete host la pubblicazione delle porte non viene
+      # applicata). Porta 55433, non 55432, per non collidere con quel job se
+      # girano in parallelo sullo stesso runner.
+      - name: Avvia PostgreSQL (docker run, porta esplicita)
+        run: |
+          docker run -d --rm \
+            --name "$POSTGRES_CI_CONTAINER" \
+            --network host \
+            -e POSTGRES_USER=wasteflow \
+            -e POSTGRES_PASSWORD=wasteflow_ci \
+            -e POSTGRES_DB=wasteflow_ci \
+            postgres:16-alpine \
+            -c port=55433
+
+      - name: Attendi che PostgreSQL sia raggiungibile
+        run: |
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/55433) 2>/dev/null; then
+              exec 3<&- 3>&-
+              echo "PostgreSQL raggiungibile su 127.0.0.1:55433 (tentativo ${i})"
+              exit 0
+            fi
+            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
+            sleep 2
+          done
+          echo "PostgreSQL non raggiungibile su 127.0.0.1:55433 dopo 30 tentativi" >&2
+          docker logs "$POSTGRES_CI_CONTAINER" || true
+          exit 1
+
+      - name: Applica le migrazioni Prisma (con retry)
+        working-directory: apps/backend
+        run: |
+          for i in $(seq 1 10); do
+            if npx prisma migrate deploy; then
+              echo "Migrazioni applicate al tentativo ${i}"
+              exit 0
+            fi
+            echo "Tentativo ${i}/10 fallito, riprovo tra 3s..."
+            sleep 3
+          done
+          echo "Impossibile applicare le migrazioni dopo 10 tentativi" >&2
+          exit 1
+
+      # Redis: il backend lo richiede per avviarsi (BullMQ, sessioni, cache —
+      # vedi redis.service.ts, redis.config.ts, permissions.module.ts,
+      # rentri-sync.queue.ts). Porta di default (6379), NON rimappata come
+      # Postgres: nessun'altra istanza Redis gira su questo runner (verificato
+      # il 2026-09-14, nessun container ne' processo in ascolto) e i quattro
+      # punti del codice che leggono la configurazione Redis non concordano
+      # tutti sullo stesso nome di variabile (REDIS_CLUSTER_NODES qui,
+      # REDIS_HOST/REDIS_PORT li' — entrambi pero' col medesimo default
+      # "localhost:6379"): restare sul default e' l'unico modo di essere
+      # sicuri che TUTTI i punti si connettano allo stesso Redis senza dover
+      # inseguire quell'incoerenza in questo task.
+      - name: Avvia Redis (docker run)
+        run: |
+          docker run -d --rm \
+            --name "$REDIS_CI_CONTAINER" \
+            --network host \
+            redis:7-alpine
+
+      - name: Attendi che Redis sia raggiungibile
+        run: |
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/6379) 2>/dev/null; then
+              exec 3<&- 3>&-
+              echo "Redis raggiungibile su 127.0.0.1:6379 (tentativo ${i})"
+              exit 0
+            fi
+            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
+            sleep 2
+          done
+          echo "Redis non raggiungibile su 127.0.0.1:6379 dopo 30 tentativi" >&2
+          docker logs "$REDIS_CI_CONTAINER" || true
+          exit 1
+
+      - name: Build backend (nest build)
+        working-directory: apps/backend
+        run: npm run build
+
+      # Permessi + ruoli di sistema (ADMIN/OPERATOR/VIEWER/CONSULTANT/
+      # COMPLIANCE_OFFICER globali, non legati a un tenant): seed-test-user.ts
+      # (step successivo) crea/assegna ruoli PER TENANT invocando la funzione
+      # SQL seed_default_roles_for_tenant(), che legge da `permissions` — se
+      # quella tabella e' vuota i ruoli vengono creati ma senza permessi
+      # associati (INSERT... SELECT su 0 righe, nessun errore, solo un RBAC
+      # silenziosamente vuoto). Richiede dist/ (script compilati), quindi
+      # DOPO "Build backend", non prima.
+      - name: Seed permessi e ruoli di sistema (seed:rbac)
+        working-directory: apps/backend
+        run: npm run seed:rbac
+
+      # Utenti del bypass dev-login (admin@test.com/operator@test.com/
+      # viewer@test.com — vedi apps/backend/prisma/seed-test-user.ts): NON
+      # compilato in dist/, eseguito via ts-node come in sviluppo locale.
+      # Nessun utente SUPER_ADMIN in questo seed: le spec che lo richiedono
+      # (impersonation, tenant-switch) restano skip anche in questa run — e'
+      # il comportamento corretto (vedi skipReason('superAdmin') in
+      # e2e/fixtures/auth.ts), non una lacuna di questo step.
+      - name: Seed utenti di test per il dev-login
+        working-directory: apps/backend
+        run: npx ts-node prisma/seed-test-user.ts
+
+      # Avviato nativamente (node dist/main.js), non in un container: nessuno
+      # step successivo lo richiede containerizzato (a differenza del
+      # frontend, vedi sotto) e cosi' evitiamo un'immagine in piu' da
+      # costruire su un runner a 2 vCPU.
+      #
+      # NODE_ENV=production spegne Swagger (vedi main.ts) e attiva la CSP
+      # "rigida" (security-headers.middleware.ts): serve esattamente per far
+      # SI' che tests/public/swagger-exposure.spec.ts e
+      # tests/public/security-headers.spec.ts verifichino il comportamento di
+      # produzione vero, non quello di sviluppo. Contropartita: in produzione
+      # SIGNATURE_PROVIDER/TSA_PROVIDER non hanno default e il boot fallisce
+      # se mancano (signatures.module.ts, fail-closed voluto) — qui li
+      # impostiamo esplicitamente sugli stessi stub/sandbox che sarebbero il
+      # default fuori produzione, non e' un ripiego silenzioso diverso.
+      #
+      # ATTENZIONE per chi estende questo job oltre tests/public: con
+      # NODE_ENV=production i cookie di sessione/CSRF diventano Secure-only
+      # (csrf-protection.middleware.ts) e un browser NON li accetta su
+      # http:// semplice. Le spec autenticate andrebbero servite su un
+      # frontend TLS oppure il backend andrebbe avviato senza
+      # NODE_ENV=production per quelle run.
+      - name: Avvia il backend — passata 1, produzione (node dist/main.js, in background)
+        working-directory: apps/backend
+        env:
+          NODE_ENV: production
+          PORT: "3000"
+          API_PREFIX: "api/v1"
+          JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
+          SIGNATURE_PROVIDER: sandbox
+          TSA_PROVIDER: mock
+        run: |
+          nohup node dist/main.js > /tmp/backend-e2e-prod.log 2>&1 &
+          echo $! > /tmp/backend-e2e-prod.pid
+
+      - name: Attendi che il backend sia raggiungibile
+        run: |
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/3000) 2>/dev/null; then
+              exec 3<&- 3>&-
+              echo "Backend raggiungibile su 127.0.0.1:3000 (tentativo ${i})"
+              exit 0
+            fi
+            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
+            sleep 2
+          done
+          echo "Backend non raggiungibile su 127.0.0.1:3000 dopo 30 tentativi" >&2
+          cat /tmp/backend-e2e-prod.log || true
+          exit 1
+
+      # Build di produzione (configuration "production" e' il default, come
+      # Dockerfile.prod): usa environment.prod.ts (apiUrl relativo "/api/v1"),
+      # risolto dal proxy /api/ di nginx.conf verso il backend — vedi step
+      # successivo.
+      - name: Build frontend (ng build, configurazione produzione)
+        working-directory: apps/frontend
+        run: npm run build
+
+      # Il frontend va servito dallo STESSO nginx.conf usato in produzione
+      # (apps/frontend/nginx.conf), non da un file server generico: la spec
+      # "[F2] il documento HTML principale espone gli header di sicurezza"
+      # in tests/public/security-headers.spec.ts verifica gli header CSP/
+      # HSTS/X-Frame-Options/X-Content-Type-Options che SOLO quel nginx.conf
+      # aggiunge — un server statico qualunque li lascerebbe fuori e quella
+      # spec fallirebbe SEMPRE, esattamente il job-rosso-permanente da
+      # evitare. Bind mount dei file gia' compilati (nessuna immagine da
+      # costruire): piu' veloce e riusa quanto appena prodotto sopra.
+      # --add-host risolve l'hostname "backend" del proxy_pass di nginx.conf
+      # (pensato per Docker Compose) al backend nativo di questo job, che
+      # sotto rete host e' semplicemente 127.0.0.1.
+      - name: Avvia il frontend (nginx, stesso nginx.conf di produzione)
+        run: |
+          docker run -d --rm \
+            --name "$FRONTEND_CI_CONTAINER" \
+            --network host \
+            --add-host backend:127.0.0.1 \
+            -v "$(pwd)/apps/frontend/dist/frontend:/usr/share/nginx/html:ro" \
+            -v "$(pwd)/apps/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:alpine
+
+      - name: Attendi che il frontend sia raggiungibile
+        run: |
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/80) 2>/dev/null; then
+              exec 3<&- 3>&-
+              echo "Frontend raggiungibile su 127.0.0.1:80 (tentativo ${i})"
+              exit 0
+            fi
+            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
+            sleep 2
+          done
+          echo "Frontend non raggiungibile su 127.0.0.1:80 dopo 30 tentativi" >&2
+          docker logs "$FRONTEND_CI_CONTAINER" || true
+          exit 1
+
+      # Passo 1 del task (misura di fattibilita'): eseguito qui per davvero
+      # solo in questa run reale del job (non e' stato eseguito a mano sul
+      # runner durante la stesura di questo commit — vedi il rapporto). Se il
+      # runner non regge peso/durata di questo step, e' qui che si vedra'.
+      - name: Installa Chromium (Playwright)
+        run: npx playwright install --with-deps chromium
+
+      - name: Esegui la suite E2E — passata 1 (tests/public)
+        run: npx playwright test -c e2e/playwright.config.ts --project=chromium tests/public
+
+      # Vedi il blocco di commento sopra "SCOPE"/"CONFLITTO NODE_ENV" per il
+      # perche': il backend di produzione della passata 1 non ha
+      # DevAuthController registrato e userebbe cookie Secure-only. Lo
+      # fermiamo e ne avviamo uno identico (stessa dist/, stesso DATABASE_URL
+      # ereditato dall'env del job) ma senza NODE_ENV=production.
+      - name: Ferma il backend di produzione (passata 1)
+        run: |
+          if [ -f /tmp/backend-e2e-prod.pid ]; then
+            kill "$(cat /tmp/backend-e2e-prod.pid)" 2>/dev/null || true
+          fi
+          # Attesa attiva che la porta si liberi, non un kill-and-hope: il
+          # secondo avvio fallirebbe con EADDRINUSE se partisse mentre il
+          # processo precedente sta ancora chiudendo il listener.
+          for i in $(seq 1 15); do
+            if ! (exec 3<>/dev/tcp/127.0.0.1/3000) 2>/dev/null; then
+              echo "Porta 3000 libera (tentativo ${i})"
+              exit 0
+            fi
+            exec 3<&- 3>&- 2>/dev/null || true
+            sleep 1
+          done
+          echo "Porta 3000 ancora occupata dopo 15 tentativi, proseguo comunque" >&2
+
+      - name: Avvia il backend — passata 2, dev-login (node dist/main.js, in background)
+        working-directory: apps/backend
+        env:
+          # NIENTE NODE_ENV=production qui: e' la differenza voluta rispetto
+          # alla passata 1 (vedi commento "CONFLITTO NODE_ENV" sopra). Stesso
+          # PORT/API_PREFIX/JWT_SECRET: e' la continuazione dello stesso
+          # backend applicativo, non un secondo ambiente diverso.
+          PORT: "3000"
+          API_PREFIX: "api/v1"
+          JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
+          SIGNATURE_PROVIDER: sandbox
+          TSA_PROVIDER: mock
+        run: |
+          nohup node dist/main.js > /tmp/backend-e2e-devlogin.log 2>&1 &
+          echo $! > /tmp/backend-e2e-devlogin.pid
+
+      - name: Attendi che il backend (passata 2) sia raggiungibile
+        run: |
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/3000) 2>/dev/null; then
+              exec 3<&- 3>&-
+              echo "Backend (passata 2) raggiungibile su 127.0.0.1:3000 (tentativo ${i})"
+              exit 0
+            fi
+            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
+            sleep 2
+          done
+          echo "Backend (passata 2) non raggiungibile su 127.0.0.1:3000 dopo 30 tentativi" >&2
+          cat /tmp/backend-e2e-devlogin.log || true
+          exit 1
+
+      # Ambito: tutte le sottocartelle di tests/ tranne public/ (gia' coperta
+      # dalla passata 1) e rentri/ (fake RENTRI non avviata qui — vedi
+      # commento "SCOPE" sopra). Calcolato dinamicamente, non elencato a mano:
+      # una nuova sottocartella sotto e2e/tests/ entra automaticamente nello
+      # scope senza dover ricordarsi di aggiornare questo step.
+      - name: Esegui la suite E2E — passata 2 (resto, autenticata via dev-login)
+        run: |
+          dirs=$(find e2e/tests -mindepth 1 -maxdepth 1 -type d ! -name public ! -name rentri -printf 'tests/%f\n')
+          echo "Cartelle incluse nella passata 2:"
+          echo "$dirs"
+          npx playwright test -c e2e/playwright.config.ts --project=chromium $dirs
+
+      # Pubblica il report SOLO se il job fallisce: un fallimento E2E senza
+      # traccia costringe a riprodurlo a mano. actions/upload-artifact@v3
+      # (non v4: questo runner Gitea non ha un servizio cache/artifact v4,
+      # v3 e' la versione gia' verificata funzionante su questa infra — vedi
+      # nota upload-artifact in ROADS). Se fallisce la passata 1 il job si
+      # ferma li' (step successivi non eseguiti) e questo pubblica il report
+      # di quella passata; se fallisce la passata 2 pubblica il SUO report
+      # (sovrascrive quello della 1, vedi "LIMITE NOTO" sopra).
+      - name: Pubblica il report Playwright (solo se il job e' fallito)
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-report
+          path: e2e-report/
+          retention-days: 14
+
+      # Cleanup garantito: gira sempre, anche se un passo precedente e'
+      # fallito. Analogo alla nota nel job "test-postgres" sui volumi buildx
+      # orfani — qui per Postgres, Redis, il container nginx del frontend e
+      # il processo Node del backend.
+      - name: Rimuovi container e processi (sempre)
+        if: always()
+        run: |
+          docker rm -f "$POSTGRES_CI_CONTAINER" 2>/dev/null || true
+          docker rm -f "$REDIS_CI_CONTAINER" 2>/dev/null || true
+          docker rm -f "$FRONTEND_CI_CONTAINER" 2>/dev/null || true
+          # Due possibili backend in vita a seconda di dove si e' fermato il
+          # job (passata 1 sola, o anche la 2): entrambi i pid file, kill
+          # innocuo se il processo non c'e' piu' o il file non esiste.
+          if [ -f /tmp/backend-e2e-prod.pid ]; then
+            kill "$(cat /tmp/backend-e2e-prod.pid)" 2>/dev/null || true
+          fi
+          if [ -f /tmp/backend-e2e-devlogin.pid ]; then
+            kill "$(cat /tmp/backend-e2e-devlogin.pid)" 2>/dev/null || true
+          fi
 
   # ==========================================================================
   # SECURITY - npm audit (non bloccante)

@@ -17,7 +17,18 @@ export class RegistryPage {
   constructor(page: Page, entity: RegistryEntity) {
     this.page = page
     this.entity = entity
-    this.nuovoButton = page.getByRole('button', { name: /nuovo|aggiungi|crea/i })
+    // NON `getByRole('button', {name: /nuovo|aggiungi|crea/i})`: sulle tre
+    // liste (produttori/trasportatori/destinatari-list.component.ts) esiste
+    // ANCHE un bottone "Nuovo …" nello stato vuoto della tabella
+    // (`pTemplate="emptymessage"`), con `ariaLabel="Crea nuovo …"` — che la
+    // regex matcha comunque via "crea". Con entrambi i bottoni nel DOM
+    // (intestazione + stato vuoto, che PrimeNG monta anche a `display:none`)
+    // il locator per ruolo risolve a 2 elementi e viola la modalità
+    // stretta. Il bottone d'intestazione ha invece un `data-testid`
+    // univoco per area (`{entity}-nuovo-button`, aggiunto apposta — v.
+    // `e2e/SELECTORS-DEBT.md`), quello nello stato vuoto no: usarlo evita
+    // l'ambiguità alla radice invece di provare a restringere la regex.
+    this.nuovoButton = page.getByTestId(`${entity}-nuovo-button`)
     this.table = page.getByRole('table')
     this.searchInput = page.getByRole('textbox', { name: /cerca/i })
   }

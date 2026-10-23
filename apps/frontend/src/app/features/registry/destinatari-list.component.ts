@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core'
+import { Component, OnInit, computed, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MessageService } from 'primeng/api'
@@ -16,6 +16,8 @@ import { IconFieldModule } from 'primeng/iconfield'
 import { InputIconModule } from 'primeng/inputicon'
 import { RegistryService, CreateDestinatarioDto } from './registry.service'
 import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
+import { AuthService } from '../../core/services/auth.service'
+import { puoGestireAnagrafiche } from './registry-permissions'
 
 @Component({
   selector: 'app-destinatari-list',
@@ -45,12 +47,15 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
           <p class="page-subtitle">Anagrafica degli impianti di destinazione autorizzati</p>
         </div>
         <div class="page-actions">
-          <p-button
-            label="Nuovo destinatario"
-            icon="pi pi-plus"
-            (onClick)="showCreateDialog()"
-            ariaLabel="Crea nuovo destinatario"
-          />
+          @if (puoGestire()) {
+            <p-button
+              label="Nuovo destinatario"
+              icon="pi pi-plus"
+              (onClick)="showCreateDialog()"
+              ariaLabel="Crea nuovo destinatario"
+              data-testid="destinatari-nuovo-button"
+            />
+          }
         </div>
       </header>
 
@@ -108,7 +113,7 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-destinatario>
-              <tr>
+              <tr [attr.data-testid]="'destinatari-row-' + destinatario.id">
                 <td>
                   <span class="cell-label">Ragione sociale</span>
                   <span class="font-semibold">{{ destinatario.ragioneSociale }}</span>
@@ -133,27 +138,31 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
                 </td>
                 <td>
                   <span class="cell-label">Azioni</span>
-                  <div class="row-actions">
-                    <p-button
-                      icon="pi pi-pencil"
-                      [rounded]="true"
-                      [text]="true"
-                      (onClick)="editDestinatario(destinatario)"
-                      pTooltip="Modifica"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Modifica ' + destinatario.ragioneSociale"
-                    />
-                    <p-button
-                      icon="pi pi-trash"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="danger"
-                      (onClick)="deleteDestinatario(destinatario)"
-                      pTooltip="Elimina"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Elimina ' + destinatario.ragioneSociale"
-                    />
-                  </div>
+                  @if (puoGestire()) {
+                    <div class="row-actions">
+                      <p-button
+                        icon="pi pi-pencil"
+                        [rounded]="true"
+                        [text]="true"
+                        (onClick)="editDestinatario(destinatario)"
+                        pTooltip="Modifica"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Modifica ' + destinatario.ragioneSociale"
+                        [attr.data-testid]="'destinatari-modifica-' + destinatario.id"
+                      />
+                      <p-button
+                        icon="pi pi-trash"
+                        [rounded]="true"
+                        [text]="true"
+                        severity="danger"
+                        (onClick)="deleteDestinatario(destinatario)"
+                        pTooltip="Elimina"
+                        tooltipPosition="top"
+                        [ariaLabel]="'Elimina ' + destinatario.ragioneSociale"
+                        [attr.data-testid]="'destinatari-elimina-' + destinatario.id"
+                      />
+                    </div>
+                  }
                 </td>
               </tr>
             </ng-template>
@@ -164,12 +173,14 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
                     <i class="pi pi-map-marker empty-state__icon" aria-hidden="true"></i>
                     <p class="empty-state__title">Nessun destinatario trovato</p>
                     <p>Crea il primo impianto di destinazione per associarlo ai formulari.</p>
-                    <p-button
-                      label="Nuovo destinatario"
-                      icon="pi pi-plus"
-                      (onClick)="showCreateDialog()"
-                      ariaLabel="Crea nuovo destinatario"
-                    />
+                    @if (puoGestire()) {
+                      <p-button
+                        label="Nuovo destinatario"
+                        icon="pi pi-plus"
+                        (onClick)="showCreateDialog()"
+                        ariaLabel="Crea nuovo destinatario"
+                      />
+                    }
                   </div>
                 </td>
               </tr>
@@ -201,6 +212,7 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
         [breakpoints]="{ '768px': '95vw' }"
         [header]="editMode ? 'Modifica destinatario' : 'Nuovo destinatario'"
         [dismissableMask]="true"
+        data-testid="destinatari-form-dialog"
       >
         <form class="dialog-form" (ngSubmit)="saveDestinatario()">
           <fieldset class="form-fieldset">
@@ -233,7 +245,15 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
                   maxlength="11"
                   inputmode="numeric"
                   required
+                  [disabled]="editMode"
+                  data-testid="destinatari-piva-input"
                 />
+                <!-- La partita IVA è l'identità fiscale del soggetto: non
+                     modificabile dopo la creazione, il backend la rifiuta in
+                     modifica (400 forbidNonWhitelisted). -->
+                <small class="field-hint" *ngIf="editMode"
+                  >Non modificabile: è l'identità fiscale del soggetto.</small
+                >
               </div>
               <div class="field col-12 md:col-6">
                 <label for="dest-autorizzazione"
@@ -259,6 +279,22 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
                   placeholder="pec@esempio.it"
                   autocomplete="email"
                 />
+              </div>
+              <!-- Scadenza autorizzazione — facoltativa (Task 3 scadenzario):
+                   il dato può mancare per le anagrafiche già esistenti. -->
+              <div class="field col-12 md:col-6">
+                <label for="dest-scad-autorizzazione">Scadenza autorizzazione</label>
+                <input
+                  pInputText
+                  type="date"
+                  id="dest-scad-autorizzazione"
+                  name="scadenzaAutorizzazione"
+                  [(ngModel)]="formData.scadenzaAutorizzazione"
+                  data-testid="destinatari-scadenza-autorizzazione-input"
+                />
+                <small class="field-hint"
+                  >Facoltativa: se nota, abilita il promemoria di scadenza.</small
+                >
               </div>
             </div>
           </fieldset>
@@ -344,17 +380,19 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
             [text]="true"
             icon="pi pi-times"
             (onClick)="displayDialog = false"
+            data-testid="destinatari-form-cancel-button"
           />
           <p-button
             label="Salva"
             icon="pi pi-check"
             (onClick)="saveDestinatario()"
             [loading]="saving"
+            data-testid="destinatari-form-save-button"
           />
         </ng-template>
       </p-dialog>
 
-      <p-confirmDialog />
+      <p-confirmDialog data-testid="destinatari-confirm-dialog" />
     </div>
   `,
   styles: [
@@ -467,6 +505,12 @@ import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
         color: var(--color-danger);
         margin-left: 0.15rem;
       }
+      .field-hint {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        display: block;
+        margin-top: var(--spacing-xs);
+      }
 
       @media (max-width: 768px) {
         :host ::ng-deep .p-datatable .p-datatable-thead {
@@ -511,6 +555,14 @@ export class DestinatariListComponent implements OnInit {
   selectedDestinatario: Destinatario | null = null
 
   formData: CreateDestinatarioDto = this.getEmptyFormData()
+
+  private readonly authService = inject(AuthService)
+  // Ricalcola il gating in base al ruolo dell'utente autenticato: stesso
+  // schema di `fir-list.component.ts` (`puoCreareFir`). Il backend è
+  // l'unica fonte di verità (RegistryController, @Roles su POST/PUT/DELETE
+  // destinatari), qui si evita solo di mostrare un'azione che il server
+  // rifiuterebbe con 403.
+  readonly puoGestire = computed(() => puoGestireAnagrafiche(this.authService.currentUser()?.role))
 
   constructor(
     private registryService: RegistryService,
@@ -579,6 +631,9 @@ export class DestinatariListComponent implements OnInit {
       numeroAutorizzazione: destinatario.numeroAutorizzazione,
       sede: { ...destinatario.sede },
       pec: destinatario.pec,
+      // Il backend restituisce una stringa ISO (yyyy-MM-dd): compatibile
+      // direttamente con l'input HTML type="date".
+      scadenzaAutorizzazione: destinatario.scadenzaAutorizzazione ?? '',
     }
     this.displayDialog = true
   }
@@ -594,10 +649,30 @@ export class DestinatariListComponent implements OnInit {
     }
 
     this.saving = true
+    // Facoltativa: campo vuoto = azzeramento esplicito in modifica (`null`),
+    // semplicemente non inviato in creazione (`undefined`).
+    const scadenzaAutorizzazione =
+      this.formData.scadenzaAutorizzazione || (this.editMode ? null : undefined)
+
     const operation =
       this.editMode && this.selectedDestinatario
-        ? this.registryService.updateDestinatario(this.selectedDestinatario.id, this.formData)
-        : this.registryService.createDestinatario(this.formData)
+        ? this.registryService.updateDestinatario(
+            this.selectedDestinatario.id,
+            // NON includere partitaIVA: è l'identità fiscale del soggetto,
+            // UpdateDestinatarioDto non la accetta (400 forbidNonWhitelisted)
+            // e non deve essere modificabile da qui.
+            {
+              ragioneSociale: this.formData.ragioneSociale,
+              sede: this.formData.sede,
+              numeroAutorizzazione: this.formData.numeroAutorizzazione,
+              pec: this.formData.pec,
+              scadenzaAutorizzazione,
+            }
+          )
+        : this.registryService.createDestinatario({
+            ...this.formData,
+            scadenzaAutorizzazione,
+          })
 
     operation.subscribe({
       next: () => {
@@ -682,6 +757,7 @@ export class DestinatariListComponent implements OnInit {
         provincia: '',
       },
       pec: '',
+      scadenzaAutorizzazione: '',
     }
   }
 }

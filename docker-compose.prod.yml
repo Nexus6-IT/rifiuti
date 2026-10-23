@@ -17,17 +17,27 @@
 #     -f docker-compose.prod.yml <cmd>
 # ============================================================================
 
+# Rotazione dei log json-file, comune a tutti i servizi. Senza max-size i log
+# crescono senza limite (plausible e cadvisor sugli altri stack erano arrivati a
+# 5-6 GB). Mai logrotate/copytruncate dall'esterno: blocca `docker logs --tail`.
+# Il primo `up -d` dopo questa modifica ricrea anche postgres e redis.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: always
+    logging: *logging
     environment:
       POSTGRES_DB: ${DB_NAME:-wasteflow_prod}
       POSTGRES_USER: ${DB_USER:-wasteflow}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD richiesta}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backups:/backups
     networks:
       - wasteflow
     healthcheck:
@@ -39,6 +49,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
+    logging: *logging
     command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD richiesta}
     volumes:
       - redis_data:/data
@@ -53,6 +64,9 @@ services:
   backend:
     image: ${REGISTRY:-gitea.tail8be933.ts.net/graziano}/rifiuti-backend:${TAG:-latest}
     restart: always
+    logging: *logging
+    # Ogni variabile letta dal codice deve stare qui o in NON_PASSATE di
+    # infrastruttura-prod.guard.spec.ts (apps/backend/src/core/config).
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -117,13 +131,15 @@ services:
       SPID_CALLBACK_URL: ${SPID_CALLBACK_URL:-https://rifiuti.ignicraft.com/api/v1/auth/spid/callback}
       SPID_IDP_CERT: ${SPID_IDP_CERT}
       DEFAULT_TENANT_ID: ${DEFAULT_TENANT_ID}
-      # Error tracking Bugsink (progetto `wasteflow`, id 5). Senza questa riga
-      # SENTRY_DSN poteva stare in /opt/rifiuti/.env e il backend non la vedeva:
-      # l'SDK in main.ts si attiva solo se la variabile arriva al container.
-      # DSN interno `http://<chiave>@bugsink:8000/5`: il backend e' sulla rete
-      # `monitoring`, dove Bugsink risponde come `bugsink:8000`, senza passare
-      # da nginx. Vuota = SDK spento.
+      # Error tracking (Bugsink, progetto wasteflow). Vuota = SDK spento.
       SENTRY_DSN: ${SENTRY_DSN:-}
+      # Release su Bugsink e nella pagina "Stato del sistema": il tag dell'immagine.
+      APP_VERSION: ${TAG:-latest}
+      # Base dei link nelle mail di notifica (senza: https://wasteflow.app).
+      PUBLIC_URL: ${PUBLIC_URL:-https://rifiuti.ignicraft.com}
+      # Firma HMAC della cache permessi: senza, il codice usa 'change-me-in-production'.
+      PERMISSION_CACHE_HMAC_SECRET: ${PERMISSION_CACHE_HMAC_SECRET:?PERMISSION_CACHE_HMAC_SECRET richiesta}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
     depends_on:
       postgres:
@@ -133,12 +149,11 @@ services:
     networks:
       - wasteflow
       - monitoring
-    volumes:
-      - ./backups:/backups
 
   frontend:
     image: ${REGISTRY:-gitea.tail8be933.ts.net/graziano}/rifiuti-frontend:${TAG:-latest}
     restart: always
+    logging: *logging
     depends_on:
       - backend
     networks:

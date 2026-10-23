@@ -1,14 +1,46 @@
 import { Injectable } from '@nestjs/common'
+import { Prisma, WasteMovement as WasteMovementRecord } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { Result } from '../../../core/application/result'
+import { DomainError, FirGiaRegistratoError } from '../../../core/domain/errors'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import {
   WasteMovement,
   CAUSALI_CARICO,
   CAUSALI_SCARICO,
+  CausaleMovimento,
   TERMINE_REGISTRAZIONE_PRODUTTORE_GG,
 } from '../../../domain/waste-movement/waste-movement.entity'
+import {
+  annoSolareItaliano,
+  formattaDataItaliana,
+  giornoItaliano,
+} from '../../../core/time/anno-italiano'
+import { collegabilitaFir, etichettaFir } from '../../../domain/fir/stati-fir'
+import { formattaQuantita } from '../../../core/format/formatta-quantita'
+import {
+  normalizzaUnitaRegistro,
+  simboloUnita,
+} from '../../../domain/waste-movement/unita-misura-registro'
+import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
+import { giacenzaDisponibileAl } from '../giacenza-disponibile'
+import { stessiDatiRicopia } from '../ricopia-fir'
+
+/**
+ * Chiave di ricopia della ricopia ordinaria di un FIR (C-W-03, come WinWaste).
+ *
+ * L'indice unico è (tenant, fir_id_ricopia, type, ricopia_chiave): dallo stesso FIR
+ * possono nascere più movimenti dello stesso verso purché con chiavi diverse.
+ * Schema delle chiavi riservate:
+ * - `''`                   ricopia ordinaria (un movimento per FIR e tipo);
+ * - `prod:<unitaLocaleId>` quota di un produttore percentuale;
+ * - `cer:<cer>`            carico generato da un trattamento;
+ * - `dett:<n>`             dettaglio senza altra chiave.
+ * La chiave la impone il flusso, mai l'utente; oggi nessun flusso ne usa una diversa
+ * da `''`, quindi per i produttori la regola resta "una ricopia per FIR e tipo".
+ */
+export const RICOPIA_ORDINARIA = ''
 
 export interface MovimentoRegistrato {
   id: string
@@ -35,6 +67,13 @@ export interface MovimentoRegistrato {
   /** Segnala all'operatore se la registrazione supera i termini di legge. */
   fuoriTermine: boolean
   ritardoGg: number
+  /** Avvisi non bloccanti per l'operatore (vuoto se non ce ne sono). */
+  avvisi: string[]
+  /**
+   * Vero se il FIR era già ricopiato con gli stessi dati: si restituisce il movimento
+   * esistente e non se ne crea un secondo (retry idempotente).
+   */
+  giaRegistrato: boolean
 }
 
 /**
@@ -46,9 +85,13 @@ export interface MovimentoRegistrato {
  *
  * Calcola e persiste l'hash SHA-256 di vidimazione digitale (art. 4 DM 59/2023).
  *
- * Verifica che lo SCARICO non porti la giacenza del CER sotto zero
- * (anomaly detection: "scarico > carico"). Se la giacenza risulta insufficiente
- * restituisce un errore bloccante.
+ * Per uno SCARICO di massa verifica la giacenza del CER dentro la transaction, sotto
+ * lock: blocca se il saldo complessivo (in kg) non copre lo scarico; se lo copre ma
+ * non alla data dello scarico, lo registra e restituisce un avviso in `avvisi`.
+ *
+ * Un FIR si ricopia una sola volta per tipo di movimento: ripetere la stessa ricopia
+ * restituisce il movimento esistente (`giaRegistrato: true`), una ricopia con dati
+ * diversi è rifiutata (FirGiaRegistratoError).
  */
 @Injectable()
 export class RegistraMovimentoUseCase {
@@ -85,17 +128,21 @@ export class RegistraMovimentoUseCase {
     }
 
     // 0c. Le date di operazione/registrazione non possono essere nel futuro.
-    const now = new Date()
-    if (command.movementDate.getTime() > now.getTime()) {
+    // Il confronto è fra giorni del calendario italiano: il frontend manda date senza ora
+    // (AAAA-MM-GG), che il backend legge come mezzanotte UTC, cioè l'01:00 o le 02:00
+    // italiane. Confrontando gli istanti, la data di oggi fra le 00:00 e quell'ora
+    // risulterebbe nel futuro.
+    const oggi = giornoItaliano(new Date())
+    if (giornoItaliano(command.movementDate) > oggi) {
       return Result.fail(
         `La data dell'operazione non può essere nel futuro: ` +
-          `${command.movementDate.toISOString().slice(0, 10)}`
+          `${formattaDataItaliana(command.movementDate)}`
       )
     }
-    if (command.registrationDate.getTime() > now.getTime()) {
+    if (giornoItaliano(command.registrationDate) > oggi) {
       return Result.fail(
         `La data di registrazione non può essere nel futuro: ` +
-          `${command.registrationDate.toISOString().slice(0, 10)}`
+          `${formattaDataItaliana(command.registrationDate)}`
       )
     }
 
@@ -104,33 +151,71 @@ export class RegistraMovimentoUseCase {
     if (command.firId) {
       const fir = await this.prisma.fIR.findFirst({
         where: { id: command.firId, tenantId: command.tenantId },
-        select: { id: true },
+        select: {
+          id: true,
+          status: true,
+          firNumber: true,
+          rentriNumeroFir: true,
+          rentriStatoFormulario: true,
+        },
       })
       if (!fir) {
         return Result.fail(
           `FIR collegato non trovato o non appartenente al tenant: ${command.firId}`
         )
       }
-    }
-
-    // 1. Validazione preventiva giacenza per SCARICO
-    if (command.type === 'SCARICO') {
-      const giacenza = await this.getGiacenzaCer(command.tenantId, cerCode)
-      if (giacenza < command.quantity) {
-        return Result.fail(
-          `Giacenza insufficiente per CER ${cerCode}: ` +
-            `disponibili ${giacenza} ${command.unit}, richiesti ${command.quantity} ${command.unit}. ` +
-            `Verifica i movimenti di carico registrati.`
-        )
+      // Il FIR deve essere collegabile: emesso (o con numero RENTRI) e non annullato.
+      const collegabilita = collegabilitaFir(fir)
+      if (!collegabilita.collegabile) {
+        const etichetta = etichettaFir(fir)
+        switch (collegabilita.motivo) {
+          case 'BOZZA':
+            return Result.fail(
+              `Il FIR ${etichetta} è ancora in bozza: si registra nel registro solo dopo l'emissione. ` +
+                `Se il trasporto è già avvenuto con un altro formulario, registra lo scarico senza collegare questo FIR.`
+            )
+          case 'ANNULLATO':
+            return Result.fail(
+              `Il FIR ${etichetta} è annullato: non si può collegare a un movimento del registro.`
+            )
+          case 'STATO_SCONOSCIUTO':
+            return Result.fail(
+              `Il FIR ${etichetta} ha uno stato non riconosciuto (${fir.status ?? 'assente'}): ` +
+                `non si può collegare a un movimento; contattare l'assistenza.`
+            )
+          default: {
+            // Un nuovo motivo in CollegabilitaFir deve avere qui il suo messaggio.
+            const motivoNonGestito: never = collegabilita.motivo
+            return Result.fail(`Motivo di non collegabilità non gestito: ${motivoNonGestito}`)
+          }
+        }
       }
     }
 
     // 2. Assegnazione numero progressivo (transazionale con SELECT FOR UPDATE)
-    const anno = command.registrationDate.getFullYear()
+    // Anno solare italiano (non quello del fuso del processo): il progressivo riparte
+    // alle 00:00 italiane del 1° gennaio.
+    const anno = annoSolareItaliano(command.registrationDate)
 
     let movimento: MovimentoRegistrato
     try {
       movimento = await this.prisma.$transaction(async tx => {
+        // Ricopia del FIR, per prima (ordine fisso dei lock: FIR, progressivo, giacenza):
+        // un retry di uno scarico deve trovare il movimento già registrato prima del
+        // controllo di giacenza, che altrimenti lo respingerebbe per la quantità che lui
+        // stesso ha consumato.
+        if (command.firId) {
+          const esistente = await this.ricopiaEsistente(tx, command, cerCode)
+          if (esistente) {
+            // Ritardo dalle date del movimento esistente, non da quelle del retry.
+            return {
+              ...this.movimentoDaRecord(esistente, this.ritardoGg(esistente)),
+              avvisi: [],
+              giaRegistrato: true,
+            }
+          }
+        }
+
         // Advisory lock per-tenant/anno: serializza le numerazioni dello stesso
         // tenant in transazioni concorrenti senza usare FOR UPDATE su aggregati
         // (PostgreSQL 0A000: "FOR UPDATE is not allowed with aggregate functions").
@@ -138,13 +223,26 @@ export class RegistraMovimentoUseCase {
         const lockKey = `${command.tenantId}-${anno}`
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
 
+        // Controllo di giacenza per SCARICO, sotto il lock della giacenza del CER e
+        // dentro la transaction: due scarichi concorrenti (anche di anni diversi, quindi
+        // con lock del progressivo diversi) non possono leggere la stessa giacenza.
+        const avvisi =
+          command.type === 'SCARICO' ? await this.verificaGiacenza(tx, command, cerCode) : []
+
         const [row] = await tx.$queryRaw<Array<{ max_num: number | null }>>`
           SELECT MAX(progressive_number) AS max_num
           FROM waste_movements
           WHERE tenant_id = ${command.tenantId}::uuid
             AND progressive_year = ${anno}
         `
-        const nextProgressivo = (row.max_num ?? 0) + 1
+        // Progressivo iniziale (C-W-02): chi arriva da un altro programma a metà anno
+        // prosegue la numerazione già trasmessa. Letto sotto lo stesso lock con cui
+        // ProgressivoInizialeService lo imposta, quindi non c'è corsa fra i due.
+        const iniziale = await tx.registroProgressivoIniziale.findUnique({
+          where: { tenantId_anno: { tenantId: command.tenantId, anno } },
+          select: { primoProgressivo: true },
+        })
+        const nextProgressivo = Math.max((row.max_num ?? 0) + 1, iniziale?.primoProgressivo ?? 1)
 
         // 3. Costruzione entità di dominio (con validazioni)
         const entity = WasteMovement.create({
@@ -191,41 +289,34 @@ export class RegistraMovimentoUseCase {
             counterpartName: entity.counterpartName,
             counterpartAddress: entity.counterpartAddress,
             firId: entity.firId,
+            // Solo i movimenti registrati da qui in poi: lo storico resta NULL, e
+            // l'indice unico (tenant, fir_id_ricopia, type, ricopia_chiave) ignora i NULL.
+            firIdRicopia: command.firId,
+            ricopiaChiave: RICOPIA_ORDINARIA,
             recordedByUserId: entity.recordedByUserId,
             entryHash: entity.entryHash,
             notes: entity.notes,
           },
         })
 
-        return {
-          id: record.id,
-          tenantId: record.tenantId,
-          progressiveNumber: record.progressiveNumber,
-          progressiveYear: record.progressiveYear,
-          type: record.type,
-          movementDate: record.movementDate,
-          registrationDate: record.registrationDate,
-          causale: record.causale,
-          cerCode: record.cerCode,
-          wasteDescription: record.wasteDescription ?? undefined,
-          quantity: Number(record.quantity),
-          unit: record.unit,
-          wastePhysicalState: record.wastePhysicalState ?? undefined,
-          wasteHazardClasses: record.wasteHazardClasses ?? undefined,
-          operationCode: record.operationCode ?? undefined,
-          counterpartName: record.counterpartName ?? undefined,
-          counterpartAddress: record.counterpartAddress ?? undefined,
-          firId: record.firId ?? undefined,
-          recordedByUserId: record.recordedByUserId ?? undefined,
-          entryHash: record.entryHash,
-          notes: record.notes ?? undefined,
-          fuoriTermine: ritardoGg > 0,
-          ritardoGg,
-        }
+        return { ...this.movimentoDaRecord(record, ritardoGg), avvisi, giaRegistrato: false }
       })
     } catch (err) {
+      if (err instanceof GiacenzaInsufficienteError || err instanceof DomainError) {
+        return Result.fail(err.message)
+      }
+      const doppio = await this.messaggioRicopiaDoppia(err, command)
+      if (doppio) return Result.fail(doppio)
       this.logger.error(`Errore registrazione movimento: ${err.message}`)
       return Result.fail(`Errore durante la registrazione: ${err.message}`)
+    }
+
+    if (movimento.giaRegistrato) {
+      this.logger.info(
+        `Ricopia del FIR ${command.firId} già registrata nel movimento ` +
+          `#${movimento.progressiveYear}/${movimento.progressiveNumber}: nessun nuovo movimento`
+      )
+      return Result.ok(movimento)
     }
 
     if (movimento.fuoriTermine) {
@@ -246,6 +337,119 @@ export class RegistraMovimentoUseCase {
   }
 
   /**
+   * Primo lock dell'ordine fisso, poi le ricopie dello stesso FIR e tipo (lette per
+   * `fir_id`, quindi anche quelle storiche, anche se doppie). Restituisce quella con gli
+   * stessi dati del comando; se ce ne sono ma nessuna coincide, FirGiaRegistratoError
+   * con la prima; null se il FIR non è ancora ricopiato.
+   */
+  private async ricopiaEsistente(
+    tx: Prisma.TransactionClient,
+    command: RegistraMovimentoCommand,
+    cerCode: string
+  ): Promise<WasteMovementRecord | null> {
+    const { tenantId, firId, type } = command
+    const chiaveFir = `fir-registro|${tenantId}|${firId}`
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveFir}))`
+
+    const ricopie = await tx.wasteMovement.findMany({
+      where: { tenantId, firId, type, ricopiaChiave: RICOPIA_ORDINARIA },
+      orderBy: { createdAt: 'asc' },
+    })
+    if (ricopie.length === 0) return null
+
+    const stessa = ricopie.find(r =>
+      stessiDatiRicopia(r, {
+        cerCode,
+        quantity: command.quantity,
+        unit: command.unit,
+        movementDate: command.movementDate,
+      })
+    )
+    if (!stessa) {
+      throw new FirGiaRegistratoError(ricopie[0].progressiveNumber, ricopie[0].progressiveYear)
+    }
+    return stessa
+  }
+
+  /**
+   * Rete di sicurezza per l'indice unico (tenant, fir_id_ricopia, type, ricopia_chiave):
+   * il lock del FIR rende il doppio raro, ma se arriva si risponde come per una ricopia con dati diversi.
+   * Null se l'errore non è quella violazione.
+   */
+  private async messaggioRicopiaDoppia(
+    err: unknown,
+    command: RegistraMovimentoCommand
+  ): Promise<string | null> {
+    if (
+      !command.firId ||
+      !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+      err.code !== 'P2002' ||
+      !/fir_?id_?ricopia/i.test(JSON.stringify(err.meta?.target ?? ''))
+    ) {
+      return null
+    }
+    let esistente: { progressiveNumber: number; progressiveYear: number } | null
+    try {
+      esistente = await this.prisma.wasteMovement.findFirst({
+        where: {
+          tenantId: command.tenantId,
+          firIdRicopia: command.firId,
+          type: command.type,
+          ricopiaChiave: RICOPIA_ORDINARIA,
+        },
+        select: { progressiveNumber: true, progressiveYear: true },
+      })
+    } catch (lettura) {
+      // Siamo già nella gestione di un errore: chi chiama risponde col messaggio generico.
+      this.logger.error(`Lettura della ricopia doppia non riuscita: ${lettura?.message}`)
+      return null
+    }
+    if (!esistente) return null
+    return new FirGiaRegistratoError(esistente.progressiveNumber, esistente.progressiveYear).message
+  }
+
+  /** Ritardo sul termine di legge calcolato dalle date di un movimento salvato. */
+  private ritardoGg(record: WasteMovementRecord): number {
+    const m = this.movimentoDaRecord(record, 0)
+    return WasteMovement.reconstitute({
+      ...m,
+      type: record.type,
+      causale: m.causale as CausaleMovimento,
+    }).ritardoRegistrazioneGg
+  }
+
+  private movimentoDaRecord(
+    record: WasteMovementRecord,
+    ritardoGg: number
+  ): Omit<MovimentoRegistrato, 'avvisi' | 'giaRegistrato'> {
+    return {
+      id: record.id,
+      tenantId: record.tenantId,
+      progressiveNumber: record.progressiveNumber,
+      progressiveYear: record.progressiveYear,
+      type: record.type,
+      movementDate: record.movementDate,
+      registrationDate: record.registrationDate,
+      causale: record.causale,
+      cerCode: record.cerCode,
+      wasteDescription: record.wasteDescription ?? undefined,
+      quantity: Number(record.quantity),
+      unit: record.unit,
+      wastePhysicalState: record.wastePhysicalState ?? undefined,
+      wasteHazardClasses: record.wasteHazardClasses ?? undefined,
+      operationCode: record.operationCode ?? undefined,
+      counterpartName: record.counterpartName ?? undefined,
+      counterpartAddress: record.counterpartAddress ?? undefined,
+      firId: record.firId ?? undefined,
+      recordedByUserId: record.recordedByUserId ?? undefined,
+      entryHash: record.entryHash,
+      notes: record.notes ?? undefined,
+      fuoriTermine: ritardoGg > 0,
+      ritardoGg,
+    }
+  }
+
+  /**
    * Normalizza un codice CER al formato canonico del catalogo "NN NN NN"
    * (con "*" finale per i pericolosi). Accetta input senza spazi ("200301")
    * o con spaziatura irregolare; se il formato non è 6 cifre lascia invariato
@@ -253,12 +457,7 @@ export class RegistraMovimentoUseCase {
    */
   private normalizeCerCode(raw: string): string {
     if (!raw) return raw
-    const trimmed = raw.trim().toUpperCase()
-    const hazardous = trimmed.includes('*')
-    const digits = trimmed.replace(/[^0-9]/g, '')
-    if (digits.length !== 6) return trimmed
-    const spaced = `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 6)}`
-    return hazardous ? `${spaced}*` : spaced
+    return cerCanonico(raw.toUpperCase())
   }
 
   /**
@@ -275,20 +474,119 @@ export class RegistraMovimentoUseCase {
     return count > 0
   }
 
-  /** Calcola la giacenza corrente per un CER del tenant (carico - scarico). */
-  private async getGiacenzaCer(tenantId: string, cerCode: string): Promise<number> {
-    const rows = await this.prisma.wasteMovement.groupBy({
-      by: ['type'],
-      where: { tenantId, cerCode },
-      _sum: { quantity: true },
-    })
-    let carico = 0
-    let scarico = 0
-    for (const r of rows) {
-      const qty = r._sum.quantity ? Number(r._sum.quantity) : 0
-      if (r.type === 'CARICO') carico += qty
-      else if (r.type === 'SCARICO') scarico += qty
+  /**
+   * Controllo di giacenza di uno SCARICO, da chiamare dentro la transaction dopo il
+   * lock del progressivo. Blocca (GiacenzaInsufficienteError) se il saldo complessivo
+   * del CER non copre lo scarico; se lo copre ma non alla data dello scarico, restituisce
+   * un avviso e lo scarico si registra. Le unità non di massa non si controllano.
+   */
+  private async verificaGiacenza(
+    tx: Prisma.TransactionClient,
+    command: RegistraMovimentoCommand,
+    cerCode: string
+  ): Promise<string[]> {
+    const { tenantId } = command
+    const u = normalizzaUnitaRegistro(command.unit)
+    if (!u.massa || u.fattoreKg === null) {
+      this.logger.warn('Scarico in unità non di massa: controllo di giacenza saltato', {
+        tenantId,
+        cerCode,
+        unit: command.unit,
+      })
+      return []
     }
-    return Math.max(0, carico - scarico)
+
+    // Terzo lock dell'ordine fisso (FIR, progressivo, giacenza): serializza gli scarichi
+    // dello stesso CER del tenant, con e senza asterisco. `cerCode` arriva già da
+    // normalizeCerCode ("NN NN NN" per ogni formato di 6 cifre), quindi la chiave
+    // individua lo stesso CER che giacenzaDisponibileAl confronta sulle sole cifre.
+    const cerSenzaStella = cerCode.replace(/\*$/, '')
+    const chiaveGiacenza = `giacenza|${tenantId}|${cerSenzaStella}`
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveGiacenza}))`
+
+    const g = await giacenzaDisponibileAl(tx, { tenantId, cerCode, alla: command.movementDate })
+    const fattore = u.fattoreKg
+    const richiestoKg = command.quantity * fattore
+
+    // Fail-closed: senza un saldo leggibile lo scarico non si registra.
+    if (!Number.isFinite(g?.saldoComplessivoKg) || !Number.isFinite(g?.disponibileAllaDataKg)) {
+      this.logger.error('Giacenza non verificabile: valori non numerici', undefined, {
+        tenantId,
+        cerCode,
+        giacenza: g,
+      })
+      throw new GiacenzaInsufficienteError(
+        `Impossibile verificare la giacenza per CER ${cerCode}: riprovare; ` +
+          `se il problema persiste, contattare l'assistenza.`
+      )
+    }
+
+    const um = simboloUnita(u)
+    if (g.saldoComplessivoKg + 1e-9 < richiestoKg) {
+      const nonDiMassa = g.unitaNonDiMassaCaricate ?? []
+      if (nonDiMassa.length > 0) {
+        // Carichi in litri o m³ non si confrontano con i kg: bloccare su un saldo di zero
+        // spingerebbe a registrare un secondo carico dello stesso rifiuto in un registro
+        // immutabile. Si registra e si avvisa che la giacenza va verificata a mano.
+        const avviso =
+          `Il CER ${cerCode} ha carichi registrati in ${nonDiMassa.join(', ')} che non si ` +
+          `possono confrontare con i kg: lo scarico è registrato, ma la giacenza va verificata ` +
+          `a mano (i carichi in kg o tonnellate coprono ` +
+          `${formattaQuantita(Math.max(0, g.saldoComplessivoKg) / fattore)} ${um}).`
+        this.logger.warn('Scarico in kg registrato con carichi in unità non di massa', {
+          tenantId,
+          cerCode,
+          unitaNonDiMassaCaricate: nonDiMassa,
+        })
+        return [avviso]
+      }
+      const dettaglio =
+        g.saldoComplessivoKg >= 0
+          ? `nel registro restano ${formattaQuantita(g.saldoComplessivoKg / fattore)} ${um}, ` +
+            `richiesti ${formattaQuantita(command.quantity)} ${um}.`
+          : `il registro risulta già sotto zero di ` +
+            `${formattaQuantita(-g.saldoComplessivoKg / fattore)} ${um}, quindi nessuno ` +
+            `scarico è registrabile finché non si registrano i carichi mancanti.`
+      throw new GiacenzaInsufficienteError(
+        `Giacenza insufficiente per CER ${cerCode}: ${dettaglio} ${RIMEDIO_CARICO_MANCANTE}`
+      )
+    }
+
+    if (g.disponibileAllaDataKg + 1e-9 < richiestoKg) {
+      // Confronto fra giorni (vincoloAl è la mezzanotte UTC del giorno), mai fra istanti.
+      const limiteSuccessivo =
+        g.vincoloAl.toISOString().slice(0, 10) > giornoItaliano(command.movementDate)
+      const avviso =
+        `Lo scarico è datato ${formattaDataItaliana(command.movementDate)}, ma a quella data ` +
+        `il registro ha disponibili ` +
+        `${formattaQuantita(Math.max(0, g.disponibileAllaDataKg) / fattore)} ${um}` +
+        (limiteSuccessivo
+          ? ` (il limite viene dal saldo del ${formattaDataItaliana(g.vincoloAl)})`
+          : '') +
+        `: il carico che lo copre è annotato con una data successiva. ` +
+        `Lo scarico resta registrato con questa data.`
+      this.logger.warn('Scarico registrato con un ordine di date incoerente', {
+        tenantId,
+        cerCode,
+        movementDate: command.movementDate,
+        avviso,
+      })
+      return [avviso]
+    }
+
+    return []
+  }
+}
+
+const RIMEDIO_CARICO_MANCANTE =
+  'Se il rifiuto era già in deposito prima di iniziare a usare il registro, registra il ' +
+  'carico mancante con la causale Altro carico (non viene contato come prodotto nel MUD); ' +
+  'se è stato prodotto ora, usa Produzione interna.'
+
+/** Scarico non registrabile per giacenza: il messaggio arriva all'utente così com'è. */
+class GiacenzaInsufficienteError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'GiacenzaInsufficienteError'
   }
 }

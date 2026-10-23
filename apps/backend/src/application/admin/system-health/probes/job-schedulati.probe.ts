@@ -92,7 +92,8 @@ export const JOB_SCHEDULATI: DescrittoreJobSchedulato[] = [
     espressioneCron: CronExpression.EVERY_DAY_AT_8AM,
     cadenzaAttesaMs: GIORNO,
     nota:
-      'Il job invia notifiche solo a 30/15/7/3/1 giorni dalla scadenza del 30 aprile: ' +
+      'Il job invia notifiche solo a 30/15/7/3/1 giorni dalla scadenza del tracciato MUD ' +
+      "dell'anno (il 30 aprile solo se il tracciato non ne indica una): " +
       "negli altri giorni non produce nulla, quindi l'assenza di notifiche recenti non e' un guasto.",
   },
   {
@@ -107,7 +108,19 @@ export const JOB_SCHEDULATI: DescrittoreJobSchedulato[] = [
     label: 'Scadenzario autorizzazioni impianti',
     espressioneCron: CronExpression.EVERY_DAY_AT_10AM,
     cadenzaAttesaMs: GIORNO,
-    implementato: false,
+    // Implementato (DeadlineCheckerService.checkAuthorizationExpirations):
+    // copre autorizzazioni impianto, iscrizione Albo Gestori dei
+    // trasportatori e autorizzazione dei destinatari (Task 1 e Task 3 dello
+    // scadenzario). Le notifiche prodotte finiscono nella stessa tabella
+    // `Notification` di tutto il resto: non c'e' un'evidenza dedicata e non
+    // condivisibile con `job.pulizia-notifiche` (l'aggregato piu' recente
+    // apparterebbe a un tipo di notifica qualunque, non a questo job), quindi
+    // resta senza `evidenza`, come gia' `job.rentri-certificato-scadenza`.
+    nota:
+      'Il job avvisa solo agli intervalli previsti (30/15/7/3/1 giorni dalla scadenza) o quando ' +
+      "una scadenza e' gia' passata: negli altri giorni non produce nulla, quindi l'assenza di " +
+      "notifiche recenti non e' un guasto.",
+    actionKey: 'scadenzario-autorizzazioni',
   },
   {
     key: 'job.notifiche-escalation',

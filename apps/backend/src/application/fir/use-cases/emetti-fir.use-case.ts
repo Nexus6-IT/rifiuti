@@ -32,6 +32,8 @@ import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.re
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
 import { TrasmettiFIRSecondoModalitaUseCase } from '../../rentri/trasmetti-fir-secondo-modalita.use-case'
 import { LoggerService } from '../../../core/logger/logger.service'
+import { annoSolareItaliano } from '../../../core/time/anno-italiano'
+import { DomainError } from '../../../core/domain/errors'
 
 export class EmettiFIRUseCase {
   constructor(
@@ -61,22 +63,22 @@ export class EmettiFIRUseCase {
       return Result.fail<FIR>(`Firma produttore non riuscita: ${error.message}`)
     }
 
-    // 3. Generate numero progressivo (usa tenantId, non produttoreId)
-    const anno = new Date().getFullYear()
-    const numeroProgressivo = await this.firRepository.generateNumeroProgressivo(
-      fir.tenantId ?? fir.produttoreId,
-      anno
-    )
-
-    // 4. Execute domain method (business logic)
+    // 3-5. Numero progressivo, transizione di dominio e salvataggio in UNA transaction
+    //    del repository, serializzata per tenant e anno di emissione (anno solare
+    //    italiano dell'istante di emissione, non quello UTC del processo).
+    //    È qui che il piano della scorta innesterà il consumo del numero vidimato
+    //    (Decisione 7).
+    //    Se fallisce, `applicaEmissione` può aver già mutato `fir` in memoria: l'aggregate
+    //    NON si riusa né si salva, si restituisce l'errore.
+    const anno = annoSolareItaliano(new Date())
     try {
-      fir.emetti(numeroProgressivo, firma)
+      await this.firRepository.emettiConNumerazione(fir, anno, numero => fir.emetti(numero, firma))
     } catch (error) {
-      return Result.fail<FIR>(`Failed to emit FIR: ${error.message}`)
+      if (error instanceof DomainError) {
+        return Result.fail<FIR>(`Failed to emit FIR: ${error.message}`)
+      }
+      throw error
     }
-
-    // 5. Persist changes
-    await this.firRepository.save(fir)
 
     // 6. Publish domain events (TODO: event bus integration)
     // await this.eventBus.publishAll(fir.domainEvents)
@@ -86,15 +88,41 @@ export class EmettiFIRUseCase {
     //    nessun intervento manuale richiesto in AUTOMATICA/IBRIDA, nulla
     //    parte da solo in MANUALE. Isolata: un errore qui non deve rendere
     //    fallita un'emissione già valida e persistita.
+    let esitoRegistrato = false
     try {
-      await this.trasmissioneRentri.eseguiSeAutomatica({
+      const esito = await this.trasmissioneRentri.eseguiSeAutomatica({
         firId: fir.id,
         tenantId: fir.tenantId ?? fir.produttoreId,
       })
+      esitoRegistrato = esito?.esitoRegistrato === true
     } catch (error: any) {
       this.logger.error('Orchestrazione RENTRI non riuscita dopo l’emissione del FIR', error, {
         firId: fir.id,
       })
+    }
+
+    // L'orchestrazione ha salvato un esito RENTRI sul FIR (es. certificato mancante) su
+    // un'istanza propria: l'aggregate in memoria e' ancora PENDING e la risposta lo
+    // mostrerebbe «da trasmettere» fino al ricaricamento. Si rilegge; se non riesce si
+    // ripiega sull'istanza in memoria (il DB e' comunque corretto).
+    if (esitoRegistrato) {
+      try {
+        const riletto = await this.firRepository.findById(fir.id)
+        if (riletto) return Result.ok<FIR>(riletto)
+        this.logger.warn(
+          'FIR non trovato nella rilettura dopo l’esito RENTRI: risposta con lo stato in memoria',
+          {
+            firId: fir.id,
+          }
+        )
+      } catch (error: any) {
+        this.logger.warn(
+          'Rilettura del FIR dopo l’esito RENTRI non riuscita: risposta con lo stato in memoria',
+          {
+            firId: fir.id,
+          }
+        )
+      }
     }
 
     return Result.ok<FIR>(fir)

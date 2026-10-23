@@ -36,6 +36,7 @@ import { MudTipoAutorizzazione } from '../mud-export.types'
 export class MudTracciatoV604_2025 extends MudTracciatoV604Base {
   readonly version = '6.04/25'
   readonly year = 2025
+  readonly scadenzaPresentazione = '2026-07-03'
 
   /** Il 6.04/25 aggiunge i tipi 7, 8 e 9 al record AU. */
   protected readonly tipiAutorizzazioneAmmessi: readonly MudTipoAutorizzazione[] = [

@@ -2,6 +2,12 @@ import { Injectable } from '@nestjs/common'
 import { LoggerService } from '../../core/logger/logger.service'
 import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-modalita-legame.service'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
+import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
+import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
+import {
+  CODICE_CERTIFICATO_MANCANTE,
+  MESSAGGIO_CERTIFICATO_MANCANTE,
+} from '../../infrastructure/rentri/rentri-credential.resolver'
 
 /**
  * Trasmetti FIR Secondo Modalità — Use Case
@@ -43,6 +49,7 @@ export class TrasmettiFIRSecondoModalitaUseCase {
   constructor(
     private readonly modalitaLegameService: RentriModalitaLegameService,
     private readonly rentriSyncQueue: RENTRISyncQueue,
+    private readonly firRepository: IFIRRepository,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext('TrasmettiFIRSecondoModalitaUseCase')
@@ -86,7 +93,11 @@ export class TrasmettiFIRSecondoModalitaUseCase {
         'Trasmissione RENTRI automatica non avviata: nessun certificato RENTRI configurato per il tenant',
         { firId, tenantId, modalitaLegame }
       )
-      return { avviata: false, motivo: 'CERTIFICATO_MANCANTE' }
+      // Senza job nessuno produrrebbe l'esito: il FIR resterebbe PENDING in silenzio. Gli si dà
+      // quello definitivo della trasmissione (PERMANENTLY_FAILED + codice), cosi' l'utente vede
+      // «Vai al certificato» e il caricamento del certificato lo riapre e lo riaccoda da solo.
+      const esitoRegistrato = await this.registraCertificatoMancante(firId, tenantId)
+      return { avviata: false, motivo: 'CERTIFICATO_MANCANTE', esitoRegistrato }
     }
 
     const richiedeConferma = modalitaLegame === 'IBRIDA'
@@ -109,6 +120,48 @@ export class TrasmettiFIRSecondoModalitaUseCase {
 
     return { avviata: true, richiedeConferma, jobId }
   }
+
+  /**
+   * Segna il FIR come fallito in modo permanente per certificato mancante. Non lancia mai:
+   * l'emissione e' gia' valida, un errore qui si logga (senza dati sensibili) e si segnala
+   * con `false`. Un FIR annullato nel frattempo non e' un errore.
+   */
+  private async registraCertificatoMancante(firId: string, tenantId: string): Promise<boolean> {
+    try {
+      const fir = await this.firRepository.findById(firId)
+      if (!fir) {
+        this.logger.error(
+          'Esito "certificato mancante" non registrato: FIR non trovato',
+          undefined,
+          {
+            firId,
+            tenantId,
+          }
+        )
+        return false
+      }
+      fir.markRENTRISyncFailed(MESSAGGIO_CERTIFICATO_MANCANTE, CODICE_CERTIFICATO_MANCANTE)
+      await this.firRepository.save(fir)
+      return true
+    } catch (error) {
+      if (error instanceof FirAnnullatoNelFrattempoError) {
+        this.logger.info(
+          'FIR annullato nel frattempo: esito "certificato mancante" non registrato',
+          {
+            firId,
+            tenantId,
+          }
+        )
+        return false
+      }
+      this.logger.error(
+        'Esito "certificato mancante" non registrato: salvataggio del FIR non riuscito',
+        error as Error,
+        { firId, tenantId }
+      )
+      return false
+    }
+  }
 }
 
 export interface EsitoOrchestrazioneRENTRI {
@@ -120,4 +173,6 @@ export interface EsitoOrchestrazioneRENTRI {
   richiedeConferma?: boolean
   /** Identificativo del job accodato, quando avviata è true. */
   jobId?: string
+  /** Con motivo CERTIFICATO_MANCANTE: true se l'esito definitivo e' stato salvato sul FIR, false se il salvataggio non e' riuscito. */
+  esitoRegistrato?: boolean
 }

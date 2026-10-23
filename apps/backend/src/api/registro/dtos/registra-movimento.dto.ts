@@ -46,9 +46,8 @@ export class RegistraMovimentoDto {
 
   @ApiPropertyOptional({
     description:
-      'Data di annotazione nel registro. Se omessa, usa la data corrente. ' +
-      'Termine di legge: 10 gg lavorativi per produttori (art. 190 c. 1 lett. a), ' +
-      '2 gg lavorativi per gestori impianti (lett. d).',
+      'Ignorata: la data di registrazione la assegna il server al momento della conferma. ' +
+      'Resta accettata per compatibilità con i client esistenti.',
     example: '2026-06-29',
   })
   @IsDateString()
@@ -81,7 +80,7 @@ export class RegistraMovimentoDto {
   wasteDescription?: string
 
   @ApiProperty({ description: 'Quantità (kg o unità specificata)', example: 100.5 })
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   @Type(() => Number)
   quantity: number

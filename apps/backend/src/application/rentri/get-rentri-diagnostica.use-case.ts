@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { X509Certificate } from 'node:crypto'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { RentriConfig, RENTRI_CONFIG } from '../../infrastructure/rentri/rentri-config'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import {
   RentriRateLimiterService,
@@ -64,6 +65,12 @@ export interface DiagnosticaCertificato {
   scadenza: string | null
   giorniAllaScadenza: number | null
   livelloAvviso: LivelloAvvisoCertificato
+  /**
+   * Da dove verrebbe la credenziale di firma per il tenant: certificato proprio,
+   * credenziale globale da env (solo se il tenant e' quello legato da
+   * RENTRI_ENV_TENANT_ID) oppure nessuna (la firma verrebbe rifiutata).
+   */
+  origineCredenziale: 'tenant' | 'env' | 'nessuna'
 }
 
 export interface DiagnosticaTrasmissione {
@@ -98,7 +105,8 @@ export class GetRentriDiagnosticaUseCase {
   constructor(
     private readonly prisma: PrismaService,
     private readonly credentialService: RentriCredentialService,
-    private readonly rateLimiter: RentriRateLimiterService
+    private readonly rateLimiter: RentriRateLimiterService,
+    @Inject(RENTRI_CONFIG) private readonly config: RentriConfig
   ) {}
 
   async execute(tenantId: string): Promise<RentriDiagnostica> {
@@ -115,7 +123,19 @@ export class GetRentriDiagnosticaUseCase {
   private async leggiCertificato(tenantId: string): Promise<DiagnosticaCertificato> {
     const credenziale = await this.credentialService.getForTenant(tenantId)
     if (!credenziale) {
-      return { configurato: false, scadenza: null, giorniAllaScadenza: null, livelloAvviso: 'ok' }
+      // Stessa regola del RentriCredentialResolver: l'env vale solo per il tenant legato.
+      const envUtilizzabile =
+        !!this.config.certificatePem &&
+        !!this.config.privateKeyPem &&
+        !!this.config.envTenantId &&
+        this.config.envTenantId === tenantId
+      return {
+        configurato: false,
+        scadenza: null,
+        giorniAllaScadenza: null,
+        livelloAvviso: 'ok',
+        origineCredenziale: envUtilizzabile ? 'env' : 'nessuna',
+      }
     }
 
     let scadenza: Date
@@ -129,7 +149,13 @@ export class GetRentriDiagnosticaUseCase {
       // Non dovrebbe accadere: il PEM è già stato validato al salvataggio
       // (`RentriCredentialService.upsertForTenant`). Un certificato non
       // analizzabile non deve però far fallire l'intera diagnostica.
-      return { configurato: true, scadenza: null, giorniAllaScadenza: null, livelloAvviso: 'ok' }
+      return {
+        configurato: true,
+        scadenza: null,
+        giorniAllaScadenza: null,
+        livelloAvviso: 'ok',
+        origineCredenziale: 'tenant',
+      }
     }
 
     // Conteggio giorni condiviso col job di scadenza (R5 Task 5,
@@ -146,6 +172,7 @@ export class GetRentriDiagnosticaUseCase {
       scadenza: scadenza.toISOString(),
       giorniAllaScadenza,
       livelloAvviso: this.calcolaLivelloAvviso(giorniAllaScadenza),
+      origineCredenziale: 'tenant',
     }
   }
 

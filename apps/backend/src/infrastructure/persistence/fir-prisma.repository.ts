@@ -10,6 +10,7 @@ import {
   FIRStatus as PrismaFIRStatus,
   RENTRISyncStatus as PrismaRENTRISyncStatus,
   RentriOrigineLegame as PrismaRentriOrigineLegame,
+  RentriStatoFormulario as PrismaRentriStatoFormulario,
 } from '@prisma/client'
 import {
   FIR,
@@ -17,6 +18,7 @@ import {
   FirmaDigitale,
   FirmeDigitali,
   RentriOrigineLegame,
+  StatoFormulario,
   ProvenienzaRifiuto,
   TipoTratta,
 } from '../../domain/fir/aggregates/fir.aggregate'
@@ -26,7 +28,14 @@ import {
 } from '../../domain/fir/repositories/fir-repository.interface'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { RENTRISyncStatus } from '../../domain/fir/rentri-sync-status.vo'
-import { FormularioGiaAgganciatoError } from '../../core/domain/errors'
+import {
+  FirAnnullatoNelFrattempoError,
+  FormularioGiaAgganciatoError,
+  FirmaSenzaUtenteError,
+  FirNonPiuInBozzaError,
+} from '../../core/domain/errors'
+import { formattaNumeroFir } from '../../domain/fir/numero-fir'
+import { STATI_FIR_IN_BOZZA, STATO_RENTRI_ANNULLATO } from '../../domain/fir/stati-fir'
 import { PrismaService } from './prisma.service'
 
 @Injectable()
@@ -172,6 +181,90 @@ export class FIRPrismaRepository implements IFIRRepository {
     return records.map((r: any) => this.toDomain(r))
   }
 
+  /**
+   * Prenota la trasmissione RENTRI di un FIR con un solo UPDATE condizionato: la
+   * condizione sta nel WHERE, quindi due processi concorrenti non possono vincere
+   * entrambi (il secondo UPDATE rilegge la riga dopo il commit del primo e non la
+   * trova più prenotabile). Prenotabile: non legato, non annullato (né in locale né
+   * all'ente) e in PENDING/FAILED, oppure in SYNCING ma fermo da prima di
+   * `sogliaStallo` (o senza data di avvio). Restituisce true se ha vinto.
+   */
+  async prenotaTrasmissioneRentri(
+    firId: string,
+    tenantId: string,
+    ora: Date,
+    sogliaStallo: Date,
+    // Solo per i test di concorrenza: permette di tenere la prenotazione dentro una
+    // transaction aperta. In produzione si usa il client del repository.
+    client: Prisma.TransactionClient = this.prisma
+  ): Promise<boolean> {
+    if (!(ora.getTime() > sogliaStallo.getTime())) {
+      // Con la soglia nel futuro rispetto a "ora" ogni SYNCING risulterebbe scaduto,
+      // compresa una prenotazione appena fatta da un altro processo.
+      throw new Error('prenotaTrasmissioneRentri: ora deve essere successiva a sogliaStallo')
+    }
+    const righe = await client.$executeRaw`
+      UPDATE firs
+      SET rentri_sync_status = 'SYNCING'::rentri_sync_status,
+          rentri_sync_avviato_at = ${ora}
+      WHERE id = ${firId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND rentri_numero_fir IS NULL
+        AND status <> 'CANCELLED'::fir_status
+        AND rentri_stato_formulario::text IS DISTINCT FROM ${STATO_RENTRI_ANNULLATO}
+        AND (
+          rentri_sync_status IN ('PENDING'::rentri_sync_status, 'FAILED'::rentri_sync_status)
+          OR (
+            rentri_sync_status = 'SYNCING'::rentri_sync_status
+            AND (rentri_sync_avviato_at IS NULL OR rentri_sync_avviato_at < ${sogliaStallo})
+          )
+        )`
+    return righe > 0
+  }
+
+  /**
+   * Scrive subito la transazione accettata dall'ente (fuori dal ciclo di save
+   * dell'aggregate): se il processo muore prima di leggerne l'esito, il recupero la
+   * trova. Solo su un FIR ancora in SYNCING, cioè prenotato da chi sta scrivendo.
+   */
+  async registraTransazioneInAttesa(
+    firId: string,
+    tenantId: string,
+    transazioneId: string,
+    avviatoAt: Date
+  ): Promise<boolean> {
+    // `avviatoAt` è il testimone del tentativo: se nel frattempo la prenotazione è
+    // passata a un altro processo (soglia scaduta e riprenotata), la scrittura non
+    // deve sovrascrivere la sua transazione e chi chiama lo viene a sapere.
+    const righe = await this.prisma.$executeRaw`
+      UPDATE firs
+      SET rentri_transazione_in_attesa = ${transazioneId},
+          rentri_transazione_id = ${transazioneId}
+      WHERE id = ${firId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND rentri_sync_status = 'SYNCING'::rentri_sync_status
+        AND rentri_sync_avviato_at = ${avviatoAt}`
+    return righe > 0
+  }
+
+  /**
+   * FIR rimasti in SYNCING oltre la soglia di stallo (o senza data di avvio), su tutti
+   * i tenant: serve al job di sistema di recupero, per questo non filtra per tenant.
+   */
+  async elencaTrasmissioniRentriSospese(
+    sogliaStallo: Date,
+    limite: number
+  ): Promise<Array<{ firId: string; tenantId: string }>> {
+    const righe = await this.prisma.$queryRaw<Array<{ fir_id: string; tenant_id: string }>>`
+      SELECT id::text AS fir_id, tenant_id::text AS tenant_id
+      FROM firs
+      WHERE rentri_sync_status = 'SYNCING'::rentri_sync_status
+        AND (rentri_sync_avviato_at IS NULL OR rentri_sync_avviato_at < ${sogliaStallo})
+      ORDER BY rentri_sync_avviato_at NULLS FIRST, id
+      LIMIT ${limite}`
+    return righe.map(r => ({ firId: r.fir_id, tenantId: r.tenant_id }))
+  }
+
   async findByRentriNumeroFir(tenantId: string, numeroFir: string): Promise<FIR | null> {
     const record = await this.prisma.fIR.findFirst({
       where: { tenantId, rentriNumeroFir: numeroFir },
@@ -198,13 +291,32 @@ export class FIRPrismaRepository implements IFIRRepository {
     return records.map((r: any) => this.toDomain(r))
   }
 
+  /**
+   * Stato del FIR e firme si scrivono nella stessa transaction: o entrambi o
+   * nessuno. Prima l'upsert e le firme erano due scritture separate, e una
+   * firma rifiutata dal database lasciava il FIR già avanzato di stato (con il
+   * numero assegnato) ma senza firma.
+   */
   async save(fir: FIR): Promise<void> {
+    await this.prisma.$transaction(tx => this.salvaCon(tx, fir))
+  }
+
+  /**
+   * Upsert del FIR e firme sullo stesso client (transazionale): usato da `save`
+   * e dai chiamanti che devono aggiungere altre scritture alla stessa transaction.
+   */
+  private async salvaCon(client: Prisma.TransactionClient, fir: FIR): Promise<void> {
+    // Il controllo sulle firme precede ogni scrittura: un FIR con una firma
+    // senza utente non deve nemmeno arrivare all'upsert.
+    this.verificaFirmeScrivibili(fir)
+
     const data = this.toPersistence(fir)
     // Le relazioni obbligatorie (tenant, producerUser) vanno fornite a Prisma in
     // forma `connect`, non come FK scalari: l'upsert con write annidati usa
     // l'input "checked" che richiede la relazione (altrimenti: "Argument
     // `tenant` is missing"). Si estraggono quindi gli scalari e si collega.
     const { tenantId, producerUserId, ...scalars } = data
+    await this.conservaAnnullamentoEnte(client, fir.id, tenantId, scalars)
 
     // I trasportatori aggiuntivi (tratte intermodali) sono uno snapshot fissato
     // alla creazione del FIR: si scrivono solo nel ramo `create` dell'upsert, mai
@@ -222,7 +334,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     // Le transizioni di stato aggiornano solo i campi scalari: tenant e
     // produttore-utente non cambiano dopo la creazione.
     try {
-      await this.prisma.fIR.upsert({
+      await client.fIR.upsert({
         where: { id: fir.id },
         create: createData,
         update: scalars,
@@ -231,7 +343,98 @@ export class FIRPrismaRepository implements IFIRRepository {
       throw this.translateUniqueConstraintError(error, fir)
     }
 
-    await this.persistSignatures(fir)
+    await this.persistSignatures(client, fir)
+  }
+
+  /**
+   * Un FIR annullato all'ente resta annullato. L'upsert scrive tutti gli scalari con
+   * i valori che l'aggregate aveva quando è stato caricato: un salvataggio con dati
+   * vecchi (sync RENTRI in background, presa in carico, ...) che si sovrappone a chi
+   * scrive 'Annullato' lo riporterebbe indietro, e il FIR tornerebbe collegabile al
+   * registro. Il valore salvato si legge nella stessa transaction, con la riga
+   * bloccata fino al commit.
+   *
+   * Lo stesso vale per l'annullamento locale (stato CANCELLED): una copia caricata
+   * prima dell'annullamento non può riportare il FIR in uno stato attivo, e il
+   * salvataggio si rifiuta con `FirAnnullatoNelFrattempoError`. La SELECT si esegue
+   * sempre, anche quando l'aggregate porta già 'Annullato' dell'ente, perché il
+   * controllo su CANCELLED non dipende dallo stato RENTRI.
+   *
+   * Il blocco è `FOR NO KEY UPDATE`, non `FOR UPDATE`: protegge la riga da un altro
+   * salvataggio allo stesso modo, ma non entra in conflitto con il `FOR KEY SHARE` che
+   * l'insert di un movimento del registro prende sul FIR collegato (`fir_id`,
+   * `fir_id_ricopia`), quindi un salvataggio del FIR e una registrazione non si aspettano.
+   * La riga si cerca anche per tenant, come ogni altra query del repository.
+   *
+   * Stessa logica per la prenotazione della trasmissione RENTRI (stato SYNCING,
+   * `rentri_sync_avviato_at`, transazione in attesa e contabilità dei tentativi): un
+   * aggregate caricato prima della prenotazione e salvato mentre un altro processo sta
+   * trasmettendo riscriverebbe PENDING/FAILED e azzererebbe la transazione da
+   * riprendere, e il tentativo successivo creerebbe un doppione presso l'ente. Se sul
+   * database `rentri_sync_avviato_at` è valorizzato e l'aggregate non lo ha, o ne ha
+   * uno più vecchio, queste colonne restano quelle del database; se l'aggregate ha lo
+   * stesso avvio (o uno più recente) è lui il proprietario del tentativo e scrive il
+   * suo stato. Le altre colonne si scrivono sempre dall'aggregate.
+   */
+  private async conservaAnnullamentoEnte(
+    client: Prisma.TransactionClient,
+    firId: string,
+    tenantId: string,
+    scalars: Record<string, unknown> & { rentriStatoFormulario?: unknown; status?: unknown }
+  ): Promise<void> {
+    const righe = await client.$queryRaw<
+      Array<{
+        stato: string | null
+        status: string | null
+        sync_status: string
+        attempts: number
+        ultimo_errore: string | null
+        codice_errore: string | null
+        prossimo_retry: Date | null
+        synced_at: Date | null
+        avviato_at: Date | null
+        in_attesa: string | null
+        transazione_id: string | null
+      }>
+    >`
+      SELECT rentri_stato_formulario AS stato, status::text AS status,
+             rentri_sync_status::text AS sync_status,
+             rentri_sync_attempts AS attempts,
+             rentri_last_sync_error AS ultimo_errore,
+             rentri_last_sync_error_code AS codice_errore,
+             rentri_next_retry_at AS prossimo_retry,
+             rentri_synced_at AS synced_at,
+             rentri_sync_avviato_at AS avviato_at,
+             rentri_transazione_in_attesa AS in_attesa,
+             rentri_transazione_id AS transazione_id
+      FROM firs WHERE id = ${firId}::uuid AND tenant_id = ${tenantId}::uuid
+      FOR NO KEY UPDATE`
+    const riga = righe?.[0]
+    if (
+      riga?.status === PrismaFIRStatus.CANCELLED &&
+      scalars.status !== PrismaFIRStatus.CANCELLED
+    ) {
+      throw new FirAnnullatoNelFrattempoError(firId)
+    }
+    if (riga?.stato === STATO_RENTRI_ANNULLATO) {
+      scalars.rentriStatoFormulario = STATO_RENTRI_ANNULLATO
+    }
+    // Prenotazione RENTRI viva: la tiene chi l'ha fatta, non un salvataggio stantio.
+    const avviatoAggregate = scalars.rentriSyncAvviatoAt as Date | null | undefined
+    if (
+      riga?.avviato_at &&
+      (!avviatoAggregate || avviatoAggregate.getTime() < riga.avviato_at.getTime())
+    ) {
+      scalars.rentriSyncStatus = riga.sync_status
+      scalars.rentriSyncAttempts = riga.attempts
+      scalars.rentriLastSyncError = riga.ultimo_errore
+      scalars.rentriLastSyncErrorCode = riga.codice_errore
+      scalars.rentriNextRetryAt = riga.prossimo_retry
+      scalars.rentriSyncedAt = riga.synced_at
+      scalars.rentriSyncAvviatoAt = riga.avviato_at
+      scalars.rentriTransazioneInAttesa = riga.in_attesa
+      scalars.rentriTransazioneId = riga.transazione_id
+    }
   }
 
   /**
@@ -258,6 +461,27 @@ export class FIRPrismaRepository implements IFIRRepository {
     return error
   }
 
+  private firmeCandidate(fir: FIR): Array<{ role: string; firma?: FirmaDigitale }> {
+    return [
+      { role: FIRPrismaRepository.RUOLO_PRODUTTORE, firma: fir.firme.produttore },
+      { role: FIRPrismaRepository.RUOLO_TRASPORTATORE, firma: fir.firme.trasportatore },
+      { role: FIRPrismaRepository.RUOLO_DESTINATARIO, firma: fir.firme.destinatario },
+    ]
+  }
+
+  /**
+   * Senza userId non si può valorizzare la FK obbligatoria
+   * fir_signatures.user_id. Non dovrebbe accadere nel flusso reale (i tre
+   * use-case lifecycle valorizzano sempre userId dal comando): se accade il
+   * salvataggio fallisce con un errore esplicito, invece di scartare la firma
+   * in silenzio e salvare lo stato senza di essa.
+   */
+  private verificaFirmeScrivibili(fir: FIR): void {
+    for (const { role, firma } of this.firmeCandidate(fir)) {
+      if (firma && !firma.userId) throw new FirmaSenzaUtenteError(role, fir.id)
+    }
+  }
+
   /**
    * Persiste le firme del ciclo di vita presenti sull'aggregate in
    * `fir_signatures`. Senza questo passaggio le firme applicate da
@@ -279,30 +503,13 @@ export class FIRPrismaRepository implements IFIRRepository {
    * FirmaDigitale costruite a mano (es. fixture di test) che non passano dal
    * provider di firma.
    */
-  private async persistSignatures(fir: FIR): Promise<void> {
-    const candidati: Array<{ role: string; firma?: FirmaDigitale }> = [
-      { role: FIRPrismaRepository.RUOLO_PRODUTTORE, firma: fir.firme.produttore },
-      { role: FIRPrismaRepository.RUOLO_TRASPORTATORE, firma: fir.firme.trasportatore },
-      { role: FIRPrismaRepository.RUOLO_DESTINATARIO, firma: fir.firme.destinatario },
-    ]
-
-    for (const { role, firma } of candidati) {
+  private async persistSignatures(client: Prisma.TransactionClient, fir: FIR): Promise<void> {
+    for (const { role, firma } of this.firmeCandidate(fir)) {
       if (!firma) continue
-      // Senza userId non si può valorizzare la FK obbligatoria
-      // fir_signatures.user_id. Non dovrebbe accadere nel flusso reale (i tre
-      // use-case lifecycle valorizzano sempre userId dal comando). Non si fa
-      // fallire la transizione di stato del FIR, ma NON si scarta in silenzio:
-      // una firma persa senza traccia e' esattamente il difetto che questa
-      // pipeline sta correggendo — chi legge i log deve poterlo scoprire.
-      if (!firma.userId) {
-        FIRPrismaRepository.logger.warn(
-          `Firma ${role} del FIR ${fir.id} NON persistita: userId assente. ` +
-            "La transizione di stato prosegue, ma la firma non sara' rileggibile."
-        )
-        continue
-      }
+      // Già escluso da verificaFirmeScrivibili: serve a restringere il tipo.
+      if (!firma.userId) throw new FirmaSenzaUtenteError(role, fir.id)
 
-      const existing = await this.prisma.fIRSignature.findFirst({ where: { firId: fir.id, role } })
+      const existing = await client.fIRSignature.findFirst({ where: { firId: fir.id, role } })
       if (existing) continue
 
       // Firma crittografica reale (Task 4): gli use-case lifecycle valorizzano
@@ -322,7 +529,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       const signatureMethod =
         firma.signatureMethod ?? FIRPrismaRepository.LIFECYCLE_SIGNATURE_METHOD
 
-      await this.prisma.fIRSignature.create({
+      await client.fIRSignature.create({
         data: {
           firId: fir.id,
           userId: firma.userId,
@@ -373,34 +580,61 @@ export class FIRPrismaRepository implements IFIRRepository {
     return count > 0
   }
 
-  async generateNumeroProgressivo(tenantId: string, anno: number): Promise<string> {
-    // Calcola il prossimo progressivo dal MASSIMO firNumber esistente per
-    // tenant/anno, escludendo le BOZZE (firNumber = NULL).
-    // count() falsava il risultato perché include le bozze senza numero assegnato.
-    const ultimo = await this.prisma.fIR.findFirst({
-      where: {
-        tenantId,
-        firNumber: { not: null },
-        createdAt: {
-          gte: new Date(anno, 0, 1),
-          lt: new Date(anno + 1, 0, 1),
-        },
+  /**
+   * Emissione con assegnazione del riferimento interno (`FIR-AAAA-NNNNNN`) in una
+   * sola transaction. Il lock per tenant e anno di emissione serializza le
+   * emissioni concorrenti, che altrimenti leggerebbero lo stesso massimo e
+   * assegnerebbero lo stesso numero; il `FOR UPDATE` sulla riga del FIR impedisce
+   * di emettere due volte la stessa bozza da due richieste parallele.
+   *
+   * L'anno si legge dal riferimento, non da `createdAt`: una bozza creata a
+   * dicembre ed emessa a gennaio conta nell'anno di emissione. Il massimo è
+   * numerico (le stringhe ordinerebbero `FIR-2027-1000000` prima di
+   * `FIR-2027-999999`) e ignora i riferimenti fuori formato.
+   *
+   * È la transaction di emissione in cui il piano
+   * `2026-09-12-collegamento-scorta-emissione.md` aggiungerà il consumo del
+   * numero vidimato.
+   */
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applicaEmissione: (numeroProgressivo: string) => void
+  ): Promise<string> {
+    // Stesso tenant che salvaCon scrive (toPersistence): fallback a produttoreId per i FIR legacy.
+    const tenantId = fir.tenantId || fir.produttoreId
+    return this.prisma.$transaction(
+      async tx => {
+        const chiave = `fir-numero|${tenantId}|${anno}`
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiave}))`
+
+        const righe = await tx.$queryRaw<Array<{ status: string }>>`
+          SELECT status::text AS status FROM firs
+          WHERE id = ${fir.id}::uuid AND tenant_id = ${tenantId}::uuid
+          FOR UPDATE`
+        // Fail-closed sullo stato grezzo: uno stato che non è esplicitamente una bozza
+        // (anche uno sconosciuto, che statoFromDb ricondurrebbe a BOZZA) non si emette.
+        const statiBozza: readonly string[] = STATI_FIR_IN_BOZZA
+        if (righe.length === 0 || !statiBozza.includes(righe[0].status)) {
+          throw new FirNonPiuInBozzaError(fir.id)
+        }
+
+        // Al più 9 cifre: entrano sempre in un integer. Un riferimento più lungo (dati
+        // importati) è fuori formato, come quelli non numerici, e non blocca l'emissione.
+        const [{ max_num }] = await tx.$queryRaw<Array<{ max_num: number | null }>>`
+          SELECT MAX(CAST(substring(fir_number FROM '^FIR-[0-9]{4}-([0-9]{1,9})$') AS integer)) AS max_num
+          FROM firs
+          WHERE tenant_id = ${tenantId}::uuid AND fir_number LIKE ${'FIR-' + anno + '-%'}`
+        const numero = formattaNumeroFir(anno, (max_num ?? 0) + 1)
+
+        // Un'eccezione del dominio qui annulla l'intera transaction.
+        applicaEmissione(numero)
+        await this.salvaCon(tx, fir)
+        return numero
       },
-      orderBy: { firNumber: 'desc' },
-      select: { firNumber: true },
-    })
-
-    let nextNum = 1
-    if (ultimo?.firNumber) {
-      // Formato atteso: FIR-YYYY-NNNNNN  →  l'ultimo segmento è il progressivo.
-      const parts = ultimo.firNumber.split('-')
-      const parsed = parseInt(parts[parts.length - 1], 10)
-      if (!isNaN(parsed)) {
-        nextNum = parsed + 1
-      }
-    }
-
-    return `FIR-${anno}-${String(nextNum).padStart(6, '0')}`
+      // Lock, verifica, massimo, upsert e firme: più round trip del default di 5 s.
+      { timeout: 15000 }
+    )
   }
 
   async count(filters?: FIRSearchFilters): Promise<number> {
@@ -500,8 +734,15 @@ export class FIRPrismaRepository implements IFIRRepository {
       _rentriSyncStatus: this.rentriSyncStatusFromRecord(record),
       _rentriNumeroFir: record.rentriNumeroFir || null,
       _rentriTransazioneId: record.rentriTransazioneId || null,
+      // Prenotazione e transazione in attesa: stesso tranello, senza lettura
+      // tornerebbero sempre null e il recupero ripartirebbe da zero.
+      _rentriTransazioneInAttesa: record.rentriTransazioneInAttesa || null,
+      _rentriSyncAvviatoAt: record.rentriSyncAvviatoAt ?? null,
       _rentriOrigineLegame: (record.rentriOrigineLegame as RentriOrigineLegame) || null,
       _rentriNumeroFirProposto: record.rentriNumeroFirProposto || null,
+      // Stato del formulario presso l'ente: stesso tranello (scrittura e lettura
+      // dimenticate), la riconciliazione lo confrontava sempre con null.
+      _rentriStatoFormulario: (record.rentriStatoFormulario as StatoFormulario | null) ?? null,
     })
 
     return fir
@@ -651,12 +892,18 @@ export class FIRPrismaRepository implements IFIRRepository {
       rentriNextRetryAt: fir.needsRENTRIRetry() ? fir.getNextRENTRIRetryAt() : null,
       rentriNumeroFir: fir.rentriNumeroFir ?? null,
       rentriTransazioneId: fir.rentriTransazioneId ?? null,
+      rentriTransazioneInAttesa: fir.rentriTransazioneInAttesa ?? null,
+      rentriSyncAvviatoAt: fir.rentriSyncAvviatoAt ?? null,
       rentriOrigineLegame: fir.rentriOrigineLegame
         ? (fir.rentriOrigineLegame as unknown as PrismaRentriOrigineLegame)
         : null,
       // Legame in attesa di conferma (modalità IBRIDA, R1 Task 2): distinto
       // da rentriNumeroFir, che resta null finché l'utente non conferma.
       rentriNumeroFirProposto: fir.rentriNumeroFirProposto ?? null,
+      // Stato del formulario presso RENTRI (applyRentriStato): senza questa
+      // riga la colonna restava sempre NULL.
+      rentriStatoFormulario: (fir.rentriStatoFormulario ??
+        null) as PrismaRentriStatoFormulario | null,
     }
   }
 

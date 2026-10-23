@@ -83,9 +83,6 @@ export class TemplateService {
     daysRemaining: number
     companyName: string
     referenceYear: number
-    isComplete: boolean
-    completionPercentage?: number
-    missingData?: string[]
     mudUrl: string
   }): Promise<string> {
     return this.render('mud-deadline-reminder', {

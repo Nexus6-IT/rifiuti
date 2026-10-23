@@ -26,6 +26,90 @@ da assegnare a chi lavora su `apps/frontend/**`.
 - Toast successo/errore: `data-testid="toast-success"` / `data-testid="toast-error"`
   (globale, un solo componente toast presumibilmente condiviso).
 
+### ATTENZIONE — collisione dei selettori per prefisso
+
+Lo schema `{area}-{azione}-{businessId}` sopra **collide** con qualunque
+altro `data-testid` dell'area che inizi per lo stesso prefisso testuale —
+in particolare con `{area}-{azione}-dialog` (e i suoi controlli interni,
+es. `{area}-{azione}-input-quantita`, `{area}-{azione}-conferma`). Esempio
+reale, trovato e corretto il 2026-09-14 in `rentri-blocchi.component.ts`:
+il bottone per riga è `rentri-blocchi-vidima-{codiceBlocco}` e il dialog è
+`rentri-blocchi-vidima-dialog` — un selettore scritto per prefisso
+(`[data-testid^="rentri-blocchi-vidima-"]`) su tutta la pagina trova
+**sempre** anche l'host del dialog, anche a dialog chiuso e con zero righe
+in pagina (l'host non sparisce mai dal DOM, v. punto sotto), rompendo un
+conteggio o uno `test.skip()` che si aspettava 0.
+
+**Rimedio**: mai un selettore per prefisso su tutta la pagina quando un
+`{businessId}` dinamico condivide il prefisso con un nome fisso come
+`-dialog`. O si sceglie un prefisso che non sia sottostringa di un altro
+testid dell'area (es. `{area}-riga-vidima-{businessId}` invece di
+`{area}-vidima-{businessId}` quando esiste anche `{area}-vidima-dialog`),
+o — quando il nome non è più modificabile lato frontend — si scopa la
+ricerca a un contenitore che il dialog non condivide (es.
+`.locator('[data-testid^="…"]')` dentro al `listAttivi`/contenitore delle
+righe, mai su `page` intera). Vedi `RentriBlocchiPage.vidimaButtons()` per
+l'implementazione di riferimento, commentata con lo stesso ragionamento.
+
+### ATTENZIONE — gli host dei componenti PrimeNG restano nel DOM, e non sono l'elemento nativo
+
+Un `data-testid` (o qualunque attributo) messo direttamente sul tag di un
+componente PrimeNG con wrapper (`<p-inputNumber>`, `<p-dropdown>`,
+`<p-button>`, `<p-calendar>`, `<p-multiSelect>`, `<p-autoComplete>`, …)
+atterra sull'**host custom-element**, non sull'`<input>`/`<button>` nativo
+che il componente genera nel proprio template. Due conseguenze concrete,
+trovate entrambe in `rentri-blocchi.component.ts` il 2026-09-14:
+
+- **`.fill()`** su un locator che risolve all'host fallisce con "Element is
+  not an `<input>`, `<textarea>` … " — `p-inputNumber` non è un campo,
+  l'`<input>` vero è annidato dentro e ha un proprio `inputId` separato dal
+  `data-testid` dell'host.
+- **`toBeDisabled()`** su un locator che risolve all'host **non fallisce
+  mai**, nemmeno quando il controllo è davvero disabilitato: Playwright
+  ignora `disabled` su un elemento che non è un vero form control, e non lo
+  legge dall'host di `p-button` — solo dal `<button>` nativo interno, dove
+  PrimeNG lo applica per davvero (`[disabled]="disabled || loading"` nel
+  template di `Button`). L'asserzione diventa quindi un'asserzione che non
+  può fallire, non una verifica.
+- In più, l'`*ngIf`/`*ngFor` del template Angular nasconde o rimuove il
+  **contenuto** del componente, ma l'host stesso (quando è un elemento
+  dichiarato a sé, come un `<p-dialog>`) può restare nel DOM anche a
+  contenuto nascosto — non dare per scontato che "non visibile" significhi
+  "assente", né viceversa.
+
+**Rimedio**: quando il `data-testid` è sull'host di un componente PrimeNG
+con wrapper, il Page Object non deve esporre quel locator così com'è per
+azioni di campo/stato — deve scendere all'elemento nativo interno prima di
+restituirlo, tipicamente `.locator('input')` (per `p-inputNumber`,
+`p-inputText`) o `.locator('button')` (per `p-button`). Esempio applicato
+in `rentri-blocchi.page.ts`:
+
+```ts
+// SBAGLIATO — .fill() lancia, toBeDisabled() non fallisce mai:
+this.vidimaInputQuantita = page.getByTestId('rentri-blocchi-vidima-input-quantita')
+this.vidimaConferma = page.getByTestId('rentri-blocchi-vidima-conferma')
+
+// CORRETTO — scende all'elemento nativo che il componente genera:
+this.vidimaInputQuantita = page.getByTestId('rentri-blocchi-vidima-input-quantita').locator('input')
+this.vidimaConferma = page.getByTestId('rentri-blocchi-vidima-conferma').locator('button')
+```
+
+Per i dropdown (`p-dropdown`, apertura via click, poi scelta nell'overlay
+`.p-dropdown-item`) l'apertura NON soffre della stessa trappola di
+`.fill()`/`toBeDisabled()`: cliccare l'`<div #container>` interno (dove
+PrimeNG mette `(click)="onContainerClick($event)"`, v.
+`node_modules/primeng/esm2022/dropdown/dropdown.mjs`) o un suo discendente
+apre comunque l'overlay, perché un click su un discendente fa comunque
+bubbling fino al listener del container. `selezionaDropdown()` (v.
+`e2e/tests/registry/trasportatore-destinatario.spec.ts`) NON clicca l'host
+`<p-dropdown>`: clicca `#{inputId}` — lo `<span role="combobox"
+[attr.id]="inputId">` interno che PrimeNG genera nel container, un
+discendente, non l'elemento con l'handler — e funziona per bubbling, non
+perché "l'host va bene". Quando serve leggere/scrivere lo stato di un campo
+o di un bottone (`.fill()`, `toBeDisabled()`), invece, il bubbling non
+aiuta: lì l'elemento nativo giusto va preso esplicitamente, come nei
+rimedi sopra.
+
 ## Elenco per area (priorità = valore di business, da audit)
 
 | Area                           | File componente                                                               | `data-testid` mancanti prioritari                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -39,10 +123,7 @@ da assegnare a chi lavora su `apps/frontend/**`.
 | Contratti                      | `apps/frontend/src/app/features/contracts/contracts-list.component.ts`        | `contratti-nuovo-button`, `contratti-row-{id}`, `contratti-status-select-{id}`                                                                                                                                                                                                                                                                                                                                                    |
 | ESG                            | `apps/frontend/src/app/features/esg/esg.component.ts`                         | `esg-filtro-periodo`, `esg-report-summary`                                                                                                                                                                                                                                                                                                                                                                                        |
 | Anomalie                       | `apps/frontend/src/app/features/anomaly/anomaly.component.ts`                 | `anomalie-row-{id}`, `anomalie-status-badge-{id}`                                                                                                                                                                                                                                                                                                                                                                                 |
-| Anagrafiche — Produttori       | `apps/frontend/src/app/features/registry/produttori-list.component.ts`        | `produttori-nuovo-button`, `produttori-row-{id}`, `produttori-modifica-{id}`, `produttori-elimina-{id}`                                                                                                                                                                                                                                                                                                                           |
-| Anagrafiche — Trasportatori    | `apps/frontend/src/app/features/registry/trasportatori-list.component.ts`     | `trasportatori-nuovo-button`, `trasportatori-row-{id}`, `trasportatori-modifica-{id}`, `trasportatori-elimina-{id}`                                                                                                                                                                                                                                                                                                               |
-| Anagrafiche — Destinatari      | `apps/frontend/src/app/features/registry/destinatari-list.component.ts`       | `destinatari-nuovo-button`, `destinatari-row-{id}`, `destinatari-modifica-{id}`, `destinatari-elimina-{id}`                                                                                                                                                                                                                                                                                                                       |
-| Anagrafiche — dialog condiviso | `apps/frontend/src/app/features/registry/anagrafica-form-dialog.component.ts` | `anagrafica-form-dialog`, `anagrafica-form-save-button`, `anagrafica-form-cancel-button`                                                                                                                                                                                                                                                                                                                                          |
+| Anagrafiche — dialog condiviso | `apps/frontend/src/app/features/registry/anagrafica-form-dialog.component.ts` | `anagrafica-form-dialog`, `anagrafica-form-save-button`, `anagrafica-form-cancel-button` — montato solo nel flusso rapido di "Nuovo FIR", non nelle pagine `/produttori`, `/trasportatori`, `/destinatari` (ciascuna ha un proprio dialog inline separato)                                                                                                                                                                        |
 | Admin — Tenants                | `apps/frontend/src/app/features/admin/tenants/tenant-admin.component.ts`      | `admin-tenants-nuovo-button`, `admin-tenants-row-{id}`, `admin-tenants-status-button-{id}`                                                                                                                                                                                                                                                                                                                                        |
 | Admin — Utenti                 | `apps/frontend/src/app/features/admin/users/user-admin.component.ts`          | `admin-users-nuovo-button`, `admin-users-row-{id}`, `admin-users-impersona-{id}`, `admin-users-role-select-{id}`                                                                                                                                                                                                                                                                                                                  |
 | RENTRI — Certificato           | `apps/frontend/src/app/features/rentri/rentri-credential.component.ts`        | `rentri-credential-upload-input`, `rentri-credential-save-button`, `rentri-credential-delete-button`                                                                                                                                                                                                                                                                                                                              |
@@ -54,6 +135,29 @@ da assegnare a chi lavora su `apps/frontend/**`.
 
 ## Aree già con buona copertura (nessuna azione richiesta)
 
+- **Anagrafiche — Produttori, Trasportatori, Destinatari (colmato 2026-09-14,
+  Task 2 piano UAT/E2E)**: le tre pagine instradate
+  (`produttori-list.component.ts`, `trasportatori-list.component.ts`,
+  `destinatari-list.component.ts` — ciascuna col proprio dialog inline di
+  creazione/modifica, distinto dal componente condiviso
+  `anagrafica-form-dialog.component.ts`) espongono `{area}-nuovo-button`,
+  `{area}-row-{id}`, `{area}-modifica-{id}`, `{area}-elimina-{id}`,
+  `{area}-form-dialog`, `{area}-form-save-button`,
+  `{area}-form-cancel-button`, `{area}-confirm-dialog` (`area` =
+  `produttori`/`trasportatori`/`destinatari`, `id` = id di business
+  dell'anagrafica). Il dialog di conferma eliminazione usa il template
+  di default di PrimeNG `ConfirmationService` (non un dialog custom): il
+  testid è solo sul contenitore `<p-confirmDialog>`, non sui pulsanti
+  accetta/rifiuta interni — aggiungerli richiederebbe un template
+  personalizzato, fuori perimetro per un task "solo attributi".
+  Nello stesso lavoro è stato chiuso anche un difetto di prodotto trovato
+  durante l'analisi: il campo facoltativo della data di scadenza
+  (`scadenzaIscrizione`/`scadenzaAutorizzazione`) esisteva nel backend, nel
+  cron e nella fascia di attenzione del cruscotto, ma non nei dialog inline
+  di trasportatori/destinatari — l'unico punto UI in cui esisteva era il
+  dialog condiviso, montato solo nel flusso "Nuovo FIR". Aggiunto con
+  `trasportatori-scadenza-iscrizione-input` /
+  `destinatari-scadenza-autorizzazione-input`.
 - `features/permissions/pages/my-permissions/*` (`permission-discovery.component.ts`)
 - `features/permissions/pages/permission-denied/*`
 - `features/permissions/pages/my-assignments/*`

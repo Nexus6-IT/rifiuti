@@ -121,10 +121,10 @@ function validaCoerenzaChiave(certificatePem: string, privateKeyPem: string): Co
 
 function validaCatena(certificatePem: string): ControlloCertificato {
   try {
-    const certificato = forge.pki.certificateFromPem(certificatePem)
-    const autoFirmato =
-      JSON.stringify(certificato.subject.attributes.map(a => [a.type, a.value])) ===
-      JSON.stringify(certificato.issuer.attributes.map(a => [a.type, a.value]))
+    // X509Certificate (Node) invece di forge.pki: forge lancia "OID is not RSA"
+    // sui certificati EC. Subject e issuer sono stringhe canoniche.
+    const certificato = new X509Certificate(certificatePem)
+    const autoFirmato = certificato.subject === certificato.issuer
 
     if (autoFirmato) {
       return {
@@ -152,11 +152,35 @@ function validaCatena(certificatePem: string): ControlloCertificato {
   }
 }
 
+const OID_CRL_DISTRIBUTION_POINTS = '2.5.29.31'
+const OID_AUTHORITY_INFO_ACCESS = '1.3.6.1.5.5.7.1.1'
+
+/**
+ * OID delle estensioni X.509v3 dichiarate dal certificato, letti dall'ASN.1 del
+ * DER: Certificate ::= SEQ { tbs SEQ { ..., [3] EXPLICIT SEQ OF Extension }, ... },
+ * con Extension ::= SEQ { extnID OID, ... }. Indipendente dal tipo di chiave.
+ */
+function oidEstensioni(certificato: X509Certificate): Set<string> {
+  const radice = forge.asn1.fromDer(forge.util.createBuffer(certificato.raw.toString('binary')))
+  const tbs = (radice.value as forge.asn1.Asn1[])[0]
+  const blocco = (tbs.value as forge.asn1.Asn1[]).find(
+    n => n.tagClass === forge.asn1.Class.CONTEXT_SPECIFIC && n.type === 3
+  )
+  const oid = new Set<string>()
+  if (!blocco) return oid
+  const estensioni = (blocco.value as forge.asn1.Asn1[])[0]
+  for (const estensione of estensioni.value as forge.asn1.Asn1[]) {
+    const id = (estensione.value as forge.asn1.Asn1[])[0]
+    oid.add(forge.asn1.derToOid(id.value as string))
+  }
+  return oid
+}
+
 function validaRevoca(certificatePem: string): ControlloCertificato {
   try {
-    const certificato = forge.pki.certificateFromPem(certificatePem)
-    const haCrl = certificato.getExtension('cRLDistributionPoints') !== null
-    const haAia = certificato.getExtension('authorityInfoAccess') !== null
+    const oid = oidEstensioni(new X509Certificate(certificatePem))
+    const haCrl = oid.has(OID_CRL_DISTRIBUTION_POINTS)
+    const haAia = oid.has(OID_AUTHORITY_INFO_ACCESS)
 
     if (haCrl || haAia) {
       return {
@@ -171,9 +195,13 @@ function validaRevoca(certificatePem: string): ControlloCertificato {
         'il certificato non dichiara alcun endpoint di revoca (CRL/OCSP): anche in futuro non sarebbe possibile verificarne la revoca automaticamente',
     }
   } catch {
+    // Il controllo e' informativo per contratto (sempre avvertimento): un errore di
+    // ASN.1 sulle estensioni non deve bloccare il caricamento, gli altri controlli
+    // (scadenza, coerenza chiave) restano quelli che decidono la validita'.
     return {
-      esito: 'errore',
-      messaggio: 'certificato illeggibile: impossibile rilevare gli endpoint di revoca',
+      esito: 'avvertimento',
+      messaggio:
+        'estensioni del certificato non analizzabili: lo stato di revoca non è verificabile',
     }
   }
 }

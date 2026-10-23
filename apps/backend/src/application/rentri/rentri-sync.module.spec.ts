@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing'
 import { ConfigModule } from '@nestjs/config'
 import { MODULE_METADATA } from '@nestjs/common/constants'
 import { RentriSyncModule } from './rentri-sync.module'
+import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
@@ -34,6 +35,7 @@ import { ImpostaBloccoPredefinitoUseCase } from './scorta/imposta-blocco-predefi
 import { VerificaEmissionePossibileRentriUseCase } from './scorta/verifica-emissione-possibile.use-case'
 import { ConsumaNumeroVidimatoUseCase } from './scorta/consuma-numero-vidimato.use-case'
 import { RentriRifornimentoScortaJob } from '../../infrastructure/jobs/rentri-rifornimento-scorta.job'
+import { RentriTrasmissioniSospeseJob } from '../../infrastructure/jobs/rentri-trasmissioni-sospese.job'
 import { RentriScortaController } from '../../api/rentri/rentri-scorta.controller'
 import { AppModule } from '../../app.module'
 
@@ -73,6 +75,8 @@ describe('RentriSyncModule (DI wiring)', () => {
     expect(moduleRef.get(TrasmettiFIRSecondoModalitaUseCase)).toBeDefined()
     expect(moduleRef.get(ConfermaLegameRENTRIUseCase)).toBeDefined()
     expect(moduleRef.get(RENTRISyncController)).toBeDefined()
+    // Il controller del certificato accoda i FIR riaperti: vive qui perche' la coda e' qui.
+    expect(moduleRef.get(RentriCredentialController)).toBeDefined()
 
     // RENTRIApiClient viene da RentriModule (importato): conferma che
     // l'iniezione cross-modulo funziona davvero, non solo che ogni pezzo si
@@ -139,6 +143,7 @@ describe('RentriSyncModule (DI wiring)', () => {
     expect(moduleRef.get(VerificaEmissionePossibileRentriUseCase)).toBeDefined()
     expect(moduleRef.get(ConsumaNumeroVidimatoUseCase)).toBeDefined()
     expect(moduleRef.get(RentriRifornimentoScortaJob)).toBeDefined()
+    expect(moduleRef.get(RentriTrasmissioniSospeseJob)).toBeDefined()
     expect(moduleRef.get(RentriScortaController)).toBeDefined()
 
     // Nessun moduleRef.close(): onModuleInit non è mai stato invocato

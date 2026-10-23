@@ -1,4 +1,7 @@
+import * as Sentry from '@sentry/node'
 import { RentriCertificatoScadenzaJob } from './rentri-certificato-scadenza.job'
+
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
 // Stesso pattern di `get-rentri-diagnostica.use-case.spec.ts`: generare un
 // vero certificato X.509 firmato richiederebbe OpenSSL o una libreria
@@ -32,6 +35,7 @@ describe('RentriCertificatoScadenzaJob', () => {
   let mockLogger: any
 
   beforeEach(() => {
+    jest.clearAllMocks()
     mockPrisma = {
       tenant: {
         findMany: jest.fn().mockResolvedValue([{ id: 'tenant-1' }, { id: 'tenant-sano' }]),
@@ -120,5 +124,54 @@ describe('RentriCertificatoScadenzaJob', () => {
     })
 
     await expect(job.eseguiControlloScadenza()).resolves.toBeUndefined()
+  })
+
+  // Guardia di regressione: verde anche prima della modifica (il comportamento esiste già).
+  it('eseguiControlloScadenza non rilancia e segnala una volta', async () => {
+    mockPrisma.tenant.findMany.mockRejectedValue(new Error('db giù'))
+
+    await expect(job.eseguiControlloScadenza()).resolves.toBeUndefined()
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1)
+  })
+
+  it('controllaScadenze rilancia se la lettura dei tenant fallisce', async () => {
+    mockPrisma.tenant.findMany.mockRejectedValue(new Error('db giù'))
+
+    await expect(job.controllaScadenze()).rejects.toThrow('db giù')
+    // La segnalazione a Bugsink spetta solo all'handler @Cron, non al giro.
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('controllaScadenze restituisce i tenant con errore', async () => {
+    mockPrisma.rentriCredential.findMany.mockResolvedValue([
+      { tenantId: 'tenant-rotto', certificatePem: 'PEM-NON-VALIDO' },
+      { tenantId: 'tenant-sano', certificatePem: 'PEM-VALIDO' },
+    ])
+    const validTo = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000 + 12 * 60 * 60 * 1000)
+    ;(X509Certificate as jest.Mock).mockImplementation(() => ({ validTo: validTo.toUTCString() }))
+    // Un errore inatteso su un solo tenant (qui: la scrittura del gauge) conta come errore.
+    mockMetrics.rentriCertificateExpiryDays.set.mockImplementation(
+      (labels: { tenant_id: string }) => {
+        if (labels.tenant_id === 'tenant-rotto') throw new Error('gauge non scrivibile')
+      }
+    )
+
+    await expect(job.controllaScadenze()).resolves.toEqual({ tenantTotali: 2, tenantConErrore: 1 })
+  })
+
+  it('un certificato non analizzabile conta come errore del tenant: il gauge resta vecchio', async () => {
+    mockPrisma.rentriCredential.findMany.mockResolvedValue([
+      { tenantId: 'tenant-rotto', certificatePem: 'PEM-NON-VALIDO' },
+      { tenantId: 'tenant-sano', certificatePem: 'PEM-VALIDO' },
+    ])
+    const validTo = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000 + 12 * 60 * 60 * 1000)
+    ;(X509Certificate as jest.Mock).mockImplementation((pem: string) => {
+      if (pem === 'PEM-NON-VALIDO') throw new Error('certificato non analizzabile')
+      return { validTo: validTo.toUTCString() }
+    })
+
+    await expect(job.controllaScadenze()).resolves.toEqual({ tenantTotali: 2, tenantConErrore: 1 })
+    expect(mockMetrics.rentriCertificateExpiryDays.set).toHaveBeenCalledTimes(1)
   })
 })

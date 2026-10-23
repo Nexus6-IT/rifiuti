@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config'
+import { algoritmoDaChiave } from './certificato/algoritmo-da-chiave'
 
 /**
  * Configurazione del client RENTRI.
@@ -49,6 +50,12 @@ export interface RentriConfig {
   jwtTtlSeconds: number
   /** Secret per cifrare a riposo le chiavi private RENTRI per-tenant (AES-256-GCM). */
   credentialEncKey: string
+  /**
+   * Id dell'unica azienda autorizzata a firmare con la credenziale globale da env
+   * (`RENTRI_ENV_TENANT_ID`). Assente = nessuna azienda (fail-closed): RENTRI non
+   * deve vedere il titolare del certificato env agire sui registri di un'altra.
+   */
+  envTenantId?: string
 }
 
 /**
@@ -57,6 +64,8 @@ export interface RentriConfig {
  */
 export function loadRentriConfig(config: ConfigService): RentriConfig {
   const baseUrl = config.get<string>('RENTRI_API_URL') || 'https://demoapi.rentri.gov.it'
+  const privateKeyPem = normalizePem(config.get<string>('RENTRI_PRIVATE_KEY_PEM'))
+  const algorithm = risolviAlgoritmo(privateKeyPem, config.get<string>('RENTRI_JWT_ALG'))
 
   return {
     baseUrl,
@@ -64,11 +73,34 @@ export function loadRentriConfig(config: ConfigService): RentriConfig {
     audience: config.get<string>('RENTRI_AUDIENCE') || 'rentrigov.demo.api',
     signatureAudience: config.get<string>('RENTRI_SIGNATURE_AUDIENCE') || baseUrl,
     certificatePem: normalizePem(config.get<string>('RENTRI_CERTIFICATE_PEM')),
-    privateKeyPem: normalizePem(config.get<string>('RENTRI_PRIVATE_KEY_PEM')),
-    algorithm: (config.get<string>('RENTRI_JWT_ALG') as 'RS256' | 'ES256') || 'RS256',
+    privateKeyPem,
+    algorithm,
     jwtTtlSeconds: Number(config.get<string>('RENTRI_JWT_TTL_SECONDS')) || 300,
     credentialEncKey: config.get<string>('RENTRI_CREDENTIAL_ENC_KEY') || '',
+    envTenantId: config.get<string>('RENTRI_ENV_TENANT_ID')?.trim() || undefined,
   }
+}
+
+/**
+ * Algoritmo di firma: con una chiave privata si ricava SEMPRE da essa (RSA →
+ * RS256, EC P-256 → ES256), senza il vecchio ripiego su RS256 che con una
+ * chiave EC produceva firme rifiutate. `RENTRI_JWT_ALG`, se impostata, e' solo
+ * un controllo: se non coincide con la chiave l'avvio della configurazione
+ * fallisce con un errore esplicito. Senza chiave vale la variabile, o RS256.
+ */
+function risolviAlgoritmo(privateKeyPem: string, dichiarato?: string): 'RS256' | 'ES256' {
+  if (dichiarato && dichiarato !== 'RS256' && dichiarato !== 'ES256') {
+    throw new Error(`RENTRI_JWT_ALG non valida: ${dichiarato} (ammessi RS256, ES256)`)
+  }
+  if (!privateKeyPem) return (dichiarato as 'RS256' | 'ES256' | undefined) ?? 'RS256'
+
+  const ricavato = algoritmoDaChiave(privateKeyPem)
+  if (dichiarato && dichiarato !== ricavato) {
+    throw new Error(
+      `RENTRI_JWT_ALG=${dichiarato} non coincide con la chiave privata configurata (${ricavato})`
+    )
+  }
+  return ricavato
 }
 
 /**

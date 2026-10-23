@@ -99,7 +99,11 @@ export class AuthService {
               this.currentUser.set(session.user)
               this.isAuthenticated.set(true)
             },
-            error: () => this.clearSession(),
+            error: (errRefresh: HttpErrorResponse) => {
+              // 503: verifica dell'azienda non disponibile, errore transitorio: conserva la sessione.
+              if (errRefresh.status === 503) return
+              this.clearSession()
+            },
           })
       },
     })

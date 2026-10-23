@@ -4,23 +4,24 @@ import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 import { calcolaScadenza } from './scadenza-controparte.util'
+import { FILTRO_AZIENDE_TENUTE_AL_MUD } from '../mud/mud-obbligo.service'
+import { MudVersionRegistry } from '../mud/export/mud-version.registry'
+import { formattaDataItaliana, giornoItaliano } from '../../core/time/anno-italiano'
 
 /**
  * Deadline Checker Service
  *
  * Scheduled jobs for monitoring compliance deadlines:
- * - MUD report submission deadlines
+ * - MUD report submission deadlines (scadenza dal registro dei tracciati, per anno dei dati;
+ *   30 aprile dell'anno dopo come ripiego se l'anno non è censito)
  * - Register vidimazione deadlines
  * - Authorization expiration dates
  */
 @Injectable()
 export class DeadlineCheckerService {
-  // MUD deadline: April 30th each year
-  private readonly MUD_DEADLINE_MONTH = 3 // April (0-indexed)
-  private readonly MUD_DEADLINE_DAY = 30
-
   // Notification intervals (days before deadline)
   private readonly NOTIFICATION_INTERVALS = [30, 15, 7, 3, 1]
 
@@ -35,14 +36,17 @@ export class DeadlineCheckerService {
     private readonly prisma: PrismaService,
     private readonly templateService: TemplateService,
     private readonly emailService: EmailService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly registry: MudVersionRegistry
   ) {
     this.logger.setContext(DeadlineCheckerService.name)
   }
 
   /**
    * Check MUD deadlines daily at 8:00 AM
-   * Sends reminder notifications at 30, 15, 7, 3, and 1 days before deadline
+   * Sends reminder notifications at 30, 15, 7, 3, and 1 days before deadline.
+   * La scadenza viene dal registro dei tracciati (`MudVersionRegistry`), con il 30 aprile
+   * dell'anno dopo come ripiego (scritto nel log). Nessun promemoria dopo la presentazione.
    */
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
   async checkMudDeadlines(): Promise<void> {
@@ -50,13 +54,18 @@ export class DeadlineCheckerService {
 
     try {
       const today = new Date()
-      const currentYear = today.getFullYear()
-      const previousYear = currentYear - 1
+      // Calendario di Roma, non l'orario del server (il processo gira in UTC).
+      const oggi = giornoItaliano(today) // 'AAAA-MM-GG'
+      const previousYear = Number(oggi.slice(0, 4)) - 1
 
-      // Calculate this year's MUD deadline (April 30th)
-      const deadline = new Date(currentYear, this.MUD_DEADLINE_MONTH, this.MUD_DEADLINE_DAY)
-      const daysUntilDeadline = Math.ceil(
-        (deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      // Scadenza di presentazione dei dati dell'anno precedente, dal registro dei tracciati
+      const { data: dataScadenza, fonte } = this.registry.scadenzaPresentazione(previousYear)
+      const [annoScad, meseScad, giornoScad] = dataScadenza.split('-').map(Number)
+      const deadline = new Date(Date.UTC(annoScad, meseScad - 1, giornoScad, 12))
+      const [annoOggi, meseOggi, giornoOggi] = oggi.split('-').map(Number)
+      const daysUntilDeadline = Math.round(
+        (deadline.getTime() - Date.UTC(annoOggi, meseOggi - 1, giornoOggi, 12)) /
+          (1000 * 60 * 60 * 24)
       )
 
       // Skip if deadline has passed or too far in future
@@ -64,21 +73,29 @@ export class DeadlineCheckerService {
         this.logger.debug(`MUD deadline is ${daysUntilDeadline} days away, skipping notifications`)
         return
       }
-
       // Check if we should send notifications today
       if (!this.NOTIFICATION_INTERVALS.includes(daysUntilDeadline)) {
         this.logger.debug(`No notification scheduled for ${daysUntilDeadline} days before deadline`)
         return
       }
 
+      // solo nei giorni in cui la scadenza si usa davvero: il job gira ogni giorno
+      if (fonte === 'ORDINARIA') {
+        this.logger.warn(
+          `Scadenza MUD per i dati ${previousYear} non censita nel registro dei tracciati: uso la scadenza ordinaria del ${formattaDataItaliana(deadline)}`
+        )
+      }
+
       this.logger.info(`Sending MUD deadline reminders: ${daysUntilDeadline} days remaining`)
 
-      // Find all active tenants with MUD reports for previous year
+      // Find all active tenants with MUD reports for previous year. Le aziende segnate come
+      // non tenute al MUD (A-W-10) restano fuori: niente MUDReport, notifiche né email.
       const tenants = await this.prisma.tenant.findMany({
         where: {
           subscriptionStatus: {
             in: ['ACTIVE', 'TRIAL'], // Include active and trial subscriptions
           },
+          ...FILTRO_AZIENDE_TENUTE_AL_MUD,
         },
         include: {
           mudReports: {
@@ -106,66 +123,86 @@ export class DeadlineCheckerService {
           this.logger.info(
             `Creating draft MUD report for tenant ${tenant.id}, year ${previousYear}`
           )
-          mudReport = await this.prisma.mUDReport.create({
-            data: {
-              tenantId: tenant.id,
-              year: previousYear,
-              status: 'DRAFT',
-              reportData: {},
-            },
-          })
+          try {
+            // upsert: un export o un salvataggio di integrazioni può creare il record
+            // nello stesso momento (G3-C-03)
+            mudReport = await this.prisma.mUDReport.upsert({
+              where: { tenantId_year: { tenantId: tenant.id, year: previousYear } },
+              create: {
+                tenantId: tenant.id,
+                year: previousYear,
+                status: 'DRAFT',
+                reportData: {},
+              },
+              update: {},
+            })
+          } catch (error) {
+            if ((error as { code?: string })?.code !== 'P2002') throw error
+            const esistente = await this.prisma.mUDReport.findUnique({
+              where: { tenantId_year: { tenantId: tenant.id, year: previousYear } },
+            })
+            if (!esistente) throw error
+            mudReport = esistente
+          }
         }
 
-        // Determine completion status
-        const isComplete = mudReport.status === 'SUBMITTED'
-        const reportData = mudReport.reportData as any
-        const completionPercentage = this.calculateMudCompletionPercentage(reportData)
-        const missingData = this.getMudMissingData(reportData)
+        // Nessun promemoria dopo la presentazione
+        if (mudReport.status === 'SUBMITTED') continue
+
+        const urlPaginaMud = `/mud?anno=${previousYear}`
+        const titolo = `Promemoria scadenza MUD ${previousYear + 1} (dati ${previousYear})`
+        const dataScadenzaIt = formattaDataItaliana(deadline)
 
         // Send notifications to all admin/operator users
         for (const user of tenant.users) {
+          // La notifica in applicazione va creata PRIMA e a parte
+          // dall'invio email: un guasto SMTP non deve sopprimere l'unico
+          // canale che funziona sempre (stesso principio applicato agli
+          // altri due rami dello scadenzario).
           try {
-            const html = await this.templateService.renderMudDeadlineReminder({
-              recipientName: `${user.firstName} ${user.lastName}`,
-              year: currentYear,
-              deadline: deadline.toLocaleDateString('it-IT', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-              }),
-              daysRemaining: daysUntilDeadline,
-              companyName: tenant.ragioneSociale,
-              referenceYear: previousYear,
-              isComplete,
-              completionPercentage,
-              missingData,
-              mudUrl: `${process.env.PUBLIC_URL || 'https://wasteflow.app'}/mud/${mudReport.id}`,
-            })
-
-            await this.emailService.sendEmail({
-              to: user.email,
-              subject: `[WasteFlow] Promemoria Scadenza MUD ${previousYear}`,
-              html,
-            })
-
-            // Create in-app notification
             await this.prisma.notification.create({
               data: {
                 tenantId: tenant.id,
                 userId: user.id,
                 type: 'MUD_DEADLINE_APPROACHING',
-                title: `Promemoria Scadenza MUD ${previousYear}`,
-                message: `Mancano ${daysUntilDeadline} giorni alla scadenza del MUD. ${isComplete ? "Il MUD è pronto per l'invio." : `Completamento: ${completionPercentage}%`}`,
+                title: titolo,
+                message: `${daysUntilDeadline === 1 ? 'Manca 1 giorno' : `Mancano ${daysUntilDeadline} giorni`} alla scadenza del MUD ${previousYear + 1} (dati ${previousYear}), il ${dataScadenzaIt}: aprire la pagina MUD per i controlli e la conferma.`,
                 severity: daysUntilDeadline <= 7 ? 'WARNING' : 'INFO',
-                actionUrl: `/mud/${mudReport.id}`,
+                actionUrl: urlPaginaMud,
                 isRead: false,
               },
             })
-
             notificationsSent++
+          } catch (error) {
+            this.logger.error(`Creazione avviso MUD fallita per ${user.email}`, error)
+            continue
+          }
+
+          // Invio email isolato: un guasto SMTP viene solo loggato, la
+          // notifica in applicazione creata sopra resta comunque valida.
+          try {
+            const html = await this.templateService.renderMudDeadlineReminder({
+              recipientName: `${user.firstName} ${user.lastName}`,
+              year: previousYear + 1,
+              deadline: dataScadenzaIt,
+              daysRemaining: daysUntilDeadline,
+              companyName: tenant.ragioneSociale,
+              referenceYear: previousYear,
+              mudUrl: `${process.env.PUBLIC_URL || 'https://wasteflow.app'}${urlPaginaMud}`,
+            })
+
+            await this.emailService.sendEmail({
+              to: user.email,
+              subject: `[WasteFlow] ${titolo}`,
+              html,
+            })
+
             this.logger.debug(`Sent MUD reminder to ${user.email}`)
           } catch (error) {
-            this.logger.error(`Failed to send MUD reminder to ${user.email}`, error)
+            this.logger.error(
+              `Invio email promemoria MUD fallito per ${user.email} (notifica in app comunque creata)`,
+              error
+            )
           }
         }
       }
@@ -173,7 +210,7 @@ export class DeadlineCheckerService {
       this.logger.info(`MUD deadline check completed: ${notificationsSent} notifications sent`)
     } catch (error) {
       this.logger.error('Failed to check MUD deadlines', error)
-      throw error
+      segnalaErroreJob('checkMudDeadlines', error)
     }
   }
 
@@ -194,6 +231,7 @@ export class DeadlineCheckerService {
       this.logger.debug('Vidimazione deadline check not yet implemented (awaiting Register schema)')
     } catch (error) {
       this.logger.error('Failed to check vidimazione deadlines', error)
+      segnalaErroreJob('checkVidimazioneDeadlines', error)
     }
   }
 
@@ -308,6 +346,40 @@ export class DeadlineCheckerService {
         const destinatari = utenti.filter(u => u.tenantId === autorizzazione.tenantId)
 
         for (const utente of destinatari) {
+          // La notifica in applicazione va creata PRIMA e a parte
+          // dall'invio email (stesso principio già applicato in
+          // `elaboraScadenzaControparte`): un guasto SMTP non deve
+          // sopprimere l'unico canale che funziona sempre. Se la
+          // creazione stessa fallisce, si salta l'utente senza tentare
+          // l'email.
+          try {
+            await this.prisma.notification.create({
+              data: {
+                tenantId: autorizzazione.tenantId,
+                userId: utente.id,
+                type: 'AUTORIZZAZIONE_IN_SCADENZA',
+                title: titolo,
+                message: messaggio,
+                severity: scaduta ? 'ERROR' : 'WARNING',
+                relatedEntityId: autorizzazione.id,
+                relatedEntityType: 'AutorizzazioneImpianto',
+                // Idem: nessuna pagina esiste per questa entità, quindi
+                // nessun actionUrl (campo facoltativo in schema).
+                actionUrl: undefined,
+                isRead: false,
+              },
+            })
+            notificationsSent++
+          } catch (error) {
+            this.logger.error(
+              `Creazione avviso scadenza autorizzazione fallita per ${utente.email}`,
+              error
+            )
+            continue
+          }
+
+          // Invio email isolato: un guasto SMTP viene solo loggato, la
+          // notifica in applicazione creata sopra resta comunque valida.
           try {
             const html = await this.templateService.renderAuthorizationExpiration({
               recipientName: `${utente.firstName} ${utente.lastName}`,
@@ -337,28 +409,10 @@ export class DeadlineCheckerService {
               html,
             })
 
-            await this.prisma.notification.create({
-              data: {
-                tenantId: autorizzazione.tenantId,
-                userId: utente.id,
-                type: 'AUTORIZZAZIONE_IN_SCADENZA',
-                title: titolo,
-                message: messaggio,
-                severity: scaduta ? 'ERROR' : 'WARNING',
-                relatedEntityId: autorizzazione.id,
-                relatedEntityType: 'AutorizzazioneImpianto',
-                // Idem: nessuna pagina esiste per questa entità, quindi
-                // nessun actionUrl (campo facoltativo in schema).
-                actionUrl: undefined,
-                isRead: false,
-              },
-            })
-
-            notificationsSent++
             this.logger.debug(`Avviso scadenza autorizzazione inviato a ${utente.email}`)
           } catch (error) {
             this.logger.error(
-              `Invio avviso scadenza autorizzazione fallito per ${utente.email}`,
+              `Invio email scadenza autorizzazione fallito per ${utente.email} (notifica in app comunque creata)`,
               error
             )
           }
@@ -414,6 +468,7 @@ export class DeadlineCheckerService {
       )
     } catch (error) {
       this.logger.error('Controllo scadenza autorizzazioni impianto fallito', error)
+      segnalaErroreJob('checkAuthorizationExpirations', error)
     }
   }
 
@@ -535,6 +590,36 @@ export class DeadlineCheckerService {
       const destinatari = utenti.filter(u => u.tenantId === r.tenantId)
 
       for (const utente of destinatari) {
+        // La notifica in applicazione va creata PRIMA e a parte dall'invio
+        // email: è il canale che funziona sempre, un guasto SMTP non deve
+        // sopprimerlo. Se la creazione stessa fallisce, saltiamo l'utente
+        // (nessun avviso possibile) senza tentare l'email.
+        try {
+          await this.prisma.notification.create({
+            data: {
+              tenantId: r.tenantId,
+              userId: utente.id,
+              type: opts.notificationType,
+              title: titolo,
+              message: messaggio,
+              severity: scaduta ? 'ERROR' : 'WARNING',
+              relatedEntityId: r.id,
+              relatedEntityType: opts.relatedEntityType,
+              actionUrl: opts.actionUrl,
+              isRead: false,
+            },
+          })
+          notificationsSent++
+        } catch (error) {
+          this.logger.error(
+            `Creazione avviso scadenza ${opts.etichetta} fallita per ${utente.email}`,
+            error
+          )
+          continue
+        }
+
+        // Invio email isolato: un guasto SMTP viene solo loggato, la notifica
+        // in applicazione creata sopra resta comunque valida.
         try {
           const html = await this.templateService.renderCounterpartyExpiration({
             recipientName: `${utente.firstName} ${utente.lastName}`,
@@ -556,26 +641,10 @@ export class DeadlineCheckerService {
             html,
           })
 
-          await this.prisma.notification.create({
-            data: {
-              tenantId: r.tenantId,
-              userId: utente.id,
-              type: opts.notificationType,
-              title: titolo,
-              message: messaggio,
-              severity: scaduta ? 'ERROR' : 'WARNING',
-              relatedEntityId: r.id,
-              relatedEntityType: opts.relatedEntityType,
-              actionUrl: opts.actionUrl,
-              isRead: false,
-            },
-          })
-
-          notificationsSent++
           this.logger.debug(`Avviso scadenza ${opts.etichetta} inviato a ${utente.email}`)
         } catch (error) {
           this.logger.error(
-            `Creazione avviso scadenza ${opts.etichetta} fallita per ${utente.email}`,
+            `Invio email scadenza ${opts.etichetta} fallito per ${utente.email} (notifica in app comunque creata)`,
             error
           )
         }
@@ -754,6 +823,7 @@ export class DeadlineCheckerService {
       )
     } catch (error) {
       this.logger.error('Controllo scadenza certificato RENTRI fallito', error)
+      segnalaErroreJob('checkRentriCertificateExpiration', error)
     }
   }
 
@@ -779,6 +849,7 @@ export class DeadlineCheckerService {
       this.logger.info(`Cleaned up ${result.count} old notifications`)
     } catch (error) {
       this.logger.error('Failed to cleanup old notifications', error)
+      segnalaErroreJob('cleanupOldNotifications', error)
     }
   }
 
@@ -838,75 +909,5 @@ export class DeadlineCheckerService {
     })
 
     return notificaRecente !== null
-  }
-
-  /**
-   * Calculate MUD completion percentage based on reportData
-   */
-  private calculateMudCompletionPercentage(reportData: any): number {
-    if (!reportData || typeof reportData !== 'object') {
-      return 0
-    }
-
-    const requiredFields = [
-      'companyInfo',
-      'legalRepresentative',
-      'wasteProduced',
-      'wasteReceived',
-      'wasteTransported',
-      'certificates',
-    ]
-
-    let completedFields = 0
-
-    for (const field of requiredFields) {
-      if (reportData[field] && Object.keys(reportData[field]).length > 0) {
-        completedFields++
-      }
-    }
-
-    return Math.round((completedFields / requiredFields.length) * 100)
-  }
-
-  /**
-   * Get list of missing data sections for MUD report
-   */
-  private getMudMissingData(reportData: any): string[] {
-    if (!reportData || typeof reportData !== 'object') {
-      return [
-        'Dati azienda',
-        'Rappresentante legale',
-        'Rifiuti prodotti',
-        'Rifiuti ricevuti',
-        'Rifiuti trasportati',
-        'Certificati analitici',
-      ]
-    }
-
-    const missing: string[] = []
-
-    if (!reportData.companyInfo || Object.keys(reportData.companyInfo).length === 0) {
-      missing.push('Dati azienda')
-    }
-    if (
-      !reportData.legalRepresentative ||
-      Object.keys(reportData.legalRepresentative).length === 0
-    ) {
-      missing.push('Rappresentante legale')
-    }
-    if (!reportData.wasteProduced || Object.keys(reportData.wasteProduced).length === 0) {
-      missing.push('Rifiuti prodotti')
-    }
-    if (!reportData.wasteReceived || Object.keys(reportData.wasteReceived).length === 0) {
-      missing.push('Rifiuti ricevuti')
-    }
-    if (!reportData.wasteTransported || Object.keys(reportData.wasteTransported).length === 0) {
-      missing.push('Rifiuti trasportati')
-    }
-    if (!reportData.certificates || Object.keys(reportData.certificates).length === 0) {
-      missing.push('Certificati analitici')
-    }
-
-    return missing
   }
 }

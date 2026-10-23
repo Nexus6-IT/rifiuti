@@ -72,6 +72,28 @@ export class FormularioGiaAgganciatoError extends DomainError {
 }
 
 /**
+ * Il FIR è stato annullato in locale (stato CANCELLED) mentre un'altra
+ * operazione lo teneva in memoria con i dati di prima (tipicamente la sync
+ * RENTRI, che attende l'esito per secondi o minuti). Salvare quella copia
+ * riporterebbe in vita il FIR e lo renderebbe di nuovo collegabile al
+ * registro: il repository rifiuta il salvataggio.
+ */
+export class FirAnnullatoNelFrattempoError extends DomainError {
+  /** Codice e messaggio della risposta HTTP (409): è una corsa prevista, non un guasto. */
+  static readonly CODICE = 'FIR_ANNULLATO_NEL_FRATTEMPO'
+  static readonly MESSAGGIO_UTENTE =
+    "Il FIR è stato annullato nel frattempo da un'altra operazione: ricarica la pagina per vedere lo stato aggiornato."
+
+  constructor(firId: string) {
+    super(
+      `Il FIR ${firId} è stato annullato mentre era in corso un'altra operazione: ` +
+        'il salvataggio non viene eseguito'
+    )
+    this.name = 'FirAnnullatoNelFrattempoError'
+  }
+}
+
+/**
  * R3 Task 1 — `FIR.applyRentriStato` riconcilia lo `FIRStato` interno con lo
  * stato ente (`StatoFormulario`, contratto RENTRI), ma solo se il FIR ha già
  * un legame (`rentriNumeroFir` valorizzato): senza legame non c'è nulla da
@@ -102,5 +124,43 @@ export class MetodoLocaleNonConsentitoSuFirLegatoError extends DomainError {
         `usa ${operazioneRentriSuggerita}`
     )
     this.name = 'MetodoLocaleNonConsentitoSuFirLegatoError'
+  }
+}
+
+/**
+ * Un FIR si ricopia nel registro una sola volta per tipo di movimento: un secondo
+ * movimento dello stesso FIR con dati diversi non è un retry, è un errore da
+ * correggere sul movimento già registrato.
+ */
+export class FirGiaRegistratoError extends DomainError {
+  constructor(progressiveNumber: number, progressiveYear: number) {
+    super(
+      `Il FIR è già registrato nel movimento n. ${progressiveNumber}/${progressiveYear} con dati ` +
+        'diversi: verificare quel movimento invece di registrarne un secondo'
+    )
+    this.name = 'FirGiaRegistratoError'
+  }
+}
+
+/**
+ * Una firma del ciclo di vita senza l'utente che l'ha apposta non si può scrivere
+ * (fir_signatures.user_id è obbligatorio). Il salvataggio si ferma prima di
+ * toccare il database: stato e firme si salvano insieme o per niente.
+ */
+export class FirmaSenzaUtenteError extends DomainError {
+  constructor(ruolo: string, firId: string) {
+    super(
+      `La firma ${ruolo} del FIR ${firId} non indica l'utente che l'ha apposta: il FIR non viene salvato`
+    )
+    this.name = 'FirmaSenzaUtenteError'
+  }
+}
+
+export class FirNonPiuInBozzaError extends DomainError {
+  constructor(firId: string) {
+    super(
+      `Il FIR ${firId} non è più in bozza: è già stato emesso o annullato da un'altra operazione`
+    )
+    this.name = 'FirNonPiuInBozzaError'
   }
 }
