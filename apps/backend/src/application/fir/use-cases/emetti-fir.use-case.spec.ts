@@ -306,7 +306,9 @@ describe('EmettiFIRUseCase', () => {
           return { avviata: false, motivo: 'CERTIFICATO_MANCANTE', esitoRegistrato: true }
         })
 
-        const result = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi'))
+        const result = await useCase.execute(
+          new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi')
+        )
 
         expect(result.isSuccess).toBe(true)
         expect(result.value).toBe(riletto)
@@ -321,7 +323,9 @@ describe('EmettiFIRUseCase', () => {
           return { avviata: false, motivo: 'CERTIFICATO_MANCANTE', esitoRegistrato: true }
         })
 
-        const result = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi'))
+        const result = await useCase.execute(
+          new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi')
+        )
 
         expect(result.isSuccess).toBe(true)
         expect(result.value.id).toBe(fir.id)

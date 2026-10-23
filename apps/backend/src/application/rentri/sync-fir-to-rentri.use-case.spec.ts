@@ -1271,7 +1271,9 @@ describe('SyncFIRToRENTRIUseCase', () => {
       fir.riapriTrasmissioneDopoVerifica()
       fir.clearDomainEvents()
       mockFIRRepository.findById.mockResolvedValue(fir)
-      mockRENTRIApiClient.attendiEsito.mockRejectedValue(new TransazioneRentriNonTrovataError('t-x'))
+      mockRENTRIApiClient.attendiEsito.mockRejectedValue(
+        new TransazioneRentriNonTrovataError('t-x')
+      )
 
       const result = await useCase.execute(fir.id, tenantId)
 

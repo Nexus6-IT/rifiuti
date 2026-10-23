@@ -6,7 +6,11 @@ import * as fs from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import Redis from 'ioredis'
-import { RENTRIApiClient, RentriApiError, TrasmissioneRentriIncertaError } from './rentri-api.client'
+import {
+  RENTRIApiClient,
+  RentriApiError,
+  TrasmissioneRentriIncertaError,
+} from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'

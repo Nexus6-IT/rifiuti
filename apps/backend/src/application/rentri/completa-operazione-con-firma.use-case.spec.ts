@@ -223,7 +223,9 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     try {
       const client = creaClient({
         // Un `expires_in` (durata del SAD) senza `sad` non cambia il limite: 120 s.
-        autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'handle-scaduto', expiresIn: 3600 }),
+        autorizzaFirmaRemota: jest
+          .fn()
+          .mockResolvedValue({ handle: 'handle-scaduto', expiresIn: 3600 }),
         verificaAutorizzazioneFirma: jest.fn().mockImplementation(async () => {
           adesso += 121_000
           return { stato: 'IN_ATTESA' }
@@ -511,7 +513,9 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
     const client = creaClient({
       leggiCertificatoFirmaRemota: jest
         .fn()
-        .mockRejectedValue(new Error('Il certificato di firma remota non è valido (stato: Revoked)')),
+        .mockRejectedValue(
+          new Error('Il certificato di firma remota non è valido (stato: Revoked)')
+        ),
     })
     const { useCase, firRepository } = creaAmbiente({ client })
 

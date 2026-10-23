@@ -4,7 +4,10 @@ import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.interface'
 import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
-import { CODICE_CERTIFICATO_MANCANTE, MESSAGGIO_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-credential.resolver'
+import {
+  CODICE_CERTIFICATO_MANCANTE,
+  MESSAGGIO_CERTIFICATO_MANCANTE,
+} from '../../infrastructure/rentri/rentri-credential.resolver'
 
 /**
  * Trasmetti FIR Secondo Modalità — Use Case
@@ -127,10 +130,14 @@ export class TrasmettiFIRSecondoModalitaUseCase {
     try {
       const fir = await this.firRepository.findById(firId)
       if (!fir) {
-        this.logger.error('Esito "certificato mancante" non registrato: FIR non trovato', undefined, {
-          firId,
-          tenantId,
-        })
+        this.logger.error(
+          'Esito "certificato mancante" non registrato: FIR non trovato',
+          undefined,
+          {
+            firId,
+            tenantId,
+          }
+        )
         return false
       }
       fir.markRENTRISyncFailed(MESSAGGIO_CERTIFICATO_MANCANTE, CODICE_CERTIFICATO_MANCANTE)
@@ -138,10 +145,13 @@ export class TrasmettiFIRSecondoModalitaUseCase {
       return true
     } catch (error) {
       if (error instanceof FirAnnullatoNelFrattempoError) {
-        this.logger.info('FIR annullato nel frattempo: esito "certificato mancante" non registrato', {
-          firId,
-          tenantId,
-        })
+        this.logger.info(
+          'FIR annullato nel frattempo: esito "certificato mancante" non registrato',
+          {
+            firId,
+            tenantId,
+          }
+        )
         return false
       }
       this.logger.error(

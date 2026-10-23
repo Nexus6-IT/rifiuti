@@ -200,7 +200,8 @@ function validaRevoca(certificatePem: string): ControlloCertificato {
     // (scadenza, coerenza chiave) restano quelli che decidono la validita'.
     return {
       esito: 'avvertimento',
-      messaggio: 'estensioni del certificato non analizzabili: lo stato di revoca non è verificabile',
+      messaggio:
+        'estensioni del certificato non analizzabili: lo stato di revoca non è verificabile',
     }
   }
 }

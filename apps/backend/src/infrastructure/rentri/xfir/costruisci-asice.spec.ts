@@ -222,9 +222,8 @@ describe('costruisciAsicE', () => {
     })
 
     it('ASiC con chiave RSA: invariato', async () => {
-      const { xml, signedInfo, signatureValue, certificatoBase64 } = await estraiFirma(
-        materialeFirmaDiTest()
-      )
+      const { xml, signedInfo, signatureValue, certificatoBase64 } =
+        await estraiFirma(materialeFirmaDiTest())
 
       expect(xml).not.toContain('ecdsa-sha256')
       const firma = Buffer.from(signatureValue, 'base64')

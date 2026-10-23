@@ -546,9 +546,13 @@ export class SyncFIRToRENTRIUseCase {
             await this.publishDomainEvents(fir)
           }
         } catch (salvataggio) {
-          this.logger.error(`Salvataggio dell'esito "certificato mancante" non riuscito`, salvataggio, {
-            firId,
-          })
+          this.logger.error(
+            `Salvataggio dell'esito "certificato mancante" non riuscito`,
+            salvataggio,
+            {
+              firId,
+            }
+          )
         }
         this.logger.warn(`FIR non trasmesso a RENTRI: azienda senza certificato`, {
           firId,
@@ -562,15 +566,15 @@ export class SyncFIRToRENTRIUseCase {
         }
       }
 
-    // FIR annullato nel frattempo: corsa prevista (il filtro HTTP risponde 409), non un
-    // guasto da segnalare. Lascia passare l'eccezione con una riga informativa.
-    if (error instanceof FirAnnullatoNelFrattempoError) {
-      this.logger.info(`FIR annullato nel frattempo: sincronizzazione RENTRI interrotta`, {
-        firId,
-        tenantId,
-      })
-      throw error
-    }
+      // FIR annullato nel frattempo: corsa prevista (il filtro HTTP risponde 409), non un
+      // guasto da segnalare. Lascia passare l'eccezione con una riga informativa.
+      if (error instanceof FirAnnullatoNelFrattempoError) {
+        this.logger.info(`FIR annullato nel frattempo: sincronizzazione RENTRI interrotta`, {
+          firId,
+          tenantId,
+        })
+        throw error
+      }
 
       this.logger.error(`Failed to sync FIR to RENTRI`, error, {
         firId,

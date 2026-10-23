@@ -103,7 +103,9 @@ describe('GetRentriDiagnosticaUseCase', () => {
       expect((await useCase.execute('tenant-altro')).certificato.origineCredenziale).toBe('nessuna')
 
       config.envTenantId = undefined
-      expect((await useCase.execute('tenant-pilota')).certificato.origineCredenziale).toBe('nessuna')
+      expect((await useCase.execute('tenant-pilota')).certificato.origineCredenziale).toBe(
+        'nessuna'
+      )
 
       credentialService.getForTenant.mockResolvedValue({
         clientId: 'c',

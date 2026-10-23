@@ -109,13 +109,19 @@ export class EmettiFIRUseCase {
       try {
         const riletto = await this.firRepository.findById(fir.id)
         if (riletto) return Result.ok<FIR>(riletto)
-        this.logger.warn('FIR non trovato nella rilettura dopo l’esito RENTRI: risposta con lo stato in memoria', {
-          firId: fir.id,
-        })
+        this.logger.warn(
+          'FIR non trovato nella rilettura dopo l’esito RENTRI: risposta con lo stato in memoria',
+          {
+            firId: fir.id,
+          }
+        )
       } catch (error: any) {
-        this.logger.warn('Rilettura del FIR dopo l’esito RENTRI non riuscita: risposta con lo stato in memoria', {
-          firId: fir.id,
-        })
+        this.logger.warn(
+          'Rilettura del FIR dopo l’esito RENTRI non riuscita: risposta con lo stato in memoria',
+          {
+            firId: fir.id,
+          }
+        )
       }
     }
 

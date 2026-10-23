@@ -285,8 +285,8 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
     }
 
     async registraTransazioneInAttesa(): Promise<boolean> {
-    return true
-  }
+      return true
+    }
 
     async elencaTrasmissioniRentriSospese(): Promise<Array<{ firId: string; tenantId: string }>> {
       return []

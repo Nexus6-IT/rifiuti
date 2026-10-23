@@ -466,7 +466,10 @@ describe('FirDetailComponent', () => {
         component.mostraRileggiEsito({ ...firNonAcquisito, rentriSyncStatus: 'FAILED' })
       ).toBeFalse()
       expect(
-        component.mostraRileggiEsito({ ...firNonAcquisito, rentriAzioneErrore: 'VERIFICA_SU_RENTRI' })
+        component.mostraRileggiEsito({
+          ...firNonAcquisito,
+          rentriAzioneErrore: 'VERIFICA_SU_RENTRI',
+        })
       ).toBeFalse()
       expect(
         component.mostraRileggiEsito({ ...firNonAcquisito, rentriNumeroFir: 'RENTRI-1' })

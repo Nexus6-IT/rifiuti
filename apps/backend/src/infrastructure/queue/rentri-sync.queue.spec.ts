@@ -76,7 +76,6 @@ describe('RENTRISyncQueue.addSyncJob', () => {
     expect(mockBull.add).toHaveBeenCalledTimes(1)
   })
 
-
   it.each(['waiting', 'delayed', 'prioritized', 'waiting-children'])(
     'job %s e richiesta con richiedeConferma: il job si sostituisce e il flag arriva nel data',
     async stato => {
