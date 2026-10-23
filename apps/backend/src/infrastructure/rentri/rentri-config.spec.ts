@@ -49,3 +49,16 @@ describe('loadRentriConfig: algoritmo di firma', () => {
     expect(loadRentriConfig(conEnv({})).algorithm).toBe('RS256')
   })
 })
+
+describe('loadRentriConfig: azienda legata alla credenziale env', () => {
+  it('RENTRI_ENV_TENANT_ID impostata: letta (trim) in envTenantId', () => {
+    expect(loadRentriConfig(conEnv({ RENTRI_ENV_TENANT_ID: ' tenant-pilota ' })).envTenantId).toBe(
+      'tenant-pilota'
+    )
+  })
+
+  it('RENTRI_ENV_TENANT_ID assente o vuota: envTenantId undefined (fail-closed)', () => {
+    expect(loadRentriConfig(conEnv({})).envTenantId).toBeUndefined()
+    expect(loadRentriConfig(conEnv({ RENTRI_ENV_TENANT_ID: '  ' })).envTenantId).toBeUndefined()
+  })
+})

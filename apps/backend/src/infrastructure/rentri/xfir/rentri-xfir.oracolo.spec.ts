@@ -66,7 +66,17 @@ describe('RentriXfirClient — validazione/upload/download xFIR contro la fake (
       credentialEncKey: 'test-enc-key',
     }
 
-    const credentialService = { getForTenant: jest.fn().mockResolvedValue(null) }
+    // Ogni azienda del test ha un certificato proprio (uguale a quello di prova): la
+    // credenziale env e' legata a una sola azienda (RENTRI_ENV_TENANT_ID).
+    const credentialService = {
+      getForTenant: jest.fn().mockResolvedValue({
+        clientId: config.clientId,
+        certificatePem: config.certificatePem,
+        privateKeyPem: config.privateKeyPem,
+        algorithm: config.algorithm,
+        environment: 'demo',
+      }),
+    }
     const logger: any = {
       setContext: jest.fn(),
       debug: jest.fn(),

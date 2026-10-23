@@ -92,6 +92,9 @@ const ETICHETTA_MOTIVO_ATTENZIONE: Record<string, string> = {
 
           <section class="surface-card" data-testid="rentri-diagnostica-certificato-scadenza">
             <h2 class="rentri-section-title">Certificato</h2>
+            <p data-testid="rentri-diagnostica-origine-credenziale">
+              Credenziale di firma: {{ etichettaOrigine(d.certificato.origineCredenziale) }}
+            </p>
             <p *ngIf="!d.certificato.configurato">Nessun certificato RENTRI configurato.</p>
             <ng-container *ngIf="d.certificato.configurato">
               <p>
@@ -251,6 +254,17 @@ export class RentriDiagnosticaComponent implements OnInit {
 
   etichettaAvviso(livello: LivelloAvvisoCertificato): string {
     return ETICHETTA_AVVISO_CERTIFICATO[livello]
+  }
+
+  etichettaOrigine(origine: 'tenant' | 'env' | 'nessuna'): string {
+    switch (origine) {
+      case 'tenant':
+        return "certificato proprio dell'azienda"
+      case 'env':
+        return 'credenziale globale del server (azienda pilota)'
+      default:
+        return 'Nessuna credenziale: caricare il certificato RENTRI, altrimenti le trasmissioni vengono rifiutate'
+    }
   }
 
   etichettaMotivo(motivo: string): string {

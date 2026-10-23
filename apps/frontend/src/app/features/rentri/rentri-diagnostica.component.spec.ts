@@ -13,6 +13,7 @@ function diagnostica(overrides: Partial<RentriDiagnostica> = {}): RentriDiagnost
       scadenza: '2027-01-01T00:00:00.000Z',
       giorniAllaScadenza: 100,
       livelloAvviso: 'ok',
+      origineCredenziale: 'tenant',
     },
     trasmissioniRecenti: [],
     formulariAttenzione: [],
@@ -76,6 +77,30 @@ describe('RentriDiagnosticaComponent', () => {
       html.querySelector('[data-testid="rentri-diagnostica-formulari-attenzione"]')
     ).not.toBeNull()
     expect(html.querySelector('[data-testid="rentri-diagnostica-limitatore-stato"]')).not.toBeNull()
+  })
+
+  it('mostra da dove verrebbe la credenziale di firma (sola lettura)', () => {
+    setup('OPERATOR')
+    service.diagnostica.and.returnValue(
+      of(
+        diagnostica({
+          certificato: {
+            configurato: false,
+            scadenza: null,
+            giorniAllaScadenza: null,
+            livelloAvviso: 'ok',
+            origineCredenziale: 'nessuna',
+          },
+        })
+      )
+    )
+
+    fixture.detectChanges()
+    const el = fixture.nativeElement.querySelector(
+      '[data-testid="rentri-diagnostica-origine-credenziale"]'
+    )
+
+    expect(el?.textContent).toContain('Nessuna credenziale')
   })
 
   it('mostra il messaggio del limitatore quando il tenant sta attendendo capacità', () => {

@@ -66,7 +66,17 @@ describe('Idempotenza della creazione del FIR contro la fake RENTRI (in-process)
       jwtTtlSeconds: 300,
       credentialEncKey: 'test-enc-key',
     }
-    const credentialService = { getForTenant: jest.fn().mockResolvedValue(null) }
+    // Ogni azienda del test ha un certificato proprio (uguale a quello di prova): la
+    // credenziale env e' legata a una sola azienda (RENTRI_ENV_TENANT_ID).
+    const credentialService = {
+      getForTenant: jest.fn().mockResolvedValue({
+        clientId: config.clientId,
+        certificatePem: config.certificatePem,
+        privateKeyPem: config.privateKeyPem,
+        algorithm: config.algorithm,
+        environment: 'demo',
+      }),
+    }
     const logger: any = {
       setContext: jest.fn(),
       debug: jest.fn(),

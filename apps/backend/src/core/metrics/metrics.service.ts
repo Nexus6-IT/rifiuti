@@ -35,6 +35,7 @@ export class MetricsService implements OnModuleInit {
   // RENTRI robustezza (R5 Task 5 — allarmi)
   public readonly rentriCertificateExpiryDays: Gauge
   public readonly rentriTenantLocked: Gauge
+  public readonly rentriCredentialEnvFallback: Counter
   public readonly rentriReconciliationDivergences: Counter
 
   // RENTRI robustezza (R5 Task 2 — limitatore preventivo per tenant)
@@ -138,6 +139,13 @@ export class MetricsService implements OnModuleInit {
     this.rentriTenantLocked = new Gauge({
       name: 'wasteflow_rentri_tenant_locked',
       help: "Indica (1) se il tenant ha ricevuto un 423 (risorsa bloccata) confermato dall'ultima risposta RENTRI, tornato a 0 alla prima risposta non-423 successiva (successo o altro errore). Non distingue un singolo 423 transitorio da un pattern persistente: quella distinzione è nella regola di allarme (increase(...) su una finestra di 1h), non in questo gauge.",
+      labelNames: ['tenant_id'],
+      registers: [this.registry],
+    })
+
+    this.rentriCredentialEnvFallback = new Counter({
+      name: 'rentri_credential_env_fallback_total',
+      help: "Numero di risoluzioni della credenziale RENTRI in cui un tenant ha usato la credenziale globale da env (RENTRI_ENV_TENANT_ID) invece di un certificato proprio, per tenant. Un valore che cresce indica un'azienda ancora senza certificato caricato.",
       labelNames: ['tenant_id'],
       registers: [this.registry],
     })

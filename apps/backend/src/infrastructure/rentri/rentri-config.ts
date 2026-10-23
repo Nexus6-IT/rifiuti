@@ -50,6 +50,12 @@ export interface RentriConfig {
   jwtTtlSeconds: number
   /** Secret per cifrare a riposo le chiavi private RENTRI per-tenant (AES-256-GCM). */
   credentialEncKey: string
+  /**
+   * Id dell'unica azienda autorizzata a firmare con la credenziale globale da env
+   * (`RENTRI_ENV_TENANT_ID`). Assente = nessuna azienda (fail-closed): RENTRI non
+   * deve vedere il titolare del certificato env agire sui registri di un'altra.
+   */
+  envTenantId?: string
 }
 
 /**
@@ -71,6 +77,7 @@ export function loadRentriConfig(config: ConfigService): RentriConfig {
     algorithm,
     jwtTtlSeconds: Number(config.get<string>('RENTRI_JWT_TTL_SECONDS')) || 300,
     credentialEncKey: config.get<string>('RENTRI_CREDENTIAL_ENC_KEY') || '',
+    envTenantId: config.get<string>('RENTRI_ENV_TENANT_ID')?.trim() || undefined,
   }
 }
 
