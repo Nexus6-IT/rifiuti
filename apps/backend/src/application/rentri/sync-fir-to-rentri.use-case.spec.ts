@@ -1163,6 +1163,77 @@ describe('SyncFIRToRENTRIUseCase', () => {
       )
       expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-IDEM')
       expect(mockFIRRepository.save).toHaveBeenCalledWith(fir)
+      // Anche il log finale conserva la transazione (l'esito sovrascrive il
+      // responsePayload intermedio).
+      const logFinale = mockSyncLogRepository.save.mock.calls.at(-1)[0]
+      expect(logFinale.status).toBe('SUCCESS')
+      expect(logFinale.responsePayload).toContain('t-1')
+    })
+
+    it('prenotazione riuscita ma il FIR riletto ha una transazione in attesa: ripresa, creaFormulario mai chiamato', async () => {
+      // Prima lettura: nessuna transazione. Fra lettura e prenotazione un altro
+      // job ha creato il formulario (t-altro) ed è fallito sul polling.
+      mockFIRRepository.findById
+        .mockResolvedValueOnce(firReale())
+        .mockResolvedValueOnce(firConTransazioneFallita('t-altro'))
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue(esitoPositivo)
+
+      const result = await useCase.execute('fir-x', tenantId)
+
+      expect(result.success).toBe(true)
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+      expect(mockRENTRIApiClient.attendiEsito).toHaveBeenCalledWith(tenantId, 't-altro')
+      expect(mockFIRRepository.findById).toHaveBeenCalledTimes(2)
+    })
+
+    it('quinto timeout del polling con transazione in attesa → RENTRI_TRASMISSIONE_INCERTA', async () => {
+      const fir = firReale()
+      fir.registraTransazioneInAttesa('t-x')
+      for (let i = 0; i < 4; i++) {
+        fir.avviaTentativoRentri(unOraFa())
+        fir.markRENTRISyncFailed('timeout del polling', 'RENTRI_API_ERROR')
+      }
+      fir.clearDomainEvents()
+      expect(fir.rentriTransazioneInAttesa).toBe('t-x')
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.attendiEsito.mockRejectedValue(new Error('Superato il numero massimo'))
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: false })
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
+      // Non è un vicolo cieco: l'operatore può riaprire dopo la verifica.
+      expect(() => fir.riapriTrasmissioneDopoVerifica()).not.toThrow()
+    })
+
+    it('403 sulla ripresa con transazione in attesa → RENTRI_TRASMISSIONE_INCERTA', async () => {
+      const fir = firConTransazioneFallita('t-x')
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.attendiEsito.mockRejectedValue(
+        new RentriApiError(403, 'Operazione non consentita', 'Certificato non riconosciuto', false)
+      )
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: false })
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
+      expect(mockSyncLogRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'RENTRI_TRASMISSIONE_INCERTA' })
+      )
+    })
+
+    it('errore fra prenotazione e POST: FAILED ritentabile, nessuna POST', async () => {
+      const fir = firReale()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockSyncLogRepository.createPending.mockRejectedValue(new Error('database irraggiungibile'))
+
+      await expect(useCase.execute(fir.id, tenantId)).rejects.toThrow('database irraggiungibile')
+
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+      expect(fir.rentriSyncStatus.getStatus()).toBe('FAILED')
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_API_ERROR')
+      expect(fir.needsRENTRIRetry()).toBe(true)
+      expect(mockFIRRepository.save).toHaveBeenCalledWith(fir)
     })
   })
 })

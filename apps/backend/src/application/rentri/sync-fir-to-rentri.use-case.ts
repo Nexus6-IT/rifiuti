@@ -95,8 +95,8 @@ export class SyncFIRToRENTRIUseCase {
     const startTime = Date.now()
 
     try {
-      // Load FIR aggregate
-      const fir = await this.firRepository.findById(firId)
+      // Load FIR aggregate (riletto dopo la prenotazione, v. sotto)
+      let fir = await this.firRepository.findById(firId)
 
       if (!fir) {
         throw DomainException.notFound('FIR', firId)
@@ -123,26 +123,25 @@ export class SyncFIRToRENTRIUseCase {
       }
 
       // Un SYNCING non passa canSyncToRENTRI ma può essere uno stallo da
-      // riprendere: lo decide la prenotazione, sulla soglia.
+      // riprendere: lo decide la prenotazione, sulla soglia. Resta quello della
+      // prima lettura: dopo la prenotazione il FIR è SYNCING per definizione, e
+      // uno stallo nuovo non può nascere nella finestra (servono 15 minuti).
       const eraSyncing = fir.rentriSyncStatus.getStatus() === 'SYNCING'
       if (!eraSyncing && !fir.canSyncToRENTRI()) {
         const reason = this.getSyncBlockReason(fir)
         throw DomainException.businessRuleViolation('CANNOT_SYNC_FIR', reason)
       }
-      // Letta PRIMA della prenotazione, che in DB non la tocca.
-      const transazioneInAttesa = fir.rentriTransazioneInAttesa ?? null
 
       // Il corpo si costruisce PRIMA del log e prima della chiamata: e' la
       // stessa struttura che finisce nel registro delle trasmissioni e sulla
       // rete, quindi il log non puo' divergere da cio' che e' stato spedito.
       // Se il FIR non ha i dati che il contratto richiede, qui si solleva un
       // errore e la trasmissione non parte affatto. Si costruisce anche prima
-      // della prenotazione: un errore di dati non deve lasciare in DB un
-      // SYNCING senza transazione, che fra 15 minuti sembrerebbe una POST
-      // interrotta. Serve solo a una trasmissione nuova (niente ripresa, niente
-      // stallo da chiudere).
-      const payload =
-        !transazioneInAttesa && !eraSyncing
+      // della prenotazione, cosi' un errore di dati non tocca il DB. Serve solo
+      // se la prima lettura indica una trasmissione nuova; la decisione vera la
+      // prende la rilettura.
+      let payload =
+        !fir.rentriTransazioneInAttesa && !eraSyncing
           ? await this.costruisciPayload.costruisci(fir, tenantId)
           : null
 
@@ -168,7 +167,24 @@ export class SyncFIRToRENTRIUseCase {
           attempts: fir.rentriSyncStatus.getAttempts(),
         }
       }
-      fir.avviaTentativoRentri(ora)
+
+      // Rilettura: fra la prima lettura e la prenotazione un altro job può aver
+      // creato il formulario e registrato la sua transazione (poi fallito sul
+      // polling, quindi FAILED e riprenotabile). La prenotazione non tocca
+      // `rentri_transazione_in_attesa`: il valore riletto è quello che conta
+      // per scegliere fra ripresa e nuova POST.
+      const riletto = await this.firRepository.findById(firId)
+      if (!riletto) throw DomainException.notFound('FIR', firId)
+      fir = riletto
+      const firPrenotato = riletto
+      const transazioneInAttesa = fir.rentriTransazioneInAttesa ?? null
+
+      // Da qui alla POST la prenotazione è nostra ma nulla è partito: un errore
+      // la rilascia come FAILED ritentabile, altrimenti fra 15 minuti il
+      // SYNCING senza transazione sembrerebbe una POST interrotta.
+      await this.primaDellaPost(fir, correlationId, async () =>
+        firPrenotato.avviaTentativoRentri(ora)
+      )
 
       // Stallo senza transazione: il worker precedente è morto dopo aver
       // (forse) spedito la POST ma prima del 202. Il formulario può esistere:
@@ -185,13 +201,22 @@ export class SyncFIRToRENTRIUseCase {
       }
 
       // Create sync log (in ripresa il corpo non si rispedisce: il log dice quale
-      // transazione si sta riprendendo).
-      let syncLog = await this.createSyncLog(
-        fir,
-        startTime,
-        payload ?? { ripresaTransazione: transazioneInAttesa }
-      )
+      // transazione si sta riprendendo). Il corpo si costruisce qui solo se la
+      // prima lettura vedeva una transazione che la rilettura non ha più.
+      const syncLog = await this.primaDellaPost(fir, correlationId, async () => {
+        if (!transazioneInAttesa && !payload) {
+          payload = await this.costruisciPayload.costruisci(firPrenotato, tenantId)
+        }
+        return this.createSyncLog(
+          firPrenotato,
+          startTime,
+          payload ?? { ripresaTransazione: transazioneInAttesa }
+        )
+      })
       let transazioneId: string | null = transazioneInAttesa
+      // Valorizzata solo se la prenotazione è andata persa dopo la POST: l'id va
+      // conservato anche nel log finale.
+      let transazionePersa: string | null = null
 
       try {
         // Call RENTRI API
@@ -211,7 +236,9 @@ export class SyncFIRToRENTRIUseCase {
         if (!transazioneId) {
           const creato = await this.rentriApiClient.creaFormulario(tenantId, payload!)
           transazioneId = creato.transazioneId
-          syncLog = await this.registraTransazione(fir, tenantId, transazioneId, ora, syncLog)
+          if (await this.registraTransazione(fir, tenantId, transazioneId, ora, syncLog)) {
+            transazionePersa = transazioneId
+          }
         }
         const esito = await this.rentriApiClient.attendiEsito(tenantId, transazioneId)
 
@@ -239,7 +266,7 @@ export class SyncFIRToRENTRIUseCase {
 
             const duration = Date.now() - startTime
             const failureLog = syncLog.markAsFailure({
-              responsePayload: JSON.stringify(esito),
+              responsePayload: rispostaDaRegistrare(esito, transazionePersa),
               errorMessage,
               errorCode: 'RENTRI_MISSING_NUMERO_FIR',
               durationMs: duration,
@@ -286,7 +313,7 @@ export class SyncFIRToRENTRIUseCase {
           // Update sync log
           const duration = Date.now() - startTime
           const successLog = syncLog.markAsSuccess({
-            responsePayload: JSON.stringify(esito),
+            responsePayload: rispostaDaRegistrare(esito, transazionePersa)!,
             protocolNumber: numeroFir,
             durationMs: duration,
           })
@@ -335,7 +362,7 @@ export class SyncFIRToRENTRIUseCase {
 
           const duration = Date.now() - startTime
           const failureLog = syncLog.markAsFailure({
-            responsePayload: JSON.stringify(esito),
+            responsePayload: rispostaDaRegistrare(esito, transazionePersa),
             errorMessage,
             errorCode: 'RENTRI_VALIDATION_ERROR',
             durationMs: duration,
@@ -376,7 +403,8 @@ export class SyncFIRToRENTRIUseCase {
             correlationId,
             syncLog,
             startTime,
-            { firId, transazioneId }
+            { firId, transazioneId },
+            rispostaDaRegistrare(undefined, transazionePersa)
           )
         }
 
@@ -412,10 +440,31 @@ export class SyncFIRToRENTRIUseCase {
             ? 'RENTRI_RATE_LIMITED'
             : 'RENTRI_API_ERROR'
 
+        // Transazione accettata dall'ente ma esito illeggibile, e questo
+        // fallimento chiuderebbe il FIR per sempre (codice non ritentabile o
+        // tentativi esauriti): il formulario può esistere, quindi si passa da
+        // trasmissione incerta, l'unico blocco che un operatore può riaprire.
+        // "Definitivo" lo calcola il VO (immutabile, nessun effetto sul FIR).
+        if (
+          fir.rentriTransazioneInAttesa &&
+          !fir.rentriSyncStatus.markAsFailed(errorMessage || errorCode, errorCode).canRetry()
+        ) {
+          return this.chiudiTrasmissioneIncerta(
+            fir,
+            `Esito della trasmissione non leggibile (${errorMessage}): verificare sul portale RENTRI se il formulario esiste`,
+            correlationId,
+            syncLog,
+            startTime,
+            { firId, transazioneId, errorCode },
+            rispostaDaRegistrare(undefined, transazionePersa)
+          )
+        }
+
         fir.markRENTRISyncFailed(errorMessage, errorCode, correlationId)
 
         const duration = Date.now() - startTime
         const failureLog = syncLog.markAsFailure({
+          responsePayload: rispostaDaRegistrare(undefined, transazionePersa),
           errorMessage,
           errorCode,
           durationMs: duration,
@@ -501,12 +550,14 @@ export class SyncFIRToRENTRIUseCase {
     correlationId: string | undefined,
     syncLog: RENTRISyncLog | null,
     startTime: number,
-    contesto: Record<string, unknown>
+    contesto: Record<string, unknown>,
+    responsePayload?: string
   ): Promise<SyncFIRToRENTRIResult> {
     fir.segnaTrasmissioneIncerta(motivo, correlationId)
 
     const failureLog =
       syncLog?.markAsFailure({
+        responsePayload,
         errorMessage: motivo,
         errorCode: 'RENTRI_TRASMISSIONE_INCERTA',
         durationMs: Date.now() - startTime,
@@ -542,7 +593,8 @@ export class SyncFIRToRENTRIUseCase {
    * l'id dopo una POST riuscita è proprio il doppione da evitare. L'id finisce
    * subito nel log di sync, si avvisa e si prosegue il polling; un esito
    * positivo salva comunque il legame (`rentri_numero_fir` non è fra le colonne
-   * che `save` protegge) e blocca nuove prenotazioni.
+   * che `save` protegge) e blocca nuove prenotazioni. Restituisce true se la
+   * prenotazione era persa: il chiamante conserva l'id anche nel log finale.
    */
   private async registraTransazione(
     fir: FIR,
@@ -550,7 +602,7 @@ export class SyncFIRToRENTRIUseCase {
     transazioneId: string,
     avviatoAt: Date,
     syncLog: RENTRISyncLog
-  ): Promise<RENTRISyncLog> {
+  ): Promise<boolean> {
     // Prima in memoria: se la scrittura in DB fallisce, il salvataggio del ramo
     // d'errore porta comunque la transazione in attesa.
     fir.registraTransazioneInAttesa(transazioneId)
@@ -560,30 +612,47 @@ export class SyncFIRToRENTRIUseCase {
       transazioneId,
       avviatoAt
     )
-    if (registrata) return syncLog
+    if (registrata) return false
 
-    const logConTransazione = new RENTRISyncLog(
-      syncLog.id,
-      syncLog.firId,
-      syncLog.tenantId,
-      syncLog.status,
-      syncLog.attempt,
-      syncLog.requestPayload,
-      JSON.stringify({ transazioneId, prenotazionePersa: true }),
-      syncLog.errorMessage,
-      syncLog.errorCode,
-      syncLog.protocolNumber,
-      syncLog.syncedAt,
-      syncLog.durationMs,
-      syncLog.createdAt,
-      syncLog.origine
+    // Stesso id del log: l'esito finale lo aggiorna (upsert).
+    await this.syncLogRepository.save(
+      syncLog.conResponsePayload(rispostaDaRegistrare(undefined, transazioneId)!)
     )
-    await this.syncLogRepository.save(logConTransazione)
     this.logger.warn(
       `Prenotazione RENTRI persa dopo la creazione del formulario: si prosegue il polling`,
       { firId: fir.id, transazioneId }
     )
-    return logConTransazione
+    return true
+  }
+
+  /**
+   * Passi fra la prenotazione e la POST: se uno solleva, nulla è stato spedito,
+   * quindi il tentativo si chiude come FAILED ritentabile (RENTRI_API_ERROR) e
+   * l'errore risale come oggi. Un fallimento di questo rilascio si registra e
+   * non copre l'errore originale.
+   */
+  private async primaDellaPost<T>(
+    fir: FIR,
+    correlationId: string | undefined,
+    passo: () => Promise<T>
+  ): Promise<T> {
+    try {
+      return await passo()
+    } catch (errore: any) {
+      try {
+        fir.markRENTRISyncFailed(
+          errore?.message || 'Errore prima della trasmissione a RENTRI',
+          'RENTRI_API_ERROR',
+          correlationId
+        )
+        await this.firRepository.save(fir)
+      } catch (rilascio) {
+        this.logger.error(`Rilascio della prenotazione RENTRI non riuscito`, rilascio, {
+          firId: fir.id,
+        })
+      }
+      throw errore
+    }
   }
 
   /**
@@ -666,6 +735,26 @@ export class SyncFIRToRENTRIUseCase {
       .map(v => `${v.campo ?? v.field ?? '?'}: ${v.codice_messaggio ?? v.message ?? 'errore'}`)
       .join('; ')
   }
+}
+
+/**
+ * `responsePayload` del log di sync. Se la prenotazione è andata persa dopo la
+ * POST, la transazione si aggiunge in chiaro accanto ai campi dell'esito (che
+ * restano al primo livello: `rentri-error-presentation` vi legge `validazione`),
+ * così l'id sopravvive anche al log finale.
+ */
+function rispostaDaRegistrare(
+  esito: object | undefined,
+  transazionePersa: string | null
+): string | undefined {
+  if (transazionePersa) {
+    return JSON.stringify({
+      ...(esito ?? {}),
+      transazioneId: transazionePersa,
+      prenotazionePersa: true,
+    })
+  }
+  return esito === undefined ? undefined : JSON.stringify(esito)
 }
 
 const ESITO_NON_SALVATO =

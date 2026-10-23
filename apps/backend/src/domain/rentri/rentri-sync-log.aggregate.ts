@@ -106,6 +106,30 @@ export class RENTRISyncLog {
   }
 
   /**
+   * Copia del log con un altro `responsePayload`, tutto il resto invariato:
+   * serve a fissare un dato (es. la transazione RENTRI) su un tentativo ancora
+   * PENDING senza chiuderlo.
+   */
+  conResponsePayload(responsePayload: string): RENTRISyncLog {
+    return new RENTRISyncLog(
+      this.id,
+      this.firId,
+      this.tenantId,
+      this.status,
+      this.attempt,
+      this.requestPayload,
+      responsePayload,
+      this.errorMessage,
+      this.errorCode,
+      this.protocolNumber,
+      this.syncedAt,
+      this.durationMs,
+      this.createdAt,
+      this.origine
+    )
+  }
+
+  /**
    * Mark sync as failed
    */
   markAsFailure(params: {
