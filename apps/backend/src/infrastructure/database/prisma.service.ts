@@ -1,13 +1,6 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common'
-import { PrismaClient } from '@prisma/client'
-
-@Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  async onModuleInit() {
-    await this.$connect()
-  }
-
-  async onModuleDestroy() {
-    await this.$disconnect()
-  }
-}
+/**
+ * Re-export di compatibilita': esiste UN SOLO PrismaService, quello di
+ * `infrastructure/persistence` (client base + vista `db` con l'estensione RLS).
+ * Due classi volevano dire due istanze e due pool di connessioni.
+ */
+export { PrismaService } from '../persistence/prisma.service'
