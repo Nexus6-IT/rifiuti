@@ -67,8 +67,9 @@ export class RENTRISyncStatus {
     // (o 403 sul polling): la transazione resta salvata e si rilegge solo su
     // richiesta dell'utente («Rileggi esito»), senza nuova POST.
     'RENTRI_ESITO_NON_ACQUISITO',
-    // L'azienda non ha un certificato RENTRI proprio: ritentare non lo crea. Si
-    // riapre da solo quando il certificato viene caricato (v. RentriCredentialService).
+    // L'azienda non ha un certificato RENTRI proprio: ritentare non lo crea. Si riapre
+    // al caricamento del certificato (v. RentriCredentialService): in AUTOMATICA/IBRIDA ripartono
+    // da soli, in MANUALE con «Trasmetti a RENTRI».
     'RENTRI_CERTIFICATO_MANCANTE',
   ])
 

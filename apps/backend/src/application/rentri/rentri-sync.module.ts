@@ -52,6 +52,7 @@ import { ConsumaNumeroVidimatoUseCase } from './scorta/consuma-numero-vidimato.u
 import { RentriRifornimentoScortaJob } from '../../infrastructure/jobs/rentri-rifornimento-scorta.job'
 import { RentriTrasmissioniSospeseJob } from '../../infrastructure/jobs/rentri-trasmissioni-sospese.job'
 import { RentriScortaController } from '../../api/rentri/rentri-scorta.controller'
+import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 
 /**
  * RentriSyncModule — cablaggio del sottosistema di sincronizzazione RENTRI (R0 Task 4).
@@ -179,6 +180,8 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
     RentriFormulariController,
     RentriFirLifecycleController,
     RentriScortaController,
+    // Qui e non in RentriModule: accoda i FIR riaperti dal caricamento del certificato (RENTRISyncQueue).
+    RentriCredentialController,
   ],
   providers: [
     FIRPrismaRepository,

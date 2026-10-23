@@ -20,6 +20,7 @@ import {
   HttpStatus,
   BadRequestException,
   UseGuards,
+  Logger,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -27,6 +28,9 @@ import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
+import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-modalita-legame.service'
+import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
+import * as Sentry from '@sentry/node'
 import { parsePkcs12 } from '../../infrastructure/rentri/rentri-pkcs12.util'
 import {
   algoritmoDaChiave,
@@ -77,7 +81,13 @@ interface CredentialStatusResponse {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN')
 export class RentriCredentialController {
-  constructor(private readonly credentialService: RentriCredentialService) {}
+  private readonly logger = new Logger(RentriCredentialController.name)
+
+  constructor(
+    private readonly credentialService: RentriCredentialService,
+    private readonly modalitaLegameService: RentriModalitaLegameService,
+    private readonly rentriSyncQueue: RENTRISyncQueue
+  ) {}
 
   @Put()
   @HttpCode(HttpStatus.OK)
@@ -155,7 +165,7 @@ export class RentriCredentialController {
       )
     }
 
-    await this.credentialService.upsertForTenant(user.tenantId, {
+    const firRiaperti = await this.credentialService.upsertForTenant(user.tenantId, {
       clientId: dto.clientId,
       certificatePem,
       privateKeyPem,
@@ -166,10 +176,47 @@ export class RentriCredentialController {
       credentialsIdFirmaRemota: dto.credentialsIdFirmaRemota,
     })
 
+    await this.riavviaFirRiaperti(user.tenantId, firRiaperti)
+
     // NON restituire mai chiave/cert.
     return avvertimenti.length > 0
       ? { success: true, algorithm, avvertimenti }
       : { success: true, algorithm }
+  }
+
+  /**
+   * Dopo il caricamento del certificato i FIR fermi per certificato mancante sono
+   * tornati PENDING (v. RentriCredentialService). In AUTOMATICA/IBRIDA li si accoda
+   * qui, a priorita bassa; in MANUALE nessun accodamento: l'utente preme «Trasmetti a
+   * RENTRI». L'accodamento sta nel controller e non nel service perche' la coda e'
+   * dichiarata in RentriSyncModule, che importa RentriModule: per questo anche il
+   * controller vive in RentriSyncModule. Un errore qui non fa fallire il caricamento
+   * del certificato (gia' salvato): log error + segnalazione, i FIR restano PENDING.
+   */
+  private async riavviaFirRiaperti(tenantId: string, firIds: string[]): Promise<void> {
+    if (firIds.length === 0) return
+    try {
+      const { modalitaLegame } = await this.modalitaLegameService.getForTenant(tenantId)
+      if (modalitaLegame === 'MANUALE') return
+      for (const firId of firIds) {
+        await this.rentriSyncQueue.addSyncJob({
+          firId,
+          tenantId,
+          richiedeConferma: modalitaLegame === 'IBRIDA',
+          priority: 'low',
+        })
+      }
+    } catch (error) {
+      this.logger.error(
+        `Accodamento dei FIR riaperti dopo il caricamento del certificato non riuscito (tenant ${tenantId}): il certificato e' comunque salvato`,
+        error instanceof Error ? error.stack : String(error)
+      )
+      try {
+        Sentry.captureException(error, { extra: { tenantId, fase: 'accodamento-fir-riaperti' } })
+      } catch {
+        /* Bugsink irraggiungibile: il caricamento del certificato non deve cambiare */
+      }
+    }
   }
 
   @Get()

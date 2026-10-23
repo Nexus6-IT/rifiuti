@@ -19,7 +19,6 @@ import { RentriRateLimiterService } from './rentri-rate-limiter.service'
 import { RedisConfig } from '../cache/redis.config'
 import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
 import { GetRentriDiagnosticaUseCase } from '../../application/rentri/get-rentri-diagnostica.use-case'
-import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
 import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
 import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
@@ -38,7 +37,6 @@ import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica
 @Module({
   imports: [ConfigModule, HttpModule, LoggerModule, MetricsModule, PrismaModule],
   controllers: [
-    RentriCredentialController,
     RentriModalitaLegameController,
     RentriUnitaLocaleController,
     RentriSitiController,

@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common'
 import { RentriCredentialService } from './rentri-credential.service'
 import { decryptSecret } from './rentri-crypto.util'
+import * as Sentry from '@sentry/node'
+
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
 /**
  * Verifica che la chiave privata RENTRI sia cifrata a riposo e mai persistita in
@@ -21,7 +24,10 @@ describe('RentriCredentialService', () => {
         count: jest.fn(),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
-      fIR: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      fIR: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
     }
     service = new RentriCredentialService(prisma, config)
   })
@@ -191,22 +197,24 @@ describe('RentriCredentialService', () => {
     })
   })
 
-  it('caricamento del certificato riapre i FIR fermi per certificato mancante di quel tenant, non di altri', async () => {
+  const input = { clientId: 'op-1', certificatePem: 'CERT', privateKeyPem: 'KEY' }
+
+  it('caricamento del certificato riapre i FIR fermi per certificato mancante di quel tenant, non di altri, e ne restituisce gli id', async () => {
+    prisma.fIR.findMany.mockResolvedValue([{ id: 'fir-1' }, { id: 'fir-2' }])
     prisma.fIR.updateMany.mockResolvedValue({ count: 2 })
 
-    await service.upsertForTenant('tenant-1', {
-      clientId: 'op-1',
-      certificatePem: 'CERT',
-      privateKeyPem: 'KEY',
-    })
+    const riaperti = await service.upsertForTenant('tenant-1', input)
 
-    expect(prisma.fIR.updateMany).toHaveBeenCalledTimes(1)
-    const args = prisma.fIR.updateMany.mock.calls[0][0]
-    expect(args.where).toEqual({
+    const filtro = {
       tenantId: 'tenant-1',
       rentriSyncStatus: 'PERMANENTLY_FAILED',
       rentriLastSyncErrorCode: 'RENTRI_CERTIFICATO_MANCANTE',
-    })
+      status: { not: 'CANCELLED' },
+    }
+    expect(prisma.fIR.findMany).toHaveBeenCalledWith({ where: filtro, select: { id: true } })
+    expect(prisma.fIR.updateMany).toHaveBeenCalledTimes(1)
+    const args = prisma.fIR.updateMany.mock.calls[0][0]
+    expect(args.where).toEqual({ ...filtro, id: { in: ['fir-1', 'fir-2'] } })
     expect(args.data).toEqual({
       rentriSyncStatus: 'PENDING',
       rentriSyncAttempts: 0,
@@ -214,19 +222,35 @@ describe('RentriCredentialService', () => {
       rentriLastSyncErrorCode: null,
       rentriNextRetryAt: null,
     })
+    expect(riaperti).toEqual(['fir-1', 'fir-2'])
+  })
+
+  it('nessun FIR fermo: nessun updateMany e lista vuota', async () => {
+    const riaperti = await service.upsertForTenant('tenant-1', input)
+
+    expect(prisma.fIR.updateMany).not.toHaveBeenCalled()
+    expect(riaperti).toEqual([])
+  })
+
+  it('riapertura fallita: il certificato resta salvato, errore loggato e segnalato', async () => {
+    prisma.fIR.findMany.mockRejectedValue(new Error('db giu'))
+
+    const riaperti = await service.upsertForTenant('tenant-1', input)
+
+    expect(prisma.rentriCredential.upsert).toHaveBeenCalledTimes(1)
+    expect(riaperti).toEqual([])
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ extra: expect.objectContaining({ tenantId: 'tenant-1' }) })
+    )
   })
 
   it('upsert non riuscito: nessuna riapertura dei FIR', async () => {
     prisma.rentriCredential.upsert.mockRejectedValue(new Error('db'))
 
-    await expect(
-      service.upsertForTenant('tenant-1', {
-        clientId: 'op-1',
-        certificatePem: 'CERT',
-        privateKeyPem: 'KEY',
-      })
-    ).rejects.toThrow('db')
+    await expect(service.upsertForTenant('tenant-1', input)).rejects.toThrow('db')
 
+    expect(prisma.fIR.findMany).not.toHaveBeenCalled()
     expect(prisma.fIR.updateMany).not.toHaveBeenCalled()
   })
 })

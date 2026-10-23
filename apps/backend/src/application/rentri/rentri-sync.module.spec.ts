@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing'
 import { ConfigModule } from '@nestjs/config'
 import { MODULE_METADATA } from '@nestjs/common/constants'
 import { RentriSyncModule } from './rentri-sync.module'
+import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
@@ -74,6 +75,8 @@ describe('RentriSyncModule (DI wiring)', () => {
     expect(moduleRef.get(TrasmettiFIRSecondoModalitaUseCase)).toBeDefined()
     expect(moduleRef.get(ConfermaLegameRENTRIUseCase)).toBeDefined()
     expect(moduleRef.get(RENTRISyncController)).toBeDefined()
+    // Il controller del certificato accoda i FIR riaperti: vive qui perche' la coda e' qui.
+    expect(moduleRef.get(RentriCredentialController)).toBeDefined()
 
     // RENTRIApiClient viene da RentriModule (importato): conferma che
     // l'iniezione cross-modulo funziona davvero, non solo che ogni pezzo si
