@@ -1,4 +1,6 @@
 import { BadRequestException } from '@nestjs/common'
+import { plainToInstance } from 'class-transformer'
+import { validate } from 'class-validator'
 import * as forge from 'node-forge'
 import { RentriCredentialController } from './rentri-credential.controller'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
@@ -250,6 +252,31 @@ describe('RentriCredentialController', () => {
 
       expect(res).toEqual({ success: true })
       expect(service.removeForTenant).toHaveBeenCalledWith('tenant-1')
+    })
+  })
+
+  describe('DTO: credentialsIdFirmaRemota (ca-rentri.yaml: 9 caratteri)', () => {
+    const erroriSuCredentialsId = async (valore: string) => {
+      const dto = plainToInstance(SetRentriCredentialDto, {
+        clientId: 'client-1',
+        certificatePem: 'pem',
+        privateKeyPem: 'key',
+        credentialsIdFirmaRemota: valore,
+      })
+      const errori = await validate(dto)
+      return errori.filter((e) => e.property === 'credentialsIdFirmaRemota')
+    }
+
+    it.each(['12345678', '1234567890'])('rifiuta %s (non 9 caratteri)', async (valore) => {
+      const errori = await erroriSuCredentialsId(valore)
+      expect(errori).toHaveLength(1)
+      expect(Object.values(errori[0].constraints ?? {})).toContain(
+        "L'identificativo delle credenziali di firma remota deve avere 9 caratteri"
+      )
+    })
+
+    it('accetta 9 caratteri', async () => {
+      expect(await erroriSuCredentialsId('CRED00001')).toHaveLength(0)
     })
   })
 })
