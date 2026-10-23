@@ -37,3 +37,24 @@ export function algoritmoDaChiave(privateKeyPem: string): 'RS256' | 'ES256' {
   }
   throw new TipoChiaveNonSupportatoError(tipo ?? 'sconosciuto')
 }
+
+/**
+ * Algoritmo con cui firmare davvero una credenziale gia' salvata o configurata:
+ * e' sempre quello ricavato dalla chiave; il valore `dichiarato` (colonna
+ * `algorithm`, RENTRI_JWT_ALG) e' solo informativo. Cosi' le righe vecchie con
+ * chiave RSA ed ES256 scelto per errore nel vecchio selettore tornano a firmare.
+ * `discordante` serve a chi chiama per un log warn (senza materiale di chiave).
+ * Se la chiave non e' ricavabile (illeggibile, curva non supportata) si ripiega
+ * sul dichiarato: la firma fallira' li' con un messaggio esplicito.
+ */
+export function algoritmoEffettivo(
+  privateKeyPem: string,
+  dichiarato: 'RS256' | 'ES256'
+): { algoritmo: 'RS256' | 'ES256'; discordante: boolean } {
+  try {
+    const algoritmo = algoritmoDaChiave(privateKeyPem)
+    return { algoritmo, discordante: algoritmo !== dichiarato }
+  } catch {
+    return { algoritmo: dichiarato, discordante: false }
+  }
+}

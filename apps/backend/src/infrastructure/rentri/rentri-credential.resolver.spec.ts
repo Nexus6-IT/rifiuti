@@ -1,4 +1,5 @@
 import { RentriCredentialResolver } from './rentri-credential.resolver'
+import * as forge from 'node-forge'
 import { TenantContext } from '../../core/context/tenant-context'
 
 /**
@@ -61,6 +62,23 @@ describe('RentriCredentialResolver', () => {
     const cred = await resolver.resolve()
     expect(cred.source).toBe('env')
     expect(credentialService.getForTenant).not.toHaveBeenCalled()
+  })
+
+  it("firma con l'algoritmo ricavato dalla chiave, non con la colonna: riga vecchia RSA + ES256", async () => {
+    const resolver = makeResolver()
+    credentialService.getForTenant.mockResolvedValue({
+      clientId: 'tenant-operator',
+      certificatePem: 'TENANT-CERT',
+      privateKeyPem: forge.pki.privateKeyToPem(forge.pki.rsa.generateKeyPair(2048).privateKey),
+      algorithm: 'ES256',
+      environment: 'live',
+    })
+
+    const cred = await TenantContext.run({ tenantId: 'tenant-A', userId: 'u1' }, () =>
+      resolver.resolve()
+    )
+
+    expect(cred.algorithm).toBe('RS256')
   })
 
   it("lancia se non c'è né credenziale tenant né fallback env", async () => {

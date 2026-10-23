@@ -1,10 +1,32 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as forge from 'node-forge'
-import { algoritmoDaChiave, TipoChiaveNonSupportatoError } from './algoritmo-da-chiave'
+import {
+  algoritmoDaChiave,
+  algoritmoEffettivo,
+  TipoChiaveNonSupportatoError,
+} from './algoritmo-da-chiave'
 
 const dir = path.resolve(__dirname, '../../../../../../tools/rentri-fake/test/fixture/ec')
 const leggi = (nome: string): string => fs.readFileSync(path.join(dir, nome), 'utf8')
+
+describe('algoritmoEffettivo', () => {
+  const ec = leggi('operatore-test-ec.key')
+  const rsa = forge.pki.privateKeyToPem(forge.pki.rsa.generateKeyPair(2048).privateKey)
+
+  it("l'algoritmo e' sempre quello della chiave; discordante solo se la colonna differisce", () => {
+    expect(algoritmoEffettivo(ec, 'ES256')).toEqual({ algoritmo: 'ES256', discordante: false })
+    expect(algoritmoEffettivo(rsa, 'ES256')).toEqual({ algoritmo: 'RS256', discordante: true })
+    expect(algoritmoEffettivo(ec, 'RS256')).toEqual({ algoritmo: 'ES256', discordante: true })
+  })
+
+  it('chiave non ricavabile: ripiega sul valore dichiarato (la firma fallira con messaggio esplicito)', () => {
+    expect(algoritmoEffettivo('NON-UNA-CHIAVE', 'ES256')).toEqual({
+      algoritmo: 'ES256',
+      discordante: false,
+    })
+  })
+})
 
 describe('algoritmoDaChiave', () => {
   it('algoritmoDaChiave: EC P-256 → ES256, RSA → RS256, P-384 → TipoChiaveNonSupportatoError', () => {

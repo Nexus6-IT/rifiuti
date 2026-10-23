@@ -1,4 +1,5 @@
-import { Injectable, Inject } from '@nestjs/common'
+import { Injectable, Inject, Logger } from '@nestjs/common'
+import { algoritmoEffettivo } from './certificato/algoritmo-da-chiave'
 import { TenantContext } from '../../core/context/tenant-context'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriCredentialService } from './rentri-credential.service'
@@ -31,6 +32,8 @@ export interface ResolvedRentriCredential {
  */
 @Injectable()
 export class RentriCredentialResolver {
+  private readonly logger = new Logger(RentriCredentialResolver.name)
+
   constructor(
     private readonly credentialService: RentriCredentialService,
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig
@@ -46,7 +49,7 @@ export class RentriCredentialResolver {
           clientId: cred.clientId,
           certificatePem: cred.certificatePem,
           privateKeyPem: cred.privateKeyPem,
-          algorithm: cred.algorithm,
+          algorithm: this.algoritmo(cred.privateKeyPem, cred.algorithm),
           source: 'tenant',
         }
       }
@@ -58,7 +61,7 @@ export class RentriCredentialResolver {
         clientId: this.config.clientId,
         certificatePem: this.config.certificatePem,
         privateKeyPem: this.config.privateKeyPem,
-        algorithm: this.config.algorithm,
+        algorithm: this.algoritmo(this.config.privateKeyPem, this.config.algorithm),
         source: 'env',
       }
     }
@@ -68,5 +71,16 @@ export class RentriCredentialResolver {
         ? `RENTRI: nessuna credenziale per il tenant ${tenantId} e nessun fallback da env`
         : 'RENTRI: nessun TenantContext e nessuna credenziale di fallback da env'
     )
+  }
+
+  /** Algoritmo di firma = quello della chiave; la colonna `algorithm` e' solo informativa. */
+  private algoritmo(privateKeyPem: string, dichiarato: 'RS256' | 'ES256'): 'RS256' | 'ES256' {
+    const { algoritmo, discordante } = algoritmoEffettivo(privateKeyPem, dichiarato)
+    if (discordante) {
+      this.logger.warn(
+        `Algoritmo RENTRI salvato (${dichiarato}) diverso da quello della chiave (${algoritmo}): si firma con ${algoritmo}`
+      )
+    }
+    return algoritmo
   }
 }
