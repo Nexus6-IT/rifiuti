@@ -2,6 +2,7 @@ import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
 import { corpoFormularioValido } from '../../application/rentri/mappatura/aiuti-test'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -62,7 +63,11 @@ describe('RENTRIApiClient — verifica reale contro la fake RENTRI (in-process)'
       info: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
@@ -163,7 +168,10 @@ describe('RENTRIApiClient — verifica reale contro la fake RENTRI (in-process)'
     // registro anti-replay della fake rifiuta un `jti` già visto: ogni
     // richiesta ha bisogno del proprio JWT, mai lo stesso riusato due volte.
     const auth = new RentriAuthService(
-      { getForTenant: jest.fn().mockResolvedValue(null) } as any,
+      new RentriCredentialResolver(
+        { getForTenant: jest.fn().mockResolvedValue(null) } as any,
+        (client as any).config
+      ),
       (client as any).config,
       { setContext: jest.fn(), debug: jest.fn(), info: jest.fn(), error: jest.fn() } as any
     )

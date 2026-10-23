@@ -74,7 +74,11 @@ describe('RentriXfirClient — validazione/upload/download xFIR contro la fake (
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const credentialResolver = new RentriCredentialResolver(credentialService as any, config)
     const signature = new RentriSignatureService(config, credentialResolver)
     const metrics: any = {

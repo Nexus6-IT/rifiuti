@@ -3,6 +3,7 @@ import { AxiosResponse } from 'axios'
 import Redis from 'ioredis'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
 import { RedisConfig } from '../cache/redis.config'
 import {
@@ -130,7 +131,11 @@ describe('RentriRateLimiterService — sotto carico reale contro la fake RENTRI 
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },

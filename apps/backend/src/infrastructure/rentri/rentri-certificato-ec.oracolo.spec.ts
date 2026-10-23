@@ -4,6 +4,7 @@ import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriSignatureService } from './rentri-signature.service'
 import { RentriConfig } from './rentri-config'
 import { parsePkcs12 } from './rentri-pkcs12.util'
@@ -76,7 +77,11 @@ describe('RENTRIApiClient con certificato EC (contro la fake RENTRI, in-process)
       error: jest.fn(),
     }
     const credentialService = { getForTenant: jest.fn().mockResolvedValue(null) }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     // Firma di integrita' REALE (non mockata): e' lei che porta ES256 nell'header Agid-JWT-Signature.
     const resolver: any = {
       resolve: jest.fn().mockResolvedValue({
@@ -118,7 +123,7 @@ describe('RENTRIApiClient con certificato EC (contro la fake RENTRI, in-process)
     }
 
     const client = new RENTRIApiClient(httpService, logger, metrics, config, auth, signature)
-    const { transazioneId } = await client.creaFormulario('', corpoFormularioValido())
+    const { transazioneId } = await client.creaFormulario('tenant-ec', corpoFormularioValido())
 
     expect(statoRisposta).toBe(202)
     expect(transazioneId).toBeTruthy()

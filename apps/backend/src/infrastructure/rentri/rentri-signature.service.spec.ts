@@ -49,7 +49,7 @@ describe('RentriSignatureService', () => {
 
   it('produce header Digest + Agid-JWT-Signature firmati e verificabili', async () => {
     const body = JSON.stringify({ firId: 'fir-1', quantita: 100 })
-    const headers = await service.buildIntegrityHeaders(body)
+    const headers = await service.buildIntegrityHeaders(body, 'tenant-a')
 
     expect(headers['Digest']).toBe(service.computeDigest(body))
     const token = headers[RentriSignatureService.SIGNATURE_HEADER]
@@ -66,12 +66,46 @@ describe('RentriSignatureService', () => {
   })
 
   it('include la catena x5c negli header JOSE', async () => {
-    const headers = await service.buildIntegrityHeaders('{"x":1}')
+    const headers = await service.buildIntegrityHeaders('{"x":1}', 'tenant-a')
     const token = headers[RentriSignatureService.SIGNATURE_HEADER]
     const decodedComplete: any = jwt.decode(token, { complete: true })
 
     expect(decodedComplete.header.typ).toBe('JWT')
     expect(decodedComplete.header.alg).toBe('RS256')
     expect(decodedComplete.header.x5c).toEqual(pemChainToX5c(cert.certificatePem))
+  })
+
+  it('buildIntegrityHeaders con tenant esplicito e senza TenantContext usa la credenziale del tenant', async () => {
+    const altro = generateTestCert()
+    const resolver: any = {
+      resolve: jest.fn().mockImplementation(async (tenantId: string) => ({
+        clientId: tenantId === 'tenant-a' ? 'operatore-a' : 'operatore-env',
+        certificatePem: tenantId === 'tenant-a' ? altro.certificatePem : cert.certificatePem,
+        privateKeyPem: tenantId === 'tenant-a' ? altro.privateKeyPem : cert.privateKeyPem,
+        algorithm: 'RS256',
+        source: 'tenant',
+      })),
+    }
+    const config: any = {
+      signatureAudience: 'https://demoapi.rentri.gov.it',
+      jwtTtlSeconds: 300,
+    }
+    const svc = new RentriSignatureService(config, resolver)
+
+    // fuori da TenantContext.run: come in un worker BullMQ
+    const headers = await svc.buildIntegrityHeaders('{"x":1}', 'tenant-a')
+
+    expect(resolver.resolve).toHaveBeenCalledWith('tenant-a')
+    const token = headers[RentriSignatureService.SIGNATURE_HEADER]
+    const decoded: any = jwt.verify(token, altro.publicKeyPem, { algorithms: ['RS256'] })
+    expect(decoded.iss).toBe('operatore-a')
+    const complete: any = jwt.decode(token, { complete: true })
+    expect(complete.header.x5c).toEqual(pemChainToX5c(altro.certificatePem))
+  })
+
+  it('buildIntegrityHeaders con tenant vuoto → errore', async () => {
+    await expect(service.buildIntegrityHeaders('{"x":1}', '')).rejects.toThrow(
+      'Firma di integrità RENTRI senza tenant'
+    )
   })
 })

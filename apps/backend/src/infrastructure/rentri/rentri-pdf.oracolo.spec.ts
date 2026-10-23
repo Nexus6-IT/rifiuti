@@ -2,6 +2,7 @@ import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
 import { ScaricaPdfFirUseCase } from '../../application/rentri/scarica-pdf-fir.use-case'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
@@ -61,7 +62,11 @@ describe('ScaricaPdfFirUseCase / RENTRIApiClient.scaricaPdf — contro la fake R
 
     const credentialService = { getForTenant: jest.fn().mockResolvedValue(null) }
     const logger = creaLogger()
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },

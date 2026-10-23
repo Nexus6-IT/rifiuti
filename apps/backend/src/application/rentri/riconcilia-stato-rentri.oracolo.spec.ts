@@ -3,6 +3,7 @@ import { AxiosResponse } from 'axios'
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
 import { RentriAuthService } from '../../infrastructure/rentri/rentri-auth.service'
+import { RentriCredentialResolver } from '../../infrastructure/rentri/rentri-credential.resolver'
 import { RentriConfig } from '../../infrastructure/rentri/rentri-config'
 import { corpoFormularioValido } from './mappatura/aiuti-test'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -87,7 +88,11 @@ describe('RiconciliaStatoRentriUseCase — contro la fake RENTRI (transazione re
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },

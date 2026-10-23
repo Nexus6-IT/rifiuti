@@ -3,6 +3,7 @@ import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
 import { corpoFormularioValido } from './mappatura/aiuti-test'
 import { RentriAuthService } from '../../infrastructure/rentri/rentri-auth.service'
+import { RentriCredentialResolver } from '../../infrastructure/rentri/rentri-credential.resolver'
 import { RentriConfig } from '../../infrastructure/rentri/rentri-config'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { formattaNumeroFir } from '../../domain/fir/numero-fir'
@@ -84,7 +85,11 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },

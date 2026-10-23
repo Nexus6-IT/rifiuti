@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import Redis from 'ioredis'
 import { RENTRIApiClient, RentriApiError, TrasmissioneRentriIncertaError } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
 import { RedisConfig } from '../cache/redis.config'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
@@ -81,7 +82,11 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     // R5 Task 6, Step 2/3: alcuni test qui sotto passano una MetricsService
     // REALE (non un doppio) per interrogare `/metrics` per davvero — v. le

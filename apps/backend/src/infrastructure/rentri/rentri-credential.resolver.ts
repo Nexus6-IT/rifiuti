@@ -18,17 +18,18 @@ export interface ResolvedRentriCredential {
  * Risolve la credenziale RENTRI da usare per la richiesta corrente.
  *
  * Modello multi-tenant: ogni tenant usa il PROPRIO certificato di
- * interoperabilità. Il resolver legge il tenant dal {@link TenantContext} e:
+ * interoperabilità. Il tenant è passato in modo ESPLICITO a {@link resolve}
+ * (è l'unico punto di risoluzione, usato sia dal JWT `Authorization` sia dalla
+ * firma di integrità `Agid-JWT-Signature`):
  *  1. se il tenant ha una credenziale configurata → usa quella;
- *  2. altrimenti ricade sulle credenziali globali da env (utile per pilota
- *     single-operator / sviluppo).
+ *  2. altrimenti ricade sulle credenziali globali da env (pilota
+ *     single-operator / sviluppo), loggando un warn con l'id del tenant.
  *
  * Se in modalità `live` non c'è né credenziale del tenant né fallback da env,
  * lancia un errore esplicito (non si può firmare senza certificato).
  *
- * NB: perché la risoluzione per-tenant funzioni, la chiamata RENTRI deve essere
- * eseguita entro il contesto del tenant (TenantContext.run). I job che
- * sincronizzano FIR per più tenant devono impostare il contesto per ciascun FIR.
+ * Senza tenant esplicito si ricade sul {@link TenantContext} (con un warn): nei
+ * worker BullMQ il contesto non c'è, quindi i chiamanti devono passare il tenant.
  */
 @Injectable()
 export class RentriCredentialResolver {
@@ -39,8 +40,14 @@ export class RentriCredentialResolver {
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig
   ) {}
 
-  async resolve(): Promise<ResolvedRentriCredential> {
-    const tenantId = TenantContext.getTenantId()
+  async resolve(tenantIdEsplicito?: string): Promise<ResolvedRentriCredential> {
+    let tenantId: string | undefined = tenantIdEsplicito
+    if (!tenantId) {
+      tenantId = TenantContext.getTenantId() ?? undefined
+      this.logger.warn(
+        'risoluzione della credenziale RENTRI dal contesto: passare il tenant in modo esplicito'
+      )
+    }
 
     if (tenantId) {
       const cred = await this.credentialService.getForTenant(tenantId)
@@ -57,6 +64,12 @@ export class RentriCredentialResolver {
 
     // Fallback: credenziale globale da env (pilota single-operator / dev).
     if (this.config.certificatePem && this.config.privateKeyPem) {
+      if (tenantIdEsplicito) {
+        // Mai materiale di chiave nel log: solo l'id del tenant.
+        this.logger.warn(
+          `Il tenant ${tenantIdEsplicito} non ha una credenziale RENTRI propria: si firma con la credenziale globale da env`
+        )
+      }
       return {
         clientId: this.config.clientId,
         certificatePem: this.config.certificatePem,

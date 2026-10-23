@@ -1,6 +1,9 @@
 import * as jwt from 'jsonwebtoken'
+import { Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
+import { RentriSignatureService } from './rentri-signature.service'
 import { RentriConfig } from './rentri-config'
 import { generateTestCert, TestCert } from '../../../test/utils/rentri-test-cert'
 
@@ -38,12 +41,16 @@ describe('RentriAuthService', () => {
   })
 
   function makeService(config: RentriConfig = baseConfig()) {
-    return new RentriAuthService(credentialService as any, config, logger)
+    return new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
   }
 
   describe('algoritmo ricavato dalla chiave', () => {
     it('riga con chiave RSA ed ES256 scelto per errore: firma RS256 e logga un warn senza materiale di chiave', async () => {
-      logger.warn = jest.fn()
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
       credentialService.getForTenant.mockResolvedValue({
         clientId: 'operatore-test',
         certificatePem: cert.certificatePem,
@@ -56,8 +63,9 @@ describe('RentriAuthService', () => {
 
       const decoded: any = jwt.decode(header.replace('Bearer ', ''), { complete: true })
       expect(decoded.header.alg).toBe('RS256')
-      expect(logger.warn).toHaveBeenCalledTimes(1)
-      const messaggio = JSON.stringify(logger.warn.mock.calls)
+      expect(warn).toHaveBeenCalledTimes(1)
+      const messaggio = JSON.stringify(warn.mock.calls)
+      warn.mockRestore()
       expect(messaggio).toContain('ES256')
       expect(messaggio).toContain('RS256')
       expect(messaggio).not.toContain('PRIVATE KEY')
@@ -180,6 +188,38 @@ describe('RentriAuthService', () => {
       await expect(service.creaAuthorizationHeader('tenant-senza-nulla')).rejects.toThrow(
         'nessuna credenziale'
       )
+    })
+  })
+
+  describe('una sola credenziale per le due firme', () => {
+    it('creaAuthorizationHeader e buildIntegrityHeaders per lo stesso tenant usano la stessa credenziale', async () => {
+      credentialService.getForTenant.mockImplementation(async (t: string) =>
+        t === 'tenant-1'
+          ? {
+              clientId: 'operatore-tenant-1',
+              certificatePem: cert.certificatePem,
+              privateKeyPem: cert.privateKeyPem,
+              algorithm: 'RS256',
+              environment: 'demo',
+            }
+          : null
+      )
+      const config = baseConfig({ clientId: 'env-operator' })
+      const resolver = new RentriCredentialResolver(credentialService as any, config)
+      const auth = new RentriAuthService(resolver, config, logger)
+      const firma = new RentriSignatureService(config, resolver)
+
+      // fuori da TenantContext: come in un worker
+      const bearer = await auth.creaAuthorizationHeader('tenant-1')
+      const integrita = await firma.buildIntegrityHeaders('{"a":1}', 'tenant-1')
+
+      const a: any = jwt.decode(bearer.replace('Bearer ', ''), { complete: true })
+      const i: any = jwt.decode(integrita[RentriSignatureService.SIGNATURE_HEADER], {
+        complete: true,
+      })
+      expect(a.payload.iss).toBe('operatore-tenant-1')
+      expect(i.payload.iss).toBe('operatore-tenant-1')
+      expect(i.header.x5c).toEqual(a.header.x5c)
     })
   })
 

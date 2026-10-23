@@ -94,4 +94,38 @@ describe('RentriCredentialResolver', () => {
       TenantContext.run({ tenantId: 'tenant-A', userId: 'u1' }, () => resolver.resolve())
     ).rejects.toThrow('nessuna credenziale')
   })
+
+  it('resolve(tenantId) non legge il TenantContext', async () => {
+    const resolver = makeResolver()
+    credentialService.getForTenant.mockResolvedValue({
+      clientId: 'op-a',
+      certificatePem: 'CERT-A',
+      privateKeyPem: 'KEY-A',
+      algorithm: 'RS256',
+      environment: 'live',
+    })
+
+    const cred = await TenantContext.run({ tenantId: 'tenant-b', userId: 'u1' }, () =>
+      resolver.resolve('tenant-a')
+    )
+
+    expect(credentialService.getForTenant).toHaveBeenCalledTimes(1)
+    expect(credentialService.getForTenant).toHaveBeenCalledWith('tenant-a')
+    expect(cred.clientId).toBe('op-a')
+  })
+
+  it("tenant senza credenziale con env: warn con l'id del tenant, nessun materiale di chiave", async () => {
+    const resolver = makeResolver()
+    credentialService.getForTenant.mockResolvedValue(null)
+    const warn = jest.spyOn((resolver as any).logger, 'warn').mockImplementation(() => undefined)
+
+    const cred = await resolver.resolve('tenant-a')
+
+    expect(cred.source).toBe('env')
+    expect(warn).toHaveBeenCalledTimes(1)
+    const testo = JSON.stringify(warn.mock.calls)
+    expect(testo).toContain('tenant-a')
+    expect(testo).not.toContain('ENV-KEY')
+    expect(testo).not.toContain('ENV-CERT')
+  })
 })

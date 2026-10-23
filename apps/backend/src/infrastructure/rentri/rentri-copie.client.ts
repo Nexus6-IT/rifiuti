@@ -547,10 +547,10 @@ export class RentriCopieClient {
     const url = `${this.config.baseUrl}${RentriCopieClient.FORMULARI_PATH}${contesto}`
 
     for (let tentativo = 1; tentativo <= RentriCopieClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
-      const authorization = await this.auth.creaAuthorizationHeader(
-        tenantId ?? this.tenantIdCorrente()
-      )
-      const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody)
+      // Stesso tenant effettivo per Bearer e firma di integrità.
+      const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
+      const authorization = await this.auth.creaAuthorizationHeader(tenantEffettivo)
+      const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody, tenantEffettivo)
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Authorization: authorization,
@@ -687,14 +687,14 @@ export class RentriCopieClient {
     const url = `${this.config.baseUrl}${path}`
 
     for (let tentativo = 1; tentativo <= RentriCopieClient.MAX_TENTATIVI_RESILIENZA; tentativo++) {
-      const authorization = await this.auth.creaAuthorizationHeader(
-        tenantId ?? this.tenantIdCorrente()
-      )
+      // Stesso tenant effettivo per Bearer e firma di integrità.
+      const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
+      const authorization = await this.auth.creaAuthorizationHeader(tenantEffettivo)
       const headers: Record<string, string> = { Authorization: authorization }
       if (corpo !== undefined) {
         const rawBody = JSON.stringify(corpo)
         headers['Content-Type'] = 'application/json'
-        Object.assign(headers, await this.signature.buildIntegrityHeaders(rawBody))
+        Object.assign(headers, await this.signature.buildIntegrityHeaders(rawBody, tenantEffettivo))
       }
 
       try {

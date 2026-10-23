@@ -2,6 +2,7 @@ import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RentriCodificheClient } from '../../infrastructure/rentri/codifiche/rentri-codifiche.client'
 import { RentriAuthService } from '../../infrastructure/rentri/rentri-auth.service'
+import { RentriCredentialResolver } from '../../infrastructure/rentri/rentri-credential.resolver'
 import { RentriConfig } from '../../infrastructure/rentri/rentri-config'
 import { RentriCodificheSempliciSyncService } from './rentri-codifiche-semplici-sync.service'
 import { RentriTerritorialiSyncService } from './rentri-territoriali-sync.service'
@@ -63,7 +64,11 @@ describe('Sync codifiche/territoriali RENTRI — verifica reale contro la fake (
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const metrics: any = { rentriApiErrors: { inc: jest.fn() } }
 
     const httpService: any = {

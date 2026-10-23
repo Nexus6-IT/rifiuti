@@ -2,6 +2,7 @@ import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
 import { GetAzioniDisponibiliUseCase } from '../../application/rentri/get-azioni-disponibili.use-case'
 import { GestisciAllegatiFIRUseCase } from '../../application/rentri/gestisci-allegati-fir.use-case'
@@ -64,7 +65,11 @@ describe('GestisciAllegatiFIRUseCase — ciclo allegati contro la fake RENTRI (i
 
     const credentialService = { getForTenant: jest.fn().mockResolvedValue(null) }
     const logger = creaLogger()
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
