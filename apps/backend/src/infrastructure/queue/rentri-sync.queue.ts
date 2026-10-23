@@ -110,19 +110,39 @@ export class RENTRISyncQueue implements OnModuleInit {
     if (esistente) {
       const stato = await esistente.getState()
       if (['waiting', 'delayed', 'active', 'prioritized', 'waiting-children'].includes(stato)) {
-        this.logger.info('RENTRI sync job già presente per il FIR, non riaccodato', {
-          jobId,
-          firId,
-          tenantId,
-          stato,
-        })
-        return esistente.id as string
-      }
-      if (stato === 'completed' || stato === 'failed') {
+        // Una richiesta con un flag di conferma che il job vivo non porta non
+        // può essere assorbita in silenzio: il job vecchio girerebbe senza.
+        const flagMancanti = [
+          confermaNuovaTrasmissione && !esistente.data?.confermaNuovaTrasmissione
+            ? 'confermaNuovaTrasmissione'
+            : null,
+          richiedeConferma && !esistente.data?.richiedeConferma ? 'richiedeConferma' : null,
+        ].filter((f): f is string => f !== null)
+
+        if (flagMancanti.length > 0) {
+          if (stato === 'active') {
+            this.logger.warn(
+              'RENTRI sync job già in esecuzione: le opzioni richieste non possono essere applicate',
+              { jobId, firId, tenantId, flagMancanti }
+            )
+            return esistente.id as string
+          }
+          // In attesa/ritardato (es. backoff dopo un errore): si sostituisce
+          // con un job che porta i flag richiesti, stesso jobId.
+          await esistente.remove()
+        } else {
+          this.logger.info('RENTRI sync job già presente per il FIR, non riaccodato', {
+            jobId,
+            firId,
+            tenantId,
+            stato,
+          })
+          return esistente.id as string
+        }
+      } else if (stato === 'completed' || stato === 'failed') {
         await esistente.remove()
       }
     }
-
     const job = await this.queue.add(
       'sync-fir',
       {

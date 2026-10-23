@@ -188,6 +188,8 @@ describe('RENTRISyncJobProcessor', () => {
 
       expect(result.success).toBe(false)
       expect(mockLogger.info).toHaveBeenCalled()
+      expect(mockJob.updateProgress).not.toHaveBeenCalledWith(100)
+      expect(mockMetrics.firSyncDuration.observe).not.toHaveBeenCalled()
     })
 
     it('confermaNuovaTrasmissione: passa l’opzione esplicita al use case', async () => {
