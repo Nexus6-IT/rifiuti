@@ -192,9 +192,9 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
     }
   )
 
-  // POST /credentials/sign-hash — firma davvero, solo se autorizzata.
+  // POST /signatures/sign-hash — firma davvero, solo se autorizzata.
   app.post<{ Body: CorpoSignHash }>(
-    `${PREFISSO}/credentials/sign-hash`,
+    `${PREFISSO}/signatures/sign-hash`,
     async (richiesta, risposta) => {
       if (!(await autentica(richiesta, risposta, archivio))) return
 

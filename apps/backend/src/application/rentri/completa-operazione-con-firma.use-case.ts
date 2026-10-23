@@ -139,7 +139,7 @@ export interface ComandoCompletaOperazioneConFirma {
  * 3. `POST /{numero_fir}/hash` → `digest_to_sign`, `token`.
  * 4. `POST /ca-rentri/.../credentials/authorize` → `sad`, `handle`, `expires_in`.
  * 5. Polling di `authorize-check` (202 → attendi, 200 → autorizzata).
- * 6. `POST /ca-rentri/.../credentials/sign-hash` → firma.
+ * 6. `POST /ca-rentri/.../signatures/sign-hash` → firma.
  * 7. Verifica locale della firma (indicativa, mai bloccante — v.
  *    `verificaFirmaLocale`).
  * 8. `POST /{numero_fir}/acquisizione-firma` → esito dell'ente.

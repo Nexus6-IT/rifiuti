@@ -22,7 +22,7 @@ const { intestazioniAutenticate } = require('../../../../../tools/rentri-fake/te
  * `GET /ca-rentri/.../credentials/info` → `POST /{numero_fir}/hash` (202 +
  * NONBLOCK_PULL) → `POST /credentials/authorize` → polling
  * `authorize-check` (202 → 200, con la conferma dell'utente simulata dal
- * canale di controllo a metà polling) → `POST /credentials/sign-hash` →
+ * canale di controllo a metà polling) → `POST /signatures/sign-hash` →
  * `POST /{numero_fir}/acquisizione-firma` (202 + NONBLOCK_PULL) →
  * rilettura di `/stato` → `FIR.applyRentriStato`.
  *
