@@ -87,6 +87,8 @@ export class RENTRISyncQueue implements OnModuleInit {
      * (trigger manuale, batch, modalità automatica).
      */
     richiedeConferma?: boolean
+    /** Conferma esplicita di una nuova trasmissione (v. `SyncFIRToRENTRIOpzioni`). */
+    confermaNuovaTrasmissione?: boolean
   }): Promise<string> {
     const {
       firId,
@@ -95,7 +97,31 @@ export class RENTRISyncQueue implements OnModuleInit {
       delay = 0,
       priority = 'normal',
       richiedeConferma = false,
+      confermaNuovaTrasmissione = false,
     } = params
+
+    // Un solo job per FIR: il jobId è deterministico. Un job ancora vivo
+    // (in attesa, ritardato, attivo) è già quello giusto e si restituisce
+    // senza riaccodare. Uno concluso (completed/failed) va rimosso, altrimenti
+    // BullMQ scarterebbe in silenzio il nuovo tentativo legittimo finché il
+    // vecchio non scade da removeOnComplete/removeOnFail.
+    const jobId = `sync-${firId}`
+    const esistente = await this.queue.getJob(jobId)
+    if (esistente) {
+      const stato = await esistente.getState()
+      if (['waiting', 'delayed', 'active', 'prioritized', 'waiting-children'].includes(stato)) {
+        this.logger.info('RENTRI sync job già presente per il FIR, non riaccodato', {
+          jobId,
+          firId,
+          tenantId,
+          stato,
+        })
+        return esistente.id as string
+      }
+      if (stato === 'completed' || stato === 'failed') {
+        await esistente.remove()
+      }
+    }
 
     const job = await this.queue.add(
       'sync-fir',
@@ -105,11 +131,12 @@ export class RENTRISyncQueue implements OnModuleInit {
         correlationId: correlationId || this.generateCorrelationId(),
         type: 'single',
         richiedeConferma,
+        confermaNuovaTrasmissione,
       },
       {
         delay,
         priority: this.getPriorityValue(priority),
-        jobId: `sync-${firId}-${Date.now()}`, // Unique job ID
+        jobId,
       }
     )
 

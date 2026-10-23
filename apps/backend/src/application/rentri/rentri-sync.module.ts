@@ -48,6 +48,7 @@ import { ImpostaBloccoPredefinitoUseCase } from './scorta/imposta-blocco-predefi
 import { VerificaEmissionePossibileRentriUseCase } from './scorta/verifica-emissione-possibile.use-case'
 import { ConsumaNumeroVidimatoUseCase } from './scorta/consuma-numero-vidimato.use-case'
 import { RentriRifornimentoScortaJob } from '../../infrastructure/jobs/rentri-rifornimento-scorta.job'
+import { RentriTrasmissioniSospeseJob } from '../../infrastructure/jobs/rentri-trasmissioni-sospese.job'
 import { RentriScortaController } from '../../api/rentri/rentri-scorta.controller'
 
 /**
@@ -495,6 +496,9 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
     VerificaEmissionePossibileRentriUseCase,
     ConsumaNumeroVidimatoUseCase,
     RentriRifornimentoScortaJob,
+    // Ripresa periodica delle trasmissioni rimaste in SYNCING (solo provider:
+    // nessun export, così il suo @Cron non viene registrato due volte).
+    RentriTrasmissioniSospeseJob,
   ],
   exports: [
     // Esportati per il rilancio manuale dalla pagina «Stato del sistema»

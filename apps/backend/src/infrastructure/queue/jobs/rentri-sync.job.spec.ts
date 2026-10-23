@@ -170,6 +170,47 @@ describe('RENTRISyncJobProcessor', () => {
       })
     })
 
+    it('giaInCorso: il job non lancia', async () => {
+      const mockJob = {
+        id: 'job-1',
+        data: { type: 'single', firId: 'fir-456', tenantId: 'tenant-789' },
+        attemptsMade: 0,
+        updateProgress: jest.fn(),
+      } as unknown as Job
+      mockSyncUseCase.execute.mockResolvedValue({
+        success: false,
+        willRetry: true,
+        giaInCorso: true,
+        error: 'trasmissione di un altro job',
+      })
+
+      const result = await processor['processSingleSync'](mockJob)
+
+      expect(result.success).toBe(false)
+      expect(mockLogger.info).toHaveBeenCalled()
+    })
+
+    it('confermaNuovaTrasmissione: passa l’opzione esplicita al use case', async () => {
+      const mockJob = {
+        id: 'job-1',
+        data: {
+          type: 'single',
+          firId: 'fir-456',
+          tenantId: 'tenant-789',
+          confermaNuovaTrasmissione: true,
+        },
+        attemptsMade: 0,
+        updateProgress: jest.fn(),
+      } as unknown as Job
+      mockSyncUseCase.execute.mockResolvedValue({ success: true })
+
+      await processor['processSingleSync'](mockJob)
+
+      expect(mockSyncUseCase.execute).toHaveBeenCalledWith('fir-456', 'tenant-789', undefined, {
+        confermaNuovaTrasmissione: true,
+      })
+    })
+
     it('willRetry: false (fallimento definitivo, es. 403) — NON rilancia: il job si considera concluso', async () => {
       const mockJob = {
         id: 'job-forbidden',
