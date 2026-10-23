@@ -420,6 +420,63 @@ describe('FirDetailComponent', () => {
     })
   })
 
+  describe('Rileggi esito (esito non acquisito)', () => {
+    const firNonAcquisito: FIR = {
+      ...baseFIR,
+      rentriSyncStatus: 'PERMANENTLY_FAILED',
+      rentriAzioneErrore: 'RILEGGI_ESITO',
+      rentriMessaggioErrore:
+        "RENTRI ha ricevuto il formulario ma non siamo riusciti a leggerne l'esito. Premi «Rileggi esito»: non verrà creato un nuovo formulario.",
+    }
+    const RILEGGI = '[data-testid="fir-detail-rentri-rileggi-esito"]'
+    const RITRASMETTI = '[data-testid="fir-detail-rentri-ritrasmetti-dopo-verifica"]'
+
+    it('visibile con RILEGGI_ESITO e PERMANENTLY_FAILED; Ritrasmetti no', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firNonAcquisito))
+      fixture.detectChanges()
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector(RILEGGI)).toBeTruthy()
+      expect(el.querySelector(RITRASMETTI)).toBeFalsy()
+
+      expect(component.mostraRileggiEsito(firNonAcquisito)).toBeTrue()
+      expect(
+        component.mostraRileggiEsito({ ...firNonAcquisito, rentriSyncStatus: 'FAILED' })
+      ).toBeFalse()
+      expect(
+        component.mostraRileggiEsito({ ...firNonAcquisito, rentriAzioneErrore: 'VERIFICA_SU_RENTRI' })
+      ).toBeFalse()
+      expect(
+        component.mostraRileggiEsito({ ...firNonAcquisito, rentriNumeroFir: 'RENTRI-1' })
+      ).toBeFalse()
+    })
+
+    it('non compare a chi non gestisce RENTRI', () => {
+      setup({ role: 'VIEWER' })
+      firService.getFIRById.and.returnValue(of(firNonAcquisito))
+      fixture.detectChanges()
+      expect((fixture.nativeElement as HTMLElement).querySelector(RILEGGI)).toBeFalsy()
+    })
+
+    it('senza dialog: chiama la riapertura (confermaNuovaTrasmissione true)', () => {
+      setup({ role: 'ADMIN' })
+      firService.getFIRById.and.returnValue(of(firNonAcquisito))
+      rentriSyncService.syncFIR.and.returnValue(
+        of({ jobId: 'job-1', firId: 'fir-1', message: 'ok' })
+      )
+      fixture.detectChanges()
+      const confirmation = fixture.debugElement.injector.get(ConfirmationService)
+      spyOn(confirmation, 'confirm').and.returnValue(confirmation)
+
+      component.rileggiEsito(firNonAcquisito)
+
+      expect(confirmation.confirm).not.toHaveBeenCalled()
+      expect(rentriSyncService.syncFIR).toHaveBeenCalledWith('fir-1', {
+        confermaNuovaTrasmissione: true,
+      })
+    })
+  })
+
   it('trasmette il FIR a RENTRI quando si preme "Trasmetti a RENTRI"', () => {
     setup({ role: 'ADMIN' })
     firService.getFIRById.and.returnValue(of(baseFIR))

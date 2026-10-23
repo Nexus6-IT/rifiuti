@@ -183,6 +183,14 @@ describe('RENTRISyncStatus', () => {
       expect(status.riapriDopoVerificaManuale().getStatus()).toBe('PENDING')
     })
 
+    it('RENTRI_ESITO_NON_ACQUISITO ferma subito il ciclo ed è riapribile', () => {
+      const status = RENTRISyncStatus.failed(1, 'x', 'RENTRI_ESITO_NON_ACQUISITO')
+
+      expect(status.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(status.canRetry()).toBe(false)
+      expect(status.riapriDopoVerificaManuale().getStatus()).toBe('PENDING')
+    })
+
     it('riapriDopoVerificaManuale rifiuta un altro codice', () => {
       const status = RENTRISyncStatus.failed(1, 'x', 'RENTRI_FORBIDDEN')
 

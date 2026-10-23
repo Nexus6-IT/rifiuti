@@ -1183,7 +1183,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(mockFIRRepository.findById).toHaveBeenCalledTimes(2)
     })
 
-    it('quinto timeout del polling con transazione in attesa → RENTRI_TRASMISSIONE_INCERTA', async () => {
+    /** FIR al quinto tentativo con la transazione t-x ancora da leggere. */
+    function firAlQuintoTentativo(): FIR {
       const fir = firReale()
       fir.registraTransazioneInAttesa('t-x')
       for (let i = 0; i < 4; i++) {
@@ -1191,6 +1192,11 @@ describe('SyncFIRToRENTRIUseCase', () => {
         fir.markRENTRISyncFailed('timeout del polling', 'RENTRI_API_ERROR')
       }
       fir.clearDomainEvents()
+      return fir
+    }
+
+    it('quinto timeout del polling con transazione in attesa → RENTRI_ESITO_NON_ACQUISITO, transazione conservata', async () => {
+      const fir = firAlQuintoTentativo()
       expect(fir.rentriTransazioneInAttesa).toBe('t-x')
       mockFIRRepository.findById.mockResolvedValue(fir)
       mockRENTRIApiClient.attendiEsito.mockRejectedValue(new Error('Superato il numero massimo'))
@@ -1198,12 +1204,19 @@ describe('SyncFIRToRENTRIUseCase', () => {
       const result = await useCase.execute(fir.id, tenantId)
 
       expect(result).toMatchObject({ success: false, willRetry: false })
-      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
-      // Non è un vicolo cieco: l'operatore può riaprire dopo la verifica.
+      expect(fir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_ESITO_NON_ACQUISITO')
+      // L'ente ha la transazione: la si rilegge, non si rifà la POST.
+      expect(fir.rentriTransazioneInAttesa).toBe('t-x')
+      expect(mockFIRRepository.save).toHaveBeenCalledWith(fir)
+      expect(mockSyncLogRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ errorCode: 'RENTRI_ESITO_NON_ACQUISITO' })
+      )
+      // Non è un vicolo cieco: «Rileggi esito» lo riapre.
       expect(() => fir.riapriTrasmissioneDopoVerifica()).not.toThrow()
     })
 
-    it('403 sulla ripresa con transazione in attesa → RENTRI_TRASMISSIONE_INCERTA', async () => {
+    it('403 sulla ripresa con transazione in attesa → RENTRI_ESITO_NON_ACQUISITO, transazione conservata', async () => {
       const fir = firConTransazioneFallita('t-x')
       mockFIRRepository.findById.mockResolvedValue(fir)
       mockRENTRIApiClient.attendiEsito.mockRejectedValue(
@@ -1213,10 +1226,45 @@ describe('SyncFIRToRENTRIUseCase', () => {
       const result = await useCase.execute(fir.id, tenantId)
 
       expect(result).toMatchObject({ success: false, willRetry: false })
-      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_ESITO_NON_ACQUISITO')
+      expect(fir.rentriTransazioneInAttesa).toBe('t-x')
       expect(mockSyncLogRepository.save).toHaveBeenCalledWith(
-        expect.objectContaining({ errorCode: 'RENTRI_TRASMISSIONE_INCERTA' })
+        expect.objectContaining({ errorCode: 'RENTRI_ESITO_NON_ACQUISITO' })
       )
+    })
+
+    it('esito non acquisito riaperto («Rileggi esito») → ripresa della stessa transazione, nessuna POST', async () => {
+      const fir = firAlQuintoTentativo()
+      fir.avviaTentativoRentri(unOraFa())
+      fir.markRENTRISyncFailed('esito non leggibile', 'RENTRI_ESITO_NON_ACQUISITO')
+      fir.riapriTrasmissioneDopoVerifica()
+      fir.clearDomainEvents()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue(esitoPositivo)
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result.success).toBe(true)
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+      expect(mockRENTRIApiClient.attendiEsito).toHaveBeenCalledWith(tenantId, 't-x')
+      expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-IDEM')
+    })
+
+    it('esito non acquisito riaperto ma la transazione è sconosciuta (404) → RENTRI_TRASMISSIONE_INCERTA, transazione azzerata', async () => {
+      const fir = firAlQuintoTentativo()
+      fir.avviaTentativoRentri(unOraFa())
+      fir.markRENTRISyncFailed('esito non leggibile', 'RENTRI_ESITO_NON_ACQUISITO')
+      fir.riapriTrasmissioneDopoVerifica()
+      fir.clearDomainEvents()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.attendiEsito.mockRejectedValue(new TransazioneRentriNonTrovataError('t-x'))
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: false })
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
+      expect(fir.rentriTransazioneInAttesa).toBeNull()
     })
 
     it('errore fra prenotazione e POST: FAILED ritentabile, nessuna POST', async () => {

@@ -110,10 +110,17 @@ export interface FIR {
    * Azione proposta per l'ultimo fallimento: RIPROVA abilita il pulsante
    * «Riprova», VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA
    * nasconde qualunque azione manuale, VERIFICA_SU_RENTRI chiede di controllare
-   * il portale e propone «Ritrasmetti» solo dopo conferma (v. backend
-   * rentri-error-presentation.ts).
+   * il portale e propone «Ritrasmetti» solo dopo conferma, RILEGGI_ESITO
+   * propone «Rileggi esito» (stessa transazione, nessun nuovo formulario) (v.
+   * backend rentri-error-presentation.ts).
    */
-  rentriAzioneErrore?: 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA' | 'VERIFICA_SU_RENTRI' | null
+  rentriAzioneErrore?:
+    | 'RIPROVA'
+    | 'VEDI_CERTIFICATO'
+    | 'NESSUNA'
+    | 'VERIFICA_SU_RENTRI'
+    | 'RILEGGI_ESITO'
+    | null
   /** Numero di tentativi di trasmissione effettuati. */
   rentriSyncAttempts?: number
   /** Se true, il FIR è trasmissibile ora a RENTRI (stato + non già legato + nessun fallimento permanente). */

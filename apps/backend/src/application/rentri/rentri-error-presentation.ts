@@ -26,13 +26,20 @@
  *   (RENTRI potrebbe aver già creato il formulario): niente «Riprova»
  *   automatico, l'utente controlla sul portale e solo dopo può ritrasmettere
  *   con una conferma esplicita (o collegare il formulario esistente).
+ * - `RILEGGI_ESITO`: RENTRI ha la transazione ma l'esito non si è letto:
+ *   l'utente chiede di rileggerlo, senza creare un nuovo formulario.
  * - `NESSUNA`: nessuna azione manuale utile in questo momento — o perché
  *   ritentare non cambierebbe nulla (403, dati non validi), o perché un
  *   ritentativo manuale peggiorerebbe la situazione (429/423), o perché la
  *   trasmissione riprenderà comunque da sola (5xx/rete, in attesa dei
  *   tentativi automatici già pianificati).
  */
-export type RentriAzioneUtente = 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA' | 'VERIFICA_SU_RENTRI'
+export type RentriAzioneUtente =
+  | 'RIPROVA'
+  | 'VEDI_CERTIFICATO'
+  | 'NESSUNA'
+  | 'VERIFICA_SU_RENTRI'
+  | 'RILEGGI_ESITO'
 
 export interface RentriErrorePresentabile {
   /** Testo in italiano pronto per l'utente: mai un codice, mai lo status HTTP. */
@@ -146,6 +153,15 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
         messaggio:
           "Non sappiamo se RENTRI ha ricevuto il formulario: controlla sul portale RENTRI. Se il formulario non c'è, ritrasmetti il FIR; se c'è, non ritrasmettere e collegalo con «Cerca su RENTRI».",
         azione: 'VERIFICA_SU_RENTRI',
+      }
+
+    case 'RENTRI_ESITO_NON_ACQUISITO':
+      // L'ente ha accettato la transazione, è la lettura dell'esito che non è
+      // riuscita: si rilegge la stessa transazione, nessuna nuova POST.
+      return {
+        messaggio:
+          "RENTRI ha ricevuto il formulario ma non siamo riusciti a leggerne l'esito. Premi «Rileggi esito»: non verrà creato un nuovo formulario.",
+        azione: 'RILEGGI_ESITO',
       }
 
     case 'ACCETTAZIONE_NON_DISPONIBILE':

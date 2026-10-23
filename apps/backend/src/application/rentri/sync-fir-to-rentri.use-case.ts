@@ -63,6 +63,9 @@ export const SOGLIA_STALLO_RENTRI_MS = 15 * 60 * 1000
  *   transazione) diventano RENTRI_TRASMISSIONE_INCERTA, non ritentabile: si
  *   riparte solo dopo verifica sul portale, con la riapertura consumata dal
  *   controller (`RiapriTrasmissioneRentriUseCase`), mai dentro un job.
+ * - Un fallimento definitivo del polling (tentativi finiti, 403) con una
+ *   transazione in attesa diventa RENTRI_ESITO_NON_ACQUISITO: la transazione
+ *   resta salvata e «Rileggi esito» (stessa riapertura) la riprende senza POST.
  */
 @Injectable()
 export class SyncFIRToRENTRIUseCase {
@@ -176,8 +179,9 @@ export class SyncFIRToRENTRIUseCase {
       // (forse) spedito la POST ma prima del 202. Il formulario può esistere:
       // nessuna nuova POST finché un operatore non verifica.
       if (eraSyncing && !transazioneInAttesa) {
-        return this.chiudiTrasmissioneIncerta(
+        return this.chiudiInAttesaDiVerifica(
           fir,
+          'RENTRI_TRASMISSIONE_INCERTA',
           'Trasmissione interrotta prima della risposta di RENTRI: verificare sul portale',
           correlationId,
           null,
@@ -383,8 +387,9 @@ export class SyncFIRToRENTRIUseCase {
           apiError instanceof TrasmissioneRentriIncertaError ||
           apiError instanceof TransazioneRentriNonTrovataError
         ) {
-          return this.chiudiTrasmissioneIncerta(
+          return this.chiudiInAttesaDiVerifica(
             fir,
+            'RENTRI_TRASMISSIONE_INCERTA',
             `${apiError.message}: verificare sul portale RENTRI prima di ritrasmettere`,
             correlationId,
             syncLog,
@@ -428,16 +433,20 @@ export class SyncFIRToRENTRIUseCase {
 
         // Transazione accettata dall'ente ma esito illeggibile, e questo
         // fallimento chiuderebbe il FIR per sempre (codice non ritentabile o
-        // tentativi esauriti): il formulario può esistere, quindi si passa da
-        // trasmissione incerta, l'unico blocco che un operatore può riaprire.
-        // "Definitivo" lo calcola il VO (immutabile, nessun effetto sul FIR).
+        // tentativi esauriti): l'ente ha la transazione, quindi la si CONSERVA
+        // e il FIR si ferma su RENTRI_ESITO_NON_ACQUISITO. «Rileggi esito» lo
+        // riapre e il tentativo successivo riprende la stessa transazione,
+        // senza POST: azzerarla qui farebbe un doppione se l'ente la sta ancora
+        // elaborando. Solo un 404 sulla transazione porta alla trasmissione
+        // incerta (ramo sopra). "Definitivo" lo calcola il VO (immutabile).
         if (
           fir.rentriTransazioneInAttesa &&
           !fir.rentriSyncStatus.markAsFailed(errorMessage || errorCode, errorCode).canRetry()
         ) {
-          return this.chiudiTrasmissioneIncerta(
+          return this.chiudiInAttesaDiVerifica(
             fir,
-            `Esito della trasmissione non leggibile (${errorMessage}): verificare sul portale RENTRI se il formulario esiste`,
+            'RENTRI_ESITO_NON_ACQUISITO',
+            `Esito della trasmissione non leggibile (${errorMessage}): la transazione resta da rileggere`,
             correlationId,
             syncLog,
             startTime,
@@ -525,13 +534,19 @@ export class SyncFIRToRENTRIUseCase {
   }
 
   /**
-   * Trasmissione dall'esito incerto: il FIR passa a RENTRI_TRASMISSIONE_INCERTA
-   * (PERMANENTLY_FAILED, transazione in attesa chiusa) e resta fermo finché un
-   * operatore non verifica sul portale. `syncLog` è null quando non c'è stata
-   * alcuna chiamata in questo tentativo (stallo senza transazione).
+   * Chiude il tentativo su un blocco che solo l'utente può riaprire
+   * (PERMANENTLY_FAILED, v. `RiapriTrasmissioneRentriUseCase`):
+   * - RENTRI_TRASMISSIONE_INCERTA: il formulario può esistere o no, la
+   *   transazione in attesa si chiude e si riparte solo dopo verifica sul
+   *   portale (eventualmente con una nuova POST);
+   * - RENTRI_ESITO_NON_ACQUISITO: l'ente ha la transazione ma l'esito non si è
+   *   letto; la transazione resta salvata e la riapertura la riprende.
+   * `syncLog` è null quando non c'è stata alcuna chiamata in questo tentativo
+   * (stallo senza transazione).
    */
-  private async chiudiTrasmissioneIncerta(
+  private async chiudiInAttesaDiVerifica(
     fir: FIR,
+    codice: 'RENTRI_TRASMISSIONE_INCERTA' | 'RENTRI_ESITO_NON_ACQUISITO',
     motivo: string,
     correlationId: string | undefined,
     syncLog: RENTRISyncLog | null,
@@ -539,13 +554,18 @@ export class SyncFIRToRENTRIUseCase {
     contesto: Record<string, unknown>,
     responsePayload?: string
   ): Promise<SyncFIRToRENTRIResult> {
-    fir.segnaTrasmissioneIncerta(motivo, correlationId)
+    if (codice === 'RENTRI_TRASMISSIONE_INCERTA') {
+      fir.segnaTrasmissioneIncerta(motivo, correlationId)
+    } else {
+      // markRENTRISyncFailed non tocca la transazione in attesa: resta da rileggere.
+      fir.markRENTRISyncFailed(motivo, codice, correlationId)
+    }
 
     const failureLog =
       syncLog?.markAsFailure({
         responsePayload,
         errorMessage: motivo,
-        errorCode: 'RENTRI_TRASMISSIONE_INCERTA',
+        errorCode: codice,
         durationMs: Date.now() - startTime,
       }) ?? null
 
@@ -559,8 +579,9 @@ export class SyncFIRToRENTRIUseCase {
     if (failureLog) await this.syncLogRepository.save(failureLog)
     await this.publishDomainEvents(fir)
 
-    this.logger.warn(`Trasmissione del FIR a RENTRI dall'esito incerto: serve una verifica`, {
+    this.logger.warn(`Trasmissione del FIR a RENTRI ferma: serve un'azione dell'utente`, {
       ...contesto,
+      codice,
       motivo,
     })
 

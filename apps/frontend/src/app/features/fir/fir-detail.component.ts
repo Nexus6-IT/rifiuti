@@ -374,6 +374,19 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   "
                 />
               }
+              @if (mostraRileggiEsito(f)) {
+                <p-button
+                  label="Rileggi esito"
+                  icon="pi pi-replay"
+                  severity="warning"
+                  [outlined]="true"
+                  (onClick)="rileggiEsito(f)"
+                  data-testid="fir-detail-rentri-rileggi-esito"
+                  [attr.aria-label]="
+                    'Rileggi esito RENTRI del FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
               @if (mostraVaiAlCertificato(f)) {
                 <p-button
                   label="Vai al certificato"
@@ -1032,6 +1045,20 @@ export class FirDetailComponent implements OnInit {
     )
   }
 
+  /**
+   * «Rileggi esito»: RENTRI ha la transazione ma l'esito non si è letto. Nessun
+   * dialog: la riapertura riprende la stessa transazione, non crea un nuovo
+   * formulario, quindi non c'è un doppione da scongiurare.
+   */
+  mostraRileggiEsito(fir: FIR): boolean {
+    return (
+      fir.rentriSyncStatus === 'PERMANENTLY_FAILED' &&
+      fir.rentriAzioneErrore === 'RILEGGI_ESITO' &&
+      !fir.rentriNumeroFir &&
+      this.canManageRENTRI()
+    )
+  }
+
   /** «Vai al certificato»: unica azione utile quando RENTRI ha rifiutato per un certificato non valido (403). */
   mostraVaiAlCertificato(fir: FIR): boolean {
     return (
@@ -1070,6 +1097,7 @@ export class FirDetailComponent implements OnInit {
       this.canTrasmettereRentri(fir) ||
       this.canRiprovareRentri(fir) ||
       this.mostraRitrasmettiDopoVerifica(fir) ||
+      this.mostraRileggiEsito(fir) ||
       this.mostraVaiAlCertificato(fir) ||
       this.canConfermareLegameRentri(fir) ||
       this.canRilasciareLegameRentri(fir) ||
@@ -1169,6 +1197,27 @@ export class FirDetailComponent implements OnInit {
               detail: this.extractError(err, 'Errore nella trasmissione a RENTRI'),
             })
           },
+        })
+      },
+    })
+  }
+
+  /** Riapre la trasmissione per rileggere l'esito della transazione già accettata da RENTRI. */
+  rileggiEsito(fir: FIR): void {
+    this.rentriSyncService.syncFIR(fir.id, { confermaNuovaTrasmissione: true }).subscribe({
+      next: () => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Rilettura avviata',
+          detail: "L'esito della trasmissione a RENTRI verrà riletto a breve",
+        })
+        this.reload()
+      },
+      error: err => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, "Errore nella rilettura dell'esito RENTRI"),
         })
       },
     })

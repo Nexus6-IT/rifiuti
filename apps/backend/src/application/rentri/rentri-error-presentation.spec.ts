@@ -83,6 +83,16 @@ describe('traduciErroreRentri', () => {
     })
   })
 
+  it('esito non acquisito (RENTRI_ESITO_NON_ACQUISITO): rileggere l’esito, nessun nuovo formulario', () => {
+    const risultato = traduciErroreRentri({ errorCode: 'RENTRI_ESITO_NON_ACQUISITO' })
+
+    expect(risultato).toEqual({
+      messaggio:
+        "RENTRI ha ricevuto il formulario ma non siamo riusciti a leggerne l'esito. Premi «Rileggi esito»: non verrà creato un nuovo formulario.",
+      azione: 'RILEGGI_ESITO',
+    })
+  })
+
   it('5xx / problemi di rete (RENTRI_API_ERROR): transitorio, nessun «Riprova» manuale (riprende da sola)', () => {
     const risultato = traduciErroreRentri({
       errorCode: 'RENTRI_API_ERROR',
