@@ -55,6 +55,27 @@ export interface IFIRRepository {
   findByRentriNumeroFir(tenantId: string, numeroFir: string): Promise<FIR | null>
 
   /**
+   * Prenota in modo atomico la trasmissione RENTRI (un solo UPDATE condizionato):
+   * true se la prenotazione è di chi chiama, false se il FIR è legato, annullato,
+   * di un altro tenant o già prenotato da un tentativo non scaduto (`sogliaStallo`).
+   */
+  prenotaTrasmissioneRentri(
+    firId: string,
+    tenantId: string,
+    ora: Date,
+    sogliaStallo: Date
+  ): Promise<boolean>
+
+  /** Scrive subito la transazione di creazione accettata dall'ente (solo se SYNCING). */
+  registraTransazioneInAttesa(firId: string, tenantId: string, transazioneId: string): Promise<void>
+
+  /** FIR in SYNCING oltre la soglia di stallo, su tutti i tenant (job di recupero). */
+  elencaTrasmissioniRentriSospese(
+    sogliaStallo: Date,
+    limite: number
+  ): Promise<Array<{ firId: string; tenantId: string }>>
+
+  /**
    * Find FIRs by stato
    */
   findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]>

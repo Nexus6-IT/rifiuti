@@ -181,6 +181,76 @@ export class FIRPrismaRepository implements IFIRRepository {
     return records.map((r: any) => this.toDomain(r))
   }
 
+  /**
+   * Prenota la trasmissione RENTRI di un FIR con un solo UPDATE condizionato: la
+   * condizione sta nel WHERE, quindi due processi concorrenti non possono vincere
+   * entrambi (il secondo UPDATE rilegge la riga dopo il commit del primo e non la
+   * trova più prenotabile). Prenotabile: non legato, non annullato (né in locale né
+   * all'ente) e in PENDING/FAILED, oppure in SYNCING ma fermo da prima di
+   * `sogliaStallo` (o senza data di avvio). Restituisce true se ha vinto.
+   */
+  async prenotaTrasmissioneRentri(
+    firId: string,
+    tenantId: string,
+    ora: Date,
+    sogliaStallo: Date
+  ): Promise<boolean> {
+    const righe = await this.prisma.$executeRaw`
+      UPDATE firs
+      SET rentri_sync_status = 'SYNCING'::rentri_sync_status,
+          rentri_sync_avviato_at = ${ora}
+      WHERE id = ${firId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND rentri_numero_fir IS NULL
+        AND status <> 'CANCELLED'::fir_status
+        AND rentri_stato_formulario::text IS DISTINCT FROM ${STATO_RENTRI_ANNULLATO}
+        AND (
+          rentri_sync_status IN ('PENDING'::rentri_sync_status, 'FAILED'::rentri_sync_status)
+          OR (
+            rentri_sync_status = 'SYNCING'::rentri_sync_status
+            AND (rentri_sync_avviato_at IS NULL OR rentri_sync_avviato_at < ${sogliaStallo})
+          )
+        )`
+    return righe > 0
+  }
+
+  /**
+   * Scrive subito la transazione accettata dall'ente (fuori dal ciclo di save
+   * dell'aggregate): se il processo muore prima di leggerne l'esito, il recupero la
+   * trova. Solo su un FIR ancora in SYNCING, cioè prenotato da chi sta scrivendo.
+   */
+  async registraTransazioneInAttesa(
+    firId: string,
+    tenantId: string,
+    transazioneId: string
+  ): Promise<void> {
+    await this.prisma.$executeRaw`
+      UPDATE firs
+      SET rentri_transazione_in_attesa = ${transazioneId},
+          rentri_transazione_id = ${transazioneId}
+      WHERE id = ${firId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND rentri_sync_status = 'SYNCING'::rentri_sync_status`
+  }
+
+  /**
+   * FIR rimasti in SYNCING oltre la soglia di stallo (o senza data di avvio), su tutti
+   * i tenant: serve al job di sistema di recupero, per questo non filtra per tenant.
+   */
+  async elencaTrasmissioniRentriSospese(
+    sogliaStallo: Date,
+    limite: number
+  ): Promise<Array<{ firId: string; tenantId: string }>> {
+    const righe = await this.prisma.$queryRaw<Array<{ fir_id: string; tenant_id: string }>>`
+      SELECT id::text AS fir_id, tenant_id::text AS tenant_id
+      FROM firs
+      WHERE rentri_sync_status = 'SYNCING'::rentri_sync_status
+        AND (rentri_sync_avviato_at IS NULL OR rentri_sync_avviato_at < ${sogliaStallo})
+      ORDER BY rentri_sync_avviato_at NULLS FIRST
+      LIMIT ${limite}`
+    return righe.map(r => ({ firId: r.fir_id, tenantId: r.tenant_id }))
+  }
+
   async findByRentriNumeroFir(tenantId: string, numeroFir: string): Promise<FIR | null> {
     const record = await this.prisma.fIR.findFirst({
       where: { tenantId, rentriNumeroFir: numeroFir },
@@ -601,6 +671,10 @@ export class FIRPrismaRepository implements IFIRRepository {
       _rentriSyncStatus: this.rentriSyncStatusFromRecord(record),
       _rentriNumeroFir: record.rentriNumeroFir || null,
       _rentriTransazioneId: record.rentriTransazioneId || null,
+      // Prenotazione e transazione in attesa: stesso tranello, senza lettura
+      // tornerebbero sempre null e il recupero ripartirebbe da zero.
+      _rentriTransazioneInAttesa: record.rentriTransazioneInAttesa || null,
+      _rentriSyncAvviatoAt: record.rentriSyncAvviatoAt ?? null,
       _rentriOrigineLegame: (record.rentriOrigineLegame as RentriOrigineLegame) || null,
       _rentriNumeroFirProposto: record.rentriNumeroFirProposto || null,
       // Stato del formulario presso l'ente: stesso tranello (scrittura e lettura
@@ -755,6 +829,8 @@ export class FIRPrismaRepository implements IFIRRepository {
       rentriNextRetryAt: fir.needsRENTRIRetry() ? fir.getNextRENTRIRetryAt() : null,
       rentriNumeroFir: fir.rentriNumeroFir ?? null,
       rentriTransazioneId: fir.rentriTransazioneId ?? null,
+      rentriTransazioneInAttesa: fir.rentriTransazioneInAttesa ?? null,
+      rentriSyncAvviatoAt: fir.rentriSyncAvviatoAt ?? null,
       rentriOrigineLegame: fir.rentriOrigineLegame
         ? (fir.rentriOrigineLegame as unknown as PrismaRentriOrigineLegame)
         : null,

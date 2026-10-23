@@ -456,4 +456,140 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       ).toBe('FIR-2031-000006')
     })
   })
+
+  describe('prenotazione atomica della trasmissione RENTRI', () => {
+    let repoLettura: FIRPrismaRepository
+    const creati: string[] = []
+    const ORA = new Date('2026-10-23T10:00:00.000Z')
+    const SOGLIA = new Date('2026-10-23T09:55:00.000Z')
+
+    beforeAll(() => {
+      repoLettura = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+    })
+
+    afterAll(async () => {
+      // Solo le righe create da questi test, mai una cancellazione senza filtro.
+      if (creati.length > 0) await prisma.fIR.deleteMany({ where: { id: { in: creati } } })
+    })
+
+    async function nuovoFir(dati: Record<string, unknown> = {}): Promise<FIR> {
+      const fir = FIR.create({
+        produttoreId: REGISTRO_PRODUTTORE,
+        rifiuto: { cerCode: '150101', quantita: 10 },
+        trasportatoreId: REGISTRO_TRASPORTATORE,
+        destinatarioId: REGISTRO_DESTINATARIO,
+        tenantId,
+        creatoDaUserId: userId,
+      })
+      await repoLettura.save(fir)
+      creati.push(fir.id)
+      if (Object.keys(dati).length > 0) {
+        await prisma.fIR.update({ where: { id: fir.id }, data: dati as any })
+      }
+      return fir
+    }
+
+    const riga = (id: string) => prisma.fIR.findUniqueOrThrow({ where: { id } })
+
+    it('due prenotazioni concorrenti: una sola vince', async () => {
+      const fir = await nuovoFir()
+      const esiti = await Promise.all([
+        repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA),
+        repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA),
+      ])
+      expect(esiti.filter(e => e === true)).toHaveLength(1)
+      const r = await riga(fir.id)
+      expect(r.rentriSyncStatus).toBe('SYNCING')
+      expect(r.rentriSyncAvviatoAt).toEqual(ORA)
+    })
+
+    it('SYNCING recente non si riprenota, SYNCING scaduto sì', async () => {
+      const recente = await nuovoFir({
+        rentriSyncStatus: 'SYNCING',
+        rentriSyncAvviatoAt: new Date('2026-10-23T09:58:00.000Z'),
+      })
+      expect(await repoLettura.prenotaTrasmissioneRentri(recente.id, tenantId, ORA, SOGLIA)).toBe(
+        false
+      )
+      const scaduto = await nuovoFir({
+        rentriSyncStatus: 'SYNCING',
+        rentriSyncAvviatoAt: new Date('2026-10-23T09:00:00.000Z'),
+      })
+      expect(await repoLettura.prenotaTrasmissioneRentri(scaduto.id, tenantId, ORA, SOGLIA)).toBe(
+        true
+      )
+      const senzaData = await nuovoFir({ rentriSyncStatus: 'SYNCING', rentriSyncAvviatoAt: null })
+      expect(await repoLettura.prenotaTrasmissioneRentri(senzaData.id, tenantId, ORA, SOGLIA)).toBe(
+        true
+      )
+      const fallito = await nuovoFir({ rentriSyncStatus: 'FAILED' })
+      expect(await repoLettura.prenotaTrasmissioneRentri(fallito.id, tenantId, ORA, SOGLIA)).toBe(
+        true
+      )
+    })
+
+    it("FIR legato, CANCELLED, annullato all'ente o di un altro tenant: false", async () => {
+      const legato = await nuovoFir({ rentriNumeroFir: `RENTRI-PR-${Date.now()}` })
+      const annullato = await nuovoFir({ status: 'CANCELLED' })
+      const annullatoEnte = await nuovoFir({ rentriStatoFormulario: 'Annullato' })
+      const altroTenant = await nuovoFir()
+      for (const f of [legato, annullato, annullatoEnte]) {
+        expect(await repoLettura.prenotaTrasmissioneRentri(f.id, tenantId, ORA, SOGLIA)).toBe(false)
+      }
+      expect(
+        await repoLettura.prenotaTrasmissioneRentri(
+          altroTenant.id,
+          '99999999-9999-4999-8999-999999999999',
+          ORA,
+          SOGLIA
+        )
+      ).toBe(false)
+      expect((await riga(altroTenant.id)).rentriSyncStatus).toBe('PENDING')
+    })
+
+    it("registraTransazioneInAttesa e reload: rentriTransazioneInAttesa e rentriSyncAvviatoAt riletti dall'aggregate", async () => {
+      const fir = await nuovoFir()
+      // fuori da SYNCING la scrittura non deve avere effetto
+      await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-ignorata')
+      expect((await riga(fir.id)).rentriTransazioneInAttesa).toBeNull()
+
+      expect(await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)).toBe(true)
+      await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-123')
+      const riletto = (await repoLettura.findById(fir.id))!
+      expect(riletto.rentriTransazioneInAttesa).toBe('tx-123')
+      expect(riletto.rentriTransazioneId).toBe('tx-123')
+      expect(riletto.rentriSyncAvviatoAt).toEqual(ORA)
+    })
+
+    it('save di un aggregate con transazione in attesa azzerata la scrive NULL', async () => {
+      const fir = await nuovoFir()
+      fir.registraTransazioneInAttesa('tx-456')
+      await repoLettura.save(fir)
+      expect((await riga(fir.id)).rentriTransazioneInAttesa).toBe('tx-456')
+      fir.chiudiTransazioneInAttesa()
+      await repoLettura.save(fir)
+      expect((await riga(fir.id)).rentriTransazioneInAttesa).toBeNull()
+    })
+
+    it('elencaTrasmissioniRentriSospese restituisce solo gli scaduti', async () => {
+      const scaduto = await nuovoFir({
+        rentriSyncStatus: 'SYNCING',
+        rentriSyncAvviatoAt: new Date('2026-10-23T09:00:00.000Z'),
+      })
+      const senzaData = await nuovoFir({ rentriSyncStatus: 'SYNCING', rentriSyncAvviatoAt: null })
+      const recente = await nuovoFir({
+        rentriSyncStatus: 'SYNCING',
+        rentriSyncAvviatoAt: new Date('2026-10-23T09:59:00.000Z'),
+      })
+      const pending = await nuovoFir()
+      const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000)
+      const ids = elenco.map(e => e.firId)
+      expect(ids).toEqual(expect.arrayContaining([scaduto.id, senzaData.id]))
+      expect(ids).not.toContain(recente.id)
+      expect(ids).not.toContain(pending.id)
+      expect(elenco.find(e => e.firId === scaduto.id)!.tenantId).toBe(tenantId)
+      // senza data per primo (NULLS FIRST)
+      expect(ids.indexOf(senzaData.id)).toBeLessThan(ids.indexOf(scaduto.id))
+    })
+  })
 })
