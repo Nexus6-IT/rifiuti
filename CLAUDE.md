@@ -37,7 +37,7 @@ TypeScript 5.2+ (Backend: Node.js 20 LTS, Frontend: Angular 17): Follow standard
 - ESLint + Prettier (auto-format on save)
 - Test-Driven Development (TDD) mandatory
 - Domain-Driven Design (DDD) for business logic
-- Multi-tenant: Schema-per-tenant + Row-Level Security
+- Multi-tenant: schema unico `public`, isolamento applicativo per `tenant_id` (estensione Prisma in `prisma-rls.extension.ts`). La RLS PostgreSQL vera NON esiste ancora: è in pianificazione (Fase 1)
 
 ## Recent Changes
 - 002-roles-permissions-system: Added [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION] + [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
