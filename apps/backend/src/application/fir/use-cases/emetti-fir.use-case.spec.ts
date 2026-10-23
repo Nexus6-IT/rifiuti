@@ -52,6 +52,18 @@ class MockFIRRepository implements IFIRRepository {
     return []
   }
 
+  async prenotaTrasmissioneRentri(): Promise<boolean> {
+    return true
+  }
+
+  async registraTransazioneInAttesa(): Promise<boolean> {
+    return true
+  }
+
+  async elencaTrasmissioniRentriSospese(): Promise<Array<{ firId: string; tenantId: string }>> {
+    return []
+  }
+
   async findByRentriNumeroFir(): Promise<FIR | null> {
     return null
   }

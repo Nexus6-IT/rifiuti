@@ -456,4 +456,213 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       ).toBe('FIR-2031-000006')
     })
   })
+
+  describe('prenotazione atomica della trasmissione RENTRI', () => {
+    let repoLettura: FIRPrismaRepository
+    const creati: string[] = []
+    const ORA = new Date('2026-10-23T10:00:00.000Z')
+    const SOGLIA = new Date('2026-10-23T09:55:00.000Z')
+
+    beforeAll(() => {
+      repoLettura = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+    })
+
+    afterAll(async () => {
+      // Solo le righe create da questi test, mai una cancellazione senza filtro.
+      if (creati.length > 0) await prisma.fIR.deleteMany({ where: { id: { in: creati } } })
+    })
+
+    async function nuovoFir(dati: Record<string, unknown> = {}): Promise<FIR> {
+      const fir = FIR.create({
+        produttoreId: REGISTRO_PRODUTTORE,
+        rifiuto: { cerCode: '150101', quantita: 10 },
+        trasportatoreId: REGISTRO_TRASPORTATORE,
+        destinatarioId: REGISTRO_DESTINATARIO,
+        tenantId,
+        creatoDaUserId: userId,
+      })
+      await repoLettura.save(fir)
+      creati.push(fir.id)
+      if (Object.keys(dati).length > 0) {
+        await prisma.fIR.update({ where: { id: fir.id }, data: dati as any })
+      }
+      return fir
+    }
+
+    const riga = (id: string) => prisma.fIR.findUniqueOrThrow({ where: { id } })
+
+    it('due prenotazioni concorrenti: una sola vince', async () => {
+      const fir = await nuovoFir()
+      // La prima prenotazione resta in una transaction aperta (riga bloccata): la
+      // seconda deve aspettarla, poi rileggere la riga già prenotata e perdere.
+      let rilascia!: () => void
+      const via = new Promise<void>(r => (rilascia = r))
+      let primaFatta!: (v: boolean) => void
+      const prima = new Promise<boolean>(r => (primaFatta = r))
+      const trans = prisma.$transaction(async tx => {
+        primaFatta(await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA, tx))
+        await via
+      })
+      expect(await prima).toBe(true)
+      let seconda: boolean | undefined
+      const secondaP = repoLettura
+        .prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)
+        .then(v => (seconda = v))
+      await new Promise(r => setTimeout(r, 300))
+      expect(seconda).toBeUndefined() // ancora in attesa del lock della prima
+      rilascia()
+      await trans
+      await secondaP
+      expect(seconda).toBe(false)
+      const r = await riga(fir.id)
+      expect(r.rentriSyncStatus).toBe('SYNCING')
+      expect(r.rentriSyncAvviatoAt).toEqual(ORA)
+    })
+
+    it('SYNCING recente non si riprenota, SYNCING scaduto sì', async () => {
+      const recente = await nuovoFir({
+        rentriSyncStatus: 'SYNCING',
+        rentriSyncAvviatoAt: new Date('2026-10-23T09:58:00.000Z'),
+      })
+      expect(await repoLettura.prenotaTrasmissioneRentri(recente.id, tenantId, ORA, SOGLIA)).toBe(
+        false
+      )
+      const scaduto = await nuovoFir({
+        rentriSyncStatus: 'SYNCING',
+        rentriSyncAvviatoAt: new Date('2026-10-23T09:00:00.000Z'),
+      })
+      expect(await repoLettura.prenotaTrasmissioneRentri(scaduto.id, tenantId, ORA, SOGLIA)).toBe(
+        true
+      )
+      const senzaData = await nuovoFir({ rentriSyncStatus: 'SYNCING', rentriSyncAvviatoAt: null })
+      expect(await repoLettura.prenotaTrasmissioneRentri(senzaData.id, tenantId, ORA, SOGLIA)).toBe(
+        true
+      )
+      const fallito = await nuovoFir({ rentriSyncStatus: 'FAILED' })
+      expect(await repoLettura.prenotaTrasmissioneRentri(fallito.id, tenantId, ORA, SOGLIA)).toBe(
+        true
+      )
+    })
+
+    it("FIR legato, CANCELLED, annullato all'ente o di un altro tenant: false", async () => {
+      const legato = await nuovoFir({ rentriNumeroFir: `RENTRI-PR-${Date.now()}` })
+      const annullato = await nuovoFir({ status: 'CANCELLED' })
+      const annullatoEnte = await nuovoFir({ rentriStatoFormulario: 'Annullato' })
+      const altroTenant = await nuovoFir()
+      for (const f of [legato, annullato, annullatoEnte]) {
+        expect(await repoLettura.prenotaTrasmissioneRentri(f.id, tenantId, ORA, SOGLIA)).toBe(false)
+      }
+      expect(
+        await repoLettura.prenotaTrasmissioneRentri(
+          altroTenant.id,
+          '99999999-9999-4999-8999-999999999999',
+          ORA,
+          SOGLIA
+        )
+      ).toBe(false)
+      expect((await riga(altroTenant.id)).rentriSyncStatus).toBe('PENDING')
+    })
+
+    it("registraTransazioneInAttesa e reload: rentriTransazioneInAttesa e rentriSyncAvviatoAt riletti dall'aggregate", async () => {
+      const fir = await nuovoFir()
+      // fuori da SYNCING la scrittura non deve avere effetto
+      expect(
+        await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-ignorata', ORA)
+      ).toBe(false)
+      expect((await riga(fir.id)).rentriTransazioneInAttesa).toBeNull()
+
+      expect(await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)).toBe(true)
+      expect(await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-123', ORA)).toBe(
+        true
+      )
+      const riletto = (await repoLettura.findById(fir.id))!
+      expect(riletto.rentriTransazioneInAttesa).toBe('tx-123')
+      expect(riletto.rentriTransazioneId).toBe('tx-123')
+      expect(riletto.rentriSyncAvviatoAt).toEqual(ORA)
+    })
+
+    it('registraTransazioneInAttesa con un avviatoAt diverso non scrive e restituisce false', async () => {
+      const fir = await nuovoFir()
+      await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)
+      const altro = new Date('2026-10-23T10:05:00.000Z')
+      expect(await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-x', altro)).toBe(
+        false
+      )
+      expect((await riga(fir.id)).rentriTransazioneInAttesa).toBeNull()
+    })
+
+    it('prenotaTrasmissioneRentri con ora non successiva alla soglia e un errore', async () => {
+      const fir = await nuovoFir()
+      await expect(
+        repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, SOGLIA, ORA)
+      ).rejects.toThrow()
+    })
+
+    it('save di un aggregate caricato prima della prenotazione non cancella la prenotazione né la transazione in attesa', async () => {
+      const fir = await nuovoFir()
+      const vecchio = (await repoLettura.findById(fir.id))!
+      expect(await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)).toBe(true)
+      await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-viva', ORA)
+      // campo non di trasmissione: il legame resta scritto dall'aggregate (fuori ambito)
+      vecchio.agganciaFormularioAcquisito(`RENTRI-STANTIO-${Date.now()}`)
+      await repoLettura.save(vecchio)
+      const r = await riga(fir.id)
+      expect(r.rentriSyncStatus).toBe('SYNCING')
+      expect(r.rentriSyncAvviatoAt).toEqual(ORA)
+      expect(r.rentriTransazioneInAttesa).toBe('tx-viva')
+      expect(r.rentriTransazioneId).toBe('tx-viva')
+      expect(r.rentriNumeroFir).toMatch(/^RENTRI-STANTIO-/)
+    })
+
+    it("save dell'aggregate che possiede il tentativo scrive il suo stato", async () => {
+      const fir = await nuovoFir()
+      await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)
+      await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-mia', ORA)
+      const mio = (await repoLettura.findById(fir.id))!
+      expect(mio.rentriSyncAvviatoAt).toEqual(ORA)
+      mio.chiudiTransazioneInAttesa()
+      await repoLettura.save(mio)
+      const r = await riga(fir.id)
+      expect(r.rentriTransazioneInAttesa).toBeNull()
+      expect(r.rentriSyncAvviatoAt).toEqual(ORA)
+    })
+
+    it('save di un aggregate con transazione in attesa azzerata la scrive NULL', async () => {
+      const fir = await nuovoFir()
+      fir.registraTransazioneInAttesa('tx-456')
+      await repoLettura.save(fir)
+      expect((await riga(fir.id)).rentriTransazioneInAttesa).toBe('tx-456')
+      fir.chiudiTransazioneInAttesa()
+      await repoLettura.save(fir)
+      expect((await riga(fir.id)).rentriTransazioneInAttesa).toBeNull()
+    })
+
+    it('elencaTrasmissioniRentriSospese restituisce solo gli scaduti', async () => {
+      const scaduto = await nuovoFir({
+        rentriSyncStatus: 'SYNCING',
+        rentriSyncAvviatoAt: new Date('2026-10-23T09:00:00.000Z'),
+      })
+      const senzaData = await nuovoFir({ rentriSyncStatus: 'SYNCING', rentriSyncAvviatoAt: null })
+      const recente = await nuovoFir({
+        rentriSyncStatus: 'SYNCING',
+        rentriSyncAvviatoAt: new Date('2026-10-23T09:59:00.000Z'),
+      })
+      const pending = await nuovoFir()
+      const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000)
+      const ids = elenco.map(e => e.firId)
+      expect(ids).toEqual(expect.arrayContaining([scaduto.id, senzaData.id]))
+      expect(ids).not.toContain(recente.id)
+      expect(ids).not.toContain(pending.id)
+      expect(elenco.find(e => e.firId === scaduto.id)!.tenantId).toBe(tenantId)
+      // senza data per primo (NULLS FIRST)
+      expect(ids.indexOf(senzaData.id)).toBeLessThan(ids.indexOf(scaduto.id))
+    })
+
+    it('rentri_sync_avviato_at è TIMESTAMPTZ: la soglia di stallo non dipende dal fuso della sessione', async () => {
+      const [colonna] = await prisma.$queryRaw<{ data_type: string; datetime_precision: number }[]>`
+        SELECT data_type, datetime_precision FROM information_schema.columns
+        WHERE table_name = 'firs' AND column_name = 'rentri_sync_avviato_at'`
+      expect(colonna).toEqual({ data_type: 'timestamp with time zone', datetime_precision: 3 })
+    })
+  })
 })

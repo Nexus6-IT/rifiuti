@@ -265,6 +265,18 @@ describe('Ciclo completo aggancio formulari RENTRI contro la fake (in-process)',
       return [...this.store.values()].filter(f => ids.includes(f.id) && f.tenantId === tenantId)
     }
 
+    async prenotaTrasmissioneRentri(): Promise<boolean> {
+      return true
+    }
+
+    async registraTransazioneInAttesa(): Promise<boolean> {
+    return true
+  }
+
+    async elencaTrasmissioniRentriSospese(): Promise<Array<{ firId: string; tenantId: string }>> {
+      return []
+    }
+
     /** Il metodo su cui poggia davvero il vincolo di non-doppio-aggancio dell'use case. */
     async findByRentriNumeroFir(tenantId: string, numeroFir: string): Promise<FIR | null> {
       for (const fir of this.store.values()) {

@@ -58,7 +58,7 @@ describe('FIRResponseDto.fromDomain — stato RENTRI', () => {
   it('espone il numero ufficiale dopo la sincronizzazione riuscita', () => {
     const fir = FIR.create(createValidFIRProps())
     fir.emetti('FIR-2026-000002', createMockFirma('Produttore SRL'))
-    fir.startRENTRISync()
+    fir.avviaTentativoRentri(new Date())
     fir.markRENTRISynced('RENTRI-999')
 
     const dto = FIRResponseDto.fromDomain(fir)
@@ -74,7 +74,7 @@ describe('FIRResponseDto.fromDomain — stato RENTRI', () => {
   it('distingue il legame proposto (modalità ibrida) dal numero ufficiale', () => {
     const fir = FIR.create(createValidFIRProps())
     fir.emetti('FIR-2026-000003', createMockFirma('Produttore SRL'))
-    fir.startRENTRISync()
+    fir.avviaTentativoRentri(new Date())
     fir.proporreLegameRENTRI('RENTRI-PROPOSTO-1')
 
     const dto = FIRResponseDto.fromDomain(fir)
@@ -87,7 +87,7 @@ describe('FIRResponseDto.fromDomain — stato RENTRI', () => {
   it("espone l'ultimo errore e resta trasmissibile dopo un fallimento con tentativi residui", () => {
     const fir = FIR.create(createValidFIRProps())
     fir.emetti('FIR-2026-000004', createMockFirma('Produttore SRL'))
-    fir.startRENTRISync()
+    fir.avviaTentativoRentri(new Date())
     fir.markRENTRISyncFailed('Timeout verso RENTRI')
 
     const dto = FIRResponseDto.fromDomain(fir)

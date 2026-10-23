@@ -1,5 +1,16 @@
-import { IsUUID, IsOptional, IsString, IsEnum, IsArray, IsInt, Min, Max } from 'class-validator'
+import {
+  IsUUID,
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsArray,
+  IsInt,
+  IsBoolean,
+  Min,
+  Max,
+} from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
+import type { RentriAzioneUtente } from '../../../application/rentri/rentri-error-presentation'
 
 /**
  * Sync Single FIR Request DTO
@@ -34,6 +45,15 @@ export class SyncFIRRequestDto {
   @IsInt()
   @Min(0)
   delay?: number
+
+  @ApiProperty({
+    description:
+      "Riapre una trasmissione ferma per verifica (solo ADMIN dell'azienda selezionata): dopo il controllo sul portale RENTRI («Ritrasmetti») o per rileggere un esito non acquisito («Rileggi esito»). La riapertura avviene nella richiesta, il job accodato non porta il flag",
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  confermaNuovaTrasmissione?: boolean
 }
 
 /**
@@ -308,11 +328,11 @@ export class SyncLogEntryDto {
 
   @ApiProperty({
     description:
-      'Azione proposta: RIPROVA abilita un pulsante «Riprova», VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA nasconde qualunque azione manuale',
-    enum: ['RIPROVA', 'VEDI_CERTIFICATO', 'NESSUNA'],
+      'Azione proposta: RIPROVA abilita un pulsante «Riprova», VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA nasconde qualunque azione manuale, RILEGGI_ESITO propone «Rileggi esito»',
+    enum: ['RIPROVA', 'VEDI_CERTIFICATO', 'NESSUNA', 'VERIFICA_SU_RENTRI', 'RILEGGI_ESITO'],
     required: false,
   })
-  azione?: 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA'
+  azione?: RentriAzioneUtente
 
   @ApiProperty({
     description:

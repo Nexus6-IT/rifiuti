@@ -12,6 +12,7 @@ import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncJobProcessor } from '../../infrastructure/queue/jobs/rentri-sync.job'
+import { RuoloEffettivoModule } from '../../api/me/ruolo-effettivo.module'
 import { RENTRISyncController } from '../../api/rentri/rentri-sync.controller'
 import { RentriFormulariController } from '../../api/rentri/rentri-formulari.controller'
 import { RentriFirLifecycleController } from '../../api/rentri/rentri-fir-lifecycle.controller'
@@ -21,6 +22,7 @@ import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
 import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
 import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
+import { RiapriTrasmissioneRentriUseCase } from './riapri-trasmissione-rentri.use-case'
 import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
 import { CostruisciPayloadRentri } from './mappatura/costruisci-payload-rentri'
 import { CercaFormulariRENTRIUseCase } from './cerca-formulari-rentri.use-case'
@@ -48,6 +50,7 @@ import { ImpostaBloccoPredefinitoUseCase } from './scorta/imposta-blocco-predefi
 import { VerificaEmissionePossibileRentriUseCase } from './scorta/verifica-emissione-possibile.use-case'
 import { ConsumaNumeroVidimatoUseCase } from './scorta/consuma-numero-vidimato.use-case'
 import { RentriRifornimentoScortaJob } from '../../infrastructure/jobs/rentri-rifornimento-scorta.job'
+import { RentriTrasmissioniSospeseJob } from '../../infrastructure/jobs/rentri-trasmissioni-sospese.job'
 import { RentriScortaController } from '../../api/rentri/rentri-scorta.controller'
 
 /**
@@ -163,7 +166,14 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
  * incorrere nel 423 dell'ente.
  */
 @Module({
-  imports: [ConfigModule, LoggerModule, MetricsModule, PrismaModule, RentriModule],
+  imports: [
+    ConfigModule,
+    LoggerModule,
+    MetricsModule,
+    PrismaModule,
+    RentriModule,
+    RuoloEffettivoModule,
+  ],
   controllers: [
     RENTRISyncController,
     RentriFormulariController,
@@ -233,6 +243,14 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
       provide: ConfermaLegameRENTRIUseCase,
       useFactory: (firRepo: FIRPrismaRepository, logger: LoggerService) =>
         new ConfermaLegameRENTRIUseCase(firRepo, logger),
+      inject: [FIRPrismaRepository, LoggerService],
+    },
+    // Riapertura dopo verifica sul portale: consumata in modo sincrono dal
+    // controller, cosi' nessun retry di job puo' riaprire da solo.
+    {
+      provide: RiapriTrasmissioneRentriUseCase,
+      useFactory: (firRepo: FIRPrismaRepository, logger: LoggerService) =>
+        new RiapriTrasmissioneRentriUseCase(firRepo, logger),
       inject: [FIRPrismaRepository, LoggerService],
     },
     {
@@ -310,7 +328,8 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
         syncLogRepo: RENTRISyncLogRepository,
         domainEvents: DomainEventsService,
         logger: LoggerService,
-        metrics: MetricsService
+        metrics: MetricsService,
+        modalitaLegame: RentriModalitaLegameService
       ) =>
         new RiconciliaStatoRentriUseCase(
           firRepo,
@@ -319,7 +338,8 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
           syncLogRepo,
           domainEvents,
           logger,
-          metrics
+          metrics,
+          modalitaLegame
         ),
       inject: [
         FIRPrismaRepository,
@@ -329,6 +349,7 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
         DomainEventsService,
         LoggerService,
         MetricsService,
+        RentriModalitaLegameService,
       ],
     },
     RentriRiconciliazioneJob,
@@ -495,6 +516,9 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
     VerificaEmissionePossibileRentriUseCase,
     ConsumaNumeroVidimatoUseCase,
     RentriRifornimentoScortaJob,
+    // Ripresa periodica delle trasmissioni rimaste in SYNCING (solo provider:
+    // nessun export, così il suo @Cron non viene registrato due volte).
+    RentriTrasmissioniSospeseJob,
   ],
   exports: [
     // Esportati per il rilancio manuale dalla pagina «Stato del sistema»

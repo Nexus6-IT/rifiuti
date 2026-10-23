@@ -60,15 +60,37 @@ describe('traduciErroreRentri', () => {
     expect(risultato.azione).toBe('NESSUNA')
   })
 
-  it('numero ufficiale mancante (RENTRI_MISSING_NUMERO_FIR): spiega che il FIR non è legato, propone «Riprova»', () => {
+  it('numero ufficiale mancante (RENTRI_MISSING_NUMERO_FIR): chiede di controllare sul portale prima di ritrasmettere', () => {
     const risultato = traduciErroreRentri({
       errorCode: 'RENTRI_MISSING_NUMERO_FIR',
       errorMessage: 'Esito RENTRI privo del numero ufficiale (numero_fir)',
     })
 
-    expect(risultato.messaggio).toContain('numero ufficiale')
-    expect(risultato.messaggio.toLowerCase()).toContain('non risulta')
-    expect(risultato.azione).toBe('RIPROVA')
+    expect(risultato).toEqual({
+      messaggio:
+        'RENTRI ha accettato la trasmissione ma non ha restituito il numero del formulario: controlla sul portale RENTRI prima di ritrasmettere, il formulario potrebbe già esistere.',
+      azione: 'VERIFICA_SU_RENTRI',
+    })
+  })
+
+  it('trasmissione incerta (RENTRI_TRASMISSIONE_INCERTA): controllare sul portale, poi ritrasmettere o collegare', () => {
+    const risultato = traduciErroreRentri({ errorCode: 'RENTRI_TRASMISSIONE_INCERTA' })
+
+    expect(risultato).toEqual({
+      messaggio:
+        "Non sappiamo se RENTRI ha ricevuto il formulario: controlla sul portale RENTRI. Se il formulario non c'è, ritrasmetti il FIR; se c'è, non ritrasmettere e collegalo con «Cerca su RENTRI».",
+      azione: 'VERIFICA_SU_RENTRI',
+    })
+  })
+
+  it('esito non acquisito (RENTRI_ESITO_NON_ACQUISITO): rileggere l’esito, nessun nuovo formulario', () => {
+    const risultato = traduciErroreRentri({ errorCode: 'RENTRI_ESITO_NON_ACQUISITO' })
+
+    expect(risultato).toEqual({
+      messaggio:
+        "RENTRI ha ricevuto il formulario ma non siamo riusciti a leggerne l'esito. Premi «Rileggi esito»: non verrà creato un nuovo formulario.",
+      azione: 'RILEGGI_ESITO',
+    })
   })
 
   it('5xx / problemi di rete (RENTRI_API_ERROR): transitorio, nessun «Riprova» manuale (riprende da sola)', () => {

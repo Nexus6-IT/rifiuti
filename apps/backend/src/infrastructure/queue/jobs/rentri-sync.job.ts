@@ -133,6 +133,9 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
    * Process single FIR sync
    */
   private async processSingleSync(job: Job): Promise<SyncJobResult> {
+    // Un eventuale `confermaNuovaTrasmissione` rimasto nel data di un job
+    // vecchio si ignora: la riapertura si consuma nel controller, mai qui, così
+    // un retry non può riaprire una trasmissione ferma per verifica.
     const { firId, tenantId, correlationId, richiedeConferma } = job.data
     const startTime = Date.now()
 
@@ -160,6 +163,24 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
       // Un fallimento definitivo (willRetry: false — es. 403, o esito
       // negativo della transazione) NON viene rilanciato: il job si
       // considera concluso, senza nuovi tentativi.
+      // Un altro job possiede la prenotazione della trasmissione: qui non è
+      // stato fatto nulla e non c'è nulla da ritentare (ci pensa l'altro job o,
+      // se si è interrotto, la ripresa periodica delle trasmissioni sospese).
+      if (result.giaInCorso === true) {
+        this.logger.info('Trasmissione RENTRI già in corso su un altro job, nessuna azione', {
+          jobId: job.id,
+          firId,
+          tenantId,
+        })
+        return {
+          jobId: job.id as string,
+          type: 'single',
+          success: false,
+          firId,
+          duration,
+        }
+      }
+
       if (!result.success && result.willRetry) {
         // Il catch sottostante registra già la metrica di durata e logga
         // l'errore prima di rilanciare verso BullMQ.

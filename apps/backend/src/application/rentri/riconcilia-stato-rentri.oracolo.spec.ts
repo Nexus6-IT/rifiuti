@@ -227,7 +227,13 @@ describe('RiconciliaStatoRentriUseCase — contro la fake RENTRI (transazione re
       mockSyncLogRepository as any,
       mockDomainEvents as any,
       mockLogger,
-      mockMetrics
+      mockMetrics,
+      // Tenant AUTOMATICA: la correzione chiude il legame con markRENTRISynced.
+      {
+        getForTenant: jest
+          .fn()
+          .mockResolvedValue({ modalitaLegame: 'AUTOMATICA', certificatoConfigurato: true }),
+      } as any
     )
 
     return {

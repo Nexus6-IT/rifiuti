@@ -34,6 +34,7 @@ import { ImpostaBloccoPredefinitoUseCase } from './scorta/imposta-blocco-predefi
 import { VerificaEmissionePossibileRentriUseCase } from './scorta/verifica-emissione-possibile.use-case'
 import { ConsumaNumeroVidimatoUseCase } from './scorta/consuma-numero-vidimato.use-case'
 import { RentriRifornimentoScortaJob } from '../../infrastructure/jobs/rentri-rifornimento-scorta.job'
+import { RentriTrasmissioniSospeseJob } from '../../infrastructure/jobs/rentri-trasmissioni-sospese.job'
 import { RentriScortaController } from '../../api/rentri/rentri-scorta.controller'
 import { AppModule } from '../../app.module'
 
@@ -139,6 +140,7 @@ describe('RentriSyncModule (DI wiring)', () => {
     expect(moduleRef.get(VerificaEmissionePossibileRentriUseCase)).toBeDefined()
     expect(moduleRef.get(ConsumaNumeroVidimatoUseCase)).toBeDefined()
     expect(moduleRef.get(RentriRifornimentoScortaJob)).toBeDefined()
+    expect(moduleRef.get(RentriTrasmissioniSospeseJob)).toBeDefined()
     expect(moduleRef.get(RentriScortaController)).toBeDefined()
 
     // Nessun moduleRef.close(): onModuleInit non è mai stato invocato

@@ -61,7 +61,13 @@ describe('TrasmettiFIRSecondoModalitaUseCase — modalità di trasmissione contr
     await app.close()
   })
 
-  class FIRRepositoryFake implements Pick<IFIRRepository, 'findById' | 'save'> {
+  class FIRRepositoryFake
+    implements
+      Pick<
+        IFIRRepository,
+        'findById' | 'save' | 'prenotaTrasmissioneRentri' | 'registraTransazioneInAttesa'
+      >
+  {
     private readonly memoria = new Map<string, FIR>()
 
     async findById(id: string): Promise<FIR | null> {
@@ -70,6 +76,16 @@ describe('TrasmettiFIRSecondoModalitaUseCase — modalità di trasmissione contr
 
     async save(fir: FIR): Promise<void> {
       this.memoria.set(fir.id, fir)
+    }
+
+    // Un solo processo e un solo oggetto per FIR: la prenotazione riesce sempre.
+    // La semantica concorrente e' provata in sync-fir-idempotenza.oracolo.spec.ts.
+    async prenotaTrasmissioneRentri(): Promise<boolean> {
+      return true
+    }
+
+    async registraTransazioneInAttesa(): Promise<boolean> {
+      return true
     }
   }
 

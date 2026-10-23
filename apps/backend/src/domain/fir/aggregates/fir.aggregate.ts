@@ -440,7 +440,15 @@ export class FIR extends AggregateRoot {
     /** Provenienza del rifiuto (URBANO/SPECIALE). `null` per i FIR legacy privi del dato. */
     private readonly _provenienza: ProvenienzaRifiuto | null = null,
     /** Modalità di trasporto della tratta principale (Campo 4). `null` per i FIR legacy privi del dato. */
-    private readonly _tipoTrattaPrincipale: TipoTratta | null = null
+    private readonly _tipoTrattaPrincipale: TipoTratta | null = null,
+    /**
+     * Transazione REST di creazione accettata dall'ente ma di cui non si è
+     * ancora letto l'esito: finché è valorizzata, un nuovo tentativo deve
+     * riprendere il polling invece di creare un secondo formulario.
+     */
+    private _rentriTransazioneInAttesa: string | null = null,
+    /** Istante di avvio dell'ultimo tentativo di trasmissione (rilevamento stalli). */
+    private _rentriSyncAvviatoAt: Date | null = null
   ) {
     super()
   }
@@ -491,7 +499,9 @@ export class FIR extends AggregateRoot {
       null, // rentriStatoFormulario
       null, // motivoAnnullamento
       props.provenienza ?? null,
-      props.tipoTrattaPrincipale ?? null
+      props.tipoTrattaPrincipale ?? null,
+      null, // rentriTransazioneInAttesa
+      null // rentriSyncAvviatoAt
     )
   }
 
@@ -664,13 +674,58 @@ export class FIR extends AggregateRoot {
   }
 
   /**
-   * Segna l'avvio di un tentativo di trasmissione a RENTRI.
+   * Segna l'avvio di un tentativo di trasmissione a RENTRI. Accetta anche un
+   * FIR già in SYNCING: è la ripresa dopo uno stallo (processo morto a metà),
+   * che altrimenti resterebbe bloccato per sempre.
    */
-  startRENTRISync(): void {
-    if (!this.canSyncToRENTRI()) {
+  avviaTentativoRentri(ora: Date): void {
+    const statoEmesso =
+      this._stato === FIRStato.EMESSO ||
+      this._stato === FIRStato.IN_TRANSITO ||
+      this._stato === FIRStato.CONSEGNATO
+    const ripresaDaStallo = this._rentriSyncStatus.getStatus() === 'SYNCING'
+    if (
+      !statoEmesso ||
+      this._rentriNumeroFir !== null ||
+      !(ripresaDaStallo || this._rentriSyncStatus.canRetry())
+    ) {
       throw new DomainError('FIR non trasmissibile a RENTRI nello stato corrente')
     }
     this._rentriSyncStatus = this._rentriSyncStatus.markAsSyncing()
+    this._rentriSyncAvviatoAt = ora
+  }
+
+  /**
+   * Registra la transazione di creazione accettata dall'ente, prima di
+   * leggerne l'esito: se il processo muore da qui in poi, il tentativo
+   * successivo la riprende invece di creare un doppione.
+   */
+  registraTransazioneInAttesa(transazioneId: string): void {
+    this._rentriTransazioneInAttesa = transazioneId
+    this._rentriTransazioneId = transazioneId
+  }
+
+  /** Chiude la transazione in attesa dopo aver letto un esito negativo. */
+  chiudiTransazioneInAttesa(): void {
+    this._rentriTransazioneInAttesa = null
+  }
+
+  /**
+   * Esito della creazione incerto (timeout/rete dopo l'invio): il formulario
+   * potrebbe esistere presso l'ente. Blocca i tentativi automatici finché un
+   * operatore non verifica (v. `riapriTrasmissioneDopoVerifica`).
+   */
+  segnaTrasmissioneIncerta(motivo: string, correlationId?: string): void {
+    this.markRENTRISyncFailed(motivo, 'RENTRI_TRASMISSIONE_INCERTA', correlationId)
+    this._rentriTransazioneInAttesa = null
+  }
+
+  /** Riapre la trasmissione dopo verifica manuale; vietato su un FIR già legato. */
+  riapriTrasmissioneDopoVerifica(): void {
+    if (this._rentriNumeroFir !== null) {
+      throw new DomainError('FIR già legato a RENTRI: nessuna trasmissione da riaprire')
+    }
+    this._rentriSyncStatus = this._rentriSyncStatus.riapriDopoVerificaManuale()
   }
 
   /**
@@ -690,6 +745,7 @@ export class FIR extends AggregateRoot {
 
     this._rentriSyncStatus = this._rentriSyncStatus.markAsSynced(numeroFir)
     this._rentriNumeroFir = numeroFir
+    this._rentriTransazioneInAttesa = null
     if (transazioneId) {
       this._rentriTransazioneId = transazioneId
     }
@@ -749,6 +805,7 @@ export class FIR extends AggregateRoot {
 
     this._rentriSyncStatus = this._rentriSyncStatus.markAsSynced(numeroFir)
     this._rentriNumeroFirProposto = numeroFir
+    this._rentriTransazioneInAttesa = null
     if (transazioneId) {
       // rentriTransazioneId è solo l'identificativo tecnico dell'ultima
       // trasmissione (non la chiave di aggancio): può essere registrato da
@@ -1134,6 +1191,16 @@ export class FIR extends AggregateRoot {
   /** Identificativo tecnico dell'ultima trasmissione REST verso RENTRI. */
   get rentriTransazioneId(): string | null {
     return this._rentriTransazioneId
+  }
+
+  /** Transazione di creazione accettata di cui non si è ancora letto l'esito. */
+  get rentriTransazioneInAttesa(): string | null {
+    return this._rentriTransazioneInAttesa
+  }
+
+  /** Istante di avvio dell'ultimo tentativo di trasmissione. */
+  get rentriSyncAvviatoAt(): Date | null {
+    return this._rentriSyncAvviatoAt
   }
 
   /** Come è nato il legame con rentriNumeroFir. */

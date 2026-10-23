@@ -37,6 +37,10 @@ export class RENTRISyncStatus {
    *   `RENTRIApiClient`). Il contratto RENTRI tratta il 423 come ban del
    *   chiamante per troppe richieste non valide: insistere su un 403 con lo
    *   stesso payload è esattamente il comportamento che porta al ban.
+   * - `RENTRI_TRASMISSIONE_INCERTA`, `RENTRI_MISSING_NUMERO_FIR` e
+   *   `RENTRI_ESITO_NON_ACQUISITO`: la creazione potrebbe essere già avvenuta
+   *   presso l'ente; si riapre solo su richiesta dell'utente (v.
+   *   `riapriDopoVerificaManuale`).
    * - `RENTRI_VALIDATION_ERROR`: l'ente ha elaborato la transazione e ha
    *   rifiutato il contenuto del formulario — serve una correzione dei dati,
    *   non un nuovo tentativo automatico (v. `SyncFIRToRENTRIUseCase`, ramo
@@ -52,6 +56,17 @@ export class RENTRISyncStatus {
   private static readonly NON_RETRYABLE_ERROR_CODES: ReadonlySet<string> = new Set([
     'RENTRI_FORBIDDEN',
     'RENTRI_VALIDATION_ERROR',
+    // La creazione ha avuto esito incerto (timeout/rete dopo l'invio): il
+    // formulario potrebbe esistere già presso l'ente. Ritentare in automatico
+    // creerebbe un doppione: serve prima una verifica manuale.
+    'RENTRI_TRASMISSIONE_INCERTA',
+    // Transazione elaborata ma esito privo di numero_fir: la creazione è
+    // avvenuta, rilanciarla duplicherebbe il formulario.
+    'RENTRI_MISSING_NUMERO_FIR',
+    // Transazione accettata dall'ente ma esito illeggibile a tentativi finiti
+    // (o 403 sul polling): la transazione resta salvata e si rilegge solo su
+    // richiesta dell'utente («Rileggi esito»), senza nuova POST.
+    'RENTRI_ESITO_NON_ACQUISITO',
   ])
 
   private constructor(
@@ -147,6 +162,27 @@ export class RENTRISyncStatus {
       throw new DomainException('Cannot sync already synced FIR')
     }
     return new RENTRISyncStatus('SYNCING', this.attempts)
+  }
+
+  /**
+   * Riapre un fallimento da verifica manuale (trasmissione incerta, esito
+   * senza numero_fir, esito non acquisito): torna PENDING con i tentativi
+   * azzerati, perché la riapertura è una decisione dell'utente e il nuovo ciclo
+   * deve avere tutti i suoi tentativi (lo storico resta nei log di sync). Per
+   * qualunque altro codice è un errore: gli altri fallimenti permanenti non si
+   * sbloccano a mano da qui.
+   */
+  riapriDopoVerificaManuale(): RENTRISyncStatus {
+    if (
+      this.lastErrorCode !== 'RENTRI_TRASMISSIONE_INCERTA' &&
+      this.lastErrorCode !== 'RENTRI_MISSING_NUMERO_FIR' &&
+      this.lastErrorCode !== 'RENTRI_ESITO_NON_ACQUISITO'
+    ) {
+      throw new DomainException(
+        'Solo una trasmissione incerta, un esito senza numero FIR o un esito non acquisito può essere riaperto dopo verifica manuale'
+      )
+    }
+    return RENTRISyncStatus.pending()
   }
 
   /**

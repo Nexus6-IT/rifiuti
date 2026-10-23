@@ -279,7 +279,7 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
         userId: 'user-produttore',
       }
       fir.emetti('FIR-2026-000001', firma)
-      fir.startRENTRISync()
+      fir.avviaTentativoRentri(new Date())
       fir.markRENTRISyncFailed('Certificato non valido', 'RENTRI_FORBIDDEN')
 
       await repo.save(fir)
