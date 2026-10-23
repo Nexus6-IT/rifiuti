@@ -5,6 +5,8 @@ import {
   Param,
   Body,
   Query,
+  Req,
+  ForbiddenException,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -22,6 +24,8 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { TriggerBatchSyncUseCase } from '../../application/rentri/trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from '../../application/rentri/get-sync-status.use-case'
 import { ConfermaLegameRENTRIUseCase } from '../../application/rentri/conferma-legame-rentri.use-case'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
@@ -61,6 +65,9 @@ import {
  * trasmissioni altrui. Stessi ruoli di `registro.controller.ts` (altro
  * adempimento verso terzi con RLS multi-tenant equivalente).
  */
+/** Ruoli che possono confermare una nuova trasmissione dopo la verifica sul portale. */
+const RUOLI_NUOVA_TRASMISSIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
+
 @ApiTags('RENTRI Sync')
 @ApiBearerAuth()
 @Controller('rentri/sync')
@@ -73,7 +80,8 @@ export class RENTRISyncController {
     private readonly confermaLegameRENTRIUseCase: ConfermaLegameRENTRIUseCase,
     private readonly rentriSyncQueue: RENTRISyncQueue,
     private readonly rentriSyncLogRepository: RENTRISyncLogRepository,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly ruoloEffettivo: RuoloEffettivoService
   ) {
     this.logger.setContext('RENTRISyncController')
   }
@@ -144,7 +152,8 @@ export class RENTRISyncController {
     @Param('id') firId: string,
     @TenantId() tenantId: string,
     @UserId() userId: string,
-    @Body() dto: SyncFIRRequestDto
+    @Body() dto: SyncFIRRequestDto,
+    @Req() req: any
   ): Promise<SyncFIRResponseDto> {
     this.logger.info('Sync FIR request received', {
       firId,
@@ -154,6 +163,23 @@ export class RENTRISyncController {
       delay: dto.delay,
     })
 
+    // Una nuova trasmissione dopo un esito incerto può creare un doppione presso
+    // l'ente: la decide un amministratore NELL'AZIENDA SELEZIONATA (ruolo effettivo,
+    // non quello del token, che `@Roles` vede soltanto).
+    if (dto.confermaNuovaTrasmissione === true) {
+      const ruolo = await this.ruoloEffettivo.ruoloEffettivo(
+        req.user,
+        requireRequestTenantId(req) ?? tenantId
+      )
+      if (!RUOLI_NUOVA_TRASMISSIONE.includes(ruolo)) {
+        throw new ForbiddenException({
+          message:
+            "Solo un amministratore dell'azienda può ritrasmettere un FIR dopo la verifica sul portale RENTRI.",
+          error: 'RENTRI_RITRASMISSIONE_RISERVATA_AMMINISTRATORI',
+        })
+      }
+    }
+
     try {
       // Queue the sync job
       const jobId = await this.rentriSyncQueue.addSyncJob({
@@ -162,6 +188,7 @@ export class RENTRISyncController {
         correlationId: dto.correlationId,
         delay: dto.delay || 0,
         priority: dto.priority || 'normal',
+        ...(dto.confermaNuovaTrasmissione === true ? { confermaNuovaTrasmissione: true } : {}),
       })
 
       const estimatedStartTime = dto.delay

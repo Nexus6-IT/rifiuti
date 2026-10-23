@@ -1,4 +1,14 @@
-import { IsUUID, IsOptional, IsString, IsEnum, IsArray, IsInt, Min, Max } from 'class-validator'
+import {
+  IsUUID,
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsArray,
+  IsInt,
+  IsBoolean,
+  Min,
+  Max,
+} from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 
 /**
@@ -34,6 +44,15 @@ export class SyncFIRRequestDto {
   @IsInt()
   @Min(0)
   delay?: number
+
+  @ApiProperty({
+    description:
+      "Conferma esplicita di una nuova trasmissione dopo aver verificato sul portale RENTRI che il formulario non esiste (solo ADMIN dell'azienda selezionata)",
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  confermaNuovaTrasmissione?: boolean
 }
 
 /**
@@ -309,10 +328,10 @@ export class SyncLogEntryDto {
   @ApiProperty({
     description:
       'Azione proposta: RIPROVA abilita un pulsante «Riprova», VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA nasconde qualunque azione manuale',
-    enum: ['RIPROVA', 'VEDI_CERTIFICATO', 'NESSUNA'],
+    enum: ['RIPROVA', 'VEDI_CERTIFICATO', 'NESSUNA', 'VERIFICA_SU_RENTRI'],
     required: false,
   })
-  azione?: 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA'
+  azione?: 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA' | 'VERIFICA_SU_RENTRI'
 
   @ApiProperty({
     description:

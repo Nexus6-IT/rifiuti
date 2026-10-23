@@ -31,12 +31,15 @@ export class RENTRISyncService {
       priority?: 'high' | 'normal' | 'low'
       delay?: number
       correlationId?: string
+      /** Solo ADMIN: nuova trasmissione dopo aver verificato sul portale RENTRI che il formulario non esiste. */
+      confermaNuovaTrasmissione?: boolean
     }
   ): Observable<SyncFIRResponse> {
     return this.http.post<SyncFIRResponse>(`${this.baseUrl}/fir/${firId}`, {
       priority: options?.priority || 'normal',
       delay: options?.delay || 0,
       correlationId: options?.correlationId,
+      ...(options?.confermaNuovaTrasmissione ? { confermaNuovaTrasmissione: true } : {}),
     })
   }
 
@@ -217,7 +220,7 @@ export interface SyncLogEntry {
    * «Riprova», VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA
    * nasconde qualunque azione manuale (v. backend rentri-error-presentation.ts).
    */
-  azione?: 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA'
+  azione?: 'RIPROVA' | 'VEDI_CERTIFICATO' | 'NESSUNA' | 'VERIFICA_SU_RENTRI'
   /** Campo del formulario indicato da RENTRI come causa del rifiuto (solo errori di validazione). */
   campo?: string
   protocolNumber?: string

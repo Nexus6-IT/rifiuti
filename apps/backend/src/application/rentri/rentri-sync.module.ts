@@ -12,6 +12,7 @@ import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncJobProcessor } from '../../infrastructure/queue/jobs/rentri-sync.job'
+import { RuoloEffettivoModule } from '../../api/me/ruolo-effettivo.module'
 import { RENTRISyncController } from '../../api/rentri/rentri-sync.controller'
 import { RentriFormulariController } from '../../api/rentri/rentri-formulari.controller'
 import { RentriFirLifecycleController } from '../../api/rentri/rentri-fir-lifecycle.controller'
@@ -164,7 +165,14 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
  * incorrere nel 423 dell'ente.
  */
 @Module({
-  imports: [ConfigModule, LoggerModule, MetricsModule, PrismaModule, RentriModule],
+  imports: [
+    ConfigModule,
+    LoggerModule,
+    MetricsModule,
+    PrismaModule,
+    RentriModule,
+    RuoloEffettivoModule,
+  ],
   controllers: [
     RENTRISyncController,
     RentriFormulariController,

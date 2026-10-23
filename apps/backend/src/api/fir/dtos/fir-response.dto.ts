@@ -202,7 +202,7 @@ export class FIRResponseDto {
   rentriMessaggioErrore: string | null
 
   @ApiPropertyOptional({
-    enum: ['RIPROVA', 'VEDI_CERTIFICATO', 'NESSUNA'],
+    enum: ['RIPROVA', 'VEDI_CERTIFICATO', 'NESSUNA', 'VERIFICA_SU_RENTRI'],
     description:
       "Azione proposta per l'ultimo fallimento: RIPROVA abilita il pulsante «Riprova», " +
       'VEDI_CERTIFICATO rimanda alla pagina del certificato, NESSUNA nasconde qualunque azione manuale',
