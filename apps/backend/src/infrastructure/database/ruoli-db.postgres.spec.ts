@@ -1,0 +1,190 @@
+/**
+ * RUOLI DATABASE `wasteflow_app` e `wasteflow_sistema` — prova dei GRANT.
+ *
+ * Esegue lo STESSO file `prisma/sql/ruoli-db.sql` che gira in deploy, ma senza
+ * psql (non c'e' ovunque): sostituisce i due `:'...'` con letterali e lo
+ * spezza in statement. Poi si collega DAVVERO come ciascun ruolo e verifica
+ * cosa puo' e cosa non puo' fare; le query sul catalogo sono solo un di piu'.
+ *
+ * I ruoli sono validi per tutto il cluster: lo script e' idempotente e il
+ * test non li elimina (resterebbero i GRANT sul database in uso).
+ *
+ * Eseguire con `npm run test:postgres`.
+ */
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { PrismaClient } from '@prisma/client'
+
+const PWD_APP_1 = 'ProvaApp_uno_1'
+const PWD_APP_2 = 'ProvaApp_due_2'
+const PWD_SIS_1 = 'ProvaSis_uno_1'
+const PWD_SIS_2 = 'ProvaSis_due_2'
+
+const SCRIPT = join(__dirname, '..', '..', '..', 'prisma', 'sql', 'ruoli-db.sql')
+
+/** Spezza il file in statement, rispettando commenti, apici e dollar-quoting. */
+function spezza(sql: string): string[] {
+  const out: string[] = []
+  let cur = ''
+  let i = 0
+  let dollaro: string | null = null
+  while (i < sql.length) {
+    const c = sql[i]
+    if (dollaro) {
+      if (sql.startsWith(dollaro, i)) {
+        cur += dollaro
+        i += dollaro.length
+        dollaro = null
+      } else cur += sql[i++]
+      continue
+    }
+    if (c === '-' && sql[i + 1] === '-') {
+      while (i < sql.length && sql[i] !== '\n') i++
+      continue
+    }
+    if (c === "'") {
+      const fine = sql.indexOf("'", i + 1)
+      cur += sql.slice(i, fine + 1)
+      i = fine + 1
+      continue
+    }
+    const m = c === '$' ? /^\$[A-Za-z_]*\$/.exec(sql.slice(i)) : null
+    if (m) {
+      dollaro = m[0]
+      cur += dollaro
+      i += dollaro.length
+      continue
+    }
+    if (c === ';') {
+      if (cur.trim()) out.push(cur.trim())
+      cur = ''
+      i++
+      continue
+    }
+    cur += sql[i++]
+  }
+  if (cur.trim()) out.push(cur.trim())
+  return out
+}
+
+const lett = (v: string) => `'${v.replace(/'/g, "''")}'`
+
+async function eseguiScript(owner: PrismaClient, appPwd: string, sistemaPwd: string) {
+  const sql = readFileSync(SCRIPT, 'utf8')
+    .replace(":'app_password'", lett(appPwd))
+    .replace(":'sistema_password'", lett(sistemaPwd))
+  // Un'unica transazione interattiva = un'unica connessione: set_config di
+  // sessione e RESET finale devono stare sulla stessa.
+  await owner.$transaction(async tx => {
+    for (const stmt of spezza(sql)) await tx.$executeRawUnsafe(stmt)
+  })
+}
+
+describe('Ruoli database (Postgres reale)', () => {
+  const owner = new PrismaClient()
+  const aperti: PrismaClient[] = []
+  const T_ESISTENTE = 'ruoli_db_test_esistente'
+  const T_FUTURA = 'ruoli_db_test_futura'
+
+  const comeRuolo = (ruolo: string, pwd: string) => {
+    const url = new URL(process.env.DATABASE_URL as string)
+    url.username = ruolo
+    url.password = encodeURIComponent(pwd)
+    const c = new PrismaClient({ datasourceUrl: url.toString() })
+    aperti.push(c)
+    return c
+  }
+
+  const crud = async (c: PrismaClient, tabella: string) => {
+    await c.$executeRawUnsafe(`INSERT INTO ${tabella} (id, v) VALUES (1, 'a')`)
+    await c.$executeRawUnsafe(`UPDATE ${tabella} SET v = 'b' WHERE id = 1`)
+    const r = await c.$queryRawUnsafe<{ v: string }[]>(`SELECT v FROM ${tabella} WHERE id = 1`)
+    expect(r[0].v).toBe('b')
+    await c.$executeRawUnsafe(`DELETE FROM ${tabella} WHERE id = 1`)
+  }
+
+  const negato = (p: Promise<unknown>) =>
+    expect(p).rejects.toThrow(/permission denied|must be owner/i)
+
+  beforeAll(async () => {
+    await owner.$executeRawUnsafe(`DROP TABLE IF EXISTS ${T_ESISTENTE}`)
+    await owner.$executeRawUnsafe(`DROP TABLE IF EXISTS ${T_FUTURA}`)
+    await owner.$executeRawUnsafe(`CREATE TABLE ${T_ESISTENTE} (id int PRIMARY KEY, v text)`)
+    await eseguiScript(owner, PWD_APP_1, PWD_SIS_1)
+  })
+
+  afterAll(async () => {
+    await Promise.all(aperti.map(c => c.$disconnect()))
+    await owner.$executeRawUnsafe(`DROP TABLE IF EXISTS ${T_ESISTENTE}`)
+    await owner.$executeRawUnsafe(`DROP TABLE IF EXISTS ${T_FUTURA}`)
+    await owner.$disconnect()
+  })
+
+  it('wasteflow_app: CRUD su una tabella esistente, nessun CREATE/ALTER/TRUNCATE, rolbypassrls false, nessuna tabella posseduta', async () => {
+    const app = comeRuolo('wasteflow_app', PWD_APP_1)
+    await crud(app, T_ESISTENTE)
+
+    await negato(app.$executeRawUnsafe(`CREATE TABLE public.x_app (id int)`))
+    await negato(app.$executeRawUnsafe(`ALTER TABLE ${T_ESISTENTE} ADD COLUMN z int`))
+    await negato(app.$executeRawUnsafe(`TRUNCATE ${T_ESISTENTE}`))
+    // _prisma_migrations: solo lettura.
+    await app.$queryRawUnsafe(`SELECT 1 FROM _prisma_migrations LIMIT 1`)
+    await negato(app.$executeRawUnsafe(`DELETE FROM _prisma_migrations`))
+
+    const [r] = await owner.$queryRawUnsafe<{ rolbypassrls: boolean; rolsuper: boolean }[]>(
+      `SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = 'wasteflow_app'`
+    )
+    expect(r).toEqual({ rolbypassrls: false, rolsuper: false })
+    const possedute = await owner.$queryRawUnsafe<unknown[]>(
+      `SELECT 1 FROM pg_class c JOIN pg_roles r ON r.oid = c.relowner
+       WHERE r.rolname = 'wasteflow_app'`
+    )
+    expect(possedute).toHaveLength(0)
+  })
+
+  it('wasteflow_sistema: rolbypassrls true, CRUD, nessun CREATE', async () => {
+    const sis = comeRuolo('wasteflow_sistema', PWD_SIS_1)
+    await crud(sis, T_ESISTENTE)
+    await negato(sis.$executeRawUnsafe(`CREATE TABLE public.x_sis (id int)`))
+    await negato(sis.$executeRawUnsafe(`TRUNCATE ${T_ESISTENTE}`))
+    await negato(sis.$executeRawUnsafe(`DELETE FROM _prisma_migrations`))
+
+    const [r] = await owner.$queryRawUnsafe<{ rolbypassrls: boolean; rolsuper: boolean }[]>(
+      `SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = 'wasteflow_sistema'`
+    )
+    expect(r).toEqual({ rolbypassrls: true, rolsuper: false })
+  })
+
+  it("tabella creata dall'owner dopo lo script: accessibile ai due ruoli", async () => {
+    await owner.$executeRawUnsafe(`CREATE TABLE ${T_FUTURA} (id serial PRIMARY KEY, v text)`)
+    for (const [ruolo, pwd] of [
+      ['wasteflow_app', PWD_APP_1],
+      ['wasteflow_sistema', PWD_SIS_1],
+    ]) {
+      const c = comeRuolo(ruolo, pwd)
+      // La sequence serial e' coperta dai default privileges.
+      await c.$executeRawUnsafe(`INSERT INTO ${T_FUTURA} (v) VALUES ('a')`)
+      await c.$executeRawUnsafe(`UPDATE ${T_FUTURA} SET v = 'b'`)
+      const r = await c.$queryRawUnsafe<{ v: string }[]>(`SELECT v FROM ${T_FUTURA}`)
+      expect(r.length).toBeGreaterThan(0)
+      await c.$executeRawUnsafe(`DELETE FROM ${T_FUTURA}`)
+      await negato(c.$executeRawUnsafe(`TRUNCATE ${T_FUTURA}`))
+    }
+  })
+
+  it('script eseguito due volte: nessun errore; seconda password valida, prima no', async () => {
+    await expect(eseguiScript(owner, PWD_APP_2, PWD_SIS_2)).resolves.toBeUndefined()
+
+    for (const [ruolo, nuova, vecchia] of [
+      ['wasteflow_app', PWD_APP_2, PWD_APP_1],
+      ['wasteflow_sistema', PWD_SIS_2, PWD_SIS_1],
+    ]) {
+      const ok = comeRuolo(ruolo, nuova)
+      await ok.$queryRawUnsafe(`SELECT 1 FROM ${T_ESISTENTE}`)
+      const ko = comeRuolo(ruolo, vecchia)
+      await expect(ko.$queryRawUnsafe(`SELECT 1`)).rejects.toThrow()
+    }
+    // I GRANT restano identici dopo la seconda esecuzione.
+    await crud(comeRuolo('wasteflow_app', PWD_APP_2), T_ESISTENTE)
+  })
+})
