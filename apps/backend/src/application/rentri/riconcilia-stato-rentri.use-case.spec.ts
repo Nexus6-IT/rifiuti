@@ -1,6 +1,7 @@
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-api.client'
 import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
+import { SOGLIA_STALLO_RENTRI_MS } from './sync-fir-to-rentri.use-case'
 
 /**
  * Test unitari di RiconciliaStatoRentriUseCase (R5 Task 4).
@@ -25,6 +26,7 @@ describe('RiconciliaStatoRentriUseCase', () => {
   let mockDomainEvents: any
   let mockLogger: any
   let mockMetrics: any
+  let mockModalita: any
 
   const tenantId = 'tenant-1'
 
@@ -37,6 +39,7 @@ describe('RiconciliaStatoRentriUseCase', () => {
       rentriNumeroFirProposto: overrides.rentriNumeroFirProposto ?? null,
       rentriStatoFormulario: overrides.rentriStatoFormulario ?? null,
       markRENTRISynced: jest.fn(),
+      proporreLegameRENTRI: jest.fn(),
       applyRentriStato: jest.fn(),
       confermaLegameRENTRI: jest.fn(),
       getDomainEvents: jest.fn().mockReturnValue([]),
@@ -87,6 +90,12 @@ describe('RiconciliaStatoRentriUseCase', () => {
       rentriReconciliationDivergences: { inc: jest.fn() },
     }
 
+    mockModalita = {
+      getForTenant: jest
+        .fn()
+        .mockResolvedValue({ modalitaLegame: 'AUTOMATICA', certificatoConfigurato: true }),
+    }
+
     useCase = new RiconciliaStatoRentriUseCase(
       mockFIRRepository,
       mockPrisma,
@@ -94,7 +103,8 @@ describe('RiconciliaStatoRentriUseCase', () => {
       mockSyncLogRepository,
       mockDomainEvents,
       mockLogger,
-      mockMetrics
+      mockMetrics,
+      mockModalita
     )
   })
 
@@ -166,6 +176,50 @@ describe('RiconciliaStatoRentriUseCase', () => {
 
       const logSalvato = mockSyncLogRepository.createPending.mock.calls[0][0]
       expect(logSalvato.origine).toBe('RICONCILIAZIONE')
+    })
+
+    it('seleziona i SYNCING sulla prenotazione (rentri_sync_avviato_at oltre la soglia di stallo o assente), non su updatedAt', async () => {
+      mockPrisma.fIR.findMany.mockResolvedValue([])
+      const prima = Date.now()
+
+      await useCase.execute(tenantId)
+
+      const chiamata = mockPrisma.fIR.findMany.mock.calls
+        .map((c: any[]) => c[0])
+        .find((a: any) => a.where.rentriSyncStatus === 'SYNCING')
+      expect(chiamata.where.updatedAt).toBeUndefined()
+      const [scaduta, assente] = chiamata.where.OR
+      expect(assente).toEqual({ rentriSyncAvviatoAt: null })
+      // La stessa soglia del cron di ripresa: una trasmissione viva (POST +
+      // polling) non sembra mai "bloccata".
+      expect(
+        Math.abs(scaduta.rentriSyncAvviatoAt.lt.getTime() - (prima - SOGLIA_STALLO_RENTRI_MS))
+      ).toBeLessThan(5000)
+    })
+
+    it('tenant IBRIDA: la correzione propone il legame invece di chiuderlo', async () => {
+      mockPrisma.fIR.findMany.mockImplementation((args: any) =>
+        Promise.resolve(args.where.rentriSyncStatus === 'SYNCING' ? [{ id: 'fir-ibrida' }] : [])
+      )
+      mockModalita.getForTenant.mockResolvedValue({
+        modalitaLegame: 'IBRIDA',
+        certificatoConfigurato: true,
+      })
+      const fir = firFake({ id: 'fir-ibrida', rentriTransazioneId: 'trans-ib' })
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRentriApiClient.attendiEsito.mockResolvedValue({
+        errore: false,
+        validazione: [],
+        esito: { numero_fir: 'NUM-IB' },
+      })
+
+      const risultato = await useCase.execute(tenantId)
+
+      expect(mockModalita.getForTenant).toHaveBeenCalledWith(tenantId)
+      expect(fir.proporreLegameRENTRI).toHaveBeenCalledWith('NUM-IB', 'trans-ib', expect.any(String))
+      expect(fir.markRENTRISynced).not.toHaveBeenCalled()
+      expect(mockFIRRepository.save).toHaveBeenCalledWith(fir)
+      expect(risultato.corretti).toBe(1)
     })
 
     it('SEGNALA (non corregge) senza rentriTransazioneId noto', async () => {

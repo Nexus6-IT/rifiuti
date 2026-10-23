@@ -328,7 +328,8 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
         syncLogRepo: RENTRISyncLogRepository,
         domainEvents: DomainEventsService,
         logger: LoggerService,
-        metrics: MetricsService
+        metrics: MetricsService,
+        modalitaLegame: RentriModalitaLegameService
       ) =>
         new RiconciliaStatoRentriUseCase(
           firRepo,
@@ -337,7 +338,8 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
           syncLogRepo,
           domainEvents,
           logger,
-          metrics
+          metrics,
+          modalitaLegame
         ),
       inject: [
         FIRPrismaRepository,
@@ -347,6 +349,7 @@ import { RentriScortaController } from '../../api/rentri/rentri-scorta.controlle
         DomainEventsService,
         LoggerService,
         MetricsService,
+        RentriModalitaLegameService,
       ],
     },
     RentriRiconciliazioneJob,
