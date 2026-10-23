@@ -1,4 +1,5 @@
 import { RENTRISyncStatus } from './rentri-sync-status.vo'
+import { DomainException } from '../shared/domain-exception'
 
 /**
  * Unit tests for RENTRISyncStatus Value Object
@@ -150,6 +151,48 @@ describe('RENTRISyncStatus', () => {
 
       expect(status.getStatus()).toBe('PERMANENTLY_FAILED')
       expect(status.canRetry()).toBe(false)
+    })
+
+    it('RENTRI_TRASMISSIONE_INCERTA ferma subito il ciclo', () => {
+      const status = RENTRISyncStatus.failed(1, 'x', 'RENTRI_TRASMISSIONE_INCERTA')
+
+      expect(status.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(status.canRetry()).toBe(false)
+    })
+
+    it('RENTRI_MISSING_NUMERO_FIR ferma subito il ciclo', () => {
+      const status = RENTRISyncStatus.failed(1, 'x', 'RENTRI_MISSING_NUMERO_FIR')
+
+      expect(status.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(status.canRetry()).toBe(false)
+    })
+
+    it('riapriDopoVerificaManuale torna PENDING e conserva i tentativi', () => {
+      const status = RENTRISyncStatus.failed(3, 'x', 'RENTRI_TRASMISSIONE_INCERTA')
+
+      const riaperto = status.riapriDopoVerificaManuale()
+
+      expect(riaperto.getStatus()).toBe('PENDING')
+      expect(riaperto.getAttempts()).toBe(3)
+      expect(riaperto.canRetry()).toBe(true)
+    })
+
+    it('riapriDopoVerificaManuale accetta anche RENTRI_MISSING_NUMERO_FIR', () => {
+      const status = RENTRISyncStatus.failed(1, 'x', 'RENTRI_MISSING_NUMERO_FIR')
+
+      expect(status.riapriDopoVerificaManuale().getStatus()).toBe('PENDING')
+    })
+
+    it('riapriDopoVerificaManuale rifiuta un altro codice', () => {
+      const status = RENTRISyncStatus.failed(1, 'x', 'RENTRI_FORBIDDEN')
+
+      expect(() => status.riapriDopoVerificaManuale()).toThrow(DomainException)
+    })
+
+    it('markAsSyncing riprende anche da SYNCING (ripresa dopo uno stallo)', () => {
+      const status = RENTRISyncStatus.syncing().markAsSyncing()
+
+      expect(status.getStatus()).toBe('SYNCING')
     })
 
     it('un errore transitorio (RENTRI_API_ERROR) continua a ritentare come prima', () => {

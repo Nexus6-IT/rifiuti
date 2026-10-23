@@ -93,7 +93,7 @@ export class SyncFIRToRENTRIUseCase {
       }
 
       // Mark sync as starting
-      fir.startRENTRISync()
+      fir.avviaTentativoRentri(new Date())
 
       // Il corpo si costruisce PRIMA del log e prima della chiamata: e' la
       // stessa struttura che finisce nel registro delle trasmissioni e sulla

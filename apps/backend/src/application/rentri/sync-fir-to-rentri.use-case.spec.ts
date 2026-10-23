@@ -76,7 +76,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(0),
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISynced: jest.fn(),
         getDomainEvents: jest
           .fn()
@@ -115,7 +115,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(result.protocolNumber).toBe(numeroFir)
       expect(mockFIRRepository.findById).toHaveBeenCalledWith(firId)
       expect(mockFIR.canSyncToRENTRI).toHaveBeenCalled()
-      expect(mockFIR.startRENTRISync).toHaveBeenCalled()
+      expect(mockFIR.avviaTentativoRentri).toHaveBeenCalled()
       expect(mockRENTRIApiClient.creaFormulario).toHaveBeenCalledWith(
         tenantId,
         (expect as any).anything()
@@ -143,7 +143,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(0),
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISynced: jest.fn(),
         proporreLegameRENTRI: jest.fn(),
         getDomainEvents: jest.fn().mockReturnValue([]),
@@ -187,7 +187,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(2), // Previous failures
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISynced: jest.fn(),
         getDomainEvents: jest
           .fn()
@@ -301,7 +301,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(0),
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
         getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
@@ -352,7 +352,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(0),
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
         getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
@@ -410,7 +410,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(4), // One more attempt will hit max (5)
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(false), // Max retries reached
         getDomainEvents: jest
@@ -459,7 +459,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(0),
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         // Anche se il dominio direbbe "ritenta pure", il 403 deve prevalere.
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
@@ -521,7 +521,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
             getAttempts: jest.fn().mockReturnValue(0),
           },
           canSyncToRENTRI: jest.fn().mockReturnValue(true),
-          startRENTRISync: jest.fn(),
+          avviaTentativoRentri: jest.fn(),
           markRENTRISyncFailed: jest.fn(),
           needsRENTRIRetry: jest.fn().mockReturnValue(true),
           getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
@@ -574,7 +574,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(0),
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISynced: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
@@ -633,7 +633,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(0),
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         getDomainEvents: jest
           .fn()
@@ -690,7 +690,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(0),
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISynced: jest.fn(),
         getDomainEvents: jest
           .fn()
@@ -739,7 +739,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(0),
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
         getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
@@ -785,7 +785,7 @@ describe('SyncFIRToRENTRIUseCase', () => {
           getAttempts: jest.fn().mockReturnValue(1),
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
-        startRENTRISync: jest.fn(),
+        avviaTentativoRentri: jest.fn(),
         markRENTRISynced: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
