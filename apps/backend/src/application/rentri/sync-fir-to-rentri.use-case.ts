@@ -7,12 +7,22 @@ import { IFIRRepository } from '../../domain/fir/repositories/fir-repository.int
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
 import { IDomainEvent } from '../../domain/shared/domain-event.interface'
 import { CostruisciPayloadRentri } from './mappatura/costruisci-payload-rentri'
-import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
+import { DomainError, FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
+import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
 import {
   RENTRIApiClient,
   RentriApiError,
+  TransazioneRentriNonTrovataError,
+  TrasmissioneRentriIncertaError,
   estraiNumeroFirDaEsito,
 } from '../../infrastructure/rentri/rentri-api.client'
+
+/**
+ * Oltre questa età una prenotazione SYNCING è considerata uno stallo (processo
+ * morto a metà) e un nuovo tentativo può rilevarla (Decisione 2 del piano B).
+ * Deve superare la durata massima di un tentativo vivo: POST + polling.
+ */
+export const SOGLIA_STALLO_RENTRI_MS = 15 * 60 * 1000
 
 /**
  * Sync FIR to RENTRI Use Case
@@ -41,6 +51,17 @@ import {
  * Un errore di rete o il superamento del numero massimo di tentativi di
  * polling (v. `RENTRIApiClient.attendiEsito`) sono trattati come lo erano
  * gli errori di rete del vecchio `submitFIR`: retry-abili, non permanenti.
+ *
+ * Idempotenza (piano B, pezzo 1): al massimo UN formulario per FIR, anche con
+ * job concorrenti, polling scaduti, 5xx sulla POST e worker morti a metà.
+ * - La prenotazione atomica in DB (`prenotaTrasmissioneRentri`) fa passare un
+ *   solo tentativo alla volta; chi la perde esce con `giaInCorso`.
+ * - La `transazione_id` del 202 si scrive in DB PRIMA del polling: il tentativo
+ *   successivo riprende quella transazione invece di rifare la `POST /`.
+ * - Un SYNCING scaduto senza transazione (worker morto fra POST e 202) e ogni
+ *   esito incerto della creazione (5xx, nessuna risposta, 404 della
+ *   transazione) diventano RENTRI_TRASMISSIONE_INCERTA, non ritentabile: si
+ *   riparte solo dopo verifica sul portale (`confermaNuovaTrasmissione`).
  */
 @Injectable()
 export class SyncFIRToRENTRIUseCase {
@@ -86,24 +107,91 @@ export class SyncFIRToRENTRIUseCase {
         throw new DomainException('Unauthorized access to FIR', 'UNAUTHORIZED')
       }
 
-      // Validate FIR can be synced
-      if (!fir.canSyncToRENTRI()) {
+      // Riapertura dopo verifica sul portale: l'operatore ha controllato che il
+      // formulario non esista e chiede esplicitamente una nuova POST. Si salva
+      // subito, altrimenti la prenotazione troverebbe in DB il blocco.
+      if (opzioni?.confermaNuovaTrasmissione) {
+        try {
+          fir.riapriTrasmissioneDopoVerifica()
+        } catch (e) {
+          if (e instanceof DomainError || e instanceof DomainException) {
+            throw DomainException.businessRuleViolation('CANNOT_SYNC_FIR', e.message)
+          }
+          throw e
+        }
+        await this.firRepository.save(fir)
+      }
+
+      // Un SYNCING non passa canSyncToRENTRI ma può essere uno stallo da
+      // riprendere: lo decide la prenotazione, sulla soglia.
+      const eraSyncing = fir.rentriSyncStatus.getStatus() === 'SYNCING'
+      if (!eraSyncing && !fir.canSyncToRENTRI()) {
         const reason = this.getSyncBlockReason(fir)
         throw DomainException.businessRuleViolation('CANNOT_SYNC_FIR', reason)
       }
-
-      // Mark sync as starting
-      fir.avviaTentativoRentri(new Date())
+      // Letta PRIMA della prenotazione, che in DB non la tocca.
+      const transazioneInAttesa = fir.rentriTransazioneInAttesa ?? null
 
       // Il corpo si costruisce PRIMA del log e prima della chiamata: e' la
       // stessa struttura che finisce nel registro delle trasmissioni e sulla
       // rete, quindi il log non puo' divergere da cio' che e' stato spedito.
       // Se il FIR non ha i dati che il contratto richiede, qui si solleva un
-      // errore e la trasmissione non parte affatto.
-      const payload = await this.costruisciPayload.costruisci(fir, tenantId)
+      // errore e la trasmissione non parte affatto. Si costruisce anche prima
+      // della prenotazione: un errore di dati non deve lasciare in DB un
+      // SYNCING senza transazione, che fra 15 minuti sembrerebbe una POST
+      // interrotta. Serve solo a una trasmissione nuova (niente ripresa, niente
+      // stallo da chiudere).
+      const payload =
+        !transazioneInAttesa && !eraSyncing
+          ? await this.costruisciPayload.costruisci(fir, tenantId)
+          : null
 
-      // Create sync log
-      const syncLog = await this.createSyncLog(fir, startTime, payload)
+      // Un solo istante per prenotazione, aggregate e registrazione della
+      // transazione: `registraTransazioneInAttesa` lo confronta per uguaglianza.
+      const ora = new Date()
+      const prenotato = await this.firRepository.prenotaTrasmissioneRentri(
+        firId,
+        tenantId,
+        ora,
+        new Date(ora.getTime() - SOGLIA_STALLO_RENTRI_MS)
+      )
+      if (!prenotato) {
+        this.logger.info(`Trasmissione del FIR a RENTRI già in corso: tentativo saltato`, {
+          firId,
+          tenantId,
+          correlationId,
+        })
+        return {
+          success: false,
+          giaInCorso: true,
+          willRetry: false,
+          attempts: fir.rentriSyncStatus.getAttempts(),
+        }
+      }
+      fir.avviaTentativoRentri(ora)
+
+      // Stallo senza transazione: il worker precedente è morto dopo aver
+      // (forse) spedito la POST ma prima del 202. Il formulario può esistere:
+      // nessuna nuova POST finché un operatore non verifica.
+      if (eraSyncing && !transazioneInAttesa) {
+        return this.chiudiTrasmissioneIncerta(
+          fir,
+          'Trasmissione interrotta prima della risposta di RENTRI: verificare sul portale',
+          correlationId,
+          null,
+          startTime,
+          { firId }
+        )
+      }
+
+      // Create sync log (in ripresa il corpo non si rispedisce: il log dice quale
+      // transazione si sta riprendendo).
+      let syncLog = await this.createSyncLog(
+        fir,
+        startTime,
+        payload ?? { ripresaTransazione: transazioneInAttesa }
+      )
+      let transazioneId: string | null = transazioneInAttesa
 
       try {
         // Call RENTRI API
@@ -112,14 +200,19 @@ export class SyncFIRToRENTRIUseCase {
           tenantId,
           correlationId,
           attempt: fir.rentriSyncStatus.getAttempts() + 1,
+          ripresaTransazione: transazioneInAttesa ?? undefined,
         })
 
         // Crea il formulario (POST asincrono → 202 + transazione_id) e
         // attende l'esito col polling NONBLOCK_PULL (/status → /result).
-        // Un errore qui (rete, timeout, superamento tentativi di polling)
-        // finisce nel catch sottostante: stessa semantica retry-abile che
-        // aveva un errore di rete del vecchio submitFIR.
-        const { transazioneId } = await this.rentriApiClient.creaFormulario(tenantId, payload)
+        // Un errore di polling (rete, superamento tentativi) finisce nel catch
+        // sottostante: retry-abile, con la transazione ancora in attesa, così
+        // il tentativo successivo riprende il polling senza una nuova POST.
+        if (!transazioneId) {
+          const creato = await this.rentriApiClient.creaFormulario(tenantId, payload!)
+          transazioneId = creato.transazioneId
+          syncLog = await this.registraTransazione(fir, tenantId, transazioneId, ora, syncLog)
+        }
         const esito = await this.rentriApiClient.attendiEsito(tenantId, transazioneId)
 
         if (!esito.errore) {
@@ -136,9 +229,12 @@ export class SyncFIRToRENTRIUseCase {
             // Senza il numero ufficiale il FIR non soddisfa il criterio di
             // uscita di R0 (rilettura con numero ufficiale) — trattato come
             // fallimento, non come successo silenzioso.
+            // Non ritentabile (Decisione 3): la creazione è avvenuta, una nuova
+            // POST duplicherebbe il formulario. La transazione è chiusa.
             const errorMessage =
               'Esito RENTRI privo del numero ufficiale (numero_fir): impossibile registrare il legame'
 
+            fir.chiudiTransazioneInAttesa()
             fir.markRENTRISyncFailed(errorMessage, 'RENTRI_MISSING_NUMERO_FIR', correlationId)
 
             const duration = Date.now() - startTime
@@ -233,6 +329,8 @@ export class SyncFIRToRENTRIUseCase {
           // e ha rifiutato il contenuto del formulario).
           const errorMessage = this.formatEsitoErrors(esito.validazione)
 
+          // Esito letto: la transazione non va più ripresa.
+          fir.chiudiTransazioneInAttesa()
           fir.markRENTRISyncFailed(errorMessage, 'RENTRI_VALIDATION_ERROR', correlationId)
 
           const duration = Date.now() - startTime
@@ -264,6 +362,23 @@ export class SyncFIRToRENTRIUseCase {
         // Un FIR annullato nel frattempo non è un errore dell'ente: niente
         // secondo salvataggio, che verrebbe rifiutato allo stesso modo.
         if (apiError instanceof FirAnnullatoNelFrattempoError) throw apiError
+
+        // Creazione dall'esito incerto (5xx, nessuna risposta, 202 senza
+        // transazione) o transazione che RENTRI non conosce (404): il formulario
+        // può esistere o no, e solo il portale lo dice. Non ritentabile.
+        if (
+          apiError instanceof TrasmissioneRentriIncertaError ||
+          apiError instanceof TransazioneRentriNonTrovataError
+        ) {
+          return this.chiudiTrasmissioneIncerta(
+            fir,
+            `${apiError.message}: verificare sul portale RENTRI prima di ritrasmettere`,
+            correlationId,
+            syncLog,
+            startTime,
+            { firId, transazioneId }
+          )
+        }
 
         // 403 (RentriApiError.retryable === false): credenziale non valida o
         // operazione non consentita. Ritentare non ha senso — la credenziale
@@ -354,7 +469,7 @@ export class SyncFIRToRENTRIUseCase {
    */
   private async salvaFirSeNonAnnullato(
     fir: FIR,
-    logSincronizzazione: any,
+    logSincronizzazione: any | null,
     messaggio: string,
     contesto: Record<string, unknown>
   ): Promise<SyncFIRToRENTRIResult | null> {
@@ -363,7 +478,7 @@ export class SyncFIRToRENTRIUseCase {
       return null
     } catch (e) {
       if (!(e instanceof FirAnnullatoNelFrattempoError)) throw e
-      await this.syncLogRepository.save(logSincronizzazione)
+      if (logSincronizzazione) await this.syncLogRepository.save(logSincronizzazione)
       this.logger.error(messaggio, e, contesto)
       return {
         success: false,
@@ -372,6 +487,103 @@ export class SyncFIRToRENTRIUseCase {
         attempts: fir.rentriSyncStatus.getAttempts(),
       }
     }
+  }
+
+  /**
+   * Trasmissione dall'esito incerto: il FIR passa a RENTRI_TRASMISSIONE_INCERTA
+   * (PERMANENTLY_FAILED, transazione in attesa chiusa) e resta fermo finché un
+   * operatore non verifica sul portale. `syncLog` è null quando non c'è stata
+   * alcuna chiamata in questo tentativo (stallo senza transazione).
+   */
+  private async chiudiTrasmissioneIncerta(
+    fir: FIR,
+    motivo: string,
+    correlationId: string | undefined,
+    syncLog: RENTRISyncLog | null,
+    startTime: number,
+    contesto: Record<string, unknown>
+  ): Promise<SyncFIRToRENTRIResult> {
+    fir.segnaTrasmissioneIncerta(motivo, correlationId)
+
+    const failureLog =
+      syncLog?.markAsFailure({
+        errorMessage: motivo,
+        errorCode: 'RENTRI_TRASMISSIONE_INCERTA',
+        durationMs: Date.now() - startTime,
+      }) ?? null
+
+    const annullato = await this.salvaFirSeNonAnnullato(
+      fir,
+      failureLog,
+      ESITO_NON_SALVATO,
+      contesto
+    )
+    if (annullato) return annullato
+    if (failureLog) await this.syncLogRepository.save(failureLog)
+    await this.publishDomainEvents(fir)
+
+    this.logger.warn(`Trasmissione del FIR a RENTRI dall'esito incerto: serve una verifica`, {
+      ...contesto,
+      motivo,
+    })
+
+    return {
+      success: false,
+      error: motivo,
+      willRetry: false,
+      attempts: fir.rentriSyncStatus.getAttempts(),
+    }
+  }
+
+  /**
+   * Registra la transazione accettata dall'ente, in DB e nell'aggregate, prima
+   * del polling. Se il DB risponde che la prenotazione non è più di questo
+   * tentativo (soglia scaduta e FIR riprenotato), NON si abbandona: perdere
+   * l'id dopo una POST riuscita è proprio il doppione da evitare. L'id finisce
+   * subito nel log di sync, si avvisa e si prosegue il polling; un esito
+   * positivo salva comunque il legame (`rentri_numero_fir` non è fra le colonne
+   * che `save` protegge) e blocca nuove prenotazioni.
+   */
+  private async registraTransazione(
+    fir: FIR,
+    tenantId: string,
+    transazioneId: string,
+    avviatoAt: Date,
+    syncLog: RENTRISyncLog
+  ): Promise<RENTRISyncLog> {
+    // Prima in memoria: se la scrittura in DB fallisce, il salvataggio del ramo
+    // d'errore porta comunque la transazione in attesa.
+    fir.registraTransazioneInAttesa(transazioneId)
+    const registrata = await this.firRepository.registraTransazioneInAttesa(
+      fir.id,
+      tenantId,
+      transazioneId,
+      avviatoAt
+    )
+    if (registrata) return syncLog
+
+    const logConTransazione = new RENTRISyncLog(
+      syncLog.id,
+      syncLog.firId,
+      syncLog.tenantId,
+      syncLog.status,
+      syncLog.attempt,
+      syncLog.requestPayload,
+      JSON.stringify({ transazioneId, prenotazionePersa: true }),
+      syncLog.errorMessage,
+      syncLog.errorCode,
+      syncLog.protocolNumber,
+      syncLog.syncedAt,
+      syncLog.durationMs,
+      syncLog.createdAt,
+      syncLog.origine
+    )
+    await this.syncLogRepository.save(logConTransazione)
+    this.logger.warn(
+      `Prenotazione RENTRI persa dopo la creazione del formulario: si prosegue il polling`,
+      { firId: fir.id, transazioneId }
+    )
+    return logConTransazione
   }
 
   /**
@@ -471,6 +683,8 @@ export interface SyncFIRToRENTRIResult {
   nextRetryAt?: Date | null
   /** true se il successo NON ha ancora legato il FIR: in attesa di conferma esplicita (modalità IBRIDA). */
   inAttesaDiConferma?: boolean
+  /** true se un altro tentativo tiene la prenotazione: nessuna chiamata a RENTRI, niente da ritentare. */
+  giaInCorso?: boolean
 }
 
 /**
@@ -484,4 +698,10 @@ export interface SyncFIRToRENTRIOpzioni {
    * attesa di conferma esplicita dell'utente.
    */
   richiedeConferma?: boolean
+  /**
+   * Un operatore ha verificato sul portale che il formulario non esiste:
+   * riapre una trasmissione incerta (o un esito senza numero_fir) e consente
+   * una nuova `POST /`. Su un FIR non bloccato così è CANNOT_SYNC_FIR.
+   */
+  confermaNuovaTrasmissione?: boolean
 }

@@ -1,6 +1,13 @@
-import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
+import { SyncFIRToRENTRIUseCase, SOGLIA_STALLO_RENTRI_MS } from './sync-fir-to-rentri.use-case'
 import { costruttorePayloadFinto } from './mappatura/aiuti-test'
-import { RentriApiError } from '../../infrastructure/rentri/rentri-api.client'
+import {
+  RentriApiError,
+  TrasmissioneRentriIncertaError,
+  TransazioneRentriNonTrovataError,
+} from '../../infrastructure/rentri/rentri-api.client'
+import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
+import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
+import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
 import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
 
 /**
@@ -25,9 +32,13 @@ describe('SyncFIRToRENTRIUseCase', () => {
 
   beforeEach(() => {
     // Create mocks
+    // Prenotazione e registrazione della transazione riescono per default: i
+    // test che ne verificano il fallimento lo dichiarano esplicitamente.
     mockFIRRepository = {
       findById: jest.fn(),
       save: jest.fn(),
+      prenotaTrasmissioneRentri: jest.fn().mockResolvedValue(true),
+      registraTransazioneInAttesa: jest.fn().mockResolvedValue(true),
     }
 
     mockRENTRIApiClient = {
@@ -77,6 +88,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISynced: jest.fn(),
         getDomainEvents: jest
           .fn()
@@ -144,6 +157,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISynced: jest.fn(),
         proporreLegameRENTRI: jest.fn(),
         getDomainEvents: jest.fn().mockReturnValue([]),
@@ -188,6 +203,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISynced: jest.fn(),
         getDomainEvents: jest
           .fn()
@@ -302,6 +319,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
         getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
@@ -353,6 +372,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
         getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
@@ -411,6 +432,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(false), // Max retries reached
         getDomainEvents: jest
@@ -460,6 +483,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         // Anche se il dominio direbbe "ritenta pure", il 403 deve prevalere.
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
@@ -522,6 +547,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
           },
           canSyncToRENTRI: jest.fn().mockReturnValue(true),
           avviaTentativoRentri: jest.fn(),
+          registraTransazioneInAttesa: jest.fn(),
+          chiudiTransazioneInAttesa: jest.fn(),
           markRENTRISyncFailed: jest.fn(),
           needsRENTRIRetry: jest.fn().mockReturnValue(true),
           getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
@@ -575,6 +602,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISynced: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
@@ -634,6 +663,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         getDomainEvents: jest
           .fn()
@@ -691,6 +722,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISynced: jest.fn(),
         getDomainEvents: jest
           .fn()
@@ -740,6 +773,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
         getNextRENTRIRetryAt: jest.fn().mockReturnValue(new Date()),
@@ -786,6 +821,8 @@ describe('SyncFIRToRENTRIUseCase', () => {
         },
         canSyncToRENTRI: jest.fn().mockReturnValue(true),
         avviaTentativoRentri: jest.fn(),
+        registraTransazioneInAttesa: jest.fn(),
+        chiudiTransazioneInAttesa: jest.fn(),
         markRENTRISynced: jest.fn(),
         markRENTRISyncFailed: jest.fn(),
         needsRENTRIRetry: jest.fn().mockReturnValue(true),
@@ -855,6 +892,277 @@ describe('SyncFIRToRENTRIUseCase', () => {
       expect(result.nextRetryAt).toBeUndefined()
       expect(mockFIRRepository.save).toHaveBeenCalledTimes(1)
       expect(mockSyncLogRepository.save).toHaveBeenCalledWith(logFallito)
+    })
+  })
+
+  /**
+   * Piano B RENTRI, pezzo 1: al massimo un formulario per FIR. Qui il FIR è
+   * l'aggregate vero (non un mock), così gli stati SYNCING/FAILED/
+   * PERMANENTLY_FAILED e la non ritentabilità vengono dal dominio e non da
+   * un `needsRENTRIRetry` finto.
+   */
+  describe('Trasmissione idempotente', () => {
+    const tenantId = 'tenant-idem'
+    const esitoPositivo = {
+      errore: false,
+      validazione: [],
+      esito: { numero_fir: 'RENTRI-NUM-IDEM' },
+    }
+
+    function firReale(): FIR {
+      const fir = FIR.create({
+        produttoreId: 'produttore-1',
+        rifiuto: {
+          cerCode: '13 02 05*',
+          quantita: 120,
+          unitaMisura: UnitaMisura.KG,
+          statoFisico: 'Liquido',
+          caratteristichePericolo: 'HP14',
+        },
+        trasportatoreId: 'trasportatore-1',
+        destinatarioId: 'destinatario-1',
+        tenantId,
+      })
+      fir.emetti('FIR-2026-000001', {
+        firmatario: 'Produttore',
+        timestamp: new Date(),
+        certificato: 'cert',
+      })
+      fir.clearDomainEvents()
+      return fir
+    }
+
+    /** Tentativo avviato un'ora fa e mai concluso: oltre la soglia di stallo. */
+    const unOraFa = () => new Date(Date.now() - 60 * 60 * 1000)
+
+    function firConTransazioneFallita(transazioneId: string): FIR {
+      const fir = firReale()
+      fir.avviaTentativoRentri(unOraFa())
+      fir.registraTransazioneInAttesa(transazioneId)
+      fir.markRENTRISyncFailed('timeout del polling', 'RENTRI_API_ERROR')
+      fir.clearDomainEvents()
+      return fir
+    }
+
+    beforeEach(() => {
+      mockSyncLogRepository.createPending.mockImplementation(async (p: any) =>
+        RENTRISyncLog.createPending(p)
+      )
+      mockSyncLogRepository.save.mockImplementation(async (l: any) => l)
+      mockFIRRepository.save.mockResolvedValue(undefined)
+    })
+
+    it('prenotazione persa: giaInCorso, nessuna chiamata a creaFormulario né ad attendiEsito', async () => {
+      mockFIRRepository.findById.mockResolvedValue(firReale())
+      mockFIRRepository.prenotaTrasmissioneRentri.mockResolvedValue(false)
+
+      const result = await useCase.execute('fir-x', tenantId)
+
+      expect(result).toMatchObject({ success: false, giaInCorso: true, willRetry: false })
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+      expect(mockRENTRIApiClient.attendiEsito).not.toHaveBeenCalled()
+      expect(mockSyncLogRepository.createPending).not.toHaveBeenCalled()
+      expect(mockFIRRepository.save).not.toHaveBeenCalled()
+    })
+
+    it('transazione salvata prima del polling', async () => {
+      const fir = firReale()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-1' })
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue(esitoPositivo)
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result.success).toBe(true)
+      const [, , ora, soglia] = mockFIRRepository.prenotaTrasmissioneRentri.mock.calls[0]
+      expect(ora.getTime() - soglia.getTime()).toBe(SOGLIA_STALLO_RENTRI_MS)
+      // Stesso istante della prenotazione: è il testimone del tentativo.
+      expect(mockFIRRepository.registraTransazioneInAttesa).toHaveBeenCalledWith(
+        fir.id,
+        tenantId,
+        't-1',
+        ora
+      )
+      expect(fir.rentriSyncAvviatoAt).toBe(ora)
+      expect(
+        mockFIRRepository.registraTransazioneInAttesa.mock.invocationCallOrder[0]
+      ).toBeLessThan(mockRENTRIApiClient.attendiEsito.mock.invocationCallOrder[0])
+      expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-IDEM')
+    })
+
+    it('timeout del polling: willRetry true e transazione ancora in attesa', async () => {
+      const fir = firReale()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-1' })
+      mockRENTRIApiClient.attendiEsito.mockRejectedValue(
+        new Error('Superato il numero massimo di tentativi (30) interrogando /status')
+      )
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: true })
+      expect(fir.rentriSyncStatus.getStatus()).toBe('FAILED')
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_API_ERROR')
+      expect(fir.rentriTransazioneInAttesa).toBe('t-1')
+      expect(mockFIRRepository.save).toHaveBeenCalledWith(fir)
+    })
+
+    it('ripresa: FIR FAILED con transazione in attesa → attendiEsito su quella, creaFormulario mai chiamato', async () => {
+      const fir = firConTransazioneFallita('t-vecchia')
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue(esitoPositivo)
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result.success).toBe(true)
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+      expect(mockRENTRIApiClient.attendiEsito).toHaveBeenCalledWith(tenantId, 't-vecchia')
+      expect(mockFIRRepository.registraTransazioneInAttesa).not.toHaveBeenCalled()
+      expect(mockSyncLogRepository.createPending).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestPayload: JSON.stringify({ ripresaTransazione: 't-vecchia' }),
+        })
+      )
+      expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-IDEM')
+      expect(fir.rentriTransazioneInAttesa).toBeNull()
+    })
+
+    it('ripresa da SYNCING scaduto con transazione in attesa → attendiEsito, nessuna POST', async () => {
+      const fir = firReale()
+      fir.avviaTentativoRentri(unOraFa())
+      fir.registraTransazioneInAttesa('t-stallo')
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue(esitoPositivo)
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result.success).toBe(true)
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+      expect(mockRENTRIApiClient.attendiEsito).toHaveBeenCalledWith(tenantId, 't-stallo')
+      expect(fir.rentriSyncStatus.getStatus()).toBe('SYNCED')
+    })
+
+    it('SYNCING scaduto senza transazione → RENTRI_TRASMISSIONE_INCERTA, nessuna POST', async () => {
+      const fir = firReale()
+      fir.avviaTentativoRentri(unOraFa())
+      mockFIRRepository.findById.mockResolvedValue(fir)
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: false })
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+      expect(mockRENTRIApiClient.attendiEsito).not.toHaveBeenCalled()
+      expect(fir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
+      expect(mockFIRRepository.save).toHaveBeenCalledWith(fir)
+    })
+
+    it('5xx sulla creazione → PERMANENTLY_FAILED RENTRI_TRASMISSIONE_INCERTA, willRetry false', async () => {
+      const fir = firReale()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.creaFormulario.mockRejectedValue(
+        new TrasmissioneRentriIncertaError('HTTP_5XX', 503)
+      )
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: false })
+      expect(fir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
+      expect(mockSyncLogRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'FAILURE', errorCode: 'RENTRI_TRASMISSIONE_INCERTA' })
+      )
+      expect(mockRENTRIApiClient.attendiEsito).not.toHaveBeenCalled()
+    })
+
+    it('404 della transazione in attesa → RENTRI_TRASMISSIONE_INCERTA', async () => {
+      const fir = firConTransazioneFallita('t-sconosciuta')
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.attendiEsito.mockRejectedValue(
+        new TransazioneRentriNonTrovataError('t-sconosciuta')
+      )
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: false })
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
+      expect(fir.rentriTransazioneInAttesa).toBeNull()
+      expect(mockRENTRIApiClient.creaFormulario).not.toHaveBeenCalled()
+    })
+
+    it('esito senza numero_fir → willRetry false', async () => {
+      const fir = firReale()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-1' })
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue({ errore: false, validazione: [] })
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result).toMatchObject({ success: false, willRetry: false })
+      expect(result.nextRetryAt).toBeUndefined()
+      expect(fir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+      expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_MISSING_NUMERO_FIR')
+      expect(fir.rentriTransazioneInAttesa).toBeNull()
+    })
+
+    it('confermaNuovaTrasmissione su trasmissione incerta → nuova POST', async () => {
+      const fir = firReale()
+      fir.avviaTentativoRentri(unOraFa())
+      fir.segnaTrasmissioneIncerta('esito incerto')
+      fir.clearDomainEvents()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-nuova' })
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue(esitoPositivo)
+
+      const result = await useCase.execute(fir.id, tenantId, undefined, {
+        confermaNuovaTrasmissione: true,
+      })
+
+      expect(result.success).toBe(true)
+      expect(mockRENTRIApiClient.creaFormulario).toHaveBeenCalledTimes(1)
+      // La riapertura è salvata prima della prenotazione, che altrimenti
+      // troverebbe in DB un PERMANENTLY_FAILED.
+      expect(mockFIRRepository.save.mock.invocationCallOrder[0]).toBeLessThan(
+        mockFIRRepository.prenotaTrasmissioneRentri.mock.invocationCallOrder[0]
+      )
+    })
+
+    it('confermaNuovaTrasmissione su FIR non incerto → CANNOT_SYNC_FIR', async () => {
+      mockFIRRepository.findById.mockResolvedValue(firReale())
+
+      await expect(
+        useCase.execute('fir-x', tenantId, undefined, { confermaNuovaTrasmissione: true })
+      ).rejects.toMatchObject({
+        code: 'BUSINESS_RULE_VIOLATION',
+        metadata: expect.objectContaining({ rule: 'CANNOT_SYNC_FIR' }),
+      })
+      expect(mockFIRRepository.save).not.toHaveBeenCalled()
+      expect(mockFIRRepository.prenotaTrasmissioneRentri).not.toHaveBeenCalled()
+    })
+
+    it('prenotazione persa dopo la POST: si prosegue il polling e il legame si salva', async () => {
+      const fir = firReale()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockFIRRepository.registraTransazioneInAttesa.mockResolvedValue(false)
+      mockRENTRIApiClient.creaFormulario.mockResolvedValue({ transazioneId: 't-1' })
+      mockRENTRIApiClient.attendiEsito.mockResolvedValue(esitoPositivo)
+
+      const result = await useCase.execute(fir.id, tenantId)
+
+      expect(result.success).toBe(true)
+      expect(mockRENTRIApiClient.attendiEsito).toHaveBeenCalledWith(tenantId, 't-1')
+      // L'id della transazione non va perso: finisce subito nel log di sync.
+      const primoSalvataggioLog = mockSyncLogRepository.save.mock.calls[0][0]
+      expect(primoSalvataggioLog.responsePayload).toContain('t-1')
+      expect(mockSyncLogRepository.save.mock.invocationCallOrder[0]).toBeLessThan(
+        mockRENTRIApiClient.attendiEsito.mock.invocationCallOrder[0]
+      )
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ firId: fir.id, transazioneId: 't-1' })
+      )
+      expect(fir.rentriNumeroFir).toBe('RENTRI-NUM-IDEM')
+      expect(mockFIRRepository.save).toHaveBeenCalledWith(fir)
     })
   })
 })
