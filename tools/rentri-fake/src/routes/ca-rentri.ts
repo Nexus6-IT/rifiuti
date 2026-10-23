@@ -260,6 +260,8 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
           detail: "Nessuna autorizzazione corrisponde al 'sad' indicato.",
         })
       }
+      // Ramo difensivo, non raggiungibile via API: un `sad` esiste solo per
+      // sessioni già AUTORIZZATE (lo si ottiene da authorize-check).
       if (trovata.stato !== 'AUTORIZZATA') {
         return inviaProblemDetails(risposta, 422, {
           title: 'Firma non autorizzata',

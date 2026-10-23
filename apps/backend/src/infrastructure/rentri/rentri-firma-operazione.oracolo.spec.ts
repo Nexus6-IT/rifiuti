@@ -441,10 +441,14 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
     // Oltre la scadenza dichiarata dalla fake.
     await new Promise(resolve => setTimeout(resolve, 120))
 
-    expect(await client.verificaAutorizzazioneFirma('', handle)).toEqual({ stato: 'SCADUTA' })
+    // Il ProblemDetails della fake arriva come `dettaglioEnte`.
+    expect(await client.verificaAutorizzazioneFirma('', handle)).toEqual({
+      stato: 'SCADUTA',
+      dettaglioEnte: expect.stringContaining('Autorizzazione scaduta'),
+    })
   }, 60000)
 
-  it('authorize-check su sessione rifiutata dall’utente: 400 mappato a RIFIUTATA, distinto da SCADUTA', async () => {
+  it('authorize-check su sessione rifiutata dall’utente: 403 mappato a RIFIUTATA, distinto da SCADUTA', async () => {
     const client = creaClient()
     const autorizzazione = await client.autorizzaFirmaRemota('', {
       credentialsId: 'RIFIUTO01',
@@ -459,6 +463,7 @@ describe('CompletaOperazioneConFirmaUseCase — ciclo di firma remota contro la 
 
     expect(await client.verificaAutorizzazioneFirma('', autorizzazione.handle)).toEqual({
       stato: 'RIFIUTATA',
+      dettaglioEnte: expect.stringContaining('Autorizzazione non concessa'),
     })
   }, 60000)
 

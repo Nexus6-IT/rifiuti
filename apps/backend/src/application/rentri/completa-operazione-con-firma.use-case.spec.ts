@@ -260,14 +260,14 @@ describe('CompletaOperazioneConFirmaUseCase', () => {
       // Se il codice si affidasse solo al proprio orologio, resterebbe in
       // attesa fino al tetto di invocazione e l'esito riporterebbe
       // `orologio-locale`.
-      autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'handle-410' }),
+      autorizzaFirmaRemota: jest.fn().mockResolvedValue({ handle: 'handle-400' }),
       verificaAutorizzazioneFirma: verifica,
     })
     const { useCase, firRepository, applyRentriStato } = creaAmbiente({ client })
 
     const risultato = await useCase.execute(comando)
 
-    expect(risultato).toEqual({ esito: 'SCADUTA', handle: 'handle-410', rilevataDa: 'ente' })
+    expect(risultato).toEqual({ esito: 'SCADUTA', handle: 'handle-400', rilevataDa: 'ente' })
     // Una sola interrogazione: la parola dell'ente chiude il ciclo subito,
     // invece di continuare a interrogare un'autorizzazione morta.
     expect(verifica).toHaveBeenCalledTimes(1)

@@ -922,8 +922,8 @@ export class RENTRIApiClient {
    * Risposta (`CredentialsAuthorizeResponse`, ca-rentri.yaml:2665): `handle`
    * sempre; `sad` ed `expires_in` (secondi di validità del SAD) **solo se
    * l'autorizzazione è già concessa**, cioè di norma NON qui ma da
-   * {@link verificaAutorizzazioneFirma}. Il chiamante usa `expires_in` come
-   * limite dell'attesa se presente, altrimenti un limite predefinito suo.
+   * {@link verificaAutorizzazioneFirma}. Il limite dell'attesa della conferma
+   * NON dipende da `expires_in` (durata del SAD): lo fissa il chiamante.
    */
   async autorizzaFirmaRemota(
     tenantId: string,

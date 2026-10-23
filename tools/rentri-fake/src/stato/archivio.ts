@@ -188,10 +188,15 @@ export interface SessioneFirma {
 }
 
 /**
- * Valore di default di `expires_in` (secondi) restituito da
- * `POST /credentials/authorize`. Il tempo reale concesso da RENTRI non è
- * documentato da alcuna fonte (v. ADR, «Lacune ancora aperte»): questo
- * valore è una scelta della fake, non un dato dell'ente.
+ * Durata di default (secondi) della sessione di autorizzazione. NON è più
+ * restituita da `POST /credentials/authorize` (che per contratto risponde col
+ * solo `handle`): serve a dimensionare il timer della sessione. Il tempo reale
+ * concesso da RENTRI non è documentato da alcuna fonte (v. ADR, «Lacune ancora
+ * aperte»): è una scelta della fake, non un dato dell'ente.
+ *
+ * Fedeltà: la fake usa UN solo timer. L'`expires_in` di `authorize-check`
+ * è il tempo residuo di quel timer, non una durata nuova del SAD come farebbe
+ * l'ente.
  */
 export const EXPIRES_IN_DEFAULT_SECONDI = 120
 
