@@ -6,7 +6,11 @@ describe('RENTRISyncController.syncFIR', () => {
   const ruolo = { ruoloEffettivo: jest.fn() }
   const logger = { setContext: jest.fn(), info: jest.fn(), error: jest.fn() }
   let controller: RENTRISyncController
-  const req = { tenantId: 'tenant-1', user: { id: 'user-1', role: 'ADMIN', tenantId: 'tenant-0' } }
+  // Azienda selezionata (req.tenantId) diversa da quella primaria del token (user.tenantId).
+  const req = {
+    tenantId: 'tenant-sel',
+    user: { id: 'user-1', role: 'ADMIN', tenantId: 'tenant-primario' },
+  }
 
   beforeEach(() => {
     jest.resetAllMocks()
@@ -27,38 +31,34 @@ describe('RENTRISyncController.syncFIR', () => {
     ruolo.ruoloEffettivo.mockResolvedValue('OPERATOR')
 
     await expect(
-      controller.syncFIR('fir-1', 'tenant-1', 'user-1', { confermaNuovaTrasmissione: true }, req)
+      controller.syncFIR('fir-1', 'user-1', { confermaNuovaTrasmissione: true }, req)
     ).rejects.toBeInstanceOf(ForbiddenException)
 
-    expect(ruolo.ruoloEffettivo).toHaveBeenCalledWith(req.user, 'tenant-1')
+    expect(ruolo.ruoloEffettivo).toHaveBeenCalledWith(req.user, 'tenant-sel')
     expect(queue.addSyncJob).not.toHaveBeenCalled()
   })
 
-  it('da ADMIN: addSyncJob con confermaNuovaTrasmissione true', async () => {
+  it("da ADMIN: addSyncJob con confermaNuovaTrasmissione true, sull'azienda selezionata", async () => {
     ruolo.ruoloEffettivo.mockResolvedValue('ADMIN')
 
-    await controller.syncFIR(
-      'fir-1',
-      'tenant-1',
-      'user-1',
-      { confermaNuovaTrasmissione: true },
-      req
-    )
+    await controller.syncFIR('fir-1', 'user-1', { confermaNuovaTrasmissione: true }, req)
 
+    expect(ruolo.ruoloEffettivo).toHaveBeenCalledWith(req.user, 'tenant-sel')
     expect(queue.addSyncJob).toHaveBeenCalledWith(
       expect.objectContaining({
         firId: 'fir-1',
-        tenantId: 'tenant-1',
+        tenantId: 'tenant-sel',
         confermaNuovaTrasmissione: true,
       })
     )
   })
 
-  it('senza conferma: nessun controllo di ruolo aggiuntivo e nessun flag', async () => {
-    await controller.syncFIR('fir-1', 'tenant-1', 'user-1', {}, req)
+  it("senza conferma: nessun controllo di ruolo, nessun flag, job sull'azienda selezionata", async () => {
+    await controller.syncFIR('fir-1', 'user-1', {}, req)
 
     expect(ruolo.ruoloEffettivo).not.toHaveBeenCalled()
     const arg = queue.addSyncJob.mock.calls[0][0]
+    expect(arg.tenantId).toBe('tenant-sel')
     expect(arg.confermaNuovaTrasmissione).toBeFalsy()
   })
 })

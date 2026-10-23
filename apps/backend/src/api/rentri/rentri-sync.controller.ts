@@ -42,6 +42,9 @@ import {
   QueueMetricsResponseDto,
 } from './dto/sync-fir.dto'
 
+/** Ruoli che possono confermare una nuova trasmissione dopo la verifica sul portale. */
+const RUOLI_NUOVA_TRASMISSIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
+
 /**
  * RENTRI Sync Controller
  *
@@ -65,9 +68,6 @@ import {
  * trasmissioni altrui. Stessi ruoli di `registro.controller.ts` (altro
  * adempimento verso terzi con RLS multi-tenant equivalente).
  */
-/** Ruoli che possono confermare una nuova trasmissione dopo la verifica sul portale. */
-const RUOLI_NUOVA_TRASMISSIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
-
 @ApiTags('RENTRI Sync')
 @ApiBearerAuth()
 @Controller('rentri/sync')
@@ -150,11 +150,13 @@ export class RENTRISyncController {
   })
   async syncFIR(
     @Param('id') firId: string,
-    @TenantId() tenantId: string,
     @UserId() userId: string,
     @Body() dto: SyncFIRRequestDto,
     @Req() req: any
   ): Promise<SyncFIRResponseDto> {
+    // Azienda SELEZIONATA (non quella primaria del token): stessa per controllo di
+    // ruolo e job, così non si verifica un'azienda e si trasmette per un'altra.
+    const tenantId = requireRequestTenantId(req)
     this.logger.info('Sync FIR request received', {
       firId,
       tenantId,
@@ -167,10 +169,7 @@ export class RENTRISyncController {
     // l'ente: la decide un amministratore NELL'AZIENDA SELEZIONATA (ruolo effettivo,
     // non quello del token, che `@Roles` vede soltanto).
     if (dto.confermaNuovaTrasmissione === true) {
-      const ruolo = await this.ruoloEffettivo.ruoloEffettivo(
-        req.user,
-        requireRequestTenantId(req) ?? tenantId
-      )
+      const ruolo = await this.ruoloEffettivo.ruoloEffettivo(req.user, tenantId)
       if (!RUOLI_NUOVA_TRASMISSIONE.includes(ruolo)) {
         throw new ForbiddenException({
           message:
