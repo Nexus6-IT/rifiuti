@@ -74,7 +74,13 @@ describe('SyncFIRToRENTRIUseCase — ciclo end-to-end contro la fake RENTRI (in-
    * indipendente — non solo che l'istanza passata a `save` è stata mutata
    * in place (v. nota sul limite dichiarato in testa al file).
    */
-  class FIRRepositoryFake implements Pick<IFIRRepository, 'findById' | 'save'> {
+  class FIRRepositoryFake
+    implements
+      Pick<
+        IFIRRepository,
+        'findById' | 'save' | 'prenotaTrasmissioneRentri' | 'registraTransazioneInAttesa'
+      >
+  {
     private readonly memoria = new Map<string, FIR>()
 
     async findById(id: string): Promise<FIR | null> {
@@ -83,6 +89,16 @@ describe('SyncFIRToRENTRIUseCase — ciclo end-to-end contro la fake RENTRI (in-
 
     async save(fir: FIR): Promise<void> {
       this.memoria.set(fir.id, fir)
+    }
+
+    // Un solo processo e un solo oggetto per FIR: la prenotazione riesce sempre.
+    // La semantica concorrente e' provata in sync-fir-idempotenza.oracolo.spec.ts.
+    async prenotaTrasmissioneRentri(): Promise<boolean> {
+      return true
+    }
+
+    async registraTransazioneInAttesa(): Promise<boolean> {
+      return true
     }
   }
 
