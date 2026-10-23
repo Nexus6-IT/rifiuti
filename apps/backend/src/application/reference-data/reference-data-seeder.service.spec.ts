@@ -128,4 +128,35 @@ describe('ReferenceDataSeederService', () => {
     expect(prisma.atecoCode.upsert).not.toHaveBeenCalled() // ateco saltato
     expect(prisma.istatNazione.upsert).toHaveBeenCalled() // nazioni popolato
   })
+
+  it('seedIfEmpty completa un dataset rimasto a metà (meno righe della sorgente)', async () => {
+    // Caso CI del 22/10: backend fermato mentre caricava i comuni, tabella
+    // con poche righe e Milano assente; il riavvio successivo non la
+    // completava perché guardava solo "vuota o no".
+    prisma.istatComune.count.mockResolvedValue(1)
+    config.comuni.url = 'https://example/comuni.csv'
+    http.get.mockReturnValue(
+      of({
+        data: 'codice;nome;sigla;catastale;cap\n058091;Roma;RM;H501;00100\n015146;Milano;MI;F205;20100\n',
+      })
+    )
+
+    await make().seedIfEmpty()
+
+    expect(prisma.istatComune.upsert).toHaveBeenCalledTimes(2)
+  })
+
+  it('seedIfEmpty non ricarica un dataset già completo', async () => {
+    prisma.istatComune.count.mockResolvedValue(2)
+    config.comuni.url = 'https://example/comuni.csv'
+    http.get.mockReturnValue(
+      of({
+        data: 'codice;nome;sigla;catastale;cap\n058091;Roma;RM;H501;00100\n015146;Milano;MI;F205;20100\n',
+      })
+    )
+
+    await make().seedIfEmpty()
+
+    expect(prisma.istatComune.upsert).not.toHaveBeenCalled()
+  })
 })

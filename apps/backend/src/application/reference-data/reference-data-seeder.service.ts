@@ -77,14 +77,46 @@ export class ReferenceDataSeederService implements OnModuleInit {
     await this.reseedAll()
   }
 
-  /** Seed dei soli dataset attualmente vuoti. */
+  /**
+   * Seed dei dataset vuoti O incompleti (meno codici in tabella che nella
+   * sorgente). Il seed al boot gira in background: se il processo si ferma a
+   * meta' (riavvio, deploy) la tabella resta parziale, e prima non veniva piu'
+   * completata perche' "non vuota". Con una tabella comuni parziale la
+   * validazione della localita' rifiuta comuni validi (es. Milano).
+   * L'upsert e' idempotente: completare non duplica nulla.
+   */
   async seedIfEmpty(): Promise<void> {
     const counts = await this.counts()
-    if (counts.ateco === 0) await this.safe('ateco', () => this.seedAteco())
-    if (counts.nazioni === 0) await this.safe('nazioni', () => this.seedNazioni())
-    if (counts.province === 0) await this.safe('province', () => this.seedProvince())
-    if (counts.comuni === 0) await this.safe('comuni', () => this.seedComuni())
-    if (counts.cer === 0) await this.safe('cer', () => this.seedCer())
+    if (await this.daCompletare('ateco', counts.ateco))
+      await this.safe('ateco', () => this.seedAteco())
+    if (await this.daCompletare('nazioni', counts.nazioni))
+      await this.safe('nazioni', () => this.seedNazioni())
+    if (await this.daCompletare('province', counts.province))
+      await this.safe('province', () => this.seedProvince())
+    if (await this.daCompletare('comuni', counts.comuni))
+      await this.safe('comuni', () => this.seedComuni())
+    if (await this.daCompletare('cer', counts.cer)) await this.safe('cer', () => this.seedCer())
+  }
+
+  /** true se il dataset e' vuoto o ha meno codici distinti della sorgente. */
+  private async daCompletare(dataset: ReferenceDataset, inTabella: number): Promise<boolean> {
+    if (inTabella === 0) return true
+    try {
+      const rows = await this.fetchRows(this.config[dataset])
+      const attesi = new Set(rows.map(r => r[0]?.trim()).filter(Boolean)).size
+      if (attesi > inTabella) {
+        this.logger.warn(
+          `Reference data '${dataset}' incompleto (${inTabella} di ${attesi}): lo completo`
+        )
+        return true
+      }
+    } catch (e) {
+      // Sorgente non leggibile: si lascia la tabella com'e' (best-effort, come il seed).
+      this.logger.warn(
+        `Reference data '${dataset}': verifica completezza fallita: ${(e as Error).message}`
+      )
+    }
+    return false
   }
 
   /** Reseed di tutti i dataset (o di uno solo). */
