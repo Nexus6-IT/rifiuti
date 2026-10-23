@@ -40,7 +40,7 @@ Lo script `ops/db-ruoli.sh [NOME_DATABASE]` esegue `ruoli-db.sql` con `psql`
 DENTRO il container postgres (sull'host non serve psql), come owner. Lo usano
 deploy, restore e CI.
 
-- **Password fuori da ogni argv e dai log**: arrivano a psql come righe `set`
+- **Password fuori da ogni argv e dai log**: arrivano a psql come righe `\set`
   sullo stdin, costruite col `printf` builtin di bash, seguite dal file SQL. Non
   stanno nella riga di comando (niente `/proc/<pid>/cmdline`, niente log del
   runner). Caratteri ammessi: `A-Za-z0-9 _ . : , @ % + = / -` (meglio esadecimale).
