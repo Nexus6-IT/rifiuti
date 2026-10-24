@@ -4,7 +4,13 @@
 # Esegue lint, test e build su backend (NestJS) e frontend (Angular 17),
 # piu' una scansione di sicurezza delle dipendenze.
 #
-# Gira su push e pull request verso i branch develop e master.
+# Gira al push su develop e a mano (workflow_dispatch, anche sul branch di
+# una feature prima del merge). Non gira sulle pull request (decisione di
+# Graziano del 2026-10-24: troppo tempo di runner) ne' al push su master,
+# dove il gate e' il job `quality` di deploy.yml: rifarli qui raddoppierebbe
+# gli stessi test. I test di integrazione PostgreSQL e l'E2E stanno solo qui,
+# quindi prima di fondere una PR in master si lancia questo workflow a mano
+# sul branch della PR.
 # Runner: self-hosted Gitea con label `ubuntu-latest`.
 # Solo CI (nessun deploy).
 #
@@ -17,7 +23,7 @@ name: CI
 
 on:
   push:
-    branches: [develop, master]
+    branches: [develop]
     # Stesso filtro di deploy.yml: un commit di sola documentazione non puo'
     # rompere lint, test o build, quindi non vale il tempo di runner. Vale
     # solo per i commit che toccano ESCLUSIVAMENTE questi percorsi.
@@ -25,12 +31,7 @@ on:
       - '**/*.md'
       - 'docs/**'
       - 'LICENSE'
-  pull_request:
-    branches: [develop, master]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'LICENSE'
+  workflow_dispatch:
 
 # Annulla run precedenti ancora in corso sullo stesso ref (risparmia tempo runner).
 concurrency:
