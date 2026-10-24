@@ -277,6 +277,46 @@ describe('TenantSwitchInterceptor', () => {
     expect(membershipMock.checkAccess).toHaveBeenCalledWith(USER_NORMALE.id, TENANT_B, TENANT_A)
   })
 
+  it('tenant-switch: checkAccess sul client di sistema prima del cambio', async () => {
+    // MembershipService vero: il client dell'applicazione fallisce se toccato, quello di
+    // sistema registra in quale contesto gira la verifica (deve essere quello PRIMA del cambio).
+    const tenantViste: Array<string | null> = []
+    const app: any = {
+      tenant: { findFirst: jest.fn().mockRejectedValue(new Error('client app usato')) },
+      consultantTenantAssociation: {
+        findFirst: jest.fn().mockRejectedValue(new Error('client app usato')),
+      },
+    }
+    const sistema: any = {
+      tenant: {
+        findFirst: jest.fn(() => {
+          tenantViste.push(TenantContext.getStoreTenantId())
+          return Promise.resolve({ id: TENANT_B })
+        }),
+      },
+      consultantTenantAssociation: { findFirst: jest.fn() },
+    }
+    const reale = new MembershipService(app, sistema, { generateTokenPair: jest.fn() } as any)
+    const conReale = new TenantSwitchInterceptor(reale, new Reflector())
+    const ctx = makeContext(TENANT_B, USER_NORMALE, TENANT_A)
+
+    let tenantHandler: string | null = null
+    const handler: CallHandler = {
+      handle: () => {
+        tenantHandler = TenantContext.getStoreTenantId()
+        return of('OK')
+      },
+    }
+    await TenantContext.run({ tenantId: TENANT_A }, async () => {
+      await runInterceptor(conReale, ctx, handler)
+    })
+
+    expect(sistema.tenant.findFirst).toHaveBeenCalled()
+    expect(app.tenant.findFirst).not.toHaveBeenCalled()
+    expect(tenantViste).toEqual([TENANT_A])
+    expect(tenantHandler).toBe(TENANT_B)
+  })
+
   // ──────────────────────────────────────────────────────────────────────────
   // Scenario 6: errore DB → 503 (la selezione resta valida, si riprova)
   // ──────────────────────────────────────────────────────────────────────────

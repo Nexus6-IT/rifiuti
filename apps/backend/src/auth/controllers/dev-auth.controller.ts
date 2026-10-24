@@ -14,7 +14,7 @@ import { ConfigService } from '@nestjs/config'
 import { Public } from '../decorators/public.decorator'
 import { JwtTokensService } from '../services/jwt-tokens.service'
 import { RedisService } from '../services/redis.service'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { DevLoginDto } from '../dto/dev-login.dto'
 import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 
@@ -25,7 +25,8 @@ export class DevAuthController {
   constructor(
     private readonly jwtTokensService: JwtTokensService,
     private readonly redisService: RedisService,
-    private readonly prismaService: PrismaService,
+    // Client di sistema: il login (solo sviluppo) cerca l'utente prima di conoscerne l'azienda.
+    private readonly sistema: PrismaSistemaService,
     private readonly configService: ConfigService
   ) {}
 
@@ -43,7 +44,8 @@ export class DevAuthController {
     }
 
     // Find user by email (email is not unique in schema, so use findFirst)
-    const user = await this.prismaService.user.findFirst({
+    // Client di sistema: nessuna azienda nel contesto al login.
+    const user = await this.sistema.user.findFirst({
       where: { email: dto.email },
       include: {
         tenant: true,

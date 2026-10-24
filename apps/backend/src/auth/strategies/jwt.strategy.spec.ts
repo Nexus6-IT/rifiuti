@@ -4,6 +4,7 @@
  */
 
 import { JwtStrategy } from './jwt.strategy'
+import { TenantContext } from '../../core/context/tenant-context'
 import { UnauthorizedException } from '@nestjs/common'
 import { createPrismaMock, MockPrisma } from '../../../test/utils/prisma-mock'
 import {
@@ -35,7 +36,12 @@ describe('JwtStrategy', () => {
     // override this to exercise permission resolution.
     prismaService.userRoleAssignment.findMany.mockResolvedValue([] as any)
 
-    strategy = new JwtStrategy(configService, prismaService as any, redisService as never)
+    strategy = new JwtStrategy(
+      configService,
+      prismaService as any,
+      prismaService as any,
+      redisService as never
+    )
   })
 
   describe('validate', () => {
@@ -275,5 +281,76 @@ describe('JwtStrategy', () => {
       // This is tested implicitly by Passport behavior
       expect(strategy).toBeDefined()
     })
+  })
+})
+
+describe('JwtStrategy — client di sistema', () => {
+  const redis = {
+    isAccessTokenRevoked: jest.fn().mockResolvedValue(false),
+    leggiEpocaSessione: jest.fn().mockResolvedValue(null),
+  }
+
+  /** Client dell'applicazione che nasconde la riga utente, come farebbe una policy RLS. */
+  function clientApp() {
+    const app = createPrismaMock()
+    app.user.findUnique.mockRejectedValue(new Error('client app usato per cercare l’utente'))
+    app.userRoleAssignment.findMany.mockResolvedValue([] as any)
+    return app
+  }
+
+  it("jwt: super admin con X-Tenant-ID di un'altra azienda → utente trovato", async () => {
+    const app = clientApp()
+    const sistema = createPrismaMock()
+    sistema.user.findUnique.mockResolvedValue(
+      createMockUser({ id: 'sa-1', tenantId: null, role: 'SUPER_ADMIN' }) as any
+    )
+    const strategy = new JwtStrategy(
+      createConfigServiceMock(),
+      app as any,
+      sistema as any,
+      redis as never
+    )
+
+    // il middleware ha messo nello store l'azienda dell'header, diversa da quella dell'utente
+    const result = await TenantContext.run(
+      { tenantId: 'altra-azienda', isSuperAdmin: true },
+      async () =>
+        strategy.validate(
+          richiestaCon('t'),
+          createMockJwtPayload({ sub: 'sa-1', tenantId: '', role: 'SUPER_ADMIN' })
+        )
+    )
+
+    expect(result.id).toBe('sa-1')
+    expect(result.role).toBe('SUPER_ADMIN')
+    expect(sistema.user.findUnique).toHaveBeenCalledWith({ where: { id: 'sa-1' } })
+    expect(app.user.findUnique).not.toHaveBeenCalled()
+  })
+
+  it("jwt: i permessi si leggono nel contesto dell'azienda dell'utente, dal client normale", async () => {
+    const app = clientApp()
+    let tenantVisto: string | null = null
+    app.userRoleAssignment.findMany.mockImplementation((() => {
+      tenantVisto = TenantContext.getStoreTenantId()
+      return Promise.resolve([])
+    }) as any)
+    const sistema = createPrismaMock()
+    sistema.user.findUnique.mockResolvedValue(
+      createMockUser({ id: 'u-1', tenantId: 'azienda-primaria', role: 'ADMIN' }) as any
+    )
+    const strategy = new JwtStrategy(
+      createConfigServiceMock(),
+      app as any,
+      sistema as any,
+      redis as never
+    )
+
+    // token emesso dopo uno switch: lo store porta un'azienda diversa da quella primaria
+    await TenantContext.run({ tenantId: 'azienda-scelta' }, async () =>
+      strategy.validate(richiestaCon('t'), createMockJwtPayload({ sub: 'u-1' }))
+    )
+
+    expect(tenantVisto).toBe('azienda-primaria')
+    expect(sistema.userRoleAssignment.findMany).not.toHaveBeenCalled()
   })
 })

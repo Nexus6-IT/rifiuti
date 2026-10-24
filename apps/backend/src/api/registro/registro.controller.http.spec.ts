@@ -98,7 +98,7 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
         { provide: RuoloEffettivoService, useValue: new RuoloEffettivoService(prisma) },
         {
           provide: MembershipService,
-          useValue: new MembershipService(prisma, { generateTokenPair: jest.fn() } as any),
+          useValue: new MembershipService(prisma, prisma, { generateTokenPair: jest.fn() } as any),
         },
         { provide: APP_INTERCEPTOR, useClass: TenantSwitchInterceptor },
         { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },

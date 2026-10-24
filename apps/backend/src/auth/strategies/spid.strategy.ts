@@ -7,7 +7,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common'
 import { PassportStrategy } from '@nestjs/passport'
 import { Strategy, Profile } from 'passport-saml'
 import { ConfigService } from '@nestjs/config'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 
 export interface SpidProfile extends Profile {
   fiscalCode: string
@@ -29,7 +29,8 @@ export interface SpidUser {
 export class SpidStrategy extends PassportStrategy(Strategy, 'spid') {
   constructor(
     private readonly configService: ConfigService,
-    private readonly prismaService: PrismaService
+    // Client di sistema: il codice fiscale si cerca su tutte le aziende, prima di sapere a quale appartiene l'utente.
+    private readonly sistema: PrismaSistemaService
   ) {
     // Get certificate with fallback for development
     const idpCert =
@@ -96,7 +97,8 @@ export class SpidStrategy extends PassportStrategy(Strategy, 'spid') {
 
     // 2. Find user by fiscalCode (need to search across tenantId combinations)
     // Since fiscalCode is unique per tenant, we need to find first occurrence
-    const users = await this.prismaService.user.findMany({
+    // Client di sistema: al login non c'è ancora un'azienda nel contesto.
+    const users = await this.sistema.user.findMany({
       where: { fiscalCode },
       take: 1,
     })

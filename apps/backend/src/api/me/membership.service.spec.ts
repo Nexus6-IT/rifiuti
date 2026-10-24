@@ -9,6 +9,7 @@
 
 import { ForbiddenException } from '@nestjs/common'
 import { MembershipService } from './membership.service'
+import { TenantContext } from '../../core/context/tenant-context'
 
 const UTENTE = 'consulente-uuid'
 const TENANT_PRIMARIO = 'tenant-A-uuid'
@@ -59,6 +60,9 @@ function makePrisma(associazione: { isActive: boolean; expiresAt: Date | null } 
   } as any
 }
 
+// Negli spec esistenti un solo mock fa da client app e da client di sistema: le asserzioni restano quelle di prima.
+const creaMembership = (prisma: any, jwt: any) => new MembershipService(prisma, prisma, jwt)
+
 const jwtTokens = {
   generateTokenPair: () => ({ accessToken: 'a', refreshToken: 'r' }),
 } as any
@@ -68,37 +72,25 @@ const DOMANI = new Date(Date.now() + 24 * 60 * 60 * 1000)
 
 describe('MembershipService — associazione consulente scaduta', () => {
   it('nega checkAccess quando l’associazione è scaduta', async () => {
-    const service = new MembershipService(
-      makePrisma({ isActive: true, expiresAt: IERI }),
-      jwtTokens
-    )
+    const service = creaMembership(makePrisma({ isActive: true, expiresAt: IERI }), jwtTokens)
 
     await expect(service.checkAccess(UTENTE, TENANT_CLIENTE, TENANT_PRIMARIO)).resolves.toBe(false)
   })
 
   it('consente checkAccess con associazione attiva non scaduta', async () => {
-    const service = new MembershipService(
-      makePrisma({ isActive: true, expiresAt: DOMANI }),
-      jwtTokens
-    )
+    const service = creaMembership(makePrisma({ isActive: true, expiresAt: DOMANI }), jwtTokens)
 
     await expect(service.checkAccess(UTENTE, TENANT_CLIENTE, TENANT_PRIMARIO)).resolves.toBe(true)
   })
 
   it('consente checkAccess con associazione senza scadenza', async () => {
-    const service = new MembershipService(
-      makePrisma({ isActive: true, expiresAt: null }),
-      jwtTokens
-    )
+    const service = creaMembership(makePrisma({ isActive: true, expiresAt: null }), jwtTokens)
 
     await expect(service.checkAccess(UTENTE, TENANT_CLIENTE, TENANT_PRIMARIO)).resolves.toBe(true)
   })
 
   it('rifiuta lo switch di azienda su associazione scaduta', async () => {
-    const service = new MembershipService(
-      makePrisma({ isActive: true, expiresAt: IERI }),
-      jwtTokens
-    )
+    const service = creaMembership(makePrisma({ isActive: true, expiresAt: IERI }), jwtTokens)
 
     await expect(
       service.switchTenant(
@@ -143,19 +135,19 @@ describe('MembershipService — gerarchia madre-figlie', () => {
   }
 
   it('chi e abilitato alla madre accede a una figlia', async () => {
-    const service = new MembershipService(makePrismaGerarchia(), jwtTokens)
+    const service = creaMembership(makePrismaGerarchia(), jwtTokens)
 
     await expect(service.checkAccess(UTENTE_MADRE, FIGLIA, MADRE)).resolves.toBe(true)
   })
 
   it('chi e abilitato a una figlia NON accede alla sorella', async () => {
-    const service = new MembershipService(makePrismaGerarchia(), jwtTokens)
+    const service = creaMembership(makePrismaGerarchia(), jwtTokens)
 
     await expect(service.checkAccess(UTENTE_FIGLIA, SORELLA, FIGLIA)).resolves.toBe(false)
   })
 
   it('chi e abilitato a una figlia NON risale alla madre', async () => {
-    const service = new MembershipService(makePrismaGerarchia(), jwtTokens)
+    const service = creaMembership(makePrismaGerarchia(), jwtTokens)
 
     await expect(service.checkAccess(UTENTE_FIGLIA, MADRE, FIGLIA)).resolves.toBe(false)
   })
@@ -171,7 +163,7 @@ describe('MembershipService — gerarchia madre-figlie', () => {
         { id: SORELLA, ragioneSociale: 'Figlia Beta Srl', parentTenantId: MADRE },
       ])
     })
-    const service = new MembershipService(prisma, jwtTokens)
+    const service = creaMembership(prisma, jwtTokens)
 
     const risposta = await service.listTenants({ id: UTENTE_MADRE, tenantId: MADRE } as any)
 
@@ -184,7 +176,7 @@ describe('MembershipService — gerarchia madre-figlie', () => {
     prisma.user.findUnique = jest
       .fn()
       .mockResolvedValue({ email: 'madre@example.it', fiscalCode: 'CF', role: 'OPERATOR' })
-    const service = new MembershipService(prisma, jwtTokens)
+    const service = creaMembership(prisma, jwtTokens)
 
     const risposta = await service.switchTenant(
       { id: UTENTE_MADRE, tenantId: MADRE, role: 'OPERATOR' } as any,
@@ -195,7 +187,7 @@ describe('MembershipService — gerarchia madre-figlie', () => {
   })
 
   it('chi e abilitato a una figlia NON ottiene lo switch sulla sorella', async () => {
-    const service = new MembershipService(makePrismaGerarchia(), jwtTokens)
+    const service = creaMembership(makePrismaGerarchia(), jwtTokens)
 
     await expect(
       service.switchTenant(
@@ -203,5 +195,98 @@ describe('MembershipService — gerarchia madre-figlie', () => {
         SORELLA
       )
     ).rejects.toThrow(ForbiddenException)
+  })
+})
+
+describe('MembershipService — client di sistema per le letture prima di conoscere l’azienda', () => {
+  /** Client dell'applicazione: ogni uso fallisce, come farebbe una policy che nasconde la riga. */
+  function clientAppProibito() {
+    const vieta = () => jest.fn().mockRejectedValue(new Error('client app usato'))
+    return {
+      tenant: { findFirst: vieta(), findUnique: vieta(), findMany: vieta() },
+      consultantTenantAssociation: { findFirst: vieta(), findMany: vieta() },
+      user: { findUnique: vieta() },
+    } as any
+  }
+
+  it('checkAccess: owner, associazione e madre si leggono dal client di sistema, senza contesto', async () => {
+    const app = clientAppProibito()
+    const sistema = makePrisma({ isActive: true, expiresAt: DOMANI })
+    const viste: Array<string | null> = []
+    const originale = sistema.consultantTenantAssociation.findFirst
+    sistema.consultantTenantAssociation.findFirst = jest.fn((args: any) => {
+      viste.push(TenantContext.getStoreTenantId())
+      return originale(args)
+    })
+    const service = new MembershipService(app, sistema, jwtTokens)
+
+    await expect(
+      TenantContext.run(
+        {},
+        async () => await service.checkAccess(UTENTE, TENANT_CLIENTE, TENANT_PRIMARIO)
+      )
+    ).resolves.toBe(true)
+
+    expect(viste).toEqual([null])
+    expect(app.tenant.findFirst).not.toHaveBeenCalled()
+    expect(app.consultantTenantAssociation.findFirst).not.toHaveBeenCalled()
+  })
+
+  it('checkAccess: la discesa dalla madre legge la figlia dal client di sistema', async () => {
+    const app = clientAppProibito()
+    const sistema = makePrisma(null)
+    sistema.tenant.findUnique = jest.fn().mockResolvedValue({ parentTenantId: null })
+    const service = new MembershipService(app, sistema, jwtTokens)
+
+    await expect(service.checkAccess(UTENTE, TENANT_CLIENTE, TENANT_PRIMARIO)).resolves.toBe(false)
+
+    expect(sistema.tenant.findUnique).toHaveBeenCalled()
+    expect(app.tenant.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('listTenants: aziende e associazioni dal client di sistema', async () => {
+    const app = clientAppProibito()
+    const sistema = makePrisma(null)
+    sistema.consultantTenantAssociation.findMany = jest
+      .fn()
+      .mockResolvedValue([{ tenantId: TENANT_CLIENTE }])
+    sistema.tenant.findMany = jest.fn().mockResolvedValue([])
+    const service = new MembershipService(app, sistema, jwtTokens)
+
+    await service.listTenants({ id: UTENTE, tenantId: TENANT_PRIMARIO } as any)
+
+    expect(sistema.consultantTenantAssociation.findMany).toHaveBeenCalled()
+    expect(sistema.tenant.findMany).toHaveBeenCalled()
+    expect(app.tenant.findMany).not.toHaveBeenCalled()
+    expect(app.consultantTenantAssociation.findMany).not.toHaveBeenCalled()
+  })
+
+  it('switchTenant: azienda di destinazione e utente dal client di sistema', async () => {
+    const app = clientAppProibito()
+    const sistema = makePrisma({ isActive: true, expiresAt: DOMANI })
+    const service = new MembershipService(app, sistema, jwtTokens)
+
+    const risposta = await service.switchTenant(
+      { id: UTENTE, tenantId: TENANT_PRIMARIO, role: 'OPERATOR' } as any,
+      TENANT_CLIENTE
+    )
+
+    expect(risposta.tenantId).toBe(TENANT_CLIENTE)
+    expect(app.tenant.findUnique).not.toHaveBeenCalled()
+    expect(app.user.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('getActiveCompany: l’azienda attiva e quella del contesto, resta sul client normale', async () => {
+    const app = clientAppProibito()
+    app.tenant.findUnique = jest
+      .fn()
+      .mockResolvedValue({ id: TENANT_PRIMARIO, ragioneSociale: 'A Srl', partitaIva: '1' })
+    const sistema = makePrisma(null)
+    const service = new MembershipService(app, sistema, jwtTokens)
+
+    await service.getActiveCompany(TENANT_PRIMARIO)
+
+    expect(app.tenant.findUnique).toHaveBeenCalled()
+    expect(sistema.tenant.findUnique).not.toHaveBeenCalled()
   })
 })

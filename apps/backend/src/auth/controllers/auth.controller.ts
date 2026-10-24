@@ -21,7 +21,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard'
 import { Public } from '../decorators/public.decorator'
 import { JwtTokensService } from '../services/jwt-tokens.service'
 import { RedisService } from '../services/redis.service'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { RefreshTokenDto } from '../dto/refresh-token.dto'
 import { LogoutDto } from '../dto/logout.dto'
 import { ConfigService } from '@nestjs/config'
@@ -40,7 +40,8 @@ export class AuthController {
   constructor(
     private readonly jwtTokensService: JwtTokensService,
     private readonly redisService: RedisService,
-    private readonly prismaService: PrismaService,
+    // Client di sistema: spid/callback e refresh cercano l'utente prima di conoscerne l'azienda.
+    private readonly sistema: PrismaSistemaService,
     private readonly configService: ConfigService,
     private readonly ruoloEffettivo: RuoloEffettivoService
   ) {}
@@ -68,7 +69,8 @@ export class AuthController {
     const spidUser = req.user
 
     // Fetch user with tenant information
-    const user = await this.prismaService.user.findUnique({
+    // Client di sistema: il callback SAML arriva senza contesto azienda.
+    const user = await this.sistema.user.findUnique({
       where: { id: spidUser.id },
       include: {
         tenant: true, // User belongs to one tenant (not tenants)
@@ -137,7 +139,8 @@ export class AuthController {
     }
 
     // Fetch user with tenant information
-    const user = await this.prismaService.user.findUnique({
+    // Client di sistema: il refresh è pubblico, nessuna azienda nel contesto.
+    const user = await this.sistema.user.findUnique({
       where: { id: payload.sub },
       include: {
         tenant: true,

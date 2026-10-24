@@ -1,5 +1,6 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { JwtTokensService } from '../../auth/services/jwt-tokens.service'
 import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { associazioneConsulenteValida } from './ruolo-effettivo.service'
@@ -14,6 +15,8 @@ import { associazioneConsulenteValida } from './ruolo-effettivo.service'
 export class MembershipService {
   constructor(
     private readonly prisma: PrismaService,
+    // Client di sistema: elenco e verifica di accesso girano prima di conoscere l'azienda di destinazione.
+    private readonly sistema: PrismaSistemaService,
     private readonly jwtTokens: JwtTokensService
   ) {}
 
@@ -56,13 +59,15 @@ export class MembershipService {
     const ids = new Set<string>()
     if (user.tenantId) ids.add(user.tenantId)
 
-    const owned = await this.prisma.tenant.findMany({
+    // Client di sistema: le aziende possedute o associate non sono quella del contesto.
+    const owned = await this.sistema.tenant.findMany({
       where: { ownerUserId: user.id },
       select: { id: true },
     })
     owned.forEach(t => ids.add(t.id))
 
-    const assoc = await this.prisma.consultantTenantAssociation.findMany({
+    // Client di sistema: associazioni consulente-azienda, senza azienda nota.
+    const assoc = await this.sistema.consultantTenantAssociation.findMany({
       where: MembershipService.associazioneValida(user.id),
       select: { tenantId: true },
     })
@@ -74,13 +79,15 @@ export class MembershipService {
 
     // Le figlie delle aziende accessibili sono a loro volta accessibili
     // (discesa gerarchica, v. checkAccess).
-    const figlie = await this.prisma.tenant.findMany({
+    // Client di sistema: aziende figlie di quelle accessibili, diverse da quella del contesto.
+    const figlie = await this.sistema.tenant.findMany({
       where: { parentTenantId: { in: Array.from(ids) } },
       select: { id: true },
     })
     figlie.forEach(f => ids.add(f.id))
 
-    const tenants = await this.prisma.tenant.findMany({
+    // Client di sistema: anagrafica delle aziende accessibili.
+    const tenants = await this.sistema.tenant.findMany({
       where: { id: { in: Array.from(ids) } },
       select: { id: true, ragioneSociale: true, parentTenantId: true },
       orderBy: { ragioneSociale: 'asc' },
@@ -114,14 +121,16 @@ export class MembershipService {
     }
 
     // 2. Tenant di proprietà dell'utente.
-    const owned = await this.prisma.tenant.findFirst({
+    // Client di sistema: la verifica precede il cambio azienda, il contesto è ancora quello di partenza.
+    const owned = await this.sistema.tenant.findFirst({
       where: { id: targetTenantId, ownerUserId: userId },
       select: { id: true },
     })
     if (owned) return true
 
     // 3. Associazione consulente attiva e non scaduta.
-    const assoc = await this.prisma.consultantTenantAssociation.findFirst({
+    // Client di sistema: associazione verso l'azienda di destinazione.
+    const assoc = await this.sistema.consultantTenantAssociation.findFirst({
       where: MembershipService.associazioneValida(userId, targetTenantId),
       select: { id: true },
     })
@@ -131,7 +140,8 @@ export class MembershipService {
     //    figlie coi poteri del proprio ruolo. E' l'unico punto in cui la
     //    gerarchia concede qualcosa, e vale in una sola direzione: essere
     //    abilitati a una figlia non da' accesso ne' alla madre ne' alle sorelle.
-    const target = await this.prisma.tenant.findUnique({
+    // Client di sistema: azienda di destinazione e madre, non quelle del contesto.
+    const target = await this.sistema.tenant.findUnique({
       where: { id: targetTenantId },
       select: { parentTenantId: true },
     })
@@ -155,13 +165,15 @@ export class MembershipService {
       }
     }
 
-    const tenant = await this.prisma.tenant.findUnique({
+    // Client di sistema: esistenza dell'azienda di destinazione.
+    const tenant = await this.sistema.tenant.findUnique({
       where: { id: targetTenantId },
       select: { id: true },
     })
     if (!tenant) throw new NotFoundException('Azienda non trovata')
 
-    const dbUser = await this.prisma.user.findUnique({
+    // Client di sistema: l'utente appartiene all'azienda primaria, il contesto può essere un'altra.
+    const dbUser = await this.sistema.user.findUnique({
       where: { id: user.id },
       select: { email: true, fiscalCode: true, role: true },
     })

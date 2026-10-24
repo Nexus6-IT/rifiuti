@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 
 /** Ruoli con cui l'applicazione decide che cosa un utente può fare in un'azienda. */
 export type RuoloApplicativo = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATOR' | 'VIEWER'
@@ -51,7 +51,9 @@ type UtenteRuolo = { id: string; role: string; tenantId?: string | null }
  */
 @Injectable()
 export class RuoloEffettivoService {
-  constructor(private readonly prisma: PrismaService) {}
+  // Client di sistema: legge aziende e associazioni consulente diverse da quella del contesto
+  // (azienda di destinazione, madre) e, al refresh, senza alcun contesto.
+  constructor(private readonly sistema: PrismaSistemaService) {}
 
   /**
    * Risoluzione nello stesso ordine di `MembershipService.checkAccess`:
@@ -88,13 +90,13 @@ export class RuoloEffettivoService {
       return comeRuoloApplicativo(utente.role)
     }
 
-    const posseduto = await this.prisma.tenant.findFirst({
+    const posseduto = await this.sistema.tenant.findFirst({
       where: { id: tenantId, ownerUserId: utente.id },
       select: { id: true },
     })
     if (posseduto) return comeRuoloApplicativo(utente.role)
 
-    const associazione = await this.prisma.consultantTenantAssociation.findFirst({
+    const associazione = await this.sistema.consultantTenantAssociation.findFirst({
       where: associazioneConsulenteValida(utente.id, tenantId),
       select: { role: { select: { name: true } } },
     })
@@ -104,7 +106,7 @@ export class RuoloEffettivoService {
     }
 
     if (!risaliAllaMadre) return null
-    const tenant = await this.prisma.tenant.findUnique({
+    const tenant = await this.sistema.tenant.findUnique({
       where: { id: tenantId },
       select: { parentTenantId: true },
     })

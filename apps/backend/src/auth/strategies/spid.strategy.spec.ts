@@ -4,6 +4,8 @@
  */
 
 import { SpidStrategy } from './spid.strategy'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { UnauthorizedException } from '@nestjs/common'
 import { createPrismaMock, MockPrisma } from '../../../test/utils/prisma-mock'
 import {
@@ -180,5 +182,26 @@ describe('SpidStrategy', () => {
     it('should set SAML authentication strategy', () => {
       expect(strategy).toBeDefined()
     })
+  })
+})
+
+describe('SpidStrategy — client di sistema', () => {
+  it('spid: utente trovato per codice fiscale dal client di sistema, senza contesto', async () => {
+    const sistema = createPrismaMock()
+    let tenantVisto: string | null = 'non-chiamato'
+    sistema.user.findMany.mockImplementation((() => {
+      tenantVisto = TenantContext.getStoreTenantId()
+      return Promise.resolve([createMockUser({ id: 'user-spid' })])
+    }) as any)
+    const strategy = new SpidStrategy(createConfigServiceMock(), sistema as any)
+
+    const risultato = await TenantContext.run({}, async () =>
+      strategy.validate(createMockSpidProfile())
+    )
+
+    expect(risultato.id).toBe('user-spid')
+    expect(tenantVisto).toBeNull()
+    // la dipendenza dichiarata e' il client di sistema, non quello dell'applicazione
+    expect(Reflect.getMetadata('design:paramtypes', SpidStrategy)[1]).toBe(PrismaSistemaService)
   })
 })

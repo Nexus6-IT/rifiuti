@@ -8,6 +8,7 @@
 
 import { RuoloEffettivoService } from './ruolo-effettivo.service'
 import { MembershipService } from './membership.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 
 const UTENTE = 'utente-uuid'
 const PRIMARIO = 'tenant-primario'
@@ -181,6 +182,7 @@ describe('RuoloEffettivoService.ruoloEffettivo', () => {
 
 describe('RuoloEffettivoService — parità con MembershipService.checkAccess (F29)', () => {
   const jwtTokens = { generateTokenPair: jest.fn() } as any
+  const creaMembership = (prisma: any, jwt: any) => new MembershipService(prisma, prisma, jwt)
 
   // Per ognuna delle quattro sorgenti di accesso, e per l'assenza di accesso, le due
   // traversate devono essere d'accordo: dove checkAccess concede, ruoloEffettivo dà il ruolo
@@ -196,7 +198,7 @@ describe('RuoloEffettivoService — parità con MembershipService.checkAccess (F
 
   it.each(casi)('$sorgente', async ({ tenant, accesso }) => {
     const prisma = makePrisma(TENANTS, [associazione('ADMIN')])
-    const membership = new MembershipService(prisma, jwtTokens)
+    const membership = creaMembership(prisma, jwtTokens)
     const ruoli = new RuoloEffettivoService(prisma)
 
     await expect(membership.checkAccess(UTENTE, tenant, PRIMARIO)).resolves.toBe(accesso)
@@ -209,7 +211,7 @@ describe('RuoloEffettivoService — parità con MembershipService.checkAccess (F
 
   it('associazione scaduta: checkAccess nega, il ruolo è VIEWER e accesso() è null', async () => {
     const prisma = makePrisma(TENANTS, [associazione('ADMIN', { expiresAt: IERI })])
-    const membership = new MembershipService(prisma, jwtTokens)
+    const membership = creaMembership(prisma, jwtTokens)
     const ruoli = new RuoloEffettivoService(prisma)
 
     await expect(membership.checkAccess(UTENTE, CLIENTE, PRIMARIO)).resolves.toBe(false)
@@ -220,5 +222,14 @@ describe('RuoloEffettivoService — parità con MembershipService.checkAccess (F
   it('accesso(): associazione di sola consultazione dà VIEWER, non null', async () => {
     const ruoli = new RuoloEffettivoService(makePrisma(TENANTS, [associazione('CONSULTANT')]))
     await expect(ruoli.accesso(utente('ADMIN'), CLIENTE)).resolves.toBe('VIEWER')
+  })
+})
+
+describe('RuoloEffettivoService — client di sistema', () => {
+  it('legge aziende e associazioni dal client di sistema (azienda madre e target non sono quelle del contesto)', () => {
+    // La dipendenza dichiarata e' il client di sistema: nessuna lettura passa dal client normale.
+    expect(Reflect.getMetadata('design:paramtypes', RuoloEffettivoService)).toEqual([
+      PrismaSistemaService,
+    ])
   })
 })
