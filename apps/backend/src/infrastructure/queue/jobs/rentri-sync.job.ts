@@ -92,7 +92,7 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
     // Un job senza azienda non può lavorare in un contesto: fallisce in modo
     // definitivo (UnrecoverableError: BullMQ non lo ritenta) prima di toccare
     // il database. Un retry non può far comparire un tenantId che non c'è.
-    if (typeof tenantId !== 'string' || tenantId.length === 0) {
+    if (typeof tenantId !== 'string' || tenantId.trim().length === 0) {
       this.logger.error(
         'Job RENTRI sync senza azienda: fallimento definitivo',
         new Error('tenantId mancante nel job'),

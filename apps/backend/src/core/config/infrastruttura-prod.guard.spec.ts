@@ -88,7 +88,7 @@ const RENTRI_DEMO = "oggi vale il default demo; il passaggio all'ente reale è u
 
 const NON_PASSATE: Record<string, string> = {
   API_PREFIX: "l'nginx del frontend e l'healthcheck dell'immagine presuppongono api/v1",
-  CURRENT_TENANT_ID: 'solo job CLI e test (tenant-context.ts)',
+  CURRENT_TENANT_ID: 'solo test, con NODE_ENV=test (tenant-context.ts)',
   HOSTNAME: 'la imposta Docker',
   JWT_ACCESS_TOKEN_EXPIRATION: 'default nel codice (15m); passata vuota lo scavalcherebbe',
   JWT_REFRESH_TOKEN_EXPIRATION: 'default nel codice; passata vuota lo scavalcherebbe',

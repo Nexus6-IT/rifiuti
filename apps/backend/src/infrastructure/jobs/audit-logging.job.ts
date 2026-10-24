@@ -1,10 +1,11 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq'
 import { Logger, Inject } from '@nestjs/common'
-import { Job } from 'bullmq'
+import { Job, UnrecoverableError } from 'bullmq'
 import { RoleChangeHistoryRepository } from '../../domain/identity-access/role-change-history.repository.interface'
 import { RoleChangeHistory } from '../../domain/identity-access/role-change-history.entity'
 import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface'
 import { PermissionAuditLog } from '../../domain/identity-access/permission-audit-log.entity'
+import { TenantContext } from '../../core/context/tenant-context'
 
 /**
  * AuditLoggingProcessor
@@ -36,18 +37,36 @@ export class AuditLoggingProcessor extends WorkerHost {
   }
 
   async process(job: Job): Promise<void> {
-    const { type, data } = job.data
+    const { type, data } = job.data ?? {}
+    const tenantId = data?.tenantId
 
-    switch (type) {
-      case 'role-change':
-        await this.processRoleChange(job, data)
-        break
-      case 'permission-check':
-        await this.processPermissionCheck(job, data)
-        break
-      default:
-        this.logger.warn(`Unknown audit log type: ${type}`)
+    // Un job senza azienda non può lavorare in un contesto: fallisce in modo
+    // definitivo (UnrecoverableError: BullMQ non lo ritenta) prima di toccare il
+    // database. Un retry non può far comparire un tenantId che non c'è. Guard
+    // volutamente duplicato in rentri-sync.job.ts: i due worker hanno logger
+    // diversi e un helper condiviso non risparmierebbe nulla.
+    if (typeof tenantId !== 'string' || tenantId.trim().length === 0) {
+      this.logger.error(
+        `Job audit-logging senza azienda: fallimento definitivo (jobId=${job.id}, type=${type}, attemptsMade=${job.attemptsMade})`
+      )
+      throw new UnrecoverableError('Job audit-logging senza azienda (tenantId mancante)')
     }
+
+    // Il lavoro gira nel contesto dell'azienda del job: da qui il PrismaService
+    // imposta `app.tenant_id` per ogni operazione (RLS). `await` dentro il
+    // callback: le PrismaPromise sono lazy e vanno risolte nel contesto.
+    await TenantContext.run({ tenantId }, async () => {
+      switch (type) {
+        case 'role-change':
+          await this.processRoleChange(job, data)
+          break
+        case 'permission-check':
+          await this.processPermissionCheck(job, data)
+          break
+        default:
+          this.logger.warn(`Unknown audit log type: ${type}`)
+      }
+    })
   }
 
   /**

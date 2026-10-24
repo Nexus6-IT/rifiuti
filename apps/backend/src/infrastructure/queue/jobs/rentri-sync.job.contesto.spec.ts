@@ -67,7 +67,7 @@ describe('RENTRISyncJobProcessor - contesto azienda', () => {
     expect(visti).toEqual({ f1: 'azienda-A', f2: 'azienda-B' })
   })
 
-  it.each([undefined, '', null])(
+  it.each([undefined, '', '   ', null])(
     'rentri-sync: job senza tenantId (%p) fallisce in modo definitivo e non tocca il database',
     async tenantId => {
       await expect(
