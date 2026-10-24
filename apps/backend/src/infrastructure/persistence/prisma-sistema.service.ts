@@ -15,13 +15,7 @@
 
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
-
-/** Sceglie l'URL e dice se si e' ripiegato sulla connessione applicativa. */
-function risolviUrlSistema(): { url: string | undefined; fallback: boolean } {
-  const dedicato = process.env.DATABASE_URL_SISTEMA
-  if (dedicato) return { url: dedicato, fallback: false }
-  return { url: process.env.DATABASE_URL, fallback: true }
-}
+import { risolviUrlSistema } from './url-sistema'
 
 @Injectable()
 export class PrismaSistemaService extends PrismaClient implements OnModuleDestroy {

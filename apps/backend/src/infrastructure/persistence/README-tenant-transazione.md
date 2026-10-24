@@ -70,6 +70,25 @@ e' il default di Prisma (num_cpus * 2 + 1) e non e' impostato. Alzarlo (parametr
 sotto carico. Le transazioni interattive mantengono il `maxWait` di default di Prisma (2 s):
 la pressione sul pool si vede quindi per prima come errore P2028 o P2024. In questo pezzo non cambia nessun valore.
 
+## Quando usare il client di sistema
+
+`PrismaSistemaService` (ruolo DB `wasteflow_sistema`, BYPASSRLS) si usa **solo** quando l'azienda
+non e' nota: scansione di tutte le aziende, oppure ricerca di un'entita' prima di sapere a chi appartiene
+(utente al login, FIR pubblico, membership).
+
+- **Azienda nota:** appena la si conosce, il lavoro successivo torna sul client normale dentro
+  `TenantContext.run({ tenantId })`, con `await` delle operazioni dentro la callback (le PrismaPromise sono lazy).
+- **Lettura col client di sistema:** va vincolata a cio' a cui chi chiama ha diritto (id dell'utente
+  autenticato, capability pubblica come l'id di un FIR), **mai** a un `tenantId` preso dalla sola richiesta.
+- **SUPER_ADMIN:** si sceglie in base all'ambito della query. Tutte le aziende: client di sistema.
+  Un'azienda specifica Y: client normale in `run({ tenantId: Y })`. I passi successivi alla creazione di
+  un'azienda girano nel contesto della nuova azienda.
+- **Commento:** ogni uso ha accanto un commento di una riga che dice perche' serve il client di sistema.
+- **Elenco statico:** i file che lo usano sono elencati in `punti-di-sistema.spec.ts`, ciascuno con un
+  motivo. Un file nuovo fa fallire il test finche' non lo si aggiunge (o lo si toglie, se smette di usarlo).
+- **Seed cross-tenant** (`seed-test-user.ts`, `seeds/roles.seed.ts`): si collegano con
+  `DATABASE_URL_SISTEMA`, altrimenti con `DATABASE_URL` e un avviso (`url-sistema.ts`).
+
 ## Cosa resta
 
 - **2b:** cron cross-tenant, lookup di login e refresh, verifica pubblica del FIR, cruscotti
