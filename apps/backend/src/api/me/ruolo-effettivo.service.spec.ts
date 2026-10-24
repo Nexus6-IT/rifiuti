@@ -8,6 +8,7 @@
 
 import { RuoloEffettivoService } from './ruolo-effettivo.service'
 import { MembershipService } from './membership.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 
 const UTENTE = 'utente-uuid'
@@ -231,5 +232,26 @@ describe('RuoloEffettivoService — client di sistema', () => {
     expect(Reflect.getMetadata('design:paramtypes', RuoloEffettivoService)).toEqual([
       PrismaSistemaService,
     ])
+  })
+})
+
+describe('RuoloEffettivoService — senza contesto (refresh)', () => {
+  it('risolve solo col client di sistema, con lo store vuoto', async () => {
+    const sistema = makePrisma(TENANTS, [associazione('ADMIN')])
+    const viste: Array<string | null> = []
+    const originale = sistema.consultantTenantAssociation.findFirst
+    sistema.consultantTenantAssociation.findFirst = jest.fn((args: any) => {
+      viste.push(TenantContext.getStoreTenantId())
+      return originale(args)
+    })
+    // il servizio riceve soltanto il client di sistema: nessun client app a cui ripiegare
+    const service = new RuoloEffettivoService(sistema)
+
+    const ruolo = await TenantContext.run({}, async () =>
+      service.accesso(utente('OPERATOR'), CLIENTE)
+    )
+
+    expect(ruolo).toBe('ADMIN')
+    expect(viste).toEqual([null])
   })
 })

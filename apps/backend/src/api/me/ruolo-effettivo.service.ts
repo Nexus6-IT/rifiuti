@@ -45,6 +45,9 @@ type UtenteRuolo = { id: string; role: string; tenantId?: string | null }
  * Si usa nei controller, non in un guard: `RolesGuard` gira prima del
  * `TenantSwitchInterceptor` globale e non vede l'azienda selezionata.
  *
+ * Solo letture vincolate all'id dell'utente autenticato (o agli id che ne derivano); mai dati di
+ * dominio: un metodo nuovo qui eredita BYPASSRLS (client di sistema).
+ *
  * Servizio leggero (solo Prisma) e separato da `MembershipService`, che dipende da
  * `AuthModule` e quindi da Redis: i moduli che ne hanno bisogno importano
  * `RuoloEffettivoModule`, non `MeModule`.
@@ -90,12 +93,14 @@ export class RuoloEffettivoService {
       return comeRuoloApplicativo(utente.role)
     }
 
+    // Client di sistema: azienda di destinazione, senza contesto al refresh.
     const posseduto = await this.sistema.tenant.findFirst({
       where: { id: tenantId, ownerUserId: utente.id },
       select: { id: true },
     })
     if (posseduto) return comeRuoloApplicativo(utente.role)
 
+    // Client di sistema: associazione verso un'azienda che non è quella del contesto.
     const associazione = await this.sistema.consultantTenantAssociation.findFirst({
       where: associazioneConsulenteValida(utente.id, tenantId),
       select: { role: { select: { name: true } } },
@@ -106,6 +111,7 @@ export class RuoloEffettivoService {
     }
 
     if (!risaliAllaMadre) return null
+    // Client di sistema: azienda madre, diversa da quella del contesto.
     const tenant = await this.sistema.tenant.findUnique({
       where: { id: tenantId },
       select: { parentTenantId: true },
