@@ -31,6 +31,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 import { rlsExtension } from './prisma-rls.extension'
+import { estensioneTenantTransazione } from './prisma-tenant-transazione'
 
 /**
  * Costruisce il client esteso con RLS a partire da un client base. Definita come
@@ -93,4 +94,40 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       }
     }
   }
+}
+
+/**
+ * Factory del provider `PrismaService` (RLS pezzo 2a): l'istanza iniettata da
+ * Nest NON e' la classe nuda ma il client esteso con `estensioneTenantTransazione`,
+ * cosi' ogni operazione (e ogni `$transaction`) con un tenant nel TenantContext
+ * esegue `set_config('app.tenant_id', ...)` nella propria transazione.
+ *
+ * Scelta tecnica: factory provider invece di un costruttore che restituisce
+ * `this.$extends(...)`. La classe `PrismaService` resta quella di prima (gli spec
+ * che la istanziano direttamente e spiano `$extends`/prototype restano validi) e
+ * il client esteso la affianca con gli stessi membri applicativi, delegati
+ * all'istanza base: `db`, `cleanDatabase`, `onModuleInit`, `onModuleDestroy`.
+ * I lifecycle hook sono chiamati da Nest sul valore restituito dalla factory.
+ *
+ * `db` e' composto nell'ordine corretto: `base.$extends(rlsExtension)` e poi
+ * l'estensione tenant sopra quel client (l'ordine inverso perde il filtro RLS
+ * dentro le transazioni).
+ *
+ * UNICO cast: il tipo del client esteso non e' assegnabile a `PrismaService`
+ * (classe con membri privati); la forma a runtime e' un soprainsieme dei membri
+ * pubblici della classe. Il cast sta qui, nessun consumatore ne ha bisogno.
+ */
+export function creaPrismaServiceApplicativo(): PrismaService {
+  const base = new PrismaService()
+  const rlsBase = buildRlsClient(base)
+  const db = rlsBase.$extends(estensioneTenantTransazione(rlsBase))
+  return base.$extends(estensioneTenantTransazione(base)).$extends({
+    name: 'membri-prisma-service',
+    client: {
+      db,
+      cleanDatabase: () => base.cleanDatabase(),
+      onModuleInit: () => base.onModuleInit(),
+      onModuleDestroy: () => base.onModuleDestroy(),
+    },
+  }) as unknown as PrismaService
 }

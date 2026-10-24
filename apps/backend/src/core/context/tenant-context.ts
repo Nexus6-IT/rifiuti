@@ -66,6 +66,15 @@ export class TenantContext {
     return fromEnv && fromEnv.length > 0 ? fromEnv : null
   }
 
+  /**
+   * Tenant presente nello SOLO store dell'AsyncLocalStorage, senza il fallback
+   * `CURRENT_TENANT_ID`. Lo usa il meccanismo `set_config` per transazione, che
+   * non deve impostare un tenant a job e script privi di contesto.
+   */
+  static getStoreTenantId(): string | null {
+    return TenantContext.als.getStore()?.tenantId || null
+  }
+
   /** Tenant corrente, oppure lancia (fail-closed). */
   static requireTenantId(): string {
     const tenantId = TenantContext.getTenantId()

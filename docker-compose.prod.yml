@@ -86,6 +86,9 @@ services:
       #   - user app senza password app  -> qui sotto, parte password;
       #   - user app senza password sistema -> DATABASE_URL_SISTEMA;
       #   - password sistema senza user app -> label guardia-ruoli del servizio.
+      # Pool: nessun connection_limit nell'URL = default di Prisma (num_cpus * 2 + 1). Con una
+      # transazione per operazione (RLS pezzo 2a) la concorrenza tiene le connessioni piu' a lungo:
+      # se compaiono timeout sul pool sotto carico, aggiungere ?connection_limit=N all'URL.
       DATABASE_URL: postgresql://${DB_APP_USER:-${DB_APP_PASSWORD:+${DB_APP_USER:?DB_APP_PASSWORD senza DB_APP_USER (wasteflow_app) - ruoli DB incompleti}}${DB_USER:-wasteflow}}:${DB_APP_PASSWORD:-${DB_APP_USER:+${DB_APP_PASSWORD:?DB_APP_USER senza DB_APP_PASSWORD - ruoli DB incompleti}}${DB_PASSWORD}}@postgres:5432/${DB_NAME:-wasteflow_prod}
       # Client di sistema (job, BYPASSRLS). Vuota senza ruoli: PrismaSistemaService
       # ripiega allora su DATABASE_URL.
