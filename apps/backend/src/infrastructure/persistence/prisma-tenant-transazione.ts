@@ -84,8 +84,11 @@ export async function impostaTenant(tx: Prisma.TransactionClient, tenantId: stri
  *  - con un tenant nel contesto ogni operazione gira in una transazione, quindi
  *    gli statement che non possono stare in un blocco transazionale (VACUUM,
  *    CREATE INDEX CONCURRENTLY, ...) falliscono: vanno eseguiti senza contesto;
- *  - costo: fuori da una transazione esplicita ogni operazione fa 4 round-trip
- *    (BEGIN, set_config, operazione, COMMIT) invece di 1.
+ *  - costo: fuori da una transazione esplicita ogni operazione diventa una
+ *    transazione (BEGIN, set_config, operazione, COMMIT) invece di una query sola.
+ *    Misurato in sequenza sul Postgres di prova: sovraccosto nel rumore (vedi
+ *    README-tenant-transazione.md). La misura non dice nulla sulla contesa del
+ *    pool sotto concorrenza.
  */
 export function estensioneTenantTransazione(base: ClienteBase) {
   return {

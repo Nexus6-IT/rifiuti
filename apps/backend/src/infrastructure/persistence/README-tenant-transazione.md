@@ -52,13 +52,14 @@ Tre esecuzioni, millisecondi per operazione (media / p95):
 | C nudo, con tenant (nessuna transazione) | 1,18 / 1,42 | 1,22 / 1,49 | 1,28 / 1,50 |
 | D esteso, con tenant | 1,27 / 1,67 | 1,34 / 1,69 | 1,26 / 1,49 |
 
-Il sovraccosto di D su C va da -0,01 a +0,12 ms per operazione, cioe' nel rumore (BEGIN,
-set_config e COMMIT viaggiano insieme verso il database: non sono 4 attese separate). Query reali piu' pesanti di un `findFirst` indicizzato ne sono
-dominate. Rieseguire (non gira in CI):
+Il sovraccosto di D su C va da -0,01 a +0,12 ms per operazione, cioe' nel rumore. Non e'
+stato verificato perche' sia cosi' basso. La misura e' sequenziale (una operazione alla volta)
+e non dice nulla sulla contesa del pool sotto concorrenza. Query reali piu' pesanti di un `findFirst` indicizzato ne sono
+dominate. Rieseguire, DA `apps/backend` (lo script sta in `scripts/`, fuori da build e CI):
 
 ```
 DATABASE_URL="postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public" \
-  npx ts-node src/infrastructure/persistence/tenant-transazione.misura.ts
+  npx ts-node -P tsconfig.json scripts/tenant-transazione.misura.ts [N]
 ```
 
 ## Pool
@@ -66,7 +67,8 @@ DATABASE_URL="postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?s
 Una transazione per operazione tiene la connessione un po' piu' a lungo. Oggi `connection_limit`
 e' il default di Prisma (num_cpus * 2 + 1) e non e' impostato. Alzarlo (parametro nell'URL di
 `DATABASE_URL`) se compaiono timeout `Timed out fetching a new connection from the connection pool`
-sotto carico. In questo pezzo non cambia nessun valore.
+sotto carico. Le transazioni interattive mantengono il `maxWait` di default di Prisma (2 s):
+la pressione sul pool si vede quindi per prima come errore P2028 o P2024. In questo pezzo non cambia nessun valore.
 
 ## Cosa resta
 

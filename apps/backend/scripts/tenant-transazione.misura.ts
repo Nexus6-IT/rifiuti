@@ -1,11 +1,14 @@
 /**
  * Misura del costo del "tenant per transazione" (RLS pezzo 2a). NON e' una spec e
- * non gira in CI: il nome `.misura.ts` non combacia con nessun testRegex di jest
- * (`.spec.ts`, `.postgres.spec.ts`, `.oracolo.spec.ts`, `.redis.spec.ts`).
+ * non gira in CI: sta fuori da src (non finisce nel build ne' nella coverage) e il
+ * nome non combacia con nessun testRegex di jest. Si connette solo se eseguito
+ * direttamente, non quando importato.
  *
- * Eseguire con (Postgres di prova su 127.0.0.1:55432):
+ * Eseguire DA apps/backend (Postgres di prova su 127.0.0.1:55432):
  *   DATABASE_URL="postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public" \
- *     npx ts-node src/infrastructure/persistence/tenant-transazione.misura.ts
+ *     npx ts-node -P tsconfig.json scripts/tenant-transazione.misura.ts [N]
+ *
+ * La misura e' sequenziale: non dice nulla sulla contesa del pool sotto concorrenza.
  *
  * Confronta N `findFirst` su `fir` (default 500, primo argomento per cambiarlo):
  *   A  client nudo, senza tenant                  (baseline storica)
@@ -13,8 +16,11 @@
  *   C  client nudo, dentro un TenantContext       (nessuna transazione aggiunta)
  *   D  client esteso, dentro un TenantContext     (BEGIN + set_config + op + COMMIT)
  */
-import { TenantContext } from '../../core/context/tenant-context'
-import { creaPrismaServiceApplicativo, PrismaService } from './prisma.service'
+import { TenantContext } from '../src/core/context/tenant-context'
+import {
+  creaPrismaServiceApplicativo,
+  PrismaService,
+} from '../src/infrastructure/persistence/prisma.service'
 
 const N = Number(process.argv[2] ?? 500)
 const RISCALDAMENTO = 50
@@ -69,7 +75,9 @@ async function main() {
   }
 }
 
-main().catch(e => {
-  console.error(e)
-  process.exit(1)
-})
+if (require.main === module) {
+  main().catch(e => {
+    console.error(e)
+    process.exit(1)
+  })
+}
