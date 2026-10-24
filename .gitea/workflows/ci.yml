@@ -237,6 +237,13 @@ jobs:
       # anche in rete host. `--rm` come rete di sicurezza aggiuntiva (in caso
       # il container si fermi da solo), ma la rimozione affidabile e'
       # comunque delegata allo step finale `if: always()`.
+      #
+      # POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256: in rete host i test si
+      # collegano da 127.0.0.1, dove l'immagine ufficiale mette `trust` in
+      # pg_hba.conf (ogni password passa, e il test "la vecchia password non
+      # entra piu'" di ruoli-db.postgres.spec.ts non dimostrerebbe nulla). Cosi'
+      # le connessioni TCP chiedono la password; il socket locale (usato da
+      # `docker exec psql`, db-ruoli.sh e dai test bash) resta `trust`.
       - name: Avvia PostgreSQL (docker run, porta esplicita)
         run: |
           docker run -d --rm \
@@ -245,6 +252,7 @@ jobs:
             -e POSTGRES_USER=wasteflow \
             -e POSTGRES_PASSWORD=wasteflow_ci \
             -e POSTGRES_DB=wasteflow_ci \
+            -e POSTGRES_INITDB_ARGS="--auth-host=scram-sha-256" \
             postgres:16-alpine \
             -c port=55432
 

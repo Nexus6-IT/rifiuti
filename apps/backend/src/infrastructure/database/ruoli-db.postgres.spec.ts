@@ -112,6 +112,45 @@ describe('Ruoli database (Postgres reale)', () => {
     await c.$executeRawUnsafe(`DELETE FROM ${tabella} WHERE id = 1`)
   }
 
+  /**
+   * Il test "la vecchia password non entra piu'" ha senso solo se il server
+   * chiede la password a QUESTO tipo di connessione. L'immagine ufficiale di
+   * postgres mette `trust` sul loopback (127.0.0.1, ::1): con `--network host`
+   * (CI) ogni password passa e l'asserzione fallirebbe con un messaggio
+   * fuorviante. Si interroga pg_hba_file_rules (serve superuser: l'owner lo e')
+   * per la prima regola che corrisponde all'indirizzo con cui il test si collega,
+   * e si fallisce con una spiegazione se il metodo e' `trust`.
+   */
+  const verificaCheLaPasswordSiaRichiesta = async () => {
+    const [r] = await owner.$queryRawUnsafe<{ addr: string | null; metodo: string | null }[]>(
+      `SELECT inet_client_addr()::text AS addr,
+              (SELECT h.auth_method FROM pg_hba_file_rules h
+               WHERE h.error IS NULL
+                 AND h.database @> ARRAY['all']
+                 AND (CASE WHEN inet_client_addr() IS NULL THEN h.type = 'local'
+                      ELSE h.type IN ('host', 'hostssl', 'hostnossl')
+                       AND (h.address = 'all'
+                            OR (h.address ~ '^[0-9a-fA-F:.]+$'
+                                AND h.netmask IS NOT NULL
+                                AND CASE WHEN family(h.address::inet) = family(inet_client_addr())
+                                         THEN (inet_client_addr() & h.netmask::inet) = (h.address::inet & h.netmask::inet)
+                                         ELSE false END))
+                      END)
+               ORDER BY h.rule_number LIMIT 1) AS metodo`
+    )
+    if (r.metodo === null) {
+      throw new Error(
+        `nessuna regola di pg_hba.conf corrisponde alla connessione del test (indirizzo ${r.addr ?? 'socket locale'}): impossibile stabilire se la password e' richiesta`
+      )
+    }
+    if (r.metodo === 'trust') {
+      throw new Error(
+        `il server accetta connessioni senza password su questo indirizzo (${r.addr ?? 'socket locale'}, pg_hba: trust): il test della password non e' significativo. ` +
+          `Avviare Postgres con POSTGRES_INITDB_ARGS="--auth-host=scram-sha-256" (vedi ci.yml, job test-postgres).`
+      )
+    }
+  }
+
   const negato = (p: Promise<unknown>) =>
     expect(p).rejects.toThrow(/permission denied|must be owner/i)
 
@@ -188,6 +227,7 @@ describe('Ruoli database (Postgres reale)', () => {
 
   it('script eseguito due volte: nessun errore; seconda password valida, prima no', async () => {
     await expect(eseguiScript(owner, PWD_APP_2, PWD_SIS_2)).resolves.toBeUndefined()
+    await verificaCheLaPasswordSiaRichiesta()
 
     for (const [ruolo, nuova, vecchia] of [
       ['wasteflow_app', PWD_APP_2, PWD_APP_1],
