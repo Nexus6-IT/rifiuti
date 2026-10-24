@@ -81,9 +81,16 @@ describe('Tenant per transazione (Postgres reale, connection_limit=1)', () => {
     expect([a, b, nessuno]).toEqual(['A', 'B', ''])
   })
 
-  it('senza tenant nel contesto: nessuna transazione aggiunta', async () => {
-    await client.tenant.count()
-    await leggiTenant()
+  it('senza tenant nel contesto: nessuna transazione aggiunta (anche con CURRENT_TENANT_ID)', async () => {
+    const prima = process.env.CURRENT_TENANT_ID
+    process.env.CURRENT_TENANT_ID = 'tenant-da-env'
+    try {
+      await client.tenant.count()
+      expect(await leggiTenant()).toBe('')
+    } finally {
+      if (prima === undefined) delete process.env.CURRENT_TENANT_ID
+      else process.env.CURRENT_TENANT_ID = prima
+    }
     const sql = queryLog.map(q => q.trim())
     expect(sql.some(q => q === 'BEGIN' || q === 'COMMIT')).toBe(false)
     expect(sql.some(q => q.includes('set_config'))).toBe(false)
@@ -199,5 +206,125 @@ describe('Opzioni di $transaction e composizione col filtro per tenant', () => {
       expect(sql[2]).toContain('"public"."users"')
       expect(sql[3]).toBe('COMMIT')
     }
+  })
+})
+
+describe('Casi aggiuntivi (revisione)', () => {
+  beforeEach(() => {
+    queryLog.length = 0
+  })
+
+  it('Unsafe: $queryRawUnsafe e $executeRawUnsafe passano da set_config', async () => {
+    const r = await TenantContext.run({ tenantId: 'tenant-unsafe' }, async () => {
+      const letto = await client.$queryRawUnsafe<{ v: string }[]>(
+        "SELECT current_setting('app.tenant_id', true) AS v"
+      )
+      const n = await client.$executeRawUnsafe('SELECT 1')
+      return { letto: letto[0].v, n }
+    })
+    expect(r.letto).toBe('tenant-unsafe')
+    expect(queryLog.filter(q => q.includes('set_config'))).toHaveLength(2)
+    expect(await leggiTenant()).toBe('')
+  })
+
+  it('concorrenza: due contesti in parallelo su una connessione vedono ciascuno il proprio tenant', async () => {
+    const [a, b] = await Promise.all([
+      TenantContext.run({ tenantId: 'conc-A' }, () => leggiTenant()),
+      TenantContext.run({ tenantId: 'conc-B' }, () => leggiTenant()),
+    ])
+    expect([a, b]).toEqual(['conc-A', 'conc-B'])
+  })
+
+  it('interattiva: una query del client ESTERNO dentro fn ha il proprio tenant (altra connessione)', async () => {
+    const baseDue = new PrismaClient({
+      datasources: {
+        db: { url: `${urlBase}${urlBase.includes('?') ? '&' : '?'}connection_limit=3` },
+      },
+    })
+    const clientDue = baseDue.$extends(estensioneTenantTransazione(baseDue))
+    try {
+      const esito = await TenantContext.run({ tenantId: 'tenant-esterno' }, () =>
+        clientDue.$transaction(async tx => {
+          const dentro = await leggiTenant(tx)
+          const fuori = await leggiTenant(clientDue)
+          return { dentro, fuori }
+        })
+      )
+      expect(esito).toEqual({ dentro: 'tenant-esterno', fuori: 'tenant-esterno' })
+    } finally {
+      await baseDue.$disconnect()
+    }
+  })
+})
+
+describe('Valore di current_setting visto da un modello (trigger di prova)', () => {
+  let tenantCreatoId: string | undefined
+
+  beforeAll(async () => {
+    await secondo.$executeRawUnsafe('DROP TABLE IF EXISTS prova_tenant_set CASCADE')
+    await secondo.$executeRawUnsafe('CREATE TABLE prova_tenant_set (valore text)')
+    await secondo.$executeRawUnsafe(
+      "CREATE OR REPLACE FUNCTION prova_registra_tenant() RETURNS trigger AS $$ BEGIN INSERT INTO prova_tenant_set VALUES (current_setting('app.tenant_id', true)); RETURN NEW; END $$ LANGUAGE plpgsql"
+    )
+    await secondo.$executeRawUnsafe(
+      'CREATE TRIGGER prova_tenant_trg AFTER INSERT ON "public"."tenants" FOR EACH ROW EXECUTE FUNCTION prova_registra_tenant()'
+    )
+  })
+
+  afterAll(async () => {
+    if (tenantCreatoId) await secondo.tenant.deleteMany({ where: { id: tenantCreatoId } })
+    await secondo.$executeRawUnsafe('DROP TRIGGER IF EXISTS prova_tenant_trg ON "public"."tenants"')
+    await secondo.$executeRawUnsafe('DROP FUNCTION IF EXISTS prova_registra_tenant()')
+    await secondo.$executeRawUnsafe('DROP TABLE IF EXISTS prova_tenant_set')
+  })
+
+  it('un create di modello vede il tenant dentro la propria transazione', async () => {
+    // Il trigger AFTER INSERT gira nella transazione del create e registra il valore
+    // che current_setting ha in quel momento: e' la prova del VALORE per un'operazione
+    // di modello (un count non lascia tracce osservabili da fuori).
+    const piva = String(Date.now()).slice(-11).padStart(11, '7')
+    const creato = await TenantContext.run({ tenantId: 'tenant-modello-valore' }, async () =>
+      client.tenant.create({ data: { partitaIva: piva, ragioneSociale: 'Prova valore Srl' } })
+    )
+    tenantCreatoId = creato.id
+    const righe = await secondo.$queryRaw<{ valore: string }[]>`SELECT valore FROM prova_tenant_set`
+    expect(righe.map(r => r.valore)).toEqual(['tenant-modello-valore'])
+  })
+})
+
+describe('Composizione: base già estesa con rlsExtension', () => {
+  const tenantUuid = '00000000-0000-0000-0000-000000000001'
+  const rlsBase = base.$extends(rlsExtension)
+  const composto = rlsBase.$extends(estensioneTenantTransazione(rlsBase))
+
+  beforeEach(() => {
+    queryLog.length = 0
+  })
+
+  it('interattiva: il tx è filtrato per tenant E ha il set_config', async () => {
+    await TenantContext.run({ tenantId: tenantUuid }, () =>
+      composto.$transaction(async tx => {
+        await tx.user.count()
+      })
+    )
+    const sql = queryLog.map(q => q.trim())
+    expect(sql[0]).toBe('BEGIN')
+    expect(sql[1]).toContain('set_config')
+    expect(sql[2]).toContain('"public"."users"')
+    expect(sql[2]).toContain('tenant_id')
+    expect(sql[3]).toBe('COMMIT')
+  })
+
+  it('batch: operazioni create sul client composto, filtrate e nella stessa transazione', async () => {
+    await TenantContext.run({ tenantId: tenantUuid }, () =>
+      composto.$transaction([composto.user.count(), composto.user.count()])
+    )
+    const sql = queryLog.map(q => q.trim())
+    expect(sql[0]).toBe('BEGIN')
+    expect(sql[1]).toContain('set_config')
+    expect(sql[2]).toContain('tenant_id')
+    expect(sql[3]).toContain('tenant_id')
+    expect(sql.filter(q => q === 'BEGIN')).toHaveLength(1)
+    expect(sql.filter(q => q === 'COMMIT')).toHaveLength(1)
   })
 })

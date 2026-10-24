@@ -16,16 +16,37 @@ import { TenantContext } from '../../core/context/tenant-context'
  * aggiunta (li sistemano i pezzi 2b e 2c).
  */
 
-/** Marca il codice che gira gia' dentro una transazione aperta da questo modulo. */
+/**
+ * Marca l'esecuzione di un batch `$transaction([...])` aperto da questo modulo.
+ * Serve SOLO al batch: le sue operazioni nascono dal client esteso e senza il
+ * flag il loro `$allOperations` le riavvolgerebbe in transazioni proprie.
+ *
+ * NON si usa nella forma interattiva: li' `fn` riceve il `tx` del client base,
+ * le cui operazioni non passano mai da `$allOperations`. Il flag servirebbe solo
+ * a far saltare il `set_config` alle chiamate fatte DENTRO `fn` sul client
+ * esterno (per esempio un service che tiene `this.prisma`): quelle girano su
+ * un'altra connessione del pool e devono avere il proprio tenant.
+ */
 const transazioneAperta = new AsyncLocalStorage<{ inTransazione: true }>()
 
 const NOME_SETTING = 'app.tenant_id'
 
 /** Tenant dello store del contesto, `null` se assente o vuoto. */
 function tenantDelContesto(): string | null {
-  const id = TenantContext.getStoreTenantId()
-  return id && id.length > 0 ? id : null
+  return TenantContext.getStoreTenantId()
 }
+
+/**
+ * Client su cui l'estensione apre le transazioni: il PrismaClient nudo oppure un
+ * client gia' esteso (per esempio con `rlsExtension`). In quel caso il `tx` delle
+ * transazioni interattive e le operazioni dei batch conservano le estensioni.
+ */
+/* eslint-disable @typescript-eslint/no-explicit-any -- i tipi generici dei client estesi non sono assegnabili a PrismaClient */
+export interface ClienteBase {
+  $transaction: (...args: any[]) => any
+  $queryRaw: (...args: any[]) => any
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /**
  * Istruzione lazy (PrismaPromise) che imposta il tenant: serve sia da
@@ -52,9 +73,21 @@ export async function impostaTenant(tx: Prisma.TransactionClient, tenantId: stri
  *    `$transaction([set_config, operazione])` quando c'e' un tenant e non si e'
  *    gia' in una transazione;
  *  - estende `$transaction`: forma interattiva (set_config come primo statement,
- *    poi `fn(tx)` marcata come "in transazione") e forma batch (set_config in testa).
+ *    poi `fn(tx)`) e forma batch (set_config in testa).
+ *
+ * Avvertenze note:
+ *  - il tenant e' letto al momento dell'ESECUZIONE (primo `.then`/`await`), non
+ *    della creazione: un PrismaPromise lazy creato in un contesto ed atteso in un
+ *    altro usa il tenant di chi lo attende. Per lo stesso motivo una promise
+ *    memoizzata e riusata fra richieste usa il tenant della richiesta che la
+ *    attende, non di quella che l'ha creata;
+ *  - con un tenant nel contesto ogni operazione gira in una transazione, quindi
+ *    gli statement che non possono stare in un blocco transazionale (VACUUM,
+ *    CREATE INDEX CONCURRENTLY, ...) falliscono: vanno eseguiti senza contesto;
+ *  - costo: fuori da una transazione esplicita ogni operazione fa 4 round-trip
+ *    (BEGIN, set_config, operazione, COMMIT) invece di 1.
  */
-export function estensioneTenantTransazione(base: PrismaClient) {
+export function estensioneTenantTransazione(base: ClienteBase) {
   return {
     name: 'tenant-per-transazione',
     query: {
@@ -100,15 +133,15 @@ export function estensioneTenantTransazione(base: PrismaClient) {
                 options
               )
             )
-            .then(r => r.slice(1))
+            .then((r: unknown[]) => r.slice(1))
         }
         const fn = arg as (tx: Prisma.TransactionClient) => Promise<unknown>
         if (!tenantId) {
           return base.$transaction(fn, options)
         }
-        return base.$transaction(async tx => {
+        return base.$transaction(async (tx: Prisma.TransactionClient) => {
           await impostaTenant(tx, tenantId)
-          return transazioneAperta.run({ inTransazione: true }, () => fn(tx))
+          return fn(tx)
         }, options)
       }) as unknown as PrismaClient['$transaction'],
     },
