@@ -149,12 +149,15 @@ describe('Cambio azienda: dal middleware all handler su Postgres', () => {
     return t.id
   }
 
+  // Contatore deterministico: il codice fiscale e' unico per (tenantId, fiscalCode).
+  let contatoreUtenti = 0
+
   async function creaUtente(tenantId: string, ruolo: 'ADMIN' | 'SUPER_ADMIN', nome: string) {
     const u = await admin.user.create({
       data: {
         tenantId,
         email: `${nome}-${run}@example.it`,
-        fiscalCode: `TSTTNT00A00A${String(Math.floor(Math.random() * 900) + 100)}Z`,
+        fiscalCode: `TSTTNT00A00A${String(100 + contatoreUtenti++)}Z`,
         firstName: 'Prova',
         lastName: nome,
         role: ruolo,
@@ -242,6 +245,7 @@ describe('Cambio azienda: dal middleware all handler su Postgres', () => {
     expect(osservazioni).toHaveLength(0)
   })
 
+  // Coperto dal middleware (X-Tenant-ID del super admin), non dall'interceptor, che lascia passare SUPER_ADMIN.
   it("super admin con X-Tenant-ID: l'handler vede quell'azienda", async () => {
     const res = await request(app.getHttpServer())
       .get('/prova-cambio-azienda')

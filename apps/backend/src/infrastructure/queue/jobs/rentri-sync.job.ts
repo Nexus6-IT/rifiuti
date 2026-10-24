@@ -105,7 +105,7 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
       // Il lavoro gira nel contesto dell'azienda del job: da qui il PrismaService
       // imposta `app.tenant_id` per ogni operazione (RLS). `await` dentro il
       // callback: le PrismaPromise sono lazy e vanno risolte nel contesto.
-      return await TenantContext.run({ tenantId }, async () => {
+      return await TenantContext.run({ tenantId: tenantId.trim() }, async () => {
         if (type === 'single') {
           return await this.processSingleSync(job)
         } else if (type === 'batch') {

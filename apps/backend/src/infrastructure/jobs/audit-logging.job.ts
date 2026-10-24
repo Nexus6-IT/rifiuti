@@ -55,7 +55,7 @@ export class AuditLoggingProcessor extends WorkerHost {
     // Il lavoro gira nel contesto dell'azienda del job: da qui il PrismaService
     // imposta `app.tenant_id` per ogni operazione (RLS). `await` dentro il
     // callback: le PrismaPromise sono lazy e vanno risolte nel contesto.
-    await TenantContext.run({ tenantId }, async () => {
+    await TenantContext.run({ tenantId: tenantId.trim() }, async () => {
       switch (type) {
         case 'role-change':
           await this.processRoleChange(job, data)

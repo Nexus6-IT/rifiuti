@@ -45,6 +45,18 @@ describe('AuditLoggingProcessor - contesto azienda', () => {
     expect(visti).toEqual({ 'azienda-A': 'azienda-A', 'azienda-B': 'azienda-B' })
   })
 
+  it('audit-logging: il tenantId con spazi arriva normalizzato nello store', async () => {
+    let visto: string | null = 'non-chiamato'
+    roleRepo.save.mockImplementation(async () => {
+      await Promise.resolve()
+      visto = TenantContext.getStoreTenantId()
+    })
+
+    await processor.process(creaJob(datiRuolo(' azienda-A ')))
+
+    expect(visto).toBe('azienda-A')
+  })
+
   it('audit-logging: anche il permission-check gira nel contesto', async () => {
     let visto: string | null = 'non-chiamato'
     auditRepo.getLatestLog.mockImplementation(async () => {

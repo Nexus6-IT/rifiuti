@@ -51,6 +51,19 @@ describe('RENTRISyncJobProcessor - contesto azienda', () => {
     expect(visto).toBe('azienda-A')
   })
 
+  it('rentri-sync: il tenantId con spazi arriva normalizzato nello store', async () => {
+    let visto: string | null = 'non-chiamato'
+    syncUseCase.execute.mockImplementation(async () => {
+      await Promise.resolve()
+      visto = TenantContext.getStoreTenantId()
+      return { success: true }
+    })
+
+    await processor['processJob'](creaJob({ type: 'single', firId: 'f1', tenantId: ' azienda-A ' }))
+
+    expect(visto).toBe('azienda-A')
+  })
+
   it('rentri-sync: due job di aziende diverse in parallelo vedono ciascuno la propria azienda', async () => {
     const visti: Record<string, string | null> = {}
     syncUseCase.execute.mockImplementation(async (firId: string) => {
