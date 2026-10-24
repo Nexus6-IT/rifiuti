@@ -58,6 +58,26 @@ export class UserAdminService {
   }
 
   /**
+   * Esegue `fn` nel contesto dell'azienda indicata (client normale, tenant nello store).
+   * Serve al super admin quando opera su un'azienda diversa da quella del proprio contesto.
+   */
+  private async inAzienda<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+    return await TenantContext.run(
+      { tenantId, userId: TenantContext.getUserId() ?? undefined },
+      async () => await fn()
+    )
+  }
+
+  /** Super admin: nel contesto dell'azienda dell'utente; ADMIN: invariato (contesto corrente). */
+  private async inAziendaDi<T>(
+    currentUser: CurrentUser,
+    tenantId: string,
+    fn: () => Promise<T>
+  ): Promise<T> {
+    return this.isSuperAdmin(currentUser) ? await this.inAzienda(tenantId, fn) : await fn()
+  }
+
+  /**
    * Elenca gli utenti.
    *  - SUPER_ADMIN: tutti, oppure quelli del `tenantId` passato.
    *  - ADMIN: solo quelli del proprio tenant (il `tenantId` passato e' ignorato
@@ -75,16 +95,16 @@ export class UserAdminService {
       where = { tenantId: currentUser.tenantId }
     }
 
-    // Sistema: super admin senza azienda selezionata, elenco su tutte le aziende.
-    // Con un'azienda selezionata (o per un ADMIN) resta il client normale nel contesto.
-    const client =
-      this.isSuperAdmin(currentUser) && !TenantContext.getStoreTenantId()
-        ? this.sistema
-        : this.prisma
-    return client.user.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-    })
+    const lettura = (client: PrismaService | PrismaSistemaService) =>
+      client.user.findMany({ where, orderBy: { createdAt: 'desc' } })
+
+    if (this.isSuperAdmin(currentUser)) {
+      // Azienda richiesta: nel suo contesto, client normale.
+      if (tenantId) return await this.inAzienda(tenantId, async () => await lettura(this.prisma))
+      // Sistema: elenco su tutte le aziende, nessuna azienda nota.
+      return await lettura(this.sistema)
+    }
+    return await lettura(this.prisma)
   }
 
   /**
@@ -173,22 +193,27 @@ export class UserAdminService {
 
     // 5. Crea il record locale. Rollback best-effort su fallimento.
     try {
-      return await this.prisma.user.create({
-        data: {
-          keycloakId,
-          tenantId: targetTenantId,
-          fiscalCode: normalizedFiscalCode,
-          email: dto.email,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
-          role: dto.role as UserRole,
-          // La quota aziende è impostabile SOLO dal SUPER_ADMIN; altrimenti
-          // resta il default di schema (1).
-          ...(this.isSuperAdmin(currentUser) && dto.companyLimit !== undefined
-            ? { companyLimit: dto.companyLimit }
-            : {}),
-        },
-      })
+      // Super admin su un'azienda che puo' non essere quella del contesto: crea nel contesto di destinazione.
+      const crea = async () =>
+        await this.prisma.user.create({
+          data: {
+            keycloakId,
+            tenantId: targetTenantId,
+            fiscalCode: normalizedFiscalCode,
+            email: dto.email,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            role: dto.role as UserRole,
+            // La quota aziende è impostabile SOLO dal SUPER_ADMIN; altrimenti
+            // resta il default di schema (1).
+            ...(this.isSuperAdmin(currentUser) && dto.companyLimit !== undefined
+              ? { companyLimit: dto.companyLimit }
+              : {}),
+          },
+        })
+      return this.isSuperAdmin(currentUser)
+        ? await this.inAzienda(targetTenantId, crea)
+        : await crea()
     } catch (error: any) {
       this.logger.error(
         'Creazione record utente nel DB fallita dopo provisioning Keycloak (incoerenza)',
@@ -229,10 +254,12 @@ export class UserAdminService {
   async updateRole(currentUser: CurrentUser, userId: string, role: UserRole): Promise<User> {
     const user = await this.findScopedUser(currentUser, userId)
 
-    return this.prisma.user.update({
-      where: { id: user.id },
-      data: { role },
-    })
+    return await this.inAziendaDi(currentUser, user.tenantId, async () =>
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { role },
+      })
+    )
   }
 
   /**
@@ -251,15 +278,20 @@ export class UserAdminService {
       throw new ForbiddenException('Solo il super admin può impostare la quota aziende')
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } })
+    // Sistema: lookup per id prima di conoscere l'azienda dell'utente (solo super admin, verificato sopra).
+    const user = await this.sistema.user.findUnique({ where: { id: userId } })
     if (!user) {
       throw new NotFoundException('Utente non trovato')
     }
 
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: { companyLimit },
-    })
+    return await this.inAzienda(
+      user.tenantId,
+      async () =>
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { companyLimit },
+        })
+    )
   }
 
   /**
@@ -267,7 +299,9 @@ export class UserAdminService {
    * tenant. SUPER_ADMIN vede tutti; ADMIN solo il proprio tenant.
    */
   private async findScopedUser(currentUser: CurrentUser, userId: string): Promise<User> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } })
+    // Sistema (solo super admin): lookup per id prima di conoscere l'azienda dell'utente.
+    const client = this.isSuperAdmin(currentUser) ? this.sistema : this.prisma
+    const user = await client.user.findUnique({ where: { id: userId } })
 
     if (!user) {
       throw new NotFoundException('Utente non trovato')

@@ -57,14 +57,16 @@ export class TenantService {
   }
 
   /**
-   * Client per gli elenchi: il super admin SENZA azienda selezionata (nessun
-   * tenant nello store) vede tutte le aziende, quindi usa il client di sistema;
-   * con un'azienda selezionata, o per un ADMIN, resta il client normale.
    */
-  private clientElenchi(currentUser: CurrentUser): PrismaService | PrismaSistemaService {
-    return this.isSuperAdmin(currentUser) && !TenantContext.getStoreTenantId()
-      ? this.sistema // sistema: elenco su tutte le aziende, nessuna azienda nota
-      : this.prisma
+  /**
+   * Esegue `fn` nel contesto dell'azienda indicata (client normale, tenant nello store).
+   * Serve al super admin quando opera su un'azienda diversa da quella del proprio contesto.
+   */
+  private async inAzienda<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+    return await TenantContext.run(
+      { tenantId, userId: TenantContext.getUserId() ?? undefined },
+      async () => await fn()
+    )
   }
 
   /**
@@ -85,7 +87,10 @@ export class TenantService {
       role: currentUser.role,
     })
 
-    return this.clientElenchi(currentUser).tenant.findMany({
+    // Sistema: il super admin elenca TUTTE le aziende (where {}) con il conteggio utenti, a prescindere
+    // dal tenant nello store (il middleware gli mette sempre il proprio o quello dell'header).
+    const client = this.isSuperAdmin(currentUser) ? this.sistema : this.prisma
+    return client.tenant.findMany({
       where,
       orderBy: { ragioneSociale: 'asc' },
       include: {
@@ -101,14 +106,19 @@ export class TenantService {
    * @throws NotFoundException se il tenant non esiste.
    */
   async getById(id: string) {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: { users: true },
-        },
-      },
-    })
+    // Il conteggio utenti e' dell'azienda richiesta: si legge nel suo contesto.
+    const tenant = await this.inAzienda(
+      id,
+      async () =>
+        await this.prisma.tenant.findUnique({
+          where: { id },
+          include: {
+            _count: {
+              select: { users: true },
+            },
+          },
+        })
+    )
 
     if (!tenant) {
       throw new NotFoundException(`Tenant ${id} non trovato`)
@@ -310,13 +320,17 @@ export class TenantService {
     // creati via API resterebbero privi di ruoli (e quindi non assegnabili
     // agli utenti). Best-effort: un fallimento del seeding non deve annullare
     // la creazione del tenant (i ruoli sono ricreabili via `prisma:seed`).
-    await this.seedRoles(tenant.id, currentUser.id)
+    // I passi successivi lavorano sul nuovo tenant: ciascuno nel suo contesto.
+    await this.inAzienda(tenant.id, async () => await this.seedRoles(tenant.id, currentUser.id))
 
     // Associa l'admin proprietario al nuovo tenant (ruolo ADMIN) così da poter
     // switchare nell'azienda via /consultant/switch-tenant. Best-effort: un
     // fallimento non deve annullare la creazione.
     if (ownerUserId) {
-      await this.associateOwner(tenant.id, ownerUserId, currentUser.id)
+      await this.inAzienda(
+        tenant.id,
+        async () => await this.associateOwner(tenant.id, ownerUserId, currentUser.id)
+      )
     }
 
     return tenant
@@ -326,7 +340,8 @@ export class TenantService {
    * Legge la quota aziende (`companyLimit`) di un utente; 0 se non trovato.
    */
   private async getCompanyLimit(userId: string): Promise<number> {
-    const user = await this.prisma.user.findUnique({
+    // Sistema: lookup per id dell'utente chiamante, il cui tenant puo' non coincidere col contesto.
+    const user = await this.sistema.user.findUnique({
       where: { id: userId },
       select: { companyLimit: true },
     })
@@ -401,7 +416,8 @@ export class TenantService {
       const createdBy =
         requestedBy ??
         TenantContext.getUserId() ??
-        (await this.prisma.user.findFirst({ select: { id: true } }))?.id
+        // sistema: fallback senza utente noto, nessuna azienda nota
+        (await this.sistema.user.findFirst({ select: { id: true } }))?.id
 
       if (!createdBy) {
         this.logger.warn(

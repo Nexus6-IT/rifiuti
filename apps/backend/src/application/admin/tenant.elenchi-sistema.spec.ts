@@ -7,6 +7,7 @@ function costruisci() {
       findMany: jest.fn(() => {
         throw new Error('client applicativo: elenco su tutte le aziende non ammesso')
       }),
+      findUnique: jest.fn(async () => ({ id: 't-x', _count: { users: 2 } })),
     },
   }
   const sistema: any = { tenant: { findMany: jest.fn().mockResolvedValue([]) } }
@@ -18,22 +19,18 @@ function costruisci() {
 const superAdmin = { id: 'su', role: 'SUPER_ADMIN', tenantId: 't-casa' } as any
 
 describe('TenantService.list', () => {
-  it('super admin senza azienda: elenchi dal client di sistema; con azienda: client normale', async () => {
-    const senza = costruisci()
+  // Stati reali del middleware: il super admin ha SEMPRE un tenant nello store
+  // (il proprio, oppure quello di X-Tenant-ID).
+  it.each([
+    ['store = tenant di casa', 't-casa'],
+    ['store = tenant da X-Tenant-ID', 't-header'],
+  ])('super admin (%s): elenco su tutte le aziende dal client di sistema', async (_n, store) => {
+    const t = costruisci()
     await TenantContext.run(
-      { isSuperAdmin: true },
-      async () => await senza.service.list(superAdmin)
+      { isSuperAdmin: true, tenantId: store },
+      async () => await t.service.list(superAdmin)
     )
-    expect(senza.sistema.tenant.findMany).toHaveBeenCalledTimes(1)
-
-    const con = costruisci()
-    con.prisma.tenant.findMany = jest.fn().mockResolvedValue([])
-    await TenantContext.run(
-      { isSuperAdmin: true, tenantId: 't-scelta' },
-      async () => await con.service.list(superAdmin)
-    )
-    expect(con.prisma.tenant.findMany).toHaveBeenCalledTimes(1)
-    expect(con.sistema.tenant.findMany).not.toHaveBeenCalled()
+    expect(t.sistema.tenant.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
   })
 
   it('ADMIN di tenant: sempre il client normale', async () => {
@@ -42,5 +39,19 @@ describe('TenantService.list', () => {
     await t.service.list({ id: 'a', role: 'ADMIN', tenantId: 't1' } as any)
     expect(t.prisma.tenant.findMany).toHaveBeenCalledTimes(1)
     expect(t.sistema.tenant.findMany).not.toHaveBeenCalled()
+  })
+
+  it('getById: il conteggio utenti si legge nel contesto del tenant richiesto', async () => {
+    const t = costruisci()
+    let visto: string | null = null
+    t.prisma.tenant.findUnique = jest.fn(async () => {
+      visto = TenantContext.getStoreTenantId()
+      return { id: 't-x', _count: { users: 2 } }
+    })
+    await TenantContext.run(
+      { isSuperAdmin: true, tenantId: 't-casa' },
+      async () => await t.service.getById('t-x')
+    )
+    expect(visto).toBe('t-x')
   })
 })
