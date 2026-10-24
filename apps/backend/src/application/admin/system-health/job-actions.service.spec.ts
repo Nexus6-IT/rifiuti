@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common'
 
 import { JobActionsService, AZIONE_AUDIT, UtenteAzione } from './job-actions.service'
+import { TenantContext } from '../../../core/context/tenant-context'
 
 const UTENTE: UtenteAzione = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -86,6 +87,28 @@ describe('JobActionsService', () => {
 
     risolvi()
     await promessa
+  })
+
+  it('job-actions: il job lanciato a mano non eredita il tenant della richiesta', async () => {
+    // Il super admin lancia il job con X-Tenant-ID di un'altra azienda: il job gira su tutte
+    // le aziende, quindi non deve vedere quel tenant nello store.
+    const visti: Array<{ tenantId: string | null; superAdmin: boolean }> = []
+    certificati.controllaScadenze.mockImplementation(async () => {
+      visti.push({
+        tenantId: TenantContext.getStoreTenantId(),
+        superAdmin: TenantContext.isSuperAdmin(),
+      })
+    })
+
+    await TenantContext.run(
+      { tenantId: 'azienda-della-richiesta', isSuperAdmin: true },
+      async () => {
+        await service.avvia('rentri-certificato-scadenza', UTENTE)
+      }
+    )
+    await new Promise(process.nextTick)
+
+    expect(visti).toEqual([{ tenantId: null, superAdmin: false }])
   })
 
   it('rifiuta con 409 un secondo avvio mentre il primo e ancora in corso', async () => {

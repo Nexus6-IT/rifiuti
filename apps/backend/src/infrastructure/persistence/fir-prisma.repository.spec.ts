@@ -74,6 +74,7 @@ function buildFirRecord(overrides: Partial<any> = {}) {
 
 describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)', () => {
   let prisma: any
+  let sistema: any
   let repo: FIRPrismaRepository
 
   beforeEach(() => {
@@ -96,7 +97,20 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       $queryRaw: jest.fn().mockResolvedValue([]),
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
     }
-    repo = new FIRPrismaRepository(prisma)
+    sistema = { $queryRaw: jest.fn().mockResolvedValue([]) }
+    repo = new FIRPrismaRepository(prisma, sistema)
+  })
+
+  describe('trasmissioni RENTRI sospese (job su tutte le aziende)', () => {
+    it('elencaTrasmissioniRentriSospese: elenco delle aziende dal client di sistema', async () => {
+      sistema.$queryRaw.mockResolvedValue([{ fir_id: 'f1', tenant_id: 't1' }])
+
+      const elenco = await repo.elencaTrasmissioniRentriSospese(new Date(), 100)
+
+      expect(elenco).toEqual([{ firId: 'f1', tenantId: 't1' }])
+      expect(sistema.$queryRaw).toHaveBeenCalledTimes(1)
+      expect(prisma.$queryRaw).not.toHaveBeenCalled()
+    })
   })
 
   describe('lettura (findById) — deve includere le firme persistite', () => {

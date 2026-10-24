@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common'
 
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
+import { TenantContext } from '../../../core/context/tenant-context'
 import { EsitoGiroRentri } from '../../../infrastructure/jobs/esito-giro-rentri'
 import { RentriRiconciliazioneJob } from '../../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../../infrastructure/jobs/rentri-certificato-scadenza.job'
@@ -133,8 +134,9 @@ export class JobActionsService {
     // Deliberatamente NON atteso: v. regola 2 nell'intestazione. L'esito
     // finisce nell'audit, mai in un errore non gestito che abbatterebbe il
     // processo.
-    void azione
-      .esegui()
+    // Fuori dal contesto della richiesta: il job lavora su tutte le aziende e non deve
+    // ereditare il tenant (X-Tenant-ID) di chi l'ha lanciato. Store vuoto = nessun tenant.
+    void TenantContext.run({}, () => azione.esegui())
       .then(esito => {
         if (esito && esito.tenantConErrore > 0) {
           return this.registra(

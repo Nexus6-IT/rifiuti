@@ -27,7 +27,7 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
   beforeAll(async () => {
     prisma = new PrismaClient()
     await prisma.$connect()
-    repo = new FIRPrismaRepository(prisma as any)
+    repo = new FIRPrismaRepository(prisma as any, prisma as any)
 
     const tenant = await prisma.tenant.create({
       data: {
@@ -126,7 +126,10 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
     // findById usa this.prisma.db: serve un client con la proprietà `db`.
     let repoLettura: FIRPrismaRepository
     beforeAll(() => {
-      repoLettura = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+      repoLettura = new FIRPrismaRepository(
+        Object.assign(prisma, { db: prisma }) as any,
+        prisma as any
+      )
     })
 
     it('rentriStatoFormulario sopravvive a save e findById', async () => {
@@ -183,7 +186,10 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
     // findById usa this.prisma.db: serve un client con la proprietà `db`.
     let repoLettura: FIRPrismaRepository
     beforeAll(() => {
-      repoLettura = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+      repoLettura = new FIRPrismaRepository(
+        Object.assign(prisma, { db: prisma }) as any,
+        prisma as any
+      )
     })
 
     async function salvaFirEmesso(): Promise<FIR> {
@@ -340,7 +346,10 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
 
     beforeAll(async () => {
       // findById usa this.prisma.db: serve un client con la proprietà `db`.
-      repoNumeri = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+      repoNumeri = new FIRPrismaRepository(
+        Object.assign(prisma, { db: prisma }) as any,
+        prisma as any
+      )
       const tenant = await prisma.tenant.create({
         data: {
           partitaIva: `NF${Date.now().toString().slice(-9)}`,
@@ -464,7 +473,10 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
     const SOGLIA = new Date('2026-10-23T09:55:00.000Z')
 
     beforeAll(() => {
-      repoLettura = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+      repoLettura = new FIRPrismaRepository(
+        Object.assign(prisma, { db: prisma }) as any,
+        prisma as any
+      )
     })
 
     afterAll(async () => {

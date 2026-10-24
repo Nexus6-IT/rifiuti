@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
+import { TenantContext } from '../../core/context/tenant-context'
 import { FIRPrismaRepository } from '../persistence/fir-prisma.repository'
 import { RENTRISyncQueue } from '../queue/rentri-sync.queue'
 import { RentriModalitaLegameService } from '../rentri/rentri-modalita-legame.service'
@@ -53,9 +54,11 @@ export class RentriTrasmissioniSospeseJob {
           if (!ibridaPerTenant.has(tenantId)) {
             ibridaPerTenant.set(
               tenantId,
-              this.modalitaLegame
-                .getForTenant(tenantId)
-                .then(({ modalitaLegame }) => modalitaLegame === 'IBRIDA')
+              // Lettura per azienda: nel suo contesto (l'elenco dei FIR e' sul client di sistema)
+              TenantContext.run({ tenantId }, async () => {
+                const { modalitaLegame } = await this.modalitaLegame.getForTenant(tenantId)
+                return modalitaLegame === 'IBRIDA'
+              })
             )
           }
           const richiedeConferma = await ibridaPerTenant.get(tenantId)!

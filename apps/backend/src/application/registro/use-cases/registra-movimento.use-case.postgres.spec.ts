@@ -222,7 +222,10 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
           role: 'OPERATOR',
         },
       })
-      const repo = new FIRPrismaRepository(Object.assign(prisma, { db: prisma }) as any)
+      const repo = new FIRPrismaRepository(
+        Object.assign(prisma, { db: prisma }) as any,
+        prisma as any
+      )
       const fir = FIR.create({
         produttoreId: '11111111-1111-4111-8111-111111111111',
         rifiuto: { cerCode: '999901', quantita: 100 },

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
@@ -23,6 +25,7 @@ export class NotificationEscalationService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly emailService: EmailService,
     private readonly logger: LoggerService
   ) {
@@ -53,7 +56,8 @@ export class NotificationEscalationService {
   private async escalateWarnings(): Promise<void> {
     const threshold = new Date(Date.now() - this.ESCALATION_THRESHOLDS.WARNING * 60 * 60 * 1000)
 
-    const unreadWarnings = await this.prisma.notification.findMany({
+    // Sistema: scansione delle notifiche non lette di tutte le aziende
+    const unreadWarnings = await this.sistema.notification.findMany({
       where: {
         severity: 'WARNING',
         isRead: false,
@@ -88,7 +92,8 @@ export class NotificationEscalationService {
   private async escalateErrors(): Promise<void> {
     const threshold = new Date(Date.now() - this.ESCALATION_THRESHOLDS.ERROR * 60 * 60 * 1000)
 
-    const unreadErrors = await this.prisma.notification.findMany({
+    // Sistema: scansione delle notifiche non lette di tutte le aziende
+    const unreadErrors = await this.sistema.notification.findMany({
       where: {
         severity: 'ERROR',
         isRead: false,
@@ -118,9 +123,19 @@ export class NotificationEscalationService {
   }
 
   /**
-   * Escalate notification to all admin users
+   * Escalate notification to all admin users.
+   * Il lavoro (flag di escalation, creazione delle notifiche agli admin) gira nel contesto
+   * dell'azienda della notifica: la scansione era su tutte le aziende, da qui in poi
+   * l'azienda e' nota.
    */
   private async escalateToAdmins(notification: any): Promise<void> {
+    await TenantContext.run(
+      { tenantId: notification.tenant.id },
+      async () => await this.escalateToAdminsNelContesto(notification)
+    )
+  }
+
+  private async escalateToAdminsNelContesto(notification: any): Promise<void> {
     const { tenant, user } = notification
 
     // Skip if already escalated

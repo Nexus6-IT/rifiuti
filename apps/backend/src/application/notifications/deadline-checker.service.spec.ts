@@ -45,6 +45,7 @@ import { Test, TestingModule } from '@nestjs/testing'
 import * as Sentry from '@sentry/node'
 import { DeadlineCheckerService } from './deadline-checker.service'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
@@ -85,6 +86,19 @@ const mockPrisma = {
     findFirst: jest.fn(),
   },
 } as unknown as PrismaService
+
+// Client di sistema: condivide le stesse funzioni mock di `mockPrisma` per le scansioni su tutte
+// le aziende, cosi le asserzioni esistenti restano valide. La separazione tra i due client e'
+// verificata in deadline-checker.service.sistema.spec.ts.
+const mockSistema = {
+  tenant: mockPrisma.tenant,
+  autorizzazioneImpianto: mockPrisma.autorizzazioneImpianto,
+  trasportatore: mockPrisma.trasportatore,
+  destinatario: mockPrisma.destinatario,
+  rentriCredential: mockPrisma.rentriCredential,
+  user: mockPrisma.user,
+  notification: { deleteMany: jest.fn() },
+} as unknown as PrismaSistemaService
 
 const mockTemplateService = {
   renderAuthorizationExpiration: jest.fn().mockResolvedValue('<html></html>'),
@@ -143,6 +157,7 @@ describe('DeadlineCheckerService', () => {
         DeadlineCheckerService,
         MudVersionRegistry,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaSistemaService, useValue: mockSistema },
         { provide: TemplateService, useValue: mockTemplateService },
         { provide: EmailService, useValue: mockEmailService },
         { provide: LoggerService, useValue: mockLogger },
