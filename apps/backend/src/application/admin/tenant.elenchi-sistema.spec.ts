@@ -54,4 +54,26 @@ describe('TenantService.list', () => {
     )
     expect(visto).toBe('t-x')
   })
+
+  it('update: un ADMIN non proprietario riceve 403 senza leggere nel contesto dell altra azienda', async () => {
+    const t = costruisci()
+    const store: (string | null)[] = []
+    t.prisma.tenant.findUnique = jest.fn(async () => {
+      store.push(TenantContext.getStoreTenantId())
+      return { id: 't-altro', ownerUserId: 'un-altro', _count: { users: 1 } }
+    })
+
+    await expect(
+      TenantContext.run(
+        { tenantId: 't-casa' },
+        async () =>
+          await t.service.update(
+            { id: 'a', role: 'ADMIN', tenantId: 't-casa' } as any,
+            't-altro',
+            {}
+          )
+      )
+    ).rejects.toThrow('Non sei autorizzato')
+    expect(store).toEqual(['t-casa'])
+  })
 })

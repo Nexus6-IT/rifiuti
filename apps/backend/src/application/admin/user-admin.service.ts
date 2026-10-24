@@ -254,11 +254,14 @@ export class UserAdminService {
   async updateRole(currentUser: CurrentUser, userId: string, role: UserRole): Promise<User> {
     const user = await this.findScopedUser(currentUser, userId)
 
-    return await this.inAziendaDi(currentUser, user.tenantId, async () =>
-      this.prisma.user.update({
-        where: { id: user.id },
-        data: { role },
-      })
+    return await this.inAziendaDi(
+      currentUser,
+      user.tenantId,
+      async () =>
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { role },
+        })
     )
   }
 

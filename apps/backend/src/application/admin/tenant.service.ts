@@ -105,20 +105,20 @@ export class TenantService {
    * Recupera un singolo tenant per id (con conteggio utenti).
    * @throws NotFoundException se il tenant non esiste.
    */
-  async getById(id: string) {
+  async getById(id: string, nelContestoDelTenant = true) {
     // Il conteggio utenti e' dell'azienda richiesta: si legge nel suo contesto.
-    const tenant = await this.inAzienda(
-      id,
-      async () =>
-        await this.prisma.tenant.findUnique({
-          where: { id },
-          include: {
-            _count: {
-              select: { users: true },
-            },
+    // Solo il super admin legge nel contesto del tenant richiesto: un ADMIN non deve
+    // mai leggere dentro un'altra azienda prima del controllo di proprieta'.
+    const leggi = async () =>
+      await this.prisma.tenant.findUnique({
+        where: { id },
+        include: {
+          _count: {
+            select: { users: true },
           },
-        })
-    )
+        },
+      })
+    const tenant = nelContestoDelTenant ? await this.inAzienda(id, leggi) : await leggi()
 
     if (!tenant) {
       throw new NotFoundException(`Tenant ${id} non trovato`)
@@ -454,9 +454,8 @@ export class TenantService {
    */
   async update(currentUser: CurrentUser, id: string, dto: UpdateTenantDto) {
     // Verifica esistenza (getById lancia NotFound se assente).
-    const tenant = await this.getById(id)
-
     const isSuperAdmin = this.isSuperAdmin(currentUser)
+    const tenant = await this.getById(id, isSuperAdmin)
 
     // Scoping ADMIN: deve essere il proprietario dell'azienda.
     if (!isSuperAdmin && tenant.ownerUserId !== currentUser.id) {
