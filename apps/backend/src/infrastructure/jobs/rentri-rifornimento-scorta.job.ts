@@ -111,22 +111,21 @@ export class RentriRifornimentoScortaJob {
           }
 
           try {
+            // Valori gia' verificati dai guard sopra, fissati prima della closure
+            const soglia = sede.dimensioneScortaDesiderata
+            const codiceBlocco = sede.codiceBloccoPredefinito
             const esito = await TenantContext.run({ tenantId: tenant.id }, async () => {
               const disponibili = await this.scortaRepo.contaTotaleDisponibili(
                 tenant.id,
                 sede.numIscrSito
               )
-              const mancanti = sede.dimensioneScortaDesiderata! - disponibili
+              const mancanti = soglia - disponibili
 
               if (mancanti <= 0) {
                 return null
               }
 
-              return await this.avviaVidimazione.execute(
-                tenant.id,
-                sede.codiceBloccoPredefinito!,
-                mancanti
-              )
+              return await this.avviaVidimazione.execute(tenant.id, codiceBlocco, mancanti)
             })
             if (!esito) {
               continue

@@ -41,6 +41,7 @@ describe('JobActionsService', () => {
 
     service = new JobActionsService(
       prisma as never,
+      prisma as never,
       riconciliazione as never,
       certificati as never,
       codifiche as never,
@@ -109,6 +110,43 @@ describe('JobActionsService', () => {
     await new Promise(process.nextTick)
 
     expect(visti).toEqual([{ tenantId: null, superAdmin: false }])
+  })
+
+  it('job-actions: l audit si scrive nel contesto dell azienda dell utente, non in quello della richiesta', async () => {
+    const visti: Array<string | null> = []
+    prisma.activityLog.create.mockImplementation(async () => {
+      visti.push(TenantContext.getStoreTenantId())
+      return {}
+    })
+
+    await TenantContext.run({ tenantId: 'azienda-estranea', isSuperAdmin: true }, async () => {
+      await service.avvia('rentri-certificato-scadenza', UTENTE)
+    })
+    await new Promise(process.nextTick)
+    await new Promise(process.nextTick)
+
+    // avvio + esito: entrambi con il tenant dell'utente, mai quello dell'header
+    expect(visti.length).toBeGreaterThanOrEqual(2)
+    expect(visti.every(t => t === UTENTE.tenantId)).toBe(true)
+  })
+
+  it('job-actions: lo storico dei rilanci (vista su tutte le aziende) passa dal client di sistema', async () => {
+    const applicativo = { activityLog: { findMany: jest.fn(), create: jest.fn() } }
+    const sistema = { activityLog: { findMany: jest.fn().mockResolvedValue([]) } }
+    const servizio = new JobActionsService(
+      applicativo as never,
+      sistema as never,
+      riconciliazione as never,
+      certificati as never,
+      codifiche as never,
+      datiRiferimento as never,
+      scadenzario as never
+    )
+
+    await servizio.storico(10)
+
+    expect(sistema.activityLog.findMany).toHaveBeenCalledTimes(1)
+    expect(applicativo.activityLog.findMany).not.toHaveBeenCalled()
   })
 
   it('rifiuta con 409 un secondo avvio mentre il primo e ancora in corso', async () => {

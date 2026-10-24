@@ -346,6 +346,7 @@ export class NotificationEscalationService {
   /**
    * Manual escalation trigger for specific notification
    */
+  // TODO: il percorso manuale presuppone un contesto di richiesta (findUnique sul client applicativo)
   async escalateNotification(notificationId: string): Promise<void> {
     this.logger.info(`Manually escalating notification ${notificationId}`)
 

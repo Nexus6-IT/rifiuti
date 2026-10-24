@@ -1,6 +1,8 @@
 /**
  * RLS pezzo 2b: i job dei permessi temporanei scansionano tutte le aziende dal client
  * di sistema; la scrittura del singolo permesso gira nel contesto della sua azienda.
+ * Il Proxy fornito come PrismaService fa fallire il test se il job tornasse a dipenderne
+ * (la garanzia vera e' il costruttore).
  */
 
 import { Test } from '@nestjs/testing'

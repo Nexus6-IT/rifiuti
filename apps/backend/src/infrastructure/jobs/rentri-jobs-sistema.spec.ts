@@ -2,8 +2,9 @@
  * RLS pezzo 2b: i job RENTRI leggono l'elenco delle aziende dal client di sistema e
  * lavorano ogni azienda nel suo contesto (TenantContext).
  *
- * DI vera: il client applicativo e' un Proxy che lancia a qualsiasi uso, quindi una
- * scansione rimasta sul client sbagliato fa fallire il test.
+ * DI vera: i job non iniettano piu' PrismaService, la garanzia e' il costruttore. Il Proxy che
+ * lancia a qualsiasi uso e' fornito come PrismaService solo per far fallire il test se un job
+ * tornasse a dipenderne.
  */
 
 import { Test } from '@nestjs/testing'
