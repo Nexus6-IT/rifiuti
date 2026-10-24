@@ -65,12 +65,34 @@ services:
     image: ${REGISTRY:-gitea.tail8be933.ts.net/graziano}/rifiuti-backend:${TAG:-latest}
     restart: always
     logging: *logging
+    labels:
+      # Guardia, non informazione: vedi la regola "password sistema senza user app".
+      guardia-ruoli: "${DB_SISTEMA_PASSWORD:+${DB_APP_USER:?DB_SISTEMA_PASSWORD senza DB_APP_USER - ruoli DB incompleti}}"
     # Ogni variabile letta dal codice deve stare qui o in NON_PASSATE di
     # infrastruttura-prod.guard.spec.ts (apps/backend/src/core/config).
     environment:
       NODE_ENV: production
       PORT: "3000"
-      DATABASE_URL: postgresql://${DB_USER:-wasteflow}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-wasteflow_prod}
+      # Ruoli DB (RLS pezzo 1). L'applicazione si collega col ruolo `wasteflow_app`
+      # (NOBYPASSRLS) quando DB_APP_PASSWORD e' valorizzata; senza, resta
+      # sull'owner come prima. Le password nei URL vanno senza caratteri
+      # riservati (openssl rand -hex 32; db-ruoli.sh accetta solo A-Za-z0-9 _ . -, minimo 16).
+      #
+      # CONFIGURAZIONE A META' = errore di compose, a ogni comando e quindi al
+      # `pull`, PRIMA di backup e migration (e non un backend che cade dopo).
+      # DB_APP_USER (wasteflow_app), DB_APP_PASSWORD e DB_SISTEMA_PASSWORD vanno
+      # impostate tutte e tre o per niente. Le quattro regole stanno cosi':
+      #   - password app senza user app  -> qui sotto, parte username;
+      #   - user app senza password app  -> qui sotto, parte password;
+      #   - user app senza password sistema -> DATABASE_URL_SISTEMA;
+      #   - password sistema senza user app -> label guardia-ruoli del servizio.
+      DATABASE_URL: postgresql://${DB_APP_USER:-${DB_APP_PASSWORD:+${DB_APP_USER:?DB_APP_PASSWORD senza DB_APP_USER (wasteflow_app) - ruoli DB incompleti}}${DB_USER:-wasteflow}}:${DB_APP_PASSWORD:-${DB_APP_USER:+${DB_APP_PASSWORD:?DB_APP_USER senza DB_APP_PASSWORD - ruoli DB incompleti}}${DB_PASSWORD}}@postgres:5432/${DB_NAME:-wasteflow_prod}
+      # Client di sistema (job, BYPASSRLS). Vuota senza ruoli: PrismaSistemaService
+      # ripiega allora su DATABASE_URL.
+      DATABASE_URL_SISTEMA: ${DB_APP_USER:+postgresql://${DB_SISTEMA_USER:-wasteflow_sistema}:${DB_SISTEMA_PASSWORD:?DB_APP_USER senza DB_SISTEMA_PASSWORD - ruoli DB incompleti}@postgres:5432/${DB_NAME:-wasteflow_prod}}
+      # Migration: SEMPRE owner (serve DDL). Non la legge il codice: la usa
+      # `prisma migrate deploy` di deploy.yml e ops/restore.sh.
+      DATABASE_URL_MIGRAZIONI: postgresql://${DB_USER:-wasteflow}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-wasteflow_prod}
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: ${DB_NAME:-wasteflow_prod}

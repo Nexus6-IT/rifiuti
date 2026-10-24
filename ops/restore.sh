@@ -189,6 +189,17 @@ TEMP_DA_ELIMINARE=1
 psql_postgres "CREATE DATABASE \"${DB_TEMP}\" OWNER \"${DB_USER}\"" >/dev/null \
   || die "Creazione del database temporaneo ${DB_TEMP} fallita"
 
+# Il dump contiene GRANT ai ruoli applicativi (pg_dump non usa --no-privileges),
+# ma i ruoli sono dell'intero cluster e non stanno nel dump: su un cluster nuovo
+# il caricamento si fermerebbe con "role does not exist". Si creano quindi,
+# NOLOGIN e senza password, se mancano (no-op se ci sono). LOGIN, password e
+# diritti li da' poi il passo 9b (ops/db-ruoli.sh). RESTORE_RUOLI serve ai test.
+RUOLI_BASE="${RESTORE_RUOLI:-wasteflow_app wasteflow_sistema}"
+for RUOLO in ${RUOLI_BASE}; do
+  psql_postgres "DO \$r\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${RUOLO}') THEN CREATE ROLE \"${RUOLO}\" NOLOGIN; END IF; END \$r\$" >/dev/null \
+    || die "Creazione del ruolo ${RUOLO} fallita: nessuna modifica al database ${DB_NAME}"
+done
+
 log "Ripristino del dump ${BACKUP_FILE} in ${DB_TEMP} (una sola transaction)..."
 set +e
 if [[ "${BACKUP_FILE}" == *.sql.gz ]]; then
@@ -254,8 +265,23 @@ fi
 # ---- 9. Migration con l'immagine coerente con il dump --------------------------
 STATO_PRODUZIONE="quello ripristinato, con lo schema NON allineato; ${PRECEDENTE_TESTO}; il backend resta FERMO"
 log "Esecuzione di prisma migrate deploy con l'immagine ${TAG}..."
-"${DC[@]}" run --rm backend npx prisma migrate deploy \
-  || die "prisma migrate deploy fallito con l'immagine ${TAG}: il database ripristinato resta in uso con lo schema non allineato, ${PRECEDENTE_TESTO}. Il backend resta FERMO. Correggere la causa, poi rilanciare con TAG=${TAG}: '${DC[*]} run --rm backend npx prisma migrate deploy' e '${DC[*]} up -d --no-deps backend'; per tornare al database precedente, rinominarlo in ${DB_NAME} a backend fermo."
+# Come in deploy.yml: SEMPRE come owner (DATABASE_URL_MIGRAZIONI), perche' l'URL
+# dell'applicazione puo' puntare a un ruolo senza diritti DDL. Le virgolette
+# singole fanno espandere la variabile dentro il container, non qui.
+"${DC[@]}" run --rm backend sh -c 'DATABASE_URL="$DATABASE_URL_MIGRAZIONI" npx prisma migrate deploy' \
+  || die "prisma migrate deploy fallito con l'immagine ${TAG}: il database ripristinato resta in uso con lo schema non allineato, ${PRECEDENTE_TESTO}. Il backend resta FERMO. Correggere la causa, poi rilanciare con TAG=${TAG}: '${DC[*]} run --rm backend sh -c \"DATABASE_URL=\\\"\\\$DATABASE_URL_MIGRAZIONI\\\" npx prisma migrate deploy\"' e '${DC[*]} up -d --no-deps backend'; per tornare al database precedente, rinominarlo in ${DB_NAME} a backend fermo."
+
+# ---- 9b. Ruoli DB (dopo le migration) ------------------------------------------
+# Il dump porta con se' i GRANT (pg_dump senza --no-privileges), ma l'ambiente
+# puo' avere ruoli disallineati: si rieseguono i ruoli, script idempotente. Se
+# le password non sono nel .env lo script stampa che salta e prosegue; se ne
+# manca una sola, si ferma con errore.
+log "Ruoli DB (ops/db-ruoli.sh)..."
+# Le password si leggono dal .env del server senza eseguirlo (RUOLI_ENV_FILE) e
+# arrivano a psql sullo stdin: mai in un argv. DB_NAME e' il database appena
+# rinominato.
+RUOLI_ENV_FILE="${ENV_FILE}" PG_EXEC="${PG_EXEC}" bash "$(dirname "$0")/db-ruoli.sh" "${DB_NAME}" \
+  || die "Creazione dei ruoli DB fallita: il database ripristinato resta in uso, il backend resta FERMO. Rilanciare 'bash ops/db-ruoli.sh' con PG_EXEC=\"${PG_EXEC}\" e poi '${DC[*]} up -d --no-deps backend'."
 
 # ---- 10. Backend ricreato con l'immagine RIPRISTINO_TAG -------------------------
 STATO_PRODUZIONE="quello ripristinato, con lo schema allineato; ${PRECEDENTE_TESTO}; il backend non è partito con l'immagine ${TAG}"
