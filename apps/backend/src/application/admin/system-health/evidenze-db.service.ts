@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../../infrastructure/persistence/prisma-sistema.service'
 import { ChiaveEvidenza, LettoreEvidenze } from './probes/job-schedulati.probe'
 import { MisuraFreschezza } from './probes/freschezza.probe'
 import { StatoCredenziale } from './probes/credenziali.probe'
@@ -9,12 +9,13 @@ import { calcolaGiorniAllaScadenzaCertificato } from '../../../infrastructure/re
 /**
  * Le letture in banca dati che alimentano la pagina «Stato del sistema».
  *
- * USA IL CLIENT BASE, NON `prisma.db`: la vista RLS inietta il tenant del
- * chiamante, e questa pagina misura la PIATTAFORMA, non un'azienda — un
- * conteggio filtrato per tenant risponderebbe a una domanda diversa da
- * quella posta. E' anche il motivo per cui la pagina e' riservata al
- * SUPER_ADMIN (v. controller): mostrare dati di sistema a un ADMIN di
- * tenant sarebbe una fuga di informazioni fra aziende.
+ * USA IL CLIENT DI SISTEMA (`PrismaSistemaService`, BYPASSRLS), NON quello
+ * applicativo: questa pagina misura la PIATTAFORMA, non un'azienda — ogni
+ * lettura attraversa tutte le aziende, e con le policy attive il client
+ * normale risponderebbe a una domanda diversa da quella posta. E' anche il
+ * motivo per cui la pagina e' riservata al SUPER_ADMIN (v. controller):
+ * mostrare dati di sistema a un ADMIN di tenant sarebbe una fuga di
+ * informazioni fra aziende.
  *
  * Ogni lettura e' un aggregato (`_max`/`findFirst` su indice): nessuna
  * scansione di tabella, nessun carico apprezzabile ad ogni apertura della
@@ -22,7 +23,7 @@ import { calcolaGiorniAllaScadenzaCertificato } from '../../../infrastructure/re
  */
 @Injectable()
 export class EvidenzeDbService implements LettoreEvidenze {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaSistemaService) {}
 
   async ultimoEffetto(chiave: ChiaveEvidenza): Promise<Date | null> {
     switch (chiave) {

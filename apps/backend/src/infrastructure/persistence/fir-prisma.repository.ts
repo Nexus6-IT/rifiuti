@@ -121,8 +121,9 @@ export class FIRPrismaRepository implements IFIRRepository {
   }
 
   async findByIdPublic(id: string): Promise<FIR | null> {
-    // Public access without tenant filter - used for signature verification
-    const record = await this.prisma.fIR.findUnique({
+    // Sistema: rotta pubblica senza contesto, l'azienda del FIR si conosce solo dopo la lettura
+    // (l'id del FIR e' la capability: si restituisce solo cio' che l'endpoint gia' espone).
+    const record = await this.sistema.fIR.findUnique({
       where: { id },
       include: FIRPrismaRepository.FIR_INCLUDE,
     })

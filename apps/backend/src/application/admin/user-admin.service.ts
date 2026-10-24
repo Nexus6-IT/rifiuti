@@ -23,6 +23,8 @@ import {
 } from '@nestjs/common'
 import { UserRole, User } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { KeycloakUserAdapter } from '../../infrastructure/keycloak/keycloak-user.adapter'
 import { LoggerService } from '../../core/logger/logger.service'
 import { FiscalCode } from '../../domain/shared/fiscal-code.vo'
@@ -43,6 +45,7 @@ export interface CurrentUser {
 export class UserAdminService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly keycloak: KeycloakUserAdapter,
     private readonly logger: LoggerService,
     private readonly enforcement: SubscriptionEnforcementService
@@ -72,7 +75,13 @@ export class UserAdminService {
       where = { tenantId: currentUser.tenantId }
     }
 
-    return this.prisma.user.findMany({
+    // Sistema: super admin senza azienda selezionata, elenco su tutte le aziende.
+    // Con un'azienda selezionata (o per un ADMIN) resta il client normale nel contesto.
+    const client =
+      this.isSuperAdmin(currentUser) && !TenantContext.getStoreTenantId()
+        ? this.sistema
+        : this.prisma
+    return client.user.findMany({
       where,
       orderBy: { createdAt: 'desc' },
     })

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common'
 import { SubscriptionStatus, SubscriptionTier, UserRole, Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { CreateTenantDto } from '../../api/admin/dto/create-tenant.dto'
 import { UpdateTenantDto } from '../../api/admin/dto/update-tenant.dto'
@@ -44,6 +45,7 @@ export interface CurrentUser {
 export class TenantService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly logger: LoggerService,
     private readonly membership: MembershipService
   ) {
@@ -52,6 +54,17 @@ export class TenantService {
 
   private isSuperAdmin(currentUser: CurrentUser): boolean {
     return currentUser.role === UserRole.SUPER_ADMIN
+  }
+
+  /**
+   * Client per gli elenchi: il super admin SENZA azienda selezionata (nessun
+   * tenant nello store) vede tutte le aziende, quindi usa il client di sistema;
+   * con un'azienda selezionata, o per un ADMIN, resta il client normale.
+   */
+  private clientElenchi(currentUser: CurrentUser): PrismaService | PrismaSistemaService {
+    return this.isSuperAdmin(currentUser) && !TenantContext.getStoreTenantId()
+      ? this.sistema // sistema: elenco su tutte le aziende, nessuna azienda nota
+      : this.prisma
   }
 
   /**
@@ -72,7 +85,7 @@ export class TenantService {
       role: currentUser.role,
     })
 
-    return this.prisma.tenant.findMany({
+    return this.clientElenchi(currentUser).tenant.findMany({
       where,
       orderBy: { ragioneSociale: 'asc' },
       include: {

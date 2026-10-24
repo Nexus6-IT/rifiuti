@@ -459,3 +459,23 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
     })
   })
 })
+
+describe('FIRPrismaRepository.findByIdPublic', () => {
+  it('verifica pubblica FIR: lettura dal client di sistema', async () => {
+    const prisma: any = {
+      fIR: {
+        findUnique: jest.fn(() => {
+          throw new Error('client applicativo: lettura pubblica non ammessa')
+        }),
+      },
+    }
+    const sistema: any = { fIR: { findUnique: jest.fn().mockResolvedValue(null) } }
+    const repo = new FIRPrismaRepository(prisma, sistema)
+
+    expect(await repo.findByIdPublic('fir-1')).toBeNull()
+    expect(sistema.fIR.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'fir-1' } })
+    )
+    expect(prisma.fIR.findUnique).not.toHaveBeenCalled()
+  })
+})
