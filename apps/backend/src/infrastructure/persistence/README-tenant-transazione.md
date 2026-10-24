@@ -91,10 +91,21 @@ non e' nota: scansione di tutte le aziende, oppure ricerca di un'entita' prima d
 
 ## Cosa resta
 
-- **2b:** cron cross-tenant, lookup di login e refresh, verifica pubblica del FIR, cruscotti
-  super admin, impersonificazione, membership dei consulenti e seed passano su `PrismaSistemaService`.
-- **2c:** worker per singolo tenant (`rentri-sync`, `audit-logging`) dentro
-  `TenantContext.run({ tenantId })`; `CURRENT_TENANT_ID` limitata a `NODE_ENV=test`;
-  `TenantSwitchInterceptor` e `checkAccess` verificati sul contesto giusto.
+- **2a e 2b: fatti.** Cron cross-tenant, lookup di login e refresh, verifica pubblica del FIR,
+  cruscotti del super admin, impersonificazione, membership e rotte dei consulenti
+  (`consultant/tenants`, `consultant/switch-tenant`), vista di gruppo (ogni figlia nel proprio
+  contesto) e seed passano su `PrismaSistemaService` o in `TenantContext.run`.
+- **2c:** worker per singolo tenant dentro `TenantContext.run({ tenantId })`:
+  - code BullMQ (`rentri-sync`, `audit-logging`);
+  - `CURRENT_TENANT_ID` limitata a `NODE_ENV=test`;
+  - `RENTRISyncLogRepository.requireTenantId` nel worker;
+  - controllo `Observable` di `TenantSwitchInterceptor`, e `checkAccess` verificato sul contesto giusto.
+- **Da riguardare prima del 3:**
+  - `GET fir/:firId/verify/dettaglio` (autenticato) legge ancora il FIR con `findByIdPublic`, cioe'
+    dal client di sistema, e confronta il tenant dopo: la rotta ha `requireRequestTenantId`, quindi si
+    potrebbe cercare il FIR in `TenantContext.run({ tenantId })` col client normale (richiede di
+    adattare i doppi di test del use case);
+  - dimensione dei pool: con `DATABASE_URL_SISTEMA` attivo ci sono due client Prisma, controllare
+    `max_connections` di Postgres.
 - **3:** policy `ENABLE` e `FORCE` sulle 25 tabelle con
   `USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)`.

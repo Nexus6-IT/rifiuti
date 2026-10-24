@@ -5,6 +5,7 @@
  * (t.name, m.type, m.deadline_date) e falliva a runtime.
  */
 import { GetAggregatedDashboardHandler } from './get-aggregated-dashboard.handler'
+import { TenantContext } from '../../../core/context/tenant-context'
 
 const MADRE = 'tenant-madre-uuid'
 const ALFA = 'tenant-alfa-uuid'
@@ -53,7 +54,7 @@ function makePrisma(firs: Array<{ tenantId: string; status: string }> = []) {
       findMany: jest.fn().mockResolvedValue([]),
     },
     mUDReport: { findMany: jest.fn().mockResolvedValue([]) },
-    rENTRISyncLog: { count: jest.fn().mockResolvedValue(2) },
+    rENTRISyncLog: { count: jest.fn().mockResolvedValue(1) },
   } as any
 }
 
@@ -143,5 +144,35 @@ describe('GetAggregatedDashboardHandler', () => {
     expect(risultato.upcomingDeadlines).toEqual([
       { tenantId: BETA, tenantName: 'Beta Srl', year: 2025, status: 'DRAFT' },
     ])
+  })
+
+  it('ogni figlia viene letta nel proprio contesto, con il client normale', async () => {
+    const prisma = makePrisma([{ tenantId: ALFA, status: 'DRAFT' }])
+    const visti: Array<string | null> = []
+    const originale = prisma.fIR.findMany
+    prisma.fIR.findMany = jest.fn((args: any) => {
+      visti.push(TenantContext.getStoreTenantId())
+      return originale(args)
+    })
+    const handler = new GetAggregatedDashboardHandler(prisma)
+
+    await handler.execute({ tenantIdMadre: MADRE } as any)
+
+    expect([...visti].sort()).toEqual([ALFA, BETA].sort())
+  })
+
+  it('unisce le righe delle figlie con lo stesso ordine e limite di prima', async () => {
+    const prisma = makePrisma()
+    const righe: Record<string, any[]> = {
+      [ALFA]: [{ tenantId: ALFA, firNumber: 'A1', createdAt: new Date('2026-01-02') }],
+      [BETA]: [{ tenantId: BETA, firNumber: 'B1', createdAt: new Date('2026-01-03') }],
+    }
+    prisma.fIR.findMany = jest.fn(({ where }: any) => Promise.resolve(righe[where.tenantId.in[0]]))
+    const handler = new GetAggregatedDashboardHandler(prisma)
+
+    const r = await handler.execute({ tenantIdMadre: MADRE } as any)
+
+    expect(r.recentActivity.map(a => a.description)).toEqual(['FIR B1', 'FIR A1'])
+    expect(r.totalRentriSyncFailures).toBe(2)
   })
 })

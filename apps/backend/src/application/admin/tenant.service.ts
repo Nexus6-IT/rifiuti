@@ -57,8 +57,6 @@ export class TenantService {
   }
 
   /**
-   */
-  /**
    * Esegue `fn` nel contesto dell'azienda indicata (client normale, tenant nello store).
    * Serve al super admin quando opera su un'azienda diversa da quella del proprio contesto.
    */
@@ -89,23 +87,42 @@ export class TenantService {
 
     // Sistema: il super admin elenca TUTTE le aziende (where {}) con il conteggio utenti, a prescindere
     // dal tenant nello store (il middleware gli mette sempre il proprio o quello dell'header).
-    const client = this.isSuperAdmin(currentUser) ? this.sistema : this.prisma
-    return client.tenant.findMany({
+    if (this.isSuperAdmin(currentUser)) {
+      return await this.sistema.tenant.findMany({
+        where,
+        orderBy: { ragioneSociale: 'asc' },
+        include: {
+          _count: {
+            select: { users: true },
+          },
+        },
+      })
+    }
+
+    // ADMIN: le aziende possedute sono altre rispetto al suo contesto; il conteggio utenti di
+    // ciascuna si legge nel suo contesto (client normale).
+    const aziende = await this.prisma.tenant.findMany({
       where,
       orderBy: { ragioneSociale: 'asc' },
-      include: {
-        _count: {
-          select: { users: true },
-        },
-      },
     })
+    return await Promise.all(
+      aziende.map(async azienda => ({
+        ...azienda,
+        _count: {
+          users: await this.inAzienda(
+            azienda.id,
+            async () => await this.prisma.user.count({ where: { tenantId: azienda.id } })
+          ),
+        },
+      }))
+    )
   }
 
   /**
    * Recupera un singolo tenant per id (con conteggio utenti).
    * @throws NotFoundException se il tenant non esiste.
    */
-  async getById(id: string, nelContestoDelTenant = true) {
+  async getById(id: string, nelContestoDelTenant: boolean) {
     // Il conteggio utenti e' dell'azienda richiesta: si legge nel suo contesto.
     // Solo il super admin legge nel contesto del tenant richiesto: un ADMIN non deve
     // mai leggere dentro un'altra azienda prima del controllo di proprieta'.
@@ -524,7 +541,7 @@ export class TenantService {
    */
   async setStatus(id: string, status: 'SUSPENDED' | 'ACTIVE') {
     // Verifica esistenza (getById lancia NotFound se assente).
-    await this.getById(id)
+    await this.getById(id, true)
 
     const tenant = await this.prisma.tenant.update({
       where: { id },

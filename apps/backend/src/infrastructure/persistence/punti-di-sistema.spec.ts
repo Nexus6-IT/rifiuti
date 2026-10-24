@@ -43,6 +43,8 @@ const PUNTI_DI_SISTEMA: Record<string, string> = {
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
   'infrastructure/jobs/rentri-rifornimento-scorta.job.ts':
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
+  'infrastructure/persistence/consultant-tenant-association.repository.ts':
+    "associazioni del consulente (elenco e cambio azienda) su piu' aziende, vincolate all'utente autenticato",
   'infrastructure/persistence/fir-prisma.repository.ts':
     'verifica pubblica del FIR (azienda ignota) e recupero dei FIR di tutte le aziende',
   'infrastructure/persistence/temporary-permission-grant.repository.ts':
@@ -55,6 +57,7 @@ const PUNTI_DI_SISTEMA: Record<string, string> = {
 const INFRASTRUTTURA = new Set([
   'infrastructure/persistence/prisma-sistema.service.ts',
   'infrastructure/persistence/prisma.module.ts',
+  'infrastructure/persistence/url-sistema.ts',
 ])
 
 function sorgenti(dir: string): string[] {
@@ -65,22 +68,48 @@ function sorgenti(dir: string): string[] {
   })
 }
 
+/**
+ * Toglie i commenti rispettando le stringhe: un `//` dentro una stringa o un template
+ * (per esempio un URL) non e' un commento e non deve nascondere il resto della riga.
+ */
 function senzaCommenti(testo: string): string {
-  return testo.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  let fuori = ''
+  let i = 0
+  while (i < testo.length) {
+    const c = testo[i]
+    const n = testo[i + 1]
+    if (c === '/' && n === '/') {
+      while (i < testo.length && testo[i] !== '\n') i++
+    } else if (c === '/' && n === '*') {
+      const fine = testo.indexOf('*/', i + 2)
+      i = fine === -1 ? testo.length : fine + 2
+    } else if (c === "'" || c === '"' || c === '`') {
+      let j = i + 1
+      while (j < testo.length && testo[j] !== c) j += testo[j] === '\\' ? 2 : 1
+      fuori += testo.slice(i, j + 1)
+      i = j + 1
+    } else {
+      fuori += c
+      i++
+    }
+  }
+  return fuori
 }
+
+/** Tutto cio' che da' accesso al ruolo di sistema: il client, la funzione dell'URL, la variabile. */
+const ACCESSO_AL_SISTEMA =
+  /\b(PrismaSistemaService|risolviUrlSistema|DATABASE_URL_SISTEMA)\b|prisma-sistema\.service|url-sistema/
 
 function usano(): string[] {
   return sorgenti(SRC)
     .map(f => relative(SRC, f).split(sep).join('/'))
     .filter(rel => !INFRASTRUTTURA.has(rel))
-    .filter(rel =>
-      /\bPrismaSistemaService\b/.test(senzaCommenti(readFileSync(join(SRC, rel), 'utf8')))
-    )
+    .filter(rel => ACCESSO_AL_SISTEMA.test(senzaCommenti(readFileSync(join(SRC, rel), 'utf8'))))
     .sort()
 }
 
 describe('punti di sistema', () => {
-  it("punti di sistema: i file che usano PrismaSistemaService sono esattamente quelli dell'elenco", () => {
+  it("punti di sistema: i file che usano il client di sistema (o ne leggono l'URL) sono esattamente quelli dell'elenco", () => {
     const trovati = usano()
     const elencati = Object.keys(PUNTI_DI_SISTEMA).sort()
     const nuovi = trovati.filter(f => !elencati.includes(f))

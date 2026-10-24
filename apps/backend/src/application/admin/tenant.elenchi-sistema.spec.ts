@@ -35,8 +35,17 @@ describe('TenantService.list', () => {
 
   it('ADMIN di tenant: sempre il client normale', async () => {
     const t = costruisci()
-    t.prisma.tenant.findMany = jest.fn().mockResolvedValue([])
-    await t.service.list({ id: 'a', role: 'ADMIN', tenantId: 't1' } as any)
+    t.prisma.tenant.findMany = jest.fn().mockResolvedValue([{ id: 'x1' }])
+    const visti: (string | null)[] = []
+    t.prisma.user = {
+      count: jest.fn(async () => {
+        visti.push(TenantContext.getStoreTenantId())
+        return 3
+      }),
+    }
+    const elenco = await t.service.list({ id: 'a', role: 'ADMIN', tenantId: 't1' } as any)
+    expect(elenco).toEqual([{ id: 'x1', _count: { users: 3 } }])
+    expect(visti).toEqual(['x1'])
     expect(t.prisma.tenant.findMany).toHaveBeenCalledTimes(1)
     expect(t.sistema.tenant.findMany).not.toHaveBeenCalled()
   })
@@ -50,7 +59,7 @@ describe('TenantService.list', () => {
     })
     await TenantContext.run(
       { isSuperAdmin: true, tenantId: 't-casa' },
-      async () => await t.service.getById('t-x')
+      async () => await t.service.getById('t-x', true)
     )
     expect(visto).toBe('t-x')
   })
