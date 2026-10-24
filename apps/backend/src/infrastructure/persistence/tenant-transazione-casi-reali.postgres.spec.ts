@@ -202,7 +202,7 @@ describe('Tenant per transazione sui casi reali', () => {
       })
 
     beforeAll(() => {
-      repo = new FIRPrismaRepository(prisma)
+      repo = new FIRPrismaRepository(prisma, prisma as any)
     })
 
     it('save: upsert e firme nella stessa transazione, con il tenant', async () => {

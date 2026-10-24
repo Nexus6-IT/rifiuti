@@ -9,7 +9,7 @@
   // del progetto e SPOSTEREBBE l'output di build a dist/src/main.js,
   // rompendo `CMD ["node", "dist/main.js"]` nel Dockerfile e lo script
   // `start:prod`. Un secondo progetto tsc isolato evita l'effetto collaterale:
-  // compila prisma/seeds/*.ts (+ l'unica dipendenza in src/, system-roles.ts)
+  // compila prisma/seeds/*.ts (+ le uniche dipendenze in src/: system-roles.ts e url-sistema.ts)
   // in dist/prisma/seeds/*.js e dist/src/application/admin/system-roles.js,
   // senza toccare l'output del build principale.
   //

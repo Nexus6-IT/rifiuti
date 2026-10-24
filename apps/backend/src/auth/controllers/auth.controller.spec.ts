@@ -7,8 +7,9 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { AuthController } from './auth.controller'
 import { JwtTokensService } from '../services/jwt-tokens.service'
 import { RedisService } from '../services/redis.service'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { ConfigService } from '@nestjs/config'
+import { TenantContext } from '../../core/context/tenant-context'
 import {
   ForbiddenException,
   ServiceUnavailableException,
@@ -61,7 +62,7 @@ describe('AuthController', () => {
       providers: [
         { provide: JwtTokensService, useValue: mockJwtTokensService },
         { provide: RedisService, useValue: mockRedisService },
-        { provide: PrismaService, useValue: prismaService },
+        { provide: PrismaSistemaService, useValue: prismaService },
         { provide: ConfigService, useValue: configService },
         { provide: RuoloEffettivoService, useValue: ruoloEffettivo },
       ],
@@ -291,6 +292,28 @@ describe('AuthController', () => {
       })
       // token del tenant primario (senza azienda nel refresh token): nessuna verifica
       expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+
+    it('refresh: utente dal client di sistema', async () => {
+      // @Public: nessun contesto azienda. Il lookup deve passare dal client di sistema.
+      let tenantVisto: string | null = 'non-chiamato'
+      redisService.isRefreshTokenValid.mockResolvedValue(true)
+      jwtTokensService.verifyRefreshToken.mockReturnValue({
+        sub: 'user-123',
+        type: 'refresh',
+      } as any)
+      jwtTokensService.generateAccessToken.mockReturnValue('nuovo')
+      prismaService.user.findUnique.mockImplementation((() => {
+        tenantVisto = TenantContext.getStoreTenantId()
+        return Promise.resolve(
+          createMockUser({ id: 'user-123', tenantId: 'tenant-123', role: 'ADMIN' })
+        )
+      }) as any)
+
+      await TenantContext.run({}, async () => controller.refresh({ refreshToken: 'rt' }))
+
+      expect(tenantVisto).toBeNull()
+      expect(Reflect.getMetadata('design:paramtypes', AuthController)[2]).toBe(PrismaSistemaService)
     })
 
     describe('azienda selezionata con lo switch (portata dal refresh token)', () => {

@@ -3,7 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { MetricsService } from '../../core/metrics/metrics.service'
-import { PrismaService } from '../persistence/prisma.service'
+import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
 import { calcolaGiorniAllaScadenzaCertificato } from '../rentri/rentri-certificato-scadenza.util'
 import { EsitoGiroRentri } from './esito-giro-rentri'
 
@@ -30,7 +30,7 @@ import { EsitoGiroRentri } from './esito-giro-rentri'
 @Injectable()
 export class RentriCertificatoScadenzaJob {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly metrics: MetricsService,
     private readonly logger: LoggerService
   ) {
@@ -60,11 +60,12 @@ export class RentriCertificatoScadenzaJob {
       // (solo `tenantId` come colonna, v. schema.prisma): niente `where:
       // { tenant: {...} }` innestato, si filtra in due passi — prima i tenant
       // ACTIVE/TRIAL, poi le credenziali di quei soli tenant.
-      const tenantsAttivi = await this.prisma.tenant.findMany({
+      // Sistema: scansione di tutte le aziende attive e delle loro credenziali (gauge globale)
+      const tenantsAttivi = await this.sistema.tenant.findMany({
         where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
         select: { id: true },
       })
-      const credenziali = await this.prisma.rentriCredential.findMany({
+      const credenziali = await this.sistema.rentriCredential.findMany({
         where: { tenantId: { in: tenantsAttivi.map(t => t.id) } },
         select: { tenantId: true, certificatePem: true },
       })

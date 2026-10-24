@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
+import { PrismaSistemaService } from './prisma-sistema.service'
 import { TemporaryPermissionGrant } from '../../domain/identity-access/temporary-permission-grant.entity'
 import { TemporaryPermissionGrantRepository } from '../../domain/identity-access/temporary-permission-grant.repository.interface'
 
@@ -26,7 +27,10 @@ export class PrismaTemporaryPermissionGrantRepository
 {
   private readonly logger = new Logger(PrismaTemporaryPermissionGrantRepository.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService
+  ) {}
 
   /**
    * Save or update temporary permission grant
@@ -331,7 +335,10 @@ export class PrismaTemporaryPermissionGrantRepository
       where.tenantId = tenantId
     }
 
-    const grants = await this.prisma.temporaryPermissionGrant.findMany({
+    // Senza azienda e' la scansione di tutte le aziende del job di sistema: client di sistema.
+    // Con un'azienda indicata resta il client applicativo.
+    const client = tenantId ? this.prisma : this.sistema
+    const grants = await client.temporaryPermissionGrant.findMany({
       where,
       take: 1000, // Process max 1000 per run
     })

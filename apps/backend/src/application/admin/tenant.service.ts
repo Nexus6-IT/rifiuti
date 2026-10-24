@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common'
 import { SubscriptionStatus, SubscriptionTier, UserRole, Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { CreateTenantDto } from '../../api/admin/dto/create-tenant.dto'
 import { UpdateTenantDto } from '../../api/admin/dto/update-tenant.dto'
@@ -44,6 +45,7 @@ export interface CurrentUser {
 export class TenantService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly logger: LoggerService,
     private readonly membership: MembershipService
   ) {
@@ -52,6 +54,17 @@ export class TenantService {
 
   private isSuperAdmin(currentUser: CurrentUser): boolean {
     return currentUser.role === UserRole.SUPER_ADMIN
+  }
+
+  /**
+   * Esegue `fn` nel contesto dell'azienda indicata (client normale, tenant nello store).
+   * Serve al super admin quando opera su un'azienda diversa da quella del proprio contesto.
+   */
+  private async inAzienda<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+    return await TenantContext.run(
+      { tenantId, userId: TenantContext.getUserId() ?? undefined },
+      async () => await fn()
+    )
   }
 
   /**
@@ -72,30 +85,57 @@ export class TenantService {
       role: currentUser.role,
     })
 
-    return this.prisma.tenant.findMany({
+    // Sistema: il super admin elenca TUTTE le aziende (where {}) con il conteggio utenti, a prescindere
+    // dal tenant nello store (il middleware gli mette sempre il proprio o quello dell'header).
+    if (this.isSuperAdmin(currentUser)) {
+      return await this.sistema.tenant.findMany({
+        where,
+        orderBy: { ragioneSociale: 'asc' },
+        include: {
+          _count: {
+            select: { users: true },
+          },
+        },
+      })
+    }
+
+    // ADMIN: le aziende possedute sono altre rispetto al suo contesto; il conteggio utenti di
+    // ciascuna si legge nel suo contesto (client normale).
+    const aziende = await this.prisma.tenant.findMany({
       where,
       orderBy: { ragioneSociale: 'asc' },
-      include: {
-        _count: {
-          select: { users: true },
-        },
-      },
     })
+    return await Promise.all(
+      aziende.map(async azienda => ({
+        ...azienda,
+        _count: {
+          users: await this.inAzienda(
+            azienda.id,
+            async () => await this.prisma.user.count({ where: { tenantId: azienda.id } })
+          ),
+        },
+      }))
+    )
   }
 
   /**
    * Recupera un singolo tenant per id (con conteggio utenti).
    * @throws NotFoundException se il tenant non esiste.
    */
-  async getById(id: string) {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: { users: true },
+  async getById(id: string, nelContestoDelTenant: boolean) {
+    // Il conteggio utenti e' dell'azienda richiesta: si legge nel suo contesto.
+    // Solo il super admin legge nel contesto del tenant richiesto: un ADMIN non deve
+    // mai leggere dentro un'altra azienda prima del controllo di proprieta'.
+    const leggi = async () =>
+      await this.prisma.tenant.findUnique({
+        where: { id },
+        include: {
+          _count: {
+            select: { users: true },
+          },
         },
-      },
-    })
+      })
+    const tenant = nelContestoDelTenant ? await this.inAzienda(id, leggi) : await leggi()
 
     if (!tenant) {
       throw new NotFoundException(`Tenant ${id} non trovato`)
@@ -297,13 +337,17 @@ export class TenantService {
     // creati via API resterebbero privi di ruoli (e quindi non assegnabili
     // agli utenti). Best-effort: un fallimento del seeding non deve annullare
     // la creazione del tenant (i ruoli sono ricreabili via `prisma:seed`).
-    await this.seedRoles(tenant.id, currentUser.id)
+    // I passi successivi lavorano sul nuovo tenant: ciascuno nel suo contesto.
+    await this.inAzienda(tenant.id, async () => await this.seedRoles(tenant.id, currentUser.id))
 
     // Associa l'admin proprietario al nuovo tenant (ruolo ADMIN) così da poter
     // switchare nell'azienda via /consultant/switch-tenant. Best-effort: un
     // fallimento non deve annullare la creazione.
     if (ownerUserId) {
-      await this.associateOwner(tenant.id, ownerUserId, currentUser.id)
+      await this.inAzienda(
+        tenant.id,
+        async () => await this.associateOwner(tenant.id, ownerUserId, currentUser.id)
+      )
     }
 
     return tenant
@@ -313,7 +357,8 @@ export class TenantService {
    * Legge la quota aziende (`companyLimit`) di un utente; 0 se non trovato.
    */
   private async getCompanyLimit(userId: string): Promise<number> {
-    const user = await this.prisma.user.findUnique({
+    // Sistema: lookup per id dell'utente chiamante, il cui tenant puo' non coincidere col contesto.
+    const user = await this.sistema.user.findUnique({
       where: { id: userId },
       select: { companyLimit: true },
     })
@@ -388,7 +433,8 @@ export class TenantService {
       const createdBy =
         requestedBy ??
         TenantContext.getUserId() ??
-        (await this.prisma.user.findFirst({ select: { id: true } }))?.id
+        // sistema: fallback senza utente noto, nessuna azienda nota
+        (await this.sistema.user.findFirst({ select: { id: true } }))?.id
 
       if (!createdBy) {
         this.logger.warn(
@@ -425,9 +471,8 @@ export class TenantService {
    */
   async update(currentUser: CurrentUser, id: string, dto: UpdateTenantDto) {
     // Verifica esistenza (getById lancia NotFound se assente).
-    const tenant = await this.getById(id)
-
     const isSuperAdmin = this.isSuperAdmin(currentUser)
+    const tenant = await this.getById(id, isSuperAdmin)
 
     // Scoping ADMIN: deve essere il proprietario dell'azienda.
     if (!isSuperAdmin && tenant.ownerUserId !== currentUser.id) {
@@ -496,7 +541,7 @@ export class TenantService {
    */
   async setStatus(id: string, status: 'SUSPENDED' | 'ACTIVE') {
     // Verifica esistenza (getById lancia NotFound se assente).
-    await this.getById(id)
+    await this.getById(id, true)
 
     const tenant = await this.prisma.tenant.update({
       where: { id },

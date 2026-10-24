@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { TenantContext } from '../../../core/context/tenant-context'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { FILTRO_AZIENDE_TENUTE_AL_MUD } from '../../mud/mud-obbligo.service'
 
@@ -49,53 +50,75 @@ export class GetAggregatedDashboardHandler {
       }
     }
 
-    const ids = figlie.map(f => f.id)
     const nome = new Map(figlie.map(f => [f.id, f.ragioneSociale]))
 
-    const [perFir, mud, sincroniaFallite, ultimiFir] = await Promise.all([
-      this.prisma.fIR.groupBy({
-        by: ['tenantId'],
-        where: {
-          tenantId: { in: ids },
-          // Decisione PO (Task 7, fix round 1): questo contatore risponde a
-          // "dove devo intervenire", non a "quante pratiche sono aperte".
-          // DRAFT e AWAITING_PRODUCER sono ENTRAMBI lo stato di dominio BOZZA
-          // (v. fir-prisma.repository.ts, DB_TO_STATO) — nessuna ragione per
-          // includere l'uno ed escludere l'altro. AWAITING_CARRIER è EMESSO,
-          // in attesa che il trasportatore lo prenda in carico: c'è ancora
-          // un'azione da fare. AWAITING_RECEIVER è invece IN_TRANSITO: il
-          // FIR è già in viaggio verso il destinatario, e chi guarda la vista
-          // di gruppo non ha nulla da fare finché non arriva a destino — va
-          // quindi ESCLUSO, insieme a COMPLETED/SYNCED_TO_RENTRI (conclusi
-          // con successo) e CANCELLED (concluso, annullato).
-          status: { in: ['DRAFT', 'AWAITING_PRODUCER', 'AWAITING_CARRIER'] },
-        },
-        _count: { _all: true },
-      }),
-      this.prisma.mUDReport.findMany({
-        // Le aziende segnate come non tenute al MUD (A-W-10) non hanno scadenze MUD, anche se
-        // hanno una bozza (creata prima del flag o da un'esportazione).
-        where: {
-          tenantId: { in: ids },
-          status: { not: 'SUBMITTED' },
-          tenant: { is: FILTRO_AZIENDE_TENUTE_AL_MUD },
-        },
-        select: { tenantId: true, year: true, status: true },
-        orderBy: { year: 'desc' },
-        take: 20,
-      }),
-      // Enum RENTRISyncLogStatus: PENDING | SUCCESS | FAILURE.
-      // La vecchia query raw filtrava su 'FAILED', valore che non esiste.
-      this.prisma.rENTRISyncLog.count({
-        where: { tenantId: { in: ids }, status: 'FAILURE' },
-      }),
-      this.prisma.fIR.findMany({
-        where: { tenantId: { in: ids } },
-        select: { tenantId: true, firNumber: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-      }),
-    ])
+    // Ogni figlia si legge nel proprio contesto col client normale (i suoi dati sono
+    // protetti dalle policy). Gli id vengono dall'elenco dei figli della madre selezionata.
+    const perAzienda = await Promise.all(
+      figlie.map(
+        async f =>
+          await TenantContext.run({ tenantId: f.id }, async () => {
+            const ids = [f.id]
+            const [perFir, mud, sincroniaFallite, ultimiFir] = await Promise.all([
+              this.prisma.fIR.groupBy({
+                by: ['tenantId'],
+                where: {
+                  tenantId: { in: ids },
+                  // Decisione PO (Task 7, fix round 1): questo contatore risponde a
+                  // "dove devo intervenire", non a "quante pratiche sono aperte".
+                  // DRAFT e AWAITING_PRODUCER sono ENTRAMBI lo stato di dominio BOZZA
+                  // (v. fir-prisma.repository.ts, DB_TO_STATO) — nessuna ragione per
+                  // includere l'uno ed escludere l'altro. AWAITING_CARRIER è EMESSO,
+                  // in attesa che il trasportatore lo prenda in carico: c'è ancora
+                  // un'azione da fare. AWAITING_RECEIVER è invece IN_TRANSITO: il
+                  // FIR è già in viaggio verso il destinatario, e chi guarda la vista
+                  // di gruppo non ha nulla da fare finché non arriva a destino — va
+                  // quindi ESCLUSO, insieme a COMPLETED/SYNCED_TO_RENTRI (conclusi
+                  // con successo) e CANCELLED (concluso, annullato).
+                  status: { in: ['DRAFT', 'AWAITING_PRODUCER', 'AWAITING_CARRIER'] },
+                },
+                _count: { _all: true },
+              }),
+              this.prisma.mUDReport.findMany({
+                // Le aziende segnate come non tenute al MUD (A-W-10) non hanno scadenze MUD, anche se
+                // hanno una bozza (creata prima del flag o da un'esportazione).
+                where: {
+                  tenantId: { in: ids },
+                  status: { not: 'SUBMITTED' },
+                  tenant: { is: FILTRO_AZIENDE_TENUTE_AL_MUD },
+                },
+                select: { tenantId: true, year: true, status: true },
+                orderBy: { year: 'desc' },
+                take: 20,
+              }),
+              // Enum RENTRISyncLogStatus: PENDING | SUCCESS | FAILURE.
+              // La vecchia query raw filtrava su 'FAILED', valore che non esiste.
+              this.prisma.rENTRISyncLog.count({
+                where: { tenantId: { in: ids }, status: 'FAILURE' },
+              }),
+              this.prisma.fIR.findMany({
+                where: { tenantId: { in: ids } },
+                select: { tenantId: true, firNumber: true, createdAt: true },
+                orderBy: { createdAt: 'desc' },
+                take: 20,
+              }),
+            ])
+            return { perFir, mud, sincroniaFallite, ultimiFir }
+          })
+      )
+    )
+
+    // Unione identica a quella di prima: stesso ordinamento globale e stesso limite di 20.
+    const perFir = perAzienda.flatMap(r => r.perFir)
+    const sincroniaFallite = perAzienda.reduce((s, r) => s + r.sincroniaFallite, 0)
+    const mud = perAzienda
+      .flatMap(r => r.mud)
+      .sort((x, y) => y.year - x.year)
+      .slice(0, 20)
+    const ultimiFir = perAzienda
+      .flatMap(r => r.ultimiFir)
+      .sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime())
+      .slice(0, 20)
 
     const pendingFirsByClient = figlie
       .map(f => ({

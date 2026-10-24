@@ -1,6 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq'
 import { Logger, Inject } from '@nestjs/common'
 import { Job } from 'bullmq'
+import { TenantContext } from '../../core/context/tenant-context'
 import { TemporaryPermissionGrantRepository } from '../../domain/identity-access/temporary-permission-grant.repository.interface'
 
 /**
@@ -56,7 +57,12 @@ export class ExpireTempPermissionsJob extends WorkerHost {
           // Only revoke if it's currently approved
           if (grant.isApproved() && !grant.isActive()) {
             grant.revoke('system', 'Auto-expired after grant period ended')
-            await this.grantRepository.save(grant)
+            // La lettura dei permessi scaduti e' su tutte le aziende (client di sistema nel
+            // repository); il salvataggio di ciascuno gira nel contesto della sua azienda.
+            await TenantContext.run(
+              { tenantId: grant.tenantId },
+              async () => await this.grantRepository.save(grant)
+            )
 
             affectedUsers.add(`${grant.userId}:${grant.tenantId}`)
             expiredCount++

@@ -5,7 +5,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { JwtTokensService } from '../../auth/services/jwt-tokens.service'
 import type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 
@@ -22,7 +22,8 @@ export class ImpersonationService {
   private readonly logger = new Logger(ImpersonationService.name)
 
   constructor(
-    private readonly prisma: PrismaService,
+    // Client di sistema: l'utente da impersonare appartiene a un'altra azienda rispetto al contesto del super admin.
+    private readonly sistema: PrismaSistemaService,
     private readonly jwtTokens: JwtTokensService
   ) {}
 
@@ -38,7 +39,8 @@ export class ImpersonationService {
       throw new BadRequestException('Non puoi impersonare te stesso')
     }
 
-    const target = await this.prisma.user.findUnique({
+    // Client di sistema: azienda dell'utente diversa da quella del contesto.
+    const target = await this.sistema.user.findUnique({
       where: { id: targetUserId },
       select: {
         id: true,

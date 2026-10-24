@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { TemplateService } from '../../infrastructure/email/template.service'
 import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
@@ -34,12 +36,24 @@ export class DeadlineCheckerService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly templateService: TemplateService,
     private readonly emailService: EmailService,
     private readonly logger: LoggerService,
     private readonly registry: MudVersionRegistry
   ) {
     this.logger.setContext(DeadlineCheckerService.name)
+  }
+
+  /**
+   * Esegue `fn` nel contesto dell'azienda indicata: il client dell'applicazione
+   * imposta il tenant per transazione solo se lo store lo contiene. Le scansioni su
+   * tutte le aziende restano sul client di sistema; ogni lettura o scrittura di una
+   * singola azienda passa di qui. L'`await` dentro la callback e' necessario: le
+   * PrismaPromise sono lazy e partirebbero fuori dal contesto.
+   */
+  private nelContestoAzienda<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+    return TenantContext.run({ tenantId }, async () => await fn())
   }
 
   /**
@@ -90,7 +104,8 @@ export class DeadlineCheckerService {
 
       // Find all active tenants with MUD reports for previous year. Le aziende segnate come
       // non tenute al MUD (A-W-10) restano fuori: niente MUDReport, notifiche né email.
-      const tenants = await this.prisma.tenant.findMany({
+      // Sistema: scansione di tutte le aziende attive, senza un'azienda nota in partenza
+      const tenants = await this.sistema.tenant.findMany({
         where: {
           subscriptionStatus: {
             in: ['ACTIVE', 'TRIAL'], // Include active and trial subscriptions
@@ -126,21 +141,25 @@ export class DeadlineCheckerService {
           try {
             // upsert: un export o un salvataggio di integrazioni può creare il record
             // nello stesso momento (G3-C-03)
-            mudReport = await this.prisma.mUDReport.upsert({
-              where: { tenantId_year: { tenantId: tenant.id, year: previousYear } },
-              create: {
-                tenantId: tenant.id,
-                year: previousYear,
-                status: 'DRAFT',
-                reportData: {},
-              },
-              update: {},
-            })
+            mudReport = await this.nelContestoAzienda(tenant.id, () =>
+              this.prisma.mUDReport.upsert({
+                where: { tenantId_year: { tenantId: tenant.id, year: previousYear } },
+                create: {
+                  tenantId: tenant.id,
+                  year: previousYear,
+                  status: 'DRAFT',
+                  reportData: {},
+                },
+                update: {},
+              })
+            )
           } catch (error) {
             if ((error as { code?: string })?.code !== 'P2002') throw error
-            const esistente = await this.prisma.mUDReport.findUnique({
-              where: { tenantId_year: { tenantId: tenant.id, year: previousYear } },
-            })
+            const esistente = await this.nelContestoAzienda(tenant.id, () =>
+              this.prisma.mUDReport.findUnique({
+                where: { tenantId_year: { tenantId: tenant.id, year: previousYear } },
+              })
+            )
             if (!esistente) throw error
             mudReport = esistente
           }
@@ -160,18 +179,20 @@ export class DeadlineCheckerService {
           // canale che funziona sempre (stesso principio applicato agli
           // altri due rami dello scadenzario).
           try {
-            await this.prisma.notification.create({
-              data: {
-                tenantId: tenant.id,
-                userId: user.id,
-                type: 'MUD_DEADLINE_APPROACHING',
-                title: titolo,
-                message: `${daysUntilDeadline === 1 ? 'Manca 1 giorno' : `Mancano ${daysUntilDeadline} giorni`} alla scadenza del MUD ${previousYear + 1} (dati ${previousYear}), il ${dataScadenzaIt}: aprire la pagina MUD per i controlli e la conferma.`,
-                severity: daysUntilDeadline <= 7 ? 'WARNING' : 'INFO',
-                actionUrl: urlPaginaMud,
-                isRead: false,
-              },
-            })
+            await this.nelContestoAzienda(tenant.id, () =>
+              this.prisma.notification.create({
+                data: {
+                  tenantId: tenant.id,
+                  userId: user.id,
+                  type: 'MUD_DEADLINE_APPROACHING',
+                  title: titolo,
+                  message: `${daysUntilDeadline === 1 ? 'Manca 1 giorno' : `Mancano ${daysUntilDeadline} giorni`} alla scadenza del MUD ${previousYear + 1} (dati ${previousYear}), il ${dataScadenzaIt}: aprire la pagina MUD per i controlli e la conferma.`,
+                  severity: daysUntilDeadline <= 7 ? 'WARNING' : 'INFO',
+                  actionUrl: urlPaginaMud,
+                  isRead: false,
+                },
+              })
+            )
             notificationsSent++
           } catch (error) {
             this.logger.error(`Creazione avviso MUD fallita per ${user.email}`, error)
@@ -266,7 +287,8 @@ export class DeadlineCheckerService {
 
       // Un'autorizzazione già scaduta ha dataScadenza nel passato, quindi
       // rientra comunque nel filtro `lte: limite`.
-      const autorizzazioni = await this.prisma.autorizzazioneImpianto.findMany({
+      // Sistema: scansione delle autorizzazioni di tutte le aziende
+      const autorizzazioni = await this.sistema.autorizzazioneImpianto.findMany({
         where: {
           dataScadenza: { not: null, lte: limite },
         },
@@ -285,7 +307,8 @@ export class DeadlineCheckerService {
       const tenantIds = [...new Set(autorizzazioni.map(a => a.tenantId))]
       const utenti =
         tenantIds.length > 0
-          ? await this.prisma.user.findMany({
+          ? // Sistema: utenti di piu' aziende in una sola lettura
+            await this.sistema.user.findMany({
               where: {
                 tenantId: { in: tenantIds },
                 role: { in: ['ADMIN', 'OPERATOR'] },
@@ -353,22 +376,24 @@ export class DeadlineCheckerService {
           // creazione stessa fallisce, si salta l'utente senza tentare
           // l'email.
           try {
-            await this.prisma.notification.create({
-              data: {
-                tenantId: autorizzazione.tenantId,
-                userId: utente.id,
-                type: 'AUTORIZZAZIONE_IN_SCADENZA',
-                title: titolo,
-                message: messaggio,
-                severity: scaduta ? 'ERROR' : 'WARNING',
-                relatedEntityId: autorizzazione.id,
-                relatedEntityType: 'AutorizzazioneImpianto',
-                // Idem: nessuna pagina esiste per questa entità, quindi
-                // nessun actionUrl (campo facoltativo in schema).
-                actionUrl: undefined,
-                isRead: false,
-              },
-            })
+            await this.nelContestoAzienda(autorizzazione.tenantId, () =>
+              this.prisma.notification.create({
+                data: {
+                  tenantId: autorizzazione.tenantId,
+                  userId: utente.id,
+                  type: 'AUTORIZZAZIONE_IN_SCADENZA',
+                  title: titolo,
+                  message: messaggio,
+                  severity: scaduta ? 'ERROR' : 'WARNING',
+                  relatedEntityId: autorizzazione.id,
+                  relatedEntityType: 'AutorizzazioneImpianto',
+                  // Idem: nessuna pagina esiste per questa entità, quindi
+                  // nessun actionUrl (campo facoltativo in schema).
+                  actionUrl: undefined,
+                  isRead: false,
+                },
+              })
+            )
             notificationsSent++
           } catch (error) {
             this.logger.error(
@@ -420,7 +445,8 @@ export class DeadlineCheckerService {
       }
 
       // Trasportatori: stessa finestra `limite` calcolata sopra.
-      const trasportatori = await this.prisma.trasportatore.findMany({
+      // Sistema: scansione dei trasportatori di tutte le aziende
+      const trasportatori = await this.sistema.trasportatore.findMany({
         where: { scadenzaIscrizione: { not: null, lte: limite } },
       })
       notificationsSent += await this.elaboraScadenzaControparte(
@@ -442,7 +468,8 @@ export class DeadlineCheckerService {
       )
 
       // Destinatari: stessa finestra `limite` calcolata sopra.
-      const destinatari = await this.prisma.destinatario.findMany({
+      // Sistema: scansione dei destinatari di tutte le aziende
+      const destinatari = await this.sistema.destinatario.findMany({
         where: { scadenzaAutorizzazione: { not: null, lte: limite } },
       })
       notificationsSent += await this.elaboraScadenzaControparte(
@@ -538,7 +565,8 @@ export class DeadlineCheckerService {
 
     const oggi = new Date()
     const tenantIds = [...new Set(record.map(r => r.tenantId))]
-    const utenti = await this.prisma.user.findMany({
+    // Sistema: utenti di piu' aziende in una sola lettura
+    const utenti = await this.sistema.user.findMany({
       where: {
         tenantId: { in: tenantIds },
         role: { in: ['ADMIN', 'OPERATOR'] },
@@ -595,20 +623,22 @@ export class DeadlineCheckerService {
         // sopprimerlo. Se la creazione stessa fallisce, saltiamo l'utente
         // (nessun avviso possibile) senza tentare l'email.
         try {
-          await this.prisma.notification.create({
-            data: {
-              tenantId: r.tenantId,
-              userId: utente.id,
-              type: opts.notificationType,
-              title: titolo,
-              message: messaggio,
-              severity: scaduta ? 'ERROR' : 'WARNING',
-              relatedEntityId: r.id,
-              relatedEntityType: opts.relatedEntityType,
-              actionUrl: opts.actionUrl,
-              isRead: false,
-            },
-          })
+          await this.nelContestoAzienda(r.tenantId, () =>
+            this.prisma.notification.create({
+              data: {
+                tenantId: r.tenantId,
+                userId: utente.id,
+                type: opts.notificationType,
+                title: titolo,
+                message: messaggio,
+                severity: scaduta ? 'ERROR' : 'WARNING',
+                relatedEntityId: r.id,
+                relatedEntityType: opts.relatedEntityType,
+                actionUrl: opts.actionUrl,
+                isRead: false,
+              },
+            })
+          )
           notificationsSent++
         } catch (error) {
           this.logger.error(
@@ -668,12 +698,13 @@ export class DeadlineCheckerService {
     this.logger.info('Avvio controllo scadenza certificato RENTRI')
 
     try {
-      const tenantsAttivi = await this.prisma.tenant.findMany({
+      // Sistema: scansione di tutte le aziende attive e delle loro credenziali
+      const tenantsAttivi = await this.sistema.tenant.findMany({
         where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
         select: { id: true },
       })
 
-      const credenziali = await this.prisma.rentriCredential.findMany({
+      const credenziali = await this.sistema.rentriCredential.findMany({
         where: { tenantId: { in: tenantsAttivi.map(t => t.id) } },
         select: { tenantId: true, certificatePem: true },
       })
@@ -715,30 +746,34 @@ export class DeadlineCheckerService {
             continue
           }
 
-          const utentiDaAvvisare = await this.prisma.user.findMany({
-            where: {
-              tenantId: credenziale.tenantId,
-              role: { in: ['ADMIN', 'OPERATOR'] },
-            },
-          })
+          const utentiDaAvvisare = await this.nelContestoAzienda(credenziale.tenantId, () =>
+            this.prisma.user.findMany({
+              where: {
+                tenantId: credenziale.tenantId,
+                role: { in: ['ADMIN', 'OPERATOR'] },
+              },
+            })
+          )
 
           for (const utente of utentiDaAvvisare) {
             try {
-              await this.prisma.notification.create({
-                data: {
-                  tenantId: credenziale.tenantId,
-                  userId: utente.id,
-                  type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
-                  title: 'Certificato RENTRI non leggibile',
-                  message:
-                    "Il certificato RENTRI configurato non è analizzabile: verificare che sia valido e caricato correttamente. Le trasmissioni verso l'ente potrebbero non funzionare finché non viene corretto.",
-                  severity: 'ERROR',
-                  relatedEntityId: credenziale.tenantId,
-                  relatedEntityType: 'RentriCredentialIllegibile',
-                  actionUrl: '/rentri/certificato',
-                  isRead: false,
-                },
-              })
+              await this.nelContestoAzienda(credenziale.tenantId, () =>
+                this.prisma.notification.create({
+                  data: {
+                    tenantId: credenziale.tenantId,
+                    userId: utente.id,
+                    type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
+                    title: 'Certificato RENTRI non leggibile',
+                    message:
+                      "Il certificato RENTRI configurato non è analizzabile: verificare che sia valido e caricato correttamente. Le trasmissioni verso l'ente potrebbero non funzionare finché non viene corretto.",
+                    severity: 'ERROR',
+                    relatedEntityId: credenziale.tenantId,
+                    relatedEntityType: 'RentriCredentialIllegibile',
+                    actionUrl: '/rentri/certificato',
+                    isRead: false,
+                  },
+                })
+              )
 
               notificationsSent++
               this.logger.debug(`Avviso certificato RENTRI non leggibile inviato a ${utente.email}`)
@@ -783,29 +818,33 @@ export class DeadlineCheckerService {
           ? "Il certificato RENTRI è scaduto: tutte le trasmissioni all'ente sono ferme finché non viene rinnovato."
           : `Il certificato RENTRI scadrà fra ${giorniAllaScadenza} giorni: le trasmissioni all'ente si fermeranno alla scadenza.`
 
-        const utenti = await this.prisma.user.findMany({
-          where: {
-            tenantId: credenziale.tenantId,
-            role: { in: ['ADMIN', 'OPERATOR'] },
-          },
-        })
+        const utenti = await this.nelContestoAzienda(credenziale.tenantId, () =>
+          this.prisma.user.findMany({
+            where: {
+              tenantId: credenziale.tenantId,
+              role: { in: ['ADMIN', 'OPERATOR'] },
+            },
+          })
+        )
 
         for (const utente of utenti) {
           try {
-            await this.prisma.notification.create({
-              data: {
-                tenantId: credenziale.tenantId,
-                userId: utente.id,
-                type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
-                title: titolo,
-                message: messaggio,
-                severity: scaduto ? 'ERROR' : 'WARNING',
-                relatedEntityId: credenziale.tenantId,
-                relatedEntityType: 'RentriCredential',
-                actionUrl: '/rentri/certificato',
-                isRead: false,
-              },
-            })
+            await this.nelContestoAzienda(credenziale.tenantId, () =>
+              this.prisma.notification.create({
+                data: {
+                  tenantId: credenziale.tenantId,
+                  userId: utente.id,
+                  type: 'CERTIFICATO_RENTRI_IN_SCADENZA',
+                  title: titolo,
+                  message: messaggio,
+                  severity: scaduto ? 'ERROR' : 'WARNING',
+                  relatedEntityId: credenziale.tenantId,
+                  relatedEntityType: 'RentriCredential',
+                  actionUrl: '/rentri/certificato',
+                  isRead: false,
+                },
+              })
+            )
 
             notificationsSent++
             this.logger.debug(`Avviso scadenza certificato RENTRI inviato a ${utente.email}`)
@@ -837,7 +876,8 @@ export class DeadlineCheckerService {
     try {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
-      const result = await this.prisma.notification.deleteMany({
+      // Sistema: pulizia delle notifiche vecchie di tutte le aziende in un colpo solo
+      const result = await this.sistema.notification.deleteMany({
         where: {
           createdAt: {
             lt: thirtyDaysAgo,
@@ -898,15 +938,17 @@ export class DeadlineCheckerService {
     const sogliaDedup = new Date()
     sogliaDedup.setDate(sogliaDedup.getDate() - this.NOTIFICATION_DEDUP_GIORNI)
 
-    const notificaRecente = await this.prisma.notification.findFirst({
-      where: {
-        tenantId,
-        type,
-        relatedEntityId,
-        relatedEntityType,
-        createdAt: { gte: sogliaDedup },
-      },
-    })
+    const notificaRecente = await this.nelContestoAzienda(tenantId, () =>
+      this.prisma.notification.findFirst({
+        where: {
+          tenantId,
+          type,
+          relatedEntityId,
+          relatedEntityType,
+          createdAt: { gte: sogliaDedup },
+        },
+      })
+    )
 
     return notificaRecente !== null
   }

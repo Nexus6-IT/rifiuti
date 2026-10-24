@@ -90,7 +90,7 @@ function makeService(opts: {
   const membership: any = {
     checkAccess: jest.fn().mockResolvedValue(opts.accessoMadre ?? true),
   }
-  return { prisma, membership, service: new TenantService(prisma, logger, membership) }
+  return { prisma, membership, service: new TenantService(prisma, prisma, logger, membership) }
 }
 
 const adminCorrente = { id: ADMIN, role: 'ADMIN', tenantId: MADRE } as any

@@ -2,7 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq'
 import { Logger, Inject } from '@nestjs/common'
 import { Job } from 'bullmq'
 import { TemporaryPermissionGrantRepository } from '../../domain/identity-access/temporary-permission-grant.repository.interface'
-import { PrismaService } from '../persistence/prisma.service'
+import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
 
 /**
  * Cleanup Old Permission Requests Job
@@ -31,7 +31,7 @@ export class CleanupOldPermissionRequestsJob extends WorkerHost {
   constructor(
     @Inject('TemporaryPermissionGrantRepository')
     private readonly grantRepository: TemporaryPermissionGrantRepository,
-    private readonly prisma: PrismaService
+    private readonly sistema: PrismaSistemaService
   ) {
     super()
   }
@@ -45,7 +45,8 @@ export class CleanupOldPermissionRequestsJob extends WorkerHost {
       cutoffDate.setDate(cutoffDate.getDate() - this.RETENTION_DAYS)
 
       // Find old grants that are expired and revoked
-      const oldGrants = await this.prisma.temporaryPermissionGrant.findMany({
+      // Sistema: scansione dei permessi vecchi di tutte le aziende
+      const oldGrants = await this.sistema.temporaryPermissionGrant.findMany({
         where: {
           endTime: {
             lt: cutoffDate,

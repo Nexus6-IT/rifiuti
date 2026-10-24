@@ -70,12 +70,42 @@ e' il default di Prisma (num_cpus * 2 + 1) e non e' impostato. Alzarlo (parametr
 sotto carico. Le transazioni interattive mantengono il `maxWait` di default di Prisma (2 s):
 la pressione sul pool si vede quindi per prima come errore P2028 o P2024. In questo pezzo non cambia nessun valore.
 
+## Quando usare il client di sistema
+
+`PrismaSistemaService` (ruolo DB `wasteflow_sistema`, BYPASSRLS) si usa **solo** quando l'azienda
+non e' nota: scansione di tutte le aziende, oppure ricerca di un'entita' prima di sapere a chi appartiene
+(utente al login, FIR pubblico, membership).
+
+- **Azienda nota:** appena la si conosce, il lavoro successivo torna sul client normale dentro
+  `TenantContext.run({ tenantId })`, con `await` delle operazioni dentro la callback (le PrismaPromise sono lazy).
+- **Lettura col client di sistema:** va vincolata a cio' a cui chi chiama ha diritto (id dell'utente
+  autenticato, capability pubblica come l'id di un FIR), **mai** a un `tenantId` preso dalla sola richiesta.
+- **SUPER_ADMIN:** si sceglie in base all'ambito della query. Tutte le aziende: client di sistema.
+  Un'azienda specifica Y: client normale in `run({ tenantId: Y })`. I passi successivi alla creazione di
+  un'azienda girano nel contesto della nuova azienda.
+- **Commento:** ogni uso ha accanto un commento di una riga che dice perche' serve il client di sistema.
+- **Elenco statico:** i file che lo usano sono elencati in `punti-di-sistema.spec.ts`, ciascuno con un
+  motivo. Un file nuovo fa fallire il test finche' non lo si aggiunge (o lo si toglie, se smette di usarlo).
+- **Seed cross-tenant** (`seed-test-user.ts`, `seeds/roles.seed.ts`): si collegano con
+  `DATABASE_URL_SISTEMA`, altrimenti con `DATABASE_URL` e un avviso (`url-sistema.ts`).
+
 ## Cosa resta
 
-- **2b:** cron cross-tenant, lookup di login e refresh, verifica pubblica del FIR, cruscotti
-  super admin, impersonificazione, membership dei consulenti e seed passano su `PrismaSistemaService`.
-- **2c:** worker per singolo tenant (`rentri-sync`, `audit-logging`) dentro
-  `TenantContext.run({ tenantId })`; `CURRENT_TENANT_ID` limitata a `NODE_ENV=test`;
-  `TenantSwitchInterceptor` e `checkAccess` verificati sul contesto giusto.
+- **2a e 2b: fatti.** Cron cross-tenant, lookup di login e refresh, verifica pubblica del FIR,
+  cruscotti del super admin, impersonificazione, membership e rotte dei consulenti
+  (`consultant/tenants`, `consultant/switch-tenant`), vista di gruppo (ogni figlia nel proprio
+  contesto) e seed passano su `PrismaSistemaService` o in `TenantContext.run`.
+- **2c:** worker per singolo tenant dentro `TenantContext.run({ tenantId })`:
+  - code BullMQ (`rentri-sync`, `audit-logging`);
+  - `CURRENT_TENANT_ID` limitata a `NODE_ENV=test`;
+  - `RENTRISyncLogRepository.requireTenantId` nel worker;
+  - controllo `Observable` di `TenantSwitchInterceptor`, e `checkAccess` verificato sul contesto giusto.
+- **Da riguardare prima del 3:**
+  - `GET fir/:firId/verify/dettaglio` (autenticato) legge ancora il FIR con `findByIdPublic`, cioe'
+    dal client di sistema, e confronta il tenant dopo: la rotta ha `requireRequestTenantId`, quindi si
+    potrebbe cercare il FIR in `TenantContext.run({ tenantId })` col client normale (richiede di
+    adattare i doppi di test del use case);
+  - dimensione dei pool: con `DATABASE_URL_SISTEMA` attivo ci sono due client Prisma, controllare
+    `max_connections` di Postgres.
 - **3:** policy `ENABLE` e `FORCE` sulle 25 tabelle con
   `USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)`.

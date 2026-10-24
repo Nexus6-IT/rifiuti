@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
+import { PrismaSistemaService } from './prisma-sistema.service'
 import { ConsultantTenantAssociationRepository } from '../../domain/identity-access/consultant-tenant-association.repository.interface'
 import { ConsultantTenantAssociation } from '../../domain/identity-access/consultant-tenant-association.entity'
 
@@ -19,7 +20,10 @@ export class PrismaConsultantTenantAssociationRepository
 {
   private readonly logger = new Logger(PrismaConsultantTenantAssociationRepository.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService
+  ) {}
 
   async save(association: ConsultantTenantAssociation): Promise<ConsultantTenantAssociation> {
     const data = association.toPersistence()
@@ -62,7 +66,9 @@ export class PrismaConsultantTenantAssociationRepository
   }
 
   async findAllByConsultant(consultantUserId: string): Promise<ConsultantTenantAssociation[]> {
-    const associations = await this.prisma.consultantTenantAssociation.findMany({
+    // Sistema: le associazioni di un consulente attraversano piu' aziende; il vincolo e'
+    // consultantUserId, che i chiamanti ricavano dall'utente autenticato (mai da un parametro).
+    const associations = await this.sistema.consultantTenantAssociation.findMany({
       where: {
         consultantUserId,
       },
@@ -84,7 +90,9 @@ export class PrismaConsultantTenantAssociationRepository
   ): Promise<ConsultantTenantAssociation | null> {
     const now = new Date()
 
-    const association = await this.prisma.consultantTenantAssociation.findFirst({
+    // Sistema: associazione verso un'azienda che non e' quella del contesto (cambio azienda);
+    // vincolata a consultantUserId = utente autenticato.
+    const association = await this.sistema.consultantTenantAssociation.findFirst({
       where: {
         consultantUserId,
         tenantId,

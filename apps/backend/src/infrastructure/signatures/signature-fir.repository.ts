@@ -10,7 +10,7 @@
  * applySignature/getSignatures — non presente nel nuovo aggregate del lifecycle.
  *
  * SICUREZZA: usa `prisma.db` (RLS-aware) per findById (tenant-scoped);
- * `prisma.fIR` (senza RLS) per findByIdPublic (verifica pubblica QR code).
+ * il client di sistema per findByIdPublic (verifica pubblica QR code, tenant ignoto).
  */
 
 import { Injectable } from '@nestjs/common'
@@ -22,6 +22,7 @@ import {
   SignatureMethod,
 } from '../../domain/fir/digital-signature.vo'
 import { PrismaService } from '../persistence/prisma.service'
+import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 
@@ -37,6 +38,7 @@ const SIGNATURE_INCLUDE = {
 export class SignatureFIRRepository implements FIRRepository {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext(SignatureFIRRepository.name)
@@ -56,9 +58,11 @@ export class SignatureFIRRepository implements FIRRepository {
 
   /**
    * Carica FIR con firme senza filtro tenant (verifica pubblica firma via QR code).
+   * Sistema: rotta pubblica senza contesto, l'azienda del FIR si conosce solo dopo la lettura
+   * (l'id del FIR e' la capability: si restituisce solo cio' che l'endpoint gia' espone).
    */
   async findByIdPublic(id: string): Promise<FIR | null> {
-    const record = await this.prisma.fIR.findUnique({
+    const record = await this.sistema.fIR.findUnique({
       where: { id },
       include: SIGNATURE_INCLUDE,
     })

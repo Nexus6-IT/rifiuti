@@ -9,6 +9,8 @@ import { ExtractJwt, Strategy } from 'passport-jwt'
 import { ConfigService } from '@nestjs/config'
 import { Request } from 'express'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { RedisService } from '../services/redis.service'
 import { JwtPayload } from '../services/jwt-tokens.service'
 
@@ -28,6 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
     private readonly configService: ConfigService,
     private readonly prismaService: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly redisService: RedisService
   ) {
     super({
@@ -65,7 +68,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     }
 
     // 1. Fetch user from database
-    const user = await this.prismaService.user.findUnique({
+    // Client di sistema: lo store porta l'azienda dell'header X-Tenant-ID (super admin), non quella
+    // dell'utente, che qui non è ancora nota.
+    const user = await this.sistema.user.findUnique({
       where: { id: payload.sub },
     })
 
@@ -88,7 +93,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // limiter's admin bypass) instead of an empty placeholder.
     // Senza un tenant (es. SUPER_ADMIN cross-tenant) non si risolvono permessi
     // tenant-scoped: il flusso prosegue con un array vuoto, senza rompersi.
-    const permissions = tenantId ? await this.resolvePermissions(user.id, tenantId) : []
+    // Nel contesto dell'azienda dell'utente: dopo un cambio azienda lo store porta quella scelta.
+    const permissions = tenantId
+      ? await TenantContext.run(
+          { tenantId },
+          async () => await this.resolvePermissions(user.id, tenantId)
+        )
+      : []
 
     return {
       id: user.id,

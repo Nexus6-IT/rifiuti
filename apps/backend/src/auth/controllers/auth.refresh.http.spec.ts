@@ -16,7 +16,7 @@ import request from 'supertest'
 import { AuthController } from './auth.controller'
 import { JwtTokensService } from '../services/jwt-tokens.service'
 import { RedisService } from '../services/redis.service'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { RuoloEffettivoService } from '../../api/me/ruolo-effettivo.service'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
 
@@ -70,7 +70,7 @@ describe('POST /auth/refresh — azienda scelta con lo switch', () => {
         JwtTokensService,
         { provide: ConfigService, useValue: config },
         { provide: RedisService, useValue: redis },
-        { provide: PrismaService, useValue: prisma },
+        { provide: PrismaSistemaService, useValue: prisma },
         { provide: RuoloEffettivoService, useValue: new RuoloEffettivoService(prisma) },
         { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
       ],

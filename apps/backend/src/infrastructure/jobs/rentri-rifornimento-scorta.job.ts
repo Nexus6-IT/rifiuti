@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
-import { PrismaService } from '../persistence/prisma.service'
+import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
 import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
 import { RentriScortaRepository } from '../persistence/rentri-scorta.repository'
@@ -34,7 +35,7 @@ import { AvviaVidimazioneScortaUseCase } from '../../application/rentri/scorta/a
 @Injectable()
 export class RentriRifornimentoScortaJob {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly unitaLocaleService: RentriUnitaLocaleService,
     private readonly scortaRepo: RentriScortaRepository,
     private readonly avviaVidimazione: AvviaVidimazioneScortaUseCase,
@@ -49,7 +50,8 @@ export class RentriRifornimentoScortaJob {
     this.logger.info('Avvio rifornimento periodico scorta RENTRI')
 
     try {
-      const tenants = await this.prisma.tenant.findMany({
+      // Sistema: elenco di tutte le aziende attive, senza un'azienda nota in partenza
+      const tenants = await this.sistema.tenant.findMany({
         where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
         select: { id: true },
       })
@@ -62,13 +64,21 @@ export class RentriRifornimentoScortaJob {
         try {
           // Azienda senza certificato RENTRI (e non legata all'env): non e' un guasto,
           // si salta con un info e senza segnalazione a Bugsink.
-          if (!(await this.credenziali.haCredenziale(tenant.id))) {
+          // Da qui in poi l'azienda e' nota: letture nel suo contesto
+          const haCredenziale = await TenantContext.run(
+            { tenantId: tenant.id },
+            async () => await this.credenziali.haCredenziale(tenant.id)
+          )
+          if (!haCredenziale) {
             this.logger.info(`azienda ${tenant.id} senza certificato RENTRI: saltata`, {
               tenantId: tenant.id,
             })
             continue
           }
-          unitaLocali = await this.unitaLocaleService.listForTenant(tenant.id)
+          unitaLocali = await TenantContext.run(
+            { tenantId: tenant.id },
+            async () => await this.unitaLocaleService.listForTenant(tenant.id)
+          )
         } catch (error: unknown) {
           sediInErrore++
           this.logger.error(
@@ -101,21 +111,25 @@ export class RentriRifornimentoScortaJob {
           }
 
           try {
-            const disponibili = await this.scortaRepo.contaTotaleDisponibili(
-              tenant.id,
-              sede.numIscrSito
-            )
-            const mancanti = sede.dimensioneScortaDesiderata - disponibili
+            // Valori gia' verificati dai guard sopra, fissati prima della closure
+            const soglia = sede.dimensioneScortaDesiderata
+            const codiceBlocco = sede.codiceBloccoPredefinito
+            const esito = await TenantContext.run({ tenantId: tenant.id }, async () => {
+              const disponibili = await this.scortaRepo.contaTotaleDisponibili(
+                tenant.id,
+                sede.numIscrSito
+              )
+              const mancanti = soglia - disponibili
 
-            if (mancanti <= 0) {
+              if (mancanti <= 0) {
+                return null
+              }
+
+              return await this.avviaVidimazione.execute(tenant.id, codiceBlocco, mancanti)
+            })
+            if (!esito) {
               continue
             }
-
-            const esito = await this.avviaVidimazione.execute(
-              tenant.id,
-              sede.codiceBloccoPredefinito,
-              mancanti
-            )
             sediRifornite++
             this.logger.info('Rifornimento scorta RENTRI eseguito per la sede', {
               tenantId: tenant.id,

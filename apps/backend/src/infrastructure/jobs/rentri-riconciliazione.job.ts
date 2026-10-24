@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
-import { PrismaService } from '../persistence/prisma.service'
+import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { RiconciliaStatoRentriUseCase } from '../../application/rentri/riconcilia-stato-rentri.use-case'
 import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
 import { EsitoGiroRentri } from './esito-giro-rentri'
@@ -30,7 +31,7 @@ import { EsitoGiroRentri } from './esito-giro-rentri'
 @Injectable()
 export class RentriRiconciliazioneJob {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly riconciliaStatoRentri: RiconciliaStatoRentriUseCase,
     private readonly logger: LoggerService,
     private readonly credenziali: RentriCredentialResolver
@@ -57,7 +58,8 @@ export class RentriRiconciliazioneJob {
     this.logger.info('Avvio riconciliazione periodica stato RENTRI')
 
     try {
-      const tenants = await this.prisma.tenant.findMany({
+      // Sistema: elenco di tutte le aziende attive, senza un'azienda nota in partenza
+      const tenants = await this.sistema.tenant.findMany({
         where: {
           subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] },
         },
@@ -71,12 +73,17 @@ export class RentriRiconciliazioneJob {
         // Azienda senza certificato RENTRI (e non legata all'env): non e' un guasto,
         // si salta con un info e senza segnalazione a Bugsink.
         try {
-          if (!(await this.credenziali.haCredenziale(tenant.id))) {
+          const haCredenziale = await TenantContext.run(
+            { tenantId: tenant.id },
+            async () => await this.credenziali.haCredenziale(tenant.id)
+          )
+          if (!haCredenziale) {
             this.logger.info(`azienda ${tenant.id} senza certificato RENTRI: saltata`, {
               tenantId: tenant.id,
             })
             continue
           }
+          // Il use case apre da se il contesto dell'azienda (TenantContext.run al suo interno)
           const risultato = await this.riconciliaStatoRentri.execute(tenant.id)
           tenantConSuccesso++
 

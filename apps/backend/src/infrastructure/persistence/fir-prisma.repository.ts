@@ -37,12 +37,16 @@ import {
 import { formattaNumeroFir } from '../../domain/fir/numero-fir'
 import { STATI_FIR_IN_BOZZA, STATO_RENTRI_ANNULLATO } from '../../domain/fir/stati-fir'
 import { PrismaService } from './prisma.service'
+import { PrismaSistemaService } from './prisma-sistema.service'
 
 @Injectable()
 export class FIRPrismaRepository implements IFIRRepository {
   private static readonly logger = new Logger(FIRPrismaRepository.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService
+  ) {}
 
   // Ruoli usati dalle firme del CICLO DI VITA (questo repository), in italiano
   // e volutamente distinti dai ruoli inglesi ('PRODUCER'/'CARRIER'/'RECEIVER')
@@ -117,8 +121,9 @@ export class FIRPrismaRepository implements IFIRRepository {
   }
 
   async findByIdPublic(id: string): Promise<FIR | null> {
-    // Public access without tenant filter - used for signature verification
-    const record = await this.prisma.fIR.findUnique({
+    // Sistema: rotta pubblica senza contesto, l'azienda del FIR si conosce solo dopo la lettura
+    // (l'id del FIR e' la capability: si restituisce solo cio' che l'endpoint gia' espone).
+    const record = await this.sistema.fIR.findUnique({
       where: { id },
       include: FIRPrismaRepository.FIR_INCLUDE,
     })
@@ -255,7 +260,8 @@ export class FIRPrismaRepository implements IFIRRepository {
     sogliaStallo: Date,
     limite: number
   ): Promise<Array<{ firId: string; tenantId: string }>> {
-    const righe = await this.prisma.$queryRaw<Array<{ fir_id: string; tenant_id: string }>>`
+    // Sistema: elenco dei FIR di tutte le aziende per il job di recupero, nessuna azienda nota
+    const righe = await this.sistema.$queryRaw<Array<{ fir_id: string; tenant_id: string }>>`
       SELECT id::text AS fir_id, tenant_id::text AS tenant_id
       FROM firs
       WHERE rentri_sync_status = 'SYNCING'::rentri_sync_status

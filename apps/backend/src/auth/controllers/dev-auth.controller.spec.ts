@@ -8,8 +8,9 @@ import { UnauthorizedException } from '@nestjs/common'
 import { DevAuthController } from './dev-auth.controller'
 import { JwtTokensService } from '../services/jwt-tokens.service'
 import { RedisService } from '../services/redis.service'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { ConfigService } from '@nestjs/config'
+import { TenantContext } from '../../core/context/tenant-context'
 import { createPrismaMock, MockPrisma } from '../../../test/utils/prisma-mock'
 import {
   createConfigServiceMock,
@@ -41,7 +42,7 @@ describe('DevAuthController', () => {
       providers: [
         { provide: JwtTokensService, useValue: mockJwtTokensService },
         { provide: RedisService, useValue: mockRedisService },
-        { provide: PrismaService, useValue: prismaService },
+        { provide: PrismaSistemaService, useValue: prismaService },
         { provide: ConfigService, useValue: configService },
       ],
     }).compile()
@@ -49,6 +50,23 @@ describe('DevAuthController', () => {
     controller = module.get<DevAuthController>(DevAuthController)
     jwtTokensService = module.get(JwtTokensService)
     redisService = module.get(RedisService)
+  })
+
+  it('dev login: utente cercato dal client di sistema, senza contesto', async () => {
+    let tenantVisto: string | null = 'non-chiamato'
+    prismaService.user.findFirst.mockImplementation((() => {
+      tenantVisto = TenantContext.getStoreTenantId()
+      return Promise.resolve(null)
+    }) as any)
+
+    await TenantContext.run({}, async () =>
+      controller.devLogin({ email: 'a@b.it' } as any).catch(() => undefined)
+    )
+
+    expect(tenantVisto).toBeNull()
+    expect(Reflect.getMetadata('design:paramtypes', DevAuthController)[2]).toBe(
+      PrismaSistemaService
+    )
   })
 
   describe('devLogin', () => {
