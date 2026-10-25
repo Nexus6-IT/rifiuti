@@ -119,6 +119,16 @@ describe('VerifySignaturesUseCase — privacy', () => {
     ).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 
+  it('risponde NOT_FOUND se con tenant il FIR e invisibile (RLS: findById risolve null)', async () => {
+    const useCase = buildUseCase()
+    useCase.doppi.findById.mockResolvedValue(null)
+
+    await expect(
+      useCase.execute({ firId: FIR_ID, tenantId: TENANT, disclosePersonalData: true })
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    expect(useCase.doppi.findByIdPublic).not.toHaveBeenCalled()
+  })
+
   it("verify/dettaglio con azienda: lettura dal client normale nel contesto dell'azienda", async () => {
     const useCase = buildUseCase()
 

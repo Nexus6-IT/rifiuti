@@ -26,7 +26,7 @@ export async function mapConLimite<T, R>(
       }
     }
   }
-  const quanti = Math.max(1, Math.min(limite, items.length))
+  const quanti = Math.min(Math.max(1, Math.floor(limite) || 1), Math.max(1, items.length))
   await Promise.all(Array.from({ length: quanti }, lavoratore))
   return risultati
 }

@@ -20,6 +20,14 @@ describe('mapConLimite', () => {
     expect(await mapConLimite([1, 2], 4, async n => n + 1)).toEqual([2, 3])
   })
 
+  it.each([NaN, 2.7, 0, -3])(
+    'limite non valido (%s): elabora tutti gli elementi in ordine',
+    async limite => {
+      const risultati = await mapConLimite([1, 2, 3, 4], limite, async n => n * 10)
+      expect(risultati).toEqual([10, 20, 30, 40])
+    }
+  )
+
   it('propaga il primo errore', async () => {
     await expect(
       mapConLimite([1, 2, 3], 2, async n => {

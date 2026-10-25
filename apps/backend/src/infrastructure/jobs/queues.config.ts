@@ -2,6 +2,10 @@ import { BullModule } from '@nestjs/bullmq'
 import { AUDIT_QUEUE_JOB_OPTIONS } from './audit-queue.options'
 
 /**
+ * Nota: `QueuesConfig` oggi non e' importato da nessun modulo; le code reali sono
+ * registrate nei singoli moduli (es. PermissionsModule per `audit-logging`).
+ * Tenuto come riferimento: se lo si usa, le opzioni della coda audit restano comuni.
+ *
  * BullMQ Queue Configuration
  * Queues: permission-expiration, audit-archival, cache-warming, audit-logging
  */
