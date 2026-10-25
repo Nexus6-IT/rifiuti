@@ -33,6 +33,7 @@ import { PrismaService, creaPrismaServiceApplicativo } from './prisma.service'
 import { PrismaSistemaService } from './prisma-sistema.service'
 import { PrismaPermissionAuditLogRepository } from './permission-audit-log.repository'
 import { AuditLoggingProcessor } from '../jobs/audit-logging.job'
+import { AuditPiattaformaService } from '../../application/admin/audit-piattaforma.service'
 import { TenantService } from '../../application/admin/tenant.service'
 import { DeadlineCheckerService } from '../../application/notifications/deadline-checker.service'
 
@@ -50,6 +51,8 @@ describe('Azienda piattaforma (Postgres reale, RLS attiva)', () => {
   beforeAll(async () => {
     app = creaPrismaServiceApplicativo()
     await app.$connect()
+    const [{ u }] = await app.$queryRaw<{ u: string }[]>`SELECT current_user::text AS u`
+    expect(u).toBe('wasteflow_app')
     sistema = new PrismaSistemaService()
     await sistema.$connect()
     const t = await owner.tenant.create({
@@ -131,6 +134,18 @@ describe('Azienda piattaforma (Postgres reale, RLS attiva)', () => {
       async () => await app.permissionAuditLog.findMany({ where: { userId: utente } })
     )
     expect(altra).toHaveLength(0)
+  })
+
+  it('il servizio dedicato legge l audit della piattaforma dal client di sistema, hash valido', async () => {
+    // Nel contesto di un'altra azienda la RLS nasconderebbe le righe al client app: il sistema le vede.
+    const risultato = await TenantContext.run(
+      { tenantId: clienteId },
+      async () => await new AuditPiattaformaService(sistema).leggi({ perPagina: 200 })
+    )
+    const mie = risultato.logs.filter(l => l.userId === utente)
+    expect(mie).toHaveLength(2)
+    expect(mie.every(l => l.hashValido)).toBe(true)
+    expect(risultato.totale).toBeGreaterThanOrEqual(2)
   })
 
   describe('esclusione dalle viste applicative (anche con la riga attiva)', () => {
