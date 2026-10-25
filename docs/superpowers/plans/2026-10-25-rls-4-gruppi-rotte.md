@@ -48,9 +48,9 @@
 - Modify: README `README-tenant-transazione.md`, sezione Policy.
 - Test: spec Postgres col ruolo app: lettura di righe di ruoli di B con contesto A → 0; INSERT di una riga per un ruolo di B con contesto A → rifiutata; il seed dei ruoli di `tenant.service.createTenant` (o `system-roles.ts`), `jwt.strategy.resolvePermissions` e la lettura di `role.controller` funzionano col ruolo app nel contesto giusto. Verificare i seed (`prisma/seeds/roles.seed.ts`, `seed-test-user.ts`) e gli helper dei test Postgres che scrivono `role_permissions` come owner (owner superuser: nessun effetto).
 
-- [ ] Step 1: test che falliscono (`'role_permissions: righe di un ruolo di un altra azienda invisibili'`, `'role_permissions: scrittura per un ruolo di un altra azienda rifiutata'`, `'createTenant col ruolo app: permessi dei ruoli creati'`, catalogo).
-- [ ] Step 2: esegui, FAIL. Step 3: migration e README. Step 4: spec toccati, suite Postgres intera, `migrate diff`, `tsc`, lint.
-- [ ] Step 5: commit `feat(rls): role_permissions protetta tramite il ruolo dell azienda`.
+- [x] Step 1: test che falliscono (`'role_permissions: righe di un ruolo di un altra azienda invisibili'`, `'role_permissions: scrittura per un ruolo di un altra azienda rifiutata'`, `'createTenant col ruolo app: permessi dei ruoli creati'`, catalogo).
+- [x] Step 2: esegui, FAIL. Step 3: migration e README. Step 4: spec toccati, suite Postgres intera, `migrate diff`, `tsc`, lint.
+- [x] Step 5: commit `feat(rls): role_permissions protetta tramite il ruolo dell azienda`.
 
 ### Task 2: lettura completa per i controlli (`wasteflow_lettura`)
 
@@ -67,7 +67,7 @@ Dopo il Task 1 (stessi file: catalogo e README).
 - Test: spec Postgres che crea un ruolo di prova LOGIN membro di `wasteflow_lettura` (con SELECT sulle tabelle), si collega con quel ruolo: vede righe di A e B senza contesto; INSERT/UPDATE/DELETE rifiutati (dalla mancanza di privilegi o dalla RLS: verificare e asserire il motivo); `wasteflow_app` non è membro (`pg_has_role`). Pulizia: `DROP OWNED BY` + `DROP ROLE` del ruolo di prova.
 - Fuori repo (lo fa l'orchestratore dopo il deploy, con l'ok di Graziano): `GRANT wasteflow_lettura TO rifiuti_testing` sul database di produzione; nota in `C:\Progetti\testing-umano\docs\pilota-rifiuti.md` e in `testing/init/ruolo.sql` del pilota se esiste.
 
-- [ ] Step 1-5 come sopra. Commit `feat(rls): ruolo di sola lettura per i controlli, con policy dedicata`.
+- [x] Step 1-5 come sopra. Commit `feat(rls): ruolo di sola lettura per i controlli, con policy dedicata`.
 
 ### Task 3: niente letture fuori contesto e niente `tenants` senza filtro
 
@@ -80,7 +80,7 @@ Indipendente dai Task 1-2 (file diversi): può andare in parallelo con un databa
 - `auth/strategies/keycloak-saml.strategy.ts` e `api/auth/auth.controller.ts` (SAML): leggere e verificare che le letture di `users` e delle tabelle con RLS stiano sul client di sistema o nel contesto; correggere se no (test prima).
 - `application/signatures/signature-audit.handler.ts:~43,~96` (`@OnEvent`): verificare che l'evento sia sincrono o che il contesto si propaghi; se `async: true` perde il contesto, test e correzione (`TenantContext.run` con il tenant dell'evento).
 
-- [ ] Commit `fix(rls): nessuna lettura fuori contesto, test sulle letture di tenants`.
+- [x] Commit `fix(rls): nessuna lettura fuori contesto, test sulle letture di tenants`.
 
 ### Task 4: azienda "piattaforma" per l'audit del super admin
 
@@ -94,7 +94,7 @@ Indipendente dai Task 1-3 per i file applicativi; la migration ha un orario suo.
 - Lettura dell'audit: il super admin deve poter leggere l'audit dell'azienda piattaforma (rotta audit esistente con `X-Tenant-ID` = piattaforma, o lettura dedicata sul client di sistema): scegliere la via più piccola coerente con la regola del 2b e scriverla nel report.
 - Test: unit sul guard (super admin senza azienda → accodato con id piattaforma; utente normale senza azienda → saltato); Postgres: il job `audit-logging` scrive la riga nell'azienda piattaforma col ruolo app nel contesto, catena di hash valida (`getLatestLog`); l'azienda piattaforma non compare nell'elenco aziende del super admin né nei cron (test su almeno elenco super admin e `deadline-checker`).
 
-- [ ] Commit `feat(audit): azioni del super admin senza azienda registrate nell azienda piattaforma`.
+- [x] Commit `feat(audit): azioni del super admin senza azienda registrate nell azienda piattaforma`.
 
 ### Task 5: percorsi col ruolo app per gruppi, cambio azienda e rotte pubbliche
 
@@ -111,14 +111,14 @@ Dopo i Task 1-4.
   - `signature-audit.handler` su `FIR_SIGNED`.
 - Se un percorso fallisce col ruolo app è un difetto da correggere qui (test prima); se la correzione supera ~30 righe o cambia un comportamento, fermarsi e riportare.
 
-- [ ] Commit `test(rls): gruppi, cambio azienda e rotte pubbliche col ruolo dell applicazione`.
+- [x] Commit `test(rls): gruppi, cambio azienda e rotte pubbliche col ruolo dell applicazione`.
 
 ### Task 6: README e procedura
 
 - Modify: README: "Cosa resta" (pezzo 4 fatto; restano facoltativi: RLS o funzione mirata su `tenants`, funzione SECURITY DEFINER per la vista di gruppo), sezione "Controlli di sola lettura", nota sull'azienda piattaforma.
 - Modify: questo piano, sezione "Dopo il pezzo".
 
-- [ ] Commit `docs(rls): pezzo 4, controlli di sola lettura e azienda piattaforma`.
+- [x] Commit `docs(rls): pezzo 4, controlli di sola lettura e azienda piattaforma`.
 
 ## Parallelismo
 
@@ -130,4 +130,5 @@ Dopo i Task 1-4.
 
 1. Merge = deploy delle migration (la RLS è già accesa: le nuove policy valgono subito per `role_permissions`).
 2. Con il tuo ok: `GRANT wasteflow_lettura TO rifiuti_testing` sul database di produzione, poi un giro dei controlli di testing-umano per vedere che non passino a vuoto.
-3. Controllo che l'azienda piattaforma non compaia nelle schermate.
+3. Controllo che l'azienda piattaforma non compaia nelle schermate (elenchi, cruscotti); l'audit del super admin senza azienda si legge con `GET /api/v1/admin/audit/piattaforma`.
+4. Seguiti elencati in README "Cosa resta" (consulenti nel guard, race sulla catena di hash, rotte super admin senza audit, SAML morto).

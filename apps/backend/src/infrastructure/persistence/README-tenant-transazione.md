@@ -160,8 +160,9 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
 ## Controlli di sola lettura (testing-umano)
 
 Il ruolo `rifiuti_testing` (controlli esterni di testing-umano) legge il database di tutte le aziende; con la
-RLS accesa, senza contesto vedeva zero righe. Si abilita con l'appartenenza a `wasteflow_lettura`, **fuori dalle
-migration**, da un superuser sul database di produzione:
+RLS accesa, senza contesto vedeva zero righe. Si abilita con l'appartenenza a `wasteflow_lettura` (NOLOGIN,
+NOBYPASSRLS, policy `sola_lettura`: vedi sezione "Policy"), **fuori dalle migration**, da un superuser sul
+database di produzione e solo con l'ok di Graziano:
 
 ```sql
 GRANT wasteflow_lettura TO rifiuti_testing;   -- abilita
@@ -196,14 +197,53 @@ password e `GRANT wasteflow_lettura TO rifiuti_testing` si rifanno a mano.
   - Cruscotto di gruppo e lista per l'ADMIN leggono al massimo 4 aziende insieme
     (`core/utils/map-con-limite.ts`), con lo stesso risultato e lo stesso ordine di prima.
   - `permission.guard` non accoda l'audit se il `tenantId` e' vuoto (super admin senza azienda), con un
-    log `debug`. **Fuori ambito:** l'audit di un super admin che opera su piu' aziende non viene registrato.
+    log `debug`. Il caso del super admin senza azienda e' stato chiuso nel pezzo 4 (sezione "Azienda piattaforma").
   - La coda `audit-logging` ha `removeOnFail: { age: 604800 }` (7 giorni, come la coda RENTRI) fra le
     opzioni di default (`infrastructure/jobs/audit-queue.options.ts`).
 - **3: fatto in questo pezzo.** Policy `ENABLE` e `FORCE` sulle 29 tabelle con `tenant_id` (sezione "Policy").
   In produzione e' dormiente finche' l'app si collega col superuser: si accende con la sezione
   "Accensione in produzione".
-- **4: resta.** Gruppi e consulenti, rotte pubbliche,
-  audit cross-tenant (l'audit di un super admin che opera su piu' aziende oggi non si registra).
+- **4: fatto.** Gruppi e consulenti, rotte pubbliche (percorsi verificati col ruolo app in
+  `rls-gruppi-rotte.postgres.spec.ts`), `role_permissions`, ruolo di sola lettura per i controlli, audit del
+  super admin senza azienda (azienda piattaforma). Restano facoltativi:
+  - RLS, o una funzione mirata, su `tenants`;
+  - una funzione SECURITY DEFINER per la vista di gruppo.
+- **Seguiti emersi dal pezzo 4:**
+  - consulenti su un'azienda cliente nel `PermissionGuard`: il guard gira prima di `TenantSwitchInterceptor` e
+    il ruolo del consulente sull'azienda cliente sta in `consultant_tenant_associations.role_id`, quindi oggi
+    per loro vale l'azienda del token e l'header e' ignorato;
+  - race sulla catena di hash dell'audit con concorrenza 10;
+  - rotte del super admin che usano solo `RolesGuard` e non scrivono audit;
+  - codice SAML morto da cancellare: `infrastructure/keycloak/keycloak-saml.strategy.ts`,
+    `application/auth/handle-spid-callback.use-case.ts`, `api/auth/auth.controller.ts`;
+  - cruscotto di gruppo e `listTenants` non chiamano `escludiPiattaforma`: oggi la piattaforma resta fuori
+    perche' non ha madre ne' associazioni, e un test lo verifica (se questo cambia, aggiungere l'helper);
+  - `sola_lettura` copre anche `rentri_credentials` e `users`: da valutare con il minimo privilegio.
+
+## Azienda piattaforma
+
+Migration `20261026110000_azienda_piattaforma`: azienda tecnica con id fisso
+`00000000-0000-4000-8000-000000000001` (`AZIENDA_PIATTAFORMA_ID` in `core/context/azienda-piattaforma.ts`),
+`subscription_status = SUSPENDED`. Esiste perche' le righe di `permission_audit_logs` sono per azienda, con
+catena di hash per azienda: le azioni del super admin senza azienda scelta hanno cosi' un posto dove essere
+registrate. Non e' un cliente: niente utenti, dati o credenziali RENTRI. Non cancellare la riga in migration
+future (il `TRUNCATE ... CASCADE` dei test la elimina: tollerato).
+
+- **Esclusione:** ogni lettura o iterazione di `tenants` usa `escludiPiattaforma` (o `escludiPiattaformaDaId`
+  sugli elenchi di id); un test statico (`azienda-piattaforma-esclusione.spec.ts`) fa fallire una scansione
+  nuova che non lo usa. Lo stato SUSPENDED e' solo una seconda difesa.
+- **Protezione:** `assertNonPiattaforma` rifiuta (400) la piattaforma come madre di un gruppo, la modifica,
+  la sospensione/riattivazione/cancellazione e la creazione di utenti al suo interno (`tenant.service`,
+  `user-admin.service`).
+- **Regola del guard** (`permission.guard.ts`): un SUPER_ADMIN con `X-Tenant-ID` (UUID valido) viene registrato
+  nell'azienda scelta; senza header, nell'azienda piattaforma. I permessi invece si caricano sempre
+  nell'azienda di casa, perche' le sue assegnazioni di ruolo stanno li' e con la RLS nel contesto di un'altra
+  azienda tornerebbero vuote. Consulenti e utenti normali: azienda del token, header ignorato.
+- **`sessionId`:** nel payload dell'utente (`JwtStrategy`) e' l'hash `sha256` di `sub:iat`, primi 32 caratteri
+  esadecimali; il guard lo salva in `permission_audit_logs.session_id`. L'hash dell'entry copre solo i campi
+  salvati.
+- **Lettura:** `GET /api/v1/admin/audit/piattaforma` (`?pagina=&perPagina=`), solo SUPER_ADMIN, dal client di
+  sistema con l'azienda fissa (nessun id preso dalla richiesta); ogni riga riporta `hashValido`.
 
 ## Prima del merge
 
