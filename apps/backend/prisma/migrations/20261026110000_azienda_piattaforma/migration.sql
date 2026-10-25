@@ -17,7 +17,8 @@
 --  * partita_iva '00000000000': supera il controllo del check digit, quindi NON e' invalida, e'
 --    solo non assegnata a nessun cliente; nessun owner, nessuna madre.
 -- Il filtro applicativo (escludiPiattaforma) resta la difesa principale; lo stato SUSPENDED
--- e' una seconda cintura. Idempotente: ON CONFLICT DO NOTHING.
+-- e' una seconda cintura. Idempotente: ON CONFLICT DO NOTHING senza bersaglio, cosi' anche una
+-- P.IVA 00000000000 gia' usata da un altro tenant non fa fallire il deploy (va controllato dopo).
 -- `tenants` non ha RLS, quindi l'inserimento non richiede un contesto azienda.
 
 INSERT INTO "tenants" (
@@ -47,4 +48,4 @@ INSERT INTO "tenants" (
   'MANUALE',
   now()
 )
-ON CONFLICT ("id") DO NOTHING;
+ON CONFLICT DO NOTHING;
