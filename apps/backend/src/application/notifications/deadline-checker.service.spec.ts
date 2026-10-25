@@ -51,6 +51,7 @@ import { EmailService } from '../../infrastructure/email/email.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 jest.mock('../../infrastructure/rentri/rentri-certificato-scadenza.util')
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
@@ -884,7 +885,12 @@ describe('DeadlineCheckerService', () => {
       await service.checkMudDeadlines()
 
       expect(mockPrisma.tenant.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ mudNonDovuto: false }) })
+        expect.objectContaining({
+          where: escludiPiattaforma({
+            subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] },
+            mudNonDovuto: false,
+          }),
+        })
       )
     })
   })
