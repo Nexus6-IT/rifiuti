@@ -579,8 +579,8 @@ jobs:
           SIGNATURE_PROVIDER: sandbox
           TSA_PROVIDER: mock
         run: |
-          export REDIS_HOST=127.0.0.1 REDIS_PORT="$REDIS_CI_PORT"
-          export REDIS_CLUSTER_NODES="127.0.0.1:$REDIS_CI_PORT"
+          export REDIS_HOST=127.0.0.1 REDIS_PORT="${REDIS_CI_PORT:?REDIS_CI_PORT non impostata}"
+          export REDIS_CLUSTER_NODES="127.0.0.1:$REDIS_PORT"
           nohup node dist/main.js > /tmp/backend-e2e-prod.log 2>&1 &
           echo $! > /tmp/backend-e2e-prod.pid
 
@@ -614,8 +614,7 @@ jobs:
       # HSTS/X-Frame-Options/X-Content-Type-Options che SOLO quel nginx.conf
       # aggiunge — un server statico qualunque li lascerebbe fuori e quella
       # spec fallirebbe SEMPRE, esattamente il job-rosso-permanente da
-      # evitare. Bind mount dei file gia' compilati (nessuna immagine da
-      # costruire): piu' veloce e riusa quanto appena prodotto sopra.
+      # evitare.
       # --add-host risolve l'hostname "backend" del proxy_pass di nginx.conf
       # (pensato per Docker Compose) al backend nativo di questo job, che
       # sotto rete host e' semplicemente 127.0.0.1.
@@ -633,7 +632,9 @@ jobs:
       # che serve alla spec sugli header di sicurezza.
       - name: Avvia il frontend (nginx, stesso nginx.conf di produzione)
         run: |
+          docker rm -f "$FRONTEND_CI_CONTAINER" 2>/dev/null || true
           docker create \
+            --label "neat.ci.job=frontend-e2e-${{ github.run_id }}" \
             --name "$FRONTEND_CI_CONTAINER" \
             --network host \
             --add-host backend:127.0.0.1 \
@@ -703,8 +704,8 @@ jobs:
           SIGNATURE_PROVIDER: sandbox
           TSA_PROVIDER: mock
         run: |
-          export REDIS_HOST=127.0.0.1 REDIS_PORT="$REDIS_CI_PORT"
-          export REDIS_CLUSTER_NODES="127.0.0.1:$REDIS_CI_PORT"
+          export REDIS_HOST=127.0.0.1 REDIS_PORT="${REDIS_CI_PORT:?REDIS_CI_PORT non impostata}"
+          export REDIS_CLUSTER_NODES="127.0.0.1:$REDIS_PORT"
           nohup node dist/main.js > /tmp/backend-e2e-devlogin.log 2>&1 &
           echo $! > /tmp/backend-e2e-devlogin.pid
 
@@ -759,7 +760,7 @@ jobs:
         if: always()
         run: |
           docker rm -f "$POSTGRES_CI_CONTAINER" 2>/dev/null || true
-          bash scripts/ci/redis-job.sh ferma
+          bash scripts/ci/redis-job.sh ferma || true
           docker rm -f "$FRONTEND_CI_CONTAINER" 2>/dev/null || true
           # Due possibili backend in vita a seconda di dove si e' fermato il
           # job (passata 1 sola, o anche la 2): entrambi i pid file, kill

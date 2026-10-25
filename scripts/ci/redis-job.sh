@@ -21,7 +21,7 @@ NOME="rifiuti-ci-redis-${SUFFISSO}"
 case "${1:-}" in
   avvia)
     docker rm -f "$NOME" >/dev/null 2>&1 || true
-    docker run -d --rm --name "$NOME" \
+    docker run -d --name "$NOME" \
       --label "neat.ci.job=${SUFFISSO}" \
       -p 127.0.0.1::6379 \
       redis:7-alpine >/dev/null
