@@ -7,6 +7,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { RiconciliaStatoRentriUseCase } from '../../application/rentri/riconcilia-stato-rentri.use-case'
 import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
 import { EsitoGiroRentri } from './esito-giro-rentri'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
  * Job di riconciliazione periodica dello stato RENTRI (R5, Task 4).
@@ -60,9 +61,9 @@ export class RentriRiconciliazioneJob {
     try {
       // Sistema: elenco di tutte le aziende attive, senza un'azienda nota in partenza
       const tenants = await this.sistema.tenant.findMany({
-        where: {
+        where: escludiPiattaforma({
           subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] },
-        },
+        }),
         select: { id: true },
       })
 

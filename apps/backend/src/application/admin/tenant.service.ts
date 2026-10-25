@@ -15,6 +15,7 @@ import { seedRolesForTenant } from './system-roles'
 import { TenantContext } from '../../core/context/tenant-context'
 import { mapConLimite } from '../../core/utils/map-con-limite'
 import { MembershipService } from '../../api/me/membership.service'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
  * TenantService (admin)
@@ -90,7 +91,7 @@ export class TenantService {
     // dal tenant nello store (il middleware gli mette sempre il proprio o quello dell'header).
     if (this.isSuperAdmin(currentUser)) {
       return await this.sistema.tenant.findMany({
-        where,
+        where: escludiPiattaforma(where),
         orderBy: { ragioneSociale: 'asc' },
         include: {
           _count: {
@@ -103,7 +104,7 @@ export class TenantService {
     // ADMIN: le aziende possedute sono altre rispetto al suo contesto; il conteggio utenti di
     // ciascuna si legge nel suo contesto (client normale).
     const aziende = await this.prisma.tenant.findMany({
-      where,
+      where: escludiPiattaforma(where),
       orderBy: { ragioneSociale: 'asc' },
     })
     // Una transazione per azienda: al massimo 4 insieme, per non esaurire il pool.

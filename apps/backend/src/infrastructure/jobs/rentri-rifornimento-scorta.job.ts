@@ -8,6 +8,7 @@ import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
 import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
 import { RentriScortaRepository } from '../persistence/rentri-scorta.repository'
 import { AvviaVidimazioneScortaUseCase } from '../../application/rentri/scorta/avvia-vidimazione-scorta.use-case'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
  * Rifornisce periodicamente la scorta di numeri FIR pre-vidimati (R6): per
@@ -52,7 +53,7 @@ export class RentriRifornimentoScortaJob {
     try {
       // Sistema: elenco di tutte le aziende attive, senza un'azienda nota in partenza
       const tenants = await this.sistema.tenant.findMany({
-        where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
+        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
         select: { id: true },
       })
 

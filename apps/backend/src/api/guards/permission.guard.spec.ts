@@ -1,3 +1,4 @@
+import { AZIENDA_PIATTAFORMA_ID } from '../../core/context/azienda-piattaforma'
 import { ExecutionContext, ForbiddenException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { PermissionGuard } from './permission.guard'
@@ -123,11 +124,23 @@ describe('PermissionGuard', () => {
   describe('audit senza azienda', () => {
     const lascia = async () => await new Promise(r => setImmediate(r))
 
-    it('permission.guard: nessun accodamento con tenantId vuoto', async () => {
+    it('permission.guard: super admin senza azienda accodato nell azienda piattaforma', async () => {
       reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
       permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
       const ctx = buildContext({ user: { id: USER_ID, tenantId: '', role: 'SUPER_ADMIN' } })
+      await expect(guard.canActivate(ctx)).resolves.toBe(true)
+      await lascia()
+
+      expect(auditQueue.add).toHaveBeenCalledTimes(1)
+      expect(auditQueue.add.mock.calls[0][1].data.tenantId).toBe(AZIENDA_PIATTAFORMA_ID)
+    })
+
+    it('permission.guard: utente normale senza azienda non accodato', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
+
+      const ctx = buildContext({ user: { id: USER_ID, tenantId: '', role: 'ADMIN' } })
       await expect(guard.canActivate(ctx)).resolves.toBe(true)
       await lascia()
 

@@ -7,6 +7,7 @@ import {
   Inject,
 } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
+import { AZIENDA_PIATTAFORMA_ID } from '../../core/context/azienda-piattaforma'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator'
@@ -191,7 +192,8 @@ export class PermissionGuard implements CanActivate {
         decision,
         reason,
         auditMetadata,
-        evaluatedPolicies // T224: Include ABAC policy evaluation results
+        evaluatedPolicies, // T224: Include ABAC policy evaluation results
+        user.role
       ).catch(error => {
         this.logger.error(`Failed to log audit entry: ${error.message}`, error.stack)
         // Don't throw - audit logging failure should not break permission checks
@@ -320,13 +322,18 @@ export class PermissionGuard implements CanActivate {
     decision: 'ALLOW' | 'DENY',
     reason: string | undefined,
     auditMetadata: AuditMetadata,
-    evaluatedPolicies?: any[]
+    evaluatedPolicies?: any[],
+    role?: string
   ): Promise<void> {
-    // Super admin senza azienda nel contesto: il job di audit richiede un tenantId (le righe
-    // di audit sono per azienda), quindi non si accoda. L'audit su piu' aziende e' fuori ambito.
+    // Le righe di audit sono per azienda. Un super admin senza azienda nel contesto viene
+    // attribuito all'azienda tecnica "piattaforma" (id fisso, esclusa da ogni vista applicativa);
+    // per chiunque altro senza azienda l'evento non si accoda.
     if (!tenantId) {
-      this.logger.debug('[AUDIT] Evento non accodato: nessuna azienda nel contesto')
-      return
+      if (role !== 'SUPER_ADMIN') {
+        this.logger.debug('[AUDIT] Evento non accodato: nessuna azienda nel contesto')
+        return
+      }
+      tenantId = AZIENDA_PIATTAFORMA_ID
     }
 
     try {

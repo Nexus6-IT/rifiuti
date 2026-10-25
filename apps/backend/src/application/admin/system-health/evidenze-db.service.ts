@@ -5,6 +5,7 @@ import { ChiaveEvidenza, LettoreEvidenze } from './probes/job-schedulati.probe'
 import { MisuraFreschezza } from './probes/freschezza.probe'
 import { StatoCredenziale } from './probes/credenziali.probe'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../../infrastructure/rentri/rentri-certificato-scadenza.util'
+import { escludiPiattaforma } from '../../../core/context/azienda-piattaforma'
 
 /**
  * Le letture in banca dati che alimentano la pagina «Stato del sistema».
@@ -105,7 +106,7 @@ export class EvidenzeDbService implements LettoreEvidenze {
    */
   async credenziali(): Promise<StatoCredenziale[]> {
     const tenantAttivi = await this.sistema.tenant.findMany({
-      where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
+      where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
       select: { id: true },
     })
 
