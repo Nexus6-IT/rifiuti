@@ -140,6 +140,12 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
   `EXISTS (SELECT 1 FROM roles r WHERE r.id = role_permissions.role_id)`). La subquery su `roles` e' filtrata
   dalla policy di `roles`, quindi col ruolo app si vedono e si scrivono solo righe di ruoli dell'azienda del
   contesto (senza contesto nessuna). Non ha `isolamento_azienda`: non ha la colonna.
+- **`sola_lettura` (pezzo 4, migration `20261026100000_rls_sola_lettura_controlli`):** su tutte le 29 tabelle e
+  su `role_permissions` c'e' anche `CREATE POLICY sola_lettura ... FOR SELECT TO wasteflow_lettura USING (true)`.
+  `wasteflow_lettura` e' un ruolo di gruppo NOLOGIN senza password e senza BYPASSRLS: chi ne e' membro legge
+  le righe di tutte le aziende senza contesto, ma non scrive (nessuna policy per INSERT/UPDATE/DELETE).
+  Non assegna privilegi: i SELECT restano quelli che il membro ha gia'. `wasteflow_app` e `wasteflow_sistema`
+  non ne sono membri. Ogni tabella ha quindi esattamente due policy (il catalogo lo verifica).
 - **Escluse di proposito:**
   - `tenants` e `access_requests` (si leggono prima di conoscere l'azienda). `tenants` resta
     leggibile e scrivibile da `wasteflow_app` per scelta: un `tenant.findMany` senza filtro col client
@@ -150,6 +156,23 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
 - **Indici:** aggiunti `tenant_id` su `temporary_permission_grants` e `permission_requests`.
 - **Controllo:** `rls-catalogo.postgres.spec.ts` ricava le tabelle dal catalogo; una tabella futura con
   `tenant_id` e senza policy fa fallire il test.
+
+## Controlli di sola lettura (testing-umano)
+
+Il ruolo `rifiuti_testing` (controlli esterni di testing-umano) legge il database di tutte le aziende; con la
+RLS accesa, senza contesto vedeva zero righe. Si abilita con l'appartenenza a `wasteflow_lettura`, **fuori dalle
+migration**, da un superuser sul database di produzione:
+
+```sql
+GRANT wasteflow_lettura TO rifiuti_testing;   -- abilita
+REVOKE wasteflow_lettura FROM rifiuti_testing; -- rientro: torna a non vedere nulla
+```
+
+Verifica: `SELECT pg_has_role('rifiuti_testing', 'wasteflow_lettura', 'member');` (true dopo il GRANT) e
+`SELECT pg_has_role('wasteflow_app', 'wasteflow_lettura', 'member');` (deve restare false). Il ruolo e' del
+cluster: la migration lo crea se manca e `ops/restore.sh` lo ricrea prima di caricare un dump che contiene
+le policy `TO wasteflow_lettura`. L'appartenenza (GRANT di ruolo) e' del cluster e non sta nel dump del database:
+dopo un ripristino su un cluster nuovo va rifatto il GRANT.
 
 ## Cosa resta
 

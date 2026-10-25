@@ -9,8 +9,11 @@
  */
 import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
-import { clientComeRuolo } from '../database/client-come-ruolo'
-import { seedRolesForTenant } from '../../application/admin/system-roles'
+import { clientComeRuolo, urlComeRuolo } from '../database/client-come-ruolo'
+import { SYSTEM_ROLES, seedRolesForTenant } from '../../application/admin/system-roles'
+import { TenantContext } from '../../core/context/tenant-context'
+import { PrismaService, creaPrismaServiceApplicativo } from './prisma.service'
+import { PrismaPermissionRepository } from './permission.repository'
 
 const urlProprietario =
   process.env.DATABASE_URL ??
@@ -147,11 +150,21 @@ describe('RLS: role_permissions tramite il ruolo (Postgres reale)', () => {
 
   it('createTenant col ruolo app: permessi dei ruoli creati', async () => {
     // Il seed di createTenant (seedRolesForTenant) col client app nel contesto della nuova
-    // azienda: ruoli di sistema e relativi permessi si scrivono e si rileggono.
+    // azienda: ruoli di sistema e relativi permessi si scrivono e si rileggono. Il numero di
+    // righe atteso e' quello che il seed risolve: per ogni ruolo di sistema, le chiavi
+    // distinte che esistono davvero nella tabella permissions.
     const chiave = await owner.permission.findUnique({
       where: { resource_action_scope: { resource: 'fir', action: 'read', scope: 'all' } },
     })
-    if (!chiave) permessiCreati.push(...[await creaPermesso('fir', 'read')])
+    if (!chiave) await creaPermesso('fir', 'read')
+    const esistenti = new Set(
+      (await owner.permission.findMany()).map(p => `${p.resource}:${p.action}:${p.scope}`)
+    )
+    const attese = SYSTEM_ROLES.reduce(
+      (tot, r) => tot + new Set(r.permissions.filter(k => esistenti.has(k))).size,
+      0
+    )
+    expect(attese).toBeGreaterThan(0)
     const { n, righe } = await conContesto(A, async tx => {
       const n = await seedRolesForTenant(tx as never, A, userA)
       const righe = await tx.rolePermission.count({
@@ -159,8 +172,47 @@ describe('RLS: role_permissions tramite il ruolo (Postgres reale)', () => {
       })
       return { n, righe }
     })
-    expect(n).toBeGreaterThan(0)
-    expect(righe).toBeGreaterThan(0)
+    expect(n).toBe(SYSTEM_ROLES.length)
+    expect(righe).toBe(attese)
+  })
+
+  it('PrismaService reale come wasteflow_app: findByRole e la select annidata di jwt.strategy non perdono permessi', async () => {
+    const precedente = process.env.DATABASE_URL
+    process.env.DATABASE_URL = urlComeRuolo('wasteflow_app', PWD_APP, urlProprietario)
+    const reale: PrismaService = creaPrismaServiceApplicativo()
+    process.env.DATABASE_URL = precedente
+    try {
+      await reale.$connect()
+      await owner.userRoleAssignment.create({
+        data: { userId: userA, roleId: ruoloA, tenantId: A, assignedBy: userA },
+      })
+      const { permessi, annidata } = await TenantContext.run({ tenantId: A }, async () => {
+        const repo = new PrismaPermissionRepository(reale)
+        const permessi = await repo.findByRole(ruoloA)
+        // Stessa forma di JwtStrategy.resolvePermissions.
+        const annidata = await reale.userRoleAssignment.findMany({
+          where: { userId: userA, tenantId: A },
+          select: {
+            role: {
+              select: {
+                permissions: {
+                  select: {
+                    permission: { select: { resource: true, action: true, scope: true } },
+                  },
+                },
+              },
+            },
+          },
+        })
+        return { permessi, annidata }
+      })
+      expect(permessi.map(p => p.id)).toContain(permessoId)
+      const chiavi = annidata.flatMap(a => a.role.permissions.map(p => p.permission.resource))
+      expect(chiavi).toContain(`rp${run}`.slice(0, 50))
+    } finally {
+      await owner.userRoleAssignment.deleteMany({ where: { userId: userA } })
+      await reale.$disconnect()
+    }
   })
 
   it('resolvePermissions e role.controller: join col ruolo e lettura diretta per role_id', async () => {
