@@ -172,7 +172,9 @@ Verifica: `SELECT pg_has_role('rifiuti_testing', 'wasteflow_lettura', 'member');
 `SELECT pg_has_role('wasteflow_app', 'wasteflow_lettura', 'member');` (deve restare false). Il ruolo e' del
 cluster: la migration lo crea se manca e `ops/restore.sh` lo ricrea prima di caricare un dump che contiene
 le policy `TO wasteflow_lettura`. L'appartenenza (GRANT di ruolo) e' del cluster e non sta nel dump del database:
-dopo un ripristino su un cluster nuovo va rifatto il GRANT.
+dopo un ripristino su un cluster nuovo va rifatto il GRANT. I dump di produzione contengono anche GRANT e default
+privileges verso `rifiuti_testing`: `ops/restore.sh` crea anche questo ruolo (NOLOGIN, senza password) se manca; LOGIN,
+password e `GRANT wasteflow_lettura TO rifiuti_testing` si rifanno a mano.
 
 ## Cosa resta
 

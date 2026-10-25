@@ -180,13 +180,15 @@ describe('RLS: role_permissions tramite il ruolo (Postgres reale)', () => {
     const precedente = process.env.DATABASE_URL
     process.env.DATABASE_URL = urlComeRuolo('wasteflow_app', PWD_APP, urlProprietario)
     const reale: PrismaService = creaPrismaServiceApplicativo()
-    process.env.DATABASE_URL = precedente
     try {
+      // Prisma 5 legge DATABASE_URL al $connect: l'ambiente si ripristina solo dopo.
       await reale.$connect()
+      process.env.DATABASE_URL = precedente
       await owner.userRoleAssignment.create({
         data: { userId: userA, roleId: ruoloA, tenantId: A, assignedBy: userA },
       })
-      const { permessi, annidata } = await TenantContext.run({ tenantId: A }, async () => {
+      const { utente, permessi, annidata } = await TenantContext.run({ tenantId: A }, async () => {
+        const [{ cu }] = await reale.$queryRawUnsafe<{ cu: string }[]>('SELECT current_user AS cu')
         const repo = new PrismaPermissionRepository(reale)
         const permessi = await repo.findByRole(ruoloA)
         // Stessa forma di JwtStrategy.resolvePermissions.
@@ -204,12 +206,19 @@ describe('RLS: role_permissions tramite il ruolo (Postgres reale)', () => {
             },
           },
         })
-        return { permessi, annidata }
+        return { utente: cu, permessi, annidata }
       })
+      expect(utente).toBe('wasteflow_app')
       expect(permessi.map(p => p.id)).toContain(permessoId)
       const chiavi = annidata.flatMap(a => a.role.permissions.map(p => p.permission.resource))
       expect(chiavi).toContain(`rp${run}`.slice(0, 50))
+      // Con il contesto di un'altra azienda le righe del ruolo di A non si vedono.
+      const daB = await TenantContext.run({ tenantId: B }, () =>
+        new PrismaPermissionRepository(reale).findByRole(ruoloA)
+      )
+      expect(daB).toEqual([])
     } finally {
+      process.env.DATABASE_URL = precedente
       await owner.userRoleAssignment.deleteMany({ where: { userId: userA } })
       await reale.$disconnect()
     }

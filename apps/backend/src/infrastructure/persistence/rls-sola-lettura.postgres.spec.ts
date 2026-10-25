@@ -85,6 +85,8 @@ describe('RLS: sola lettura per i controlli (wasteflow_lettura)', () => {
   })
 
   it('senza contesto il membro vede le righe di tutte le aziende', async () => {
+    const [{ cu }] = await lettore.$queryRawUnsafe<{ cu: string }[]>('SELECT current_user AS cu')
+    expect(cu).toBe(nomeRuolo)
     const utentiVisti = await lettore.$queryRawUnsafe<{ t: string }[]>(
       `SELECT DISTINCT tenant_id::text AS t FROM users WHERE tenant_id IN ('${A}', '${B}') ORDER BY 1`
     )
@@ -132,5 +134,29 @@ describe('RLS: sola lettura per i controlli (wasteflow_lettura)', () => {
     ).rejects.toThrow(/row-level security/i)
     expect(await owner.user.count({ where: { tenantId: A, firstName: 'X' } })).toBe(0)
     expect(await owner.role.count({ where: { tenantId: A } })).toBe(1)
+  })
+
+  it('con privilegi e contesto di A, la sola lettura non allarga le scritture: righe di B intoccabili', async () => {
+    await owner.$executeRawUnsafe(`GRANT INSERT, UPDATE ON users TO ${nomeRuolo}`)
+    const esito = await lettore.$transaction(async tx => {
+      await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', '${A}', true)`)
+      const aggiornate = await tx.$executeRawUnsafe(
+        `UPDATE users SET first_name = 'X' WHERE tenant_id = '${B}'`
+      )
+      let inserimento = ''
+      try {
+        await tx.$executeRawUnsafe('SAVEPOINT s')
+        await tx.$executeRawUnsafe(
+          `INSERT INTO users (id, tenant_id, keycloak_id, fiscal_code, first_name, last_name, email, role, updated_at)
+           VALUES (gen_random_uuid(), '${B}', 'kc-abusivo-${run}', 'ABUSVO00A00A000Z', 'X', 'X', 'ab-${run}@example.it', 'ADMIN', now())`
+        )
+      } catch (e) {
+        inserimento = String(e)
+      }
+      return { aggiornate, inserimento }
+    })
+    expect(esito.aggiornate).toBe(0)
+    expect(esito.inserimento).toMatch(/row-level security/i)
+    expect(await owner.user.count({ where: { tenantId: B, firstName: 'X' } })).toBe(0)
   })
 })

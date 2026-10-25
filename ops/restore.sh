@@ -192,9 +192,13 @@ psql_postgres "CREATE DATABASE \"${DB_TEMP}\" OWNER \"${DB_USER}\"" >/dev/null \
 # Il dump contiene GRANT ai ruoli applicativi (pg_dump non usa --no-privileges),
 # ma i ruoli sono dell'intero cluster e non stanno nel dump: su un cluster nuovo
 # il caricamento si fermerebbe con "role does not exist". Si creano quindi,
-# NOLOGIN e senza password, se mancano (no-op se ci sono). LOGIN, password e
-# diritti li da' poi il passo 9b (ops/db-ruoli.sh). RESTORE_RUOLI serve ai test.
-RUOLI_BASE="${RESTORE_RUOLI:-wasteflow_app wasteflow_sistema wasteflow_lettura}"
+# NOLOGIN e senza password, se mancano (no-op se ci sono). Per app e sistema LOGIN,
+# password e diritti li da' poi il passo 9b (ops/db-ruoli.sh); wasteflow_lettura e
+# rifiuti_testing restano NOLOGIN senza password e il 9b non li tocca: rifiuti_testing e'
+# il ruolo esterno di sola lettura di testing-umano (nel dump ci sono GRANT e default
+# privileges verso di lui); LOGIN, password e GRANT wasteflow_lettura TO rifiuti_testing
+# si rifanno a mano. RESTORE_RUOLI serve ai test.
+RUOLI_BASE="${RESTORE_RUOLI:-wasteflow_app wasteflow_sistema wasteflow_lettura rifiuti_testing}"
 for RUOLO in ${RUOLI_BASE}; do
   psql_postgres "DO \$r\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${RUOLO}') THEN CREATE ROLE \"${RUOLO}\" NOLOGIN; END IF; END \$r\$" >/dev/null \
     || die "Creazione del ruolo ${RUOLO} fallita: nessuna modifica al database ${DB_NAME}"
