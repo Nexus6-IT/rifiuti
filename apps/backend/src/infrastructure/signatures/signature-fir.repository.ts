@@ -124,6 +124,7 @@ export class SignatureFIRRepository implements FIRRepository {
     await this.prisma.fIRSignature.create({
       data: {
         firId,
+        tenantId,
         userId: user.id,
         role,
         signedAt: sigData.signedAt,

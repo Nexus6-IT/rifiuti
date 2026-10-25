@@ -466,6 +466,9 @@ model FIR {
   // marittima), ognuna con proprio snapshot anagrafico immutabile.
   transportersAggiuntivi FIRTransporter[]
 
+  // Bersaglio della chiave esterna composta delle figlie (firma, trasportatore,
+  // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
+  @@unique([id, tenantId])
   @@unique([tenantId, firNumber])
   // Vincolo di unicità (non solo indice, v. R2 Task 3): due FIR locali dello
   // stesso tenant non possono puntare allo stesso numero_fir RENTRI — un
@@ -582,6 +585,7 @@ enum WasteOperationType {
 model FIRSignature {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firId     String   @map("fir_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
   userId    String   @map("user_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -605,9 +609,10 @@ model FIRSignature {
   /// Nullable per retrocompatibilità. ATTIVARE: popolato da POST /fir/:id/sign.
   publicKey        String? @map("public_key") @db.Text
 
-  fir  FIR  @relation(fields: [firId], references: [id], onDelete: Cascade)
+  fir  FIR  @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id])
 
+  @@index([tenantId])
   @@index([firId])
   @@index([userId])
   @@index([signerFiscalCode])
@@ -641,6 +646,7 @@ enum TipoTratta {
 model FIRTransporter {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firId     String   @map("fir_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
 
   ordine     Int        @db.Integer
@@ -660,8 +666,9 @@ model FIRTransporter {
   mezzo             String?   @map("mezzo") @db.VarChar(100)
   dataPresaInCarico DateTime? @map("data_presa_in_carico")
 
-  fir FIR @relation(fields: [firId], references: [id], onDelete: Cascade)
+  fir FIR @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
+  @@index([tenantId])
   @@index([firId])
   @@map("fir_transporters")
 }
@@ -1305,6 +1312,8 @@ model AutorizzazioneImpianto {
   tenant     Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   discariche AutorizzazioneImpiantoDiscarica[]
 
+  // Bersaglio della chiave esterna composta delle discariche.
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@map("autorizzazioni_impianto")
 }
@@ -1314,14 +1323,16 @@ model AutorizzazioneImpianto {
 model AutorizzazioneImpiantoDiscarica {
   id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   autorizzazioneId String @map("autorizzazione_id") @db.Uuid
+  tenantId         String @map("tenant_id") @db.Uuid
 
   /// 0=ND, 6=rifiuti pericolosi, 7=rifiuti non pericolosi, 8=rifiuti inerti.
   classificazione   Int @default(0) @db.SmallInt
   /// Capacità residua in metri cubi (num 9).
   capacitaResiduaMc Int @default(0) @map("capacita_residua_mc")
 
-  autorizzazione AutorizzazioneImpianto @relation(fields: [autorizzazioneId], references: [id], onDelete: Cascade)
+  autorizzazione AutorizzazioneImpianto @relation(fields: [autorizzazioneId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
+  @@index([tenantId])
   @@index([autorizzazioneId])
   @@map("autorizzazioni_impianto_discariche")
 }
@@ -2068,6 +2079,7 @@ model RENTRISyncLog {
 model FIRAllegatoRentri {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firId     String   @map("fir_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
 
   /// `allegato_id` restituito dall'ente (`EsitoAddAllegatoModel.allegato_id`,
@@ -2094,12 +2106,13 @@ model FIRAllegatoRentri {
   caricatoDa   String   @map("caricato_da") @db.Uuid
   caricatoAlle DateTime @default(now()) @map("caricato_alle")
 
-  fir              FIR  @relation(fields: [firId], references: [id], onDelete: Cascade)
+  fir              FIR  @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade)
   caricatoDaUtente User @relation(fields: [caricatoDa], references: [id])
 
   // Un allegato dell'ente non può comparire due volte per lo stesso FIR:
   // stessa cautela già applicata a `[tenantId, rentriNumeroFir]` sul FIR.
   @@unique([firId, rentriAllegatoId])
+  @@index([tenantId])
   @@index([firId])
   @@map("fir_allegati_rentri")
 }
