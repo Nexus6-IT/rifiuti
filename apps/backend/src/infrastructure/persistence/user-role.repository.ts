@@ -209,69 +209,6 @@ export class PrismaUserRoleRepository implements UserRoleRepository {
     )
   }
 
-  async findExpiringSoon(hoursAhead: number, tenantId?: string): Promise<UserRole[]> {
-    const now = new Date()
-    const future = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000)
-
-    const dbUserRoles = await this.prisma.userRoleAssignment.findMany({
-      where: {
-        ...(tenantId ? { tenantId } : {}),
-        expiresAt: {
-          gte: now,
-          lte: future,
-        },
-      },
-      orderBy: {
-        expiresAt: 'asc',
-      },
-    })
-
-    return dbUserRoles.map((dbUR: any) =>
-      UserRole.fromPersistence({
-        id: dbUR.id,
-        userId: dbUR.userId,
-        roleId: dbUR.roleId,
-        tenantId: dbUR.tenantId,
-        assignedBy: dbUR.assignedBy,
-        assignedAt: dbUR.assignedAt,
-        expiresAt: dbUR.expiresAt,
-        facilityIds: dbUR.facilityIds as string[] | null,
-        isDelegated: dbUR.isDelegated,
-        delegationReason: dbUR.delegationReason,
-      })
-    )
-  }
-
-  async findExpiredNotRevoked(): Promise<UserRole[]> {
-    const now = new Date()
-
-    const dbUserRoles = await this.prisma.userRoleAssignment.findMany({
-      where: {
-        expiresAt: {
-          lt: now,
-        },
-      },
-      orderBy: {
-        expiresAt: 'asc',
-      },
-    })
-
-    return dbUserRoles.map((dbUR: any) =>
-      UserRole.fromPersistence({
-        id: dbUR.id,
-        userId: dbUR.userId,
-        roleId: dbUR.roleId,
-        tenantId: dbUR.tenantId,
-        assignedBy: dbUR.assignedBy,
-        assignedAt: dbUR.assignedAt,
-        expiresAt: dbUR.expiresAt,
-        facilityIds: dbUR.facilityIds as string[] | null,
-        isDelegated: dbUR.isDelegated,
-        delegationReason: dbUR.delegationReason,
-      })
-    )
-  }
-
   async countActiveAdmins(roleId: string, tenantId: string): Promise<number> {
     const now = new Date()
 

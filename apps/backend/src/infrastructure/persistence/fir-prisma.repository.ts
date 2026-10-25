@@ -279,24 +279,6 @@ export class FIRPrismaRepository implements IFIRRepository {
     return record ? this.toDomain(record) : null
   }
 
-  async findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]> {
-    const where: any = {
-      status: this.statoToDb(stato),
-    }
-
-    if (tenantId) {
-      where.tenantId = tenantId
-    }
-
-    const records = await this.prisma.fIR.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: FIRPrismaRepository.FIR_INCLUDE,
-    })
-
-    return records.map((r: any) => this.toDomain(r))
-  }
-
   /**
    * Stato del FIR e firme si scrivono nella stessa transaction: o entrambi o
    * nessuno. Prima l'upsert e le firme erano due scritture separate, e una

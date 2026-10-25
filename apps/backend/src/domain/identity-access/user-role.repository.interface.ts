@@ -56,22 +56,6 @@ export interface UserRoleRepository {
   ): Promise<UserRole[]>
 
   /**
-   * Find expiring roles (expiring within specified hours)
-   * Used for sending expiration warnings
-   * @param hoursAhead Number of hours to look ahead
-   * @param tenantId Optional tenant ID to filter by
-   * @returns Array of expiring user roles
-   */
-  findExpiringSoon(hoursAhead: number, tenantId?: string): Promise<UserRole[]>
-
-  /**
-   * Find expired roles that haven't been auto-revoked
-   * Used by background job to auto-revoke
-   * @returns Array of expired user roles
-   */
-  findExpiredNotRevoked(): Promise<UserRole[]>
-
-  /**
    * Count active users with specific role in tenant
    * Used for last admin protection
    * @param roleId Role ID
