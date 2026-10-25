@@ -95,17 +95,24 @@ non e' nota: scansione di tutte le aziende, oppure ricerca di un'entita' prima d
   cruscotti del super admin, impersonificazione, membership e rotte dei consulenti
   (`consultant/tenants`, `consultant/switch-tenant`), vista di gruppo (ogni figlia nel proprio
   contesto) e seed passano su `PrismaSistemaService` o in `TenantContext.run`.
-- **2c:** worker per singolo tenant dentro `TenantContext.run({ tenantId })`:
-  - code BullMQ (`rentri-sync`, `audit-logging`);
-  - `CURRENT_TENANT_ID` limitata a `NODE_ENV=test`;
-  - `RENTRISyncLogRepository.requireTenantId` nel worker;
-  - controllo `Observable` di `TenantSwitchInterceptor`, e `checkAccess` verificato sul contesto giusto.
+- **2c: fatto.**
+  - **Worker:** ogni job (`rentri-sync`, `audit-logging`) gira nel contesto dell'azienda del job;
+    senza azienda il job fallisce in modo definitivo (`UnrecoverableError`), senza toccare il database.
+  - **`CURRENT_TENANT_ID`:** vale solo con `NODE_ENV=test`; altrove e' ignorata, con un avviso una volta sola.
+  - **Cambio azienda end-to-end:** `core/interceptors/tenant-switch.postgres.spec.ts` (app Nest reale:
+    middleware, strategy e guard JWT, `TenantSwitchInterceptor`, `MembershipService`, `PrismaService`;
+    solo `RedisService` e' finto) prova che l'azienda scelta arriva al handler e che un `X-Tenant-ID`
+    non associato viene rifiutato (403) prima del handler.
 - **Da riguardare prima del 3:**
   - `GET fir/:firId/verify/dettaglio` (autenticato) legge ancora il FIR con `findByIdPublic`, cioe'
     dal client di sistema, e confronta il tenant dopo: la rotta ha `requireRequestTenantId`, quindi si
     potrebbe cercare il FIR in `TenantContext.run({ tenantId })` col client normale (richiede di
     adattare i doppi di test del use case);
   - dimensione dei pool: con `DATABASE_URL_SISTEMA` attivo ci sono due client Prisma, controllare
-    `max_connections` di Postgres.
+    `max_connections` di Postgres;
+  - `Promise.all` per azienda nel cruscotto di gruppo e nella lista per l'ADMIN;
+  - `permission.guard` accoda un audit anche per il SUPER_ADMIN senza azienda: ora il job fallisce subito
+    (`UnrecoverableError`) e fa rumore nei log. Saltare `logAuditEntry` con `tenantId` vuoto, oppure
+    gestire altrove l'audit cross-tenant.
 - **3:** policy `ENABLE` e `FORCE` sulle 25 tabelle con
   `USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)`.

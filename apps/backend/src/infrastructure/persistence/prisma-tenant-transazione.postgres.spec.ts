@@ -34,6 +34,31 @@ base.$on('query', e => {
   queryLog.push(e.query)
 })
 
+// Gli eventi 'query' di Prisma arrivano in modo asincrono, dopo che la query e'
+// gia' tornata: azzerare o leggere subito il log corre contro la loro consegna.
+// Si aspetta quindi che il log sia quiescente (nessuna voce nuova per
+// FINESTRA_QUIESCENZA_MS), con un tetto, prima di azzerarlo e prima di leggerlo.
+const FINESTRA_QUIESCENZA_MS = 150
+const TETTO_ATTESA_MS = 3000
+const logQuiescente = async (): Promise<string[]> => {
+  const inizio = Date.now()
+  let lunghezza = queryLog.length
+  let ultimaVariazione = Date.now()
+  while (Date.now() - ultimaVariazione < FINESTRA_QUIESCENZA_MS) {
+    if (Date.now() - inizio > TETTO_ATTESA_MS) break
+    await new Promise(r => setTimeout(r, 20))
+    if (queryLog.length !== lunghezza) {
+      lunghezza = queryLog.length
+      ultimaVariazione = Date.now()
+    }
+  }
+  return [...queryLog]
+}
+const azzeraLog = async () => {
+  await logQuiescente()
+  queryLog.length = 0
+}
+
 const leggiTenant = async (c: { $queryRaw: PrismaClient['$queryRaw'] } = client) => {
   const righe = await c.$queryRaw<
     { v: string | null }[]
@@ -42,8 +67,8 @@ const leggiTenant = async (c: { $queryRaw: PrismaClient['$queryRaw'] } = client)
 }
 
 describe('Tenant per transazione (Postgres reale, connection_limit=1)', () => {
-  beforeEach(() => {
-    queryLog.length = 0
+  beforeEach(async () => {
+    await azzeraLog()
   })
 
   afterAll(async () => {
@@ -55,7 +80,7 @@ describe('Tenant per transazione (Postgres reale, connection_limit=1)', () => {
     await TenantContext.run({ tenantId: 'tenant-modello' }, async () => {
       await client.tenant.count()
     })
-    const sql = queryLog.map(q => q.trim())
+    const sql = (await logQuiescente()).map(q => q.trim())
     const i = sql.findIndex(q => q.includes('set_config'))
     expect(i).toBeGreaterThan(0)
     expect(sql[i - 1]).toBe('BEGIN')
@@ -91,7 +116,7 @@ describe('Tenant per transazione (Postgres reale, connection_limit=1)', () => {
       if (prima === undefined) delete process.env.CURRENT_TENANT_ID
       else process.env.CURRENT_TENANT_ID = prima
     }
-    const sql = queryLog.map(q => q.trim())
+    const sql = (await logQuiescente()).map(q => q.trim())
     expect(sql.some(q => q === 'BEGIN' || q === 'COMMIT')).toBe(false)
     expect(sql.some(q => q.includes('set_config'))).toBe(false)
   })
@@ -118,7 +143,7 @@ describe('Tenant per transazione (Postgres reale, connection_limit=1)', () => {
     // il lock e' tenuto dalla transazione interattiva: dal secondo client non si ottiene
     expect(provaDurante).toBe(false)
 
-    const sql = queryLog.map(q => q.trim())
+    const sql = (await logQuiescente()).map(q => q.trim())
     expect(sql[0]).toBe('BEGIN')
     expect(sql[1]).toContain('set_config')
     expect(sql[2]).toContain('pg_advisory_xact_lock')
@@ -144,7 +169,7 @@ describe('Tenant per transazione (Postgres reale, connection_limit=1)', () => {
     expect(r1[0].v).toBe('tenant-batch')
     expect(r2[0].v).toBe('tenant-batch')
     // un'unica transazione, con il set_config come primo statement
-    const sql = queryLog.map(q => q.trim())
+    const sql = (await logQuiescente()).map(q => q.trim())
     expect(sql[0]).toBe('BEGIN')
     expect(sql[1]).toContain('set_config')
     expect(sql.filter(q => q === 'BEGIN')).toHaveLength(1)
@@ -162,7 +187,7 @@ describe('Tenant per transazione (Postgres reale, connection_limit=1)', () => {
         })
       )
     ).rejects.toThrow('boom')
-    const sql = queryLog.map(q => q.trim())
+    const sql = (await logQuiescente()).map(q => q.trim())
     expect(sql).toContain('ROLLBACK')
     expect(await leggiTenant()).toBe('')
   })
@@ -171,8 +196,8 @@ describe('Tenant per transazione (Postgres reale, connection_limit=1)', () => {
 describe('Opzioni di $transaction e composizione col filtro per tenant', () => {
   const tenantUuid = '00000000-0000-0000-0000-000000000001'
 
-  beforeEach(() => {
-    queryLog.length = 0
+  beforeEach(async () => {
+    await azzeraLog()
   })
 
   it('le opzioni (isolationLevel, maxWait, timeout) arrivano alla transazione interattiva', async () => {
@@ -198,9 +223,9 @@ describe('Opzioni di $transaction e composizione col filtro per tenant', () => {
     const tenantPoi = client.$extends(rlsExtension)
     const rlsPoi = base.$extends(rlsExtension).$extends(estensioneTenantTransazione(base))
     for (const c of [tenantPoi, rlsPoi]) {
-      queryLog.length = 0
+      await azzeraLog()
       await TenantContext.run({ tenantId: tenantUuid }, async () => await c.user.count())
-      const sql = queryLog.map(q => q.trim())
+      const sql = (await logQuiescente()).map(q => q.trim())
       expect(sql[0]).toBe('BEGIN')
       expect(sql[1]).toContain('set_config')
       expect(sql[2]).toContain('"public"."users"')
@@ -210,8 +235,8 @@ describe('Opzioni di $transaction e composizione col filtro per tenant', () => {
 })
 
 describe('Casi aggiuntivi (revisione)', () => {
-  beforeEach(() => {
-    queryLog.length = 0
+  beforeEach(async () => {
+    await azzeraLog()
   })
 
   it('Unsafe: $queryRawUnsafe e $executeRawUnsafe passano da set_config', async () => {
@@ -223,7 +248,7 @@ describe('Casi aggiuntivi (revisione)', () => {
       return { letto: letto[0].v, n }
     })
     expect(r.letto).toBe('tenant-unsafe')
-    expect(queryLog.filter(q => q.includes('set_config'))).toHaveLength(2)
+    expect((await logQuiescente()).filter(q => q.includes('set_config'))).toHaveLength(2)
     expect(await leggiTenant()).toBe('')
   })
 
@@ -297,8 +322,8 @@ describe('Composizione: base già estesa con rlsExtension', () => {
   const rlsBase = base.$extends(rlsExtension)
   const composto = rlsBase.$extends(estensioneTenantTransazione(rlsBase))
 
-  beforeEach(() => {
-    queryLog.length = 0
+  beforeEach(async () => {
+    await azzeraLog()
   })
 
   it('interattiva: il tx è filtrato per tenant E ha il set_config', async () => {
@@ -307,7 +332,7 @@ describe('Composizione: base già estesa con rlsExtension', () => {
         await tx.user.count()
       })
     )
-    const sql = queryLog.map(q => q.trim())
+    const sql = (await logQuiescente()).map(q => q.trim())
     expect(sql[0]).toBe('BEGIN')
     expect(sql[1]).toContain('set_config')
     expect(sql[2]).toContain('"public"."users"')
@@ -319,7 +344,7 @@ describe('Composizione: base già estesa con rlsExtension', () => {
     await TenantContext.run({ tenantId: tenantUuid }, () =>
       composto.$transaction([composto.user.count(), composto.user.count()])
     )
-    const sql = queryLog.map(q => q.trim())
+    const sql = (await logQuiescente()).map(q => q.trim())
     expect(sql[0]).toBe('BEGIN')
     expect(sql[1]).toContain('set_config')
     expect(sql[2]).toContain('tenant_id')
