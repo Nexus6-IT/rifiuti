@@ -412,7 +412,6 @@ jobs:
     env:
       DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55433/wasteflow_ci?schema=public"
       POSTGRES_CI_CONTAINER: "postgres-e2e-${{ github.run_id }}"
-      REDIS_CI_CONTAINER: "redis-e2e-${{ github.run_id }}"
       FRONTEND_CI_CONTAINER: "frontend-e2e-${{ github.run_id }}"
       # Il frontend e' servito da nginx sulla porta 80 del container (vedi
       # step "Avvia il frontend"): con --network host quella e' anche la
@@ -508,36 +507,19 @@ jobs:
 
       # Redis: il backend lo richiede per avviarsi (BullMQ, sessioni, cache —
       # vedi redis.service.ts, redis.config.ts, permissions.module.ts,
-      # rentri-sync.queue.ts). Porta di default (6379), NON rimappata come
-      # Postgres: nessun'altra istanza Redis gira su questo runner (verificato
-      # il 2026-09-14, nessun container ne' processo in ascolto) e i quattro
-      # punti del codice che leggono la configurazione Redis non concordano
-      # tutti sullo stesso nome di variabile (REDIS_CLUSTER_NODES qui,
-      # REDIS_HOST/REDIS_PORT li' — entrambi pero' col medesimo default
-      # "localhost:6379"): restare sul default e' l'unico modo di essere
-      # sicuri che TUTTI i punti si connettano allo stesso Redis senza dover
-      # inseguire quell'incoerenza in questo task.
-      - name: Avvia Redis (docker run)
-        run: |
-          docker run -d --rm \
-            --name "$REDIS_CI_CONTAINER" \
-            --network host \
-            redis:7-alpine
-
-      - name: Attendi che Redis sia raggiungibile
-        run: |
-          for i in $(seq 1 30); do
-            if (exec 3<>/dev/tcp/127.0.0.1/6379) 2>/dev/null; then
-              exec 3<&- 3>&-
-              echo "Redis raggiungibile su 127.0.0.1:6379 (tentativo ${i})"
-              exit 0
-            fi
-            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
-            sleep 2
-          done
-          echo "Redis non raggiungibile su 127.0.0.1:6379 dopo 30 tentativi" >&2
-          docker logs "$REDIS_CI_CONTAINER" || true
-          exit 1
+      # rentri-sync.queue.ts). Gira su una porta host scelta dal kernel
+      # (scripts/ci/redis-job.sh, esporta REDIS_CI_PORT), come Postgres: con
+      # `container.network=host` la 6379 fissa collideva con il quality gate
+      # di deploy.yml e con gli altri job in parallelo.
+      #
+      # I punti del codice che leggono la configurazione Redis usano due nomi
+      # di variabile diversi, quindi i passi "Avvia il backend" le impostano
+      # TUTTE e due, sulla stessa porta:
+      #   - REDIS_CLUSTER_NODES=host:porta (redis.config.ts, permissions.module.ts)
+      #   - REDIS_HOST + REDIS_PORT (redis.service.ts, rentri-sync.queue.ts,
+      #     rentri-sync.job.ts)
+      - name: Avvia Redis (porta assegnata dal kernel)
+        run: bash scripts/ci/redis-job.sh avvia
 
       - name: Build backend (nest build)
         working-directory: apps/backend
@@ -597,6 +579,8 @@ jobs:
           SIGNATURE_PROVIDER: sandbox
           TSA_PROVIDER: mock
         run: |
+          export REDIS_HOST=127.0.0.1 REDIS_PORT="$REDIS_CI_PORT"
+          export REDIS_CLUSTER_NODES="127.0.0.1:$REDIS_CI_PORT"
           nohup node dist/main.js > /tmp/backend-e2e-prod.log 2>&1 &
           echo $! > /tmp/backend-e2e-prod.pid
 
@@ -719,6 +703,8 @@ jobs:
           SIGNATURE_PROVIDER: sandbox
           TSA_PROVIDER: mock
         run: |
+          export REDIS_HOST=127.0.0.1 REDIS_PORT="$REDIS_CI_PORT"
+          export REDIS_CLUSTER_NODES="127.0.0.1:$REDIS_CI_PORT"
           nohup node dist/main.js > /tmp/backend-e2e-devlogin.log 2>&1 &
           echo $! > /tmp/backend-e2e-devlogin.pid
 
@@ -773,7 +759,7 @@ jobs:
         if: always()
         run: |
           docker rm -f "$POSTGRES_CI_CONTAINER" 2>/dev/null || true
-          docker rm -f "$REDIS_CI_CONTAINER" 2>/dev/null || true
+          bash scripts/ci/redis-job.sh ferma
           docker rm -f "$FRONTEND_CI_CONTAINER" 2>/dev/null || true
           # Due possibili backend in vita a seconda di dove si e' fermato il
           # job (passata 1 sola, o anche la 2): entrambi i pid file, kill
