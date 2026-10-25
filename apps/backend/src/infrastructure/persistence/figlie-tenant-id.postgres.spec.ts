@@ -107,6 +107,8 @@ describe('tabelle figlie: tenant_id coerente col padre (Postgres reale)', () => 
           await tx.$executeRawUnsafe(
             `ALTER TABLE "${t}" DROP CONSTRAINT "${t}_fir_id_tenant_id_fkey"`
           )
+          // La policy (migration successiva) dipende dalla colonna: va tolta prima.
+          await tx.$executeRawUnsafe(`DROP POLICY IF EXISTS isolamento_azienda ON "${t}"`)
           await tx.$executeRawUnsafe(`ALTER TABLE "${t}" DROP COLUMN "tenant_id"`)
           await tx.$executeRawUnsafe(
             `ALTER TABLE "${t}" ADD CONSTRAINT "${t}_fir_id_fkey" FOREIGN KEY ("fir_id") REFERENCES "firs"("id") ON DELETE CASCADE ON UPDATE CASCADE`
@@ -114,6 +116,9 @@ describe('tabelle figlie: tenant_id coerente col padre (Postgres reale)', () => 
         }
         await tx.$executeRawUnsafe(
           `ALTER TABLE "autorizzazioni_impianto_discariche" DROP CONSTRAINT "autorizzazioni_impianto_discariche_autorizzazione_id_tenan_fkey"`
+        )
+        await tx.$executeRawUnsafe(
+          `DROP POLICY IF EXISTS isolamento_azienda ON "autorizzazioni_impianto_discariche"`
         )
         await tx.$executeRawUnsafe(
           `ALTER TABLE "autorizzazioni_impianto_discariche" DROP COLUMN "tenant_id"`

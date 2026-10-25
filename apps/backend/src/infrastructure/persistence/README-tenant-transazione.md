@@ -114,6 +114,33 @@ non e' nota: scansione di tutte le aziende, oppure ricerca di un'entita' prima d
 - **Seed cross-tenant** (`seed-test-user.ts`, `seeds/roles.seed.ts`): si collegano con
   `DATABASE_URL_SISTEMA`, altrimenti con `DATABASE_URL` e un avviso (`url-sistema.ts`).
 
+## Policy
+
+Migration `20261025130000_rls_policy_aziende`: su ogni tabella di `public` con colonna `tenant_id`
+(29) sono attive `ENABLE` e `FORCE ROW LEVEL SECURITY` e c'e' la policy `isolamento_azienda`, uguale
+per tutte e senza clausola `TO` (vale per ogni ruolo; `wasteflow` superuser e `wasteflow_sistema`
+BYPASSRLS la ignorano):
+
+```sql
+USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+```
+
+Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
+
+- **Coperte (29):** `activity_logs`, `autorizzazioni_impianto`, `autorizzazioni_impianto_discariche`,
+  `company_templates`, `consultant_tenant_associations`, `contracts`, `destinatari`,
+  `fir_allegati_rentri`, `fir_signatures`, `fir_transporters`, `firs`, `mud_reports`, `notifications`,
+  `permission_audit_logs`, `permission_requests`, `produttori`, `registro_progressivi_iniziali`,
+  `rentri_credentials`, `rentri_numeri_vidimati`, `rentri_sync_logs`, `rentri_unita_locali`,
+  `resource_ownership`, `role_change_history`, `roles`, `temporary_permission_grants`,
+  `trasportatori`, `user_role_assignments`, `users`, `waste_movements`.
+- **Escluse di proposito:** `role_permissions` (senza `tenant_id`, protetta indirettamente da `roles`),
+  `tenants` e `access_requests` (si leggono prima di conoscere l'azienda), le tabelle globali.
+- **Indici:** aggiunti `tenant_id` su `temporary_permission_grants` e `permission_requests`.
+- **Controllo:** `rls-catalogo.postgres.spec.ts` ricava le tabelle dal catalogo; una tabella futura con
+  `tenant_id` e senza policy fa fallire il test.
+
 ## Cosa resta
 
 - **2a e 2b: fatti.** Cron cross-tenant, lookup di login e refresh, verifica pubblica del FIR,

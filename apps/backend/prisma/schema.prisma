@@ -1548,6 +1548,7 @@ model TemporaryPermissionGrant {
   autoRevoked           Boolean   @default(false) @map("auto_revoked")
   revokedAt             DateTime? @map("revoked_at")
 
+  @@index([tenantId])
   @@index([userId, tenantId])
   @@index([endTime])
   @@map("temporary_permission_grants")
@@ -1597,6 +1598,7 @@ model PermissionRequest {
   // Relationships
   requestedRole Role? @relation(fields: [requestedRoleId], references: [id])
 
+  @@index([tenantId])
   @@index([userId, tenantId])
   @@index([status])
   @@map("permission_requests")
