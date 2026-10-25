@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/node'
 import { RentriCertificatoScadenzaJob } from './rentri-certificato-scadenza.job'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
@@ -57,14 +58,14 @@ describe('RentriCertificatoScadenzaJob', () => {
     job = new RentriCertificatoScadenzaJob(mockPrisma, mockMetrics, mockLogger)
   })
 
-  it('interroga solo le credenziali dei tenant attivi/in prova (ACTIVE/TRIAL)', async () => {
+  it('interroga solo le credenziali dei tenant attivi/in prova (ACTIVE/TRIAL), piattaforma esclusa', async () => {
     mockPrisma.rentriCredential.findMany.mockResolvedValue([])
 
     await job.eseguiControlloScadenza()
 
     expect(mockPrisma.tenant.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
+        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
       })
     )
     expect(mockPrisma.rentriCredential.findMany).toHaveBeenCalledWith(

@@ -112,6 +112,12 @@ export class AuditLoggingProcessor extends WorkerHost {
    */
   private async processPermissionCheck(job: Job, data: any): Promise<void> {
     try {
+      if (!data.spidFiscalCode || !data.sessionId) {
+        this.logger.warn(
+          `[AUDIT] Codice fiscale o sessione mancanti nel controllo permessi: riga salvata con valore vuoto (azione=${data.actionAttempted})`
+        )
+      }
+
       // Create permission audit log with cryptographic chaining
       const previousLog = await this.auditLogRepository.getLatestLog(data.tenantId)
       const previousHash = previousLog?.hash || '0' // Genesis log uses '0'

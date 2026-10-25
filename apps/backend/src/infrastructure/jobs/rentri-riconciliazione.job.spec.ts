@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/node'
 import { RentriRiconciliazioneJob } from './rentri-riconciliazione.job'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
@@ -64,14 +65,14 @@ describe('RentriRiconciliazioneJob', () => {
     expect(esito.tenantConErrore).toBe(0)
   })
 
-  it('interroga solo i tenant attivi/in prova (ACTIVE/TRIAL)', async () => {
+  it('interroga solo i tenant attivi/in prova (ACTIVE/TRIAL), piattaforma esclusa', async () => {
     mockPrisma.tenant.findMany.mockResolvedValue([])
 
     await job.eseguiRiconciliazione()
 
     expect(mockPrisma.tenant.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
+        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
       })
     )
   })

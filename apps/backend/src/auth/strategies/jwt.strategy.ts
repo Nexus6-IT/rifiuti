@@ -24,7 +24,7 @@ export interface CurrentUserPayload {
   permissions: string[]
   /**
    * Identificativo di sessione per l'audit: hash di `sub` e `iat` del token (nessun segreto nel
-   * valore). Cambia a ogni login, resta uguale per i token della stessa emissione.
+   * valore). Cambia a ogni emissione del token di accesso, refresh compreso.
    */
   sessionId?: string
   /** Presente solo se la sessione e' un'impersonificazione (id del SUPER_ADMIN). */
