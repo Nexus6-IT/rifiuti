@@ -24,6 +24,7 @@ import {
 import { UserRole, User } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
+import { assertNonPiattaforma } from '../../core/context/azienda-piattaforma'
 import { TenantContext } from '../../core/context/tenant-context'
 import { KeycloakUserAdapter } from '../../infrastructure/keycloak/keycloak-user.adapter'
 import { LoggerService } from '../../core/logger/logger.service'
@@ -114,6 +115,7 @@ export class UserAdminService {
     // 1. Determina e valida il tenant di destinazione.
     const targetTenantId = this.isSuperAdmin(currentUser) ? dto.tenantId : currentUser.tenantId
 
+    assertNonPiattaforma(targetTenantId)
     if (!targetTenantId) {
       throw new BadRequestException('tenantId obbligatorio per la creazione utente')
     }

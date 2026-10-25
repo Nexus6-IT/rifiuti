@@ -1,7 +1,14 @@
-import { readdirSync, readFileSync, statSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { join, relative, sep } from 'path'
 
 const SRC = join(__dirname, '..', '..')
+const BACKEND = join(SRC, '..')
+// Radici scansionate: il codice applicativo, i seed e gli script (anche questi leggono `tenants`).
+const RADICI = [
+  { dir: SRC, prefisso: '' },
+  { dir: join(BACKEND, 'prisma', 'seeds'), prefisso: 'prisma/seeds/' },
+  { dir: join(BACKEND, 'scripts'), prefisso: 'scripts/' },
+]
 
 /**
  * Test statico: nessuna lettura di `tenants` senza filtro.
@@ -18,18 +25,45 @@ const SRC = join(__dirname, '..', '..')
  * sistema) ne' sul contenuto semantico del filtro: serve a far notare a chi scrive e a chi
  * rivede una lettura di `tenants` aperta a tutte le aziende.
  */
-// Eccezioni: un file solo con un motivo scritto. Task 4 ha messo escludiPiattaforma() sulle liste.
-const ECCEZIONI: Record<string, string> = {
-  'application/admin/tenant.service.ts':
-    "list(): il `where` e' una variabile ({} per il super admin, che elenca di proposito tutte le aziende) ma passa da escludiPiattaforma(); count() della quota con where letterale",
-  'application/notifications/deadline-checker.service.ts':
-    'il `where` contiene lo spread di FILTRO_AZIENDE_TENUTE_AL_MUD (costante di filtro, mai vuota) dentro escludiPiattaforma() e subscriptionStatus letterale',
+// Eccezioni PER SINGOLA CHIAMATA: file + testo della chiamata (prefisso incluso, spazi normalizzati;
+// `contiene` deve comparire nella chiamata). Ogni eccezione deve combaciare con UNA sola chiamata
+// non conforme: una nuova lettura senza filtro nello stesso file, anche identica, fa fallire il test.
+interface Eccezione {
+  file: string
+  contiene: string
+  motivo: string
 }
+const ECCEZIONI: Eccezione[] = [
+  {
+    file: 'application/admin/tenant.service.ts',
+    contiene: 'this.sistema.tenant.findMany({ where: escludiPiattaforma(where)',
+    motivo:
+      "list() del super admin: il `where` e' una variabile ({} per elencare di proposito tutte le aziende) ma passa da escludiPiattaforma()",
+  },
+  {
+    file: 'application/admin/tenant.service.ts',
+    contiene: 'this.prisma.tenant.findMany({ where: escludiPiattaforma(where)',
+    motivo:
+      "list() dell'ADMIN: il `where` e' una variabile (filtro sulle aziende possedute) ma passa da escludiPiattaforma()",
+  },
+  {
+    file: 'application/notifications/deadline-checker.service.ts',
+    contiene: 'this.sistema.tenant.findMany({ where: escludiPiattaforma({ subscriptionStatus',
+    motivo:
+      'il `where` contiene lo spread di FILTRO_AZIENDE_TENUTE_AL_MUD (costante di filtro, mai vuota) dentro escludiPiattaforma() e subscriptionStatus letterale',
+  },
+  {
+    file: 'prisma/seeds/roles.seed.ts',
+    contiene: 'prisma.tenant.findMany({ where: escludiPiattaforma() })',
+    motivo:
+      'il seed dei ruoli scorre tutte le aziende clienti: escludiPiattaforma() senza argomento = tutte tranne la piattaforma',
+  },
+]
 
 type Esito = 'ok' | 'senza-where' | 'where-vuoto' | 'where-variabile' | 'raw-tenants'
 
 const CHIAMATA =
-  /\btenant\s*\.\s*(findMany|findFirst|findFirstOrThrow|count|aggregate|groupBy)\s*\(/g
+  /(?<![\w$])((?:[\w$]+\s*\.\s*)*)tenant\s*\.\s*(findMany|findFirst|findFirstOrThrow|count|aggregate|groupBy)\s*\(/g
 const RAW_TENANTS = /\$(queryRaw|executeRaw)(Unsafe)?[\s\S]{0,400}?\bfrom\s+"?tenants"?\b/gi
 
 function senzaCommenti(testo: string): string {
@@ -135,39 +169,80 @@ function sorgenti(dir: string): string[] {
   })
 }
 
-function violazioniDi(testo: string): Esito[] {
-  const out: Esito[] = []
+interface Violazione {
+  file: string
+  esito: Esito
+  chiamata: string
+}
+
+const normalizza = (t: string) => t.replace(/\s+/g, ' ').trim()
+
+function dettagliDi(testo: string, file = ''): Violazione[] {
+  const out: Violazione[] = []
   for (const m of testo.matchAll(CHIAMATA)) {
-    const esito = valuta(argomenti(testo, (m.index ?? 0) + m[0].length))
-    if (esito !== 'ok') out.push(esito)
+    const args = argomenti(testo, (m.index ?? 0) + m[0].length)
+    const esito = valuta(args)
+    if (esito !== 'ok') out.push({ file, esito, chiamata: normalizza(m[0] + args + ')') })
   }
-  for (const _raw of testo.matchAll(RAW_TENANTS)) out.push('raw-tenants')
+  for (const raw of testo.matchAll(RAW_TENANTS))
+    out.push({ file, esito: 'raw-tenants', chiamata: normalizza(raw[0]) })
   return out
 }
 
-function violazioni(): { file: string; esito: Esito }[] {
-  const out: { file: string; esito: Esito }[] = []
-  for (const f of sorgenti(SRC)) {
-    const rel = relative(SRC, f).split(sep).join('/')
-    if (rel.includes('/seed') || rel.startsWith('seed')) continue
-    const testo = senzaCommenti(readFileSync(f, 'utf8'))
-    for (const esito of violazioniDi(testo)) out.push({ file: rel, esito })
+function violazioniDi(testo: string): Esito[] {
+  return dettagliDi(testo).map(v => v.esito)
+}
+
+function violazioni(): Violazione[] {
+  const out: Violazione[] = []
+  for (const { dir, prefisso } of RADICI) {
+    if (!existsSync(dir)) continue
+    for (const f of sorgenti(dir)) {
+      const rel = relative(dir, f).split(sep).join('/')
+      if (!prefisso && (rel.includes('/seed') || rel.startsWith('seed'))) continue
+      out.push(...dettagliDi(senzaCommenti(readFileSync(f, 'utf8')), prefisso + rel))
+    }
   }
   return out
+}
+
+const copre = (e: Eccezione, v: Violazione) => v.file === e.file && v.chiamata.includes(e.contiene)
+
+/** Violazioni non coperte da un'eccezione + eccezioni che non combaciano con esattamente una chiamata. */
+function esamina(viol: Violazione[], eccezioni: Eccezione[]) {
+  return {
+    fuori: viol.filter(v => !eccezioni.some(e => copre(e, v))),
+    eccezioniNonUniche: eccezioni
+      .filter(e => viol.filter(v => copre(e, v)).length !== 1)
+      .map(e => e.contiene),
+  }
 }
 
 describe('letture di tenants', () => {
   it('ogni lettura di tenants ha un where letterale non vuoto (salvo eccezioni motivate)', () => {
-    const fuori = violazioni().filter(v => !(v.file in ECCEZIONI))
-    expect(fuori).toEqual([])
+    expect(esamina(violazioni(), ECCEZIONI).fuori).toEqual([])
   })
 
-  it('le eccezioni sono ancora necessarie e hanno un motivo', () => {
-    const presenti = new Set(violazioni().map(v => v.file))
-    for (const [file, motivo] of Object.entries(ECCEZIONI)) {
-      expect({ file, ancoraServe: presenti.has(file) }).toEqual({ file, ancoraServe: true })
-      expect(motivo.trim().length).toBeGreaterThan(10)
+  it('ogni eccezione copre una sola chiamata, ancora presente, ed ha un motivo', () => {
+    expect(esamina(violazioni(), ECCEZIONI).eccezioniNonUniche).toEqual([])
+    for (const e of ECCEZIONI) expect(e.motivo.trim().length).toBeGreaterThan(10)
+  })
+
+  it('test del test: una nuova lettura senza filtro in un file con eccezione fa fallire', () => {
+    const ecc = ECCEZIONI[0]
+    const base = violazioni()
+    // altra chiamata non conforme nello stesso file, di forma diversa
+    const nuova: Violazione = {
+      file: ecc.file,
+      esito: 'senza-where',
+      chiamata: 'this.prisma.tenant.findMany({ select: {} })',
     }
+    expect(esamina([...base, nuova], ECCEZIONI).fuori).toEqual([nuova])
+    // altra chiamata IDENTICA a quella eccepita: l'eccezione non e' piu' univoca
+    const clone = { ...base.find(v => copre(ecc, v))! }
+    expect(esamina([...base, clone], ECCEZIONI).eccezioniNonUniche).toEqual([ecc.contiene])
+    // chiamata eccepita sparita: l'eccezione e' da togliere
+    expect(esamina([], ECCEZIONI).eccezioniNonUniche).toHaveLength(ECCEZIONI.length)
   })
 
   it("l'analizzatore riconosce i casi sbagliati", () => {
@@ -197,5 +272,9 @@ describe('letture di tenants', () => {
     expect(violazioniDi('x.tenant.findFirstOrThrow({ where: {} })')).toEqual(['where-vuoto'])
     expect(violazioniDi('x.$queryRaw`SELECT * FROM tenants`')).toEqual(['raw-tenants'])
     expect(violazioniDi('x.tenant.count({ where: { a: 1 } })')).toEqual([])
+    expect(violazioniDi('mytenant.findMany()')).toEqual([])
+    expect(dettagliDi('this.sistema.tenant\n .findMany({ select: {} })')[0].chiamata).toBe(
+      'this.sistema.tenant .findMany({ select: {} })'
+    )
   })
 })

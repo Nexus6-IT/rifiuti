@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 
 /**
@@ -23,4 +24,17 @@ export function escludiPiattaforma(where?: Prisma.TenantWhereInput): Prisma.Tena
 /** Toglie l'azienda piattaforma da un elenco di id. */
 export function escludiPiattaformaDaId(ids: string[]): string[] {
   return ids.filter(id => id !== AZIENDA_PIATTAFORMA_ID)
+}
+
+/**
+ * La piattaforma e' un'azienda tecnica: non si puo' usare come madre di un gruppo, modificare,
+ * sospendere/riattivare, cancellare, ne' creare utenti al suo interno. Il messaggio non riporta l'id.
+ * @throws BadRequestException se `id` e' l'azienda piattaforma.
+ */
+export function assertNonPiattaforma(id: string | null | undefined): void {
+  if (id === AZIENDA_PIATTAFORMA_ID) {
+    throw new BadRequestException(
+      "L'azienda piattaforma e' tecnica e non si puo' modificare o usare come azienda cliente"
+    )
+  }
 }

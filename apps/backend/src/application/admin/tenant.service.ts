@@ -15,7 +15,7 @@ import { seedRolesForTenant } from './system-roles'
 import { TenantContext } from '../../core/context/tenant-context'
 import { mapConLimite } from '../../core/utils/map-con-limite'
 import { MembershipService } from '../../api/me/membership.service'
-import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
+import { assertNonPiattaforma, escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
  * TenantService (admin)
@@ -193,6 +193,7 @@ export class TenantService {
     // `aziendeLimit`, comanda quello e il `User.companyLimit` non si applica.
     let quotaDiGruppoInVigore = false
     if (dto.parentTenantId) {
+      assertNonPiattaforma(dto.parentTenantId)
       const madre = await this.prisma.tenant.findUnique({
         where: { id: dto.parentTenantId },
         select: { id: true, parentTenantId: true, aziendeLimit: true },
@@ -471,6 +472,7 @@ export class TenantService {
    * @throws ForbiddenException se l'ADMIN non è il proprietario.
    */
   async update(currentUser: CurrentUser, id: string, dto: UpdateTenantDto) {
+    assertNonPiattaforma(id)
     // Verifica esistenza (getById lancia NotFound se assente).
     const isSuperAdmin = this.isSuperAdmin(currentUser)
     const tenant = await this.getById(id, isSuperAdmin)
@@ -541,6 +543,7 @@ export class TenantService {
    * @throws NotFoundException se il tenant non esiste.
    */
   async setStatus(id: string, status: 'SUSPENDED' | 'ACTIVE') {
+    assertNonPiattaforma(id)
     // Verifica esistenza (getById lancia NotFound se assente).
     await this.getById(id, true)
 

@@ -9,10 +9,13 @@
 --  * subscription_status = SUSPENDED: fuori da ogni scansione ACTIVE/TRIAL (cron delle
 --    scadenze, RENTRI, MUD) e mai "attiva" per la fatturazione; subscription_tier = TRIAL
 --    (nessun piano a pagamento), nessun customer/subscription Stripe;
---  * fir_limit_per_month = 0 e user_limit_total = 0: non puo' creare FIR ne' utenti;
+--  * fir_limit_per_month = 0 e user_limit_total = 0: valori neutri, NON applicati dal server (non
+--    impediscono da soli di creare FIR o utenti: lo impediscono lo stato SUSPENDED e
+--    assertNonPiattaforma nel codice applicativo);
 --  * mud_non_dovuto = true: niente promemoria ne' scadenze MUD;
 --  * rentri_modalita_legame = MANUALE: nessuna trasmissione automatica;
---  * partita_iva '00000000000' (non valida come P.IVA reale), nessun owner, nessuna madre.
+--  * partita_iva '00000000000': supera il controllo del check digit, quindi NON e' invalida, e'
+--    solo non assegnata a nessun cliente; nessun owner, nessuna madre.
 -- Il filtro applicativo (escludiPiattaforma) resta la difesa principale; lo stato SUSPENDED
 -- e' una seconda cintura. Idempotente: ON CONFLICT DO NOTHING.
 -- `tenants` non ha RLS, quindi l'inserimento non richiede un contesto azienda.
