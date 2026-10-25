@@ -98,57 +98,76 @@ describe('tabelle figlie: tenant_id coerente col padre (Postgres reale)', () => 
       data: { tenantId: tenantA, estremi: 'T2-0' },
     })
 
+    // ATTENZIONE: questo test prende lock ACCESS EXCLUSIVE su firs e sulle figlie per tutta la
+    // durata della transazione: non lanciare gli spec Postgres in parallelo sullo stesso DB.
     const rb = new Error('rollback')
     await expect(
-      prisma.$transaction(async tx => {
-        // Riporta lo schema alla forma di prima della migration (DDL transazionale:
-        // alla fine si annulla tutto con il rollback).
-        for (const t of ['fir_signatures', 'fir_transporters', 'fir_allegati_rentri']) {
+      prisma.$transaction(
+        async tx => {
+          // Riporta lo schema alla forma di prima della migration (DDL transazionale:
+          // alla fine si annulla tutto con il rollback).
+          for (const t of ['fir_signatures', 'fir_transporters', 'fir_allegati_rentri']) {
+            await tx.$executeRawUnsafe(
+              `ALTER TABLE "${t}" DROP CONSTRAINT "${t}_fir_id_tenant_id_fkey"`
+            )
+            // La policy (migration successiva) dipende dalla colonna: va tolta prima.
+            await tx.$executeRawUnsafe(`DROP POLICY IF EXISTS isolamento_azienda ON "${t}"`)
+            await tx.$executeRawUnsafe(`ALTER TABLE "${t}" DROP COLUMN "tenant_id"`)
+            await tx.$executeRawUnsafe(
+              `ALTER TABLE "${t}" ADD CONSTRAINT "${t}_fir_id_fkey" FOREIGN KEY ("fir_id") REFERENCES "firs"("id") ON DELETE CASCADE ON UPDATE CASCADE`
+            )
+          }
           await tx.$executeRawUnsafe(
-            `ALTER TABLE "${t}" DROP CONSTRAINT "${t}_fir_id_tenant_id_fkey"`
+            `ALTER TABLE "autorizzazioni_impianto_discariche" DROP CONSTRAINT "autorizzazioni_impianto_discariche_autorizzazione_id_tenan_fkey"`
           )
-          // La policy (migration successiva) dipende dalla colonna: va tolta prima.
-          await tx.$executeRawUnsafe(`DROP POLICY IF EXISTS isolamento_azienda ON "${t}"`)
-          await tx.$executeRawUnsafe(`ALTER TABLE "${t}" DROP COLUMN "tenant_id"`)
           await tx.$executeRawUnsafe(
-            `ALTER TABLE "${t}" ADD CONSTRAINT "${t}_fir_id_fkey" FOREIGN KEY ("fir_id") REFERENCES "firs"("id") ON DELETE CASCADE ON UPDATE CASCADE`
+            `DROP POLICY IF EXISTS isolamento_azienda ON "autorizzazioni_impianto_discariche"`
           )
-        }
-        await tx.$executeRawUnsafe(
-          `ALTER TABLE "autorizzazioni_impianto_discariche" DROP CONSTRAINT "autorizzazioni_impianto_discariche_autorizzazione_id_tenan_fkey"`
-        )
-        await tx.$executeRawUnsafe(
-          `DROP POLICY IF EXISTS isolamento_azienda ON "autorizzazioni_impianto_discariche"`
-        )
-        await tx.$executeRawUnsafe(
-          `ALTER TABLE "autorizzazioni_impianto_discariche" DROP COLUMN "tenant_id"`
-        )
-        await tx.$executeRawUnsafe(
-          `ALTER TABLE "autorizzazioni_impianto_discariche" ADD CONSTRAINT "autorizzazioni_impianto_discariche_autorizzazione_id_fkey" FOREIGN KEY ("autorizzazione_id") REFERENCES "autorizzazioni_impianto"("id") ON DELETE CASCADE ON UPDATE CASCADE`
-        )
-        await tx.$executeRawUnsafe(`DROP INDEX "firs_id_tenant_id_key"`)
-        await tx.$executeRawUnsafe(`DROP INDEX "autorizzazioni_impianto_id_tenant_id_key"`)
+          await tx.$executeRawUnsafe(
+            `ALTER TABLE "autorizzazioni_impianto_discariche" DROP COLUMN "tenant_id"`
+          )
+          await tx.$executeRawUnsafe(
+            `ALTER TABLE "autorizzazioni_impianto_discariche" ADD CONSTRAINT "autorizzazioni_impianto_discariche_autorizzazione_id_fkey" FOREIGN KEY ("autorizzazione_id") REFERENCES "autorizzazioni_impianto"("id") ON DELETE CASCADE ON UPDATE CASCADE`
+          )
+          await tx.$executeRawUnsafe(`DROP INDEX "firs_id_tenant_id_key"`)
+          await tx.$executeRawUnsafe(`DROP INDEX "autorizzazioni_impianto_id_tenant_id_key"`)
 
-        // Righe "legacy" senza tenant_id.
-        await tx.$executeRawUnsafe(
-          `INSERT INTO "fir_transporters" ("fir_id","ordine","tipo_tratta","denominazione") VALUES ('${fir.id}'::uuid, 1, 'TERRESTRE', 'Legacy')`
-        )
-        await tx.$executeRawUnsafe(
-          `INSERT INTO "autorizzazioni_impianto_discariche" ("autorizzazione_id") VALUES ('${aut.id}'::uuid)`
-        )
+          // Righe "legacy" senza tenant_id.
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "fir_signatures" ("fir_id","user_id","role","signed_at","signature_value","certificate_hash","document_hash") VALUES ('${fir.id}'::uuid, '${userA}'::uuid, 'PRODUTTORE', now(), 'x', 'x', 'x')`
+          )
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "fir_allegati_rentri" ("fir_id","rentri_allegato_id","filename","mime_type","size_bytes","caricato_da") VALUES ('${fir.id}'::uuid, 1, 'a.pdf', 'application/pdf', 1, '${userA}'::uuid)`
+          )
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "fir_transporters" ("fir_id","ordine","tipo_tratta","denominazione") VALUES ('${fir.id}'::uuid, 1, 'TERRESTRE', 'Legacy')`
+          )
+          await tx.$executeRawUnsafe(
+            `INSERT INTO "autorizzazioni_impianto_discariche" ("autorizzazione_id") VALUES ('${aut.id}'::uuid)`
+          )
 
-        for (const istr of istruzioniMigration()) await tx.$executeRawUnsafe(istr)
+          for (const istr of istruzioniMigration()) await tx.$executeRawUnsafe(istr)
 
-        const t = await tx.$queryRawUnsafe<{ tenant_id: string }[]>(
-          `SELECT tenant_id::text FROM fir_transporters WHERE fir_id = '${fir.id}'::uuid`
-        )
-        const d = await tx.$queryRawUnsafe<{ tenant_id: string }[]>(
-          `SELECT tenant_id::text FROM autorizzazioni_impianto_discariche WHERE autorizzazione_id = '${aut.id}'::uuid`
-        )
-        expect(t.map(r => r.tenant_id)).toEqual([tenantA])
-        expect(d.map(r => r.tenant_id)).toEqual([tenantA])
-        throw rb
-      })
+          const fi = await tx.$queryRawUnsafe<{ tenant_id: string }[]>(
+            `SELECT tenant_id::text FROM fir_signatures WHERE fir_id = '${fir.id}'::uuid`
+          )
+          const al = await tx.$queryRawUnsafe<{ tenant_id: string }[]>(
+            `SELECT tenant_id::text FROM fir_allegati_rentri WHERE fir_id = '${fir.id}'::uuid`
+          )
+          const t = await tx.$queryRawUnsafe<{ tenant_id: string }[]>(
+            `SELECT tenant_id::text FROM fir_transporters WHERE fir_id = '${fir.id}'::uuid`
+          )
+          const d = await tx.$queryRawUnsafe<{ tenant_id: string }[]>(
+            `SELECT tenant_id::text FROM autorizzazioni_impianto_discariche WHERE autorizzazione_id = '${aut.id}'::uuid`
+          )
+          expect(fi.map(r => r.tenant_id)).toEqual([tenantA])
+          expect(al.map(r => r.tenant_id)).toEqual([tenantA])
+          expect(t.map(r => r.tenant_id)).toEqual([tenantA])
+          expect(d.map(r => r.tenant_id)).toEqual([tenantA])
+          throw rb
+        },
+        { timeout: 30000 }
+      )
     ).rejects.toBe(rb)
   })
 
@@ -169,7 +188,7 @@ describe('tabelle figlie: tenant_id coerente col padre (Postgres reale)', () => 
           denominazione: 'X',
         },
       })
-    ).rejects.toThrow()
+    ).rejects.toMatchObject({ code: 'P2003' })
     await expect(
       prisma.fIRSignature.create({
         data: {
@@ -183,7 +202,7 @@ describe('tabelle figlie: tenant_id coerente col padre (Postgres reale)', () => 
           documentHash: 'x',
         },
       })
-    ).rejects.toThrow()
+    ).rejects.toMatchObject({ code: 'P2003' })
     await expect(
       prisma.fIRAllegatoRentri.create({
         data: {
@@ -196,12 +215,12 @@ describe('tabelle figlie: tenant_id coerente col padre (Postgres reale)', () => 
           caricatoDa: userA,
         },
       })
-    ).rejects.toThrow()
+    ).rejects.toMatchObject({ code: 'P2003' })
     await expect(
       prisma.autorizzazioneImpiantoDiscarica.create({
         data: { autorizzazioneId: aut.id, tenantId: tenantB },
       })
-    ).rejects.toThrow()
+    ).rejects.toMatchObject({ code: 'P2003' })
     // Col tenant giusto passa.
     await prisma.autorizzazioneImpiantoDiscarica.create({
       data: { autorizzazioneId: aut.id, tenantId: tenantA },

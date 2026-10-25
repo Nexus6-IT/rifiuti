@@ -135,8 +135,16 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
   `rentri_credentials`, `rentri_numeri_vidimati`, `rentri_sync_logs`, `rentri_unita_locali`,
   `resource_ownership`, `role_change_history`, `roles`, `temporary_permission_grants`,
   `trasportatori`, `user_role_assignments`, `users`, `waste_movements`.
-- **Escluse di proposito:** `role_permissions` (senza `tenant_id`, protetta indirettamente da `roles`),
-  `tenants` e `access_requests` (si leggono prima di conoscere l'azienda), le tabelle globali.
+- **Escluse di proposito:**
+  - `role_permissions` (senza `tenant_id`): le letture sono filtrate dal join con `roles`, ma le
+    scritture (INSERT/DELETE con il `role_id` di un'altra azienda) sono protette solo
+    dall'applicazione. Seguito possibile: policy `USING (EXISTS (SELECT 1 FROM roles r WHERE r.id = role_id))`.
+  - `tenants` e `access_requests` (si leggono prima di conoscere l'azienda). `tenants` resta
+    leggibile e scrivibile da `wasteflow_app` per scelta: un `tenant.findMany` senza filtro col client
+    dell'app esporrebbe i dati di tutte le aziende.
+  - Tabelle globali: `permissions`, `permission_policies`, `abac_policies`, `backup_schedules`,
+    `backup_histories`, `cer_codes`, `ateco_codes`, `istat_comuni`, `istat_nazioni`, `istat_province`,
+    `rentri_codifiche_semplici`, `rentri_comuni`, `rentri_nazioni`, `rentri_province`, `_prisma_migrations`.
 - **Indici:** aggiunti `tenant_id` su `temporary_permission_grants` e `permission_requests`.
 - **Controllo:** `rls-catalogo.postgres.spec.ts` ricava le tabelle dal catalogo; una tabella futura con
   `tenant_id` e senza policy fa fallire il test.

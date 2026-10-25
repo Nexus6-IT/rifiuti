@@ -29,6 +29,8 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
         rls: boolean
         forzata: boolean
         policy: string | null
+        permissive: string | null
+        n_policy: number
         cmd: string | null
         roles: string | null
         qual: string | null
@@ -36,7 +38,8 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
       }>
     >`
       SELECT c.relname AS tabella, c.relrowsecurity AS rls, c.relforcerowsecurity AS forzata,
-             p.policyname AS policy, p.cmd, p.roles::text AS roles, p.qual, p.with_check
+             p.policyname AS policy, p.permissive, p.cmd,
+             (SELECT count(*)::int FROM pg_policies q WHERE q.schemaname = 'public' AND q.tablename = c.relname) AS n_policy, p.roles::text AS roles, p.qual, p.with_check
       FROM information_schema.columns k
       JOIN pg_class c ON c.relname = k.table_name AND c.relkind = 'r'
       JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
@@ -51,9 +54,18 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
         rls: true,
         forzata: true,
       })
-      expect({ t: r.tabella, policy: r.policy, cmd: r.cmd, roles: r.roles }).toEqual({
+      expect({
+        t: r.tabella,
+        policy: r.policy,
+        permissive: r.permissive,
+        n: r.n_policy,
+        cmd: r.cmd,
+        roles: r.roles,
+      }).toEqual({
         t: r.tabella,
         policy: 'isolamento_azienda',
+        permissive: 'PERMISSIVE',
+        n: 1,
         cmd: 'ALL',
         roles: '{public}',
       })
@@ -63,11 +75,18 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
   })
 
   it('le esclusioni volute restano senza RLS', async () => {
-    const righe = await prisma.$queryRaw<Array<{ tabella: string; rls: boolean }>>`
-      SELECT relname AS tabella, relrowsecurity AS rls FROM pg_class
+    const righe = await prisma.$queryRaw<
+      Array<{ tabella: string; rls: boolean; forzata: boolean }>
+    >`
+      SELECT relname AS tabella, relrowsecurity AS rls, relforcerowsecurity AS forzata FROM pg_class
       WHERE relkind = 'r' AND relnamespace = 'public'::regnamespace
         AND relname IN ('role_permissions', 'tenants', 'access_requests')`
     expect(righe.map(r => r.tabella).sort()).toEqual([...SENZA_RLS].sort())
-    for (const r of righe) expect(r.rls).toBe(false)
+    for (const r of righe)
+      expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({
+        t: r.tabella,
+        rls: false,
+        forzata: false,
+      })
   })
 })
