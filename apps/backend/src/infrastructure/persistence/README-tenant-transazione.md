@@ -219,6 +219,9 @@ password e `GRANT wasteflow_lettura TO rifiuti_testing` si rifanno a mano.
   - cruscotto di gruppo e `listTenants` non chiamano `escludiPiattaforma`: oggi la piattaforma resta fuori
     perche' non ha madre ne' associazioni, e un test lo verifica (se questo cambia, aggiungere l'helper);
   - `sola_lettura` copre anche `rentri_credentials` e `users`: da valutare con il minimo privilegio.
+  - con `X-Tenant-ID` = piattaforma un SUPER_ADMIN raggiunge ancora scritture nel contesto della richiesta (`billing.service`, `mud-obbligo.service`, `rentri-modalita-legame.service`): `assertNonPiattaforma` copre solo tenant e creazione utenti.
+  - il guard non controlla che l'azienda di `X-Tenant-ID` esista: un SUPER_ADMIN puo' mandare righe di audit verso un UUID inesistente (`permission_audit_logs.tenant_id` non ha FK).
+  - middleware e guard leggono il ruolo SUPER_ADMIN da fonti diverse (token e database): differenza al massimo per la durata del token.
 
 ## Azienda piattaforma
 
