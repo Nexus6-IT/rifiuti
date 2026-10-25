@@ -14,6 +14,8 @@ const PUNTI_DI_SISTEMA: Record<string, string> = {
     "aziende possedute, associate e figlie: elenco prima di conoscere l'azienda di destinazione",
   'api/me/ruolo-effettivo.service.ts':
     'azienda di destinazione e associazioni consulente diverse da quella del contesto (anche al refresh)',
+  'application/admin/audit-piattaforma.service.ts':
+    "audit dell'azienda piattaforma letto da una richiesta che ha un'altra azienda (o nessuna) nel contesto: legato al ruolo SUPER_ADMIN della rotta, azienda sempre la costante",
   'application/admin/impersonation.service.ts':
     "l'utente da impersonare appartiene a un'altra azienda rispetto al super admin",
   'application/admin/system-health/evidenze-db.service.ts':

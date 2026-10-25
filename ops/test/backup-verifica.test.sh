@@ -582,6 +582,9 @@ SQL
   # di destinazione non esistono. Il restore deve crearli (NOLOGIN) prima di caricare
   # il dump. RESTORE_RUOLI sostituisce i nomi di produzione con ruoli di prova, per
   # non toccare wasteflow_app/wasteflow_sistema del cluster di test.
+  # Il default di RUOLI_BASE deve coprire i ruoli esterni presenti nei dump di produzione.
+  verifica "restore: RUOLI_BASE di default contiene wasteflow_lettura e rifiuti_testing" 0 \
+    grep -Eq "^RUOLI_BASE=.*wasteflow_lettura.*rifiuti_testing" "$RADICE/ops/restore.sh"
   RUOLI_PROVA="prova_ruolo_a prova_ruolo_b"
   for r in $RUOLI_PROVA; do
     pg_exec psql -U "$DB_USER" -d postgres -qAtc "DROP ROLE IF EXISTS $r" >/dev/null 2>&1

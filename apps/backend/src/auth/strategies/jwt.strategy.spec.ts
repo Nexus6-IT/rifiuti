@@ -72,6 +72,8 @@ describe('JwtStrategy', () => {
         tenantId: 'tenant-123',
         role: 'ADMIN',
         permissions: [],
+        // Sessione per l'audit: hash di sub+iat (32 hex), senza segreti nel valore.
+        sessionId: expect.stringMatching(/^[0-9a-f]{32}$/),
       })
     })
 

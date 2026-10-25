@@ -5,6 +5,8 @@ import { AuthModule } from '../../auth/auth.module'
 import { MeModule } from '../../api/me/me.module'
 import { TenantController } from '../../api/admin/tenant.controller'
 import { TenantService } from './tenant.service'
+import { AuditPiattaformaController } from '../../api/admin/audit-piattaforma.controller'
+import { AuditPiattaformaService } from './audit-piattaforma.service'
 
 /**
  * AdminTenantModule
@@ -26,8 +28,8 @@ import { TenantService } from './tenant.service'
  */
 @Module({
   imports: [PrismaModule, AuthModule, LoggerModule, MeModule],
-  controllers: [TenantController],
-  providers: [TenantService],
+  controllers: [TenantController, AuditPiattaformaController],
+  providers: [TenantService, AuditPiattaformaService],
   exports: [TenantService],
 })
 export class AdminTenantModule {}

@@ -7,6 +7,9 @@ import {
   Inject,
 } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
+import { isUUID } from 'class-validator'
+import { TenantContext } from '../../core/context/tenant-context'
+import { AZIENDA_PIATTAFORMA_ID } from '../../core/context/azienda-piattaforma'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator'
@@ -80,6 +83,18 @@ export class PermissionGuard implements CanActivate {
     // tenant. Corretto leggendo `user.id`.
     const { id: userId, tenantId } = user
 
+    // Azienda a cui attribuire l'audit. Solo per il SUPER_ADMIN conta l'azienda effettiva della
+    // richiesta: con `X-Tenant-ID` (il middleware lo onora per lui) e' quella scelta, senza
+    // header le sue azioni vanno all'azienda tecnica "piattaforma". I permessi restano quelli
+    // dell'azienda di casa (le assegnazioni di ruolo stanno li', non nell'azienda scelta).
+    // Consulenti e utenti normali: azienda del token, come prima.
+    // SEGUITO (fuori ambito): per un consulente su un'azienda cliente il ruolo sta in
+    // consultant_tenant_associations.role_id, e questo guard gira PRIMA del TenantSwitchInterceptor
+    // che convalida l'header: servono validazione e risoluzione dei permessi dall'associazione.
+    const isSuperAdmin = user.role === 'SUPER_ADMIN'
+    const aziendaScelta = isSuperAdmin ? this.aziendaDaHeader(request) : null
+    const aziendaAudit: string = isSuperAdmin ? (aziendaScelta ?? AZIENDA_PIATTAFORMA_ID) : tenantId
+
     try {
       // Step 1: Check cache for user permissions
       let userPermissions = await this.permissionCache.getPermissions(tenantId, userId)
@@ -89,7 +104,15 @@ export class PermissionGuard implements CanActivate {
       // must NEVER blindly deny a legitimate user.
       if (!userPermissions) {
         this.logger.debug(`Cache miss for user ${userId} - fetching from database`)
-        userPermissions = await this.loadPermissionsFromDb(userId, tenantId)
+        // Il super admin con header ha nel contesto l'azienda scelta: le sue assegnazioni di ruolo
+        // (azienda di casa) con la RLS attiva non si vedrebbero. Si leggono nel contesto di casa.
+        userPermissions =
+          aziendaScelta && tenantId
+            ? await TenantContext.run(
+                { tenantId, userId, isSuperAdmin: true },
+                async () => await this.loadPermissionsFromDb(userId, tenantId)
+              )
+            : await this.loadPermissionsFromDb(userId, tenantId)
 
         // Populate the cache so subsequent requests hit the fast path.
         // Cache write failures must not break the authorization decision.
@@ -170,12 +193,13 @@ export class PermissionGuard implements CanActivate {
           : undefined
 
       // Extract audit metadata from request
+      // Codice fiscale dell'utente e sessione ricavata dal token (v. JwtStrategy): colonne NOT NULL.
       const auditMetadata = AuditMetadata.fromRequest({
-        sessionId: request.session?.id,
+        sessionId: request.session?.id ?? user.sessionId,
         ip: request.ip,
         headers: request.headers,
         user: {
-          spidFiscalCode: user.spidFiscalCode,
+          spidFiscalCode: user.fiscalCode ?? user.spidFiscalCode,
         },
       })
 
@@ -185,7 +209,7 @@ export class PermissionGuard implements CanActivate {
       // Log asynchronously (non-blocking - <1ms overhead)
       this.logAuditEntry(
         userId,
-        tenantId,
+        aziendaAudit,
         requiredPermission,
         resourceType,
         decision,
@@ -306,6 +330,14 @@ export class PermissionGuard implements CanActivate {
     return false
   }
 
+  /** Azienda scelta con `X-Tenant-ID` (solo UUID validi), oppure null. */
+  private aziendaDaHeader(request: any): string | null {
+    const raw = request?.headers?.['x-tenant-id']
+    const valore = Array.isArray(raw) ? raw[0] : raw
+    const pulito = typeof valore === 'string' ? valore.trim() : ''
+    return pulito && isUUID(pulito, 'all') ? pulito : null
+  }
+
   /**
    * Log audit entry asynchronously
    * T149: Log all permission checks via BullMQ with <1ms overhead
@@ -322,8 +354,8 @@ export class PermissionGuard implements CanActivate {
     auditMetadata: AuditMetadata,
     evaluatedPolicies?: any[]
   ): Promise<void> {
-    // Super admin senza azienda nel contesto: il job di audit richiede un tenantId (le righe
-    // di audit sono per azienda), quindi non si accoda. L'audit su piu' aziende e' fuori ambito.
+    // Le righe di audit sono per azienda (per il super admin senza azienda scelta e' gia' la
+    // piattaforma): senza azienda l'evento non si accoda.
     if (!tenantId) {
       this.logger.debug('[AUDIT] Evento non accodato: nessuna azienda nel contesto')
       return

@@ -15,6 +15,7 @@ import { seedRolesForTenant } from './system-roles'
 import { TenantContext } from '../../core/context/tenant-context'
 import { mapConLimite } from '../../core/utils/map-con-limite'
 import { MembershipService } from '../../api/me/membership.service'
+import { assertNonPiattaforma, escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
  * TenantService (admin)
@@ -90,7 +91,7 @@ export class TenantService {
     // dal tenant nello store (il middleware gli mette sempre il proprio o quello dell'header).
     if (this.isSuperAdmin(currentUser)) {
       return await this.sistema.tenant.findMany({
-        where,
+        where: escludiPiattaforma(where),
         orderBy: { ragioneSociale: 'asc' },
         include: {
           _count: {
@@ -103,7 +104,7 @@ export class TenantService {
     // ADMIN: le aziende possedute sono altre rispetto al suo contesto; il conteggio utenti di
     // ciascuna si legge nel suo contesto (client normale).
     const aziende = await this.prisma.tenant.findMany({
-      where,
+      where: escludiPiattaforma(where),
       orderBy: { ragioneSociale: 'asc' },
     })
     // Una transazione per azienda: al massimo 4 insieme, per non esaurire il pool.
@@ -192,6 +193,7 @@ export class TenantService {
     // `aziendeLimit`, comanda quello e il `User.companyLimit` non si applica.
     let quotaDiGruppoInVigore = false
     if (dto.parentTenantId) {
+      assertNonPiattaforma(dto.parentTenantId)
       const madre = await this.prisma.tenant.findUnique({
         where: { id: dto.parentTenantId },
         select: { id: true, parentTenantId: true, aziendeLimit: true },
@@ -470,6 +472,7 @@ export class TenantService {
    * @throws ForbiddenException se l'ADMIN non è il proprietario.
    */
   async update(currentUser: CurrentUser, id: string, dto: UpdateTenantDto) {
+    assertNonPiattaforma(id)
     // Verifica esistenza (getById lancia NotFound se assente).
     const isSuperAdmin = this.isSuperAdmin(currentUser)
     const tenant = await this.getById(id, isSuperAdmin)
@@ -540,6 +543,7 @@ export class TenantService {
    * @throws NotFoundException se il tenant non esiste.
    */
   async setStatus(id: string, status: 'SUSPENDED' | 'ACTIVE') {
+    assertNonPiattaforma(id)
     // Verifica esistenza (getById lancia NotFound se assente).
     await this.getById(id, true)
 

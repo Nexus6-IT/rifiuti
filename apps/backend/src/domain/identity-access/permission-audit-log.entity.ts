@@ -154,8 +154,13 @@ export class PermissionAuditLog {
   }
 
   /**
-   * Calculate SHA-256 hash of this log entry
-   * Hash includes all fields except the hash itself
+   * Calculate SHA-256 hash of this log entry.
+   *
+   * Copre SOLO i campi che la tabella `permission_audit_logs` salva davvero (id, userId,
+   * tenantId, actionAttempted, resourceType, resourceId, decision, spidFiscalCode, sessionId,
+   * timestamp, previousHash): `reason`, `ipAddress` e `userAgent` non hanno una colonna, quindi
+   * includerli renderebbe l'hash non verificabile su una riga riletta. `null` e `undefined`
+   * valgono allo stesso modo (il database restituisce null dove l'entita' ha undefined).
    */
   calculateHash(): string {
     const data = {
@@ -163,14 +168,11 @@ export class PermissionAuditLog {
       userId: this.userId,
       tenantId: this.tenantId,
       actionAttempted: this.actionAttempted,
-      resourceType: this.resourceType,
-      resourceId: this.resourceId,
+      resourceType: this.resourceType ?? null,
+      resourceId: this.resourceId ?? null,
       decision: this.decision,
-      reason: this.reason,
-      spidFiscalCode: this.spidFiscalCode,
-      sessionId: this.sessionId,
-      ipAddress: this.ipAddress,
-      userAgent: this.userAgent,
+      spidFiscalCode: this.spidFiscalCode ?? null,
+      sessionId: this.sessionId ?? null,
       timestamp: this.timestamp.toISOString(),
       previousHash: this.previousHash,
     }

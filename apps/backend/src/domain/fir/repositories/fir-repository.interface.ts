@@ -85,11 +85,6 @@ export interface IFIRRepository {
   ): Promise<Array<{ firId: string; tenantId: string }>>
 
   /**
-   * Find FIRs by stato
-   */
-  findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]>
-
-  /**
    * Save FIR (create or update)
    */
   save(fir: FIR): Promise<void>

@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { risolviUrlSistema } from '../../src/infrastructure/persistence/url-sistema';
 import { seedRolesForTenant } from '../../src/application/admin/system-roles';
+import { escludiPiattaforma } from '../../src/core/context/azienda-piattaforma';
 
 // Re-export per retro-compatibilità con eventuali import esistenti.
 export {
@@ -39,7 +40,8 @@ export async function seedRoles() {
   }
 
   // Create roles for each tenant
-  const tenants = await prisma.tenant.findMany();
+  // La piattaforma e' un'azienda tecnica senza utenti: non riceve ruoli.
+  const tenants = await prisma.tenant.findMany({ where: escludiPiattaforma() });
   let rolesCreated = 0;
 
   for (const tenant of tenants) {

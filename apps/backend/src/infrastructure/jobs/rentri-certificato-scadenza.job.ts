@@ -6,6 +6,7 @@ import { MetricsService } from '../../core/metrics/metrics.service'
 import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
 import { calcolaGiorniAllaScadenzaCertificato } from '../rentri/rentri-certificato-scadenza.util'
 import { EsitoGiroRentri } from './esito-giro-rentri'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
  * Job giornaliero di scadenza del certificato RENTRI (R5, Task 5).
@@ -62,7 +63,7 @@ export class RentriCertificatoScadenzaJob {
       // ACTIVE/TRIAL, poi le credenziali di quei soli tenant.
       // Sistema: scansione di tutte le aziende attive e delle loro credenziali (gauge globale)
       const tenantsAttivi = await this.sistema.tenant.findMany({
-        where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
+        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
         select: { id: true },
       })
       const credenziali = await this.sistema.rentriCredential.findMany({

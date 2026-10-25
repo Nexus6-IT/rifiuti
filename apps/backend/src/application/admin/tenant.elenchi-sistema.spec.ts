@@ -1,3 +1,4 @@
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 import { TenantService } from './tenant.service'
 import { TenantContext } from '../../core/context/tenant-context'
 
@@ -30,7 +31,9 @@ describe('TenantService.list', () => {
       { isSuperAdmin: true, tenantId: store },
       async () => await t.service.list(superAdmin)
     )
-    expect(t.sistema.tenant.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
+    expect(t.sistema.tenant.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: escludiPiattaforma({}) })
+    )
   })
 
   it('ADMIN di tenant: sempre il client normale', async () => {
