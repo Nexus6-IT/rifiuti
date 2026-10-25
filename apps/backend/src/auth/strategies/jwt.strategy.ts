@@ -5,6 +5,7 @@
 
 import { Injectable, UnauthorizedException } from '@nestjs/common'
 import { PassportStrategy } from '@nestjs/passport'
+import { createHash } from 'node:crypto'
 import { ExtractJwt, Strategy } from 'passport-jwt'
 import { ConfigService } from '@nestjs/config'
 import { Request } from 'express'
@@ -21,6 +22,11 @@ export interface CurrentUserPayload {
   tenantId: string
   role: string
   permissions: string[]
+  /**
+   * Identificativo di sessione per l'audit: hash di `sub` e `iat` del token (nessun segreto nel
+   * valore). Cambia a ogni login, resta uguale per i token della stessa emissione.
+   */
+  sessionId?: string
   /** Presente solo se la sessione e' un'impersonificazione (id del SUPER_ADMIN). */
   impersonatorId?: string
 }
@@ -109,6 +115,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       role,
       permissions,
       impersonatorId: payload.impersonatorId,
+      sessionId: createHash('sha256')
+        .update(`${payload.sub}:${payload.iat ?? ''}`)
+        .digest('hex')
+        .slice(0, 32),
     }
   }
 

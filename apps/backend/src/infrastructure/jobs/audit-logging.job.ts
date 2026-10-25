@@ -120,12 +120,14 @@ export class AuditLoggingProcessor extends WorkerHost {
         userId: data.userId,
         tenantId: data.tenantId,
         actionAttempted: data.actionAttempted,
-        resourceType: data.resourceType,
+        // Colonne NOT NULL (resource_type, spid_fiscal_code, session_id): un valore mancante non
+        // deve far scartare la riga dopo i tentativi, quindi si normalizza qui (e l'hash lo copre).
+        resourceType: data.resourceType ?? 'unknown',
         resourceId: data.resourceId,
         decision: data.decision,
         reason: data.reason,
-        spidFiscalCode: data.spidFiscalCode,
-        sessionId: data.sessionId,
+        spidFiscalCode: data.spidFiscalCode ?? '',
+        sessionId: data.sessionId ?? '',
         ipAddress: data.ipAddress,
         userAgent: data.userAgent,
         timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),

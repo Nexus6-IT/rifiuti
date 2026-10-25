@@ -1,3 +1,4 @@
+import { TenantContext } from '../../core/context/tenant-context'
 import { AZIENDA_PIATTAFORMA_ID } from '../../core/context/azienda-piattaforma'
 import { ExecutionContext, ForbiddenException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
@@ -145,6 +146,75 @@ describe('PermissionGuard', () => {
       await lascia()
 
       expect(auditQueue.add).not.toHaveBeenCalled()
+    })
+
+    const AZIENDA_B = '33333333-3333-4333-8333-333333333333'
+
+    it('super admin con X-Tenant-ID: audit nell azienda scelta, permessi letti nel contesto di casa', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      permissionCache.getPermissions.mockResolvedValue(null)
+      let contestoLettura: string | null = null
+      userRoleRepository.findActiveByUserId.mockImplementation(async () => {
+        contestoLettura = TenantContext.getTenantId()
+        return []
+      })
+
+      const ctx = buildContext({
+        user: { id: USER_ID, tenantId: TENANT_ID, role: 'SUPER_ADMIN' },
+        headers: { 'x-tenant-id': AZIENDA_B },
+        tenantId: AZIENDA_B,
+      })
+      await TenantContext.run({ tenantId: AZIENDA_B }, async () => {
+        await expect(guard.canActivate(ctx)).rejects.toBeDefined()
+      })
+      await lascia()
+
+      expect(userRoleRepository.findActiveByUserId).toHaveBeenCalledWith(USER_ID, TENANT_ID)
+      expect(contestoLettura).toBe(TENANT_ID)
+      expect(auditQueue.add.mock.calls[0][1].data.tenantId).toBe(AZIENDA_B)
+    })
+
+    it('super admin senza X-Tenant-ID (con azienda di casa nel token): audit nella piattaforma', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
+
+      const ctx = buildContext({ user: { id: USER_ID, tenantId: TENANT_ID, role: 'SUPER_ADMIN' } })
+      await expect(guard.canActivate(ctx)).resolves.toBe(true)
+      await lascia()
+
+      expect(auditQueue.add.mock.calls[0][1].data.tenantId).toBe(AZIENDA_PIATTAFORMA_ID)
+    })
+
+    it('utente normale: l header X-Tenant-ID e ignorato, audit nell azienda del token', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
+
+      const ctx = buildContext({ headers: { 'x-tenant-id': AZIENDA_B } })
+      await expect(guard.canActivate(ctx)).resolves.toBe(true)
+      await lascia()
+
+      expect(auditQueue.add.mock.calls[0][1].data.tenantId).toBe(TENANT_ID)
+    })
+
+    it('l audit porta codice fiscale e sessione dell utente', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
+
+      const ctx = buildContext({
+        user: {
+          id: USER_ID,
+          tenantId: TENANT_ID,
+          role: 'OPERATOR',
+          fiscalCode: 'RSSMRA80A01H501U',
+          sessionId: 'abc123',
+        },
+      })
+      await guard.canActivate(ctx)
+      await lascia()
+
+      const dati = auditQueue.add.mock.calls[0][1].data
+      expect(dati.spidFiscalCode).toBe('RSSMRA80A01H501U')
+      expect(dati.sessionId).toBe('abc123')
     })
 
     it('con un tenantId valorizzato l evento si accoda', async () => {
