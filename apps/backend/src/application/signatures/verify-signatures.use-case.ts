@@ -2,6 +2,7 @@ import { Injectable, Inject } from '@nestjs/common'
 import { FIRRepository, FIR_REPOSITORY } from '../../domain/fir/fir.repository'
 import { DigitalSignatureService } from './digital-signature.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { SignatureRole } from '../../domain/fir/digital-signature.vo'
 
@@ -80,8 +81,16 @@ export class VerifySignaturesUseCase {
       `Verifying signatures for FIR ${params.firId} (disclosePersonalData=${disclose})`
     )
 
-    // 1. Load FIR (without tenant filter for public verification)
-    const fir = await this.firRepository.findByIdPublic(params.firId)
+    // 1. Carica il FIR. Con un'azienda (verify/dettaglio) la lettura usa il client
+    // normale dentro il contesto dell'azienda; senza (verifica pubblica) il client
+    // di sistema, perche' l'azienda del FIR si conosce solo dopo la lettura.
+    const tenantId = params.tenantId
+    const fir = tenantId
+      ? await TenantContext.run(
+          { tenantId },
+          async () => await this.firRepository.findById(params.firId)
+        )
+      : await this.firRepository.findByIdPublic(params.firId)
     if (!fir) {
       throw DomainException.notFound('FIR', params.firId)
     }

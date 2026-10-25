@@ -70,6 +70,31 @@ e' il default di Prisma (num_cpus * 2 + 1) e non e' impostato. Alzarlo (parametr
 sotto carico. Le transazioni interattive mantengono il `maxWait` di default di Prisma (2 s):
 la pressione sul pool si vede quindi per prima come errore P2028 o P2024. In questo pezzo non cambia nessun valore.
 
+### Dimensionare `connection_limit` con due client
+
+Con `DATABASE_URL_SISTEMA` attivo i client Prisma sono due, ognuno con il proprio pool, e ogni processo
+(web, worker) ne apre una copia. Il totale delle connessioni e':
+
+`processi x (connection_limit di DATABASE_URL + connection_limit di DATABASE_URL_SISTEMA)`
+
+e deve restare sotto `max_connections` di Postgres, lasciando un margine (circa 10) per migration,
+backup e accesso manuale. Si imposta nel parametro dell'URL di ciascuno dei due:
+
+```
+DATABASE_URL="postgresql://wasteflow_app:...@host:5432/wasteflow?schema=public&connection_limit=15"
+DATABASE_URL_SISTEMA="postgresql://wasteflow_sistema:...@host:5432/wasteflow?schema=public&connection_limit=5"
+```
+
+Il client di sistema serve poco (login, cron, verifica pubblica): un limite basso basta, il resto va
+all'applicativo. Per leggere `max_connections` sul server:
+
+```
+psql "$DATABASE_URL" -Atc "SHOW max_connections;"
+```
+
+Le letture per azienda del cruscotto di gruppo e della lista ADMIN sono limitate a 4 insieme proprio per
+non occupare l'intero pool di una sola richiesta. In questo pezzo nessun valore cambia.
+
 ## Quando usare il client di sistema
 
 `PrismaSistemaService` (ruolo DB `wasteflow_sistema`, BYPASSRLS) si usa **solo** quando l'azienda
@@ -103,16 +128,14 @@ non e' nota: scansione di tutte le aziende, oppure ricerca di un'entita' prima d
     middleware, strategy e guard JWT, `TenantSwitchInterceptor`, `MembershipService`, `PrismaService`;
     solo `RedisService` e' finto) prova che l'azienda scelta arriva al handler e che un `X-Tenant-ID`
     non associato viene rifiutato (403) prima del handler.
-- **Da riguardare prima del 3:**
-  - `GET fir/:firId/verify/dettaglio` (autenticato) legge ancora il FIR con `findByIdPublic`, cioe'
-    dal client di sistema, e confronta il tenant dopo: la rotta ha `requireRequestTenantId`, quindi si
-    potrebbe cercare il FIR in `TenantContext.run({ tenantId })` col client normale (richiede di
-    adattare i doppi di test del use case);
-  - dimensione dei pool: con `DATABASE_URL_SISTEMA` attivo ci sono due client Prisma, controllare
-    `max_connections` di Postgres;
-  - `Promise.all` per azienda nel cruscotto di gruppo e nella lista per l'ADMIN;
-  - `permission.guard` accoda un audit anche per il SUPER_ADMIN senza azienda: ora il job fallisce subito
-    (`UnrecoverableError`) e fa rumore nei log. Saltare `logAuditEntry` con `tenantId` vuoto, oppure
-    gestire altrove l'audit cross-tenant.
+- **Prerequisiti del 3: fatti.**
+  - `GET fir/:firId/verify/dettaglio` (con azienda) legge il FIR col client normale in
+    `TenantContext.run({ tenantId })`; la verifica pubblica senza azienda resta sul client di sistema.
+  - Cruscotto di gruppo e lista per l'ADMIN leggono al massimo 4 aziende insieme
+    (`core/utils/map-con-limite.ts`), con lo stesso risultato e lo stesso ordine di prima.
+  - `permission.guard` non accoda l'audit se il `tenantId` e' vuoto (super admin senza azienda), con un
+    log `debug`. **Fuori ambito:** l'audit di un super admin che opera su piu' aziende non viene registrato.
+  - La coda `audit-logging` ha `removeOnFail: { age: 604800 }` (7 giorni, come la coda RENTRI) fra le
+    opzioni di default (`infrastructure/jobs/audit-queue.options.ts`).
 - **3:** policy `ENABLE` e `FORCE` sulle 25 tabelle con
   `USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)`.

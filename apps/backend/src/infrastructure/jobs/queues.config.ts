@@ -1,4 +1,5 @@
 import { BullModule } from '@nestjs/bullmq'
+import { AUDIT_QUEUE_JOB_OPTIONS } from './audit-queue.options'
 
 /**
  * BullMQ Queue Configuration
@@ -10,6 +11,6 @@ export const QueuesConfig = [
     { name: 'permission-cleanup' }, // T205: Cleanup old requests daily at 2 AM
     { name: 'audit-archival' },
     { name: 'cache-warming' },
-    { name: 'audit-logging' } // T148: Async audit logging
+    { name: 'audit-logging', defaultJobOptions: AUDIT_QUEUE_JOB_OPTIONS } // T148: Async audit logging
   ),
 ]

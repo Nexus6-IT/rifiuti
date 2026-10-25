@@ -13,6 +13,7 @@ import { CreateTenantDto } from '../../api/admin/dto/create-tenant.dto'
 import { UpdateTenantDto } from '../../api/admin/dto/update-tenant.dto'
 import { seedRolesForTenant } from './system-roles'
 import { TenantContext } from '../../core/context/tenant-context'
+import { mapConLimite } from '../../core/utils/map-con-limite'
 import { MembershipService } from '../../api/me/membership.service'
 
 /**
@@ -105,17 +106,16 @@ export class TenantService {
       where,
       orderBy: { ragioneSociale: 'asc' },
     })
-    return await Promise.all(
-      aziende.map(async azienda => ({
-        ...azienda,
-        _count: {
-          users: await this.inAzienda(
-            azienda.id,
-            async () => await this.prisma.user.count({ where: { tenantId: azienda.id } })
-          ),
-        },
-      }))
-    )
+    // Una transazione per azienda: al massimo 4 insieme, per non esaurire il pool.
+    return await mapConLimite(aziende, 4, async azienda => ({
+      ...azienda,
+      _count: {
+        users: await this.inAzienda(
+          azienda.id,
+          async () => await this.prisma.user.count({ where: { tenantId: azienda.id } })
+        ),
+      },
+    }))
   }
 
   /**

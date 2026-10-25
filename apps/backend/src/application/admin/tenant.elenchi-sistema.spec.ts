@@ -85,4 +85,25 @@ describe('TenantService.list', () => {
     ).rejects.toThrow('Non sei autorizzato')
     expect(store).toEqual(['t-casa'])
   })
+
+  it('lista ADMIN: conteggi con concorrenza limitata', async () => {
+    const t = costruisci()
+    const aziende = Array.from({ length: 10 }, (_, i) => ({ id: `x${i}` }))
+    t.prisma.tenant.findMany = jest.fn().mockResolvedValue(aziende)
+    let inCorso = 0
+    let massimo = 0
+    t.prisma.user = {
+      count: jest.fn(async () => {
+        inCorso++
+        massimo = Math.max(massimo, inCorso)
+        await new Promise(r => setTimeout(r, 5))
+        inCorso--
+        return 1
+      }),
+    }
+    const elenco = await t.service.list({ id: 'a', role: 'ADMIN', tenantId: 't1' } as any)
+    expect(massimo).toBeLessThanOrEqual(4)
+    expect(elenco.map((a: any) => a.id)).toEqual(aziende.map(a => a.id))
+    expect(elenco.every((a: any) => a._count.users === 1)).toBe(true)
+  })
 })

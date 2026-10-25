@@ -322,6 +322,13 @@ export class PermissionGuard implements CanActivate {
     auditMetadata: AuditMetadata,
     evaluatedPolicies?: any[]
   ): Promise<void> {
+    // Super admin senza azienda nel contesto: il job di audit richiede un tenantId (le righe
+    // di audit sono per azienda), quindi non si accoda. L'audit su piu' aziende e' fuori ambito.
+    if (!tenantId) {
+      this.logger.debug('[AUDIT] Evento non accodato: nessuna azienda nel contesto')
+      return
+    }
+
     try {
       // Queue permission check audit event (async, <1ms overhead)
       await this.auditQueue.add(

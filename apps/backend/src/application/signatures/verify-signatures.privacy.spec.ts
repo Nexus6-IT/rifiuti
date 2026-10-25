@@ -9,6 +9,7 @@
  */
 
 import { VerifySignaturesUseCase } from './verify-signatures.use-case'
+import { TenantContext } from '../../core/context/tenant-context'
 
 const TENANT = 'tenant-1'
 const ALTRO_TENANT = 'tenant-2'
@@ -33,14 +34,20 @@ function fakeSignature() {
 }
 
 function buildUseCase(tenantIdDelFir = TENANT) {
+  const fir = {
+    getId: () => FIR_ID,
+    getFirNumber: () => 'FIR-2026-0001',
+    getTenantId: () => tenantIdDelFir,
+    toSignableDocument: () => ({ id: FIR_ID }),
+    getSignatures: () => [fakeSignature()],
+    isImmutable: () => false,
+  }
+  const contestiVisti: Array<string | null> = []
   const firRepository = {
-    findByIdPublic: jest.fn().mockResolvedValue({
-      getId: () => FIR_ID,
-      getFirNumber: () => 'FIR-2026-0001',
-      getTenantId: () => tenantIdDelFir,
-      toSignableDocument: () => ({ id: FIR_ID }),
-      getSignatures: () => [fakeSignature()],
-      isImmutable: () => false,
+    findByIdPublic: jest.fn().mockResolvedValue(fir),
+    findById: jest.fn().mockImplementation(async () => {
+      contestiVisti.push(TenantContext.getStoreTenantId())
+      return fir
     }),
   }
   const signatureService = {
@@ -55,7 +62,12 @@ function buildUseCase(tenantIdDelFir = TENANT) {
     debug: jest.fn(),
   }
 
-  return new VerifySignaturesUseCase(firRepository as any, signatureService as any, logger as any)
+  const useCase = new VerifySignaturesUseCase(
+    firRepository as any,
+    signatureService as any,
+    logger as any
+  )
+  return Object.assign(useCase, { doppi: firRepository, contestiVisti })
 }
 
 describe('VerifySignaturesUseCase — privacy', () => {
@@ -105,6 +117,25 @@ describe('VerifySignaturesUseCase — privacy', () => {
     await expect(
       useCase.execute({ firId: FIR_ID, tenantId: TENANT, disclosePersonalData: true })
     ).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
+  it("verify/dettaglio con azienda: lettura dal client normale nel contesto dell'azienda", async () => {
+    const useCase = buildUseCase()
+
+    await useCase.execute({ firId: FIR_ID, tenantId: TENANT, disclosePersonalData: true })
+
+    expect(useCase.doppi.findById).toHaveBeenCalledWith(FIR_ID)
+    expect(useCase.doppi.findByIdPublic).not.toHaveBeenCalled()
+    expect(useCase.contestiVisti).toEqual([TENANT])
+  })
+
+  it('verify pubblica senza azienda: client di sistema', async () => {
+    const useCase = buildUseCase()
+
+    await useCase.execute({ firId: FIR_ID })
+
+    expect(useCase.doppi.findByIdPublic).toHaveBeenCalledWith(FIR_ID)
+    expect(useCase.doppi.findById).not.toHaveBeenCalled()
   })
 
   it('rifiuta la disclosure senza contesto tenant', async () => {
