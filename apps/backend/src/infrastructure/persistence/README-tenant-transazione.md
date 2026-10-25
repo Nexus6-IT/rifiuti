@@ -172,5 +172,76 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
     log `debug`. **Fuori ambito:** l'audit di un super admin che opera su piu' aziende non viene registrato.
   - La coda `audit-logging` ha `removeOnFail: { age: 604800 }` (7 giorni, come la coda RENTRI) fra le
     opzioni di default (`infrastructure/jobs/audit-queue.options.ts`).
-- **3:** policy `ENABLE` e `FORCE` sulle 25 tabelle con
-  `USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)`.
+- **3: fatto in questo pezzo.** Policy `ENABLE` e `FORCE` sulle 29 tabelle con `tenant_id` (sezione "Policy").
+  In produzione e' dormiente finche' l'app si collega col superuser: si accende con la sezione
+  "Accensione in produzione".
+- **4: resta.** Gruppi e consulenti, rotte pubbliche, policy su `role_permissions` via `roles`,
+  audit cross-tenant (l'audit di un super admin che opera su piu' aziende oggi non si registra).
+
+## Accensione in produzione
+
+Stack in `/opt/rifiuti`, compose `docker-compose.prod.yml`, env `/opt/rifiuti/.env`, project `rifiuti`.
+Servizi: `postgres`, `redis`, `backend` (web e worker BullMQ nello stesso processo), `frontend`.
+Sul VPS, da `/opt/rifiuti/site`:
+`COMPOSE="docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml"`.
+
+Cosa fa il codice (in questo pezzo non cambia nulla):
+- `DATABASE_URL` nel compose e' `postgresql://<DB_APP_USER>:<DB_APP_PASSWORD>@postgres:5432/<DB_NAME>` se le
+  variabili ci sono, altrimenti l'owner (`DB_USER`/`DB_PASSWORD`, default `wasteflow`). `DATABASE_URL_SISTEMA` e'
+  `wasteflow_sistema:<DB_SISTEMA_PASSWORD>` quando c'e' `DB_APP_USER`, altrimenti vuota e `PrismaSistemaService`
+  ripiega su `DATABASE_URL`. `DATABASE_URL_MIGRAZIONI` e' sempre l'owner.
+- La configurazione a meta' (una o due delle tre variabili) fa fallire compose a ogni comando, quindi gia'
+  al `pull` del deploy, prima di backup e migration.
+- Il deploy (`.gitea/workflows/deploy.yml`) esegue, nell'ordine: `pull`, backup predeploy
+  (`ops/backup-offsite.sh`), `prisma migrate deploy` come owner, `ops/db-ruoli.sh` (legge le password dal `.env`
+  senza eseguirlo, le passa a psql sullo stdin, crea o aggiorna `wasteflow_app` e `wasteflow_sistema`; senza
+  password stampa "salto"), `up -d`, smoke test su `127.0.0.1:3017`.
+
+0. **Prima del deploy che porta le migration.** La `20261025120000_tenant_id_tabelle_figlie` fa `DROP CONSTRAINT`
+   di 4 chiavi esterne; se un nome in produzione e' diverso la migration fallisce. Controllo (stringhe con
+   dollar-quoting, cosi' non servono apici dentro il comando):
+   ```
+   $COMPOSE exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+   SELECT conrelid::regclass AS tabella, conname FROM pg_constraint
+   WHERE conname IN ($$fir_signatures_fir_id_fkey$$, $$fir_transporters_fir_id_fkey$$,
+     $$fir_allegati_rentri_fir_id_fkey$$, $$autorizzazioni_impianto_discariche_autorizzazione_id_fkey$$);
+   SQL
+   ```
+   Devono uscire 4 righe: con meno, fermarsi e allineare la migration. La `20261025130000_rls_policy_aziende`
+   prende lock ACCESS EXCLUSIVE su 29 tabelle (ENABLE/FORCE e CREATE POLICY) e crea 2 indici piccoli
+   (`temporary_permission_grants`, `permission_requests`) senza `CONCURRENTLY`: durata breve, ma fare il deploy
+   in una finestra tranquilla. Le migration passano al primo deploy anche con le variabili ancora spente.
+1. **Backup verificato.** Il deploy ne fa uno predeploy, ma prima di accendere verificare a mano che l'ultimo
+   backup (offsite e locale) sia fresco e ripristinabile (`ops/backup-offsite.sh`, `ops/restore.sh`,
+   `ops/controllo-freschezza-backup.sh`; vedi `ops/README.md`).
+2. **Connessioni.** `echo "SHOW max_connections;" | $COMPOSE exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At'`.
+   Scegliere `connection_limit` per i due URL con la formula di "Dimensionare `connection_limit` con due client"
+   (processi x (app + sistema), margine circa 10; oggi il processo e' uno solo, `backend`). Il compose non ha
+   un parametro per questo: va aggiunto `&connection_limit=N` agli URL in `docker-compose.prod.yml` (commit
+   separato), oppure si lascia il default di Prisma (num_cpus * 2 + 1 per client) se il totale sta comodamente
+   sotto `max_connections`.
+3. **Variabili in `/opt/rifiuti/.env`** (`chmod 600`), tutte e tre insieme:
+   ```
+   DB_APP_USER=wasteflow_app
+   DB_APP_PASSWORD=<output di openssl rand -hex 32>
+   DB_SISTEMA_PASSWORD=<output di openssl rand -hex 32>
+   ```
+   Minimo 16 caratteri, solo `A-Za-z0-9_.-` (`openssl rand -hex 32` va bene): altrimenti `db-ruoli.sh` rifiuta
+   e gli URL si rompono. Nessun passo manuale sui ruoli: li crea o aggiorna il deploy con `ops/db-ruoli.sh`.
+   Mai password nei commit, nei log o in chat.
+4. **Deploy.** Push su `master` o rilancio del workflow. Atteso nel log: migration applicate, ruoli creati,
+   `Deploy OK`. Se compose segnala "ruoli DB incompleti", manca una delle tre variabili.
+5. **Controlli dopo il deploy.**
+   - L'app e' sul ruolo giusto (attesi `wasteflow_app` e `wasteflow_sistema`, nessuna connessione dell'owner dall'app):
+     ```
+     echo "SELECT usename, count(*) FROM pg_stat_activity WHERE datname = current_database() GROUP BY 1;" \
+       | $COMPOSE exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At'
+     ```
+   - Da browser: login, elenco FIR, registro (nuovo movimento), salvataggio ed emissione di un FIR.
+   - Log: `$COMPOSE logs --since 15m backend` senza errori `P2028`/`P2024`, `permission denied` o
+     `row-level security`; job RENTRI (`rentri-sync`) e scadenzario eseguiti senza `UnrecoverableError`.
+   - Bugsink (`https://error.ignicraft.com`, progetto wasteflow) senza errori nuovi dal deploy.
+6. **Rientro.** Togliere le tre variabili da `/opt/rifiuti/.env` e rifare il deploy (o `$COMPOSE up -d backend`).
+   L'app torna sull'owner, che ignora la RLS (superuser): le policy restano nel database ma non filtrano. Le
+   migration sono forward-only e non vanno annullate; i ruoli `wasteflow_app` e `wasteflow_sistema` restano e
+   sono innocui.
