@@ -135,10 +135,12 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
   `rentri_credentials`, `rentri_numeri_vidimati`, `rentri_sync_logs`, `rentri_unita_locali`,
   `resource_ownership`, `role_change_history`, `roles`, `temporary_permission_grants`,
   `trasportatori`, `user_role_assignments`, `users`, `waste_movements`.
+- **`role_permissions` (pezzo 4, migration `20261026090000_rls_role_permissions`):** tabella ponte senza
+  `tenant_id`, con `ENABLE` + `FORCE` e la policy `isolamento_via_ruolo` (`USING` e `WITH CHECK`:
+  `EXISTS (SELECT 1 FROM roles r WHERE r.id = role_permissions.role_id)`). La subquery su `roles` e' filtrata
+  dalla policy di `roles`, quindi col ruolo app si vedono e si scrivono solo righe di ruoli dell'azienda del
+  contesto (senza contesto nessuna). Non ha `isolamento_azienda`: non ha la colonna.
 - **Escluse di proposito:**
-  - `role_permissions` (senza `tenant_id`): le letture sono filtrate solo per le query che fanno
-    join con `roles`; una lettura diretta per `role_id` di un'altra azienda non e' filtrata, e le
-    scritture (INSERT/DELETE con il `role_id` di un'altra azienda) sono protette solo dall'applicazione. Seguito possibile: policy `USING (EXISTS (SELECT 1 FROM roles r WHERE r.id = role_id))`.
   - `tenants` e `access_requests` (si leggono prima di conoscere l'azienda). `tenants` resta
     leggibile e scrivibile da `wasteflow_app` per scelta: un `tenant.findMany` senza filtro col client
     dell'app esporrebbe i dati di tutte le aziende.
@@ -175,7 +177,7 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
 - **3: fatto in questo pezzo.** Policy `ENABLE` e `FORCE` sulle 29 tabelle con `tenant_id` (sezione "Policy").
   In produzione e' dormiente finche' l'app si collega col superuser: si accende con la sezione
   "Accensione in produzione".
-- **4: resta.** Gruppi e consulenti, rotte pubbliche, policy su `role_permissions` via `roles`,
+- **4: resta.** Gruppi e consulenti, rotte pubbliche,
   audit cross-tenant (l'audit di un super admin che opera su piu' aziende oggi non si registra).
 
 ## Prima del merge

@@ -8,7 +8,7 @@ import { PrismaClient } from '@prisma/client'
 const ESPR = "(tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)"
 
 // Escluse volute: se una cambia, il test lo rende esplicito.
-const SENZA_RLS = ['role_permissions', 'tenants', 'access_requests']
+const SENZA_RLS = ['tenants', 'access_requests']
 
 describe('RLS: catalogo delle tabelle per azienda', () => {
   let prisma: PrismaClient
@@ -80,7 +80,7 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
     >`
       SELECT relname AS tabella, relrowsecurity AS rls, relforcerowsecurity AS forzata FROM pg_class
       WHERE relkind = 'r' AND relnamespace = 'public'::regnamespace
-        AND relname IN ('role_permissions', 'tenants', 'access_requests')`
+        AND relname IN ('tenants', 'access_requests')`
     expect(righe.map(r => r.tabella).sort()).toEqual([...SENZA_RLS].sort())
     for (const r of righe)
       expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({
@@ -88,5 +88,36 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
         rls: false,
         forzata: false,
       })
+  })
+
+  it('role_permissions ha RLS, FORCE e la sola policy isolamento_via_ruolo tramite roles', async () => {
+    const [t] = await prisma.$queryRaw<Array<{ rls: boolean; forzata: boolean }>>`
+      SELECT relrowsecurity AS rls, relforcerowsecurity AS forzata FROM pg_class
+      WHERE relkind = 'r' AND relnamespace = 'public'::regnamespace AND relname = 'role_permissions'`
+    expect(t).toEqual({ rls: true, forzata: true })
+    const policy = await prisma.$queryRaw<
+      Array<{
+        policyname: string
+        permissive: string
+        cmd: string
+        roles: string
+        qual: string
+        with_check: string
+      }>
+    >`
+      SELECT policyname, permissive, cmd, roles::text AS roles, qual, with_check FROM pg_policies
+      WHERE schemaname = 'public' AND tablename = 'role_permissions'`
+    expect(policy).toHaveLength(1)
+    expect(policy[0]).toMatchObject({
+      policyname: 'isolamento_via_ruolo',
+      permissive: 'PERMISSIVE',
+      cmd: 'ALL',
+      roles: '{public}',
+    })
+    for (const e of [policy[0].qual, policy[0].with_check]) {
+      expect(e).toMatch(/EXISTS/)
+      expect(e).toMatch(/roles/)
+      expect(e).toMatch(/role_id/)
+    }
   })
 })
