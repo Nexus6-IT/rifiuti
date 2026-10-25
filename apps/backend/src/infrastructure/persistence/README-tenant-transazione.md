@@ -89,7 +89,7 @@ Il client di sistema serve poco (login, cron, verifica pubblica): un limite bass
 all'applicativo. Per leggere `max_connections` sul server:
 
 ```
-psql "$DATABASE_URL" -Atc "SHOW max_connections;"
+echo "SHOW max_connections;" | $COMPOSE exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At'
 ```
 
 Le letture per azienda del cruscotto di gruppo e della lista ADMIN sono limitate a 4 insieme proprio per
@@ -136,9 +136,9 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
   `resource_ownership`, `role_change_history`, `roles`, `temporary_permission_grants`,
   `trasportatori`, `user_role_assignments`, `users`, `waste_movements`.
 - **Escluse di proposito:**
-  - `role_permissions` (senza `tenant_id`): le letture sono filtrate dal join con `roles`, ma le
-    scritture (INSERT/DELETE con il `role_id` di un'altra azienda) sono protette solo
-    dall'applicazione. Seguito possibile: policy `USING (EXISTS (SELECT 1 FROM roles r WHERE r.id = role_id))`.
+  - `role_permissions` (senza `tenant_id`): le letture sono filtrate solo per le query che fanno
+    join con `roles`; una lettura diretta per `role_id` di un'altra azienda non e' filtrata, e le
+    scritture (INSERT/DELETE con il `role_id` di un'altra azienda) sono protette solo dall'applicazione. Seguito possibile: policy `USING (EXISTS (SELECT 1 FROM roles r WHERE r.id = role_id))`.
   - `tenants` e `access_requests` (si leggono prima di conoscere l'azienda). `tenants` resta
     leggibile e scrivibile da `wasteflow_app` per scelta: un `tenant.findMany` senza filtro col client
     dell'app esporrebbe i dati di tutte le aziende.
@@ -178,6 +178,33 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
 - **4: resta.** Gruppi e consulenti, rotte pubbliche, policy su `role_permissions` via `roles`,
   audit cross-tenant (l'audit di un super admin che opera su piu' aziende oggi non si registra).
 
+## Prima del merge
+
+**Il merge su `master` E' il deploy in produzione delle migration**: `deploy.yml` parte a ogni push su
+`master`. Tutto cio' che segue va quindi fatto PRIMA del merge, non al momento dell'accensione. Fra
+`migrate deploy` e `up -d` il vecchio backend gira ancora per qualche secondo: i suoi inserimenti di firme,
+trasportatori e allegati senza `tenant_id` fallirebbero per il NOT NULL appena introdotto; per questo serve
+una finestra tranquilla (nessuno che emette o firma FIR).
+
+Nota del 2026-10-25: il controllo sotto e' gia' stato eseguito sulla produzione, 4 righe, nomi uguali.
+
+La `20261025120000_tenant_id_tabelle_figlie` fa `DROP CONSTRAINT`
+di 4 chiavi esterne; se un nome in produzione e' diverso la migration fallisce. Controllo (stringhe con
+dollar-quoting, cosi' non servono apici dentro il comando):
+```
+$COMPOSE exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+SELECT conrelid::regclass AS tabella, conname FROM pg_constraint
+WHERE conname IN ($$fir_signatures_fir_id_fkey$$, $$fir_transporters_fir_id_fkey$$,
+  $$fir_allegati_rentri_fir_id_fkey$$, $$autorizzazioni_impianto_discariche_autorizzazione_id_fkey$$);
+SQL
+```
+Devono uscire 4 righe: con meno, fermarsi e allineare la migration. La `20261025130000_rls_policy_aziende`
+prende lock ACCESS EXCLUSIVE su 29 tabelle (ENABLE/FORCE e CREATE POLICY) e crea 2 indici piccoli
+(`temporary_permission_grants`, `permission_requests`) senza `CONCURRENTLY`: durata breve, ma fare il merge
+in una finestra tranquilla.
+
+Le migration passano al primo deploy anche con le variabili dei ruoli ancora spente.
+
 ## Accensione in produzione
 
 Stack in `/opt/rifiuti`, compose `docker-compose.prod.yml`, env `/opt/rifiuti/.env`, project `rifiuti`.
@@ -197,28 +224,15 @@ Cosa fa il codice (in questo pezzo non cambia nulla):
   senza eseguirlo, le passa a psql sullo stdin, crea o aggiorna `wasteflow_app` e `wasteflow_sistema`; senza
   password stampa "salto"), `up -d`, smoke test su `127.0.0.1:3017`.
 
-0. **Prima del deploy che porta le migration.** La `20261025120000_tenant_id_tabelle_figlie` fa `DROP CONSTRAINT`
-   di 4 chiavi esterne; se un nome in produzione e' diverso la migration fallisce. Controllo (stringhe con
-   dollar-quoting, cosi' non servono apici dentro il comando):
-   ```
-   $COMPOSE exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
-   SELECT conrelid::regclass AS tabella, conname FROM pg_constraint
-   WHERE conname IN ($$fir_signatures_fir_id_fkey$$, $$fir_transporters_fir_id_fkey$$,
-     $$fir_allegati_rentri_fir_id_fkey$$, $$autorizzazioni_impianto_discariche_autorizzazione_id_fkey$$);
-   SQL
-   ```
-   Devono uscire 4 righe: con meno, fermarsi e allineare la migration. La `20261025130000_rls_policy_aziende`
-   prende lock ACCESS EXCLUSIVE su 29 tabelle (ENABLE/FORCE e CREATE POLICY) e crea 2 indici piccoli
-   (`temporary_permission_grants`, `permission_requests`) senza `CONCURRENTLY`: durata breve, ma fare il deploy
-   in una finestra tranquilla. Le migration passano al primo deploy anche con le variabili ancora spente.
-1. **Backup verificato.** Il deploy ne fa uno predeploy, ma prima di accendere verificare a mano che l'ultimo
+1. **Backup verificato** (dopo il merge, prima di accendere). Il deploy ne fa uno predeploy, ma prima di accendere verificare a mano che l'ultimo
    backup (offsite e locale) sia fresco e ripristinabile (`ops/backup-offsite.sh`, `ops/restore.sh`,
    `ops/controllo-freschezza-backup.sh`; vedi `ops/README.md`).
 2. **Connessioni.** `echo "SHOW max_connections;" | $COMPOSE exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At'`.
    Scegliere `connection_limit` per i due URL con la formula di "Dimensionare `connection_limit` con due client"
    (processi x (app + sistema), margine circa 10; oggi il processo e' uno solo, `backend`). Il compose non ha
-   un parametro per questo: va aggiunto `&connection_limit=N` agli URL in `docker-compose.prod.yml` (commit
-   separato), oppure si lascia il default di Prisma (num_cpus * 2 + 1 per client) se il totale sta comodamente
+   un parametro per questo: va aggiunto `?connection_limit=N` in fondo agli URL in `docker-compose.prod.yml`
+   (commit separato; gli URL non hanno altra query string, quindi `?` e non `&`, es.
+   `...@postgres:5432/${DB_NAME:-wasteflow_prod}?connection_limit=15`), oppure si lascia il default di Prisma (num_cpus * 2 + 1 per client) se il totale sta comodamente
    sotto `max_connections`.
 3. **Variabili in `/opt/rifiuti/.env`** (`chmod 600`), tutte e tre insieme:
    ```
@@ -234,14 +248,18 @@ Cosa fa il codice (in questo pezzo non cambia nulla):
 5. **Controlli dopo il deploy.**
    - L'app e' sul ruolo giusto (attesi `wasteflow_app` e `wasteflow_sistema`, nessuna connessione dell'owner dall'app):
      ```
-     echo "SELECT usename, count(*) FROM pg_stat_activity WHERE datname = current_database() GROUP BY 1;" \
+     echo "SELECT usename, count(*) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() GROUP BY 1;" \
        | $COMPOSE exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At'
      ```
    - Da browser: login, elenco FIR, registro (nuovo movimento), salvataggio ed emissione di un FIR.
    - Log: `$COMPOSE logs --since 15m backend` senza errori `P2028`/`P2024`, `permission denied` o
      `row-level security`; job RENTRI (`rentri-sync`) e scadenzario eseguiti senza `UnrecoverableError`.
    - Bugsink (`https://error.ignicraft.com`, progetto wasteflow) senza errori nuovi dal deploy.
-6. **Rientro.** Togliere le tre variabili da `/opt/rifiuti/.env` e rifare il deploy (o `$COMPOSE up -d backend`).
+6. **Rientro.** Togliere le tre variabili da `/opt/rifiuti/.env` e rifare il deploy, oppure a mano
+   `TAG=sha-<tag attualmente in produzione> $COMPOSE up -d backend`: mai `up -d` senza `TAG`, che ripiegherebbe
+   su `latest`. Il tag in uso si legge prima di toccare il `.env`, con
+   `docker inspect -f '{{.Config.Image}}' $($COMPOSE ps -q backend)` (immagine `...rifiuti-backend:<tag>`;
+   `deploy.yml` imposta `TAG` dal tag della build e il compose lo usa anche per `APP_VERSION`).
    L'app torna sull'owner, che ignora la RLS (superuser): le policy restano nel database ma non filtrano. Le
    migration sono forward-only e non vanno annullate; i ruoli `wasteflow_app` e `wasteflow_sistema` restano e
    sono innocui.

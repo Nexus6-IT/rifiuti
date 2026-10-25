@@ -10,7 +10,8 @@
  * Percorsi: registrazione movimento, salvataggio ed emissione FIR con firme e trasportatori,
  * allegati RENTRI (caricamento ed elenco), elenco anagrafiche, MUD (aggregazione e
  * presentazione), cambio azienda del consulente, validazione del token e login col client di
- * sistema. Piu' la lettura di `tenants` col client app (tabella esclusa dalla RLS di proposito).
+ * sistema (qui: JwtStrategy.validate piu' il lookup per keycloakId col client di sistema, non l'intero
+ * AuthController). Piu' la lettura di `tenants` col client app (tabella esclusa dalla RLS di proposito).
  *
  * Finti, e solo questi, perche' sono servizi esterni e non Prisma: il client HTTP di RENTRI e
  * `GetAzioniDisponibiliUseCase` (chiamata verso l'ente), i dati di riferimento del MUD, Redis,
@@ -74,6 +75,7 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
   let utenteCliente = ''
   let ruoloId = ''
   let contatore = 0
+  let cerCreato = false
 
   const nelContesto = <T>(tenantId: string, fn: () => Promise<T>): Promise<T> =>
     TenantContext.run({ tenantId }, async () => await fn())
@@ -160,6 +162,7 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
         addedBy: utenteStudio,
       },
     })
+    cerCreato = (await owner.cERCode.count({ where: { code: CER } })) === 0
     await owner.cERCode.upsert({
       where: { code: CER },
       create: { code: CER, description: 'CER di test', category: '15', subcategory: '' },
@@ -179,6 +182,7 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
       await owner.user.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.tenant.deleteMany({ where: { id: { in: tenantIds } } })
     }
+    if (cerCreato) await owner.cERCode.deleteMany({ where: { code: CER } })
     await Promise.all([owner.$disconnect(), app.onModuleDestroy(), sistema.onModuleDestroy()])
   })
 
@@ -270,7 +274,7 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
       // Da un'altra azienda il FIR non esiste (RLS) e l'elenco non si apre.
       await expect(
         nelContesto(estranea, () => useCase.elencaAllegati(fir.id, estranea))
-      ).rejects.toThrow()
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' })
     })
   })
 
@@ -366,7 +370,8 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
       const kc = `kc-percorsi-studio-${run}`
       const trovato = await sistema.user.findUnique({ where: { keycloakId: kc } })
       expect(trovato?.id).toBe(utenteStudio)
-      expect(await app.user.findUnique({ where: { keycloakId: kc } }).catch(() => null)).toBeNull()
+      // Senza contesto il client app non solleva: la RLS filtra e il risultato e' null.
+      expect(await app.user.findUnique({ where: { keycloakId: kc } })).toBeNull()
     })
 
     it('JwtStrategy.validate: utente dal client di sistema, permessi dal client app nel contesto', async () => {
