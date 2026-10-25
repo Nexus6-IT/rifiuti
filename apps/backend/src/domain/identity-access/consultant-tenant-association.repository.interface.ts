@@ -82,12 +82,4 @@ export interface ConsultantTenantAssociationRepository {
    * @returns Count of active associations
    */
   countActiveByConsultant(consultantUserId: string): Promise<number>
-
-  /**
-   * Find associations expiring soon
-   * Per spec.md: Warn consultants/admins of expiring access
-   * @param daysThreshold - Warning threshold (default 30 days)
-   * @returns Array of associations expiring within threshold
-   */
-  findExpiringSoon(daysThreshold?: number): Promise<ConsultantTenantAssociation[]>
 }

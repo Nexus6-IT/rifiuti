@@ -174,29 +174,4 @@ export class PrismaConsultantTenantAssociationRepository
 
     return count
   }
-
-  async findExpiringSoon(daysThreshold: number = 30): Promise<ConsultantTenantAssociation[]> {
-    const now = new Date()
-    const thresholdDate = new Date()
-    thresholdDate.setDate(thresholdDate.getDate() + daysThreshold)
-
-    const associations = await this.prisma.consultantTenantAssociation.findMany({
-      where: {
-        isActive: true,
-        expiresAt: {
-          gte: now, // Not yet expired
-          lte: thresholdDate, // But expires within threshold
-        },
-      },
-      orderBy: {
-        expiresAt: 'asc', // Soonest expiration first
-      },
-    })
-
-    this.logger.debug(
-      `Found ${associations.length} associations expiring within ${daysThreshold} days`
-    )
-
-    return associations.map((a: any) => ConsultantTenantAssociation.fromPersistence(a))
-  }
 }
