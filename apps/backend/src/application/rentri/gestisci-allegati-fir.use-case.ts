@@ -214,6 +214,7 @@ export class GestisciAllegatiFIRUseCase {
     const riga = await this.prisma.fIRAllegatoRentri.create({
       data: {
         firId,
+        tenantId,
         rentriAllegatoId,
         filename: nomeFile,
         mimeType: contentType,

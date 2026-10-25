@@ -335,6 +335,7 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       const [{ data }] = prisma.fIRSignature.create.mock.calls[0]
       expect(data).toMatchObject({
         firId: fir.id,
+        tenantId: fir.tenantId,
         userId: 'user-produttore',
         role: 'PRODUTTORE',
         signedAt: new Date('2026-07-01T12:00:00Z'),

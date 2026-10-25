@@ -75,9 +75,13 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'RegistroProgressivoIniziale',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
-  // (Le discariche collegate non hanno tenantId: sono raggiunte solo via
-  // relazione dall'autorizzazione, che è già filtrata.)
   'AutorizzazioneImpianto',
+  // Figlie di FIR e autorizzazioni: ora hanno un tenantId proprio (RLS pezzo 3),
+  // garantito uguale a quello del padre da una chiave esterna composta.
+  'FIRSignature',
+  'FIRTransporter',
+  'FIRAllegatoRentri',
+  'AutorizzazioneImpiantoDiscarica',
 ])
 
 /** Operazioni il cui filtro avviene tramite `where`. */

@@ -349,7 +349,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       throw this.translateUniqueConstraintError(error, fir)
     }
 
-    await this.persistSignatures(client, fir)
+    await this.persistSignatures(client, fir, tenantId)
   }
 
   /**
@@ -509,7 +509,11 @@ export class FIRPrismaRepository implements IFIRRepository {
    * FirmaDigitale costruite a mano (es. fixture di test) che non passano dal
    * provider di firma.
    */
-  private async persistSignatures(client: Prisma.TransactionClient, fir: FIR): Promise<void> {
+  private async persistSignatures(
+    client: Prisma.TransactionClient,
+    fir: FIR,
+    tenantId: string
+  ): Promise<void> {
     for (const { role, firma } of this.firmeCandidate(fir)) {
       if (!firma) continue
       // Già escluso da verificaFirmeScrivibili: serve a restringere il tipo.
@@ -538,6 +542,8 @@ export class FIRPrismaRepository implements IFIRRepository {
       await client.fIRSignature.create({
         data: {
           firId: fir.id,
+          // Stesso tenant del FIR: la chiave esterna composta lo esige.
+          tenantId,
           userId: firma.userId,
           role,
           signedAt: firma.timestamp,
@@ -553,7 +559,11 @@ export class FIRPrismaRepository implements IFIRRepository {
     }
   }
 
-  /** Mappa i trasportatori aggiuntivi dell'aggregate in righe `FIRTransporter`. */
+  /**
+   * Mappa i trasportatori aggiuntivi dell'aggregate in righe `FIRTransporter`.
+   * Niente `tenantId`: e' un create annidato nell'upsert del FIR, e Prisma lo
+   * ricava dal padre attraverso la relazione composta (passarlo e' un errore).
+   */
   private transportersToCreate(fir: FIR): any[] {
     return (fir.trasportatoriAggiuntivi ?? []).map(t => ({
       ordine: t.ordine,

@@ -120,6 +120,31 @@ describe('PermissionGuard', () => {
     expect(userRoleRepository.findActiveByUserId).not.toHaveBeenCalled()
   })
 
+  describe('audit senza azienda', () => {
+    const lascia = async () => await new Promise(r => setImmediate(r))
+
+    it('permission.guard: nessun accodamento con tenantId vuoto', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
+
+      const ctx = buildContext({ user: { id: USER_ID, tenantId: '', role: 'SUPER_ADMIN' } })
+      await expect(guard.canActivate(ctx)).resolves.toBe(true)
+      await lascia()
+
+      expect(auditQueue.add).not.toHaveBeenCalled()
+    })
+
+    it('con un tenantId valorizzato l evento si accoda', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
+
+      await expect(guard.canActivate(buildContext())).resolves.toBe(true)
+      await lascia()
+
+      expect(auditQueue.add).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('cache MISS -> DB fallback (P0 bug #1)', () => {
     it('loads permissions from DB and AUTHORIZES a legitimate user when cache is empty', async () => {
       reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)

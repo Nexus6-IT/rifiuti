@@ -175,4 +175,32 @@ describe('GetAggregatedDashboardHandler', () => {
     expect(r.recentActivity.map(a => a.description)).toEqual(['FIR B1', 'FIR A1'])
     expect(r.totalRentriSyncFailures).toBe(2)
   })
+
+  it('cruscotto di gruppo: al massimo 4 aziende lette insieme, risultato invariato', async () => {
+    const figlie = Array.from({ length: 10 }, (_, i) => ({
+      id: `figlia-${i}`,
+      ragioneSociale: `Azienda ${String(i).padStart(2, '0')}`,
+    }))
+    const firs = figlie.map(f => ({ tenantId: f.id, status: 'DRAFT' }))
+    const prisma = makePrisma(firs)
+    prisma.tenant.findMany = jest.fn().mockResolvedValue(figlie)
+    let inCorso = 0
+    let massimo = 0
+    const groupBy = prisma.fIR.groupBy
+    prisma.fIR.groupBy = jest.fn(async (args: any) => {
+      inCorso++
+      massimo = Math.max(massimo, inCorso)
+      await new Promise(r => setTimeout(r, 5))
+      inCorso--
+      return await groupBy(args)
+    })
+    const handler = new GetAggregatedDashboardHandler(prisma)
+
+    const r = await handler.execute({ tenantIdMadre: MADRE } as any)
+
+    expect(massimo).toBeLessThanOrEqual(4)
+    expect(r.totalTenants).toBe(10)
+    expect(r.totalPendingFirs).toBe(10)
+    expect(r.pendingFirsByClient.map(c => c.tenantId)).toEqual(figlie.map(f => f.id))
+  })
 })

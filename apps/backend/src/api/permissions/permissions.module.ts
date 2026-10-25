@@ -90,6 +90,7 @@ import { RequestTemporaryPermissionCommandHandler } from '../../application/comm
 import { ApproveTemporaryPermissionCommandHandler } from '../../application/commands/handlers/approve-temporary-permission.handler'
 import { RejectTemporaryPermissionCommandHandler } from '../../application/commands/handlers/reject-temporary-permission.handler'
 import { RevokeTemporaryPermissionCommandHandler } from '../../application/commands/handlers/revoke-temporary-permission.handler'
+import { AUDIT_QUEUE_JOB_OPTIONS } from '../../infrastructure/jobs/audit-queue.options'
 
 const QUERY_HANDLERS = [
   GetUserPermissionsQueryHandler,
@@ -147,7 +148,10 @@ const COMMAND_HANDLERS = [
       },
     }),
     // Registra la coda usata dal guard per il logging audit asincrono.
-    BullModule.registerQueue({ name: 'audit-logging' }),
+    BullModule.registerQueue({
+      name: 'audit-logging',
+      defaultJobOptions: AUDIT_QUEUE_JOB_OPTIONS,
+    }),
   ],
   controllers: [
     PermissionController,

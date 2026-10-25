@@ -19,6 +19,7 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { PrismaClient } from '@prisma/client'
+import { clientComeRuolo } from './client-come-ruolo'
 
 const PWD_APP_1 = 'ProvaApp_uno_1'
 const PWD_APP_2 = 'ProvaApp_due_2'
@@ -96,10 +97,7 @@ describe('Ruoli database (Postgres reale)', () => {
   const T_FUTURA = 'ruoli_db_test_futura'
 
   const comeRuolo = (ruolo: string, pwd: string) => {
-    const url = new URL(process.env.DATABASE_URL as string)
-    url.username = ruolo
-    url.password = encodeURIComponent(pwd)
-    const c = new PrismaClient({ datasourceUrl: url.toString() })
+    const c = clientComeRuolo(ruolo, pwd)
     aperti.push(c)
     return c
   }

@@ -166,6 +166,7 @@ describe('GestisciAllegatiFIRUseCase', () => {
       expect(prisma.fIRAllegatoRentri.create).toHaveBeenCalledWith({
         data: {
           firId: fir.id,
+          tenantId: 'tenant-1',
           rentriAllegatoId: 42,
           filename: 'analisi.pdf',
           mimeType: 'application/pdf',
