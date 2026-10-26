@@ -452,7 +452,8 @@ export class RegistraMovimentoUseCase {
     ) {
       return null
     }
-    let esistente: { progressiveNumber: number; progressiveYear: number } | null
+    let esistente: { progressiveNumber: number; progressiveYear: number; registroId: string } | null
+    let denominazione: string | undefined
     try {
       esistente = await this.prisma.wasteMovement.findFirst({
         where: {
@@ -461,15 +462,26 @@ export class RegistraMovimentoUseCase {
           type: command.type,
           ricopiaChiave: RICOPIA_ORDINARIA,
         },
-        select: { progressiveNumber: true, progressiveYear: true },
+        select: { progressiveNumber: true, progressiveYear: true, registroId: true },
       })
+      if (esistente) {
+        denominazione = await this.denominazioneSeVariRegistri(
+          this.prisma,
+          command.tenantId,
+          esistente.registroId
+        )
+      }
     } catch (lettura) {
       // Siamo già nella gestione di un errore: chi chiama risponde col messaggio generico.
       this.logger.error(`Lettura della ricopia doppia non riuscita: ${lettura?.message}`)
       return null
     }
     if (!esistente) return null
-    return new FirGiaRegistratoError(esistente.progressiveNumber, esistente.progressiveYear).message
+    return new FirGiaRegistratoError(
+      esistente.progressiveNumber,
+      esistente.progressiveYear,
+      denominazione
+    ).message
   }
 
   /** Ritardo sul termine di legge calcolato dalle date di un movimento salvato. */

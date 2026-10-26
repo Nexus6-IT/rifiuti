@@ -1,3 +1,5 @@
+-- Rollback dell'immagine dopo questa migration: il codice precedente scrive movimenti senza registro_id (NOT NULL) → solo con restore del backup predeploy.
+--
 -- Fase 2 pezzo 1, M2: il registro diventa obbligatorio e la numerazione passa dall'azienda al registro.
 --
 -- Va nella STESSA release di M1 (`registro_per_sede`): M1 ha riempito `registro_id` e creato i nuovi
@@ -16,6 +18,25 @@
 -- (waste_movements: tenant_id, progressive_year, progressive_number; registro_progressivi_iniziali:
 -- tenant_id, anno) e `ALTER COLUMN registro_id DROP NOT NULL`. Il ripristino dei vecchi unici
 -- fallisce se due registri della stessa azienda hanno gia' lo stesso numero nello stesso anno.
+
+-- Recupero: M1 e M2 sono due transazioni dello stesso `migrate deploy`, e fra le due il container
+-- vecchio ancora in servizio puo' scrivere un movimento (o un progressivo iniziale) con
+-- `registro_id` NULL. Quelle righe si assegnano all'unico registro della loro azienda, ma SOLO se
+-- l'azienda ne ha esattamente uno (con M1 appena applicata e' sempre cosi'). Se un'azienda ha piu'
+-- registri non si indovina: le righe restano NULL e il controllo qui sotto ferma la migration.
+UPDATE "waste_movements" m
+SET "registro_id" = r."id"
+FROM "registri_rifiuti" r
+WHERE m."registro_id" IS NULL
+  AND r."tenant_id" = m."tenant_id"
+  AND (SELECT count(*) FROM "registri_rifiuti" x WHERE x."tenant_id" = m."tenant_id") = 1;
+
+UPDATE "registro_progressivi_iniziali" p
+SET "registro_id" = r."id"
+FROM "registri_rifiuti" r
+WHERE p."registro_id" IS NULL
+  AND r."tenant_id" = p."tenant_id"
+  AND (SELECT count(*) FROM "registri_rifiuti" x WHERE x."tenant_id" = p."tenant_id") = 1;
 
 DO $$
 DECLARE

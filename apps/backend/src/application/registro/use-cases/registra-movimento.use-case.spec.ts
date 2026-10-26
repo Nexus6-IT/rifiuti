@@ -50,6 +50,7 @@ describe('RegistraMovimentoUseCase', () => {
 
   function buildPrisma(overrides: Partial<typeof prisma> = {}) {
     return {
+      registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
       wasteMovement: {
         groupBy: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
@@ -1118,6 +1119,33 @@ describe('RegistraMovimentoUseCase', () => {
       type: 'SCARICO',
       ricopiaChiave: '',
     })
+  })
+
+  it('con più registri il doppio sull indice unico nomina il registro del movimento esistente', async () => {
+    const tx = _mockTransazione(recordScarico)
+    tx.wasteMovement.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['tenant_id', 'fir_id_ricopia', 'type', 'ricopia_chiave'] },
+      })
+    )
+    jest
+      .spyOn(prisma.wasteMovement, 'findFirst')
+      .mockResolvedValue({ progressiveNumber: 9, progressiveYear: 2026, registroId: 'reg-b' })
+    prisma.registroRifiuti = {
+      findMany: jest.fn().mockResolvedValue([
+        { id: 'reg-a', descrizione: 'Registro A', unitaLocale: null },
+        {
+          id: 'reg-b',
+          descrizione: 'Registro B',
+          unitaLocale: { denominazione: 'Sede di Torino' },
+        },
+      ]),
+    }
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+    expect(r.error).toBe(new FirGiaRegistratoError(9, 2026, 'Sede di Torino').message)
+    expect(r.error).toContain('nel registro Sede di Torino')
   })
 
   it('se la lettura del doppio fallisce, execute risponde con un errore e non lancia', async () => {

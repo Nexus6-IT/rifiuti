@@ -216,7 +216,8 @@ describe('RegistriService — Postgres reale, ruolo wasteflow_app', () => {
   })
 
   it('il solo lock basta: con un unico tentativo (nessun retry su P2002) 6 chiamate parallele danno comunque un registro per sede', async () => {
-    const senzaRetry = new RegistriService(app, loggerStub as never, 1)
+    const senzaRetry = new RegistriService(app, loggerStub as never)
+    senzaRetry.tentativiMassimi = 1
     const tenantId = await nuovoTenant()
     await nuovaSede(tenantId, true, 'Sede A')
     await nuovaSede(tenantId, false, 'Sede B')

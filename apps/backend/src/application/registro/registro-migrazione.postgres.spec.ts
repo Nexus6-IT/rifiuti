@@ -373,7 +373,9 @@ describe('Migration M1 — registro per sede (Postgres reale)', () => {
  */
 const M2 = '20261027110000_registro_obbligatorio'
 
-function conDatabaseFinoAM1(prefisso: string, righeNull: boolean) {
+type RigheNull = 'nessuna' | 'un_registro' | 'due_registri'
+
+function conDatabaseFinoAM1(prefisso: string, righeNull: RigheNull) {
   const nomeDb = `wasteflow_${prefisso}_${Date.now()}`
   const urlDb = `${BASE_URL}/${nomeDb}?schema=public`
   const cartellaTmp = fs.mkdtempSync(path.join(os.tmpdir(), `mig-registro-${prefisso}-`))
@@ -430,7 +432,20 @@ function conDatabaseFinoAM1(prefisso: string, righeNull: boolean) {
          VALUES ('${tenant}', ${reg}, now(), 'CARICO', '99 99 02', 1, now(), ${numero}, 2026, 'produzione')`
       )
     await mov(1, `'${registro}'`)
-    if (righeNull) await mov(2, 'NULL') // movimento senza registro: M2 deve fermarsi
+    if (righeNull === 'due_registri') {
+      // seconda sede/registro: la riga NULL e' ambigua, M2 deve fermarsi
+      await ctx.q(
+        `INSERT INTO registri_rifiuti (id, tenant_id, updated_at, descrizione, codice) VALUES ('${randomUUID()}', '${tenant}', now(), 'Registro 2', 'R2')`
+      )
+    }
+    if (righeNull !== 'nessuna') {
+      // righe scritte dal container vecchio fra M1 e M2
+      await mov(2, 'NULL')
+      await ctx.q(
+        `INSERT INTO registro_progressivi_iniziali (tenant_id, registro_id, anno, primo_progressivo, motivo, impostato_da)
+         VALUES ('${tenant}', NULL, 2026, 1, 'scritto dal vecchio container', '${randomUUID()}')`
+      )
+    }
   }, 240_000)
 
   afterAll(async () => {
@@ -444,8 +459,8 @@ function conDatabaseFinoAM1(prefisso: string, righeNull: boolean) {
   return ctx
 }
 
-describe('Migration M2 — M2 con un movimento senza registro (Postgres reale)', () => {
-  const c = conDatabaseFinoAM1('mig2a', true)
+describe('Migration M2 — M2 con righe senza registro e due registri (Postgres reale)', () => {
+  const c = conDatabaseFinoAM1('mig2a', 'due_registri')
 
   it('M2: M2 fallisce con un messaggio chiaro se resta un movimento senza registro', async () => {
     let messaggio = ''
@@ -456,7 +471,7 @@ describe('Migration M2 — M2 con un movimento senza registro (Postgres reale)',
 ${String((e as { stderr?: unknown }).stderr ?? '')}`
     }
     expect(messaggio).toMatch(
-      /M2 registro_obbligatorio: 1 movimenti e 0 progressivi iniziali senza registro/
+      /M2 registro_obbligatorio: 1 movimenti e 1 progressivi iniziali senza registro/
     )
     // nessuna modifica a meta': la colonna e' ancora nullable
     const [col] = await c.sel<{ is_nullable: string }>(
@@ -466,8 +481,24 @@ ${String((e as { stderr?: unknown }).stderr ?? '')}`
   })
 })
 
+describe('Migration M2 — righe NULL fra M1 e M2 con un solo registro (Postgres reale)', () => {
+  const c = conDatabaseFinoAM1('mig2c', 'un_registro')
+
+  it("M2: recupera le righe NULL assegnandole all'unico registro e riesce", async () => {
+    c.applicaM2()
+    const [m] = await c.sel<{ n: number }>(
+      `SELECT count(*)::int AS n FROM waste_movements WHERE registro_id = '${c.registro}'`
+    )
+    const [p] = await c.sel<{ n: number }>(
+      `SELECT count(*)::int AS n FROM registro_progressivi_iniziali WHERE registro_id = '${c.registro}'`
+    )
+    expect(m.n).toBe(2)
+    expect(p.n).toBe(1)
+  })
+})
+
 describe('Migration M2 — registro obbligatorio (Postgres reale)', () => {
-  const c = conDatabaseFinoAM1('mig2b', false)
+  const c = conDatabaseFinoAM1('mig2b', 'nessuna')
   beforeAll(() => c.applicaM2(), 240_000)
 
   it('M2: registro_id è NOT NULL', async () => {

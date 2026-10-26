@@ -94,11 +94,12 @@ function eViolazioneUnico(err: unknown): boolean {
  */
 @Injectable()
 export class RegistriService {
+  /** Solo per i test (si sovrascrive dopo la creazione): quante volte si riesegue la transazione dopo una P2002. */
+  tentativiMassimi: number = TENTATIVI_PREDEFINITI
+
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService,
-    /** Solo per i test: quante volte si riesegue la transazione dopo una P2002. */
-    private readonly tentativiMassimi: number = TENTATIVI_PREDEFINITI
+    private readonly logger: LoggerService
   ) {
     this.logger.setContext(RegistriService.name)
   }
