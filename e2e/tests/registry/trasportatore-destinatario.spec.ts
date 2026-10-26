@@ -3,7 +3,7 @@ import { loginAndSaveState, skipReason } from '../../fixtures/auth'
 import { hasRoleCredentials } from '../../utils/env'
 import { apiLogin, apiPost, apiGet } from '../../utils/api-client'
 import { registra } from '../../fixtures/risorse'
-import { conPrefisso } from '../../utils/run-id'
+import { conPrefisso, conPrefissoUnico } from '../../utils/run-id'
 import { AnagrafichePage } from '../../pages/anagrafiche.page'
 import { FirListPage } from '../../pages/fir-list.page'
 
@@ -61,7 +61,7 @@ interface DestinatarioResponse {
 
 function payloadTrasportatore(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    ragioneSociale: conPrefisso('Trasportatore SRL'),
+    ragioneSociale: conPrefissoUnico('Trasportatore SRL'),
     partitaIVA: nuovaPartitaIVA(),
     sedeLegale: SEDE_VALIDA,
     numeroIscrizione: `MI/${Math.floor(Math.random() * 900000 + 100000)}`,
@@ -72,7 +72,7 @@ function payloadTrasportatore(overrides: Partial<Record<string, unknown>> = {}) 
 
 function payloadDestinatario(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    ragioneSociale: conPrefisso('Destinatario SRL'),
+    ragioneSociale: conPrefissoUnico('Destinatario SRL'),
     partitaIVA: nuovaPartitaIVA(),
     sede: SEDE_VALIDA,
     numeroAutorizzazione: `AUT/${new Date().getFullYear()}/${Math.floor(Math.random() * 9000 + 1000)}`,
@@ -254,7 +254,11 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
     await firList.openNuovoFirDialog()
 
     await selezionaDropdown(page, 'new-trasportatore', trasportatore.ragioneSociale)
-
+    // Senza questa attesa "nessun avviso" varrebbe anche se la scelta non fosse mai
+    // avvenuta (assenza banale): il dropdown mostra il nome solo a parte scelta.
+    await expect(page.locator('p-dropdown:has(#new-trasportatore)')).toContainText(
+      trasportatore.ragioneSociale
+    )
     await expect(page.getByTestId('fir-trasportatore-iscrizione-scaduta')).toHaveCount(0)
   })
 
@@ -273,7 +277,10 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
     await firList.openNuovoFirDialog()
 
     await selezionaDropdown(page, 'new-destinatario', destinatario.ragioneSociale)
-
+    // Vedi sopra: prova che la scelta è avvenuta, altrimenti l'assenza dell'avviso è banale.
+    await expect(page.locator('p-dropdown:has(#new-destinatario)')).toContainText(
+      destinatario.ragioneSociale
+    )
     await expect(page.getByTestId('fir-destinatario-autorizzazione-scaduta')).toHaveCount(0)
   })
 })
