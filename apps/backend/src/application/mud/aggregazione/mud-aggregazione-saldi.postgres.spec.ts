@@ -12,6 +12,7 @@ describe('MudAggregazioneService.saldiAl31Dicembre — Postgres reale', () => {
   let service: any
   let tenantId: string
   let altroTenantId: string
+  const registroDi: Record<string, string> = {}
   let contatore = 0
 
   beforeAll(async () => {
@@ -28,12 +29,22 @@ describe('MudAggregazioneService.saldiAl31Dicembre — Postgres reale', () => {
         data: { partitaIva: `SB${suffisso}`, ragioneSociale: 'Saldi MUD Altro SRL', country: 'IT' },
       })
     ).id
+    for (const t of [tenantId, altroTenantId]) {
+      registroDi[t] = (
+        await prisma.registroRifiuti.create({
+          data: { tenantId: t, descrizione: 'Registro cronologico' },
+        })
+      ).id
+    }
     const logger: any = { setContext: jest.fn() }
     service = new MudAggregazioneService(prisma as any, {} as any, logger)
   })
 
   afterAll(async () => {
     await prisma.wasteMovement.deleteMany({
+      where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
+    })
+    await prisma.registroRifiuti.deleteMany({
       where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
     await prisma.tenant.deleteMany({
@@ -60,6 +71,7 @@ describe('MudAggregazioneService.saldiAl31Dicembre — Postgres reale', () => {
     await prisma.wasteMovement.create({
       data: {
         tenantId: tenant,
+        registroId: registroDi[tenant],
         progressiveYear: movementDate.getUTCFullYear(),
         progressiveNumber: ++contatore,
         type: tipo,

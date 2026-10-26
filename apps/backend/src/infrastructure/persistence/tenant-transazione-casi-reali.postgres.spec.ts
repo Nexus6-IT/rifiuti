@@ -28,6 +28,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { PrismaService, creaPrismaServiceApplicativo } from './prisma.service'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { RegistraMovimentoCommand } from '../../application/registro/commands/registra-movimento.command'
+import { RegistriService } from '../../application/registro/registri.service'
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
 import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
@@ -142,6 +143,7 @@ describe('Tenant per transazione sui casi reali', () => {
     // Con un id vuoto Prisma toglierebbe il filtro: senza id non si cancella nulla.
     if (tenantId) {
       await admin.wasteMovement.deleteMany({ where: { tenantId } })
+      await admin.registroRifiuti.deleteMany({ where: { tenantId } })
       await admin.activityLog.deleteMany({ where: { tenantId } })
       await admin.mUDReport.deleteMany({ where: { tenantId } })
       await admin.rentriNumeroVidimato.deleteMany({ where: { tenantId } })
@@ -158,7 +160,11 @@ describe('Tenant per transazione sui casi reali', () => {
   beforeEach(azzera)
 
   it('RegistraMovimentoUseCase: transazione interattiva con advisory lock, tenant sulla scrittura', async () => {
-    const useCase = new RegistraMovimentoUseCase(prisma, loggerStub as any)
+    const useCase = new RegistraMovimentoUseCase(
+      prisma,
+      loggerStub as any,
+      new RegistriService(prisma, loggerStub as any)
+    )
     const comando = new RegistraMovimentoCommand(
       tenantId,
       undefined as unknown as string,
@@ -170,6 +176,7 @@ describe('Tenant per transazione sui casi reali', () => {
       undefined,
       100,
       'KG',
+      undefined,
       undefined,
       undefined,
       undefined,

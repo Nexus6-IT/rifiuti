@@ -6,6 +6,7 @@ describe('giacenzaDisponibileAl', () => {
 
     const g = await giacenzaDisponibileAl(tx, {
       tenantId: '11111111-1111-4111-8111-111111111111',
+      registroId: '22222222-2222-4222-8222-222222222222',
       cerCode: '20 03 01',
       alla: new Date('2026-10-21T10:00:00Z'),
     })

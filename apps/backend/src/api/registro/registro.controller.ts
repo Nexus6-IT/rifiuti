@@ -117,7 +117,8 @@ export class RegistroController {
       dto.counterpartName,
       dto.counterpartAddress,
       dto.firId,
-      dto.notes
+      dto.notes,
+      undefined
     )
 
     const result = await this.registraMovimentoUseCase.execute(command)

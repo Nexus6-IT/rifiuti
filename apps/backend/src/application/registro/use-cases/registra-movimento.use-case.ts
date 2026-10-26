@@ -26,6 +26,7 @@ import {
 import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
 import { giacenzaDisponibileAl } from '../giacenza-disponibile'
 import { stessiDatiRicopia } from '../ricopia-fir'
+import { RegistriService, RegistroVista } from '../registri.service'
 
 /**
  * Chiave di ricopia della ricopia ordinaria di un FIR (C-W-03, come WinWaste).
@@ -45,6 +46,8 @@ export const RICOPIA_ORDINARIA = ''
 export interface MovimentoRegistrato {
   id: string
   tenantId: string
+  /** Registro (per sede) in cui il movimento è annotato. */
+  registroId: string
   progressiveNumber: number
   progressiveYear: number
   type: string
@@ -80,13 +83,14 @@ export interface MovimentoRegistrato {
  * Use case per la registrazione di un movimento nel registro cronologico
  * di carico/scarico. Art. 190 D.Lgs 152/2006, DM 59/2023.
  *
- * Assegna automaticamente il numero progressivo per tenant/anno tramite
- * SELECT ... FOR UPDATE per evitare race condition in ambienti multi-worker.
+ * Assegna automaticamente il numero progressivo per registro/anno sotto advisory lock,
+ * per evitare race condition in ambienti multi-worker. Registrazioni su registri (sedi)
+ * diversi non si aspettano: nessun lock a livello di azienda dentro la transazione.
  *
  * Calcola e persiste l'hash SHA-256 di vidimazione digitale (art. 4 DM 59/2023).
  *
  * Per uno SCARICO di massa verifica la giacenza del CER dentro la transaction, sotto
- * lock: blocca se il saldo complessivo (in kg) non copre lo scarico; se lo copre ma
+ * lock: blocca se il saldo complessivo (in kg) del registro non copre lo scarico; se lo copre ma
  * non alla data dello scarico, lo registra e restituisce un avviso in `avvisi`.
  *
  * Un FIR si ricopia una sola volta per tipo di movimento: ripetere la stessa ricopia
@@ -97,7 +101,8 @@ export interface MovimentoRegistrato {
 export class RegistraMovimentoUseCase {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly registri: RegistriService
   ) {
     this.logger.setContext(RegistraMovimentoUseCase.name)
   }
@@ -197,15 +202,31 @@ export class RegistraMovimentoUseCase {
     // alle 00:00 italiane del 1° gennaio.
     const anno = annoSolareItaliano(command.registrationDate)
 
+    // Registri dell'azienda pronti PRIMA della transazione: la creazione prende il suo lock in una
+    // transazione propria e breve, mai annidato con quelli di numerazione e giacenza.
+    try {
+      await this.registri.preparaRegistri(command.tenantId, command.registroId)
+    } catch (err) {
+      if (err instanceof DomainError) return Result.fail(err.message)
+      this.logger.error(`Preparazione dei registri non riuscita: ${err.message}`)
+      return Result.fail(`Errore durante la registrazione: ${err.message}`)
+    }
+
     let movimento: MovimentoRegistrato
     try {
       movimento = await this.prisma.$transaction(async tx => {
+        // Registro del movimento (sola lettura, nessun lock). Con un FIR: sempre quello della sede
+        // principale (D10).
+        const registro = command.firId
+          ? await this.registri.risolviPerFir(tx, command.tenantId, command.registroId)
+          : await this.registri.risolvi(tx, command.tenantId, command.registroId)
+
         // Ricopia del FIR, per prima (ordine fisso dei lock: FIR, progressivo, giacenza):
         // un retry di uno scarico deve trovare il movimento già registrato prima del
         // controllo di giacenza, che altrimenti lo respingerebbe per la quantità che lui
         // stesso ha consumato.
         if (command.firId) {
-          const esistente = await this.ricopiaEsistente(tx, command, cerCode)
+          const esistente = await this.ricopiaEsistente(tx, command, cerCode, registro)
           if (esistente) {
             // Ritardo dalle date del movimento esistente, non da quelle del retry.
             return {
@@ -216,30 +237,32 @@ export class RegistraMovimentoUseCase {
           }
         }
 
-        // Advisory lock per-tenant/anno: serializza le numerazioni dello stesso
-        // tenant in transazioni concorrenti senza usare FOR UPDATE su aggregati
+        // Advisory lock per-registro/anno: serializza le numerazioni dello stesso
+        // registro in transazioni concorrenti senza usare FOR UPDATE su aggregati
         // (PostgreSQL 0A000: "FOR UPDATE is not allowed with aggregate functions").
         // pg_advisory_xact_lock è rilasciato automaticamente al commit/rollback.
-        const lockKey = `${command.tenantId}-${anno}`
+        const lockKey = `${registro.id}-${anno}`
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
 
         // Controllo di giacenza per SCARICO, sotto il lock della giacenza del CER e
         // dentro la transaction: due scarichi concorrenti (anche di anni diversi, quindi
         // con lock del progressivo diversi) non possono leggere la stessa giacenza.
         const avvisi =
-          command.type === 'SCARICO' ? await this.verificaGiacenza(tx, command, cerCode) : []
+          command.type === 'SCARICO'
+            ? await this.verificaGiacenza(tx, command, cerCode, registro.id)
+            : []
 
         const [row] = await tx.$queryRaw<Array<{ max_num: number | null }>>`
           SELECT MAX(progressive_number) AS max_num
           FROM waste_movements
-          WHERE tenant_id = ${command.tenantId}::uuid
+          WHERE registro_id = ${registro.id}::uuid
             AND progressive_year = ${anno}
         `
         // Progressivo iniziale (C-W-02): chi arriva da un altro programma a metà anno
         // prosegue la numerazione già trasmessa. Letto sotto lo stesso lock con cui
         // ProgressivoInizialeService lo imposta, quindi non c'è corsa fra i due.
         const iniziale = await tx.registroProgressivoIniziale.findUnique({
-          where: { tenantId_anno: { tenantId: command.tenantId, anno } },
+          where: { registroId_anno: { registroId: registro.id, anno } },
           select: { primoProgressivo: true },
         })
         const nextProgressivo = Math.max((row.max_num ?? 0) + 1, iniziale?.primoProgressivo ?? 1)
@@ -247,6 +270,7 @@ export class RegistraMovimentoUseCase {
         // 3. Costruzione entità di dominio (con validazioni)
         const entity = WasteMovement.create({
           tenantId: command.tenantId,
+          registroId: registro.id,
           progressiveNumber: nextProgressivo,
           progressiveYear: anno,
           type: command.type,
@@ -273,6 +297,7 @@ export class RegistraMovimentoUseCase {
         const record = await tx.wasteMovement.create({
           data: {
             tenantId: entity.tenantId,
+            registroId: entity.registroId,
             progressiveNumber: entity.progressiveNumber,
             progressiveYear: entity.progressiveYear,
             type: entity.type,
@@ -345,7 +370,8 @@ export class RegistraMovimentoUseCase {
   private async ricopiaEsistente(
     tx: Prisma.TransactionClient,
     command: RegistraMovimentoCommand,
-    cerCode: string
+    cerCode: string,
+    registro: RegistroVista
   ): Promise<WasteMovementRecord | null> {
     const { tenantId, firId, type } = command
     const chiaveFir = `fir-registro|${tenantId}|${firId}`
@@ -357,6 +383,17 @@ export class RegistraMovimentoUseCase {
     })
     if (ricopie.length === 0) return null
 
+    // D10: un FIR si ricopia una sola volta per azienda. Un retry che chiede esplicitamente un
+    // registro diverso da quello della ricopia esistente non è un retry: si rifiuta.
+    const altroRegistro = ricopie.find(r => r.registroId !== registro.id)
+    if (command.registroId && altroRegistro) {
+      throw new FirGiaRegistratoError(
+        altroRegistro.progressiveNumber,
+        altroRegistro.progressiveYear,
+        await this.denominazioneSeVariRegistri(tx, tenantId, altroRegistro.registroId)
+      )
+    }
+
     const stessa = ricopie.find(r =>
       stessiDatiRicopia(r, {
         cerCode,
@@ -366,9 +403,28 @@ export class RegistraMovimentoUseCase {
       })
     )
     if (!stessa) {
-      throw new FirGiaRegistratoError(ricopie[0].progressiveNumber, ricopie[0].progressiveYear)
+      throw new FirGiaRegistratoError(
+        ricopie[0].progressiveNumber,
+        ricopie[0].progressiveYear,
+        await this.denominazioneSeVariRegistri(tx, tenantId, ricopie[0].registroId)
+      )
     }
     return stessa
+  }
+
+  /** Denominazione del registro, solo se l'azienda ne ha più di uno (altrimenti sarebbe rumore). */
+  private async denominazioneSeVariRegistri(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    registroId: string
+  ): Promise<string | undefined> {
+    const registri = await tx.registroRifiuti.findMany({
+      where: { tenantId },
+      include: { unitaLocale: { select: { denominazione: true } } },
+    })
+    if (registri.length < 2) return undefined
+    const r = registri.find(x => x.id === registroId)
+    return r ? (r.unitaLocale?.denominazione ?? r.descrizione) : undefined
   }
 
   /**
@@ -425,6 +481,7 @@ export class RegistraMovimentoUseCase {
     return {
       id: record.id,
       tenantId: record.tenantId,
+      registroId: record.registroId,
       progressiveNumber: record.progressiveNumber,
       progressiveYear: record.progressiveYear,
       type: record.type,
@@ -483,7 +540,8 @@ export class RegistraMovimentoUseCase {
   private async verificaGiacenza(
     tx: Prisma.TransactionClient,
     command: RegistraMovimentoCommand,
-    cerCode: string
+    cerCode: string,
+    registroId: string
   ): Promise<string[]> {
     const { tenantId } = command
     const u = normalizzaUnitaRegistro(command.unit)
@@ -497,14 +555,19 @@ export class RegistraMovimentoUseCase {
     }
 
     // Terzo lock dell'ordine fisso (FIR, progressivo, giacenza): serializza gli scarichi
-    // dello stesso CER del tenant, con e senza asterisco. `cerCode` arriva già da
+    // dello stesso CER dello stesso registro, con e senza asterisco. `cerCode` arriva già da
     // normalizeCerCode ("NN NN NN" per ogni formato di 6 cifre), quindi la chiave
     // individua lo stesso CER che giacenzaDisponibileAl confronta sulle sole cifre.
     const cerSenzaStella = cerCode.replace(/\*$/, '')
-    const chiaveGiacenza = `giacenza|${tenantId}|${cerSenzaStella}`
+    const chiaveGiacenza = `giacenza|${registroId}|${cerSenzaStella}`
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveGiacenza}))`
 
-    const g = await giacenzaDisponibileAl(tx, { tenantId, cerCode, alla: command.movementDate })
+    const g = await giacenzaDisponibileAl(tx, {
+      tenantId,
+      registroId,
+      cerCode,
+      alla: command.movementDate,
+    })
     const fattore = u.fattoreKg
     const richiestoKg = command.quantity * fattore
 

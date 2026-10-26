@@ -42,6 +42,11 @@ export class RegistraMovimentoCommand {
     /** ID del FIR collegato (obbligatorio per SCARICO con causale CONFERIMENTO_TRASPORTATORE). */
     public readonly firId: string | undefined,
     /** Note libere. */
-    public readonly notes: string | undefined
+    public readonly notes: string | undefined,
+    /**
+     * Registro in cui annotare il movimento. Assente: il registro della sede principale o
+     * l'unico registro attivo (con un FIR, sempre quello della sede principale).
+     */
+    public readonly registroId: string | undefined
   ) {}
 }

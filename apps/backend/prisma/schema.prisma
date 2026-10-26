@@ -797,11 +797,11 @@ enum NotificationSeverity {
   @@map("notification_severity")
 }
 
-/// Primo numero del registro di carico e scarico per azienda e anno (decisione C-W-02).
+/// Primo numero del registro di carico e scarico per registro e anno (decisione C-W-02).
 /// Serve a chi arriva da un altro programma a meta' anno: il primo movimento registrato
 /// qui prende questo numero, cosi' la numerazione gia' trasmessa al RENTRI prosegue.
 /// Si imposta una volta sola, prima del primo movimento dell'anno, sotto lo stesso
-/// advisory lock `<tenantId>-<anno>` della numerazione. La migration aggiunge
+/// advisory lock `<registroId>-<anno>` della numerazione. La migration aggiunge
 /// CHECK (primo_progressivo >= 1).
 model RegistroProgressivoIniziale {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -811,14 +811,12 @@ model RegistroProgressivoIniziale {
   motivo           String   @db.VarChar(500)
   impostatoDa      String   @map("impostato_da") @db.Uuid
   impostatoIl      DateTime @default(now()) @map("impostato_il")
-  /// Registro a cui appartiene il progressivo (Fase 2 pezzo 1). Nullable fino alla migration
-  /// del Task 3, che lo rende obbligatorio e toglie il vecchio unico per azienda.
-  registroId       String?  @map("registro_id") @db.Uuid
+  /// Registro a cui appartiene il progressivo (Fase 2 pezzo 1): uno per registro e anno.
+  registroId       String   @map("registro_id") @db.Uuid
 
   tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  registro RegistroRifiuti? @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  registro RegistroRifiuti  @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
-  @@unique([tenantId, anno])
   @@unique([registroId, anno])
   @@map("registro_progressivi_iniziali")
 }
@@ -1812,15 +1810,14 @@ model WasteMovement {
 
   notes String? @db.Text
 
-  /// Registro (per sede) in cui il movimento e' annotato (Fase 2 pezzo 1). Nullable fino alla
-  /// migration del Task 3.
-  registroId String? @map("registro_id") @db.Uuid
+  /// Registro (per sede) in cui il movimento e' annotato (Fase 2 pezzo 1): numerazione e
+  /// giacenza sono per registro.
+  registroId String @map("registro_id") @db.Uuid
 
   tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   recordedByUser User?            @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
-  registro       RegistroRifiuti? @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  registro       RegistroRifiuti  @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
-  @@unique([tenantId, progressiveYear, progressiveNumber])
   @@unique([registroId, progressiveYear, progressiveNumber])
   @@index([registroId, cerCode])
   @@unique([tenantId, firIdRicopia, type, ricopiaChiave])

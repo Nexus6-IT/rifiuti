@@ -58,6 +58,8 @@ function giorniItalianiFra(da: Date, a: Date): number {
 export interface WasteMovementProps {
   id?: string
   tenantId: string
+  /** Registro (per sede) in cui il movimento è annotato; non entra nell'hash (D7). */
+  registroId: string
   progressiveNumber: number
   progressiveYear: number
   type: WasteMovementType
@@ -187,6 +189,9 @@ export class WasteMovement {
   }
   get tenantId(): string {
     return this.props.tenantId
+  }
+  get registroId(): string {
+    return this.props.registroId
   }
   get progressiveNumber(): number {
     return this.props.progressiveNumber

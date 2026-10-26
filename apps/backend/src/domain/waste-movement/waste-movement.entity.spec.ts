@@ -7,11 +7,13 @@ import {
 
 describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () => {
   const TENANT = 'tenant-uuid-001'
+  const REGISTRO = 'registro-uuid-001'
   const TODAY = new Date('2026-06-29T10:00:00.000Z')
 
   function buildProps(overrides: Partial<Parameters<typeof WasteMovement.create>[0]> = {}) {
     return {
       tenantId: TENANT,
+      registroId: REGISTRO,
       progressiveNumber: 1,
       progressiveYear: 2026,
       type: 'CARICO' as const,
@@ -172,6 +174,7 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     const m = WasteMovement.reconstitute({
       id: 'some-id',
       tenantId: TENANT,
+      registroId: REGISTRO,
       progressiveNumber: 99,
       progressiveYear: 2025,
       type: 'CARICO',

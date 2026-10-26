@@ -4,6 +4,7 @@ import { ProgressivoInizialeService } from './progressivo-iniziale.service'
 import { RegistraMovimentoUseCase } from './use-cases/registra-movimento.use-case'
 import { RegistraMovimentoCommand } from './commands/registra-movimento.command'
 import { annoSolareItaliano } from '../../core/time/anno-italiano'
+import { RegistriService } from './registri.service'
 
 /**
  * Progressivo iniziale del registro contro un Postgres reale: la tabella creata dalla
@@ -17,6 +18,7 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
   let prisma: PrismaClient
   let service: ProgressivoInizialeService
   let useCase: RegistraMovimentoUseCase
+  let registri: RegistriService
   let userId: string
   let cerCreato = false
   const tenantCreati: string[] = []
@@ -33,8 +35,9 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
   beforeAll(async () => {
     prisma = new PrismaClient()
     await prisma.$connect()
-    service = new ProgressivoInizialeService(prisma as any)
-    useCase = new RegistraMovimentoUseCase(prisma as any, loggerStub as any)
+    registri = new RegistriService(prisma as any, loggerStub as any)
+    service = new ProgressivoInizialeService(prisma as any, registri)
+    useCase = new RegistraMovimentoUseCase(prisma as any, loggerStub as any, registri)
     const tenantUtente = await nuovoTenant()
     const user = await prisma.user.create({
       data: {
@@ -59,6 +62,11 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
   afterAll(async () => {
     await prisma.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await prisma.wasteMovement.deleteMany({ where: { tenantId: { in: tenantCreati } } })
+    await prisma.registroProgressivoIniziale.deleteMany({
+      where: { tenantId: { in: tenantCreati } },
+    })
+    await prisma.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
+    await prisma.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     // senza id deleteMany non avrebbe filtro e cancellerebbe tutti gli utenti
     if (userId) await prisma.user.deleteMany({ where: { id: userId } })
     await prisma.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
@@ -79,6 +87,7 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
       undefined,
       10,
       'KG',
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -106,17 +115,21 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
         ['impostato_il', 'NO'],
         ['motivo', 'NO'],
         ['primo_progressivo', 'NO'],
+        ['registro_id', 'NO'],
         ['tenant_id', 'NO'],
       ])
     })
 
-    it('ha un indice unico su (tenant_id, anno)', async () => {
+    it('ha un indice unico su (registro_id, anno) e non piu su (tenant_id, anno)', async () => {
       const indici = await prisma.$queryRaw<Array<{ indexdef: string }>>`
         SELECT indexdef FROM pg_indexes
         WHERE schemaname = 'public' AND tablename = 'registro_progressivi_iniziali'
       `
-      expect(indici.some(i => /CREATE UNIQUE INDEX .*\(tenant_id, anno\)/.test(i.indexdef))).toBe(
+      expect(indici.some(i => /CREATE UNIQUE INDEX .*\(registro_id, anno\)/.test(i.indexdef))).toBe(
         true
+      )
+      expect(indici.some(i => /CREATE UNIQUE INDEX .*\(tenant_id, anno\)/.test(i.indexdef))).toBe(
+        false
       )
     })
 
@@ -141,11 +154,12 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
 
     it('il database rifiuta un progressivo iniziale minore di 1', async () => {
       const tenantId = await nuovoTenant()
+      const [registro] = await registri.assicuraRegistri(tenantId)
       await expect(
         prisma.$executeRaw`
           INSERT INTO registro_progressivi_iniziali
-            (tenant_id, anno, primo_progressivo, motivo, impostato_da)
-          VALUES (${tenantId}::uuid, ${ANNO}, 0, 'prova', ${userId}::uuid)
+            (tenant_id, registro_id, anno, primo_progressivo, motivo, impostato_da)
+          VALUES (${tenantId}::uuid, ${registro.id}::uuid, ${ANNO}, 0, 'prova', ${userId}::uuid)
         `
       ).rejects.toThrow(/check constraint/i)
     })
@@ -173,6 +187,45 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
       primoProgressivo: 812,
       haMovimenti: true,
     })
+  })
+
+  it("imposta per registro: un movimento nell'altro registro non lo blocca", async () => {
+    const tenantId = await nuovoTenant()
+    const sede = (principale: boolean, nome: string) =>
+      prisma.rentriUnitaLocale.create({
+        data: {
+          tenantId,
+          numIscrSito: `OP0001PG${String(Date.now()).slice(-5)}${nome}-MI0001`,
+          denominazione: `Sede ${nome}`,
+          principale,
+        },
+      })
+    const sedeA = await sede(true, 'A')
+    const sedeB = await sede(false, 'B')
+    const viste = await registri.assicuraRegistri(tenantId)
+    const regA = viste.find(v => v.unitaLocaleId === sedeA.id)!.id
+    const regB = viste.find(v => v.unitaLocaleId === sedeB.id)!.id
+    const inRegistro = (registroId: string) => ({ ...carico(tenantId), registroId })
+
+    expect((await useCase.execute(inRegistro(regA))).value.progressiveNumber).toBe(1)
+
+    // A ha un movimento: il progressivo iniziale non si imposta piu'; B si'.
+    await expect(
+      service.imposta(tenantId, ANNO, 500, 'Migrazione', userId, regA)
+    ).rejects.toBeInstanceOf(ConflictException)
+    await expect(service.imposta(tenantId, ANNO, 500, 'Migrazione', userId, regB)).resolves.toEqual(
+      { anno: ANNO, primoProgressivo: 500, registroId: regB }
+    )
+
+    expect((await service.leggi(tenantId, ANNO, regA)).haMovimenti).toBe(true)
+    expect(await service.leggi(tenantId, ANNO, regB)).toMatchObject({
+      registroId: regB,
+      primoProgressivo: 500,
+      haMovimenti: false,
+    })
+    // La numerazione di B riparte dal suo progressivo iniziale, quella di A prosegue.
+    expect((await useCase.execute(inRegistro(regB))).value.progressiveNumber).toBe(500)
+    expect((await useCase.execute(inRegistro(regA))).value.progressiveNumber).toBe(2)
   })
 
   /**
@@ -223,7 +276,11 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
     it("un movimento che tiene il lock fa rifiutare l'impostazione che lo aspetta", async () => {
       const tenantId = await nuovoTenant()
       const pausa = clientConPausa()
-      const movimentoInPausa = new RegistraMovimentoUseCase(pausa.client as any, loggerStub as any)
+      const movimentoInPausa = new RegistraMovimentoUseCase(
+        pausa.client as any,
+        loggerStub as any,
+        registri
+      )
 
       const movimento = movimentoInPausa.execute(carico(tenantId))
       await pausa.arrivata // movimento scritto, lock tenuto, commit non ancora fatto
@@ -247,7 +304,7 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
     it("un'impostazione che tiene il lock dà il suo numero al movimento che la aspetta", async () => {
       const tenantId = await nuovoTenant()
       const pausa = clientConPausa()
-      const impostazioneInPausa = new ProgressivoInizialeService(pausa.client as any)
+      const impostazioneInPausa = new ProgressivoInizialeService(pausa.client as any, registri)
 
       const impostazione = impostazioneInPausa.imposta(tenantId, ANNO, 500, 'Migrazione', userId)
       await pausa.arrivata // riga scritta, lock tenuto, commit non ancora fatto
@@ -255,7 +312,11 @@ describe('ProgressivoInizialeService — Postgres reale', () => {
       const inAttesa = await qualcunoAspettaIlLock()
       pausa.rilascia()
 
-      await expect(impostazione).resolves.toEqual({ anno: ANNO, primoProgressivo: 500 })
+      await expect(impostazione).resolves.toEqual({
+        anno: ANNO,
+        primoProgressivo: 500,
+        registroId: expect.any(String),
+      })
       const esitoMovimento = await movimento
       expect(esitoMovimento.isSuccess).toBe(true)
       expect(esitoMovimento.value.progressiveNumber).toBe(500)
