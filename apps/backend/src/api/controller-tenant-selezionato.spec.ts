@@ -21,17 +21,27 @@ const AUTORIZZATI: Record<string, string> = {
     "toResponse proietta il record dell'utente gestito (riga DB), non il token del chiamante",
 }
 
+/**
+ * LIMITE NOTO: la guardia vede solo gli accessi diretti. Un alias (`const u = req.user; u.tenantId`)
+ * o un passaggio dell'intero utente a una funzione non vengono rilevati: per quelli resta la
+ * revisione del codice.
+ */
+const UTENTE = String.raw`(?:\buser|\[\s*['"\x60]user['"\x60]\s*\])` // user | ['user']
 const ACCESSI_AL_TENANT_DEL_TOKEN: RegExp[] = [
-  /\buser\s*\??\.\s*tenantId\b/, // user.tenantId, user?.tenantId, req.user.tenantId, req.user?.tenantId
-  /\buser\s*\??\.?\s*\[\s*['"`]tenantId['"`]\s*\]/, // user['tenantId']
+  // user.tenantId, user?.tenantId, req.user.tenantId, req.user?.tenantId, req['user'].tenantId
+  new RegExp(UTENTE + String.raw`\s*\??\.\s*tenantId\b`),
+  // user['tenantId'], req.user?.['tenantId'], req['user']['tenantId']
+  new RegExp(UTENTE + String.raw`\s*\??\.?\s*\[\s*['"\x60]tenantId['"\x60]\s*\]`),
   /\{[^{}]*\btenantId\b[^{}]*\}\s*=\s*(?:\w+\.)*user\b/, // { tenantId } = user
 ]
 
+/** Ogni file .ts non di test sotto src che dichiara un controller (non solo `*.controller.ts`). */
 function controller(dir: string): string[] {
   return readdirSync(dir).flatMap(nome => {
     const percorso = join(dir, nome)
-    if (statSync(percorso).isDirectory()) return controller(percorso)
-    return nome.endsWith('.controller.ts') ? [percorso] : []
+    if (statSync(percorso).isDirectory()) return nome === 'node_modules' ? [] : controller(percorso)
+    if (!nome.endsWith('.ts') || nome.endsWith('.spec.ts') || nome.endsWith('.d.ts')) return []
+    return /@Controller\(/.test(readFileSync(percorso, 'utf8')) ? [percorso] : []
   })
 }
 
@@ -60,12 +70,40 @@ function senzaCommenti(testo: string): string {
   return fuori
 }
 
+/**
+ * Come `senzaCommenti`, ma svuota anche il contenuto delle stringhe: una stringa che parla di
+ * `user.tenantId` (messaggio, log) non e' un accesso. Restano visibili le chiavi esatte
+ * `'user'` e `'tenantId'` (servono a riconoscere `req['user']['tenantId']`) e i template
+ * literal con interpolazione `${...}`, che contengono codice vero.
+ */
+function soloCodice(testo: string): string {
+  const senza = senzaCommenti(testo)
+  let out = ''
+  let i = 0
+  while (i < senza.length) {
+    const c = senza[i]
+    if (c === "'" || c === '"' || c === '`') {
+      let j = i + 1
+      while (j < senza.length && senza[j] !== c) j += senza[j] === '\\' ? 2 : 1
+      const contenuto = senza.slice(i + 1, j)
+      const tieni =
+        contenuto === 'user' || contenuto === 'tenantId' || (c === '`' && contenuto.includes('${'))
+      out += tieni ? senza.slice(i, j + 1) : c + c
+      i = j + 1
+    } else {
+      out += c
+      i++
+    }
+  }
+  return out
+}
+
 /** Percorsi (relativi a src/) dei file che leggono il tenant dell'utente e non sono autorizzati. */
 function violazioni(file: Record<string, string>, autorizzati: Record<string, string>): string[] {
   return Object.entries(file)
     .filter(([rel]) => !(rel in autorizzati))
     .filter(([, testo]) => {
-      const codice = senzaCommenti(testo)
+      const codice = soloCodice(testo)
       return ACCESSI_AL_TENANT_DEL_TOKEN.some(re => re.test(codice))
     })
     .map(([rel]) => rel)
@@ -173,6 +211,10 @@ describe('controller: azienda selezionata, non quella del token', () => {
         "const t = user['tenantId']",
         'const { tenantId } = user',
         'const { id, tenantId } = req.user',
+        "const t = req['user'].tenantId",
+        "const t = req['user']['tenantId']",
+        "const t = req.user?.['tenantId']",
+        'const t = `${req.user.tenantId}`',
       ]
       for (const v of varianti) {
         expect({ v, r: violazioni({ 'api/finto.controller.ts': v }, {}) }).toEqual({
@@ -180,6 +222,24 @@ describe('controller: azienda selezionata, non quella del token', () => {
           r: ['api/finto.controller.ts'],
         })
       }
+    })
+
+    it('non segnala le stringhe che citano user.tenantId', () => {
+      const lecite = [
+        "throw new Error('non usare user.tenantId')",
+        'this.logger.log("req.user?.tenantId non e valido")',
+        'const m = `usa requireRequestTenantId, non user.tenantId`',
+        "const ok = req['user'].id",
+      ]
+      for (const v of lecite) {
+        expect({ v, r: violazioni({ 'api/finto.controller.ts': v }, {}) }).toEqual({ v, r: [] })
+      }
+    })
+
+    it('legge anche i controller fuori da *.controller.ts (es. fir.controller.v2.ts)', () => {
+      const trovati = Object.keys(leggiControllerReali())
+      expect(trovati).toContain('api/fir/fir.controller.v2.ts')
+      expect(trovati.every(f => !f.endsWith('.spec.ts'))).toBe(true)
     })
 
     it('non segnala un file in elenco ne i commenti', () => {

@@ -11,6 +11,7 @@ describe('AuditController — endpoint collegati al repository', () => {
   let queryBus: any
   let repo: any
   let roleChangeRepo: any
+  let ruolo: { ruoloEffettivo: jest.Mock }
   // switch di azienda: token su 'tenant-token', azienda selezionata 'tenant-1'
   const req = { tenantId: 'tenant-1', user: { id: 'user-1', tenantId: 'tenant-token' } }
 
@@ -24,7 +25,8 @@ describe('AuditController — endpoint collegati al repository', () => {
     roleChangeRepo = {
       findWithFilters: jest.fn(),
     }
-    controller = new AuditController(queryBus, repo, roleChangeRepo)
+    ruolo = { ruoloEffettivo: jest.fn().mockResolvedValue('ADMIN') }
+    controller = new AuditController(queryBus, repo, roleChangeRepo, ruolo as any)
   })
 
   it('exportAuditTrail invia il CSV prodotto dal repository', async () => {
@@ -140,4 +142,68 @@ describe('AuditController — endpoint collegati al repository', () => {
     await expect(controller.getAuditStatistics(senza)).rejects.toBeInstanceOf(ForbiddenException)
     expect(repo.getStatistics).not.toHaveBeenCalled()
   })
+})
+
+describe('AuditController — ruolo effettivo sull azienda selezionata', () => {
+  let ruolo: { ruoloEffettivo: jest.Mock }
+  let repo: any
+  let controller: AuditController
+  const res: any = { setHeader: jest.fn(), send: jest.fn() }
+  // consulente: token sull'azienda di casa, azienda selezionata diversa
+  const reqCliente = { tenantId: 'cliente', user: { id: 'u1', role: 'ADMIN', tenantId: 'casa' } }
+  const reqCasa = { tenantId: 'casa', user: { id: 'u1', role: 'ADMIN', tenantId: 'casa' } }
+  const reqSuper = {
+    tenantId: 'cliente',
+    user: { id: 'u1', role: 'SUPER_ADMIN', tenantId: 'casa' },
+  }
+
+  const handler: Array<[string, (r: any) => Promise<unknown>]> = [
+    ['getAuditTrail', r => controller.getAuditTrail(r)],
+    ['exportAuditTrail', r => controller.exportAuditTrail(r, res)],
+    ['getRoleChanges', r => controller.getRoleChanges(r)],
+    [
+      'reconstruct',
+      r => controller.reconstructHistoricalPermissions(r, { timestamp: '2026-01-01' } as any),
+    ],
+    ['getAuditStatistics', r => controller.getAuditStatistics(r)],
+    ['validateChainIntegrity', r => controller.validateChainIntegrity(r, {})],
+  ]
+
+  beforeEach(() => {
+    ruolo = { ruoloEffettivo: jest.fn() }
+    repo = {
+      exportToCsv: jest.fn().mockResolvedValue(''),
+      getStatistics: jest.fn().mockResolvedValue({}),
+      validateChainIntegrity: jest.fn().mockResolvedValue({}),
+    }
+    const queryBus = { execute: jest.fn().mockResolvedValue({ logs: [], changes: [], total: 0 }) }
+    const roleChangeRepo = {
+      findWithFilters: jest.fn().mockResolvedValue({ changes: [], total: 0 }),
+    }
+    controller = new AuditController(queryBus as any, repo, roleChangeRepo as any, ruolo as any)
+  })
+
+  it.each(handler)(
+    '%s: azienda cliente, consulente non ADMIN effettivo → 403',
+    async (_n, chiama) => {
+      ruolo.ruoloEffettivo.mockResolvedValue('VIEWER')
+      await expect(chiama(reqCliente)).rejects.toBeInstanceOf(ForbiddenException)
+      expect(ruolo.ruoloEffettivo).toHaveBeenCalledWith(reqCliente.user, 'cliente')
+    }
+  )
+
+  it.each(handler)('%s: azienda cliente, ADMIN effettivo → non 403', async (_n, chiama) => {
+    ruolo.ruoloEffettivo.mockResolvedValue('ADMIN')
+    await chiama(reqCliente).catch(e => expect(e).not.toBeInstanceOf(ForbiddenException))
+    expect(ruolo.ruoloEffettivo).toHaveBeenCalled()
+  })
+
+  it.each(handler)(
+    '%s: azienda di casa o SUPER_ADMIN → nessun controllo aggiuntivo',
+    async (_n, chiama) => {
+      await chiama(reqCasa).catch(e => expect(e).not.toBeInstanceOf(ForbiddenException))
+      await chiama(reqSuper).catch(e => expect(e).not.toBeInstanceOf(ForbiddenException))
+      expect(ruolo.ruoloEffettivo).not.toHaveBeenCalled()
+    }
+  )
 })

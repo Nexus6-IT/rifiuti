@@ -11,6 +11,9 @@ const ruoli = (ruolo: string) => ({ ruoloEffettivo: jest.fn().mockResolvedValue(
  * I FIR seguono l'azienda selezionata come il registro (I1 della revisione finale): il
  * picker FIR del registro chiama `GET /fir`, e un FIR creato con un cliente selezionato
  * deve finire nel cliente, non nello studio del consulente.
+ *
+ * Il controller riceveva già l'azienda attiva dal `CurrentUser` di `auth/decorators`: i test
+ * sono una guardia contro regressioni, non la prova di un difetto.
  */
 describe('FIRControllerV2 — azienda selezionata e ruolo effettivo', () => {
   // switch di azienda: il token resta sul tenant A (studio), l'azienda selezionata è B

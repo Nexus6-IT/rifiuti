@@ -14,6 +14,9 @@ import { RentriCodificheController } from './rentri-codifiche.controller'
  * dati RENTRI (credenziali, unità locali, scorta, formulari...) sono
  * dell'azienda selezionata: un consulente che lavora per il cliente B deve
  * vedere e configurare quelli di B, mai quelli della propria azienda A.
+ *
+ * Questi controller ricevevano già l'azienda attiva dal `CurrentUser` di `auth/decorators`
+ * (o da `@TenantId()`): la suite è una guardia contro regressioni, non la prova di un difetto.
  */
 const user = { id: 'u1', email: 'c@example.com', tenantId: 'A', role: 'ADMIN', permissions: [] }
 const reqB = { tenantId: 'B', user }

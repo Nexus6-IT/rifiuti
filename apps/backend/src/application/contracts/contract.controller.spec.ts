@@ -1,6 +1,11 @@
 import { ForbiddenException } from '@nestjs/common'
 import { ContractController } from './contract.controller'
 
+/**
+ * ContractController riceveva già l'azienda attiva dal `CurrentUser` di `auth/decorators` (il valore
+ * selezionato, non quello del token): questi test sono una guardia contro regressioni, non la
+ * prova di un difetto trovato.
+ */
 describe('ContractController — azienda selezionata', () => {
   // switch di azienda: il token resta sul tenant A, l'azienda selezionata è B
   const req = { tenantId: 'B', user: { id: 'u1', tenantId: 'A', role: 'ADMIN' } }

@@ -222,6 +222,37 @@ password e `GRANT wasteflow_lettura TO rifiuti_testing` si rifanno a mano.
   - con `X-Tenant-ID` = piattaforma un SUPER_ADMIN raggiunge ancora scritture nel contesto della richiesta (`billing.service`, `mud-obbligo.service`, `rentri-modalita-legame.service`): `assertNonPiattaforma` copre solo tenant e creazione utenti.
   - il guard non controlla che l'azienda di `X-Tenant-ID` esista: un SUPER_ADMIN puo' mandare righe di audit verso un UUID inesistente (`permission_audit_logs.tenant_id` non ha FK).
   - middleware e guard leggono il ruolo SUPER_ADMIN da fonti diverse (token e database): differenza al massimo per la durata del token.
+  - `@Roles(...)` controlla il ruolo del TOKEN (quello nell'azienda di casa), non quello nell'azienda
+    selezionata: un consulente ADMIN nel proprio studio e CONSULTANT in un cliente passa il guard. Oggi e'
+    controllato col ruolo effettivo (`RuoloEffettivoService`, helper `api/me/richiedi-ruolo-effettivo.ts`)
+    solo dove scrivere su un'azienda cliente era diventato possibile: `rentri-sync`, `rentri-fir-lifecycle`,
+    `audit.controller`. Gli altri controller con `@Roles` restano da rivedere.
+  - `api/audit/audit.controller.ts` non e' montato in nessun modulo: l'`AuditController` attivo e'
+    `api/permissions/audit.controller.ts` (con `TenantIsolationGuard`), non toccato in questo giro.
+  - `task-assignment.controller.ts` e `fir.controller.example.ts` leggono `user.userId`, che il token non ha.
+
+## Azienda selezionata nei controller (26/10)
+
+Branch `fix/tenant-selezionato-controller`. Difetti veri corretti:
+
+- `audit.controller` (`api/audit`) leggeva l'azienda del token;
+- registry: fail-open senza azienda;
+- `@TenantId()` (`core/decorators`) leggeva il tenant del token invece dell'azienda selezionata;
+- `CurrentUser` di `api/decorators` restituiva l'azienda del token (ora e' un ri-export di quello di
+  `auth/decorators`);
+- giacenze, nel F2-1.
+
+Billing, contratti, ESG, anomalie, FIR e i controller RENTRI ricevevano gia' l'azienda attiva: i loro test sono
+una guardia contro regressioni, non la prova di un difetto.
+
+**Guardia statica** (`api/controller-tenant-selezionato.spec.ts`): ogni file `.ts` non di test sotto `src` che
+contiene `@Controller(` non puo' leggere `user.tenantId` (anche `req['user'].tenantId`, `user?.['tenantId']`,
+destrutturazione) salvo voci motivate in elenco; commenti e stringhe sono ignorati. Limite: gli alias
+(`const u = req.user; u.tenantId`) non si vedono.
+
+**Header `X-Tenant-ID` del SUPER_ADMIN:** il middleware lo copia in `req.tenantId` senza verifica di
+membership (non ha limiti di azienda); dal 26/10 rifiuta con 403 un valore che non e' un UUID invece di lasciarlo
+arrivare a Prisma (P2023, 500).
 
 ## Azienda piattaforma
 

@@ -1,6 +1,11 @@
 import { ForbiddenException } from '@nestjs/common'
 import { AnomalyController } from './anomaly.controller'
 
+/**
+ * AnomalyController riceveva già l'azienda attiva dal `CurrentUser` di `auth/decorators` (il valore
+ * selezionato, non quello del token): questi test sono una guardia contro regressioni, non la
+ * prova di un difetto trovato.
+ */
 describe('AnomalyController — azienda selezionata', () => {
   const req = { tenantId: 'B', user: { id: 'u1', tenantId: 'A', role: 'ADMIN' } }
   let service: { detectAnomalies: jest.Mock }

@@ -5,8 +5,11 @@ import { requireRequestTenantId } from '../context/resolve-request-tenant'
  * Azienda SELEZIONATA della richiesta (stessa risposta di `@CurrentTenant()`),
  * FAIL-CLOSED: 403 se nessuna azienda e' determinabile.
  *
- * Non legge mai l'header `x-tenant-id` grezzo (non validato contro la membership)
- * ne' il solo `user.tenantId` del token: durante uno switch di azienda il token
+ * Non legge l'header `x-tenant-id` direttamente: legge `req.tenantId`, che per un utente normale
+ * e' stato validato contro la membership dal `TenantSwitchInterceptor`; per il SUPER_ADMIN lo
+ * copia il `TenantContextMiddleware` senza membership (non ha limiti di azienda), verificando
+ * solo che sia un UUID (403 altrimenti). Non legge nemmeno il solo `user.tenantId` del token:
+ * durante uno switch di azienda il token
  * resta quello primario, mentre la RLS opera sull'azienda selezionata.
  */
 export const TenantId = createParamDecorator((_data: unknown, ctx: ExecutionContext): string => {

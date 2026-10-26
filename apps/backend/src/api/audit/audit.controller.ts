@@ -17,6 +17,8 @@ import { QueryBus } from '@nestjs/cqrs'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { PermissionGuard } from '../guards/permission.guard'
 import { RequirePermission } from '../decorators/require-permission.decorator'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { richiediAdminSeAziendaDiversa } from '../me/richiedi-ruolo-effettivo'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.query'
 import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query'
@@ -53,7 +55,8 @@ export class AuditController {
     @Inject('PermissionAuditLogRepository')
     private readonly auditLogRepository: PermissionAuditLogRepository,
     @Inject('RoleChangeHistoryRepository')
-    private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository
+    private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository,
+    private readonly ruoloEffettivo: RuoloEffettivoService
   ) {}
 
   /**
@@ -77,6 +80,7 @@ export class AuditController {
   ): Promise<any> {
     try {
       const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
       const query = new GetAuditTrailQuery(
         tenantId,
         {
@@ -151,6 +155,7 @@ export class AuditController {
   ): Promise<void> {
     try {
       const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
       this.logger.log(`Exporting audit trail for tenant ${tenantId}`)
 
       const csv = await this.auditLogRepository.exportToCsv({
@@ -191,6 +196,7 @@ export class AuditController {
   ): Promise<any> {
     try {
       const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
       this.logger.log(`Get role changes for tenant ${tenantId}`)
 
       const pageNum = page ? parseInt(page, 10) : 1
@@ -250,6 +256,7 @@ export class AuditController {
   ): Promise<any> {
     try {
       const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
       this.logger.log(`Reconstructing permissions for user ${body.userId} at ${body.timestamp}`)
 
       const query = new ReconstructHistoricalPermissionsQuery(
@@ -296,6 +303,7 @@ export class AuditController {
   ): Promise<any> {
     try {
       const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
       this.logger.log(`Get audit statistics for tenant ${tenantId}`)
 
       const stats = await this.auditLogRepository.getStatistics(tenantId, {
@@ -323,6 +331,7 @@ export class AuditController {
   ): Promise<any> {
     try {
       const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
       this.logger.log(`Validating chain integrity for tenant ${tenantId}`)
 
       const result = await this.auditLogRepository.validateChainIntegrity(tenantId, {

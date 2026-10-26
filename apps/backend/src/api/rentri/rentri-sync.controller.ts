@@ -28,6 +28,7 @@ import { ConfermaLegameRENTRIUseCase } from '../../application/rentri/conferma-l
 import { RiapriTrasmissioneRentriUseCase } from '../../application/rentri/riapri-trasmissione-rentri.use-case'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { richiediRuoloEffettivo } from '../me/richiedi-ruolo-effettivo'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
 import { RENTRISyncLogRepository } from '../../infrastructure/persistence/rentri-sync-log.repository'
@@ -107,8 +108,10 @@ export class RENTRISyncController {
   async confermaLegame(
     @Param('id') firId: string,
     @TenantId() tenantId: string,
-    @UserId() userId: string
+    @UserId() userId: string,
+    @Req() req: any
   ): Promise<{ numeroFir: string }> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
     this.logger.info('Conferma legame RENTRI richiesta', { firId, tenantId, userId })
 
     try {
@@ -168,11 +171,12 @@ export class RENTRISyncController {
       delay: dto.delay,
     })
 
+    // Ogni accodamento e' una scrittura: ruolo effettivo nell'azienda selezionata (403 se VIEWER).
     // Una nuova trasmissione dopo un esito incerto può creare un doppione presso
     // l'ente: la decide un amministratore NELL'AZIENDA SELEZIONATA (ruolo effettivo,
     // non quello del token, che `@Roles` vede soltanto).
+    const ruolo = await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
     if (dto.confermaNuovaTrasmissione === true) {
-      const ruolo = await this.ruoloEffettivo.ruoloEffettivo(req.user, tenantId)
       if (!RUOLI_NUOVA_TRASMISSIONE.includes(ruolo)) {
         throw new ForbiddenException({
           message:
@@ -274,8 +278,10 @@ export class RENTRISyncController {
   async batchSync(
     @TenantId() tenantId: string,
     @UserId() userId: string,
-    @Body() dto: BatchSyncRequestDto
+    @Body() dto: BatchSyncRequestDto,
+    @Req() req: any
   ): Promise<BatchSyncResponseDto> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
     this.logger.info('Batch sync request received', {
       tenantId,
       userId,

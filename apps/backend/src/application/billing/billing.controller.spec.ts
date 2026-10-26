@@ -1,6 +1,11 @@
 import { ForbiddenException } from '@nestjs/common'
 import { BillingController } from './billing.controller'
 
+/**
+ * BillingController riceveva già l'azienda attiva dal `CurrentUser` di `auth/decorators` (il valore
+ * selezionato, non quello del token): questi test sono una guardia contro regressioni, non la
+ * prova di un difetto trovato.
+ */
 describe('BillingController — azienda selezionata', () => {
   // switch di azienda: il token resta sul tenant A, l'azienda selezionata è B
   const req: any = {
