@@ -66,6 +66,16 @@ function leggiRegistro(): RisorsaRegistrata[] {
 }
 
 /**
+ * Quante risorse sono registrate (e non ancora ripulite) per la run
+ * corrente, in qualunque processo siano state registrate. Usata dal
+ * globalTeardown per decidere se c'è qualcosa da fare (vedi
+ * utils/decisione-teardown.ts).
+ */
+export function contaRisorseRegistrate(): number {
+  return leggiRegistro().length
+}
+
+/**
  * Ripulisce tutte le risorse registrate in questo run, in qualunque
  * processo siano state registrate (vedi persistenza su file sopra).
  *

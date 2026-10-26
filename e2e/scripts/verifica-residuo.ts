@@ -46,8 +46,9 @@ import {
   chiudiConnessioneDb,
   firConPrefissoResidui,
 } from '../utils/db-locale'
-import { getRoleCredentials, isProductionTarget } from '../utils/env'
-import { ripulisci } from '../fixtures/risorse'
+import { decidiTeardown } from '../utils/decisione-teardown'
+import { hasRoleCredentials, isProductionTarget } from '../utils/env'
+import { contaRisorseRegistrate, ripulisci } from '../fixtures/risorse'
 
 /**
  * Cerca, nel database, anagrafiche (di TUTTI i tenant) E FIR il cui
@@ -78,15 +79,17 @@ export default async function globalTeardown(_config: FullConfig): Promise<void>
     )
   }
 
-  const credenziali = getRoleCredentials('admin')
-  if (!credenziali) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      '[verifica-residuo] Credenziali mancanti per il ruolo "admin" (E2E_ADMIN_USER/PASS): ' +
-        'teardown e verifica di residuo saltati. Se la run ha creato dati via API con un altro ' +
-        'ruolo, quei dati NON vengono ripuliti — servono le credenziali admin per il login dev.'
+  const decisione = decidiTeardown({
+    registrate: contaRisorseRegistrate(),
+    adminAutenticabile: hasRoleCredentials('admin'),
+  })
+  if (decisione === 'niente') return
+  if (decisione === 'errore') {
+    throw new Error(
+      '[verifica-residuo] In questa run sono state registrate risorse da ripulire, ma il ruolo ' +
+        '"admin" non è autenticabile (né E2E_ADMIN_USER/PASS né dev-login su un target locale): ' +
+        'i dati creati resterebbero e la verifica di residuo zero non può girare.'
     )
-    return
   }
 
   const token = await apiLogin('admin')
