@@ -12,6 +12,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Req,
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
@@ -23,6 +24,7 @@ import { CreateFIRUseCase } from '../../application/fir/use-cases/create-fir.use
 import { ListFIRsQueryHandler } from '../../application/fir/queries/list-firs.handler'
 import { CreateFIRCommand } from '../../application/fir/commands/create-fir.command'
 import { ListFIRsQuery } from '../../application/fir/queries/list-firs.query'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 
@@ -54,7 +56,8 @@ export class FIRController {
   @ApiResponse({ status: 401, description: 'Non autenticato' })
   async create(
     @Body() dto: CreateFIRDto,
-    @CurrentUser() user: CurrentUserPayload
+    @CurrentUser() user: CurrentUserPayload,
+    @Req() req: any
   ): Promise<FIRResponseDto> {
     const command = new CreateFIRCommand(
       dto.produttoreId,
@@ -62,7 +65,7 @@ export class FIRController {
       dto.trasportatoreId,
       dto.destinatarioId,
       user.id,
-      user.tenantId,
+      requireRequestTenantId(req),
       dto.provenienza,
       dto.tipoTrattaPrincipale,
       dto.trasportatoriAggiuntivi ?? []
@@ -91,7 +94,8 @@ export class FIRController {
   @ApiResponse({ status: 400, description: 'Parametri non validi' })
   async list(
     @Query() dto: ListFIRsDto,
-    @CurrentUser() user: CurrentUserPayload
+    @CurrentUser() user: CurrentUserPayload,
+    @Req() req: any
   ): Promise<PaginatedFIRResponseDto> {
     // Build filters object
     const filters: any = {}
@@ -115,7 +119,7 @@ export class FIRController {
     }
 
     const query = new ListFIRsQuery(
-      user.tenantId,
+      requireRequestTenantId(req),
       user.id,
       Object.keys(filters).length > 0 ? filters : undefined,
       pagination

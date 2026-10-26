@@ -38,6 +38,7 @@ import { UpdateDestinatarioUseCase } from '../../application/registry/use-cases/
 import { DeleteProduttoreUseCase } from '../../application/registry/use-cases/delete-produttore.use-case'
 import { DeleteTrasportatoreUseCase } from '../../application/registry/use-cases/delete-trasportatore.use-case'
 import { DeleteDestinatarioUseCase } from '../../application/registry/use-cases/delete-destinatario.use-case'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import {
   CreateProduttoreDto,
   CreateTrasportatoreDto,
@@ -136,7 +137,7 @@ export class RegistryController {
     // dal TenantSwitchInterceptor quando l'utente invia X-Tenant-ID valido.
     // NON usare req.user?.tenantId: il JwtStrategy lo popola sempre dal tenant
     // primario del DB, ignorando qualunque switch di società.
-    const tenantId = req.tenantId || req.user?.tenantId || ''
+    const tenantId = requireRequestTenantId(req)
     const result = await this.listProduttoriUseCase.execute({ tenantId })
 
     if (result.isFailure) {
@@ -212,7 +213,7 @@ export class RegistryController {
 
   @Get('trasportatori')
   async listTrasportatori(@Req() req: any) {
-    const tenantId = req.tenantId || req.user?.tenantId || ''
+    const tenantId = requireRequestTenantId(req)
     const result = await this.listTrasportatoriUseCase.execute({ tenantId })
 
     if (result.isFailure) {
@@ -303,7 +304,7 @@ export class RegistryController {
 
   @Get('destinatari')
   async listDestinatari(@Req() req: any) {
-    const tenantId = req.tenantId || req.user?.tenantId || ''
+    const tenantId = requireRequestTenantId(req)
     const result = await this.listDestinatariUseCase.execute({ tenantId })
 
     if (result.isFailure) {

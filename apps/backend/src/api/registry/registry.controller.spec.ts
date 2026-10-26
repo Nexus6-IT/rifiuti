@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common'
 /**
  * TDD Task 4 dello scadenzario: l'elenco di trasportatori e destinatari deve
  * riportare lo stato di scadenza (booleano + giorni residui) calcolato al
@@ -93,6 +94,14 @@ describe('RegistryController — stato di scadenza nell’elenco (Task 4 scadenz
     }).compile()
 
     controller = module.get(RegistryController)
+  })
+
+  it('senza azienda determinabile: 403, nessuna lettura (fail-closed)', async () => {
+    await expect(controller.listProduttori({} as any)).rejects.toBeInstanceOf(ForbiddenException)
+    await expect(controller.listTrasportatori({ user: {} } as any)).rejects.toBeInstanceOf(
+      ForbiddenException
+    )
+    await expect(controller.listDestinatari({} as any)).rejects.toBeInstanceOf(ForbiddenException)
   })
 
   function req(tenantId = 'tenant-1'): any {
