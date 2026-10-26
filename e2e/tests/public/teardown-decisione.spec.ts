@@ -10,16 +10,30 @@ import { decidiTeardown } from '../../utils/decisione-teardown'
  * autenticabile, è un errore, non un warning (prima passava in silenzio).
  */
 test.describe('decidiTeardown', () => {
-  test('niente registrato: non fa nulla, con o senza admin autenticabile', () => {
-    expect(decidiTeardown({ registrate: 0, adminAutenticabile: false })).toBe('niente')
-    expect(decidiTeardown({ registrate: 0, adminAutenticabile: true })).toBe('niente')
+  test('niente registrato e nessun database: non fa nulla, con o senza admin autenticabile', () => {
+    expect(
+      decidiTeardown({ registrate: 0, adminAutenticabile: false, databaseDisponibile: false })
+    ).toBe('niente')
+    expect(
+      decidiTeardown({ registrate: 0, adminAutenticabile: true, databaseDisponibile: false })
+    ).toBe('niente')
+  })
+
+  test('niente registrato ma database disponibile: solo verifica di residuo, senza login', () => {
+    expect(
+      decidiTeardown({ registrate: 0, adminAutenticabile: false, databaseDisponibile: true })
+    ).toBe('solo-verifica')
   })
 
   test('registrato qualcosa e admin autenticabile: procede con pulizia e verifica', () => {
-    expect(decidiTeardown({ registrate: 3, adminAutenticabile: true })).toBe('procedi')
+    expect(
+      decidiTeardown({ registrate: 3, adminAutenticabile: true, databaseDisponibile: true })
+    ).toBe('procedi')
   })
 
   test('registrato qualcosa ma admin non autenticabile: errore esplicito', () => {
-    expect(decidiTeardown({ registrate: 1, adminAutenticabile: false })).toBe('errore')
+    expect(
+      decidiTeardown({ registrate: 1, adminAutenticabile: false, databaseDisponibile: true })
+    ).toBe('errore')
   })
 })

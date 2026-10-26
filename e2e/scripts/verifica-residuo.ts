@@ -30,13 +30,17 @@
  *   FALLISCE (throw): un residuo non è un warning, è un difetto della
  *   pulizia.
  *
- * Idempotente: se non ci sono credenziali configurate (ambiente senza
- * backend/E2E_ADMIN_USER-PASS) o niente è stato registrato, non fa nulla e
- * non fallisce — deve poter girare anche dopo una run morta a metà, prima
- * ancora che qualunque risorsa sia stata creata. Una volta che il teardown
- * PARTE per davvero (credenziali presenti), la verifica sui FIR richiede
- * DATABASE_URL a un host locale — vedi utils/db-locale.ts — e fallisce
- * esplicitamente se manca, invece di saltare in silenzio quella parte.
+ * Regola (vedi utils/decisione-teardown.ts):
+ * - nulla registrato e DATABASE_URL NON impostata: non fa nulla e non fallisce;
+ * - nulla registrato ma DATABASE_URL impostata (es. passata 1 della CI): niente
+ *   login né pulizia, ma `verificaResiduo()` (sola query DB) gira comunque e la
+ *   run fallisce se trova record col prefisso della run;
+ * - qualcosa registrato e admin autenticabile: login, pulizia e verifica;
+ * - qualcosa registrato ma admin NON autenticabile: errore esplicito (i dati
+ *   creati resterebbero).
+ * Una volta che la verifica parte, richiede DATABASE_URL a un host locale — vedi
+ * utils/db-locale.ts — e fallisce esplicitamente se manca, invece di saltare
+ * in silenzio quella parte.
  */
 
 import type { FullConfig } from '@playwright/test'
@@ -82,8 +86,23 @@ export default async function globalTeardown(_config: FullConfig): Promise<void>
   const decisione = decidiTeardown({
     registrate: contaRisorseRegistrate(),
     adminAutenticabile: hasRoleCredentials('admin'),
+    databaseDisponibile: Boolean(process.env.DATABASE_URL?.trim()),
   })
   if (decisione === 'niente') return
+  if (decisione === 'solo-verifica') {
+    try {
+      const residuo = await verificaResiduo()
+      if (residuo.length > 0) {
+        throw new Error(
+          `[verifica-residuo] Residuo non zero: ${residuo.length} record col prefisso della run ` +
+            `(nulla era stato registrato, ma il database ne contiene):\n${residuo.join('\n')}`
+        )
+      }
+    } finally {
+      await chiudiConnessioneDb()
+    }
+    return
+  }
   if (decisione === 'errore') {
     throw new Error(
       '[verifica-residuo] In questa run sono state registrate risorse da ripulire, ma il ruolo ' +

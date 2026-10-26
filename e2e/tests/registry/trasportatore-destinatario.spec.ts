@@ -255,8 +255,10 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
 
     await selezionaDropdown(page, 'new-trasportatore', trasportatore.ragioneSociale)
     // Senza questa attesa "nessun avviso" varrebbe anche se la scelta non fosse mai
-    // avvenuta (assenza banale): il dropdown mostra il nome solo a parte scelta.
-    await expect(page.locator('p-dropdown:has(#new-trasportatore)')).toContainText(
+    // avvenuta (assenza banale). Si legge l'etichetta SELEZIONATA, non il testo del
+    // p-dropdown: i dropdown del FIR non hanno appendTo, quindi a pannello aperto il
+    // testo contiene anche la voce della lista e passerebbe senza scelta.
+    await expect(page.locator('p-dropdown:has(#new-trasportatore) .p-dropdown-label')).toHaveText(
       trasportatore.ragioneSociale
     )
     await expect(page.getByTestId('fir-trasportatore-iscrizione-scaduta')).toHaveCount(0)
@@ -278,7 +280,7 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
 
     await selezionaDropdown(page, 'new-destinatario', destinatario.ragioneSociale)
     // Vedi sopra: prova che la scelta è avvenuta, altrimenti l'assenza dell'avviso è banale.
-    await expect(page.locator('p-dropdown:has(#new-destinatario)')).toContainText(
+    await expect(page.locator('p-dropdown:has(#new-destinatario) .p-dropdown-label')).toHaveText(
       destinatario.ragioneSociale
     )
     await expect(page.getByTestId('fir-destinatario-autorizzazione-scaduta')).toHaveCount(0)

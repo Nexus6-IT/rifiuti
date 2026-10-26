@@ -60,6 +60,24 @@ const protectedGetEndpoints = surface.filter(
     !ROTTE_RIMOSSE.has(e.path)
 )
 
+test.describe('Rotte rimosse — 404 senza credenziali', () => {
+  for (const rotta of ROTTE_RIMOSSE) {
+    test(`${rotta} è ancora nel JSON di superficie (voce non morta)`, () => {
+      expect(surface.some(e => e.path === rotta)).toBe(true)
+    })
+
+    test(`GET ${rotta} -> 404 senza Authorization (rotta davvero rimossa)`, async ({
+      request,
+    }) => {
+      const apiBase = getApiUrl().replace(/\/api\/v1\/?$/, '')
+      const response = await request.get(`${apiBase}/${resolvePath(rotta)}`, {
+        failOnStatusCode: false,
+      })
+      expect(response.status()).toBe(404)
+    })
+  }
+})
+
 test.describe('API protetta — 401 senza credenziali (GET-only, read-only)', () => {
   test(`inventario endpoint da audit non è vuoto (sanity check del fixture)`, () => {
     expect(protectedGetEndpoints.length).toBeGreaterThan(20)

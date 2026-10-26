@@ -53,6 +53,11 @@ export class AnagrafichePage {
     // ng-reflect-visible="true" ma toBeVisible fallisce). Si guarda quindi il
     // pannello vero, `.p-dialog`, che PrimeNG monta solo a dialog aperto e
     // rimuove alla chiusura: toBeVisible/toBeHidden diventano affidabili.
+    // ATTENZIONE: questo locator presuppone che i p-dialog delle liste NON abbiano
+    // `appendTo`: con appendTo="body" il pannello uscirebbe dall'host col data-testid
+    // e `.locator('.p-dialog')` non lo troverebbe più. Se si aggiunge appendTo, rivedere
+    // qui. Componenti da controllare (apps/frontend/src/app/features/): le tre liste
+    // delle anagrafiche (produttori, trasportatori, destinatari).
     this.formDialog = page.getByTestId(`${area}-form-dialog`).locator('.p-dialog')
     this.saveButton = page.getByTestId(`${area}-form-save-button`)
     this.cancelButton = page.getByTestId(`${area}-form-cancel-button`)
