@@ -83,7 +83,8 @@ describe('validaCertificato', () => {
     const risultato = validaCertificato(certificatePem, privateKeyPem)
 
     expect(risultato.controlli.revoca.esito).toBe('avvertimento')
-    expect(risultato.controlli.revoca.messaggio).toMatch(/dichiara/i)
+    expect(risultato.controlli.revoca.messaggio).toMatch(/dichiara endpoint di revoca/i)
+    expect(risultato.controlli.revoca.messaggio).not.toMatch(/non dichiara/i)
   })
 
   it('certificato scaduto: errore bloccante sulla scadenza', () => {
@@ -133,8 +134,14 @@ describe('validaCertificato', () => {
     expect(risultato.valido).toBe(true)
     expect(risultato.controlli.scadenza.esito).not.toBe('errore')
     expect(risultato.controlli.coerenzaChiave.esito).toBe('ok')
+    // La fixture EC e' emessa da una CA (issuer diverso dal subject): ramo "non auto-firmato".
     expect(risultato.controlli.catena.esito).toBe('avvertimento')
+    expect(risultato.controlli.catena.messaggio).toMatch(/non è auto-firmato/)
+    expect(risultato.controlli.catena.messaggio).toMatch(/un solo certificato/)
+    // E non dichiara CRL/OCSP: ramo "nessun endpoint di revoca", non quello degli endpoint dichiarati.
     expect(risultato.controlli.revoca.esito).toBe('avvertimento')
+    expect(risultato.controlli.revoca.messaggio).toMatch(/non dichiara alcun endpoint di revoca/)
+    expect(risultato.controlli.revoca.messaggio).not.toMatch(/dichiara endpoint di revoca/)
   })
 
   it("errore di ASN.1 nelle estensioni: la revoca degrada ad avvertimento, il caricamento non e' bloccato", () => {

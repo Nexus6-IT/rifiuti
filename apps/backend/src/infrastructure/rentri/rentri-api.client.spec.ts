@@ -870,6 +870,27 @@ describe('RENTRIApiClient', () => {
       expect(mockHttpService.post).toHaveBeenCalledTimes(1)
     })
 
+    it('errore di rentriTenantLocked.set dopo una 2xx → esito della POST conservato', async () => {
+      mockHttpService.post.mockReturnValue(
+        of({
+          data: { transazione_id: 'tx-1' },
+          status: 202,
+          statusText: 'Accepted',
+          headers: { location: '/formulari/v1.0/tx-1/status' },
+          config: {} as any,
+        })
+      )
+      mockMetrics.rentriTenantLocked.set.mockImplementation(() => {
+        throw new Error('metriche giu')
+      })
+
+      const esito = await client.creaFormulario('tenant-1', { dati: 'x' }).catch((e: unknown) => e)
+
+      expect(esito).not.toBeInstanceOf(Error)
+      expect(esito).toMatchObject({ transazioneId: 'tx-1' })
+      expect(mockMetrics.rentriApiErrors.inc).not.toHaveBeenCalled()
+    })
+
     it('202 senza transazione_id: TrasmissioneRentriIncertaError RISPOSTA_SENZA_TRANSAZIONE', async () => {
       mockHttpService.post.mockReturnValue(
         of({ data: {}, status: 202, statusText: 'Accepted', headers: {}, config: {} as any })

@@ -2,8 +2,8 @@
  * GENERATO da `scripts/genera-schema.js` — NON modificare a mano.
  *
  * Copia verbatim di `BloccoModel` e della chiusura transitiva dei suoi
- * `$ref`, dal contratto ufficiale `docs/contracts/rentri/formulari.yaml`.
- * L'allineamento e' imposto da `test/schema-allineato-al-contratto.test.ts`.
+ * `$ref`, dal contratto ufficiale `docs/contracts/rentri/vidimazione-formulari.yaml`.
+ * L'allineamento e' imposto da `test/schema-vidimazione-allineato-al-contratto.test.ts`.
  */
 export const SCHEMA_BLOCCO = {
   "type": "object",

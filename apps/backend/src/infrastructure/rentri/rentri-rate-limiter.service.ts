@@ -143,7 +143,9 @@ export class RentriRateLimitTimeoutError extends Error {
     readonly timeoutMs: number
   ) {
     super(
-      `Capacità RENTRI non disponibile per il tenant ${tenantId} entro ${timeoutMs}ms: troppe richieste verso RENTRI in questo momento.`
+      // Il messaggio puo' arrivare all'utente e finire in rentri_last_sync_error: niente id del
+      // tenant (resta nel campo `tenantId` dell'errore, per i log).
+      `Capacità RENTRI non disponibile entro ${timeoutMs}ms: troppe richieste verso RENTRI in questo momento.`
     )
     this.name = 'RentriRateLimitTimeoutError'
   }

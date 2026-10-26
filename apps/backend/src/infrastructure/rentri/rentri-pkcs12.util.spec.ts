@@ -85,6 +85,155 @@ describe('parsePkcs12', () => {
     expect(() => parsePkcs12('', passphrase)).toThrow(/non valido/i)
   })
 
+  describe('rami di errore e di ripiego', () => {
+    const asn1 = forge.asn1
+
+    /** PKCS#12 senza cifratura e senza MAC: un solo keyBag con l'ASN.1 dato e, se serve, i certificati. */
+    function p12ConKeyBag(chiaveAsn1: forge.asn1.Asn1, certificati: forge.pki.Certificate[] = []) {
+      const sacchetto = (oid: string, valore: forge.asn1.Asn1) =>
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+          asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false, asn1.oidToDer(oid).getBytes()),
+          asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [valore]),
+        ])
+      const certBag = (cert: forge.pki.Certificate) =>
+        sacchetto(
+          forge.pki.oids.certBag,
+          asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+            asn1.create(
+              asn1.Class.UNIVERSAL,
+              asn1.Type.OID,
+              false,
+              asn1.oidToDer(forge.pki.oids.x509Certificate).getBytes()
+            ),
+            asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
+              asn1.create(
+                asn1.Class.UNIVERSAL,
+                asn1.Type.OCTETSTRING,
+                false,
+                asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes()
+              ),
+            ]),
+          ])
+        )
+      const sicuro = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        sacchetto(forge.pki.oids.keyBag, chiaveAsn1),
+        ...certificati.map(certBag),
+      ])
+      const autenticato = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+          asn1.create(
+            asn1.Class.UNIVERSAL,
+            asn1.Type.OID,
+            false,
+            asn1.oidToDer(forge.pki.oids.data).getBytes()
+          ),
+          asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
+            asn1.create(
+              asn1.Class.UNIVERSAL,
+              asn1.Type.OCTETSTRING,
+              false,
+              asn1.toDer(sicuro).getBytes()
+            ),
+          ]),
+        ]),
+      ])
+      const pfx = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        asn1.create(
+          asn1.Class.UNIVERSAL,
+          asn1.Type.INTEGER,
+          false,
+          asn1.integerToDer(3).getBytes()
+        ),
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+          asn1.create(
+            asn1.Class.UNIVERSAL,
+            asn1.Type.OID,
+            false,
+            asn1.oidToDer(forge.pki.oids.data).getBytes()
+          ),
+          asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
+            asn1.create(
+              asn1.Class.UNIVERSAL,
+              asn1.Type.OCTETSTRING,
+              false,
+              asn1.toDer(autenticato).getBytes()
+            ),
+          ]),
+        ]),
+      ])
+      return Buffer.from(asn1.toDer(pfx).getBytes(), 'binary')
+    }
+
+    function certificatoRsa(cn: string) {
+      const chiavi = forge.pki.rsa.generateKeyPair(2048)
+      const cert = forge.pki.createCertificate()
+      cert.publicKey = chiavi.publicKey
+      cert.serialNumber = '03'
+      cert.validity.notBefore = new Date()
+      cert.validity.notAfter = new Date(Date.now() + 86400000)
+      cert.setSubject([{ name: 'commonName', value: cn }])
+      cert.setIssuer([{ name: 'commonName', value: cn }])
+      cert.sign(chiavi.privateKey, forge.md.sha256.create())
+      return { chiavi, cert }
+    }
+
+    it('p12 RSA con keyBag non cifrato (senza passphrase): chiave e certificato estratti', () => {
+      const { chiavi, cert } = certificatoRsa('rsa-in-chiaro')
+      const keyInfo = forge.pki.wrapRsaPrivateKey(forge.pki.privateKeyToAsn1(chiavi.privateKey))
+
+      const r = parsePkcs12(p12ConKeyBag(keyInfo, [cert]), '')
+
+      expect(r.tipoChiave).toBe('rsa')
+      expect(r.privateKeyPem).toContain('-----BEGIN RSA PRIVATE KEY-----')
+      expect(new crypto.X509Certificate(r.certificatePem).subject).toBe('CN=rsa-in-chiaro')
+    })
+
+    it('p12 senza un certificato che corrisponda alla chiave: "privo di certificato"', () => {
+      const proprietaria = certificatoRsa('chiave-del-p12')
+      const altra = certificatoRsa('certificato-di-un-altra-chiave')
+      // La sola CA/altro certificato allegato: nessuno ha la chiave pubblica della privata.
+      const der = forge.asn1
+        .toDer(forge.pkcs12.toPkcs12Asn1(proprietaria.chiavi.privateKey, [altra.cert], 'pw'))
+        .getBytes()
+
+      expect(() => parsePkcs12(Buffer.from(der, 'binary'), 'pw')).toThrow(
+        'PKCS#12 privo di certificato'
+      )
+    })
+
+    it('p12 senza alcun certificato: "privo di certificato"', () => {
+      const { chiavi } = certificatoRsa('senza-certificati')
+      const keyInfo = forge.pki.wrapRsaPrivateKey(forge.pki.privateKeyToAsn1(chiavi.privateKey))
+
+      expect(() => parsePkcs12(p12ConKeyBag(keyInfo), '')).toThrow('PKCS#12 privo di certificato')
+    })
+
+    it('chiave non RSA né EC sul percorso di ripiego (Ed25519): tipo non supportato, mai scambiata per RSA o EC', () => {
+      const { privateKey } = crypto.generateKeyPairSync('ed25519')
+      const pkcs8 = privateKey.export({ type: 'pkcs8', format: 'der' }) as Buffer
+      const { cert } = certificatoRsa('qualsiasi')
+      const p12 = p12ConKeyBag(asn1.fromDer(pkcs8.toString('binary')), [cert])
+
+      expect(() => parsePkcs12(p12, '')).toThrow('PKCS#12 con tipo di chiave non supportato')
+    })
+
+    it('keyBag il cui contenuto non è una chiave PKCS#8: "privo di chiave privata"', () => {
+      const spazzatura = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        asn1.create(
+          asn1.Class.UNIVERSAL,
+          asn1.Type.INTEGER,
+          false,
+          asn1.integerToDer(7).getBytes()
+        ),
+      ])
+      const { cert } = certificatoRsa('qualsiasi')
+
+      expect(() => parsePkcs12(p12ConKeyBag(spazzatura, [cert]), '')).toThrow(
+        'PKCS#12 privo di chiave privata'
+      )
+    })
+  })
+
   describe('chiavi EC (fixture versionate in tools/rentri-fake/test/fixture/ec)', () => {
     const dirFixture = path.resolve(__dirname, '../../../../../tools/rentri-fake/test/fixture/ec')
     const leggi = (nome: string) => fs.readFileSync(path.join(dirFixture, nome))

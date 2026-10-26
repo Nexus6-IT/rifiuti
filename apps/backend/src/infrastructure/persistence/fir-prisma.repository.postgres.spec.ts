@@ -1,5 +1,11 @@
 import { PrismaClient } from '@prisma/client'
+import { AZIENDA_PIATTAFORMA_ID } from '../../core/context/azienda-piattaforma'
 import { FIRPrismaRepository } from './fir-prisma.repository'
+import { SyncFIRToRENTRIUseCase } from '../../application/rentri/sync-fir-to-rentri.use-case'
+import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
+import { TenantSenzaCertificatoRentriError } from '../rentri/rentri-credential.resolver'
+import { RentriCredentialService } from '../rentri/rentri-credential.service'
+import { CODICE_CERTIFICATO_MANCANTE } from '../rentri/rentri-certificato.costanti'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
 import {
   FirAnnullatoNelFrattempoError,
@@ -615,15 +621,17 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       const vecchio = (await repoLettura.findById(fir.id))!
       expect(await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)).toBe(true)
       await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-viva', ORA)
-      // campo non di trasmissione: il legame resta scritto dall'aggregate (fuori ambito)
-      vecchio.agganciaFormularioAcquisito(`RENTRI-STANTIO-${Date.now()}`)
+      // campo senza significato RENTRI (annotazioni, campo 17): l'aggregate stantio lo scrive,
+      // la prenotazione viva no, e nessun legame compare su un FIR ancora in trasmissione
+      ;(vecchio as any)._annotazioni = "nota dell'aggregate stantio"
       await repoLettura.save(vecchio)
       const r = await riga(fir.id)
       expect(r.rentriSyncStatus).toBe('SYNCING')
       expect(r.rentriSyncAvviatoAt).toEqual(ORA)
       expect(r.rentriTransazioneInAttesa).toBe('tx-viva')
       expect(r.rentriTransazioneId).toBe('tx-viva')
-      expect(r.rentriNumeroFir).toMatch(/^RENTRI-STANTIO-/)
+      expect(r.wasteNotes).toBe("nota dell'aggregate stantio")
+      expect(r.rentriNumeroFir).toBeNull()
     })
 
     it("save dell'aggregate che possiede il tentativo scrive il suo stato", async () => {
@@ -660,7 +668,11 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         rentriSyncAvviatoAt: new Date('2026-10-23T09:59:00.000Z'),
       })
       const pending = await nuovoFir()
-      const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000)
+      const elenco = await repoLettura.elencaTrasmissioniRentriSospese(
+        SOGLIA,
+        1000,
+        new Date('2026-01-01T00:00:00Z')
+      )
       const ids = elenco.map(e => e.firId)
       expect(ids).toEqual(expect.arrayContaining([scaduto.id, senzaData.id]))
       expect(ids).not.toContain(recente.id)
@@ -670,11 +682,338 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       expect(ids.indexOf(senzaData.id)).toBeLessThan(ids.indexOf(scaduto.id))
     })
 
+    describe('recupero dei PENDING mai avviati', () => {
+      const VECCHIO = new Date('2026-10-20T10:00:00.000Z') // oltre SOGLIA, dentro il tetto di eta'
+      const TETTO = new Date('2026-10-01T00:00:00.000Z') // "pendingAggiornatiDopo"
+      const extra: { tenant: string[]; piattaformaCreata: boolean } = {
+        tenant: [],
+        piattaformaCreata: false,
+      }
+
+      async function creaTenant(
+        modalita: 'MANUALE' | 'AUTOMATICA' | 'IBRIDA',
+        subscriptionStatus: 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' = 'ACTIVE'
+      ): Promise<string> {
+        const t = await prisma.tenant.create({
+          data: {
+            partitaIva: `PD${Math.random().toString().slice(2, 11)}`,
+            ragioneSociale: `Pending ${modalita}`,
+            country: 'IT',
+            rentriModalitaLegame: modalita,
+            subscriptionStatus,
+          },
+        })
+        extra.tenant.push(t.id)
+        return t.id
+      }
+
+      async function firDi(
+        tenant: string,
+        dati: Record<string, unknown> = {},
+        aggiornatoIl: Date | null = VECCHIO
+      ): Promise<string> {
+        const fir = FIR.create({
+          produttoreId: REGISTRO_PRODUTTORE,
+          rifiuto: { cerCode: '150101', quantita: 10 },
+          trasportatoreId: REGISTRO_TRASPORTATORE,
+          destinatarioId: REGISTRO_DESTINATARIO,
+          tenantId: tenant,
+          creatoDaUserId: userId,
+        })
+        await repoLettura.save(fir)
+        creati.push(fir.id)
+        // Un FIR "emesso" (non bozza): lo stato DB che il recupero considera.
+        await prisma.fIR.update({
+          where: { id: fir.id },
+          data: { status: 'AWAITING_CARRIER', ...dati } as any,
+        })
+        if (aggiornatoIl) {
+          // updated_at e' @updatedAt: Prisma lo riscrive, quindi si forza in SQL (UTC).
+          await prisma.$executeRaw`UPDATE firs SET updated_at = (${aggiornatoIl.toISOString()}::timestamptz AT TIME ZONE 'UTC') WHERE id = ${fir.id}::uuid`
+        }
+        return fir.id
+      }
+
+      afterAll(async () => {
+        if (creati.length > 0) await prisma.fIR.deleteMany({ where: { id: { in: creati } } })
+        if (extra.tenant.length > 0)
+          await prisma.tenant.deleteMany({ where: { id: { in: extra.tenant } } })
+        if (extra.piattaformaCreata)
+          await prisma.tenant.deleteMany({ where: { id: AZIENDA_PIATTAFORMA_ID } })
+      })
+
+      it('PENDING in AUTOMATICA e IBRIDA: elencati con stato PENDING; esclusi MANUALE, legati, annullati, bozze, con avvio, recenti, troppo vecchi', async () => {
+        const auto = await creaTenant('AUTOMATICA')
+        const ibrida = await creaTenant('IBRIDA')
+        const manuale = await creaTenant('MANUALE')
+        const inAuto = await firDi(auto)
+        const inIbrida = await firDi(ibrida)
+        const inManuale = await firDi(manuale)
+        const legato = await firDi(auto, { rentriNumeroFir: `RENTRI-PD-${Date.now()}` })
+        const annullatoLocale = await firDi(auto, { status: 'CANCELLED' })
+        const annullatoRentri = await firDi(auto, { rentriStatoFormulario: 'Annullato' })
+        const bozza = await firDi(auto, { status: 'DRAFT' })
+        const conAvvio = await firDi(auto, {
+          rentriSyncAvviatoAt: new Date('2026-10-22T10:00:00Z'),
+        })
+        const recente = await firDi(auto, {}, null) // updated_at = adesso, dopo SOGLIA
+        const troppoVecchio = await firDi(auto, {}, new Date('2026-08-01T10:00:00.000Z'))
+
+        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO)
+        const ids = elenco.map(e => e.firId)
+
+        expect(elenco.find(e => e.firId === inAuto)).toEqual({
+          firId: inAuto,
+          tenantId: auto,
+          stato: 'PENDING',
+        })
+        expect(elenco.find(e => e.firId === inIbrida)!.stato).toBe('PENDING')
+        for (const escluso of [
+          inManuale,
+          legato,
+          annullatoLocale,
+          annullatoRentri,
+          bozza,
+          conAvvio,
+          recente,
+          troppoVecchio,
+        ]) {
+          expect(ids).not.toContain(escluso)
+        }
+      })
+
+      it("l'azienda piattaforma e' esclusa anche in AUTOMATICA", async () => {
+        const esistente = await prisma.tenant.findUnique({ where: { id: AZIENDA_PIATTAFORMA_ID } })
+        if (!esistente) {
+          await prisma.tenant.create({
+            data: {
+              id: AZIENDA_PIATTAFORMA_ID,
+              partitaIva: `PF${Math.random().toString().slice(2, 11)}`,
+              ragioneSociale: 'Piattaforma test',
+              country: 'IT',
+            },
+          })
+          extra.piattaformaCreata = true
+        }
+        const modalitaPrima = esistente?.rentriModalitaLegame ?? 'MANUALE'
+        await prisma.tenant.update({
+          where: { id: AZIENDA_PIATTAFORMA_ID },
+          data: { rentriModalitaLegame: 'AUTOMATICA' },
+        })
+        try {
+          const firPiattaforma = await firDi(AZIENDA_PIATTAFORMA_ID)
+          const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO)
+          expect(elenco.map(e => e.firId)).not.toContain(firPiattaforma)
+        } finally {
+          await prisma.tenant.update({
+            where: { id: AZIENDA_PIATTAFORMA_ID },
+            data: { rentriModalitaLegame: modalitaPrima },
+          })
+        }
+      })
+
+      it('elenco di aziende vuoto: nessun errore SQL, restano i SYNCING', async () => {
+        const vuoto = new FIRPrismaRepository(
+          Object.assign(prisma, { db: prisma }) as any,
+          {
+            $queryRaw: (testo: any, ...valori: any[]) => prisma.$queryRaw(testo, ...valori),
+            tenant: { findMany: async () => [] },
+          } as any
+        )
+        const syncing = await firDi(tenantId, {
+          rentriSyncStatus: 'SYNCING',
+          rentriSyncAvviatoAt: new Date('2026-10-23T09:00:00.000Z'),
+        })
+        const elenco = await vuoto.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO)
+        expect(elenco.map(e => e.firId)).toContain(syncing)
+        expect(elenco.every(e => e.stato === 'SYNCING')).toBe(true)
+      })
+
+      it('i SYNCING in stallo vengono prima dei PENDING mai avviati, anche con un limite basso', async () => {
+        const auto = await creaTenant('AUTOMATICA')
+        for (let i = 0; i < 3; i++) await firDi(auto)
+        await firDi(auto, {
+          rentriSyncStatus: 'SYNCING',
+          rentriSyncAvviatoAt: new Date('2026-10-23T09:00:00.000Z'),
+        })
+        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1, TETTO)
+        expect(elenco).toHaveLength(1)
+        expect(elenco[0].stato).toBe('SYNCING')
+      })
+
+      it('aziende con abbonamento non ACTIVE/TRIAL (scaduto, sospeso): i loro PENDING non si riprendono', async () => {
+        const attiva = await creaTenant('AUTOMATICA', 'ACTIVE')
+        const prova = await creaTenant('IBRIDA', 'TRIAL')
+        const scaduta = await creaTenant('AUTOMATICA', 'EXPIRED')
+        const sospesa = await creaTenant('AUTOMATICA', 'SUSPENDED')
+        const inAttiva = await firDi(attiva)
+        const inProva = await firDi(prova)
+        const inScaduta = await firDi(scaduta)
+        const inSospesa = await firDi(sospesa)
+
+        const ids = (await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO)).map(
+          e => e.firId
+        )
+
+        expect(ids).toEqual(expect.arrayContaining([inAttiva, inProva]))
+        expect(ids).not.toContain(inScaduta)
+        expect(ids).not.toContain(inSospesa)
+      })
+
+      it("un FIR appena riaperto di un'altra azienda passa davanti a molti PENDING vecchi oltre il limite", async () => {
+        const rotta = await creaTenant('AUTOMATICA')
+        const sana = await creaTenant('AUTOMATICA')
+        for (let i = 0; i < 12; i++) await firDi(rotta, {}, new Date('2026-10-05T10:00:00.000Z'))
+        const riaperto = await firDi(sana, {}, new Date('2026-10-22T08:00:00.000Z'))
+
+        // I SYNCING in stallo (anche di altri test) vengono comunque per primi: il limite li include.
+        const tutti = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 10000, TETTO)
+        const nSyncing = tutti.filter(e => e.stato === 'SYNCING').length
+        const limite = nSyncing + 5
+
+        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, limite, TETTO)
+
+        expect(elenco).toHaveLength(limite)
+        // Il primo PENDING dopo i SYNCING e' il riaperto di recente.
+        expect(elenco[nSyncing].firId).toBe(riaperto)
+      })
+
+      it('la soglia su updated_at non dipende dal fuso della sessione', async () => {
+        const auto = await creaTenant('AUTOMATICA')
+        const id = await firDi(auto, {}, new Date('2026-10-23T09:00:00.000Z'))
+        const dopo = await repoLettura.elencaTrasmissioniRentriSospese(
+          new Date('2026-10-23T10:00:00.000Z'),
+          1000,
+          TETTO
+        )
+        expect(dopo.map(e => e.firId)).toContain(id)
+        const prima = await repoLettura.elencaTrasmissioniRentriSospese(
+          new Date('2026-10-23T08:00:00.000Z'),
+          1000,
+          TETTO
+        )
+        expect(prima.map(e => e.firId)).not.toContain(id)
+      })
+    })
+
     it('rentri_sync_avviato_at è TIMESTAMPTZ: la soglia di stallo non dipende dal fuso della sessione', async () => {
       const [colonna] = await prisma.$queryRaw<{ data_type: string; datetime_precision: number }[]>`
         SELECT data_type, datetime_precision FROM information_schema.columns
         WHERE table_name = 'firs' AND column_name = 'rentri_sync_avviato_at'`
       expect(colonna).toEqual({ data_type: 'timestamp with time zone', datetime_precision: 3 })
+    })
+
+    it('transazione in attesa, certificato mancante, caricamento del certificato, riapertura e ripresa: nessuna nuova POST', async () => {
+      // FIR emesso con una transazione già accettata dall'ente (polling interrotto).
+      const fir = await nuovoFir({
+        status: 'AWAITING_CARRIER',
+        rentriSyncStatus: 'FAILED',
+        rentriSyncAttempts: 1,
+        rentriLastSyncError: 'Polling interrotto',
+        rentriLastSyncErrorCode: 'RENTRI_API_ERROR',
+        rentriTransazioneInAttesa: 'tx-attesa-certificato',
+        rentriTransazioneId: 'tx-attesa-certificato',
+      })
+
+      const creaFormulario = jest.fn()
+      const attendiEsito = jest
+        .fn()
+        .mockRejectedValueOnce(new TenantSenzaCertificatoRentriError())
+        .mockResolvedValueOnce({
+          errore: false,
+          validazione: [],
+          esito: { numero_fir: `RENTRI-B6-${Date.now()}` },
+        })
+      const costruisci = jest.fn()
+      const logger: any = {
+        setContext: jest.fn(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn(),
+      }
+      const useCase = new SyncFIRToRENTRIUseCase(
+        repoLettura,
+        { creaFormulario, attendiEsito } as any,
+        {
+          createPending: jest.fn(async (p: any) => RENTRISyncLog.createPending(p)),
+          save: jest.fn(async (l: any) => l),
+        } as any,
+        { publish: jest.fn() } as any,
+        logger,
+        { costruisci } as any
+      )
+
+      try {
+        // 1. L'azienda non ha il certificato: esito definitivo, la transazione resta salvata.
+        const primo = await useCase.execute(fir.id, tenantId)
+        expect(primo).toMatchObject({ success: false, willRetry: false })
+        const fermo = await riga(fir.id)
+        expect(fermo.rentriSyncStatus).toBe('PERMANENTLY_FAILED')
+        expect(fermo.rentriLastSyncErrorCode).toBe(CODICE_CERTIFICATO_MANCANTE)
+        expect(fermo.rentriTransazioneInAttesa).toBe('tx-attesa-certificato')
+        expect(fermo.rentriSyncAvviatoAt).not.toBeNull()
+
+        // 2. Il certificato viene caricato: il FIR si riapre, la transazione resta.
+        const credenziali = new RentriCredentialService(
+          prisma as any,
+          {
+            credentialEncKey: 'chiave-di-test-b6',
+          } as any
+        )
+        const riaperti = await credenziali.upsertForTenant(tenantId, {
+          clientId: 'client-b6',
+          certificatePem: '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----',
+          privateKeyPem: '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----',
+        })
+        expect(riaperti).toContain(fir.id)
+        // Il recupero lo riprende dal primo giro dopo la soglia: updated_at e' stato aggiornato
+        // dalla riapertura (la azienda deve essere in trasmissione automatica).
+        const modalitaPrima = (await prisma.tenant.findUnique({ where: { id: tenantId } }))!
+          .rentriModalitaLegame
+        await prisma.tenant.update({
+          where: { id: tenantId },
+          data: { rentriModalitaLegame: 'AUTOMATICA', subscriptionStatus: 'ACTIVE' },
+        })
+        try {
+          const aggiornatoPrima = (await riga(fir.id)).updatedAt as Date
+          expect(aggiornatoPrima.getTime()).toBeGreaterThan(Date.now() - 60_000)
+          await prisma.$executeRaw`UPDATE firs SET updated_at = (${new Date('2026-10-22T08:00:00.000Z').toISOString()}::timestamptz AT TIME ZONE 'UTC') WHERE id = ${fir.id}::uuid`
+          const sospese = await repoLettura.elencaTrasmissioniRentriSospese(
+            SOGLIA,
+            1000,
+            new Date('2026-10-01T00:00:00.000Z')
+          )
+          expect(sospese.find(e => e.firId === fir.id)).toEqual({
+            firId: fir.id,
+            tenantId,
+            stato: 'PENDING',
+          })
+        } finally {
+          await prisma.tenant.update({
+            where: { id: tenantId },
+            data: { rentriModalitaLegame: modalitaPrima },
+          })
+        }
+        const riaperto = await riga(fir.id)
+        expect(riaperto.rentriSyncStatus).toBe('PENDING')
+        expect(riaperto.rentriSyncAvviatoAt).toBeNull()
+        expect(riaperto.rentriLastSyncErrorCode).toBeNull()
+        expect(riaperto.rentriTransazioneInAttesa).toBe('tx-attesa-certificato')
+
+        // 3. Il tentativo successivo riprende la transazione: nessuna POST, nessun corpo costruito.
+        const secondo = await useCase.execute(fir.id, tenantId)
+        expect(secondo).toMatchObject({ success: true })
+        expect(creaFormulario).not.toHaveBeenCalled()
+        expect(costruisci).not.toHaveBeenCalled()
+        expect(attendiEsito).toHaveBeenCalledTimes(2)
+        expect(attendiEsito).toHaveBeenNthCalledWith(2, tenantId, 'tx-attesa-certificato')
+        const finale = await riga(fir.id)
+        expect(finale.rentriSyncStatus).toBe('SYNCED')
+        expect(finale.rentriNumeroFir).toMatch(/^RENTRI-B6-/)
+      } finally {
+        await prisma.rentriCredential.deleteMany({ where: { tenantId } })
+      }
     })
   })
 })

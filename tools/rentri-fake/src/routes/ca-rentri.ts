@@ -119,10 +119,19 @@ export function registraRotteCaRentri(app: FastifyInstance, archivio: Archivio):
     if (!(await autentica(richiesta, risposta, archivio))) return
 
     const { credentials_id: credentialsId, cert_info: certInfo, certificates } = richiesta.query
-    if (!credentialsId || credentialsId.length !== 9) {
+    // Tre 400 distinti, ciascuno col suo titolo: parametro assente, parametro
+    // di lunghezza errata (`minLength`/`maxLength` = 9, ca-rentri.yaml:1306),
+    // valore fuori enum di `certificates` (piu' sotto).
+    if (!credentialsId) {
       return inviaProblemDetails(risposta, 400, {
         title: 'Parametro richiesto non specificato',
-        detail: "'credentials_id' e' obbligatorio e di 9 caratteri.",
+        detail: "'credentials_id' e' obbligatorio.",
+      })
+    }
+    if (credentialsId.length !== 9) {
+      return inviaProblemDetails(risposta, 400, {
+        title: 'Parametro non valido',
+        detail: "'credentials_id' deve essere di 9 caratteri.",
       })
     }
 

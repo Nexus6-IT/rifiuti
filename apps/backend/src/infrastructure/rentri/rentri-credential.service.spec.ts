@@ -221,6 +221,8 @@ describe('RentriCredentialService', () => {
       rentriLastSyncError: null,
       rentriLastSyncErrorCode: null,
       rentriNextRetryAt: null,
+      // il recupero dei PENDING mai avviati richiede avviato_at nullo
+      rentriSyncAvviatoAt: null,
     })
     expect(riaperti).toEqual(['fir-1', 'fir-2'])
   })

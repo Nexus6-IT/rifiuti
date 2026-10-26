@@ -1,17 +1,29 @@
 import { RentriTrasmissioniSospeseJob } from './rentri-trasmissioni-sospese.job'
-import { SOGLIA_STALLO_RENTRI_MS } from '../../application/rentri/sync-fir-to-rentri.use-case'
+import {
+  ETA_MASSIMA_PENDING_RENTRI_MS,
+  SOGLIA_STALLO_RENTRI_MS,
+} from '../../application/rentri/sync-fir-to-rentri.use-case'
 
 describe('RentriTrasmissioniSospeseJob', () => {
-  const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  const logger: any = {
+    setContext: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    error: jest.fn(),
+  }
   let firRepo: { elencaTrasmissioniRentriSospese: jest.Mock }
-  let queue: { addSyncJob: jest.Mock }
+  let queue: { addSyncJob: jest.Mock; getJobState: jest.Mock }
   let modalita: { getForTenant: jest.Mock }
   let job: RentriTrasmissioniSospeseJob
 
   beforeEach(() => {
     jest.clearAllMocks()
     firRepo = { elencaTrasmissioniRentriSospese: jest.fn() }
-    queue = { addSyncJob: jest.fn().mockResolvedValue('id') }
+    queue = {
+      addSyncJob: jest.fn().mockResolvedValue('id'),
+      getJobState: jest.fn().mockResolvedValue(null),
+    }
     modalita = {
       getForTenant: jest
         .fn()
@@ -33,6 +45,58 @@ describe('RentriTrasmissioniSospeseJob', () => {
     expect(logger.error).not.toHaveBeenCalled()
   })
 
+  it('trasmissioni sospese: FIR PENDING in AUTOMATICA senza job e senza avvio da oltre la soglia → accodato con sync-<id>', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f-pending', tenantId: 't-auto', stato: 'PENDING' },
+    ])
+
+    await job.riprendi()
+
+    // Il jobId deterministico `sync-<firId>` lo costruisce la queue: un FIR gia' in coda non si duplica.
+    expect(queue.addSyncJob).toHaveBeenCalledWith({
+      firId: 'f-pending',
+      tenantId: 't-auto',
+      priority: 'low',
+      richiedeConferma: false,
+    })
+  })
+
+  it('trasmissioni sospese: FIR PENDING in MANUALE → non accodato', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f-manuale', tenantId: 't-man', stato: 'PENDING' },
+      { firId: 'f-sync', tenantId: 't-man', stato: 'SYNCING' },
+    ])
+    modalita.getForTenant.mockResolvedValue({
+      modalitaLegame: 'MANUALE',
+      certificatoConfigurato: false,
+    })
+
+    await job.riprendi()
+
+    expect(queue.addSyncJob).toHaveBeenCalledTimes(1)
+    expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-sync' }))
+  })
+
+  it('FIR PENDING con job sync-<id> in failed → non riaccodato; senza job → accodato; SYNCING invariato', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f-rotto', tenantId: 't1', stato: 'PENDING' },
+      { firId: 'f-nuovo', tenantId: 't1', stato: 'PENDING' },
+      { firId: 'f-sync', tenantId: 't1', stato: 'SYNCING' },
+    ])
+    queue.getJobState.mockImplementation(async (jobId: string) =>
+      jobId === 'sync-f-rotto' || jobId === 'sync-f-sync' ? 'failed' : null
+    )
+
+    await job.riprendi()
+
+    expect(queue.addSyncJob).toHaveBeenCalledTimes(2)
+    expect(queue.addSyncJob).not.toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-rotto' }))
+    expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-nuovo' }))
+    // I SYNCING si riprendono come prima, anche con un job fallito (non si guarda lo stato)
+    expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-sync' }))
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
   it('accoda i FIR sospesi con priorità low', async () => {
     firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
       { firId: 'f1', tenantId: 't1' },
@@ -42,8 +106,11 @@ describe('RentriTrasmissioniSospeseJob', () => {
 
     await job.riprendi()
 
-    const [soglia, limite] = firRepo.elencaTrasmissioniRentriSospese.mock.calls[0]
+    const [soglia, limite, pendingDopo] = firRepo.elencaTrasmissioniRentriSospese.mock.calls[0]
     expect(limite).toBe(100)
+    expect(Math.abs(pendingDopo.getTime() - (prima - ETA_MASSIMA_PENDING_RENTRI_MS))).toBeLessThan(
+      5000
+    )
     expect(Math.abs(soglia.getTime() - (prima - SOGLIA_STALLO_RENTRI_MS))).toBeLessThan(5000)
     expect(queue.addSyncJob).toHaveBeenCalledWith({
       firId: 'f1',

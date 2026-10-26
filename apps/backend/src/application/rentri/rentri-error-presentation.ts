@@ -35,6 +35,7 @@
  *   tentativi automatici già pianificati).
  */
 import { MESSAGGIO_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-credential.resolver'
+import { CODICE_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-certificato.costanti'
 
 export type RentriAzioneUtente =
   | 'RIPROVA'
@@ -85,7 +86,7 @@ export function traduciErroreRentri(input: RentriErroreInput): RentriErrorePrese
         azione: 'VEDI_CERTIFICATO',
       }
 
-    case 'RENTRI_CERTIFICATO_MANCANTE':
+    case CODICE_CERTIFICATO_MANCANTE:
       // Esito definitivo: l'azienda non ha un certificato proprio e non si presta
       // quello di un'altra. Dopo il caricamento del certificato i FIR tornano PENDING:
       // in AUTOMATICA/IBRIDA ripartono da soli, in MANUALE con «Trasmetti a RENTRI».

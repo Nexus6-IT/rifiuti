@@ -35,9 +35,14 @@ import {
   FirNonPiuInBozzaError,
 } from '../../core/domain/errors'
 import { formattaNumeroFir } from '../../domain/fir/numero-fir'
-import { STATI_FIR_IN_BOZZA, STATO_RENTRI_ANNULLATO } from '../../domain/fir/stati-fir'
+import {
+  STATI_FIR_EMESSI,
+  STATI_FIR_IN_BOZZA,
+  STATO_RENTRI_ANNULLATO,
+} from '../../domain/fir/stati-fir'
 import { PrismaService } from './prisma.service'
 import { PrismaSistemaService } from './prisma-sistema.service'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 @Injectable()
 export class FIRPrismaRepository implements IFIRRepository {
@@ -253,22 +258,63 @@ export class FIRPrismaRepository implements IFIRRepository {
   }
 
   /**
-   * FIR rimasti in SYNCING oltre la soglia di stallo (o senza data di avvio), su tutti
-   * i tenant: serve al job di sistema di recupero, per questo non filtra per tenant.
+   * FIR da riprendere, su tutti i tenant: serve al job di sistema di recupero, per
+   * questo non filtra per tenant. Sono:
+   * - SYNCING oltre la soglia di stallo (o senza data di avvio);
+   * - PENDING emessi, mai avviati (`rentri_sync_avviato_at` nullo), non legati, non
+   *   annullati, di aziende in AUTOMATICA o IBRIDA e fermi da oltre la soglia: un FIR
+   *   riaperto a PENDING mentre Redis era giu' resterebbe senza job per sempre, ma solo se
+   *   aggiornati dopo `pendingAggiornatiDopo` (tetto di eta').
+   * I SYNCING vengono per primi: un PENDING che fallisce sempre prima della prenotazione
+   *   non deve affamare il recupero degli stalli. Fra i PENDING vengono prima quelli
+   *   aggiornati piu' di recente (es. riaperti dal caricamento del certificato), poi i vecchi.
+   *   Le aziende in MANUALE non si toccano: li' la trasmissione parte solo a mano.
    */
   async elencaTrasmissioniRentriSospese(
     sogliaStallo: Date,
-    limite: number
-  ): Promise<Array<{ firId: string; tenantId: string }>> {
-    // Sistema: elenco dei FIR di tutte le aziende per il job di recupero, nessuna azienda nota
-    const righe = await this.sistema.$queryRaw<Array<{ fir_id: string; tenant_id: string }>>`
-      SELECT id::text AS fir_id, tenant_id::text AS tenant_id
+    limite: number,
+    pendingAggiornatiDopo: Date
+  ): Promise<Array<{ firId: string; tenantId: string; stato: 'SYNCING' | 'PENDING' }>> {
+    // Sistema: elenco delle aziende con trasmissione automatica (nessuna azienda nota in partenza).
+    // La lettura di `tenants` passa da escludiPiattaforma; il join non si scrive in SQL grezzo.
+    const aziende = await this.sistema.tenant.findMany({
+      where: escludiPiattaforma({
+        rentriModalitaLegame: { in: ['AUTOMATICA', 'IBRIDA'] },
+        // Come gli altri job RENTRI: solo aziende con abbonamento attivo o in prova
+        subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] },
+      }),
+      select: { id: true },
+    })
+    const idAziende = aziende.map(a => a.id)
+
+    // Sistema: elenco dei FIR di tutte le aziende per il job di recupero
+    const righe = await this.sistema.$queryRaw<
+      Array<{ fir_id: string; tenant_id: string; stato: 'SYNCING' | 'PENDING' }>
+    >`
+      SELECT id::text AS fir_id, tenant_id::text AS tenant_id, rentri_sync_status::text AS stato
       FROM firs
-      WHERE rentri_sync_status = 'SYNCING'::rentri_sync_status
-        AND (rentri_sync_avviato_at IS NULL OR rentri_sync_avviato_at < ${sogliaStallo})
-      ORDER BY rentri_sync_avviato_at NULLS FIRST, id
+      WHERE (
+          rentri_sync_status = 'SYNCING'::rentri_sync_status
+          AND (rentri_sync_avviato_at IS NULL OR rentri_sync_avviato_at < ${sogliaStallo})
+        )
+        OR (
+          rentri_sync_status = 'PENDING'::rentri_sync_status
+          AND rentri_sync_avviato_at IS NULL
+          AND (updated_at AT TIME ZONE 'UTC') < ${sogliaStallo}
+          AND (updated_at AT TIME ZONE 'UTC') > ${pendingAggiornatiDopo}
+          AND rentri_numero_fir IS NULL
+          AND status = ANY(${[...STATI_FIR_EMESSI]}::text[]::fir_status[])
+          AND rentri_stato_formulario::text IS DISTINCT FROM ${STATO_RENTRI_ANNULLATO}
+          AND tenant_id::text = ANY(${idAziende}::text[])
+        )
+      ORDER BY (rentri_sync_status = 'SYNCING'::rentri_sync_status) DESC,
+        CASE WHEN rentri_sync_status = 'SYNCING'::rentri_sync_status
+          THEN rentri_sync_avviato_at END NULLS FIRST,
+        CASE WHEN rentri_sync_status = 'PENDING'::rentri_sync_status
+          THEN updated_at END DESC,
+        id
       LIMIT ${limite}`
-    return righe.map(r => ({ firId: r.fir_id, tenantId: r.tenant_id }))
+    return righe.map(r => ({ firId: r.fir_id, tenantId: r.tenant_id, stato: r.stato }))
   }
 
   async findByRentriNumeroFir(tenantId: string, numeroFir: string): Promise<FIR | null> {

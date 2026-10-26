@@ -664,13 +664,22 @@ export class FIR extends AggregateRoot {
    * esclude un sync già in corso e un fallimento permanente).
    */
   canSyncToRENTRI(): boolean {
+    return this.emessoENonGiaLegatoARentri() && this._rentriSyncStatus.canRetry()
+  }
+
+  /**
+   * Precondizioni comuni a `canSyncToRENTRI` e `avviaTentativoRentri`: il FIR e'
+   * emesso (EMESSO, IN_TRANSITO o CONSEGNATO) e non ha ancora un numero
+   * ufficiale RENTRI. Lo stato di sincronizzazione resta fuori: i due chiamanti
+   * lo valutano diversamente (la ripresa dopo uno stallo ammette SYNCING).
+   */
+  private emessoENonGiaLegatoARentri(): boolean {
     const statoEmesso =
       this._stato === FIRStato.EMESSO ||
       this._stato === FIRStato.IN_TRANSITO ||
       this._stato === FIRStato.CONSEGNATO
     const nonGiaLegato = this._rentriNumeroFir === null
-
-    return statoEmesso && nonGiaLegato && this._rentriSyncStatus.canRetry()
+    return statoEmesso && nonGiaLegato
   }
 
   /**
@@ -679,14 +688,9 @@ export class FIR extends AggregateRoot {
    * che altrimenti resterebbe bloccato per sempre.
    */
   avviaTentativoRentri(ora: Date): void {
-    const statoEmesso =
-      this._stato === FIRStato.EMESSO ||
-      this._stato === FIRStato.IN_TRANSITO ||
-      this._stato === FIRStato.CONSEGNATO
     const ripresaDaStallo = this._rentriSyncStatus.getStatus() === 'SYNCING'
     if (
-      !statoEmesso ||
-      this._rentriNumeroFir !== null ||
+      !this.emessoENonGiaLegatoARentri() ||
       !(ripresaDaStallo || this._rentriSyncStatus.canRetry())
     ) {
       throw new DomainError('FIR non trasmissibile a RENTRI nello stato corrente')

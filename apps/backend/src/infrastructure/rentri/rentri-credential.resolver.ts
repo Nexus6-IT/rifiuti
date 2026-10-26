@@ -52,7 +52,7 @@ export class TenantSenzaCertificatoRentriError extends Error {
  * volta per processo): nei worker BullMQ il contesto non c'e', quindi i
  * chiamanti devono passare il tenant. I warn di tenant si scrivono una volta per
  * tenant per processo; ogni uso dell'env da parte di un tenant incrementa
- * `rentri_credential_env_fallback_total`.
+ * `wasteflow_rentri_credential_env_fallback_total`.
  */
 @Injectable()
 export class RentriCredentialResolver {
@@ -131,20 +131,29 @@ export class RentriCredentialResolver {
       }
     }
 
+    // L'id del tenant sta solo nel log: il messaggio puo' arrivare all'utente.
+    if (tenantId) {
+      this.logger.error(
+        `RENTRI: nessuna credenziale per il tenant ${tenantId} e nessun fallback da env (PEM env vuoti)`
+      )
+    }
     throw new Error(
       tenantId
-        ? `RENTRI: nessuna credenziale per il tenant ${tenantId} e nessun fallback da env`
+        ? "RENTRI: nessuna credenziale configurata per l'azienda e nessun fallback da env"
         : 'RENTRI: nessun TenantContext e nessuna credenziale di fallback da env'
     )
   }
 
   /**
-   * Il tenant ha una credenziale utilizzabile? Stessa regola di {@link resolve}
-   * (credenziale propria; altrimenti env solo per il tenant legato da
-   * `RENTRI_ENV_TENANT_ID`, anche se i PEM env mancano: li' resolve da' un errore di configurazione), ma non solleva e non ha
-   * effetti collaterali: niente warn, niente conteggio del fallback env (un
-   * controllo dei job periodici non e' un uso). Se la lettura della credenziale
-   * fallisce l'errore si propaga: non e' un "no" e va trattato come guasto vero.
+   * Il tenant ha una credenziale utilizzabile? Stessa regola di {@link resolve}:
+   * credenziale propria; altrimenti env solo per il tenant legato da
+   * `RENTRI_ENV_TENANT_ID`, anche se i PEM env mancano (li' resolve da' un errore
+   * di configurazione). Non solleva e non ha effetti collaterali:
+   * niente warn, niente conteggio del fallback env (un controllo dei job
+   * periodici non e' un uso).
+   *
+   * Se la lettura della credenziale fallisce l'errore si propaga: non e' un
+   * "no" e va trattato come guasto vero.
    */
   async haCredenziale(tenantId: string): Promise<boolean> {
     if (await this.credentialService.getForTenant(tenantId)) return true

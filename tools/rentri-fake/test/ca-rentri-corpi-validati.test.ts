@@ -41,7 +41,11 @@ describe('ca-rentri: validazione dei corpi sul contratto', () => {
 
   it('authorize con credentials_id di 8 caratteri → 400', async () => {
     const app = creaApp()
-    const r = await post(app, '/credentials/authorize', corpoAuthorize({ credentials_id: 'CRED0001' }))
+    const r = await post(
+      app,
+      '/credentials/authorize',
+      corpoAuthorize({ credentials_id: 'CRED0001' })
+    )
     expect(r.statusCode).toBe(400)
     expect(r.json().detail).toContain('credentials_id')
   })
@@ -62,6 +66,21 @@ describe('ca-rentri: validazione dei corpi sul contratto', () => {
     const r = await post(app, '/credentials/authorize', corpoAuthorize({ campo_inventato: 1 }))
     expect(r.statusCode).toBe(400)
     expect(r.json().detail).toContain('campo_inventato')
+  })
+
+  // `AuthObjectData.id` ha pattern `(?i)^mobile$` (ca-rentri.yaml:2286): flag
+  // inline .NET, applicato dal finto come confronto senza distinzione di maiuscole.
+  it.each(['mobile', 'Mobile', 'MOBILE'])('authorize con auth_data.id %s → 200', async id => {
+    const app = creaApp()
+    const r = await post(app, '/credentials/authorize', corpoAuthorize({ auth_data: [{ id }] }))
+    expect(r.statusCode).toBe(200)
+  })
+
+  it.each(['sms', 'mobile2', 'xmobile', ''])('authorize con auth_data.id "%s" → 400', async id => {
+    const app = creaApp()
+    const r = await post(app, '/credentials/authorize', corpoAuthorize({ auth_data: [{ id }] }))
+    expect(r.statusCode).toBe(400)
+    expect(r.json().detail).toContain('auth_data')
   })
 
   it('sign-hash con sign_algo diverso da 1.2.840.10045.4.3.2 → 400', async () => {

@@ -146,6 +146,9 @@ export class RentriCredentialService {
           rentriLastSyncError: null,
           rentriLastSyncErrorCode: null,
           rentriNextRetryAt: null,
+          // Senza una prenotazione pendente: il recupero dei PENDING mai avviati
+          // (rentri_sync_avviato_at nullo) deve poter riprendere questi FIR.
+          rentriSyncAvviatoAt: null,
         },
       })
       this.logger.log(

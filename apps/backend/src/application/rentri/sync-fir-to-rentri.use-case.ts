@@ -29,6 +29,13 @@ import {
 export const SOGLIA_STALLO_RENTRI_MS = 15 * 60 * 1000
 
 /**
+ * Il recupero dei FIR PENDING mai avviati considera solo quelli aggiornati negli
+ * ultimi 30 giorni: passare un'azienda da MANUALE ad AUTOMATICA/IBRIDA non deve
+ * trasmettere in blocco i FIR vecchi.
+ */
+export const ETA_MASSIMA_PENDING_RENTRI_MS = 30 * 24 * 60 * 60 * 1000
+
+/**
  * Sync FIR to RENTRI Use Case
  *
  * Application service that orchestrates FIR synchronization to RENTRI.
@@ -740,6 +747,15 @@ export class SyncFIRToRENTRIUseCase {
         await this.firRepository.save(fir)
       } catch (rilascio) {
         this.logger.error(`Rilascio della prenotazione RENTRI non riuscito`, rilascio, {
+          firId: fir.id,
+        })
+      }
+      // Come negli altri rami: l'esito fallito si pubblica (altrimenti l'evento
+      // resta nell'aggregate e si perde: l'errore risale senza altri publish).
+      try {
+        await this.publishDomainEvents(fir)
+      } catch (pubblicazione) {
+        this.logger.error(`Pubblicazione dell'evento di sync fallito non riuscita`, pubblicazione, {
           firId: fir.id,
         })
       }

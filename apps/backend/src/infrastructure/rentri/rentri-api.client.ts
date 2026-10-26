@@ -13,6 +13,12 @@ import { RentriRateLimiterService } from './rentri-rate-limiter.service'
 import type { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
 
 /**
+ * Errori sollevati dalla chiamata `httpService.post` stessa (richiesta
+ * effettivamente inviata), per distinguerli dai fallimenti precedenti l'invio.
+ */
+const erroriChiamataHttp = new WeakSet<object>()
+
+/**
  * RENTRI API Client
  *
  * Comunica con l'ambiente reale RENTRI (demo/prod, vedi {@link RentriConfig})
@@ -36,11 +42,6 @@ import type { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
  *
  * ATTIVARE: caricare certificato + completare iscrizione RENTRI (area operatori).
  */
-/**
- * Errori sollevati dalla chiamata `httpService.post` stessa (richiesta
- * effettivamente inviata), per distinguerli dai fallimenti precedenti l'invio.
- */
-const erroriChiamataHttp = new WeakSet<object>()
 
 @Injectable()
 export class RENTRIApiClient {
@@ -422,8 +423,8 @@ export class RENTRIApiClient {
 
   // ------------------------------------------------------------------
   // Firma remota RENTRI (R3 Task 3) — servizio `formulari` (contratto
-  // ufficiale) + servizio `ca-rentri` (NESSUN contratto pubblico, v.
-  // CA_RENTRI_PATH sopra). Tutte queste chiamate passano dagli stessi
+  // ufficiale) + servizio `ca-rentri` (contratto in
+  // `docs/contracts/rentri/ca-rentri.yaml`, v. CA_RENTRI_PATH sopra). Tutte queste chiamate passano dagli stessi
   // meccanismi ID_AUTH_REST_02 / INTEGRITY_REST_01 già usati dal resto del
   // client (`post`/`get`): il certificato di INTEROPERABILITÀ che autentica
   // la chiamata resta un oggetto distinto dal certificato di FIRMA REMOTA
@@ -1440,14 +1441,11 @@ export class RENTRIApiClient {
       ...integrityHeaders,
     }
 
+    let response: AxiosResponse
     try {
-      const response = await firstValueFrom(
+      response = await firstValueFrom(
         this.httpService.post(url, body, { headers, timeout: this.timeout })
       )
-      // Risposta non-423 (successo): riporta a 0 il gauge "tenant bandito"
-      // se era rimasto a 1 da un precedente 423 confermato.
-      this.metrics.rentriTenantLocked.set({ tenant_id: tenantId ?? this.tenantIdCorrente() }, 0)
-      return response
     } catch (error: any) {
       this.metrics.rentriApiErrors.inc({ endpoint: metricEndpoint, error_type: 'HTTP' })
       // Marca l'errore come rifiuto della chiamata HTTP vera e propria (la
@@ -1457,6 +1455,19 @@ export class RENTRIApiClient {
       }
       throw error
     }
+
+    // Risposta non-423 (successo): riporta a 0 il gauge "tenant bandito" se era
+    // rimasto a 1 da un precedente 423 confermato. Fuori dal try della POST: un
+    // errore di metrica non e' un errore della chiamata (non deve diventare
+    // NESSUNA_RISPOSTA) e non deve far perdere l'esito di una POST gia' accettata.
+    try {
+      this.metrics.rentriTenantLocked.set({ tenant_id: tenantEffettivo }, 0)
+    } catch (errore: any) {
+      this.logger.warn('Aggiornamento del gauge rentriTenantLocked non riuscito', {
+        errore: errore instanceof Error ? errore.message : String(errore),
+      })
+    }
+    return response
   }
 
   /**

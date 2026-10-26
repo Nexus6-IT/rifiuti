@@ -9,6 +9,7 @@ import { LoggerService } from '../logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { FirAnnullatoNelFrattempoError } from '../domain/errors'
 import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
+import { CODICE_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-certificato.costanti'
 
 /**
  * Global HTTP Exception Filter
@@ -104,7 +105,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // (senza id del tenant) e nessuna segnalazione a Bugsink (sotto 500).
     else if (exception instanceof TenantSenzaCertificatoRentriError) {
       statusCode = HttpStatus.UNPROCESSABLE_ENTITY
-      errorCode = 'RENTRI_CERTIFICATO_MANCANTE'
+      errorCode = CODICE_CERTIFICATO_MANCANTE
       message = exception.message
     }
     // Handle unexpected errors — messaggio generico, nessun leak di dettagli interni.

@@ -46,7 +46,9 @@ class MockFIRRepository implements IFIRRepository {
     return true
   }
 
-  async elencaTrasmissioniRentriSospese(): Promise<Array<{ firId: string; tenantId: string }>> {
+  async elencaTrasmissioniRentriSospese(): Promise<
+    Array<{ firId: string; tenantId: string; stato: 'SYNCING' | 'PENDING' }>
+  > {
     return []
   }
 

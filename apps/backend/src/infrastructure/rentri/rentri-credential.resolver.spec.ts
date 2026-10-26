@@ -53,6 +53,42 @@ describe('RentriCredentialResolver', () => {
     })
   })
 
+  describe('risoluzione dal contesto', () => {
+    const MESSAGGIO =
+      'risoluzione della credenziale RENTRI dal contesto: passare il tenant in modo esplicito'
+
+    afterEach(() => {
+      jest.restoreAllMocks()
+    })
+
+    it('senza tenant esplicito si usa il contesto e si scrive UN warn per processo', async () => {
+      const resolver = makeResolver()
+      const warn = jest.spyOn((resolver as any).logger, 'warn').mockImplementation(() => undefined)
+      credentialService.getForTenant.mockResolvedValue(credTenant())
+
+      await TenantContext.run({ tenantId: 'tenant-ctx-1', userId: 'u1' }, () => resolver.resolve())
+      await TenantContext.run({ tenantId: 'tenant-ctx-2', userId: 'u1' }, () => resolver.resolve())
+
+      // Il contesto e' stato davvero usato, e il warn non si ripete alla seconda chiamata.
+      expect(credentialService.getForTenant).toHaveBeenNthCalledWith(1, 'tenant-ctx-1')
+      expect(credentialService.getForTenant).toHaveBeenNthCalledWith(2, 'tenant-ctx-2')
+      const warnContesto = warn.mock.calls.filter(c => c[0] === MESSAGGIO)
+      expect(warnContesto).toHaveLength(1)
+      // Il warn non porta l'id di nessun tenant.
+      expect(JSON.stringify(warnContesto)).not.toContain('tenant-ctx')
+    })
+
+    it('con il tenant esplicito non si scrive alcun warn "dal contesto"', async () => {
+      const resolver = makeResolver()
+      const warn = jest.spyOn((resolver as any).logger, 'warn').mockImplementation(() => undefined)
+      credentialService.getForTenant.mockResolvedValue(credTenant())
+
+      await resolver.resolve('tenant-esplicito')
+
+      expect(warn.mock.calls.filter(c => c[0] === MESSAGGIO)).toHaveLength(0)
+    })
+  })
+
   it('tenant legato (RENTRI_ENV_TENANT_ID) senza credenziale propria: usa env', async () => {
     const resolver = makeResolver()
     credentialService.getForTenant.mockResolvedValue(null)
@@ -181,6 +217,37 @@ describe('RentriCredentialResolver', () => {
     expect(dalContesto).toHaveLength(1)
   })
 
+  it('resolver: tenant legato con PEM env vuoti → messaggio senza id del tenant', async () => {
+    const senzaPem = makeResolver({ ...envConfig, certificatePem: '', privateKeyPem: '' })
+    credentialService.getForTenant.mockResolvedValue(null)
+    const warn = jest.spyOn((senzaPem as any).logger, 'warn').mockImplementation(() => undefined)
+    const error = jest.spyOn((senzaPem as any).logger, 'error').mockImplementation(() => undefined)
+
+    const errore = await senzaPem.resolve('tenant-pilota').catch((e: unknown) => e)
+
+    expect(errore).toBeInstanceOf(Error)
+    expect((errore as Error).message).not.toContain('tenant-pilota')
+    // l'id sta solo nel log
+    expect(JSON.stringify([...warn.mock.calls, ...error.mock.calls])).toContain('tenant-pilota')
+  })
+
+  it('warn algoritmo discordante: due richieste dello stesso tenant → un solo warn, contatore a 2', async () => {
+    // Env legato: chiave RSA ma algoritmo dichiarato ES256 (discordante).
+    const rsa = forge.pki.privateKeyToPem(forge.pki.rsa.generateKeyPair(2048).privateKey)
+    const resolver = makeResolver({ ...envConfig, privateKeyPem: rsa, algorithm: 'ES256' })
+    credentialService.getForTenant.mockResolvedValue(null)
+    const warn = jest.spyOn((resolver as any).logger, 'warn').mockImplementation(() => undefined)
+
+    await resolver.resolve('tenant-pilota')
+    await resolver.resolve('tenant-pilota')
+
+    const discordanti = warn.mock.calls.filter(c => String(c[0]).includes('Algoritmo RENTRI'))
+    const fallbackEnv = warn.mock.calls.filter(c => String(c[0]).includes('credenziale globale'))
+    expect(discordanti).toHaveLength(1)
+    expect(fallbackEnv).toHaveLength(1)
+    expect(metrics.rentriCredentialEnvFallback.inc).toHaveBeenCalledTimes(2)
+  })
+
   it("haCredenziale: propria → true; legata all'env → true; altra → false", async () => {
     const resolver = makeResolver()
     credentialService.getForTenant.mockImplementation(async (t: string) =>
@@ -206,17 +273,16 @@ describe('RentriCredentialResolver', () => {
   })
 
   it.each([
-    ['credenziale propria', envConfig, 'tenant-A', true],
-    ['env legato con PEM', envConfig, 'tenant-pilota', true],
+    ['credenziale propria', envConfig, 'tenant-A'],
+    ['env legato con PEM', envConfig, 'tenant-pilota'],
     [
       'env legato con PEM vuoti',
       { ...envConfig, certificatePem: '', privateKeyPem: '' },
       'tenant-pilota',
-      true,
     ],
-    ['altro tenant', envConfig, 'tenant-altro', true],
-    ['envTenantId non impostato', { ...envConfig, envTenantId: '' }, 'tenant-pilota', true],
-  ])('haCredenziale coerente con resolve: %s', async (_nome, config, tenantId, _x) => {
+    ['altro tenant', envConfig, 'tenant-altro'],
+    ['envTenantId non impostato', { ...envConfig, envTenantId: '' }, 'tenant-pilota'],
+  ])('haCredenziale coerente con resolve: %s', async (_nome, config, tenantId) => {
     const resolver = makeResolver(config)
     credentialService.getForTenant.mockImplementation(async (t: string) =>
       t === 'tenant-A' ? credTenant() : null

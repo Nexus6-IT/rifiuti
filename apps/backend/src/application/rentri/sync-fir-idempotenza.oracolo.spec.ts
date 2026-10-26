@@ -7,6 +7,7 @@ import { RentriConfig } from '../../infrastructure/rentri/rentri-config'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
+import { RentriRateLimitTimeoutError } from '../../infrastructure/rentri/rentri-rate-limiter.service'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { costruttorePayloadFinto } from './mappatura/aiuti-test'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -53,7 +54,7 @@ describe('Idempotenza della creazione del FIR contro la fake RENTRI (in-process)
     await app.inject({ method: 'POST', url: '/__controllo/azzera' })
   })
 
-  function creaClient(): RENTRIApiClient {
+  function creaClient(rateLimiter?: any): RENTRIApiClient {
     const cert = creaCertificatoDiTest('operatore-test')
     const config: RentriConfig = {
       baseUrl: 'https://demoapi.rentri.gov.it',
@@ -94,6 +95,7 @@ describe('Idempotenza della creazione del FIR contro la fake RENTRI (in-process)
       rentriApiRequestDuration: { observe: jest.fn() },
       rentriApiErrors: { inc: jest.fn() },
       rentriTenantLocked: { set: jest.fn() },
+      rentriRateLimiterWaitSeconds: { observe: jest.fn() },
     }
     const httpService: any = {
       post: (url: string, body: unknown, opts: { headers: Record<string, string> }) =>
@@ -117,7 +119,15 @@ describe('Idempotenza della creazione del FIR contro la fake RENTRI (in-process)
             .catch((errore: unknown) => subscriber.error(errore))
         }),
     }
-    const client = new RENTRIApiClient(httpService, logger, metrics, config, auth, signature as any)
+    const client = new RENTRIApiClient(
+      httpService,
+      logger,
+      metrics,
+      config,
+      auth,
+      signature as any,
+      rateLimiter
+    )
 
     // Il polling di default (30 tentativi) renderebbe il test lento: lo use case
     // non permette di passare le opzioni, quindi si stringe qui il client del
@@ -352,5 +362,31 @@ describe('Idempotenza della creazione del FIR contro la fake RENTRI (in-process)
     expect(esiti.filter(e => e.giaInCorso !== true)).toEqual([
       expect.objectContaining({ success: false, willRetry: true }),
     ])
+  }, 30000)
+
+  it('rate limiter che rifiuta durante la creazione: nessuna POST e il FIR non resta bloccato in SYNCING', async () => {
+    const repository = new RepositoryFirInMemoria()
+    const fir = firEmesso()
+    repository.inserisci(fir)
+    const rateLimiter = {
+      acquisisci: jest.fn().mockRejectedValue(new RentriRateLimitTimeoutError(TENANT_ID, 1000)),
+    }
+    const useCase = creaUseCase(repository, creaClient(rateLimiter))
+
+    // Il rifiuto prima della POST e' un errore ritentabile, non una trasmissione incerta.
+    const esito = await useCase.execute(fir.id, TENANT_ID)
+    expect(esito).toMatchObject({ success: false, willRetry: true })
+    expect(esito.error).toMatch(/Capacità RENTRI non disponibile/)
+    // Nessun id di tenant nell'errore restituito all'utente.
+    expect(esito.error).not.toContain(TENANT_ID)
+
+    expect(rateLimiter.acquisisci).toHaveBeenCalled()
+    expect(postRicevute).toBe(0)
+    const dopo = await repository.findById(fir.id)
+    expect(dopo!.rentriSyncStatus.getStatus()).not.toBe('SYNCING')
+    expect(dopo!.rentriSyncStatus.getStatus()).toBe('FAILED')
+    expect(dopo!.rentriTransazioneInAttesa ?? null).toBeNull()
+    expect(dopo!.rentriSyncStatus.getLastError() ?? '').not.toContain(TENANT_ID)
+    expect(dopo!.rentriNumeroFir).toBeNull()
   }, 30000)
 })

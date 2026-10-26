@@ -1,4 +1,4 @@
-import Ajv, { ErrorObject } from 'ajv'
+import Ajv, { ErrorObject, SchemaValidateFunction } from 'ajv'
 
 /**
  * Meccanismo condiviso per validare un corpo di richiesta contro uno schema
@@ -20,15 +20,28 @@ const PREFISSO_OPENAPI = '#/components/schemas/'
  * lasciarle sparire in silenzio: e' una divergenza permissiva del finto.
  *
  * Il caso noto e' `^(?!.*(?i)it).*$` su `nazione_id` di `CittaEsteraModel`:
- * usa il flag inline `(?i)` della sintassi .NET, che JavaScript non supporta.
- * Riscriverla a mano significherebbe reinterpretare il contratto — cioe' la
- * cosa che questo modulo esiste per evitare.
+ * usa il flag inline `(?i)` della sintassi .NET IN MEZZO al pattern, che
+ * JavaScript non supporta. Riscriverla a mano significherebbe reinterpretare
+ * il contratto — cioe' la cosa che questo modulo esiste per evitare.
+ *
+ * Diverso e' il flag `(?i)` IN TESTA al pattern (es. `(?i)^mobile$` su
+ * `AuthObjectData.id`): vale per tutto il pattern, quindi equivale al flag
+ * `i` e si applica senza reinterpretare nulla (v. `PAROLA_PATTERN_INSENSIBILE`).
  */
 export const PATTERN_NON_APPLICABILI: string[] = []
 
-function compilabile(pattern: string): boolean {
+/** Flag inline .NET che, in testa al pattern, vale per tutto il pattern. */
+const FLAG_INSENSIBILE_IN_TESTA = '(?i)'
+
+/**
+ * Parola chiave ajv con cui `aJsonSchema` rende un `pattern` che comincia con
+ * `(?i)`: il resto del pattern, da confrontare senza distinguere maiuscole.
+ */
+const PAROLA_PATTERN_INSENSIBILE = 'x-pattern-insensibile'
+
+function compilabile(pattern: string, flag = 'u'): boolean {
   try {
-    new RegExp(pattern, 'u')
+    new RegExp(pattern, flag)
     return true
   } catch {
     return false
@@ -54,7 +67,12 @@ export function aJsonSchema(nodo: unknown): unknown {
     } else if (chiave === 'nullable') {
       // gestito sotto, insieme a `type`
     } else if (chiave === 'pattern' && typeof valore === 'string' && !compilabile(valore)) {
-      if (!PATTERN_NON_APPLICABILI.includes(valore)) PATTERN_NON_APPLICABILI.push(valore)
+      const resto = valore.slice(FLAG_INSENSIBILE_IN_TESTA.length)
+      if (valore.startsWith(FLAG_INSENSIBILE_IN_TESTA) && compilabile(resto, 'iu')) {
+        risultato[PAROLA_PATTERN_INSENSIBILE] = resto
+      } else if (!PATTERN_NON_APPLICABILI.includes(valore)) {
+        PATTERN_NON_APPLICABILI.push(valore)
+      }
     } else {
       risultato[chiave] = aJsonSchema(valore)
     }
@@ -113,6 +131,27 @@ export function creaValidatoreContratto(
   }
 
   const ajv = new Ajv({ strict: false, allErrors: true, validateFormats: false })
+  ajv.addKeyword({
+    keyword: PAROLA_PATTERN_INSENSIBILE,
+    type: 'string',
+    schemaType: 'string',
+    errors: true,
+    validate: function verifica(schema: string, dato: unknown) {
+      const ok = new RegExp(schema, 'iu').test(String(dato))
+      // ajv completa `instancePath`/`schemaPath` degli errori delle parole chiave personalizzate.
+      const errori = ok
+        ? []
+        : [
+            {
+              keyword: PAROLA_PATTERN_INSENSIBILE,
+              message: `must match pattern "${schema}" (case-insensitive)`,
+              params: { pattern: schema },
+            },
+          ]
+      ;(verifica as SchemaValidateFunction).errors = errori as unknown as ErrorObject[]
+      return ok
+    },
+  })
   const valida = ajv.compile(schemaCompleto)
 
   return (corpo: unknown): string | null => {

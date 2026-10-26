@@ -1298,6 +1298,68 @@ describe('SyncFIRToRENTRIUseCase', () => {
     })
   })
 
+  describe('Errore prima della POST: evento di dominio', () => {
+    it("errore fra prenotazione e POST generico: si pubblica l'evento di sync fallito", async () => {
+      const fir = FIR.create({
+        produttoreId: 'p1',
+        rifiuto: {
+          cerCode: '13 02 05*',
+          quantita: 1,
+          unitaMisura: UnitaMisura.KG,
+          statoFisico: 'Liquido',
+          caratteristichePericolo: 'HP14',
+        },
+        trasportatoreId: 't1',
+        destinatarioId: 'd1',
+        tenantId: 'tenant-ev',
+      })
+      fir.emetti('FIR-2026-000010', { firmatario: 'P', timestamp: new Date(), certificato: 'c' })
+      fir.clearDomainEvents()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockFIRRepository.save.mockResolvedValue(undefined)
+      mockSyncLogRepository.createPending.mockRejectedValue(new Error('db giu'))
+
+      await expect(useCase.execute(fir.id, 'tenant-ev')).rejects.toThrow('db giu')
+
+      expect(mockDomainEvents.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: 'fir.rentri_sync_fallito',
+          errorCode: 'RENTRI_API_ERROR',
+        })
+      )
+    })
+  })
+
+  describe('Pubblicazione evento prima della POST', () => {
+    it("publish fallita: l'errore originale risale e il log non parla di rilascio", async () => {
+      const fir = FIR.create({
+        produttoreId: 'p1',
+        rifiuto: {
+          cerCode: '13 02 05*',
+          quantita: 1,
+          unitaMisura: UnitaMisura.KG,
+          statoFisico: 'Liquido',
+          caratteristichePericolo: 'HP14',
+        },
+        trasportatoreId: 't1',
+        destinatarioId: 'd1',
+        tenantId: 'tenant-ev2',
+      })
+      fir.emetti('FIR-2026-000011', { firmatario: 'P', timestamp: new Date(), certificato: 'c' })
+      fir.clearDomainEvents()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockFIRRepository.save.mockResolvedValue(undefined)
+      mockSyncLogRepository.createPending.mockRejectedValue(new Error('db giu'))
+      mockDomainEvents.publish.mockRejectedValue(new Error('bus giu'))
+
+      await expect(useCase.execute(fir.id, 'tenant-ev2')).rejects.toThrow('db giu')
+
+      const messaggi = mockLogger.error.mock.calls.map((c: any[]) => String(c[0]))
+      expect(messaggi.some((m: string) => m.includes('Pubblicazione'))).toBe(true)
+      expect(messaggi.some((m: string) => m.includes('Rilascio della prenotazione'))).toBe(false)
+    })
+  })
+
   describe('Azienda senza certificato RENTRI', () => {
     const tenantId = 'tenant-senza-cert'
 
