@@ -38,6 +38,12 @@ const surfacePath = path.join(
 )
 const surface: ApiSurfaceEntry[] = JSON.parse(fs.readFileSync(surfacePath, 'utf-8'))
 
+// Rotte rimosse dal backend dopo l'audit statico (il JSON è una fotografia del
+// 2026-07-25 e non si riscrive). `/backup/*` è stato tolto nella Fase 0
+// (iniezione di comandi): oggi risponde 404, non 401. Guardia che ne impedisce
+// il ritorno: apps/backend/src/api/nessuna-shell-esposta.spec.ts.
+const ROTTE_RIMOSSE = new Set<string>(['api/v1/backup/list'])
+
 const DUMMY_UUID = '00000000-0000-0000-0000-000000000000'
 
 function resolvePath(p: string): string {
@@ -47,7 +53,11 @@ function resolvePath(p: string): string {
 // Solo GET, solo endpoint con JwtAuthGuard (protetti), esclusi quelli
 // esplicitamente pubblici-by-design (CER, health, verify-url — vedi audit).
 const protectedGetEndpoints = surface.filter(
-  e => e.method === 'GET' && e.guards.includes('JwtAuthGuard') && e.type === 'R'
+  e =>
+    e.method === 'GET' &&
+    e.guards.includes('JwtAuthGuard') &&
+    e.type === 'R' &&
+    !ROTTE_RIMOSSE.has(e.path)
 )
 
 test.describe('API protetta — 401 senza credenziali (GET-only, read-only)', () => {
