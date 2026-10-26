@@ -114,8 +114,21 @@ function fraUnAnnoIso(): string {
  * è invece univoco nel DOM: si usa un locator per id esatto.
  */
 async function selezionaDropdown(page: Page, inputId: string, testoOpzione: string) {
-  await page.locator(`#${inputId}`).click()
-  await page.locator('.p-dropdown-item', { hasText: testoOpzione }).first().click()
+  const combobox = page.locator(`#${inputId}`)
+  const etichetta = page.locator(`p-dropdown:has(#${inputId}) .p-dropdown-label`)
+  // In CI (job 9325) il click sull'opzione è andato perso: il pannello si
+  // chiudeva senza selezionare (etichetta ancora sul placeholder), verosimilmente
+  // per il click durante l'animazione di apertura o per un ricaricamento delle
+  // opzioni. Si riprova l'intera sequenza finché l'etichetta mostra la scelta.
+  await expect(async () => {
+    if ((await combobox.getAttribute('aria-expanded')) !== 'true') {
+      await combobox.click()
+    }
+    const opzione = page.locator('.p-dropdown-item', { hasText: testoOpzione }).first()
+    await expect(opzione).toBeVisible({ timeout: 3000 })
+    await opzione.click()
+    await expect(etichetta).toHaveText(testoOpzione, { timeout: 2000 })
+  }).toPass({ timeout: 15000 })
 }
 
 test.describe('Trasportatore — CRUD via UI (operator)', () => {
