@@ -3,7 +3,7 @@ import { loginAndSaveState, skipReason } from '../../fixtures/auth'
 import { hasRoleCredentials } from '../../utils/env'
 import { apiLogin, apiPost, apiGet } from '../../utils/api-client'
 import { registra } from '../../fixtures/risorse'
-import { conPrefisso } from '../../utils/run-id'
+import { conPrefisso, conPrefissoUnico } from '../../utils/run-id'
 import { AnagrafichePage } from '../../pages/anagrafiche.page'
 import { FirListPage } from '../../pages/fir-list.page'
 
@@ -61,7 +61,7 @@ interface DestinatarioResponse {
 
 function payloadTrasportatore(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    ragioneSociale: conPrefisso('Trasportatore SRL'),
+    ragioneSociale: conPrefissoUnico('Trasportatore SRL'),
     partitaIVA: nuovaPartitaIVA(),
     sedeLegale: SEDE_VALIDA,
     numeroIscrizione: `MI/${Math.floor(Math.random() * 900000 + 100000)}`,
@@ -72,7 +72,7 @@ function payloadTrasportatore(overrides: Partial<Record<string, unknown>> = {}) 
 
 function payloadDestinatario(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    ragioneSociale: conPrefisso('Destinatario SRL'),
+    ragioneSociale: conPrefissoUnico('Destinatario SRL'),
     partitaIVA: nuovaPartitaIVA(),
     sede: SEDE_VALIDA,
     numeroAutorizzazione: `AUT/${new Date().getFullYear()}/${Math.floor(Math.random() * 9000 + 1000)}`,
@@ -114,8 +114,21 @@ function fraUnAnnoIso(): string {
  * è invece univoco nel DOM: si usa un locator per id esatto.
  */
 async function selezionaDropdown(page: Page, inputId: string, testoOpzione: string) {
-  await page.locator(`#${inputId}`).click()
-  await page.locator('.p-dropdown-item', { hasText: testoOpzione }).first().click()
+  const combobox = page.locator(`#${inputId}`)
+  const etichetta = page.locator(`p-dropdown:has(#${inputId}) .p-dropdown-label`)
+  // In CI (job 9325) il click sull'opzione è andato perso: il pannello si
+  // chiudeva senza selezionare (etichetta ancora sul placeholder), verosimilmente
+  // per il click durante l'animazione di apertura o per un ricaricamento delle
+  // opzioni. Si riprova l'intera sequenza finché l'etichetta mostra la scelta.
+  await expect(async () => {
+    if ((await combobox.getAttribute('aria-expanded')) !== 'true') {
+      await combobox.click()
+    }
+    const opzione = page.locator('.p-dropdown-item', { hasText: testoOpzione }).first()
+    await expect(opzione).toBeVisible({ timeout: 3000 })
+    await opzione.click()
+    await expect(etichetta).toHaveText(testoOpzione, { timeout: 2000 })
+  }).toPass({ timeout: 15000 })
 }
 
 test.describe('Trasportatore — CRUD via UI (operator)', () => {
@@ -254,7 +267,13 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
     await firList.openNuovoFirDialog()
 
     await selezionaDropdown(page, 'new-trasportatore', trasportatore.ragioneSociale)
-
+    // Senza questa attesa "nessun avviso" varrebbe anche se la scelta non fosse mai
+    // avvenuta (assenza banale). Si legge l'etichetta SELEZIONATA, non il testo del
+    // p-dropdown: i dropdown del FIR non hanno appendTo, quindi a pannello aperto il
+    // testo contiene anche la voce della lista e passerebbe senza scelta.
+    await expect(page.locator('p-dropdown:has(#new-trasportatore) .p-dropdown-label')).toHaveText(
+      trasportatore.ragioneSociale
+    )
     await expect(page.getByTestId('fir-trasportatore-iscrizione-scaduta')).toHaveCount(0)
   })
 
@@ -273,7 +292,10 @@ test.describe('Scadenze — dato mancante non genera mai un avviso', () => {
     await firList.openNuovoFirDialog()
 
     await selezionaDropdown(page, 'new-destinatario', destinatario.ragioneSociale)
-
+    // Vedi sopra: prova che la scelta è avvenuta, altrimenti l'assenza dell'avviso è banale.
+    await expect(page.locator('p-dropdown:has(#new-destinatario) .p-dropdown-label')).toHaveText(
+      destinatario.ragioneSociale
+    )
     await expect(page.getByTestId('fir-destinatario-autorizzazione-scaduta')).toHaveCount(0)
   })
 })

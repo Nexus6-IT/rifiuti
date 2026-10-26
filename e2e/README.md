@@ -70,6 +70,15 @@ token esattamente dove l'app Angular li cerca (`localStorage`, chiavi
 da parte tua oltre al seed: `hasRoleCredentials(role)` diventa `true` da solo
 per `admin`/`operator`/`viewer` non appena il backend risponde.
 
+Lo stesso vale per il setup/teardown via API: `apiLogin(ruolo)` (`utils/api-client.ts`)
+usa l'email di `E2E_<RUOLO>_USER/PASS` se ci sono, altrimenti l'email del seed
+dev-login quando `canUseDevLogin(ruolo)`; accetta quindi esattamente i ruoli che
+`hasRoleCredentials` dichiara autenticabili (regola fissata da
+`tests/public/api-login-email.spec.ts`). Le spec che usano `apiLogin` col
+dev-login, come `tests/pulizia/pulizia-self-test.spec.ts`, stanno fuori da
+`tests/public/`: la passata 1 gira col backend in modalità produzione, dove
+`/auth/dev/login` non esiste.
+
 **Unico prerequisito in più rispetto a `tests/public`: seedare gli utenti di
 sviluppo nel database a cui punta il backend.**
 

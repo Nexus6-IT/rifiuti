@@ -9,10 +9,12 @@ import { conRunIsolata } from '../../fixtures/run-isolata'
  * e verifica — con una lettura indipendente dal registro — che non resti
  * alcun residuo con quel prefisso.
  *
- * RICHIEDE un backend locale raggiungibile su E2E_API_URL/E2E_BASE_URL più
- * credenziali per il ruolo "admin" (E2E_ADMIN_USER/PASS, usate solo per
- * l'email — vedi utils/api-client.ts `apiLogin`, che passa via il bypass
- * di sviluppo POST /auth/dev/login, non disponibile in produzione).
+ * RICHIEDE un backend locale raggiungibile su E2E_API_URL/E2E_BASE_URL con il
+ * bypass di sviluppo POST /auth/dev/login attivo (non esiste in produzione).
+ * Per questo la spec sta in tests/pulizia/ (passata 2 della CI) e NON in
+ * tests/public/ (passata 1, backend in modalità produzione). `apiLogin`
+ * (utils/api-client.ts) usa l'email di E2E_ADMIN_USER/PASS se presenti,
+ * altrimenti quella del seed dev-login: stessa regola di hasRoleCredentials.
  *
  * In questo ambiente di sviluppo lo stack backend non è acceso (vincolo di
  * memoria della macchina — vedi task brief): il test viene saltato
@@ -86,58 +88,63 @@ test.describe('Pulizia self-test — prefisso di run e teardown', () => {
   )
 
   test('crea due anagrafiche col prefisso, ripulisce, verifica residuo zero', async () => {
-    await conRunIsolata('pulizia-self-test', async ({ conPrefisso, haPrefissoDiRun, registra, ripulisci }) => {
-      const token = await apiLogin('admin')
+    await conRunIsolata(
+      'pulizia-self-test',
+      async ({ conPrefisso, haPrefissoDiRun, registra, ripulisci }) => {
+        const token = await apiLogin('admin')
 
-      const nomeProduttore = conPrefisso('produttore-pulizia-self-test')
-      const nomeTrasportatore = conPrefisso('trasportatore-pulizia-self-test')
+        const nomeProduttore = conPrefisso('produttore-pulizia-self-test')
+        const nomeTrasportatore = conPrefisso('trasportatore-pulizia-self-test')
 
-      const produttore = await apiPost<RisorsaCreata>(
-        '/registry/produttori',
-        datiProduttore(nomeProduttore),
-        token
-      )
-      registra('produttore', produttore.id)
+        const produttore = await apiPost<RisorsaCreata>(
+          '/registry/produttori',
+          datiProduttore(nomeProduttore),
+          token
+        )
+        registra('produttore', produttore.id)
 
-      const trasportatore = await apiPost<RisorsaCreata>(
-        '/registry/trasportatori',
-        datiTrasportatore(nomeTrasportatore),
-        token
-      )
-      registra('trasportatore', trasportatore.id)
+        const trasportatore = await apiPost<RisorsaCreata>(
+          '/registry/trasportatori',
+          datiTrasportatore(nomeTrasportatore),
+          token
+        )
+        registra('trasportatore', trasportatore.id)
 
-      // Verifica a delta: prima del teardown le due anagrafiche col prefisso
-      // devono essere effettivamente presenti (altrimenti il test dopo il
-      // teardown proverebbe ben poco).
-      const [produttoriPrima, trasportatoriPrima] = await Promise.all([
-        apiGet<ListaPaginata<RisorsaCreata>>('/registry/produttori', token),
-        apiGet<ListaPaginata<RisorsaCreata>>('/registry/trasportatori', token),
-      ])
-      expect(produttoriPrima.items.some(p => p.id === produttore.id)).toBe(true)
-      expect(trasportatoriPrima.items.some(t => t.id === trasportatore.id)).toBe(true)
+        // Verifica a delta: prima del teardown le due anagrafiche col prefisso
+        // devono essere effettivamente presenti (altrimenti il test dopo il
+        // teardown proverebbe ben poco).
+        const [produttoriPrima, trasportatoriPrima] = await Promise.all([
+          apiGet<ListaPaginata<RisorsaCreata>>('/registry/produttori', token),
+          apiGet<ListaPaginata<RisorsaCreata>>('/registry/trasportatori', token),
+        ])
+        expect(produttoriPrima.items.some(p => p.id === produttore.id)).toBe(true)
+        expect(trasportatoriPrima.items.some(t => t.id === trasportatore.id)).toBe(true)
 
-      const { rimosse, residue } = await ripulisci(token)
+        const { rimosse, residue } = await ripulisci(token)
 
-      // Asserzione ESATTA, non "almeno due" (rilievo critico della
-      // revisione finale): il registro è ormai isolato a questo solo test,
-      // quindi deve contenere esattamente le due risorse appena create — se
-      // ne rimuove di più o di meno, qualcosa non torna nel meccanismo, non
-      // è "va bene comunque".
-      expect(residue).toEqual([])
-      expect(rimosse).toBe(2)
+        // Asserzione ESATTA, non "almeno due" (rilievo critico della
+        // revisione finale): il registro è ormai isolato a questo solo test,
+        // quindi deve contenere esattamente le due risorse appena create — se
+        // ne rimuove di più o di meno, qualcosa non torna nel meccanismo, non
+        // è "va bene comunque".
+        expect(residue).toEqual([])
+        expect(rimosse).toBe(2)
 
-      const [produttoriDopo, trasportatoriDopo] = await Promise.all([
-        apiGet<ListaPaginata<RisorsaCreata>>('/registry/produttori', token),
-        apiGet<ListaPaginata<RisorsaCreata>>('/registry/trasportatori', token),
-      ])
+        const [produttoriDopo, trasportatoriDopo] = await Promise.all([
+          apiGet<ListaPaginata<RisorsaCreata>>('/registry/produttori', token),
+          apiGet<ListaPaginata<RisorsaCreata>>('/registry/trasportatori', token),
+        ])
 
-      const residuoProduttori = produttoriDopo.items.filter(p => haPrefissoDiRun(p.ragioneSociale))
-      const residuoTrasportatori = trasportatoriDopo.items.filter(t =>
-        haPrefissoDiRun(t.ragioneSociale)
-      )
+        const residuoProduttori = produttoriDopo.items.filter(p =>
+          haPrefissoDiRun(p.ragioneSociale)
+        )
+        const residuoTrasportatori = trasportatoriDopo.items.filter(t =>
+          haPrefissoDiRun(t.ragioneSociale)
+        )
 
-      expect(residuoProduttori).toEqual([])
-      expect(residuoTrasportatori).toEqual([])
-    })
+        expect(residuoProduttori).toEqual([])
+        expect(residuoTrasportatori).toEqual([])
+      }
+    )
   })
 })
