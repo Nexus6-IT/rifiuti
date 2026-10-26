@@ -71,6 +71,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   // trasmissioni di un'azienda, non è un dato condiviso.
   'RENTRISyncLog',
   'WasteMovement',
+  // Registro dell'azienda, uno per sede (Fase 2 pezzo 1): dato dell'azienda.
+  'RegistroRifiuti',
   // Primo numero del registro per azienda e anno (C-W-02): dato dell'azienda.
   'RegistroProgressivoIniziale',
   'Contract',

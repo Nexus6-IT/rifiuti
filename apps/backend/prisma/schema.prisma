@@ -119,6 +119,7 @@ model Tenant {
   rentriUnitaLocali      RentriUnitaLocale[]
   rentriNumeriVidimati   RentriNumeroVidimato[]
   registroProgressiviIniziali RegistroProgressivoIniziale[]
+  registriRifiuti       RegistroRifiuti[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
 
@@ -810,10 +811,15 @@ model RegistroProgressivoIniziale {
   motivo           String   @db.VarChar(500)
   impostatoDa      String   @map("impostato_da") @db.Uuid
   impostatoIl      DateTime @default(now()) @map("impostato_il")
+  /// Registro a cui appartiene il progressivo (Fase 2 pezzo 1). Nullable fino alla migration
+  /// del Task 3, che lo rende obbligatorio e toglie il vecchio unico per azienda.
+  registroId       String?  @map("registro_id") @db.Uuid
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registro RegistroRifiuti? @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@unique([tenantId, anno])
+  @@unique([registroId, anno])
   @@map("registro_progressivi_iniziali")
 }
 
@@ -1806,10 +1812,17 @@ model WasteMovement {
 
   notes String? @db.Text
 
-  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  recordedByUser User?  @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
+  /// Registro (per sede) in cui il movimento e' annotato (Fase 2 pezzo 1). Nullable fino alla
+  /// migration del Task 3.
+  registroId String? @map("registro_id") @db.Uuid
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recordedByUser User?            @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
+  registro       RegistroRifiuti? @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@unique([tenantId, progressiveYear, progressiveNumber])
+  @@unique([registroId, progressiveYear, progressiveNumber])
+  @@index([registroId, cerCode])
   @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
   @@index([tenantId, cerCode])
   @@index([tenantId, movementDate])
@@ -1950,11 +1963,40 @@ model RentriUnitaLocale {
   /// mai un valore di ripiego inventato.
   dimensioneScortaDesiderata Int? @map("dimensione_scorta_desiderata")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registri RegistroRifiuti[]
 
   @@unique([tenantId, numIscrSito])
   @@index([tenantId])
   @@map("rentri_unita_locali")
+}
+
+/// Registro cronologico di carico e scarico di una sede (Fase 2 pezzo 1, D1/D4): un registro per
+/// unita' locale, con codice CARICO_SCARICO. `unitaLocaleId` nullo = registro "senza sede" (azienda
+/// senza sede RENTRI), che si lega a una sede una sola volta (trigger registri_rifiuti_sede_immutabile,
+/// non esprimibile in Prisma, come l'indice unico parziale registri_rifiuti_uno_senza_sede_per_tenant).
+model RegistroRifiuti {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  unitaLocaleId        String? @map("unita_locale_id") @db.Uuid
+  codice               String  @default("CARICO_SCARICO") @db.VarChar(30)
+  descrizione          String  @db.VarChar(255)
+  /// Identificativo del registro assegnato dal RENTRI (non ancora valorizzato: F2-9).
+  identificativoRentri String? @map("identificativo_rentri") @db.VarChar(100)
+  attivo               Boolean @default(true)
+
+  tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unitaLocale         RentriUnitaLocale?            @relation(fields: [unitaLocaleId], references: [id], onDelete: Restrict)
+  movimenti           WasteMovement[]
+  progressiviIniziali RegistroProgressivoIniziale[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, unitaLocaleId, codice])
+  @@index([tenantId])
+  @@map("registri_rifiuti")
 }
 
 /// Stato di un numero FIR già vidimato dall'ente e tenuto in scorta (R6).
