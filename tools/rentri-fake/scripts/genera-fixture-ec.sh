@@ -41,10 +41,19 @@ if da_creare ca-prova.key || da_creare ca-prova.crt; then
   RIGENERA=1
 fi
 
-# Esegue il comando solo se il .p12 di destinazione (ultimo argomento) va creato.
+# Certificati (nome senza estensione) emessi di nuovo in questo giro: i loro .p12 si rifanno.
+RIEMESSI=" "
+
+# Esegue il comando solo se il .p12 di destinazione (ultimo argomento) va creato:
+# manca, e' stato chiesto --rigenera, oppure il certificato in ingresso (`-in <nome>.crt`)
+# e' stato appena riemesso da `emetti` (un .p12 vecchio conterrebbe la chiave precedente).
 p12() {
-  local destinazione="${!#}"
-  if da_creare "$destinazione"; then "$@"; fi
+  local destinazione="${!#}" arg precedente="" nome=""
+  for arg in "$@"; do
+    if [ "$precedente" = "-in" ]; then nome="${arg%.crt}"; fi
+    precedente="$arg"
+  done
+  if da_creare "$destinazione" || [[ "$RIEMESSI" == *" $nome "* ]]; then "$@"; fi
 }
 
 emetti() { # $1=nome $2=curva $3=CN
@@ -54,6 +63,7 @@ emetti() { # $1=nome $2=curva $3=CN
   openssl x509 -req -in "$1.csr" -CA ca-prova.crt -CAkey ca-prova.key -CAcreateserial \
     -sha256 -days $DAYS -out "$1.crt"
   rm -f "$1.csr"
+  RIEMESSI="$RIEMESSI$1 "
 }
 
 emetti operatore-test-ec prime256v1 operatore-test-ec

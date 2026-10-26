@@ -18,7 +18,12 @@ function leggiVincoliDescrizione(): { pattern: RegExp; minLength: number; maxLen
 
   const inizioModello = yaml.indexOf('\n    CredentialsAuthorizeRequest:\n')
   if (inizioModello < 0) throw new Error('CredentialsAuthorizeRequest non trovato nel contratto')
-  const blocco = /\n {8}description:\n((?: {10}.*\n)+)/.exec(yaml.slice(inizioModello))
+  // Solo il blocco di questo modello: si taglia al modello successivo (stessa indentazione),
+  // cosi' se `description` sparisse da qui lo spec fallisce invece di leggere quella di un altro.
+  const dopo = yaml.slice(inizioModello + 1)
+  const fineModello = dopo.search(/\n {4}\S[^\n]*:\n/)
+  const modello = fineModello < 0 ? dopo : dopo.slice(0, fineModello + 1)
+  const blocco = /\n {8}description:\n((?: {10}.*\n)+)/.exec(modello)
   if (!blocco) throw new Error('proprieta description non trovata nel contratto')
 
   const valore = (chiave: string): string => {
