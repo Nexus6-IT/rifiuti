@@ -86,7 +86,7 @@ export interface WasteMovementProps {
  * Art. 190 D.Lgs 152/2006 — DM 59/2023.
  *
  * Invarianti di dominio:
- * - progressiveNumber è univoco per tenant/anno (assegnato dall'applicazione)
+ * - progressiveNumber è univoco per registro/anno (assegnato dall'applicazione)
  * - la data di registrazione non può precedere la data di operazione
  * - la data di registrazione non può superare il termine di legge dall'operazione
  * - uno SCARICO collegato a un FIR deve avere firId valorizzato

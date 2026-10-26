@@ -368,39 +368,42 @@ describe('Migration M1 — registro per sede (Postgres reale)', () => {
 })
 
 /**
- * Migration M2 (`20261027110000_registro_obbligatorio`): database vuoto con le migration fino a
- * M1 compresa; prima un movimento SENZA registro (M2 deve fermarsi con un messaggio chiaro e non
- * cambiare nulla), poi, sanato il dato, M2 applicata: `registro_id` obbligatorio, vecchi vincoli
- * per azienda tolti, nuovi per registro presenti.
+ * Migration M2 (`20261027110000_registro_obbligatorio`): ogni describe ha il PROPRIO database
+ * vuoto con le migration fino a M1 compresa, quindi i test non dipendono dall'ordine.
  */
-describe('Migration M2 — registro obbligatorio (Postgres reale)', () => {
-  const M2 = '20261027110000_registro_obbligatorio'
-  const nomeDb = `wasteflow_mig2_${Date.now()}`
+const M2 = '20261027110000_registro_obbligatorio'
+
+function conDatabaseFinoAM1(prefisso: string, righeNull: boolean) {
+  const nomeDb = `wasteflow_${prefisso}_${Date.now()}`
   const urlDb = `${BASE_URL}/${nomeDb}?schema=public`
-  const cartellaTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mig-registro-m2-'))
+  const cartellaTmp = fs.mkdtempSync(path.join(os.tmpdir(), `mig-registro-${prefisso}-`))
   const tenant = randomUUID()
   const registro = randomUUID()
-  let admin: PrismaClient
-  let db: PrismaClient
   const schemaTmp = path.join(cartellaTmp, 'schema.prisma')
-  const q = (sql: string) => db.$executeRawUnsafe(sql)
-  const sel = <R>(sql: string) => db.$queryRawUnsafe<R[]>(sql)
-  const applicaM2 = () =>
-    prismaCli(
-      [
-        'db',
-        'execute',
-        '--file',
-        path.join(MIGRAZIONI, M2, 'migration.sql'),
-        '--schema',
-        schemaTmp,
-      ],
-      urlDb
-    )
+  const ctx = {
+    admin: undefined as unknown as PrismaClient,
+    db: undefined as unknown as PrismaClient,
+    registro,
+    tenant,
+    q: (sql: string) => ctx.db.$executeRawUnsafe(sql),
+    sel: <R>(sql: string) => ctx.db.$queryRawUnsafe<R[]>(sql),
+    applicaM2: () =>
+      prismaCli(
+        [
+          'db',
+          'execute',
+          '--file',
+          path.join(MIGRAZIONI, M2, 'migration.sql'),
+          '--schema',
+          schemaTmp,
+        ],
+        urlDb
+      ),
+  }
 
   beforeAll(async () => {
-    admin = new PrismaClient({ datasources: { db: { url: `${BASE_URL}/postgres` } } })
-    await admin.$executeRawUnsafe(`CREATE DATABASE ${nomeDb}`)
+    ctx.admin = new PrismaClient({ datasources: { db: { url: `${BASE_URL}/postgres` } } })
+    await ctx.admin.$executeRawUnsafe(`CREATE DATABASE ${nomeDb}`)
     fs.copyFileSync(path.join(BACKEND, 'prisma', 'schema.prisma'), schemaTmp)
     const mig = path.join(cartellaTmp, 'migrations')
     fs.mkdirSync(mig)
@@ -413,79 +416,88 @@ describe('Migration M2 — registro obbligatorio (Postgres reale)', () => {
       fs.cpSync(path.join(MIGRAZIONI, nome), path.join(mig, nome), { recursive: true })
     }
     prismaCli(['migrate', 'deploy', '--schema', schemaTmp], urlDb)
-    db = new PrismaClient({ datasources: { db: { url: urlDb } } })
-    await db.$connect()
-    await q(
+    ctx.db = new PrismaClient({ datasources: { db: { url: urlDb } } })
+    await ctx.db.$connect()
+    await ctx.q(
       `INSERT INTO tenants (id, updated_at, partita_iva, ragione_sociale) VALUES ('${tenant}', now(), 'MIGM2000000', 'Azienda M2')`
     )
-    await q(
+    await ctx.q(
       `INSERT INTO registri_rifiuti (id, tenant_id, updated_at, descrizione) VALUES ('${registro}', '${tenant}', now(), 'Registro')`
     )
     const mov = (numero: number, reg: string) =>
-      q(
+      ctx.q(
         `INSERT INTO waste_movements (tenant_id, registro_id, updated_at, type, cer_code, quantity, movement_date, progressive_number, progressive_year, causale)
          VALUES ('${tenant}', ${reg}, now(), 'CARICO', '99 99 02', 1, now(), ${numero}, 2026, 'produzione')`
       )
     await mov(1, `'${registro}'`)
-    await mov(2, 'NULL') // movimento senza registro: M2 deve fermarsi
+    if (righeNull) await mov(2, 'NULL') // movimento senza registro: M2 deve fermarsi
   }, 240_000)
 
   afterAll(async () => {
-    await db?.$disconnect()
-    if (admin) {
-      await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS ${nomeDb} WITH (FORCE)`)
-      await admin.$disconnect()
+    await ctx.db?.$disconnect()
+    if (ctx.admin) {
+      await ctx.admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS ${nomeDb} WITH (FORCE)`)
+      await ctx.admin.$disconnect()
     }
     fs.rmSync(cartellaTmp, { recursive: true, force: true })
   })
+  return ctx
+}
+
+describe('Migration M2 — M2 con un movimento senza registro (Postgres reale)', () => {
+  const c = conDatabaseFinoAM1('mig2a', true)
 
   it('M2: M2 fallisce con un messaggio chiaro se resta un movimento senza registro', async () => {
     let messaggio = ''
     try {
-      applicaM2()
+      c.applicaM2()
     } catch (e) {
-      messaggio = `${(e as Error).message}\n${String((e as { stderr?: unknown }).stderr ?? '')}`
+      messaggio = `${(e as Error).message}
+${String((e as { stderr?: unknown }).stderr ?? '')}`
     }
     expect(messaggio).toMatch(
       /M2 registro_obbligatorio: 1 movimenti e 0 progressivi iniziali senza registro/
     )
     // nessuna modifica a meta': la colonna e' ancora nullable
-    const [c] = await sel<{ is_nullable: string }>(
+    const [col] = await c.sel<{ is_nullable: string }>(
       `SELECT is_nullable FROM information_schema.columns WHERE table_name = 'waste_movements' AND column_name = 'registro_id'`
     )
-    expect(c.is_nullable).toBe('YES')
+    expect(col.is_nullable).toBe('YES')
   })
+})
+
+describe('Migration M2 — registro obbligatorio (Postgres reale)', () => {
+  const c = conDatabaseFinoAM1('mig2b', false)
+  beforeAll(() => c.applicaM2(), 240_000)
 
   it('M2: registro_id è NOT NULL', async () => {
-    await q(`UPDATE waste_movements SET registro_id = '${registro}' WHERE registro_id IS NULL`)
-    applicaM2()
-    const colonne = await sel<{ table_name: string; is_nullable: string }>(
+    const colonne = await c.sel<{ table_name: string; is_nullable: string }>(
       `SELECT table_name, is_nullable FROM information_schema.columns
        WHERE column_name = 'registro_id' AND table_name IN ('waste_movements', 'registro_progressivi_iniziali')
        ORDER BY table_name`
     )
-    expect(colonne.map(c => [c.table_name, c.is_nullable])).toEqual([
+    expect(colonne.map(x => [x.table_name, x.is_nullable])).toEqual([
       ['registro_progressivi_iniziali', 'NO'],
       ['waste_movements', 'NO'],
     ])
     await expect(
-      q(
+      c.q(
         `INSERT INTO waste_movements (tenant_id, updated_at, type, cer_code, quantity, movement_date, progressive_number, progressive_year, causale)
-         VALUES ('${tenant}', now(), 'CARICO', '99 99 02', 1, now(), 9, 2026, 'produzione')`
+         VALUES ('${c.tenant}', now(), 'CARICO', '99 99 02', 1, now(), 9, 2026, 'produzione')`
       )
     ).rejects.toThrow(/23502/)
   })
 
   it('M2: il vecchio vincolo (tenant, anno, numero) non esiste più e quello per registro sì', async () => {
     const nomi = (
-      await sel<{ indexname: string }>(
+      await c.sel<{ indexname: string }>(
         `SELECT indexname FROM pg_indexes WHERE tablename = 'waste_movements'`
       )
     ).map(i => i.indexname)
     expect(nomi).toContain('waste_movements_registro_id_progressive_year_progressive_nu_key')
     expect(nomi).not.toContain('waste_movements_tenant_id_progressive_year_progressive_numb_key')
     const indici = (
-      await sel<{ indexname: string }>(
+      await c.sel<{ indexname: string }>(
         `SELECT indexname FROM pg_indexes WHERE tablename = 'registro_progressivi_iniziali'`
       )
     ).map(i => i.indexname)

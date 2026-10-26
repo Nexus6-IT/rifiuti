@@ -27,7 +27,7 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma.repository'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
-import { FirGiaRegistratoError } from '../../core/domain/errors'
+import { FirGiaRegistratoInAltroRegistroError } from '../../core/domain/errors'
 import { RegistraMovimentoUseCase } from './use-cases/registra-movimento.use-case'
 import { RegistraMovimentoCommand } from './commands/registra-movimento.command'
 import { ProgressivoInizialeService } from './progressivo-iniziale.service'
@@ -153,6 +153,13 @@ describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
     useCase = new RegistraMovimentoUseCase(app, loggerStub as never, registri)
     progressivi = new ProgressivoInizialeService(app, registri)
     const [a] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`
+    // Apre il pool a gradini: 16 connessioni nuove tutte insieme attraverso il proxy di Docker
+    // su Windows ogni tanto cadono ("Can't reach database server"), e non e' cio' che si prova qui.
+    for (const k of [2, 4, 8, 16]) {
+      await Promise.all(
+        Array.from({ length: k }, () => app.$queryRaw`SELECT pg_sleep(0.05)::text AS s`)
+      )
+    }
     expect(a.u).toBe('wasteflow_app')
     const tenantUtente = await azienda([])
     userId = (
@@ -430,13 +437,47 @@ describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
     const seconda = await registra(az.tenantId, comando(az.tenantId, regB, { firId }))
     expect(seconda.isFailure).toBe(true)
     expect(seconda.error).toBe(
-      new FirGiaRegistratoError(prima.value.progressiveNumber, ANNO, 'Sede A').message
+      new FirGiaRegistratoInAltroRegistroError(prima.value.progressiveNumber, ANNO, 'Sede A')
+        .message
     )
     expect(seconda.error).toContain('nel registro Sede A')
     expect(await owner.wasteMovement.count({ where: { tenantId: az.tenantId, firId } })).toBe(1)
 
+    // Senza registroId (e senza principale, con due registri) vale la ricopia esistente: retry idempotente.
+    const senzaRegistro = await registra(az.tenantId, {
+      ...comandoA,
+      registroId: undefined,
+    } as RegistraMovimentoCommand)
+    expect(senzaRegistro.isSuccess ? 'ok' : senzaRegistro.error).toBe('ok')
+    expect(senzaRegistro.value).toMatchObject({ id: prima.value.id, giaRegistrato: true })
+
     // Lo stesso retry (stessi dati) sul registro di partenza e' idempotente.
     const retry = await registra(az.tenantId, comandoA)
     expect(retry.value).toMatchObject({ id: prima.value.id, giaRegistrato: true })
+  })
+  describe('GET del progressivo iniziale (sola lettura)', () => {
+    it('azienda senza registri: stato neutro e nessuna scrittura', async () => {
+      const az = await azienda(['Sede A'])
+      const stato = await nelTenant(az.tenantId, () => progressivi.leggi(az.tenantId, ANNO))
+      expect(stato).toEqual({
+        anno: ANNO,
+        registroId: null,
+        primoProgressivo: null,
+        impostatoIl: null,
+        haMovimenti: false,
+      })
+      expect(await owner.registroRifiuti.count({ where: { tenantId: az.tenantId } })).toBe(0)
+    })
+
+    it('due registri e nessuna principale: stato neutro, non un errore', async () => {
+      const az = await aziendaConRegistri(['Sede A', 'Sede B'], false)
+      const stato = await nelTenant(az.tenantId, () => progressivi.leggi(az.tenantId, ANNO))
+      expect(stato.registroId).toBeNull()
+      // con il registro indicato si legge normalmente
+      const b = await nelTenant(az.tenantId, () =>
+        progressivi.leggi(az.tenantId, ANNO, az.registroDi('Sede B'))
+      )
+      expect(b.registroId).toBe(az.registroDi('Sede B'))
+    })
   })
 })

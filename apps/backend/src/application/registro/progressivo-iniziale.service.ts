@@ -1,13 +1,20 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { annoSolareItaliano } from '../../core/time/anno-italiano'
 import { DomainError } from '../../core/domain/errors'
-import { RegistriService } from './registri.service'
+import { RegistriService, RegistroNonTrovatoError } from './registri.service'
 
 export interface StatoProgressivoIniziale {
   anno: number
-  /** Registro a cui si riferisce lo stato (quello indicato o il predefinito dell'azienda). */
-  registroId: string
+  /** Registro a cui si riferisce lo stato (quello indicato o il predefinito dell'azienda); null se il registro
+   * predefinito non si determina (nessun registro o piu' registri senza sede principale): stato
+   * neutro, nulla da mostrare. */
+  registroId: string | null
   primoProgressivo: number | null
   impostatoIl: Date | null
   /** Vero se il registro dell'anno ha già almeno un movimento (non si può più impostare). */
@@ -35,10 +42,27 @@ export class ProgressivoInizialeService {
     anno: number,
     registroId?: string
   ): Promise<StatoProgressivoIniziale> {
-    await this.registri.preparaRegistri(tenantId, registroId)
-    const registro = await this.prisma.$transaction(tx =>
-      this.registri.risolvi(tx, tenantId, registroId)
-    )
+    // Lettura pura (e' dietro una GET, anche per chi e' in sola consultazione): niente
+    // preparaRegistri, che puo' fare INSERT. Senza registri o con un registro da indicare lo stato
+    // e' neutro; un registroId esplicito inesistente e' un 404.
+    let registro
+    try {
+      registro = await this.prisma.$transaction(tx =>
+        this.registri.risolvi(tx, tenantId, registroId)
+      )
+    } catch (err) {
+      if (!(err instanceof DomainError)) throw err
+      if (registroId && err instanceof RegistroNonTrovatoError) {
+        throw new NotFoundException(err.message)
+      }
+      return {
+        anno,
+        registroId: null,
+        primoProgressivo: null,
+        impostatoIl: null,
+        haMovimenti: false,
+      }
+    }
     const [riga, movimento] = await Promise.all([
       this.prisma.registroProgressivoIniziale.findUnique({
         where: { registroId_anno: { registroId: registro.id, anno } },

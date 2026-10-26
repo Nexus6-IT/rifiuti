@@ -143,6 +143,20 @@ export class FirGiaRegistratoError extends DomainError {
   }
 }
 
+/** Il FIR e' gia' ricopiato in un registro diverso da quello richiesto (D10): una sola ricopia per azienda. */
+export class FirGiaRegistratoInAltroRegistroError extends DomainError {
+  constructor(progressiveNumber: number, progressiveYear: number, denominazioneRegistro?: string) {
+    super(
+      `Il FIR è già registrato nel movimento n. ${progressiveNumber}/${progressiveYear}` +
+        (denominazioneRegistro
+          ? ` nel registro ${denominazioneRegistro}`
+          : ' in un altro registro') +
+        ': un FIR si registra una sola volta, non si può registrare di nuovo in un altro registro'
+    )
+    this.name = 'FirGiaRegistratoInAltroRegistroError'
+  }
+}
+
 /**
  * Una firma del ciclo di vita senza l'utente che l'ha apposta non si può scrivere
  * (fir_signatures.user_id è obbligatorio). Il salvataggio si ferma prima di

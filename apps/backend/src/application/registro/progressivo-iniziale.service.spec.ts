@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import { ProgressivoInizialeService } from './progressivo-iniziale.service'
+import { RegistroDaIndicareError, RegistroNonTrovatoError } from './registri.service'
 import { annoSolareItaliano } from '../../core/time/anno-italiano'
 
 describe('ProgressivoInizialeService', () => {
@@ -95,6 +96,14 @@ describe('ProgressivoInizialeService', () => {
       )
     })
 
+    it('registro da indicare: 400 con il messaggio esatto dell errore, nessuna scrittura', async () => {
+      registri.risolvi.mockRejectedValue(new RegistroDaIndicareError())
+      const errore = service.imposta(TENANT, ANNO, 812, 'Migrazione', USER)
+      await expect(errore).rejects.toBeInstanceOf(BadRequestException)
+      await expect(errore).rejects.toThrow(new RegistroDaIndicareError().message)
+      expect(tx.registroProgressivoIniziale.create).not.toHaveBeenCalled()
+    })
+
     it('un secondo tentativo è rifiutato con 409', async () => {
       tx.registroProgressivoIniziale.findUnique.mockResolvedValue({ primoProgressivo: 812 })
       const errore = service.imposta(TENANT, ANNO, 900, 'Correzione', USER)
@@ -152,6 +161,27 @@ describe('ProgressivoInizialeService', () => {
   })
 
   describe('leggi', () => {
+    it('non chiama preparaRegistri (e dietro una GET: niente INSERT)', async () => {
+      await service.leggi(TENANT, ANNO)
+      expect(registri.preparaRegistri).not.toHaveBeenCalled()
+    })
+
+    it('registro da indicare o assente: stato neutro, non un errore', async () => {
+      registri.risolvi.mockRejectedValue(new RegistroDaIndicareError())
+      await expect(service.leggi(TENANT, ANNO)).resolves.toEqual({
+        anno: ANNO,
+        registroId: null,
+        primoProgressivo: null,
+        impostatoIl: null,
+        haMovimenti: false,
+      })
+    })
+
+    it('registroId esplicito inesistente: 404 con il messaggio dell errore', async () => {
+      registri.risolvi.mockRejectedValue(new RegistroNonTrovatoError())
+      await expect(service.leggi(TENANT, ANNO, 'reg-x')).rejects.toBeInstanceOf(NotFoundException)
+    })
+
     it('senza impostazione e senza movimenti', async () => {
       await expect(service.leggi(TENANT, ANNO)).resolves.toEqual({
         anno: ANNO,

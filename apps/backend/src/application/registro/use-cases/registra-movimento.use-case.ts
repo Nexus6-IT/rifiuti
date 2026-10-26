@@ -3,7 +3,11 @@ import { Prisma, WasteMovement as WasteMovementRecord } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { Result } from '../../../core/application/result'
-import { DomainError, FirGiaRegistratoError } from '../../../core/domain/errors'
+import {
+  DomainError,
+  FirGiaRegistratoError,
+  FirGiaRegistratoInAltroRegistroError,
+} from '../../../core/domain/errors'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import {
   WasteMovement,
@@ -215,16 +219,18 @@ export class RegistraMovimentoUseCase {
     let movimento: MovimentoRegistrato
     try {
       movimento = await this.prisma.$transaction(async tx => {
-        // Registro del movimento (sola lettura, nessun lock). Con un FIR: sempre quello della sede
-        // principale (D10).
-        const registro = command.firId
-          ? await this.registri.risolviPerFir(tx, command.tenantId, command.registroId)
-          : await this.registri.risolvi(tx, command.tenantId, command.registroId)
-
         // Ricopia del FIR, per prima (ordine fisso dei lock: FIR, progressivo, giacenza):
         // un retry di uno scarico deve trovare il movimento già registrato prima del
         // controllo di giacenza, che altrimenti lo respingerebbe per la quantità che lui
-        // stesso ha consumato.
+        // stesso ha consumato. Senza registroId vale la ricopia esistente, ovunque sia: la si
+        // cerca PRIMA di risolvere il registro (che potrebbe chiedere di indicarlo).
+        // Il registro (sola lettura, nessun lock) si risolve prima solo se e' indicato.
+        let registro: RegistroVista | undefined
+        const risolviRegistro = () =>
+          command.firId
+            ? this.registri.risolviPerFir(tx, command.tenantId, command.registroId)
+            : this.registri.risolvi(tx, command.tenantId, command.registroId)
+        if (command.registroId || !command.firId) registro = await risolviRegistro()
         if (command.firId) {
           const esistente = await this.ricopiaEsistente(tx, command, cerCode, registro)
           if (esistente) {
@@ -235,13 +241,15 @@ export class RegistraMovimentoUseCase {
               giaRegistrato: true,
             }
           }
+          registro ??= await risolviRegistro()
         }
+        const registroMovimento = registro as RegistroVista
 
         // Advisory lock per-registro/anno: serializza le numerazioni dello stesso
         // registro in transazioni concorrenti senza usare FOR UPDATE su aggregati
         // (PostgreSQL 0A000: "FOR UPDATE is not allowed with aggregate functions").
         // pg_advisory_xact_lock è rilasciato automaticamente al commit/rollback.
-        const lockKey = `${registro.id}-${anno}`
+        const lockKey = `${registroMovimento.id}-${anno}`
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
 
         // Controllo di giacenza per SCARICO, sotto il lock della giacenza del CER e
@@ -249,20 +257,20 @@ export class RegistraMovimentoUseCase {
         // con lock del progressivo diversi) non possono leggere la stessa giacenza.
         const avvisi =
           command.type === 'SCARICO'
-            ? await this.verificaGiacenza(tx, command, cerCode, registro.id)
+            ? await this.verificaGiacenza(tx, command, cerCode, registroMovimento.id)
             : []
 
         const [row] = await tx.$queryRaw<Array<{ max_num: number | null }>>`
           SELECT MAX(progressive_number) AS max_num
           FROM waste_movements
-          WHERE registro_id = ${registro.id}::uuid
+          WHERE registro_id = ${registroMovimento.id}::uuid
             AND progressive_year = ${anno}
         `
         // Progressivo iniziale (C-W-02): chi arriva da un altro programma a metà anno
         // prosegue la numerazione già trasmessa. Letto sotto lo stesso lock con cui
         // ProgressivoInizialeService lo imposta, quindi non c'è corsa fra i due.
         const iniziale = await tx.registroProgressivoIniziale.findUnique({
-          where: { registroId_anno: { registroId: registro.id, anno } },
+          where: { registroId_anno: { registroId: registroMovimento.id, anno } },
           select: { primoProgressivo: true },
         })
         const nextProgressivo = Math.max((row.max_num ?? 0) + 1, iniziale?.primoProgressivo ?? 1)
@@ -270,7 +278,7 @@ export class RegistraMovimentoUseCase {
         // 3. Costruzione entità di dominio (con validazioni)
         const entity = WasteMovement.create({
           tenantId: command.tenantId,
-          registroId: registro.id,
+          registroId: registroMovimento.id,
           progressiveNumber: nextProgressivo,
           progressiveYear: anno,
           type: command.type,
@@ -371,7 +379,7 @@ export class RegistraMovimentoUseCase {
     tx: Prisma.TransactionClient,
     command: RegistraMovimentoCommand,
     cerCode: string,
-    registro: RegistroVista
+    registro: RegistroVista | undefined
   ): Promise<WasteMovementRecord | null> {
     const { tenantId, firId, type } = command
     const chiaveFir = `fir-registro|${tenantId}|${firId}`
@@ -385,9 +393,9 @@ export class RegistraMovimentoUseCase {
 
     // D10: un FIR si ricopia una sola volta per azienda. Un retry che chiede esplicitamente un
     // registro diverso da quello della ricopia esistente non è un retry: si rifiuta.
-    const altroRegistro = ricopie.find(r => r.registroId !== registro.id)
+    const altroRegistro = registro ? ricopie.find(r => r.registroId !== registro.id) : undefined
     if (command.registroId && altroRegistro) {
-      throw new FirGiaRegistratoError(
+      throw new FirGiaRegistratoInAltroRegistroError(
         altroRegistro.progressiveNumber,
         altroRegistro.progressiveYear,
         await this.denominazioneSeVariRegistri(tx, tenantId, altroRegistro.registroId)
