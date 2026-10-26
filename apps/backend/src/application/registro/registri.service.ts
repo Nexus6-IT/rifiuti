@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import { DomainError } from '../../core/domain/errors'
 import { LoggerService } from '../../core/logger/logger.service'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
-import { impostaTenant } from '../../infrastructure/persistence/prisma-tenant-transazione'
+import { TenantContext } from '../../core/context/tenant-context'
 
 export interface RegistroVista {
   id: string
@@ -13,7 +13,7 @@ export interface RegistroVista {
   denominazione: string
   codice: string
   attivo: boolean
-  /** true se la sede del registro è la sede principale dell'azienda. */
+  /** true se la sede del registro è la sede principale dell'azienda E è attiva. */
   principale: boolean
 }
 
@@ -53,12 +53,14 @@ export class RegistroNonCoerenteConFirError extends DomainError {
 
 const CODICE_REGISTRO = 'CARICO_SCARICO'
 const DESCRIZIONE_SENZA_SEDE = 'Registro cronologico'
-const TENTATIVI_MASSIMI = 3
+const TENTATIVI_PREDEFINITI = 3
 
 type LettoreRegistri = Pick<Prisma.TransactionClient, 'registroRifiuti'>
 
 const INCLUDE_SEDE = {
-  unitaLocale: { select: { numIscrSito: true, denominazione: true, principale: true } },
+  unitaLocale: {
+    select: { numIscrSito: true, denominazione: true, principale: true, attiva: true },
+  },
 } as const
 
 type RegistroConSede = Prisma.RegistroRifiutiGetPayload<{ include: typeof INCLUDE_SEDE }>
@@ -71,7 +73,7 @@ function comeVista(r: RegistroConSede): RegistroVista {
     denominazione: r.unitaLocale?.denominazione ?? r.descrizione,
     codice: r.codice,
     attivo: r.attivo,
-    principale: r.unitaLocale?.principale ?? false,
+    principale: (r.unitaLocale?.principale && r.unitaLocale.attiva) ?? false,
   }
 }
 
@@ -82,18 +84,21 @@ function eViolazioneUnico(err: unknown): boolean {
 /**
  * Registri per sede (Fase 2 pezzo 1, D1/D2/D3/D4/D10).
  *
- * Tenant e RLS: il `PrismaService` imposta `app.tenant_id` da solo quando c'è un contesto
- * (richiesta o job) e le letture semplici (`elenca`, `preparaRegistri`, `sedeRentri`) si
- * affidano a quello, insieme al filtro esplicito per `tenantId`. `assicuraRegistri` apre una
- * transazione propria e imposta il tenant come primo statement (`impostaTenant`): funziona
- * quindi sotto `wasteflow_app` anche se il contesto manca o è di un'altra azienda. `risolvi`
- * e `risolviPerFir` usano il `tx` del chiamante, che ha già il tenant. Nessun client di sistema.
+ * Tenant e RLS: il tenant lo imposta SOLO l'estensione del `PrismaService`, dal contesto
+ * (`app.tenant_id` come primo statement di ogni transazione); il service non lo sovrascrive
+ * mai, quindi la RLS resta una rete anche se un chiamante sbaglia `tenantId`. I metodi che
+ * leggono o scrivono per conto proprio (`assicuraRegistri`, `elenca`, `preparaRegistri`,
+ * `sedeRentri`) rifiutano un `tenantId` diverso da quello del contesto e, senza contesto
+ * (job), lavorano in `TenantContext.run({ tenantId })`. `risolvi` e `risolviPerFir` usano il
+ * `tx` del chiamante, che ha già il tenant. Nessun client di sistema.
  */
 @Injectable()
 export class RegistriService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    /** Solo per i test: quante volte si riesegue la transazione dopo una P2002. */
+    private readonly tentativiMassimi: number = TENTATIVI_PREDEFINITI
   ) {
     this.logger.setContext(RegistriService.name)
   }
@@ -104,22 +109,40 @@ export class RegistriService {
    * transazione di registrazione.
    */
   async assicuraRegistri(tenantId: string): Promise<RegistroVista[]> {
-    for (let tentativo = 1; ; tentativo++) {
-      try {
-        return await this.prisma.$transaction(tx => this.assicuraInTransazione(tx, tenantId))
-      } catch (err) {
-        // Creazione concorrente da un'altra transazione: si rilegge, mai un errore all'utente.
-        if (eViolazioneUnico(err) && tentativo < TENTATIVI_MASSIMI) continue
-        throw err
+    return this.nelContesto(tenantId, async () => {
+      for (let tentativo = 1; ; tentativo++) {
+        try {
+          return await this.prisma.$transaction(tx => this.assicuraInTransazione(tx, tenantId))
+        } catch (err) {
+          // Creazione concorrente da un'altra transazione: si rilegge, mai un errore all'utente.
+          if (eViolazioneUnico(err) && tentativo < this.tentativiMassimi) continue
+          throw err
+        }
       }
+    })
+  }
+
+  /**
+   * Il tenant lo imposta l'estensione del PrismaService dal contesto: il service non lo
+   * sovrascrive mai, cosi' la RLS resta una rete anche se un chiamante sbaglia `tenantId`.
+   * Contesto di un'altra azienda: errore, nessuna scrittura. Nessun contesto (job): si
+   * lavora in `TenantContext.run({ tenantId })`.
+   */
+  private nelContesto<R>(tenantId: string, fn: () => Promise<R>): Promise<R> {
+    const corrente = TenantContext.getStoreTenantId()
+    if (corrente === null) return TenantContext.run({ tenantId }, fn)
+    if (corrente !== tenantId) {
+      return Promise.reject(
+        new Error('RegistriService: il tenant richiesto non coincide con quello del contesto.')
+      )
     }
+    return fn()
   }
 
   private async assicuraInTransazione(
     tx: Prisma.TransactionClient,
     tenantId: string
   ): Promise<RegistroVista[]> {
-    await impostaTenant(tx, tenantId)
     const chiave = `registro-init|${tenantId}`
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiave}))`
 
@@ -182,7 +205,7 @@ export class RegistriService {
 
   /** Solo lettura, nessun lock, nessuna scrittura. Per `GET /registro/registri`. */
   async elenca(tenantId: string): Promise<RegistroVista[]> {
-    return this.leggiViste(this.prisma, tenantId, false)
+    return this.nelContesto(tenantId, () => this.leggiViste(this.prisma, tenantId, false))
   }
 
   /**
@@ -191,6 +214,10 @@ export class RegistriService {
    * `assicuraRegistri`.
    */
   async preparaRegistri(tenantId: string, registroId?: string): Promise<void> {
+    return this.nelContesto(tenantId, () => this.preparaNelContesto(tenantId, registroId))
+  }
+
+  private async preparaNelContesto(tenantId: string, registroId?: string): Promise<void> {
     if (registroId) {
       const esiste = await this.prisma.registroRifiuti.findFirst({
         where: { id: registroId, tenantId, attivo: true },
@@ -268,13 +295,15 @@ export class RegistriService {
     tenantId: string,
     registroId: string
   ): Promise<{ numIscrSito: string; denominazione: string }> {
-    const r = await this.prisma.registroRifiuti.findFirst({
-      where: { id: registroId, tenantId },
-      include: INCLUDE_SEDE,
+    return this.nelContesto(tenantId, async () => {
+      const r = await this.prisma.registroRifiuti.findFirst({
+        where: { id: registroId, tenantId },
+        include: INCLUDE_SEDE,
+      })
+      if (!r) throw new RegistroNonTrovatoError()
+      if (!r.unitaLocale) throw new RegistroSenzaSedeRentriError()
+      return { numIscrSito: r.unitaLocale.numIscrSito, denominazione: r.unitaLocale.denominazione }
     })
-    if (!r) throw new RegistroNonTrovatoError()
-    if (!r.unitaLocale) throw new RegistroSenzaSedeRentriError()
-    return { numIscrSito: r.unitaLocale.numIscrSito, denominazione: r.unitaLocale.denominazione }
   }
 
   private async leggiViste(

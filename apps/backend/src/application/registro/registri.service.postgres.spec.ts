@@ -197,13 +197,32 @@ describe('RegistriService — Postgres reale, ruolo wasteflow_app', () => {
     expect(await owner.registroRifiuti.count({ where: { tenantId: t1 } })).toBe(prima)
   })
 
-  it('RLS: il registro creato porta il tenant giusto anche se il contesto e di un altra azienda', async () => {
+  it('RLS: contesto di un altra azienda e richiesta per t1 → errore e nessuna riga creata in t1 (il service non sovrascrive il tenant)', async () => {
     const t1 = await nuovoTenant()
     const t2 = await nuovoTenant()
     await nuovaSede(t1, true, 'Sede T1')
-    // contesto t2, richiesta per t1: la transazione propria imposta t1 e scrive per t1
-    await nelTenant(t2, () => service.assicuraRegistri(t1))
-    expect(await owner.registroRifiuti.count({ where: { tenantId: t1 } })).toBe(1)
+    await expect(nelTenant(t2, () => service.assicuraRegistri(t1))).rejects.toThrow(/non coincide/)
+    await expect(nelTenant(t2, () => service.preparaRegistri(t1))).rejects.toThrow(/non coincide/)
+    expect(await owner.registroRifiuti.count({ where: { tenantId: t1 } })).toBe(0)
+    expect(await owner.activityLog.count({ where: { tenantId: t1 } })).toBe(0)
     expect(await owner.registroRifiuti.count({ where: { tenantId: t2 } })).toBe(0)
+  })
+
+  it('preparaRegistri fuori contesto (job): lavora in TenantContext.run e crea il registro predefinito', async () => {
+    const tenantId = await nuovoTenant()
+    await nuovaSede(tenantId, true, 'Sede unica')
+    await service.preparaRegistri(tenantId)
+    expect(await owner.registroRifiuti.count({ where: { tenantId } })).toBe(1)
+  })
+
+  it('il solo lock basta: con un unico tentativo (nessun retry su P2002) 6 chiamate parallele danno comunque un registro per sede', async () => {
+    const senzaRetry = new RegistriService(app, loggerStub as never, 1)
+    const tenantId = await nuovoTenant()
+    await nuovaSede(tenantId, true, 'Sede A')
+    await nuovaSede(tenantId, false, 'Sede B')
+    await nelTenant(tenantId, () =>
+      Promise.all(Array.from({ length: 6 }, () => senzaRetry.assicuraRegistri(tenantId)))
+    )
+    expect(await owner.registroRifiuti.count({ where: { tenantId } })).toBe(2)
   })
 })

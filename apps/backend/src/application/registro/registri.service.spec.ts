@@ -1,3 +1,4 @@
+import { TenantContext } from '../../core/context/tenant-context'
 import { RegistriService } from './registri.service'
 
 /**
@@ -224,6 +225,36 @@ describe('RegistriService', () => {
     })
   })
 
+  describe('tenant del contesto', () => {
+    it('contesto di un altro tenant → errore esplicito e nessuna scrittura (assicuraRegistri, preparaRegistri, elenca, sedeRentri)', async () => {
+      const { service, prisma, chiamate } = creaFinto([sede('A', { principale: true })], [])
+      await TenantContext.run({ tenantId: 'altro-tenant' }, async () => {
+        await expect(service.assicuraRegistri(T)).rejects.toThrow(/non coincide/)
+        await expect(service.preparaRegistri(T)).rejects.toThrow(/non coincide/)
+        await expect(service.elenca(T)).rejects.toThrow(/non coincide/)
+        await expect(service.sedeRentri(T, 'R')).rejects.toThrow(/non coincide/)
+      })
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+      expect(chiamate.create).toHaveLength(0)
+      expect(chiamate.log).toHaveLength(0)
+    })
+
+    it('senza contesto lavora dentro TenantContext.run col tenant richiesto; con il contesto giusto usa quello', async () => {
+      const visto: Array<string | null> = []
+      const { service, client } = creaFinto([sede('A', { principale: true })], [])
+      client.registroRifiuti.create.mockImplementationOnce(async () => {
+        visto.push(TenantContext.getStoreTenantId())
+        return {} as never
+      })
+      await service.assicuraRegistri(T)
+      expect(visto).toEqual([T])
+      expect(TenantContext.getStoreTenantId()).toBeNull()
+      await TenantContext.run({ tenantId: T }, async () => {
+        await expect(service.elenca(T)).resolves.toBeDefined()
+      })
+    })
+  })
+
   describe('preparaRegistri', () => {
     it('preparaRegistri: se il registro predefinito esiste non apre transazioni né prende lock', async () => {
       const { service, prisma, chiamate } = creaFinto(
@@ -332,6 +363,21 @@ describe('RegistriService', () => {
       })
       expect(chiamate.create).toHaveLength(0)
       expect(chiamate.lock).toBe(0)
+    })
+  })
+
+  describe('sede principale disattivata', () => {
+    it('risolvi e risolviPerFir ignorano la principale non attiva (vista.principale = principale E attiva)', async () => {
+      const { service, client } = creaFinto(
+        [sede('A', { principale: true, attiva: false }), sede('B')],
+        [registro('RA', 'A'), registro('RB', 'B')]
+      )
+      await expect(service.risolvi(client as never, T)).rejects.toMatchObject({
+        name: 'RegistroDaIndicareError',
+      })
+      expect((await service.risolviPerFir(client as never, T, 'RB')).id).toBe('RB')
+      const viste = await service.elenca(T)
+      expect(viste.find(v => v.id === 'RA')?.principale).toBe(false)
     })
   })
 
