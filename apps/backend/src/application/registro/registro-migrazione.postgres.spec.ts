@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
+import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 
 /**
  * Migration M1 della Fase 2 pezzo 1 (`20261027100000_registro_per_sede`) contro un Postgres
@@ -39,6 +40,7 @@ describe('Migration M1 — registro per sede (Postgres reale)', () => {
   const cartellaTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mig-registro-'))
   let admin: PrismaClient
   let db: PrismaClient
+  let app: PrismaClient
 
   const T = {
     principale: randomUUID(), // sede principale + sede secondaria, 3 movimenti, progressivo iniziale
@@ -119,6 +121,7 @@ describe('Migration M1 — registro per sede (Postgres reale)', () => {
 
     db = new PrismaClient({ datasources: { db: { url: urlDb } } })
     await db.$connect()
+    app = clientComeRuolo('wasteflow_app', process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev', urlDb)
 
     // dati "vecchi": movimenti e progressivi senza registro
     let n = 1
@@ -152,6 +155,7 @@ describe('Migration M1 — registro per sede (Postgres reale)', () => {
   }, 240_000)
 
   afterAll(async () => {
+    await app?.$disconnect()
     await db?.$disconnect()
     if (admin) {
       await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS ${nomeDb} WITH (FORCE)`)
@@ -255,7 +259,8 @@ describe('Migration M1 — registro per sede (Postgres reale)', () => {
             `INSERT INTO waste_movements (tenant_id, registro_id, updated_at, type, cer_code, quantity, movement_date, progressive_number, progressive_year, causale)
              VALUES ('${T.principale}', '${regA}', now(), 'CARICO', '99 99 02', 1, now(), 1, 2026, 'produzione')`
           )
-        } catch {
+        } catch (e) {
+          if (!/23505/.test(String(e))) throw e
           rifiutato = true
         }
         if (!rifiutato) throw new Error('lo stesso registro ha accettato un progressivo duplicato')
@@ -298,7 +303,33 @@ describe('Migration M1 — registro per sede (Postgres reale)', () => {
       q(
         `INSERT INTO registri_rifiuti (tenant_id, updated_at, unita_locale_id, descrizione) VALUES ('${T.altra}', now(), '${S.principale}', 'Registro abusivo')`
       )
-    ).rejects.toThrow(/tenant/i)
+    ).rejects.toThrow(/la sede del registro appartiene a un altro tenant/)
+  })
+
+  it("migrazione: il trigger di coerenza del tenant regge anche col ruolo app sotto RLS (la sede altrui e' invisibile)", async () => {
+    // Il ruolo wasteflow_app (NOBYPASSRLS) esiste a livello di cluster (ops/db-ruoli.sh); nel
+    // database temporaneo gli si danno i privilegi che gli darebbero i default privileges.
+    await db.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO wasteflow_app`)
+    await db.$executeRawUnsafe(
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO wasteflow_app`
+    )
+    await expect(
+      app.$transaction(async tx => {
+        await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', '${T.altra}', true)`)
+        // la RLS nasconde la sede di T.principale: senza il controllo fail-closed passerebbe
+        await tx.$executeRawUnsafe(
+          `INSERT INTO registri_rifiuti (tenant_id, updated_at, unita_locale_id, descrizione) VALUES ('${T.altra}', now(), '${S.principale}', 'Registro abusivo')`
+        )
+      })
+    ).rejects.toThrow(/la sede del registro appartiene a un altro tenant/)
+    // controprova: la propria sede si accetta
+    await app.$transaction(async tx => {
+      await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', '${T.altra}', true)`)
+      await tx.$executeRawUnsafe(
+        `INSERT INTO registri_rifiuti (tenant_id, updated_at, unita_locale_id, descrizione) VALUES ('${T.altra}', now(), '${S.altra}', 'Registro proprio')`
+      )
+    })
+    await db.$executeRawUnsafe(`DELETE FROM registri_rifiuti WHERE tenant_id = '${T.altra}'`)
   })
 
   it("migrazione: unita_locale_id passa da NULL a un valore ma non da una sede a un'altra (trigger)", async () => {

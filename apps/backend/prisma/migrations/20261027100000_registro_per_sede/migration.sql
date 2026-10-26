@@ -83,9 +83,11 @@ BEGIN
      AND NEW.unita_locale_id IS DISTINCT FROM OLD.unita_locale_id THEN
     RAISE EXCEPTION 'unita_locale_id di un registro non si cambia dopo l''aggancio';
   END IF;
-  IF NEW.unita_locale_id IS NOT NULL AND EXISTS (
+  -- Fail-closed: la funzione NON e' SECURITY DEFINER, quindi la SELECT e' soggetta alla RLS di chi
+  -- scrive. Una sede di un'altra azienda (invisibile) fa fallire il controllo, non lo supera.
+  IF NEW.unita_locale_id IS NOT NULL AND NOT EXISTS (
        SELECT 1 FROM rentri_unita_locali u
-       WHERE u.id = NEW.unita_locale_id AND u.tenant_id <> NEW.tenant_id
+       WHERE u.id = NEW.unita_locale_id AND u.tenant_id = NEW.tenant_id
      ) THEN
     RAISE EXCEPTION 'la sede del registro appartiene a un altro tenant';
   END IF;
@@ -94,7 +96,7 @@ END
 $$;
 
 CREATE TRIGGER "registri_rifiuti_sede_immutabile"
-  BEFORE INSERT OR UPDATE OF "unita_locale_id" ON "registri_rifiuti"
+  BEFORE INSERT OR UPDATE OF "unita_locale_id", "tenant_id" ON "registri_rifiuti"
   FOR EACH ROW EXECUTE FUNCTION "registri_rifiuti_sede_immutabile"();
 
 -- 2. Un registro per ogni azienda che ha movimenti o un progressivo iniziale.
