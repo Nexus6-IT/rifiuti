@@ -408,6 +408,30 @@ describe('MudAggregazioneService', () => {
     expect(haBloccanti(r.controlli)).toBe(false)
   })
 
+  it("MUD: con due sedi i numeri non cambiano e l'avviso PIU_UNITA_LOCALI non dice più che il registro non indica la sede", async () => {
+    const sedi = [
+      { denominazione: 'Sede', numIscrSito: 'OP1', principale: true },
+      { denominazione: 'Deposito', numIscrSito: 'OP2', principale: false },
+    ]
+    impostaDati({ movimenti: [mov({})] })
+    prisma.rentriUnitaLocale.findMany.mockResolvedValue([sedi[0]])
+    const conUna = await service.aggrega('t1', 2025)
+
+    impostaDati({ movimenti: [mov({})] })
+    prisma.rentriUnitaLocale.findMany.mockResolvedValue(sedi)
+    const conDue = await service.aggrega('t1', 2025)
+
+    const senzaAvviso = (c: typeof conDue.controlli) =>
+      c.filter(x => x.codice !== 'PIU_UNITA_LOCALI')
+    expect({ ...conDue, controlli: senzaAvviso(conDue.controlli) }).toEqual({
+      ...conUna,
+      controlli: senzaAvviso(conUna.controlli),
+    })
+    const avviso = conDue.controlli.find(x => x.codice === 'PIU_UNITA_LOCALI')
+    expect(avviso?.messaggio).toContain('tutti i registri')
+    expect(avviso?.messaggio).not.toContain('il registro non indica la sede')
+  })
+
   // 10
   it('scarico con FIR: DR del destinatario con la quantità del movimento in kg e TE del trasportatore', async () => {
     impostaDati({

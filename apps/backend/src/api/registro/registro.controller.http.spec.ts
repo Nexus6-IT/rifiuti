@@ -9,13 +9,14 @@
  */
 
 import { Test } from '@nestjs/testing'
-import { ExecutionContext, INestApplication } from '@nestjs/common'
+import { ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common'
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core'
 import request from 'supertest'
 import { RegistroController } from './registro.controller'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { ListMovimentiHandler } from '../../application/registro/queries/list-movimenti.handler'
 import { ProgressivoInizialeService } from '../../application/registro/progressivo-iniziale.service'
+import { RegistriService } from '../../application/registro/registri.service'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { MembershipService } from '../me/membership.service'
 import { TenantSwitchInterceptor } from '../../core/interceptors/tenant-switch.interceptor'
@@ -95,6 +96,7 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
         { provide: RegistraMovimentoUseCase, useValue: registra },
         { provide: ListMovimentiHandler, useValue: { execute: jest.fn() } },
         { provide: ProgressivoInizialeService, useValue: {} },
+        { provide: RegistriService, useValue: {} },
         { provide: RuoloEffettivoService, useValue: new RuoloEffettivoService(prisma) },
         {
           provide: MembershipService,
@@ -114,6 +116,10 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
       .compile()
 
     app = moduleRef.createNestApplication()
+    // Stessa configurazione di main.ts
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
+    )
     await app.init()
   }
 
@@ -149,6 +155,18 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
 
     expect(risposta.status).toBe(403)
     expect(risposta.body.error).toBe('REGISTRO_RISERVATO_OPERATORI')
+    expect(registra.execute).not.toHaveBeenCalled()
+  })
+
+  it('registro controller: registroId non uuid → 400, senza arrivare allo use case', async () => {
+    await avvia({ tenantId: CLIENTE, isActive: true, expiresAt: null, role: { name: 'OPERATOR' } })
+
+    const risposta = await request(app.getHttpServer())
+      .post('/registro')
+      .set('X-Tenant-ID', CLIENTE)
+      .send({ ...movimento, registroId: 'non-un-uuid' })
+
+    expect(risposta.status).toBe(400)
     expect(registra.execute).not.toHaveBeenCalled()
   })
 

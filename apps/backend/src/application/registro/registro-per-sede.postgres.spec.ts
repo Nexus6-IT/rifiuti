@@ -33,6 +33,8 @@ import { RegistraMovimentoCommand } from './commands/registra-movimento.command'
 import { ProgressivoInizialeService } from './progressivo-iniziale.service'
 import { RegistriService, RegistroNonCoerenteConFirError } from './registri.service'
 import { annoSolareItaliano } from '../../core/time/anno-italiano'
+import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
+import { BadRequestException } from '@nestjs/common'
 
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
@@ -455,6 +457,58 @@ describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
     const retry = await registra(az.tenantId, comandoA)
     expect(retry.value).toMatchObject({ id: prima.value.id, giaRegistrato: true })
   })
+  describe('eliminazione di una sede (D8), ruolo wasteflow_app', () => {
+    const MESSAGGIO = 'La sede ha un registro con movimenti: disattivala invece di eliminarla.'
+    const elimina = (tenantId: string, sedeId: string) =>
+      nelTenant(tenantId, () => new RentriUnitaLocaleService(app).remove(tenantId, sedeId))
+
+    it('sede con registro vuoto: cancella registro e sede', async () => {
+      const az = await aziendaConRegistri(['Sede A', 'Sede B'])
+      const sedeB = az.sedi.find(s => s.denominazione === 'Sede B')!
+
+      await elimina(az.tenantId, sedeB.id)
+
+      expect(await owner.rentriUnitaLocale.count({ where: { id: sedeB.id } })).toBe(0)
+      expect(await owner.registroRifiuti.count({ where: { id: az.registroDi('Sede B') } })).toBe(0)
+      expect(await owner.registroRifiuti.count({ where: { id: az.registroDi('Sede A') } })).toBe(1)
+    })
+
+    it('sede con un movimento: rifiutata col messaggio esatto, niente viene cancellato', async () => {
+      const az = await aziendaConRegistri(['Sede A', 'Sede B'])
+      const sedeB = az.sedi.find(s => s.denominazione === 'Sede B')!
+      const r = await registra(az.tenantId, comando(az.tenantId, az.registroDi('Sede B')))
+      expect(r.isSuccess).toBe(true)
+
+      const errore = await elimina(az.tenantId, sedeB.id).catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe(MESSAGGIO)
+      expect(await owner.rentriUnitaLocale.count({ where: { id: sedeB.id } })).toBe(1)
+      expect(await owner.registroRifiuti.count({ where: { id: az.registroDi('Sede B') } })).toBe(1)
+    })
+
+    it('sede con progressivo iniziale ma senza movimenti: rifiutata', async () => {
+      const az = await aziendaConRegistri(['Sede A', 'Sede B'])
+      const sedeB = az.sedi.find(s => s.denominazione === 'Sede B')!
+      await nelTenant(az.tenantId, () =>
+        progressivi.imposta(
+          az.tenantId,
+          ANNO,
+          50,
+          'Migrazione di prova',
+          userId,
+          az.registroDi('Sede B')
+        )
+      )
+
+      const errore = await elimina(az.tenantId, sedeB.id).catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe(MESSAGGIO)
+      expect(await owner.rentriUnitaLocale.count({ where: { id: sedeB.id } })).toBe(1)
+    })
+  })
+
   describe('GET del progressivo iniziale (sola lettura)', () => {
     it('azienda senza registri: stato neutro e nessuna scrittura', async () => {
       const az = await azienda(['Sede A'])

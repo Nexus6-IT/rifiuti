@@ -141,6 +141,15 @@ export class RegistraMovimentoDto {
   @IsString()
   @IsOptional()
   notes?: string
+
+  @ApiPropertyOptional({
+    description:
+      'Registro (uuid, di una sede) in cui registrare. Senza: registro della sede principale, ' +
+      "o l'unico registro attivo.",
+  })
+  @IsUUID()
+  @IsOptional()
+  registroId?: string
 }
 
 export class ListMovimentiDto {
@@ -173,6 +182,11 @@ export class ListMovimentiDto {
   @IsUUID()
   @IsOptional()
   firId?: string
+
+  @ApiPropertyOptional({ description: 'Filtra per registro (uuid)' })
+  @IsUUID()
+  @IsOptional()
+  registroId?: string
 
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @Transform(({ value }) => parseInt(value, 10))

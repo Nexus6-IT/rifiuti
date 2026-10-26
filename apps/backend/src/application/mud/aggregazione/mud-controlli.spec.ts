@@ -288,10 +288,24 @@ describe('controlliMud', () => {
     expect(r.gravita).toBe('AVVISO')
     expect(r.messaggio).toContain('(Sede (OP1), Cantiere Nord (OP2))')
     expect(r.messaggio).toContain(
-      "il file attribuisce all'unità locale Sede (OP1) i movimenti di tutte"
+      "il file attribuisce all'unità locale Sede (OP1) i movimenti di tutti i registri"
     )
     expect(r.messaggio).toContain('risulterebbero dichiarate due volte')
+    expect(r.messaggio).toContain('La ripartizione per sede non è ancora supportata.')
+    expect(r.messaggio).not.toContain('il registro non indica la sede')
     expect(r.messaggio).not.toContain('mancano le dichiarazioni separate')
+  })
+
+  it('MUD: il testo contiene "tutti i registri" e "ripartizione per sede non è ancora supportata"', () => {
+    const r = controlliMud.piuUnitaLocali([
+      { denominazione: 'Sede', numIscrSito: 'OP1', principale: true },
+      { denominazione: 'Deposito', numIscrSito: 'OP2', principale: false },
+    ])
+    expect(r.codice).toBe('PIU_UNITA_LOCALI')
+    expect(r.gravita).toBe('AVVISO')
+    expect(r.messaggio).toBe(
+      "L'azienda ha 2 unità locali attive (Sede (OP1), Deposito (OP2)): il file attribuisce all'unità locale Sede (OP1) i movimenti di tutti i registri. Non presentare anche dichiarazioni separate per le altre sedi con le stesse quantità: risulterebbero dichiarate due volte. La ripartizione per sede non è ancora supportata."
+    )
   })
 
   it('piuUnitaLocali attribuisce alla sede principale, anche se non è la prima', () => {

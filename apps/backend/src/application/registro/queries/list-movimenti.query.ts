@@ -11,6 +11,7 @@ export class ListMovimentiQuery {
       dataFrom?: Date
       dataTo?: Date
       firId?: string
+      registroId?: string
     },
     public readonly pagination?: {
       page: number

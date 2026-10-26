@@ -61,6 +61,50 @@ describe('GiacenzeService', () => {
     expect(cer17.giacenzaKg).toBe(0) // clamp: 10-25 → 0
   })
 
+  it('giacenze: con registroId conta solo quel registro; senza, tutti', async () => {
+    mockGroupBy([], [])
+
+    await service.getGiacenze('tenant-1', 'reg-A')
+    for (const chiamata of prisma.wasteMovement.groupBy.mock.calls) {
+      expect(chiamata[0].where).toMatchObject({ tenantId: 'tenant-1', registroId: 'reg-A' })
+    }
+
+    prisma.wasteMovement.groupBy.mockClear()
+    await service.getGiacenze('tenant-1')
+    for (const chiamata of prisma.wasteMovement.groupBy.mock.calls) {
+      expect(chiamata[0].where).not.toHaveProperty('registroId')
+    }
+  })
+
+  it('giacenze: gli alert di deposito rispettano il filtro registroId', async () => {
+    mockGroupBy([], [])
+
+    await service.getDepositoTemporaneoAlerts('tenant-1', undefined, undefined, 'reg-A')
+
+    for (const chiamata of prisma.wasteMovement.groupBy.mock.calls) {
+      expect(chiamata[0].where).toMatchObject({ registroId: 'reg-A' })
+    }
+  })
+
+  it('giacenze: gli scarichi su FIR annullati rispettano il filtro registroId', async () => {
+    mockGroupBy([], [])
+    prisma.fIR.findMany.mockResolvedValue([
+      {
+        id: 'f1',
+        status: 'CANCELLED',
+        firNumber: 'F1',
+        rentriNumeroFir: null,
+        rentriStatoFormulario: null,
+      },
+    ])
+
+    await service.getGiacenze('tenant-1', 'reg-A')
+
+    expect(prisma.wasteMovement.findMany.mock.calls[0][0].where).toMatchObject({
+      registroId: 'reg-A',
+    })
+  })
+
   it('alza alert DURATION quando il carico più vecchio supera i giorni massimi', async () => {
     mockGroupBy(
       [{ cerCode: '150101', type: 'CARICO', unit: 'KG', _sum: { quantity: 100 } }],

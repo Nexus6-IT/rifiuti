@@ -232,7 +232,7 @@ export const controlliMud = {
     return {
       codice: 'PIU_UNITA_LOCALI',
       gravita: AVVISO,
-      messaggio: `L'azienda ha ${unita.length} unità locali attive (${unita.map(nome).join(', ')}): il file attribuisce all'unità locale ${nome(principale)} i movimenti di tutte, perché il registro non indica la sede del movimento. Non presentare anche dichiarazioni separate per le altre sedi con le stesse quantità: risulterebbero dichiarate due volte. Se le altre sedi sono obbligate a una dichiarazione propria, questo file non va presentato così: la ripartizione per sede non è ancora supportata.`,
+      messaggio: `L'azienda ha ${unita.length} unità locali attive (${unita.map(nome).join(', ')}): il file attribuisce all'unità locale ${nome(principale)} i movimenti di tutti i registri. Non presentare anche dichiarazioni separate per le altre sedi con le stesse quantità: risulterebbero dichiarate due volte. La ripartizione per sede non è ancora supportata.`,
     }
   },
 
