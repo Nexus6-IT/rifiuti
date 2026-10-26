@@ -3,7 +3,7 @@
  *
  * Copia verbatim di `CopiaCartaceaConfermaModel` e della chiusura transitiva dei suoi
  * `$ref`, dal contratto ufficiale `docs/contracts/rentri/formulari.yaml`.
- * L'allineamento e' imposto da `test/schema-allineato-al-contratto.test.ts`.
+ * L'allineamento e' imposto da `test/schema-copie-allineate-al-contratto.test.ts`.
  */
 export const SCHEMA_COPIA_CARTACEA_CONFERMA = {
   "required": [

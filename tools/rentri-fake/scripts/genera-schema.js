@@ -27,11 +27,15 @@ const PREFISSO_REF = '#/components/schemas/'
 // Argomenti opzionali (`npm run genera-schema -- <RadiceSchema> <percorso-uscita> <NOME_COSTANTE> <file-contratto>`):
 // senza argomenti si rigenera lo schema storico di `NuovoFormularioModel`,
 // invariato rispetto a prima che questo script accettasse parametri.
-const [argRadice, argUscita, argNomeCostante, argContratto] = process.argv.slice(2)
+const [argRadice, argUscita, argNomeCostante, argContratto, argGuardia] = process.argv.slice(2)
 const RADICE = argRadice || 'NuovoFormularioModel'
 const USCITA = argUscita
   ? join(__dirname, '..', argUscita)
   : join(__dirname, '..', 'src', 'dominio', 'schema-nuovo-formulario.ts')
+// Nome del test di allineamento che guarda lo schema generato (5° argomento
+// opzionale), citato nell'intestazione del modulo: ogni gruppo di schemi ha la
+// propria guardia in `test/`, citare sempre la stessa sarebbe un rimando falso.
+const GUARDIA = argGuardia || 'schema-allineato-al-contratto.test.ts'
 // Nome (senza prefisso `SCHEMA_`/`DEFINIZIONI_`) delle costanti esportate.
 // Default invariato rispetto allo script originale (nessun argomento ->
 // stesso output di sempre, `SCHEMA_NUOVO_FORMULARIO`/`DEFINIZIONI_NUOVO_FORMULARIO`).
@@ -103,7 +107,7 @@ const contenuto = `/**
  *
  * Copia verbatim di \`${RADICE}\` e della chiusura transitiva dei suoi
  * \`$ref\`, dal contratto ufficiale \`docs/contracts/rentri/${argContratto || 'formulari.yaml'}\`.
- * L'allineamento e' imposto da \`test/schema-allineato-al-contratto.test.ts\`.
+ * L'allineamento e' imposto da \`test/${GUARDIA}\`.
  */
 export const SCHEMA_${NOME_COSTANTE} = ${JSON.stringify(modello, null, 2)} as const
 
