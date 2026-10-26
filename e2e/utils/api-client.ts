@@ -14,6 +14,7 @@ import {
   type Role,
 } from './env'
 import { valutaRichiesta } from './blacklist'
+import { decidiRetryDevLogin, leggiRetryAfterSecondi } from './dev-login-retry'
 
 const DEV_LOGIN_PATH = '/auth/dev/login'
 
@@ -68,20 +69,40 @@ export async function devLoginTokens(
     )
   }
 
-  const risposta = await fetch(`${getApiUrl()}${DEV_LOGIN_PATH}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    // Il DTO del bypass di sviluppo accetta solo email (vedi
-    // apps/backend/src/auth/dto/dev-login.dto.ts) e il ValidationPipe
-    // globale ha forbidNonWhitelisted:true — mandare anche la password
-    // farebbe fallire la richiesta con 400.
-    body: JSON.stringify({ email }),
-  })
-
-  const corpo = await leggiCorpo(risposta)
+  // Il token non si può cachare fra test (sessione unica per utente: un nuovo
+  // login invalida il precedente), quindi con più worker il throttler globale
+  // del backend può rispondere 429. Si riprova attendendo il Retry-After (o un
+  // backoff) entro un tetto; il rate limit del backend resta invariato.
+  let tentativo = 0
+  let attesaTotaleMs = 0
+  let risposta: Response
+  let corpo: unknown
+  for (;;) {
+    tentativo++
+    risposta = await fetch(`${getApiUrl()}${DEV_LOGIN_PATH}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // Il DTO del bypass di sviluppo accetta solo email (vedi
+      // apps/backend/src/auth/dto/dev-login.dto.ts) e il ValidationPipe
+      // globale ha forbidNonWhitelisted:true — mandare anche la password
+      // farebbe fallire la richiesta con 400.
+      body: JSON.stringify({ email }),
+    })
+    corpo = await leggiCorpo(risposta)
+    if (risposta.ok) break
+    const decisione = decidiRetryDevLogin(
+      risposta.status,
+      tentativo,
+      attesaTotaleMs,
+      leggiRetryAfterSecondi(risposta.headers)
+    )
+    if (!decisione.riprova) break
+    attesaTotaleMs += decisione.attesaMs
+    await new Promise(r => setTimeout(r, decisione.attesaMs))
+  }
   if (!risposta.ok) {
     throw new ApiClientError(
-      `Login dev fallito per l'email "${email}": ${risposta.status} ${risposta.statusText} — ` +
+      `Login dev fallito per l'email "${email}" dopo ${tentativo} tentativi: ${risposta.status} ${risposta.statusText} — ` +
         `${JSON.stringify(corpo)}`,
       risposta.status,
       corpo
