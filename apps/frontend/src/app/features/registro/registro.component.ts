@@ -405,6 +405,9 @@ interface FirOption {
               <small *ngIf="hasError('registroId')" class="field-error" role="alert"
                 >Scegli la sede: l'azienda ha più registri e nessuno è predefinito.</small
               >
+              <small *ngIf="sedeBloccataDaFir()" data-testid="sede-bloccata-fir"
+                >Un FIR si registra nel registro della sede principale.</small
+              >
             </div>
 
             <!-- Collegamento a un FIR (opzionale): auto-compila rifiuto e controparte -->
@@ -776,7 +779,7 @@ interface FirOption {
       <!-- Dialog progressivo iniziale (C-W-02) ---------------------------------->
       <p-dialog
         [(visible)]="progressivoVisible"
-        header="Primo numero del registro {{ annoCorrente }}"
+        [header]="titoloProgressivo()"
         [modal]="true"
         [closable]="true"
         [style]="{ width: '480px', maxWidth: '95vw' }"
@@ -784,6 +787,14 @@ interface FirOption {
         closeAriaLabel="Chiudi la finestra del primo numero del registro"
       >
         <form [formGroup]="progressivoForm" class="mov-form">
+          <p
+            *ngIf="etichettaSedeProgressivo() as sede"
+            class="progressivo-sede"
+            data-testid="progressivo-sede"
+          >
+            Il numero vale per il registro di <strong>{{ sede }}</strong
+            >. L'impostazione è irreversibile.
+          </p>
           <p class="progressivo-nota">
             Serve solo a chi arriva da un altro programma a metà anno: il primo movimento registrato
             qui prenderà questo numero. Si imposta una volta sola.
@@ -1305,11 +1316,9 @@ export class RegistroComponent implements OnInit {
       causale: null,
       unit: 'KG',
     })
-    // Con più sedi si precompila il registro predefinito; se non c'è, si deve scegliere.
-    const regCtrl = this.form.get('registroId')
-    regCtrl?.setValidators(this.piuRegistri() ? [Validators.required] : [])
-    regCtrl?.setValue(this.piuRegistri() ? (registroPredefinito(this.registri()) ?? null) : null)
-    regCtrl?.updateValueAndValidity()
+    this.sedeBloccataDaFir.set(false)
+    this.form.get('registroId')?.enable({ emitEvent: false })
+    this.applicaRegistroAlForm(true)
     // Azzera lo stato del collegamento FIR / anagrafica.
     this.selectedFir = null
     this.selectedProduttore = null
@@ -1320,6 +1329,22 @@ export class RegistroComponent implements OnInit {
     this.caricaProduttori()
     this.company.loadActiveCompany().subscribe()
     this.formVisible = true
+  }
+
+  /**
+   * Con più sedi la sede è obbligatoria e si precompila: la sede filtrata (se attiva), altrimenti
+   * il predefinito; se non c'è, si deve scegliere. Con `precompila` false non tocca un valore già scelto.
+   */
+  private applicaRegistroAlForm(precompila: boolean): void {
+    const regCtrl = this.form.get('registroId')
+    if (!regCtrl) return
+    regCtrl.setValidators(this.piuRegistri() ? [Validators.required] : [])
+    if (!this.piuRegistri()) regCtrl.setValue(null)
+    else if (precompila || !regCtrl.value) {
+      const filtrato = this.registri().find(r => r.id === this.filtroRegistro && r.attivo)
+      regCtrl.setValue(filtrato?.id ?? registroPredefinito(this.registri()) ?? null)
+    }
+    regCtrl.updateValueAndValidity()
   }
 
   chiudiForm(): void {
@@ -1408,6 +1433,7 @@ export class RegistroComponent implements OnInit {
     const fir = (event.value as FirOption)?.fir
     if (!fir) return
     this.firCollegato = fir
+    this.bloccaSedeSeFir()
 
     // Determina il ruolo della società attiva rispetto alle parti del FIR.
     const ruolo = this.determinaRuolo(fir)
@@ -1477,10 +1503,24 @@ export class RegistroComponent implements OnInit {
     return `${d.getFullYear()}-${mm}-${dd}`
   }
 
+  /** D10: un FIR si ricopia solo nel registro della sede principale; senza principale la scelta resta libera. */
+  readonly sedeBloccataDaFir = signal(false)
+
+  private bloccaSedeSeFir(): void {
+    const principale = this.registri().find(r => r.principale)
+    if (!this.piuRegistri() || !principale) return
+    const ctrl = this.form.get('registroId')
+    ctrl?.setValue(principale.id)
+    ctrl?.disable({ emitEvent: false })
+    this.sedeBloccataDaFir.set(true)
+  }
+
   /** Rimozione del FIR collegato: azzera il riferimento e l'hint. */
   onFirClear(): void {
     this.selectedFir = null
     this.firCollegato = null
+    this.sedeBloccataDaFir.set(false)
+    this.form.get('registroId')?.enable({ emitEvent: false })
     this.ruoloHint.set(null)
     this.form.get('firId')?.setValue('')
   }
@@ -1583,6 +1623,8 @@ export class RegistroComponent implements OnInit {
     }
 
     const v = this.form.value
+    // il controllo della sede è disabilitato (assente da `value`) quando la blocca il FIR
+    const registroScelto: string | null = this.form.get('registroId')?.value ?? null
     this.saving.set(true)
 
     // Usa i componenti locali della data per evitare lo shift UTC negativo
@@ -1596,7 +1638,7 @@ export class RegistroComponent implements OnInit {
 
     this.registroService
       .registra({
-        registroId: this.piuRegistri() && v.registroId ? v.registroId : undefined,
+        registroId: this.piuRegistri() && registroScelto ? registroScelto : undefined,
         type: v.type,
         movementDate: toIsoDate(v.movementDate),
         causale: v.causale,
@@ -1672,6 +1714,19 @@ export class RegistroComponent implements OnInit {
     return this.filtroRegistro ?? registroPredefinito(this.registri())
   }
 
+  /** Sede a cui si applica il progressivo; null con un solo registro (nessuna ambiguità). */
+  etichettaSedeProgressivo(): string | null {
+    if (!this.piuRegistri()) return null
+    const id = this.registroProgressivo() ?? this.statoProgressivo()?.registroId ?? undefined
+    const r = this.registri().find(x => x.id === id)
+    return r ? etichettaRegistro(r) : null
+  }
+
+  titoloProgressivo(): string {
+    const sede = this.etichettaSedeProgressivo()
+    return `Primo numero del registro ${this.annoCorrente}` + (sede ? ` · ${sede}` : '')
+  }
+
   etichettaSede(registroId?: string | null): string {
     const r = this.registri().find(x => x.id === registroId)
     return r ? etichettaRegistro(r) : '—'
@@ -1713,6 +1768,8 @@ export class RegistroComponent implements OnInit {
 
   private impostaRegistri(registri: RegistroVista[]): void {
     this.registri.set(registri)
+    // Registri arrivati a form già aperto: validatore e valore vanno applicati anche qui.
+    if (this.formVisible) this.applicaRegistroAlForm(false)
     this.caricaProgressivo()
   }
 
@@ -1740,8 +1797,12 @@ export class RegistroComponent implements OnInit {
       .getProgressivoIniziale(this.annoCorrente, this.registroProgressivo())
       .subscribe({
         next: stato => this.statoProgressivo.set(stato),
-        // Senza stato il pulsante resta nascosto: non è una funzione di uso quotidiano.
-        error: () => this.statoProgressivo.set(null),
+        // In errore non si offre l'impostazione (non si sa a che punto è la sede), ma si
+        // conserva ciò che si sapeva sul ruolo: "Registra movimento" non sparisce né compare.
+        error: () =>
+          this.statoProgressivo.update(prec =>
+            prec ? { ...prec, puoImpostare: false, primoProgressivo: null } : null
+          ),
       })
   }
 
@@ -1881,6 +1942,15 @@ export class RegistroComponent implements OnInit {
             operatore: this.nomeOperatore(),
             filtroTipo: this.filtroTipo,
             filtroCer: this.filtroCer || null,
+            // più registri: con il filtro la sede va nell'intestazione, senza nella colonna
+            sede:
+              this.piuRegistri() && this.filtroRegistro
+                ? this.etichettaSede(this.filtroRegistro)
+                : null,
+            etichettaSede:
+              this.piuRegistri() && !this.filtroRegistro
+                ? (m: Movimento) => this.etichettaSede(m.registroId)
+                : undefined,
           }
           if (formato === 'pdf') {
             this.exportService.exportRegistroToPDF(data.items, meta)

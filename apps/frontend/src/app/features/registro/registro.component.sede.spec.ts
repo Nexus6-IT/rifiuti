@@ -40,6 +40,7 @@ function stato(parziale: Partial<StatoProgressivoIniziale>): StatoProgressivoIni
 describe('RegistroComponent — sede del registro', () => {
   let servizio: jasmine.SpyObj<RegistroService>
   let toast: jasmine.SpyObj<ToastService>
+  let exportSvc: jasmine.SpyObj<ExportService>
 
   function crea(): RegistroComponent {
     TestBed.configureTestingModule({
@@ -48,9 +49,9 @@ describe('RegistroComponent — sede del registro', () => {
         DatePipe,
         { provide: RegistroService, useValue: servizio },
         { provide: ToastService, useValue: toast },
-        { provide: ExportService, useValue: {} },
+        { provide: ExportService, useValue: exportSvc },
         { provide: AuthService, useValue: { currentUser: () => null } },
-        { provide: AdminTenantContextService, useValue: {} },
+        { provide: AdminTenantContextService, useValue: { selectedTenantName: () => 'Azienda' } },
         {
           provide: CompanyService,
           useValue: { loadActiveCompany: () => of(null), activeCompany: () => null },
@@ -72,6 +73,10 @@ describe('RegistroComponent — sede del registro', () => {
       'getProgressivoIniziale',
       'impostaProgressivoIniziale',
       'registra',
+    ])
+    exportSvc = jasmine.createSpyObj<ExportService>('ExportService', [
+      'exportRegistroToPDF',
+      'exportRegistroToExcel',
     ])
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['error', 'success', 'info', 'warn'])
     servizio.lista.and.returnValue(of({ items: [], total: 0, page: 1, limit: 20, totalPages: 0 }))
@@ -145,5 +150,144 @@ describe('RegistroComponent — sede del registro', () => {
     c.apriForm()
     expect(c.form.get('registroId')?.value).toBe('b')
     expect(servizio.getProgressivoIniziale).toHaveBeenCalledWith(jasmine.any(Number), 'b')
+  })
+
+  const DUE = () => [
+    reg({ id: 'a', denominazione: 'Sede A', principale: false }),
+    reg({ id: 'b', denominazione: 'Sede B', principale: false }),
+  ]
+
+  function conDueRegistri(registri = DUE(), parz: Partial<StatoProgressivoIniziale> = {}) {
+    servizio.getProgressivoIniziale.and.returnValue(of(stato(parz)))
+    servizio.assicuraRegistri.and.returnValue(of(registri))
+    servizio.listRegistri.and.returnValue(of(registri))
+    const c = crea()
+    c.caricaRegistri()
+    return c
+  }
+
+  function esportaConUnMovimento(c: RegistroComponent, formato: 'pdf' | 'excel') {
+    servizio.lista.and.returnValue(
+      of({
+        items: [{ id: 'm1', registroId: 'b' } as never],
+        total: 1,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+      })
+    )
+    c.paginazione.set({ total: 1, page: 1, limit: 20, totalPages: 1 })
+    if (formato === 'pdf') c.esportaPdf()
+    else c.esportaExcel()
+    const chiamata = (
+      formato === 'pdf' ? exportSvc.exportRegistroToPDF : exportSvc.exportRegistroToExcel
+    ).calls.mostRecent()
+    return chiamata.args[1] as import('../../core/services/export.service').RegistroExportMeta
+  }
+
+  it('export con più registri e nessun filtro: colonna Sede (PDF ed Excel), nessuna sede in intestazione', () => {
+    const c = conDueRegistri()
+    for (const f of ['pdf', 'excel'] as const) {
+      const meta = esportaConUnMovimento(c, f)
+      expect(meta.sede).toBeNull()
+      expect(meta.etichettaSede?.({ registroId: 'b' } as never)).toBe('Sede B')
+    }
+  })
+
+  it('export con più registri e filtro di sede: la sede va nell’intestazione, senza colonna', () => {
+    const c = conDueRegistri()
+    c.filtroRegistro = 'a'
+    for (const f of ['pdf', 'excel'] as const) {
+      const meta = esportaConUnMovimento(c, f)
+      expect(meta.sede).toBe('Sede A')
+      expect(meta.etichettaSede).toBeUndefined()
+    }
+  })
+
+  it('export con un solo registro: identico a prima (né sede né colonna)', () => {
+    const c = conDueRegistri([reg({ id: 'a' })])
+    const meta = esportaConUnMovimento(c, 'pdf')
+    expect(meta.sede).toBeNull()
+    expect(meta.etichettaSede).toBeUndefined()
+  })
+
+  it('dialog del progressivo con più registri: dice su quale sede si imposta', () => {
+    const c = conDueRegistri(DUE(), { registroId: 'b' })
+    c.filtroRegistro = 'b'
+    expect(c.etichettaSedeProgressivo()).toBe('Sede B')
+    expect(c.titoloProgressivo()).toContain('Sede B')
+  })
+
+  it('dialog del progressivo con un solo registro: nessuna sede nel titolo', () => {
+    const c = conDueRegistri([reg({ id: 'a' })])
+    expect(c.etichettaSedeProgressivo()).toBeNull()
+    expect(c.titoloProgressivo()).not.toContain('·')
+  })
+
+  it('apriForm precompila la sede filtrata, non il predefinito', () => {
+    const c = conDueRegistri([
+      reg({ id: 'a', principale: true }),
+      reg({ id: 'b', denominazione: 'Sede B' }),
+    ])
+    c.filtroRegistro = 'b'
+    c.apriForm()
+    expect(c.form.get('registroId')?.value).toBe('b')
+  })
+
+  it('registri arrivati a form aperto: validatore required e valore predefinito', () => {
+    servizio.getProgressivoIniziale.and.returnValue(of(stato({})))
+    const c = crea()
+    c.apriForm()
+    expect(c.form.get('registroId')?.valid).toBeTrue() // un solo registro (nessuno): nessun obbligo
+    servizio.assicuraRegistri.and.returnValue(
+      of([reg({ id: 'a' }), reg({ id: 'b', principale: true })])
+    )
+    c.caricaRegistri()
+    expect(c.form.get('registroId')?.value).toBe('b')
+    c.form.get('registroId')?.setValue(null)
+    expect(c.form.get('registroId')?.valid).toBeFalse()
+  })
+
+  // la selezione vera del FIR compila mezzo form: qui conta solo il blocco della sede
+  const selezionaFir = (c: RegistroComponent) =>
+    (c as never as { bloccaSedeSeFir(): void }).bloccaSedeSeFir()
+
+  it('FIR collegato con sede principale: la sede si blocca sulla principale; senza principale è libera', () => {
+    const c = conDueRegistri([
+      reg({ id: 'a' }),
+      reg({ id: 'b', principale: true, denominazione: 'Sede B' }),
+    ])
+    c.apriForm()
+    c.form.get('registroId')?.setValue('a')
+    selezionaFir(c)
+    expect(c.form.get('registroId')?.value).toBe('b')
+    expect(c.form.get('registroId')?.disabled).toBeTrue()
+    expect(c.sedeBloccataDaFir()).toBeTrue()
+    c.onFirClear()
+    expect(c.form.get('registroId')?.enabled).toBeTrue()
+    expect(c.sedeBloccataDaFir()).toBeFalse()
+
+    TestBed.resetTestingModule()
+    const libera = conDueRegistri()
+    libera.apriForm()
+    selezionaFir(libera)
+    expect(libera.form.get('registroId')?.enabled).toBeTrue()
+    expect(libera.sedeBloccataDaFir()).toBeFalse()
+  })
+
+  it('errore nel ricaricare il progressivo: "Registra movimento" non cambia e non si offre l’impostazione', () => {
+    const c = conDueRegistri(DUE(), { registroId: 'a', puoRegistrare: false, puoImpostare: true })
+    servizio.getProgressivoIniziale.and.returnValue(throwError(() => new Error('rete')))
+    c.caricaProgressivo()
+    expect(c.offriRegistrazione()).toBeFalse() // sola consultazione: resta nascosto
+    expect(c.offriProgressivo()).toBeFalse()
+  })
+
+  it('errore nel ricaricare il progressivo con ruolo di scrittura: Registra movimento resta', () => {
+    const c2 = conDueRegistri(DUE(), { registroId: 'a', puoRegistrare: true })
+    servizio.getProgressivoIniziale.and.returnValue(throwError(() => new Error('rete')))
+    c2.caricaProgressivo()
+    expect(c2.offriRegistrazione()).toBeTrue()
+    expect(c2.offriProgressivo()).toBeFalse()
   })
 })

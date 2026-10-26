@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { format } from 'date-fns'
+import { conColonnaSede, filtriRegistroExport, sedeDelMovimento } from './registro-export-sede'
 import {
   Movimento,
   CausaleMovimento,
@@ -23,6 +24,13 @@ export interface RegistroExportMeta {
   filtroTipo?: string | null
   /** Filtro CER attivo. */
   filtroCer?: string | null
+  /** Sede filtrata (etichetta del registro): va nell'intestazione del documento. */
+  sede?: string | null
+  /**
+   * Con più registri e nessun filtro di sede: etichetta della sede di ogni movimento, per la
+   * colonna "Sede". Assente con un solo registro (export identico a prima).
+   */
+  etichettaSede?: (m: Movimento) => string
 }
 
 @Injectable({
@@ -266,9 +274,7 @@ export class ExportService {
     doc.text(`Periodo: ${this.periodoRegistro(movimenti)}`, 14, y)
 
     // Filtri attivi + metadati di generazione
-    const filtri: string[] = []
-    if (meta.filtroTipo) filtri.push(`Tipo: ${meta.filtroTipo}`)
-    if (meta.filtroCer) filtri.push(`CER: ${meta.filtroCer}`)
+    const filtri = filtriRegistroExport(meta)
     const filtriLabel = filtri.length ? filtri.join('  ·  ') : 'Nessun filtro'
     doc.text(`Filtri: ${filtriLabel}`, 14, y + 5)
     doc.text(
@@ -278,8 +284,10 @@ export class ExportService {
       y + 10
     )
 
+    const conSede = conColonnaSede(meta)
     const tableData = movimenti.map(m => [
       `${m.progressiveYear}/${m.progressiveNumber}`,
+      ...(conSede ? [sedeDelMovimento(meta, m) || '—'] : []),
       this.formatDate(m.registrationDate),
       this.formatDate(m.movementDate),
       m.type,
@@ -295,6 +303,7 @@ export class ExportService {
       head: [
         [
           'Progr.',
+          ...(conSede ? ['Sede'] : []),
           'Data reg.',
           'Data op.',
           'Tipo',
@@ -312,7 +321,7 @@ export class ExportService {
       headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [240, 253, 250] },
       columnStyles: {
-        6: { halign: 'right' },
+        [conSede ? 7 : 6]: { halign: 'right' },
       },
     })
 
@@ -324,11 +333,13 @@ export class ExportService {
    */
   exportRegistroToExcel(
     movimenti: Movimento[],
-    _meta: RegistroExportMeta = {},
+    meta: RegistroExportMeta = {},
     filename = `registro-cs-${format(new Date(), 'yyyyMMdd')}.xlsx`
   ): void {
+    const conSede = conColonnaSede(meta)
     const excelData = movimenti.map(m => ({
       Progressivo: `${m.progressiveYear}/${m.progressiveNumber}`,
+      ...(conSede ? { Sede: sedeDelMovimento(meta, m) } : {}),
       Anno: m.progressiveYear,
       Numero: m.progressiveNumber,
       'Data registrazione': this.formatDate(m.registrationDate),
@@ -348,9 +359,14 @@ export class ExportService {
       Note: m.notes || '',
     }))
 
-    const ws = XLSX.utils.json_to_sheet(excelData)
+    // Con la sede filtrata la si scrive sopra la tabella (riga 1), che parte dalla riga 3.
+    const ws = meta.sede
+      ? XLSX.utils.aoa_to_sheet([[`Sede: ${meta.sede}`], []])
+      : XLSX.utils.json_to_sheet(excelData)
+    if (meta.sede) XLSX.utils.sheet_add_json(ws, excelData, { origin: 'A3' })
     ws['!cols'] = [
       { wch: 12 }, // Progressivo
+      ...(conSede ? [{ wch: 30 }] : []), // Sede
       { wch: 6 }, // Anno
       { wch: 8 }, // Numero
       { wch: 18 }, // Data registrazione
