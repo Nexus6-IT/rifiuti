@@ -1,4 +1,5 @@
-import { NotFoundException, BadRequestException } from '@nestjs/common'
+import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common'
+import { argomentiCustom } from '../../test-support/argomenti-handler'
 import { RentriFirLifecycleController } from './rentri-fir-lifecycle.controller'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { traduciErroreRentri } from '../../application/rentri/rentri-error-presentation'
@@ -344,5 +345,32 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
     // il messaggio resta quello grezzo di businessRuleViolation, prefisso
     // tecnico incluso (non è il caso che questo debito doveva chiudere).
     expect(eccezione.message).toContain('Business rule violated')
+  })
+})
+
+describe('RentriFirLifecycleController: @TenantId è l’azienda selezionata', () => {
+  it('getAzioniDisponibili: token A, azienda selezionata B → lo use case riceve B', async () => {
+    const azioni = { execute: jest.fn().mockResolvedValue({ azioni: [] }) }
+    const controller = new RentriFirLifecycleController(
+      azioni as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { setContext: jest.fn(), debug: jest.fn(), error: jest.fn() } as any
+    )
+    const request = { tenantId: 'B', user: { id: 'u1', tenantId: 'A' }, headers: {} }
+    const arg = argomentiCustom(RentriFirLifecycleController, 'getAzioniDisponibili', request)
+
+    await controller.getAzioniDisponibili('fir-1', arg[1] as string, 'u1')
+
+    expect(azioni.execute).toHaveBeenCalledWith('fir-1', 'B')
+  })
+
+  it('senza azienda selezionata: 403, header grezzo ignorato', () => {
+    const request = { user: { id: 'u1' }, headers: { 'x-tenant-id': 'ALTRUI' } }
+    expect(() =>
+      argomentiCustom(RentriFirLifecycleController, 'getAzioniDisponibili', request)
+    ).toThrow(ForbiddenException)
   })
 })

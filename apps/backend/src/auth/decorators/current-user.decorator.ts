@@ -18,7 +18,7 @@ export interface CurrentUserPayload {
 }
 
 export const CurrentUser = createParamDecorator(
-  (data: unknown, ctx: ExecutionContext): CurrentUserPayload => {
+  (data: string | undefined, ctx: ExecutionContext): any => {
     const request = ctx.switchToHttp().getRequest()
     const user = request.user
 
@@ -31,10 +31,10 @@ export const CurrentUser = createParamDecorator(
     // divergono, e i controller devono seguire l'azienda selezionata — la
     // stessa che l'estensione RLS di Prisma inietta nelle query.
     const tenantAttivo = resolveRequestTenantId(request)
-    if (!tenantAttivo || tenantAttivo === user.tenantId) {
-      return user
-    }
+    const effettivo =
+      !tenantAttivo || tenantAttivo === user.tenantId ? user : { ...user, tenantId: tenantAttivo }
 
-    return { ...user, tenantId: tenantAttivo }
+    // @CurrentUser('id'): singolo campo dell'utente effettivo (come il vecchio decoratore di api/).
+    return data ? effettivo[data] : effettivo
   }
 )

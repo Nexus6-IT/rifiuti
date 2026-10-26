@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'fs'
-import { join, relative, sep } from 'path'
+import { join, posix, relative, sep } from 'path'
 
 const SRC = join(__dirname, '..')
 
@@ -79,6 +79,71 @@ function leggiControllerReali(): Record<string, string> {
   }
   return out
 }
+
+/**
+ * Il vecchio `api/decorators/current-user.decorator` e' ora solo un ri-export, ma un
+ * controller deve importare quello canonico di `auth/decorators`: ripristinare un
+ * decoratore diverso nel vecchio percorso riaprirebbe la trappola (azienda del token).
+ */
+function importaIlVecchioCurrentUser(rel: string, testo: string): boolean {
+  const codice = senzaCommenti(testo)
+  const re = /from\s+['"](\.[^'"]*current-user\.decorator)['"]/g
+  for (const m of codice.matchAll(re)) {
+    const risolto = posix.normalize(posix.join(posix.dirname(rel), m[1]))
+    if (risolto === 'api/decorators/current-user.decorator') return true
+  }
+  return false
+}
+
+function controllerConVecchioCurrentUser(file: Record<string, string>): string[] {
+  return Object.entries(file)
+    .filter(([rel, testo]) => importaIlVecchioCurrentUser(rel, testo))
+    .map(([rel]) => rel)
+    .sort()
+}
+
+/** `@TenantId` non deve leggere il tenant del token ne' l'header grezzo: delega a requireRequestTenantId. */
+function decoratorTenantIdValido(testo: string): boolean {
+  const codice = senzaCommenti(testo)
+  return (
+    /requireRequestTenantId\s*\(/.test(codice) &&
+    !/\buser\s*\??\.\s*tenantId\b/.test(codice) &&
+    !/x-tenant-id/i.test(codice)
+  )
+}
+
+describe('decoratori: azienda selezionata, non quella del token', () => {
+  it('nessun controller importa il vecchio api/decorators/current-user.decorator', () => {
+    expect(controllerConVecchioCurrentUser(leggiControllerReali())).toEqual([])
+  })
+
+  it('tenant.decorator.ts delega a requireRequestTenantId e non legge token ne header', () => {
+    const testo = readFileSync(join(SRC, 'core/decorators/tenant.decorator.ts'), 'utf8')
+    expect(decoratorTenantIdValido(testo)).toBe(true)
+  })
+
+  it('la guardia stessa: segnala import vecchi e decoratori che leggono il token', () => {
+    expect(
+      controllerConVecchioCurrentUser({
+        'api/permissions/x.controller.ts':
+          "import { CurrentUser } from '../decorators/current-user.decorator'",
+        'api/y.controller.ts': "import { CurrentUser } from './decorators/current-user.decorator'",
+        'api/me/ok.controller.ts':
+          "import { CurrentUser } from '../../auth/decorators/current-user.decorator'",
+        'auth/controllers/ok2.controller.ts':
+          "import { CurrentUser } from '../decorators/current-user.decorator'",
+      })
+    ).toEqual(['api/permissions/x.controller.ts', 'api/y.controller.ts'])
+    expect(
+      decoratorTenantIdValido('return request.user?.tenantId || request.headers["x-tenant-id"]')
+    ).toBe(false)
+    expect(
+      decoratorTenantIdValido("return request.headers['x-tenant-id'] ?? requireRequestTenantId(r)")
+    ).toBe(false)
+    expect(decoratorTenantIdValido('return request.user.tenantId')).toBe(false)
+    expect(decoratorTenantIdValido('return requireRequestTenantId(request)')).toBe(true)
+  })
+})
 
 describe('controller: azienda selezionata, non quella del token', () => {
   it('nessun controller fuori elenco legge il tenantId dall utente del token', () => {

@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { RENTRISyncController } from './rentri-sync.controller'
 import { DomainException } from '../../domain/shared/domain-exception'
+import { argomentiCustom } from '../../test-support/argomenti-handler'
 
 describe('RENTRISyncController.syncFIR', () => {
   const queue = { addSyncJob: jest.fn() }
@@ -94,5 +95,37 @@ describe('RENTRISyncController.syncFIR', () => {
     const arg = queue.addSyncJob.mock.calls[0][0]
     expect(arg.tenantId).toBe('tenant-sel')
     expect(arg).not.toHaveProperty('confermaNuovaTrasmissione')
+  })
+})
+
+describe('RENTRISyncController: @TenantId è l’azienda selezionata', () => {
+  it('getSyncStatus: token A, azienda selezionata B → lo use case riceve B', async () => {
+    const getSyncStatusUseCase = {
+      execute: jest.fn().mockResolvedValue({ jobId: 'j1', status: 'completed', progress: 100 }),
+    }
+    const logger = { setContext: jest.fn(), debug: jest.fn(), info: jest.fn(), error: jest.fn() }
+    const controller = new RENTRISyncController(
+      {} as any,
+      getSyncStatusUseCase as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      logger as any,
+      {} as any,
+      {} as any
+    )
+    const request = { tenantId: 'B', user: { id: 'u1', tenantId: 'A' }, headers: {} }
+    const arg = argomentiCustom(RENTRISyncController, 'getSyncStatus', request)
+
+    await controller.getSyncStatus('j1', arg[1] as string, 'u1')
+
+    expect(getSyncStatusUseCase.execute).toHaveBeenCalledWith('j1', 'B')
+  })
+
+  it('senza azienda selezionata né token: 403 prima di toccare il service', () => {
+    const request = { user: { id: 'u1' }, headers: { 'x-tenant-id': 'ALTRUI' } }
+    expect(() => argomentiCustom(RENTRISyncController, 'getSyncStatus', request)).toThrow(
+      ForbiddenException
+    )
   })
 })

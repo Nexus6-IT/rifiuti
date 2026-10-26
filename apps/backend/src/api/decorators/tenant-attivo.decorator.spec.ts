@@ -11,7 +11,10 @@
 
 import 'reflect-metadata'
 import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants'
+import { ForbiddenException } from '@nestjs/common'
 import type { ExecutionContext } from '@nestjs/common'
+import { TenantId } from '../../core/decorators/tenant.decorator'
+import { CurrentUser as CurrentUserVecchioPercorso } from './current-user.decorator'
 import { CurrentTenant } from './current-tenant.decorator'
 import { CurrentUser } from '../../auth/decorators/current-user.decorator'
 
@@ -61,5 +64,46 @@ describe('decorator del tenant attivo', () => {
     // L'identità dell'utente resta la sua: cambia solo l'azienda su cui opera.
     expect(user.id).toBe('super-admin-uuid')
     expect(user.role).toBe('SUPER_ADMIN')
+  })
+})
+
+describe('@TenantId (core/decorators): azienda selezionata, fail-closed', () => {
+  const ctx = (req: unknown) =>
+    ({ switchToHttp: () => ({ getRequest: () => req }) }) as unknown as ExecutionContext
+
+  it('token A, azienda selezionata B: restituisce B', () => {
+    const req = { tenantId: 'B', user: { tenantId: 'A' }, headers: {} }
+    expect(factoryOf(TenantId)(undefined, ctx(req))).toBe('B')
+  })
+
+  it('senza azienda selezionata ripiega sul token (stessa regola di @CurrentTenant)', () => {
+    expect(factoryOf(TenantId)(undefined, ctx({ user: { tenantId: 'A' }, headers: {} }))).toBe('A')
+  })
+
+  it('nessuna azienda: 403, mai undefined', () => {
+    expect(() => factoryOf(TenantId)(undefined, ctx({ user: {}, headers: {} }))).toThrow(
+      ForbiddenException
+    )
+  })
+
+  it("l'header x-tenant-id grezzo (non validato) NON viene usato", () => {
+    const req = { user: {}, headers: { 'x-tenant-id': 'ALTRUI' } }
+    expect(() => factoryOf(TenantId)(undefined, ctx(req))).toThrow(ForbiddenException)
+    const conToken = { user: { tenantId: 'A' }, headers: { 'x-tenant-id': 'ALTRUI' } }
+    expect(factoryOf(TenantId)(undefined, ctx(conToken))).toBe('A')
+  })
+})
+
+describe('@CurrentUser nei controller dei permessi (api/decorators = auth/decorators)', () => {
+  it('il vecchio percorso esporta lo stesso decoratore', () => {
+    expect(CurrentUserVecchioPercorso).toBe(CurrentUser)
+  })
+
+  it("@CurrentUser('id') restituisce il campo, non l'intero utente", () => {
+    expect(factoryOf(CurrentUser)('id', contestoConSwitch())).toBe('super-admin-uuid')
+  })
+
+  it("@CurrentUser('tenantId') segue l'azienda selezionata", () => {
+    expect(factoryOf(CurrentUser)('tenantId', contestoConSwitch())).toBe(TENANT_IMPERSONATO)
   })
 })
