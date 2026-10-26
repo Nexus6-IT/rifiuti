@@ -81,12 +81,13 @@ export interface IFIRRepository {
   /**
    * FIR da riprendere su tutti i tenant (job di recupero): SYNCING oltre la soglia di
    * stallo e PENDING mai avviati di aziende in AUTOMATICA/IBRIDA. `stato` e' lo stato
-   * di sync del FIR (assente: SYNCING).
+   * di sync del FIR. I PENDING devono avere `updated_at` successivo a `pendingAggiornatiDopo`.
    */
   elencaTrasmissioniRentriSospese(
     sogliaStallo: Date,
-    limite: number
-  ): Promise<Array<{ firId: string; tenantId: string; stato?: 'SYNCING' | 'PENDING' }>>
+    limite: number,
+    pendingAggiornatiDopo: Date
+  ): Promise<Array<{ firId: string; tenantId: string; stato: 'SYNCING' | 'PENDING' }>>
 
   /**
    * Save FIR (create or update)

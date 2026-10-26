@@ -7,7 +7,10 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { FIRPrismaRepository } from '../persistence/fir-prisma.repository'
 import { RENTRISyncQueue } from '../queue/rentri-sync.queue'
 import { RentriModalitaLegameService } from '../rentri/rentri-modalita-legame.service'
-import { SOGLIA_STALLO_RENTRI_MS } from '../../application/rentri/sync-fir-to-rentri.use-case'
+import {
+  ETA_MASSIMA_PENDING_RENTRI_MS,
+  SOGLIA_STALLO_RENTRI_MS,
+} from '../../application/rentri/sync-fir-to-rentri.use-case'
 
 /**
  * Riprende le trasmissioni RENTRI rimaste in SYNCING senza che nessun job le
@@ -49,7 +52,8 @@ export class RentriTrasmissioniSospeseJob {
     try {
       const sospese = await this.firRepo.elencaTrasmissioniRentriSospese(
         new Date(Date.now() - SOGLIA_STALLO_RENTRI_MS),
-        RentriTrasmissioniSospeseJob.LIMITE
+        RentriTrasmissioniSospeseJob.LIMITE,
+        new Date(Date.now() - ETA_MASSIMA_PENDING_RENTRI_MS)
       )
 
       let accodate = 0

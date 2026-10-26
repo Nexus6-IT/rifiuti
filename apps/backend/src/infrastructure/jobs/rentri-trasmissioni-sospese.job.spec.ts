@@ -1,5 +1,8 @@
 import { RentriTrasmissioniSospeseJob } from './rentri-trasmissioni-sospese.job'
-import { SOGLIA_STALLO_RENTRI_MS } from '../../application/rentri/sync-fir-to-rentri.use-case'
+import {
+  ETA_MASSIMA_PENDING_RENTRI_MS,
+  SOGLIA_STALLO_RENTRI_MS,
+} from '../../application/rentri/sync-fir-to-rentri.use-case'
 
 describe('RentriTrasmissioniSospeseJob', () => {
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
@@ -74,8 +77,11 @@ describe('RentriTrasmissioniSospeseJob', () => {
 
     await job.riprendi()
 
-    const [soglia, limite] = firRepo.elencaTrasmissioniRentriSospese.mock.calls[0]
+    const [soglia, limite, pendingDopo] = firRepo.elencaTrasmissioniRentriSospese.mock.calls[0]
     expect(limite).toBe(100)
+    expect(Math.abs(pendingDopo.getTime() - (prima - ETA_MASSIMA_PENDING_RENTRI_MS))).toBeLessThan(
+      5000
+    )
     expect(Math.abs(soglia.getTime() - (prima - SOGLIA_STALLO_RENTRI_MS))).toBeLessThan(5000)
     expect(queue.addSyncJob).toHaveBeenCalledWith({
       firId: 'f1',

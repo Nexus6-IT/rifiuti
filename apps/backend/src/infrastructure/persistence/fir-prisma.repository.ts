@@ -259,12 +259,16 @@ export class FIRPrismaRepository implements IFIRRepository {
    * - SYNCING oltre la soglia di stallo (o senza data di avvio);
    * - PENDING emessi, mai avviati (`rentri_sync_avviato_at` nullo), non legati, non
    *   annullati, di aziende in AUTOMATICA o IBRIDA e fermi da oltre la soglia: un FIR
-   *   riaperto a PENDING mentre Redis era giu' resterebbe senza job per sempre.
+   *   riaperto a PENDING mentre Redis era giu' resterebbe senza job per sempre, ma solo se
+   *   aggiornati dopo `pendingAggiornatiDopo` (tetto di eta').
+   * I SYNCING vengono per primi: un PENDING che fallisce sempre prima della prenotazione
+   *   non deve affamare il recupero degli stalli.
    *   Le aziende in MANUALE non si toccano: li' la trasmissione parte solo a mano.
    */
   async elencaTrasmissioniRentriSospese(
     sogliaStallo: Date,
-    limite: number
+    limite: number,
+    pendingAggiornatiDopo: Date
   ): Promise<Array<{ firId: string; tenantId: string; stato: 'SYNCING' | 'PENDING' }>> {
     // Sistema: elenco delle aziende con trasmissione automatica (nessuna azienda nota in partenza).
     // La lettura di `tenants` passa da escludiPiattaforma; il join non si scrive in SQL grezzo.
@@ -287,7 +291,8 @@ export class FIRPrismaRepository implements IFIRRepository {
         OR (
           rentri_sync_status = 'PENDING'::rentri_sync_status
           AND rentri_sync_avviato_at IS NULL
-          AND updated_at < ${sogliaStallo}
+          AND (updated_at AT TIME ZONE 'UTC') < ${sogliaStallo}
+          AND (updated_at AT TIME ZONE 'UTC') > ${pendingAggiornatiDopo}
           AND rentri_numero_fir IS NULL
           AND status IN (
             'AWAITING_CARRIER'::fir_status,
@@ -298,7 +303,8 @@ export class FIRPrismaRepository implements IFIRRepository {
           AND rentri_stato_formulario::text IS DISTINCT FROM ${STATO_RENTRI_ANNULLATO}
           AND tenant_id::text = ANY(${idAziende}::text[])
         )
-      ORDER BY rentri_sync_avviato_at NULLS FIRST, id
+      ORDER BY (rentri_sync_status = 'SYNCING'::rentri_sync_status) DESC,
+        rentri_sync_avviato_at NULLS FIRST, id
       LIMIT ${limite}`
     return righe.map(r => ({ firId: r.fir_id, tenantId: r.tenant_id, stato: r.stato }))
   }

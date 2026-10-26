@@ -108,7 +108,7 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
     it('elencaTrasmissioniRentriSospese: elenco delle aziende dal client di sistema', async () => {
       sistema.$queryRaw.mockResolvedValue([{ fir_id: 'f1', tenant_id: 't1' }])
 
-      const elenco = await repo.elencaTrasmissioniRentriSospese(new Date(), 100)
+      const elenco = await repo.elencaTrasmissioniRentriSospese(new Date(), 100, new Date())
 
       expect(elenco).toEqual([{ firId: 'f1', tenantId: 't1' }])
       expect(sistema.$queryRaw).toHaveBeenCalledTimes(1)
