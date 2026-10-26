@@ -9,10 +9,12 @@ import { conRunIsolata } from '../../fixtures/run-isolata'
  * e verifica — con una lettura indipendente dal registro — che non resti
  * alcun residuo con quel prefisso.
  *
- * RICHIEDE un backend locale raggiungibile su E2E_API_URL/E2E_BASE_URL più
- * credenziali per il ruolo "admin" (E2E_ADMIN_USER/PASS, usate solo per
- * l'email — vedi utils/api-client.ts `apiLogin`, che passa via il bypass
- * di sviluppo POST /auth/dev/login, non disponibile in produzione).
+ * RICHIEDE un backend locale raggiungibile su E2E_API_URL/E2E_BASE_URL con il
+ * bypass di sviluppo POST /auth/dev/login attivo (non esiste in produzione).
+ * Per questo la spec sta in tests/pulizia/ (passata 2 della CI) e NON in
+ * tests/public/ (passata 1, backend in modalità produzione). `apiLogin`
+ * (utils/api-client.ts) usa l'email di E2E_ADMIN_USER/PASS se presenti,
+ * altrimenti quella del seed dev-login: stessa regola di hasRoleCredentials.
  *
  * In questo ambiente di sviluppo lo stack backend non è acceso (vincolo di
  * memoria della macchina — vedi task brief): il test viene saltato
