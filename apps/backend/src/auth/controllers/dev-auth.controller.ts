@@ -63,6 +63,7 @@ export class DevAuthController {
     }
 
     // Get tenant and role (User has direct tenantId)
+    // azienda primaria: record utente letto dal DB, con cui si emette il token (login)
     const tenantId = user.tenantId || ''
     const role = user.role || 'VIEWER'
 

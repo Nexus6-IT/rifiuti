@@ -82,6 +82,7 @@ export class AuthController {
     }
 
     // Get tenant and role (User schema has single tenant relationship)
+    // azienda primaria: record utente letto dal DB, con cui si emette il token (login)
     const tenantId = user.tenantId || ''
     const role = user.role || 'VIEWER'
 
@@ -152,6 +153,7 @@ export class AuthController {
     }
 
     const role = user.role || 'VIEWER'
+    // azienda primaria: record utente letto dal DB, base per ricontrollare l'accesso all'azienda del refresh
     const tenantPrimario = user.tenantId || ''
     // Azienda del token che si rinnova: quella scelta con lo switch, se il refresh token la
     // porta; altrimenti (token del login, o emessi prima di questa modifica) la primaria.
