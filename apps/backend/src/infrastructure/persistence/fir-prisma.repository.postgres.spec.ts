@@ -911,6 +911,7 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         expect(fermo.rentriSyncStatus).toBe('PERMANENTLY_FAILED')
         expect(fermo.rentriLastSyncErrorCode).toBe(CODICE_CERTIFICATO_MANCANTE)
         expect(fermo.rentriTransazioneInAttesa).toBe('tx-attesa-certificato')
+        expect(fermo.rentriSyncAvviatoAt).not.toBeNull()
 
         // 2. Il certificato viene caricato: il FIR si riapre, la transazione resta.
         const credenziali = new RentriCredentialService(
