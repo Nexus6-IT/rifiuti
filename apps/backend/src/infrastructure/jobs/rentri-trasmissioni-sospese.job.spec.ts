@@ -5,16 +5,25 @@ import {
 } from '../../application/rentri/sync-fir-to-rentri.use-case'
 
 describe('RentriTrasmissioniSospeseJob', () => {
-  const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  const logger: any = {
+    setContext: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    error: jest.fn(),
+  }
   let firRepo: { elencaTrasmissioniRentriSospese: jest.Mock }
-  let queue: { addSyncJob: jest.Mock }
+  let queue: { addSyncJob: jest.Mock; getJobState: jest.Mock }
   let modalita: { getForTenant: jest.Mock }
   let job: RentriTrasmissioniSospeseJob
 
   beforeEach(() => {
     jest.clearAllMocks()
     firRepo = { elencaTrasmissioniRentriSospese: jest.fn() }
-    queue = { addSyncJob: jest.fn().mockResolvedValue('id') }
+    queue = {
+      addSyncJob: jest.fn().mockResolvedValue('id'),
+      getJobState: jest.fn().mockResolvedValue(null),
+    }
     modalita = {
       getForTenant: jest
         .fn()
@@ -66,6 +75,26 @@ describe('RentriTrasmissioniSospeseJob', () => {
 
     expect(queue.addSyncJob).toHaveBeenCalledTimes(1)
     expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-sync' }))
+  })
+
+  it('FIR PENDING con job sync-<id> in failed → non riaccodato; senza job → accodato; SYNCING invariato', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f-rotto', tenantId: 't1', stato: 'PENDING' },
+      { firId: 'f-nuovo', tenantId: 't1', stato: 'PENDING' },
+      { firId: 'f-sync', tenantId: 't1', stato: 'SYNCING' },
+    ])
+    queue.getJobState.mockImplementation(async (jobId: string) =>
+      jobId === 'sync-f-rotto' || jobId === 'sync-f-sync' ? 'failed' : null
+    )
+
+    await job.riprendi()
+
+    expect(queue.addSyncJob).toHaveBeenCalledTimes(2)
+    expect(queue.addSyncJob).not.toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-rotto' }))
+    expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-nuovo' }))
+    // I SYNCING si riprendono come prima, anche con un job fallito (non si guarda lo stato)
+    expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-sync' }))
+    expect(logger.error).not.toHaveBeenCalled()
   })
 
   it('accoda i FIR sospesi con priorità low', async () => {

@@ -35,7 +35,11 @@ import {
   FirNonPiuInBozzaError,
 } from '../../core/domain/errors'
 import { formattaNumeroFir } from '../../domain/fir/numero-fir'
-import { STATI_FIR_IN_BOZZA, STATO_RENTRI_ANNULLATO } from '../../domain/fir/stati-fir'
+import {
+  STATI_FIR_EMESSI,
+  STATI_FIR_IN_BOZZA,
+  STATO_RENTRI_ANNULLATO,
+} from '../../domain/fir/stati-fir'
 import { PrismaService } from './prisma.service'
 import { PrismaSistemaService } from './prisma-sistema.service'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
@@ -262,7 +266,8 @@ export class FIRPrismaRepository implements IFIRRepository {
    *   riaperto a PENDING mentre Redis era giu' resterebbe senza job per sempre, ma solo se
    *   aggiornati dopo `pendingAggiornatiDopo` (tetto di eta').
    * I SYNCING vengono per primi: un PENDING che fallisce sempre prima della prenotazione
-   *   non deve affamare il recupero degli stalli.
+   *   non deve affamare il recupero degli stalli. Fra i PENDING vengono prima quelli
+   *   aggiornati piu' di recente (es. riaperti dal caricamento del certificato), poi i vecchi.
    *   Le aziende in MANUALE non si toccano: li' la trasmissione parte solo a mano.
    */
   async elencaTrasmissioniRentriSospese(
@@ -273,7 +278,11 @@ export class FIRPrismaRepository implements IFIRRepository {
     // Sistema: elenco delle aziende con trasmissione automatica (nessuna azienda nota in partenza).
     // La lettura di `tenants` passa da escludiPiattaforma; il join non si scrive in SQL grezzo.
     const aziende = await this.sistema.tenant.findMany({
-      where: escludiPiattaforma({ rentriModalitaLegame: { in: ['AUTOMATICA', 'IBRIDA'] } }),
+      where: escludiPiattaforma({
+        rentriModalitaLegame: { in: ['AUTOMATICA', 'IBRIDA'] },
+        // Come gli altri job RENTRI: solo aziende con abbonamento attivo o in prova
+        subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] },
+      }),
       select: { id: true },
     })
     const idAziende = aziende.map(a => a.id)
@@ -294,17 +303,16 @@ export class FIRPrismaRepository implements IFIRRepository {
           AND (updated_at AT TIME ZONE 'UTC') < ${sogliaStallo}
           AND (updated_at AT TIME ZONE 'UTC') > ${pendingAggiornatiDopo}
           AND rentri_numero_fir IS NULL
-          AND status IN (
-            'AWAITING_CARRIER'::fir_status,
-            'AWAITING_RECEIVER'::fir_status,
-            'COMPLETED'::fir_status,
-            'SYNCED_TO_RENTRI'::fir_status
-          )
+          AND status = ANY(${[...STATI_FIR_EMESSI]}::text[]::fir_status[])
           AND rentri_stato_formulario::text IS DISTINCT FROM ${STATO_RENTRI_ANNULLATO}
           AND tenant_id::text = ANY(${idAziende}::text[])
         )
       ORDER BY (rentri_sync_status = 'SYNCING'::rentri_sync_status) DESC,
-        rentri_sync_avviato_at NULLS FIRST, id
+        CASE WHEN rentri_sync_status = 'SYNCING'::rentri_sync_status
+          THEN rentri_sync_avviato_at END NULLS FIRST,
+        CASE WHEN rentri_sync_status = 'PENDING'::rentri_sync_status
+          THEN updated_at END DESC,
+        id
       LIMIT ${limite}`
     return righe.map(r => ({ firId: r.fir_id, tenantId: r.tenant_id, stato: r.stato }))
   }

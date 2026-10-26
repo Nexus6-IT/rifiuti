@@ -15,8 +15,10 @@ import {
 /**
  * Riprende le trasmissioni RENTRI rimaste in SYNCING senza che nessun job le
  * stia portando avanti (worker caduto, Redis svuotato, riavvio a metà POST).
- * Ogni 30 minuti cerca, su tutti i tenant, i FIR con la prenotazione più
- * vecchia di `SOGLIA_STALLO_RENTRI_MS` e li riaccoda con priorità low: il use
+ * Gira ogni 30 minuti e cerca, su tutti i tenant, i FIR con la prenotazione più
+ * vecchia di `SOGLIA_STALLO_RENTRI_MS` (15 minuti): la ripresa avviene quindi dopo
+ * soglia + intervallo del cron, cioe' al massimo circa 45 minuti, non «entro un giro».
+ * Li riaccoda con priorità low: il use
  * case di sync è idempotente (riprende la transazione già aperta invece di
  * fare una nuova POST) e il jobId per FIR impedisce doppioni in coda.
  *
@@ -28,7 +30,9 @@ import {
  *
  * Riprende anche i FIR PENDING mai avviati (nessun job li sta portando avanti:
  * es. riaperti mentre Redis era giu') delle aziende in AUTOMATICA o IBRIDA; in
- * MANUALE restano fermi. Il jobId `sync-<firId>` e' deterministico, quindi un
+ * MANUALE restano fermi. Un PENDING il cui job `sync-<firId>` e' in stato failed
+ * (BullMQ lo tiene 7 giorni) non si riaccoda: serve un nuovo invio manuale, cosi' i FIR
+ * con dati mancanti non rientrano ogni 30 minuti. Il jobId `sync-<firId>` e' deterministico, quindi un
  * FIR gia' in coda non si duplica.
  *
  * Al massimo 100 FIR per giro: il resto viene ripreso al giro successivo.
@@ -58,6 +62,7 @@ export class RentriTrasmissioniSospeseJob {
 
       let accodate = 0
       let inErrore = 0
+      let inAttesaManuale = 0
       const modalitaPerTenant = new Map<string, Promise<RentriModalitaLegame>>()
       for (const { firId, tenantId, stato } of sospese) {
         try {
@@ -75,6 +80,13 @@ export class RentriTrasmissioniSospeseJob {
           // Un PENDING mai avviato si riprende solo dove la trasmissione e' automatica:
           // in MANUALE parte solo a mano.
           if (stato === 'PENDING' && modalita === 'MANUALE') continue
+          // Un PENDING il cui job sync-<id> e' fallito (es. dato mancante prima della
+          // prenotazione) non si riaccoda a ogni giro: resta per il nuovo invio manuale
+          // (BullMQ tiene il job fallito 7 giorni). I SYNCING non passano da qui.
+          if (stato === 'PENDING' && (await this.queue.getJobState(`sync-${firId}`)) === 'failed') {
+            inAttesaManuale++
+            continue
+          }
           const richiedeConferma = modalita === 'IBRIDA'
           await this.queue.addSyncJob({ firId, tenantId, priority: 'low', richiedeConferma })
           accodate++
@@ -87,6 +99,13 @@ export class RentriTrasmissioniSospeseJob {
           )
           segnalaErroreJob('riprendiTrasmissioniSospese', error, { tenantId })
         }
+      }
+
+      if (inAttesaManuale > 0) {
+        this.logger.info(
+          'FIR PENDING con trasmissione fallita lasciati al nuovo invio manuale, non riaccodati',
+          { inAttesaManuale }
+        )
       }
 
       this.logger.info('Ripresa trasmissioni RENTRI sospese completata', {

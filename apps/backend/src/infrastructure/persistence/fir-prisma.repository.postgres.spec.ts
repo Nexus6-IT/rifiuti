@@ -690,13 +690,17 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         piattaformaCreata: false,
       }
 
-      async function creaTenant(modalita: 'MANUALE' | 'AUTOMATICA' | 'IBRIDA'): Promise<string> {
+      async function creaTenant(
+        modalita: 'MANUALE' | 'AUTOMATICA' | 'IBRIDA',
+        subscriptionStatus: 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' = 'ACTIVE'
+      ): Promise<string> {
         const t = await prisma.tenant.create({
           data: {
             partitaIva: `PD${Math.random().toString().slice(2, 11)}`,
             ragioneSociale: `Pending ${modalita}`,
             country: 'IT',
             rentriModalitaLegame: modalita,
+            subscriptionStatus,
           },
         })
         extra.tenant.push(t.id)
@@ -837,6 +841,43 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         expect(elenco[0].stato).toBe('SYNCING')
       })
 
+      it('aziende con abbonamento non ACTIVE/TRIAL (scaduto, sospeso): i loro PENDING non si riprendono', async () => {
+        const attiva = await creaTenant('AUTOMATICA', 'ACTIVE')
+        const prova = await creaTenant('IBRIDA', 'TRIAL')
+        const scaduta = await creaTenant('AUTOMATICA', 'EXPIRED')
+        const sospesa = await creaTenant('AUTOMATICA', 'SUSPENDED')
+        const inAttiva = await firDi(attiva)
+        const inProva = await firDi(prova)
+        const inScaduta = await firDi(scaduta)
+        const inSospesa = await firDi(sospesa)
+
+        const ids = (await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO)).map(
+          e => e.firId
+        )
+
+        expect(ids).toEqual(expect.arrayContaining([inAttiva, inProva]))
+        expect(ids).not.toContain(inScaduta)
+        expect(ids).not.toContain(inSospesa)
+      })
+
+      it("un FIR appena riaperto di un'altra azienda passa davanti a molti PENDING vecchi oltre il limite", async () => {
+        const rotta = await creaTenant('AUTOMATICA')
+        const sana = await creaTenant('AUTOMATICA')
+        for (let i = 0; i < 12; i++) await firDi(rotta, {}, new Date('2026-10-05T10:00:00.000Z'))
+        const riaperto = await firDi(sana, {}, new Date('2026-10-22T08:00:00.000Z'))
+
+        // I SYNCING in stallo (anche di altri test) vengono comunque per primi: il limite li include.
+        const tutti = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 10000, TETTO)
+        const nSyncing = tutti.filter(e => e.stato === 'SYNCING').length
+        const limite = nSyncing + 5
+
+        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, limite, TETTO)
+
+        expect(elenco).toHaveLength(limite)
+        // Il primo PENDING dopo i SYNCING e' il riaperto di recente.
+        expect(elenco[nSyncing].firId).toBe(riaperto)
+      })
+
       it('la soglia su updated_at non dipende dal fuso della sessione', async () => {
         const auto = await creaTenant('AUTOMATICA')
         const id = await firDi(auto, {}, new Date('2026-10-23T09:00:00.000Z'))
@@ -926,6 +967,34 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
           privateKeyPem: '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----',
         })
         expect(riaperti).toContain(fir.id)
+        // Il recupero lo riprende dal primo giro dopo la soglia: updated_at e' stato aggiornato
+        // dalla riapertura (la azienda deve essere in trasmissione automatica).
+        const modalitaPrima = (await prisma.tenant.findUnique({ where: { id: tenantId } }))!
+          .rentriModalitaLegame
+        await prisma.tenant.update({
+          where: { id: tenantId },
+          data: { rentriModalitaLegame: 'AUTOMATICA', subscriptionStatus: 'ACTIVE' },
+        })
+        try {
+          const aggiornatoPrima = (await riga(fir.id)).updatedAt as Date
+          expect(aggiornatoPrima.getTime()).toBeGreaterThan(Date.now() - 60_000)
+          await prisma.$executeRaw`UPDATE firs SET updated_at = (${new Date('2026-10-22T08:00:00.000Z').toISOString()}::timestamptz AT TIME ZONE 'UTC') WHERE id = ${fir.id}::uuid`
+          const sospese = await repoLettura.elencaTrasmissioniRentriSospese(
+            SOGLIA,
+            1000,
+            new Date('2026-10-01T00:00:00.000Z')
+          )
+          expect(sospese.find(e => e.firId === fir.id)).toEqual({
+            firId: fir.id,
+            tenantId,
+            stato: 'PENDING',
+          })
+        } finally {
+          await prisma.tenant.update({
+            where: { id: tenantId },
+            data: { rentriModalitaLegame: modalitaPrima },
+          })
+        }
         const riaperto = await riga(fir.id)
         expect(riaperto.rentriSyncStatus).toBe('PENDING')
         expect(riaperto.rentriSyncAvviatoAt).toBeNull()
