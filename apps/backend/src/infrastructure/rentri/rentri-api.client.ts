@@ -13,6 +13,12 @@ import { RentriRateLimiterService } from './rentri-rate-limiter.service'
 import type { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
 
 /**
+ * Errori sollevati dalla chiamata `httpService.post` stessa (richiesta
+ * effettivamente inviata), per distinguerli dai fallimenti precedenti l'invio.
+ */
+const erroriChiamataHttp = new WeakSet<object>()
+
+/**
  * RENTRI API Client
  *
  * Comunica con l'ambiente reale RENTRI (demo/prod, vedi {@link RentriConfig})
@@ -36,11 +42,6 @@ import type { StatoFormulario } from '../../domain/fir/aggregates/fir.aggregate'
  *
  * ATTIVARE: caricare certificato + completare iscrizione RENTRI (area operatori).
  */
-/**
- * Errori sollevati dalla chiamata `httpService.post` stessa (richiesta
- * effettivamente inviata), per distinguerli dai fallimenti precedenti l'invio.
- */
-const erroriChiamataHttp = new WeakSet<object>()
 
 @Injectable()
 export class RENTRIApiClient {
@@ -422,8 +423,8 @@ export class RENTRIApiClient {
 
   // ------------------------------------------------------------------
   // Firma remota RENTRI (R3 Task 3) — servizio `formulari` (contratto
-  // ufficiale) + servizio `ca-rentri` (NESSUN contratto pubblico, v.
-  // CA_RENTRI_PATH sopra). Tutte queste chiamate passano dagli stessi
+  // ufficiale) + servizio `ca-rentri` (contratto in
+  // `docs/contracts/rentri/ca-rentri.yaml`, v. CA_RENTRI_PATH sopra). Tutte queste chiamate passano dagli stessi
   // meccanismi ID_AUTH_REST_02 / INTEGRITY_REST_01 già usati dal resto del
   // client (`post`/`get`): il certificato di INTEROPERABILITÀ che autentica
   // la chiamata resta un oggetto distinto dal certificato di FIRMA REMOTA

@@ -273,17 +273,16 @@ describe('RentriCredentialResolver', () => {
   })
 
   it.each([
-    ['credenziale propria', envConfig, 'tenant-A', true],
-    ['env legato con PEM', envConfig, 'tenant-pilota', true],
+    ['credenziale propria', envConfig, 'tenant-A'],
+    ['env legato con PEM', envConfig, 'tenant-pilota'],
     [
       'env legato con PEM vuoti',
       { ...envConfig, certificatePem: '', privateKeyPem: '' },
       'tenant-pilota',
-      true,
     ],
-    ['altro tenant', envConfig, 'tenant-altro', true],
-    ['envTenantId non impostato', { ...envConfig, envTenantId: '' }, 'tenant-pilota', true],
-  ])('haCredenziale coerente con resolve: %s', async (_nome, config, tenantId, _x) => {
+    ['altro tenant', envConfig, 'tenant-altro'],
+    ['envTenantId non impostato', { ...envConfig, envTenantId: '' }, 'tenant-pilota'],
+  ])('haCredenziale coerente con resolve: %s', async (_nome, config, tenantId) => {
     const resolver = makeResolver(config)
     credentialService.getForTenant.mockImplementation(async (t: string) =>
       t === 'tenant-A' ? credTenant() : null

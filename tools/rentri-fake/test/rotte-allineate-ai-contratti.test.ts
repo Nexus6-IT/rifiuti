@@ -55,12 +55,13 @@ const CONTRATTO_PER_PREFISSO: Record<string, string> = {
 const PREFISSI_TECNICI_ESCLUSI = ['/__controllo', '/__salute', '/token']
 
 /**
- * Scostamenti gia' presenti in servizi diversi da ca-rentri: non si correggono
- * in questo piano. Ogni voce e' `METODO /path` e dice perche' resta. Le chiavi
- * usano i nomi di parametro e lo slash ESATTI della fake (`{identificativo}`,
- * senza slash finale), non la forma normalizzata usata per il confronto.
- * Il test fallisce se una voce non e' piu' uno scostamento, cosi' l'elenco non
- * invecchia.
+ * Scostamenti noti fra una rotta della fake e il contratto: oggi NESSUNO (dopo
+ * l'allineamento di ca-rentri la mappa e' vuota). Una voce si aggiunge solo con
+ * una motivazione e un piano per chiuderla. Ogni voce e' `METODO /path`; le
+ * chiavi usano i nomi di parametro e lo slash ESATTI della fake
+ * (`{identificativo}`, senza slash finale), non la forma normalizzata usata per
+ * il confronto. Il test fallisce se una voce non e' piu' uno scostamento, cosi'
+ * l'elenco non invecchia.
  */
 const SCOSTAMENTI_NOTI: Record<string, string> = {}
 

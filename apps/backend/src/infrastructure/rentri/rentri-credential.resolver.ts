@@ -52,7 +52,7 @@ export class TenantSenzaCertificatoRentriError extends Error {
  * volta per processo): nei worker BullMQ il contesto non c'e', quindi i
  * chiamanti devono passare il tenant. I warn di tenant si scrivono una volta per
  * tenant per processo; ogni uso dell'env da parte di un tenant incrementa
- * `rentri_credential_env_fallback_total`.
+ * `wasteflow_rentri_credential_env_fallback_total`.
  */
 @Injectable()
 export class RentriCredentialResolver {
@@ -145,12 +145,15 @@ export class RentriCredentialResolver {
   }
 
   /**
-   * Il tenant ha una credenziale utilizzabile? Stessa regola di {@link resolve}
-   * (credenziale propria; altrimenti env solo per il tenant legato da
-   * `RENTRI_ENV_TENANT_ID`, anche se i PEM env mancano: li' resolve da' un errore di configurazione), ma non solleva e non ha
-   * effetti collaterali: niente warn, niente conteggio del fallback env (un
-   * controllo dei job periodici non e' un uso). Se la lettura della credenziale
-   * fallisce l'errore si propaga: non e' un "no" e va trattato come guasto vero.
+   * Il tenant ha una credenziale utilizzabile? Stessa regola di {@link resolve}:
+   * credenziale propria; altrimenti env solo per il tenant legato da
+   * `RENTRI_ENV_TENANT_ID`, anche se i PEM env mancano (li' resolve da' un errore
+   * di configurazione). Non solleva e non ha effetti collaterali:
+   * niente warn, niente conteggio del fallback env (un controllo dei job
+   * periodici non e' un uso).
+   *
+   * Se la lettura della credenziale fallisce l'errore si propaga: non e' un
+   * "no" e va trattato come guasto vero.
    */
   async haCredenziale(tenantId: string): Promise<boolean> {
     if (await this.credentialService.getForTenant(tenantId)) return true

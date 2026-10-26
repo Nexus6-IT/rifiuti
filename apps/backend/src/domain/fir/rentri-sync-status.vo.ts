@@ -70,6 +70,8 @@ export class RENTRISyncStatus {
     // L'azienda non ha un certificato RENTRI proprio: ritentare non lo crea. Si riapre
     // al caricamento del certificato (v. RentriCredentialService): in AUTOMATICA/IBRIDA ripartono
     // da soli, in MANUALE con «Trasmetti a RENTRI».
+    // Letterale volutamente duplicato: il dominio non puo' importare dall'infrastruttura;
+    // la costante unica e' `CODICE_CERTIFICATO_MANCANTE` (rentri-certificato.costanti.ts).
     'RENTRI_CERTIFICATO_MANCANTE',
   ])
 

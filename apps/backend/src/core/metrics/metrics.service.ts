@@ -144,7 +144,7 @@ export class MetricsService implements OnModuleInit {
     })
 
     this.rentriCredentialEnvFallback = new Counter({
-      name: 'rentri_credential_env_fallback_total',
+      name: 'wasteflow_rentri_credential_env_fallback_total',
       help: "Numero di risoluzioni della credenziale RENTRI in cui un tenant ha usato la credenziale globale da env (RENTRI_ENV_TENANT_ID) invece di un certificato proprio, per tenant. Un valore che cresce indica un'azienda ancora senza certificato caricato.",
       labelNames: ['tenant_id'],
       registers: [this.registry],
