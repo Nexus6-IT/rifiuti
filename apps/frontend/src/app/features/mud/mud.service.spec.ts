@@ -16,6 +16,7 @@ import {
   puoGenerareConAvvisi,
   righeIntegrazioni,
   testoConferma,
+  AVVISO_VOCE_SENZA_SEDE,
 } from './mud.service'
 import { environment } from '../../../environments/environment'
 
@@ -517,6 +518,53 @@ describe('corpoIntegrazioni', () => {
       'reg-A',
       'reg-B',
     ])
+  })
+
+  it('MUD: con più registri l’etichetta del movimento include la sede, con un registro solo resta identica', () => {
+    const bloccanti = [
+      bloccante(INTEGRAZIONE_A),
+      bloccante({ ...INTEGRAZIONE_A, chiave: '2025/5@reg-B', registroId: 'reg-B' }),
+    ]
+    const uno = righeIntegrazioni(bloccanti, integrazioniVuote())
+    expect(uno.map(r => r.etichetta)).toEqual(['Movimento n. 5/2025', 'Movimento n. 5/2025'])
+
+    const due = righeIntegrazioni(bloccanti, {
+      ...integrazioniVuote(),
+      registri: { 'reg-A': 'Sede A', 'reg-B': 'Sede B' },
+    })
+    expect(due.map(r => r.etichetta)).toEqual([
+      'Movimento n. 5/2025 (Sede A)',
+      'Movimento n. 5/2025 (Sede B)',
+    ])
+  })
+
+  it('una voce salvata con registro, senza bloccante, mostra la sede', () => {
+    const r = righeIntegrazioni([], {
+      ...integrazioniVuote(),
+      registri: { 'reg-A': 'Sede A', 'reg-B': 'Sede B' },
+      destinatariMovimento: {
+        '2025/5@reg-B': { ragioneSociale: 'Due Srl', codiceFiscale: '12345678903' },
+      },
+    })
+    expect(r.map(x => [x.etichetta, x.avviso])).toEqual([
+      ['Movimento n. 5/2025 (Sede B)', undefined],
+    ])
+  })
+
+  it('una voce salvata senza registroId con più registri è segnalata come non più usata', () => {
+    const salvata = {
+      '2024/12': { ragioneSociale: 'Impianto Nord', codiceFiscale: '12345678903' },
+    }
+    const con = righeIntegrazioni([], {
+      ...integrazioniVuote(),
+      registri: { 'reg-A': 'Sede A', 'reg-B': 'Sede B' },
+      destinatariMovimento: salvata,
+    })
+    expect(con[0].avviso).toBe(AVVISO_VOCE_SENZA_SEDE)
+
+    // con un registro solo la voce vecchia vale ancora: nessun avviso
+    const senza = righeIntegrazioni([], { ...integrazioniVuote(), destinatariMovimento: salvata })
+    expect(senza[0].avviso).toBeUndefined()
   })
 
   it('una voce salvata con la chiave vecchia si rimanda senza registroId', () => {

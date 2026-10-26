@@ -104,7 +104,7 @@ describe('MudAggregazioneService', () => {
           .mockResolvedValue([{ denominazione: 'Sede', numIscrSito: 'OP1', principale: true }]),
       },
       mUDReport: { findUnique: jest.fn().mockResolvedValue(null) },
-      registroRifiuti: { count: jest.fn().mockResolvedValue(1) },
+      registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
     }
     referenceData = { findComuneByName: jest.fn().mockResolvedValue({ code: '015146' }) }
     service = new MudAggregazioneService(prisma, referenceData, logger)
@@ -719,13 +719,18 @@ describe('MudAggregazioneService', () => {
 
   describe('MUD: destinatario del movimento con più registri (stesso anno/numero)', () => {
     const soggetto = { ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' }
+    const dueRegistri = () =>
+      prisma.registroRifiuti.findMany.mockResolvedValue([
+        { id: 'reg-A', descrizione: 'Registro', unitaLocale: { denominazione: 'Sede A' } },
+        { id: 'reg-B', descrizione: 'Registro', unitaLocale: { denominazione: 'Sede B' } },
+      ])
     const dueMovimenti = () => [
       scaricoSenzaFir({ registroId: 'reg-A', counterpartName: null }),
       scaricoSenzaFir({ registroId: 'reg-B', counterpartName: null }),
     ]
 
     it('un destinatario integrato per il movimento del registro A NON soddisfa il controllo sul registro B', async () => {
-      prisma.registroRifiuti.count.mockResolvedValue(2)
+      dueRegistri()
       impostaDati({ movimenti: dueMovimenti() })
       integrazioni({ destinatariMovimento: { '2025/5@reg-A': soggetto } })
 
@@ -737,6 +742,8 @@ describe('MudAggregazioneService', () => {
         chiave: '2025/5@reg-B',
         registroId: 'reg-B',
       })
+      // con due registri il testo dice di quale sede è il movimento
+      expect(bloccanti[0].messaggio).toContain('Movimento n. 5/2025 (Sede B)')
       expect(haBloccanti(r.controlli)).toBe(true)
       expect(r.righe[0].dr).toEqual([
         expect.objectContaining({ codiceFiscale: '12345678903', quantitaKg: 300 }),
@@ -744,7 +751,7 @@ describe('MudAggregazioneService', () => {
     })
 
     it('con un destinatario per ciascun registro nessun bloccante', async () => {
-      prisma.registroRifiuti.count.mockResolvedValue(2)
+      dueRegistri()
       impostaDati({ movimenti: dueMovimenti() })
       integrazioni({
         destinatariMovimento: { '2025/5@reg-A': soggetto, '2025/5@reg-B': soggetto },
@@ -756,7 +763,6 @@ describe('MudAggregazioneService', () => {
     })
 
     it('la chiave vecchia anno/numero è accettata con un solo registro', async () => {
-      prisma.registroRifiuti.count.mockResolvedValue(1)
       impostaDati({ movimenti: [scaricoSenzaFir({ counterpartName: null })] })
       integrazioni({ destinatariMovimento: { '2025/5': soggetto } })
 
@@ -766,7 +772,7 @@ describe('MudAggregazioneService', () => {
     })
 
     it('la chiave vecchia anno/numero è ignorata con due registri: il controllo torna a segnalare', async () => {
-      prisma.registroRifiuti.count.mockResolvedValue(2)
+      dueRegistri()
       impostaDati({ movimenti: dueMovimenti() })
       integrazioni({ destinatariMovimento: { '2025/5': soggetto } })
 

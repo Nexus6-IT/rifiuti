@@ -411,6 +411,19 @@ describe('RentriUnitaLocaleService', () => {
       )
     })
 
+    it('P2003 anche se al controllo la sede non aveva registro (creato subito dopo): stesso BadRequest, non un 500', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
+      db.registroRifiuti.findMany.mockResolvedValue([])
+      db.rentriUnitaLocale.deleteMany.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('fk', { code: 'P2003', clientVersion: 'x' })
+      )
+
+      const errore = await service.remove('tenant-1', 'ul-2').catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe(MESSAGGIO)
+    })
+
     it('una registrazione concorrente nel registro appena svuotato (chiave esterna) dà lo stesso BadRequest', async () => {
       db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
       db.registroRifiuti.findMany.mockResolvedValue([{ id: 'reg-2' }])

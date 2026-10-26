@@ -19,6 +19,7 @@ import {
   statoFisicoMud,
   type StatoFisicoRegistro,
 } from './mud-regole'
+import { etichetteRegistri } from './mud-registri'
 import { controlliMud, type MudEsitoControllo, type RifMovimento } from './mud-controlli'
 import {
   chiaveDestinatario,
@@ -287,6 +288,7 @@ export class MudAggregazioneService {
     })
     const integrazioni = leggiIntegrazioni(record?.reportData)
 
+    const registri = await etichetteRegistri(this.prisma, tenantId)
     const fonti: FontiSoggetti = {
       destinatari: await this.caricaDestinatari(
         tenantId,
@@ -294,12 +296,13 @@ export class MudAggregazioneService {
       ),
       trasportatori: await this.caricaTrasportatori(tenantId, firCollegati),
       integrazioni,
-      unSoloRegistro: (await this.prisma.registroRifiuti.count({ where: { tenantId } })) <= 1,
+      unSoloRegistro: registri.size === 0,
     }
 
     const controlli: MudEsitoControllo[] = []
     const rif = (m: Movimento): RifMovimento => ({
       registroId: m.registroId,
+      registro: registri.get(m.registroId),
       progressiveNumber: m.progressiveNumber,
       progressiveYear: m.progressiveYear,
       cerCode: cerCanonico(m.cerCode),

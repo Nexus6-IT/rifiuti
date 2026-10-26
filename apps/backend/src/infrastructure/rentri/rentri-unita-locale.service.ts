@@ -229,7 +229,6 @@ export class RentriUnitaLocaleService {
 
     // D8: una sede con un registro che ha movimenti (o un progressivo iniziale) si disattiva,
     // non si elimina; un registro vuoto si cancella con la sede, nella stessa transazione.
-    let conRegistro = false
     try {
       await this.prisma.db.$transaction(async tx => {
         const registri = await tx.registroRifiuti.findMany({
@@ -237,7 +236,6 @@ export class RentriUnitaLocaleService {
           select: { id: true },
         })
         if (registri.length > 0) {
-          conRegistro = true
           const registroIds = registri.map(r => r.id)
           const [movimento, progressivo] = await Promise.all([
             tx.wasteMovement.findFirst({
@@ -259,11 +257,7 @@ export class RentriUnitaLocaleService {
     } catch (error) {
       // Una registrazione concorrente nel registro appena svuotato: la chiave esterna
       // RESTRICT rifiuta la cancellazione.
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2003' &&
-        conRegistro
-      ) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
         throw new BadRequestException(SEDE_CON_REGISTRO_CON_MOVIMENTI)
       }
       throw error

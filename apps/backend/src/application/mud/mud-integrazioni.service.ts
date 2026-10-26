@@ -21,6 +21,7 @@ import {
   type IntegrazioniMud,
   type SoggettoIntegrato,
 } from './aggregazione/mud-integrazioni'
+import { etichetteRegistri } from './aggregazione/mud-registri'
 import { aggiornaReportData } from './mud-report-data'
 
 export type TipoModificaIntegrazione =
@@ -121,6 +122,11 @@ export class MudIntegrazioniService {
       normalizzaCodiceFiscaleSoggetto(c)
     )
     return [...new Set(codici.filter(Boolean))]
+  }
+
+  /** Registro -> sede, solo se l'azienda ha più registri (vuota altrimenti): per le etichette dei movimenti. */
+  async etichetteRegistri(tenantId: string): Promise<Record<string, string>> {
+    return Object.fromEntries(await etichetteRegistri(this.prisma, tenantId))
   }
 
   async salva(

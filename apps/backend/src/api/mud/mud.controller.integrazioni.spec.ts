@@ -26,6 +26,7 @@ describe('MudController integrazioni del MUD', () => {
       salva: jest.fn(),
       leggi: jest.fn().mockResolvedValue(INTEGRAZIONI_VUOTE),
       codiciAzienda: jest.fn().mockResolvedValue(['01234567897']),
+      etichetteRegistri: jest.fn().mockResolvedValue({ r1: 'Sede A', r2: 'Sede B' }),
     }
     const controller = new MudController(
       {} as any,
@@ -49,6 +50,7 @@ describe('MudController integrazioni del MUD', () => {
     await expect(controller.leggiIntegrazioni(req, 2025)).resolves.toEqual({
       ...INTEGRAZIONI_VUOTE,
       codiciAzienda: ['01234567897'],
+      registri: { r1: 'Sede A', r2: 'Sede B' },
     })
     expect(integrazioni.leggi).toHaveBeenCalledWith('t1', 2025)
     expect(integrazioni.codiciAzienda).toHaveBeenCalledWith('t1')

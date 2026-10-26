@@ -26,6 +26,7 @@ describe('MudIntegrazioniService', () => {
         findUnique: jest.fn().mockResolvedValue({ partitaIva: '01234567897', codiceFiscale: null }),
       },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
+      registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
       $executeRaw: jest.fn().mockResolvedValue(1),
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
     }
@@ -451,6 +452,22 @@ describe('MudIntegrazioniService', () => {
       NotFoundException
     )
     expect(prisma.tenant.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('etichetteRegistri: vuota con un registro solo, sede per registro con più registri', async () => {
+    prisma.registroRifiuti.findMany.mockResolvedValue([
+      { id: 'r1', descrizione: 'Registro', unitaLocale: { denominazione: 'Sede A' } },
+    ])
+    expect(await service.etichetteRegistri('t1')).toEqual({})
+
+    prisma.registroRifiuti.findMany.mockResolvedValue([
+      { id: 'r1', descrizione: 'Registro', unitaLocale: { denominazione: 'Sede A' } },
+      { id: 'r2', descrizione: 'Registro cronologico', unitaLocale: null },
+    ])
+    expect(await service.etichetteRegistri('t1')).toEqual({
+      r1: 'Sede A',
+      r2: 'Registro cronologico',
+    })
   })
 
   it("codiciAzienda: partita IVA e codice fiscale dell'azienda, normalizzati e senza vuoti", async () => {

@@ -249,20 +249,22 @@ export class MudController {
   /**
    * Integrazioni del MUD dell'anno dei dati: le leggono tutti i ruoli. `codiciAzienda` (partita
    * IVA e CF dell'azienda) serve alla pagina per chiedere la conferma quando un destinatario ha
-   * il codice dell'azienda stessa (A-W-13), con la stessa regola del PUT.
+   * il codice dell'azienda stessa (A-W-13), con la stessa regola del PUT. `registri` (id -> sede,
+   * vuoto con un registro solo) serve a etichettare i movimenti omonimi di sedi diverse.
    */
   @Get(':year/integrazioni')
   @ApiOperation({ summary: 'Integrazioni del MUD (anno dei dati)' })
   async leggiIntegrazioni(
     @Req() req: any,
     @Param('year', ParseIntPipe) year: number
-  ): Promise<IntegrazioniMud & { codiciAzienda: string[] }> {
+  ): Promise<IntegrazioniMud & { codiciAzienda: string[]; registri: Record<string, string> }> {
     const tenantId = requireRequestTenantId(req)
-    const [integrazioni, codiciAzienda] = await Promise.all([
+    const [integrazioni, codiciAzienda, registri] = await Promise.all([
       this.integrazioni.leggi(tenantId, year),
       this.integrazioni.codiciAzienda(tenantId),
+      this.integrazioni.etichetteRegistri(tenantId),
     ])
-    return { ...integrazioni, codiciAzienda }
+    return { ...integrazioni, codiciAzienda, registri }
   }
 
   /**

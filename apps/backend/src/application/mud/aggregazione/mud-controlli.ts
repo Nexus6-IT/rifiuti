@@ -92,6 +92,8 @@ function cerDaMostrare(cerCode6: string, ms: RifMovimento[]): string {
 
 export interface RifMovimento {
   registroId: string
+  /** Sede del registro: solo se l'azienda ha più registri (il numero da solo sarebbe ambiguo) */
+  registro?: string
   progressiveNumber: number
   progressiveYear: number
   cerCode: string
@@ -133,7 +135,8 @@ function segnala(m: RifMovimento, incluso: boolean, kg?: number | null): MudMovi
   }
 }
 
-const rif = (m: RifMovimento) => `${m.progressiveNumber}/${m.progressiveYear}`
+const rif = (m: RifMovimento) =>
+  `${m.progressiveNumber}/${m.progressiveYear}${m.registro ? ` (${m.registro})` : ''}`
 const unitaDi = (m: RifMovimento) => m.unit || 'kg'
 const elenco = (ms: RifMovimento[]) => ms.map(rif).join(', ')
 const rifConData = (m: RifMovimento) =>

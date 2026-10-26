@@ -292,6 +292,7 @@ function oggiIso(): string {
           </p>
           <div *ngFor="let riga of righe; let i = index" class="mud-integrazione">
             <strong class="mud-integrazione__etichetta">{{ riga.etichetta }}</strong>
+            <small *ngIf="riga.avviso" class="block text-tertiary">{{ riga.avviso }}</small>
 
             <!-- Peso specifico: kg per unità, conversione e intervallo consueto -->
             <ng-container *ngIf="riga.tipo === 'PESO_SPECIFICO'; else soggetto">

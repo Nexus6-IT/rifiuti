@@ -320,6 +320,16 @@ describe('controlliMud', () => {
     )
   })
 
+  it('MUD: con più registri il movimento porta la sede nei testi; con un registro solo i testi restano identici', () => {
+    const uno = controlliMud.destinatarioNonIndicato(scaricoKg, 2025)
+    expect(uno.messaggio).toContain('Movimento n. 4/2025 (scarico')
+    expect(uno.messaggio).toContain('riga "Movimento n. 4/2025"')
+
+    const due = controlliMud.destinatarioNonIndicato({ ...scaricoKg, registro: 'Sede B' }, 2025)
+    expect(due.messaggio).toContain('Movimento n. 4/2025 (Sede B) (scarico')
+    expect(due.messaggio).toContain('riga "Movimento n. 4/2025 (Sede B)"')
+  })
+
   it('piuUnitaLocali attribuisce alla sede principale, anche se non è la prima', () => {
     const r = controlliMud.piuUnitaLocali([
       { denominazione: 'Cantiere Nord', numIscrSito: 'OP2', principale: false },
