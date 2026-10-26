@@ -97,7 +97,10 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       $queryRaw: jest.fn().mockResolvedValue([]),
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
     }
-    sistema = { $queryRaw: jest.fn().mockResolvedValue([]) }
+    sistema = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      tenant: { findMany: jest.fn().mockResolvedValue([{ id: 't1' }]) },
+    }
     repo = new FIRPrismaRepository(prisma, sistema)
   })
 

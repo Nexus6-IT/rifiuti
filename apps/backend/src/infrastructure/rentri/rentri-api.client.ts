@@ -1440,14 +1440,11 @@ export class RENTRIApiClient {
       ...integrityHeaders,
     }
 
+    let response: AxiosResponse
     try {
-      const response = await firstValueFrom(
+      response = await firstValueFrom(
         this.httpService.post(url, body, { headers, timeout: this.timeout })
       )
-      // Risposta non-423 (successo): riporta a 0 il gauge "tenant bandito"
-      // se era rimasto a 1 da un precedente 423 confermato.
-      this.metrics.rentriTenantLocked.set({ tenant_id: tenantId ?? this.tenantIdCorrente() }, 0)
-      return response
     } catch (error: any) {
       this.metrics.rentriApiErrors.inc({ endpoint: metricEndpoint, error_type: 'HTTP' })
       // Marca l'errore come rifiuto della chiamata HTTP vera e propria (la
@@ -1457,6 +1454,19 @@ export class RENTRIApiClient {
       }
       throw error
     }
+
+    // Risposta non-423 (successo): riporta a 0 il gauge "tenant bandito" se era
+    // rimasto a 1 da un precedente 423 confermato. Fuori dal try della POST: un
+    // errore di metrica non e' un errore della chiamata (non deve diventare
+    // NESSUNA_RISPOSTA) e non deve far perdere l'esito di una POST gia' accettata.
+    try {
+      this.metrics.rentriTenantLocked.set({ tenant_id: tenantEffettivo }, 0)
+    } catch (errore: any) {
+      this.logger.warn('Aggiornamento del gauge rentriTenantLocked non riuscito', {
+        errore: errore instanceof Error ? errore.message : String(errore),
+      })
+    }
+    return response
   }
 
   /**

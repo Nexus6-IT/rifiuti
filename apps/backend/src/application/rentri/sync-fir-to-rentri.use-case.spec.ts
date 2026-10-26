@@ -1298,6 +1298,38 @@ describe('SyncFIRToRENTRIUseCase', () => {
     })
   })
 
+  describe('Errore prima della POST: evento di dominio', () => {
+    it("errore fra prenotazione e POST generico: si pubblica l'evento di sync fallito", async () => {
+      const fir = FIR.create({
+        produttoreId: 'p1',
+        rifiuto: {
+          cerCode: '13 02 05*',
+          quantita: 1,
+          unitaMisura: UnitaMisura.KG,
+          statoFisico: 'Liquido',
+          caratteristichePericolo: 'HP14',
+        },
+        trasportatoreId: 't1',
+        destinatarioId: 'd1',
+        tenantId: 'tenant-ev',
+      })
+      fir.emetti('FIR-2026-000010', { firmatario: 'P', timestamp: new Date(), certificato: 'c' })
+      fir.clearDomainEvents()
+      mockFIRRepository.findById.mockResolvedValue(fir)
+      mockFIRRepository.save.mockResolvedValue(undefined)
+      mockSyncLogRepository.createPending.mockRejectedValue(new Error('db giu'))
+
+      await expect(useCase.execute(fir.id, 'tenant-ev')).rejects.toThrow('db giu')
+
+      expect(mockDomainEvents.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: 'fir.rentri_sync_fallito',
+          errorCode: 'RENTRI_API_ERROR',
+        })
+      )
+    })
+  })
+
   describe('Azienda senza certificato RENTRI', () => {
     const tenantId = 'tenant-senza-cert'
 

@@ -332,6 +332,18 @@ describe('EmettiFIRUseCase', () => {
         expect(result.value.stato).toBe(FIRStato.EMESSO)
         expect(logger.warn).toHaveBeenCalled()
       })
+
+      it('rilettura dopo esitoRegistrato fallita → warn con la causa', async () => {
+        const fir = preparaEmissione()
+        trasmissioneRentri.eseguiSeAutomatica.mockImplementation(async () => {
+          jest.spyOn(repository, 'findById').mockRejectedValue(new Error('db giu'))
+          return { avviata: false, motivo: 'CERTIFICATO_MANCANTE', esitoRegistrato: true }
+        })
+
+        await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi'))
+
+        expect(JSON.stringify(logger.warn.mock.calls)).toContain('db giu')
+      })
     })
 
     it("NON chiama l'orchestrazione RENTRI se l'emissione fallisce (FIR non trovato)", async () => {

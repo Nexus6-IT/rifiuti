@@ -181,6 +181,37 @@ describe('RentriCredentialResolver', () => {
     expect(dalContesto).toHaveLength(1)
   })
 
+  it('resolver: tenant legato con PEM env vuoti → messaggio senza id del tenant', async () => {
+    const senzaPem = makeResolver({ ...envConfig, certificatePem: '', privateKeyPem: '' })
+    credentialService.getForTenant.mockResolvedValue(null)
+    const warn = jest.spyOn((senzaPem as any).logger, 'warn').mockImplementation(() => undefined)
+    const error = jest.spyOn((senzaPem as any).logger, 'error').mockImplementation(() => undefined)
+
+    const errore = await senzaPem.resolve('tenant-pilota').catch((e: unknown) => e)
+
+    expect(errore).toBeInstanceOf(Error)
+    expect((errore as Error).message).not.toContain('tenant-pilota')
+    // l'id sta solo nel log
+    expect(JSON.stringify([...warn.mock.calls, ...error.mock.calls])).toContain('tenant-pilota')
+  })
+
+  it('warn algoritmo discordante: due richieste dello stesso tenant → un solo warn, contatore a 2', async () => {
+    // Env legato: chiave RSA ma algoritmo dichiarato ES256 (discordante).
+    const rsa = forge.pki.privateKeyToPem(forge.pki.rsa.generateKeyPair(2048).privateKey)
+    const resolver = makeResolver({ ...envConfig, privateKeyPem: rsa, algorithm: 'ES256' })
+    credentialService.getForTenant.mockResolvedValue(null)
+    const warn = jest.spyOn((resolver as any).logger, 'warn').mockImplementation(() => undefined)
+
+    await resolver.resolve('tenant-pilota')
+    await resolver.resolve('tenant-pilota')
+
+    const discordanti = warn.mock.calls.filter(c => String(c[0]).includes('Algoritmo RENTRI'))
+    const fallbackEnv = warn.mock.calls.filter(c => String(c[0]).includes('credenziale globale'))
+    expect(discordanti).toHaveLength(1)
+    expect(fallbackEnv).toHaveLength(1)
+    expect(metrics.rentriCredentialEnvFallback.inc).toHaveBeenCalledTimes(2)
+  })
+
   it("haCredenziale: propria → true; legata all'env → true; altra → false", async () => {
     const resolver = makeResolver()
     credentialService.getForTenant.mockImplementation(async (t: string) =>

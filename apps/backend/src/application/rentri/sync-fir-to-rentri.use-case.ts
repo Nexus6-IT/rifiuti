@@ -738,6 +738,9 @@ export class SyncFIRToRENTRIUseCase {
           correlationId
         )
         await this.firRepository.save(fir)
+        // Come negli altri rami: l'esito fallito si pubblica (altrimenti l'evento
+        // resta nell'aggregate e si perde: l'errore risale senza altri publish).
+        await this.publishDomainEvents(fir)
       } catch (rilascio) {
         this.logger.error(`Rilascio della prenotazione RENTRI non riuscito`, rilascio, {
           firId: fir.id,

@@ -131,9 +131,15 @@ export class RentriCredentialResolver {
       }
     }
 
+    // L'id del tenant sta solo nel log: il messaggio puo' arrivare all'utente.
+    if (tenantId) {
+      this.logger.error(
+        `RENTRI: nessuna credenziale per il tenant ${tenantId} e nessun fallback da env (PEM env vuoti)`
+      )
+    }
     throw new Error(
       tenantId
-        ? `RENTRI: nessuna credenziale per il tenant ${tenantId} e nessun fallback da env`
+        ? "RENTRI: nessuna credenziale configurata per l'azienda e nessun fallback da env"
         : 'RENTRI: nessun TenantContext e nessuna credenziale di fallback da env'
     )
   }

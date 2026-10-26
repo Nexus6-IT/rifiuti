@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import type { RentriModalitaLegame } from '@prisma/client'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
@@ -21,6 +22,11 @@ import { SOGLIA_STALLO_RENTRI_MS } from '../../application/rentri/sync-fir-to-re
  * legame da confermare, non un legame chiuso in silenzio. La modalità si legge
  * con lo stesso servizio di `TrasmettiFIRSecondoModalitaUseCase`, una volta
  * per tenant e per giro; se non si legge, quel FIR resta al giro successivo.
+ *
+ * Riprende anche i FIR PENDING mai avviati (nessun job li sta portando avanti:
+ * es. riaperti mentre Redis era giu') delle aziende in AUTOMATICA o IBRIDA; in
+ * MANUALE restano fermi. Il jobId `sync-<firId>` e' deterministico, quindi un
+ * FIR gia' in coda non si duplica.
  *
  * Al massimo 100 FIR per giro: il resto viene ripreso al giro successivo.
  * Un errore su un FIR non ferma gli altri.
@@ -48,20 +54,24 @@ export class RentriTrasmissioniSospeseJob {
 
       let accodate = 0
       let inErrore = 0
-      const ibridaPerTenant = new Map<string, Promise<boolean>>()
-      for (const { firId, tenantId } of sospese) {
+      const modalitaPerTenant = new Map<string, Promise<RentriModalitaLegame>>()
+      for (const { firId, tenantId, stato } of sospese) {
         try {
-          if (!ibridaPerTenant.has(tenantId)) {
-            ibridaPerTenant.set(
+          if (!modalitaPerTenant.has(tenantId)) {
+            modalitaPerTenant.set(
               tenantId,
               // Lettura per azienda: nel suo contesto (l'elenco dei FIR e' sul client di sistema)
               TenantContext.run({ tenantId }, async () => {
                 const { modalitaLegame } = await this.modalitaLegame.getForTenant(tenantId)
-                return modalitaLegame === 'IBRIDA'
+                return modalitaLegame
               })
             )
           }
-          const richiedeConferma = await ibridaPerTenant.get(tenantId)!
+          const modalita = await modalitaPerTenant.get(tenantId)!
+          // Un PENDING mai avviato si riprende solo dove la trasmissione e' automatica:
+          // in MANUALE parte solo a mano.
+          if (stato === 'PENDING' && modalita === 'MANUALE') continue
+          const richiedeConferma = modalita === 'IBRIDA'
           await this.queue.addSyncJob({ firId, tenantId, priority: 'low', richiedeConferma })
           accodate++
         } catch (error: unknown) {

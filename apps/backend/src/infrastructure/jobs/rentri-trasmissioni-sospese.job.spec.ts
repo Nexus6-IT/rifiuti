@@ -33,6 +33,38 @@ describe('RentriTrasmissioniSospeseJob', () => {
     expect(logger.error).not.toHaveBeenCalled()
   })
 
+  it('trasmissioni sospese: FIR PENDING in AUTOMATICA senza job e senza avvio da oltre la soglia → accodato con sync-<id>', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f-pending', tenantId: 't-auto', stato: 'PENDING' },
+    ])
+
+    await job.riprendi()
+
+    // Il jobId deterministico `sync-<firId>` lo costruisce la queue: un FIR gia' in coda non si duplica.
+    expect(queue.addSyncJob).toHaveBeenCalledWith({
+      firId: 'f-pending',
+      tenantId: 't-auto',
+      priority: 'low',
+      richiedeConferma: false,
+    })
+  })
+
+  it('trasmissioni sospese: FIR PENDING in MANUALE → non accodato', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f-manuale', tenantId: 't-man', stato: 'PENDING' },
+      { firId: 'f-sync', tenantId: 't-man', stato: 'SYNCING' },
+    ])
+    modalita.getForTenant.mockResolvedValue({
+      modalitaLegame: 'MANUALE',
+      certificatoConfigurato: false,
+    })
+
+    await job.riprendi()
+
+    expect(queue.addSyncJob).toHaveBeenCalledTimes(1)
+    expect(queue.addSyncJob).toHaveBeenCalledWith(expect.objectContaining({ firId: 'f-sync' }))
+  })
+
   it('accoda i FIR sospesi con priorità low', async () => {
     firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
       { firId: 'f1', tenantId: 't1' },

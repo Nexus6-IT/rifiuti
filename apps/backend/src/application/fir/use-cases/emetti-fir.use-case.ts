@@ -120,6 +120,8 @@ export class EmettiFIRUseCase {
           'Rilettura del FIR dopo l’esito RENTRI non riuscita: risposta con lo stato in memoria',
           {
             firId: fir.id,
+            // Solo il messaggio della causa: mai l'oggetto errore, che puo' portare dati del FIR.
+            causa: error instanceof Error ? error.message : String(error),
           }
         )
       }
