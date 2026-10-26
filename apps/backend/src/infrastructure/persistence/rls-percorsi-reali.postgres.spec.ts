@@ -44,6 +44,7 @@ import { PrismaService, creaPrismaServiceApplicativo } from './prisma.service'
 import { PrismaSistemaService } from './prisma-sistema.service'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { RegistraMovimentoCommand } from '../../application/registro/commands/registra-movimento.command'
+import { RegistriService } from '../../application/registro/registri.service'
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
 import { GestisciAllegatiFIRUseCase } from '../../application/rentri/gestisci-allegati-fir.use-case'
@@ -137,6 +138,7 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     )
 
@@ -175,6 +177,7 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
       await owner.consultantTenantAssociation.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.role.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.wasteMovement.deleteMany({ where: { tenantId: { in: tenantIds } } })
+      await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.mUDReport.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.produttore.deleteMany({ where: { tenantId: { in: tenantIds } } })
@@ -194,7 +197,7 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
   })
 
   it('1. registrazione di un movimento (use case reale)', async () => {
-    const useCase = new RegistraMovimentoUseCase(app, logger)
+    const useCase = new RegistraMovimentoUseCase(app, logger, new RegistriService(app, logger))
     const esito = await nelContesto(studio, () => useCase.execute(comandoMovimento(studio)))
     expect(esito.isSuccess ? 'ok' : esito.error).toBe('ok')
     expect(await owner.wasteMovement.count({ where: { tenantId: studio } })).toBe(1)
@@ -310,7 +313,9 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
       )
       // Il movimento del caso 1 sta nel 2025 dello studio, uno del cliente non deve comparire.
       await nelContesto(cliente, () =>
-        new RegistraMovimentoUseCase(app, logger).execute(comandoMovimento(cliente))
+        new RegistraMovimentoUseCase(app, logger, new RegistriService(app, logger)).execute(
+          comandoMovimento(cliente)
+        )
       )
       const aggregato = await nelContesto(studio, () => aggregazione.aggrega(studio, 2025))
       expect(JSON.stringify(aggregato)).toContain('150101')
@@ -396,10 +401,14 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
   it('fail-closed: fuori dal TenantContext il client app non legge ne scrive dati di azienda', async () => {
     expect(await app.wasteMovement.findMany({ where: { tenantId: studio } })).toEqual([])
     expect(await sistema.wasteMovement.count({ where: { tenantId: studio } })).toBeGreaterThan(0)
+    const registroStudio = (
+      await owner.registroRifiuti.findFirstOrThrow({ where: { tenantId: studio } })
+    ).id
     await expect(
       app.wasteMovement.create({
         data: {
           tenantId: studio,
+          registroId: registroStudio,
           progressiveYear: 2025,
           progressiveNumber: 9999,
           type: 'CARICO',

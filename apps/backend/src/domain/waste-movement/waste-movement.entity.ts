@@ -58,6 +58,8 @@ function giorniItalianiFra(da: Date, a: Date): number {
 export interface WasteMovementProps {
   id?: string
   tenantId: string
+  /** Registro (per sede) in cui il movimento è annotato; non entra nell'hash (D7). */
+  registroId: string
   progressiveNumber: number
   progressiveYear: number
   type: WasteMovementType
@@ -84,7 +86,7 @@ export interface WasteMovementProps {
  * Art. 190 D.Lgs 152/2006 — DM 59/2023.
  *
  * Invarianti di dominio:
- * - progressiveNumber è univoco per tenant/anno (assegnato dall'applicazione)
+ * - progressiveNumber è univoco per registro/anno (assegnato dall'applicazione)
  * - la data di registrazione non può precedere la data di operazione
  * - la data di registrazione non può superare il termine di legge dall'operazione
  * - uno SCARICO collegato a un FIR deve avere firId valorizzato
@@ -187,6 +189,9 @@ export class WasteMovement {
   }
   get tenantId(): string {
     return this.props.tenantId
+  }
+  get registroId(): string {
+    return this.props.registroId
   }
   get progressiveNumber(): number {
     return this.props.progressiveNumber

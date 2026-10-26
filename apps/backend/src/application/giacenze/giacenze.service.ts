@@ -68,18 +68,23 @@ export class GiacenzeService {
     this.logger.setContext(GiacenzeService.name)
   }
 
-  /** Giacenza corrente per CER (carico - scarico) con data del carico più vecchio. */
-  async getGiacenze(tenantId: string): Promise<GiacenzaCer[]> {
+  /**
+   * Giacenza corrente per CER (carico - scarico) con data del carico più vecchio.
+   * Con `registroId` conta solo quel registro; senza, somma tutti i registri dell'azienda
+   * (la giacenza fisica in deposito; lo scarico è comunque bloccato per registro).
+   */
+  async getGiacenze(tenantId: string, registroId?: string): Promise<GiacenzaCer[]> {
+    const perRegistro = registroId ? { registroId } : {}
     const byType = await this.prisma.wasteMovement.groupBy({
       by: ['cerCode', 'type', 'unit'],
-      where: { tenantId },
+      where: { tenantId, ...perRegistro },
       _sum: { quantity: true },
     })
 
     // Data del carico più vecchio per CER (criterio temporale del deposito).
     const oldestCarico = await this.prisma.wasteMovement.groupBy({
       by: ['cerCode'],
-      where: { tenantId, type: 'CARICO' },
+      where: { tenantId, type: 'CARICO', ...perRegistro },
       _min: { movementDate: true },
     })
     const oldestByCer = new Map<string, Date | null>()
@@ -129,7 +134,7 @@ export class GiacenzeService {
       perCer.set(chiave, entry)
     }
 
-    const suFirAnnullati = await this.scarichiSuFirAnnullati(tenantId)
+    const suFirAnnullati = await this.scarichiSuFirAnnullati(tenantId, registroId)
 
     const result: GiacenzaCer[] = []
     for (const [chiave, entry] of perCer) {
@@ -154,7 +159,8 @@ export class GiacenzeService {
 
   /** Scarichi collegati a un FIR annullato (in locale o all'ente), per CER (solo cifre). */
   private async scarichiSuFirAnnullati(
-    tenantId: string
+    tenantId: string,
+    registroId?: string
   ): Promise<Map<string, ScaricoSuFirAnnullato[]>> {
     const perCer = new Map<string, ScaricoSuFirAnnullato[]>()
     const firs = await this.prisma.fIR.findMany({
@@ -174,7 +180,12 @@ export class GiacenzeService {
     if (etichette.size === 0) return perCer
 
     const scarichi = await this.prisma.wasteMovement.findMany({
-      where: { tenantId, type: 'SCARICO', firId: { in: [...etichette.keys()] } },
+      where: {
+        tenantId,
+        type: 'SCARICO',
+        firId: { in: [...etichette.keys()] },
+        ...(registroId ? { registroId } : {}),
+      },
       select: {
         cerCode: true,
         progressiveNumber: true,
@@ -206,9 +217,10 @@ export class GiacenzeService {
   async getDepositoTemporaneoAlerts(
     tenantId: string,
     config: DepositoTemporaneoConfig = DEFAULT_DEPOSITO_TEMPORANEO,
-    now: Date = new Date()
+    now: Date = new Date(),
+    registroId?: string
   ): Promise<DepositoTemporaneoAlert[]> {
-    const giacenze = await this.getGiacenze(tenantId)
+    const giacenze = await this.getGiacenze(tenantId, registroId)
     const alerts: DepositoTemporaneoAlert[] = []
 
     for (const g of giacenze) {

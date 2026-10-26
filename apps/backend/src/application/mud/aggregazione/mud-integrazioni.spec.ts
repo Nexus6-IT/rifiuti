@@ -3,6 +3,7 @@ import {
   chiaveDestinatario,
   chiaveMovimento,
   chiavePesoSpecifico,
+  destinatarioDelMovimento,
   intervalloPesoSpecifico,
   leggiIntegrazioni,
   pesoSpecificoPlausibile,
@@ -14,8 +15,43 @@ describe('mud-integrazioni', () => {
     expect(chiavePesoSpecifico('170405', 'litri')).toBe('170405|LITRI')
   })
 
-  it('chiave del movimento: anno e numero progressivo', () => {
+  it('chiave del movimento: anno, numero progressivo e registro', () => {
+    expect(chiaveMovimento(2025, 5, 'reg-A')).toBe('2025/5@reg-A')
+    // senza registro: la forma scritta prima dei registri per sede
     expect(chiaveMovimento(2025, 5)).toBe('2025/5')
+  })
+
+  it('MUD: lo stesso anno/numero in due registri ha due chiavi diverse', () => {
+    expect(chiaveMovimento(2026, 3, 'reg-A')).not.toBe(chiaveMovimento(2026, 3, 'reg-B'))
+  })
+
+  describe('destinatarioDelMovimento', () => {
+    const soggetto = { ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' }
+    const m = { progressiveYear: 2026, progressiveNumber: 3, registroId: 'reg-B' }
+    const con = (chiavi: string[]) => ({
+      ...INTEGRAZIONI_VUOTE,
+      destinatariMovimento: Object.fromEntries(chiavi.map(c => [c, soggetto])),
+    })
+
+    it('il destinatario integrato per il registro A non soddisfa il movimento del registro B', () => {
+      expect(destinatarioDelMovimento(con(['2026/3@reg-A']), m, false)).toBeUndefined()
+      expect(destinatarioDelMovimento(con(['2026/3@reg-A']), m, true)).toBeUndefined()
+      expect(destinatarioDelMovimento(con(['2026/3@reg-B']), m, false)).toEqual(soggetto)
+    })
+
+    it('la chiave vecchia anno/numero vale solo con un unico registro', () => {
+      expect(destinatarioDelMovimento(con(['2026/3']), m, true)).toEqual(soggetto)
+      expect(destinatarioDelMovimento(con(['2026/3']), m, false)).toBeUndefined()
+    })
+
+    it('la chiave nuova prevale su quella vecchia', () => {
+      const nuovo = { ragioneSociale: 'Nuovo Srl', codiceFiscale: '12345678903' }
+      const i = {
+        ...INTEGRAZIONI_VUOTE,
+        destinatariMovimento: { '2026/3': soggetto, '2026/3@reg-B': nuovo },
+      }
+      expect(destinatarioDelMovimento(i, m, true)).toEqual(nuovo)
+    })
   })
 
   it('le integrazioni vuote hanno anche i destinatari dei movimenti e i trasportatori', () => {

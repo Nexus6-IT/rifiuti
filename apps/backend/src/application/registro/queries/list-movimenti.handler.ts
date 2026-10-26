@@ -6,6 +6,7 @@ import { ListMovimentiQuery, PaginatedMovimenti } from './list-movimenti.query'
 export interface MovimentoListItem {
   id: string
   tenantId: string
+  registroId: string
   progressiveNumber: number
   progressiveYear: number
   type: string
@@ -49,6 +50,7 @@ export class ListMovimentiHandler {
       where['cerCode'] = { contains: query.filters.cerCode, mode: 'insensitive' }
     if (query.filters?.causale) where['causale'] = query.filters.causale
     if (query.filters?.firId) where['firId'] = query.filters.firId
+    if (query.filters?.registroId) where['registroId'] = query.filters.registroId
 
     if (query.filters?.dataFrom || query.filters?.dataTo) {
       where['movementDate'] = {
@@ -70,6 +72,7 @@ export class ListMovimentiHandler {
     const items: MovimentoListItem[] = records.map(r => ({
       id: r.id,
       tenantId: r.tenantId,
+      registroId: r.registroId,
       progressiveNumber: r.progressiveNumber,
       progressiveYear: r.progressiveYear,
       type: r.type,

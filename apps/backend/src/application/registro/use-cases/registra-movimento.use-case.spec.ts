@@ -7,6 +7,26 @@ import { giacenzaDisponibileAl } from '../giacenza-disponibile'
 import { annoSolareItaliano } from '../../../core/time/anno-italiano'
 import { Prisma } from '@prisma/client'
 import { FirGiaRegistratoError } from '../../../core/domain/errors'
+import { RegistriService, RegistroNonCoerenteConFirError } from '../registri.service'
+
+const REGISTRO = 'registro-uuid-001'
+const registroVista = {
+  id: REGISTRO,
+  unitaLocaleId: null,
+  numIscrSito: null,
+  denominazione: 'Registro cronologico',
+  codice: 'CARICO_SCARICO',
+  attivo: true,
+  principale: false,
+}
+/** Finto RegistriService: un solo registro, nessun accesso al database. */
+function registriFinto() {
+  return {
+    preparaRegistri: jest.fn().mockResolvedValue(undefined),
+    risolvi: jest.fn().mockResolvedValue(registroVista),
+    risolviPerFir: jest.fn().mockResolvedValue(registroVista),
+  }
+}
 
 jest.mock('../giacenza-disponibile')
 const giacenzaMock = giacenzaDisponibileAl as jest.MockedFunction<typeof giacenzaDisponibileAl>
@@ -14,6 +34,7 @@ const giacenzaMock = giacenzaDisponibileAl as jest.MockedFunction<typeof giacenz
 describe('RegistraMovimentoUseCase', () => {
   let useCase: RegistraMovimentoUseCase
   let prisma: any
+  let registri: ReturnType<typeof registriFinto>
 
   const mockLogger = {
     setContext: jest.fn(),
@@ -29,6 +50,7 @@ describe('RegistraMovimentoUseCase', () => {
 
   function buildPrisma(overrides: Partial<typeof prisma> = {}) {
     return {
+      registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
       wasteMovement: {
         groupBy: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
@@ -71,6 +93,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     )
   }
@@ -96,6 +119,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       undefined,
       over.firId,
+      undefined,
       undefined
     )
   }
@@ -103,6 +127,7 @@ describe('RegistraMovimentoUseCase', () => {
   const recordScarico = {
     id: 'id-004',
     tenantId: TENANT,
+    registroId: REGISTRO,
     progressiveNumber: 6,
     progressiveYear: 2026,
     type: 'SCARICO',
@@ -143,6 +168,7 @@ describe('RegistraMovimentoUseCase', () => {
       $executeRaw: jest.fn().mockResolvedValue(0), // advisory lock no-op nel test
       $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
       registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
+      registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
       wasteMovement: {
         create: jest.fn().mockResolvedValue(record),
         findMany: jest.fn().mockResolvedValue([]),
@@ -167,11 +193,13 @@ describe('RegistraMovimentoUseCase', () => {
       unitaNonDiMassaCaricate: [],
     })
     prisma = buildPrisma()
+    registri = registriFinto()
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RegistraMovimentoUseCase,
         { provide: PrismaService, useValue: prisma },
         { provide: LoggerService, useValue: mockLogger },
+        { provide: RegistriService, useValue: registri },
       ],
     }).compile()
 
@@ -231,6 +259,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     )
     const result = await useCase.execute(cmd)
@@ -274,6 +303,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     )
     const result = await useCase.execute(cmd)
@@ -301,7 +331,7 @@ describe('RegistraMovimentoUseCase', () => {
       const { tx, numero } = await numeroAssegnato(42, null)
       expect(numero).toBe(43)
       expect(tx.registroProgressivoIniziale.findUnique).toHaveBeenCalledWith({
-        where: { tenantId_anno: { tenantId: TENANT, anno: 2026 } },
+        where: { registroId_anno: { registroId: REGISTRO, anno: 2026 } },
         select: { primoProgressivo: true },
       })
     })
@@ -366,6 +396,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     )
     await useCase.execute(cmd)
@@ -403,6 +434,7 @@ describe('RegistraMovimentoUseCase', () => {
     await useCase.execute(scaricoCmd({ quantity: 10, unit: 'KG', movementDate: TODAY }))
     expect(giacenzaMock).toHaveBeenCalledWith(expect.anything(), {
       tenantId: TENANT,
+      registroId: REGISTRO,
       cerCode: '20 03 01',
       alla: TODAY,
     })
@@ -422,8 +454,8 @@ describe('RegistraMovimentoUseCase', () => {
     })
     await useCase.execute(scaricoCmd())
     expect(ordine).toEqual([
-      `lock ${TENANT}-${annoSolareItaliano(TODAY)}`,
-      `lock giacenza|${TENANT}|20 03 01`,
+      `lock ${REGISTRO}-${annoSolareItaliano(TODAY)}`,
+      `lock giacenza|${REGISTRO}|20 03 01`,
       'giacenza',
     ])
   })
@@ -453,10 +485,11 @@ describe('RegistraMovimentoUseCase', () => {
         undefined,
         undefined,
         undefined,
+        undefined,
         undefined
       )
     )
-    expect(chiavi).toContain(`giacenza|${TENANT}|20 03 01`)
+    expect(chiavi).toContain(`giacenza|${REGISTRO}|20 03 01`)
   })
 
   it("il messaggio riporta la giacenza nell'unità dello scarico, in formato italiano", async () => {
@@ -601,7 +634,7 @@ describe('RegistraMovimentoUseCase', () => {
     expect(r.isSuccess).toBe(true)
     expect(giacenzaMock).not.toHaveBeenCalled()
     const chiavi = tx.$executeRaw.mock.calls.map((c: any[]) => c.slice(1).join(' '))
-    expect(chiavi).toEqual([`${TENANT}-${annoSolareItaliano(TODAY)}`])
+    expect(chiavi).toEqual([`${REGISTRO}-${annoSolareItaliano(TODAY)}`])
     expect(chiavi.some((k: string) => k.startsWith('giacenza|'))).toBe(false)
   })
 
@@ -669,6 +702,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     )
     const result = await useCase.execute(cmd)
@@ -692,6 +726,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       100,
       'KG',
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -728,6 +763,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     )
     const result = await useCase.execute(cmd)
@@ -758,6 +794,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       undefined,
       'fir-inesistente',
+      undefined,
       undefined
     )
     const result = await useCase.execute(cmd)
@@ -844,6 +881,7 @@ describe('RegistraMovimentoUseCase', () => {
       undefined,
       100,
       'KG',
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -989,9 +1027,49 @@ describe('RegistraMovimentoUseCase', () => {
     const chiavi = tx.$executeRaw.mock.calls.map((c: unknown[]) => String(c[1]))
     expect(chiavi).toEqual([
       `fir-registro|${TENANT}|fir-id-001`,
-      `${TENANT}-${annoSolareItaliano(TODAY)}`,
-      `giacenza|${TENANT}|20 03 01`,
+      `${REGISTRO}-${annoSolareItaliano(TODAY)}`,
+      `giacenza|${REGISTRO}|20 03 01`,
     ])
+  })
+
+  it("prende i lock nell'ordine FIR, progressivo, giacenza e non prende registro-init dentro la transazione", async () => {
+    const tx = _mockTransazione(recordScarico)
+    await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+    const chiavi = tx.$executeRaw.mock.calls.map((c: unknown[]) => String(c[1]))
+    expect(chiavi.map((k: string) => k.split('|')[0])).toEqual([
+      'fir-registro',
+      `${REGISTRO}-${annoSolareItaliano(TODAY)}`,
+      'giacenza',
+    ])
+    expect(chiavi.some((k: string) => k.includes('registro-init'))).toBe(false)
+    // La preparazione dei registri (con il suo lock) e' PRIMA della transazione di registrazione.
+    expect(registri.preparaRegistri).toHaveBeenCalledWith(TENANT, undefined)
+    expect(registri.preparaRegistri.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.$transaction.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('senza FIR risolve il registro con risolvi, con un FIR con risolviPerFir (D10), passando il registroId richiesto', async () => {
+    _mockTransazione(recordScarico)
+    await useCase.execute({
+      ...scaricoCmd(),
+      registroId: 'reg-richiesto',
+    } as RegistraMovimentoCommand)
+    expect(registri.risolvi).toHaveBeenCalledWith(expect.anything(), TENANT, 'reg-richiesto')
+    expect(registri.risolviPerFir).not.toHaveBeenCalled()
+    await useCase.execute({
+      ...scaricoCmd({ firId: 'fir-id-001' }),
+      registroId: 'reg-richiesto',
+    } as RegistraMovimentoCommand)
+    expect(registri.risolviPerFir).toHaveBeenCalledWith(expect.anything(), TENANT, 'reg-richiesto')
+  })
+
+  it('un errore di dominio dei registri diventa un fallimento con il suo messaggio', async () => {
+    _mockTransazione(recordScarico)
+    registri.risolviPerFir.mockRejectedValue(new RegistroNonCoerenteConFirError())
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+    expect(r.isFailure).toBe(true)
+    expect(r.error).toBe(new RegistroNonCoerenteConFirError().message)
   })
 
   it('senza FIR non prende il lock del FIR e non cerca ricopie', async () => {
@@ -1041,6 +1119,33 @@ describe('RegistraMovimentoUseCase', () => {
       type: 'SCARICO',
       ricopiaChiave: '',
     })
+  })
+
+  it('con più registri il doppio sull indice unico nomina il registro del movimento esistente', async () => {
+    const tx = _mockTransazione(recordScarico)
+    tx.wasteMovement.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['tenant_id', 'fir_id_ricopia', 'type', 'ricopia_chiave'] },
+      })
+    )
+    jest
+      .spyOn(prisma.wasteMovement, 'findFirst')
+      .mockResolvedValue({ progressiveNumber: 9, progressiveYear: 2026, registroId: 'reg-b' })
+    prisma.registroRifiuti = {
+      findMany: jest.fn().mockResolvedValue([
+        { id: 'reg-a', descrizione: 'Registro A', unitaLocale: null },
+        {
+          id: 'reg-b',
+          descrizione: 'Registro B',
+          unitaLocale: { denominazione: 'Sede di Torino' },
+        },
+      ]),
+    }
+    const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
+    expect(r.error).toBe(new FirGiaRegistratoError(9, 2026, 'Sede di Torino').message)
+    expect(r.error).toContain('nel registro Sede di Torino')
   })
 
   it('se la lettura del doppio fallisce, execute risponde con un errore e non lancia', async () => {
@@ -1130,6 +1235,7 @@ describe('RegistraMovimentoUseCase: tempo italiano', () => {
       providers: [
         RegistraMovimentoUseCase,
         { provide: PrismaService, useValue: prisma },
+        { provide: RegistriService, useValue: registriFinto() },
         {
           provide: LoggerService,
           useValue: { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
@@ -1161,6 +1267,7 @@ describe('RegistraMovimentoUseCase: tempo italiano', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     )
   }
@@ -1175,7 +1282,7 @@ describe('RegistraMovimentoUseCase: tempo italiano', () => {
     const r = await esegui('2025-12-31T23:40:00.000Z', '2025-12-31T23:30:00.000Z')
     expect(r.isSuccess).toBe(true)
     expect(capturedData.progressiveYear).toBe(2026)
-    expect(JSON.stringify(lockArgs)).toContain(`${TENANT}-2026`)
+    expect(JSON.stringify(lockArgs)).toContain(`${REGISTRO}-2026`)
   })
 
   it('lascia al 2025 un movimento registrato alle 23:59 del 31 dicembre', async () => {

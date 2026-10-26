@@ -3,6 +3,9 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../persistence/prisma.service'
 import { NUM_ISCR_SITO_PATTERN } from './rentri-credential.service'
 
+const SEDE_CON_REGISTRO_CON_MOVIMENTI =
+  'La sede ha un registro con movimenti: disattivala invece di eliminarla.'
+
 /** Unità locale RENTRI di un tenant (mai segreti: solo dati anagrafici). */
 export interface RentriUnitaLocale {
   id: string
@@ -224,7 +227,41 @@ export class RentriUnitaLocaleService {
       }
     }
 
-    await this.prisma.db.rentriUnitaLocale.deleteMany({ where: { id, tenantId } })
+    // D8: una sede con un registro che ha movimenti (o un progressivo iniziale) si disattiva,
+    // non si elimina; un registro vuoto si cancella con la sede, nella stessa transazione.
+    try {
+      await this.prisma.db.$transaction(async tx => {
+        const registri = await tx.registroRifiuti.findMany({
+          where: { tenantId, unitaLocaleId: id },
+          select: { id: true },
+        })
+        if (registri.length > 0) {
+          const registroIds = registri.map(r => r.id)
+          const [movimento, progressivo] = await Promise.all([
+            tx.wasteMovement.findFirst({
+              where: { tenantId, registroId: { in: registroIds } },
+              select: { id: true },
+            }),
+            tx.registroProgressivoIniziale.findFirst({
+              where: { tenantId, registroId: { in: registroIds } },
+              select: { id: true },
+            }),
+          ])
+          if (movimento || progressivo) {
+            throw new BadRequestException(SEDE_CON_REGISTRO_CON_MOVIMENTI)
+          }
+          await tx.registroRifiuti.deleteMany({ where: { tenantId, id: { in: registroIds } } })
+        }
+        await tx.rentriUnitaLocale.deleteMany({ where: { id, tenantId } })
+      })
+    } catch (error) {
+      // Una registrazione concorrente nel registro appena svuotato: la chiave esterna
+      // RESTRICT rifiuta la cancellazione.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        throw new BadRequestException(SEDE_CON_REGISTRO_CON_MOVIMENTI)
+      }
+      throw error
+    }
   }
 
   /**

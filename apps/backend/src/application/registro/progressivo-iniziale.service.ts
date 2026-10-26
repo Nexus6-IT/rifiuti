@@ -1,9 +1,20 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { annoSolareItaliano } from '../../core/time/anno-italiano'
+import { DomainError } from '../../core/domain/errors'
+import { RegistriService, RegistroNonTrovatoError } from './registri.service'
 
 export interface StatoProgressivoIniziale {
   anno: number
+  /** Registro a cui si riferisce lo stato (quello indicato o il predefinito dell'azienda); null se il registro
+   * predefinito non si determina (nessun registro o piu' registri senza sede principale): stato
+   * neutro, nulla da mostrare. */
+  registroId: string | null
   primoProgressivo: number | null
   impostatoIl: Date | null
   /** Vero se il registro dell'anno ha già almeno un movimento (non si può più impostare). */
@@ -11,30 +22,60 @@ export interface StatoProgressivoIniziale {
 }
 
 /**
- * Progressivo iniziale del registro per azienda e anno (decisione C-W-02).
+ * Progressivo iniziale del registro per registro e anno (decisione C-W-02, per sede da F2-1).
  *
  * Chi arriva da un altro programma (WinWaste) a metà anno ha già trasmesso al RENTRI
  * movimenti numerati: qui imposta il primo numero che prenderà il primo movimento
- * registrato nell'applicazione. Si imposta una volta sola, per l'anno in corso o il
- * prossimo, e solo prima del primo movimento dell'anno.
+ * registrato nell'applicazione nel registro indicato (senza indicazione, quello predefinito
+ * dell'azienda). Si imposta una volta sola, per l'anno in corso o il prossimo, e solo prima
+ * del primo movimento dell'anno di quel registro.
  */
 @Injectable()
 export class ProgressivoInizialeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly registri: RegistriService
+  ) {}
 
-  async leggi(tenantId: string, anno: number): Promise<StatoProgressivoIniziale> {
+  async leggi(
+    tenantId: string,
+    anno: number,
+    registroId?: string
+  ): Promise<StatoProgressivoIniziale> {
+    // Lettura pura (e' dietro una GET, anche per chi e' in sola consultazione): niente
+    // preparaRegistri, che puo' fare INSERT. Senza registri o con un registro da indicare lo stato
+    // e' neutro; un registroId esplicito inesistente e' un 404.
+    let registro
+    try {
+      registro = await this.prisma.$transaction(tx =>
+        this.registri.risolvi(tx, tenantId, registroId)
+      )
+    } catch (err) {
+      if (!(err instanceof DomainError)) throw err
+      if (registroId && err instanceof RegistroNonTrovatoError) {
+        throw new NotFoundException(err.message)
+      }
+      return {
+        anno,
+        registroId: null,
+        primoProgressivo: null,
+        impostatoIl: null,
+        haMovimenti: false,
+      }
+    }
     const [riga, movimento] = await Promise.all([
       this.prisma.registroProgressivoIniziale.findUnique({
-        where: { tenantId_anno: { tenantId, anno } },
+        where: { registroId_anno: { registroId: registro.id, anno } },
         select: { primoProgressivo: true, impostatoIl: true },
       }),
       this.prisma.wasteMovement.findFirst({
-        where: { tenantId, progressiveYear: anno },
+        where: { tenantId, registroId: registro.id, progressiveYear: anno },
         select: { id: true },
       }),
     ])
     return {
       anno,
+      registroId: registro.id,
       primoProgressivo: riga?.primoProgressivo ?? null,
       impostatoIl: riga?.impostatoIl ?? null,
       haMovimenti: movimento !== null,
@@ -46,8 +87,9 @@ export class ProgressivoInizialeService {
     anno: number,
     primoProgressivo: number,
     motivo: string,
-    userId: string
-  ): Promise<{ anno: number; primoProgressivo: number }> {
+    userId: string,
+    registroId?: string
+  ): Promise<{ anno: number; primoProgressivo: number; registroId: string }> {
     const annoCorrente = annoSolareItaliano(new Date())
     if (anno !== annoCorrente && anno !== annoCorrente + 1) {
       throw new BadRequestException(
@@ -55,14 +97,31 @@ export class ProgressivoInizialeService {
       )
     }
 
+    // Registri pronti prima della transazione (il lock di creazione non si annida con quello di numerazione).
+    try {
+      await this.registri.preparaRegistri(tenantId, registroId)
+    } catch (err) {
+      if (err instanceof DomainError) throw new BadRequestException(err.message)
+      throw err
+    }
+
     return this.prisma.$transaction(async tx => {
+      let registro
+      try {
+        registro = await this.registri.risolvi(tx, tenantId, registroId)
+      } catch (err) {
+        if (err instanceof DomainError) throw new BadRequestException(err.message)
+        throw err
+      }
+
       // Stessa chiave del lock della numerazione (RegistraMovimentoUseCase): un movimento
-      // concorrente o viene numerato prima (e qui lo si vede), o dopo (e prende il numero).
-      const lockKey = `${tenantId}-${anno}`
+      // concorrente dello stesso registro o viene numerato prima (e qui lo si vede), o dopo
+      // (e prende il numero). Registri diversi non si aspettano.
+      const lockKey = `${registro.id}-${anno}`
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
 
       const esistente = await tx.registroProgressivoIniziale.findUnique({
-        where: { tenantId_anno: { tenantId, anno } },
+        where: { registroId_anno: { registroId: registro.id, anno } },
         select: { primoProgressivo: true },
       })
       if (esistente) {
@@ -73,7 +132,7 @@ export class ProgressivoInizialeService {
       }
 
       const movimento = await tx.wasteMovement.findFirst({
-        where: { tenantId, progressiveYear: anno },
+        where: { tenantId, registroId: registro.id, progressiveYear: anno },
         select: { id: true },
       })
       if (movimento) {
@@ -84,7 +143,14 @@ export class ProgressivoInizialeService {
       }
 
       await tx.registroProgressivoIniziale.create({
-        data: { tenantId, anno, primoProgressivo, motivo, impostatoDa: userId },
+        data: {
+          tenantId,
+          registroId: registro.id,
+          anno,
+          primoProgressivo,
+          motivo,
+          impostatoDa: userId,
+        },
       })
       await tx.activityLog.create({
         data: {
@@ -92,11 +158,11 @@ export class ProgressivoInizialeService {
           userId,
           action: 'REGISTRO_PROGRESSIVO_INIZIALE',
           description: `Progressivo iniziale del registro ${anno} impostato a ${primoProgressivo}: ${motivo}`,
-          metadata: { anno, primoProgressivo, motivo },
+          metadata: { anno, primoProgressivo, motivo, registroId: registro.id },
         },
       })
 
-      return { anno, primoProgressivo }
+      return { anno, primoProgressivo, registroId: registro.id }
     })
   }
 }

@@ -44,9 +44,33 @@ export function chiaveDestinatario(ragioneSociale: string): string {
   return (ragioneSociale ?? '').trim().replace(/\s+/g, ' ').toUpperCase()
 }
 
-/** Movimento del registro: anno e numero progressivo (`2025/5`). */
-export function chiaveMovimento(anno: number, numero: number): string {
-  return `${anno}/${numero}`
+/**
+ * Chiave di un movimento nelle integrazioni: anno, numero progressivo e registro
+ * (`2025/5@<registroId>`). Con la numerazione per registro lo stesso `anno/numero` esiste in
+ * ogni registro, quindi il registro fa parte della chiave. Senza `registroId` dà la forma
+ * scritta prima dei registri per sede (`2025/5`): serve solo a leggere le integrazioni già
+ * salvate e a scrivere una voce di cui il client non conosce il registro.
+ */
+export function chiaveMovimento(anno: number, numero: number, registroId?: string): string {
+  return registroId ? `${anno}/${numero}@${registroId}` : `${anno}/${numero}`
+}
+
+/**
+ * Destinatario integrato di un movimento. La chiave con il registro vale sempre; la chiave
+ * vecchia `anno/numero` vale SOLO se l'azienda ha un unico registro (in quel caso tutti i movimenti
+ * stanno nel registro del backfill): con più registri è ambigua e si ignora, così il controllo
+ * torna a segnalare il movimento e l'utente reinserisce il destinatario.
+ */
+export function destinatarioDelMovimento(
+  integrazioni: IntegrazioniMud,
+  m: { progressiveYear: number; progressiveNumber: number; registroId: string },
+  unSoloRegistro: boolean
+): SoggettoIntegrato | undefined {
+  const voci = integrazioni.destinatariMovimento
+  return (
+    voci[chiaveMovimento(m.progressiveYear, m.progressiveNumber, m.registroId)] ??
+    (unSoloRegistro ? voci[chiaveMovimento(m.progressiveYear, m.progressiveNumber)] : undefined)
+  )
 }
 
 export function chiavePesoSpecifico(cerCode6: string, unit: string): string {

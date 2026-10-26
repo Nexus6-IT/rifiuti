@@ -50,12 +50,19 @@ export type MudCodiceControllo =
 export type IntegrazioneRichiesta =
   | { tipo: 'CF_DESTINATARIO'; chiave: string; ragioneSociale: string }
   | { tipo: 'PESO_SPECIFICO'; chiave: string; cerCode: string; unita: string }
-  | { tipo: 'DESTINATARIO_MOVIMENTO'; chiave: string; numero: number; anno: number }
+  | {
+      tipo: 'DESTINATARIO_MOVIMENTO'
+      chiave: string
+      numero: number
+      anno: number
+      registroId: string
+    }
   | { tipo: 'CF_TRASPORTATORE'; chiave: string; ragioneSociale: string }
 
 export interface MudMovimentoSegnalato {
   numero: number
   anno: number
+  registroId: string
   cerCode: string
   quantita: number
   unita: string
@@ -84,6 +91,9 @@ function cerDaMostrare(cerCode6: string, ms: RifMovimento[]): string {
 }
 
 export interface RifMovimento {
+  registroId: string
+  /** Sede del registro: solo se l'azienda ha più registri (il numero da solo sarebbe ambiguo) */
+  registro?: string
   progressiveNumber: number
   progressiveYear: number
   cerCode: string
@@ -116,6 +126,7 @@ function segnala(m: RifMovimento, incluso: boolean, kg?: number | null): MudMovi
   return {
     numero: m.progressiveNumber,
     anno: m.progressiveYear,
+    registroId: m.registroId,
     cerCode: m.cerCode,
     quantita: m.quantity,
     unita: m.unit || 'kg',
@@ -124,7 +135,8 @@ function segnala(m: RifMovimento, incluso: boolean, kg?: number | null): MudMovi
   }
 }
 
-const rif = (m: RifMovimento) => `${m.progressiveNumber}/${m.progressiveYear}`
+const rif = (m: RifMovimento) =>
+  `${m.progressiveNumber}/${m.progressiveYear}${m.registro ? ` (${m.registro})` : ''}`
 const unitaDi = (m: RifMovimento) => m.unit || 'kg'
 const elenco = (ms: RifMovimento[]) => ms.map(rif).join(', ')
 const rifConData = (m: RifMovimento) =>
@@ -232,7 +244,7 @@ export const controlliMud = {
     return {
       codice: 'PIU_UNITA_LOCALI',
       gravita: AVVISO,
-      messaggio: `L'azienda ha ${unita.length} unità locali attive (${unita.map(nome).join(', ')}): il file attribuisce all'unità locale ${nome(principale)} i movimenti di tutte, perché il registro non indica la sede del movimento. Non presentare anche dichiarazioni separate per le altre sedi con le stesse quantità: risulterebbero dichiarate due volte. Se le altre sedi sono obbligate a una dichiarazione propria, questo file non va presentato così: la ripartizione per sede non è ancora supportata.`,
+      messaggio: `L'azienda ha ${unita.length} unità locali attive (${unita.map(nome).join(', ')}): il file attribuisce all'unità locale ${nome(principale)} i movimenti di tutti i registri. Non presentare anche dichiarazioni separate per le altre sedi con le stesse quantità: risulterebbero dichiarate due volte. La ripartizione per sede non è ancora supportata.`,
     }
   },
 
@@ -349,9 +361,10 @@ export const controlliMud = {
     movimenti: [segnala(m, true)],
     integrazione: {
       tipo: 'DESTINATARIO_MOVIMENTO',
-      chiave: chiaveMovimento(m.progressiveYear, m.progressiveNumber),
+      chiave: chiaveMovimento(m.progressiveYear, m.progressiveNumber, m.registroId),
       numero: m.progressiveNumber,
       anno: m.progressiveYear,
+      registroId: m.registroId,
     },
   }),
 
@@ -507,7 +520,8 @@ export const CODICI_RIPARTIZIONE_RD: readonly MudCodiceControllo[] = [
   'OPERAZIONE_DEDOTTA_DAL_FIR',
 ]
 
-const chiaveSegnalato = (m: MudMovimentoSegnalato) => chiaveMovimento(m.anno, m.numero)
+const chiaveSegnalato = (m: MudMovimentoSegnalato) =>
+  chiaveMovimento(m.anno, m.numero, m.registroId)
 
 export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
   const avvisi = c.filter(e => e.gravita === AVVISO)

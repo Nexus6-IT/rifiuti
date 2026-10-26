@@ -23,6 +23,7 @@ describe('PDFService.buildMUDContent - riepilogo dalla stessa aggregazione del f
     JSON.stringify((new PDFService(logger) as any).buildMUDContent(report))
 
   const m = {
+    registroId: 'registro-1',
     progressiveNumber: 4,
     progressiveYear: 2025,
     cerCode: '17 04 05',

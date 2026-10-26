@@ -21,6 +21,7 @@ import {
   type IntegrazioniMud,
   type SoggettoIntegrato,
 } from './aggregazione/mud-integrazioni'
+import { etichetteRegistri } from './aggregazione/mud-registri'
 import { aggiornaReportData } from './mud-report-data'
 
 export type TipoModificaIntegrazione =
@@ -123,6 +124,11 @@ export class MudIntegrazioniService {
     return [...new Set(codici.filter(Boolean))]
   }
 
+  /** Registro -> sede, solo se l'azienda ha più registri (vuota altrimenti): per le etichette dei movimenti. */
+  async etichetteRegistri(tenantId: string): Promise<Record<string, string>> {
+    return Object.fromEntries(await etichetteRegistri(this.prisma, tenantId))
+  }
+
   async salva(
     tenantId: string,
     year: number,
@@ -167,7 +173,7 @@ export class MudIntegrazioniService {
 
     const destinatariMovimento: IntegrazioniMud['destinatariMovimento'] = {}
     for (const v of dati.destinatariMovimento ?? []) {
-      destinatariMovimento[chiaveMovimento(v.anno, v.numero)] = soggetto(v, true)
+      destinatariMovimento[chiaveMovimento(v.anno, v.numero, v.registroId)] = soggetto(v, true)
     }
 
     // Il codice della propria azienda vale per un trasportatore: trasporto in conto proprio.

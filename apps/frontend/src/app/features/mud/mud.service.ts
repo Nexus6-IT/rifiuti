@@ -16,6 +16,8 @@ export interface MudVersion {
 export interface MudMovimentoSegnalato {
   numero: number
   anno: number
+  /** Registro del movimento: lo stesso anno/numero esiste in ogni registro */
+  registroId?: string
   cerCode: string
   quantita: number
   unita: string
@@ -46,7 +48,13 @@ export interface RiepilogoAvvisi {
 export type MudIntegrazioneRichiesta =
   | { tipo: 'CF_DESTINATARIO'; chiave: string; ragioneSociale: string }
   | { tipo: 'PESO_SPECIFICO'; chiave: string; cerCode: string; unita: string }
-  | { tipo: 'DESTINATARIO_MOVIMENTO'; chiave: string; numero: number; anno: number }
+  | {
+      tipo: 'DESTINATARIO_MOVIMENTO'
+      chiave: string
+      numero: number
+      anno: number
+      registroId: string
+    }
   | { tipo: 'CF_TRASPORTATORE'; chiave: string; ragioneSociale: string }
 
 export interface MudControllo {
@@ -157,7 +165,10 @@ export interface SoggettoIntegrato {
 /** Integrazioni salvate per l'anno (`GET mud/:year/integrazioni`). */
 export interface IntegrazioniMud {
   destinatari: Record<string, SoggettoIntegrato>
-  /** chiave = `anno/numero` del movimento, come la scrive il backend */
+  /**
+   * chiave = `anno/numero@registroId` del movimento, come la scrive il backend; le voci salvate
+   * prima dei registri per sede hanno la chiave vecchia `anno/numero`
+   */
   destinatariMovimento: Record<string, SoggettoIntegrato>
   trasportatori: Record<string, SoggettoIntegrato>
   pesiSpecifici: Record<
@@ -166,6 +177,8 @@ export interface IntegrazioniMud {
   >
   aggiornateIl: string | null
   aggiornateDa: string | null
+  /** Solo nel GET: registro -> sede, vuoto se l'azienda ha un registro solo (nessuna ambiguità) */
+  registri?: Record<string, string>
   /** Solo nel GET: partita IVA e CF dell'azienda, per la conferma della propria azienda */
   codiciAzienda?: string[]
 }
@@ -181,6 +194,8 @@ export interface CorpoIntegrazioniMud {
   destinatariMovimento: Array<{
     anno: number
     numero: number
+    /** Senza (voce con la chiave vecchia) il backend scrive la chiave `anno/numero` */
+    registroId?: string
     ragioneSociale: string
     codiceFiscale: string
     confermaPropriaAzienda?: boolean
@@ -248,9 +263,12 @@ export interface RigaIntegrazione {
   estero: boolean
   nazione: string
   confermaPropriaAzienda: boolean
+  /** Nota sotto l'etichetta (per esempio una voce salvata che non vale più) */
+  avviso?: string
   /** DESTINATARIO_MOVIMENTO */
   anno?: number
   numero?: number
+  registroId?: string
   /** PESO_SPECIFICO */
   cerCode?: string
   unita?: string
@@ -280,11 +298,19 @@ function rigaVuota(
   }
 }
 
-const etichettaMovimento = (numero: number, anno: number) => `Movimento n. ${numero}/${anno}`
+/** Con più registri il numero da solo è ambiguo: si aggiunge la sede, come nei testi del backend. */
+const etichettaMovimento = (numero: number, anno: number, sede?: string) =>
+  `Movimento n. ${numero}/${anno}${sede ? ` (${sede})` : ''}`
+
+export const AVVISO_VOCE_SENZA_SEDE =
+  'Voce senza sede, non più usata: compila la riga del registro corrispondente.'
 const etichettaPeso = (cerCode: string, unita: string) => `CER ${cerCode} – ${unita}`
 
 /** Riga di un bloccante che chiede un'integrazione. */
-function rigaDaBloccante(c: MudControllo): RigaIntegrazione | null {
+function rigaDaBloccante(
+  c: MudControllo,
+  registri: Record<string, string>
+): RigaIntegrazione | null {
   const i = c.integrazione
   if (!i) return null
   switch (i.tipo) {
@@ -297,9 +323,14 @@ function rigaDaBloccante(c: MudControllo): RigaIntegrazione | null {
       }
     case 'DESTINATARIO_MOVIMENTO':
       return {
-        ...rigaVuota(i.tipo, i.chiave, etichettaMovimento(i.numero, i.anno)),
+        ...rigaVuota(
+          i.tipo,
+          i.chiave,
+          etichettaMovimento(i.numero, i.anno, registri[i.registroId])
+        ),
         anno: i.anno,
         numero: i.numero,
+        registroId: i.registroId,
       }
     case 'PESO_SPECIFICO':
       return {
@@ -325,15 +356,33 @@ function conSoggetto(r: RigaIntegrazione, s: SoggettoIntegrato): RigaIntegrazion
 
 /** Righe delle voci salvate, che compaiono anche quando il loro bloccante non c'è più. */
 function righeSalvate(i: IntegrazioniMud): RigaIntegrazione[] {
+  const registri = i.registri ?? {}
   const righe: RigaIntegrazione[] = []
   for (const [chiave, s] of Object.entries(i.destinatari)) {
     righe.push(conSoggetto(rigaVuota('CF_DESTINATARIO', chiave, s.ragioneSociale), s))
   }
   for (const [chiave, s] of Object.entries(i.destinatariMovimento)) {
-    // la chiave è quella del backend, `anno/numero`: l'etichetta la mostra come "n. numero/anno"
-    const [anno, numero] = chiave.split('/').map(Number)
-    const riga = rigaVuota('DESTINATARIO_MOVIMENTO', chiave, etichettaMovimento(numero, anno))
-    righe.push({ ...conSoggetto(riga, s), anno, numero })
+    // la chiave è quella del backend, `anno/numero@registroId` (o la vecchia `anno/numero`):
+    // l'etichetta la mostra come "n. numero/anno"
+    const lettura = /^(\d+)\/(\d+)(?:@(.+))?$/.exec(chiave)
+    if (!lettura) continue
+    const anno = Number(lettura[1])
+    const numero = Number(lettura[2])
+    const registroId = lettura[3]
+    const riga = rigaVuota(
+      'DESTINATARIO_MOVIMENTO',
+      chiave,
+      etichettaMovimento(numero, anno, registroId ? registri[registroId] : undefined)
+    )
+    // Senza registro la voce vale solo con un registro solo: con più registri il backend la ignora.
+    const nonPiuUsata = !registroId && Object.keys(registri).length > 0
+    righe.push({
+      ...conSoggetto(riga, s),
+      anno,
+      numero,
+      registroId,
+      ...(nonPiuUsata ? { avviso: AVVISO_VOCE_SENZA_SEDE } : {}),
+    })
   }
   for (const [chiave, s] of Object.entries(i.trasportatori)) {
     const etichetta = `${s.ragioneSociale} (trasportatore)`
@@ -364,7 +413,7 @@ export function righeIntegrazioni(
   const righe = new Map<string, RigaIntegrazione>()
   for (const c of controlli) {
     if (c.gravita !== 'BLOCCANTE') continue
-    const riga = rigaDaBloccante(c)
+    const riga = rigaDaBloccante(c, integrazioni.registri ?? {})
     if (!riga) continue
     const id = `${riga.tipo}|${riga.chiave}`
     if (righe.has(id)) continue
@@ -412,6 +461,7 @@ export function corpoIntegrazioni(
           corpo.destinatariMovimento.push({
             anno: r.anno,
             numero: r.numero,
+            ...(r.registroId ? { registroId: r.registroId } : {}),
             ragioneSociale,
             codiceFiscale,
             ...conferma,

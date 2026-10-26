@@ -10,6 +10,9 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
   let prisma: PrismaClient
   let tenantId: string
   let altroTenantId: string
+  /** Registro principale di ogni azienda e un secondo registro del primo tenant (un'altra sede). */
+  const registroDi: Record<string, string> = {}
+  let secondoRegistroId: string
   let contatore = 0
 
   beforeAll(async () => {
@@ -24,12 +27,35 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
       data: { partitaIva: `GE${suffisso}`, ragioneSociale: 'Giacenza Altro SRL', country: 'IT' },
     })
     altroTenantId = altro.id
+    for (const t of [tenantId, altroTenantId]) {
+      registroDi[t] = (
+        await prisma.registroRifiuti.create({
+          data: { tenantId: t, descrizione: 'Registro cronologico' },
+        })
+      ).id
+    }
+    const sede = await prisma.rentriUnitaLocale.create({
+      data: {
+        tenantId,
+        numIscrSito: `OP0001GD${Date.now().toString().slice(-6)}-MI0001`,
+        denominazione: 'Sede B',
+      },
+    })
+    secondoRegistroId = (
+      await prisma.registroRifiuti.create({
+        data: { tenantId, unitaLocaleId: sede.id, descrizione: 'Registro Sede B' },
+      })
+    ).id
   })
 
   afterAll(async () => {
     await prisma.wasteMovement.deleteMany({
       where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
+    await prisma.registroRifiuti.deleteMany({
+      where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
+    })
+    await prisma.rentriUnitaLocale.deleteMany({ where: { tenantId } })
     await prisma.tenant.deleteMany({
       where: { id: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
@@ -48,12 +74,14 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
     quantity: number,
     unit: string,
     cerCode: string,
-    tenant: string
+    tenant: string,
+    registroId = registroDi[tenant]
   ): Promise<void> {
     const movementDate = new Date(data)
     await prisma.wasteMovement.create({
       data: {
         tenantId: tenant,
+        registroId,
         progressiveYear: 2026,
         progressiveNumber: ++contatore,
         type: tipo,
@@ -66,12 +94,45 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
       },
     })
   }
-  const carico = (data: string, qty: number, unit = 'KG', cer = '99 99 01', tenant = tenantId) =>
-    inserisci('CARICO', data, qty, unit, cer, tenant)
-  const scarico = (data: string, qty: number, unit = 'KG', cer = '99 99 01', tenant = tenantId) =>
-    inserisci('SCARICO', data, qty, unit, cer, tenant)
-  const disp = (alla: Date, cer = '99 99 01') =>
-    prisma.$transaction(tx => giacenzaDisponibileAl(tx, { tenantId, cerCode: cer, alla }))
+  const carico = (
+    data: string,
+    qty: number,
+    unit = 'KG',
+    cer = '99 99 01',
+    tenant = tenantId,
+    registroId?: string
+  ) => inserisci('CARICO', data, qty, unit, cer, tenant, registroId)
+  const scarico = (
+    data: string,
+    qty: number,
+    unit = 'KG',
+    cer = '99 99 01',
+    tenant = tenantId,
+    registroId?: string
+  ) => inserisci('SCARICO', data, qty, unit, cer, tenant, registroId)
+  const disp = (alla: Date, cer = '99 99 01', registroId = registroDi[tenantId]) =>
+    prisma.$transaction(tx =>
+      giacenzaDisponibileAl(tx, { tenantId, registroId, cerCode: cer, alla })
+    )
+
+  it('la giacenza conta solo i movimenti del registro richiesto', async () => {
+    // Carichi e scarichi della sede B non entrano nel saldo della sede A, e viceversa; vale anche
+    // per l'elenco delle unita' non di massa caricate.
+    await carico('2026-03-01', 100)
+    await carico('2026-03-01', 500, 'KG', '99 99 01', tenantId, secondoRegistroId)
+    await scarico('2026-03-02', 30, 'KG', '99 99 01', tenantId, secondoRegistroId)
+    await carico('2026-03-01', 7, 'LITRI', '99 99 01', tenantId, secondoRegistroId)
+    expect(await disp(new Date('2026-03-05'))).toEqual({
+      saldoComplessivoKg: 100,
+      disponibileAllaDataKg: 100,
+      vincoloAl: new Date('2026-03-05T00:00:00Z'),
+      unitaNonDiMassaCaricate: [],
+    })
+    expect(await disp(new Date('2026-03-05'), '99 99 01', secondoRegistroId)).toMatchObject({
+      saldoComplessivoKg: 470,
+      unitaNonDiMassaCaricate: ['LITRI'],
+    })
+  })
 
   it('saldo semplice: carichi meno scarichi fino alla data', async () => {
     await carico('2026-03-01', 100)

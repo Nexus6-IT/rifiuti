@@ -1,6 +1,7 @@
 import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
-import { RegistraMovimentoDto } from './registra-movimento.dto'
+import { RegistraMovimentoDto, ListMovimentiDto } from './registra-movimento.dto'
+import { RegistroIdQueryDto } from './registro-id-query.dto'
 
 describe('RegistraMovimentoDto', () => {
   const minimo = {
@@ -16,6 +17,19 @@ describe('RegistraMovimentoDto', () => {
       plainToInstance(RegistraMovimentoDto, { ...minimo, quantity: 1.005 })
     )
     expect(errori.map(e => e.property)).toContain('quantity')
+  })
+
+  it('registroId: facoltativo, uuid se presente (movimento, lista e query del progressivo)', async () => {
+    const uuid = '11111111-1111-4111-8111-111111111111'
+    for (const classe of [RegistraMovimentoDto, ListMovimentiDto, RegistroIdQueryDto]) {
+      const base = classe === RegistraMovimentoDto ? minimo : {}
+      expect(await validate(plainToInstance(classe as any, { ...base }))).toEqual([])
+      expect(await validate(plainToInstance(classe as any, { ...base, registroId: uuid }))).toEqual(
+        []
+      )
+      const errori = await validate(plainToInstance(classe as any, { ...base, registroId: 'x' }))
+      expect(errori.map(e => e.property)).toEqual(['registroId'])
+    }
   })
 
   it('accetta 2 decimali', async () => {

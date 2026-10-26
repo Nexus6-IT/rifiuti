@@ -9,6 +9,7 @@ import {
 } from './mud-controlli'
 
 const m: RifMovimento = {
+  registroId: 'reg-A',
   progressiveNumber: 4,
   progressiveYear: 2025,
   cerCode: '17 04 05',
@@ -28,6 +29,7 @@ describe('controlliMud', () => {
         {
           numero: 4,
           anno: 2025,
+          registroId: 'reg-A',
           cerCode: '17 04 05',
           quantita: 30,
           unita: 'litri',
@@ -69,6 +71,7 @@ describe('controlliMud', () => {
         {
           numero: 4,
           anno: 2025,
+          registroId: 'reg-A',
           cerCode: '17 04 05',
           quantita: 300,
           unita: 'KG',
@@ -76,7 +79,13 @@ describe('controlliMud', () => {
           incluso: true,
         },
       ],
-      integrazione: { tipo: 'DESTINATARIO_MOVIMENTO', chiave: '2025/4', numero: 4, anno: 2025 },
+      integrazione: {
+        tipo: 'DESTINATARIO_MOVIMENTO',
+        chiave: '2025/4@reg-A',
+        numero: 4,
+        anno: 2025,
+        registroId: 'reg-A',
+      },
     })
   })
 
@@ -113,6 +122,7 @@ describe('controlliMud', () => {
         {
           numero: 4,
           anno: 2025,
+          registroId: 'reg-A',
           cerCode: '17 04 05',
           quantita: 300,
           unita: 'KG',
@@ -198,6 +208,7 @@ describe('controlliMud', () => {
         {
           numero: 4,
           anno: 2026,
+          registroId: 'reg-A',
           cerCode: '17 04 05',
           quantita: 100,
           unita: 'kg',
@@ -235,6 +246,7 @@ describe('controlliMud', () => {
         {
           numero: 4,
           anno: 2026,
+          registroId: 'reg-A',
           cerCode: '17 04 05',
           quantita: 100,
           unita: 'kg',
@@ -288,10 +300,34 @@ describe('controlliMud', () => {
     expect(r.gravita).toBe('AVVISO')
     expect(r.messaggio).toContain('(Sede (OP1), Cantiere Nord (OP2))')
     expect(r.messaggio).toContain(
-      "il file attribuisce all'unità locale Sede (OP1) i movimenti di tutte"
+      "il file attribuisce all'unità locale Sede (OP1) i movimenti di tutti i registri"
     )
     expect(r.messaggio).toContain('risulterebbero dichiarate due volte')
+    expect(r.messaggio).toContain('La ripartizione per sede non è ancora supportata.')
+    expect(r.messaggio).not.toContain('il registro non indica la sede')
     expect(r.messaggio).not.toContain('mancano le dichiarazioni separate')
+  })
+
+  it('MUD: il testo contiene "tutti i registri" e "ripartizione per sede non è ancora supportata"', () => {
+    const r = controlliMud.piuUnitaLocali([
+      { denominazione: 'Sede', numIscrSito: 'OP1', principale: true },
+      { denominazione: 'Deposito', numIscrSito: 'OP2', principale: false },
+    ])
+    expect(r.codice).toBe('PIU_UNITA_LOCALI')
+    expect(r.gravita).toBe('AVVISO')
+    expect(r.messaggio).toBe(
+      "L'azienda ha 2 unità locali attive (Sede (OP1), Deposito (OP2)): il file attribuisce all'unità locale Sede (OP1) i movimenti di tutti i registri. Non presentare anche dichiarazioni separate per le altre sedi con le stesse quantità: risulterebbero dichiarate due volte. La ripartizione per sede non è ancora supportata."
+    )
+  })
+
+  it('MUD: con più registri il movimento porta la sede nei testi; con un registro solo i testi restano identici', () => {
+    const uno = controlliMud.destinatarioNonIndicato(scaricoKg, 2025)
+    expect(uno.messaggio).toContain('Movimento n. 4/2025 (scarico')
+    expect(uno.messaggio).toContain('riga "Movimento n. 4/2025"')
+
+    const due = controlliMud.destinatarioNonIndicato({ ...scaricoKg, registro: 'Sede B' }, 2025)
+    expect(due.messaggio).toContain('Movimento n. 4/2025 (Sede B) (scarico')
+    expect(due.messaggio).toContain('riga "Movimento n. 4/2025 (Sede B)"')
   })
 
   it('piuUnitaLocali attribuisce alla sede principale, anche se non è la prima', () => {
@@ -311,6 +347,7 @@ describe('controlliMud', () => {
       {
         numero: 4,
         anno: 2025,
+        registroId: 'reg-A',
         cerCode: '17 04 05',
         quantita: 30,
         unita: 'litri',

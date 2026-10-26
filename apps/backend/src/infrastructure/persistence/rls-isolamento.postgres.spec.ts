@@ -52,6 +52,8 @@ describe('RLS: isolamento col ruolo applicativo e col ruolo di sistema (Postgres
   let userB = ''
   const mov: Record<'A' | 'B', string> = { A: '', B: '' }
   let progressivo = 0
+  /** Registro di ogni azienda: il movimento ne ha uno obbligatorio. */
+  const registro: Record<string, string> = {}
 
   type Tx = Pick<PrismaClient, '$queryRawUnsafe' | '$executeRawUnsafe'>
 
@@ -76,9 +78,9 @@ describe('RLS: isolamento col ruolo applicativo e col ruolo di sistema (Postgres
 
   const inserisciMovimento = (tx: Tx, tenant: string) =>
     tx.$executeRawUnsafe(
-      `INSERT INTO waste_movements (tenant_id, updated_at, type, cer_code, quantity, movement_date,
+      `INSERT INTO waste_movements (tenant_id, registro_id, updated_at, type, cer_code, quantity, movement_date,
          registration_date, progressive_number, progressive_year, causale)
-       VALUES ('${tenant}', now(), 'CARICO', '150101', 1, now(), now(), ${++progressivo}, 2031, 'ALTRO_CARICO')`
+       VALUES ('${tenant}', '${registro[tenant]}', now(), 'CARICO', '150101', 1, now(), now(), ${++progressivo}, 2031, 'ALTRO_CARICO')`
     )
 
   async function creaAzienda(tag: string) {
@@ -89,6 +91,11 @@ describe('RLS: isolamento col ruolo applicativo e col ruolo di sistema (Postgres
       },
     })
     tenantIds.push(t.id)
+    registro[t.id] = (
+      await owner.registroRifiuti.create({
+        data: { tenantId: t.id, descrizione: 'Registro cronologico' },
+      })
+    ).id
     return t.id
   }
 
@@ -124,6 +131,7 @@ describe('RLS: isolamento col ruolo applicativo e col ruolo di sistema (Postgres
         await owner.wasteMovement.create({
           data: {
             tenantId,
+            registroId: registro[tenantId],
             progressiveYear: 2031,
             progressiveNumber: ++progressivo,
             type: 'CARICO',
@@ -175,6 +183,7 @@ describe('RLS: isolamento col ruolo applicativo e col ruolo di sistema (Postgres
       await owner.consultantTenantAssociation.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.role.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.wasteMovement.deleteMany({ where: { tenantId: { in: tenantIds } } })
+      await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.rentriCredential.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.fIR.deleteMany({ where: { tenantId: { in: tenantIds } } })
       await owner.user.deleteMany({ where: { tenantId: { in: tenantIds } } })

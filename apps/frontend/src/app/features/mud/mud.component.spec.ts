@@ -141,7 +141,13 @@ const BLOCCANTI_INTEGRAZIONE: MudControllo[] = [
     codice: 'DESTINATARIO_NON_INDICATO',
     gravita: 'BLOCCANTE',
     messaggio: 'Movimento n. 5/2025 senza destinatario',
-    integrazione: { tipo: 'DESTINATARIO_MOVIMENTO', chiave: '2025/5', numero: 5, anno: 2025 },
+    integrazione: {
+      tipo: 'DESTINATARIO_MOVIMENTO',
+      chiave: '2025/5@reg-A',
+      numero: 5,
+      anno: 2025,
+      registroId: 'reg-A',
+    },
   },
   {
     codice: 'TRASPORTATORE_SENZA_CF',
@@ -797,7 +803,13 @@ describe('MudComponent', () => {
       expect(mud.salvaIntegrazioni).toHaveBeenCalledWith(2025, {
         destinatari: [{ ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' }],
         destinatariMovimento: [
-          { anno: 2025, numero: 5, ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' },
+          {
+            anno: 2025,
+            numero: 5,
+            registroId: 'reg-A',
+            ragioneSociale: 'Ecologia Srl',
+            codiceFiscale: '12345678903',
+          },
         ],
         trasportatori: [{ ragioneSociale: 'Trasporti Srl', codiceFiscale: '12345678903' }],
         pesiSpecifici: [{ cerCode: '170405', unita: 'LITRI', kgPerUnita: 1.1 }],

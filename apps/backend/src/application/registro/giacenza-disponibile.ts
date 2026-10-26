@@ -5,6 +5,8 @@ import { cerSoloCifre } from '../../domain/waste-movement/cer-registro'
 
 export interface ParametriGiacenza {
   tenantId: string
+  /** Registro di cui si calcola la giacenza: carichi e scarichi di un altro registro non contano. */
+  registroId: string
   cerCode: string
   alla: Date
 }
@@ -59,6 +61,7 @@ export async function giacenzaDisponibileAl(
                  CASE WHEN upper(btrim(unit)) = ANY(${aliasT}::text[]) THEN 1000 ELSE 1 END) AS delta
       FROM waste_movements
       WHERE tenant_id = ${p.tenantId}::uuid
+        AND registro_id = ${p.registroId}::uuid
         AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cifreCer}
         AND (upper(btrim(unit)) = ANY(${aliasKg}::text[])
              OR upper(btrim(unit)) = ANY(${aliasT}::text[])
@@ -76,6 +79,7 @@ export async function giacenzaDisponibileAl(
            (SELECT COALESCE(array_agg(DISTINCT upper(btrim(unit)) ORDER BY upper(btrim(unit))), ARRAY[]::text[])
             FROM waste_movements
             WHERE tenant_id = ${p.tenantId}::uuid
+              AND registro_id = ${p.registroId}::uuid
               AND type = 'CARICO'
               AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cifreCer}
               AND NOT (upper(btrim(unit)) = ANY(${aliasKg}::text[])

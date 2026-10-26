@@ -26,6 +26,7 @@ describe('MudIntegrazioniService', () => {
         findUnique: jest.fn().mockResolvedValue({ partitaIva: '01234567897', codiceFiscale: null }),
       },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
+      registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
       $executeRaw: jest.fn().mockResolvedValue(1),
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
     }
@@ -205,6 +206,36 @@ describe('MudIntegrazioniService', () => {
         dopo: 'Ecologia Srl – 12345678903',
       },
       { tipo: 'CF_TRASPORTATORE', chiave: 'TRASPORTI SRL', prima: null, dopo: '12345678903' },
+    ])
+  })
+
+  it('MUD: il destinatario del movimento si salva con la chiave che include il registro', async () => {
+    await service.salva(
+      't1',
+      2025,
+      'u1',
+      dati({
+        destinatariMovimento: [
+          {
+            anno: 2025,
+            numero: 3,
+            registroId: '11111111-1111-4111-8111-111111111111',
+            ragioneSociale: 'Ecologia Srl',
+            codiceFiscale: '12345678903',
+          },
+          {
+            anno: 2025,
+            numero: 3,
+            registroId: '22222222-2222-4222-8222-222222222222',
+            ragioneSociale: 'Altra Srl',
+            codiceFiscale: '12345678903',
+          },
+        ],
+      })
+    )
+    expect(Object.keys(scritto().destinatariMovimento)).toEqual([
+      '2025/3@11111111-1111-4111-8111-111111111111',
+      '2025/3@22222222-2222-4222-8222-222222222222',
     ])
   })
 
@@ -421,6 +452,22 @@ describe('MudIntegrazioniService', () => {
       NotFoundException
     )
     expect(prisma.tenant.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('etichetteRegistri: vuota con un registro solo, sede per registro con più registri', async () => {
+    prisma.registroRifiuti.findMany.mockResolvedValue([
+      { id: 'r1', descrizione: 'Registro', unitaLocale: { denominazione: 'Sede A' } },
+    ])
+    expect(await service.etichetteRegistri('t1')).toEqual({})
+
+    prisma.registroRifiuti.findMany.mockResolvedValue([
+      { id: 'r1', descrizione: 'Registro', unitaLocale: { denominazione: 'Sede A' } },
+      { id: 'r2', descrizione: 'Registro cronologico', unitaLocale: null },
+    ])
+    expect(await service.etichetteRegistri('t1')).toEqual({
+      r1: 'Sede A',
+      r2: 'Registro cronologico',
+    })
   })
 
   it("codiciAzienda: partita IVA e codice fiscale dell'azienda, normalizzati e senza vuoti", async () => {

@@ -27,6 +27,9 @@ import { RegistraMovimentoCommand } from '../../application/registro/commands/re
 import { ListMovimentiQuery } from '../../application/registro/queries/list-movimenti.query'
 import { RegistraMovimentoDto, ListMovimentiDto } from './dtos/registra-movimento.dto'
 import { ImpostaProgressivoInizialeDto } from './dtos/progressivo-iniziale.dto'
+import { RegistroIdQueryDto } from './dtos/registro-id-query.dto'
+import { RegistriService, RegistroVista } from '../../application/registro/registri.service'
+import { DomainError } from '../../core/domain/errors'
 import {
   ProgressivoInizialeService,
   StatoProgressivoIniziale,
@@ -51,7 +54,8 @@ export class RegistroController {
     private readonly registraMovimentoUseCase: RegistraMovimentoUseCase,
     private readonly listMovimentiHandler: ListMovimentiHandler,
     private readonly progressivoIniziale: ProgressivoInizialeService,
-    private readonly membership: RuoloEffettivoService
+    private readonly membership: RuoloEffettivoService,
+    private readonly registri: RegistriService
   ) {}
 
   /**
@@ -117,7 +121,8 @@ export class RegistroController {
       dto.counterpartName,
       dto.counterpartAddress,
       dto.firId,
-      dto.notes
+      dto.notes,
+      dto.registroId
     )
 
     const result = await this.registraMovimentoUseCase.execute(command)
@@ -155,6 +160,7 @@ export class RegistroController {
         dataFrom: dto.dataFrom ? new Date(dto.dataFrom) : undefined,
         dataTo: dto.dataTo ? new Date(dto.dataTo) : undefined,
         firId: dto.firId,
+        registroId: dto.registroId,
       },
       { page: dto.page ?? 1, limit: dto.limit ?? 20 }
     )
@@ -166,6 +172,40 @@ export class RegistroController {
     }
 
     return result.value
+  }
+
+  /**
+   * Registri dell'azienda selezionata (uno per sede), in SOLA LETTURA: non ne crea. Aperta a
+   * ogni ruolo con accesso all'azienda, come la lista. I registri nascono con
+   * `POST registri/assicura` o alla prima registrazione.
+   */
+  @Get('registri')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Registri dell'azienda (uno per sede), in sola lettura" })
+  @ApiResponse({ status: 200, description: 'Elenco dei registri' })
+  async elencaRegistri(@Req() req: any): Promise<RegistroVista[]> {
+    return this.comeBadRequest(() => this.registri.elenca(requireRequestTenantId(req)))
+  }
+
+  /**
+   * Crea i registri mancanti (uno per sede attiva) e lega quello senza sede alla principale.
+   * Idempotente. Scrive, quindi solo i ruoli che possono registrare: un utente in sola
+   * consultazione non scrive mai.
+   */
+  @Post('registri/assicura')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Assicura un registro per ogni sede attiva (idempotente)' })
+  @ApiResponse({ status: 200, description: 'Elenco dei registri' })
+  @ApiResponse({ status: 403, description: "Ruolo di sola consultazione nell'azienda selezionata" })
+  async assicuraRegistri(@Req() req: any): Promise<RegistroVista[]> {
+    const tenantId = requireRequestTenantId(req)
+    if (!(await this.haRuolo(req, tenantId, RUOLI_REGISTRAZIONE))) {
+      throw new ForbiddenException({
+        message: "Solo un amministratore o un operatore dell'azienda può registrare movimenti.",
+        error: 'REGISTRO_RISERVATO_OPERATORI',
+      })
+    }
+    return this.comeBadRequest(() => this.registri.assicuraRegistri(tenantId))
   }
 
   /**
@@ -181,10 +221,11 @@ export class RegistroController {
   @ApiResponse({ status: 200, description: 'Stato del progressivo iniziale' })
   async leggiProgressivoIniziale(
     @Param('anno', ParseIntPipe) anno: number,
-    @Req() req: any
+    @Req() req: any,
+    @Query() query?: RegistroIdQueryDto
   ): Promise<StatoProgressivoIniziale & { puoImpostare: boolean; puoRegistrare: boolean }> {
     const tenantId = requireRequestTenantId(req)
-    const stato = await this.progressivoIniziale.leggi(tenantId, anno)
+    const stato = await this.progressivoIniziale.leggi(tenantId, anno, query?.registroId)
     const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
     return {
       ...stato,
@@ -212,8 +253,9 @@ export class RegistroController {
   async impostaProgressivoIniziale(
     @Param('anno', ParseIntPipe) anno: number,
     @Body() dto: ImpostaProgressivoInizialeDto,
-    @Req() req: any
-  ): Promise<{ anno: number; primoProgressivo: number }> {
+    @Req() req: any,
+    @Query() query?: RegistroIdQueryDto
+  ): Promise<{ anno: number; primoProgressivo: number; registroId: string }> {
     const tenantId = requireRequestTenantId(req)
     if (!(await this.haRuolo(req, tenantId, RUOLI_PROGRESSIVO_INIZIALE))) {
       throw new ForbiddenException({
@@ -227,8 +269,19 @@ export class RegistroController {
       anno,
       dto.primoProgressivo,
       dto.motivo,
-      req.user.id
+      req.user.id,
+      query?.registroId
     )
+  }
+
+  /** Un errore di dominio dei registri (registro non trovato, da indicare...) è un 400 col suo messaggio. */
+  private async comeBadRequest<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn()
+    } catch (err) {
+      if (err instanceof DomainError) throw new BadRequestException(err.message)
+      throw err
+    }
   }
 
   /** Vero se il ruolo dell'utente nell'azienda selezionata è fra quelli indicati. */

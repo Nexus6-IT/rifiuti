@@ -5,6 +5,7 @@ import * as giacenzaModulo from '../giacenza-disponibile'
 import { FIRPrismaRepository } from '../../../infrastructure/persistence/fir-prisma.repository'
 import { FIR } from '../../../domain/fir/aggregates/fir.aggregate'
 import { FirGiaRegistratoError } from '../../../core/domain/errors'
+import { RegistriService } from '../registri.service'
 import type {
   CausaleMovimento,
   WasteMovementType,
@@ -23,17 +24,25 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
   let prisma: PrismaClient
   let useCase: RegistraMovimentoUseCase
   let tenantId: string
+  let registroId: string
   let cerCreato = false
 
   beforeAll(async () => {
     prisma = new PrismaClient()
     await prisma.$connect()
-    useCase = new RegistraMovimentoUseCase(prisma as any, loggerStub as any)
+    useCase = new RegistraMovimentoUseCase(
+      prisma as any,
+      loggerStub as any,
+      new RegistriService(prisma as any, loggerStub as any)
+    )
     const suffisso = Date.now().toString().slice(-9)
     const tenant = await prisma.tenant.create({
       data: { partitaIva: `RM${suffisso}`, ragioneSociale: 'Registro Giacenza SRL', country: 'IT' },
     })
     tenantId = tenant.id
+    registroId = (
+      await new RegistriService(prisma as any, loggerStub as any).assicuraRegistri(tenantId)
+    )[0].id
     cerCreato = (await prisma.cERCode.count({ where: { code: CER } })) === 0
     await prisma.cERCode.upsert({
       where: { code: CER },
@@ -47,6 +56,7 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
     // cancellerebbe l'intera tabella: senza id non si cancella nulla.
     if (tenantId) {
       await prisma.wasteMovement.deleteMany({ where: { tenantId } })
+      await prisma.registroRifiuti.deleteMany({ where: { tenantId } })
       await prisma.tenant.deleteMany({ where: { id: tenantId } })
     }
     if (cerCreato) await prisma.cERCode.deleteMany({ where: { code: CER } })
@@ -83,6 +93,7 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
       undefined,
       undefined,
       firId,
+      undefined,
       undefined
     )
   }
@@ -91,6 +102,7 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
   function movimentoDiretto(type: WasteMovementType, qty: number, data: string, n: number) {
     return {
       tenantId,
+      registroId,
       progressiveYear: 2025,
       progressiveNumber: 900 + n,
       type,
@@ -104,7 +116,7 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
   }
 
   it('due scarichi concorrenti in anni di registrazione diversi: ne passa uno solo', async () => {
-    // Il lock del progressivo è <tenant>-<anno>: con anni diversi non li serializza.
+    // Il lock del progressivo è <registro>-<anno>: con anni diversi non li serializza.
     // Solo il lock della giacenza può farlo, ed è quello che questo test prova.
     expect(
       (await useCase.execute(cmd('CARICO', 'PRODUZIONE_INTERNA', 100, '2025-12-20'))).isSuccess

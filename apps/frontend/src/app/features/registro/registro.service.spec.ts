@@ -102,3 +102,75 @@ describe('annoItaliano', () => {
     expect(annoItaliano(new Date('2026-12-31T23:00:00Z'))).toBe(2027)
   })
 })
+
+describe('RegistroService — registri per sede', () => {
+  let service: RegistroService
+  let httpMock: HttpTestingController
+  const base = `${environment.apiUrl}/registro`
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [RegistroService],
+    })
+    service = TestBed.inject(RegistroService)
+    httpMock = TestBed.inject(HttpTestingController)
+  })
+
+  afterEach(() => httpMock.verify())
+
+  it('registro.service: listRegistri chiama GET registro/registri', () => {
+    service.listRegistri().subscribe()
+    const req = httpMock.expectOne(`${base}/registri`)
+    expect(req.request.method).toBe('GET')
+    req.flush([])
+  })
+
+  it('registro.service: assicuraRegistri chiama POST registro/registri/assicura', () => {
+    service.assicuraRegistri().subscribe()
+    const req = httpMock.expectOne(`${base}/registri/assicura`)
+    expect(req.request.method).toBe('POST')
+    req.flush([])
+  })
+
+  it('registro.service: la registrazione invia registroId solo se valorizzato', () => {
+    const dto = {
+      type: 'CARICO' as const,
+      movementDate: '2026-10-26',
+      causale: 'PRODUZIONE_INTERNA' as const,
+      cerCode: '200301',
+      quantity: 1,
+    }
+    service.registra(dto).subscribe()
+    const senza = httpMock.expectOne(base)
+    expect('registroId' in senza.request.body).toBeFalse()
+    senza.flush({})
+
+    service.registra({ ...dto, registroId: 'reg-A' }).subscribe()
+    const con = httpMock.expectOne(base)
+    expect(con.request.body.registroId).toBe('reg-A')
+    con.flush({})
+  })
+
+  it('registro.service: lista e progressivo iniziale passano registroId in query', () => {
+    service.lista({ registroId: 'reg-A' }).subscribe()
+    const lista = httpMock.expectOne(r => r.url === base && r.params.get('registroId') === 'reg-A')
+    lista.flush({ items: [], total: 0, page: 1, limit: 20, totalPages: 0 })
+
+    service.getProgressivoIniziale(2026, 'reg-A').subscribe()
+    const get = httpMock.expectOne(
+      r => r.url === `${base}/progressivo-iniziale/2026` && r.params.get('registroId') === 'reg-A'
+    )
+    get.flush({})
+
+    service.impostaProgressivoIniziale(2026, 5, 'motivo valido', 'reg-A').subscribe()
+    const put = httpMock.expectOne(
+      r =>
+        r.method === 'PUT' &&
+        r.url === `${base}/progressivo-iniziale/2026` &&
+        r.params.get('registroId') === 'reg-A'
+    )
+    expect(put.request.method).toBe('PUT')
+    put.flush({})
+  })
+})
