@@ -301,6 +301,14 @@ describe('codiceDellAzienda', () => {
   })
 })
 
+const INTEGRAZIONE_A: Extract<MudControllo['integrazione'], { tipo: 'DESTINATARIO_MOVIMENTO' }> = {
+  tipo: 'DESTINATARIO_MOVIMENTO',
+  chiave: '2025/5@reg-A',
+  numero: 5,
+  anno: 2025,
+  registroId: 'reg-A',
+}
+
 describe('righeIntegrazioni', () => {
   it('una riga per ogni bloccante con integrazione, con la chiave del backend', () => {
     const righe = righeIntegrazioni(
@@ -310,7 +318,13 @@ describe('righeIntegrazioni', () => {
           chiave: 'ECOLOGIA SRL',
           ragioneSociale: 'Ecologia Srl',
         }),
-        bloccante({ tipo: 'DESTINATARIO_MOVIMENTO', chiave: '2025/5', numero: 5, anno: 2025 }),
+        bloccante({
+          tipo: 'DESTINATARIO_MOVIMENTO',
+          chiave: '2025/5@reg-A',
+          numero: 5,
+          anno: 2025,
+          registroId: 'reg-A',
+        }),
         bloccante({
           tipo: 'CF_TRASPORTATORE',
           chiave: 'TRASPORTI SRL',
@@ -322,10 +336,10 @@ describe('righeIntegrazioni', () => {
     )
     expect(righe.map(r => [r.tipo, r.chiave, r.etichetta])).toEqual([
       ['CF_DESTINATARIO', 'ECOLOGIA SRL', 'Ecologia Srl'],
-      ['DESTINATARIO_MOVIMENTO', '2025/5', 'Movimento n. 5/2025'],
+      ['DESTINATARIO_MOVIMENTO', '2025/5@reg-A', 'Movimento n. 5/2025'],
       ['CF_TRASPORTATORE', 'TRASPORTI SRL', 'Trasporti Srl (trasportatore)'],
     ])
-    expect([righe[1].anno, righe[1].numero]).toEqual([2025, 5])
+    expect([righe[1].anno, righe[1].numero, righe[1].registroId]).toEqual([2025, 5, 'reg-A'])
   })
 
   it('peso specifico: etichetta col CER e totale dei movimenti del bloccante nell unità', () => {
@@ -363,6 +377,7 @@ describe('righeIntegrazioni', () => {
         },
       },
       destinatariMovimento: {
+        '2024/11@reg-B': { ragioneSociale: 'Altro Impianto', codiceFiscale: '12345678903' },
         '2024/12': {
           ragioneSociale: 'Impianto Nord',
           codiceFiscale: '01234567897',
@@ -380,18 +395,23 @@ describe('righeIntegrazioni', () => {
     })
     expect(righe.map(r => r.etichetta)).toEqual([
       'Recycling GmbH',
+      'Movimento n. 11/2024',
       'Movimento n. 12/2024',
       'CER 200304 – M3',
     ])
     expect(righe[0].estero).toBeTrue()
     expect(righe[0].nazione).toBe('Germania')
-    expect(righe[1].chiave).toBe('2024/12')
-    expect([righe[1].anno, righe[1].numero]).toEqual([2024, 12])
-    expect(righe[1].ragioneSociale).toBe('Impianto Nord')
-    expect(righe[1].confermaPropriaAzienda).toBeTrue()
-    expect(righe[2].kgPerUnita).toBe(1.2)
-    expect(righe[2].confermaFuoriIntervallo).toBeTrue()
-    expect(righe[2].totaleUnita).toBeNull()
+    // chiave con il registro: anno, numero e registro si leggono dalla chiave del backend
+    expect(righe[1].chiave).toBe('2024/11@reg-B')
+    expect([righe[1].anno, righe[1].numero, righe[1].registroId]).toEqual([2024, 11, 'reg-B'])
+    // chiave vecchia (prima dei registri per sede): nessun registro, si rimanda senza
+    expect(righe[2].chiave).toBe('2024/12')
+    expect([righe[2].anno, righe[2].numero, righe[2].registroId]).toEqual([2024, 12, undefined])
+    expect(righe[2].ragioneSociale).toBe('Impianto Nord')
+    expect(righe[2].confermaPropriaAzienda).toBeTrue()
+    expect(righe[3].kgPerUnita).toBe(1.2)
+    expect(righe[3].confermaFuoriIntervallo).toBeTrue()
+    expect(righe[3].totaleUnita).toBeNull()
   })
 
   it('un bloccante e la voce salvata con la stessa chiave danno una sola riga', () => {
@@ -417,7 +437,13 @@ describe('corpoIntegrazioni', () => {
         bloccante({ tipo: 'CF_DESTINATARIO', chiave: 'A SRL', ragioneSociale: 'A Srl' }),
         bloccante({ tipo: 'CF_DESTINATARIO', chiave: 'B GMBH', ragioneSociale: 'B GmbH' }),
         bloccante({ tipo: 'CF_DESTINATARIO', chiave: 'C SRL', ragioneSociale: 'C Srl' }),
-        bloccante({ tipo: 'DESTINATARIO_MOVIMENTO', chiave: '2025/5', numero: 5, anno: 2025 }),
+        bloccante({
+          tipo: 'DESTINATARIO_MOVIMENTO',
+          chiave: '2025/5@reg-A',
+          numero: 5,
+          anno: 2025,
+          registroId: 'reg-A',
+        }),
         bloccante({ tipo: 'CF_TRASPORTATORE', chiave: 'T SRL', ragioneSociale: 'T Srl' }),
         bloccante({
           tipo: 'PESO_SPECIFICO',
@@ -454,7 +480,13 @@ describe('corpoIntegrazioni', () => {
         { ragioneSociale: 'B GmbH', codiceFiscale: '', nazione: 'Germania' },
       ],
       destinatariMovimento: [
-        { anno: 2025, numero: 5, ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' },
+        {
+          anno: 2025,
+          numero: 5,
+          registroId: 'reg-A',
+          ragioneSociale: 'Ecologia Srl',
+          codiceFiscale: '12345678903',
+        },
       ],
       trasportatori: [{ ragioneSociale: 'T Srl', codiceFiscale: '01234567897' }],
       pesiSpecifici: [
@@ -462,6 +494,41 @@ describe('corpoIntegrazioni', () => {
         { cerCode: '200304', unita: 'M3', kgPerUnita: 1.2, confermaFuoriIntervallo: true },
       ],
     })
+  })
+
+  it('MUD: due movimenti con lo stesso anno/numero in registri diversi sono due righe distinte', () => {
+    const r = righeIntegrazioni(
+      [
+        bloccante({ ...INTEGRAZIONE_A }),
+        bloccante({
+          ...INTEGRAZIONE_A,
+          chiave: '2025/5@reg-B',
+          registroId: 'reg-B',
+        }),
+      ],
+      integrazioniVuote()
+    )
+    expect(r.map(x => x.chiave)).toEqual(['2025/5@reg-A', '2025/5@reg-B'])
+    r[0].ragioneSociale = 'Uno Srl'
+    r[0].codiceFiscale = '12345678903'
+    r[1].ragioneSociale = 'Due Srl'
+    r[1].codiceFiscale = '12345678903'
+    expect(corpoIntegrazioni(r, []).destinatariMovimento.map(v => v.registroId)).toEqual([
+      'reg-A',
+      'reg-B',
+    ])
+  })
+
+  it('una voce salvata con la chiave vecchia si rimanda senza registroId', () => {
+    const r = righeIntegrazioni([], {
+      ...integrazioniVuote(),
+      destinatariMovimento: {
+        '2024/12': { ragioneSociale: 'Impianto Nord', codiceFiscale: '12345678903' },
+      },
+    })
+    expect(corpoIntegrazioni(r, []).destinatariMovimento).toEqual([
+      { anno: 2024, numero: 12, ragioneSociale: 'Impianto Nord', codiceFiscale: '12345678903' },
+    ])
   })
 
   it('la conferma della propria azienda non si manda se il codice non è quello dell azienda', () => {

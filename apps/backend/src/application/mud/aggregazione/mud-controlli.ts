@@ -50,12 +50,19 @@ export type MudCodiceControllo =
 export type IntegrazioneRichiesta =
   | { tipo: 'CF_DESTINATARIO'; chiave: string; ragioneSociale: string }
   | { tipo: 'PESO_SPECIFICO'; chiave: string; cerCode: string; unita: string }
-  | { tipo: 'DESTINATARIO_MOVIMENTO'; chiave: string; numero: number; anno: number }
+  | {
+      tipo: 'DESTINATARIO_MOVIMENTO'
+      chiave: string
+      numero: number
+      anno: number
+      registroId: string
+    }
   | { tipo: 'CF_TRASPORTATORE'; chiave: string; ragioneSociale: string }
 
 export interface MudMovimentoSegnalato {
   numero: number
   anno: number
+  registroId: string
   cerCode: string
   quantita: number
   unita: string
@@ -84,6 +91,7 @@ function cerDaMostrare(cerCode6: string, ms: RifMovimento[]): string {
 }
 
 export interface RifMovimento {
+  registroId: string
   progressiveNumber: number
   progressiveYear: number
   cerCode: string
@@ -116,6 +124,7 @@ function segnala(m: RifMovimento, incluso: boolean, kg?: number | null): MudMovi
   return {
     numero: m.progressiveNumber,
     anno: m.progressiveYear,
+    registroId: m.registroId,
     cerCode: m.cerCode,
     quantita: m.quantity,
     unita: m.unit || 'kg',
@@ -349,9 +358,10 @@ export const controlliMud = {
     movimenti: [segnala(m, true)],
     integrazione: {
       tipo: 'DESTINATARIO_MOVIMENTO',
-      chiave: chiaveMovimento(m.progressiveYear, m.progressiveNumber),
+      chiave: chiaveMovimento(m.progressiveYear, m.progressiveNumber, m.registroId),
       numero: m.progressiveNumber,
       anno: m.progressiveYear,
+      registroId: m.registroId,
     },
   }),
 
@@ -507,7 +517,8 @@ export const CODICI_RIPARTIZIONE_RD: readonly MudCodiceControllo[] = [
   'OPERAZIONE_DEDOTTA_DAL_FIR',
 ]
 
-const chiaveSegnalato = (m: MudMovimentoSegnalato) => chiaveMovimento(m.anno, m.numero)
+const chiaveSegnalato = (m: MudMovimentoSegnalato) =>
+  chiaveMovimento(m.anno, m.numero, m.registroId)
 
 export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
   const avvisi = c.filter(e => e.gravita === AVVISO)

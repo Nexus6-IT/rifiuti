@@ -40,6 +40,7 @@ describe('MudExportService', () => {
   }
 
   const rifMovimento: RifMovimento = {
+    registroId: 'reg-A',
     progressiveNumber: 7,
     progressiveYear: 2024,
     cerCode: '170405',

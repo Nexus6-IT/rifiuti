@@ -9,6 +9,7 @@ import {
 } from './mud-controlli'
 
 const m: RifMovimento = {
+  registroId: 'reg-A',
   progressiveNumber: 4,
   progressiveYear: 2025,
   cerCode: '17 04 05',
@@ -28,6 +29,7 @@ describe('controlliMud', () => {
         {
           numero: 4,
           anno: 2025,
+          registroId: 'reg-A',
           cerCode: '17 04 05',
           quantita: 30,
           unita: 'litri',
@@ -69,6 +71,7 @@ describe('controlliMud', () => {
         {
           numero: 4,
           anno: 2025,
+          registroId: 'reg-A',
           cerCode: '17 04 05',
           quantita: 300,
           unita: 'KG',
@@ -76,7 +79,13 @@ describe('controlliMud', () => {
           incluso: true,
         },
       ],
-      integrazione: { tipo: 'DESTINATARIO_MOVIMENTO', chiave: '2025/4', numero: 4, anno: 2025 },
+      integrazione: {
+        tipo: 'DESTINATARIO_MOVIMENTO',
+        chiave: '2025/4@reg-A',
+        numero: 4,
+        anno: 2025,
+        registroId: 'reg-A',
+      },
     })
   })
 
@@ -113,6 +122,7 @@ describe('controlliMud', () => {
         {
           numero: 4,
           anno: 2025,
+          registroId: 'reg-A',
           cerCode: '17 04 05',
           quantita: 300,
           unita: 'KG',
@@ -198,6 +208,7 @@ describe('controlliMud', () => {
         {
           numero: 4,
           anno: 2026,
+          registroId: 'reg-A',
           cerCode: '17 04 05',
           quantita: 100,
           unita: 'kg',
@@ -235,6 +246,7 @@ describe('controlliMud', () => {
         {
           numero: 4,
           anno: 2026,
+          registroId: 'reg-A',
           cerCode: '17 04 05',
           quantita: 100,
           unita: 'kg',
@@ -325,6 +337,7 @@ describe('controlliMud', () => {
       {
         numero: 4,
         anno: 2025,
+        registroId: 'reg-A',
         cerCode: '17 04 05',
         quantita: 30,
         unita: 'litri',

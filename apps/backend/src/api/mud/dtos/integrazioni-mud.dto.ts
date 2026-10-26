@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -73,6 +74,15 @@ export class VoceDestinatarioMovimentoDto {
   @IsInt()
   @Min(1)
   numero!: number
+
+  @ApiPropertyOptional({
+    description:
+      'Registro del movimento: lo stesso anno/numero esiste in ogni registro. ' +
+      "Senza, la voce vale solo se l'azienda ha un unico registro.",
+  })
+  @IsOptional()
+  @IsUUID()
+  registroId?: string
 
   @ApiProperty({ example: 'Ecologia Srl' })
   @IsString()

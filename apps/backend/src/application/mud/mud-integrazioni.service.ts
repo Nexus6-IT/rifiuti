@@ -167,7 +167,7 @@ export class MudIntegrazioniService {
 
     const destinatariMovimento: IntegrazioniMud['destinatariMovimento'] = {}
     for (const v of dati.destinatariMovimento ?? []) {
-      destinatariMovimento[chiaveMovimento(v.anno, v.numero)] = soggetto(v, true)
+      destinatariMovimento[chiaveMovimento(v.anno, v.numero, v.registroId)] = soggetto(v, true)
     }
 
     // Il codice della propria azienda vale per un trasportatore: trasporto in conto proprio.

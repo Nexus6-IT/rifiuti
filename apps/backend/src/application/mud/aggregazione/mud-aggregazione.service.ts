@@ -22,7 +22,7 @@ import {
 import { controlliMud, type MudEsitoControllo, type RifMovimento } from './mud-controlli'
 import {
   chiaveDestinatario,
-  chiaveMovimento,
+  destinatarioDelMovimento,
   chiavePesoSpecifico,
   leggiIntegrazioni,
   pesoSpecificoPlausibile,
@@ -51,6 +51,7 @@ export interface MudAggregato {
 }
 
 interface Movimento {
+  registroId: string
   progressiveNumber: number
   progressiveYear: number
   type: string
@@ -103,6 +104,8 @@ interface FontiSoggetti {
   destinatari: Map<string, DestinatarioInfo>
   trasportatori: Map<string, TrasportatoreInfo>
   integrazioni: IntegrazioniMud
+  /** Un solo registro nell'azienda: vale ancora la chiave vecchia `anno/numero` delle integrazioni */
+  unSoloRegistro: boolean
 }
 
 interface VoceTe {
@@ -138,6 +141,7 @@ interface GruppoUnita {
 }
 
 const SELECT_MOVIMENTO = {
+  registroId: true,
   progressiveNumber: true,
   progressiveYear: true,
   type: true,
@@ -290,10 +294,12 @@ export class MudAggregazioneService {
       ),
       trasportatori: await this.caricaTrasportatori(tenantId, firCollegati),
       integrazioni,
+      unSoloRegistro: (await this.prisma.registroRifiuti.count({ where: { tenantId } })) <= 1,
     }
 
     const controlli: MudEsitoControllo[] = []
     const rif = (m: Movimento): RifMovimento => ({
+      registroId: m.registroId,
       progressiveNumber: m.progressiveNumber,
       progressiveYear: m.progressiveYear,
       cerCode: cerCanonico(m.cerCode),
@@ -653,7 +659,7 @@ export class MudAggregazioneService {
     fir: FirCollegato | undefined,
     kg: number,
     anno: number,
-    { destinatari, trasportatori, integrazioni }: FontiSoggetti,
+    { destinatari, trasportatori, integrazioni, unSoloRegistro }: FontiSoggetti,
     controlli: MudEsitoControllo[]
   ): void {
     const nomeFir = fir?.receiverName?.trim()
@@ -686,9 +692,7 @@ export class MudAggregazioneService {
       // Senza FIR, o con un FIR che non indica il destinatario: quello del registro, e in
       // mancanza quello del movimento nelle integrazioni (A-W-07, A-C-04).
       const nome = m.counterpartName?.trim()
-      const integrato = nome
-        ? undefined
-        : integrazioni.destinatariMovimento[chiaveMovimento(m.progressiveYear, m.progressiveNumber)]
+      const integrato = nome ? undefined : destinatarioDelMovimento(integrazioni, m, unSoloRegistro)
       if (integrato) {
         // Chiave per CF: in completaRighe si fonde con gli altri DR dello stesso CF.
         const chiave = `cf:${cfConfronto(integrato.codiceFiscale)}`

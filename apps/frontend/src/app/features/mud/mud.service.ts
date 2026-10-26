@@ -16,6 +16,8 @@ export interface MudVersion {
 export interface MudMovimentoSegnalato {
   numero: number
   anno: number
+  /** Registro del movimento: lo stesso anno/numero esiste in ogni registro */
+  registroId?: string
   cerCode: string
   quantita: number
   unita: string
@@ -46,7 +48,13 @@ export interface RiepilogoAvvisi {
 export type MudIntegrazioneRichiesta =
   | { tipo: 'CF_DESTINATARIO'; chiave: string; ragioneSociale: string }
   | { tipo: 'PESO_SPECIFICO'; chiave: string; cerCode: string; unita: string }
-  | { tipo: 'DESTINATARIO_MOVIMENTO'; chiave: string; numero: number; anno: number }
+  | {
+      tipo: 'DESTINATARIO_MOVIMENTO'
+      chiave: string
+      numero: number
+      anno: number
+      registroId: string
+    }
   | { tipo: 'CF_TRASPORTATORE'; chiave: string; ragioneSociale: string }
 
 export interface MudControllo {
@@ -157,7 +165,10 @@ export interface SoggettoIntegrato {
 /** Integrazioni salvate per l'anno (`GET mud/:year/integrazioni`). */
 export interface IntegrazioniMud {
   destinatari: Record<string, SoggettoIntegrato>
-  /** chiave = `anno/numero` del movimento, come la scrive il backend */
+  /**
+   * chiave = `anno/numero@registroId` del movimento, come la scrive il backend; le voci salvate
+   * prima dei registri per sede hanno la chiave vecchia `anno/numero`
+   */
   destinatariMovimento: Record<string, SoggettoIntegrato>
   trasportatori: Record<string, SoggettoIntegrato>
   pesiSpecifici: Record<
@@ -181,6 +192,8 @@ export interface CorpoIntegrazioniMud {
   destinatariMovimento: Array<{
     anno: number
     numero: number
+    /** Senza (voce con la chiave vecchia) il backend scrive la chiave `anno/numero` */
+    registroId?: string
     ragioneSociale: string
     codiceFiscale: string
     confermaPropriaAzienda?: boolean
@@ -251,6 +264,7 @@ export interface RigaIntegrazione {
   /** DESTINATARIO_MOVIMENTO */
   anno?: number
   numero?: number
+  registroId?: string
   /** PESO_SPECIFICO */
   cerCode?: string
   unita?: string
@@ -300,6 +314,7 @@ function rigaDaBloccante(c: MudControllo): RigaIntegrazione | null {
         ...rigaVuota(i.tipo, i.chiave, etichettaMovimento(i.numero, i.anno)),
         anno: i.anno,
         numero: i.numero,
+        registroId: i.registroId,
       }
     case 'PESO_SPECIFICO':
       return {
@@ -330,10 +345,15 @@ function righeSalvate(i: IntegrazioniMud): RigaIntegrazione[] {
     righe.push(conSoggetto(rigaVuota('CF_DESTINATARIO', chiave, s.ragioneSociale), s))
   }
   for (const [chiave, s] of Object.entries(i.destinatariMovimento)) {
-    // la chiave è quella del backend, `anno/numero`: l'etichetta la mostra come "n. numero/anno"
-    const [anno, numero] = chiave.split('/').map(Number)
+    // la chiave è quella del backend, `anno/numero@registroId` (o la vecchia `anno/numero`):
+    // l'etichetta la mostra come "n. numero/anno"
+    const lettura = /^(\d+)\/(\d+)(?:@(.+))?$/.exec(chiave)
+    if (!lettura) continue
+    const anno = Number(lettura[1])
+    const numero = Number(lettura[2])
+    const registroId = lettura[3]
     const riga = rigaVuota('DESTINATARIO_MOVIMENTO', chiave, etichettaMovimento(numero, anno))
-    righe.push({ ...conSoggetto(riga, s), anno, numero })
+    righe.push({ ...conSoggetto(riga, s), anno, numero, registroId })
   }
   for (const [chiave, s] of Object.entries(i.trasportatori)) {
     const etichetta = `${s.ragioneSociale} (trasportatore)`
@@ -412,6 +432,7 @@ export function corpoIntegrazioni(
           corpo.destinatariMovimento.push({
             anno: r.anno,
             numero: r.numero,
+            ...(r.registroId ? { registroId: r.registroId } : {}),
             ragioneSociale,
             codiceFiscale,
             ...conferma,

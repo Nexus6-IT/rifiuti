@@ -28,6 +28,7 @@ describe('MudPresentazioneService', () => {
   }
 
   const rifMovimento: RifMovimento = {
+    registroId: 'reg-A',
     progressiveNumber: 7,
     progressiveYear: 2025,
     cerCode: '170405',

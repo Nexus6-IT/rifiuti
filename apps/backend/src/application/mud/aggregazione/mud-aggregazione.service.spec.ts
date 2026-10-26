@@ -9,6 +9,7 @@ describe('MudAggregazioneService', () => {
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 
   const mov = (p: Partial<any>) => ({
+    registroId: 'reg-A',
     progressiveNumber: 1,
     progressiveYear: 2025,
     type: 'CARICO',
@@ -103,6 +104,7 @@ describe('MudAggregazioneService', () => {
           .mockResolvedValue([{ denominazione: 'Sede', numIscrSito: 'OP1', principale: true }]),
       },
       mUDReport: { findUnique: jest.fn().mockResolvedValue(null) },
+      registroRifiuti: { count: jest.fn().mockResolvedValue(1) },
     }
     referenceData = { findComuneByName: jest.fn().mockResolvedValue({ code: '015146' }) }
     service = new MudAggregazioneService(prisma, referenceData, logger)
@@ -703,10 +705,75 @@ describe('MudAggregazioneService', () => {
         gravita: 'BLOCCANTE',
         messaggio:
           'Movimento n. 5/2025 (scarico CER 17 04 05, 300 KG): né FIR né destinatario nel registro, e il modulo DR è obbligatorio. Inserire destinatario e codice fiscale in MUD > Integrazioni 2025, riga "Movimento n. 5/2025".',
-        integrazione: { tipo: 'DESTINATARIO_MOVIMENTO', chiave: '2025/5', numero: 5, anno: 2025 },
+        integrazione: {
+          tipo: 'DESTINATARIO_MOVIMENTO',
+          chiave: '2025/5@reg-A',
+          numero: 5,
+          anno: 2025,
+          registroId: 'reg-A',
+        },
       }),
     ])
     expect(haBloccanti(r.controlli)).toBe(true)
+  })
+
+  describe('MUD: destinatario del movimento con più registri (stesso anno/numero)', () => {
+    const soggetto = { ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' }
+    const dueMovimenti = () => [
+      scaricoSenzaFir({ registroId: 'reg-A', counterpartName: null }),
+      scaricoSenzaFir({ registroId: 'reg-B', counterpartName: null }),
+    ]
+
+    it('un destinatario integrato per il movimento del registro A NON soddisfa il controllo sul registro B', async () => {
+      prisma.registroRifiuti.count.mockResolvedValue(2)
+      impostaDati({ movimenti: dueMovimenti() })
+      integrazioni({ destinatariMovimento: { '2025/5@reg-A': soggetto } })
+
+      const r = await service.aggrega('t1', 2025)
+
+      const bloccanti = conCodice(r.controlli, 'DESTINATARIO_NON_INDICATO')
+      expect(bloccanti).toHaveLength(1)
+      expect(bloccanti[0].integrazione).toMatchObject({
+        chiave: '2025/5@reg-B',
+        registroId: 'reg-B',
+      })
+      expect(haBloccanti(r.controlli)).toBe(true)
+      expect(r.righe[0].dr).toEqual([
+        expect.objectContaining({ codiceFiscale: '12345678903', quantitaKg: 300 }),
+      ])
+    })
+
+    it('con un destinatario per ciascun registro nessun bloccante', async () => {
+      prisma.registroRifiuti.count.mockResolvedValue(2)
+      impostaDati({ movimenti: dueMovimenti() })
+      integrazioni({
+        destinatariMovimento: { '2025/5@reg-A': soggetto, '2025/5@reg-B': soggetto },
+      })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(codici(r.controlli)).not.toContain('DESTINATARIO_NON_INDICATO')
+    })
+
+    it('la chiave vecchia anno/numero è accettata con un solo registro', async () => {
+      prisma.registroRifiuti.count.mockResolvedValue(1)
+      impostaDati({ movimenti: [scaricoSenzaFir({ counterpartName: null })] })
+      integrazioni({ destinatariMovimento: { '2025/5': soggetto } })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(codici(r.controlli)).not.toContain('DESTINATARIO_NON_INDICATO')
+    })
+
+    it('la chiave vecchia anno/numero è ignorata con due registri: il controllo torna a segnalare', async () => {
+      prisma.registroRifiuti.count.mockResolvedValue(2)
+      impostaDati({ movimenti: dueMovimenti() })
+      integrazioni({ destinatariMovimento: { '2025/5': soggetto } })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(conCodice(r.controlli, 'DESTINATARIO_NON_INDICATO')).toHaveLength(2)
+    })
   })
 
   // 19-bis (A-W-07, A-C-04)

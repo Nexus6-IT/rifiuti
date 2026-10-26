@@ -208,6 +208,36 @@ describe('MudIntegrazioniService', () => {
     ])
   })
 
+  it('MUD: il destinatario del movimento si salva con la chiave che include il registro', async () => {
+    await service.salva(
+      't1',
+      2025,
+      'u1',
+      dati({
+        destinatariMovimento: [
+          {
+            anno: 2025,
+            numero: 3,
+            registroId: '11111111-1111-4111-8111-111111111111',
+            ragioneSociale: 'Ecologia Srl',
+            codiceFiscale: '12345678903',
+          },
+          {
+            anno: 2025,
+            numero: 3,
+            registroId: '22222222-2222-4222-8222-222222222222',
+            ragioneSociale: 'Altra Srl',
+            codiceFiscale: '12345678903',
+          },
+        ],
+      })
+    )
+    expect(Object.keys(scritto().destinatariMovimento)).toEqual([
+      '2025/3@11111111-1111-4111-8111-111111111111',
+      '2025/3@22222222-2222-4222-8222-222222222222',
+    ])
+  })
+
   it('verifica il CF anche dei destinatari dei movimenti e dei trasportatori', async () => {
     await expect(
       service.salva(
