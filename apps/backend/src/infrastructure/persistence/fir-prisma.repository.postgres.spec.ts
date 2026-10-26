@@ -1,6 +1,11 @@
 import { PrismaClient } from '@prisma/client'
 import { AZIENDA_PIATTAFORMA_ID } from '../../core/context/azienda-piattaforma'
 import { FIRPrismaRepository } from './fir-prisma.repository'
+import { SyncFIRToRENTRIUseCase } from '../../application/rentri/sync-fir-to-rentri.use-case'
+import { RENTRISyncLog } from '../../domain/rentri/rentri-sync-log.aggregate'
+import { TenantSenzaCertificatoRentriError } from '../rentri/rentri-credential.resolver'
+import { RentriCredentialService } from '../rentri/rentri-credential.service'
+import { CODICE_CERTIFICATO_MANCANTE } from '../rentri/rentri-certificato.costanti'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
 import {
   FirAnnullatoNelFrattempoError,
@@ -616,15 +621,17 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       const vecchio = (await repoLettura.findById(fir.id))!
       expect(await repoLettura.prenotaTrasmissioneRentri(fir.id, tenantId, ORA, SOGLIA)).toBe(true)
       await repoLettura.registraTransazioneInAttesa(fir.id, tenantId, 'tx-viva', ORA)
-      // campo non di trasmissione: il legame resta scritto dall'aggregate (fuori ambito)
-      vecchio.agganciaFormularioAcquisito(`RENTRI-STANTIO-${Date.now()}`)
+      // campo senza significato RENTRI (annotazioni, campo 17): l'aggregate stantio lo scrive,
+      // la prenotazione viva no, e nessun legame compare su un FIR ancora in trasmissione
+      ;(vecchio as any)._annotazioni = "nota dell'aggregate stantio"
       await repoLettura.save(vecchio)
       const r = await riga(fir.id)
       expect(r.rentriSyncStatus).toBe('SYNCING')
       expect(r.rentriSyncAvviatoAt).toEqual(ORA)
       expect(r.rentriTransazioneInAttesa).toBe('tx-viva')
       expect(r.rentriTransazioneId).toBe('tx-viva')
-      expect(r.rentriNumeroFir).toMatch(/^RENTRI-STANTIO-/)
+      expect(r.wasteNotes).toBe("nota dell'aggregate stantio")
+      expect(r.rentriNumeroFir).toBeNull()
     })
 
     it("save dell'aggregate che possiede il tentativo scrive il suo stato", async () => {
@@ -742,7 +749,9 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         const annullatoLocale = await firDi(auto, { status: 'CANCELLED' })
         const annullatoRentri = await firDi(auto, { rentriStatoFormulario: 'Annullato' })
         const bozza = await firDi(auto, { status: 'DRAFT' })
-        const conAvvio = await firDi(auto, { rentriSyncAvviatoAt: new Date('2026-10-22T10:00:00Z') })
+        const conAvvio = await firDi(auto, {
+          rentriSyncAvviatoAt: new Date('2026-10-22T10:00:00Z'),
+        })
         const recente = await firDi(auto, {}, null) // updated_at = adesso, dopo SOGLIA
         const troppoVecchio = await firDi(auto, {}, new Date('2026-08-01T10:00:00.000Z'))
 
@@ -851,6 +860,90 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         SELECT data_type, datetime_precision FROM information_schema.columns
         WHERE table_name = 'firs' AND column_name = 'rentri_sync_avviato_at'`
       expect(colonna).toEqual({ data_type: 'timestamp with time zone', datetime_precision: 3 })
+    })
+
+    it('transazione in attesa, certificato mancante, caricamento del certificato, riapertura e ripresa: nessuna nuova POST', async () => {
+      // FIR emesso con una transazione già accettata dall'ente (polling interrotto).
+      const fir = await nuovoFir({
+        status: 'AWAITING_CARRIER',
+        rentriSyncStatus: 'FAILED',
+        rentriSyncAttempts: 1,
+        rentriLastSyncError: 'Polling interrotto',
+        rentriLastSyncErrorCode: 'RENTRI_API_ERROR',
+        rentriTransazioneInAttesa: 'tx-attesa-certificato',
+        rentriTransazioneId: 'tx-attesa-certificato',
+      })
+
+      const creaFormulario = jest.fn()
+      const attendiEsito = jest
+        .fn()
+        .mockRejectedValueOnce(new TenantSenzaCertificatoRentriError())
+        .mockResolvedValueOnce({
+          errore: false,
+          validazione: [],
+          esito: { numero_fir: `RENTRI-B6-${Date.now()}` },
+        })
+      const costruisci = jest.fn()
+      const logger: any = {
+        setContext: jest.fn(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn(),
+      }
+      const useCase = new SyncFIRToRENTRIUseCase(
+        repoLettura,
+        { creaFormulario, attendiEsito } as any,
+        {
+          createPending: jest.fn(async (p: any) => RENTRISyncLog.createPending(p)),
+          save: jest.fn(async (l: any) => l),
+        } as any,
+        { publish: jest.fn() } as any,
+        logger,
+        { costruisci } as any
+      )
+
+      try {
+        // 1. L'azienda non ha il certificato: esito definitivo, la transazione resta salvata.
+        const primo = await useCase.execute(fir.id, tenantId)
+        expect(primo).toMatchObject({ success: false, willRetry: false })
+        const fermo = await riga(fir.id)
+        expect(fermo.rentriSyncStatus).toBe('PERMANENTLY_FAILED')
+        expect(fermo.rentriLastSyncErrorCode).toBe(CODICE_CERTIFICATO_MANCANTE)
+        expect(fermo.rentriTransazioneInAttesa).toBe('tx-attesa-certificato')
+
+        // 2. Il certificato viene caricato: il FIR si riapre, la transazione resta.
+        const credenziali = new RentriCredentialService(
+          prisma as any,
+          {
+            credentialEncKey: 'chiave-di-test-b6',
+          } as any
+        )
+        const riaperti = await credenziali.upsertForTenant(tenantId, {
+          clientId: 'client-b6',
+          certificatePem: '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----',
+          privateKeyPem: '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----',
+        })
+        expect(riaperti).toContain(fir.id)
+        const riaperto = await riga(fir.id)
+        expect(riaperto.rentriSyncStatus).toBe('PENDING')
+        expect(riaperto.rentriSyncAvviatoAt).toBeNull()
+        expect(riaperto.rentriLastSyncErrorCode).toBeNull()
+        expect(riaperto.rentriTransazioneInAttesa).toBe('tx-attesa-certificato')
+
+        // 3. Il tentativo successivo riprende la transazione: nessuna POST, nessun corpo costruito.
+        const secondo = await useCase.execute(fir.id, tenantId)
+        expect(secondo).toMatchObject({ success: true })
+        expect(creaFormulario).not.toHaveBeenCalled()
+        expect(costruisci).not.toHaveBeenCalled()
+        expect(attendiEsito).toHaveBeenCalledTimes(2)
+        expect(attendiEsito).toHaveBeenNthCalledWith(2, tenantId, 'tx-attesa-certificato')
+        const finale = await riga(fir.id)
+        expect(finale.rentriSyncStatus).toBe('SYNCED')
+        expect(finale.rentriNumeroFir).toMatch(/^RENTRI-B6-/)
+      } finally {
+        await prisma.rentriCredential.deleteMany({ where: { tenantId } })
+      }
     })
   })
 })

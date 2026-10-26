@@ -53,6 +53,42 @@ describe('RentriCredentialResolver', () => {
     })
   })
 
+  describe('risoluzione dal contesto', () => {
+    const MESSAGGIO =
+      'risoluzione della credenziale RENTRI dal contesto: passare il tenant in modo esplicito'
+
+    afterEach(() => {
+      jest.restoreAllMocks()
+    })
+
+    it('senza tenant esplicito si usa il contesto e si scrive UN warn per processo', async () => {
+      const resolver = makeResolver()
+      const warn = jest.spyOn((resolver as any).logger, 'warn').mockImplementation(() => undefined)
+      credentialService.getForTenant.mockResolvedValue(credTenant())
+
+      await TenantContext.run({ tenantId: 'tenant-ctx-1', userId: 'u1' }, () => resolver.resolve())
+      await TenantContext.run({ tenantId: 'tenant-ctx-2', userId: 'u1' }, () => resolver.resolve())
+
+      // Il contesto e' stato davvero usato, e il warn non si ripete alla seconda chiamata.
+      expect(credentialService.getForTenant).toHaveBeenNthCalledWith(1, 'tenant-ctx-1')
+      expect(credentialService.getForTenant).toHaveBeenNthCalledWith(2, 'tenant-ctx-2')
+      const warnContesto = warn.mock.calls.filter(c => c[0] === MESSAGGIO)
+      expect(warnContesto).toHaveLength(1)
+      // Il warn non porta l'id di nessun tenant.
+      expect(JSON.stringify(warnContesto)).not.toContain('tenant-ctx')
+    })
+
+    it('con il tenant esplicito non si scrive alcun warn "dal contesto"', async () => {
+      const resolver = makeResolver()
+      const warn = jest.spyOn((resolver as any).logger, 'warn').mockImplementation(() => undefined)
+      credentialService.getForTenant.mockResolvedValue(credTenant())
+
+      await resolver.resolve('tenant-esplicito')
+
+      expect(warn.mock.calls.filter(c => c[0] === MESSAGGIO)).toHaveLength(0)
+    })
+  })
+
   it('tenant legato (RENTRI_ENV_TENANT_ID) senza credenziale propria: usa env', async () => {
     const resolver = makeResolver()
     credentialService.getForTenant.mockResolvedValue(null)
