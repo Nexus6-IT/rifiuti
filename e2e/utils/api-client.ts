@@ -5,7 +5,14 @@
  * package.json "engines").
  */
 
-import { getApiUrl, getRoleCredentials, isProductionTarget, type Role } from './env'
+import {
+  canUseDevLogin,
+  getApiUrl,
+  getDevLoginSeedEmail,
+  getRoleCredentials,
+  isProductionTarget,
+  type Role,
+} from './env'
 import { valutaRichiesta } from './blacklist'
 
 const DEV_LOGIN_PATH = '/auth/dev/login'
@@ -93,25 +100,44 @@ export async function devLoginTokens(
 }
 
 /**
- * Login via il bypass di sviluppo, usando l'email dalle credenziali di ruolo
- * configurate via env (E2E_<RUOLO>_USER). Pensato per chi ha impostato
- * E2E_<RUOLO>_USER/PASS puntando a un utente del seed di sviluppo (la
- * password non viene inviata — il DTO del bypass accetta solo email — ma
- * deve comunque essere presente perché hasRoleCredentials()/getRoleCredentials()
- * considerino il ruolo configurato). Per il caso comune "nessuna credenziale
- * impostata, usa le email note del seed" vedi devLoginTokens() sopra, usato
- * da fixtures/auth.ts.
+ * Sceglie l'email con cui apiLogin() chiede il token al bypass dev-login.
+ * Funzione pura (nessuna rete): legge solo process.env, così è testabile
+ * senza server (vedi tests/public/api-login-email.spec.ts).
+ *
+ * Regola, identica a quella di hasRoleCredentials() in env.ts (così apiLogin
+ * accetta esattamente i ruoli che hasRoleCredentials dichiara autenticabili):
+ *  1. credenziali reali E2E_<RUOLO>_USER/PASS presenti: vince la loro email
+ *     (la password non viene inviata, il DTO accetta solo email);
+ *  2. altrimenti, se canUseDevLogin(ruolo) (target non di produzione e
+ *     ruolo con utente seed): l'email del seed (getDevLoginSeedEmail);
+ *  3. altrimenti errore: mai dev-login su un target di produzione, e
+ *     superAdmin non ha un utente seed.
  */
-export async function apiLogin(ruolo: Role): Promise<string> {
+export function scegliEmailApiLogin(ruolo: Role): string {
   const credenziali = getRoleCredentials(ruolo)
-  if (!credenziali) {
-    throw new Error(
-      `Credenziali mancanti per il ruolo "${ruolo}" (variabili E2E_${ruolo.toUpperCase()}_USER/PASS non ` +
-        'impostate). Impostale prima di chiamare apiLogin — vedi e2e/README.md.'
-    )
+  if (credenziali) return credenziali.email
+
+  if (canUseDevLogin(ruolo)) {
+    const emailSeed = getDevLoginSeedEmail(ruolo)
+    if (emailSeed) return emailSeed
   }
 
-  const { accessToken } = await devLoginTokens(credenziali.email)
+  throw new Error(
+    `Credenziali mancanti per il ruolo "${ruolo}" (variabili E2E_${ruolo.toUpperCase()}_USER/PASS non ` +
+      'impostate e dev-login non utilizzabile: target di produzione o ruolo senza utente seed). ' +
+      'Impostale prima di chiamare apiLogin — vedi e2e/README.md.'
+  )
+}
+
+/**
+ * Login via il bypass di sviluppo (POST /auth/dev/login). L'email è scelta
+ * da scegliEmailApiLogin(): credenziali reali E2E_<RUOLO>_USER/PASS se ci
+ * sono, altrimenti l'email del seed di sviluppo del ruolo quando il
+ * dev-login è utilizzabile (stessa regola di hasRoleCredentials). Per
+ * passare direttamente un'email vedi devLoginTokens() sopra.
+ */
+export async function apiLogin(ruolo: Role): Promise<string> {
+  const { accessToken } = await devLoginTokens(scegliEmailApiLogin(ruolo))
   return accessToken
 }
 
