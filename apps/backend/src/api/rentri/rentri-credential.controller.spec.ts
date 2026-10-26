@@ -20,6 +20,9 @@ const user: CurrentUserPayload = {
   permissions: [],
 }
 
+// richiesta senza switch di azienda: l'azienda selezionata coincide con quella del token
+const req = { tenantId: user.tenantId, user }
+
 /** Genera un keypair RSA + certificato self-signed di test, con scadenza configurabile. */
 function makeCertificato(giorniAllaScadenza = 365): {
   keys: forge.pki.rsa.KeyPair
@@ -90,7 +93,7 @@ describe('RentriCredentialController', () => {
         environment: 'demo',
       }
 
-      const res = await controller.set(dto, user)
+      const res = await controller.set(dto, req)
 
       expect(res.success).toBe(true)
       expect(service.upsertForTenant).toHaveBeenCalledWith('tenant-1', {
@@ -113,7 +116,7 @@ describe('RentriCredentialController', () => {
         numIscrSito: 'OP1234ABC123456-RM1234',
       }
 
-      await controller.set(dto, user)
+      await controller.set(dto, req)
 
       expect(service.upsertForTenant).toHaveBeenCalledWith(
         'tenant-1',
@@ -130,7 +133,7 @@ describe('RentriCredentialController', () => {
         numIscrOperatore: 'MI00001234',
       }
 
-      await controller.set(dto, user)
+      await controller.set(dto, req)
 
       expect(service.upsertForTenant).toHaveBeenCalledWith(
         'tenant-1',
@@ -146,7 +149,7 @@ describe('RentriCredentialController', () => {
         privateKeyPem,
       }
 
-      await expect(controller.set(dto, user)).rejects.toBeInstanceOf(BadRequestException)
+      await expect(controller.set(dto, req)).rejects.toBeInstanceOf(BadRequestException)
       expect(service.upsertForTenant).not.toHaveBeenCalled()
     })
 
@@ -159,7 +162,7 @@ describe('RentriCredentialController', () => {
         privateKeyPem: forge.pki.privateKeyToPem(altraChiave.privateKey),
       }
 
-      await expect(controller.set(dto, user)).rejects.toBeInstanceOf(BadRequestException)
+      await expect(controller.set(dto, req)).rejects.toBeInstanceOf(BadRequestException)
       expect(service.upsertForTenant).not.toHaveBeenCalled()
     })
 
@@ -171,7 +174,7 @@ describe('RentriCredentialController', () => {
         privateKeyPem,
       }
 
-      const res = await controller.set(dto, user)
+      const res = await controller.set(dto, req)
 
       expect(res.success).toBe(true)
       expect(service.upsertForTenant).toHaveBeenCalledTimes(1)
@@ -187,7 +190,7 @@ describe('RentriCredentialController', () => {
         pkcs12Passphrase: passphrase,
       }
 
-      const res = await controller.set(dto, user)
+      const res = await controller.set(dto, req)
 
       expect(res.success).toBe(true)
       expect(service.upsertForTenant).toHaveBeenCalledTimes(1)
@@ -205,7 +208,7 @@ describe('RentriCredentialController', () => {
         pkcs12Passphrase: 'prova-ec',
       }
 
-      const res = await controller.set(dto, user)
+      const res = await controller.set(dto, req)
 
       expect(res.success).toBe(true)
       expect(res.algorithm).toBe('ES256')
@@ -220,7 +223,7 @@ describe('RentriCredentialController', () => {
         algorithm: 'RS256',
       }
 
-      await expect(controller.set(dto, user)).rejects.toThrow(
+      await expect(controller.set(dto, req)).rejects.toThrow(
         "L'algoritmo indicato (RS256) non corrisponde alla chiave del certificato (ES256)"
       )
       expect(service.upsertForTenant).not.toHaveBeenCalled()
@@ -233,14 +236,14 @@ describe('RentriCredentialController', () => {
         pkcs12Passphrase: 'prova-ec',
       }
 
-      await expect(controller.set(dto, user)).rejects.toThrow(
+      await expect(controller.set(dto, req)).rejects.toThrow(
         'Tipo di chiave non supportato da RENTRI: EC secp384r1'
       )
       expect(service.upsertForTenant).not.toHaveBeenCalled()
     })
 
     it('PEM RSA senza algorithm: salvato RS256', async () => {
-      const res = await controller.set({ clientId: 'c', ...makePemPair() }, user)
+      const res = await controller.set({ clientId: 'c', ...makePemPair() }, req)
 
       expect(res.algorithm).toBe('RS256')
       expect(service.upsertForTenant.mock.calls[0][1].algorithm).toBe('RS256')
@@ -253,14 +256,14 @@ describe('RentriCredentialController', () => {
         pkcs12Passphrase: 'sbagliata',
       }
 
-      await expect(controller.set(dto, user)).rejects.toBeInstanceOf(BadRequestException)
+      await expect(controller.set(dto, req)).rejects.toBeInstanceOf(BadRequestException)
       expect(service.upsertForTenant).not.toHaveBeenCalled()
     })
 
     it('rifiuta se mancano sia i PEM sia il PKCS#12', async () => {
       const dto = { clientId: 'client-4' } as SetRentriCredentialDto
 
-      await expect(controller.set(dto, user)).rejects.toBeInstanceOf(BadRequestException)
+      await expect(controller.set(dto, req)).rejects.toBeInstanceOf(BadRequestException)
       expect(service.upsertForTenant).not.toHaveBeenCalled()
     })
   })
@@ -269,7 +272,7 @@ describe('RentriCredentialController', () => {
     it('ritorna configured:false se non configurata', async () => {
       service.getForTenant.mockResolvedValue(null)
 
-      const res = await controller.status(user)
+      const res = await controller.status(req)
 
       expect(res).toEqual({ configured: false })
     })
@@ -291,7 +294,7 @@ describe('RentriCredentialController', () => {
         credentialsIdFirmaRemota: 'CRED00001',
       })
 
-      const res = await controller.status(user)
+      const res = await controller.status(req)
 
       expect(res).toEqual({
         configured: true,
@@ -310,7 +313,7 @@ describe('RentriCredentialController', () => {
 
   describe('DELETE (remove)', () => {
     it('rimuove la credenziale del tenant', async () => {
-      const res = await controller.remove(user)
+      const res = await controller.remove(req)
 
       expect(res).toEqual({ success: true })
       expect(service.removeForTenant).toHaveBeenCalledWith('tenant-1')
@@ -330,7 +333,7 @@ describe('RentriCredentialController', () => {
         certificatoConfigurato: true,
       })
 
-      await controller.set(dto(), user)
+      await controller.set(dto(), req)
 
       expect(coda.addSyncJob).toHaveBeenCalledTimes(2)
       expect(coda.addSyncJob).toHaveBeenCalledWith({
@@ -353,7 +356,7 @@ describe('RentriCredentialController', () => {
         certificatoConfigurato: true,
       })
 
-      await controller.set(dto(), user)
+      await controller.set(dto(), req)
 
       expect(coda.addSyncJob).toHaveBeenCalledTimes(2)
       expect(coda.addSyncJob).toHaveBeenCalledWith(
@@ -367,7 +370,7 @@ describe('RentriCredentialController', () => {
         certificatoConfigurato: true,
       })
 
-      await controller.set(dto(), user)
+      await controller.set(dto(), req)
 
       expect(coda.addSyncJob).not.toHaveBeenCalled()
     })
@@ -375,7 +378,7 @@ describe('RentriCredentialController', () => {
     it('nessun FIR riaperto: non legge nemmeno la modalita', async () => {
       service.upsertForTenant.mockResolvedValue([])
 
-      await controller.set(dto(), user)
+      await controller.set(dto(), req)
 
       expect(modalita.getForTenant).not.toHaveBeenCalled()
       expect(coda.addSyncJob).not.toHaveBeenCalled()
@@ -388,7 +391,7 @@ describe('RentriCredentialController', () => {
       })
       coda.addSyncJob.mockRejectedValue(new Error('redis giu'))
 
-      const res = await controller.set(dto(), user)
+      const res = await controller.set(dto(), req)
 
       expect(res.success).toBe(true)
       expect(Sentry.captureException).toHaveBeenCalled()
@@ -397,7 +400,7 @@ describe('RentriCredentialController', () => {
     it('errore nella lettura della modalita: il caricamento riesce comunque', async () => {
       modalita.getForTenant.mockRejectedValue(new Error('db giu'))
 
-      const res = await controller.set(dto(), user)
+      const res = await controller.set(dto(), req)
 
       expect(res.success).toBe(true)
       expect(coda.addSyncJob).not.toHaveBeenCalled()

@@ -21,12 +21,12 @@
  * verificato dai test dell'use case (isolamento tra tenant).
  */
 
-import { Controller, Get, UseGuards } from '@nestjs/common'
+import { Controller, Get, UseGuards, Req } from '@nestjs/common'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import {
   GetRentriDiagnosticaUseCase,
   RentriDiagnostica,
@@ -57,7 +57,8 @@ export class RentriDiagnosticaController {
   @ApiResponse({ status: 200, description: 'Diagnostica del tenant' })
   @ApiResponse({ status: 401, description: 'Non autenticato' })
   @ApiResponse({ status: 403, description: "Ruolo senza visibilità sull'area RENTRI" })
-  async diagnostica(@CurrentUser() user: CurrentUserPayload): Promise<RentriDiagnostica> {
-    return this.getRentriDiagnostica.execute(user.tenantId)
+  async diagnostica(@Req() req: any): Promise<RentriDiagnostica> {
+    const tenantId = requireRequestTenantId(req)
+    return this.getRentriDiagnostica.execute(tenantId)
   }
 }

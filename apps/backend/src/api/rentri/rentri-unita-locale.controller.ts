@@ -22,12 +22,13 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Req,
 } from '@nestjs/common'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import {
   RentriUnitaLocaleService,
   RentriUnitaLocale,
@@ -48,8 +49,9 @@ export class RentriUnitaLocaleController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Elenca le unità locali RENTRI del tenant corrente' })
   @ApiResponse({ status: 200, description: 'Elenco unità locali' })
-  async list(@CurrentUser() user: CurrentUserPayload): Promise<{ items: RentriUnitaLocale[] }> {
-    const items = await this.service.listForTenant(user.tenantId)
+  async list(@Req() req: any): Promise<{ items: RentriUnitaLocale[] }> {
+    const tenantId = requireRequestTenantId(req)
+    const items = await this.service.listForTenant(tenantId)
     return { items }
   }
 
@@ -65,9 +67,10 @@ export class RentriUnitaLocaleController {
   @ApiResponse({ status: 400, description: 'numIscrSito non valido o duplicato per il tenant' })
   async create(
     @Body() dto: CreateRentriUnitaLocaleDto,
-    @CurrentUser() user: CurrentUserPayload
+    @Req() req: any
   ): Promise<RentriUnitaLocale> {
-    return this.service.create(user.tenantId, dto)
+    const tenantId = requireRequestTenantId(req)
+    return this.service.create(tenantId, dto)
   }
 
   @Put(':id')
@@ -79,9 +82,10 @@ export class RentriUnitaLocaleController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateRentriUnitaLocaleDto,
-    @CurrentUser() user: CurrentUserPayload
+    @Req() req: any
   ): Promise<RentriUnitaLocale> {
-    return this.service.update(user.tenantId, id, dto)
+    const tenantId = requireRequestTenantId(req)
+    return this.service.update(tenantId, id, dto)
   }
 
   @Put(':id/principale')
@@ -90,11 +94,9 @@ export class RentriUnitaLocaleController {
   @ApiOperation({ summary: 'Rende questa unità locale la sede principale del tenant' })
   @ApiResponse({ status: 200, description: 'Sede principale aggiornata' })
   @ApiResponse({ status: 404, description: 'Unità locale non trovata' })
-  async setPrincipale(
-    @Param('id') id: string,
-    @CurrentUser() user: CurrentUserPayload
-  ): Promise<RentriUnitaLocale> {
-    return this.service.setPrincipale(user.tenantId, id)
+  async setPrincipale(@Param('id') id: string, @Req() req: any): Promise<RentriUnitaLocale> {
+    const tenantId = requireRequestTenantId(req)
+    return this.service.setPrincipale(tenantId, id)
   }
 
   @Delete(':id')
@@ -103,7 +105,8 @@ export class RentriUnitaLocaleController {
   @ApiOperation({ summary: 'Rimuove una unità locale RENTRI del tenant corrente' })
   @ApiResponse({ status: 204, description: 'Unità locale rimossa' })
   @ApiResponse({ status: 404, description: 'Unità locale non trovata' })
-  async remove(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload): Promise<void> {
-    await this.service.remove(user.tenantId, id)
+  async remove(@Param('id') id: string, @Req() req: any): Promise<void> {
+    const tenantId = requireRequestTenantId(req)
+    await this.service.remove(tenantId, id)
   }
 }

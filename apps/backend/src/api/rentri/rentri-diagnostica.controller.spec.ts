@@ -19,6 +19,9 @@ const user: CurrentUserPayload = {
   permissions: [],
 }
 
+// richiesta senza switch di azienda: l'azienda selezionata coincide con quella del token
+const req = { tenantId: user.tenantId, user }
+
 function diagnosticaFinta(overrides: Partial<RentriDiagnostica> = {}): RentriDiagnostica {
   return {
     certificato: {
@@ -92,7 +95,7 @@ describe('RentriDiagnosticaController', () => {
     it("passa il tenantId dell'utente corrente, mai un id preso da altrove", async () => {
       useCase.execute.mockResolvedValue(diagnosticaFinta())
 
-      await controller.diagnostica(user)
+      await controller.diagnostica(req)
 
       expect(useCase.execute).toHaveBeenCalledWith('tenant-1')
       expect(useCase.execute).toHaveBeenCalledTimes(1)
@@ -111,14 +114,14 @@ describe('RentriDiagnosticaController', () => {
       })
       useCase.execute.mockResolvedValue(risultato)
 
-      const esito = await controller.diagnostica(user)
+      const esito = await controller.diagnostica(req)
 
       expect(esito).toEqual(risultato)
     })
 
     it('un tenant diverso richiede sempre e solo il proprio tenantId (isolamento)', async () => {
       useCase.execute.mockResolvedValue(diagnosticaFinta())
-      const altroUtente: CurrentUserPayload = { ...user, tenantId: 'tenant-2' }
+      const altroUtente = { tenantId: 'tenant-2', user }
 
       await controller.diagnostica(altroUtente)
 
@@ -162,7 +165,7 @@ describe('RentriDiagnosticaController', () => {
 
         const controller = moduleRef.get(RentriDiagnosticaController)
 
-        await expect(controller.diagnostica(user)).resolves.toEqual(
+        await expect(controller.diagnostica(req)).resolves.toEqual(
           expect.objectContaining({
             certificato: expect.objectContaining({ configurato: false }),
           })

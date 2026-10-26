@@ -45,7 +45,9 @@ import {
   ForbiddenException,
   ConflictException,
   HttpException,
+  Req,
 } from '@nestjs/common'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
@@ -116,11 +118,12 @@ export class RentriFormulariController {
     status: HttpStatus.BAD_REQUEST,
     description: 'CF del tenant o unità locale RENTRI non configurati',
   })
-  async cerca(@CurrentUser() user: CurrentUserPayload): Promise<RisultatoCercaFormulariRENTRI> {
-    this.logger.info('Ricerca formulari RENTRI richiesta', { tenantId: user.tenantId })
+  async cerca(@Req() req: any): Promise<RisultatoCercaFormulariRENTRI> {
+    const tenantId = requireRequestTenantId(req)
+    this.logger.info('Ricerca formulari RENTRI richiesta', { tenantId })
 
     try {
-      return await this.cercaFormulariUseCase.execute(user.tenantId)
+      return await this.cercaFormulariUseCase.execute(tenantId)
     } catch (error) {
       throw this.mappaErroreHttp(error)
     }
@@ -156,19 +159,21 @@ export class RentriFormulariController {
   async aggancia(
     @Param('numeroFir') numeroFir: string,
     @Body() dto: AgganciaFormularioRentriDto,
-    @CurrentUser() user: CurrentUserPayload
+    @CurrentUser() user: CurrentUserPayload,
+    @Req() req: any
   ): Promise<AcquisisciFormularioRENTRIResult> {
+    const tenantId = requireRequestTenantId(req)
     this.logger.info('Aggancio formulario RENTRI richiesto', {
       numeroFir,
-      tenantId: user.tenantId,
+      tenantId,
       modalita: dto.modalita,
     })
 
     try {
-      const numIscrSito = await this.risolviNumIscrSito(user.tenantId)
+      const numIscrSito = await this.risolviNumIscrSito(tenantId)
 
       return await this.acquisisciFormularioUseCase.execute({
-        tenantId: user.tenantId,
+        tenantId,
         userId: user.id,
         userRole: user.role,
         numeroFir,
@@ -213,15 +218,17 @@ export class RentriFormulariController {
   async rilascia(
     @Param('id') firId: string,
     @Body() dto: RilasciaLegameRentriDto,
-    @CurrentUser() user: CurrentUserPayload
+    @CurrentUser() user: CurrentUserPayload,
+    @Req() req: any
   ): Promise<RilasciaFormularioRENTRIResult> {
-    this.logger.info('Rilascio legame RENTRI richiesto', { firId, tenantId: user.tenantId })
+    const tenantId = requireRequestTenantId(req)
+    this.logger.info('Rilascio legame RENTRI richiesto', { firId, tenantId })
 
     try {
-      const numIscrSito = await this.risolviNumIscrSito(user.tenantId)
+      const numIscrSito = await this.risolviNumIscrSito(tenantId)
 
       return await this.rilasciaFormularioUseCase.execute({
-        tenantId: user.tenantId,
+        tenantId,
         userId: user.id,
         userRole: user.role,
         firId,
