@@ -28,8 +28,20 @@ export type CausaleCarico = (typeof CAUSALI_CARICO)[number]
 export type CausaleScarico = (typeof CAUSALI_SCARICO)[number]
 export type CausaleMovimento = CausaleCarico | CausaleScarico
 
+/** Registro cronologico di un'azienda (uno per sede), come lo restituisce il backend. */
+export interface RegistroVista {
+  id: string
+  unitaLocaleId: string | null
+  numIscrSito: string | null
+  denominazione: string
+  codice: string
+  attivo: boolean
+  principale: boolean
+}
+
 export interface Movimento {
   id: string
+  registroId?: string
   tenantId: string
   progressiveNumber: number
   progressiveYear: number
@@ -68,6 +80,8 @@ export interface PaginatedMovimenti {
 }
 
 export interface RegistraMovimentoRequest {
+  /** Registro (sede) del movimento; se manca decide il backend (principale o unico). */
+  registroId?: string
   type: TipoMovimento
   movementDate: string
   causale: CausaleMovimento
@@ -91,6 +105,7 @@ export interface ListMovimentiParams {
   dataFrom?: string
   dataTo?: string
   firId?: string
+  registroId?: string
   page?: number
   limit?: number
 }
@@ -125,6 +140,16 @@ export class RegistroService {
     return this.http.post<Movimento>(this.API_URL, dto)
   }
 
+  /** Elenco dei registri dell'azienda (sola lettura). */
+  listRegistri(): Observable<RegistroVista[]> {
+    return this.http.get<RegistroVista[]>(`${this.API_URL}/registri`)
+  }
+
+  /** Come `listRegistri`, ma crea il registro mancante di ogni sede: solo per chi può registrare (403 agli altri). */
+  assicuraRegistri(): Observable<RegistroVista[]> {
+    return this.http.post<RegistroVista[]>(`${this.API_URL}/registri/assicura`, {})
+  }
+
   /** Lista paginata del registro cronologico con filtri opzionali. */
   lista(params: ListMovimentiParams = {}): Observable<PaginatedMovimenti> {
     let httpParams = new HttpParams()
@@ -134,26 +159,35 @@ export class RegistroService {
     if (params.dataFrom) httpParams = httpParams.set('dataFrom', params.dataFrom)
     if (params.dataTo) httpParams = httpParams.set('dataTo', params.dataTo)
     if (params.firId) httpParams = httpParams.set('firId', params.firId)
+    if (params.registroId) httpParams = httpParams.set('registroId', params.registroId)
     if (params.page) httpParams = httpParams.set('page', params.page.toString())
     if (params.limit) httpParams = httpParams.set('limit', params.limit.toString())
     return this.http.get<PaginatedMovimenti>(this.API_URL, { params: httpParams })
   }
 
   /** Stato del progressivo iniziale del registro per l'anno (C-W-02). */
-  getProgressivoIniziale(anno: number): Observable<StatoProgressivoIniziale> {
-    return this.http.get<StatoProgressivoIniziale>(`${this.API_URL}/progressivo-iniziale/${anno}`)
+  getProgressivoIniziale(anno: number, registroId?: string): Observable<StatoProgressivoIniziale> {
+    return this.http.get<StatoProgressivoIniziale>(`${this.API_URL}/progressivo-iniziale/${anno}`, {
+      params: this.paramsRegistro(registroId),
+    })
   }
 
   /** Imposta il primo numero del registro dell'anno: una volta sola, prima del primo movimento. */
   impostaProgressivoIniziale(
     anno: number,
     primoProgressivo: number,
-    motivo: string
+    motivo: string,
+    registroId?: string
   ): Observable<{ anno: number; primoProgressivo: number }> {
     return this.http.put<{ anno: number; primoProgressivo: number }>(
       `${this.API_URL}/progressivo-iniziale/${anno}`,
-      { primoProgressivo, motivo }
+      { primoProgressivo, motivo },
+      { params: this.paramsRegistro(registroId) }
     )
+  }
+
+  private paramsRegistro(registroId?: string): HttpParams {
+    return registroId ? new HttpParams().set('registroId', registroId) : new HttpParams()
   }
 }
 
@@ -162,6 +196,8 @@ export class RegistroService {
 /** Risposta di GET registro/progressivo-iniziale/:anno. */
 export interface StatoProgressivoIniziale {
   anno: number
+  /** Null in stato neutro: il registro predefinito non si determina (più sedi, nessuna principale). */
+  registroId?: string | null
   primoProgressivo: number | null
   impostatoIl: string | null
   /** Il registro dell'anno ha già movimenti: il progressivo iniziale non si imposta più. */

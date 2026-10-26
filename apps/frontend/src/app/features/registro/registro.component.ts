@@ -56,10 +56,12 @@ import {
   STATI_FISICI,
   CausaleMovimento,
   StatoProgressivoIniziale,
+  RegistroVista,
   offrireProgressivoIniziale,
   offrireRegistrazione,
   annoItaliano,
 } from './registro.service'
+import { etichettaRegistro, registroPredefinito } from './registro-sede'
 import { messaggioMovimentoRegistrato } from './registro-messaggi'
 import { giorniDiRitardo } from './registro-ritardo'
 import {
@@ -163,6 +165,24 @@ interface FirOption {
           ></p-dropdown>
         </div>
 
+        <div class="filters__field" *ngIf="piuRegistri()">
+          <label class="filters__label" for="filtro-sede">Sede</label>
+          <p-dropdown
+            inputId="filtro-sede"
+            data-testid="registro-sede-filtro"
+            [options]="registriFiltroOptions()"
+            [(ngModel)]="filtroRegistro"
+            [ngModelOptions]="{ standalone: true }"
+            (onChange)="onFiltroRegistroChange()"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Tutte le sedi"
+            [showClear]="true"
+            styleClass="w-full"
+            ariaLabel="Filtra per sede del registro"
+          ></p-dropdown>
+        </div>
+
         <div class="filters__field filters__field--cer">
           <label class="filters__label" for="filtro-cer">Codice CER</label>
           <span class="p-input-icon-left filters__search">
@@ -248,6 +268,7 @@ interface FirOption {
             <ng-template pTemplate="header">
               <tr>
                 <th scope="col" style="width: 96px">N° prog.</th>
+                <th *ngIf="piuRegistri()" scope="col" data-testid="registro-col-sede">Sede</th>
                 <th scope="col" style="width: 104px">Tipo</th>
                 <th scope="col" style="width: 116px">Data op.</th>
                 <th scope="col" style="width: 96px">CER</th>
@@ -263,6 +284,9 @@ interface FirOption {
               <tr>
                 <td>
                   <span class="prog-badge">{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span>
+                </td>
+                <td *ngIf="piuRegistri()" data-testid="registro-col-sede">
+                  {{ etichettaSede(m.registroId) }}
                 </td>
                 <td>
                   <p-tag
@@ -318,7 +342,7 @@ interface FirOption {
 
             <ng-template pTemplate="emptymessage">
               <tr>
-                <td colspan="9">
+                <td [attr.colspan]="piuRegistri() ? 10 : 9">
                   <div class="empty-state">
                     <i class="pi pi-book empty-state__icon" aria-hidden="true"></i>
                     <p class="empty-state__title">Nessun movimento registrato</p>
@@ -361,6 +385,27 @@ interface FirOption {
           <!-- ===== Sezione 1: Movimento ===== -->
           <section class="form-section" aria-labelledby="mov-sec-movimento">
             <h3 id="mov-sec-movimento" class="form-section__title">Movimento</h3>
+
+            <div class="field" *ngIf="piuRegistri()">
+              <label for="registroSede"
+                >Sede del registro <span class="req" aria-hidden="true">*</span></label
+              >
+              <p-dropdown
+                inputId="registroSede"
+                data-testid="registro-sede-select"
+                formControlName="registroId"
+                [options]="registriFormOptions()"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Scegli la sede"
+                styleClass="w-full"
+                ariaLabel="Sede del registro in cui registrare il movimento"
+                [attr.aria-invalid]="hasError('registroId') ? true : null"
+              ></p-dropdown>
+              <small *ngIf="hasError('registroId')" class="field-error" role="alert"
+                >Scegli la sede: l'azienda ha più registri e nessuno è predefinito.</small
+              >
+            </div>
 
             <!-- Collegamento a un FIR (opzionale): auto-compila rifiuto e controparte -->
             <div class="field">
@@ -1222,7 +1267,7 @@ export class RegistroComponent implements OnInit {
   ngOnInit(): void {
     this.initForm()
     this.ricarica()
-    this.caricaProgressivo()
+    this.caricaRegistri()
     // Identità della società attiva: serve all'auto-tipo carico/scarico dal FIR.
     this.company.loadActiveCompany().subscribe()
   }
@@ -1231,6 +1276,7 @@ export class RegistroComponent implements OnInit {
 
   initForm(): void {
     this.form = this.fb.group({
+      registroId: [null as string | null],
       type: ['CARICO', Validators.required],
       movementDate: [new Date(), Validators.required],
       // Sola lettura: mostra la data di oggi, il server assegna quella vera alla conferma.
@@ -1259,6 +1305,11 @@ export class RegistroComponent implements OnInit {
       causale: null,
       unit: 'KG',
     })
+    // Con più sedi si precompila il registro predefinito; se non c'è, si deve scegliere.
+    const regCtrl = this.form.get('registroId')
+    regCtrl?.setValidators(this.piuRegistri() ? [Validators.required] : [])
+    regCtrl?.setValue(this.piuRegistri() ? (registroPredefinito(this.registri()) ?? null) : null)
+    regCtrl?.updateValueAndValidity()
     // Azzera lo stato del collegamento FIR / anagrafica.
     this.selectedFir = null
     this.selectedProduttore = null
@@ -1545,6 +1596,7 @@ export class RegistroComponent implements OnInit {
 
     this.registroService
       .registra({
+        registroId: this.piuRegistri() && v.registroId ? v.registroId : undefined,
         type: v.type,
         movementDate: toIsoDate(v.movementDate),
         causale: v.causale,
@@ -1586,10 +1638,88 @@ export class RegistroComponent implements OnInit {
   readonly statoProgressivo = signal<StatoProgressivoIniziale | null>(null)
   readonly savingProgressivo = signal(false)
   /** Il pulsante dipende da ruolo e movimenti come li vede il backend, non dal token. */
-  readonly offriProgressivo = computed(() => offrireProgressivoIniziale(this.statoProgressivo()))
+  readonly offriProgressivo = computed(
+    () =>
+      offrireProgressivoIniziale(this.statoProgressivo()) &&
+      // Con più sedi e nessuna scelta non si offre un valore di cui non si sa il registro.
+      (!this.piuRegistri() || !!this.statoProgressivo()?.registroId)
+  )
   /** Nasconde "Registra movimento" a chi è in sola consultazione nell'azienda selezionata. */
   readonly offriRegistrazione = computed(() => offrireRegistrazione(this.statoProgressivo()))
   readonly annoCorrente = annoItaliano(new Date())
+
+  // ─── Registri (uno per sede) ───────────────────────────────────────────────
+
+  readonly registri = signal<RegistroVista[]>([])
+  /** Selettore, filtro e colonna "Sede" compaiono solo se l'azienda ha più di un registro. */
+  readonly piuRegistri = computed(() => this.registri().length > 1)
+  readonly registriFiltroOptions = computed(() =>
+    this.registri().map(r => ({ label: etichettaRegistro(r), value: r.id }))
+  )
+  readonly registriFormOptions = computed(() =>
+    this.registri()
+      .filter(r => r.attivo)
+      .map(r => ({ label: etichettaRegistro(r), value: r.id }))
+  )
+  filtroRegistro: string | null = null
+
+  /**
+   * Registro a cui si riferisce il progressivo iniziale: la sede filtrata, altrimenti il
+   * predefinito. Con più sedi e nessuna scelta resta `undefined`: nessun valore finché
+   * la sede non è scelta.
+   */
+  private registroProgressivo(): string | undefined {
+    return this.filtroRegistro ?? registroPredefinito(this.registri())
+  }
+
+  etichettaSede(registroId?: string | null): string {
+    const r = this.registri().find(x => x.id === registroId)
+    return r ? etichettaRegistro(r) : '—'
+  }
+
+  /**
+   * All'apertura: lo stato del backend dice se l'utente può registrare. Chi può chiede
+   * `assicura` (crea il registro di ogni sede); gli altri, o se `assicura` rifiuta con
+   * 403, ripiegano sulla sola lettura senza mostrare errori.
+   */
+  caricaRegistri(): void {
+    this.registroService.getProgressivoIniziale(this.annoCorrente).subscribe({
+      next: stato => {
+        this.statoProgressivo.set(stato)
+        this.leggiRegistri(offrireRegistrazione(stato))
+      },
+      error: () => {
+        this.statoProgressivo.set(null)
+        this.leggiRegistri(false)
+      },
+    })
+  }
+
+  private leggiRegistri(puoRegistrare: boolean): void {
+    const ripiego = () =>
+      this.registroService.listRegistri().subscribe({
+        next: r => this.impostaRegistri(r),
+        error: () => this.impostaRegistri([]),
+      })
+    if (!puoRegistrare) {
+      ripiego()
+      return
+    }
+    this.registroService.assicuraRegistri().subscribe({
+      next: r => this.impostaRegistri(r),
+      error: () => ripiego(),
+    })
+  }
+
+  private impostaRegistri(registri: RegistroVista[]): void {
+    this.registri.set(registri)
+    this.caricaProgressivo()
+  }
+
+  onFiltroRegistroChange(): void {
+    this.ricarica(1)
+    this.caricaProgressivo()
+  }
   progressivoVisible = false
 
   readonly progressivoForm: FormGroup = this.fb.group({
@@ -1606,11 +1736,13 @@ export class RegistroComponent implements OnInit {
   })
 
   caricaProgressivo(): void {
-    this.registroService.getProgressivoIniziale(this.annoCorrente).subscribe({
-      next: stato => this.statoProgressivo.set(stato),
-      // Senza stato il pulsante resta nascosto: non è una funzione di uso quotidiano.
-      error: () => this.statoProgressivo.set(null),
-    })
+    this.registroService
+      .getProgressivoIniziale(this.annoCorrente, this.registroProgressivo())
+      .subscribe({
+        next: stato => this.statoProgressivo.set(stato),
+        // Senza stato il pulsante resta nascosto: non è una funzione di uso quotidiano.
+        error: () => this.statoProgressivo.set(null),
+      })
   }
 
   apriProgressivo(): void {
@@ -1636,7 +1768,12 @@ export class RegistroComponent implements OnInit {
     const { primoProgressivo, motivo } = this.progressivoForm.value
     this.savingProgressivo.set(true)
     this.registroService
-      .impostaProgressivoIniziale(this.annoCorrente, primoProgressivo, String(motivo).trim())
+      .impostaProgressivoIniziale(
+        this.annoCorrente,
+        primoProgressivo,
+        String(motivo).trim(),
+        this.registroProgressivo()
+      )
       .subscribe({
         next: r => {
           this.savingProgressivo.set(false)
@@ -1666,6 +1803,7 @@ export class RegistroComponent implements OnInit {
       .lista({
         type: this.filtroTipo ?? undefined,
         cerCode: this.filtroCer || undefined,
+        registroId: this.filtroRegistro ?? undefined,
         page,
         limit: this.paginazione().limit,
       })
@@ -1695,7 +1833,10 @@ export class RegistroComponent implements OnInit {
   resetFiltri(): void {
     this.filtroTipo = null
     this.filtroCer = ''
+    const cambiaSede = this.filtroRegistro !== null
+    this.filtroRegistro = null
     this.ricarica(1)
+    if (cambiaSede) this.caricaProgressivo()
   }
 
   onPageChange(event: { page?: number }): void {
@@ -1729,6 +1870,7 @@ export class RegistroComponent implements OnInit {
       .lista({
         type: this.filtroTipo ?? undefined,
         cerCode: this.filtroCer || undefined,
+        registroId: this.filtroRegistro ?? undefined,
         page: 1,
         limit: Math.max(this.paginazione().total, 1),
       })
