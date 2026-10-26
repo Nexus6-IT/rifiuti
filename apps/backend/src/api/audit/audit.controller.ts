@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Req,
   Res,
   Inject,
 } from '@nestjs/common'
@@ -16,7 +17,9 @@ import { QueryBus } from '@nestjs/cqrs'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { PermissionGuard } from '../guards/permission.guard'
 import { RequirePermission } from '../decorators/require-permission.decorator'
-import { CurrentUser } from '../decorators/current-user.decorator'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { richiediAdminSeAziendaDiversa } from '../me/richiedi-ruolo-effettivo'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { GetAuditTrailQuery } from '../../application/queries/get-audit-trail.query'
 import { ReconstructHistoricalPermissionsQuery } from '../../application/queries/reconstruct-historical-permissions.query'
 import { PermissionAuditLogRepository } from '../../domain/identity-access/permission-audit-log.repository.interface'
@@ -52,7 +55,8 @@ export class AuditController {
     @Inject('PermissionAuditLogRepository')
     private readonly auditLogRepository: PermissionAuditLogRepository,
     @Inject('RoleChangeHistoryRepository')
-    private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository
+    private readonly roleChangeHistoryRepository: RoleChangeHistoryRepository,
+    private readonly ruoloEffettivo: RuoloEffettivoService
   ) {}
 
   /**
@@ -63,7 +67,7 @@ export class AuditController {
   @RequirePermission('audit:read:all')
   @HttpCode(HttpStatus.OK)
   async getAuditTrail(
-    @CurrentUser() user: any,
+    @Req() req: any,
     @Query('userId') userId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
@@ -75,8 +79,10 @@ export class AuditController {
     @Query('pageSize') pageSize?: string
   ): Promise<any> {
     try {
+      const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
       const query = new GetAuditTrailQuery(
-        user.tenantId,
+        tenantId,
         {
           userId,
           startDate: startDate ? new Date(startDate) : undefined,
@@ -141,23 +147,25 @@ export class AuditController {
   @RequirePermission('audit:export:all')
   @HttpCode(HttpStatus.OK)
   async exportAuditTrail(
-    @CurrentUser() user: any,
+    @Req() req: any,
     @Res() res: Response,
     @Query('userId') userId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string
   ): Promise<void> {
     try {
-      this.logger.log(`Exporting audit trail for tenant ${user.tenantId}`)
+      const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
+      this.logger.log(`Exporting audit trail for tenant ${tenantId}`)
 
       const csv = await this.auditLogRepository.exportToCsv({
-        tenantId: user.tenantId,
+        tenantId: tenantId,
         userId,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
       })
 
-      const filename = `audit-trail-${user.tenantId}-${new Date().toISOString()}.csv`
+      const filename = `audit-trail-${tenantId}-${new Date().toISOString()}.csv`
 
       res.setHeader('Content-Type', 'text/csv')
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
@@ -176,7 +184,7 @@ export class AuditController {
   @RequirePermission('audit:read:all')
   @HttpCode(HttpStatus.OK)
   async getRoleChanges(
-    @CurrentUser() user: any,
+    @Req() req: any,
     @Query('userId') userId?: string,
     @Query('roleId') roleId?: string,
     @Query('changedBy') changedBy?: string,
@@ -187,13 +195,15 @@ export class AuditController {
     @Query('pageSize') pageSize?: string
   ): Promise<any> {
     try {
-      this.logger.log(`Get role changes for tenant ${user.tenantId}`)
+      const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
+      this.logger.log(`Get role changes for tenant ${tenantId}`)
 
       const pageNum = page ? parseInt(page, 10) : 1
       const size = pageSize ? parseInt(pageSize, 10) : 50
 
       const result = await this.roleChangeHistoryRepository.findWithFilters({
-        tenantId: user.tenantId,
+        tenantId: tenantId,
         userId,
         roleId,
         changedBy,
@@ -241,15 +251,17 @@ export class AuditController {
   @RequirePermission('audit:read:all')
   @HttpCode(HttpStatus.OK)
   async reconstructHistoricalPermissions(
-    @CurrentUser() user: any,
+    @Req() req: any,
     @Body() body: { userId: string; timestamp: string }
   ): Promise<any> {
     try {
+      const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
       this.logger.log(`Reconstructing permissions for user ${body.userId} at ${body.timestamp}`)
 
       const query = new ReconstructHistoricalPermissionsQuery(
         body.userId,
-        user.tenantId,
+        tenantId,
         new Date(body.timestamp)
       )
 
@@ -285,14 +297,16 @@ export class AuditController {
   @RequirePermission('audit:read:all')
   @HttpCode(HttpStatus.OK)
   async getAuditStatistics(
-    @CurrentUser() user: any,
+    @Req() req: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string
   ): Promise<any> {
     try {
-      this.logger.log(`Get audit statistics for tenant ${user.tenantId}`)
+      const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
+      this.logger.log(`Get audit statistics for tenant ${tenantId}`)
 
-      const stats = await this.auditLogRepository.getStatistics(user.tenantId, {
+      const stats = await this.auditLogRepository.getStatistics(tenantId, {
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
       })
@@ -312,13 +326,15 @@ export class AuditController {
   @RequirePermission('audit:validate:all')
   @HttpCode(HttpStatus.OK)
   async validateChainIntegrity(
-    @CurrentUser() user: any,
+    @Req() req: any,
     @Body() body: { startDate?: string; endDate?: string }
   ): Promise<any> {
     try {
-      this.logger.log(`Validating chain integrity for tenant ${user.tenantId}`)
+      const tenantId = requireRequestTenantId(req)
+      await richiediAdminSeAziendaDiversa(this.ruoloEffettivo, req.user, tenantId)
+      this.logger.log(`Validating chain integrity for tenant ${tenantId}`)
 
-      const result = await this.auditLogRepository.validateChainIntegrity(user.tenantId, {
+      const result = await this.auditLogRepository.validateChainIntegrity(tenantId, {
         startDate: body.startDate ? new Date(body.startDate) : undefined,
         endDate: body.endDate ? new Date(body.endDate) : undefined,
       })

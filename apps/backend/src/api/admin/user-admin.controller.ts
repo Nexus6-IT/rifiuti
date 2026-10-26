@@ -144,6 +144,7 @@ export class UserAdminController {
   }) {
     return {
       id: user.id,
+      // azienda primaria: record dell'utente gestito (riga DB), non il token del chiamante
       tenantId: user.tenantId,
       keycloakId: user.keycloakId,
       fiscalCode: user.fiscalCode,

@@ -6,7 +6,7 @@ import { SpidStepUpGuard } from '../guards/spid-step-up.guard'
 import { RequirePermission } from '../decorators/require-permission.decorator'
 import { AuditAction } from '../decorators/audit-action.decorator'
 import { CurrentTenant } from '../decorators/current-tenant.decorator'
-import { CurrentUser } from '../decorators/current-user.decorator'
+import { CurrentUser } from '../../auth/decorators/current-user.decorator'
 
 /**
  * FIR Controller Example

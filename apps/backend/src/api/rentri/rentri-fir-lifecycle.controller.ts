@@ -6,6 +6,7 @@ import {
   Param,
   Body,
   Res,
+  Req,
   UseGuards,
   NotFoundException,
   BadRequestException,
@@ -18,6 +19,8 @@ import { UserId } from '../../core/decorators/user.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { richiediRuoloEffettivo } from '../me/richiedi-ruolo-effettivo'
 import { LoggerService } from '../../core/logger/logger.service'
 import {
   GetAzioniDisponibiliUseCase,
@@ -92,7 +95,8 @@ export class RentriFirLifecycleController {
     private readonly annullaFIRRentriUseCase: AnnullaFIRRentriUseCase,
     private readonly gestisciAllegatiFIRUseCase: GestisciAllegatiFIRUseCase,
     private readonly scaricaPdfFirUseCase: ScaricaPdfFirUseCase,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly ruoloEffettivo: RuoloEffettivoService
   ) {
     this.logger.setContext('RentriFirLifecycleController')
   }
@@ -156,8 +160,10 @@ export class RentriFirLifecycleController {
     @Param('id') firId: string,
     @Body() dto: AccettaFirRentriDto,
     @TenantId() tenantId: string,
-    @UserId() userId: string
+    @UserId() userId: string,
+    @Req() req: any
   ): Promise<EsitoAccettaORespingiFIR> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
     this.logger.debug('Accettazione/respingimento RENTRI richiesto', {
       firId,
       tenantId,
@@ -212,8 +218,10 @@ export class RentriFirLifecycleController {
     @Param('id') firId: string,
     @Body() dto: AnnullaFirRentriDto,
     @TenantId() tenantId: string,
-    @UserId() userId: string
+    @UserId() userId: string,
+    @Req() req: any
   ): Promise<EsitoAnnullaFIRRentri> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
     this.logger.debug('Annullamento RENTRI richiesto', {
       firId,
       tenantId,
@@ -287,8 +295,10 @@ export class RentriFirLifecycleController {
     @Param('id') firId: string,
     @Body() dto: CaricaAllegatoFirRentriDto,
     @TenantId() tenantId: string,
-    @UserId() userId: string
+    @UserId() userId: string,
+    @Req() req: any
   ): Promise<AllegatoFIR> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
     this.logger.debug('Caricamento allegato RENTRI richiesto', {
       firId,
       tenantId,
@@ -336,8 +346,10 @@ export class RentriFirLifecycleController {
     @Param('id') firId: string,
     @Param('allegatoId') allegatoId: string,
     @TenantId() tenantId: string,
-    @UserId() userId: string
+    @UserId() userId: string,
+    @Req() req: any
   ): Promise<{ eliminato: true }> {
+    await richiediRuoloEffettivo(this.ruoloEffettivo, req.user, tenantId)
     this.logger.debug('Eliminazione allegato RENTRI richiesta', {
       firId,
       allegatoId,

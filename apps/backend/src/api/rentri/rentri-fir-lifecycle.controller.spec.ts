@@ -1,4 +1,5 @@
-import { NotFoundException, BadRequestException } from '@nestjs/common'
+import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common'
+import { argomentiCustom } from '../../test-support/argomenti-handler'
 import { RentriFirLifecycleController } from './rentri-fir-lifecycle.controller'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { traduciErroreRentri } from '../../application/rentri/rentri-error-presentation'
@@ -53,7 +54,8 @@ describe('RentriFirLifecycleController — scaricaPdf', () => {
       {} as any, // AnnullaFIRRentriUseCase
       {} as any, // GestisciAllegatiFIRUseCase
       scaricaPdfFirUseCase as any,
-      creaLogger()
+      creaLogger(),
+      {} as any
     )
   })
 
@@ -136,6 +138,9 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
   const TENANT_ID = 'tenant-1'
   const USER_ID = 'utente-1'
 
+  const REQ = { user: { id: USER_ID, role: 'ADMIN', tenantId: 'altra-azienda' } }
+  const ruolo = { ruoloEffettivo: jest.fn() }
+
   let controller: RentriFirLifecycleController
   let getAzioniDisponibiliUseCase: { execute: jest.Mock }
   let accettaORespingiFIRUseCase: { execute: jest.Mock }
@@ -182,6 +187,8 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
 
   beforeEach(() => {
     getAzioniDisponibiliUseCase = { execute: jest.fn() }
+    ruolo.ruoloEffettivo.mockReset()
+    ruolo.ruoloEffettivo.mockResolvedValue('OPERATOR')
     accettaORespingiFIRUseCase = { execute: jest.fn() }
     annullaFIRRentriUseCase = { execute: jest.fn() }
     gestisciAllegatiFIRUseCase = {
@@ -196,7 +203,8 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
       annullaFIRRentriUseCase as any,
       gestisciAllegatiFIRUseCase as any,
       {} as any, // ScaricaPdfFirUseCase — non usato da questi test
-      creaLogger()
+      creaLogger(),
+      ruolo as any
     )
   })
 
@@ -211,7 +219,13 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
     const atteso = traduciErroreRentri({ errorCode: 'ACCETTAZIONE_NON_DISPONIBILE' }).messaggio
 
     const errore = await catturaErrore(() =>
-      controller.accettaORespingi(FIR_ID, { tipoAccettazione: 'TOTALE' } as any, TENANT_ID, USER_ID)
+      controller.accettaORespingi(
+        FIR_ID,
+        { tipoAccettazione: 'TOTALE' } as any,
+        TENANT_ID,
+        USER_ID,
+        REQ
+      )
     )
     expect(errore).toBeInstanceOf(BadRequestException)
     expect(errore.message).toBe(atteso)
@@ -229,7 +243,7 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
     const atteso = traduciErroreRentri({ errorCode: 'ANNULLAMENTO_NON_DISPONIBILE' }).messaggio
 
     const errore = await catturaErrore(() =>
-      controller.annulla(FIR_ID, { motivo: 'errore di battitura' } as any, TENANT_ID, USER_ID)
+      controller.annulla(FIR_ID, { motivo: 'errore di battitura' } as any, TENANT_ID, USER_ID, REQ)
     )
     expect(errore).toBeInstanceOf(BadRequestException)
     expect(errore.message).toBe(atteso)
@@ -247,7 +261,7 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
     const atteso = traduciErroreRentri({ errorCode: 'ALLEGATO_NON_DISPONIBILE' }).messaggio
 
     const errore = await catturaErrore(() =>
-      controller.eliminaAllegato(FIR_ID, 'allegato-1', TENANT_ID, USER_ID)
+      controller.eliminaAllegato(FIR_ID, 'allegato-1', TENANT_ID, USER_ID, REQ)
     )
     expect(errore).toBeInstanceOf(BadRequestException)
     expect(errore.message).toBe(atteso)
@@ -268,7 +282,13 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
     }).messaggio
 
     const errore = await catturaErrore(() =>
-      controller.accettaORespingi(FIR_ID, { tipoAccettazione: 'TOTALE' } as any, TENANT_ID, USER_ID)
+      controller.accettaORespingi(
+        FIR_ID,
+        { tipoAccettazione: 'TOTALE' } as any,
+        TENANT_ID,
+        USER_ID,
+        REQ
+      )
     )
     expect(errore).toBeInstanceOf(BadRequestException)
     expect(errore.message).toBe(atteso)
@@ -293,7 +313,8 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
         FIR_ID,
         { nomeFile: 'documento.txt', contentType: 'text/plain', contenutoBase64: 'AAAA' } as any,
         TENANT_ID,
-        USER_ID
+        USER_ID,
+        REQ
       )
     )
     expect(errore).toBeInstanceOf(BadRequestException)
@@ -320,7 +341,8 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
           contenutoBase64: 'AAAA',
         } as any,
         TENANT_ID,
-        USER_ID
+        USER_ID,
+        REQ
       )
     )
     expect(errore).toBeInstanceOf(BadRequestException)
@@ -344,5 +366,103 @@ describe('RentriFirLifecycleController — traduzione errori Task 9', () => {
     // il messaggio resta quello grezzo di businessRuleViolation, prefisso
     // tecnico incluso (non è il caso che questo debito doveva chiudere).
     expect(eccezione.message).toContain('Business rule violated')
+  })
+})
+
+describe('RentriFirLifecycleController: @TenantId è l’azienda selezionata', () => {
+  it('getAzioniDisponibili: token A, azienda selezionata B → lo use case riceve B', async () => {
+    const azioni = { execute: jest.fn().mockResolvedValue({ azioni: [] }) }
+    const controller = new RentriFirLifecycleController(
+      azioni as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { setContext: jest.fn(), debug: jest.fn(), error: jest.fn() } as any,
+      {} as any
+    )
+    const request = { tenantId: 'B', user: { id: 'u1', tenantId: 'A' }, headers: {} }
+    const arg = argomentiCustom(RentriFirLifecycleController, 'getAzioniDisponibili', request)
+
+    await controller.getAzioniDisponibili('fir-1', arg[1] as string, 'u1')
+
+    expect(azioni.execute).toHaveBeenCalledWith('fir-1', 'B')
+  })
+
+  it('senza azienda selezionata: 403, header grezzo ignorato', () => {
+    const request = { user: { id: 'u1' }, headers: { 'x-tenant-id': 'ALTRUI' } }
+    expect(() =>
+      argomentiCustom(RentriFirLifecycleController, 'getAzioniDisponibili', request)
+    ).toThrow(ForbiddenException)
+  })
+})
+
+describe('RentriFirLifecycleController: ruolo effettivo nell azienda selezionata (scritture)', () => {
+  const REQ = { user: { id: 'u1', role: 'ADMIN', tenantId: 'A' } }
+  const ruolo = { ruoloEffettivo: jest.fn() }
+  const useCase = {
+    accettaORespingi: { execute: jest.fn() },
+    annulla: { execute: jest.fn() },
+    allegati: { caricaAllegato: jest.fn(), eliminaAllegato: jest.fn() },
+  }
+  let controller: RentriFirLifecycleController
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    useCase.accettaORespingi.execute.mockResolvedValue({})
+    useCase.annulla.execute.mockResolvedValue({})
+    useCase.allegati.caricaAllegato.mockResolvedValue({})
+    useCase.allegati.eliminaAllegato.mockResolvedValue(undefined)
+    controller = new RentriFirLifecycleController(
+      {} as any,
+      useCase.accettaORespingi as any,
+      useCase.annulla as any,
+      useCase.allegati as any,
+      {} as any,
+      { setContext: jest.fn(), debug: jest.fn(), error: jest.fn() } as any,
+      ruolo as any
+    )
+  })
+
+  const scritture: Array<[string, () => Promise<unknown>, jest.Mock]> = [
+    [
+      'accettazione',
+      () => controller.accettaORespingi('f', { tipoAccettazione: 'TOTALE' } as any, 'B', 'u1', REQ),
+      useCase.accettaORespingi.execute,
+    ],
+    [
+      'annullamento',
+      () => controller.annulla('f', { motivo: 'x' } as any, 'B', 'u1', REQ),
+      useCase.annulla.execute,
+    ],
+    [
+      'carica allegato',
+      () => controller.caricaAllegato('f', { nomeFile: 'a.pdf' } as any, 'B', 'u1', REQ),
+      useCase.allegati.caricaAllegato,
+    ],
+    [
+      'elimina allegato',
+      () => controller.eliminaAllegato('f', 'al', 'B', 'u1', REQ),
+      useCase.allegati.eliminaAllegato,
+    ],
+  ]
+
+  it.each(scritture)(
+    '%s: consulente VIEWER nell azienda selezionata → 403, nessuna scrittura',
+    async (_n, chiama, uc) => {
+      ruolo.ruoloEffettivo.mockResolvedValue('VIEWER')
+      await expect(chiama()).rejects.toBeInstanceOf(ForbiddenException)
+      expect(ruolo.ruoloEffettivo).toHaveBeenCalledWith(REQ.user, 'B')
+      expect(uc).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(scritture)('%s: ADMIN/OPERATOR effettivo → passa', async (_n, chiama, uc) => {
+    for (const r of ['ADMIN', 'OPERATOR', 'SUPER_ADMIN']) {
+      uc.mockClear()
+      ruolo.ruoloEffettivo.mockResolvedValue(r)
+      await chiama()
+      expect(uc).toHaveBeenCalledTimes(1)
+    }
   })
 })

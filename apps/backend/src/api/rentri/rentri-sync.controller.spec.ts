@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { RENTRISyncController } from './rentri-sync.controller'
 import { DomainException } from '../../domain/shared/domain-exception'
+import { argomentiCustom } from '../../test-support/argomenti-handler'
 
 describe('RENTRISyncController.syncFIR', () => {
   const queue = { addSyncJob: jest.fn() }
@@ -86,13 +87,95 @@ describe('RENTRISyncController.syncFIR', () => {
     expect(queue.addSyncJob).not.toHaveBeenCalled()
   })
 
-  it("senza conferma: nessun controllo di ruolo, nessuna riapertura, job sull'azienda selezionata", async () => {
+  it("senza conferma: ruolo effettivo OPERATOR basta, nessuna riapertura, job sull'azienda selezionata", async () => {
+    ruolo.ruoloEffettivo.mockResolvedValue('OPERATOR')
     await controller.syncFIR('fir-1', 'user-1', {}, req)
 
-    expect(ruolo.ruoloEffettivo).not.toHaveBeenCalled()
+    expect(ruolo.ruoloEffettivo).toHaveBeenCalledWith(req.user, 'tenant-sel')
     expect(riapri.execute).not.toHaveBeenCalled()
     const arg = queue.addSyncJob.mock.calls[0][0]
     expect(arg.tenantId).toBe('tenant-sel')
     expect(arg).not.toHaveProperty('confermaNuovaTrasmissione')
+  })
+})
+
+describe('RENTRISyncController: @TenantId è l’azienda selezionata', () => {
+  it('getSyncStatus: token A, azienda selezionata B → lo use case riceve B', async () => {
+    const getSyncStatusUseCase = {
+      execute: jest.fn().mockResolvedValue({ jobId: 'j1', status: 'completed', progress: 100 }),
+    }
+    const logger = { setContext: jest.fn(), debug: jest.fn(), info: jest.fn(), error: jest.fn() }
+    const controller = new RENTRISyncController(
+      {} as any,
+      getSyncStatusUseCase as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      logger as any,
+      {} as any,
+      {} as any
+    )
+    const request = { tenantId: 'B', user: { id: 'u1', tenantId: 'A' }, headers: {} }
+    const arg = argomentiCustom(RENTRISyncController, 'getSyncStatus', request)
+
+    await controller.getSyncStatus('j1', arg[1] as string, 'u1')
+
+    expect(getSyncStatusUseCase.execute).toHaveBeenCalledWith('j1', 'B')
+  })
+
+  it('senza azienda selezionata né token: 403 prima di toccare il service', () => {
+    const request = { user: { id: 'u1' }, headers: { 'x-tenant-id': 'ALTRUI' } }
+    expect(() => argomentiCustom(RENTRISyncController, 'getSyncStatus', request)).toThrow(
+      ForbiddenException
+    )
+  })
+})
+
+describe('RENTRISyncController: ruolo effettivo sulle scritture', () => {
+  const req = { user: { id: 'u1', role: 'ADMIN', tenantId: 'A' } }
+  const ruolo = { ruoloEffettivo: jest.fn() }
+  const conferma = { execute: jest.fn() }
+  const batch = { execute: jest.fn() }
+  const queue = { addSyncJob: jest.fn() }
+  const logger = { setContext: jest.fn(), info: jest.fn(), error: jest.fn() }
+  let controller: RENTRISyncController
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    conferma.execute.mockResolvedValue({ numeroFir: 'x' })
+    batch.execute.mockResolvedValue({ jobId: 'j', queuedCount: 1, skippedCount: 0, firIds: ['f'] })
+    queue.addSyncJob.mockResolvedValue('job-1')
+    controller = new RENTRISyncController(
+      batch as any,
+      {} as any,
+      conferma as any,
+      queue as any,
+      {} as any,
+      logger as any,
+      ruolo as any,
+      {} as any
+    )
+  })
+
+  const scritture: Array<[string, () => Promise<unknown>, jest.Mock]> = [
+    ['conferma legame', () => controller.confermaLegame('f', 'B', 'u1', req), conferma.execute],
+    ['batch', () => controller.batchSync('B', 'u1', { firIds: ['f'] } as any, req), batch.execute],
+    [
+      'sync singolo',
+      () => controller.syncFIR('f', 'u1', {}, { ...req, tenantId: 'B' }),
+      queue.addSyncJob,
+    ],
+  ]
+
+  it.each(scritture)('%s: VIEWER effettivo → 403, nessuna scrittura', async (_n, chiama, uc) => {
+    ruolo.ruoloEffettivo.mockResolvedValue('VIEWER')
+    await expect(chiama()).rejects.toBeInstanceOf(ForbiddenException)
+    expect(uc).not.toHaveBeenCalled()
+  })
+
+  it.each(scritture)('%s: OPERATOR effettivo → passa', async (_n, chiama, uc) => {
+    ruolo.ruoloEffettivo.mockResolvedValue('OPERATOR')
+    await chiama()
+    expect(uc).toHaveBeenCalledTimes(1)
   })
 })

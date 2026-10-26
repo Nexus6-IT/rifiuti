@@ -49,6 +49,7 @@ export class MembershipController {
   getCompany(@Req() req: Request) {
     const tenantId =
       (req as unknown as { tenantId?: string }).tenantId ??
+      // azienda primaria: solo ripiego se il middleware non ha impostato req.tenantId
       (req as unknown as { user?: { tenantId?: string } }).user?.tenantId ??
       null
     return this.membership.getActiveCompany(tenantId)

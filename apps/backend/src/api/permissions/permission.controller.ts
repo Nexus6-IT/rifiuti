@@ -2,7 +2,7 @@ import { Controller, Get, UseGuards, Logger, Query } from '@nestjs/common'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
 import { CurrentTenant } from '../decorators/current-tenant.decorator'
-import { CurrentUser } from '../decorators/current-user.decorator'
+import { CurrentUser } from '../../auth/decorators/current-user.decorator'
 import { GetUserPermissionsQueryHandler } from '../../application/queries/handlers/get-user-permissions.handler'
 import { GetUserPermissionsQuery } from '../../application/queries/get-user-permissions.query'
 

@@ -10,6 +10,9 @@ const user: CurrentUserPayload = {
   permissions: [],
 }
 
+// richiesta senza switch di azienda: l'azienda selezionata coincide con quella del token
+const req = { tenantId: user.tenantId, user }
+
 const items = [
   {
     id: 'ul-1',
@@ -43,7 +46,7 @@ describe('RentriSitiController', () => {
     it('legge dalla cache locale (forza assente/false)', async () => {
       useCase.esegui.mockResolvedValue(items)
 
-      const res = await controller.list(user)
+      const res = await controller.list(req)
 
       expect(res).toEqual({ items })
       expect(useCase.esegui).toHaveBeenCalledWith('tenant-1')
@@ -54,7 +57,7 @@ describe('RentriSitiController', () => {
     it('forza la rilettura dall’ente', async () => {
       useCase.esegui.mockResolvedValue(items)
 
-      const res = await controller.aggiorna(user)
+      const res = await controller.aggiorna(req)
 
       expect(res).toEqual({ items })
       expect(useCase.esegui).toHaveBeenCalledWith('tenant-1', { forza: true })
@@ -64,7 +67,7 @@ describe('RentriSitiController', () => {
       const errore = new Error('numIscrOperatore mancante')
       useCase.esegui.mockRejectedValue(errore)
 
-      await expect(controller.aggiorna(user)).rejects.toThrow('numIscrOperatore mancante')
+      await expect(controller.aggiorna(req)).rejects.toThrow('numIscrOperatore mancante')
     })
   })
 })

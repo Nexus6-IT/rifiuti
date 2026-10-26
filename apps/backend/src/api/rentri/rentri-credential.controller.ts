@@ -21,12 +21,13 @@ import {
   BadRequestException,
   UseGuards,
   Logger,
+  Req,
 } from '@nestjs/common'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-modalita-legame.service'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
@@ -99,10 +100,8 @@ export class RentriCredentialController {
   @ApiResponse({ status: 200, description: 'Credenziale salvata' })
   @ApiResponse({ status: 400, description: 'Dati non validi (PKCS#12 illeggibile, PEM mancanti)' })
   @ApiResponse({ status: 401, description: 'Non autenticato' })
-  async set(
-    @Body() dto: SetRentriCredentialDto,
-    @CurrentUser() user: CurrentUserPayload
-  ): Promise<SuccessResponse> {
+  async set(@Body() dto: SetRentriCredentialDto, @Req() req: any): Promise<SuccessResponse> {
+    const tenantId = requireRequestTenantId(req)
     let certificatePem: string
     let privateKeyPem: string
 
@@ -165,7 +164,7 @@ export class RentriCredentialController {
       )
     }
 
-    const firRiaperti = await this.credentialService.upsertForTenant(user.tenantId, {
+    const firRiaperti = await this.credentialService.upsertForTenant(tenantId, {
       clientId: dto.clientId,
       certificatePem,
       privateKeyPem,
@@ -176,7 +175,7 @@ export class RentriCredentialController {
       credentialsIdFirmaRemota: dto.credentialsIdFirmaRemota,
     })
 
-    await this.riavviaFirRiaperti(user.tenantId, firRiaperti)
+    await this.riavviaFirRiaperti(tenantId, firRiaperti)
 
     // NON restituire mai chiave/cert.
     return avvertimenti.length > 0
@@ -227,8 +226,9 @@ export class RentriCredentialController {
   })
   @ApiResponse({ status: 200, description: 'Stato credenziale' })
   @ApiResponse({ status: 401, description: 'Non autenticato' })
-  async status(@CurrentUser() user: CurrentUserPayload): Promise<CredentialStatusResponse> {
-    const cred = await this.credentialService.getForTenant(user.tenantId)
+  async status(@Req() req: any): Promise<CredentialStatusResponse> {
+    const tenantId = requireRequestTenantId(req)
+    const cred = await this.credentialService.getForTenant(tenantId)
     if (!cred) {
       return { configured: false }
     }
@@ -250,8 +250,9 @@ export class RentriCredentialController {
   @ApiOperation({ summary: 'Rimuove la credenziale RENTRI del tenant corrente' })
   @ApiResponse({ status: 200, description: 'Credenziale rimossa' })
   @ApiResponse({ status: 401, description: 'Non autenticato' })
-  async remove(@CurrentUser() user: CurrentUserPayload): Promise<SuccessResponse> {
-    await this.credentialService.removeForTenant(user.tenantId)
+  async remove(@Req() req: any): Promise<SuccessResponse> {
+    const tenantId = requireRequestTenantId(req)
+    await this.credentialService.removeForTenant(tenantId)
     return { success: true }
   }
 }

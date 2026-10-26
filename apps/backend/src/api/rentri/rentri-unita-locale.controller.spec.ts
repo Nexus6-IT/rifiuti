@@ -11,6 +11,9 @@ const user: CurrentUserPayload = {
   permissions: [],
 }
 
+// richiesta senza switch di azienda: l'azienda selezionata coincide con quella del token
+const req = { tenantId: user.tenantId, user }
+
 const row = {
   id: 'ul-1',
   numIscrSito: 'OP1234ABC123456-RM1234',
@@ -44,7 +47,7 @@ describe('RentriUnitaLocaleController', () => {
   it('elenca le unità locali del tenant corrente', async () => {
     service.listForTenant.mockResolvedValue([row])
 
-    const res = await controller.list(user)
+    const res = await controller.list(req)
 
     expect(service.listForTenant).toHaveBeenCalledWith('tenant-1')
     expect(res).toEqual({ items: [row] })
@@ -57,7 +60,7 @@ describe('RentriUnitaLocaleController', () => {
     }
     service.create.mockResolvedValue(row)
 
-    const res = await controller.create(dto, user)
+    const res = await controller.create(dto, req)
 
     expect(service.create).toHaveBeenCalledWith('tenant-1', dto)
     expect(res).toEqual(row)
@@ -66,7 +69,7 @@ describe('RentriUnitaLocaleController', () => {
   it('aggiorna una unità locale del tenant corrente', async () => {
     service.update.mockResolvedValue({ ...row, denominazione: 'Nuovo nome' })
 
-    const res = await controller.update('ul-1', { denominazione: 'Nuovo nome' }, user)
+    const res = await controller.update('ul-1', { denominazione: 'Nuovo nome' }, req)
 
     expect(service.update).toHaveBeenCalledWith('tenant-1', 'ul-1', { denominazione: 'Nuovo nome' })
     expect(res.denominazione).toBe('Nuovo nome')
@@ -75,14 +78,14 @@ describe('RentriUnitaLocaleController', () => {
   it('imposta una unità locale come principale', async () => {
     service.setPrincipale.mockResolvedValue(row)
 
-    const res = await controller.setPrincipale('ul-1', user)
+    const res = await controller.setPrincipale('ul-1', req)
 
     expect(service.setPrincipale).toHaveBeenCalledWith('tenant-1', 'ul-1')
     expect(res).toEqual(row)
   })
 
   it('rimuove una unità locale del tenant corrente', async () => {
-    await controller.remove('ul-1', user)
+    await controller.remove('ul-1', req)
 
     expect(service.remove).toHaveBeenCalledWith('tenant-1', 'ul-1')
   })
@@ -92,7 +95,7 @@ describe('RentriUnitaLocaleController', () => {
     service.update.mockRejectedValue(new NotFoundException('Unità locale RENTRI non trovata'))
 
     await expect(
-      controller.update('ul-di-un-altro-tenant', { denominazione: 'X' }, user)
+      controller.update('ul-di-un-altro-tenant', { denominazione: 'X' }, req)
     ).rejects.toBeInstanceOf(NotFoundException)
   })
 })

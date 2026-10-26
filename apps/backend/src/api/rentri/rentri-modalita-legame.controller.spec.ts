@@ -14,6 +14,9 @@ const user: CurrentUserPayload = {
   permissions: [],
 }
 
+// richiesta senza switch di azienda: l'azienda selezionata coincide con quella del token
+const req = { tenantId: user.tenantId, user }
+
 describe('RentriModalitaLegameController', () => {
   let controller: RentriModalitaLegameController
   let service: jest.Mocked<RentriModalitaLegameService>
@@ -34,7 +37,7 @@ describe('RentriModalitaLegameController', () => {
         certificatoConfigurato: false,
       })
 
-      const res = await controller.get(user)
+      const res = await controller.get(req)
 
       expect(res).toEqual({ modalitaLegame: 'MANUALE', certificatoConfigurato: false })
       expect(service.getForTenant).toHaveBeenCalledWith('tenant-1')
@@ -48,7 +51,7 @@ describe('RentriModalitaLegameController', () => {
         certificatoConfigurato: true,
       })
 
-      const res = await controller.set({ modalitaLegame: 'IBRIDA' }, user)
+      const res = await controller.set({ modalitaLegame: 'IBRIDA' }, req)
 
       expect(res).toEqual({ modalitaLegame: 'IBRIDA', certificatoConfigurato: true })
       expect(service.setForTenant).toHaveBeenCalledWith('tenant-1', 'IBRIDA')
@@ -58,7 +61,7 @@ describe('RentriModalitaLegameController', () => {
       const error = new Error('serve un certificato')
       service.setForTenant.mockRejectedValue(error)
 
-      await expect(controller.set({ modalitaLegame: 'AUTOMATICA' }, user)).rejects.toBe(error)
+      await expect(controller.set({ modalitaLegame: 'AUTOMATICA' }, req)).rejects.toBe(error)
     })
   })
 })

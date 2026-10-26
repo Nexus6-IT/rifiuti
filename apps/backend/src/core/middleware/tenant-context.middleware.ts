@@ -1,4 +1,11 @@
-import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common'
+import {
+  ForbiddenException,
+  Injectable,
+  NestMiddleware,
+  UnauthorizedException,
+} from '@nestjs/common'
+import { isUUID } from 'class-validator'
+import { AZIENDA_SELEZIONATA_NON_ACCESSIBILE } from '../context/azienda-selezionata-errori'
 import { ConfigService } from '@nestjs/config'
 import { Request, Response, NextFunction } from 'express'
 import * as jwt from 'jsonwebtoken'
@@ -47,6 +54,12 @@ export class TenantContextMiddleware implements NestMiddleware {
 
     let tenantId: string | undefined
     if (isSuperAdmin) {
+      // Il SUPER_ADMIN non passa dalla verifica di membership: l'unico controllo sull'header e'
+      // la forma. Un valore che non e' un UUID non puo' essere un'azienda (Prisma lo rifiuterebbe
+      // con P2023, cioe' con un 500): 403 come per gli utenti normali.
+      if (headerTenantId && !isUUID(headerTenantId, 'all')) {
+        throw new ForbiddenException({ ...AZIENDA_SELEZIONATA_NON_ACCESSIBILE })
+      }
       tenantId = headerTenantId ?? payload.tenantId ?? undefined
       if (!tenantId) tenantId = undefined // '' → undefined (no filtro RLS non valido)
     } else {
