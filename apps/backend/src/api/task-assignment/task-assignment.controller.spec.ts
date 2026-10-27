@@ -31,8 +31,7 @@ describe('TaskAssignmentController: utente dal token', () => {
     await controller.reassignTask('fir-1', 't-1', utente, { newDriverId: 'd-2', reason: 'x' })
     const cmd = commandBus.execute.mock.calls[0][0] as ReassignTaskCommand
     expect(cmd).toBeInstanceOf(ReassignTaskCommand)
-    expect(Object.values(cmd)).toContain('utente-1')
-    expect(Object.values(cmd)).not.toContain(undefined)
+    expect(cmd.reassignedBy).toBe('utente-1')
   })
 
   it('getMyAssignments restituisce user.id come driverId', async () => {

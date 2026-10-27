@@ -1,5 +1,8 @@
 import { RateLimitMiddleware } from './rate-limit.middleware'
 
+// NOTA: oggi il middleware NON e' registrato in nessun modulo (e, se lo fosse, girerebbe prima
+// del JwtAuthGuard, quindi `req.user` sarebbe vuoto). La correzione dell'identificatore non
+// cambia nulla in produzione: e' coperta qui solo perche' il codice resti corretto se verra' attivato.
 describe('RateLimitMiddleware: identificatore', () => {
   const cache = {
     getQueryResult: jest.fn(),

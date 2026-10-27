@@ -39,8 +39,8 @@ import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.s
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono registrare movimenti e
- * impostare il progressivo iniziale (C-W-02). Non si usa `@Roles`: `RolesGuard` vede solo il
- * ruolo del token e gira prima del `TenantSwitchInterceptor`, che seleziona l'azienda.
+ * impostare il progressivo iniziale (C-W-02). La decisione e' presa nel
+ * controller sul ruolo effettivo, non con `@Roles`.
  */
 const RUOLI_REGISTRAZIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
 const RUOLI_PROGRESSIVO_INIZIALE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']

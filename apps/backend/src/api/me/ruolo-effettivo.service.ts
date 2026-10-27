@@ -49,8 +49,9 @@ export type AccessoAzienda = { ruolo: RuoloApplicativo; roleId: string | null }
  * del cliente non è un amministratore. Le decisioni riservate (conferma degli avvisi del
  * MUD, registrazione dei movimenti, progressivo iniziale) si prendono su questo ruolo.
  *
- * Si usa nei controller, non in un guard: `RolesGuard` gira prima del
- * `TenantSwitchInterceptor` globale e non vede l'azienda selezionata.
+ * Lo usano anche `RolesGuard` e `PermissionGuard`, che girano prima del
+ * `TenantSwitchInterceptor` globale e ricavano da soli l'azienda selezionata
+ * (`aziendaCandidataDaHeader`); nei controller serve per le decisioni riservate dentro la rotta.
  *
  * Solo letture vincolate all'id dell'utente autenticato (o agli id che ne derivano); mai dati di
  * dominio: un metodo nuovo qui eredita BYPASSRLS (client di sistema).

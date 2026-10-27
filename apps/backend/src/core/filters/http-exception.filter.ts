@@ -50,7 +50,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const correlationId = (request as any).correlationId || 'unknown'
     const tenantId = (request as any).tenantId
-    // JwtStrategy.validate popola request.user.id (userId resta come ripiego)
+    // JwtStrategy.validate popola request.user.id
     const userId = (request as any).user?.id
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR
