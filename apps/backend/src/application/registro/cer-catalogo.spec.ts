@@ -14,7 +14,7 @@ describe('cer-catalogo', () => {
     expect(count).toHaveBeenCalledWith({ where: { code: { in: ['13 02 05', '13 02 05*'] } } })
   })
 
-  it('cerNelCatalogo restituisce la forma del catalogo, con l\'asterisco se il catalogo lo ha', async () => {
+  it("cerNelCatalogo restituisce la forma del catalogo, con l'asterisco se il catalogo lo ha", async () => {
     const findMany = jest.fn().mockResolvedValue([{ code: '13 02 05*' }])
     const db = { cERCode: { count: jest.fn(), findMany } }
     await expect(cerNelCatalogo(db, '130205')).resolves.toBe('13 02 05*')
