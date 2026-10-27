@@ -158,7 +158,7 @@ export class SignatureFIRRepository implements FIRRepository {
         },
       })
       await tx.$executeRaw`
-        UPDATE firs SET versione = versione + 1
+        UPDATE firs SET versione = versione + 1, updated_at = (now() AT TIME ZONE 'UTC')
         WHERE id = ${firId}::uuid AND tenant_id = ${tenantId}::uuid`
       return righe[0].versione + 1
     })

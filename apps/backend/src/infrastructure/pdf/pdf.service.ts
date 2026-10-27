@@ -244,7 +244,7 @@ export class PDFService {
     }
 
     // 4ª copia — Esito destinatario
-    if (fir.fourthCopyReturnedAt || peso) {
+    if (fir.fourthCopyReturnedAt || peso !== null) {
       content.push({ text: '4ª COPIA — ESITO DESTINATARIO', style: 'sectionHeader' })
       content.push({
         columns: [
@@ -253,7 +253,7 @@ export class PDFService {
             stack: [
               { text: 'Peso effettivo ricevuto', style: 'label' },
               {
-                text: peso ? `${peso} ${unita}` : 'N/D',
+                text: peso !== null ? `${peso} ${unita}` : 'N/D',
                 style: 'value',
               },
             ],

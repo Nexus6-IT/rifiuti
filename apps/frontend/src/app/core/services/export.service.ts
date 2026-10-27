@@ -80,7 +80,7 @@ export class ExportService {
       ['Codice CER', fir.rifiuto.cerCode],
       ['Quantità Dichiarata', `${fir.rifiuto.quantita} ${unita}`],
       ['Stato Fisico', fir.rifiuto.statoFisico || 'N/D'],
-      ['Peso Effettivo', fir.pesoEffettivo ? `${fir.pesoEffettivo} ${unita}` : 'N/D'],
+      ['Peso Effettivo', fir.pesoEffettivo != null ? `${fir.pesoEffettivo} ${unita}` : 'N/D'],
     ]
   }
 
@@ -192,7 +192,7 @@ export class ExportService {
       'Quantità Dichiarata': fir.rifiuto.quantita,
       'Unità di Misura': fir.rifiuto.unitaMisura,
       'Stato Fisico': fir.rifiuto.statoFisico || 'N/D',
-      'Peso Effettivo': fir.pesoEffettivo || 'N/D',
+      'Peso Effettivo': fir.pesoEffettivo ?? 'N/D',
       'Produttore ID': fir.produttoreId,
       'Trasportatore ID': fir.trasportatoreId,
       'Destinatario ID': fir.destinatarioId,

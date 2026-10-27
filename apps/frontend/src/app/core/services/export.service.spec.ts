@@ -111,6 +111,11 @@ describe('ExportService - PDF di dettaglio del FIR', () => {
     expect(righe.find(r => r[0] === 'Quantità Dichiarata')).toEqual(['Quantità Dichiarata', '2 T'])
   })
 
+  it('un peso a destino pari a 0 non e assente', () => {
+    const righe = servizio.righeRifiutoPdf(fir('T', 0))
+    expect(righe.find(r => r[0] === 'Peso Effettivo')).toEqual(['Peso Effettivo', '0 T'])
+  })
+
   it('senza peso a destino resta N/D', () => {
     const righe = servizio.righeRifiutoPdf(fir('KG'))
     expect(righe.find(r => r[0] === 'Peso Effettivo')).toEqual(['Peso Effettivo', 'N/D'])

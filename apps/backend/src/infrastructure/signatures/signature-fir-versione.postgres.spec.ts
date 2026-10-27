@@ -147,7 +147,8 @@ describe('Firma QES: lock della riga e versione (Postgres reale, ruolo wasteflow
 
   it('firma riuscita: una riga in fir_signatures, versione +1 anche sull aggregate', async () => {
     const id = await firSalvato()
-    const prima = (await riga(id)).versione
+    const rigaPrima = await riga(id)
+    const prima = rigaPrima.versione
     const fir = await carica(id)
     firma(fir)
 
@@ -156,6 +157,8 @@ describe('Firma QES: lock della riga e versione (Postgres reale, ruolo wasteflow
     expect(await firmeSul(id)).toHaveLength(1)
     expect((await riga(id)).versione).toBe(prima + 1)
     expect(fir.getVersione()).toBe(prima + 1)
+    // L'UPDATE raw della versione aggiorna anche updated_at (Prisma non lo fa per le query raw).
+    expect((await riga(id)).updatedAt.getTime()).toBeGreaterThan(rigaPrima.updatedAt.getTime())
   })
 
   it('firma su una copia letta prima del save di un altra copia: conflitto 409, nessuna firma', async () => {
@@ -196,13 +199,48 @@ describe('Firma QES: lock della riga e versione (Postgres reale, ruolo wasteflow
     firma(a)
     firma(b)
 
-    const esiti = await Promise.allSettled([
+    // Hold-and-release: il proprietario tiene il lock della riga (FOR NO KEY UPDATE, senza
+    // scrivere) finche' entrambi i save sono partiti. Cosi' la sovrapposizione e' certa e non
+    // dipende dalla velocita' della macchina: il lock e' l'unica difesa contro le firme doppie per
+    // ruolo (non esiste un unique (fir_id, role)).
+    let rilascia!: () => void
+    const via = new Promise<void>(r => (rilascia = r))
+    let lockPreso!: () => void
+    const lockPronto = new Promise<void>(r => (lockPreso = r))
+    const transazioneA = owner.$transaction(
+      async tx => {
+        await tx.$queryRaw`SELECT versione FROM firs WHERE id = ${id}::uuid AND tenant_id = ${tenantId}::uuid FOR NO KEY UPDATE`
+        lockPreso()
+        await via
+      },
+      { timeout: 20_000 }
+    )
+    await lockPronto
+
+    const esiti: string[] = []
+    const tracciato = (p: Promise<unknown>, nome: string): Promise<void> =>
+      p.then(
+        () => void esiti.push(`${nome}:riuscito`),
+        () => void esiti.push(`${nome}:fallito`)
+      )
+    const saveA = tracciato(
       nelTenant(() => repoFirme.save(a)),
+      'a'
+    )
+    const saveB = tracciato(
       nelTenant(() => repoFirme.save(b)),
-    ])
+      'b'
+    )
+    await new Promise(r => setTimeout(r, 500))
+    expect(esiti).toEqual([]) // entrambi in attesa del lock del proprietario
+    expect(await firmeSul(id)).toHaveLength(0)
+
+    rilascia()
+    await transazioneA
+    await Promise.all([saveA, saveB])
 
     // Il perdente trova la firma gia' presente DOPO il lock: no-op, non un conflitto.
-    expect(esiti.map(e => e.status)).toEqual(['fulfilled', 'fulfilled'])
+    expect([...esiti].sort()).toEqual(['a:riuscito', 'b:riuscito'])
     expect(await firmeSul(id)).toHaveLength(1)
     expect((await riga(id)).versione).toBe(prima + 1)
   })

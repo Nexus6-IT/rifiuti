@@ -95,6 +95,12 @@ describe('PDFService.buildFIRContent - record Prisma grezzo (come lo passa il co
     expect(testo).toContain('2 kg')
   })
 
+  it('un peso a destino pari a 0 non e assente: la 4a copia compare con 0 e l unita', () => {
+    const testo = contenuto({ ...recordPrisma, effectiveWeight: 0 })
+    expect(testo).toContain('4ª COPIA')
+    expect(testo).toMatch(/"Peso effettivo ricevuto".*"0 T"/)
+  })
+
   it('produttore, trasportatore e destinatario escono dallo snapshot del record', () => {
     const testo = contenuto(recordPrisma)
     expect(testo).toContain('Produttore SRL')
