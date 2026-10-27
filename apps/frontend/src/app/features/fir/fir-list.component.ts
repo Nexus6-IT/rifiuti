@@ -1698,7 +1698,7 @@ export class FirListComponent implements OnInit {
     const tratte = fir.trasportatoriAggiuntivi ?? []
     if (tratte.some(t => !t.trasportatoreId)) {
       this.rifiutaApertura(
-        'Il FIR ha tratte intermodali con trasportatori non presenti nel registro: non sono modificabili dall'interfaccia.'
+        'Il FIR ha tratte intermodali con trasportatori non presenti nel registro: non sono modificabili dall’interfaccia.'
       )
       return false
     }
