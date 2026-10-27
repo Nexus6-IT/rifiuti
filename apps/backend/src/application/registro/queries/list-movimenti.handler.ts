@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { Result } from '../../../core/application/result'
 import { LoggerService } from '../../../core/logger/logger.service'
+import { giornoItaliano } from '../../../core/time/anno-italiano'
+import { caricaCatalogoCausali } from '../causali/catalogo-causali.repository'
 import { ListMovimentiQuery, PaginatedMovimenti } from './list-movimenti.query'
 
 export type TipoAnnotazioneItem = 'ORDINARIA' | 'RETTIFICA' | 'ANNULLAMENTO'
@@ -25,6 +27,10 @@ export interface MovimentoListItem {
   movementDate: Date
   registrationDate: Date
   causale: string
+  /** Descrizione della versione della causale (o della riga di sistema); per un codice sconosciuto, il codice. */
+  causaleDescrizione: string
+  /** Comportamento verso RENTRI della causale (informativo). */
+  causaleCodiceRentri: string | null
   cerCode: string
   wasteDescription?: string
   quantity: number
@@ -142,36 +148,51 @@ export class ListMovimentiHandler {
       )
     }
 
-    const items: MovimentoListItem[] = records.map(r => ({
-      id: r.id,
-      tenantId: r.tenantId,
-      registroId: r.registroId,
-      progressiveNumber: r.progressiveNumber,
-      progressiveYear: r.progressiveYear,
-      type: r.type,
-      movementDate: r.movementDate,
-      registrationDate: r.registrationDate,
-      causale: r.causale,
-      cerCode: r.cerCode,
-      wasteDescription: r.wasteDescription ?? undefined,
-      quantity: Number(r.quantity),
-      unit: r.unit,
-      wastePhysicalState: r.wastePhysicalState ?? undefined,
-      wasteHazardClasses: r.wasteHazardClasses ?? undefined,
-      operationCode: r.operationCode ?? undefined,
-      counterpartName: r.counterpartName ?? undefined,
-      counterpartAddress: r.counterpartAddress ?? undefined,
-      firId: r.firId ?? undefined,
-      recordedByUserId: r.recordedByUserId ?? undefined,
-      entryHash: r.entryHash,
-      notes: r.notes ?? undefined,
-      createdAt: r.createdAt,
-      tipoAnnotazione: r.tipoAnnotazione,
-      motivoAnnotazione: r.motivoAnnotazione ?? undefined,
-      rettificaDi: r.rettificato ? riferimento(r.rettificato) : undefined,
-      correttoDa: r.correzioni[0] ? riferimento(r.correzioni[0]) : undefined,
-      stato: statoDi(r, tipiTesta.get(r.id) ?? (r.tipoAnnotazione as TipoAnnotazioneItem)),
-    }))
+    // Il catalogo si legge UNA volta per pagina; ogni riga lo interroga con la sua versione e il
+    // giorno italiano dell'operazione.
+    const catalogo = await caricaCatalogoCausali(this.prisma, query.tenantId)
+
+    const items: MovimentoListItem[] = records.map(r => {
+      const verso = r.type === 'CARICO' ? 'CARICO' : 'SCARICO'
+      const definizione = catalogo.comportamento(
+        verso,
+        r.causale,
+        giornoItaliano(r.movementDate),
+        r.causaleAziendaId
+      )
+      return {
+        id: r.id,
+        tenantId: r.tenantId,
+        registroId: r.registroId,
+        progressiveNumber: r.progressiveNumber,
+        progressiveYear: r.progressiveYear,
+        type: r.type,
+        movementDate: r.movementDate,
+        registrationDate: r.registrationDate,
+        causale: r.causale,
+        causaleDescrizione: definizione?.descrizione ?? r.causale,
+        causaleCodiceRentri: definizione?.codiceRentri ?? null,
+        cerCode: r.cerCode,
+        wasteDescription: r.wasteDescription ?? undefined,
+        quantity: Number(r.quantity),
+        unit: r.unit,
+        wastePhysicalState: r.wastePhysicalState ?? undefined,
+        wasteHazardClasses: r.wasteHazardClasses ?? undefined,
+        operationCode: r.operationCode ?? undefined,
+        counterpartName: r.counterpartName ?? undefined,
+        counterpartAddress: r.counterpartAddress ?? undefined,
+        firId: r.firId ?? undefined,
+        recordedByUserId: r.recordedByUserId ?? undefined,
+        entryHash: r.entryHash,
+        notes: r.notes ?? undefined,
+        createdAt: r.createdAt,
+        tipoAnnotazione: r.tipoAnnotazione,
+        motivoAnnotazione: r.motivoAnnotazione ?? undefined,
+        rettificaDi: r.rettificato ? riferimento(r.rettificato) : undefined,
+        correttoDa: r.correzioni[0] ? riferimento(r.correzioni[0]) : undefined,
+        stato: statoDi(r, tipiTesta.get(r.id) ?? (r.tipoAnnotazione as TipoAnnotazioneItem)),
+      }
+    })
 
     return Result.ok({
       items,

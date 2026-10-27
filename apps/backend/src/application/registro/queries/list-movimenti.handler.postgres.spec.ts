@@ -4,6 +4,7 @@
  * diretti del proprietario (`wasteflow`). Modello: `registro-per-sede.postgres.spec.ts`.
  */
 import { PrismaClient } from '@prisma/client'
+import { randomUUID } from 'crypto'
 import { urlComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
 
 const urlProprietario =
@@ -119,6 +120,8 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
     handler = new ListMovimentiHandler(
       {
         wasteMovement: app.wasteMovement,
+        causaleRegistro: app.causaleRegistro,
+        causaleRegistroAzienda: app.causaleRegistroAzienda,
         $queryRaw: queryRaw,
       } as never,
       loggerStub as never
@@ -276,5 +279,68 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
     const o = await inserisci(az)
     await correggi(az, 'ANNULLAMENTO', o, o)
     expect((await elenca(altra)).total).toBe(0)
+  })
+
+  it('causale propria in due versioni: ogni riga ha la descrizione della sua versione, anche retrodatata; sconosciuta = codice', async () => {
+    const az = await azienda()
+    const versione = async (
+      dal: string,
+      al: string | null,
+      descrizione: string,
+      rentri: string | null
+    ) => {
+      const [r] = await owner.$queryRawUnsafe<{ id: string }[]>(
+        `INSERT INTO causali_registro_azienda
+           (tenant_id, natura, codice, verso, descrizione, ruolo_mud, codice_rentri, valida_dal,
+            valida_al, creato_da, updated_at)
+         VALUES ($1::uuid, 'PROPRIA', 'AZ_RESO', 'CARICO'::waste_movement_type, $2,
+                 'PRODOTTO'::ruolo_mud_causale, $3, $4::date, $5::date, $6::uuid, now())
+         RETURNING id::text AS id`,
+        az.tenantId,
+        descrizione,
+        rentri,
+        dal,
+        al,
+        randomUUID()
+      )
+      return r.id
+    }
+    const v1 = await versione('2026-01-01', '2026-06-30', 'Reso (vecchio)', null)
+    const v2 = await versione('2026-07-01', null, 'Reso cliente', 'RE')
+    const daVersione = (id: string, causale: string, data: string) =>
+      owner.wasteMovement.create({
+        data: {
+          tenantId: az.tenantId,
+          registroId: az.registroId,
+          progressiveYear: 2026,
+          progressiveNumber: ++progressivo,
+          type: 'CARICO',
+          movementDate: new Date(data),
+          registrationDate: new Date(data),
+          causale,
+          causaleAziendaId: id,
+          cerCode: '99 99 04',
+          quantity: 1,
+          unit: 'KG',
+          tipoAnnotazione: 'ORDINARIA',
+        },
+        select: { progressiveNumber: true },
+      })
+    const a = await daVersione(v1, 'AZ_RESO', '2026-03-01T10:00:00Z')
+    const b = await daVersione(v2, 'AZ_RESO', '2026-08-01T10:00:00Z')
+    const c = await inserisci(az, { data: '2026-09-01T10:00:00Z' })
+    const lette = perNumero((await elenca(az)).items)
+    expect(lette[a.progressiveNumber]).toMatchObject({
+      causaleDescrizione: 'Reso (vecchio)',
+      causaleCodiceRentri: null,
+    })
+    expect(lette[b.progressiveNumber]).toMatchObject({
+      causaleDescrizione: 'Reso cliente',
+      causaleCodiceRentri: 'RE',
+    })
+    expect(lette[c.progressiveNumber]).toMatchObject({
+      causaleDescrizione: 'Produzione interna',
+      causaleCodiceRentri: 'DT',
+    })
   })
 })
