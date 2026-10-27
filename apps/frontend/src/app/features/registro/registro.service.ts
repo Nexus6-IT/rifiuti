@@ -186,6 +186,42 @@ export class RegistroService {
     )
   }
 
+  /** Giacenze iniziali (aperture) del registro, con `puoImpostare` e `modificabile` decisi dal backend. */
+  getGiacenzeIniziali(registroId?: string): Observable<ElencoGiacenzeIniziali> {
+    return this.http.get<ElencoGiacenzeIniziali>(`${this.API_URL}/giacenze-iniziali`, {
+      params: this.paramsRegistro(registroId),
+    })
+  }
+
+  /** Crea un'apertura: non è un movimento, non consuma progressivi. */
+  creaGiacenzaIniziale(
+    dati: DatiGiacenzaIniziale,
+    registroId?: string
+  ): Observable<EsitoCreazioneGiacenzaIniziale> {
+    return this.http.post<EsitoCreazioneGiacenzaIniziale>(
+      `${this.API_URL}/giacenze-iniziali`,
+      dati,
+      {
+        params: this.paramsRegistro(registroId),
+      }
+    )
+  }
+
+  /** Sostituzione completa (il CER non si modifica e non va inviato). */
+  modificaGiacenzaIniziale(
+    id: string,
+    dati: DatiModificaGiacenzaIniziale
+  ): Observable<{ giacenza: GiacenzaIniziale }> {
+    return this.http.put<{ giacenza: GiacenzaIniziale }>(
+      `${this.API_URL}/giacenze-iniziali/${encodeURIComponent(id)}`,
+      dati
+    )
+  }
+
+  eliminaGiacenzaIniziale(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.API_URL}/giacenze-iniziali/${encodeURIComponent(id)}`)
+  }
+
   private paramsRegistro(registroId?: string): HttpParams {
     return registroId ? new HttpParams().set('registroId', registroId) : new HttpParams()
   }
@@ -231,4 +267,62 @@ const formatoAnnoRoma = new Intl.DateTimeFormat('en-US', {
 /** Anno del calendario italiano (come il backend): cambia alla mezzanotte di Roma. */
 export function annoItaliano(istante: Date): number {
   return Number(formatoAnnoRoma.format(istante))
+}
+
+// ─── Giacenze iniziali (aperture del registro) ──────────────────────────────
+
+/** Carico d'origine (anno e protocollo RENTRI) che compone la giacenza. */
+export interface OrigineGiacenzaIniziale {
+  anno: number
+  protocollo: number
+  quantita?: number
+}
+
+export interface GiacenzaIniziale {
+  id: string
+  registroId: string
+  cerCode: string
+  statoFisico: string | null
+  quantita: number
+  unita: string
+  /** 'AAAA-MM-GG' (giorno italiano), mai un ISO con ora. */
+  dataRiferimento: string
+  origini: OrigineGiacenzaIniziale[]
+  provenienza: 'MANUALE' | 'IMPORTAZIONE'
+  note: string | null
+  impostatoDa: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GiacenzaInizialeInElenco extends GiacenzaIniziale {
+  /** Falso se uno scarico dello stesso CER è stato registrato dopo l'apertura. */
+  modificabile: boolean
+}
+
+/** Risposta di GET registro/giacenze-iniziali. */
+export interface ElencoGiacenzeIniziali {
+  /** Null se il registro non si determina (più registri senza sede principale): voci vuote. */
+  registroId: string | null
+  /** Lo decide il backend in base al ruolo effettivo nell'azienda. */
+  puoImpostare: boolean
+  voci: GiacenzaInizialeInElenco[]
+}
+
+export interface DatiGiacenzaIniziale {
+  cerCode: string
+  statoFisico?: string | null
+  quantita: number
+  unita: string
+  dataRiferimento: string
+  origini?: OrigineGiacenzaIniziale[]
+  note?: string | null
+}
+
+/** PUT = sostituzione completa: si inviano sempre tutti i campi, tranne il CER. */
+export type DatiModificaGiacenzaIniziale = Omit<DatiGiacenzaIniziale, 'cerCode'>
+
+export interface EsitoCreazioneGiacenzaIniziale {
+  giacenza: GiacenzaIniziale
+  avvisi: string[]
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import { giacenzaDisponibileAl } from './giacenza-disponibile'
 
@@ -49,6 +50,9 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
   })
 
   afterAll(async () => {
+    await prisma.giacenzaIniziale.deleteMany({
+      where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
+    })
     await prisma.wasteMovement.deleteMany({
       where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
@@ -63,6 +67,9 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
   })
 
   beforeEach(async () => {
+    await prisma.giacenzaIniziale.deleteMany({
+      where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
+    })
     await prisma.wasteMovement.deleteMany({
       where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
@@ -94,6 +101,25 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
       },
     })
   }
+  const apertura = (
+    data: string,
+    quantita: number,
+    unita = 'KG',
+    cer = '99 99 01',
+    registroId = registroDi[tenantId],
+    tenant = tenantId
+  ) =>
+    prisma.giacenzaIniziale.create({
+      data: {
+        tenantId: tenant,
+        registroId,
+        cerCode: cer,
+        quantita,
+        unita,
+        dataRiferimento: new Date(`${data}T00:00:00Z`),
+        impostatoDa: randomUUID(),
+      },
+    })
   const carico = (
     data: string,
     qty: number,
@@ -222,6 +248,84 @@ describe('giacenzaDisponibileAl — Postgres reale', () => {
     expect(await disp(new Date('2026-03-05'))).toMatchObject({
       saldoComplessivoKg: 0,
       disponibileAllaDataKg: 0,
+    })
+  })
+
+  describe('aperture del registro', () => {
+    it('lo scarico è bloccato senza apertura e accettato con', async () => {
+      expect((await disp(new Date('2026-03-05'))).saldoComplessivoKg).toBe(0)
+      await apertura('2026-03-01', 100)
+      expect(await disp(new Date('2026-03-05'))).toEqual({
+        saldoComplessivoKg: 100,
+        disponibileAllaDataKg: 100,
+        vincoloAl: new Date('2026-03-05T00:00:00Z'),
+        unitaNonDiMassaCaricate: [],
+      })
+    })
+
+    it('si somma ai movimenti: apertura in t e scarico in kg', async () => {
+      await apertura('2026-03-01', 2, 'T')
+      await scarico('2026-03-02', 500)
+      await carico('2026-03-03', 100)
+      expect(await disp(new Date('2026-03-05'))).toMatchObject({
+        saldoComplessivoKg: 1600,
+        disponibileAllaDataKg: 1600,
+      })
+    })
+
+    it("un'apertura datata dopo lo scarico non lo copre alla data precedente", async () => {
+      await apertura('2026-03-10', 100)
+      // Come un carico successivo: nessun blocco (saldo complessivo 100), ma alla data dello
+      // scarico non c'è ancora nulla, quindi scatta solo l'avviso sull'ordine delle date.
+      expect(await disp(new Date('2026-03-05'))).toEqual({
+        saldoComplessivoKg: 100,
+        disponibileAllaDataKg: 0,
+        vincoloAl: new Date('2026-03-05T00:00:00Z'),
+        unitaNonDiMassaCaricate: [],
+      })
+    })
+
+    it("l'apertura di un altro registro o di un altro tenant non conta", async () => {
+      await apertura('2026-03-01', 300, 'KG', '99 99 01', secondoRegistroId)
+      await apertura('2026-03-01', 400, 'KG', '99 99 01', registroDi[altroTenantId], altroTenantId)
+      expect((await disp(new Date('2026-03-05'))).saldoComplessivoKg).toBe(0)
+    })
+
+    it('CER confrontato sulle sole cifre (apertura con asterisco)', async () => {
+      await apertura('2026-03-01', 80, 'KG', '99 99 01*')
+      expect((await disp(new Date('2026-03-05'), '99 99 01')).saldoComplessivoKg).toBe(80)
+      expect((await disp(new Date('2026-03-05'), '99 99 02')).saldoComplessivoKg).toBe(0)
+    })
+
+    it("un'apertura in litri non entra nei kg ma compare fra le unità non di massa", async () => {
+      await apertura('2026-03-01', 50, 'LITRI')
+      await apertura('2026-03-01', 10)
+      expect(await disp(new Date('2026-03-05'))).toMatchObject({
+        saldoComplessivoKg: 10,
+        unitaNonDiMassaCaricate: ['LITRI'],
+      })
+    })
+
+    it('il giorno è quello della data, qualunque sia il fuso della sessione', async () => {
+      await apertura('2026-03-05', 40)
+      for (const fuso of ['UTC', 'Europe/Rome', 'Pacific/Auckland', 'America/Los_Angeles']) {
+        const r = await prisma.$transaction(async tx => {
+          await tx.$executeRawUnsafe(`SET LOCAL TIME ZONE '${fuso}'`)
+          const base = { tenantId, registroId: registroDi[tenantId], cerCode: '99 99 01' }
+          return {
+            prima: await giacenzaDisponibileAl(tx, {
+              ...base,
+              alla: new Date('2026-03-04T12:00:00Z'),
+            }),
+            stesso: await giacenzaDisponibileAl(tx, {
+              ...base,
+              alla: new Date('2026-03-05T12:00:00Z'),
+            }),
+          }
+        })
+        expect(r.prima.disponibileAllaDataKg).toBe(0)
+        expect(r.stesso.disponibileAllaDataKg).toBe(40)
+      }
     })
   })
 })

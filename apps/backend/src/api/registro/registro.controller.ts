@@ -11,7 +11,9 @@ import {
   Query,
   Param,
   Put,
+  Delete,
   Req,
+  ParseUUIDPipe,
   ParseIntPipe,
   HttpCode,
   HttpStatus,
@@ -27,6 +29,7 @@ import { RegistraMovimentoCommand } from '../../application/registro/commands/re
 import { ListMovimentiQuery } from '../../application/registro/queries/list-movimenti.query'
 import { RegistraMovimentoDto, ListMovimentiDto } from './dtos/registra-movimento.dto'
 import { ImpostaProgressivoInizialeDto } from './dtos/progressivo-iniziale.dto'
+import { CreaGiacenzaInizialeDto, ModificaGiacenzaInizialeDto } from './dtos/giacenza-iniziale.dto'
 import { RegistroIdQueryDto } from './dtos/registro-id-query.dto'
 import { RegistriService, RegistroVista } from '../../application/registro/registri.service'
 import { DomainError } from '../../core/domain/errors'
@@ -34,6 +37,12 @@ import {
   ProgressivoInizialeService,
   StatoProgressivoIniziale,
 } from '../../application/registro/progressivo-iniziale.service'
+import {
+  EsitoCreazioneGiacenzaIniziale,
+  GiacenzeInizialiService,
+  GiacenzaInizialeVista,
+  ElencoGiacenzeIniziali,
+} from '../../application/registro/giacenze-iniziali.service'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 
@@ -55,7 +64,8 @@ export class RegistroController {
     private readonly listMovimentiHandler: ListMovimentiHandler,
     private readonly progressivoIniziale: ProgressivoInizialeService,
     private readonly membership: RuoloEffettivoService,
-    private readonly registri: RegistriService
+    private readonly registri: RegistriService,
+    private readonly giacenzeIniziali: GiacenzeInizialiService
   ) {}
 
   /**
@@ -272,6 +282,106 @@ export class RegistroController {
       req.user.id,
       query?.registroId
     )
+  }
+
+  /**
+   * Giacenze iniziali (aperture) del registro (Fase 2 pezzo 2): lettura per chiunque legga il
+   * registro; `puoImpostare` dice, col ruolo effettivo, se mostrare crea/modifica/elimina.
+   * Un `registroId` esplicito inesistente è un 404; senza, vale il registro predefinito.
+   */
+  @Get('giacenze-iniziali')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Giacenze iniziali del registro' })
+  @ApiResponse({
+    status: 200,
+    description:
+      '{ registroId, puoImpostare, voci[] } (data come AAAA-MM-GG). `registroId` può essere ' +
+      'null, con voci vuote, quando il registro non si determina (più registri senza sede ' +
+      'principale, o nessun registro).',
+  })
+  @ApiResponse({ status: 400, description: 'registroId non è un UUID' })
+  @ApiResponse({ status: 404, description: 'registroId indicato inesistente' })
+  async elencaGiacenzeIniziali(
+    @Req() req: any,
+    @Query() query?: RegistroIdQueryDto
+  ): Promise<ElencoGiacenzeIniziali & { puoImpostare: boolean }> {
+    const tenantId = requireRequestTenantId(req)
+    const elenco = await this.giacenzeIniziali.elenca(tenantId, query?.registroId)
+    const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
+    return { ...elenco, puoImpostare: RUOLI_PROGRESSIVO_INIZIALE.includes(ruolo) }
+  }
+
+  @Post('giacenze-iniziali')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Crea una giacenza iniziale',
+    description:
+      'Una sola apertura per registro, CER (con o senza asterisco), stato fisico e famiglia di ' +
+      'unità (kg e t sono la stessa). Non è un movimento: nessun progressivo. Gli eventuali ' +
+      'avvisi (carichi «Altro carico» dello stesso CER) non bloccano.',
+  })
+  @ApiResponse({ status: 201, description: '{ giacenza, avvisi[] }' })
+  @ApiResponse({ status: 400, description: 'Dati non validi (CER, quantita, data, origini...)' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  @ApiResponse({ status: 404, description: 'registroId indicato inesistente' })
+  @ApiResponse({ status: 409, description: 'Esiste già una giacenza iniziale equivalente' })
+  async creaGiacenzaIniziale(
+    @Body() dto: CreaGiacenzaInizialeDto,
+    @Req() req: any,
+    @Query() query?: RegistroIdQueryDto
+  ): Promise<EsitoCreazioneGiacenzaIniziale> {
+    const tenantId = requireRequestTenantId(req)
+    await this.richiediAmministratoreGiacenze(req, tenantId)
+    return this.giacenzeIniziali.crea(tenantId, req.user.id, dto, query?.registroId)
+  }
+
+  @Put('giacenze-iniziali/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Modifica una giacenza iniziale (sostituzione completa)',
+    description:
+      'Sostituisce tutti i campi tranne CER e registro. quantita, unità e dataRiferimento sono ' +
+      'obbligatori; statoFisico, origini e note sono facoltativi ma se omessi vengono SVUOTATI. ' +
+      "Non modificabile se esiste uno scarico dello stesso CER registrato dopo l'apertura.",
+  })
+  @ApiResponse({ status: 200, description: '{ giacenza }' })
+  @ApiResponse({ status: 400, description: 'Dati non validi' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  @ApiResponse({ status: 404, description: 'Giacenza iniziale non trovata' })
+  @ApiResponse({ status: 409, description: 'Già usata da uno scarico, o duplicata' })
+  async modificaGiacenzaIniziale(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ModificaGiacenzaInizialeDto,
+    @Req() req: any
+  ): Promise<{ giacenza: GiacenzaInizialeVista }> {
+    const tenantId = requireRequestTenantId(req)
+    await this.richiediAmministratoreGiacenze(req, tenantId)
+    return this.giacenzeIniziali.modifica(tenantId, req.user.id, id, dto)
+  }
+
+  @Delete('giacenze-iniziali/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Elimina una giacenza iniziale (se non ancora usata da uno scarico)' })
+  @ApiResponse({ status: 204, description: 'Eliminata' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  @ApiResponse({ status: 404, description: 'Giacenza iniziale non trovata' })
+  @ApiResponse({ status: 409, description: 'Già usata da uno scarico' })
+  async eliminaGiacenzaIniziale(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any
+  ): Promise<void> {
+    const tenantId = requireRequestTenantId(req)
+    await this.richiediAmministratoreGiacenze(req, tenantId)
+    await this.giacenzeIniziali.elimina(tenantId, req.user.id, id)
+  }
+
+  /** G9: la scrittura delle giacenze iniziali spetta all'amministratore EFFETTIVO dell'azienda selezionata. */
+  private async richiediAmministratoreGiacenze(req: any, tenantId: string): Promise<void> {
+    if (await this.haRuolo(req, tenantId, RUOLI_PROGRESSIVO_INIZIALE)) return
+    throw new ForbiddenException({
+      message: "Solo un amministratore dell'azienda può gestire le giacenze iniziali del registro.",
+      error: 'REGISTRO_GIACENZA_INIZIALE_RISERVATA_AMMINISTRATORI',
+    })
   }
 
   /** Un errore di dominio dei registri (registro non trovato, da indicare...) è un 400 col suo messaggio. */

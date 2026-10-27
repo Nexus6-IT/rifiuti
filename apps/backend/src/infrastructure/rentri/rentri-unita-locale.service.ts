@@ -4,7 +4,7 @@ import { PrismaService } from '../persistence/prisma.service'
 import { NUM_ISCR_SITO_PATTERN } from './rentri-credential.service'
 
 const SEDE_CON_REGISTRO_CON_MOVIMENTI =
-  'La sede ha un registro con movimenti: disattivala invece di eliminarla.'
+  'La sede ha un registro con movimenti, progressivo iniziale o giacenze iniziali: disattivala invece di eliminarla.'
 
 /** Unità locale RENTRI di un tenant (mai segreti: solo dati anagrafici). */
 export interface RentriUnitaLocale {
@@ -227,7 +227,7 @@ export class RentriUnitaLocaleService {
       }
     }
 
-    // D8: una sede con un registro che ha movimenti (o un progressivo iniziale) si disattiva,
+    // D8: una sede con un registro che ha movimenti, un progressivo iniziale o giacenze iniziali si disattiva,
     // non si elimina; un registro vuoto si cancella con la sede, nella stessa transazione.
     try {
       await this.prisma.db.$transaction(async tx => {
@@ -237,7 +237,7 @@ export class RentriUnitaLocaleService {
         })
         if (registri.length > 0) {
           const registroIds = registri.map(r => r.id)
-          const [movimento, progressivo] = await Promise.all([
+          const [movimento, progressivo, apertura] = await Promise.all([
             tx.wasteMovement.findFirst({
               where: { tenantId, registroId: { in: registroIds } },
               select: { id: true },
@@ -246,8 +246,12 @@ export class RentriUnitaLocaleService {
               where: { tenantId, registroId: { in: registroIds } },
               select: { id: true },
             }),
+            tx.giacenzaIniziale.findFirst({
+              where: { tenantId, registroId: { in: registroIds } },
+              select: { id: true },
+            }),
           ])
-          if (movimento || progressivo) {
+          if (movimento || progressivo || apertura) {
             throw new BadRequestException(SEDE_CON_REGISTRO_CON_MOVIMENTI)
           }
           await tx.registroRifiuti.deleteMany({ where: { tenantId, id: { in: registroIds } } })

@@ -35,6 +35,7 @@ describe('RentriUnitaLocaleService', () => {
     registroRifiuti: { findMany: jest.Mock; deleteMany: jest.Mock }
     wasteMovement: { findFirst: jest.Mock }
     registroProgressivoIniziale: { findFirst: jest.Mock }
+    giacenzaIniziale: { findFirst: jest.Mock }
     $transaction: jest.Mock
   }
   let prisma: { db: typeof db }
@@ -56,6 +57,7 @@ describe('RentriUnitaLocaleService', () => {
       },
       wasteMovement: { findFirst: jest.fn().mockResolvedValue(null) },
       registroProgressivoIniziale: { findFirst: jest.fn().mockResolvedValue(null) },
+      giacenzaIniziale: { findFirst: jest.fn().mockResolvedValue(null) },
       // Default: esegue davvero la callback (transazione interattiva) o
       // l'array di promise (transazione batch), a seconda di come viene
       // chiamato — riflette il comportamento reale di Prisma quanto basta
@@ -366,7 +368,8 @@ describe('RentriUnitaLocaleService', () => {
       })
     })
 
-    const MESSAGGIO = 'La sede ha un registro con movimenti: disattivala invece di eliminarla.'
+    const MESSAGGIO =
+      'La sede ha un registro con movimenti, progressivo iniziale o giacenze iniziali: disattivala invece di eliminarla.'
 
     it('rentri-unita-locale remove: sede con registro con movimenti → BadRequest col messaggio esatto', async () => {
       db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
@@ -390,6 +393,23 @@ describe('RentriUnitaLocaleService', () => {
 
       expect(errore).toBeInstanceOf(BadRequestException)
       expect(errore.message).toBe(MESSAGGIO)
+      expect(db.rentriUnitaLocale.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it('rentri-unita-locale remove: sede con una giacenza iniziale ma senza movimenti → rifiutata', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
+      db.registroRifiuti.findMany.mockResolvedValue([{ id: 'reg-2' }])
+      db.giacenzaIniziale.findFirst.mockResolvedValue({ id: 'gi-1' })
+
+      const errore = await service.remove('tenant-1', 'ul-2').catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe(MESSAGGIO)
+      expect(db.giacenzaIniziale.findFirst).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', registroId: { in: ['reg-2'] } },
+        select: { id: true },
+      })
+      expect(db.registroRifiuti.deleteMany).not.toHaveBeenCalled()
       expect(db.rentriUnitaLocale.deleteMany).not.toHaveBeenCalled()
     })
 

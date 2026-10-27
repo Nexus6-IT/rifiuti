@@ -75,6 +75,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'RegistroRifiuti',
   // Primo numero del registro per azienda e anno (C-W-02): dato dell'azienda.
   'RegistroProgressivoIniziale',
+  // Giacenze di apertura del registro (Fase 2 pezzo 2): dato dell'azienda.
+  'GiacenzaIniziale',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

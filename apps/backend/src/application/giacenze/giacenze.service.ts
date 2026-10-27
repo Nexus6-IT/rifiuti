@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
+import { leggiApertureRegistro } from '../registro/aperture-registro'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DepositoTemporaneoConfig, DEFAULT_DEPOSITO_TEMPORANEO } from './deposito-temporaneo.config'
 import { normalizzaUnitaRegistro } from '../../domain/waste-movement/unita-misura-registro'
@@ -17,6 +18,8 @@ export interface GiacenzaAltraUnita {
   carico: number
   scarico: number
   giacenza: number
+  /** Parte di `carico` che viene dalle giacenze iniziali (aperture del registro). */
+  iniziale: number
 }
 
 /** Scarico collegato a un FIR poi annullato: la giacenza lo conta ancora, il MUD no. */
@@ -32,10 +35,15 @@ export interface GiacenzaCer {
   cerCode: string
   /** Solo la famiglia di massa, con le tonnellate convertite in kg. */
   caricoKg: number
+  /** Parte di `caricoKg` che viene dalle giacenze iniziali (aperture del registro), non da movimenti. */
+  inizialeKg: number
   scaricoKg: number
   /** Giacenza attuale in deposito = carico - scarico (>= 0). */
   giacenzaKg: number
-  /** Data del carico più vecchio ancora "in giacenza" (per il criterio temporale). */
+  /**
+   * Data del carico più vecchio ancora "in giacenza" (per il criterio temporale): la più vecchia
+   * fra i carichi e le date di riferimento delle aperture (il calcolo esatto del deposito è F2-6).
+   */
   oldestCaricoDate: Date | null
   altreUnita: GiacenzaAltraUnita[]
   scarichiSuFirAnnullati: ScaricoSuFirAnnullato[]
@@ -98,21 +106,27 @@ export class GiacenzeService {
     interface Parziale {
       cerCode: string
       caricoKg: number
+      inizialeKg: number
       scaricoKg: number
       altre: Map<string, GiacenzaAltraUnita>
     }
     const perCer = new Map<string, Parziale>()
-    for (const row of byType) {
-      const chiave = chiaveConfrontoCer(row.cerCode)
-      const qty = row._sum.quantity ? Number(row._sum.quantity) : 0
+    /** Voce del CER (chiave sulle sole cifre); l'asterisco vince: se una riga lo porta, il CER si mostra pericoloso. */
+    const voceDi = (cerCode: string): { chiave: string; entry: Parziale } => {
+      const chiave = chiaveConfrontoCer(cerCode)
       const entry = perCer.get(chiave) ?? {
-        cerCode: cerCanonico(row.cerCode),
+        cerCode: cerCanonico(cerCode),
         caricoKg: 0,
+        inizialeKg: 0,
         scaricoKg: 0,
         altre: new Map<string, GiacenzaAltraUnita>(),
       }
-      // L'asterisco vince: se una riga lo porta, il CER si mostra pericoloso.
-      if (row.cerCode.includes('*') && !entry.cerCode.endsWith('*')) entry.cerCode += '*'
+      if (cerCode.includes('*') && !entry.cerCode.endsWith('*')) entry.cerCode += '*'
+      return { chiave, entry }
+    }
+    for (const row of byType) {
+      const { chiave, entry } = voceDi(row.cerCode)
+      const qty = row._sum.quantity ? Number(row._sum.quantity) : 0
       const carico = row.type === 'CARICO'
       const u = normalizzaUnitaRegistro(row.unit)
       if (u.massa) {
@@ -125,9 +139,39 @@ export class GiacenzeService {
           carico: 0,
           scarico: 0,
           giacenza: 0,
+          iniziale: 0,
         }
         if (carico) altra.carico += qty
         else if (row.type === 'SCARICO') altra.scarico += qty
+        altra.giacenza = altra.carico - altra.scarico
+        entry.altre.set(u.unita, altra)
+      }
+      perCer.set(chiave, entry)
+    }
+
+    // Le aperture del registro contano come carichi (e restano distinte in `inizialeKg`/`iniziale`);
+    // un CER con la sola apertura compare comunque.
+    const aperture = await leggiApertureRegistro(this.prisma, tenantId, { registroId })
+    for (const ap of aperture) {
+      const { chiave, entry } = voceDi(ap.cerCode)
+      const data = new Date(`${ap.dataRiferimento}T00:00:00Z`)
+      const attuale = oldestByCer.get(chiave) ?? null
+      if (!attuale || data < attuale) oldestByCer.set(chiave, data)
+      const u = normalizzaUnitaRegistro(ap.unita)
+      if (u.massa) {
+        const kg = ap.quantita * (u.fattoreKg as number)
+        entry.caricoKg += kg
+        entry.inizialeKg += kg
+      } else {
+        const altra = entry.altre.get(u.unita) ?? {
+          unita: u.unita,
+          carico: 0,
+          scarico: 0,
+          giacenza: 0,
+          iniziale: 0,
+        }
+        altra.carico += ap.quantita
+        altra.iniziale += ap.quantita
         altra.giacenza = altra.carico - altra.scarico
         entry.altre.set(u.unita, altra)
       }
@@ -143,6 +187,7 @@ export class GiacenzeService {
       result.push({
         cerCode: entry.cerCode,
         caricoKg,
+        inizialeKg: arrotonda3(entry.inizialeKg),
         scaricoKg,
         // Non negativa: scarichi > carichi indicano dati incoerenti (gestiti
         // a parte dall'anomaly detection), qui clampiamo a 0.

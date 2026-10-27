@@ -72,6 +72,7 @@ import {
   RuoloFir,
 } from './registro-fir'
 import { CerSelectComponent } from '../cer/cer-select.component'
+import { GiacenzeInizialiDialogComponent } from './giacenze-iniziali-dialog.component'
 
 interface DropdownOption<T> {
   label: string
@@ -106,6 +107,7 @@ interface FirOption {
     TooltipModule,
     PaginatorModule,
     CerSelectComponent,
+    GiacenzeInizialiDialogComponent,
   ],
   providers: [DatePipe],
   template: `
@@ -136,6 +138,15 @@ interface FirOption {
             [outlined]="true"
             (onClick)="apriProgressivo()"
             ariaLabel="Imposta il primo numero del registro dell'anno"
+          ></p-button>
+          <p-button
+            *ngIf="offriGiacenzeIniziali()"
+            label="Giacenze iniziali"
+            icon="pi pi-database"
+            [outlined]="true"
+            data-testid="registro-giacenze-iniziali"
+            (onClick)="apriGiacenzeIniziali()"
+            ariaLabel="Apri le giacenze iniziali del registro"
           ></p-button>
           <p-button
             *ngIf="offriRegistrazione()"
@@ -866,6 +877,14 @@ interface FirOption {
           ></p-button>
         </ng-template>
       </p-dialog>
+
+      <!-- Dialog giacenze iniziali -------------------------------------------->
+      <app-giacenze-iniziali-dialog
+        *ngIf="giacenzeInizialiVisible"
+        [(visible)]="giacenzeInizialiVisible"
+        [registroId]="registroGiacenzeIniziali()"
+        [sede]="etichettaSedeProgressivo()"
+      ></app-giacenze-iniziali-dialog>
     </div>
   `,
   styles: [
@@ -1686,6 +1705,28 @@ export class RegistroComponent implements OnInit {
       // Con più sedi e nessuna scelta non si offre un valore di cui non si sa il registro.
       (!this.piuRegistri() || !!this.statoProgressivo()?.registroId)
   )
+  /**
+   * Registro delle giacenze iniziali: lo stesso del progressivo (sede filtrata, predefinito o
+   * quello risolto dal backend). Undefined = non determinato (più sedi senza scelta).
+   */
+  registroGiacenzeIniziali(): string | undefined {
+    return (
+      this.filtroRegistro ??
+      registroPredefinito(this.registri()) ??
+      this.statoProgressivo()?.registroId ??
+      undefined
+    )
+  }
+  /** Visibile a tutti quando il registro è determinato: la scrittura la decide il backend. */
+  offriGiacenzeIniziali(): boolean {
+    return !this.piuRegistri() || !!this.registroGiacenzeIniziali()
+  }
+  giacenzeInizialiVisible = false
+
+  apriGiacenzeIniziali(): void {
+    this.giacenzeInizialiVisible = true
+  }
+
   /** Nasconde "Registra movimento" a chi è in sola consultazione nell'azienda selezionata. */
   readonly offriRegistrazione = computed(() => offrireRegistrazione(this.statoProgressivo()))
   readonly annoCorrente = annoItaliano(new Date())

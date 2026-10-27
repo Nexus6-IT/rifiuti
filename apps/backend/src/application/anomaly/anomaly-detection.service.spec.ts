@@ -19,6 +19,7 @@ describe('AnomalyDetectionService', () => {
       fIR: { findMany: jest.fn() },
       cERCode: { findMany: jest.fn() },
       wasteMovement: { groupBy: jest.fn() },
+      giacenzaIniziale: { findMany: jest.fn().mockResolvedValue([]) },
     }
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -176,6 +177,77 @@ describe('AnomalyDetectionService', () => {
         ]
       )
       await expect(service.detectAnomalies('t1')).resolves.toEqual([])
+    })
+  })
+
+  describe('giacenze iniziali (aperture del registro)', () => {
+    const apertura = (cerCode: string, quantita: number, unita: string) => ({
+      registroId: 'r1',
+      cerCode,
+      quantita,
+      unita,
+      dataRiferimento: new Date('2026-01-10T00:00:00Z'),
+    })
+
+    it("lo scarico coperto dall'apertura non è una giacenza impossibile", async () => {
+      setup(
+        [],
+        ['200301'],
+        [{ cerCode: '20 03 01', type: 'SCARICO', unit: 'KG', _sum: { quantity: 80 } }]
+      )
+      prisma.giacenzaIniziale.findMany.mockResolvedValue([apertura('20 03 01', 100, 'KG')])
+      expect(await service.detectAnomalies('t1')).toEqual([])
+      expect(prisma.giacenzaIniziale.findMany.mock.calls[0][0].where).toEqual({ tenantId: 't1' })
+    })
+
+    it("l'apertura in t si somma ai carichi in kg; oltre il totale resta anomalia", async () => {
+      setup(
+        [],
+        ['200301'],
+        [
+          { cerCode: '200301', type: 'CARICO', unit: 'KG', _sum: { quantity: 500 } },
+          { cerCode: '200301', type: 'SCARICO', unit: 'KG', _sum: { quantity: 1700 } },
+        ]
+      )
+      prisma.giacenzaIniziale.findMany.mockResolvedValue([apertura('20 03 01', 1, 'T')])
+      const anomalies = await service.detectAnomalies('t1')
+      expect(anomalies).toHaveLength(1)
+      expect(anomalies[0].message).toContain('1.700 kg')
+      expect(anomalies[0].message).toContain('1.500 kg')
+    })
+
+    it("un CER con sola apertura entra nella mappa e l'asterisco vince", async () => {
+      setup(
+        [],
+        ['130205'],
+        [{ cerCode: '13 02 05', type: 'SCARICO', unit: 'KG', _sum: { quantity: 120 } }]
+      )
+      prisma.giacenzaIniziale.findMany.mockResolvedValue([apertura('13 02 05*', 100, 'KG')])
+      const anomalies = await service.detectAnomalies('t1')
+      expect(anomalies).toHaveLength(1)
+      expect(anomalies[0]).toMatchObject({ type: 'NEGATIVE_STOCK', cerCode: '13 02 05*' })
+    })
+
+    it("un'unità non di massa con la sola apertura conta come 'ha un carico'", async () => {
+      setup(
+        [],
+        ['130205'],
+        [{ cerCode: '130205*', type: 'SCARICO', unit: 'L', _sum: { quantity: 700 } }]
+      )
+      prisma.giacenzaIniziale.findMany.mockResolvedValue([apertura('13 02 05*', 500, 'L')])
+      const anomalies = await service.detectAnomalies('t1')
+      expect(anomalies).toHaveLength(1)
+      expect(anomalies[0].message).toContain('700 L')
+    })
+
+    it("un'apertura in litri non copre uno scarico in kg", async () => {
+      setup(
+        [],
+        ['130205'],
+        [{ cerCode: '130205*', type: 'SCARICO', unit: 'KG', _sum: { quantity: 10 } }]
+      )
+      prisma.giacenzaIniziale.findMany.mockResolvedValue([apertura('13 02 05*', 500, 'L')])
+      expect(await service.detectAnomalies('t1')).toHaveLength(1)
     })
   })
 })

@@ -31,6 +31,7 @@ import { FirGiaRegistratoInAltroRegistroError } from '../../core/domain/errors'
 import { RegistraMovimentoUseCase } from './use-cases/registra-movimento.use-case'
 import { RegistraMovimentoCommand } from './commands/registra-movimento.command'
 import { ProgressivoInizialeService } from './progressivo-iniziale.service'
+import { GiacenzeInizialiService } from './giacenze-iniziali.service'
 import { RegistriService, RegistroNonCoerenteConFirError } from './registri.service'
 import { annoSolareItaliano } from '../../core/time/anno-italiano'
 import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
@@ -46,6 +47,7 @@ describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
   let registri: RegistriService
   let useCase: RegistraMovimentoUseCase
   let progressivi: ProgressivoInizialeService
+  let giacenzeIniziali: GiacenzeInizialiService
   let userId: string
   let cerCreato = false
   const tenantCreati: string[] = []
@@ -154,6 +156,7 @@ describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
     registri = new RegistriService(app, loggerStub as never)
     useCase = new RegistraMovimentoUseCase(app, loggerStub as never, registri)
     progressivi = new ProgressivoInizialeService(app, registri)
+    giacenzeIniziali = new GiacenzeInizialiService(app, registri)
     const [a] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`
     // Apre il pool a gradini: 16 connessioni nuove tutte insieme attraverso il proxy di Docker
     // su Windows ogni tanto cadono ("Can't reach database server"), e non e' cio' che si prova qui.
@@ -191,6 +194,7 @@ describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
     await owner.registroProgressivoIniziale.deleteMany({
       where: { tenantId: { in: tenantCreati } },
     })
+    await owner.giacenzaIniziale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.fIR.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
@@ -458,7 +462,8 @@ describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
     expect(retry.value).toMatchObject({ id: prima.value.id, giaRegistrato: true })
   })
   describe('eliminazione di una sede (D8), ruolo wasteflow_app', () => {
-    const MESSAGGIO = 'La sede ha un registro con movimenti: disattivala invece di eliminarla.'
+    const MESSAGGIO =
+      'La sede ha un registro con movimenti, progressivo iniziale o giacenze iniziali: disattivala invece di eliminarla.'
     const elimina = (tenantId: string, sedeId: string) =>
       nelTenant(tenantId, () => new RentriUnitaLocaleService(app).remove(tenantId, sedeId))
 
@@ -506,6 +511,33 @@ describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
       expect(errore).toBeInstanceOf(BadRequestException)
       expect(errore.message).toBe(MESSAGGIO)
       expect(await owner.rentriUnitaLocale.count({ where: { id: sedeB.id } })).toBe(1)
+    })
+  })
+
+  describe('eliminazione di una sede con giacenza iniziale (D8), ruolo wasteflow_app', () => {
+    it('sede con una giacenza iniziale ma senza movimenti: rifiutata, niente viene cancellato', async () => {
+      const az = await aziendaConRegistri(['Sede A', 'Sede B'])
+      const sedeB = az.sedi.find(s => s.denominazione === 'Sede B')!
+      await nelTenant(az.tenantId, () =>
+        giacenzeIniziali.crea(
+          az.tenantId,
+          userId,
+          { cerCode: CER, quantita: 25, unita: 'kg', dataRiferimento: '2026-01-01' },
+          az.registroDi('Sede B')
+        )
+      )
+
+      const errore = await nelTenant(az.tenantId, () =>
+        new RentriUnitaLocaleService(app).remove(az.tenantId, sedeB.id)
+      ).catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe(
+        'La sede ha un registro con movimenti, progressivo iniziale o giacenze iniziali: disattivala invece di eliminarla.'
+      )
+      expect(await owner.rentriUnitaLocale.count({ where: { id: sedeB.id } })).toBe(1)
+      expect(await owner.registroRifiuti.count({ where: { id: az.registroDi('Sede B') } })).toBe(1)
+      expect(await owner.giacenzaIniziale.count({ where: { tenantId: az.tenantId } })).toBe(1)
     })
   })
 

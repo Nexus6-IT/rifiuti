@@ -10,6 +10,7 @@ import {
 } from '../../../domain/waste-movement/unita-misura-registro'
 import { collegabilitaFir, etichettaFir, STATI_FIR_EMESSI } from '../../../domain/fir/stati-fir'
 import { stessiDatiRicopia } from '../../registro/ricopia-fir'
+import { leggiApertureRegistro, apertureInKg } from '../../registro/aperture-registro'
 import type { MudAllegatoDR, MudAllegatoTE, MudRifiutoLine } from '../export/mud-export.types'
 import {
   classificaMovimento,
@@ -538,7 +539,7 @@ export class MudAggregazioneService {
 
     const righeFinali = this.completaRighe(righe, integrazioni, anno, controlli)
 
-    const saldi = await this.saldiAl31Dicembre(tenantId, fine)
+    const saldi = await this.saldiAl31Dicembre(tenantId, fine, anno)
     if (saldi.length > 0) controlli.push(controlliMud.giacenzeNonCalcolate(anno, saldi))
 
     if (movimenti.length === 0) {
@@ -589,14 +590,17 @@ export class MudAggregazioneService {
   }
 
   /**
-   * Saldo del registro a fine anno (carichi meno scarichi di tutti gli anni fino al 31/12 italiano),
-   * per CER, in kg. Solo le unità di massa: i movimenti in litri, mc o altro non hanno un peso
-   * senza peso specifico e non entrano nel saldo (le unità vuote valgono kg, come nel resto del
-   * MUD). Restano solo i CER con saldo positivo, ordinati per CER (A-W-06).
+   * Saldo del registro a fine anno (carichi meno scarichi di tutti gli anni fino al 31/12
+   * italiano), per CER, in kg. Le giacenze iniziali del registro con `data_riferimento` fino al
+   * 31/12 contano come carichi (non sono movimenti: non entrano in nessuna riga
+   * prodotto/ricevuto). Solo le unità di massa: i movimenti in litri, mc o altro non hanno un
+   * peso senza peso specifico e non entrano nel saldo (le unità vuote valgono kg, come nel resto
+   * del MUD). Restano solo i CER con saldo positivo, ordinati per CER (A-W-06).
    */
   private async saldiAl31Dicembre(
     tenantId: string,
-    fine: Date
+    fine: Date,
+    anno: number
   ): Promise<Array<{ cerCode6: string; kg: number }>> {
     const gruppi = await this.prisma.wasteMovement.groupBy({
       by: ['cerCode', 'type', 'unit'],
@@ -614,6 +618,21 @@ export class MudAggregazioneService {
       perCer.set(cer6, {
         kg: prec.kg + segno * kg,
         pericoloso: prec.pericoloso || g.cerCode.includes('*'),
+        codice: prec.codice,
+      })
+    }
+    // `data_riferimento` è già il giorno italiano: si confronta col 31/12 come giorno, non con `fine`.
+    const aperture = await leggiApertureRegistro(this.prisma, tenantId, {
+      finoAl: `${anno}-12-31`,
+    })
+    for (const ap of aperture) {
+      const kg = apertureInKg(ap)
+      if (kg === null) continue
+      const cer6 = chiaveConfrontoCer(ap.cerCode)
+      const prec = perCer.get(cer6) ?? { kg: 0, pericoloso: false, codice: ap.cerCode }
+      perCer.set(cer6, {
+        kg: prec.kg + kg,
+        pericoloso: prec.pericoloso || ap.cerCode.includes('*'),
         codice: prec.codice,
       })
     }

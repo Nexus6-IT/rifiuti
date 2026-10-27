@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { formattaQuantita } from '../../core/format/formatta-quantita'
+import { leggiApertureRegistro } from '../registro/aperture-registro'
 import {
   cerCanonico,
   cerSoloCifre,
@@ -129,8 +130,9 @@ export class AnomalyDetectionService {
 
   /**
    * Giacenze impossibili (scarico complessivo oltre il carico) con le stesse regole del
-   * registro: CER confrontato sulle sole cifre, kg e tonnellate sommati in kg, ogni unità
-   * non di massa valutata a parte, mai mescolata ai kg, e solo se ha almeno un carico.
+   * registro: le giacenze iniziali contano come carichi, il CER si confronta sulle sole cifre,
+   * kg e tonnellate si sommano in kg, ogni unità non di massa è valutata a parte (mai mescolata
+   * ai kg) e solo se ha almeno un carico.
    */
   private async giacenzeImpossibili(tenantId: string): Promise<Anomaly[]> {
     const byType = await this.prisma.wasteMovement.groupBy({
@@ -156,6 +158,24 @@ export class AnomalyDetectionService {
       const saldo = entry.perUnita.get(unita) ?? { carico: 0, scarico: 0 }
       if (row.type === 'CARICO') saldo.carico += quantita
       else if (row.type === 'SCARICO') saldo.scarico += quantita
+      entry.perUnita.set(unita, saldo)
+      perCer.set(chiave, entry)
+    }
+
+    // Le giacenze iniziali del registro contano come carichi (sono già un saldo di partenza).
+    const aperture = await leggiApertureRegistro(this.prisma, tenantId)
+    for (const ap of aperture) {
+      const chiave = chiaveConfrontoCer(ap.cerCode)
+      const entry = perCer.get(chiave) ?? {
+        cerCode: cerCanonico(ap.cerCode),
+        perUnita: new Map<string, SaldoUnita>(),
+      }
+      if (ap.cerCode.includes('*') && !entry.cerCode.endsWith('*')) entry.cerCode += '*'
+      const u = normalizzaUnitaRegistro(ap.unita)
+      const unita = u.massa ? 'KG' : u.unita
+      const quantita = u.massa ? (convertiInKg(ap.quantita, ap.unita) as number) : ap.quantita
+      const saldo = entry.perUnita.get(unita) ?? { carico: 0, scarico: 0 }
+      saldo.carico += quantita
       entry.perUnita.set(unita, saldo)
       perCer.set(chiave, entry)
     }

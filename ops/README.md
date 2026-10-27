@@ -241,6 +241,14 @@ movimento di quell'anno, il codice vecchio numera da 1 e ignora l'impostazione
 senza dirlo. Prima del rollback controllare `registro_progressivi_iniziali`
 per l'anno in corso e avvisare le aziende interessate.
 
+Stesso discorso per le **giacenze iniziali** del registro (Fase 2 pezzo 2, tabella
+`giacenze_iniziali`): il codice vecchio non le conosce, quindi dopo un rollback le
+aperture sono ignorate e gli scarichi che contavano su di loro tornano bloccati
+per giacenza insufficiente (o, se erano gia' registrati, il saldo risulta
+negativo). Prima del rollback controllare `SELECT tenant_id, count(*) FROM
+giacenze_iniziali GROUP BY 1` e avvisare le aziende interessate; la tabella resta
+nel database (migration additiva) e riprende a contare al ripristino del codice.
+
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa
 **dopo** il `git revert` e la pipeline, con `RIPRISTINO_TAG` uguale al tag del

@@ -27,8 +27,9 @@ import {
   normalizzaUnitaRegistro,
   simboloUnita,
 } from '../../../domain/waste-movement/unita-misura-registro'
-import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
 import { giacenzaDisponibileAl } from '../giacenza-disponibile'
+import { cerCodeExists, normalizzaCerCode } from '../cer-catalogo'
+import { chiaveLockGiacenza } from '../chiave-lock-giacenza'
 import { stessiDatiRicopia } from '../ricopia-fir'
 import { RegistriService, RegistroVista } from '../registri.service'
 
@@ -130,8 +131,8 @@ export class RegistraMovimentoUseCase {
     // 0b. Validazione codice CER contro il catalogo ufficiale.
     // Normalizza al formato canonico "NN NN NN" (con "*" per i pericolosi) e
     // verifica che esista in catalogo: un CER inesistente non è registrabile.
-    const cerCode = this.normalizeCerCode(command.cerCode)
-    const cerEsiste = await this.cerCodeExists(cerCode)
+    const cerCode = normalizzaCerCode(command.cerCode)
+    const cerEsiste = await cerCodeExists(this.prisma, cerCode)
     if (!cerEsiste) {
       return Result.fail(`Codice CER non valido: ${command.cerCode}`)
     }
@@ -527,31 +528,6 @@ export class RegistraMovimentoUseCase {
   }
 
   /**
-   * Normalizza un codice CER al formato canonico del catalogo "NN NN NN"
-   * (con "*" finale per i pericolosi). Accetta input senza spazi ("200301")
-   * o con spaziatura irregolare; se il formato non è 6 cifre lascia invariato
-   * (la validazione di esistenza fallirà con messaggio chiaro).
-   */
-  private normalizeCerCode(raw: string): string {
-    if (!raw) return raw
-    return cerCanonico(raw.toUpperCase())
-  }
-
-  /**
-   * Verifica che il codice CER esista nel catalogo ufficiale. Il catalogo
-   * memorizza i pericolosi con "*" finale: l'operatore potrebbe ometterlo,
-   * quindi accetta il match sia con sia senza asterisco.
-   */
-  private async cerCodeExists(cerCode: string): Promise<boolean> {
-    const withoutStar = cerCode.replace(/\*$/, '')
-    const withStar = `${withoutStar}*`
-    const count = await this.prisma.cERCode.count({
-      where: { code: { in: [withoutStar, withStar] } },
-    })
-    return count > 0
-  }
-
-  /**
    * Controllo di giacenza di uno SCARICO, da chiamare dentro la transaction dopo il
    * lock del progressivo. Blocca (GiacenzaInsufficienteError) se il saldo complessivo
    * del CER non copre lo scarico; se lo copre ma non alla data dello scarico, restituisce
@@ -575,11 +551,10 @@ export class RegistraMovimentoUseCase {
     }
 
     // Terzo lock dell'ordine fisso (FIR, progressivo, giacenza): serializza gli scarichi
-    // dello stesso CER dello stesso registro, con e senza asterisco. `cerCode` arriva già da
-    // normalizeCerCode ("NN NN NN" per ogni formato di 6 cifre), quindi la chiave
-    // individua lo stesso CER che giacenzaDisponibileAl confronta sulle sole cifre.
-    const cerSenzaStella = cerCode.replace(/\*$/, '')
-    const chiaveGiacenza = `giacenza|${registroId}|${cerSenzaStella}`
+    // dello stesso CER dello stesso registro, con e senza asterisco, e le scritture delle giacenze
+    // iniziali (stessa chiave, vedi chiaveLockGiacenza). Gli scarichi in unita' non di massa non
+    // prendono il lock (si ritorna prima): corsa innocua perche' non si controllano.
+    const chiaveGiacenza = chiaveLockGiacenza(registroId, cerCode)
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveGiacenza}))`
 
     const g = await giacenzaDisponibileAl(tx, {
@@ -662,9 +637,9 @@ export class RegistraMovimentoUseCase {
 }
 
 const RIMEDIO_CARICO_MANCANTE =
-  'Se il rifiuto era già in deposito prima di iniziare a usare il registro, registra il ' +
-  'carico mancante con la causale Altro carico (non viene contato come prodotto nel MUD); ' +
-  'se è stato prodotto ora, usa Produzione interna.'
+  'Se il rifiuto era già in deposito prima di iniziare a usare il registro, inserisci la ' +
+  'giacenza iniziale del registro (Registro → Giacenze iniziali); se è stato prodotto ora, ' +
+  'usa Produzione interna.'
 
 /** Scarico non registrabile per giacenza: il messaggio arriva all'utente così com'è. */
 class GiacenzaInsufficienteError extends Error {

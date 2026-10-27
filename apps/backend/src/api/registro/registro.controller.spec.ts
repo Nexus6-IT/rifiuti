@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common'
 import { RegistroController } from './registro.controller'
 import { Result } from '../../core/application/result'
 import { RegistroDaIndicareError } from '../../application/registro/registri.service'
@@ -33,6 +38,7 @@ describe('RegistroController.registra — data di registrazione', () => {
       {} as any,
       {} as any,
       ruoli('OPERATOR'),
+      {} as any,
       {} as any
     )
   })
@@ -104,6 +110,7 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       lista as any,
       {} as any,
       membership,
+      {} as any,
       {} as any
     )
 
@@ -120,6 +127,7 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       lista as any,
       {} as any,
       ruoli('VIEWER'),
+      {} as any,
       {} as any
     )
 
@@ -134,6 +142,7 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       lista as any,
       {} as any,
       ruoli('VIEWER'),
+      {} as any,
       {} as any
     )
 
@@ -153,6 +162,7 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       lista as any,
       {} as any,
       ruoli('OPERATOR'),
+      {} as any,
       {} as any
     )
 
@@ -168,6 +178,7 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       lista as any,
       {} as any,
       ruoli('SUPER_ADMIN'),
+      {} as any,
       {} as any
     )
     const senzaAzienda = { user: { id: 'u', role: 'SUPER_ADMIN' } }
@@ -191,7 +202,7 @@ describe('RegistroController — progressivo iniziale', () => {
     user: { id: 'user-1', tenantId: 'tenant-token', role },
   })
   const crea = (ruoloEffettivo: string, membership = ruoli(ruoloEffettivo)) =>
-    new RegistroController({} as any, {} as any, servizio as any, membership, {} as any)
+    new RegistroController({} as any, {} as any, servizio as any, membership, {} as any, {} as any)
 
   beforeEach(() => {
     servizio = {
@@ -328,7 +339,8 @@ describe('RegistroController — registri (Fase 2 pezzo 1)', () => {
       lista as any,
       progressivo as any,
       ruoli(ruolo),
-      registri as any
+      registri as any,
+      {} as any
     )
 
   beforeEach(() => {
@@ -417,5 +429,142 @@ describe('RegistroController — registri (Fase 2 pezzo 1)', () => {
       'user-1',
       registroId
     )
+  })
+})
+
+describe('RegistroController — giacenze iniziali (Fase 2 pezzo 2)', () => {
+  const ID = '0b9f6c5e-3c1a-4a6e-9d63-6e8f1c7a1111'
+  const VISTA = { id: ID, dataRiferimento: '2026-01-01' }
+  // switch di azienda: il token è dello studio A, l'azienda selezionata è B
+  const richiesta = (role = 'ADMIN') => ({
+    tenantId: 'B',
+    user: { id: 'user-1', tenantId: 'A', role },
+  })
+  const dtoCrea = {
+    cerCode: '15 01 10*',
+    quantita: 100,
+    unita: 'KG',
+    dataRiferimento: '2026-01-01',
+  }
+
+  let servizio: {
+    elenca: jest.Mock
+    crea: jest.Mock
+    modifica: jest.Mock
+    elimina: jest.Mock
+  }
+  const crea = (ruoloEffettivo: string, membership = ruoli(ruoloEffettivo)) =>
+    new RegistroController({} as any, {} as any, {} as any, membership, {} as any, servizio as any)
+
+  beforeEach(() => {
+    servizio = {
+      elenca: jest.fn().mockResolvedValue({ registroId: 'r1', voci: [VISTA] }),
+      crea: jest.fn().mockResolvedValue({ giacenza: VISTA, avvisi: [] }),
+      modifica: jest.fn().mockResolvedValue({ giacenza: VISTA }),
+      elimina: jest.fn().mockResolvedValue(undefined),
+    }
+  })
+
+  it("GET legge sull'azienda selezionata e passa il registroId", async () => {
+    const esito = await crea('VIEWER').elencaGiacenzeIniziali(richiesta('ADMIN'), {
+      registroId: 'r1',
+    })
+    expect(servizio.elenca).toHaveBeenCalledWith('B', 'r1')
+    expect(esito).toEqual({ registroId: 'r1', puoImpostare: false, voci: [VISTA] })
+  })
+
+  it('GET: puoImpostare segue il ruolo EFFETTIVO, non quello del token', async () => {
+    for (const [effettivo, token, atteso] of [
+      ['ADMIN', 'VIEWER', true],
+      ['SUPER_ADMIN', 'OPERATOR', true],
+      ['OPERATOR', 'ADMIN', false],
+      ['VIEWER', 'ADMIN', false],
+    ] as const) {
+      const membership = ruoli(effettivo)
+      const esito = await crea(effettivo, membership).elencaGiacenzeIniziali(richiesta(token))
+      expect({ effettivo, puoImpostare: esito.puoImpostare }).toEqual({
+        effettivo,
+        puoImpostare: atteso,
+      })
+      expect(membership.ruoloEffettivo).toHaveBeenCalledWith(richiesta(token).user, 'B')
+    }
+  })
+
+  it('GET: senza azienda determinabile rifiuta con 403', async () => {
+    await expect(
+      crea('ADMIN').elencaGiacenzeIniziali({ user: { id: 'u', role: 'ADMIN' } })
+    ).rejects.toBeInstanceOf(ForbiddenException)
+    expect(servizio.elenca).not.toHaveBeenCalled()
+  })
+
+  it("POST crea nell'azienda selezionata con l'utente e il registroId della query", async () => {
+    const esito = await crea('ADMIN').creaGiacenzaIniziale(dtoCrea as any, richiesta('VIEWER'), {
+      registroId: 'r1',
+    })
+    expect(servizio.crea).toHaveBeenCalledWith('B', 'user-1', dtoCrea, 'r1')
+    expect(esito).toEqual({ giacenza: VISTA, avvisi: [] })
+  })
+
+  it("PUT e DELETE lavorano sull'azienda selezionata con l'id", async () => {
+    const dtoModifica = { quantita: 5, unita: 'KG', dataRiferimento: '2026-01-01' }
+    await crea('ADMIN').modificaGiacenzaIniziale(ID, dtoModifica as any, richiesta('VIEWER'))
+    expect(servizio.modifica).toHaveBeenCalledWith('B', 'user-1', ID, dtoModifica)
+    await crea('ADMIN').eliminaGiacenzaIniziale(ID, richiesta('VIEWER'))
+    expect(servizio.elimina).toHaveBeenCalledWith('B', 'user-1', ID)
+  })
+
+  it('OPERATOR e VIEWER effettivi non scrivono (403) anche se ADMIN a casa, e il servizio non è chiamato', async () => {
+    for (const ruoloEffettivo of ['OPERATOR', 'VIEWER']) {
+      const c = crea(ruoloEffettivo)
+      // ADMIN nel proprio studio (token), ma non nell'azienda selezionata
+      const req = richiesta('ADMIN')
+      const chiamate = [
+        () => c.creaGiacenzaIniziale(dtoCrea as any, req),
+        () => c.modificaGiacenzaIniziale(ID, dtoCrea as any, req),
+        () => c.eliminaGiacenzaIniziale(ID, req),
+      ]
+      for (const chiama of chiamate) {
+        const errore = await chiama().catch(e => e)
+        expect(errore).toBeInstanceOf(ForbiddenException)
+        expect(errore.getResponse()).toEqual({
+          message:
+            "Solo un amministratore dell'azienda può gestire le giacenze iniziali del registro.",
+          error: 'REGISTRO_GIACENZA_INIZIALE_RISERVATA_AMMINISTRATORI',
+        })
+      }
+    }
+    expect(servizio.crea).not.toHaveBeenCalled()
+    expect(servizio.modifica).not.toHaveBeenCalled()
+    expect(servizio.elimina).not.toHaveBeenCalled()
+  })
+
+  it('senza azienda determinabile le scritture rifiutano con 403', async () => {
+    const req = { user: { id: 'u', role: 'SUPER_ADMIN' } }
+    const c = crea('SUPER_ADMIN')
+    await expect(c.creaGiacenzaIniziale(dtoCrea as any, req)).rejects.toBeInstanceOf(
+      ForbiddenException
+    )
+    await expect(c.eliminaGiacenzaIniziale(ID, req)).rejects.toBeInstanceOf(ForbiddenException)
+    expect(servizio.crea).not.toHaveBeenCalled()
+  })
+
+  it('404 e 409 del servizio arrivano invariati al client', async () => {
+    const c = crea('ADMIN')
+    servizio.crea.mockRejectedValue(new NotFoundException('Registro non trovato.'))
+    await expect(c.creaGiacenzaIniziale(dtoCrea as any, richiesta())).rejects.toBeInstanceOf(
+      NotFoundException
+    )
+    servizio.modifica.mockRejectedValue(new ConflictException('usata'))
+    await expect(
+      c.modificaGiacenzaIniziale(ID, dtoCrea as any, richiesta())
+    ).rejects.toBeInstanceOf(ConflictException)
+    servizio.elimina.mockRejectedValue(new ConflictException('usata'))
+    await expect(c.eliminaGiacenzaIniziale(ID, richiesta())).rejects.toBeInstanceOf(
+      ConflictException
+    )
+    servizio.elenca.mockRejectedValue(new NotFoundException('Registro non trovato.'))
+    await expect(
+      c.elencaGiacenzeIniziali(richiesta(), { registroId: 'r-x' })
+    ).rejects.toBeInstanceOf(NotFoundException)
   })
 })
