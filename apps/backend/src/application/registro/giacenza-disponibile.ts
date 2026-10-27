@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import { giornoItaliano } from '../../core/time/anno-italiano'
 import { ALIAS_KG, ALIAS_T } from '../../domain/waste-movement/unita-misura-registro'
 import { cerSoloCifre } from '../../domain/waste-movement/cer-registro'
+import { sqlVigente } from '../../domain/waste-movement/vigenza'
 
 export interface ParametriGiacenza {
   tenantId: string
@@ -59,8 +60,9 @@ export async function giacenzaDisponibileAl(
       SELECT (movement_date AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome')::date AS g,
              (CASE WHEN type = 'CARICO' THEN 1 ELSE -1 END * quantity *
               CASE WHEN upper(btrim(unit)) = ANY(${aliasT}::text[]) THEN 1000 ELSE 1 END) AS delta
-      FROM waste_movements
+      FROM waste_movements wm
       WHERE tenant_id = ${p.tenantId}::uuid
+        AND ${sqlVigente('wm')}
         AND registro_id = ${p.registroId}::uuid
         AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cifreCer}
         AND (upper(btrim(unit)) = ANY(${aliasKg}::text[])
@@ -92,8 +94,9 @@ export async function giacenzaDisponibileAl(
            (SELECT COALESCE(array_agg(DISTINCT u ORDER BY u), ARRAY[]::text[])
             FROM (
               SELECT upper(btrim(unit)) AS u
-              FROM waste_movements
+              FROM waste_movements wm
               WHERE tenant_id = ${p.tenantId}::uuid
+                AND ${sqlVigente('wm')}
                 AND registro_id = ${p.registroId}::uuid
                 AND type = 'CARICO'
                 AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cifreCer}

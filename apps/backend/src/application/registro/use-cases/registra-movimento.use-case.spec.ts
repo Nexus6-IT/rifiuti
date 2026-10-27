@@ -173,6 +173,7 @@ describe('RegistraMovimentoUseCase', () => {
       wasteMovement: {
         create: jest.fn().mockResolvedValue(record),
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     }
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => fn(tx))
@@ -1032,6 +1033,10 @@ describe('RegistraMovimentoUseCase', () => {
     ])
     const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001', quantity: 90 }))
     expect(r.error).toBe(new FirGiaRegistratoError(7, 2026).message)
+    // solo le registrazioni ordinarie contano come ricopia: le correzioni copiano firId
+    expect((tx.wasteMovement.findMany.mock.calls[0][0] as any).where).toMatchObject({
+      tipoAnnotazione: 'ORDINARIA',
+    })
     expect(tx.wasteMovement.create).not.toHaveBeenCalled()
   })
 
@@ -1148,7 +1153,8 @@ describe('RegistraMovimentoUseCase', () => {
     )
     const findFirst = jest
       .spyOn(prisma.wasteMovement, 'findFirst')
-      .mockResolvedValue({ progressiveNumber: 9, progressiveYear: 2026 })
+      .mockResolvedValueOnce({ id: 'orig', progressiveNumber: 9, progressiveYear: 2026 })
+      .mockResolvedValueOnce(null)
     const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
     expect(r.error).toBe(new FirGiaRegistratoError(9, 2026).message)
     expect((findFirst.mock.calls[0][0] as any).where).toMatchObject({
@@ -1156,6 +1162,7 @@ describe('RegistraMovimentoUseCase', () => {
       firIdRicopia: 'fir-id-001',
       type: 'SCARICO',
       ricopiaChiave: '',
+      tipoAnnotazione: 'ORDINARIA',
     })
   })
 
@@ -1170,7 +1177,13 @@ describe('RegistraMovimentoUseCase', () => {
     )
     jest
       .spyOn(prisma.wasteMovement, 'findFirst')
-      .mockResolvedValue({ progressiveNumber: 9, progressiveYear: 2026, registroId: 'reg-b' })
+      .mockResolvedValueOnce({
+        id: 'orig',
+        progressiveNumber: 9,
+        progressiveYear: 2026,
+        registroId: 'reg-b',
+      })
+      .mockResolvedValueOnce(null)
     prisma.registroRifiuti = {
       findMany: jest.fn().mockResolvedValue([
         { id: 'reg-a', descrizione: 'Registro A', unitaLocale: null },

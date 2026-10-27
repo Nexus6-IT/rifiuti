@@ -133,9 +133,16 @@ export class MetodoLocaleNonConsentitoSuFirLegatoError extends DomainError {
  * correggere sul movimento già registrato.
  */
 export class FirGiaRegistratoError extends DomainError {
-  constructor(progressiveNumber: number, progressiveYear: number, denominazioneRegistro?: string) {
+  /** `poi`: la registrazione ordinaria citata non e' piu' vigente (rettificata o annullata). */
+  constructor(
+    progressiveNumber: number,
+    progressiveYear: number,
+    denominazioneRegistro?: string,
+    poi?: 'rettificato' | 'annullato'
+  ) {
     super(
       `Il FIR è già registrato nel movimento n. ${progressiveNumber}/${progressiveYear}` +
+        (poi ? `, poi ${poi}` : '') +
         (denominazioneRegistro ? ` nel registro ${denominazioneRegistro}` : '') +
         ' con dati diversi: verificare quel movimento invece di registrarne un secondo'
     )
@@ -145,9 +152,15 @@ export class FirGiaRegistratoError extends DomainError {
 
 /** Il FIR e' gia' ricopiato in un registro diverso da quello richiesto (D10): una sola ricopia per azienda. */
 export class FirGiaRegistratoInAltroRegistroError extends DomainError {
-  constructor(progressiveNumber: number, progressiveYear: number, denominazioneRegistro?: string) {
+  constructor(
+    progressiveNumber: number,
+    progressiveYear: number,
+    denominazioneRegistro?: string,
+    poi?: 'rettificato' | 'annullato'
+  ) {
     super(
       `Il FIR è già registrato nel movimento n. ${progressiveNumber}/${progressiveYear}` +
+        (poi ? `, poi ${poi}` : '') +
         (denominazioneRegistro
           ? ` nel registro ${denominazioneRegistro}`
           : ' in un altro registro') +

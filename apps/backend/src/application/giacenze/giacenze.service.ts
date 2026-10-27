@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { WHERE_VIGENTE } from '../../domain/waste-movement/vigenza'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { leggiApertureRegistro } from '../registro/aperture-registro'
 import { LoggerService } from '../../core/logger/logger.service'
@@ -85,14 +86,14 @@ export class GiacenzeService {
     const perRegistro = registroId ? { registroId } : {}
     const byType = await this.prisma.wasteMovement.groupBy({
       by: ['cerCode', 'type', 'unit'],
-      where: { tenantId, ...perRegistro },
+      where: { tenantId, ...perRegistro, ...WHERE_VIGENTE },
       _sum: { quantity: true },
     })
 
     // Data del carico più vecchio per CER (criterio temporale del deposito).
     const oldestCarico = await this.prisma.wasteMovement.groupBy({
       by: ['cerCode'],
-      where: { tenantId, type: 'CARICO', ...perRegistro },
+      where: { tenantId, type: 'CARICO', ...perRegistro, ...WHERE_VIGENTE },
       _min: { movementDate: true },
     })
     const oldestByCer = new Map<string, Date | null>()
@@ -230,6 +231,7 @@ export class GiacenzeService {
         type: 'SCARICO',
         firId: { in: [...etichette.keys()] },
         ...(registroId ? { registroId } : {}),
+        ...WHERE_VIGENTE,
       },
       select: {
         cerCode: true,

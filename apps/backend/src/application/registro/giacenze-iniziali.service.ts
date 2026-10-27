@@ -13,6 +13,7 @@ import { normalizzaUnitaRegistro } from '../../domain/waste-movement/unita-misur
 import { formattaQuantita } from '../../core/format/formatta-quantita'
 import { cerNelCatalogo, normalizzaCerCode } from './cer-catalogo'
 import { chiaveLockGiacenza } from './chiave-lock-giacenza'
+import { sqlVigente } from '../../domain/waste-movement/vigenza'
 import { RegistriService, RegistroNonTrovatoError } from './registri.service'
 
 /** Relazione iniziale RENTRI: carico (anno, protocollo) che compone la giacenza (F2-9). */
@@ -525,11 +526,12 @@ export class GiacenzeInizialiService {
       Array<{ progressive_number: number; progressive_year: number }>
     >`
       SELECT progressive_number, progressive_year
-      FROM waste_movements
+      FROM waste_movements wm
       WHERE tenant_id = ${tenantId}::uuid
         AND registro_id = ${registroId}::uuid
         AND type = 'CARICO'
         AND causale = 'ALTRO_CARICO'
+        AND ${sqlVigente('wm')}
         AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cerSoloCifre(cerCode)}
       ORDER BY progressive_year, progressive_number
       LIMIT ${AVVISO_ALTRO_CARICO_ESEMPI}`

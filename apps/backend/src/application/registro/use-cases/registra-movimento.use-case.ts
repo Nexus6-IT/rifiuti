@@ -397,7 +397,13 @@ export class RegistraMovimentoUseCase {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveFir}))`
 
     const ricopie = await tx.wasteMovement.findMany({
-      where: { tenantId, firId, type, ricopiaChiave: RICOPIA_ORDINARIA },
+      where: {
+        tenantId,
+        firId,
+        type,
+        ricopiaChiave: RICOPIA_ORDINARIA,
+        tipoAnnotazione: 'ORDINARIA',
+      },
       orderBy: { createdAt: 'asc' },
     })
     if (ricopie.length === 0) return null
@@ -409,7 +415,8 @@ export class RegistraMovimentoUseCase {
       throw new FirGiaRegistratoInAltroRegistroError(
         altroRegistro.progressiveNumber,
         altroRegistro.progressiveYear,
-        await this.denominazioneSeVariRegistri(tx, tenantId, altroRegistro.registroId)
+        await this.denominazioneSeVariRegistri(tx, tenantId, altroRegistro.registroId),
+        await this.statoDopoRicopia(tx, tenantId, altroRegistro.id)
       )
     }
 
@@ -425,10 +432,28 @@ export class RegistraMovimentoUseCase {
       throw new FirGiaRegistratoError(
         ricopie[0].progressiveNumber,
         ricopie[0].progressiveYear,
-        await this.denominazioneSeVariRegistri(tx, tenantId, ricopie[0].registroId)
+        await this.denominazioneSeVariRegistri(tx, tenantId, ricopie[0].registroId),
+        await this.statoDopoRicopia(tx, tenantId, ricopie[0].id)
       )
     }
     return stessa
+  }
+
+  /**
+   * Se la ricopia ordinaria `id` non e' piu' vigente, come e' finita: la testa della sua catena
+   * dice se e' stata rettificata o annullata. Undefined se e' ancora vigente.
+   */
+  private async statoDopoRicopia(
+    tx: Prisma.TransactionClient | PrismaService,
+    tenantId: string,
+    id: string
+  ): Promise<'rettificato' | 'annullato' | undefined> {
+    const testa = await tx.wasteMovement.findFirst({
+      where: { tenantId, movimentoOriginaleId: id, correzioni: { none: {} } },
+      select: { tipoAnnotazione: true },
+    })
+    if (!testa) return undefined
+    return testa.tipoAnnotazione === 'ANNULLAMENTO' ? 'annullato' : 'rettificato'
   }
 
   /** Denominazione del registro, solo se l'azienda ne ha più di uno (altrimenti sarebbe rumore). */
@@ -463,8 +488,14 @@ export class RegistraMovimentoUseCase {
     ) {
       return null
     }
-    let esistente: { progressiveNumber: number; progressiveYear: number; registroId: string } | null
+    let esistente: {
+      id: string
+      progressiveNumber: number
+      progressiveYear: number
+      registroId: string
+    } | null
     let denominazione: string | undefined
+    let poi: 'rettificato' | 'annullato' | undefined
     try {
       esistente = await this.prisma.wasteMovement.findFirst({
         where: {
@@ -472,8 +503,9 @@ export class RegistraMovimentoUseCase {
           firIdRicopia: command.firId,
           type: command.type,
           ricopiaChiave: RICOPIA_ORDINARIA,
+          tipoAnnotazione: 'ORDINARIA',
         },
-        select: { progressiveNumber: true, progressiveYear: true, registroId: true },
+        select: { id: true, progressiveNumber: true, progressiveYear: true, registroId: true },
       })
       if (esistente) {
         denominazione = await this.denominazioneSeVariRegistri(
@@ -481,6 +513,7 @@ export class RegistraMovimentoUseCase {
           command.tenantId,
           esistente.registroId
         )
+        poi = await this.statoDopoRicopia(this.prisma, command.tenantId, esistente.id)
       }
     } catch (lettura) {
       // Siamo già nella gestione di un errore: chi chiama risponde col messaggio generico.
@@ -491,7 +524,8 @@ export class RegistraMovimentoUseCase {
     return new FirGiaRegistratoError(
       esistente.progressiveNumber,
       esistente.progressiveYear,
-      denominazione
+      denominazione,
+      poi
     ).message
   }
 

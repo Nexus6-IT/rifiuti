@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { WHERE_VIGENTE } from '../../domain/waste-movement/vigenza'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { formattaQuantita } from '../../core/format/formatta-quantita'
@@ -137,7 +138,7 @@ export class AnomalyDetectionService {
   private async giacenzeImpossibili(tenantId: string): Promise<Anomaly[]> {
     const byType = await this.prisma.wasteMovement.groupBy({
       by: ['cerCode', 'type', 'unit'],
-      where: { tenantId },
+      where: { tenantId, ...WHERE_VIGENTE },
       _sum: { quantity: true },
     })
 
