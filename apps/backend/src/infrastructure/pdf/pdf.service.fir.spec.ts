@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { PDFService } from './pdf.service'
 import { LoggerService } from '../../core/logger/logger.service'
 
@@ -42,7 +43,7 @@ describe('PDFService.buildFIRContent - numero del FIR', () => {
   })
 })
 
-describe('PDFService.buildFIRContent - peso a destino nell unita del FIR', () => {
+describe('PDFService.buildFIRContent - record Prisma grezzo (come lo passa il controller)', () => {
   const logger = {
     setContext: jest.fn(),
     info: jest.fn(),
@@ -51,25 +52,55 @@ describe('PDFService.buildFIRContent - peso a destino nell unita del FIR', () =>
     debug: jest.fn(),
   } as unknown as LoggerService
 
-  const firBase = {
+  // Forma vera di `prisma.fIR.findFirst`: `effectiveWeight` e `quantity` Decimal, `unit`,
+  // snapshot delle parti in `*Name`/`*Address`/`*PartitaIva`. Nessun `pesoEffettivo`/`unitOfMeasure`.
+  const recordPrisma = {
     status: 'CONSEGNATO',
     firNumber: 'FIR-2026-000007',
     createdAt: new Date('2026-03-05T10:00:00Z'),
-    producer: { companyName: 'Produttore SRL' },
-    carrier: { companyName: 'Trasportatore SRL' },
-    receiver: { companyName: 'Destinatario SRL' },
+    producerName: 'Produttore SRL',
+    producerAddress: 'Via Roma 1',
+    producerPartitaIva: '01234567890',
+    carrierName: 'Trasportatore SRL',
+    carrierPartitaIva: '09876543210',
+    receiverName: 'Destinatario SRL',
+    receiverAddress: 'Via Milano 2',
+    receiverPartitaIva: '11111111111',
     cerCode: '13 02 05*',
-    quantity: 2,
+    quantity: new Prisma.Decimal('2'),
+    unit: 'T',
+    effectiveWeight: new Prisma.Decimal('2.5'),
     signatures: [],
   }
 
   const contenuto = (fir: object) =>
     JSON.stringify((new PDFService(logger) as any).buildFIRContent(fir))
 
-  it('il peso effettivo esce con l unita del FIR, non con kg fisso', () => {
-    const testo = contenuto({ ...firBase, unitOfMeasure: 'T', pesoEffettivo: 2.5 })
+  it('la quantita dichiarata esce con l unita del record, non "undefined"', () => {
+    const testo = contenuto(recordPrisma)
+    expect(testo).toContain('2 T')
+    expect(testo).not.toContain('undefined')
+  })
+
+  it('il peso a destino (effectiveWeight Decimal) esce con l unita del record, non N/D ne kg', () => {
+    const testo = contenuto(recordPrisma)
     expect(testo).toContain('2.5 T')
+    expect(testo).toMatch(/"Peso effettivo ricevuto".*"2.5 T"/)
     expect(testo).not.toContain('2.5 kg')
+  })
+
+  it('senza peso a destino la 4a copia non compare e senza unita ripiega su kg', () => {
+    const testo = contenuto({ ...recordPrisma, effectiveWeight: null, unit: undefined })
+    expect(testo).not.toContain('4ª COPIA')
+    expect(testo).toContain('2 kg')
+  })
+
+  it('produttore, trasportatore e destinatario escono dallo snapshot del record', () => {
+    const testo = contenuto(recordPrisma)
+    expect(testo).toContain('Produttore SRL')
+    expect(testo).toContain('Trasportatore SRL')
+    expect(testo).toContain('Via Milano 2')
+    expect(testo).not.toContain('Informazioni non disponibili')
   })
 })
 

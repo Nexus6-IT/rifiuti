@@ -118,6 +118,23 @@ export class PDFService {
   private buildFIRContent(fir: any, qrCodeDataUrl?: string): Content[] {
     const content: Content[] = []
 
+    // Il controller passa il record Prisma grezzo: peso a destino in `effectiveWeight` (Decimal),
+    // unita in `unit`, quantita in `quantity` (Decimal), parti come snapshot `*Name`/`*Address`.
+    // I nomi `pesoEffettivo`/`unitOfMeasure`/`producer` restano accettati per i chiamanti che
+    // passano un oggetto gia mappato.
+    const pesoGrezzo = fir.pesoEffettivo ?? fir.effectiveWeight
+    const peso = pesoGrezzo === null || pesoGrezzo === undefined ? null : Number(pesoGrezzo)
+    const unita: string = fir.rifiuto?.unitaMisura ?? fir.unit ?? fir.unitOfMeasure ?? 'kg'
+    const parte = (nome: 'producer' | 'carrier' | 'receiver') =>
+      fir[nome] ??
+      (fir[`${nome}Name`]
+        ? {
+            companyName: fir[`${nome}Name`],
+            address: fir[`${nome}Address`],
+            vatNumber: fir[`${nome}PartitaIva`],
+          }
+        : undefined)
+
     // FIR Number and Status
     content.push({
       columns: [
@@ -160,15 +177,15 @@ export class PDFService {
 
     // Producer Section
     content.push({ text: 'PRODUTTORE', style: 'sectionHeader' })
-    content.push(this.buildCompanyInfo(fir.producer))
+    content.push(this.buildCompanyInfo(parte('producer')))
 
     // Carrier Section
     content.push({ text: 'TRASPORTATORE', style: 'sectionHeader' })
-    content.push(this.buildCompanyInfo(fir.carrier))
+    content.push(this.buildCompanyInfo(parte('carrier')))
 
     // Receiver Section
     content.push({ text: 'DESTINATARIO', style: 'sectionHeader' })
-    content.push(this.buildCompanyInfo(fir.receiver))
+    content.push(this.buildCompanyInfo(parte('receiver')))
 
     // Campo 2 — Dettagli rifiuto (DM 59/2023)
     content.push({ text: 'CAMPO 2 — DETTAGLI RIFIUTO', style: 'sectionHeader' })
@@ -183,7 +200,7 @@ export class PDFService {
             {
               text: fir.rifiuto
                 ? `${fir.rifiuto.quantita} ${fir.rifiuto.unitaMisura}`
-                : `${fir.quantity} ${fir.unitOfMeasure}`,
+                : `${fir.quantity} ${unita}`,
               style: 'value',
             },
             { text: 'Stato fisico', style: 'label' },
@@ -227,7 +244,7 @@ export class PDFService {
     }
 
     // 4ª copia — Esito destinatario
-    if (fir.fourthCopyReturnedAt || fir.pesoEffettivo) {
+    if (fir.fourthCopyReturnedAt || peso) {
       content.push({ text: '4ª COPIA — ESITO DESTINATARIO', style: 'sectionHeader' })
       content.push({
         columns: [
@@ -236,9 +253,7 @@ export class PDFService {
             stack: [
               { text: 'Peso effettivo ricevuto', style: 'label' },
               {
-                text: fir.pesoEffettivo
-                  ? `${fir.pesoEffettivo} ${fir.unitOfMeasure ?? 'kg'}`
-                  : 'N/D',
+                text: peso ? `${peso} ${unita}` : 'N/D',
                 style: 'value',
               },
             ],
