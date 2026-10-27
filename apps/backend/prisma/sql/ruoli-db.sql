@@ -20,6 +20,12 @@
 --
 -- Nessuna policy: ENABLE ROW LEVEL SECURITY / CREATE POLICY non fanno parte
 -- di questo pezzo.
+--
+-- TABELLE GLOBALI IN SOLA LETTURA: le tabelle elencate in `v_sola_lettura` (oggi
+-- `causali_registro`, il catalogo di sistema che scrive solo la migration) ricevono
+-- solo SELECT e una REVOKE esplicita di INSERT/UPDATE/DELETE/TRUNCATE a ogni
+-- esecuzione. I default privileges restano CRUD (valgono per le tabelle future):
+-- una nuova tabella globale in sola lettura va AGGIUNTA a quell'elenco.
 
 SELECT set_config('ruoli.app_password', :'app_password', false);
 SELECT set_config('ruoli.sistema_password', :'sistema_password', false);
@@ -31,6 +37,7 @@ DECLARE
   v_ruolo   text;
   v_pwd     text;
   v_tabella text;
+  v_sola_lettura text[] := ARRAY['causali_registro'];
 BEGIN
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
     RAISE EXCEPTION 'lo script va eseguito da un superuser (serve per BYPASSRLS), non da %', current_user;
@@ -71,14 +78,24 @@ BEGIN
     EXECUTE format('REVOKE CREATE ON SCHEMA public FROM %I', v_ruolo);
     EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', v_ruolo);
 
-    -- CRUD su tutte le tabelle tranne _prisma_migrations. Mai TRUNCATE.
+    -- CRUD su tutte le tabelle tranne _prisma_migrations. Mai TRUNCATE. Le tabelle
+    -- globali in sola lettura (v_sola_lettura) ricevono solo SELECT.
     FOR v_tabella IN
       SELECT tablename FROM pg_tables
       WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
     LOOP
-      EXECUTE format(
-        'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO %I',
-        v_tabella, v_ruolo);
+      IF v_tabella = ANY (v_sola_lettura) THEN
+        EXECUTE format(
+          'REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public.%I FROM %I',
+          v_tabella, v_ruolo);
+        EXECUTE format(
+          'GRANT SELECT ON TABLE public.%I TO %I',
+          v_tabella, v_ruolo);
+      ELSE
+        EXECUTE format(
+          'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO %I',
+          v_tabella, v_ruolo);
+      END IF;
     END LOOP;
 
     EXECUTE format(

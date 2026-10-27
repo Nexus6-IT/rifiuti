@@ -261,6 +261,18 @@ tipo_annotazione, count(*) FROM waste_movements WHERE tipo_annotazione <>
 innocuo e va concordato con le aziende interessate. Le colonne restano nel
 database (migration additiva) e tornano a contare al ripristino del codice.
 
+Stesso discorso per le **causali del registro** (Fase 2 pezzo 5, tabelle `causali_registro` e
+`causali_registro_azienda`, colonna `waste_movements.causale_azienda_id`): il codice vecchio
+conosce solo le 11 causali di sempre, quindi dopo un rollback le causali `AZ_...` tornano
+`ESCLUSO` nel MUD e non sono piu' registrabili (i movimenti gia' registrati restano, con la causale
+come testo). **Prima del rollback** controllare `SELECT tenant_id, count(*) FROM
+causali_registro_azienda GROUP BY 1` e `SELECT tenant_id, count(*) FROM waste_movements WHERE
+causale_azienda_id IS NOT NULL GROUP BY 1`: se non sono vuote, avvisare le aziende interessate. Le
+tabelle e la colonna restano nel database (migration additiva) e tornano a contare al ripristino del
+codice; il ripristino a mano dello schema e' nel commento iniziale della migration
+`20261030100000_causali_registro`. Dopo ogni `prisma migrate deploy` va rieseguito
+`ops/db-ruoli.sh`: la sola lettura di `causali_registro` per i ruoli applicativi sta anche li'.
+
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa
 **dopo** il `git revert` e la pipeline, con `RIPRISTINO_TAG` uguale al tag del

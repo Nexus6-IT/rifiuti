@@ -191,6 +191,9 @@ describe('RLS Prisma Extension (applyTenantScope)', () => {
       expect(TENANT_SCOPED_MODELS.has('Tenant')).toBe(false)
       expect(TENANT_SCOPED_MODELS.has('CERCode')).toBe(false)
       expect(TENANT_SCOPED_MODELS.has('AbacPolicy')).toBe(false)
+      // Catalogo di sistema delle causali: globale, senza tenant_id e senza RLS.
+      expect(TENANT_SCOPED_MODELS.has('CausaleRegistro')).toBe(false)
+      expect(TENANT_SCOPED_MODELS.has('CausaleRegistroAzienda')).toBe(true)
     })
 
     /**
