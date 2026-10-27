@@ -27,6 +27,8 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { RegistriService } from './registri.service'
 import { GiacenzeInizialiService, DatiGiacenzaIniziale } from './giacenze-iniziali.service'
+import { RegistraMovimentoUseCase } from './use-cases/registra-movimento.use-case'
+import { RegistraMovimentoCommand } from './commands/registra-movimento.command'
 import { giornoItaliano } from '../../core/time/anno-italiano'
 
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
@@ -40,6 +42,7 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
   let app: PrismaService
   let registri: RegistriService
   let servizio: GiacenzeInizialiService
+  let useCase: RegistraMovimentoUseCase
   let userId: string
   const cerCreati: string[] = []
   const tenantCreati: string[] = []
@@ -106,11 +109,41 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
     })
   }
 
+  /** Scarico di oggi registrato dal caso d'uso reale (controllo di giacenza compreso). */
+  const scaricoReale = (tenantId: string, registroId: string, qty: number, cer = CER) => {
+    const adesso = new Date()
+    return nelTenant(tenantId, () =>
+      useCase.execute(
+        new RegistraMovimentoCommand(
+          tenantId,
+          undefined as unknown as string,
+          'SCARICO',
+          adesso,
+          adesso,
+          'CONFERIMENTO_TRASPORTATORE',
+          cer,
+          undefined,
+          qty,
+          'KG',
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          registroId
+        )
+      )
+    )
+  }
+
   beforeAll(async () => {
     app = creaPrismaServiceApplicativo()
     await app.onModuleInit()
     registri = new RegistriService(app, loggerStub as never)
     servizio = new GiacenzeInizialiService(app, registri)
+    useCase = new RegistraMovimentoUseCase(app, loggerStub as never, registri)
     const [a] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`
     expect(a.u).toBe('wasteflow_app')
     const tenantUtente = await owner.tenant.create({
@@ -317,10 +350,10 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
         )
       ).resolves.toBeDefined()
 
-      // scarico registrato dopo l'apertura. Inserito dal proprietario: in questo Task il saldo non conta
-      // ancora le aperture (Task 2), quindi il caso d'uso lo rifiuterebbe per giacenza insufficiente.
+      // scarico registrato dopo l'apertura dal caso d'uso reale: passa grazie all'apertura (120 kg)
       await new Promise(r => setTimeout(r, 20))
-      await movimentoDiretto(az.tenantId, az.registroId, { type: 'SCARICO' })
+      const scarico = await scaricoReale(az.tenantId, az.registroId, 50)
+      expect(scarico.isSuccess ? 'ok' : scarico.error).toBe('ok')
 
       const dopo = await nelTenant(az.tenantId, () => servizio.elenca(az.tenantId))
       expect(dopo.voci[0].modificabile).toBe(false)
@@ -337,6 +370,21 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
         nelTenant(az.tenantId, () => servizio.elimina(az.tenantId, userId, giacenza.id))
       ).rejects.toBeInstanceOf(ConflictException)
       expect(await owner.giacenzaIniziale.count({ where: { id: giacenza.id } })).toBe(1)
+    })
+
+    it("senza apertura lo scarico e' respinto, con l'apertura e' accettato fino alla quantita', oltre no", async () => {
+      const az = await aziendaConRegistro()
+      const senza = await scaricoReale(az.tenantId, az.registroId, 10)
+      expect(senza.isFailure).toBe(true)
+      expect(senza.error).toContain('Giacenza insufficiente')
+      expect(senza.error).toContain('Registro → Giacenze iniziali')
+
+      await crea(az.tenantId, dati({ quantita: 100 }), az.registroId)
+      const entro = await scaricoReale(az.tenantId, az.registroId, 60)
+      expect(entro.isSuccess ? 'ok' : entro.error).toBe('ok')
+      const oltre = await scaricoReale(az.tenantId, az.registroId, 60)
+      expect(oltre.isFailure).toBe(true)
+      expect(oltre.error).toContain('Giacenza insufficiente')
     })
 
     it('uno scarico di un altro CER non la blocca', async () => {

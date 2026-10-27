@@ -522,8 +522,9 @@ describe('RegistraMovimentoUseCase', () => {
     _mockTransazione(recordScarico)
     const r = await useCase.execute(scaricoCmd({ quantity: 50 }))
     expect(r.error).toContain(
-      'registra il carico mancante con la causale Altro carico (non viene contato come prodotto nel MUD)'
+      'inserisci la giacenza iniziale del registro (Registro → Giacenze iniziali)'
     )
+    expect(r.error).not.toContain('Altro carico')
     expect(r.error).toContain('se è stato prodotto ora, usa Produzione interna.')
   })
 

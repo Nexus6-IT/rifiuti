@@ -637,9 +637,9 @@ export class RegistraMovimentoUseCase {
 }
 
 const RIMEDIO_CARICO_MANCANTE =
-  'Se il rifiuto era già in deposito prima di iniziare a usare il registro, registra il ' +
-  'carico mancante con la causale Altro carico (non viene contato come prodotto nel MUD); ' +
-  'se è stato prodotto ora, usa Produzione interna.'
+  'Se il rifiuto era già in deposito prima di iniziare a usare il registro, inserisci la ' +
+  'giacenza iniziale del registro (Registro → Giacenze iniziali); se è stato prodotto ora, ' +
+  'usa Produzione interna.'
 
 /** Scarico non registrabile per giacenza: il messaggio arriva all'utente così com'è. */
 class GiacenzaInsufficienteError extends Error {

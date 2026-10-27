@@ -12,7 +12,7 @@ export interface ParametriGiacenza {
 }
 
 export interface GiacenzaDisponibile {
-  /** Carichi meno scarichi del CER a qualunque data, in kg. Decide il blocco. */
+  /** Carichi (aperture comprese) meno scarichi del CER a qualunque data, in kg. Decide il blocco. */
   saldoComplessivoKg: number
   /**
    * Quanto uno SCARICO del giorno italiano di `alla` può consumare senza portare
@@ -55,10 +55,10 @@ export async function giacenzaDisponibileAl(
   const aliasT = [...ALIAS_T]
 
   const righe = await tx.$queryRaw<RigaGiacenza[]>`
-    WITH mov AS (
+    WITH righe AS (
       SELECT (movement_date AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome')::date AS g,
-             SUM(CASE WHEN type = 'CARICO' THEN 1 ELSE -1 END * quantity *
-                 CASE WHEN upper(btrim(unit)) = ANY(${aliasT}::text[]) THEN 1000 ELSE 1 END) AS delta
+             (CASE WHEN type = 'CARICO' THEN 1 ELSE -1 END * quantity *
+              CASE WHEN upper(btrim(unit)) = ANY(${aliasT}::text[]) THEN 1000 ELSE 1 END) AS delta
       FROM waste_movements
       WHERE tenant_id = ${p.tenantId}::uuid
         AND registro_id = ${p.registroId}::uuid
@@ -66,8 +66,21 @@ export async function giacenzaDisponibileAl(
         AND (upper(btrim(unit)) = ANY(${aliasKg}::text[])
              OR upper(btrim(unit)) = ANY(${aliasT}::text[])
              OR btrim(unit) = '')
-      GROUP BY 1
+      UNION ALL
+      -- Le aperture del registro (giacenze iniziali) sono carichi del giorno data_riferimento.
+      -- È una DATE: già il giorno italiano, niente AT TIME ZONE (passerebbe da un timestamp
+      -- col fuso della sessione e potrebbe spostare il giorno).
+      SELECT data_riferimento AS g,
+             (quantita * CASE WHEN upper(btrim(unita)) = ANY(${aliasT}::text[]) THEN 1000 ELSE 1 END) AS delta
+      FROM giacenze_iniziali
+      WHERE tenant_id = ${p.tenantId}::uuid
+        AND registro_id = ${p.registroId}::uuid
+        AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cifreCer}
+        AND (upper(btrim(unita)) = ANY(${aliasKg}::text[])
+             OR upper(btrim(unita)) = ANY(${aliasT}::text[])
+             OR btrim(unita) = '')
     ),
+    mov AS (SELECT g, SUM(delta) AS delta FROM righe GROUP BY g),
     saldi AS (SELECT g, SUM(delta) OVER (ORDER BY g) AS saldo FROM mov),
     candidati AS (
       SELECT ${giornoAlla}::date AS g,
@@ -76,15 +89,27 @@ export async function giacenzaDisponibileAl(
       SELECT g, saldo FROM saldi WHERE g > ${giornoAlla}::date
     )
     SELECT c.g AS vincolo_al, c.saldo, (SELECT COALESCE(SUM(delta), 0) FROM mov) AS saldo_totale,
-           (SELECT COALESCE(array_agg(DISTINCT upper(btrim(unit)) ORDER BY upper(btrim(unit))), ARRAY[]::text[])
-            FROM waste_movements
-            WHERE tenant_id = ${p.tenantId}::uuid
-              AND registro_id = ${p.registroId}::uuid
-              AND type = 'CARICO'
-              AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cifreCer}
-              AND NOT (upper(btrim(unit)) = ANY(${aliasKg}::text[])
-                       OR upper(btrim(unit)) = ANY(${aliasT}::text[])
-                       OR btrim(unit) = '')) AS unita_non_massa
+           (SELECT COALESCE(array_agg(DISTINCT u ORDER BY u), ARRAY[]::text[])
+            FROM (
+              SELECT upper(btrim(unit)) AS u
+              FROM waste_movements
+              WHERE tenant_id = ${p.tenantId}::uuid
+                AND registro_id = ${p.registroId}::uuid
+                AND type = 'CARICO'
+                AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cifreCer}
+                AND NOT (upper(btrim(unit)) = ANY(${aliasKg}::text[])
+                         OR upper(btrim(unit)) = ANY(${aliasT}::text[])
+                         OR btrim(unit) = '')
+              UNION ALL
+              SELECT upper(btrim(unita)) AS u
+              FROM giacenze_iniziali
+              WHERE tenant_id = ${p.tenantId}::uuid
+                AND registro_id = ${p.registroId}::uuid
+                AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cifreCer}
+                AND NOT (upper(btrim(unita)) = ANY(${aliasKg}::text[])
+                         OR upper(btrim(unita)) = ANY(${aliasT}::text[])
+                         OR btrim(unita) = '')
+            ) nm) AS unita_non_massa
     FROM candidati c ORDER BY c.saldo ASC, c.g ASC LIMIT 1
   `
 
