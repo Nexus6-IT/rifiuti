@@ -13,6 +13,7 @@ import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
 import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
+import { FirModificatoNelFrattempoError } from '../../../core/domain/errors'
 import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
 import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
@@ -206,6 +207,27 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       expect(result.value.stato).toBe(FIRStato.CONSEGNATO)
       expect(result.value.pesoEffettivo).toBe(120)
       expect(result.value.dataConsegna).toBeInstanceOf(Date)
+    })
+
+    it('salva con la verifica della versione letta e lascia risalire il conflitto', async () => {
+      const fir = createInTransitoFIR()
+      repository.addFIR(fir)
+      const saveSpy = jest.spyOn(repository, 'save')
+
+      await useCase.execute(
+        new ConfermaConsegnaFIRCommand(fir.id, 120, 'user-dest-789', 'Destinatario Bianchi')
+      )
+      expect(saveSpy).toHaveBeenCalledWith(expect.anything(), { verificaVersione: true })
+
+      const fir2 = createInTransitoFIR()
+      repository.addFIR(fir2)
+      const conflitto = new FirModificatoNelFrattempoError(fir2.id)
+      saveSpy.mockRejectedValueOnce(conflitto)
+      await expect(
+        useCase.execute(
+          new ConfermaConsegnaFIRCommand(fir2.id, 120, 'user-dest-789', 'Destinatario Bianchi')
+        )
+      ).rejects.toBe(conflitto)
     })
 
     it('should persist FIR with firma destinatario (firma crittografica reale)', async () => {

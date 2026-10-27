@@ -15,6 +15,15 @@ export interface FIRSearchFilters {
   dataTo?: Date
 }
 
+/**
+ * Opzioni di salvataggio. `verificaVersione`: la scrittura riesce solo se la riga ha ancora la
+ * versione letta dall'aggregate (altrimenti `FirModificatoNelFrattempoError`). Senza l'opzione si
+ * scrive e si incrementa comunque (percorso RENTRI, piano D5).
+ */
+export interface OpzioniSalvataggioFir {
+  verificaVersione?: boolean
+}
+
 export interface IFIRRepository {
   /**
    * Find FIR by ID
@@ -92,7 +101,7 @@ export interface IFIRRepository {
   /**
    * Save FIR (create or update)
    */
-  save(fir: FIR): Promise<void>
+  save(fir: FIR, opzioni?: OpzioniSalvataggioFir): Promise<void>
 
   /**
    * Delete FIR (soft delete)

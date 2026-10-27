@@ -204,3 +204,57 @@ export class FirNonPiuInBozzaError extends DomainError {
     this.name = 'FirNonPiuInBozzaError'
   }
 }
+
+/**
+ * Il FIR è stato salvato da un'altra operazione dopo che questa lo aveva letto (lock ottimistico
+ * sulla colonna `versione`): salvare la copia letta sovrascriverebbe quei dati. Corsa prevista:
+ * il filtro risponde 409, senza segnalazione a Bugsink.
+ */
+export class FirModificatoNelFrattempoError extends DomainError {
+  static readonly CODICE = 'FIR_MODIFICATO_NEL_FRATTEMPO'
+  static readonly MESSAGGIO_UTENTE =
+    "Il FIR è stato modificato nel frattempo da un'altra operazione: ricarica per vedere i dati aggiornati e ripeti l'operazione."
+
+  constructor(firId: string) {
+    super(
+      `Il FIR ${firId} è stato modificato da un'altra operazione dopo la lettura: il salvataggio non viene eseguito`
+    )
+    this.name = 'FirModificatoNelFrattempoError'
+  }
+}
+
+export type MotivoFirNonModificabile =
+  | 'LEGATO_RENTRI'
+  | 'NON_BOZZA'
+  | 'FIRMATO'
+  | 'IN_ATTESA_FIRMA_PRODUTTORE'
+
+/** La bozza non si può modificare (ordine dei motivi: piano D1). Risposta 409, messaggio senza id. */
+export class FirNonModificabileError extends DomainError {
+  static readonly CODICE = 'FIR_NON_MODIFICABILE'
+  static readonly MESSAGGI: Record<MotivoFirNonModificabile, string> = {
+    LEGATO_RENTRI:
+      'Il FIR è legato a un formulario RENTRI: la modifica va fatta su RENTRI, non in locale.',
+    NON_BOZZA: 'Un FIR emesso non si modifica: annullalo e creane uno nuovo.',
+    FIRMATO:
+      'Il FIR porta già una firma: modificarlo la renderebbe non più verificabile. Annulla il FIR e creane uno nuovo.',
+    IN_ATTESA_FIRMA_PRODUTTORE:
+      'Il FIR è in attesa della firma del produttore e non si può modificare.',
+  }
+
+  constructor(readonly motivo: MotivoFirNonModificabile) {
+    super(FirNonModificabileError.MESSAGGI[motivo])
+    this.name = 'FirNonModificabileError'
+  }
+}
+
+/** FIR assente o di un'altra azienda. Risposta 404, messaggio senza id. */
+export class FirNonTrovatoError extends DomainError {
+  static readonly CODICE = 'FIR_NON_TROVATO'
+  static readonly MESSAGGIO_UTENTE = 'FIR non trovato'
+
+  constructor() {
+    super(FirNonTrovatoError.MESSAGGIO_UTENTE)
+    this.name = 'FirNonTrovatoError'
+  }
+}

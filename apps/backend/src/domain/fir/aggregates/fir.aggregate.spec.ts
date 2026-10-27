@@ -47,6 +47,18 @@ const createMockFirma = (firmatario: string): FirmaDigitale => ({
 })
 
 describe('FIR Aggregate', () => {
+  describe('versione', () => {
+    it('un FIR appena creato non è mai stato salvato: versione 0', () => {
+      expect(FIR.create(createValidFIRProps()).versione).toBe(0)
+    })
+
+    it('registraVersioneSalvata allinea la versione', () => {
+      const fir = FIR.create(createValidFIRProps())
+      fir.registraVersioneSalvata(3)
+      expect(fir.versione).toBe(3)
+    })
+  })
+
   describe('create', () => {
     it('should create FIR in BOZZA state', () => {
       const fir = FIR.create(createValidFIRProps())

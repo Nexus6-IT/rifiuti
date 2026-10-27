@@ -12,6 +12,7 @@ import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
 import {
   FirAnnullatoNelFrattempoError,
+  FirModificatoNelFrattempoError,
   FirmaSenzaUtenteError,
   FirNonPiuInBozzaError,
 } from '../../core/domain/errors'
@@ -19,6 +20,7 @@ import {
 function buildFirRecord(overrides: Partial<any> = {}) {
   return {
     id: 'fir-1',
+    versione: 1,
     status: 'AWAITING_CARRIER',
     firNumber: 'FIR-2026-000001',
     tenantId: 'tenant-1',
@@ -439,7 +441,9 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
         })
       )
       const copiaVecchia = (await repo.findById('fir-1'))!
-      prisma.$queryRaw = jest.fn().mockResolvedValue([{ stato: 'Annullato', status: 'CANCELLED' }])
+      prisma.$queryRaw = jest
+        .fn()
+        .mockResolvedValue([{ stato: 'Annullato', status: 'CANCELLED', versione: 1 }])
 
       await expect(repo.save(copiaVecchia)).rejects.toBeInstanceOf(FirAnnullatoNelFrattempoError)
       expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
@@ -449,7 +453,9 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
     it('il blocco della riga resta nel tenant del FIR e non serializza le scritture del registro', async () => {
       prisma.db.fIR.findFirst.mockResolvedValue(buildFirRecord({ status: 'AWAITING_CARRIER' }))
       const fir = (await repo.findById('fir-1'))!
-      prisma.$queryRaw = jest.fn().mockResolvedValue([{ stato: null, status: 'AWAITING_CARRIER' }])
+      prisma.$queryRaw = jest
+        .fn()
+        .mockResolvedValue([{ stato: null, status: 'AWAITING_CARRIER', versione: 1 }])
 
       await repo.save(fir)
 
@@ -460,6 +466,76 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
       expect(sql).toContain('FOR NO KEY UPDATE')
       expect(sql).toContain('tenant_id = ?::uuid')
       expect(valori).toContain('tenant-1')
+      expect(sql).toContain('versione AS versione')
+    })
+  })
+
+  describe('versione (lock ottimistico)', () => {
+    async function firLetto() {
+      prisma.db.fIR.findFirst.mockResolvedValue(
+        buildFirRecord({ status: 'AWAITING_CARRIER', versione: 4 })
+      )
+      return (await repo.findById('fir-1'))!
+    }
+
+    it('toDomain riporta la versione della riga', async () => {
+      expect((await firLetto()).versione).toBe(4)
+    })
+
+    it('con verificaVersione e versione uguale scrive versione + 1 e allinea la versione', async () => {
+      const fir = await firLetto()
+      prisma.$queryRaw = jest
+        .fn()
+        .mockResolvedValue([{ stato: null, status: 'AWAITING_CARRIER', versione: 4 }])
+
+      await repo.save(fir, { verificaVersione: true })
+
+      const arg = prisma.fIR.upsert.mock.calls[0][0]
+      expect(arg.update.versione).toBe(5)
+      expect(arg.create.versione).toBe(5)
+      expect(fir.versione).toBe(5)
+    })
+
+    it('con verificaVersione e versione diversa rifiuta prima di scrivere', async () => {
+      const fir = await firLetto()
+      prisma.$queryRaw = jest
+        .fn()
+        .mockResolvedValue([{ stato: null, status: 'AWAITING_CARRIER', versione: 5 }])
+
+      await expect(repo.save(fir, { verificaVersione: true })).rejects.toBeInstanceOf(
+        FirModificatoNelFrattempoError
+      )
+      expect(prisma.fIR.upsert).not.toHaveBeenCalled()
+      expect(fir.versione).toBe(4)
+    })
+
+    it('senza verificaVersione scrive comunque, sopra la versione del database', async () => {
+      const fir = await firLetto()
+      prisma.$queryRaw = jest
+        .fn()
+        .mockResolvedValue([{ stato: null, status: 'AWAITING_CARRIER', versione: 7 }])
+
+      await repo.save(fir)
+
+      expect(prisma.fIR.upsert.mock.calls[0][0].update.versione).toBe(8)
+      expect(fir.versione).toBe(8)
+    })
+
+    it('riga assente (primo salvataggio): versione 1', async () => {
+      const fir = FIR.create({
+        produttoreId: 'reg-produttore',
+        rifiuto: { cerCode: '150101', quantita: 100 },
+        trasportatoreId: 'reg-trasportatore',
+        destinatarioId: 'reg-destinatario',
+        tenantId: 'tenant-1',
+        creatoDaUserId: 'user-produttore',
+      })
+      prisma.$queryRaw = jest.fn().mockResolvedValue([])
+
+      await repo.save(fir)
+
+      expect(prisma.fIR.upsert.mock.calls[0][0].create.versione).toBe(1)
+      expect(fir.versione).toBe(1)
     })
   })
 })

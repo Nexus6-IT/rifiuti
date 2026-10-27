@@ -452,7 +452,12 @@ export class FIR extends AggregateRoot {
      */
     private _rentriTransazioneInAttesa: string | null = null,
     /** Istante di avvio dell'ultimo tentativo di trasmissione (rilevamento stalli). */
-    private _rentriSyncAvviatoAt: Date | null = null
+    private _rentriSyncAvviatoAt: Date | null = null,
+    /**
+     * Versione della riga letta dal database (lock ottimistico, piano D4-D5): 0 per un FIR
+     * creato in memoria e mai salvato, >= 1 dopo il primo salvataggio.
+     */
+    private _versione: number = 0
   ) {
     super()
   }
@@ -1102,6 +1107,19 @@ export class FIR extends AggregateRoot {
 
   get stato(): FIRStato {
     return this._stato
+  }
+
+  /** Versione della riga alla lettura o all'ultimo salvataggio (0 = mai salvato). */
+  get versione(): number {
+    return this._versione
+  }
+
+  /**
+   * Solo infrastruttura: lo chiama il repository dopo una scrittura riuscita, per allineare
+   * l'aggregate alla versione appena scritta. Il dominio non deve invocarlo.
+   */
+  registraVersioneSalvata(versione: number): void {
+    this._versione = versione
   }
 
   get numeroProgressivo(): string | null {

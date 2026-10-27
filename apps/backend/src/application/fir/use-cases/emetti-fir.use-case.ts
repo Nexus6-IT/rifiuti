@@ -33,7 +33,11 @@ import { DigitalSignatureService } from '../../signatures/digital-signature.serv
 import { TrasmettiFIRSecondoModalitaUseCase } from '../../rentri/trasmetti-fir-secondo-modalita.use-case'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { annoSolareItaliano } from '../../../core/time/anno-italiano'
-import { DomainError } from '../../../core/domain/errors'
+import {
+  DomainError,
+  FirAnnullatoNelFrattempoError,
+  FirModificatoNelFrattempoError,
+} from '../../../core/domain/errors'
 
 export class EmettiFIRUseCase {
   constructor(
@@ -74,6 +78,14 @@ export class EmettiFIRUseCase {
     try {
       await this.firRepository.emettiConNumerazione(fir, anno, numero => fir.emetti(numero, firma))
     } catch (error) {
+      // Conflitti di concorrenza: non sono un input sbagliato (400) ma una corsa persa (409,
+      // risposta del filtro globale).
+      if (
+        error instanceof FirModificatoNelFrattempoError ||
+        error instanceof FirAnnullatoNelFrattempoError
+      ) {
+        throw error
+      }
       if (error instanceof DomainError) {
         return Result.fail<FIR>(`Failed to emit FIR: ${error.message}`)
       }

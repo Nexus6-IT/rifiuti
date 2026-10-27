@@ -25,11 +25,13 @@ import {
 import {
   IFIRRepository,
   FIRSearchFilters,
+  OpzioniSalvataggioFir,
 } from '../../domain/fir/repositories/fir-repository.interface'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { RENTRISyncStatus } from '../../domain/fir/rentri-sync-status.vo'
 import {
   FirAnnullatoNelFrattempoError,
+  FirModificatoNelFrattempoError,
   FormularioGiaAgganciatoError,
   FirmaSenzaUtenteError,
   FirNonPiuInBozzaError,
@@ -331,15 +333,19 @@ export class FIRPrismaRepository implements IFIRRepository {
    * firma rifiutata dal database lasciava il FIR già avanzato di stato (con il
    * numero assegnato) ma senza firma.
    */
-  async save(fir: FIR): Promise<void> {
-    await this.prisma.$transaction(tx => this.salvaCon(tx, fir))
+  async save(fir: FIR, opzioni?: OpzioniSalvataggioFir): Promise<void> {
+    await this.prisma.$transaction(tx => this.salvaCon(tx, fir, opzioni))
   }
 
   /**
    * Upsert del FIR e firme sullo stesso client (transazionale): usato da `save`
    * e dai chiamanti che devono aggiungere altre scritture alla stessa transaction.
    */
-  private async salvaCon(client: Prisma.TransactionClient, fir: FIR): Promise<void> {
+  private async salvaCon(
+    client: Prisma.TransactionClient,
+    fir: FIR,
+    opzioni?: OpzioniSalvataggioFir
+  ): Promise<void> {
     // Il controllo sulle firme precede ogni scrittura: un FIR con una firma
     // senza utente non deve nemmeno arrivare all'upsert.
     this.verificaFirmeScrivibili(fir)
@@ -350,7 +356,13 @@ export class FIRPrismaRepository implements IFIRRepository {
     // l'input "checked" che richiede la relazione (altrimenti: "Argument
     // `tenant` is missing"). Si estraggono quindi gli scalari e si collega.
     const { tenantId, producerUserId, ...scalars } = data
-    await this.conservaAnnullamentoEnte(client, fir.id, tenantId, scalars)
+    const riga = await this.conservaAnnullamentoEnte(client, fir.id, tenantId, scalars)
+    // Lock ottimistico: la riga e' bloccata dalla SELECT, quindi il confronto precede ogni scrittura.
+    if (riga && opzioni?.verificaVersione && riga.versione !== fir.versione) {
+      throw new FirModificatoNelFrattempoError(fir.id)
+    }
+    const nuovaVersione = riga ? riga.versione + 1 : 1
+    scalars.versione = nuovaVersione
 
     // I trasportatori aggiuntivi (tratte intermodali) sono uno snapshot fissato
     // alla creazione del FIR: si scrivono solo nel ramo `create` dell'upsert, mai
@@ -378,6 +390,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     }
 
     await this.persistSignatures(client, fir, tenantId)
+    fir.registraVersioneSalvata(nuovaVersione)
   }
 
   /**
@@ -415,7 +428,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     firId: string,
     tenantId: string,
     scalars: Record<string, unknown> & { rentriStatoFormulario?: unknown; status?: unknown }
-  ): Promise<void> {
+  ): Promise<{ versione: number } | undefined> {
     const righe = await client.$queryRaw<
       Array<{
         stato: string | null
@@ -429,6 +442,7 @@ export class FIRPrismaRepository implements IFIRRepository {
         avviato_at: Date | null
         in_attesa: string | null
         transazione_id: string | null
+        versione: number
       }>
     >`
       SELECT rentri_stato_formulario AS stato, status::text AS status,
@@ -440,7 +454,8 @@ export class FIRPrismaRepository implements IFIRRepository {
              rentri_synced_at AS synced_at,
              rentri_sync_avviato_at AS avviato_at,
              rentri_transazione_in_attesa AS in_attesa,
-             rentri_transazione_id AS transazione_id
+             rentri_transazione_id AS transazione_id,
+             versione AS versione
       FROM firs WHERE id = ${firId}::uuid AND tenant_id = ${tenantId}::uuid
       FOR NO KEY UPDATE`
     const riga = righe?.[0]
@@ -469,6 +484,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       scalars.rentriTransazioneInAttesa = riga.in_attesa
       scalars.rentriTransazioneId = riga.transazione_id
     }
+    return riga ? { versione: Number(riga.versione) } : undefined
   }
 
   /**
@@ -613,6 +629,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       data: {
         status: PrismaFIRStatus.CANCELLED,
         cancelledAt: new Date(),
+        versione: { increment: 1 },
       },
     })
   }
@@ -673,7 +690,8 @@ export class FIRPrismaRepository implements IFIRRepository {
 
         // Un'eccezione del dominio qui annulla l'intera transaction.
         applicaEmissione(numero)
-        await this.salvaCon(tx, fir)
+        // Il FOR UPDATE sopra tiene la riga: la versione letta dall'aggregate deve essere ancora quella.
+        await this.salvaCon(tx, fir, { verificaVersione: true })
         return numero
       },
       // Lock, verifica, massimo, upsert e firme: più round trip del default di 5 s.
@@ -787,6 +805,7 @@ export class FIRPrismaRepository implements IFIRRepository {
       // Stato del formulario presso l'ente: stesso tranello (scrittura e lettura
       // dimenticate), la riconciliazione lo confrontava sempre con null.
       _rentriStatoFormulario: (record.rentriStatoFormulario as StatoFormulario | null) ?? null,
+      _versione: record.versione ?? 0,
     })
 
     return fir

@@ -124,7 +124,9 @@ describe('AcquisisciFormularioRENTRIUseCase', () => {
     })
 
     expect(firEsistente.agganciaManualmente).toHaveBeenCalledWith(NUMERO_FIR, 'corr-1')
-    expect(mockFirRepository.save).toHaveBeenCalledWith(firEsistente)
+    expect(mockFirRepository.save).toHaveBeenCalledWith(firEsistente, {
+      verificaVersione: true,
+    })
     expect(risultato.firId).toBe(firEsistente.id)
     expect(risultato.numeroFir).toBe(NUMERO_FIR)
   })
