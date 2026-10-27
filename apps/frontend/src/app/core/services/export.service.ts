@@ -6,11 +6,7 @@ import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { format } from 'date-fns'
 import { annotazioneExport, statoExport } from '../../features/registro/registro-correzioni'
 import { conColonnaSede, filtriRegistroExport, sedeDelMovimento } from './registro-export-sede'
-import {
-  Movimento,
-  CausaleMovimento,
-  CAUSALE_LABELS,
-} from '../../features/registro/registro.service'
+import { Movimento } from '../../features/registro/registro.service'
 
 /**
  * Metadati di intestazione per l'export del registro cronologico C/S.
@@ -377,7 +373,7 @@ export class ExportService {
       m.type,
       annotazioneExport(m),
       statoExport(m),
-      this.causaleLabel(m.causale),
+      this.causaleLabel(m),
       m.cerCode,
       `${this.formatQuantita(m.quantity)} ${m.unit}`,
       m.wastePhysicalState || '—',
@@ -403,7 +399,7 @@ export class ExportService {
       Tipo: m.type,
       Annotazione: annotazioneExport(m),
       Stato: statoExport(m),
-      Causale: this.causaleLabel(m.causale),
+      Causale: this.causaleLabel(m),
       CER: m.cerCode,
       'Descrizione rifiuto': m.wasteDescription || '',
       Quantità: m.quantity,
@@ -433,9 +429,9 @@ export class ExportService {
     }).format(value)
   }
 
-  /** Ottiene la label leggibile della causale del movimento. */
-  private causaleLabel(causale: string): string {
-    return CAUSALE_LABELS[causale as CausaleMovimento] ?? causale
+  /** Etichetta della causale: la descrizione che l'API calcola alla data del movimento, o il codice. */
+  private causaleLabel(m: Pick<Movimento, 'causale' | 'causaleDescrizione'>): string {
+    return m.causaleDescrizione || m.causale
   }
 
   /** Calcola l'intervallo temporale coperto dai movimenti esportati. */

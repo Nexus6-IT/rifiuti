@@ -3,8 +3,6 @@ import { Prisma } from '@prisma/client'
 import {
   hashAnnotazioneV2,
   WasteMovement,
-  CAUSALI_CARICO,
-  CAUSALI_SCARICO,
   TERMINE_REGISTRAZIONE_PRODUTTORE_GG,
 } from './waste-movement.entity'
 
@@ -91,26 +89,22 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     ).toThrow('La data di registrazione non può precedere la data di operazione')
   })
 
-  it('lancia errore per causale CARICO usata su SCARICO', () => {
-    expect(() =>
-      WasteMovement.create(buildProps({ type: 'SCARICO', causale: 'PRODUZIONE_INTERNA' as any }))
-    ).toThrow('Causale non valida per SCARICO')
-  })
+  it.each(['pippo', '', '1ABC', 'A B', 'A'.repeat(101)])(
+    'lancia errore per la causale di forma non valida: "%s"',
+    causale => {
+      expect(() => WasteMovement.create(buildProps({ causale }))).toThrow('Causale non valida')
+    }
+  )
 
-  it('lancia errore per causale SCARICO usata su CARICO', () => {
-    expect(() =>
-      WasteMovement.create(buildProps({ type: 'CARICO', causale: 'AVVIO_RECUPERO' as any }))
-    ).toThrow('Causale non valida per CARICO')
-  })
-
-  // ─── Causali valide ──────────────────────────────────────────────────────────
-
-  it.each(CAUSALI_CARICO)('accetta causale CARICO: %s', causale => {
-    expect(() => WasteMovement.create(buildProps({ type: 'CARICO', causale }))).not.toThrow()
-  })
-
-  it.each(CAUSALI_SCARICO)('accetta causale SCARICO: %s', causale => {
-    expect(() => WasteMovement.create(buildProps({ type: 'SCARICO', causale }))).not.toThrow()
+  // Il dominio non conosce il catalogo dell'azienda: l'elenco lo controlla il caso d'uso.
+  it.each([
+    ['CARICO', 'PRODUZIONE_INTERNA'],
+    ['CARICO', 'INGRESSO_ESTERNO'],
+    ['SCARICO', 'CONFERIMENTO_TRASPORTATORE'],
+    ['SCARICO', 'AVVIO_SMALTIMENTO'],
+    ['SCARICO', 'AZ_PROVA'],
+  ] as const)('accetta la causale di forma valida: %s %s', (type, causale) => {
+    expect(() => WasteMovement.create(buildProps({ type, causale }))).not.toThrow()
   })
 
   // ─── Hash di vidimazione ─────────────────────────────────────────────────────

@@ -8,7 +8,18 @@
  * Design system "B": slate + teal-700 #0f766e, IBM Plex, griglia 8pt, WCAG 2.1 AA.
  */
 
-import { Component, OnInit, inject, signal, computed } from '@angular/core'
+import { Component, DestroyRef, OnInit, inject, signal, computed } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { EMPTY, Subject, Subscription, combineLatest, merge } from 'rxjs'
+import {
+  auditTime,
+  catchError,
+  distinctUntilChanged,
+  filter,
+  map,
+  startWith,
+  switchMap,
+} from 'rxjs/operators'
 import { CommonModule, DatePipe } from '@angular/common'
 import {
   FormBuilder,
@@ -50,9 +61,7 @@ import {
   Movimento,
   PaginatedMovimenti,
   TipoMovimento,
-  CAUSALE_LABELS,
   STATI_FISICI,
-  CausaleMovimento,
   EsitoVerificaCatena,
   StatoProgressivoIniziale,
   RegistroVista,
@@ -72,12 +81,19 @@ import {
 } from './registro-fir'
 import { CerSelectComponent } from '../cer/cer-select.component'
 import { GiacenzeInizialiDialogComponent } from './giacenze-iniziali-dialog.component'
+import { CausaliRegistroDialogComponent } from './causali-registro-dialog.component'
 import {
   CorreggiMovimentoDialogComponent,
   ModoCorrezione,
   messaggioErroreCorrezione,
 } from './correggi-movimento-dialog.component'
-import { opzioniCausali, giornoLocale } from './registro-opzioni'
+import {
+  MESSAGGIO_CAUSALE_NON_VALIDA,
+  causaleSelezionabile,
+  giornoLocale,
+  opzioniCausali,
+} from './registro-opzioni'
+import { CausaliRegistroService, OpzioneCausaleApi } from './causali-registro.service'
 import {
   eVigente,
   testoAnnotazione,
@@ -119,6 +135,7 @@ interface FirOption {
     PaginatorModule,
     CerSelectComponent,
     GiacenzeInizialiDialogComponent,
+    CausaliRegistroDialogComponent,
     CorreggiMovimentoDialogComponent,
   ],
   providers: [DatePipe],
@@ -159,6 +176,15 @@ interface FirOption {
             data-testid="registro-giacenze-iniziali"
             (onClick)="apriGiacenzeIniziali()"
             ariaLabel="Apri le giacenze iniziali del registro"
+          ></p-button>
+          <p-button
+            *ngIf="offriGestioneCausali()"
+            label="Causali"
+            icon="pi pi-tags"
+            [outlined]="true"
+            data-testid="registro-causali"
+            (onClick)="apriGestioneCausali()"
+            ariaLabel="Gestisci le causali del registro"
           ></p-button>
           <p-button
             *ngIf="offriVerificaCatena()"
@@ -354,7 +380,7 @@ interface FirOption {
                   <span class="cell-mono">{{ m.cerCode }}</span>
                 </td>
                 <td>
-                  <span class="causale-label">{{ causaleLabel(m.causale) }}</span>
+                  <span class="causale-label">{{ causaleLabel(m) }}</span>
                   <span *ngIf="m.wasteDescription" class="waste-desc">{{
                     m.wasteDescription
                   }}</span>
@@ -595,6 +621,13 @@ interface FirOption {
               ></p-dropdown>
               <small *ngIf="hasError('causale')" id="causale-err" class="field-error" role="alert"
                 >Seleziona una causale.</small
+              >
+              <small
+                *ngIf="messaggioCausale() as msg"
+                class="field-hint"
+                role="status"
+                data-testid="registro-causale-messaggio"
+                >{{ msg }}</small
               >
             </div>
 
@@ -971,6 +1004,12 @@ interface FirOption {
         (corretto)="onCorretto()"
       ></app-correggi-movimento-dialog>
 
+      <!-- Dialog gestione causali (solo ADMIN) -------------------------------->
+      <app-causali-registro-dialog
+        *ngIf="causaliVisible"
+        [(visible)]="causaliVisible"
+      ></app-causali-registro-dialog>
+
       <!-- Dialog giacenze iniziali -------------------------------------------->
       <app-giacenze-iniziali-dialog
         *ngIf="giacenzeInizialiVisible"
@@ -1315,6 +1354,8 @@ interface FirOption {
 })
 export class RegistroComponent implements OnInit {
   private readonly registroService = inject(RegistroService)
+  private readonly causali = inject(CausaliRegistroService)
+  private readonly destroyRef = inject(DestroyRef)
   private readonly toast = inject(ToastService)
   private readonly fb = inject(FormBuilder)
   private readonly datePipe = inject(DatePipe)
@@ -1387,9 +1428,25 @@ export class RegistroComponent implements OnInit {
    */
   readonly tipoCorrente = signal<TipoMovimento>('CARICO')
 
-  readonly causaliOptions = computed<DropdownOption<CausaleMovimento>[]>(() => {
-    return opzioniCausali(this.tipoCorrente())
+  /** Opzioni arrivate dall'API per un tipo e un giorno (assenti finché non arrivano). */
+  private readonly opzioniApi = signal<{
+    tipo: TipoMovimento
+    giorno: string
+    causali: OpzioneCausaleApi[]
+  } | null>(null)
+
+  /** Spiega perché la causale è stata azzerata dopo un cambio di data. */
+  readonly messaggioCausale = signal<string | null>(null)
+
+  /** Causali del tipo e della data del form, dall'API: mai quelle di un altro tipo. */
+  readonly causaliOptions = computed<DropdownOption<string>[]>(() => {
+    const o = this.opzioniApi()
+    return o && o.tipo === this.tipoCorrente() ? opzioniCausali(o.causali) : []
   })
+
+  private readonly ricaricaOpzioni = new Subject<{ tipo: TipoMovimento; giorno: string }>()
+  private sottoscrizioneOpzioni: Subscription | null = null
+  private sottoscrizioneProposta: Subscription | null = null
 
   readonly statiFisiciOptions = STATI_FISICI.map(s => ({ label: s, value: s }))
 
@@ -1443,9 +1500,67 @@ export class RegistroComponent implements OnInit {
       firId: [''],
       notes: [''],
     })
+    this.avviaOpzioniCausali()
+  }
+
+  /**
+   * Le opzioni delle causali si caricano con `switchMap` sulle modifiche di tipo e di data (il
+   * giorno, non la `Date`: nessuna richiesta per ogni tasto e nessuno spostamento di fuso). Se
+   * dopo un cambio di data la causale scelta non è più fra le opzioni, si azzera con un messaggio.
+   */
+  private avviaOpzioniCausali(): void {
+    this.sottoscrizioneOpzioni?.unsubscribe()
+    const tipo = this.form.get('type')!
+    const data = this.form.get('movementDate')!
+    const chiavi$ = combineLatest([
+      tipo.valueChanges.pipe(startWith(tipo.value as TipoMovimento)),
+      data.valueChanges.pipe(startWith(data.value as Date | null)),
+    ]).pipe(
+      // tipo e data cambiano in sequenza (anche con un reset): una sola richiesta
+      auditTime(0),
+      map(([t, d]) =>
+        d instanceof Date && !isNaN(d.getTime())
+          ? { tipo: t as TipoMovimento, giorno: giornoLocale(d) }
+          : null
+      ),
+      filter((k): k is { tipo: TipoMovimento; giorno: string } => k !== null),
+      distinctUntilChanged((a, b) => a.tipo === b.tipo && a.giorno === b.giorno)
+    )
+    this.sottoscrizioneOpzioni = merge(chiavi$, this.ricaricaOpzioni)
+      .pipe(
+        switchMap(k =>
+          this.causali.opzioni(k.tipo, k.giorno).pipe(
+            map(causali => ({ ...k, causali })),
+            catchError(() => {
+              this.toast.error('Impossibile caricare le causali: riprova fra poco.')
+              return EMPTY
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(o => {
+        const precedente = this.opzioniApi()
+        this.opzioniApi.set(o)
+        const ctrl = this.form.get('causale')
+        const scelta = ctrl?.value as string | null
+        if (scelta && !causaleSelezionabile(o.causali, scelta)) {
+          ctrl?.reset(null)
+          // al cambio di tipo la causale si azzera comunque (`onTipoChange`): il messaggio
+          // serve solo quando a far decadere la scelta è stata la data
+          this.messaggioCausale.set(
+            precedente && precedente.tipo === o.tipo ? MESSAGGIO_CAUSALE_NON_VALIDA : null
+          )
+        } else {
+          this.messaggioCausale.set(null)
+        }
+      })
   }
 
   apriForm(): void {
+    // opzioni fresche a ogni apertura: il catalogo può essere cambiato nel frattempo
+    this.causali.invalida()
+    this.messaggioCausale.set(null)
     this.tipoCorrente.set('CARICO')
     this.form.reset({
       type: 'CARICO',
@@ -1454,6 +1569,11 @@ export class RegistroComponent implements OnInit {
       causale: null,
       unit: 'KG',
     })
+    // la chiave dopo il reset puo' essere uguale all'ultima vista (distinctUntilChanged) e il
+    // catalogo e' stato invalidato: la rilettura va chiesta esplicitamente
+    this.ricaricaOpzioni.next({ tipo: 'CARICO', giorno: giornoLocale(new Date()) })
+    this.sottoscrizioneProposta?.unsubscribe()
+    this.sottoscrizioneProposta = null
     this.sedeBloccataDaFir.set(false)
     this.form.get('registroId')?.enable({ emitEvent: false })
     this.applicaRegistroAlForm(true)
@@ -1501,6 +1621,7 @@ export class RegistroComponent implements OnInit {
     const tipo: TipoMovimento = this.form?.get('type')?.value ?? 'CARICO'
     this.tipoCorrente.set(tipo)
     this.form.get('causale')?.reset(null)
+    this.messaggioCausale.set(null)
     // Se è collegato un FIR, controparte e quantità dipendono dalla direzione: per un
     // CARICO la controparte è il produttore/cedente, per uno SCARICO il destinatario; la
     // quantità è il peso a destino solo per il carico del destinatario (C-W-01).
@@ -1583,11 +1704,9 @@ export class RegistroComponent implements OnInit {
     this.tipoCorrente.set(tipo)
 
     // Causale di default solo con il ruolo riconosciuto (Decisione 13): altrimenti il
-    // campo resta com'è e, se vuoto, la sceglie l'utente (è obbligatorio).
+    // campo resta com'è e, se vuoto, la sceglie l'utente (è obbligatorio). Si applica più
+    // sotto, dopo che sono arrivate le opzioni del tipo e della data del FIR.
     const causaleDefault = causalePredefinitaDaFir(tipo, ruolo)
-    if (causaleDefault) {
-      this.form.get('causale')?.setValue(causaleDefault)
-    }
 
     // Data dell'operazione solo se WasteFlow la conosce davvero e non è nel futuro;
     // altrimenti resta quella del form e il suggerimento spiega dove trovarla.
@@ -1620,6 +1739,8 @@ export class RegistroComponent implements OnInit {
     // Controparte in base alla direzione del movimento.
     this.applicaControparteDaFir(fir, tipo)
 
+    this.proponiCausaleDaFir(causaleDefault, tipo)
+
     // Hint sul ruolo determinato, seguito dagli eventuali suggerimenti su data e quantità.
     let hint: string
     if (ruolo === 'PRODUTTORE') {
@@ -1632,6 +1753,53 @@ export class RegistroComponent implements OnInit {
         'e scegli la causale. I dati del rifiuto sono stati comunque precompilati.'
     }
     this.ruoloHint.set([hint, suggerimentoData, q.suggerimento].filter(Boolean).join(' '))
+  }
+
+  /**
+   * M7. La causale proposta dal FIR si applica solo quando le opzioni del tipo e della data
+   * del form (già quelli del FIR) sono arrivate e la contengono: prima non si imposta nulla
+   * (un caricamento lento non deve cancellare né saltare la proposta), e se la causale è
+   * disattivata o non valida a quella data non c'è proposta e si sceglie a mano.
+   */
+  private proponiCausaleDaFir(codice: string | null, tipo: TipoMovimento): void {
+    this.sottoscrizioneProposta?.unsubscribe()
+    this.sottoscrizioneProposta = null
+    if (!codice) return
+    const data = this.form.get('movementDate')?.value as Date | null
+    if (!(data instanceof Date) || isNaN(data.getTime())) return
+    const giorno = giornoLocale(data)
+    const ctrl = this.form.get('causale')
+    const valorePrima = (ctrl?.value ?? null) as string | null
+    this.sottoscrizioneProposta = this.causali
+      .opzioni(tipo, giorno)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: righe => {
+          const corrente = this.form.get('movementDate')?.value as Date | null
+          const ancoraQuesto =
+            this.form.get('type')?.value === tipo &&
+            corrente instanceof Date &&
+            giornoLocale(corrente) === giorno
+          if (!ancoraQuesto) return
+          if (!causaleSelezionabile(righe, codice)) {
+            this.ruoloHint.update(h =>
+              [
+                h,
+                'La causale prevista per questo FIR non è disponibile alla data indicata: scegli la causale.',
+              ]
+                .filter(Boolean)
+                .join(' ')
+            )
+            return
+          }
+          // se nel frattempo l'utente ha scelto un'altra causale, la sua scelta vince
+          const attuale = (ctrl?.value ?? null) as string | null
+          if (attuale === null || attuale === valorePrima) ctrl?.setValue(codice)
+        },
+        error: () => {
+          // il messaggio di errore lo mostra già il caricamento delle opzioni del form
+        },
+      })
   }
 
   /** Giorno di calendario locale ('AAAA-MM-GG'), come lo invia `toIsoDate` al backend. */
@@ -1801,6 +1969,11 @@ export class RegistroComponent implements OnInit {
           this.saving.set(false)
           const msg = err?.error?.message ?? err?.message ?? 'Errore durante la registrazione'
           this.toast.error(msg)
+          if (err?.status === 409 && err?.error?.error === 'CAUSALE_MODIFICATA') {
+            // la causale è cambiata mentre si compilava: opzioni nuove per tipo e data del form
+            this.causali.invalida()
+            this.ricaricaOpzioni.next({ tipo: v.type, giorno: toIsoDate(v.movementDate) })
+          }
         },
       })
   }
@@ -1913,6 +2086,14 @@ export class RegistroComponent implements OnInit {
     return !this.piuRegistri() || !!this.registroGiacenzeIniziali()
   }
   giacenzeInizialiVisible = false
+
+  /** La gestione delle causali e' per l'amministratore effettivo (lo dice il backend); il 403 si mostra. */
+  readonly offriGestioneCausali = computed(() => this.statoProgressivo()?.puoImpostare === true)
+  causaliVisible = false
+
+  apriGestioneCausali(): void {
+    this.causaliVisible = true
+  }
 
   apriGiacenzeIniziali(): void {
     this.giacenzeInizialiVisible = true
@@ -2213,7 +2394,8 @@ export class RegistroComponent implements OnInit {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
-  causaleLabel(causale: string): string {
-    return CAUSALE_LABELS[causale as CausaleMovimento] ?? causale
+  /** Etichetta della causale nell'elenco: la descrizione alla data del movimento, o il codice. */
+  causaleLabel(m: Pick<Movimento, 'causale' | 'causaleDescrizione'>): string {
+    return m.causaleDescrizione || m.causale
   }
 }

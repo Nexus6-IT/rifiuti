@@ -71,7 +71,7 @@ import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.s
  * controller sul ruolo effettivo, non con `@Roles`.
  */
 const RUOLI_REGISTRAZIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
-const RUOLI_PROGRESSIVO_INIZIALE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
+export const RUOLI_PROGRESSIVO_INIZIALE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
 
 @ApiTags('registro')
 @Controller('registro')

@@ -1,5 +1,6 @@
 import { ListMovimentiHandler } from './list-movimenti.handler'
 import { ListMovimentiQuery } from './list-movimenti.query'
+import { righeCausaliSistema } from '../causali/catalogo-causali.fixture'
 
 const riga = (registroId: string) => ({
   id: `m-${registroId}`,
@@ -11,6 +12,7 @@ const riga = (registroId: string) => ({
   movementDate: new Date('2026-03-01'),
   registrationDate: new Date('2026-03-01'),
   causale: 'PRODUZIONE_INTERNA',
+  causaleAziendaId: null as string | null,
   cerCode: '200301',
   wasteDescription: null,
   quantity: 10,
@@ -35,6 +37,8 @@ describe('ListMovimentiHandler', () => {
   let prisma: {
     wasteMovement: { count: jest.Mock; findMany: jest.Mock }
     $queryRaw: jest.Mock
+    causaleRegistro: { findMany: jest.Mock }
+    causaleRegistroAzienda: { findMany: jest.Mock }
   }
   let handler: ListMovimentiHandler
   let logger: { setContext: jest.Mock; warn: jest.Mock }
@@ -46,6 +50,8 @@ describe('ListMovimentiHandler', () => {
         findMany: jest.fn().mockResolvedValue([riga('reg-A')]),
       },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      causaleRegistro: { findMany: jest.fn().mockResolvedValue(righeCausaliSistema()) },
+      causaleRegistroAzienda: { findMany: jest.fn().mockResolvedValue([]) },
     }
     logger = { setContext: jest.fn(), warn: jest.fn() }
     handler = new ListMovimentiHandler(prisma as any, logger as any)
@@ -71,6 +77,93 @@ describe('ListMovimentiHandler', () => {
     await handler.execute(new ListMovimentiQuery('t1', {}, { page: 1, limit: 20 }))
 
     expect(prisma.wasteMovement.findMany.mock.calls[0][0].where).toEqual({ tenantId: 't1' })
+  })
+
+  describe('descrizione della causale', () => {
+    const versione = (
+      id: string,
+      dal: string,
+      al: string | null,
+      descrizione: string,
+      rentri: string | null
+    ) => ({
+      id,
+      natura: 'PROPRIA',
+      codice: 'AZ_RESO',
+      verso: 'CARICO',
+      descrizione,
+      ruoloMud: 'PRODOTTO',
+      codiceRentri: rentri,
+      operazione: null,
+      ordine: 100,
+      validaDal: new Date(`${dal}T00:00:00.000Z`),
+      validaAl: al ? new Date(`${al}T00:00:00.000Z`) : null,
+    })
+    const lista = () => handler.execute(new ListMovimentiQuery('t1', {}, { page: 1, limit: 20 }))
+
+    it('causale di sistema: descrizione e codice RENTRI del catalogo', async () => {
+      const { value } = await lista()
+      expect(value.items[0]).toMatchObject({
+        causaleDescrizione: 'Produzione interna',
+        causaleCodiceRentri: 'DT',
+      })
+    })
+
+    it('versioni diverse della stessa causale propria: il versioneId vince sulla data, senza versioneId vale la data', async () => {
+      prisma.causaleRegistroAzienda.findMany.mockResolvedValue([
+        versione('v1', '2026-01-01', '2026-06-30', 'Reso (vecchio)', null),
+        versione('v2', '2026-07-01', null, 'Reso cliente', 'RE'),
+      ])
+      const vecchio = {
+        ...riga('reg-A'),
+        id: 'a',
+        causale: 'AZ_RESO',
+        causaleAziendaId: 'v1',
+        movementDate: new Date('2026-03-01T10:00:00Z'),
+      }
+      const nuovo = {
+        ...riga('reg-A'),
+        id: 'b',
+        causale: 'AZ_RESO',
+        causaleAziendaId: 'v2',
+        movementDate: new Date('2026-08-01T10:00:00Z'),
+      }
+      // Il versioneId vince sulla data: v1 e chiusa al 30/06 ma il movimento e di agosto.
+      const retrodatato = { ...vecchio, id: 'c', movementDate: new Date('2026-08-01T10:00:00Z') }
+      // Senza versioneId si risolve per data: dentro v2.
+      const perData = { ...nuovo, id: 'd', causaleAziendaId: null }
+      prisma.wasteMovement.findMany.mockResolvedValue([nuovo, vecchio, retrodatato, perData])
+      const { value } = await lista()
+      expect(value.items.map(i => [i.causaleDescrizione, i.causaleCodiceRentri])).toEqual([
+        ['Reso cliente', 'RE'],
+        ['Reso (vecchio)', null],
+        ['Reso (vecchio)', null],
+        ['Reso cliente', 'RE'],
+      ])
+    })
+
+    it('codice sconosciuto: la descrizione e il codice, senza codice RENTRI', async () => {
+      prisma.wasteMovement.findMany.mockResolvedValue([
+        { ...riga('reg-A'), causale: 'VECCHIA_CAUSALE' },
+      ])
+      const { value } = await lista()
+      expect(value.items[0]).toMatchObject({
+        causaleDescrizione: 'VECCHIA_CAUSALE',
+        causaleCodiceRentri: null,
+      })
+    })
+
+    it('il catalogo si legge UNA volta per pagina, qualunque sia il numero di righe', async () => {
+      prisma.wasteMovement.findMany.mockResolvedValue(
+        Array.from({ length: 5 }, (_, i) => ({ ...riga('reg-A'), id: `m${i}` }))
+      )
+      await lista()
+      expect(prisma.causaleRegistro.findMany).toHaveBeenCalledTimes(1)
+      expect(prisma.causaleRegistroAzienda.findMany).toHaveBeenCalledTimes(1)
+      expect(prisma.causaleRegistroAzienda.findMany.mock.calls[0][0].where).toEqual({
+        tenantId: 't1',
+      })
+    })
   })
 
   describe('stato delle righe', () => {

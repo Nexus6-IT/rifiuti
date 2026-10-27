@@ -61,7 +61,8 @@ describe('RettificaMovimentoDto', () => {
       { quantity: 0 },
       { quantity: 1.005 },
       { movementDate: 'ieri' },
-      { causale: 'BOH' },
+      { causale: 'pippo' },
+      { causale: '' },
       { cerCode: '' },
     ]) {
       const errori = await messaggi({ ...rettifica, ...cattivo }, comeCorpo(RettificaMovimentoDto))

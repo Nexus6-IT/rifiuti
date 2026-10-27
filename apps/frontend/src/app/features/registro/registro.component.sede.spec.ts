@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing'
 import { DatePipe } from '@angular/common'
 import { of, throwError } from 'rxjs'
 import { RegistroComponent } from './registro.component'
+import { CausaliRegistroService } from './causali-registro.service'
 import { RegistroService, RegistroVista, StatoProgressivoIniziale } from './registro.service'
 import { ToastService } from '../../core/services/toast.service'
 import { ExportService } from '../../core/services/export.service'
@@ -49,6 +50,10 @@ describe('RegistroComponent — sede del registro', () => {
         DatePipe,
         { provide: RegistroService, useValue: servizio },
         { provide: ToastService, useValue: toast },
+        {
+          provide: CausaliRegistroService,
+          useValue: { opzioni: () => of([]), invalida: () => {} },
+        },
         { provide: ExportService, useValue: exportSvc },
         { provide: AuthService, useValue: { currentUser: () => null } },
         { provide: AdminTenantContextService, useValue: { selectedTenantName: () => 'Azienda' } },

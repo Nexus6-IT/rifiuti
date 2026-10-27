@@ -1,7 +1,7 @@
 import { cerCanonico } from '../../domain/waste-movement/cer-registro'
 
 /** Lettore minimo del catalogo CER (basta `count`/`findMany` di `cERCode`). */
-interface LettoreCatalogoCer {
+export interface LettoreCatalogoCer {
   cERCode: {
     count(args: { where: { code: { in: string[] } } }): Promise<number>
     findMany(args: {

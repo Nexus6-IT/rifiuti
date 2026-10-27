@@ -1,12 +1,6 @@
 import { UNITA_GIACENZA } from './giacenze-iniziali-dialog.component'
-import {
-  CAUSALE_LABELS,
-  CAUSALI_CARICO,
-  CAUSALI_SCARICO,
-  CausaleMovimento,
-  STATI_FISICI,
-  TipoMovimento,
-} from './registro.service'
+import type { OpzioneCausaleApi } from './causali-registro.service'
+import { STATI_FISICI } from './registro.service'
 
 /**
  * Opzioni e conversioni del form di un movimento, condivise fra la registrazione
@@ -19,11 +13,34 @@ export interface OpzioneRegistro<T = string> {
   value: T
 }
 
-/** Causali valide per il tipo di movimento, con le etichette leggibili. */
-export function opzioniCausali(tipo: TipoMovimento): OpzioneRegistro<CausaleMovimento>[] {
-  const causali = tipo === 'CARICO' ? CAUSALI_CARICO : CAUSALI_SCARICO
-  return causali.map(c => ({ label: CAUSALE_LABELS[c], value: c }))
+/**
+ * Opzioni del dropdown delle causali dalle righe dell'API (già filtrate per tipo e data dal
+ * backend). Una causale `corrente` assente dalle righe (disattivata, o di una versione non più
+ * valida a quella data) resta selezionabile, con etichetta `descrizione ?? codice`: come
+ * l'unità storica in `opzioniUnita`.
+ */
+export function opzioniCausali(
+  righe: readonly Pick<OpzioneCausaleApi, 'codice' | 'descrizione'>[],
+  corrente?: { codice: string; descrizione?: string | null } | null
+): OpzioneRegistro[] {
+  const lista = righe.map(r => ({ label: r.descrizione, value: r.codice }))
+  if (corrente?.codice && !lista.some(o => o.value === corrente.codice)) {
+    lista.push({ label: corrente.descrizione || corrente.codice, value: corrente.codice })
+  }
+  return lista
 }
+
+/** True se `codice` è fra le causali selezionabili. */
+export function causaleSelezionabile(
+  righe: readonly Pick<OpzioneCausaleApi, 'codice'>[],
+  codice: string | null | undefined
+): boolean {
+  return !!codice && righe.some(r => r.codice === codice)
+}
+
+/** Messaggio sotto il campo quando un cambio di data rende non più valida la causale scelta. */
+export const MESSAGGIO_CAUSALE_NON_VALIDA =
+  'La causale scelta non è disponibile alla data indicata: scegline un’altra.'
 
 export const OPZIONI_STATO_FISICO: OpzioneRegistro[] = STATI_FISICI.map(s => ({
   label: s,

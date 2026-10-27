@@ -1,4 +1,9 @@
 import { createHash } from 'crypto'
+import { giornoItaliano } from '../../../core/time/anno-italiano'
+import type {
+  CatalogoCausali,
+  DefinizioneCausale,
+} from '../../../domain/waste-movement/catalogo-causali'
 import type {
   MudAutorizzazione,
   MudAzienda,
@@ -24,24 +29,39 @@ export function limitiAnnoMud(anno: number): { inizio: Date; fine: Date } {
 
 export type RuoloMovimento = 'PRODOTTO' | 'AVVIATO' | 'RICEVUTO_DA_TERZI' | 'ESCLUSO'
 
-// Mappa della decisione 4. Le costanti CAUSALI_CARICO/CAUSALI_SCARICO di
-// waste-movement.entity.ts sono solo di riferimento: una causale non elencata è ESCLUSA.
-const RUOLO_CARICO: Record<string, RuoloMovimento> = {
-  PRODUZIONE_INTERNA: 'PRODOTTO',
-  RECUPERO_PARZIALE: 'PRODOTTO',
-  INGRESSO_ESTERNO: 'RICEVUTO_DA_TERZI',
+/** Quanto serve di un movimento per classificarlo: verso, causale, versione aziendale e data. */
+export interface MovimentoClassificabile {
+  type: string
+  causale: string
+  causaleAziendaId: string | null
+  movementDate: Date
 }
 
-const RUOLO_SCARICO: Record<string, RuoloMovimento> = {
-  CONFERIMENTO_TRASPORTATORE: 'AVVIATO',
-  AVVIO_RECUPERO: 'AVVIATO',
-  AVVIO_SMALTIMENTO: 'AVVIATO',
-  CESSIONE: 'AVVIATO',
+function comportamentoDelMovimento(
+  catalogo: CatalogoCausali,
+  m: MovimentoClassificabile
+): DefinizioneCausale | null {
+  // Il verso arriva dal database (CHECK su CARICO/SCARICO): qualunque altro valore non ha
+  // causali e finisce escluso.
+  if (m.type !== 'CARICO' && m.type !== 'SCARICO') return null
+  return catalogo.comportamento(
+    m.type,
+    m.causale,
+    giornoItaliano(m.movementDate),
+    m.causaleAziendaId
+  )
 }
 
-export function classificaMovimento(type: 'CARICO' | 'SCARICO', causale: string): RuoloMovimento {
-  const mappa = type === 'CARICO' ? RUOLO_CARICO : RUOLO_SCARICO
-  return Object.prototype.hasOwnProperty.call(mappa, causale) ? mappa[causale] : 'ESCLUSO'
+/**
+ * Ruolo del movimento nel MUD dal catalogo delle causali (decisione 4, ora dati): conta la
+ * versione della causale che il movimento porta (`causaleAziendaId`), anche se oggi è chiusa o
+ * disattivata. Una causale sconosciuta per quel verso è ESCLUSA.
+ */
+export function classificaMovimento(
+  catalogo: CatalogoCausali,
+  m: MovimentoClassificabile
+): RuoloMovimento {
+  return comportamentoDelMovimento(catalogo, m)?.ruoloMud ?? 'ESCLUSO'
 }
 
 /** 'R' o 'D' dalla prima lettera di un codice operazione (R13, D15...), altrimenti undefined. */
@@ -50,10 +70,12 @@ export function operazioneDaCodice(codice: string | null | undefined): 'R' | 'D'
   return lettera === 'R' || lettera === 'D' ? lettera : undefined
 }
 
-export function operazioneDaCausale(causale: string): 'R' | 'D' | undefined {
-  if (causale === 'AVVIO_RECUPERO') return 'R'
-  if (causale === 'AVVIO_SMALTIMENTO') return 'D'
-  return undefined
+/** 'R' o 'D' indicata dalla causale del movimento nel catalogo, altrimenti undefined. */
+export function operazioneDaCatalogo(
+  catalogo: CatalogoCausali,
+  m: MovimentoClassificabile
+): 'R' | 'D' | undefined {
+  return comportamentoDelMovimento(catalogo, m)?.operazione ?? undefined
 }
 
 /** Valore del registro non vuoto che non corrisponde a nessun flag del tracciato. */

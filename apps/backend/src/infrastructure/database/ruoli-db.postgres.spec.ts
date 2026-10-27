@@ -206,6 +206,51 @@ describe('Ruoli database (Postgres reale)', () => {
     expect(r).toEqual({ rolbypassrls: true, rolsuper: false })
   })
 
+  /** Privilegi su una tabella per un ruolo (tutti e cinque, anche TRUNCATE che information_schema non mostra). */
+  const privilegi = async (ruolo: string, tabella: string) => {
+    const r: Record<string, boolean> = {}
+    for (const p of ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+      const [x] = await owner.$queryRawUnsafe<{ ok: boolean }[]>(
+        `SELECT has_table_privilege('${ruolo}', 'public.${tabella}', '${p}') AS ok`
+      )
+      r[p] = x.ok
+    }
+    return r
+  }
+  const SOLA_LETTURA = {
+    SELECT: true,
+    INSERT: false,
+    UPDATE: false,
+    DELETE: false,
+    TRUNCATE: false,
+  }
+  const CRUD = { SELECT: true, INSERT: true, UPDATE: true, DELETE: true, TRUNCATE: false }
+
+  it('causali_registro (catalogo globale): i due ruoli leggono, INSERT/UPDATE/DELETE/TRUNCATE danno 42501; le altre tabelle restano CRUD', async () => {
+    for (const [ruolo, pwd] of [
+      ['wasteflow_app', PWD_APP_1],
+      ['wasteflow_sistema', PWD_SIS_1],
+    ]) {
+      const c = comeRuolo(ruolo, pwd)
+      const righe = await c.$queryRawUnsafe<{ n: number }[]>(
+        `SELECT count(*)::int AS n FROM causali_registro`
+      )
+      expect(righe[0].n).toBeGreaterThan(0)
+      for (const sql of [
+        `INSERT INTO causali_registro (codice, verso, descrizione, ruolo_mud, ordine) VALUES ('PROVA_RUOLI', 'CARICO', 'x', 'ESCLUSO', 1)`,
+        `UPDATE causali_registro SET attiva = false`,
+        `DELETE FROM causali_registro`,
+        `TRUNCATE causali_registro`,
+      ]) {
+        await expect(c.$executeRawUnsafe(sql)).rejects.toThrow(/42501|permission denied/i)
+      }
+      expect(await privilegi(ruolo, 'causali_registro')).toEqual(SOLA_LETTURA)
+      // Le altre tabelle di dominio restano CRUD (mai TRUNCATE).
+      expect(await privilegi(ruolo, 'waste_movements')).toEqual(CRUD)
+      expect(await privilegi(ruolo, 'causali_registro_azienda')).toEqual(CRUD)
+    }
+  })
+
   it("tabella creata dall'owner dopo lo script: accessibile ai due ruoli", async () => {
     await owner.$executeRawUnsafe(`CREATE TABLE ${T_FUTURA} (id serial PRIMARY KEY, v text)`)
     for (const [ruolo, pwd] of [
@@ -238,6 +283,29 @@ describe('Ruoli database (Postgres reale)', () => {
     }
     // I GRANT restano identici dopo la seconda esecuzione.
     await crud(comeRuolo('wasteflow_app', PWD_APP_2), T_ESISTENTE)
+    // Anche la sola lettura del catalogo: lo script rieseguito la ripristina, non la perde.
+    for (const ruolo of ['wasteflow_app', 'wasteflow_sistema']) {
+      expect(await privilegi(ruolo, 'causali_registro')).toEqual(SOLA_LETTURA)
+      expect(await privilegi(ruolo, 'waste_movements')).toEqual(CRUD)
+    }
+  })
+
+  it('causali_registro: se i privilegi di scrittura tornano (GRANT manuale), lo script li toglie di nuovo', async () => {
+    try {
+      await owner.$executeRawUnsafe(
+        `GRANT INSERT, UPDATE, DELETE ON TABLE causali_registro TO wasteflow_app, wasteflow_sistema`
+      )
+      expect((await privilegi('wasteflow_app', 'causali_registro')).INSERT).toBe(true)
+      await eseguiScript(owner, PWD_APP_2, PWD_SIS_2)
+    } finally {
+      // Qualunque cosa succeda, il catalogo non resta scrivibile dai ruoli applicativi.
+      await owner.$executeRawUnsafe(
+        `REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE causali_registro FROM wasteflow_app, wasteflow_sistema`
+      )
+    }
+    for (const ruolo of ['wasteflow_app', 'wasteflow_sistema']) {
+      expect(await privilegi(ruolo, 'causali_registro')).toEqual(SOLA_LETTURA)
+    }
   })
 
   it('senza _prisma_migrations lo script fallisce (da eseguire dopo migrate deploy)', async () => {
