@@ -16,11 +16,13 @@ import type { MudAllegatoDR, MudAllegatoTE, MudRifiutoLine } from '../export/mud
 import {
   classificaMovimento,
   limitiAnnoMud,
-  operazioneDaCausale,
+  operazioneDaCatalogo,
   operazioneDaCodice,
   statoFisicoMud,
   type StatoFisicoRegistro,
 } from './mud-regole'
+import { caricaCatalogoCausali } from '../../registro/causali/catalogo-causali.repository'
+import type { CatalogoCausali } from '../../../domain/waste-movement/catalogo-causali'
 import { etichetteRegistri } from './mud-registri'
 import { controlliMud, type MudEsitoControllo, type RifMovimento } from './mud-controlli'
 import {
@@ -59,6 +61,7 @@ interface Movimento {
   progressiveYear: number
   type: string
   causale: string
+  causaleAziendaId: string | null
   cerCode: string
   quantity: Prisma.Decimal | number | string
   unit: string | null
@@ -149,6 +152,7 @@ const SELECT_MOVIMENTO = {
   progressiveYear: true,
   type: true,
   causale: true,
+  causaleAziendaId: true,
   cerCode: true,
   quantity: true,
   unit: true,
@@ -189,6 +193,9 @@ export class MudAggregazioneService {
 
   async aggrega(tenantId: string, anno: number): Promise<MudAggregato> {
     const { inizio, fine } = limitiAnnoMud(anno)
+    // Una lettura sola del catalogo per aggregazione; ogni movimento conta con la versione
+    // della causale che porta (`causaleAziendaId`), non con quella di oggi.
+    const catalogo = await caricaCatalogoCausali(this.prisma, tenantId)
 
     // Il servizio usa il client Prisma senza estensione RLS: ogni query porta il tenantId.
     const movimenti: Movimento[] = await this.prisma.wasteMovement.findMany({
@@ -327,7 +334,7 @@ export class MudAggregazioneService {
     // doppio si confronta con i movimenti già contati del gruppo, mai con quelli scartati.
     const gruppoDoppi = (m: Movimento): string | undefined => {
       if (!m.firId) return undefined
-      const ruolo = classificaMovimento(m.type as 'CARICO' | 'SCARICO', m.causale)
+      const ruolo = classificaMovimento(catalogo, m)
       if (ruolo !== 'PRODOTTO' && ruolo !== 'AVVIATO') return undefined
       return `${m.firId}|${m.type}|${m.ricopiaChiave ?? ''}|${ruolo}`
     }
@@ -402,7 +409,7 @@ export class MudAggregazioneService {
       const r = rif(m)
 
       // 1. Classificazione
-      const ruolo = classificaMovimento(m.type as 'CARICO' | 'SCARICO', m.causale)
+      const ruolo = classificaMovimento(catalogo, m)
       if (ruolo === 'ESCLUSO') {
         controlli.push(controlliMud.causaleEsclusa(r))
         continue
@@ -475,7 +482,7 @@ export class MudAggregazioneService {
       if (!m.firId) controlli.push(controlliMud.scaricoSenzaFir(r))
       else avviatiPerFir.set(m.firId, [...(avviatiPerFir.get(m.firId) ?? []), m])
 
-      const operazione = this.recuperoOSmaltimento(m, r, fir, controlli)
+      const operazione = this.recuperoOSmaltimento(catalogo, m, r, fir, controlli)
       if (operazione === 'R') acc.recuperoKg += kg
       else acc.smaltimentoKg += kg
 
@@ -653,6 +660,7 @@ export class MudAggregazioneService {
 
   /** Recupero o smaltimento di uno scarico, nell'ordine della Decisione 5. */
   private recuperoOSmaltimento(
+    catalogo: CatalogoCausali,
     m: Movimento,
     r: RifMovimento,
     fir: FirCollegato | undefined,
@@ -660,7 +668,7 @@ export class MudAggregazioneService {
   ): 'R' | 'D' {
     const indicata =
       operazioneDaCodice(m.operationCode) ??
-      operazioneDaCausale(m.causale) ??
+      operazioneDaCatalogo(catalogo, m) ??
       (fir ? operazioneDaCodice(fir.wasteOperationCode) : undefined)
     if (indicata) return indicata
 

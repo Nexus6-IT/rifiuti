@@ -1,4 +1,5 @@
 import { MudAggregazioneService } from './mud-aggregazione.service'
+import { righeCausaliSistema } from '../../registro/causali/catalogo-causali.fixture'
 import { WHERE_VIGENTE } from '../../../domain/waste-movement/vigenza'
 import { hashAggregato, limitiAnnoMud } from './mud-regole'
 import { controlliMud, haBloccanti, type MudEsitoControllo } from './mud-controlli'
@@ -15,6 +16,7 @@ describe('MudAggregazioneService', () => {
     progressiveYear: 2025,
     type: 'CARICO',
     causale: 'PRODUZIONE_INTERNA',
+    causaleAziendaId: null,
     cerCode: '17 04 05',
     quantity: 100,
     unit: 'KG',
@@ -91,6 +93,8 @@ describe('MudAggregazioneService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         groupBy: jest.fn().mockResolvedValue([]),
       },
+      causaleRegistro: { findMany: jest.fn().mockResolvedValue(righeCausaliSistema()) },
+      causaleRegistroAzienda: { findMany: jest.fn().mockResolvedValue([]) },
       fIR: { findMany: jest.fn().mockResolvedValue([]) },
       destinatario: { findMany: jest.fn().mockResolvedValue([]) },
       trasportatore: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1867,5 +1871,127 @@ describe('MudAggregazioneService', () => {
 
     expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')).toHaveLength(2)
     expect(codici(r.controlli)).not.toContain('FIR_DOPPIO_IDENTICO')
+  })
+
+  // F2-5: il MUD legge il catalogo delle causali (di sistema e dell'azienda).
+  describe('causali aziendali dal catalogo', () => {
+    const versione = (p: Partial<any>) => ({
+      id: 'ver-1',
+      natura: 'PROPRIA',
+      codice: 'AZ_TEST',
+      verso: 'CARICO',
+      descrizione: 'Test',
+      ruoloMud: 'PRODOTTO',
+      codiceRentri: null,
+      operazione: null,
+      ordine: 100,
+      validaDal: new Date('2025-01-01T00:00:00Z'),
+      validaAl: null,
+      ...p,
+    })
+    const conVersioni = (...v: any[]) => prisma.causaleRegistroAzienda.findMany.mockResolvedValue(v)
+
+    it('legge il catalogo del tenant e seleziona causaleAziendaId', async () => {
+      impostaDati({ movimenti: [mov({})] })
+      await service.aggrega('t1', 2025)
+      expect(prisma.causaleRegistroAzienda.findMany).toHaveBeenCalledWith({
+        where: { tenantId: 't1' },
+      })
+      expect(prisma.wasteMovement.findMany.mock.calls[0][0].select).toMatchObject({
+        causaleAziendaId: true,
+      })
+    })
+
+    it('una causale aziendale PRODOTTO conta nel prodotto', async () => {
+      conVersioni(versione({}))
+      impostaDati({ movimenti: [mov({ causale: 'AZ_TEST', causaleAziendaId: 'ver-1' })] })
+      const r = await service.aggrega('t1', 2025)
+      expect(r.righe[0].prodottoKg).toBe(100)
+    })
+
+    it('una causale aziendale ESCLUSO produce CAUSALE_ESCLUSA', async () => {
+      conVersioni(versione({ ruoloMud: 'ESCLUSO' }))
+      impostaDati({ movimenti: [mov({ causale: 'AZ_TEST', causaleAziendaId: 'ver-1' })] })
+      const r = await service.aggrega('t1', 2025)
+      expect(r.righe).toEqual([])
+      expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')).toHaveLength(1)
+    })
+
+    it('una causale aziendale RICEVUTO_DA_TERZI finisce fra i ricevuti', async () => {
+      conVersioni(versione({ ruoloMud: 'RICEVUTO_DA_TERZI' }))
+      impostaDati({ movimenti: [mov({ causale: 'AZ_TEST', causaleAziendaId: 'ver-1' })] })
+      const r = await service.aggrega('t1', 2025)
+      expect(r.righe).toEqual([])
+      expect(conCodice(r.controlli, 'PROFILO_NON_SUPPORTATO')).toHaveLength(1)
+    })
+
+    it('una causale aziendale con operazione R sceglie recupero prima del FIR', async () => {
+      conVersioni(versione({ verso: 'SCARICO', ruoloMud: 'AVVIATO', operazione: 'R' }))
+      impostaDati({
+        movimenti: [scarico({ causale: 'AZ_TEST', causaleAziendaId: 'ver-1', firId: 'f1' })],
+        firCollegati: [fir({ wasteOperationType: 'DISPOSAL' })],
+      })
+      const r = await service.aggrega('t1', 2025)
+      expect(r.righe[0].recuperoKg).toBe(100)
+      expect(r.righe[0].smaltimentoKg).toBe(0)
+      expect(codici(r.controlli)).not.toContain('OPERAZIONE_DEDOTTA_DAL_FIR')
+    })
+
+    it('due versioni con ruoli diversi: ogni movimento conta con la propria, anche se chiusa', async () => {
+      conVersioni(
+        versione({
+          id: 'ver-1',
+          ruoloMud: 'PRODOTTO',
+          validaDal: new Date('2025-01-01T00:00:00Z'),
+          validaAl: new Date('2025-06-30T00:00:00Z'),
+        }),
+        versione({
+          id: 'ver-2',
+          ruoloMud: 'ESCLUSO',
+          validaDal: new Date('2025-07-01T00:00:00Z'),
+        })
+      )
+      impostaDati({
+        movimenti: [
+          mov({
+            progressiveNumber: 1,
+            causale: 'AZ_TEST',
+            causaleAziendaId: 'ver-1',
+            movementDate: new Date('2025-03-10T08:00:00Z'),
+          }),
+          mov({
+            progressiveNumber: 2,
+            causale: 'AZ_TEST',
+            causaleAziendaId: 'ver-2',
+            movementDate: new Date('2025-09-10T08:00:00Z'),
+          }),
+        ],
+      })
+      const r = await service.aggrega('t1', 2025)
+      expect(r.righe[0].prodottoKg).toBe(100)
+      expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')).toHaveLength(1)
+      expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')[0].movimenti![0].numero).toBe(2)
+    })
+
+    it('una causale di sistema disattivata conta ancora per i movimenti già registrati', async () => {
+      prisma.causaleRegistroAzienda.findMany.mockResolvedValue([
+        {
+          id: 'dis-1',
+          natura: 'DISATTIVAZIONE',
+          codice: 'PRODUZIONE_INTERNA',
+          verso: 'CARICO',
+          descrizione: null,
+          ruoloMud: null,
+          codiceRentri: null,
+          operazione: null,
+          ordine: 100,
+          validaDal: null,
+          validaAl: null,
+        },
+      ])
+      impostaDati({ movimenti: [mov({})] })
+      const r = await service.aggrega('t1', 2025)
+      expect(r.righe[0].prodottoKg).toBe(100)
+    })
   })
 })
