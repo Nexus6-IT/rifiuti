@@ -19,7 +19,7 @@ process.env.DATABASE_URL = urlComeRuolo(
   urlProprietario
 )
 
-import { ConflictException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import { TenantContext } from '../../core/context/tenant-context'
 import {
   PrismaService,
@@ -112,11 +112,6 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
     registri = new RegistriService(app, loggerStub as never)
     servizio = new GiacenzeInizialiService(app, registri)
     const [a] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`
-    for (const k of [2, 4, 8]) {
-      await Promise.all(
-        Array.from({ length: k }, () => app.$queryRaw`SELECT pg_sleep(0.05)::text AS s`)
-      )
-    }
     expect(a.u).toBe('wasteflow_app')
     const tenantUtente = await owner.tenant.create({
       data: {
@@ -366,10 +361,18 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
         type: 'CARICO',
         causale: 'PRODUZIONE_INTERNA',
       })
+      // PRODUZIONE_INTERNA sullo stesso CER: non e' un ALTRO_CARICO, non deve comparire
+      await movimentoDiretto(az.tenantId, az.registroId, {
+        type: 'CARICO',
+        cer: CER_STELLA,
+        causale: 'PRODUZIONE_INTERNA',
+      })
       const altro = await aziendaConRegistro()
       const { avvisi } = await crea(az.tenantId, dati({ cerCode: '99 99 05' }), az.registroId)
       expect(avvisi).toHaveLength(1)
       expect(avvisi[0]).toContain('contata due volte')
+      // solo il movimento 1 (ALTRO_CARICO su questo CER): 2 e' un altro CER, 3 e 4 sono produzione
+      expect(avvisi[0]).toContain('(movimenti: 1/2026)')
       // l'altra azienda non ne sa nulla
       expect((await crea(altro.tenantId, dati(), altro.registroId)).avvisi).toEqual([])
     })
@@ -399,10 +402,9 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
       await expect(crea(b.tenantId, dati(), a.registroId)).rejects.toBeInstanceOf(NotFoundException)
       expect(await owner.giacenzaIniziale.count({ where: { id: giacenza.id } })).toBe(1)
 
-      // ruolo applicativo: senza contesto non si vede nulla (fail-closed)
-      const senzaContesto = await app.giacenzaIniziale
-        .findMany({ where: { id: giacenza.id } })
-        .catch(() => [])
+      // ruolo applicativo fuori da TenantContext: la RLS non fa vedere nulla (fail-closed)
+      const senzaContesto =
+        await app.$queryRaw`SELECT id FROM giacenze_iniziali WHERE id = ${giacenza.id}::uuid`
       expect(senzaContesto).toEqual([])
     })
   })
@@ -415,10 +417,48 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
     )
   })
 
-  it("una apertura datata oggi e' ammessa, domani no", async () => {
+  it("una apertura datata oggi e' ammessa, domani no (giorno italiano)", async () => {
     const az = await aziendaConRegistro()
     await expect(
       crea(az.tenantId, dati({ dataRiferimento: OGGI }), az.registroId)
     ).resolves.toBeDefined()
+    const domani = new Date(`${OGGI}T00:00:00.000Z`)
+    domani.setUTCDate(domani.getUTCDate() + 1)
+    await expect(
+      crea(
+        az.tenantId,
+        dati({ unita: 'L', dataRiferimento: domani.toISOString().slice(0, 10) }),
+        az.registroId
+      )
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('il confronto con gli scarichi non dipende dal fuso della sessione', async () => {
+    const az = await aziendaConRegistro()
+    await movimentoDiretto(az.tenantId, az.registroId, {
+      type: 'SCARICO',
+      createdAt: new Date(Date.now() - 60_000),
+    })
+    const { giacenza } = await crea(az.tenantId, dati(), az.registroId)
+    const riga = (await owner.giacenzaIniziale.findUnique({ where: { id: giacenza.id } }))!
+    const fusi = ['UTC', 'Europe/Rome', 'Pacific/Auckland', 'America/Los_Angeles']
+    const usata = (fuso: string) =>
+      nelTenant(az.tenantId, () =>
+        app.$transaction(async tx => {
+          await tx.$executeRawUnsafe(`SET LOCAL TIME ZONE '${fuso}'`)
+          try {
+            await (servizio as any).controllaNonUsata(tx, az.tenantId, riga)
+            return false
+          } catch (e) {
+            if (e instanceof ConflictException) return true
+            throw e
+          }
+        })
+      )
+    // scarico precedente all'apertura: mai "usata", in qualunque fuso
+    for (const fuso of fusi) expect(await usata(fuso)).toBe(false)
+    await new Promise(r => setTimeout(r, 20))
+    await movimentoDiretto(az.tenantId, az.registroId, { type: 'SCARICO' })
+    for (const fuso of fusi) expect(await usata(fuso)).toBe(true)
   })
 })

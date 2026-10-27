@@ -296,7 +296,7 @@ export class GiacenzeInizialiService {
       let aggiornata: RigaGiacenza
       try {
         aggiornata = await tx.giacenzaIniziale.update({
-          where: { id },
+          where: { id_tenantId: { id, tenantId } },
           data: {
             statoFisico: valori.statoFisico,
             quantita: valori.quantita,
@@ -336,7 +336,7 @@ export class GiacenzeInizialiService {
 
       await this.controllaNonUsata(tx, tenantId, attuale)
 
-      await tx.giacenzaIniziale.delete({ where: { id } })
+      await tx.giacenzaIniziale.delete({ where: { id_tenantId: { id, tenantId } } })
       await this.audit(
         tx,
         tenantId,
@@ -501,12 +501,15 @@ export class GiacenzeInizialiService {
   private async controllaNonUsata(tx: Client, tenantId: string, riga: RigaGiacenza): Promise<void> {
     const righe = await tx.$queryRaw<Array<{ trovato: number }>>`
       SELECT 1 AS trovato
-      FROM waste_movements
-      WHERE tenant_id = ${tenantId}::uuid
-        AND registro_id = ${riga.registroId}::uuid
-        AND type = 'SCARICO'
-        AND regexp_replace(cer_code, '[^0-9]', '', 'g') = ${cerSoloCifre(riga.cerCode)}
-        AND created_at >= ${riga.createdAt}
+      FROM waste_movements wm
+      WHERE wm.tenant_id = ${tenantId}::uuid
+        AND wm.registro_id = ${riga.registroId}::uuid
+        AND wm.type = 'SCARICO'
+        AND regexp_replace(wm.cer_code, '[^0-9]', '', 'g') = ${cerSoloCifre(riga.cerCode)}
+        AND wm.created_at >= (
+          SELECT gi.created_at FROM giacenze_iniziali gi
+          WHERE gi.id = ${riga.id}::uuid AND gi.tenant_id = ${tenantId}::uuid
+        )
       LIMIT 1`
     if (righe.length > 0) throw new ConflictException(MSG_USATA)
   }

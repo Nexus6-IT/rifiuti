@@ -386,7 +386,9 @@ describe('GiacenzeInizialiService (rami di validazione e sequenza)', () => {
     it('non usata: lock, cancellazione e audit', async () => {
       await service.elimina(TENANT, USER, ID)
       expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
-      expect(tx.giacenzaIniziale.delete).toHaveBeenCalledWith({ where: { id: ID } })
+      expect(tx.giacenzaIniziale.delete).toHaveBeenCalledWith({
+        where: { id_tenantId: { id: ID, tenantId: TENANT } },
+      })
       expect(tx.activityLog.create.mock.calls[0][0].data.action).toBe(
         'REGISTRO_GIACENZA_INIZIALE_ELIMINATA'
       )
