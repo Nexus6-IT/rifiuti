@@ -14,6 +14,7 @@ import {
 } from '../../core/domain/errors'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-http-resilienza'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 
 const user: CurrentUserPayload = {
@@ -400,6 +401,7 @@ describe('RentriFormulariController — autorizzazione (verifica empirica)', () 
         { provide: RilasciaFormularioRENTRIUseCase, useValue: rilasciaUseCase },
         { provide: RentriUnitaLocaleService, useValue: unitaLocaleService },
         { provide: LoggerService, useValue: logger },
+        { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

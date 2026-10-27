@@ -4,6 +4,7 @@ import request from 'supertest'
 import { RentriModalitaLegameController } from './rentri-modalita-legame.controller'
 import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-modalita-legame.service'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 
 const user: CurrentUserPayload = {
@@ -94,7 +95,10 @@ describe('RentriModalitaLegameController — autorizzazione (verifica empirica)'
 
     const moduleRef = await Test.createTestingModule({
       controllers: [RentriModalitaLegameController],
-      providers: [{ provide: RentriModalitaLegameService, useValue: service }],
+      providers: [
+        { provide: RentriModalitaLegameService, useValue: service },
+        { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
