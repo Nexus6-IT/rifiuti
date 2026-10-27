@@ -157,8 +157,12 @@ describe('lettori dei movimenti', () => {
       expect(leggeMovimenti('await this.prisma.wasteMovement.findMany({})')).toBe(true)
       expect(leggeMovimenti('tx.$queryRaw`SELECT 1 FROM waste_movements`')).toBe(true)
       expect(leggeMovimenti('tenant.wasteMovements')).toBe(true)
-      expect(leggeMovimenti('prisma.registroRifiuti.findMany({ include: { movimenti: true } })')).toBe(true)
-      expect(leggeMovimenti('registro.findMany({ select: { movimenti: { select: { id: true } } } })')).toBe(true)
+      expect(
+        leggeMovimenti('prisma.registroRifiuti.findMany({ include: { movimenti: true } })')
+      ).toBe(true)
+      expect(
+        leggeMovimenti('registro.findMany({ select: { movimenti: { select: { id: true } } } })')
+      ).toBe(true)
       // un campo "movimenti" di un oggetto qualunque (array, non relazione) non e' una lettura
       expect(leggeMovimenti('const out = { movimenti: [1, 2] }')).toBe(false)
     })
