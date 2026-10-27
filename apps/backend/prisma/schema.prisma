@@ -121,7 +121,7 @@ model Tenant {
   registroProgressiviIniziali RegistroProgressivoIniziale[]
   registriRifiuti       RegistroRifiuti[]
   giacenzeIniziali      GiacenzaIniziale[]
-  causaliRegistro       CausaleRegistroAzienda[]
+  causaliRegistroAzienda CausaleRegistroAzienda[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
 

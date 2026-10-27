@@ -291,11 +291,18 @@ describe('Ruoli database (Postgres reale)', () => {
   })
 
   it('causali_registro: se i privilegi di scrittura tornano (GRANT manuale), lo script li toglie di nuovo', async () => {
-    await owner.$executeRawUnsafe(
-      `GRANT INSERT, UPDATE, DELETE ON TABLE causali_registro TO wasteflow_app, wasteflow_sistema`
-    )
-    expect((await privilegi('wasteflow_app', 'causali_registro')).INSERT).toBe(true)
-    await eseguiScript(owner, PWD_APP_2, PWD_SIS_2)
+    try {
+      await owner.$executeRawUnsafe(
+        `GRANT INSERT, UPDATE, DELETE ON TABLE causali_registro TO wasteflow_app, wasteflow_sistema`
+      )
+      expect((await privilegi('wasteflow_app', 'causali_registro')).INSERT).toBe(true)
+      await eseguiScript(owner, PWD_APP_2, PWD_SIS_2)
+    } finally {
+      // Qualunque cosa succeda, il catalogo non resta scrivibile dai ruoli applicativi.
+      await owner.$executeRawUnsafe(
+        `REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE causali_registro FROM wasteflow_app, wasteflow_sistema`
+      )
+    }
     for (const ruolo of ['wasteflow_app', 'wasteflow_sistema']) {
       expect(await privilegi(ruolo, 'causali_registro')).toEqual(SOLA_LETTURA)
     }

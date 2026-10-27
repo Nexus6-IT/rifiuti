@@ -168,9 +168,21 @@ describe('Causali del registro, schema (Postgres reale)', () => {
       ++numeroMovimento
     )
 
-  /** La transazione del proprietario deve essere respinta dal database con un errore che combacia. */
-  const respinta = (fn: (tx: Tx) => Promise<unknown>, atteso: RegExp) =>
-    expect(owner.$transaction(async tx => void (await fn(tx)))).rejects.toThrow(atteso)
+  /**
+   * La transazione del proprietario deve essere respinta dal database con un errore che combacia.
+   * Dopo `fn` lancia comunque una sentinella: se il vincolo sparisse, `fn` riuscirebbe, l'errore
+   * sarebbe la sentinella (il test fallisce) e nulla resterebbe scritto, catalogo compreso.
+   */
+  const respinta = async (fn: (tx: Tx) => Promise<unknown>, atteso: RegExp) => {
+    const errore = await owner
+      .$transaction(async tx => {
+        await fn(tx)
+        throw SENTINELLA
+      })
+      .catch(e => e as Error)
+    expect(errore).not.toBe(SENTINELLA)
+    expect(String((errore as Error).message)).toMatch(atteso)
+  }
 
   /** Esegue e poi annulla: nulla resta nel database. */
   async function conRollback(fn: (tx: Tx) => Promise<void>) {
@@ -344,6 +356,25 @@ describe('Causali del registro, schema (Postgres reale)', () => {
       // RICLASSIFICAZIONE esiste in entrambi i versi: la chiave è (codice, verso).
       await disattivazione(owner, a.tenantId, 'RICLASSIFICAZIONE', 'CARICO')
       await disattivazione(owner, a.tenantId, 'RICLASSIFICAZIONE', 'SCARICO')
+    })
+
+    it('una disattivazione senza codice di sistema è respinta (non può diventare bersaglio della chiave esterna dei movimenti)', async () => {
+      const a = await azienda()
+      await respinta(
+        tx =>
+          tx.$executeRawUnsafe(
+            `INSERT INTO causali_registro_azienda (tenant_id, natura, codice, verso, causale_sistema_codice, creato_da, updated_at)
+             VALUES ($1::uuid, 'DISATTIVAZIONE', 'AZ_FINTA', 'SCARICO', NULL, $2::uuid, now())`,
+            a.tenantId,
+            randomUUID()
+          ),
+        /causali_registro_azienda_natura_disattivazione/
+      )
+      // Codice con formato non valido, per qualunque natura.
+      await respinta(
+        tx => disattivazione(tx, a.tenantId, 'minuscolo', 'SCARICO'),
+        /causali_registro_azienda_codice_formato|causali_registro_azienda_sistema_fkey/
+      )
     })
 
     it('una causale di sistema con riferimento non cancellabile finché è disattivata: il catalogo non si tocca (RESTRICT)', async () => {
@@ -541,26 +572,6 @@ describe('Causali del registro, schema (Postgres reale)', () => {
       const [r] = await owner.$queryRawUnsafe<{ n: number }[]>(
         `SELECT count(*)::int AS n FROM causali_registro_azienda WHERE tenant_id = $1::uuid`,
         a.tenantId
-      )
-      expect(r.n).toBe(0)
-    })
-
-    it("DELETE dell'azienda: causali e movimenti vanno via con il tenant (cascade)", async () => {
-      const t = await azienda()
-      const id = await propria(owner, t.tenantId)
-      await movimento(owner, t, { type: 'SCARICO', causale: 'AZ_PROVA', causaleAziendaId: id })
-      await owner.$executeRawUnsafe(
-        `DELETE FROM waste_movements WHERE tenant_id = $1::uuid`,
-        t.tenantId
-      )
-      await owner.$executeRawUnsafe(
-        `DELETE FROM registri_rifiuti WHERE tenant_id = $1::uuid`,
-        t.tenantId
-      )
-      await owner.$executeRawUnsafe(`DELETE FROM tenants WHERE id = $1::uuid`, t.tenantId)
-      const [r] = await owner.$queryRawUnsafe<{ n: number }[]>(
-        `SELECT count(*)::int AS n FROM causali_registro_azienda WHERE tenant_id = $1::uuid`,
-        t.tenantId
       )
       expect(r.n).toBe(0)
     })
