@@ -147,6 +147,9 @@ describe('Firma QES: lock della riga e versione (Postgres reale, ruolo wasteflow
 
   it('firma riuscita: una riga in fir_signatures, versione +1 anche sull aggregate', async () => {
     const id = await firSalvato()
+    // updated_at parte da una data lontana: l'orologio di Node (che l'ha scritto alla creazione) e
+    // quello del database possono differire di pochi ms e un confronto fra i due sarebbe instabile.
+    await owner.$executeRaw`UPDATE firs SET updated_at = '2020-01-01 00:00:00' WHERE id = ${id}::uuid`
     const rigaPrima = await riga(id)
     const prima = rigaPrima.versione
     const fir = await carica(id)
