@@ -391,6 +391,31 @@ describe('RegistriService', () => {
     })
   })
 
+  describe('risolviInLettura: registro disattivato', () => {
+    it('con registroId esplicito accetta un registro disattivato dell azienda, non quello di un altra', async () => {
+      const { service } = creaFinto(
+        [sede('A', { principale: true })],
+        [
+          registro('RA', 'A'),
+          registro('RV', null, { attivo: false }),
+          registro('RALTRO', null, { tenantId: 'altro-tenant', attivo: false }),
+        ]
+      )
+      expect((await service.risolviInLettura(T, 'RV')).id).toBe('RV')
+      await expect(service.risolviInLettura(T, 'RALTRO')).rejects.toMatchObject({
+        name: 'RegistroNonTrovatoError',
+      })
+    })
+
+    it('senza registroId ignora i registri disattivati', async () => {
+      const { service } = creaFinto(
+        [],
+        [registro('R0', null), registro('RV', null, { attivo: false })]
+      )
+      expect((await service.risolviInLettura(T)).id).toBe('R0')
+    })
+  })
+
   describe('sede principale disattivata', () => {
     it('risolvi e risolviPerFir ignorano la principale non attiva (vista.principale = principale E attiva)', async () => {
       const { service, client } = creaFinto(

@@ -527,7 +527,10 @@ describe('CorreggiMovimentoUseCase - Postgres reale, ruolo wasteflow_app', () =>
       try {
         const e = await eccezione(annulla(az, c.id))
         expect(e).toBeInstanceOf(ConflictException)
-        expect(e.message).toContain('già stato rettificato o annullato')
+        expect(e.message).toContain(
+          'Il movimento è già stato rettificato o annullato: la correzione si applica'
+        )
+        expect(e.message).not.toContain('non è più vigente')
       } finally {
         spia.mockRestore()
       }

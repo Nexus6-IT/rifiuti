@@ -553,8 +553,8 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
       expect(registri.risolviInLettura).toHaveBeenCalledWith(CLIENTE, undefined)
     })
 
-    it('verifica-catena: OPERATOR e CONSULTANT ricevono 403 e nessuna lettura', async () => {
-      for (const ruolo of ['OPERATOR', 'CONSULTANT']) {
+    it('verifica-catena: OPERATOR, VIEWER e CONSULTANT ricevono 403 e nessuna lettura', async () => {
+      for (const ruolo of ['OPERATOR', 'VIEWER', 'CONSULTANT']) {
         await aperto(ruolo)
         const risposta = await http()
           .get('/registro/verifica-catena?anno=2026')

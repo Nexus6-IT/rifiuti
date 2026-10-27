@@ -227,7 +227,7 @@ export class RegistroController {
       'confermaAnnoPresentato=true.',
   })
   @ApiResponse({ status: 201, description: '{ movimento, avvisi[] }' })
-  @ApiResponse({ status: 400, description: 'Dati non validi, giacenza insufficiente, motivo' })
+  @ApiResponse({ status: 400, description: 'Dati non validi o motivo non valido' })
   @ApiResponse({
     status: 403,
     description: "Ruolo di sola consultazione nell'azienda selezionata",
@@ -236,7 +236,7 @@ export class RegistroController {
   @ApiResponse({
     status: 409,
     description:
-      'Movimento già corretto (non è la testa vigente), oppure MUD già presentato ' +
+      'Movimento già corretto (non è la testa vigente), giacenza che diventerebbe negativa, oppure MUD già presentato ' +
       '(error=REGISTRO_ANNO_MUD_PRESENTATO) senza conferma',
   })
   async rettifica(
@@ -269,7 +269,7 @@ export class RegistroController {
   @ApiResponse({ status: 201, description: '{ movimento, avvisi[] }' })
   @ApiResponse({
     status: 400,
-    description: 'Motivo non valido o giacenza che diventerebbe negativa',
+    description: 'Motivo non valido',
   })
   @ApiResponse({
     status: 403,
@@ -279,7 +279,7 @@ export class RegistroController {
   @ApiResponse({
     status: 409,
     description:
-      'Movimento già corretto, oppure MUD già presentato (error=REGISTRO_ANNO_MUD_PRESENTATO) senza conferma',
+      'Movimento già corretto, giacenza che diventerebbe negativa, oppure MUD già presentato (error=REGISTRO_ANNO_MUD_PRESENTATO) senza conferma',
   })
   async annulla(
     @Param('id', ParseUUIDPipe) id: string,
