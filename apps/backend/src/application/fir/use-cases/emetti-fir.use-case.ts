@@ -37,6 +37,7 @@ import {
   DomainError,
   FirAnnullatoNelFrattempoError,
   FirModificatoNelFrattempoError,
+  FirNonModificabileError,
 } from '../../../core/domain/errors'
 
 export class EmettiFIRUseCase {
@@ -82,7 +83,8 @@ export class EmettiFIRUseCase {
       // risposta del filtro globale).
       if (
         error instanceof FirModificatoNelFrattempoError ||
-        error instanceof FirAnnullatoNelFrattempoError
+        error instanceof FirAnnullatoNelFrattempoError ||
+        error instanceof FirNonModificabileError
       ) {
         throw error
       }

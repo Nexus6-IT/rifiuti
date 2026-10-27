@@ -25,6 +25,7 @@ import { annoSolareItaliano } from '../../../core/time/anno-italiano'
 import {
   FirAnnullatoNelFrattempoError,
   FirModificatoNelFrattempoError,
+  FirNonModificabileError,
   FirNonPiuInBozzaError,
 } from '../../../core/domain/errors'
 
@@ -537,6 +538,11 @@ describe('EmettiFIRUseCase', () => {
         await expect(
           useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
         ).rejects.toBe(annullato)
+        const nonModificabile = new FirNonModificabileError('NON_BOZZA')
+        spy.mockRejectedValueOnce(nonModificabile)
+        await expect(
+          useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        ).rejects.toBe(nonModificabile)
         expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
       })
 

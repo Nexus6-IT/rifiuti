@@ -32,6 +32,7 @@ import { RENTRISyncStatus } from '../../domain/fir/rentri-sync-status.vo'
 import {
   FirAnnullatoNelFrattempoError,
   FirModificatoNelFrattempoError,
+  FirNonTrovatoError,
   FormularioGiaAgganciatoError,
   FirmaSenzaUtenteError,
   FirNonPiuInBozzaError,
@@ -334,7 +335,9 @@ export class FIRPrismaRepository implements IFIRRepository {
    * numero assegnato) ma senza firma.
    */
   async save(fir: FIR, opzioni?: OpzioniSalvataggioFir): Promise<void> {
-    await this.prisma.$transaction(tx => this.salvaCon(tx, fir, opzioni))
+    const nuovaVersione = await this.prisma.$transaction(tx => this.salvaCon(tx, fir, opzioni))
+    // L'aggregate si allinea solo a commit avvenuto: una transaction annullata non deve lasciarlo avanti.
+    fir.registraVersioneSalvata(nuovaVersione)
   }
 
   /**
@@ -345,7 +348,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     client: Prisma.TransactionClient,
     fir: FIR,
     opzioni?: OpzioniSalvataggioFir
-  ): Promise<void> {
+  ): Promise<number> {
     // Il controllo sulle firme precede ogni scrittura: un FIR con una firma
     // senza utente non deve nemmeno arrivare all'upsert.
     this.verificaFirmeScrivibili(fir)
@@ -360,6 +363,10 @@ export class FIRPrismaRepository implements IFIRRepository {
     // Lock ottimistico: la riga e' bloccata dalla SELECT, quindi il confronto precede ogni scrittura.
     if (riga && opzioni?.verificaVersione && riga.versione !== fir.versione) {
       throw new FirModificatoNelFrattempoError(fir.id)
+    }
+    // Un FIR gia letto (versione >= 1) la cui riga e sparita non si ricrea con l'upsert.
+    if (!riga && opzioni?.verificaVersione && fir.versione >= 1) {
+      throw new FirNonTrovatoError()
     }
     const nuovaVersione = riga ? riga.versione + 1 : 1
     scalars.versione = nuovaVersione
@@ -390,7 +397,7 @@ export class FIRPrismaRepository implements IFIRRepository {
     }
 
     await this.persistSignatures(client, fir, tenantId)
-    fir.registraVersioneSalvata(nuovaVersione)
+    return nuovaVersione
   }
 
   /**
@@ -664,7 +671,8 @@ export class FIRPrismaRepository implements IFIRRepository {
   ): Promise<string> {
     // Stesso tenant che salvaCon scrive (toPersistence): fallback a produttoreId per i FIR legacy.
     const tenantId = fir.tenantId || fir.produttoreId
-    return this.prisma.$transaction(
+    let nuovaVersione = 0
+    const numeroEmesso = await this.prisma.$transaction(
       async tx => {
         const chiave = `fir-numero|${tenantId}|${anno}`
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiave}))`
@@ -691,12 +699,14 @@ export class FIRPrismaRepository implements IFIRRepository {
         // Un'eccezione del dominio qui annulla l'intera transaction.
         applicaEmissione(numero)
         // Il FOR UPDATE sopra tiene la riga: la versione letta dall'aggregate deve essere ancora quella.
-        await this.salvaCon(tx, fir, { verificaVersione: true })
+        nuovaVersione = await this.salvaCon(tx, fir, { verificaVersione: true })
         return numero
       },
       // Lock, verifica, massimo, upsert e firme: più round trip del default di 5 s.
       { timeout: 15000 }
     )
+    fir.registraVersioneSalvata(nuovaVersione)
+    return numeroEmesso
   }
 
   async count(filters?: FIRSearchFilters): Promise<number> {

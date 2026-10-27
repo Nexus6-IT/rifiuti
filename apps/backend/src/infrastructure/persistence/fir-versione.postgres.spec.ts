@@ -29,7 +29,7 @@ import { PrismaService, creaPrismaServiceApplicativo } from './prisma.service'
 import { PrismaSistemaService } from './prisma-sistema.service'
 import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
-import { FirModificatoNelFrattempoError } from '../../core/domain/errors'
+import { FirModificatoNelFrattempoError, FirNonTrovatoError } from '../../core/domain/errors'
 
 describe('FIR: versione e scritture condizionate (Postgres reale, ruolo wasteflow_app)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -139,32 +139,67 @@ describe('FIR: versione e scritture condizionate (Postgres reale, ruolo wasteflo
       nelTenant(() => repo.save(seconda, { verificaVersione: true }))
     ).rejects.toBeInstanceOf(FirModificatoNelFrattempoError)
 
+    // Il conflitto non fa avanzare la versione dell'aggregate perdente.
+    expect(seconda.versione).toBe(1)
     const r = await riga(fir.id)
     expect(r.status).toBe('CANCELLED')
     expect(r.motivoAnnullamento).toBe('Errore di compilazione')
     expect(r.versione).toBe(2)
   })
 
-  it('corsa vera: due salvataggi concorrenti con la stessa versione letta, ne vince uno solo', async () => {
-    for (let giro = 0; giro < 5; giro++) {
-      const fir = await bozzaSalvata()
-      const a = conAnnotazioni(await carica(fir.id), 'copia A')
-      const b = conAnnotazioni(await carica(fir.id), 'copia B')
+  it('corsa vera: A tiene il lock della riga, B resta in attesa e dopo il commit di A prende il conflitto', async () => {
+    const fir = await bozzaSalvata()
+    const b = conAnnotazioni(await carica(fir.id), 'copia B')
 
-      const esiti = await Promise.allSettled([
-        nelTenant(() => repo.save(a, { verificaVersione: true })),
-        nelTenant(() => repo.save(b, { verificaVersione: true })),
-      ])
+    let rilascia!: () => void
+    const via = new Promise<void>(r => (rilascia = r))
+    let lockPreso!: () => void
+    const lockPronto = new Promise<void>(r => (lockPreso = r))
+    // A: stessa sequenza di un save (lock FOR NO KEY UPDATE, poi scrittura con versione + 1),
+    // ma la transaction resta aperta finche' non la si rilascia: la sovrapposizione e' certa.
+    const transazioneA = owner.$transaction(
+      async tx => {
+        await tx.$queryRaw`SELECT versione FROM firs WHERE id = ${fir.id}::uuid AND tenant_id = ${tenantId}::uuid FOR NO KEY UPDATE`
+        await tx.$executeRaw`UPDATE firs SET waste_notes = 'copia A', versione = versione + 1 WHERE id = ${fir.id}::uuid`
+        lockPreso()
+        await via
+      },
+      { timeout: 20_000 }
+    )
+    await lockPronto
 
-      const riusciti = esiti.filter(e => e.status === 'fulfilled')
-      const falliti = esiti.filter(e => e.status === 'rejected') as PromiseRejectedResult[]
-      expect(riusciti).toHaveLength(1)
-      expect(falliti).toHaveLength(1)
-      expect(falliti[0].reason).toBeInstanceOf(FirModificatoNelFrattempoError)
-      const r = await riga(fir.id)
-      expect(r.versione).toBe(2)
-      expect(['copia A', 'copia B']).toContain(r.wasteNotes)
-    }
+    let esitoB: 'riuscito' | 'rifiutato' | undefined
+    let erroreB: unknown
+    const saveB = nelTenant(() => repo.save(b, { verificaVersione: true })).then(
+      () => (esitoB = 'riuscito'),
+      e => {
+        esitoB = 'rifiutato'
+        erroreB = e
+      }
+    )
+    await new Promise(r => setTimeout(r, 500))
+    expect(esitoB).toBeUndefined() // B e' in attesa del lock di A
+
+    rilascia()
+    await transazioneA
+    await saveB
+
+    expect(esitoB).toBe('rifiutato')
+    expect(erroreB).toBeInstanceOf(FirModificatoNelFrattempoError)
+    const r = await riga(fir.id)
+    expect(r.versione).toBe(2)
+    expect(r.wasteNotes).toBe('copia A')
+  })
+
+  it('save con controllo di versione su una riga sparita: FirNonTrovatoError, nessuna riga ricreata', async () => {
+    const fir = await bozzaSalvata()
+    const copia = await carica(fir.id)
+    await owner.fIR.delete({ where: { id: fir.id } })
+
+    await expect(
+      nelTenant(() => repo.save(copia, { verificaVersione: true }))
+    ).rejects.toBeInstanceOf(FirNonTrovatoError)
+    expect(await owner.fIR.findUnique({ where: { id: fir.id } })).toBeNull()
   })
 
   it('emissione con un aggregate letto prima di un altro save: conflitto e numero non consumato', async () => {
