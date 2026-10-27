@@ -12,6 +12,7 @@ import { EmettiFIRUseCase } from '../application/fir/use-cases/emetti-fir.use-ca
 import { PresaInCaricoFIRUseCase } from '../application/fir/use-cases/presa-in-carico-fir.use-case'
 import { ConfermaConsegnaFIRUseCase } from '../application/fir/use-cases/conferma-consegna-fir.use-case'
 import { AnnullaFIRUseCase } from '../application/fir/use-cases/annulla-fir.use-case'
+import { ModificaFIRUseCase } from '../application/fir/use-cases/modifica-fir.use-case'
 import { ListFIRsQueryHandler } from '../application/fir/queries/list-firs.handler'
 import { GetFIRByIdQueryHandler } from '../application/fir/queries/get-fir-by-id.handler'
 import { FIRPrismaRepository } from '../infrastructure/persistence/fir-prisma.repository'
@@ -130,6 +131,33 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
       inject: [FIRPrismaRepository],
     },
 
+    {
+      provide: ModificaFIRUseCase,
+      // FIRPrismaRepository soddisfa anche la porta IFIRModificaBozzaRepository: stessa classe, nessun token nuovo.
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        cerRepo: CERPrismaRepository,
+        produttoreRepo: ProduttorePrismaRepository,
+        trasportatoreRepo: TrasportatorePrismaRepository,
+        destinatarioRepo: DestinatarioPrismaRepository
+      ) => {
+        return new ModificaFIRUseCase(
+          firRepo,
+          cerRepo,
+          produttoreRepo,
+          trasportatoreRepo,
+          destinatarioRepo
+        )
+      },
+      inject: [
+        FIRPrismaRepository,
+        CERPrismaRepository,
+        ProduttorePrismaRepository,
+        TrasportatorePrismaRepository,
+        DestinatarioPrismaRepository,
+      ],
+    },
+
     // Queries
     {
       provide: ListFIRsQueryHandler,
@@ -152,6 +180,7 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
     PresaInCaricoFIRUseCase,
     ConfermaConsegnaFIRUseCase,
     AnnullaFIRUseCase,
+    ModificaFIRUseCase,
     ListFIRsQueryHandler,
     GetFIRByIdQueryHandler,
   ],

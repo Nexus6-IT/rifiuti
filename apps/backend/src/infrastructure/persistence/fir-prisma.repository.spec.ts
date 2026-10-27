@@ -15,6 +15,8 @@ import {
   FirModificatoNelFrattempoError,
   FirmaSenzaUtenteError,
   FirNonPiuInBozzaError,
+  FirNonModificabileError,
+  FirNonTrovatoError,
 } from '../../core/domain/errors'
 
 function buildFirRecord(overrides: Partial<any> = {}) {
@@ -536,6 +538,218 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
 
       expect(prisma.fIR.upsert.mock.calls[0][0].create.versione).toBe(1)
       expect(fir.versione).toBe(1)
+    })
+  })
+
+  describe('salvaModificaBozza (modifica della bozza)', () => {
+    const parte = (nome: string) => ({
+      registroId: 'reg-1',
+      ragioneSociale: nome,
+      partitaIva: '12345678901',
+      indirizzo: 'Via Nuova 1',
+    })
+
+    async function bozzaLetta(): Promise<FIR> {
+      prisma.db.fIR.findFirst.mockResolvedValue(
+        buildFirRecord({
+          status: 'DRAFT',
+          firNumber: null,
+          versione: 3,
+          wasteNotes: 'Da svuotare',
+          wasteHazardClasses: 'HP4',
+          wastePackageCount: 7,
+        })
+      )
+      return (await repo.findById('fir-1'))!
+    }
+
+    function contenuto(fir: FIR, extra: Record<string, unknown> = {}): any {
+      return {
+        produttoreId: fir.produttoreId,
+        trasportatoreId: fir.trasportatoreId,
+        destinatarioId: fir.destinatarioId,
+        produttore: fir.produttore ?? parte('Produttore SRL'),
+        trasportatore: fir.trasportatore ?? parte('Trasportatore'),
+        destinatario: fir.destinatario ?? parte('Destinatario'),
+        rifiuto: { cerCode: '150101', quantita: 100, unitaMisura: 'KG' },
+        trasportatoriAggiuntivi: [],
+        provenienza: fir.provenienza,
+        tipoTrattaPrincipale: fir.tipoTrattaPrincipale,
+        ...extra,
+      }
+    }
+
+    const audit = { userId: 'u1', campiModificati: ['annotazioni'], partiRisnapshottate: [] }
+
+    function preparaMock(lock: Record<string, unknown> | null) {
+      prisma.fIR.update = jest.fn().mockResolvedValue({})
+      prisma.fIRTransporter = {
+        deleteMany: jest.fn().mockResolvedValue({}),
+        createMany: jest.fn().mockResolvedValue({}),
+      }
+      prisma.activityLog = { create: jest.fn().mockResolvedValue({}) }
+      const righe = lock
+        ? [{ status: 'DRAFT', versione: 3, rentri_numero_fir: null, firmato: false, ...lock }]
+        : []
+      // 1a chiamata: lock della modifica; 2a: SELECT di salvaCon (conservaAnnullamentoEnte).
+      prisma.$queryRaw = jest
+        .fn()
+        .mockResolvedValueOnce(righe)
+        .mockResolvedValueOnce([{ stato: null, status: 'DRAFT', versione: 3 }])
+    }
+
+    it('scrive con null i facoltativi svuotati (non undefined) e lascia stato, versione e descrizione', async () => {
+      const fir = await bozzaLetta()
+      preparaMock({})
+      fir.modificaBozza(contenuto(fir, { annotazioni: '' }))
+
+      await repo.salvaModificaBozza(fir, 3, audit)
+
+      const dati = prisma.fIR.update.mock.calls[0][0].data
+      expect(prisma.fIR.update.mock.calls[0][0].where).toEqual({ id: 'fir-1' })
+      expect(dati.wasteNotes).toBeNull()
+      expect(dati.wasteHazardClasses).toBeNull()
+      expect(dati.wastePackageCount).toBeNull()
+      expect(dati.wastePhysicalState).toBeNull()
+      expect(dati.wasteOperationCode).toBeNull()
+      for (const chiave of [
+        'status',
+        'versione',
+        'firNumber',
+        'wasteDescription',
+        'wasteCategory',
+        'wasteOperationType',
+        'tenantId',
+        'producerUserId',
+      ]) {
+        expect(dati).not.toHaveProperty(chiave)
+      }
+      // La versione la scrive salvaCon (3 -> 4) e l'aggregate si allinea dopo il commit.
+      expect(prisma.fIR.upsert.mock.calls[0][0].update.versione).toBe(4)
+      expect(fir.versione).toBe(4)
+    })
+
+    it('toPersistence resta invariato: un save normale non scrive null sui facoltativi', async () => {
+      const fir = await bozzaLetta()
+      prisma.$queryRaw = jest
+        .fn()
+        .mockResolvedValue([{ stato: null, status: 'DRAFT', versione: 3 }])
+      fir.modificaBozza(contenuto(fir, { annotazioni: '' }))
+
+      await repo.save(fir)
+
+      expect(prisma.fIR.upsert.mock.calls[0][0].update.wasteNotes).toBeUndefined()
+    })
+
+    it('audit nella stessa transaction con tenant, fir, utente e metadata', async () => {
+      const fir = await bozzaLetta()
+      preparaMock({})
+      fir.modificaBozza(contenuto(fir, { annotazioni: '' }))
+
+      await repo.salvaModificaBozza(fir, 3, {
+        userId: 'u1',
+        campiModificati: ['annotazioni'],
+        partiRisnapshottate: ['destinatario'],
+      })
+
+      expect(prisma.activityLog.create).toHaveBeenCalledWith({
+        data: {
+          tenantId: 'tenant-1',
+          firId: 'fir-1',
+          userId: 'u1',
+          action: 'FIR_BOZZA_MODIFICATA',
+          description: 'Bozza del FIR modificata',
+          metadata: {
+            versionePrecedente: 3,
+            versioneNuova: 4,
+            campiModificati: ['annotazioni'],
+            partiRisnapshottate: ['destinatario'],
+          },
+        },
+      })
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 15000 })
+    })
+
+    it('tratte invariate: nessuna delete ne create', async () => {
+      const fir = await bozzaLetta()
+      preparaMock({})
+      fir.modificaBozza(contenuto(fir, { annotazioni: '' }))
+
+      await repo.salvaModificaBozza(fir, 3, audit)
+
+      expect(prisma.fIRTransporter.deleteMany).not.toHaveBeenCalled()
+      expect(prisma.fIRTransporter.createMany).not.toHaveBeenCalled()
+    })
+
+    it('tratte cambiate: delete + createMany con firId e tenantId', async () => {
+      const fir = await bozzaLetta()
+      preparaMock({})
+      fir.modificaBozza(
+        contenuto(fir, {
+          trasportatoriAggiuntivi: [
+            {
+              ordine: 1,
+              tipoTratta: 'MARITTIMA',
+              trasportatoreId: 'reg-t2',
+              denominazione: 'Nave SRL',
+            },
+          ],
+        })
+      )
+
+      await repo.salvaModificaBozza(fir, 3, audit)
+
+      expect(prisma.fIRTransporter.deleteMany).toHaveBeenCalledWith({ where: { firId: 'fir-1' } })
+      const dati = prisma.fIRTransporter.createMany.mock.calls[0][0].data
+      expect(dati).toHaveLength(1)
+      expect(dati[0]).toMatchObject({
+        firId: 'fir-1',
+        tenantId: 'tenant-1',
+        ordine: 1,
+        denominazione: 'Nave SRL',
+      })
+    })
+
+    it('riga assente: FirNonTrovatoError, nessuna scrittura', async () => {
+      const fir = await bozzaLetta()
+      preparaMock(null)
+      fir.modificaBozza(contenuto(fir, { annotazioni: '' }))
+
+      await expect(repo.salvaModificaBozza(fir, 3, audit)).rejects.toBeInstanceOf(
+        FirNonTrovatoError
+      )
+      expect(prisma.fIR.upsert).not.toHaveBeenCalled()
+      expect(prisma.activityLog.create).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['LEGATO_RENTRI', { rentri_numero_fir: 'MI-1', status: 'AWAITING_CARRIER', firmato: true }],
+      ['NON_BOZZA', { status: 'AWAITING_CARRIER', firmato: true }],
+      ['FIRMATO', { firmato: true, status: 'AWAITING_PRODUCER' }],
+      ['IN_ATTESA_FIRMA_PRODUTTORE', { status: 'AWAITING_PRODUCER' }],
+    ])('motivo %s dalla riga sotto lock, prima del controllo di versione', async (m, lock) => {
+      const fir = await bozzaLetta()
+      preparaMock({ ...lock, versione: 99 })
+      fir.modificaBozza(contenuto(fir, { annotazioni: '' }))
+
+      const errore = await repo.salvaModificaBozza(fir, 3, audit).catch(e => e)
+
+      expect(errore).toBeInstanceOf(FirNonModificabileError)
+      expect(errore.motivo).toBe(m)
+      expect(prisma.fIR.upsert).not.toHaveBeenCalled()
+    })
+
+    it('versione del lock diversa da quella attesa: FirModificatoNelFrattempoError', async () => {
+      const fir = await bozzaLetta()
+      preparaMock({ versione: 4 })
+      fir.modificaBozza(contenuto(fir, { annotazioni: '' }))
+
+      await expect(repo.salvaModificaBozza(fir, 3, audit)).rejects.toBeInstanceOf(
+        FirModificatoNelFrattempoError
+      )
+      expect(prisma.fIR.upsert).not.toHaveBeenCalled()
+      expect(prisma.fIR.update).not.toHaveBeenCalled()
+      expect(fir.versione).toBe(3)
     })
   })
 })

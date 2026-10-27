@@ -27,12 +27,17 @@ import {
   FIRSearchFilters,
   OpzioniSalvataggioFir,
 } from '../../domain/fir/repositories/fir-repository.interface'
+import {
+  IFIRModificaBozzaRepository,
+  AuditModificaBozza,
+} from '../../domain/fir/repositories/fir-modifica-bozza.port'
 import { UnitaMisura } from '../../domain/fir/value-objects/quantita'
 import { RENTRISyncStatus } from '../../domain/fir/rentri-sync-status.vo'
 import {
   FirAnnullatoNelFrattempoError,
   FirModificatoNelFrattempoError,
   FirNonTrovatoError,
+  FirNonModificabileError,
   FormularioGiaAgganciatoError,
   FirmaSenzaUtenteError,
   FirNonPiuInBozzaError,
@@ -48,7 +53,7 @@ import { PrismaSistemaService } from './prisma-sistema.service'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 @Injectable()
-export class FIRPrismaRepository implements IFIRRepository {
+export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRepository {
   private static readonly logger = new Logger(FIRPrismaRepository.name)
 
   constructor(
@@ -707,6 +712,129 @@ export class FIRPrismaRepository implements IFIRRepository {
     )
     fir.registraVersioneSalvata(nuovaVersione)
     return numeroEmesso
+  }
+
+  /**
+   * Salva una bozza modificata (piano D1/D8/D11) in una sola transaction. Il `FOR NO KEY UPDATE`
+   * serializza la modifica con l'emissione, la firma QES e ogni altro `salvaCon`: sotto lock si
+   * ricontrollano legame RENTRI, stato, firme e versione, perche' lo stato letto dal caso d'uso
+   * puo' essere gia' vecchio. Il lock non entra in conflitto con il `FOR KEY SHARE` dei movimenti.
+   */
+  async salvaModificaBozza(
+    fir: FIR,
+    versioneAttesa: number,
+    audit: AuditModificaBozza
+  ): Promise<void> {
+    const tenantId = fir.tenantId || fir.produttoreId
+    const nuovaVersione = await this.prisma.$transaction(
+      async tx => {
+        const righe = await tx.$queryRaw<
+          Array<{
+            status: string
+            versione: number
+            rentri_numero_fir: string | null
+            firmato: boolean
+          }>
+        >`
+          SELECT f.status::text AS status, f.versione, f.rentri_numero_fir,
+                 EXISTS(SELECT 1 FROM fir_signatures s WHERE s.fir_id = f.id) AS firmato
+          FROM firs f
+          WHERE f.id = ${fir.id}::uuid AND f.tenant_id = ${tenantId}::uuid
+          FOR NO KEY UPDATE OF f`
+        const riga = righe?.[0]
+        if (!riga) throw new FirNonTrovatoError()
+
+        // Un solo ordine dei motivi, identico a quello dell'aggregate (D1).
+        if (riga.rentri_numero_fir) throw new FirNonModificabileError('LEGATO_RENTRI')
+        const statiBozza: readonly string[] = STATI_FIR_IN_BOZZA
+        if (!statiBozza.includes(riga.status)) throw new FirNonModificabileError('NON_BOZZA')
+        if (riga.firmato) throw new FirNonModificabileError('FIRMATO')
+        if (riga.status === PrismaFIRStatus.AWAITING_PRODUCER) {
+          throw new FirNonModificabileError('IN_ATTESA_FIRMA_PRODUTTORE')
+        }
+        if (riga.versione !== versioneAttesa) throw new FirModificatoNelFrattempoError(fir.id)
+
+        // Rilegge la riga sotto lo stesso lock (un round trip in piu', accettato): riusa il
+        // confronto di versione e l'incremento di `salvaCon` senza duplicarli.
+        const versioneSalvata = await this.salvaCon(tx, fir, { verificaVersione: true })
+
+        // `toPersistence` scrive i facoltativi con `|| undefined`, che nell'update di Prisma
+        // significa "non toccare": uno svuotamento non arriverebbe mai al database (C1). Il
+        // contenuto della bozza si riscrive quindi esplicitamente, con `null` dove e' vuoto.
+        await tx.fIR.update({ where: { id: fir.id }, data: this.contenutoBozzaToPersistence(fir) })
+
+        if (fir.tratteModificate) {
+          // La chiave esterna composta (fir_id, tenant_id) esige il tenant su ogni riga.
+          await tx.fIRTransporter.deleteMany({ where: { firId: fir.id } })
+          const tratte = this.transportersToCreate(fir).map(t => ({
+            ...t,
+            firId: fir.id,
+            tenantId,
+          }))
+          if (tratte.length > 0) {
+            await tx.fIRTransporter.createMany({ data: tratte })
+          }
+        }
+
+        await tx.activityLog.create({
+          data: {
+            tenantId,
+            firId: fir.id,
+            userId: audit.userId,
+            action: 'FIR_BOZZA_MODIFICATA',
+            description: 'Bozza del FIR modificata',
+            metadata: {
+              versionePrecedente: versioneAttesa,
+              versioneNuova: versioneSalvata,
+              campiModificati: audit.campiModificati,
+              partiRisnapshottate: audit.partiRisnapshottate,
+            },
+          },
+        })
+        return versioneSalvata
+      },
+      // Lock, SELECT, upsert, update, tratte e audit: piu' round trip del default di 5 s.
+      { timeout: 15000 }
+    )
+    fir.registraVersioneSalvata(nuovaVersione)
+  }
+
+  /**
+   * Colonne del contenuto di una bozza, scritte con `null` dove il valore e' vuoto (C1). Solo i
+   * campi che il DTO di modifica descrive: `wasteDescription`, `wasteCategory` e
+   * `wasteOperationType` (scritti dal proprietario) non compaiono, ne' stato, numero o RENTRI.
+   */
+  private contenutoBozzaToPersistence(fir: FIR): Record<string, unknown> {
+    const produttore = fir.produttore
+    const trasportatore = fir.trasportatore
+    const destinatario = fir.destinatario
+    return {
+      producerId: produttore?.registroId || fir.produttoreId || null,
+      producerPartitaIva: produttore?.partitaIva ?? '',
+      producerName: produttore?.ragioneSociale ?? '',
+      producerAddress: produttore?.indirizzo ?? '',
+      producerContact: produttore?.contatto || null,
+      carrierId: trasportatore?.registroId || fir.trasportatoreId || null,
+      carrierPartitaIva: trasportatore?.partitaIva ?? '',
+      carrierName: trasportatore?.ragioneSociale ?? '',
+      carrierVehiclePlate: trasportatore?.targaVeicolo ?? '',
+      carrierContact: trasportatore?.contatto || null,
+      receiverId: destinatario?.registroId || fir.destinatarioId || null,
+      receiverPartitaIva: destinatario?.partitaIva ?? '',
+      receiverName: destinatario?.ragioneSociale ?? '',
+      receiverAddress: destinatario?.indirizzo ?? '',
+      receiverContact: destinatario?.contatto || null,
+      cerCode: fir.rifiuto.cerCode,
+      quantity: fir.rifiuto.quantita.valore,
+      unit: fir.rifiuto.quantita.unitaMisura,
+      wastePhysicalState: fir.rifiuto.statoFisico || null,
+      wasteHazardClasses: fir.rifiuto.caratteristichePericolo || null,
+      wastePackageCount: fir.rifiuto.numeroColli ?? null,
+      wasteOperationCode: fir.rifiuto.codiceOperazione || null,
+      wasteNotes: fir.annotazioni || null,
+      provenienza: fir.provenienza ?? null,
+      tipoTrattaPrincipale: fir.tipoTrattaPrincipale ?? null,
+    }
   }
 
   async count(filters?: FIRSearchFilters): Promise<number> {
