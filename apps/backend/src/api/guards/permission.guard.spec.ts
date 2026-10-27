@@ -1,6 +1,6 @@
 import { TenantContext } from '../../core/context/tenant-context'
 import { AZIENDA_PIATTAFORMA_ID } from '../../core/context/azienda-piattaforma'
-import { ExecutionContext, ForbiddenException } from '@nestjs/common'
+import { ExecutionContext, ForbiddenException, ServiceUnavailableException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { PermissionGuard } from './permission.guard'
 import { UserRole } from '../../domain/identity-access/user-role.entity'
@@ -29,6 +29,7 @@ describe('PermissionGuard', () => {
   let abacPolicyRepository: any
   let userRoleRepository: any
   let permissionRepository: any
+  let ruoloEffettivo: any
 
   const TENANT_ID = 'tenant-1'
   const USER_ID = 'user-1'
@@ -87,6 +88,12 @@ describe('PermissionGuard', () => {
       findByRole: jest.fn().mockResolvedValue([]),
     }
 
+    // Nessun legame con l'azienda candidata, salvo i test che lo impostano.
+    ruoloEffettivo = {
+      accessoConOrigine: jest.fn().mockResolvedValue(null),
+      permessiDelRuolo: jest.fn().mockResolvedValue([]),
+    }
+
     guard = new PermissionGuard(
       reflector,
       permissionCache,
@@ -95,7 +102,8 @@ describe('PermissionGuard', () => {
       abacEvaluator,
       abacPolicyRepository,
       userRoleRepository,
-      permissionRepository
+      permissionRepository,
+      ruoloEffettivo
     )
   })
 
@@ -312,6 +320,194 @@ describe('PermissionGuard', () => {
       // The spoofed body values must NOT leak into the resource attributes
       expect(evaluationContext.resource.ownerId).not.toBe('attacker-controlled')
       expect(evaluationContext.resource.isApproved).toBeUndefined()
+    })
+  })
+
+  describe('permessi nell azienda selezionata (X-Tenant-ID)', () => {
+    const CLIENTE = '44444444-4444-4444-8444-444444444444'
+    const FIGLIA = '55555555-5555-4555-8555-555555555555'
+    const RUOLO_ASSOCIAZIONE = 'ruolo-associazione'
+    const lascia = async () => await new Promise(r => setImmediate(r))
+
+    /** Cache in memoria con la stessa chiave (azienda, utente) di PermissionCacheService. */
+    const cacheInMemoria = () => {
+      const voci = new Map<string, string[]>()
+      permissionCache.getPermissions.mockImplementation(
+        async (t: string, u: string) => voci.get(`${t}:${u}`) ?? null
+      )
+      permissionCache.setPermissions.mockImplementation(
+        async (t: string, u: string, p: string[]) => {
+          voci.set(`${t}:${u}`, p)
+        }
+      )
+      return voci
+    }
+
+    /** A casa il consulente e' ADMIN con i permessi indicati. */
+    const permessiDiCasa = (...permessi: string[]) => {
+      userRoleRepository.findActiveByUserId.mockResolvedValue([
+        UserRole.create({
+          userId: USER_ID,
+          roleId: 'ruolo-casa',
+          tenantId: TENANT_ID,
+          assignedBy: 'admin-1',
+        }),
+      ])
+      permissionRepository.findByRole.mockResolvedValue(
+        permessi.map(p => Permission.fromString(p, 'desc', 'FIR'))
+      )
+    }
+
+    const ctxCliente = (azienda: string | null = CLIENTE) =>
+      buildContext({
+        user: { id: USER_ID, tenantId: TENANT_ID, role: 'ADMIN' },
+        headers: azienda ? { 'x-tenant-id': azienda } : {},
+      })
+
+    it('consulente con permessi ampi a casa: il ruolo dell associazione privo del permesso nega', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      cacheInMemoria()
+      permessiDiCasa('fir:write:all')
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({
+        ruolo: 'VIEWER',
+        roleId: RUOLO_ASSOCIAZIONE,
+      })
+      ruoloEffettivo.permessiDelRuolo.mockResolvedValue(['fir:read:all'])
+
+      await expect(guard.canActivate(ctxCliente())).rejects.toBeInstanceOf(ForbiddenException)
+
+      expect(ruoloEffettivo.permessiDelRuolo).toHaveBeenCalledWith(RUOLO_ASSOCIAZIONE)
+      // I permessi di casa non vengono nemmeno letti: non contano presso il cliente.
+      expect(userRoleRepository.findActiveByUserId).not.toHaveBeenCalled()
+    })
+
+    it('associazione con un ruolo che ha il permesso: concesso, voce di cache del cliente con TTL breve, audit nel cliente', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      cacheInMemoria()
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({
+        ruolo: 'ADMIN',
+        roleId: RUOLO_ASSOCIAZIONE,
+      })
+      ruoloEffettivo.permessiDelRuolo.mockResolvedValue(['fir:write:all'])
+
+      await expect(guard.canActivate(ctxCliente())).resolves.toBe(true)
+      await lascia()
+
+      expect(permissionCache.setPermissions).toHaveBeenCalledWith(
+        CLIENTE,
+        USER_ID,
+        ['fir:write:all'],
+        60
+      )
+      expect(auditQueue.add.mock.calls[0][1].data.tenantId).toBe(CLIENTE)
+    })
+
+    it('due richieste dello stesso utente, casa e cliente, non si contaminano attraverso la cache', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      cacheInMemoria()
+      permessiDiCasa('fir:write:all')
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({
+        ruolo: 'VIEWER',
+        roleId: RUOLO_ASSOCIAZIONE,
+      })
+      ruoloEffettivo.permessiDelRuolo.mockResolvedValue(['fir:read:all'])
+
+      // casa (concesso, riempie la voce di casa) -> cliente (negato) -> casa -> cliente
+      await expect(guard.canActivate(ctxCliente(null))).resolves.toBe(true)
+      await expect(guard.canActivate(ctxCliente())).rejects.toBeInstanceOf(ForbiddenException)
+      await expect(guard.canActivate(ctxCliente(null))).resolves.toBe(true)
+      await expect(guard.canActivate(ctxCliente())).rejects.toBeInstanceOf(ForbiddenException)
+    })
+
+    it('il contrario: voce del cliente permissiva, casa che nega, nessun riuso', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      cacheInMemoria()
+      permessiDiCasa('fir:read:all')
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({
+        ruolo: 'ADMIN',
+        roleId: RUOLO_ASSOCIAZIONE,
+      })
+      ruoloEffettivo.permessiDelRuolo.mockResolvedValue(['fir:write:all'])
+
+      await expect(guard.canActivate(ctxCliente())).resolves.toBe(true)
+      await expect(guard.canActivate(ctxCliente(null))).rejects.toBeInstanceOf(ForbiddenException)
+      await expect(guard.canActivate(ctxCliente())).resolves.toBe(true)
+    })
+
+    it('utente di gruppo sulla figlia: permessi di casa, voce di cache di casa, audit nella figlia', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      cacheInMemoria()
+      permessiDiCasa('fir:write:all')
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({ ruolo: 'ADMIN', roleId: null })
+
+      await expect(guard.canActivate(ctxCliente(FIGLIA))).resolves.toBe(true)
+      await lascia()
+
+      expect(ruoloEffettivo.permessiDelRuolo).not.toHaveBeenCalled()
+      expect(permissionCache.setPermissions).toHaveBeenCalledWith(TENANT_ID, USER_ID, [
+        'fir:write:all',
+      ])
+      expect(auditQueue.add.mock.calls[0][1].data.tenantId).toBe(FIGLIA)
+    })
+
+    it('nessun legame con l azienda: si decide come col token (permessi di casa, audit di casa)', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      cacheInMemoria()
+      permessiDiCasa('fir:write:all')
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue(null)
+
+      await expect(guard.canActivate(ctxCliente())).resolves.toBe(true)
+      await lascia()
+
+      expect(ruoloEffettivo.permessiDelRuolo).not.toHaveBeenCalled()
+      expect(auditQueue.add.mock.calls[0][1].data.tenantId).toBe(TENANT_ID)
+    })
+
+    it('verifica non possibile (database): 503 VERIFICA_AZIENDA_NON_DISPONIBILE, mai 500 ne via libera', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      permissionCache.getPermissions.mockResolvedValue(['fir:write:all'])
+      ruoloEffettivo.accessoConOrigine.mockRejectedValue(
+        new Error('connessione a postgres://u:segreto@db rifiutata')
+      )
+
+      const errore = await guard.canActivate(ctxCliente()).catch(e => e)
+
+      expect(errore).toBeInstanceOf(ServiceUnavailableException)
+      expect(errore.getResponse()).toMatchObject({ error: 'VERIFICA_AZIENDA_NON_DISPONIBILE' })
+      expect(JSON.stringify(errore.getResponse())).not.toContain('segreto')
+      expect(permissionCache.getPermissions).not.toHaveBeenCalled()
+    })
+
+    it('header uguale all azienda di casa o assente: nessuna verifica, comportamento di sempre', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
+
+      await guard.canActivate(ctxCliente(null))
+      const CASA_UUID = '66666666-6666-4666-8666-666666666666'
+      await guard.canActivate(
+        buildContext({
+          user: { id: USER_ID, tenantId: CASA_UUID, role: 'ADMIN' },
+          headers: { 'x-tenant-id': CASA_UUID },
+        })
+      )
+
+      expect(ruoloEffettivo.accessoConOrigine).not.toHaveBeenCalled()
+    })
+
+    it('SUPER_ADMIN con X-Tenant-ID: invariato, nessuna risoluzione per associazione', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
+
+      const ctx = buildContext({
+        user: { id: USER_ID, tenantId: TENANT_ID, role: 'SUPER_ADMIN' },
+        headers: { 'x-tenant-id': CLIENTE },
+      })
+      await expect(guard.canActivate(ctx)).resolves.toBe(true)
+      await lascia()
+
+      expect(ruoloEffettivo.accessoConOrigine).not.toHaveBeenCalled()
+      expect(permissionCache.getPermissions).toHaveBeenCalledWith(TENANT_ID, USER_ID)
+      expect(auditQueue.add.mock.calls[0][1].data.tenantId).toBe(CLIENTE)
     })
   })
 })

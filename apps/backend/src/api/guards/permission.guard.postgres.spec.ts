@@ -36,6 +36,10 @@ import { PrismaPermissionRepository } from '../../infrastructure/persistence/per
 import { PrismaPermissionAuditLogRepository } from '../../infrastructure/persistence/permission-audit-log.repository'
 import { AuditLoggingProcessor } from '../../infrastructure/jobs/audit-logging.job'
 import { PermissionAuditLog } from '../../domain/identity-access/permission-audit-log.entity'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { TenantContext } from '../../core/context/tenant-context'
+import { ForbiddenException } from '@nestjs/common'
 import { PermissionGuard } from './permission.guard'
 
 const SEGRETO = 'segreto-di-prova-guard'
@@ -43,7 +47,10 @@ const SEGRETO = 'segreto-di-prova-guard'
 describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
+  let sistema: PrismaSistemaService
   let guard: PermissionGuard
+  let richiesto = 'audit:read:all'
+  const cacheProva = new Map<string, string[]>()
   const middleware = new TenantContextMiddleware({ get: () => SEGRETO } as never)
   const run = randomUUID().replace(/-/g, '')
   const sfx = Date.now().toString().slice(-8)
@@ -56,10 +63,14 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
   let superAdmin = ''
   let ruoloId = ''
   let permessoId = ''
+  let consulente = ''
+  const ruoliExtra: string[] = []
 
   beforeAll(async () => {
     app = creaPrismaServiceApplicativo()
     await app.$connect()
+    sistema = new PrismaSistemaService()
+    await sistema.$connect()
     // Prisma legge DATABASE_URL al connect: si verifica DAVVERO il ruolo, non lo si presume.
     const [{ u }] = await app.$queryRaw<{ u: string }[]>`SELECT current_user::text AS u`
     expect(u).toBe('wasteflow_app')
@@ -90,6 +101,7 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
     }
     normale = await utente('normale', 'ADMIN', 'GRDNRM00A00A001Z')
     superAdmin = await utente('super', 'SUPER_ADMIN', 'GRDSPR00A00A002Z')
+    consulente = await utente('consulente', 'ADMIN', 'GRDCNS00A00A003Z')
 
     const ruolo = await owner.role.create({
       data: { tenantId: casa, name: `audit-${run}`, createdBy: normale },
@@ -112,7 +124,7 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
     await owner.rolePermission.create({
       data: { roleId: ruoloId, permissionId: permessoId, grantedBy: normale },
     })
-    for (const u of [normale, superAdmin]) {
+    for (const u of [normale, superAdmin, consulente]) {
       await owner.userRoleAssignment.create({
         data: { userId: u, roleId: ruoloId, tenantId: casa, assignedBy: normale },
       })
@@ -130,9 +142,9 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
         return p
       },
     }
-    const cache = new Map<string, string[]>()
+    const cache = cacheProva
     guard = new PermissionGuard(
-      { getAllAndOverride: () => 'audit:read:all' } as never,
+      { getAllAndOverride: () => richiesto } as never,
       {
         getPermissions: async (t: string, u: string) => cache.get(`${t}:${u}`) ?? null,
         setPermissions: async (t: string, u: string, p: string[]) => void cache.set(`${t}:${u}`, p),
@@ -142,11 +154,17 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
       { evaluate: jest.fn() } as never,
       { findActiveByUserId: jest.fn(), findActiveByResourceType: async () => [] } as never,
       new PrismaUserRoleRepository(app),
-      new PrismaPermissionRepository(app)
+      new PrismaPermissionRepository(app),
+      new RuoloEffettivoService(sistema)
     )
   })
 
   afterAll(async () => {
+    await owner.consultantTenantAssociation.deleteMany({
+      where: { consultantUserId: { in: userIds } },
+    })
+    await owner.rolePermission.deleteMany({ where: { roleId: { in: ruoliExtra } } })
+    await owner.role.deleteMany({ where: { id: { in: ruoliExtra } } })
     await owner.permissionAuditLog.deleteMany({
       where: { OR: [{ userId: { in: userIds } }, { tenantId: { in: tenantIds } }] },
     })
@@ -156,6 +174,7 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
     await owner.user.deleteMany({ where: { id: { in: userIds } } })
     await owner.tenant.deleteMany({ where: { id: { in: tenantIds } } })
     await app.$disconnect()
+    await sistema.$disconnect()
     await owner.$disconnect()
   })
 
@@ -174,7 +193,12 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
         id: utenteId,
         tenantId: casa,
         role,
-        fiscalCode: utenteId === superAdmin ? 'GRDSPR00A00A002Z' : 'GRDNRM00A00A001Z',
+        fiscalCode:
+          utenteId === superAdmin
+            ? 'GRDSPR00A00A002Z'
+            : utenteId === consulente
+              ? 'GRDCNS00A00A003Z'
+              : 'GRDNRM00A00A001Z',
         sessionId: `sessione-${utenteId}`,
       },
     }
@@ -183,13 +207,16 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
       getHandler: () => ({}),
       getClass: () => ({}),
     }
-    const esito = await new Promise<boolean>((resolve, reject) => {
-      middleware.use(req as never, {} as never, () => {
-        guard.canActivate(ctx as never).then(resolve, reject)
+    try {
+      return await new Promise<boolean>((resolve, reject) => {
+        middleware.use(req as never, {} as never, () => {
+          guard.canActivate(ctx as never).then(resolve, reject)
+        })
       })
-    })
-    await Promise.all(attese.splice(0))
-    return esito
+    } finally {
+      // Anche su un rifiuto l'audit del DENY e' gia' in coda: lo si attende.
+      await Promise.all(attese.splice(0))
+    }
   }
 
   const righe = (tenantId: string, userId: string) =>
@@ -239,5 +266,64 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
       })
       expect(riletta.isHashValid()).toBe(true)
     }
+  })
+
+  it('consulente presso un cliente: valgono i permessi del ruolo dell associazione, letti con la RLS attiva', async () => {
+    const cliente = (
+      await owner.tenant.create({
+        data: { partitaIva: `GC${sfx}`.slice(0, 11), ragioneSociale: `Guard cliente ${run}` },
+      })
+    ).id
+    tenantIds.push(cliente)
+    const permesso = async (resource: string, action: string, scope: string) =>
+      (await owner.permission.findFirst({ where: { resource, action, scope } })) ??
+      (await owner.permission.create({
+        data: { resource, action, scope, description: 'prova', module: 'Prova' },
+      }))
+    const ruoloCliente = async (nome: string, p: { id: string }) => {
+      const r = await owner.role.create({
+        data: { tenantId: cliente, name: `${nome}-${run}`, createdBy: consulente },
+      })
+      ruoliExtra.push(r.id)
+      await owner.rolePermission.create({
+        data: { roleId: r.id, permissionId: p.id, grantedBy: consulente },
+      })
+      return r.id
+    }
+    const soloLettura = await ruoloCliente('cliente-lettura', await permesso('fir', 'read', 'all'))
+    const conAudit = await ruoloCliente('cliente-audit', await permesso('audit', 'read', 'all'))
+
+    // Con la RLS accesa il ruolo del cliente NON si vede dal contesto di casa: se il guard lo
+    // leggesse li' troverebbe zero permessi (e i test passerebbero per il motivo sbagliato).
+    const daCasa = await TenantContext.run({ tenantId: casa, userId: consulente }, async () =>
+      app.role.findUnique({ where: { id: conAudit } })
+    )
+    expect(daCasa).toBeNull()
+
+    const associa = async (roleId: string) =>
+      owner.consultantTenantAssociation.create({
+        data: { consultantUserId: consulente, tenantId: cliente, roleId, addedBy: consulente },
+      })
+
+    // 1) A casa il consulente ha audit:read:all; presso il cliente il ruolo e' di sola lettura FIR.
+    const assoc = await associa(soloLettura)
+    richiesto = 'audit:read:all'
+    expect(await richiesta(consulente, 'ADMIN')).toBe(true)
+    await expect(richiesta(consulente, 'ADMIN', cliente)).rejects.toBeInstanceOf(ForbiddenException)
+    // Nessuna contaminazione fra le due voci di cache, in nessun ordine.
+    expect(await richiesta(consulente, 'ADMIN')).toBe(true)
+    await expect(richiesta(consulente, 'ADMIN', cliente)).rejects.toBeInstanceOf(ForbiddenException)
+
+    // 2) Ruolo del cliente che ha il permesso richiesto: concesso, audit nel cliente.
+    await owner.consultantTenantAssociation.update({
+      where: { id: assoc.id },
+      data: { roleId: conAudit },
+    })
+    // La voce del cliente e' in cache (TTL breve in produzione): qui la cache e' di prova e
+    // viene svuotata per rileggere dal database.
+    cacheProva.clear()
+    expect(await richiesta(consulente, 'ADMIN', cliente)).toBe(true)
+    const nelCliente = await righe(cliente, consulente)
+    expect(nelCliente.map(r => r.decision)).toEqual(['DENY', 'DENY', 'ALLOW'])
   })
 })

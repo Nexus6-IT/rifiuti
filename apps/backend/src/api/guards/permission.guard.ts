@@ -3,13 +3,16 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
+  ServiceUnavailableException,
   Logger,
   Inject,
 } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
-import { isUUID } from 'class-validator'
 import { TenantContext } from '../../core/context/tenant-context'
 import { AZIENDA_PIATTAFORMA_ID } from '../../core/context/azienda-piattaforma'
+import { aziendaCandidataDaHeader } from '../../core/context/azienda-da-header'
+import { VERIFICA_AZIENDA_NON_DISPONIBILE } from '../../core/context/azienda-selezionata-errori'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator'
@@ -23,6 +26,15 @@ import {
 import { AbacPolicyRepository } from '../../domain/identity-access/abac/abac-policy.repository.interface'
 import { UserRoleRepository } from '../../domain/identity-access/user-role.repository.interface'
 import { PermissionRepository } from '../../domain/identity-access/permission.repository.interface'
+
+/**
+ * TTL (secondi) della voce di cache dei permessi di un consulente su un'azienda cliente.
+ * Breve di proposito: la modifica o la revoca dell'associazione (`consultant_tenant_associations`)
+ * oggi non invalida la cache, e un ruolo dello studio modificato invalida solo le voci dello
+ * studio. La scadenza e' quindi l'unico limite alla persistenza di permessi non piu' validi
+ * (l'accesso all'azienda e' comunque riverificato a ogni richiesta).
+ */
+const TTL_PERMESSI_CONSULENTE_SECONDI = 60
 
 /**
  * PermissionGuard
@@ -47,7 +59,8 @@ export class PermissionGuard implements CanActivate {
     @Inject('UserRoleRepository')
     private userRoleRepository: UserRoleRepository,
     @Inject('PermissionRepository')
-    private permissionRepository: PermissionRepository
+    private permissionRepository: PermissionRepository,
+    private readonly ruoloEffettivo: RuoloEffettivoService
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -83,21 +96,54 @@ export class PermissionGuard implements CanActivate {
     // tenant. Corretto leggendo `user.id`.
     const { id: userId, tenantId } = user
 
-    // Azienda a cui attribuire l'audit. Solo per il SUPER_ADMIN conta l'azienda effettiva della
-    // richiesta: con `X-Tenant-ID` (il middleware lo onora per lui) e' quella scelta, senza
-    // header le sue azioni vanno all'azienda tecnica "piattaforma". I permessi restano quelli
-    // dell'azienda di casa (le assegnazioni di ruolo stanno li', non nell'azienda scelta).
-    // Consulenti e utenti normali: azienda del token, come prima.
-    // SEGUITO (fuori ambito): per un consulente su un'azienda cliente il ruolo sta in
-    // consultant_tenant_associations.role_id, e questo guard gira PRIMA del TenantSwitchInterceptor
-    // che convalida l'header: servono validazione e risoluzione dei permessi dall'associazione.
+    // Azienda su cui opera la richiesta e permessi da valutare.
+    //
+    // SUPER_ADMIN: con `X-Tenant-ID` (il middleware lo onora per lui) conta l'azienda scelta
+    // per l'audit, senza header le sue azioni vanno all'azienda tecnica "piattaforma". I permessi
+    // restano quelli dell'azienda di casa (le assegnazioni di ruolo stanno li', non nell'azienda
+    // scelta).
+    //
+    // Altri utenti: questo guard gira PRIMA del TenantSwitchInterceptor, che convalida l'header,
+    // quindi l'azienda selezionata (`aziendaCandidataDaHeader`) la verifica da se' con
+    // `RuoloEffettivoService`, la stessa risoluzione dell'interceptor:
+    //  - associazione consulente valida: i permessi sono quelli del ruolo `role_id`
+    //    dell'associazione, NON quelli che il consulente ha a casa (un ADMIN del proprio studio
+    //    presso un cliente con un ruolo di sola consultazione non puo' scrivere);
+    //  - altri legami (azienda di proprieta', figlia -> madre): permessi dell'azienda primaria;
+    //  - nessun legame: si decide come col token (permessi di casa); l'interceptor respinge con
+    //    403, oppure la rotta `@ConsentiSelezioneNonValida` prosegue sull'azienda primaria.
+    // L'audit va all'azienda su cui opera la richiesta (candidata con accesso, altrimenti token).
+    // Se la verifica non e' possibile (database irraggiungibile): 503, come l'interceptor
+    // (fail-closed, mai 500, mai via libera).
     const isSuperAdmin = user.role === 'SUPER_ADMIN'
     const aziendaScelta = isSuperAdmin ? this.aziendaDaHeader(request) : null
-    const aziendaAudit: string = isSuperAdmin ? (aziendaScelta ?? AZIENDA_PIATTAFORMA_ID) : tenantId
+    let aziendaAudit: string = isSuperAdmin ? (aziendaScelta ?? AZIENDA_PIATTAFORMA_ID) : tenantId
+    let aziendaConsulente: string | null = null
+    let ruoloAssociazioneId: string | null = null
+    const candidata = aziendaCandidataDaHeader(request)
+    if (candidata) {
+      let accesso
+      try {
+        accesso = await this.ruoloEffettivo.accessoConOrigine(user, candidata)
+      } catch {
+        throw new ServiceUnavailableException({ ...VERIFICA_AZIENDA_NON_DISPONIBILE })
+      }
+      if (accesso) {
+        aziendaAudit = candidata
+        if (accesso.roleId) {
+          aziendaConsulente = candidata
+          ruoloAssociazioneId = accesso.roleId
+        }
+      }
+    }
 
     try {
-      // Step 1: Check cache for user permissions
-      let userPermissions = await this.permissionCache.getPermissions(tenantId, userId)
+      // Step 1: Check cache for user permissions.
+      // Chiave `(azienda, utente)`: i permessi del consulente presso il cliente stanno sotto
+      // `(cliente, utente)`, quelli di casa sotto `(casa, utente)`; le due voci non si
+      // incrociano mai (l'azienda candidata e' sempre diversa da quella di casa).
+      const aziendaCache = aziendaConsulente ?? tenantId
+      let userPermissions = await this.permissionCache.getPermissions(aziendaCache, userId)
 
       // Step 2: On cache miss, load the user's effective permissions from the
       // database (RBAC source of truth), then populate the cache. A cache miss
@@ -106,18 +152,27 @@ export class PermissionGuard implements CanActivate {
         this.logger.debug(`Cache miss for user ${userId} - fetching from database`)
         // Il super admin con header ha nel contesto l'azienda scelta: le sue assegnazioni di ruolo
         // (azienda di casa) con la RLS attiva non si vedrebbero. Si leggono nel contesto di casa.
-        userPermissions =
-          aziendaScelta && tenantId
-            ? await TenantContext.run(
-                { tenantId, userId, isSuperAdmin: true },
-                async () => await this.loadPermissionsFromDb(userId, tenantId)
-              )
-            : await this.loadPermissionsFromDb(userId, tenantId)
+        if (ruoloAssociazioneId) {
+          userPermissions = await this.ruoloEffettivo.permessiDelRuolo(ruoloAssociazioneId)
+        } else {
+          userPermissions =
+            aziendaScelta && tenantId
+              ? await TenantContext.run(
+                  { tenantId, userId, isSuperAdmin: true },
+                  async () => await this.loadPermissionsFromDb(userId, tenantId)
+                )
+              : await this.loadPermissionsFromDb(userId, tenantId)
+        }
 
         // Populate the cache so subsequent requests hit the fast path.
         // Cache write failures must not break the authorization decision.
         await this.permissionCache
-          .setPermissions(tenantId, userId, userPermissions)
+          .setPermissions(
+            aziendaCache,
+            userId,
+            userPermissions,
+            ...(aziendaConsulente ? [TTL_PERMESSI_CONSULENTE_SECONDI] : [])
+          )
           .catch(error => {
             this.logger.error(
               `Failed to populate permission cache for user ${userId}: ${error.message}`,
@@ -332,10 +387,10 @@ export class PermissionGuard implements CanActivate {
 
   /** Azienda scelta con `X-Tenant-ID` (solo UUID validi), oppure null. */
   private aziendaDaHeader(request: any): string | null {
-    const raw = request?.headers?.['x-tenant-id']
-    const valore = Array.isArray(raw) ? raw[0] : raw
-    const pulito = typeof valore === 'string' ? valore.trim() : ''
-    return pulito && isUUID(pulito, 'all') ? pulito : null
+    // Un solo parser dell'header: quello di `aziendaCandidataDaHeader`, che esclude il
+    // SUPER_ADMIN e l'azienda di casa. Qui serve proprio per il SUPER_ADMIN, senza confronto con
+    // l'azienda di casa: lo si chiama con un utente neutro e senza tenant.
+    return aziendaCandidataDaHeader({ headers: request?.headers, user: { role: 'ADMIN' } })
   }
 
   /**

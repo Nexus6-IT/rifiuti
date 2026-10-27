@@ -78,7 +78,9 @@ function makePrisma(tenants: TenantFinto[], associazioni: AssociazioneFinta[]) {
     consultantTenantAssociation: {
       findFirst: jest.fn(({ where }: any) => {
         const a = trovaAssociazione(where)
-        return Promise.resolve(a ? { id: 'assoc', role: a.role } : null)
+        return Promise.resolve(
+          a ? { id: 'assoc', roleId: 'ruolo-associazione', role: a.role } : null
+        )
       }),
     },
   } as any
@@ -223,6 +225,69 @@ describe('RuoloEffettivoService — parità con MembershipService.checkAccess (F
   it('accesso(): associazione di sola consultazione dà VIEWER, non null', async () => {
     const ruoli = new RuoloEffettivoService(makePrisma(TENANTS, [associazione('CONSULTANT')]))
     await expect(ruoli.accesso(utente('ADMIN'), CLIENTE)).resolves.toBe('VIEWER')
+  })
+})
+
+describe('RuoloEffettivoService.accessoConOrigine (permessi nell azienda selezionata)', () => {
+  it("associazione valida: ruolo e roleId dell'associazione", async () => {
+    const service = new RuoloEffettivoService(makePrisma(TENANTS, [associazione('CONSULTANT')]))
+    await expect(service.accessoConOrigine(utente('ADMIN'), CLIENTE)).resolves.toEqual({
+      ruolo: 'VIEWER',
+      roleId: 'ruolo-associazione',
+    })
+  })
+
+  it('figlia di un cliente associato: roleId dell associazione della madre', async () => {
+    const service = new RuoloEffettivoService(makePrisma(TENANTS, [associazione('OPERATOR')]))
+    await expect(service.accessoConOrigine(utente('ADMIN'), FIGLIA)).resolves.toEqual({
+      ruolo: 'OPERATOR',
+      roleId: 'ruolo-associazione',
+    })
+  })
+
+  it('azienda primaria, di proprieta, figlia del primario, SUPER_ADMIN: nessun roleId', async () => {
+    const service = new RuoloEffettivoService(makePrisma(TENANTS, [associazione('ADMIN')]))
+    await expect(service.accessoConOrigine(utente('ADMIN'), PRIMARIO)).resolves.toEqual({
+      ruolo: 'ADMIN',
+      roleId: null,
+    })
+    await expect(service.accessoConOrigine(utente('ADMIN'), POSSEDUTO)).resolves.toEqual({
+      ruolo: 'ADMIN',
+      roleId: null,
+    })
+    await expect(service.accessoConOrigine(utente('ADMIN'), FIGLIA_PRIMARIO)).resolves.toEqual({
+      ruolo: 'ADMIN',
+      roleId: null,
+    })
+    await expect(service.accessoConOrigine(utente('SUPER_ADMIN'), ESTRANEO)).resolves.toEqual({
+      ruolo: 'SUPER_ADMIN',
+      roleId: null,
+    })
+  })
+
+  it('nessun legame o associazione scaduta: null', async () => {
+    const service = new RuoloEffettivoService(
+      makePrisma(TENANTS, [associazione('ADMIN', { expiresAt: IERI })])
+    )
+    await expect(service.accessoConOrigine(utente('ADMIN'), CLIENTE)).resolves.toBeNull()
+    await expect(service.accessoConOrigine(utente('ADMIN'), ESTRANEO)).resolves.toBeNull()
+  })
+
+  it('permessiDelRuolo: stringhe resource:action:scope dal client di sistema', async () => {
+    const prisma = makePrisma(TENANTS, [])
+    prisma.rolePermission = {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([
+          { permission: { resource: 'fir', action: 'read', scope: 'all' } },
+          { permission: { resource: 'fir', action: 'write', scope: 'own' } },
+        ]),
+    }
+    const service = new RuoloEffettivoService(prisma)
+    await expect(service.permessiDelRuolo('r1')).resolves.toEqual(['fir:read:all', 'fir:write:own'])
+    expect(prisma.rolePermission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { roleId: 'r1' } })
+    )
   })
 })
 
