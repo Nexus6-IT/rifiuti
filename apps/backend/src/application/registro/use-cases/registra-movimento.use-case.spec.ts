@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { RegistraMovimentoUseCase, RICOPIA_ORDINARIA } from './registra-movimento.use-case'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
@@ -684,6 +685,38 @@ describe('RegistraMovimentoUseCase', () => {
   it('un CARICO restituisce avvisi vuoti', async () => {
     _mockTransazione(recordCarico)
     expect((await useCase.execute(buildCommand())).value.avvisi).toEqual([])
+  })
+
+  it('versione della causale propria chiusa nel frattempo: il 409 CAUSALE_MODIFICATA esce intatto, non diventa un Result.fail', async () => {
+    prisma.causaleRegistroAzienda.findMany.mockResolvedValue([
+      {
+        id: 'v-1',
+        natura: 'PROPRIA',
+        codice: 'AZ_PROVA',
+        verso: 'CARICO',
+        descrizione: 'Prova',
+        ruoloMud: 'ESCLUSO',
+        codiceRentri: null,
+        operazione: null,
+        ordine: 0,
+        validaDal: new Date('2026-01-01T00:00:00Z'),
+        validaAl: null,
+      },
+    ])
+    const tx = _mockTransazione(recordCarico)
+    // La SELECT ... FOR KEY SHARE non trova piu' la versione (o non e' piu' valida).
+    tx.$queryRaw.mockImplementation(async (...args: unknown[]) =>
+      (args[0] as TemplateStringsArray).join('?').includes('FOR KEY SHARE')
+        ? []
+        : [{ max_num: null }]
+    )
+    const cmd = buildCommand()
+    const esito = useCase.execute(Object.assign(cmd, { causale: 'AZ_PROVA' }))
+    await expect(esito).rejects.toBeInstanceOf(ConflictException)
+    await expect(esito).rejects.toMatchObject({
+      response: { error: 'CAUSALE_MODIFICATA' },
+    })
+    expect(tx.wasteMovement.create).not.toHaveBeenCalled()
   })
 
   // ─── Ritardo registrazione ───────────────────────────────────────────────────

@@ -234,6 +234,25 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
     expect(JSON.stringify(risposta.body)).toContain('Causale non valida per CARICO')
   })
 
+  it('causale modificata nel frattempo: il 409 CAUSALE_MODIFICATA del caso d uso arriva al client con il suo corpo', async () => {
+    await avvia({ tenantId: CLIENTE, isActive: true, expiresAt: null, role: { name: 'OPERATOR' } })
+    registra.execute.mockRejectedValueOnce(
+      new ConflictException({
+        message: 'La causale è stata modificata nel frattempo: ricarica e riprova.',
+        error: 'CAUSALE_MODIFICATA',
+      })
+    )
+
+    const risposta = await request(app.getHttpServer())
+      .post('/registro')
+      .set('X-Tenant-ID', CLIENTE)
+      .send(movimento)
+
+    expect(risposta.status).toBe(409)
+    expect(risposta.body.error).toBe('CAUSALE_MODIFICATA')
+    expect(risposta.body.message).toContain('modificata nel frattempo')
+  })
+
   it("associazione OPERATOR: 201 e il movimento va nell'azienda selezionata", async () => {
     await avvia({ tenantId: CLIENTE, isActive: true, expiresAt: null, role: { name: 'OPERATOR' } })
 
