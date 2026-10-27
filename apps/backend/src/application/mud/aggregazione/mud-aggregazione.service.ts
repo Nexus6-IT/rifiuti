@@ -590,11 +590,12 @@ export class MudAggregazioneService {
   }
 
   /**
-   * Saldo del registro a fine anno (carichi meno scarichi di tutti gli anni fino al 31/12 italiano),
-   * per CER, in kg. Le giacenze iniziali del registro con `data_riferimento` fino al 31/12 contano
-   * come carichi (non sono movimenti: non entrano in nessuna riga prodotto/ricevuto). Solo le unità di massa: i movimenti in litri, mc o altro non hanno un peso
-   * senza peso specifico e non entrano nel saldo (le unità vuote valgono kg, come nel resto del
-   * MUD). Restano solo i CER con saldo positivo, ordinati per CER (A-W-06).
+   * Saldo del registro a fine anno (carichi meno scarichi di tutti gli anni fino al 31/12
+   * italiano), per CER, in kg. Le giacenze iniziali del registro con `data_riferimento` fino al
+   * 31/12 contano come carichi (non sono movimenti: non entrano in nessuna riga
+   * prodotto/ricevuto). Solo le unità di massa: i movimenti in litri, mc o altro non hanno un
+   * peso senza peso specifico e non entrano nel saldo (le unità vuote valgono kg, come nel resto
+   * del MUD). Restano solo i CER con saldo positivo, ordinati per CER (A-W-06).
    */
   private async saldiAl31Dicembre(
     tenantId: string,

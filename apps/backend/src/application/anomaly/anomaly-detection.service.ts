@@ -130,8 +130,9 @@ export class AnomalyDetectionService {
 
   /**
    * Giacenze impossibili (scarico complessivo oltre il carico) con le stesse regole del
-   * registro (le giacenze iniziali contano come carichi): CER confrontato sulle sole cifre, kg e tonnellate sommati in kg, ogni unità
-   * non di massa valutata a parte, mai mescolata ai kg, e solo se ha almeno un carico.
+   * registro: le giacenze iniziali contano come carichi, il CER si confronta sulle sole cifre,
+   * kg e tonnellate si sommano in kg, ogni unità non di massa è valutata a parte (mai mescolata
+   * ai kg) e solo se ha almeno un carico.
    */
   private async giacenzeImpossibili(tenantId: string): Promise<Anomaly[]> {
     const byType = await this.prisma.wasteMovement.groupBy({
