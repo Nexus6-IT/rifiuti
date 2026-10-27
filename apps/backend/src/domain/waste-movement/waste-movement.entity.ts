@@ -81,7 +81,8 @@ export interface WasteMovementProps {
   entryHash: string
   /**
    * Hash dell'annotazione precedente dello stesso registro e anno ('' se e' la prima).
-   * Se valorizzato la registrazione calcola l'hash v2 concatenato (R8); se assente resta la v1.
+   * Obbligatorio in `WasteMovement.create` (hash v2 concatenato, R8); opzionale qui perche' le
+   * entita' ricostituite dal database non lo usano.
    */
   hashPrecedente?: string
   notes?: string
@@ -145,7 +146,9 @@ export function hashAnnotazioneV2(d: DatiHashAnnotazioneV2): string {
 export class WasteMovement {
   private constructor(private readonly props: WasteMovementProps) {}
 
-  static create(props: Omit<WasteMovementProps, 'entryHash'>): WasteMovement {
+  static create(
+    props: Omit<WasteMovementProps, 'entryHash' | 'hashPrecedente'> & { hashPrecedente: string }
+  ): WasteMovement {
     // Validazioni di dominio
     if (props.quantity <= 0) {
       throw new Error('La quantità deve essere maggiore di zero')
@@ -182,22 +185,21 @@ export class WasteMovement {
       }
     }
 
-    const entryHash =
-      props.hashPrecedente !== undefined
-        ? hashAnnotazioneV2({
-            hashPrecedente: props.hashPrecedente,
-            registroId: props.registroId,
-            anno: props.progressiveYear,
-            numero: props.progressiveNumber,
-            tipoAnnotazione: 'ORDINARIA',
-            type: props.type,
-            cerCode: props.cerCode,
-            quantita: props.quantity,
-            unit: props.unit,
-            movementDate: props.movementDate,
-            causale: props.causale,
-          })
-        : WasteMovement.computeHash(props)
+    // Ogni nuova registrazione e' v2 (HASH_VERSIONE_CORRENTE, che la persistenza salva): la v1
+    // resta solo in `computeHash`, per verificare le righe storiche.
+    const entryHash = hashAnnotazioneV2({
+      hashPrecedente: props.hashPrecedente,
+      registroId: props.registroId,
+      anno: props.progressiveYear,
+      numero: props.progressiveNumber,
+      tipoAnnotazione: 'ORDINARIA',
+      type: props.type,
+      cerCode: props.cerCode,
+      quantita: props.quantity,
+      unit: props.unit,
+      movementDate: props.movementDate,
+      causale: props.causale,
+    })
 
     return new WasteMovement({ ...props, registrationDate: regDate, entryHash })
   }

@@ -26,6 +26,7 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
       cerCode: '20 03 01',
       quantity: 100,
       unit: 'KG',
+      hashPrecedente: '',
       ...overrides,
     }
   }
@@ -178,14 +179,17 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
       expect(new Set(hash).size).toBe(varianti.length)
     })
 
-    it('la registrazione con hashPrecedente salva la v2, senza resta la v1', () => {
+    it('la registrazione calcola sempre la v2 concatenata; la v1 resta solo in computeHash', () => {
       const v2 = WasteMovement.create(buildProps({ hashPrecedente: 'prec' }))
       expect(v2.entryHash).toBe(
         hashAnnotazioneV2({ ...dati, hashPrecedente: 'prec', quantita: 100 })
       )
-      const v1 = WasteMovement.create(buildProps())
-      expect(v1.entryHash).toBe(WasteMovement.computeHash(buildProps()))
-      expect(v1.entryHash).not.toBe(v2.entryHash)
+      const primo = WasteMovement.create(buildProps())
+      expect(primo.entryHash).toBe(
+        hashAnnotazioneV2({ ...dati, hashPrecedente: '', quantita: 100 })
+      )
+      expect(primo.entryHash).not.toBe(WasteMovement.computeHash(buildProps()))
+      expect(primo.entryHash).not.toBe(v2.entryHash)
     })
   })
 

@@ -48,7 +48,7 @@ describe('VerificaCatenaRegistroService (unitaria, con prisma finto)', () => {
     const prisma = {
       wasteMovement: { findMany: jest.fn().mockResolvedValue(righe) },
       registroProgressivoIniziale: {
-        findUnique: jest.fn().mockResolvedValue(iniziale ? { primoProgressivo: iniziale } : null),
+        findFirst: jest.fn().mockResolvedValue(iniziale ? { primoProgressivo: iniziale } : null),
       },
     }
     return { prisma, svc: new VerificaCatenaRegistroService(prisma as never) }

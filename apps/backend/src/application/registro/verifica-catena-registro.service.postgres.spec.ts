@@ -254,6 +254,19 @@ describe('Verifica catena del registro — Postgres reale, ruolo wasteflow_app',
     })
   })
 
+  it('senza progressivo iniziale la numerazione parte da 1: le prime righe cancellate sono un BUCO', async () => {
+    const az = await azienda()
+    for (const q of [1, 2, 3]) await registra(az.tenantId, az.registroA, { qty: q })
+    await owner.wasteMovement.deleteMany({
+      where: { registroId: az.registroA, progressiveNumber: 1 },
+    })
+    expect(await verificaDi(az.tenantId, az.registroA)).toEqual({
+      verificate: 0,
+      nonVerificabili: [],
+      primoErrore: { numero: 1, motivo: 'BUCO' },
+    })
+  })
+
   it('registro vuoto e versione sconosciuta', async () => {
     const az = await azienda()
     expect(await verificaDi(az.tenantId, az.registroB)).toEqual({

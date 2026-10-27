@@ -22,6 +22,8 @@ export interface EsitoVerificaCatena {
  * - v2: concatenata, usa come `hashPrecedente` l'`entry_hash` SALVATO della riga che la precede
  *   (anche `''`), quindi una riga alterata si vede sul proprio numero e non a cascata.
  * - `entry_hash = ''` non e' verificabile: si segnala e si prosegue.
+ * - Numerazione: il primo numero atteso e' il progressivo iniziale dell'anno (letto con il tenant
+ *   esplicito) oppure 1 se non c'e': la cancellazione delle prime righe e' un BUCO.
  *
  * Solo lettura, nessun lock: una registrazione concorrente al piu' non e' ancora vista.
  */
@@ -35,8 +37,8 @@ export class VerificaCatenaRegistroService {
         where: { tenantId, registroId, progressiveYear: anno },
         orderBy: { progressiveNumber: 'asc' },
       }),
-      this.prisma.registroProgressivoIniziale.findUnique({
-        where: { registroId_anno: { registroId, anno } },
+      this.prisma.registroProgressivoIniziale.findFirst({
+        where: { tenantId, registroId, anno },
         select: { primoProgressivo: true },
       }),
     ])
@@ -44,7 +46,8 @@ export class VerificaCatenaRegistroService {
     const esito: EsitoVerificaCatena = { verificate: 0, nonVerificabili: [], primoErrore: null }
     if (righe.length === 0) return esito
 
-    let atteso = iniziale?.primoProgressivo ?? righe[0].progressiveNumber
+    // Senza progressivo iniziale la numerazione parte da 1: se mancano le prime righe e' un BUCO.
+    let atteso = iniziale?.primoProgressivo ?? 1
     let hashPrecedente = ''
     for (const r of righe) {
       if (r.progressiveNumber !== atteso) {
