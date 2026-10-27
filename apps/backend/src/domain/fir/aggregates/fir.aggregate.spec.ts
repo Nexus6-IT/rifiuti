@@ -1384,6 +1384,22 @@ describe('FIR Aggregate', () => {
         expect(fir.tratteModificate).toBe(false)
       })
 
+      it('copia l elenco delle tratte: modificare l array passato dopo non cambia il FIR', () => {
+        const fir = firBozza()
+        const nuove = [
+          {
+            ordine: 1,
+            tipoTratta: TipoTratta.MARITTIMA,
+            trasportatoreId: 'ta-9',
+            denominazione: 'Nave',
+          },
+        ]
+        fir.modificaBozza(contenutoDi(fir, { trasportatoriAggiuntivi: nuove }))
+        nuove.push({ ...nuove[0], ordine: 2, trasportatoreId: 'ta-10' })
+        expect(fir.trasportatoriAggiuntivi).toHaveLength(1)
+        expect(fir.trasportatoriAggiuntivi).not.toBe(nuove)
+      })
+
       it('conserva descrizione, categoria e tipoOperazione del rifiuto', () => {
         const fir = firBozza()
         const base = contenutoDi(fir)

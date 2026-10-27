@@ -217,25 +217,31 @@ describe('Firma QES: lock della riga e versione (Postgres reale, ruolo wasteflow
     )
     await lockPronto
 
+    // Se un'asserzione fallisce il lock va rilasciato comunque: altrimenti la transaction del
+    // proprietario resterebbe aperta fino al timeout e bloccherebbe la pulizia.
+    let saveA: Promise<void>
+    let saveB: Promise<void>
     const esiti: string[] = []
-    const tracciato = (p: Promise<unknown>, nome: string): Promise<void> =>
-      p.then(
-        () => void esiti.push(`${nome}:riuscito`),
-        () => void esiti.push(`${nome}:fallito`)
+    try {
+      const tracciato = (p: Promise<unknown>, nome: string): Promise<void> =>
+        p.then(
+          () => void esiti.push(`${nome}:riuscito`),
+          () => void esiti.push(`${nome}:fallito`)
+        )
+      saveA = tracciato(
+        nelTenant(() => repoFirme.save(a)),
+        'a'
       )
-    const saveA = tracciato(
-      nelTenant(() => repoFirme.save(a)),
-      'a'
-    )
-    const saveB = tracciato(
-      nelTenant(() => repoFirme.save(b)),
-      'b'
-    )
-    await new Promise(r => setTimeout(r, 500))
-    expect(esiti).toEqual([]) // entrambi in attesa del lock del proprietario
-    expect(await firmeSul(id)).toHaveLength(0)
-
-    rilascia()
+      saveB = tracciato(
+        nelTenant(() => repoFirme.save(b)),
+        'b'
+      )
+      await new Promise(r => setTimeout(r, 500))
+      expect(esiti).toEqual([]) // entrambi in attesa del lock del proprietario
+      expect(await firmeSul(id)).toHaveLength(0)
+    } finally {
+      rilascia()
+    }
     await transazioneA
     await Promise.all([saveA, saveB])
 

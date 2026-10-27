@@ -680,7 +680,7 @@ export class FIR extends AggregateRoot {
     this._trasportatore = contenuto.trasportatore
     this._destinatario = contenuto.destinatario
     if (tratteCambiate) {
-      this._trasportatoriAggiuntivi = contenuto.trasportatoriAggiuntivi
+      this._trasportatoriAggiuntivi = [...contenuto.trasportatoriAggiuntivi]
     }
     this._annotazioni = nuoveAnnotazioni
     this._provenienza = contenuto.provenienza ?? null
