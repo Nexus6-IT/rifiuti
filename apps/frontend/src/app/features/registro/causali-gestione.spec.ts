@@ -1,4 +1,5 @@
 import {
+  chiusuraProposta,
   differenzeModifica,
   etichettaCodiceRentri,
   giornoSuccessivo,
@@ -82,6 +83,13 @@ describe('causali-gestione', () => {
     expect(inizioProposto('2026-10-28', null)).toBe('2026-10-28')
     expect(inizioProposto('2026-10-28', '2026-10-28')).toBe('2026-10-29')
     expect(inizioProposto('2026-10-28', '2026-03-10')).toBe('2026-10-28')
+    // anche dopo l'inizio della versione corrente (data futura)
+    expect(inizioProposto('2026-10-28', null, '2026-12-01')).toBe('2026-12-02')
+    expect(inizioProposto('2026-10-28', '2026-12-05', '2026-12-01')).toBe('2026-12-06')
+    expect(inizioProposto('2026-10-28', null, '2026-01-01')).toBe('2026-10-28')
+    expect(chiusuraProposta('2026-10-28', '2026-01-01', null)).toBe('2026-10-28')
+    expect(chiusuraProposta('2026-10-28', '2026-12-01', null)).toBe('2026-12-01')
+    expect(chiusuraProposta('2026-10-28', '2026-01-01', '2026-11-03')).toBe('2026-11-03')
   })
 
   it("legge messaggio e codice dell'errore del backend", () => {

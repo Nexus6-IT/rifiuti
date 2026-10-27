@@ -119,11 +119,28 @@ export function giornoSuccessivo(giorno: string): string {
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`
 }
 
-/** Giorno di partenza proposto per una nuova versione: oggi, ma dopo l'ultimo uso. */
-export function inizioProposto(oggi: string, ultimoUso: string | null): string {
-  if (!ultimoUso) return oggi
-  const dopo = giornoSuccessivo(ultimoUso)
-  return dopo > oggi ? dopo : oggi
+/** Inizio proposto per una nuova versione: max(oggi, giorno dopo l'ultimo uso, giorno dopo l'inizio). */
+export function inizioProposto(
+  oggi: string,
+  ultimoUso: string | null,
+  validaDal?: string | null
+): string {
+  let g = oggi
+  if (ultimoUso && giornoSuccessivo(ultimoUso) > g) g = giornoSuccessivo(ultimoUso)
+  if (validaDal && giornoSuccessivo(validaDal) > g) g = giornoSuccessivo(validaDal)
+  return g
+}
+
+/** Ultimo giorno proposto per la chiusura: max(oggi, inizio, ultimo uso). */
+export function chiusuraProposta(
+  oggi: string,
+  validaDal: string,
+  ultimoUso: string | null
+): string {
+  let g = oggi
+  if (validaDal > g) g = validaDal
+  if (ultimoUso && ultimoUso > g) g = ultimoUso
+  return g
 }
 
 /** Messaggio e codice di un errore HTTP del backend (400/403/404/409). */

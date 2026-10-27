@@ -40,6 +40,7 @@ import {
   etichettaCodiceRentri,
   etichettaOperazione,
   etichettaRuoloMud,
+  chiusuraProposta,
   idUltimeVersioni,
   inizioProposto,
   leggiErroreCausali,
@@ -215,6 +216,7 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
                     icon="pi pi-pencil"
                     [text]="true"
                     size="small"
+                    [disabled]="salvataggio()"
                     (onClick)="apriModifica(a)"
                     [attr.data-testid]="'cg-modifica-' + a.id"
                     [ariaLabel]="'Modifica la causale ' + a.codice"
@@ -225,6 +227,7 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
                     icon="pi pi-copy"
                     [text]="true"
                     size="small"
+                    [disabled]="salvataggio()"
                     (onClick)="apriVersione(a)"
                     [attr.data-testid]="'cg-versione-' + a.id"
                     [ariaLabel]="'Crea una nuova versione della causale ' + a.codice"
@@ -235,6 +238,7 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
                     icon="pi pi-calendar-times"
                     [text]="true"
                     size="small"
+                    [disabled]="salvataggio()"
                     (onClick)="apriChiusura(a)"
                     [attr.data-testid]="'cg-chiudi-' + a.id"
                     [ariaLabel]="'Imposta l\\'ultimo giorno di validità della causale ' + a.codice"
@@ -246,6 +250,7 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
                     severity="danger"
                     [text]="true"
                     size="small"
+                    [disabled]="salvataggio()"
                     (onClick)="chiediEliminazione(a.id)"
                     [attr.data-testid]="'cg-elimina-' + a.id"
                     [ariaLabel]="'Elimina la causale ' + a.codice"
@@ -266,6 +271,7 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
                     label="No"
                     [text]="true"
                     size="small"
+                    [disabled]="salvataggio()"
                     (onClick)="daEliminare.set(null)"
                     ariaLabel="Annulla l'eliminazione"
                   ></p-button>
@@ -395,6 +401,7 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
                 <p-dropdown
                   formControlName="ruoloMud"
                   inputId="cg-ruolo"
+                  ariaRequired="true"
                   [options]="opzioniRuolo()"
                   styleClass="w-full"
                   data-testid="cg-ruolo"
@@ -474,6 +481,14 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
             </div>
           </ng-container>
         </div>
+        <p
+          *ngIf="erroreAzione() as e"
+          class="field-error"
+          id="cg-form-err"
+          data-testid="cg-errore-form"
+        >
+          {{ e.messaggio }}
+        </p>
         <div class="cg-azioni">
           <p-button
             label="Annulla"
@@ -760,7 +775,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
       codiceRentri: a.codiceRentri,
       operazione: a.operazione,
       ordine: a.ordine,
-      validaDal: inizioProposto(oggiItaliano(), a.ultimoGiornoUso),
+      validaDal: inizioProposto(oggiItaliano(), a.ultimoGiornoUso, a.validaDal),
       validaAl: '',
       ...preimpostati,
     })
@@ -779,10 +794,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
       operazione: a.operazione,
       ordine: a.ordine,
       validaDal: a.validaDal,
-      validaAl:
-        a.ultimoGiornoUso && a.ultimoGiornoUso > oggiItaliano()
-          ? a.ultimoGiornoUso
-          : oggiItaliano(),
+      validaAl: chiusuraProposta(oggiItaliano(), a.validaDal, a.ultimoGiornoUso),
     })
     this.impostaValidatori('chiusura')
     this.focus('cg-al')
@@ -790,10 +802,15 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
 
   /** Dopo un 409 "versione già usata": riapre il form come nuova versione con i valori scritti. */
   passaANuovaVersione(): void {
-    const b = this.bersaglio()
-    if (!b) return
+    const corrente = this.bersaglio()
+    if (!corrente) return
+    // la nuova versione parte sempre dall'ultima della causale (il backend rifiuta le altre)
+    const ultima =
+      (this.gestione()?.aziendali ?? [])
+        .filter(r => r.verso === corrente.verso && r.codice === corrente.codice)
+        .sort((x, y) => (x.validaDal < y.validaDal ? 1 : -1))[0] ?? corrente
     const v = this.form.getRawValue()
-    this.apriVersione(b, {
+    this.apriVersione(ultima, {
       descrizione: v.descrizione,
       ruoloMud: v.ruoloMud,
       codiceRentri: v.codiceRentri,
@@ -805,6 +822,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
   chiudiForm(): void {
     this.modo.set(null)
     this.bersaglio.set(null)
+    this.erroreAzione.set(null)
   }
 
   private preparaForm(modo: ModoFormCausale, bersaglio: CausaleAziendaleGestione | null): void {

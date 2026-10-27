@@ -129,7 +129,9 @@ describe('RegistroComponent — causali dall’API', () => {
     data.setValue(new Date(2026, 9, 20, 9, 30))
     tick()
     data.setValue(new Date(2026, 9, 20, 18, 0)) // stesso giorno: nessuna richiesta
+    tick()
     data.setValue(null) // campo svuotato a metà digitazione: nessuna richiesta
+    tick()
     data.setValue(new Date(2026, 9, 21))
     tick()
     expect(chiamate()).toEqual([`CARICO|${oggi()}`, 'CARICO|2026-10-20', 'CARICO|2026-10-21'])

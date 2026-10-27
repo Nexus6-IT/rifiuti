@@ -225,11 +225,53 @@ describe('CausaliRegistroDialogComponent (click veri, HTTP simulato)', () => {
     flush()
   }))
 
+  it("409 su una versione vecchia: la nuova versione parte dall'ultima della causale", fakeAsync(() => {
+    const v1 = propria({
+      id: 'v1',
+      validaAl: '2026-05-31',
+      usata: true,
+      ultimoGiornoUso: '2026-05-20',
+    })
+    const v2 = propria({
+      id: 'v2',
+      validaDal: '2026-06-01',
+      usata: true,
+      ultimoGiornoUso: '2026-06-10',
+    })
+    apri({ sistema: [], aziendali: [v1, v2] })
+    expect(q('cg-versione-v1')).toBeNull()
+    clic('cg-modifica-v1')
+    fixture.detectChanges()
+    scrivi('#cg-descrizione', 'Altra descrizione')
+    fixture.detectChanges()
+    clic('cg-invia')
+    const req = http.expectOne(`${URL}/aziendali/v1`)
+    req.flush(
+      { statusCode: 409, error: 'CAUSALE_USATA_NUOVA_VERSIONE', message: 'Versione già usata.' },
+      { status: 409, statusText: 'Conflict' }
+    )
+    rileggi({ sistema: [], aziendali: [v1, v2] })
+    clic('cg-proponi-versione')
+    fixture.detectChanges()
+    expect(testo('cg-form')).toContain('Nuova versione di AZ_RESO')
+    clic('cg-invia')
+    const post = http.expectOne(`${URL}/aziendali/v2/versioni`)
+    expect(post.request.body.descrizione).toBe('Altra descrizione')
+    post.flush(propria({ id: 'v3' }))
+    rileggi({ sistema: [], aziendali: [v1, v2] })
+    flush()
+  }))
+
   it('"nessun codice RENTRI" in modifica invia null e nient\'altro', fakeAsync(() => {
     apri({ sistema: [], aziendali: [propria()] })
     clic('cg-modifica-v1')
     fixture.detectChanges()
-    fixture.componentInstance.form.get('codiceRentri')!.setValue(null)
+    // la X del dropdown (showClear), con click vero
+    const x = document.querySelector<HTMLElement>(
+      '[data-testid="cg-rentri"] .p-dropdown-clear-icon'
+    )
+    expect(x).withContext('X del dropdown RENTRI').not.toBeNull()
+    x!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     fixture.detectChanges()
     clic('cg-invia')
     const req = http.expectOne(`${URL}/aziendali/v1`)
