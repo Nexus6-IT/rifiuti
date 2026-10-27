@@ -96,7 +96,7 @@ export class FirService {
 
   /**
    * Conferma consegna (destinatario): IN_TRANSITO → CONSEGNATO.
-   * Richiede il peso effettivo (kg) rilevato a destinazione.
+   * Richiede il peso effettivo rilevato a destinazione, nell'unità di misura del FIR.
    * La firma del destinatario è prodotta dal backend (vedi emettiFIR).
    */
   confermaConsegna(id: string, pesoEffettivo: number): Observable<FIR> {

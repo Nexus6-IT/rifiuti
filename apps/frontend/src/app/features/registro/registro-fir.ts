@@ -80,7 +80,7 @@ export interface QuantitaDaFir {
 /**
  * Quantità da ricopiare nel registro secondo il verso, come RENTRI e WinWaste (C-W-01).
  * CARICO del destinatario con il peso verificato a destino: quel peso, nell'unità del FIR
- * (`confermaConsegna` lo confronta con la quantità dichiarata, quindi è nella stessa unità).
+ * (`confermaConsegna` lo registra nella stessa unità della quantità dichiarata).
  * In ogni altro caso la quantità dichiarata alla partenza: lo SCARICO del produttore riporta
  * sempre quella, e il peso verificato resta sul FIR come esito.
  */

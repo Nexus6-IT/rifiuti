@@ -1,5 +1,6 @@
 import { ExportService } from './export.service'
 import { Movimento } from '../../features/registro/registro.service'
+import { FIR } from '../../shared/models/fir.model'
 
 function mov(parziale: Partial<Movimento> = {}): Movimento {
   return {
@@ -93,5 +94,25 @@ describe('ExportService - registro con rettifiche e annullamenti', () => {
     expect(Object.keys(righe[0])).toEqual(
       jasmine.arrayContaining(['Progressivo', 'Tipo', 'Annotazione', 'Stato', 'Causale', 'CER'])
     )
+  })
+})
+
+describe('ExportService - PDF di dettaglio del FIR', () => {
+  const servizio = new ExportService()
+  const fir = (unitaMisura: string, pesoEffettivo?: number) =>
+    ({
+      rifiuto: { cerCode: '17 04 05', quantita: 2, unitaMisura, statoFisico: 'SOLIDO' },
+      pesoEffettivo,
+    }) as unknown as FIR
+
+  it('il peso effettivo esce con l unita del FIR, non con kg fisso', () => {
+    const righe = servizio.righeRifiutoPdf(fir('T', 2.5))
+    expect(righe.find(r => r[0] === 'Peso Effettivo')).toEqual(['Peso Effettivo', '2.5 T'])
+    expect(righe.find(r => r[0] === 'Quantità Dichiarata')).toEqual(['Quantità Dichiarata', '2 T'])
+  })
+
+  it('senza peso a destino resta N/D', () => {
+    const righe = servizio.righeRifiutoPdf(fir('KG'))
+    expect(righe.find(r => r[0] === 'Peso Effettivo')).toEqual(['Peso Effettivo', 'N/D'])
   })
 })

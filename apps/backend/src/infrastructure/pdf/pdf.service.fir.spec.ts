@@ -42,6 +42,37 @@ describe('PDFService.buildFIRContent - numero del FIR', () => {
   })
 })
 
+describe('PDFService.buildFIRContent - peso a destino nell unita del FIR', () => {
+  const logger = {
+    setContext: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  } as unknown as LoggerService
+
+  const firBase = {
+    status: 'CONSEGNATO',
+    firNumber: 'FIR-2026-000007',
+    createdAt: new Date('2026-03-05T10:00:00Z'),
+    producer: { companyName: 'Produttore SRL' },
+    carrier: { companyName: 'Trasportatore SRL' },
+    receiver: { companyName: 'Destinatario SRL' },
+    cerCode: '13 02 05*',
+    quantity: 2,
+    signatures: [],
+  }
+
+  const contenuto = (fir: object) =>
+    JSON.stringify((new PDFService(logger) as any).buildFIRContent(fir))
+
+  it('il peso effettivo esce con l unita del FIR, non con kg fisso', () => {
+    const testo = contenuto({ ...firBase, unitOfMeasure: 'T', pesoEffettivo: 2.5 })
+    expect(testo).toContain('2.5 T')
+    expect(testo).not.toContain('2.5 kg')
+  })
+})
+
 describe('PDFService.buildFIRContent - date e ore in ora italiana', () => {
   const logger = {
     setContext: jest.fn(),

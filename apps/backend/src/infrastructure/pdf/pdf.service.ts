@@ -235,7 +235,12 @@ export class PDFService {
             width: '50%',
             stack: [
               { text: 'Peso effettivo ricevuto', style: 'label' },
-              { text: fir.pesoEffettivo ? `${fir.pesoEffettivo} kg` : 'N/D', style: 'value' },
+              {
+                text: fir.pesoEffettivo
+                  ? `${fir.pesoEffettivo} ${fir.unitOfMeasure ?? 'kg'}`
+                  : 'N/D',
+                style: 'value',
+              },
             ],
           },
           {

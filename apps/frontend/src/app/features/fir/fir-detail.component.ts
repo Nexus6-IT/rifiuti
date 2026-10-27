@@ -16,7 +16,11 @@ import { InputNumberModule } from 'primeng/inputnumber'
 import { ConfirmationService, MessageService } from 'primeng/api'
 import { FirService } from './fir.service'
 import { FIR, FIRStato, ScostamentoPeso } from '../../shared/models/fir.model'
-import { formattaNumero, formattaPercentuale } from './scostamento-peso'
+import {
+  formattaNumero,
+  formattaPercentuale,
+  SOGLIA_AVVISO_SCOSTAMENTO_PESO_PERCENTO,
+} from './scostamento-peso'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
 import { RENTRISyncLogsComponent } from './components/rentri-sync-logs/rentri-sync-logs.component'
 import { RENTRISyncService } from './services/rentri-sync.service'
@@ -1124,7 +1128,9 @@ export class FirDetailComponent implements OnInit {
   testoScostamento(s: ScostamentoPeso): string {
     const diff = `${s.differenza > 0 ? '+' : ''}${formattaNumero(s.differenza)} ${s.unita}`
     const base = s.percentuale === null ? diff : `${formattaPercentuale(s.percentuale)} · ${diff}`
-    return s.oltreSoglia ? `scostamento ${base}: oltre la soglia del 10%` : `scostamento ${base}`
+    return s.oltreSoglia
+      ? `scostamento ${base}: oltre la soglia del ${SOGLIA_AVVISO_SCOSTAMENTO_PESO_PERCENTO}%`
+      : `scostamento ${base}`
   }
 
   haAzioni(fir: FIR): boolean {
