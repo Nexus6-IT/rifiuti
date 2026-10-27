@@ -1,40 +1,80 @@
-import { CAUSALI_CARICO, CAUSALI_SCARICO } from '../../domain/waste-movement/waste-movement.entity'
 import { formattaDataItaliana, giornoItaliano } from '../../core/time/anno-italiano'
-import { cerCodeExists, normalizzaCerCode } from './cer-catalogo'
+import type {
+  CatalogoCausali,
+  DefinizioneCausale,
+  VersoCausale,
+} from '../../domain/waste-movement/catalogo-causali'
+import { cerCodeExists, normalizzaCerCode, type LettoreCatalogoCer } from './cer-catalogo'
+import {
+  caricaCatalogoCausali,
+  type LettoreCatalogoCausali,
+} from './causali/catalogo-causali.repository'
 
 export interface DatiDaValidare {
+  tenantId: string
   type: string
   causale: string
   cerCode: string
   movementDate: Date
   registrationDate: Date
+  /**
+   * Solo per la rettifica: la causale della testa. Se la nuova causale coincide si risolve per
+   * data (una causale disattivata dopo la registrazione non impedisce di correggere la quantita').
+   */
+  causaleAttuale?: { codice: string; versioneId: string | null }
 }
 
-/** Esito: il CER normalizzato, oppure il messaggio per l'utente. */
-export type EsitoValidazioneDati = { cerCode: string; errore?: undefined } | { errore: string }
+/**
+ * Esito: il CER normalizzato, la versione aziendale della causale (null per le causali di
+ * sistema) e la descrizione per la risposta, oppure il messaggio per l'utente.
+ */
+export type EsitoValidazioneDati =
+  | {
+      cerCode: string
+      causaleAziendaId: string | null
+      causaleDescrizione: string
+      errore?: undefined
+    }
+  | { errore: string }
 
 /**
  * Validazioni dei dati di un movimento comuni alla registrazione ordinaria e alla rettifica (R4):
- * causale coerente col tipo, CER normalizzato "NN NN NN" e presente in catalogo, date non nel
- * futuro. Estratta da `RegistraMovimentoUseCase.execute` senza cambiarne ordine ne' messaggi.
+ * causale del catalogo dell'azienda coerente col tipo e valida alla data dell'operazione, CER
+ * normalizzato "NN NN NN" e presente in catalogo, date non nel futuro. Stesso ordine e stessi
+ * messaggi di sempre; il catalogo delle causali si legge una volta sola (C8).
  */
 export async function validaDatiMovimento(
-  db: Parameters<typeof cerCodeExists>[0],
+  db: LettoreCatalogoCer & LettoreCatalogoCausali,
   d: DatiDaValidare
 ): Promise<EsitoValidazioneDati> {
-  // Causale (prima di qualunque lettura dal database)
-  if (d.type === 'CARICO') {
-    if (!CAUSALI_CARICO.includes(d.causale as (typeof CAUSALI_CARICO)[number])) {
+  // Causale (prima di CER e date)
+  const verso: VersoCausale = d.type === 'CARICO' ? 'CARICO' : 'SCARICO'
+  const catalogo = await caricaCatalogoCausali(db, d.tenantId)
+  const giornoOperazione = giornoItaliano(d.movementDate)
+  let definizione: DefinizioneCausale | null
+  if (d.causaleAttuale && d.causaleAttuale.codice === d.causale) {
+    // Rettifica che non cambia causale: risoluzione per data, senza versioneId.
+    definizione = catalogo.comportamento(verso, d.causale, giornoOperazione)
+    if (!definizione) {
+      const motivo = catalogo.selezionabile(verso, d.causale, giornoOperazione)
       return {
-        errore: `Causale non valida per CARICO: ${d.causale}. Valori: ${CAUSALI_CARICO.join(', ')}`,
+        errore: messaggioCausale(
+          catalogo,
+          verso,
+          d.causale,
+          giornoOperazione,
+          motivo.ok ? 'SCONOSCIUTA' : motivo.motivo
+        ),
       }
     }
   } else {
-    if (!CAUSALI_SCARICO.includes(d.causale as (typeof CAUSALI_SCARICO)[number])) {
+    const esito = catalogo.selezionabile(verso, d.causale, giornoOperazione)
+    if (!esito.ok) {
       return {
-        errore: `Causale non valida per SCARICO: ${d.causale}. Valori: ${CAUSALI_SCARICO.join(', ')}`,
+        errore: messaggioCausale(catalogo, verso, d.causale, giornoOperazione, esito.motivo),
       }
     }
+    definizione = esito.definizione
   }
 
   // Codice CER contro il catalogo ufficiale: normalizza al formato canonico "NN NN NN" (con "*"
@@ -63,5 +103,26 @@ export async function validaDatiMovimento(
         `${formattaDataItaliana(d.registrationDate)}`,
     }
   }
-  return { cerCode }
+  return {
+    cerCode,
+    causaleAziendaId: definizione.versioneId,
+    causaleDescrizione: definizione.descrizione,
+  }
+}
+
+function messaggioCausale(
+  catalogo: CatalogoCausali,
+  verso: VersoCausale,
+  causale: string,
+  giorno: string,
+  motivo: 'SCONOSCIUTA' | 'VERSO' | 'DISATTIVATA' | 'FUORI_VALIDITA'
+): string {
+  const dettaglio =
+    motivo === 'DISATTIVATA'
+      ? " (non è attiva per l'azienda)"
+      : motivo === 'FUORI_VALIDITA'
+        ? " (non è valida alla data dell'operazione)"
+        : ''
+  const valori = catalogo.opzioni(verso, giorno).map(o => o.codice)
+  return `Causale non valida per ${verso}: ${causale}${dettaglio}. Valori: ${valori.join(', ')}`
 }

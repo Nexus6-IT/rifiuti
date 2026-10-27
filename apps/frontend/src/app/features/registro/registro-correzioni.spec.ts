@@ -7,7 +7,7 @@ import {
   testoCorrezione,
   testoEsitoVerifica,
 } from './registro-correzioni'
-import { giornoLocale, dataDaGiorno, opzioniUnita, opzioniCausali } from './registro-opzioni'
+import { giornoLocale, dataDaGiorno, opzioniUnita } from './registro-opzioni'
 import { Movimento } from './registro.service'
 
 const rif = (n: number, a = 2026) => ({
@@ -77,10 +77,8 @@ describe('registro-opzioni', () => {
     expect(dataDaGiorno('boh')).toBeNull()
   })
 
-  it('unità e causali', () => {
+  it('unità', () => {
     expect(opzioniUnita('kg').map(o => o.value)).toEqual(['KG', 'T', 'M3'])
     expect(opzioniUnita('mc').map(o => o.value)).toEqual(['KG', 'T', 'M3', 'mc'])
-    expect(opzioniCausali('CARICO').map(o => o.value)).toContain('PRODUZIONE_INTERNA')
-    expect(opzioniCausali('SCARICO').map(o => o.value)).not.toContain('PRODUZIONE_INTERNA')
   })
 })

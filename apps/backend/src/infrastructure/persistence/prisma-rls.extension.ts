@@ -77,6 +77,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'RegistroProgressivoIniziale',
   // Giacenze di apertura del registro (Fase 2 pezzo 2): dato dell'azienda.
   'GiacenzaIniziale',
+  // Personalizzazioni delle causali del registro (Fase 2 pezzo 5): dato dell'azienda. Il catalogo di
+  // sistema `CausaleRegistro` e' globale (niente tenant_id, niente RLS) e NON sta qui.
+  'CausaleRegistroAzienda',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

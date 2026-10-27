@@ -8,6 +8,7 @@
 
 import {
   Component,
+  DestroyRef,
   EventEmitter,
   Input,
   OnChanges,
@@ -17,7 +18,10 @@ import {
   inject,
   signal,
 } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { CommonModule } from '@angular/common'
+import { EMPTY, Subject, Subscription, merge, of } from 'rxjs'
+import { catchError, distinctUntilChanged, map, startWith, switchMap } from 'rxjs/operators'
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { CalendarModule } from 'primeng/calendar'
@@ -29,14 +33,16 @@ import { InputTextareaModule } from 'primeng/inputtextarea'
 import { ToastService } from '../../core/services/toast.service'
 import { CerSelectComponent } from '../cer/cer-select.component'
 import {
-  CAUSALE_LABELS,
   EsitoCorrezioneMovimento,
   Movimento,
   RegistroService,
   TipoMovimento,
 } from './registro.service'
 import { UNITA_GIACENZA, etichettaUnita } from './giacenze-iniziali-dialog.component'
+import { CausaliRegistroService, OpzioneCausaleApi } from './causali-registro.service'
 import {
+  MESSAGGIO_CAUSALE_NON_VALIDA,
+  causaleSelezionabile,
   dataDaGiorno,
   giornoLocale,
   normalizzaStatoFisico,
@@ -115,7 +121,7 @@ export function messaggioErroreCorrezione(err: any): string {
             <strong>Movimento {{ numero(m) }}</strong>
             · {{ m.type === 'CARICO' ? 'Carico' : 'Scarico' }} ·
             <span class="mono">{{ m.cerCode }}</span> · {{ m.quantity | number: '1.0-2' }}
-            {{ unitaLeggibile(m.unit) }} · {{ causaleLabel(m.causale) }}
+            {{ unitaLeggibile(m.unit) }} · {{ causaleLabel(m) }}
             <span *ngIf="m.counterpartName"> · {{ m.counterpartName }}</span>
           </section>
 
@@ -160,6 +166,13 @@ export function messaggioErroreCorrezione(err: any): string {
                   ></p-dropdown>
                   <small *ngIf="errore('causale')" class="field-error" role="alert"
                     >Seleziona una causale.</small
+                  >
+                  <small
+                    *ngIf="messaggioCausale() as msg"
+                    class="field-hint"
+                    role="status"
+                    data-testid="correzione-causale-messaggio"
+                    >{{ msg }}</small
                   >
                 </div>
               </div>
@@ -460,6 +473,8 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
   private readonly servizio = inject(RegistroService)
   private readonly toast = inject(ToastService)
   private readonly fb = inject(FormBuilder)
+  private readonly causali = inject(CausaliRegistroService)
+  private readonly destroyRef = inject(DestroyRef)
 
   @Input() visible = false
   @Output() visibleChange = new EventEmitter<boolean>()
@@ -482,7 +497,15 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
   get titolo(): string {
     return this.modo === 'rettifica' ? 'Rettifica movimento' : 'Annulla movimento'
   }
-  readonly causaliOptions = computed(() => opzioniCausali(this.tipo()))
+  /** Opzioni dall'API per il tipo della testa e la data del form (vuote finché non arrivano). */
+  private readonly opzioniApi = signal<OpzioneCausaleApi[]>([])
+  /** Causale attuale dell'annotazione: resta selezionabile anche se disattivata o scaduta. */
+  private readonly causaleAttuale = signal<{ codice: string; descrizione?: string } | null>(null)
+  readonly messaggioCausale = signal<string | null>(null)
+  private readonly ricaricaOpzioni = new Subject<string>()
+  private sottoscrizioneOpzioni: Subscription | null = null
+
+  readonly causaliOptions = computed(() => opzioniCausali(this.opzioniApi(), this.causaleAttuale()))
   readonly unitaOptions = computed(() => opzioniUnita(this.unitaCorrente()))
   readonly statiFisiciOptions = computed(() => opzioniStatoFisico(this.statoCorrente()))
 
@@ -496,8 +519,8 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
     return numeroAnnotazione(m)
   }
 
-  causaleLabel(c: string): string {
-    return CAUSALE_LABELS[c as keyof typeof CAUSALE_LABELS] ?? c
+  causaleLabel(m: Pick<Movimento, 'causale' | 'causaleDescrizione'>): string {
+    return m.causaleDescrizione || m.causale
   }
 
   unitaLeggibile(u: string): string {
@@ -532,8 +555,13 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
     this.conferma.set(null)
     this.invio.set(false)
     this.firConfermata = false
+    this.sottoscrizioneOpzioni?.unsubscribe()
+    this.sottoscrizioneOpzioni = null
+    this.opzioniApi.set([])
+    this.messaggioCausale.set(null)
     this.form = this.creaForm()
     const m = this.movimento
+    this.causaleAttuale.set(m ? { codice: m.causale, descrizione: m.causaleDescrizione } : null)
     if (!m) return
     // La rettifica non cambia il tipo: le causali sono quelle del tipo dell'annotazione.
     this.tipo.set(m.type)
@@ -557,6 +585,47 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
       counterpartAddress: m.counterpartAddress ?? '',
       notes: m.notes ?? '',
     })
+    if (this.modo === 'rettifica') this.avviaOpzioniCausali(m.type)
+  }
+
+  /**
+   * Opzioni del tipo della testa alla data del form: si ricaricano a ogni cambio di giorno
+   * (`switchMap`, `distinctUntilChanged`; nessuna richiesta per ogni tasto). La causale attuale
+   * resta sempre selezionabile; una scelta diversa che dopo il cambio di data non è più fra le
+   * opzioni si azzera con un messaggio sotto il campo.
+   */
+  private avviaOpzioniCausali(tipo: TipoMovimento): void {
+    const data = this.form.get('movementDate')!
+    const giorni$ = data.valueChanges.pipe(
+      startWith(data.value as Date | null),
+      map(d => (d instanceof Date && !isNaN(d.getTime()) ? giornoLocale(d) : null)),
+      distinctUntilChanged(),
+      switchMap(g => (g ? of(g) : EMPTY))
+    )
+    this.sottoscrizioneOpzioni = merge(giorni$, this.ricaricaOpzioni)
+      .pipe(
+        switchMap(giorno =>
+          this.causali.opzioni(tipo, giorno).pipe(
+            catchError(() => {
+              this.toast.error('Impossibile caricare le causali: riprova fra poco.')
+              return EMPTY
+            })
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(righe => {
+        this.opzioniApi.set(righe)
+        const ctrl = this.form.get('causale')
+        const scelta = ctrl?.value as string | null
+        const attuale = this.causaleAttuale()?.codice
+        if (scelta && scelta !== attuale && !causaleSelezionabile(righe, scelta)) {
+          ctrl?.reset(null)
+          this.messaggioCausale.set(MESSAGGIO_CAUSALE_NON_VALIDA)
+        } else {
+          this.messaggioCausale.set(null)
+        }
+      })
   }
 
   chiudi(): void {
@@ -642,6 +711,12 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
           return
         }
         this.toast.error(messaggioErroreCorrezione(err))
+        if (err?.status === 409 && err?.error?.error === 'CAUSALE_MODIFICATA') {
+          // la causale è cambiata mentre si compilava: opzioni nuove alla data del form
+          this.causali.invalida()
+          const d = this.form.get('movementDate')?.value
+          if (d instanceof Date && !isNaN(d.getTime())) this.ricaricaOpzioni.next(giornoLocale(d))
+        }
       },
     })
   }

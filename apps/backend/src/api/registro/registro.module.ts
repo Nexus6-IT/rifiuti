@@ -4,6 +4,8 @@ import { LoggerModule } from '../../core/logger/logger.module'
 import { AuthModule } from '../../auth/auth.module'
 import { RuoloEffettivoModule } from '../me/ruolo-effettivo.module'
 import { RegistroController } from './registro.controller'
+import { CausaliRegistroController } from './causali-registro.controller'
+import { CausaliRegistroService } from '../../application/registro/causali/causali-registro.service'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { ListMovimentiHandler } from '../../application/registro/queries/list-movimenti.handler'
 import { ProgressivoInizialeService } from '../../application/registro/progressivo-iniziale.service'
@@ -26,10 +28,18 @@ import { VerificaCatenaRegistroService } from '../../application/registro/verifi
  *   POST /api/v1/registro/movimenti/:id/rettifica — rettifica con una nuova annotazione
  *   POST /api/v1/registro/movimenti/:id/annullamento — annulla con una nuova annotazione
  *   GET  /api/v1/registro/verifica-catena — integrita del registro di un anno (amministratori)
+ *   GET  /api/v1/registro/causali?tipo=&data= — causali selezionabili (qualunque ruolo)
+ *   GET  /api/v1/registro/causali/gestione — vista di gestione (amministratori)
+ *   PUT|DELETE /api/v1/registro/causali/sistema/:verso/:codice/disattivazione — (amministratori)
+ *   POST /api/v1/registro/causali/aziendali — crea una causale propria (amministratori)
+ *   PATCH /api/v1/registro/causali/aziendali/:id — modifica una versione (amministratori)
+ *   POST /api/v1/registro/causali/aziendali/:id/versioni — nuova versione (amministratori)
+ *   PUT  /api/v1/registro/causali/aziendali/:id/chiusura — chiude una versione (amministratori)
+ *   DELETE /api/v1/registro/causali/aziendali/:id — elimina una versione mai usata (amministratori)
  */
 @Module({
   imports: [PrismaModule, LoggerModule, AuthModule, RuoloEffettivoModule],
-  controllers: [RegistroController],
+  controllers: [RegistroController, CausaliRegistroController],
   providers: [
     RegistraMovimentoUseCase,
     CorreggiMovimentoUseCase,
@@ -38,6 +48,7 @@ import { VerificaCatenaRegistroService } from '../../application/registro/verifi
     GiacenzeInizialiService,
     RegistriService,
     VerificaCatenaRegistroService,
+    CausaliRegistroService,
   ],
   exports: [
     RegistraMovimentoUseCase,

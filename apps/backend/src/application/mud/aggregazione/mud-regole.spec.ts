@@ -1,13 +1,69 @@
 import { annoSolareItaliano } from '../../../core/time/anno-italiano'
 import type { MudModuloGestione } from '../export/mud-export.types'
+import { CatalogoCausali } from '../../../domain/waste-movement/catalogo-causali'
+import type { RigaCausaleAzienda } from '../../../domain/waste-movement/catalogo-causali'
+import { righeCausaliSistema } from '../../registro/causali/catalogo-causali.fixture'
 import {
   classificaMovimento,
   hashAggregato,
   limitiAnnoMud,
-  operazioneDaCausale,
+  operazioneDaCatalogo,
   operazioneDaCodice,
   statoFisicoMud,
+  type MovimentoClassificabile,
+  type RuoloMovimento,
 } from './mud-regole'
+
+// ORACOLO: la vecchia implementazione, copiata VERBATIM da mud-regole.ts:28-57 di master
+// 5b6f661 (mappe RUOLO_CARICO/RUOLO_SCARICO, classificaMovimento, operazioneDaCausale). NON va
+// modificata: serve a dimostrare che il catalogo di sistema dà gli stessi risultati di prima.
+const RUOLO_CARICO: Record<string, RuoloMovimento> = {
+  PRODUZIONE_INTERNA: 'PRODOTTO',
+  RECUPERO_PARZIALE: 'PRODOTTO',
+  INGRESSO_ESTERNO: 'RICEVUTO_DA_TERZI',
+}
+
+const RUOLO_SCARICO: Record<string, RuoloMovimento> = {
+  CONFERIMENTO_TRASPORTATORE: 'AVVIATO',
+  AVVIO_RECUPERO: 'AVVIATO',
+  AVVIO_SMALTIMENTO: 'AVVIATO',
+  CESSIONE: 'AVVIATO',
+}
+
+function vecchiaClassificazione(type: 'CARICO' | 'SCARICO', causale: string): RuoloMovimento {
+  const mappa = type === 'CARICO' ? RUOLO_CARICO : RUOLO_SCARICO
+  return Object.prototype.hasOwnProperty.call(mappa, causale) ? mappa[causale] : 'ESCLUSO'
+}
+
+function vecchiaOperazione(causale: string): 'R' | 'D' | undefined {
+  if (causale === 'AVVIO_RECUPERO') return 'R'
+  if (causale === 'AVVIO_SMALTIMENTO') return 'D'
+  return undefined
+}
+// FINE ORACOLO
+
+const catalogoSistema = () => new CatalogoCausali(righeCausaliSistema(), [])
+const movimento = (p: Partial<MovimentoClassificabile>): MovimentoClassificabile => ({
+  type: 'CARICO',
+  causale: 'PRODUZIONE_INTERNA',
+  causaleAziendaId: null,
+  movementDate: new Date('2025-06-10T08:00:00Z'),
+  ...p,
+})
+const versione = (p: Partial<RigaCausaleAzienda>): RigaCausaleAzienda => ({
+  id: 'ver-1',
+  natura: 'PROPRIA',
+  codice: 'AZ_TEST',
+  verso: 'CARICO',
+  descrizione: 'Test',
+  ruoloMud: 'PRODOTTO',
+  codiceRentri: null,
+  operazione: null,
+  ordine: 100,
+  validaDal: '2025-01-01',
+  validaAl: null,
+  ...p,
+})
 
 describe('limitiAnnoMud', () => {
   it("limitiAnnoMud usa l'anno solare italiano", () => {
@@ -43,7 +99,78 @@ describe('classificaMovimento', () => {
     ['SCARICO', 'ALTRO_SCARICO', 'ESCLUSO'],
     ['SCARICO', 'CAUSALE_SCONOSCIUTA', 'ESCLUSO'],
   ])('%s %s → %s', (type, causale, atteso) => {
-    expect(classificaMovimento(type as 'CARICO' | 'SCARICO', causale)).toBe(atteso)
+    expect(classificaMovimento(catalogoSistema(), movimento({ type, causale }))).toBe(atteso)
+  })
+
+  const CODICI = [
+    ...new Set(righeCausaliSistema().map(r => r.codice)),
+    'SCONOSCIUTA',
+    '',
+    'constructor',
+  ]
+  it('i codici di sistema sono i 10 di oggi', () => {
+    expect(CODICI.slice(0, -3)).toHaveLength(10)
+  })
+  it.each(
+    (['CARICO', 'SCARICO'] as const).flatMap(type =>
+      CODICI.map(causale => [type, causale] as const)
+    )
+  )('equivale alla vecchia implementazione: %s %j', (type, causale) => {
+    expect(classificaMovimento(catalogoSistema(), movimento({ type, causale }))).toBe(
+      vecchiaClassificazione(type, causale)
+    )
+  })
+
+  it('una causale aziendale PRODOTTO conta nel prodotto', () => {
+    const c = new CatalogoCausali(righeCausaliSistema(), [versione({})])
+    expect(
+      classificaMovimento(c, movimento({ causale: 'AZ_TEST', causaleAziendaId: 'ver-1' }))
+    ).toBe('PRODOTTO')
+  })
+  it('ESCLUSO, RICEVUTO_DA_TERZI e AVVIATO dalle causali aziendali', () => {
+    const c = new CatalogoCausali(righeCausaliSistema(), [
+      versione({ id: 'e', codice: 'AZ_E', ruoloMud: 'ESCLUSO' }),
+      versione({ id: 'r', codice: 'AZ_R', ruoloMud: 'RICEVUTO_DA_TERZI' }),
+      versione({ id: 'a', codice: 'AZ_A', verso: 'SCARICO', ruoloMud: 'AVVIATO' }),
+    ])
+    expect(classificaMovimento(c, movimento({ causale: 'AZ_E', causaleAziendaId: 'e' }))).toBe(
+      'ESCLUSO'
+    )
+    expect(classificaMovimento(c, movimento({ causale: 'AZ_R', causaleAziendaId: 'r' }))).toBe(
+      'RICEVUTO_DA_TERZI'
+    )
+    expect(
+      classificaMovimento(c, movimento({ type: 'SCARICO', causale: 'AZ_A', causaleAziendaId: 'a' }))
+    ).toBe('AVVIATO')
+  })
+  it('due versioni con ruoli diversi: conta la versione del movimento, anche se chiusa', () => {
+    const c = new CatalogoCausali(righeCausaliSistema(), [
+      versione({ id: 'v1', ruoloMud: 'PRODOTTO', validaAl: '2025-06-30' }),
+      versione({ id: 'v2', ruoloMud: 'ESCLUSO', validaDal: '2025-07-01' }),
+    ])
+    const dopo = new Date('2025-12-01T08:00:00Z')
+    // il movimento porta v1 (chiusa al 30/06) ma la data cade nella v2: vale v1
+    expect(
+      classificaMovimento(
+        c,
+        movimento({ causale: 'AZ_TEST', causaleAziendaId: 'v1', movementDate: dopo })
+      )
+    ).toBe('PRODOTTO')
+    expect(
+      classificaMovimento(
+        c,
+        movimento({ causale: 'AZ_TEST', causaleAziendaId: 'v2', movementDate: dopo })
+      )
+    ).toBe('ESCLUSO')
+  })
+  it('una versione di un altro verso non vale: ESCLUSO', () => {
+    const c = new CatalogoCausali(righeCausaliSistema(), [versione({})])
+    expect(
+      classificaMovimento(
+        c,
+        movimento({ type: 'SCARICO', causale: 'AZ_TEST', causaleAziendaId: 'ver-1' })
+      )
+    ).toBe('ESCLUSO')
   })
 })
 
@@ -55,10 +182,33 @@ describe('operazione R/D', () => {
     expect(operazioneDaCodice(null)).toBeUndefined()
     expect(operazioneDaCodice('X1')).toBeUndefined()
   })
-  it('dalla causale', () => {
-    expect(operazioneDaCausale('AVVIO_RECUPERO')).toBe('R')
-    expect(operazioneDaCausale('AVVIO_SMALTIMENTO')).toBe('D')
-    expect(operazioneDaCausale('CONFERIMENTO_TRASPORTATORE')).toBeUndefined()
+  it('dal catalogo', () => {
+    const op = (causale: string) =>
+      operazioneDaCatalogo(catalogoSistema(), movimento({ type: 'SCARICO', causale }))
+    expect(op('AVVIO_RECUPERO')).toBe('R')
+    expect(op('AVVIO_SMALTIMENTO')).toBe('D')
+    expect(op('CONFERIMENTO_TRASPORTATORE')).toBeUndefined()
+  })
+  // Gli scarichi sono l'unico caso raggiungibile: un CARICO con causale di scarico è ESCLUSO
+  // prima di arrivare alla scelta R/D (il vecchio codice guardava la sola causale).
+  it.each(['AVVIO_RECUPERO', 'AVVIO_SMALTIMENTO', 'CESSIONE', 'ALTRO_SCARICO', 'SCONOSCIUTA', ''])(
+    'equivale alla vecchia implementazione sugli scarichi: %j',
+    causale => {
+      expect(operazioneDaCatalogo(catalogoSistema(), movimento({ type: 'SCARICO', causale }))).toBe(
+        vecchiaOperazione(causale)
+      )
+    }
+  )
+  it('una causale aziendale con operazione R', () => {
+    const c = new CatalogoCausali(righeCausaliSistema(), [
+      versione({ verso: 'SCARICO', ruoloMud: 'AVVIATO', operazione: 'R' }),
+    ])
+    expect(
+      operazioneDaCatalogo(
+        c,
+        movimento({ type: 'SCARICO', causale: 'AZ_TEST', causaleAziendaId: 'ver-1' })
+      )
+    ).toBe('R')
   })
 })
 

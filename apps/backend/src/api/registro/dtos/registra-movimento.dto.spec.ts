@@ -19,6 +19,29 @@ describe('RegistraMovimentoDto', () => {
     expect(errori.map(e => e.property)).toContain('quantity')
   })
 
+  it.each(['pippo', '', '1ABC', 'A B', 'A'.repeat(101)])(
+    'causale di forma non valida ("%s") respinta dal DTO',
+    async causale => {
+      const errori = await validate(plainToInstance(RegistraMovimentoDto, { ...minimo, causale }))
+      expect(errori.map(e => e.property)).toContain('causale')
+    }
+  )
+
+  it.each(['CESSIONE', 'AZ_PROVA', 'NON_ESISTE'])(
+    "causale di forma valida (%s) passa il DTO: il catalogo lo verifica il caso d'uso",
+    async causale => {
+      expect(await validate(plainToInstance(RegistraMovimentoDto, { ...minimo, causale }))).toEqual(
+        []
+      )
+    }
+  )
+
+  it("il filtro per causale dell'elenco è un codice qualsiasi fino a 100 caratteri", async () => {
+    expect(await validate(plainToInstance(ListMovimentiDto, { causale: 'AZ_PROVA' }))).toEqual([])
+    const errori = await validate(plainToInstance(ListMovimentiDto, { causale: 'A'.repeat(101) }))
+    expect(errori.map(e => e.property)).toContain('causale')
+  })
+
   it('registroId: facoltativo, uuid se presente (movimento, lista e query del progressivo)', async () => {
     const uuid = '11111111-1111-4111-8111-111111111111'
     for (const classe of [RegistraMovimentoDto, ListMovimentiDto, RegistroIdQueryDto]) {

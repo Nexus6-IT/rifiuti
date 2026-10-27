@@ -7,27 +7,6 @@ import { environment } from '../../../environments/environment'
 
 export type TipoMovimento = 'CARICO' | 'SCARICO'
 
-export const CAUSALI_CARICO = [
-  'PRODUZIONE_INTERNA',
-  'INGRESSO_ESTERNO',
-  'RICLASSIFICAZIONE',
-  'RECUPERO_PARZIALE',
-  'ALTRO_CARICO',
-] as const
-
-export const CAUSALI_SCARICO = [
-  'CONFERIMENTO_TRASPORTATORE',
-  'AVVIO_RECUPERO',
-  'AVVIO_SMALTIMENTO',
-  'CESSIONE',
-  'RICLASSIFICAZIONE',
-  'ALTRO_SCARICO',
-] as const
-
-export type CausaleCarico = (typeof CAUSALI_CARICO)[number]
-export type CausaleScarico = (typeof CAUSALI_SCARICO)[number]
-export type CausaleMovimento = CausaleCarico | CausaleScarico
-
 /** Registro cronologico di un'azienda (uno per sede), come lo restituisce il backend. */
 export interface RegistroVista {
   id: string
@@ -54,7 +33,11 @@ export interface Movimento {
   type: TipoMovimento
   movementDate: string
   registrationDate: string
-  causale: CausaleMovimento
+  causale: string
+  /** Descrizione della causale alla data del movimento (il codice se non è più nel catalogo). */
+  causaleDescrizione?: string
+  /** Codice RENTRI della causale, informativo (null se non trasmissibile). */
+  causaleCodiceRentri?: string | null
   cerCode: string
   wasteDescription?: string
   quantity: number
@@ -99,7 +82,7 @@ export interface RegistraMovimentoRequest {
   registroId?: string
   type: TipoMovimento
   movementDate: string
-  causale: CausaleMovimento
+  causale: string
   cerCode: string
   wasteDescription?: string
   quantity: number
@@ -116,7 +99,7 @@ export interface RegistraMovimentoRequest {
 /** Corpo della rettifica: dati completi nuovi; tipo, registro, FIR e data di registrazione non si inviano. */
 export interface RettificaMovimentoRequest {
   movementDate: string
-  causale: CausaleMovimento
+  causale: string
   cerCode: string
   wasteDescription?: string
   quantity: number
@@ -157,28 +140,13 @@ export interface EsitoVerificaCatena {
 export interface ListMovimentiParams {
   type?: TipoMovimento
   cerCode?: string
-  causale?: CausaleMovimento
+  causale?: string
   dataFrom?: string
   dataTo?: string
   firId?: string
   registroId?: string
   page?: number
   limit?: number
-}
-
-// ─── Etichette ──────────────────────────────────────────────────────────────
-
-export const CAUSALE_LABELS: Record<CausaleMovimento, string> = {
-  PRODUZIONE_INTERNA: 'Produzione interna',
-  INGRESSO_ESTERNO: 'Ingresso da esterno',
-  RICLASSIFICAZIONE: 'Riclassificazione CER',
-  RECUPERO_PARZIALE: 'Recupero parziale',
-  ALTRO_CARICO: 'Altro carico',
-  CONFERIMENTO_TRASPORTATORE: 'Conferimento a trasportatore',
-  AVVIO_RECUPERO: 'Avvio a recupero (R)',
-  AVVIO_SMALTIMENTO: 'Avvio a smaltimento (D)',
-  CESSIONE: 'Cessione a terzi',
-  ALTRO_SCARICO: 'Altro scarico',
 }
 
 export const STATI_FISICI = ['Solido', 'Liquido', 'Fangoso', 'Polvere'] as const

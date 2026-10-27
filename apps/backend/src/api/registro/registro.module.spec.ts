@@ -2,6 +2,8 @@ import { Test } from '@nestjs/testing'
 import { ConfigModule } from '@nestjs/config'
 import { RegistroModule } from './registro.module'
 import { RegistroController } from './registro.controller'
+import { CausaliRegistroController } from './causali-registro.controller'
+import { CausaliRegistroService } from '../../application/registro/causali/causali-registro.service'
 import { RegistriService } from '../../application/registro/registri.service'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { CorreggiMovimentoUseCase } from '../../application/registro/use-cases/correggi-movimento.use-case'
@@ -22,6 +24,8 @@ describe('RegistroModule (DI wiring)', () => {
     expect(moduleRef.get(ProgressivoInizialeService)).toBeDefined()
     expect(moduleRef.get(GiacenzeInizialiService)).toBeDefined()
     expect(moduleRef.get(VerificaCatenaRegistroService)).toBeDefined()
+    expect(moduleRef.get(CausaliRegistroController)).toBeDefined()
+    expect(moduleRef.get(CausaliRegistroService)).toBeDefined()
 
     await moduleRef.close()
   })

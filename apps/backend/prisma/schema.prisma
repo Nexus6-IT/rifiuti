@@ -121,6 +121,7 @@ model Tenant {
   registroProgressiviIniziali RegistroProgressivoIniziale[]
   registriRifiuti       RegistroRifiuti[]
   giacenzeIniziali      GiacenzaIniziale[]
+  causaliRegistroAzienda CausaleRegistroAzienda[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
 
@@ -1816,9 +1817,8 @@ model WasteMovement {
   /// impianti di recupero/smaltimento (art. 190 c. 1 lett. d).
   registrationDate DateTime @default(now()) @map("registration_date")
 
-  /// Causale specifica del movimento.
-  /// CARICO: PRODUZIONE_INTERNA | INGRESSO_ESTERNO | RICLASSIFICAZIONE | RECUPERO_PARZIALE | ALTRO_CARICO
-  /// SCARICO: CONFERIMENTO_TRASPORTATORE | AVVIO_RECUPERO | AVVIO_SMALTIMENTO | CESSIONE | RICLASSIFICAZIONE | ALTRO_SCARICO
+  /// Causale specifica del movimento: codice di una causale del catalogo (`causali_registro`)
+  /// o dell'azienda (`AZ_…`, con `causaleAziendaId`).
   causale String @db.VarChar(100)
 
   /// Codice CER (formato canonico "NN NN NN" o "NN NN NN*" per pericolosi, max 10 char).
@@ -1875,6 +1875,10 @@ model WasteMovement {
   motivoAnnotazione      String?                  @map("motivo_annotazione") @db.VarChar(500)
   /// Versione dell'hash dell'annotazione (1 = storico, 2 = concatenato per registro e anno).
   hashVersione           Int                      @default(1) @map("hash_versione") @db.SmallInt
+  /// Fase 2 pezzo 5: versione della causale aziendale scelta (NULL per le causali di sistema e per le
+  /// storiche). Non entra nell'hash. Il CHECK `waste_movements_causale_azienda_coerente` lega
+  /// `causale LIKE 'AZ_%'` alla presenza del riferimento; la FK composta fa coincidere codice e verso.
+  causaleAziendaId       String?                  @map("causale_azienda_id") @db.Uuid
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   recordedByUser User?           @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
@@ -1887,10 +1891,14 @@ model WasteMovement {
   /// Radice della catena, con gli stessi vincoli di registro, azienda e tipo.
   originale   WasteMovement?  @relation("Radice", fields: [movimentoOriginaleId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_originale_fkey")
   catena      WasteMovement[] @relation("Radice")
+  /// Versione della causale aziendale usata. NoAction: la cancellazione a cascata di un'azienda
+  /// toglie movimenti e causali nello stesso statement.
+  causaleAzienda CausaleRegistroAzienda? @relation("MovimentiCausale", fields: [causaleAziendaId, tenantId, causale, type], references: [id, tenantId, codice, verso], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_causale_azienda_fkey")
 
   @@unique([id, registroId, tenantId, type], map: "waste_movements_id_registro_tenant_type_key")
   @@unique([movimentoRettificatoId], map: "waste_movements_movimento_rettificato_id_key")
   @@index([movimentoOriginaleId], map: "waste_movements_movimento_originale_id_idx")
+  @@index([causaleAziendaId], map: "waste_movements_causale_azienda_id_idx")
   @@unique([registroId, progressiveYear, progressiveNumber])
   @@index([registroId, cerCode])
   @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
@@ -2254,4 +2262,77 @@ enum RENTRISyncLogOrigine {
   RICONCILIAZIONE
 
   @@map("rentri_sync_log_origine")
+}
+
+/// Fase 2 pezzo 5: ruolo di una causale nel MUD.
+enum RuoloMudCausale {
+  PRODOTTO
+  AVVIATO
+  RICEVUTO_DA_TERZI
+  ESCLUSO
+
+  @@map("ruolo_mud_causale")
+}
+
+/// Fase 2 pezzo 5: PROPRIA = causale creata dall'azienda (una riga per versione);
+/// DISATTIVAZIONE = una causale di sistema resa non selezionabile per l'azienda.
+enum NaturaCausaleAzienda {
+  PROPRIA
+  DISATTIVAZIONE
+
+  @@map("natura_causale_azienda")
+}
+
+/// Catalogo di sistema delle causali del registro (Fase 2 pezzo 5). GLOBALE: niente `tenant_id`,
+/// niente RLS. Lo scrive solo la migration (owner); l'applicazione ha solo SELECT (vedi
+/// prisma/sql/ruoli-db.sql). `verso`, `ruolo_mud` e `operazione` di una riga non cambiano mai.
+model CausaleRegistro {
+  codice       String            @db.VarChar(100)
+  verso        WasteMovementType
+  descrizione  String            @db.VarChar(200)
+  ruoloMud     RuoloMudCausale   @map("ruolo_mud")
+  /// Causale RENTRI (contratto CausaliOperazione); NULL = non trasmissibile.
+  codiceRentri String?           @map("codice_rentri") @db.VarChar(5)
+  /// R/D solo per gli scarichi avviati a recupero o smaltimento.
+  operazione   String?           @db.VarChar(1)
+  ordine       Int               @db.SmallInt
+  attiva       Boolean           @default(true)
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  disattivazioni CausaleRegistroAzienda[] @relation("DisattivazioniSistema")
+
+  @@id([codice, verso], map: "causali_registro_pkey")
+  @@map("causali_registro")
+}
+
+/// Personalizzazioni per azienda (Fase 2 pezzo 5): causali PROPRIE (con versioni) e
+/// DISATTIVAZIONI di causali di sistema. RLS per tenant.
+model CausaleRegistroAzienda {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String               @map("tenant_id") @db.Uuid
+  natura               NaturaCausaleAzienda
+  codice               String               @db.VarChar(100)
+  verso                WasteMovementType
+  causaleSistemaCodice String?              @map("causale_sistema_codice") @db.VarChar(100)
+  descrizione          String?              @db.VarChar(200)
+  ruoloMud             RuoloMudCausale?     @map("ruolo_mud")
+  codiceRentri         String?              @map("codice_rentri") @db.VarChar(5)
+  operazione           String?              @db.VarChar(1)
+  ordine               Int                  @default(100) @db.SmallInt
+  validaDal            DateTime?            @map("valida_dal") @db.Date
+  validaAl             DateTime?            @map("valida_al") @db.Date
+  creatoDa             String               @map("creato_da") @db.Uuid
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  causaleSistema CausaleRegistro? @relation("DisattivazioniSistema", fields: [causaleSistemaCodice, verso], references: [codice, verso], onDelete: Restrict, onUpdate: Cascade, map: "causali_registro_azienda_sistema_fkey")
+  movimenti      WasteMovement[]  @relation("MovimentiCausale")
+
+  @@unique([id, tenantId], map: "causali_registro_azienda_id_tenant_id_key")
+  @@unique([id, tenantId, codice, verso], map: "causali_registro_azienda_id_tenant_codice_verso_key")
+  @@unique([tenantId, codice, verso, validaDal], map: "causali_registro_azienda_versione_key")
+  @@unique([tenantId, causaleSistemaCodice, verso], map: "causali_registro_azienda_disattivazione_key")
+  @@index([tenantId], map: "causali_registro_azienda_tenant_id_idx")
+  @@map("causali_registro_azienda")
 }

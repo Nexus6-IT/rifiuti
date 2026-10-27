@@ -46,6 +46,13 @@ function buildRlsClient(client: PrismaClient) {
 /** Tipo del client Prisma esteso con RLS (inferito da `buildRlsClient`). */
 export type RlsClient = ReturnType<typeof buildRlsClient>
 
+/**
+ * Tabelle che `cleanDatabase` NON svuota. `_prisma_migrations` e' dell'ORM; `causali_registro` e' il
+ * catalogo di sistema delle causali: lo scrive solo la migration e i test non possono ricrearlo
+ * (l'applicazione non ha i privilegi di scrittura), quindi svuotarlo lo perderebbe per sempre.
+ */
+export const TABELLE_NON_SVUOTABILI: readonly string[] = ['_prisma_migrations', 'causali_registro']
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   /**
@@ -88,7 +95,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `
 
       for (const { tablename } of tables) {
-        if (tablename !== '_prisma_migrations') {
+        if (!TABELLE_NON_SVUOTABILI.includes(tablename)) {
           await this.$executeRawUnsafe(`TRUNCATE TABLE "public"."${tablename}" CASCADE;`)
         }
       }

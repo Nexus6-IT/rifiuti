@@ -33,7 +33,6 @@ import { GiacenzeInizialiService } from './giacenze-iniziali.service'
 import { RegistriService } from './registri.service'
 import { RegistraMovimentoUseCase } from './use-cases/registra-movimento.use-case'
 import { RegistraMovimentoCommand } from './commands/registra-movimento.command'
-import type { CausaleMovimento } from '../../domain/waste-movement/waste-movement.entity'
 
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
@@ -506,7 +505,7 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
         'CARICO',
         new Date('2026-03-01'),
         new Date('2026-03-01'),
-        'INGRESSO_ESTERNO' as CausaleMovimento,
+        'INGRESSO_ESTERNO',
         CER,
         undefined,
         quantita,

@@ -6,10 +6,7 @@ import { FIRPrismaRepository } from '../../../infrastructure/persistence/fir-pri
 import { FIR } from '../../../domain/fir/aggregates/fir.aggregate'
 import { FirGiaRegistratoError } from '../../../core/domain/errors'
 import { RegistriService } from '../registri.service'
-import type {
-  CausaleMovimento,
-  WasteMovementType,
-} from '../../../domain/waste-movement/waste-movement.entity'
+import type { WasteMovementType } from '../../../domain/waste-movement/waste-movement.entity'
 
 /**
  * Controllo di giacenza contro un Postgres reale: il lock della giacenza e la
@@ -82,7 +79,7 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
       type,
       new Date(data),
       new Date(dataRegistrazione),
-      causale as CausaleMovimento,
+      causale,
       CER,
       undefined,
       qty,

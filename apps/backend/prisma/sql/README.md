@@ -4,7 +4,10 @@
 
 Crea (o riallinea, se esistono) i due ruoli applicativi e i loro GRANT minimi:
 
-- `wasteflow_app`: applicazione, `NOBYPASSRLS`; CRUD sulle tabelle di `public`.
+- `wasteflow_app`: applicazione, `NOBYPASSRLS`; CRUD sulle tabelle di `public`, tranne le
+  tabelle globali in sola lettura (elenco `v_sola_lettura` nello script, oggi `causali_registro`:
+  solo `SELECT`, con una `REVOKE` esplicita a ogni esecuzione; una nuova tabella globale va
+  aggiunta all'elenco, i default privileges restano CRUD).
 - `wasteflow_sistema`: job di sistema, `BYPASSRLS`; stessi diritti.
 
 Entrambi: `CONNECT` sul database, `USAGE` su `public`, `USAGE, SELECT` sulle

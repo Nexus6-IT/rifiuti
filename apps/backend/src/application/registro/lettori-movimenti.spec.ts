@@ -35,6 +35,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'vigenti',
     motivo: "movimenti dell'anno, anni precedenti, scarichi dei FIR, saldi al 31 dicembre",
   },
+  'application/registro/causali/causali-registro.service.ts': {
+    scelta: 'tutte',
+    motivo:
+      "usata e ultimo giorno d'uso di una versione: ogni annotazione conta, anche rettificata o annullamento",
+  },
   'application/registro/giacenza-disponibile.ts': {
     scelta: 'vigenti',
     motivo: 'saldi del registro e unita non di massa',

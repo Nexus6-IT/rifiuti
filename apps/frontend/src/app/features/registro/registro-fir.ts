@@ -1,6 +1,6 @@
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { formattaQuantita } from '../../shared/format/formatta-quantita'
-import { CausaleMovimento, TipoMovimento } from './registro.service'
+import { TipoMovimento } from './registro.service'
 
 /** Ruolo della società attiva rispetto alle parti di un FIR. */
 export type RuoloFir = 'PRODUTTORE' | 'DESTINATARIO'
@@ -45,7 +45,7 @@ export function dataOperazioneDaFir(
 export function causalePredefinitaDaFir(
   tipo: 'CARICO' | 'SCARICO',
   ruolo: RuoloFir | null
-): CausaleMovimento | null {
+): string | null {
   if (ruolo === null) return null
   return tipo === 'SCARICO' ? 'CONFERIMENTO_TRASPORTATORE' : 'INGRESSO_ESTERNO'
 }

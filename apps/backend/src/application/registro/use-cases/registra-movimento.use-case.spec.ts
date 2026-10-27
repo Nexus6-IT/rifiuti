@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { RegistraMovimentoUseCase, RICOPIA_ORDINARIA } from './registra-movimento.use-case'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
@@ -8,6 +9,7 @@ import { annoSolareItaliano } from '../../../core/time/anno-italiano'
 import { Prisma } from '@prisma/client'
 import { FirGiaRegistratoError } from '../../../core/domain/errors'
 import { RegistriService, RegistroNonCoerenteConFirError } from '../registri.service'
+import { righeCausaliSistema } from '../causali/catalogo-causali.fixture'
 import { hashAnnotazioneV2 } from '../../../domain/waste-movement/waste-movement.entity'
 
 const REGISTRO = 'registro-uuid-001'
@@ -61,6 +63,9 @@ describe('RegistraMovimentoUseCase', () => {
       cERCode: {
         count: jest.fn().mockResolvedValue(1),
       },
+      // Catalogo delle causali: le 11 di sistema, nessuna personalizzazione dell'azienda.
+      causaleRegistro: { findMany: jest.fn().mockResolvedValue(righeCausaliSistema()) },
+      causaleRegistroAzienda: { findMany: jest.fn().mockResolvedValue([]) },
       // FIR collegato: per default esiste e appartiene al tenant.
       fIR: {
         findFirst: jest.fn().mockResolvedValue({
@@ -682,6 +687,38 @@ describe('RegistraMovimentoUseCase', () => {
     expect((await useCase.execute(buildCommand())).value.avvisi).toEqual([])
   })
 
+  it('versione della causale propria chiusa nel frattempo: il 409 CAUSALE_MODIFICATA esce intatto, non diventa un Result.fail', async () => {
+    prisma.causaleRegistroAzienda.findMany.mockResolvedValue([
+      {
+        id: 'v-1',
+        natura: 'PROPRIA',
+        codice: 'AZ_PROVA',
+        verso: 'CARICO',
+        descrizione: 'Prova',
+        ruoloMud: 'ESCLUSO',
+        codiceRentri: null,
+        operazione: null,
+        ordine: 0,
+        validaDal: new Date('2026-01-01T00:00:00Z'),
+        validaAl: null,
+      },
+    ])
+    const tx = _mockTransazione(recordCarico)
+    // La SELECT ... FOR KEY SHARE non trova piu' la versione (o non e' piu' valida).
+    tx.$queryRaw.mockImplementation(async (...args: unknown[]) =>
+      (args[0] as TemplateStringsArray).join('?').includes('FOR KEY SHARE')
+        ? []
+        : [{ max_num: null }]
+    )
+    const cmd = buildCommand()
+    const esito = useCase.execute(Object.assign(cmd, { causale: 'AZ_PROVA' }))
+    await expect(esito).rejects.toBeInstanceOf(ConflictException)
+    await expect(esito).rejects.toMatchObject({
+      response: { error: 'CAUSALE_MODIFICATA' },
+    })
+    expect(tx.wasteMovement.create).not.toHaveBeenCalled()
+  })
+
   // ─── Ritardo registrazione ───────────────────────────────────────────────────
 
   it('segnala fuoriTermine se la data di registrazione supera i 14 gg dalla data operazione', async () => {
@@ -1240,6 +1277,9 @@ describe('RegistraMovimentoUseCase: tempo italiano', () => {
     lockArgs = []
     const prisma: any = {
       wasteMovement: { groupBy: jest.fn().mockResolvedValue([]), create: jest.fn() },
+      // Catalogo delle causali: le 11 di sistema, nessuna personalizzazione dell'azienda.
+      causaleRegistro: { findMany: jest.fn().mockResolvedValue(righeCausaliSistema()) },
+      causaleRegistroAzienda: { findMany: jest.fn().mockResolvedValue([]) },
       cERCode: { count: jest.fn().mockResolvedValue(1) },
       fIR: {
         findFirst: jest.fn().mockResolvedValue({

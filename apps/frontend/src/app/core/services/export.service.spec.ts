@@ -95,6 +95,18 @@ describe('ExportService - registro con rettifiche e annullamenti', () => {
       jasmine.arrayContaining(['Progressivo', 'Tipo', 'Annotazione', 'Stato', 'Causale', 'CER'])
     )
   })
+
+  it('la colonna Causale usa la descrizione dell’API, con ripiego sul codice', () => {
+    const movimenti = [
+      mov({ causale: 'AZ_RESO', causaleDescrizione: 'Reso da cliente' }),
+      mov({ id: 'm2', causale: 'AZ_CANCELLATA' }),
+    ]
+    const righe = servizio.righeRegistroExcel(movimenti)
+    expect(righe.map(r => r['Causale'])).toEqual(['Reso da cliente', 'AZ_CANCELLATA'])
+    const pdf = servizio.tabellaRegistroPdf(movimenti)
+    const i = pdf.head.indexOf('Causale')
+    expect(pdf.body.map(riga => riga[i])).toEqual(['Reso da cliente', 'AZ_CANCELLATA'])
+  })
 })
 
 describe('ExportService - PDF di dettaglio del FIR', () => {
