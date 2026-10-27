@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { Result } from '../../../core/application/result'
+import { LoggerService } from '../../../core/logger/logger.service'
 import { ListMovimentiQuery, PaginatedMovimenti } from './list-movimenti.query'
 
 export type TipoAnnotazioneItem = 'ORDINARIA' | 'RETTIFICA' | 'ANNULLAMENTO'
@@ -80,9 +81,17 @@ function statoDi(
  * Filtri: tipo, CER, causale, periodo (dataFrom/dataTo), FIR.
  * Ordinamento per data operazione DESC (più recente prima).
  */
+/** Profondita massima della ricorsione che cerca la testa di una catena di correzioni. */
+const LIVELLO_MASSIMO = 1000
+
 @Injectable()
 export class ListMovimentiHandler {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly logger: LoggerService
+  ) {
+    this.logger.setContext(ListMovimentiHandler.name)
+  }
 
   async execute(query: ListMovimentiQuery): Promise<Result<PaginatedMovimenti<MovimentoListItem>>> {
     const page = query.pagination?.page ?? 1
@@ -120,10 +129,18 @@ export class ListMovimentiHandler {
       }),
     ])
 
-    const tipiTesta = await this.tipiDelleTeste(
-      query.tenantId,
-      records.filter(r => r.correzioni.length > 0).map(r => r.id)
-    )
+    const conCorrezioni = records.filter(r => r.correzioni.length > 0).map(r => r.id)
+    const tipiTesta = await this.tipiDelleTeste(query.tenantId, conCorrezioni)
+    // Una riga con una correzione deve avere la testa: senza, lo stato ricadrebbe sul tipo della
+    // riga stessa (una rettificata sembrerebbe vigente). Non deve accadere: lo si dice nel log.
+    const senzaTesta = conCorrezioni.filter(id => !tipiTesta.has(id))
+    if (senzaTesta.length > 0) {
+      this.logger.warn(
+        'Elenco registro: la query ricorsiva non ha restituito la testa della catena, ' +
+          'lo stato ricade sul tipo della riga',
+        { righe: senzaTesta.length }
+      )
+    }
 
     const items: MovimentoListItem[] = records.map(r => ({
       id: r.id,
@@ -176,8 +193,12 @@ export class ListMovimentiHandler {
   ): Promise<Map<string, TipoAnnotazioneItem>> {
     const tipi = new Map<string, TipoAnnotazioneItem>()
     if (ids.length === 0) return tipi
+    // La condizione `livello < LIVELLO_MASSIMO` e' una guardia contro un ciclo (A corregge B che
+    // corregge A), che farebbe girare la ricorsione per sempre: il database non lo vieta del tutto e
+    // una catena vera non arriva a quella profondita. Se scatta la ricorsione si ferma a meta' catena
+    // e la testa restituita e' SBAGLIATA: per questo si controlla il livello e si registra un warning.
     const righe = await this.prisma.$queryRaw<
-      Array<{ partenza: string; tipo_testa: TipoAnnotazioneItem }>
+      Array<{ partenza: string; tipo_testa: TipoAnnotazioneItem; livello: number }>
     >(Prisma.sql`
       WITH RECURSIVE catena AS (
         SELECT id AS partenza, id, tipo_annotazione, 0 AS livello
@@ -188,13 +209,21 @@ export class ListMovimentiHandler {
         FROM catena c
         JOIN waste_movements n
           ON n.movimento_rettificato_id = c.id AND n.tenant_id = ${tenantId}::uuid
-        WHERE c.livello < 1000
+        WHERE c.livello < ${LIVELLO_MASSIMO}
       )
-      SELECT DISTINCT ON (partenza) partenza, tipo_annotazione::text AS tipo_testa
+      SELECT DISTINCT ON (partenza) partenza, tipo_annotazione::text AS tipo_testa, livello
       FROM catena
       ORDER BY partenza, livello DESC
     `)
     for (const r of righe) tipi.set(r.partenza, r.tipo_testa)
+    const troncate = righe.filter(r => Number(r.livello) >= LIVELLO_MASSIMO).length
+    if (troncate > 0) {
+      this.logger.warn(
+        'Elenco registro: catena di correzioni arrivata alla profondita massima, la testa ' +
+          'restituita non è affidabile',
+        { catene: troncate, livelloMassimo: LIVELLO_MASSIMO }
+      )
+    }
     return tipi
   }
 }

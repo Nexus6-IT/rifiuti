@@ -37,6 +37,7 @@ describe('ListMovimentiHandler', () => {
     $queryRaw: jest.Mock
   }
   let handler: ListMovimentiHandler
+  let logger: { setContext: jest.Mock; warn: jest.Mock }
 
   beforeEach(() => {
     prisma = {
@@ -46,7 +47,8 @@ describe('ListMovimentiHandler', () => {
       },
       $queryRaw: jest.fn().mockResolvedValue([]),
     }
-    handler = new ListMovimentiHandler(prisma as any)
+    logger = { setContext: jest.fn(), warn: jest.fn() }
+    handler = new ListMovimentiHandler(prisma as any, logger as any)
   })
 
   it('lista movimenti: filtra per registroId e restituisce registroId', async () => {
@@ -132,6 +134,42 @@ describe('ListMovimentiHandler', () => {
       expect(r.correttoDa).toEqual(rif(3, 'ANNULLAMENTO'))
       expect(r.motivoAnnotazione).toBe('errore di battitura')
       expect(o.correttoDa).toEqual(rif(2, 'RETTIFICA'))
+    })
+
+    it('la query ricorsiva non restituisce la testa: stato dal tipo della riga (RETTIFICATO) e warning senza id di azienda', async () => {
+      prisma.wasteMovement.findMany.mockResolvedValue([
+        { ...riga('reg-A'), correzioni: [rif(2, 'RETTIFICA')] },
+      ])
+      prisma.$queryRaw.mockResolvedValue([])
+      const result = await handler.execute(new ListMovimentiQuery('t1', {}, { page: 1, limit: 20 }))
+      expect(result.value.items[0].stato).toBe('RETTIFICATO')
+      expect(logger.warn).toHaveBeenCalledTimes(1)
+      const [messaggio, meta] = logger.warn.mock.calls[0]
+      expect(messaggio).toContain('non ha restituito la testa')
+      expect(meta).toEqual({ righe: 1 })
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('t1')
+    })
+
+    it('nessun warning quando ogni riga con correzioni ha la sua testa', async () => {
+      prisma.wasteMovement.findMany.mockResolvedValue([
+        { ...riga('reg-A'), id: 'o', correzioni: [rif(2, 'RETTIFICA')] },
+      ])
+      prisma.$queryRaw.mockResolvedValue([{ partenza: 'o', tipo_testa: 'RETTIFICA', livello: 1 }])
+      await handler.execute(new ListMovimentiQuery('t1', {}, { page: 1, limit: 20 }))
+      expect(logger.warn).not.toHaveBeenCalled()
+    })
+
+    it('guardia di profondita scattata: warning, testa non affidabile', async () => {
+      prisma.wasteMovement.findMany.mockResolvedValue([
+        { ...riga('reg-A'), id: 'o', correzioni: [rif(2, 'RETTIFICA')] },
+      ])
+      prisma.$queryRaw.mockResolvedValue([
+        { partenza: 'o', tipo_testa: 'RETTIFICA', livello: 1000 },
+      ])
+      await handler.execute(new ListMovimentiQuery('t1', {}, { page: 1, limit: 20 }))
+      expect(logger.warn).toHaveBeenCalledTimes(1)
+      expect(logger.warn.mock.calls[0][0]).toContain('profondita massima')
+      expect(logger.warn.mock.calls[0][1]).toEqual({ catene: 1, livelloMassimo: 1000 })
     })
 
     it('una riga corretta da una rettifica vigente e RETTIFICATA', async () => {

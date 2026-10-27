@@ -116,10 +116,13 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
     queryRaw = jest.fn((...args: unknown[]) =>
       (app.$queryRaw as (...a: unknown[]) => unknown)(...args)
     )
-    handler = new ListMovimentiHandler({
-      wasteMovement: app.wasteMovement,
-      $queryRaw: queryRaw,
-    } as never)
+    handler = new ListMovimentiHandler(
+      {
+        wasteMovement: app.wasteMovement,
+        $queryRaw: queryRaw,
+      } as never,
+      loggerStub as never
+    )
   })
 
   beforeEach(() => queryRaw.mockClear())
