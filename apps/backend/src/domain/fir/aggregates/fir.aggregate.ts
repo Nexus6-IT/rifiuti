@@ -13,6 +13,10 @@ import {
 } from '../../../core/domain/errors'
 import { Quantita, UnitaMisura } from '../value-objects/quantita'
 import { RENTRISyncStatus } from '../rentri-sync-status.vo'
+import { calcolaScostamentoPeso, ScostamentoPeso } from '../scostamento-peso'
+
+/** Limite della colonna `effective_weight Decimal(10,2)`. */
+export const PESO_EFFETTIVO_MASSIMO = 99999999.99
 
 export enum FIRStato {
   BOZZA = 'BOZZA',
@@ -558,10 +562,16 @@ export class FIR extends AggregateRoot {
       throw new InvalidStateTransitionError(this._stato, FIRStato.CONSEGNATO)
     }
 
-    // Validate peso within tolerance (±10%)
-    if (!this._rifiuto.quantita.isWithinTolerance(pesoEffettivo, 10)) {
+    // F2-7: nessuna tolleranza bloccante. Si accetta ogni quantità verificata valida
+    // (finita, > 0, entro il limite della colonna Decimal(10,2)); lo scostamento
+    // dalla dichiarata è un avviso calcolato (`scostamentoPeso`).
+    if (
+      !Number.isFinite(pesoEffettivo) ||
+      pesoEffettivo <= 0 ||
+      pesoEffettivo > PESO_EFFETTIVO_MASSIMO
+    ) {
       throw new DomainError(
-        `Peso effettivo (${pesoEffettivo}) eccede tolleranza 10% rispetto a quantità dichiarata (${this._rifiuto.quantita.valore})`
+        `La quantità verificata a destino deve essere maggiore di zero e non superiore a ${PESO_EFFETTIVO_MASSIMO.toLocaleString('it-IT')}`
       )
     }
 
@@ -1124,6 +1134,16 @@ export class FIR extends AggregateRoot {
 
   get pesoEffettivo(): number | null {
     return this._pesoEffettivo
+  }
+
+  /** Scostamento fra quantità dichiarata e verificata a destino (calcolato, non salvato). */
+  get scostamentoPeso(): ScostamentoPeso | null {
+    if (this._pesoEffettivo === null) return null
+    return calcolaScostamentoPeso(
+      this._rifiuto.quantita.valore,
+      this._pesoEffettivo,
+      this._rifiuto.quantita.unitaMisura
+    )
   }
 
   get firme(): FirmeDigitali {

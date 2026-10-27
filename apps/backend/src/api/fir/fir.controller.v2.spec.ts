@@ -1,5 +1,5 @@
-import { ForbiddenException } from '@nestjs/common'
-import { FIRControllerV2 } from './fir.controller.v2'
+import { BadRequestException, ForbiddenException, ValidationPipe } from '@nestjs/common'
+import { ConfermaConsegnaFIRDto, FIRControllerV2 } from './fir.controller.v2'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
 import { Result } from '../../core/application/result'
 import { FIRResponseDto } from './dtos/fir-response.dto'
@@ -134,5 +134,31 @@ describe('FIRControllerV2 — azienda selezionata e ruolo effettivo', () => {
     expect(lista.execute).not.toHaveBeenCalled()
     expect(dettaglio.execute).not.toHaveBeenCalled()
     expect(crea.execute).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * F2-7: il peso verificato a destino non ha più tolleranza, ma il DTO deve rispettare la colonna
+ * `effective_weight Decimal(10,2)`. Test con la pipe vera, come in main.ts.
+ */
+describe('ConfermaConsegnaFIRDto — validazione con la pipe vera', () => {
+  const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
+  const valida = (body: unknown) =>
+    pipe.transform(body, { type: 'body', metatype: ConfermaConsegnaFIRDto })
+
+  it.each([0.01, 1, 150.5, 99999999.99])('accetta %s', async pesoEffettivo => {
+    await expect(valida({ pesoEffettivo })).resolves.toMatchObject({ pesoEffettivo })
+  })
+
+  it('rifiuta 3 decimali', async () => {
+    await expect(valida({ pesoEffettivo: 10.123 })).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('rifiuta un valore oltre il massimo della colonna', async () => {
+    await expect(valida({ pesoEffettivo: 100000000 })).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it.each([0, -1, '12', null])('rifiuta %p', async pesoEffettivo => {
+    await expect(valida({ pesoEffettivo })).rejects.toBeInstanceOf(BadRequestException)
   })
 })

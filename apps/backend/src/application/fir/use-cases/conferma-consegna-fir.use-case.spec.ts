@@ -230,52 +230,53 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       expect(saved?.firme.destinatario?.publicKey).toContain('BEGIN PUBLIC KEY')
     })
 
-    it('should accept peso within +10% tolerance', async () => {
+    it.each([
+      [150, 30, true], // +25%
+      [60, -60, true], // -50%
+      [1200, 1080, true], // peso 10 volte la dichiarata
+      [132, 12, false], // +10% esatto
+    ])('accetta il peso %s senza blocco e registra lo scostamento', async (peso, diff, oltre) => {
       const fir = createInTransitoFIR() // quantità dichiarata: 120
       repository.addFIR(fir)
 
-      const command = new ConfermaConsegnaFIRCommand(fir.id, 132, 'user-789', 'Destinatario')
+      const command = new ConfermaConsegnaFIRCommand(fir.id, peso, 'user-789', 'Destinatario')
 
       const result = await useCase.execute(command)
 
       expect(result.isSuccess).toBe(true)
-      expect(result.value.pesoEffettivo).toBe(132)
+      expect(result.value.stato).toBe(FIRStato.CONSEGNATO)
+      expect(result.value.pesoEffettivo).toBe(peso)
+      expect(result.value.scostamentoPeso?.differenza).toBe(diff)
+      expect(result.value.scostamentoPeso?.oltreSoglia).toBe(oltre)
     })
 
-    it('should accept peso within -10% tolerance', async () => {
-      const fir = createInTransitoFIR() // quantità dichiarata: 120
+    it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 100000000])(
+      'fallisce con il peso non valido %s',
+      async peso => {
+        const fir = createInTransitoFIR()
+        repository.addFIR(fir)
+
+        const result = await useCase.execute(
+          new ConfermaConsegnaFIRCommand(fir.id, peso, 'user-789', 'Destinatario')
+        )
+
+        expect(result.isFailure).toBe(true)
+        expect(fir.stato).toBe(FIRStato.IN_TRANSITO)
+      }
+    )
+
+    it('un FIR legato a RENTRI resta non consegnabile in locale', async () => {
+      const fir = createInTransitoFIR()
+      fir.avviaTentativoRentri(new Date())
+      fir.markRENTRISynced('RENTRI-NUM-000123')
       repository.addFIR(fir)
 
-      const command = new ConfermaConsegnaFIRCommand(fir.id, 108, 'user-789', 'Destinatario')
-
-      const result = await useCase.execute(command)
-
-      expect(result.isSuccess).toBe(true)
-      expect(result.value.pesoEffettivo).toBe(108)
-    })
-
-    it('should fail if peso exceeds +10% tolerance', async () => {
-      const fir = createInTransitoFIR() // quantità dichiarata: 120
-      repository.addFIR(fir)
-
-      const command = new ConfermaConsegnaFIRCommand(fir.id, 135, 'user-789', 'Destinatario')
-
-      const result = await useCase.execute(command)
+      const result = await useCase.execute(
+        new ConfermaConsegnaFIRCommand(fir.id, 120, 'user-789', 'Destinatario')
+      )
 
       expect(result.isFailure).toBe(true)
-      expect(result.error).toContain('tolleranza')
-    })
-
-    it('should fail if peso exceeds -10% tolerance', async () => {
-      const fir = createInTransitoFIR() // quantità dichiarata: 120
-      repository.addFIR(fir)
-
-      const command = new ConfermaConsegnaFIRCommand(fir.id, 105, 'user-789', 'Destinatario')
-
-      const result = await useCase.execute(command)
-
-      expect(result.isFailure).toBe(true)
-      expect(result.error).toContain('tolleranza')
+      expect(fir.stato).toBe(FIRStato.IN_TRANSITO)
     })
 
     it('should fail if FIR not found', async () => {

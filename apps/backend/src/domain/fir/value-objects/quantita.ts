@@ -32,13 +32,6 @@ export class Quantita {
     return this._unitaMisura
   }
 
-  // Check if actual weight is within tolerance (±10%)
-  isWithinTolerance(actual: number, tolerancePercent: number = 10): boolean {
-    const tolerance = (this._valore * tolerancePercent) / 100
-    const diff = Math.abs(actual - this._valore)
-    return diff <= tolerance
-  }
-
   equals(other: Quantita): boolean {
     return this._valore === other._valore && this._unitaMisura === other._unitaMisura
   }

@@ -376,3 +376,139 @@ describe('FirListComponent — avviso di scadenza alla scelta della controparte'
     expect(firService.createFIR).toHaveBeenCalled()
   })
 })
+
+/**
+ * F2-7: la quantità verificata a destino non è più bloccata dalla tolleranza ±10%. Oltre soglia il
+ * dialog avvisa (role="status") ma Conferma resta attivo; dopo il successo, se il backend
+ * restituisce uno scostamento oltre soglia, il toast è di tipo "warn".
+ */
+describe('FirListComponent — dialog di consegna, quantità verificata e scostamento (F2-7)', () => {
+  let fixture: ComponentFixture<FirListComponent>
+  let component: FirListComponent
+  let firService: jasmine.SpyObj<FirService>
+  let messageService: MessageService
+
+  const firInTransito = {
+    id: 'fir-1',
+    stato: 'IN_TRANSITO',
+    rifiuto: { cerCode: '150101', quantita: 100, unitaMisura: 'kg' },
+  } as any
+
+  beforeEach(() => {
+    firService = jasmine.createSpyObj('FirService', ['getFIRList', 'confermaConsegna'])
+    firService.getFIRList.and.returnValue(of({ items: [], total: 0 }) as any)
+    const registry = jasmine.createSpyObj('RegistryService', [
+      'getProduttori',
+      'getTrasportatori',
+      'getDestinatari',
+    ])
+    for (const m of ['getProduttori', 'getTrasportatori', 'getDestinatari']) {
+      registry[m].and.returnValue(of({ items: [], total: 0 }))
+    }
+
+    TestBed.configureTestingModule({
+      imports: [FirListComponent, NoopAnimationsModule, HttpClientTestingModule],
+      providers: [
+        { provide: FirService, useValue: firService },
+        { provide: RegistryService, useValue: registry },
+        {
+          provide: AuthService,
+          useValue: { currentUser: () => ({ id: 'u1', email: 'u@example.com', role: 'ADMIN' }) },
+        },
+        {
+          provide: RENTRISyncService,
+          useValue: jasmine.createSpyObj('RENTRISyncService', ['syncFIR', 'confermaLegame']),
+        },
+        MessageService,
+        ConfirmationService,
+        ExportService,
+      ],
+    })
+    fixture = TestBed.createComponent(FirListComponent)
+    component = fixture.componentInstance
+    messageService = fixture.debugElement.injector.get(MessageService)
+    fixture.detectChanges()
+  })
+
+  function apriDialog(peso: number): HTMLElement {
+    component.showConsegnaDialog(firInTransito)
+    component.pesoEffettivo = peso
+    fixture.detectChanges()
+    return document.body
+  }
+
+  it("etichetta il campo con l'unità del FIR e non con kg fisso", () => {
+    component.showConsegnaDialog({
+      ...firInTransito,
+      rifiuto: { ...firInTransito.rifiuto, unitaMisura: 'litri' },
+    })
+    fixture.detectChanges()
+
+    const label = document.body.querySelector('label[for="peso-effettivo"]')
+    expect(label?.textContent).toContain('Quantità verificata a destino (litri)')
+  })
+
+  it('a +10% esatto non mostra alcun avviso', () => {
+    const root = apriDialog(110)
+    expect(root.querySelector('[data-testid="avviso-scostamento"]')).toBeNull()
+  })
+
+  it('oltre soglia mostra l\'avviso con role="status" e il testo previsto', () => {
+    const root = apriDialog(110.01)
+    const avviso = root.querySelector('[data-testid="avviso-scostamento"]')
+    expect(avviso).toBeTruthy()
+    expect(avviso?.getAttribute('role')).toBe('status')
+    expect(avviso?.textContent).toContain('La quantità verificata differisce del +10')
+    expect(avviso?.textContent).toContain('da quella dichiarata (100 kg)')
+    expect(avviso?.textContent).toContain(
+      'puoi confermare, lo scostamento resta registrato sul FIR.'
+    )
+  })
+
+  it("l'avviso non blocca: consegnaFIR invia comunque la quantità", () => {
+    firService.confermaConsegna.and.returnValue(of({ ...firInTransito, scostamentoPeso: null }))
+    apriDialog(300)
+    expect(component.avvisoScostamento).toBeTruthy()
+
+    component.consegnaFIR()
+
+    expect(firService.confermaConsegna).toHaveBeenCalledWith('fir-1', 300)
+  })
+
+  it('toast "warn" se la risposta ha uno scostamento oltre soglia', () => {
+    const add = spyOn(messageService, 'add').and.callThrough()
+    firService.confermaConsegna.and.returnValue(
+      of({
+        ...firInTransito,
+        scostamentoPeso: { differenza: 50, percentuale: 50, unita: 'kg', oltreSoglia: true },
+      })
+    )
+    apriDialog(150)
+
+    component.consegnaFIR()
+
+    const toast = add.calls
+      .allArgs()
+      .map(a => a[0])
+      .find(m => m.severity === 'warn')
+    expect(toast).toBeTruthy()
+    expect(toast?.detail).toContain('+50%')
+    expect(add.calls.allArgs().some(a => a[0].severity === 'success')).toBeFalse()
+  })
+
+  it('toast "success" se lo scostamento è entro soglia', () => {
+    const add = spyOn(messageService, 'add').and.callThrough()
+    firService.confermaConsegna.and.returnValue(
+      of({
+        ...firInTransito,
+        scostamentoPeso: { differenza: 5, percentuale: 5, unita: 'kg', oltreSoglia: false },
+      })
+    )
+    apriDialog(105)
+
+    component.consegnaFIR()
+
+    expect(add.calls.allArgs().some(a => a[0].severity === 'success')).toBeTrue()
+    expect(add.calls.allArgs().some(a => a[0].severity === 'warn')).toBeFalse()
+  })
+})

@@ -1425,4 +1425,56 @@ describe('FirDetailComponent', () => {
       expect(component['aggiornamentoStatoInCorso']()).toBe(false)
     })
   })
+
+  describe('Quantità verificata a destino (F2-7)', () => {
+    const consegnato = (verificata: number, oltre: boolean, perc: number): FIR => ({
+      ...baseFIR,
+      stato: FIRStato.CONSEGNATO,
+      dataConsegna: '2026-07-02T10:00:00.000Z',
+      pesoEffettivo: verificata,
+      scostamentoPeso: {
+        differenza: verificata - 10,
+        percentuale: perc,
+        unita: 'kg',
+        oltreSoglia: oltre,
+      },
+    })
+
+    it('mostra valore, unità e scostamento accanto alla data di consegna', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(consegnato(10.5, false, 5)))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      const riga = el.querySelector('[data-testid="fir-detail-quantita-verificata"]')
+      expect(riga?.textContent).toContain('10,5 kg')
+      const scost = el.querySelector('[data-testid="fir-detail-scostamento"]')
+      expect(scost?.textContent).toContain('+5%')
+      expect(scost?.classList.contains('detail-scostamento--oltre')).toBeFalse()
+    })
+
+    it('evidenzia lo scostamento oltre soglia', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(consegnato(15, true, 50)))
+      fixture.detectChanges()
+
+      const scost = (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="fir-detail-scostamento"]'
+      )
+      expect(scost?.classList.contains('detail-scostamento--oltre')).toBeTrue()
+      expect(scost?.textContent).toContain('oltre la soglia')
+    })
+
+    it('senza quantità verificata mostra un trattino e nessuno scostamento', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(baseFIR))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(
+        el.querySelector('[data-testid="fir-detail-quantita-verificata"]')?.textContent?.trim()
+      ).toBe('—')
+      expect(el.querySelector('[data-testid="fir-detail-scostamento"]')).toBeNull()
+    })
+  })
 })

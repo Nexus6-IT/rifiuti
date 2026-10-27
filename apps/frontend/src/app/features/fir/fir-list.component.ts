@@ -30,6 +30,7 @@ import {
 } from '../registry/anagrafica-form-dialog.component'
 import { CerSelectComponent } from '../cer/cer-select.component'
 import { puoCreareFir } from './fir-permissions'
+import { calcolaScostamentoPeso, testoAvvisoScostamento } from './scostamento-peso'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
@@ -869,13 +870,20 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
         header="Conferma Consegna"
       >
         <div class="dialog-form__field">
-          <label for="peso-effettivo">Peso effettivo (kg)</label>
+          <label for="peso-effettivo">Quantità verificata a destino ({{ unitaConsegna }})</label>
           <p-inputNumber
             inputId="peso-effettivo"
             [(ngModel)]="pesoEffettivo"
             [minFractionDigits]="2"
+            [maxFractionDigits]="2"
+            [max]="99999999.99"
             styleClass="w-full"
           />
+          @if (avvisoScostamento; as avviso) {
+            <small class="dialog-form__warning" role="status" data-testid="avviso-scostamento">{{
+              avviso
+            }}</small>
+          }
         </div>
         <ng-template pTemplate="footer">
           <p-button label="Annulla" [text]="true" (onClick)="displayConsegnaDialog = false" />
@@ -1111,6 +1119,10 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
         gap: var(--spacing-sm);
       }
       .dialog-form__field label {
+        font-size: var(--font-size-sm);
+      }
+      .dialog-form__warning {
+        color: var(--color-warning);
         font-size: var(--font-size-sm);
       }
 
@@ -1750,6 +1762,22 @@ export class FirListComponent implements OnInit {
     })
   }
 
+  /** Unità del FIR: il peso verificato è espresso nella stessa unità della quantità dichiarata. */
+  get unitaConsegna(): string {
+    return this.selectedFIR?.rifiuto.unitaMisura ?? 'kg'
+  }
+
+  /**
+   * Avviso non bloccante sotto il campo: appare solo se la quantità digitata si scosta oltre la
+   * soglia da quella dichiarata. Il pulsante Conferma non dipende da questo.
+   */
+  get avvisoScostamento(): string | null {
+    const fir = this.selectedFIR
+    if (!fir || !this.pesoEffettivo || this.pesoEffettivo <= 0) return null
+    const s = calcolaScostamentoPeso(fir.rifiuto.quantita, this.pesoEffettivo, this.unitaConsegna)
+    return s.oltreSoglia ? testoAvvisoScostamento(s, fir.rifiuto.quantita) : null
+  }
+
   showConsegnaDialog(fir: FIR): void {
     this.selectedFIR = fir
     this.pesoEffettivo = fir.rifiuto.quantita
@@ -1764,19 +1792,30 @@ export class FirListComponent implements OnInit {
       this.messageService.add({
         severity: 'warn',
         summary: 'Peso non valido',
-        detail: 'Indica un peso effettivo maggiore di zero',
+        detail: 'Indica una quantità verificata maggiore di zero',
       })
       return
     }
 
+    const dichiarata = this.selectedFIR.rifiuto.quantita
     this.saving = true
     this.firService.confermaConsegna(this.selectedFIR.id, this.pesoEffettivo).subscribe({
-      next: () => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Successo',
-          detail: 'Consegna FIR confermata con successo',
-        })
+      next: fir => {
+        const scostamento = fir?.scostamentoPeso
+        if (scostamento?.oltreSoglia) {
+          this.messageService.add({
+            severity: 'warn',
+            summary: 'Consegna confermata con scostamento',
+            detail: testoAvvisoScostamento(scostamento, dichiarata),
+            life: 10000,
+          })
+        } else {
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Successo',
+            detail: 'Consegna FIR confermata con successo',
+          })
+        }
         this.displayConsegnaDialog = false
         this.saving = false
         this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })

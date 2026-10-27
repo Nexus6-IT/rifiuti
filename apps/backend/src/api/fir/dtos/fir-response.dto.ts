@@ -4,6 +4,7 @@
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { FIR, FIRStato, ParteFIR, TipoTratta } from '../../../domain/fir/aggregates/fir.aggregate'
+import { ScostamentoPeso } from '../../../domain/fir/scostamento-peso'
 import {
   traduciErroreRentri,
   RentriAzioneUtente,
@@ -130,6 +131,14 @@ export class FIRResponseDto {
     description: 'Peso effettivo rilevato alla destinazione (4ª copia)',
   })
   pesoEffettivo: number | null
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Scostamento fra quantità dichiarata e verificata a destino (F2-7): solo un avviso, non blocca la consegna. Null finché manca la quantità verificata.',
+    example: { differenza: 12, percentuale: 10, unita: 'kg', oltreSoglia: false },
+  })
+  scostamentoPeso: ScostamentoPeso | null
 
   /** Campo 17 FIR (DM 59/2023): annotazioni libere. */
   @ApiPropertyOptional({ description: 'Campo 17 FIR: annotazioni libere' })
@@ -264,6 +273,7 @@ export class FIRResponseDto {
       dataPresaCaricoEffettiva: fir.firme.trasportatore ? fir.dataPresaCarico : null,
       dataConsegna: fir.dataConsegna,
       pesoEffettivo: fir.pesoEffettivo,
+      scostamentoPeso: fir.scostamentoPeso,
       annotazioni: fir.annotazioni,
       fourthCopyReturnedAt: fir.fourthCopyReturnedAt,
       fourthCopyNotes: fir.fourthCopyNotes,

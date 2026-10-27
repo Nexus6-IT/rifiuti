@@ -123,3 +123,25 @@ describe('FIRResponseDto.fromDomain — data di presa in carico effettiva', () =
     )
   })
 })
+
+describe('FIRResponseDto.fromDomain — scostamentoPeso (F2-7)', () => {
+  it("è null finché non c'è la quantità verificata a destino", () => {
+    const fir = FIR.create(createValidFIRProps())
+
+    expect(FIRResponseDto.fromDomain(fir).scostamentoPeso).toBeNull()
+  })
+
+  it('espone lo scostamento dopo la consegna, anche oltre soglia', () => {
+    const fir = FIR.create(createValidFIRProps()) // 120 kg
+    fir.emetti('FIR-2026-000001', createMockFirma('Produttore SRL'))
+    fir.presaInCarico(new Date(), createMockFirma('Trasportatore SRL'))
+    fir.confermaConsegna(150, createMockFirma('Destinatario SRL'))
+
+    expect(FIRResponseDto.fromDomain(fir).scostamentoPeso).toEqual({
+      differenza: 30,
+      percentuale: 25,
+      unita: 'kg',
+      oltreSoglia: true,
+    })
+  })
+})

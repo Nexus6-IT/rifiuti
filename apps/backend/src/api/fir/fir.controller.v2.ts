@@ -19,7 +19,7 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
-import { IsString, IsNotEmpty, IsNumber, Min } from 'class-validator'
+import { IsString, IsNotEmpty, IsNumber, Max, Min } from 'class-validator'
 import { CreateFIRDto } from './dtos/create-fir.dto'
 import { ListFIRsDto } from './dtos/list-firs.dto'
 import { FIRResponseDto } from './dtos/fir-response.dto'
@@ -61,8 +61,11 @@ export class EmettiFIRDto {}
 export class PresaInCaricoFIRDto {}
 
 export class ConfermaConsegnaFIRDto {
-  @IsNumber()
+  // Quantità verificata a destino, nell'unità del FIR. Nessuna tolleranza: il limite
+  // alto e i 2 decimali sono quelli della colonna effective_weight Decimal(10,2).
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
+  @Max(99999999.99)
   pesoEffettivo: number
 }
 
@@ -312,7 +315,7 @@ export class FIRControllerV2 {
   })
   @ApiResponse({
     status: 400,
-    description: 'Stato non valido, peso fuori tolleranza o dati mancanti',
+    description: 'Stato non valido o peso non valido',
   })
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
   async confermaConsegna(

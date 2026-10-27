@@ -219,47 +219,55 @@ describe('FIR Aggregate', () => {
       expect((events[0] as FIRConsegnatoEvent).pesoEffettivo).toBe(120)
     })
 
-    it('should accept peso at +10% tolerance boundary', () => {
+    const firInTransito = (): FIR => {
       const fir = FIR.create(createValidFIRProps()) // 120 kg
       fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
       fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
+      return fir
+    }
 
-      fir.confermaConsegna(132, createMockFirma('Destinatario')) // Exactly +10%
+    it.each([
+      [150, 30, 25, true], // +25%
+      [60, -60, -50, true], // -50%
+      [1200, 1080, 900, true], // peso 10 volte la dichiarata
+      [132, 12, 10, false], // +10% esatto: nessun avviso
+      [108, -12, -10, false], // -10% esatto: nessun avviso
+    ])('accetta il peso %s e calcola lo scostamento', (peso, differenza, percentuale, oltre) => {
+      const fir = firInTransito()
+
+      fir.confermaConsegna(peso, createMockFirma('Destinatario'))
 
       expect(fir.stato).toBe(FIRStato.CONSEGNATO)
+      expect(fir.pesoEffettivo).toBe(peso)
+      expect(fir.scostamentoPeso).toEqual({
+        differenza,
+        percentuale,
+        unita: UnitaMisura.KG,
+        oltreSoglia: oltre,
+      })
     })
 
-    it('should accept peso at -10% tolerance boundary', () => {
-      const fir = FIR.create(createValidFIRProps()) // 120 kg
-      fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
-      fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
+    it("scostamentoPeso è null finché non c'è il peso a destino", () => {
+      expect(firInTransito().scostamentoPeso).toBeNull()
+    })
 
-      fir.confermaConsegna(108, createMockFirma('Destinatario')) // Exactly -10%
+    it.each([0, -5, Number.NaN, Number.POSITIVE_INFINITY, 100000000])(
+      'rifiuta il peso non valido %s e lascia il FIR IN_TRANSITO',
+      peso => {
+        const fir = firInTransito()
 
+        expect(() => fir.confermaConsegna(peso, createMockFirma('Destinatario'))).toThrow(
+          DomainError
+        )
+        expect(fir.stato).toBe(FIRStato.IN_TRANSITO)
+        expect(fir.pesoEffettivo).toBeNull()
+      }
+    )
+
+    it('accetta il peso massimo della colonna (99.999.999,99)', () => {
+      const fir = firInTransito()
+      fir.confermaConsegna(99999999.99, createMockFirma('Destinatario'))
       expect(fir.stato).toBe(FIRStato.CONSEGNATO)
-    })
-
-    it('should throw error if peso exceeds +10% tolerance', () => {
-      const fir = FIR.create(createValidFIRProps()) // 120 kg
-      fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
-      fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
-
-      expect(
-        () => fir.confermaConsegna(135, createMockFirma('Destinatario')) // +12.5%
-      ).toThrow(DomainError)
-      expect(() => fir.confermaConsegna(135, createMockFirma('Destinatario'))).toThrow(
-        /eccede tolleranza/
-      )
-    })
-
-    it('should throw error if peso exceeds -10% tolerance', () => {
-      const fir = FIR.create(createValidFIRProps()) // 120 kg
-      fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
-      fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
-
-      expect(
-        () => fir.confermaConsegna(105, createMockFirma('Destinatario')) // -12.5%
-      ).toThrow(DomainError)
     })
 
     it('should throw error if not in IN_TRANSITO state', () => {

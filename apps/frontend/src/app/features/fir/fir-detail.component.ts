@@ -15,7 +15,8 @@ import { InputTextareaModule } from 'primeng/inputtextarea'
 import { InputNumberModule } from 'primeng/inputnumber'
 import { ConfirmationService, MessageService } from 'primeng/api'
 import { FirService } from './fir.service'
-import { FIR, FIRStato } from '../../shared/models/fir.model'
+import { FIR, FIRStato, ScostamentoPeso } from '../../shared/models/fir.model'
+import { formattaNumero, formattaPercentuale } from './scostamento-peso'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
 import { RENTRISyncLogsComponent } from './components/rentri-sync-logs/rentri-sync-logs.component'
 import { RENTRISyncService } from './services/rentri-sync.service'
@@ -177,6 +178,25 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
               <span class="detail-value">{{
                 f.dataConsegna ? (f.dataConsegna | date: 'dd/MM/yyyy HH:mm') : '—'
               }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">Quantità verificata a destino</span>
+              <span class="detail-value" data-testid="fir-detail-quantita-verificata">
+                @if (f.pesoEffettivo != null) {
+                  {{ formattaQuantita(f.pesoEffettivo) }} {{ f.rifiuto.unitaMisura }}
+                  @if (f.scostamentoPeso; as s) {
+                    <span
+                      class="detail-scostamento"
+                      [class.detail-scostamento--oltre]="s.oltreSoglia"
+                      data-testid="fir-detail-scostamento"
+                    >
+                      ({{ testoScostamento(s) }})
+                    </span>
+                  }
+                } @else {
+                  —
+                }
+              </span>
             </div>
           </div>
         </section>
@@ -745,6 +765,11 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
         font-size: var(--font-size-base);
       }
 
+      .detail-scostamento--oltre {
+        color: var(--color-warning);
+        font-weight: var(--font-weight-medium);
+      }
+
       .cell-mono {
         font-family: var(--font-family-mono);
       }
@@ -1089,6 +1114,17 @@ export class FirDetailComponent implements OnInit {
       ORIGINI_RILASCIABILI.includes(fir.rentriOrigineLegame) &&
       this.canManageRENTRI()
     )
+  }
+
+  formattaQuantita(n: number): string {
+    return formattaNumero(n)
+  }
+
+  /** "+25% · +30 kg" accanto alla quantità verificata; con dichiarata assente solo la differenza. */
+  testoScostamento(s: ScostamentoPeso): string {
+    const diff = `${s.differenza > 0 ? '+' : ''}${formattaNumero(s.differenza)} ${s.unita}`
+    const base = s.percentuale === null ? diff : `${formattaPercentuale(s.percentuale)} · ${diff}`
+    return s.oltreSoglia ? `scostamento ${base}: oltre la soglia del 10%` : `scostamento ${base}`
   }
 
   haAzioni(fir: FIR): boolean {
