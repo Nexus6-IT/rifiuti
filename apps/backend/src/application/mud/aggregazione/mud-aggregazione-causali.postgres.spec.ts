@@ -149,7 +149,7 @@ describe('MudAggregazioneService con il catalogo — Postgres reale, ruolo waste
     await owner.$disconnect()
   })
 
-  it('movimenti di sistema: stesso hashAggregato calcolato con la vecchia implementazione', async () => {
+  it('movimenti di sistema: kg e controlli identici a quelli della vecchia implementazione', async () => {
     const a = await azienda()
     const movimenti: Array<{ type: Verso; causale: string; quantita: number }> = [
       { type: 'CARICO', causale: 'PRODUZIONE_INTERNA', quantita: 100 },
@@ -190,10 +190,15 @@ describe('MudAggregazioneService con il catalogo — Postgres reale, ruolo waste
       recuperoKg: recupero,
       smaltimentoKg: smaltimento,
     })
-    const attese = [
-      { ...r.righe[0], prodottoKg: prodotto, recuperoKg: recupero, smaltimentoKg: smaltimento },
-    ]
-    expect(hashAggregato(r.righe)).toBe(hashAggregato(attese))
+    // Controlli attesi dall'oracolo: un controllo per ogni movimento escluso o ricevuto da terzi.
+    const attesiDaOracolo = (ruolo: string) =>
+      movimenti.filter(m => vecchiaClassificazione(m.type, m.causale) === ruolo).length
+    const conta = (codice: string) => r.controlli.filter(c => c.codice === codice).length
+    expect(conta('CAUSALE_ESCLUSA')).toBe(attesiDaOracolo('ESCLUSO'))
+    expect(conta('PROFILO_NON_SUPPORTATO')).toBe(attesiDaOracolo('RICEVUTO_DA_TERZI'))
+    // ALTRO_CARICO, RICLASSIFICAZIONE (x2), ALTRO_SCARICO / INGRESSO_ESTERNO
+    expect(conta('CAUSALE_ESCLUSA')).toBe(4)
+    expect(conta('PROFILO_NON_SUPPORTATO')).toBe(1)
     expect(prodotto).toBe(150)
     expect(recupero).toBe(30)
     expect(smaltimento).toBe(55)

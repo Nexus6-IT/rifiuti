@@ -67,7 +67,9 @@ function senzaCommenti(testo: string): string {
 function dichiarati(testo: string, nomi: string[]): string[] {
   const codice = senzaCommenti(testo)
   return nomi.filter(nome =>
-    new RegExp(`\\b(const|function|type|enum|export)\\b[^\\n]*\\b${nome}\\b`).test(codice)
+    new RegExp(
+      `\\b(const|let|var|function|class|interface|type|enum|export)\\b[^\\n]*\\b${nome}\\b`
+    ).test(codice)
   )
 }
 
@@ -97,6 +99,13 @@ describe('costanti delle causali: guardia statica', () => {
     expect(dichiarati('export type CausaleMovimento = string', NOMI_RIMOSSI)).toEqual([
       'CausaleMovimento',
     ])
+  })
+
+  it('riconosce anche let, var, class e interface', () => {
+    expect(dichiarati('let RUOLO_CARICO = {}', NOMI_RIMOSSI)).toEqual(['RUOLO_CARICO'])
+    expect(dichiarati('var ALL_CAUSALI = []', NOMI_RIMOSSI)).toEqual(['ALL_CAUSALI'])
+    expect(dichiarati('class CausaleCarico {}', NOMI_RIMOSSI)).toEqual(['CausaleCarico'])
+    expect(dichiarati('interface CausaleScarico {}', NOMI_RIMOSSI)).toEqual(['CausaleScarico'])
   })
 
   it('non fallisce se il nome compare solo in un commento', () => {
