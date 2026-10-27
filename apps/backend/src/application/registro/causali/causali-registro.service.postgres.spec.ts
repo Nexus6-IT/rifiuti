@@ -6,6 +6,7 @@
  * scritto; la pulizia toglie solo le righe create qui. Le righe di `causali_registro` non si
  * toccano. I movimenti si registrano con il caso d'uso vero, cosi' i lock sono quelli reali.
  */
+import { BadRequestException } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
 
@@ -450,6 +451,62 @@ describe('Gestione delle causali — Postgres reale, ruolo wasteflow_app', () =>
     expect(querySuMovimenti).toBe(1)
   })
 
+  it('PATCH di sola descrizione e ordine su una versione gia usata: passa, il resto non cambia', async () => {
+    const a = await azienda()
+    const v = await crea(a)
+    await registraOk(a, 'AZ_PROVA', '2026-03-10')
+    const m = await nelTenant(a.tenantId, () =>
+      service.modifica(a.tenantId, a.userId, v.id, { descrizione: 'Nuova descrizione', ordine: 7 })
+    )
+    expect(m).toMatchObject({ descrizione: 'Nuova descrizione', ordine: 7, ruoloMud: 'PRODOTTO' })
+    const riga = await owner.causaleRegistroAzienda.findUniqueOrThrow({ where: { id: v.id } })
+    expect([riga.descrizione, riga.ordine, riga.ruoloMud, riga.codiceRentri]).toEqual([
+      'Nuova descrizione',
+      7,
+      'PRODOTTO',
+      'DT',
+    ])
+    // Un valore diverso per un campo bloccato resta un 409.
+    expect(
+      await errore(
+        nelTenant(a.tenantId, () =>
+          service.modifica(a.tenantId, a.userId, v.id, { ruoloMud: 'ESCLUSO' })
+        )
+      )
+    ).toEqual({ status: 409, error: 'CAUSALE_USATA_NUOVA_VERSIONE' })
+  })
+
+  it('rete del trigger: un UPDATE diretto su una versione usata fallisce, la transazione si annulla e l errore diventa un 400 generico', async () => {
+    const { Prisma } = await import('@prisma/client')
+    const a = await azienda()
+    const v = await crea(a)
+    await registraOk(a, 'AZ_PROVA', '2026-03-10')
+    let catturato: unknown
+    try {
+      await nelTenant(a.tenantId, () =>
+        app.$transaction(async tx => {
+          await tx.$executeRaw`UPDATE causali_registro_azienda SET descrizione = 'modificata nella transazione' WHERE id = ${v.id}::uuid`
+          await tx.$executeRaw`UPDATE causali_registro_azienda SET ruolo_mud = 'ESCLUSO'::ruolo_mud_causale WHERE id = ${v.id}::uuid`
+        })
+      )
+    } catch (e) {
+      catturato = e
+    }
+    // La forma con la versione reale di Prisma: involucro P2010 con lo SQLSTATE del RAISE in meta.code.
+    expect(catturato).toBeInstanceOf(Prisma.PrismaClientKnownRequestError)
+    expect((catturato as { code: string }).code).toBe('P2010')
+    expect((catturato as { meta?: { code?: string } }).meta?.code).toBe('P0001')
+    // Transazione annullata: nemmeno il primo UPDATE e rimasto.
+    const riga = await owner.causaleRegistroAzienda.findUniqueOrThrow({ where: { id: v.id } })
+    expect(riga.descrizione).toBe('Prova')
+    expect(riga.ruoloMud).toBe('PRODOTTO')
+    const tradotto = (service as unknown as { comeErroreHttp(e: unknown): unknown }).comeErroreHttp(
+      catturato
+    )
+    expect(tradotto).toBeInstanceOf(BadRequestException)
+    expect((tradotto as BadRequestException).message).toBe('I dati della causale non sono validi.')
+  })
+
   describe('concorrenza', () => {
     it('registrazione in corso (KEY SHARE sulla versione): la modifica del ruolo attende e poi risponde 409', async () => {
       const a = await azienda()
@@ -525,24 +582,34 @@ describe('Gestione delle causali — Postgres reale, ruolo wasteflow_app', () =>
       expect(await owner.wasteMovement.count({ where: { tenantId: a.tenantId } })).toBe(0)
     }, 30_000)
 
-    it('due nuove versioni concorrenti dalla stessa versione: una sola riesce', async () => {
+    it('due nuove versioni concorrenti dalla stessa versione: la seconda attende il commit della prima e poi prende 409', async () => {
       const a = await azienda()
       const v = await crea(a)
-      const nuova = (dal: string) =>
-        errore(
+      const pausa = clientConPausa()
+      const serviceInPausa = new CausaliRegistroService(pausa.client)
+      const prima = nelTenant(a.tenantId, () =>
+        serviceInPausa.nuovaVersione(a.tenantId, a.userId, v.id, {
+          validaDal: '2026-04-01',
+          ruoloMud: 'ESCLUSO',
+        })
+      )
+      let seconda: Promise<unknown> | undefined
+      try {
+        await pausa.arrivata // lock e INSERT fatti, commit non fatto
+        seconda = errore(
           nelTenant(a.tenantId, () =>
             service.nuovaVersione(a.tenantId, a.userId, v.id, {
-              validaDal: dal,
+              validaDal: '2026-05-01',
               ruoloMud: 'ESCLUSO',
             })
           )
         )
-      const esiti = await Promise.all([nuova('2026-04-01'), nuova('2026-05-01')])
-      expect(esiti.filter(e => e === null)).toHaveLength(1)
-      expect(esiti.find(e => e !== null)).toEqual({
-        status: 409,
-        error: 'CAUSALE_NON_ULTIMA_VERSIONE',
-      })
+        expect(await Promise.race([seconda, scadenza(1500)])).toBe('scaduto')
+      } finally {
+        pausa.rilascia()
+      }
+      await prima
+      expect(await seconda).toEqual({ status: 409, error: 'CAUSALE_NON_ULTIMA_VERSIONE' })
       expect(await owner.causaleRegistroAzienda.count({ where: { tenantId: a.tenantId } })).toBe(2)
     }, 30_000)
   })

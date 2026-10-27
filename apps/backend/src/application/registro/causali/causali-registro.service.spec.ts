@@ -374,6 +374,38 @@ describe('CausaliRegistroService: errori del database', () => {
     expect(e.message).toBe('I dati della causale non sono validi.')
   })
 
+  describe('P2010 (errore di una query raw): 400 solo per i SQLSTATE di dato', () => {
+    const raw = (sqlstate?: string) => {
+      const { Prisma } = jest.requireActual('@prisma/client')
+      return new Prisma.PrismaClientKnownRequestError('Raw query failed', {
+        code: 'P2010',
+        clientVersion: 'x',
+        meta: sqlstate === undefined ? undefined : { code: sqlstate, message: 'testo interno' },
+      })
+    }
+
+    it.each(['P0001', '23505', '23514', '23P01', '23000'])(
+      'SQLSTATE %s -> 400 generico',
+      async sqlstate => {
+        const { service, tx } = costruisci()
+        tx.causaleRegistroAzienda.update.mockRejectedValue(raw(sqlstate))
+        const e = await esito(service.chiudi(T, U, ID, '2026-12-31'))
+        expect(e).toBeInstanceOf(BadRequestException)
+        expect(e.message).toBe('I dati della causale non sono validi.')
+      }
+    )
+
+    it.each(['40P01', '55P03', '57014', '53300', '40001', '42P01', undefined])(
+      'SQLSTATE %s (deadlock, lock timeout, ecc.) passa invariato',
+      async sqlstate => {
+        const { service, tx } = costruisci()
+        const originale = raw(sqlstate)
+        tx.causaleRegistroAzienda.update.mockRejectedValue(originale)
+        expect(await esito(service.chiudi(T, U, ID, '2026-12-31'))).toBe(originale)
+      }
+    )
+  })
+
   it('un errore qualunque non riconosciuto passa invariato', async () => {
     const { service, tx } = costruisci()
     tx.causaleRegistroAzienda.update.mockRejectedValue(new Error('boom'))

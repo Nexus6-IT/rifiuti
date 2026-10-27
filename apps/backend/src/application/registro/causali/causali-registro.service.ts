@@ -158,6 +158,11 @@ const ORDINE_MASSIMO = 32767
 const ERR_RUOLO = 'Il ruolo nel MUD non è coerente con il tipo di movimento.'
 const ERR_OPERAZIONE =
   "L'operazione R/D vale solo per gli scarichi avviati a recupero o smaltimento."
+/** SQLSTATE di una violazione di vincolo (classe 23) o di un RAISE EXCEPTION (P0001). */
+function eViolazioneDiDato(sqlstate: unknown): boolean {
+  return typeof sqlstate === 'string' && (sqlstate === 'P0001' || /^23[0-9A-Z]{3}$/.test(sqlstate))
+}
+
 const ERR_GENERICO = 'I dati della causale non sono validi.'
 
 export function eVerso(valore: unknown): valore is VersoCausale {
@@ -251,7 +256,7 @@ function ordineValido(valore: unknown): number {
 }
 
 function ruoloValido(valore: unknown): RuoloMudCausale {
-  if (!eRuolo(valore)) throw new BadRequestException(ERR_RUOLO)
+  if (!eRuolo(valore)) throw new BadRequestException('Il ruolo nel MUD non è valido.')
   return valore
 }
 
@@ -604,7 +609,7 @@ export class CausaliRegistroService {
       const ultima = versioni[versioni.length - 1]
       if (!ultima || ultima.id !== id) {
         throw new ConflictException({
-          message: 'La nuova versione si crea solo a partire dall’ultima versione della causale.',
+          message: "La nuova versione si crea solo a partire dall'ultima versione della causale.",
           error: 'CAUSALE_NON_ULTIMA_VERSIONE',
         })
       }
@@ -758,6 +763,13 @@ export class CausaliRegistroService {
     }
   }
 
+  /**
+   * Rete di sicurezza: per le stesse condizioni il servizio risponde prima con un 409 dal codice
+   * specifico (CAUSALE_SOVRAPPOSTA, CAUSALE_USATA_NUOVA_VERSIONE, CAUSALE_DATA_PRIMA_DELL_ULTIMO_USO...),
+   * grazie al lock e al FOR UPDATE. La violazione del trigger o dei CHECK, tradotta qui in un 400
+   * generico, non si raggiunge quindi nel percorso normale: serve solo a non mostrare mai il testo
+   * del database se un giorno si raggiunge.
+   */
   private comeErroreHttp(err: unknown): unknown {
     if (err instanceof HttpException) return err
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
@@ -768,7 +780,17 @@ export class CausaliRegistroService {
         })
       }
       if (err.code === 'P2003') return this.erroreNonEliminabile()
-      if (['P2004', 'P2010', 'P2011', 'P2000'].includes(err.code)) {
+      if (['P2004', 'P2011', 'P2000'].includes(err.code)) {
+        return new BadRequestException(ERR_GENERICO)
+      }
+      // P2010 e' l'involucro di Prisma per ogni errore di una query raw: solo se lo SQLSTATE
+      // sottostante e' una violazione di vincolo (classe 23) o un RAISE EXCEPTION del trigger
+      // (P0001) e' un dato non valido. Deadlock (40P01), lock timeout (55P03) e simili sono
+      // errori di esercizio e passano invariati (500).
+      if (
+        err.code === 'P2010' &&
+        eViolazioneDiDato((err.meta as { code?: unknown } | undefined)?.code)
+      ) {
         return new BadRequestException(ERR_GENERICO)
       }
     }
@@ -796,7 +818,8 @@ export class CausaliRegistroService {
     return new ConflictException({
       message:
         `La causale è già stata usata fino al ${inItaliano(ultimoUso)}: la ${azione} ` +
-        `non può avere effetto prima di quel giorno (prima data ammessa: ${inItaliano(prima)}).`,
+        `${azione === 'chiusura' ? 'non può avere effetto prima di quel giorno' : 'non può iniziare entro quel giorno'} ` +
+        `(prima data ammessa: ${inItaliano(prima)}).`,
       error: 'CAUSALE_DATA_PRIMA_DELL_ULTIMO_USO',
     })
   }
@@ -897,7 +920,7 @@ export class CausaliRegistroService {
     })
     if (sovrapposta) {
       throw new ConflictException({
-        message: 'Il periodo di validità si sovrappone a un’altra versione della stessa causale.',
+        message: "Il periodo di validità si sovrappone a un'altra versione della stessa causale.",
         error: 'CAUSALE_SOVRAPPOSTA',
       })
     }
