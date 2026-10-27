@@ -406,7 +406,8 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
       )
     }
 
-    beforeAll(async () => {
+    // Ogni test parte da un'azienda e da un FIR propri: nessuno dipende dallo stato del precedente.
+    beforeEach(async () => {
       az = await azienda()
       const user = await owner.user.create({
         data: {
@@ -450,9 +451,12 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
     })
 
     it('con dati diversi il messaggio cita l originale e dice che non e piu vigente', async () => {
+      const primo = await nelTenant(az.tenantId, () => useCase.execute(cmd(100)))
+      expect(primo.isSuccess).toBe(true)
       const originale = await owner.wasteMovement.findFirstOrThrow({
         where: { tenantId: az.tenantId, firId, tipoAnnotazione: 'ORDINARIA' },
       })
+      await annulla(az, originale, originale)
       const r = await nelTenant(az.tenantId, () => useCase.execute(cmd(90)))
       expect(r.error).toBe(
         new FirGiaRegistratoError(

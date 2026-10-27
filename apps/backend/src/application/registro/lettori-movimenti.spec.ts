@@ -15,6 +15,10 @@ const SRC = join(__dirname, '..', '..')
  *    filtrare `tipoAnnotazione: 'ORDINARIA'`;
  *  - 'tutte': legge ogni riga di proposito (numerazione, "esiste almeno un movimento", elenco).
  * Un file nuovo che legge i movimenti fa fallire il test finche' qualcuno non sceglie.
+ *
+ * Limiti noti: il controllo "vigenti" verifica solo che il file importi `vigenza`, non che ogni
+ * singola query di un file gia in elenco lo usi; `senzaCommenti` non gestisce gli apici dentro
+ * una regex literal (potrebbe scambiarli per l'inizio di una stringa).
  */
 type Scelta = 'vigenti' | 'ordinarie' | 'tutte'
 
@@ -98,7 +102,7 @@ function senzaCommenti(testo: string): string {
 
 /** Lettura dei movimenti: client Prisma, relazioni inverse o SQL grezzo. */
 const LEGGE_MOVIMENTI =
-  /\bwasteMovement\.|\bwaste_movements\b|\b(wasteMovements|recordedMovements)\b/
+  /\bwasteMovement\.|\bwaste_movements\b|\b(wasteMovements|recordedMovements)\b|\bmovimenti\s*:\s*(true|\{)/
 
 function leggeMovimenti(testo: string): boolean {
   return LEGGE_MOVIMENTI.test(senzaCommenti(testo))
@@ -153,6 +157,10 @@ describe('lettori dei movimenti', () => {
       expect(leggeMovimenti('await this.prisma.wasteMovement.findMany({})')).toBe(true)
       expect(leggeMovimenti('tx.$queryRaw`SELECT 1 FROM waste_movements`')).toBe(true)
       expect(leggeMovimenti('tenant.wasteMovements')).toBe(true)
+      expect(leggeMovimenti('prisma.registroRifiuti.findMany({ include: { movimenti: true } })')).toBe(true)
+      expect(leggeMovimenti('registro.findMany({ select: { movimenti: { select: { id: true } } } })')).toBe(true)
+      // un campo "movimenti" di un oggetto qualunque (array, non relazione) non e' una lettura
+      expect(leggeMovimenti('const out = { movimenti: [1, 2] }')).toBe(false)
     })
 
     it('ignora i commenti', () => {
