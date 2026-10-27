@@ -8,6 +8,7 @@ import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/r
 import { ListMovimentiHandler } from '../../application/registro/queries/list-movimenti.handler'
 import { ProgressivoInizialeService } from '../../application/registro/progressivo-iniziale.service'
 import { GiacenzeInizialiService } from '../../application/registro/giacenze-iniziali.service'
+import { CorreggiMovimentoUseCase } from '../../application/registro/use-cases/correggi-movimento.use-case'
 import { RegistriService } from '../../application/registro/registri.service'
 import { VerificaCatenaRegistroService } from '../../application/registro/verifica-catena-registro.service'
 
@@ -28,12 +29,18 @@ import { VerificaCatenaRegistroService } from '../../application/registro/verifi
   controllers: [RegistroController],
   providers: [
     RegistraMovimentoUseCase,
+    CorreggiMovimentoUseCase,
     ListMovimentiHandler,
     ProgressivoInizialeService,
     GiacenzeInizialiService,
     RegistriService,
     VerificaCatenaRegistroService,
   ],
-  exports: [RegistraMovimentoUseCase, ListMovimentiHandler, RegistriService],
+  exports: [
+    RegistraMovimentoUseCase,
+    CorreggiMovimentoUseCase,
+    ListMovimentiHandler,
+    RegistriService,
+  ],
 })
 export class RegistroModule {}

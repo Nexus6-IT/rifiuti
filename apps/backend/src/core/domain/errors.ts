@@ -128,6 +128,15 @@ export class MetodoLocaleNonConsentitoSuFirLegatoError extends DomainError {
 }
 
 /**
+ * Dopo l'annullamento della registrazione nata dalla ricopia di un FIR l'indice unico della ricopia
+ * resta occupato e la catena e' annullata: il FIR non si puo' ricopiare di nuovo. Stessa indicazione
+ * nell'avviso dell'annullamento e qui, per chi riprova la ricopia.
+ */
+export const INDICAZIONE_FIR_ANNULLATO =
+  "Dopo l'annullamento il FIR non si può ricopiare di nuovo nel registro: se la registrazione va " +
+  'corretta usa la rettifica, altrimenti registra il movimento a mano.'
+
+/**
  * Un FIR si ricopia nel registro una sola volta per tipo di movimento: un secondo
  * movimento dello stesso FIR con dati diversi non è un retry, è un errore da
  * correggere sul movimento già registrato.
@@ -144,7 +153,9 @@ export class FirGiaRegistratoError extends DomainError {
       `Il FIR è già registrato nel movimento n. ${progressiveNumber}/${progressiveYear}` +
         (poi ? `, poi ${poi}` : '') +
         (denominazioneRegistro ? ` nel registro ${denominazioneRegistro}` : '') +
-        ' con dati diversi: verificare quel movimento invece di registrarne un secondo'
+        (poi === 'annullato'
+          ? ' con dati diversi. ' + INDICAZIONE_FIR_ANNULLATO
+          : ' con dati diversi: verificare quel movimento invece di registrarne un secondo')
     )
     this.name = 'FirGiaRegistratoError'
   }
@@ -164,7 +175,8 @@ export class FirGiaRegistratoInAltroRegistroError extends DomainError {
         (denominazioneRegistro
           ? ` nel registro ${denominazioneRegistro}`
           : ' in un altro registro') +
-        ': un FIR si registra una sola volta, non si può registrare di nuovo in un altro registro'
+        ': un FIR si registra una sola volta, non si può registrare di nuovo in un altro registro' +
+        (poi === 'annullato' ? '. ' + INDICAZIONE_FIR_ANNULLATO : '')
     )
     this.name = 'FirGiaRegistratoInAltroRegistroError'
   }

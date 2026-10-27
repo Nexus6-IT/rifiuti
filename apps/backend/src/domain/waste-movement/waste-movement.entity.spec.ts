@@ -253,4 +253,45 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     expect(m.quantity).toBe(0)
     expect(m.progressiveNumber).toBe(99)
   })
+
+  describe('hash di una correzione', () => {
+    const props = {
+      tenantId: 't',
+      registroId: 'r',
+      progressiveNumber: 3,
+      progressiveYear: 2026,
+      type: 'CARICO' as const,
+      movementDate: new Date('2026-03-01T00:00:00Z'),
+      registrationDate: new Date('2026-03-02T00:00:00Z'),
+      causale: 'PRODUZIONE_INTERNA' as const,
+      cerCode: '20 03 01',
+      quantity: 10,
+      unit: 'KG',
+      hashPrecedente: 'prec',
+    }
+    it('con tipo e predecessore l hash coincide con hashAnnotazioneV2 e differisce dall ordinaria', () => {
+      const corr = WasteMovement.create({
+        ...props,
+        tipoAnnotazione: 'RETTIFICA',
+        movimentoRettificatoId: 'x',
+      })
+      expect(corr.entryHash).toBe(
+        hashAnnotazioneV2({
+          hashPrecedente: 'prec',
+          registroId: 'r',
+          anno: 2026,
+          numero: 3,
+          tipoAnnotazione: 'RETTIFICA',
+          movimentoRettificatoId: 'x',
+          type: 'CARICO',
+          cerCode: '20 03 01',
+          quantita: 10,
+          unit: 'KG',
+          movementDate: props.movementDate,
+          causale: 'PRODUZIONE_INTERNA',
+        })
+      )
+      expect(corr.entryHash).not.toBe(WasteMovement.create(props).entryHash)
+    })
+  })
 })

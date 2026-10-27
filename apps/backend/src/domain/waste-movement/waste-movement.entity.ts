@@ -86,6 +86,10 @@ export interface WasteMovementProps {
    */
   hashPrecedente?: string
   notes?: string
+  /** Tipo di annotazione per l'hash v2 (default ORDINARIA); le correzioni passano il proprio. */
+  tipoAnnotazione?: string
+  /** Predecessore corretto (solo correzioni): entra nell'hash v2. */
+  movimentoRettificatoId?: string
 }
 
 /** Versione dell'hash salvata sulle nuove registrazioni (colonna hash_versione). */
@@ -192,7 +196,8 @@ export class WasteMovement {
       registroId: props.registroId,
       anno: props.progressiveYear,
       numero: props.progressiveNumber,
-      tipoAnnotazione: 'ORDINARIA',
+      tipoAnnotazione: props.tipoAnnotazione ?? 'ORDINARIA',
+      movimentoRettificatoId: props.movimentoRettificatoId,
       type: props.type,
       cerCode: props.cerCode,
       quantita: props.quantity,

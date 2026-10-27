@@ -49,6 +49,14 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       'ricopia del FIR e messaggio del doppio solo sulle ORDINARIE; la numerazione (MAX) legge tutte le righe',
   },
+  'application/registro/numerazione-annotazione.ts': {
+    scelta: 'tutte',
+    motivo: 'numerazione (MAX) e hash precedente: ogni riga del registro, vigente o no',
+  },
+  'application/registro/use-cases/correggi-movimento.use-case.ts': {
+    scelta: 'tutte',
+    motivo: "legge l'annotazione da correggere, le sue correzioni e la radice della catena",
+  },
   'application/registro/progressivo-iniziale.service.ts': {
     scelta: 'tutte',
     motivo: 'haMovimenti: qualunque riga, correzioni comprese, blocca il progressivo iniziale',
