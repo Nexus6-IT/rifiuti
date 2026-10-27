@@ -1,4 +1,4 @@
-import { HttpException, Injectable } from '@nestjs/common'
+import { ConflictException, Injectable } from '@nestjs/common'
 import { Prisma, WasteMovement as WasteMovementRecord } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
@@ -354,9 +354,10 @@ export class RegistraMovimentoUseCase {
       if (err instanceof GiacenzaInsufficienteError || err instanceof DomainError) {
         return Result.fail(err.message)
       }
-      // Eccezioni HTTP volute (409 CAUSALE_MODIFICATA da confermaVersioneAzienda): al client arrivano
-      // intatte, con stato e corpo; non sono errori generici da trasformare in 400.
-      if (err instanceof HttpException) throw err
+      // Unica eccezione HTTP raggiungibile qui: il 409 CAUSALE_MODIFICATA di confermaVersioneAzienda.
+      // Arriva al client intatta, con stato e corpo; qualunque altra HttpException inattesa segue
+      // il percorso generico (log e Result.fail).
+      if (err instanceof ConflictException) throw err
       const doppio = await this.messaggioRicopiaDoppia(err, command)
       if (doppio) return Result.fail(doppio)
       this.logger.error(`Errore registrazione movimento: ${err.message}`)

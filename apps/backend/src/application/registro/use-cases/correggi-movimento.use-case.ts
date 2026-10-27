@@ -331,7 +331,12 @@ export class CorreggiMovimentoUseCase {
       const catalogo = await caricaCatalogoCausali(this.prisma, tenantId)
       const verso = m.type === 'CARICO' ? 'CARICO' : 'SCARICO'
       return catalogo.descrizione(verso, m.causale, giornoItaliano(m.movementDate), versioneId)
-    } catch {
+    } catch (err) {
+      // La descrizione e' solo informativa: un catalogo illeggibile non deve far fallire una
+      // correzione gia' commessa. Si ripiega sul codice e si lascia traccia (senza id di tenant).
+      this.logger.warn(
+        `Descrizione della causale ${m.causale} non disponibile, uso il codice: ${(err as Error).message}`
+      )
       return m.causale
     }
   }
