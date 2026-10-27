@@ -146,7 +146,8 @@ describe('FIR: modifica della bozza (Postgres reale, ruolo wasteflow_app)', () =
       cer as never,
       produttori as never,
       trasportatori as never,
-      destinatari as never
+      destinatari as never,
+      { warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() } as never
     )
     const [r] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`
     expect(r.u).toBe('wasteflow_app')
