@@ -2,8 +2,10 @@ import { TestBed } from '@angular/core/testing'
 import { DatePipe } from '@angular/common'
 import { signal } from '@angular/core'
 import { FormBuilder } from '@angular/forms'
+import { of } from 'rxjs'
 import { RegistroComponent } from './registro.component'
 import { RegistroService } from './registro.service'
+import { CausaliRegistroService } from './causali-registro.service'
 import { ToastService } from '../../core/services/toast.service'
 import { ExportService } from '../../core/services/export.service'
 import { AuthService } from '../../core/services/auth.service'
@@ -39,6 +41,21 @@ describe('RegistroComponent — selezione di un FIR', () => {
         DatePipe,
         { provide: RegistroService, useValue: {} },
         { provide: ToastService, useValue: {} },
+        {
+          provide: CausaliRegistroService,
+          // opzioni sincrone: la causale proposta dal FIR si applica subito
+          useValue: {
+            opzioni: () =>
+              of([
+                { codice: 'INGRESSO_ESTERNO', descrizione: 'Ingresso da esterno' },
+                {
+                  codice: 'CONFERIMENTO_TRASPORTATORE',
+                  descrizione: 'Conferimento a trasportatore',
+                },
+              ]),
+            invalida: () => {},
+          },
+        },
         { provide: ExportService, useValue: {} },
         { provide: AuthService, useValue: {} },
         { provide: AdminTenantContextService, useValue: {} },

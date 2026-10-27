@@ -1,9 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
-import { HttpClientTestingModule } from '@angular/common/http/testing'
+import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing'
 import { DatePipe } from '@angular/common'
 import { HttpErrorResponse } from '@angular/common/http'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
+import { CausaliRegistroService, OpzioneCausaleApi } from './causali-registro.service'
 import { RegistroComponent } from './registro.component'
 import {
   CorreggiMovimentoDialogComponent,
@@ -44,6 +45,18 @@ function mov(parziale: Partial<Movimento> = {}): Movimento {
     tipoAnnotazione: 'ORDINARIA',
     stato: 'VIGENTE',
     ...parziale,
+  }
+}
+
+function riga(codice: string, descrizione = codice): OpzioneCausaleApi {
+  return {
+    codice,
+    descrizione,
+    origine: 'SISTEMA',
+    ruoloMud: 'ESCLUSO',
+    codiceRentri: null,
+    operazione: null,
+    versioneId: null,
   }
 }
 
@@ -213,6 +226,43 @@ describe('Registro - rettifica e annullamento (template reale, click veri)', () 
     }
     expect(q('registro-rettifica-v')).not.toBeNull()
     expect(q('registro-annulla-v')).not.toBeNull()
+  })
+
+  it('rettifica: la causale attuale disattivata resta nell’elenco e selezionata, e si reinvia', () => {
+    servizio.rettifica.and.returnValue(of(esito()))
+    apri([mov({ causale: 'AZ_VECCHIA', causaleDescrizione: 'Vecchia causale' })])
+    const http = TestBed.inject(HttpTestingController)
+
+    clic('registro-rettifica-m1')
+    fixture.detectChanges()
+    // le opzioni del tipo alla data del movimento arrivano dall'API e non contengono la causale attuale
+    http
+      .expectOne(r => r.url.endsWith('/registro/causali') && r.params.get('data') === '2026-10-20')
+      .flush({
+        tipo: 'CARICO',
+        data: '2026-10-20',
+        causali: [riga('PRODUZIONE_INTERNA', 'Produzione interna')],
+      })
+    fixture.detectChanges()
+
+    expect(testo('correzione-causale')).toContain('Vecchia causale')
+    // il riepilogo in testa usa la descrizione del movimento
+    expect(testo('correzione-riepilogo')).toContain('Vecchia causale')
+
+    // apertura reale del menu: la causale attuale e quella selezionabile
+    document.body
+      .querySelector<HTMLElement>('[data-testid="correzione-causale"] .p-dropdown')!
+      .click()
+    fixture.detectChanges()
+    const voci = Array.from(document.body.querySelectorAll('.p-dropdown-item')).map(e =>
+      (e.textContent ?? '').trim()
+    )
+    expect(voci).toEqual(['Produzione interna', 'Vecchia causale'])
+
+    scrivi('#corr-motivo', 'Quantità errata')
+    clic('correzione-invia')
+    fixture.detectChanges()
+    expect(servizio.rettifica.calls.mostRecent().args[1].causale).toBe('AZ_VECCHIA')
   })
 
   it('in sola consultazione le azioni non si offrono', () => {
@@ -452,21 +502,34 @@ describe('Registro - rettifica e annullamento (template reale, click veri)', () 
   })
 })
 
-describe('CorreggiMovimentoDialogComponent - unità e stato fisico storici', () => {
+describe('CorreggiMovimentoDialogComponent - unità, stato fisico e causali', () => {
   let servizio: jasmine.SpyObj<RegistroService>
+  let toast: jasmine.SpyObj<ToastService>
+  let causali: { opzioni: jasmine.Spy; invalida: jasmine.Spy }
   let fixture: ComponentFixture<CorreggiMovimentoDialogComponent>
+
+  const CARICO = [riga('PRODUZIONE_INTERNA', 'Produzione interna'), riga('AZ_RESO', 'Reso')]
+  const SCARICO = [
+    riga('CONFERIMENTO_TRASPORTATORE', 'Conferimento a trasportatore'),
+    riga('CESSIONE', 'Cessione a terzi'),
+  ]
 
   beforeEach(() => {
     servizio = jasmine.createSpyObj<RegistroService>('RegistroService', ['rettifica', 'annulla'])
+    toast = jasmine.createSpyObj<ToastService>('ToastService', ['error', 'success', 'info', 'warn'])
+    causali = {
+      opzioni: jasmine
+        .createSpy('opzioni')
+        .and.callFake((tipo: string) => of(tipo === 'CARICO' ? CARICO : SCARICO)),
+      invalida: jasmine.createSpy('invalida'),
+    }
     TestBed.configureTestingModule({
       imports: [CorreggiMovimentoDialogComponent, HttpClientTestingModule],
       providers: [
         provideNoopAnimations(),
         { provide: RegistroService, useValue: servizio },
-        {
-          provide: ToastService,
-          useValue: jasmine.createSpyObj('ToastService', ['error', 'success', 'info', 'warn']),
-        },
+        { provide: CausaliRegistroService, useValue: causali },
+        { provide: ToastService, useValue: toast },
       ],
     })
   })
@@ -500,12 +563,97 @@ describe('CorreggiMovimentoDialogComponent - unità e stato fisico storici', () 
     expect(c.statiFisiciOptions().length).toBe(4)
   })
 
-  it('con le unità dei FIR non aggiunge voci e le causali sono quelle del tipo del movimento', () => {
+  it('con le unità dei FIR non aggiunge voci e le causali sono quelle dell’API per il tipo del movimento', () => {
     const c = apri(mov({ type: 'SCARICO', causale: 'CESSIONE', unit: 'M3' }))
     expect(c.unitaOptions().map(o => o.label)).toEqual(['kg', 't', 'm³'])
+    expect(causali.opzioni).toHaveBeenCalledWith('SCARICO', '2026-10-20')
     const valori = c.causaliOptions().map(o => o.value)
     expect(valori).toContain('CONFERIMENTO_TRASPORTATORE')
     expect(valori).not.toContain('PRODUZIONE_INTERNA')
     expect(c.form.get('causale')?.value).toBe('CESSIONE')
+  })
+
+  it('una causale attuale fuori dalle opzioni è presente e selezionata, con la sua descrizione', () => {
+    const c = apri(mov({ causale: 'AZ_VECCHIA', causaleDescrizione: 'Vecchia causale' }))
+    expect(c.causaliOptions()).toEqual([
+      { label: 'Produzione interna', value: 'PRODUZIONE_INTERNA' },
+      { label: 'Reso', value: 'AZ_RESO' },
+      { label: 'Vecchia causale', value: 'AZ_VECCHIA' },
+    ])
+    expect(c.form.get('causale')?.value).toBe('AZ_VECCHIA')
+    expect(c.messaggioCausale()).toBeNull()
+  })
+
+  it('senza descrizione nel movimento la causale attuale si etichetta con il codice', () => {
+    const c = apri(mov({ causale: 'AZ_VECCHIA' }))
+    expect(c.causaliOptions().pop()).toEqual({ label: 'AZ_VECCHIA', value: 'AZ_VECCHIA' })
+  })
+
+  it('le opzioni si ricaricano al cambio di giorno, non per la stessa data', () => {
+    const c = apri(mov())
+    causali.opzioni.calls.reset()
+    const data = c.form.get('movementDate')!
+    data.setValue(new Date(2026, 9, 21, 8, 0))
+    data.setValue(new Date(2026, 9, 21, 17, 0))
+    data.setValue(null)
+    expect(causali.opzioni.calls.allArgs()).toEqual([['CARICO', '2026-10-21']])
+  })
+
+  it('una causale scelta che non vale più alla nuova data si azzera con un messaggio', () => {
+    const c = apri(mov())
+    c.form.get('causale')!.setValue('AZ_RESO')
+    causali.opzioni.and.callFake(() => of([riga('PRODUZIONE_INTERNA', 'Produzione interna')]))
+    c.form.get('movementDate')!.setValue(new Date(2026, 0, 5))
+    expect(c.form.get('causale')!.value).toBeNull()
+    expect(c.messaggioCausale()).toContain('non è disponibile alla data indicata')
+  })
+
+  it('con la risposta in ritardo la causale attuale resta comunque selezionabile', () => {
+    const risposta = new Subject<OpzioneCausaleApi[]>()
+    causali.opzioni.and.returnValue(risposta)
+    const c = apri(mov({ causale: 'PRODUZIONE_INTERNA', causaleDescrizione: 'Produzione interna' }))
+    expect(c.causaliOptions()).toEqual([
+      { label: 'Produzione interna', value: 'PRODUZIONE_INTERNA' },
+    ])
+    expect(c.form.get('causale')!.value).toBe('PRODUZIONE_INTERNA')
+  })
+
+  it('un 409 CAUSALE_MODIFICATA mostra il messaggio del backend e ricarica le opzioni', () => {
+    const c = apri(mov())
+    servizio.rettifica.and.returnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 409,
+            error: {
+              error: 'CAUSALE_MODIFICATA',
+              message: 'La causale è stata modificata nel frattempo: ricarica e riprova.',
+            },
+          })
+      )
+    )
+    c.form.get('causale')!.setValue('AZ_RESO')
+    c.form.patchValue({ motivo: 'Correzione' })
+    causali.opzioni.calls.reset()
+    causali.opzioni.and.callFake(() => of([riga('PRODUZIONE_INTERNA', 'Produzione interna')]))
+
+    c.invia()
+
+    expect(toast.error).toHaveBeenCalledWith(
+      'La causale è stata modificata nel frattempo: ricarica e riprova.'
+    )
+    expect(causali.invalida).toHaveBeenCalled()
+    expect(causali.opzioni.calls.allArgs()).toEqual([['CARICO', '2026-10-20']])
+    // la causale modificata non è più fra le opzioni: la scelta si azzera
+    expect(c.form.get('causale')!.value).toBeNull()
+  })
+
+  it('l’annullamento non carica le opzioni delle causali', () => {
+    fixture = TestBed.createComponent(CorreggiMovimentoDialogComponent)
+    fixture.componentRef.setInput('movimento', mov())
+    fixture.componentRef.setInput('modo', 'annullamento')
+    fixture.componentRef.setInput('visible', true)
+    fixture.detectChanges()
+    expect(causali.opzioni).not.toHaveBeenCalled()
   })
 })
