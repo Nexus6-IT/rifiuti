@@ -18,6 +18,12 @@ export class FIR extends AggregateRoot {
   private firNumber: string
   private tenantId: string
   private schemaVersion: number
+  /**
+   * Versione della riga (lock ottimistico, piano D4/D8): letta da `findById`, confrontata e
+   * incrementata dal repository sotto lock. NON fa parte del documento firmato: vedi
+   * `toSignableDocument`.
+   */
+  private versione: number
 
   // Produttore (Campo 4/6 FIR) — snapshot anagrafico immutabile
   private producerPartitaIva: string
@@ -68,6 +74,7 @@ export class FIR extends AggregateRoot {
     this.firNumber = params.firNumber
     this.tenantId = params.tenantId
     this.schemaVersion = params.schemaVersion ?? FIR.CURRENT_SCHEMA_VERSION
+    this.versione = params.versione ?? 1
 
     this.producerPartitaIva = params.producerPartitaIva
     this.producerName = params.producerName ?? null
@@ -223,6 +230,13 @@ export class FIR extends AggregateRoot {
   getSchemaVersion(): number {
     return this.schemaVersion
   }
+  getVersione(): number {
+    return this.versione
+  }
+  /** Allinea la versione dopo un salvataggio andato a buon fine (la scrive solo il repository). */
+  registraVersioneSalvata(versione: number): void {
+    this.versione = versione
+  }
 
   /**
    * Genera la rappresentazione canonica del FIR da firmare/verificare.
@@ -234,6 +248,8 @@ export class FIR extends AggregateRoot {
    * cambiano nel tempo — includerli romperebbe le firme precedenti):
    *  - `firNumber`: assegnato solo all'emissione (BOZZA -> EMESSO)
    *  - `status`: cambia ad ogni firma applicata (SIGNED_BY_PRODUCER, IN_TRANSIT, ...)
+   *  - `versione`: contatore del lock ottimistico, cresce a ogni scrittura della riga; se entrasse
+   *    nel documento ogni modifica invaliderebbe tutte le firme gia apposte
    *  - qualunque timestamp "di lettura" (non è mai incluso: nessun `new Date()`
    *    qui dentro, solo campi persistiti sul FIR stesso)
    *
