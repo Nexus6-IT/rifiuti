@@ -145,3 +145,43 @@ describe('FIRResponseDto.fromDomain — scostamentoPeso (F2-7)', () => {
     })
   })
 })
+
+describe('FIRResponseDto.fromDomain — campi per la modifica (D12)', () => {
+  it('una bozza espone versione, provenienza, tipo tratta e modificabile=true', () => {
+    const fir = FIR.create({
+      ...createValidFIRProps(),
+      provenienza: 'SPECIALE' as any,
+      tipoTrattaPrincipale: 'TERRESTRE' as any,
+    })
+    fir.registraVersioneSalvata(4)
+
+    const dto = FIRResponseDto.fromDomain(fir)
+
+    expect(dto.versione).toBe(4)
+    expect(dto.provenienza).toBe('SPECIALE')
+    expect(dto.tipoTrattaPrincipale).toBe('TERRESTRE')
+    expect(dto.modificabile).toBe(true)
+    expect(dto.motivoNonModificabile).toBeNull()
+  })
+
+  it('un FIR emesso non e modificabile e ne da il motivo', () => {
+    const fir = FIR.create(createValidFIRProps())
+    fir.emetti('FIR-2026-000001', createMockFirma('Produttore SRL'))
+
+    const dto = FIRResponseDto.fromDomain(fir)
+
+    expect(dto.modificabile).toBe(false)
+    expect(dto.motivoNonModificabile).toBe('NON_BOZZA')
+  })
+
+  it('le tratte aggiuntive espongono trasportatoreId', () => {
+    const fir = FIR.create({
+      ...createValidFIRProps(),
+      trasportatoriAggiuntivi: [
+        { ordine: 2, tipoTratta: 'FERROVIARIA' as any, trasportatoreId: 't2', denominazione: 'X' },
+      ],
+    } as any)
+
+    expect(FIRResponseDto.fromDomain(fir).trasportatoriAggiuntivi[0].trasportatoreId).toBe('t2')
+  })
+})

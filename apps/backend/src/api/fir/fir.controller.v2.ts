@@ -6,6 +6,7 @@
 import {
   Controller,
   Post,
+  Put,
   Get,
   Body,
   Param,
@@ -15,16 +16,19 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  ParseUUIDPipe,
   Req,
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { IsString, IsNotEmpty, IsNumber, Max, Min } from 'class-validator'
 import { CreateFIRDto } from './dtos/create-fir.dto'
+import { ModificaFIRDto } from './dtos/modifica-fir.dto'
 import { ListFIRsDto } from './dtos/list-firs.dto'
 import { FIRResponseDto } from './dtos/fir-response.dto'
 import { PaginatedFIRResponseDto } from './dtos/paginated-fir-response.dto'
 import { CreateFIRUseCase } from '../../application/fir/use-cases/create-fir.use-case'
+import { ModificaFIRUseCase } from '../../application/fir/use-cases/modifica-fir.use-case'
 import { EmettiFIRUseCase } from '../../application/fir/use-cases/emetti-fir.use-case'
 import { PresaInCaricoFIRUseCase } from '../../application/fir/use-cases/presa-in-carico-fir.use-case'
 import { ConfermaConsegnaFIRUseCase } from '../../application/fir/use-cases/conferma-consegna-fir.use-case'
@@ -98,7 +102,8 @@ export class FIRControllerV2 {
     private readonly getFIRByIdHandler: GetFIRByIdQueryHandler,
     private readonly listFIRsHandler: ListFIRsQueryHandler,
     private readonly enforcement: SubscriptionEnforcementService,
-    private readonly membership: RuoloEffettivoService
+    private readonly membership: RuoloEffettivoService,
+    private readonly modificaFIRUseCase: ModificaFIRUseCase
   ) {}
 
   @Post()
@@ -140,6 +145,66 @@ export class FIRControllerV2 {
     )
 
     const result = await this.createFIRUseCase.execute(command)
+
+    if (result.isFailure) {
+      throw new BadRequestException(result.error)
+    }
+
+    return FIRResponseDto.fromDomain(result.value)
+  }
+
+  @Put(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Modifica una bozza di FIR',
+    description:
+      'Sostituisce il contenuto di una bozza (stesso corpo della creazione più la versione letta). ' +
+      'Un FIR emesso, firmato, in attesa di firma o legato a RENTRI non si modifica.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del FIR da modificare' })
+  @ApiResponse({ status: 200, description: 'Bozza modificata', type: FIRResponseDto })
+  @ApiResponse({ status: 400, description: 'Dati non validi' })
+  @ApiResponse({ status: 403, description: "Ruolo di sola consultazione nell'azienda selezionata" })
+  @ApiResponse({ status: 404, description: 'FIR non trovato (codice FIR_NON_TROVATO)' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'FIR_MODIFICATO_NEL_FRATTEMPO (versione non più corrente) oppure FIR_NON_MODIFICABILE ' +
+      '(il messaggio indica il motivo)',
+  })
+  async modifica(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ModificaFIRDto,
+    @Req() req: any
+  ): Promise<FIRResponseDto> {
+    const user: CurrentUserPayload = req.user
+    // Azienda selezionata e ruolo effettivo lì, come nella creazione.
+    const tenantId = requireRequestTenantId(req)
+    if (!RUOLI_CREAZIONE.includes(await this.membership.ruoloEffettivo(user, tenantId))) {
+      throw new ForbiddenException({
+        message: "Solo un amministratore o un operatore dell'azienda può creare FIR.",
+        error: 'FIR_RISERVATO_OPERATORI',
+      })
+    }
+
+    // Abbonamento sospeso o scaduto; non il limite FIR, perché non si crea un FIR.
+    await this.enforcement.assertNotSuspended(tenantId)
+
+    // Gli errori di dominio D10 (409/404) non si convertono qui: li gestisce il filtro globale.
+    const result = await this.modificaFIRUseCase.execute({
+      firId: id,
+      tenantId,
+      userId: user.id,
+      versione: dto.versione,
+      produttoreId: dto.produttoreId,
+      trasportatoreId: dto.trasportatoreId,
+      destinatarioId: dto.destinatarioId,
+      rifiuto: dto.rifiuto,
+      provenienza: dto.provenienza,
+      tipoTrattaPrincipale: dto.tipoTrattaPrincipale,
+      trasportatoriAggiuntivi: dto.trasportatoriAggiuntivi ?? [],
+      annotazioni: dto.annotazioni,
+    })
 
     if (result.isFailure) {
       throw new BadRequestException(result.error)

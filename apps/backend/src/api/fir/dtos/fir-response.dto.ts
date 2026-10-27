@@ -3,7 +3,14 @@
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { FIR, FIRStato, ParteFIR, TipoTratta } from '../../../domain/fir/aggregates/fir.aggregate'
+import {
+  FIR,
+  FIRStato,
+  ParteFIR,
+  ProvenienzaRifiuto,
+  TipoTratta,
+  MotivoNonModificabile,
+} from '../../../domain/fir/aggregates/fir.aggregate'
 import { ScostamentoPeso } from '../../../domain/fir/scostamento-peso'
 import {
   traduciErroreRentri,
@@ -17,6 +24,12 @@ export class TrasportatoreAggiuntivoResponse {
 
   @ApiProperty({ enum: TipoTratta, example: TipoTratta.FERROVIARIA, description: 'Tipo di tratta' })
   tipoTratta: TipoTratta
+
+  @ApiPropertyOptional({
+    example: 'tenant-uuid-transporter',
+    description: 'ID del trasportatore nel registro (per precompilare il form di modifica)',
+  })
+  trasportatoreId?: string
 
   @ApiProperty({ example: 'Trasporti Rossi Srl', description: 'Denominazione (snapshot)' })
   denominazione: string
@@ -52,6 +65,38 @@ export class FIRResponseDto {
 
   @ApiProperty({ enum: FIRStato, example: FIRStato.BOZZA, description: 'Stato FIR' })
   stato: FIRStato
+
+  @ApiProperty({
+    example: 1,
+    description: 'Versione del FIR: va rinviata nella modifica (lock ottimistico)',
+  })
+  versione: number
+
+  @ApiProperty({
+    description: 'Se true la bozza può essere modificata ora (motivoNonModificabile è null)',
+  })
+  modificabile: boolean
+
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: ['LEGATO_RENTRI', 'NON_BOZZA', 'FIRMATO', 'IN_ATTESA_FIRMA_PRODUTTORE'],
+    description: 'Perché il FIR non è modificabile; null se lo è',
+  })
+  motivoNonModificabile: MotivoNonModificabile | null
+
+  @ApiPropertyOptional({
+    enum: ProvenienzaRifiuto,
+    nullable: true,
+    description: 'Provenienza del rifiuto (urbano o speciale)',
+  })
+  provenienza: ProvenienzaRifiuto | null
+
+  @ApiPropertyOptional({
+    enum: TipoTratta,
+    nullable: true,
+    description: 'Modalità di trasporto della tratta principale',
+  })
+  tipoTrattaPrincipale: TipoTratta | null
 
   @ApiProperty({ example: 'tenant-uuid-producer', description: 'ID produttore' })
   produttoreId: string
@@ -238,10 +283,17 @@ export class FIRResponseDto {
         })
       : null
 
+    const motivoNonModificabile = fir.motivoNonModificabile()
+
     return {
       id: fir.id,
       numeroProgressivo: fir.numeroProgressivo,
       stato: fir.stato,
+      versione: fir.versione,
+      modificabile: motivoNonModificabile === null,
+      motivoNonModificabile,
+      provenienza: fir.provenienza,
+      tipoTrattaPrincipale: fir.tipoTrattaPrincipale,
       produttoreId: fir.produttoreId,
       rifiuto: {
         cerCode: fir.rifiuto.cerCode,
@@ -262,6 +314,7 @@ export class FIRResponseDto {
       destinatario: fir.destinatario,
       trasportatoriAggiuntivi: (fir.trasportatoriAggiuntivi ?? []).map(t => ({
         ordine: t.ordine,
+        trasportatoreId: t.trasportatoreId,
         tipoTratta: t.tipoTratta,
         denominazione: t.denominazione,
         partitaIva: t.partitaIva,
