@@ -816,6 +816,8 @@ export class FIRPrismaRepository implements IFIRRepository {
       // dimenticate), la riconciliazione lo confrontava sempre con null.
       _rentriStatoFormulario: (record.rentriStatoFormulario as StatoFormulario | null) ?? null,
       _versione: record.versione ?? 0,
+      _firmePresenti: (record.signatures?.length ?? 0) > 0,
+      _inAttesaFirmaProduttore: record.status === 'AWAITING_PRODUCER',
     })
 
     return fir
