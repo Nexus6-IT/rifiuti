@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import { MudAggregazioneService } from './mud-aggregazione.service'
 import { limitiAnnoMud } from './mud-regole'
@@ -41,6 +42,9 @@ describe('MudAggregazioneService.saldiAl31Dicembre — Postgres reale', () => {
   })
 
   afterAll(async () => {
+    await prisma.giacenzaIniziale.deleteMany({
+      where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
+    })
     await prisma.wasteMovement.deleteMany({
       where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
@@ -54,6 +58,9 @@ describe('MudAggregazioneService.saldiAl31Dicembre — Postgres reale', () => {
   })
 
   beforeEach(async () => {
+    await prisma.giacenzaIniziale.deleteMany({
+      where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
+    })
     await prisma.wasteMovement.deleteMany({
       where: { tenantId: { in: [tenantId, altroTenantId].filter(Boolean) } },
     })
@@ -85,7 +92,25 @@ describe('MudAggregazioneService.saldiAl31Dicembre — Postgres reale', () => {
     })
   }
 
-  const saldi = () => service.saldiAl31Dicembre(tenantId, limitiAnnoMud(2025).fine)
+  const saldi = () => service.saldiAl31Dicembre(tenantId, limitiAnnoMud(2025).fine, 2025)
+  const apertura = (
+    data: string,
+    quantita: number,
+    unita: string,
+    cerCode: string,
+    tenant = tenantId
+  ) =>
+    prisma.giacenzaIniziale.create({
+      data: {
+        tenantId: tenant,
+        registroId: registroDi[tenant],
+        cerCode,
+        quantita,
+        unita,
+        dataRiferimento: new Date(`${data}T00:00:00Z`),
+        impostatoDa: randomUUID(),
+      },
+    })
 
   it('confine dell anno italiano: 23:30 italiane del 31/12 dentro, 00:30 del 1/1 fuori', async () => {
     await inserisci('CARICO', '2025-12-31T22:30:00Z', 100, 'KG', '20 03 01')
@@ -106,6 +131,26 @@ describe('MudAggregazioneService.saldiAl31Dicembre — Postgres reale', () => {
   it('un altro tenant non entra nel saldo', async () => {
     await inserisci('CARICO', '2025-03-10T08:00:00Z', 70, 'KG', '20 03 01')
     await inserisci('CARICO', '2025-03-10T08:00:00Z', 999, 'KG', '20 03 01', altroTenantId)
+    expect(await saldi()).toEqual([{ cerCode6: '20 03 01', kg: 70 }])
+  })
+
+  it('le aperture con data fino al 31/12 (incluso) contano, quelle dal 1/1 no', async () => {
+    await inserisci('CARICO', '2025-03-10T08:00:00Z', 100, 'KG', '20 03 01')
+    await apertura('2025-12-31', 2, 'T', '20 03 01')
+    await apertura('2026-01-01', 999, 'KG', '20 03 01')
+    expect(await saldi()).toEqual([{ cerCode6: '20 03 01', kg: 2100 }])
+  })
+
+  it('un CER con la sola apertura compare; unità non di massa e altri tenant no', async () => {
+    await apertura('2025-02-01', 75.5, 'KG', '15 01 10*')
+    await apertura('2025-02-01', 300, 'LITRI', '16 01 01')
+    await apertura('2025-02-01', 999, 'KG', '20 03 01', altroTenantId)
+    expect(await saldi()).toEqual([{ cerCode6: '15 01 10*', kg: 75.5 }])
+  })
+
+  it("l'apertura compensa uno scarico dello stesso CER nel saldo", async () => {
+    await apertura('2025-01-01', 100, 'KG', '20 03 01')
+    await inserisci('SCARICO', '2025-06-10T08:00:00Z', 30, 'KG', '200301')
     expect(await saldi()).toEqual([{ cerCode6: '20 03 01', kg: 70 }])
   })
 })

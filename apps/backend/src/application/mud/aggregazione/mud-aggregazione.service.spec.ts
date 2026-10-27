@@ -105,6 +105,7 @@ describe('MudAggregazioneService', () => {
       },
       mUDReport: { findUnique: jest.fn().mockResolvedValue(null) },
       registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
+      giacenzaIniziale: { findMany: jest.fn().mockResolvedValue([]) },
     }
     referenceData = { findComuneByName: jest.fn().mockResolvedValue({ code: '015146' }) }
     service = new MudAggregazioneService(prisma, referenceData, logger)
@@ -1297,6 +1298,43 @@ describe('MudAggregazioneService', () => {
     expect(args.where.tenantId).toBe('t1')
     expect(args.where.movementDate.lt).toEqual(limitiAnnoMud(2025).fine)
     expect(args.where.movementDate.gte).toBeUndefined()
+  })
+
+  it('saldo al 31/12: le giacenze iniziali contano come carichi, anche da sole', async () => {
+    impostaDati({ movimenti: [mov({})] })
+    prisma.wasteMovement.groupBy.mockResolvedValue([
+      { cerCode: '170405', type: 'CARICO', unit: 'KG', _sum: { quantity: 100 } },
+      { cerCode: '170405', type: 'SCARICO', unit: 'KG', _sum: { quantity: 30 } },
+    ])
+    const apertura = (cerCode: string, quantita: number, unita: string) => ({
+      registroId: 'r1',
+      cerCode,
+      quantita,
+      unita,
+      dataRiferimento: new Date('2025-01-10T00:00:00Z'),
+    })
+    prisma.giacenzaIniziale.findMany.mockResolvedValue([
+      apertura('17 04 05', 1, 'T'),
+      apertura('15 01 10*', 40, 'KG'),
+      apertura('16 01 01', 500, 'LITRI'),
+    ])
+
+    const r = await service.aggrega('t1', 2025)
+
+    const g = conCodice(r.controlli, 'GIACENZE_NON_CALCOLATE')
+    expect(g).toEqual([
+      controlliMud.giacenzeNonCalcolate(2025, [
+        { cerCode6: '15 01 10*', kg: 40 },
+        { cerCode6: '17 04 05', kg: 1070 },
+      ]),
+    ])
+    // il filtro è sul giorno (31/12), non sull'istante di fine anno, e sul tenant
+    expect(prisma.giacenzaIniziale.findMany.mock.calls[0][0].where).toEqual({
+      tenantId: 't1',
+      dataRiferimento: { lte: new Date('2025-12-31T00:00:00Z') },
+    })
+    // un'apertura non è un movimento: nessuna riga di prodotto/ricevuto la riguarda
+    expect(r.righe.every((riga: any) => riga.cerCode !== '15 01 10*')).toBe(true)
   })
 
   it('saldo zero o negativo, o solo unità non di massa: nessun avviso delle giacenze', async () => {
