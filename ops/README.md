@@ -249,6 +249,18 @@ negativo). Prima del rollback controllare `SELECT tenant_id, count(*) FROM
 giacenze_iniziali GROUP BY 1` e avvisare le aziende interessate; la tabella resta
 nel database (migration additiva) e riprende a contare al ripristino del codice.
 
+Stesso discorso per **rettifiche e annullamenti** (Fase 2 pezzo 3, colonne
+`tipo_annotazione`, `movimento_rettificato_id`, `movimento_originale_id`,
+`motivo_annotazione`, `hash_versione` su `waste_movements`): il codice vecchio non
+le conosce, quindi dopo un rollback le correzioni conterebbero come movimenti
+ordinari (un annullamento sommerebbe la quantita' invece di toglierla, una
+rettifica si sommerebbe all'annotazione che corregge) e giacenze, MUD e anomalie
+risulterebbero sbagliati. **Prima del rollback** controllare `SELECT tenant_id,
+tipo_annotazione, count(*) FROM waste_movements WHERE tipo_annotazione <>
+'ORDINARIA' GROUP BY 1, 2`: se non e' vuoto, il rollback del codice non e'
+innocuo e va concordato con le aziende interessate. Le colonne restano nel
+database (migration additiva) e tornano a contare al ripristino del codice.
+
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa
 **dopo** il `git revert` e la pipeline, con `RIPRISTINO_TAG` uguale al tag del

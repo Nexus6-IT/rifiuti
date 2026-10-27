@@ -1860,10 +1860,34 @@ model WasteMovement {
   /// giacenza sono per registro.
   registroId String @map("registro_id") @db.Uuid
 
-  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  recordedByUser User?            @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
-  registro       RegistroRifiuti  @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  /// Fase 2 pezzo 3: rettifica e annullamento sono NUOVE annotazioni (mai UPDATE/DELETE di una riga):
+  /// ORDINARIA = registrazione normale, RETTIFICA = sostituisce la precedente, ANNULLAMENTO = toglie
+  /// dai conteggi l'intera catena. Vigente = non ANNULLAMENTO e nessuna riga la indica come predecessore.
+  tipoAnnotazione        TipoAnnotazioneMovimento @default(ORDINARIA) @map("tipo_annotazione")
+  /// Predecessore diretto (l'annotazione che questa corregge); NULL per le ORDINARIA.
+  movimentoRettificatoId String?                  @map("movimento_rettificato_id") @db.Uuid
+  /// Radice della catena (la ORDINARIA di partenza); coincide col predecessore alla prima correzione.
+  movimentoOriginaleId   String?                  @map("movimento_originale_id") @db.Uuid
+  /// Motivo della correzione (1..500 dopo trim); NULL per le ORDINARIA.
+  motivoAnnotazione      String?                  @map("motivo_annotazione") @db.VarChar(500)
+  /// Versione dell'hash dell'annotazione (1 = storico, 2 = concatenato per registro e anno).
+  hashVersione           Int                      @default(1) @map("hash_versione") @db.SmallInt
 
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recordedByUser User?           @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
+  registro       RegistroRifiuti @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  /// Predecessore: stesso registro, azienda e tipo (chiave composta verso l'unico sotto). NoAction:
+  /// il controllo e' a fine statement, cosi' una catena intera si cancella in un solo DELETE.
+  rettificato WasteMovement?  @relation("Correzioni", fields: [movimentoRettificatoId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_rettificato_fkey")
+  correzioni  WasteMovement[] @relation("Correzioni")
+  /// Radice della catena, con gli stessi vincoli di registro, azienda e tipo.
+  originale   WasteMovement?  @relation("Radice", fields: [movimentoOriginaleId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_originale_fkey")
+  catena      WasteMovement[] @relation("Radice")
+
+  @@unique([id, registroId, tenantId, type], map: "waste_movements_id_registro_tenant_type_key")
+  @@unique([movimentoRettificatoId], map: "waste_movements_movimento_rettificato_id_key")
+  @@index([movimentoOriginaleId], map: "waste_movements_movimento_originale_id_idx")
   @@unique([registroId, progressiveYear, progressiveNumber])
   @@index([registroId, cerCode])
   @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
@@ -1879,6 +1903,14 @@ enum WasteMovementType {
   SCARICO
 
   @@map("waste_movement_type")
+}
+
+enum TipoAnnotazioneMovimento {
+  ORDINARIA
+  RETTIFICA
+  ANNULLAMENTO
+
+  @@map("tipo_annotazione_movimento")
 }
 
 /// Credenziale RENTRI per-tenant (Modello di Interoperabilità AgID).
