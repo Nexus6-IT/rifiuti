@@ -89,7 +89,10 @@ function creaTx(opts: {
 }
 
 function creaUseCase(tx: ReturnType<typeof creaTx>) {
-  const prisma = { $transaction: jest.fn(async (fn: any) => fn(tx)) }
+  const prisma = {
+    $transaction: jest.fn(async (fn: any) => fn(tx)),
+    wasteMovement: { count: jest.fn().mockResolvedValue(0) },
+  }
   return new CorreggiMovimentoUseCase(prisma as never, logger as never)
 }
 
@@ -207,15 +210,13 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
       new Prisma.PrismaClientKnownRequestError('dup', {
         code: 'P2002',
         clientVersion: 'x',
-        meta: { target },
+        meta: { target: [target] },
       })
     const tx = creaTx({})
-    tx.wasteMovement.create.mockRejectedValueOnce(
-      errore('waste_movements_movimento_rettificato_id_key')
-    )
+    tx.wasteMovement.create.mockRejectedValueOnce(errore('movimento_rettificato_id'))
     await expect(creaUseCase(tx).annulla(base)).rejects.toBeInstanceOf(ConflictException)
     const tx2 = creaTx({})
-    tx2.wasteMovement.create.mockRejectedValueOnce(errore('waste_movements_progressivo_key'))
+    tx2.wasteMovement.create.mockRejectedValueOnce(errore('registro_id'))
     await expect(creaUseCase(tx2).annulla(base)).rejects.toBeInstanceOf(
       InternalServerErrorException
     )
@@ -280,11 +281,10 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
     })
     const r = await creaUseCase(tx).annulla(base)
     expect(r.avvisi).toEqual([
-      "Questa registrazione viene dalla ricopia del FIR FIR-77: dopo l'annullamento il FIR non si potrà " +
-        'ricopiare di nuovo nel registro. Se va corretta, usa la rettifica; altrimenti registra il ' +
-        'movimento a mano.',
+      "Questa registrazione veniva dalla ricopia del FIR FIR-77: dopo l'annullamento il FIR non si può " +
+        'ricopiare di nuovo nel registro. Se il movimento va registrato, registralo a mano.',
     ])
-    expect(INDICAZIONE_FIR_ANNULLATO).toContain('registra il movimento a mano')
+    expect(INDICAZIONE_FIR_ANNULLATO).toContain('registralo a mano')
   })
 
   it('la rettifica di una ricopia non porta l’avviso del FIR', async () => {
@@ -312,6 +312,15 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
     expect(tx.cERCode.count).not.toHaveBeenCalled()
   })
 
+  it('quantita non positiva: 400 prima dei lock e del controllo MUD', async () => {
+    const tx = creaTx({ mud: [2026] })
+    await expect(
+      creaUseCase(tx).rettifica({ ...base, dati: { ...dati, quantity: 0 } })
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(tx.$executeRaw).not.toHaveBeenCalled()
+    expect(tx.mUDReport.findMany).not.toHaveBeenCalled()
+  })
+
   it('audit nella transazione con id e numeri', async () => {
     const tx = creaTx({})
     await creaUseCase(tx).rettifica({ ...base, dati })
@@ -320,6 +329,7 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
     expect(log.metadata).toMatchObject({
       predecessoreId: 'o-1',
       radiceId: 'o-1',
+      radiceNumero: '5/2026',
       correzioneId: 'n-1',
       motivo: 'errore',
     })

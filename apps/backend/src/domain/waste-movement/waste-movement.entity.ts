@@ -56,6 +56,9 @@ function giorniItalianiFra(da: Date, a: Date): number {
   return (giornoUtc(a) - giornoUtc(da)) / 86_400_000
 }
 
+/** Tipo di annotazione del registro (come l'enum Prisma `TipoAnnotazioneMovimento`). */
+export type TipoAnnotazione = 'ORDINARIA' | 'RETTIFICA' | 'ANNULLAMENTO'
+
 export interface WasteMovementProps {
   id?: string
   tenantId: string
@@ -87,7 +90,7 @@ export interface WasteMovementProps {
   hashPrecedente?: string
   notes?: string
   /** Tipo di annotazione per l'hash v2 (default ORDINARIA); le correzioni passano il proprio. */
-  tipoAnnotazione?: string
+  tipoAnnotazione?: TipoAnnotazione
   /** Predecessore corretto (solo correzioni): entra nell'hash v2. */
   movimentoRettificatoId?: string
 }

@@ -24,6 +24,7 @@ import {
 import { FIRPrismaRepository } from '../../../infrastructure/persistence/fir-prisma.repository'
 import { FIR } from '../../../domain/fir/aggregates/fir.aggregate'
 import { annoSolareItaliano } from '../../../core/time/anno-italiano'
+import * as numerazione from '../numerazione-annotazione'
 import { INDICAZIONE_FIR_ANNULLATO } from '../../../core/domain/errors'
 import { RegistriService } from '../registri.service'
 import { VerificaCatenaRegistroService } from '../verifica-catena-registro.service'
@@ -321,6 +322,7 @@ describe('CorreggiMovimentoUseCase - Postgres reale, ruolo wasteflow_app', () =>
       expect(log.metadata).toMatchObject({
         predecessoreId: c.id,
         radiceId: c.id,
+        radiceNumero: `${c.progressiveNumber}/${c.progressiveYear}`,
         correzioneId: r.movimento.id,
         motivo: 'inserito per errore',
       })
@@ -492,6 +494,90 @@ describe('CorreggiMovimentoUseCase - Postgres reale, ruolo wasteflow_app', () =>
     })
   })
 
+  describe('correzioni dopo la revisione', () => {
+    it('P2002 vero: una correzione concorrente inserita senza lock da 409, non errore interno', async () => {
+      const az = await azienda()
+      const c = await ordinaria(az)
+      const reale = numerazione.numeraAnnotazione
+      const spia = jest
+        .spyOn(numerazione, 'numeraAnnotazione')
+        .mockImplementation(async (tx, a, b) => {
+          // il rivale entra dopo il controllo di vigenza e senza prendere alcun lock
+          await owner.wasteMovement.create({
+            data: {
+              tenantId: az.tenantId,
+              registroId: az.registroId,
+              progressiveYear: ANNO,
+              progressiveNumber: 900,
+              type: 'CARICO',
+              movementDate: c.movementDate,
+              registrationDate: c.movementDate,
+              causale: 'PRODUZIONE_INTERNA',
+              cerCode: CER,
+              quantity: 100,
+              unit: 'KG',
+              tipoAnnotazione: 'RETTIFICA',
+              movimentoRettificatoId: c.id,
+              movimentoOriginaleId: c.id,
+              motivoAnnotazione: 'rivale',
+            },
+          })
+          return reale(tx, a, b)
+        })
+      try {
+        const e = await eccezione(annulla(az, c.id))
+        expect(e).toBeInstanceOf(ConflictException)
+        expect(e.message).toContain('già stato rettificato o annullato')
+      } finally {
+        spia.mockRestore()
+      }
+    })
+
+    it('quantita zero con un MUD presentato: 400, non il 409 della conferma', async () => {
+      const az = await azienda()
+      const c = await ordinaria(az, { anno: 2025, data: '2025-06-01T10:00:00Z', numero: 7 })
+      await owner.mUDReport.create({
+        data: { tenantId: az.tenantId, year: 2026, status: 'SUBMITTED', reportData: {} },
+      })
+      const e = await eccezione(rettifica(az, c.id, { quantity: 0 }))
+      expect(e).toBeInstanceOf(BadRequestException)
+    })
+
+    it('retry identico della ricopia con catena annullata o rettificata: avviso', async () => {
+      const az = await azienda()
+      const f1 = await firEmesso(az.tenantId)
+      const f2 = await firEmesso(az.tenantId)
+      await registraOrdinaria(az, { type: 'CARICO', qty: 200 })
+      // stesso comando = stessa data al millisecondo: e' il retry identico
+      const c1 = comando(az, { type: 'SCARICO', qty: 40, firId: f1 })
+      const c2 = comando(az, { type: 'SCARICO', qty: 30, firId: f2 })
+      const esegui = (c: RegistraMovimentoCommand) =>
+        nelTenant(az.tenantId, () => registra.execute(c))
+      const s1 = (await esegui(c1)).value
+      const s2 = (await esegui(c2)).value
+      // vigente: nessun avviso
+      const vivo = (await esegui(c2)).value
+      expect(vivo.giaRegistrato).toBe(true)
+      expect(vivo.avvisi).toEqual([])
+      // rettificato
+      const r = await rettifica(az, s2.id, {
+        causale: 'CONFERIMENTO_TRASPORTATORE',
+        quantity: 30,
+        movementDate: s2.movementDate,
+      })
+      const retryR = (await esegui(c2)).value
+      expect(retryR.id).toBe(s2.id)
+      expect(retryR.avvisi.join(' ')).toContain(
+        `rettificato con n. ${r.movimento.progressiveNumber}/${r.movimento.progressiveYear}`
+      )
+      // annullato
+      await annulla(az, s1.id)
+      const retryA = (await esegui(c1)).value
+      expect(retryA.id).toBe(s1.id)
+      expect(retryA.avvisi).toEqual([INDICAZIONE_FIR_ANNULLATO])
+    })
+  })
+
   describe('MUD gia presentato (R10)', () => {
     async function mud(az: Az, year: number, status: 'SUBMITTED' | 'ARCHIVED' | 'DRAFT') {
       await owner.mUDReport.create({
@@ -604,8 +690,8 @@ describe('CorreggiMovimentoUseCase - Postgres reale, ruolo wasteflow_app', () =>
       expect(s.isSuccess ? 'ok' : s.error).toBe('ok')
       const ricopia = s.value
       const r = await annulla(az, ricopia.id)
-      expect(r.avvisi.join(' ')).toContain('Questa registrazione viene dalla ricopia del FIR')
-      expect(r.avvisi.join(' ')).toContain('non si potrà ricopiare di nuovo')
+      expect(r.avvisi.join(' ')).toContain('Questa registrazione veniva dalla ricopia del FIR')
+      expect(r.avvisi.join(' ')).toContain('non si può ricopiare di nuovo')
       expect(r.movimento.firId).toBe(firId)
       const riga = await owner.wasteMovement.findUniqueOrThrow({ where: { id: r.movimento.id } })
       expect(riga.firIdRicopia).toBeNull()

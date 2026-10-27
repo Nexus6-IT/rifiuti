@@ -76,14 +76,14 @@ function statoDi(
   return r.correzioni.length > 0 ? 'RETTIFICATO' : 'VIGENTE'
 }
 
+/** Profondita massima della ricorsione che cerca la testa di una catena di correzioni. */
+const LIVELLO_MASSIMO = 1000
+
 /**
  * Query handler per la lista del registro cronologico di carico/scarico.
  * Filtri: tipo, CER, causale, periodo (dataFrom/dataTo), FIR.
  * Ordinamento per data operazione DESC (più recente prima).
  */
-/** Profondita massima della ricorsione che cerca la testa di una catena di correzioni. */
-const LIVELLO_MASSIMO = 1000
-
 @Injectable()
 export class ListMovimentiHandler {
   constructor(

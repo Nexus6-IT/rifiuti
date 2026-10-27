@@ -94,7 +94,11 @@ interface DatiAnnotazione {
 /** Soglia di tolleranza sui saldi in kg (arrotondati al grammo). */
 const EPS_KG = 0.0005
 const MOTIVO_MASSIMO = 500
-const VINCOLO_GIA_CORRETTA = 'waste_movements_movimento_rettificato_id_key'
+/**
+ * Prisma 5 mette in `meta.target` i nomi delle COLONNE (`['movimento_rettificato_id']`), non quello del
+ * vincolo: si riconosce dalla colonna, come per la ricopia del FIR.
+ */
+const COLONNA_GIA_CORRETTA = /movimento_?rettificato_?id/i
 
 /**
  * Rettifica e annullamento di un'annotazione del registro (Fase 2 pezzo 3): mai UPDATE ne' DELETE,
@@ -261,6 +265,7 @@ export class CorreggiMovimentoUseCase {
               predecessoreId: originale.id,
               predecessoreNumero: numeroDi(originale),
               radiceId: radice.id,
+              radiceNumero: numeroDi(radice),
               correzioneId: record.id,
               correzioneNumero: numeroDi(record),
               registroId: record.registroId,
@@ -272,7 +277,7 @@ export class CorreggiMovimentoUseCase {
         return { movimento: vistaCorrezione(record), avvisi }
       })
     } catch (err) {
-      throw this.traduciErrore(err)
+      throw await this.traduciErrore(err, tenantId, movimentoId)
     }
 
     this.logger.info(
@@ -315,6 +320,26 @@ export class CorreggiMovimentoUseCase {
       registrationDate: new Date(),
     })
     if (validazione.errore !== undefined) throw new BadRequestException(validazione.errore)
+    // Validazioni dell'entita' (quantita > 0, registrazione non prima dell'operazione): prima dei lock
+    // e del controllo MUD, cosi chi ha un MUD presentato non conferma per poi ricevere un 400.
+    try {
+      WasteMovement.create({
+        tenantId: originale.tenantId,
+        registroId: originale.registroId,
+        progressiveNumber: 0,
+        progressiveYear: annoSolareItaliano(new Date()),
+        type: originale.type,
+        movementDate: r.movementDate,
+        registrationDate: new Date(),
+        causale: r.causale as CausaleMovimento,
+        cerCode: validazione.cerCode,
+        quantity: Number(r.quantity),
+        unit: r.unit,
+        hashPrecedente: '',
+      })
+    } catch (err) {
+      throw new BadRequestException((err as Error).message)
+    }
     return {
       type: originale.type,
       causale: r.causale,
@@ -477,15 +502,26 @@ export class CorreggiMovimentoUseCase {
     })
     const numero = fir ? etichettaFir(fir) : 'collegato'
     return (
-      `Questa registrazione viene dalla ricopia del FIR ${numero}: dopo l'annullamento il FIR non ` +
-      `si potrà ricopiare di nuovo nel registro. Se va corretta, usa la rettifica; altrimenti ` +
-      `registra il movimento a mano.`
+      `Questa registrazione veniva dalla ricopia del FIR ${numero}: dopo l'annullamento il FIR non ` +
+      `si può ricopiare di nuovo nel registro. Se il movimento va registrato, registralo a mano.`
     )
   }
 
-  private traduciErrore(err: unknown): unknown {
+  private async traduciErrore(
+    err: unknown,
+    tenantId: string,
+    movimentoId: string
+  ): Promise<unknown> {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      if (JSON.stringify(err.meta?.target ?? '').includes(VINCOLO_GIA_CORRETTA)) {
+      // Con questo driver `meta.target` puo' essere null (verificato su Postgres reale): se il
+      // target non c'e' si controlla direttamente se il movimento ha ormai una correzione.
+      const conTarget = COLONNA_GIA_CORRETTA.test(JSON.stringify(err.meta?.target ?? ''))
+      const giaCorretto =
+        conTarget ||
+        (await this.prisma.wasteMovement
+          .count({ where: { tenantId, movimentoRettificatoId: movimentoId } })
+          .catch(() => 0)) > 0
+      if (giaCorretto) {
         return new ConflictException(
           'Il movimento è già stato rettificato o annullato: la correzione si applica alla ' +
             'registrazione vigente.'
@@ -549,7 +585,7 @@ function valutaSaldi(
       if (d.unitaNonDiMassaCaricate.length > 0) {
         avvisi.push(
           `Il CER ${cerLeggibile(cifre)} ha carichi registrati in ${d.unitaNonDiMassaCaricate.join(', ')} che ` +
-            `non si possono confrontare con i kg: ${cosa.toLowerCase()} è registrata, ma la ` +
+            `non si possono confrontare con i kg: la correzione è registrata, ma la ` +
             'giacenza va verificata a mano.'
         )
         continue
@@ -565,7 +601,7 @@ function valutaSaldi(
       d.saldoMinimoGiornalieroKg < p.saldoMinimoGiornalieroKg - EPS_KG
     ) {
       avvisi.push(
-        `${cosa} è registrata, ma per il CER ${cerLeggibile(cifre)} il registro risulta sotto zero ` +
+        `La correzione è registrata, ma per il CER ${cerLeggibile(cifre)} il registro risulta sotto zero ` +
           `(${formattaQuantita(d.saldoMinimoGiornalieroKg)} kg) in almeno un giorno: ` +
           'un carico che copre gli scarichi ha una data successiva. Verifica le date.'
       )

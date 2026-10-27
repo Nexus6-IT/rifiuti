@@ -7,6 +7,7 @@ import {
   DomainError,
   FirGiaRegistratoError,
   FirGiaRegistratoInAltroRegistroError,
+  INDICAZIONE_FIR_ANNULLATO,
 } from '../../../core/domain/errors'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import {
@@ -237,7 +238,7 @@ export class RegistraMovimentoUseCase {
             // Ritardo dalle date del movimento esistente, non da quelle del retry.
             return {
               ...this.movimentoDaRecord(esistente, this.ritardoGg(esistente)),
-              avvisi: [],
+              avvisi: await this.avvisiDopoRicopia(tx, command.tenantId, esistente.id),
               giaRegistrato: true,
             }
           }
@@ -414,6 +415,28 @@ export class RegistraMovimentoUseCase {
       )
     }
     return stessa
+  }
+
+  /**
+   * Avviso per il retry identico di una ricopia la cui catena non e' piu' vigente: il movimento
+   * restituito come "gia registrato" non e' quello che conta (rettificato: si indica quale; annullato:
+   * il FIR non si ricopia piu).
+   */
+  private async avvisiDopoRicopia(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    id: string
+  ): Promise<string[]> {
+    const testa = await tx.wasteMovement.findFirst({
+      where: { tenantId, movimentoOriginaleId: id, correzioni: { none: {} } },
+      select: { tipoAnnotazione: true, progressiveNumber: true, progressiveYear: true },
+    })
+    if (!testa) return []
+    if (testa.tipoAnnotazione === 'ANNULLAMENTO') return [INDICAZIONE_FIR_ANNULLATO]
+    return [
+      `Questo movimento è stato poi rettificato con n. ${testa.progressiveNumber}/${testa.progressiveYear}: ` +
+        'i dati vigenti sono quelli della rettifica.',
+    ]
   }
 
   /**

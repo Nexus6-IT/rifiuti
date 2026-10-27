@@ -133,8 +133,8 @@ export class MetodoLocaleNonConsentitoSuFirLegatoError extends DomainError {
  * nell'avviso dell'annullamento e qui, per chi riprova la ricopia.
  */
 export const INDICAZIONE_FIR_ANNULLATO =
-  "Dopo l'annullamento il FIR non si può ricopiare di nuovo nel registro: se la registrazione va " +
-  'corretta usa la rettifica, altrimenti registra il movimento a mano.'
+  "Dopo l'annullamento il FIR non si può ricopiare di nuovo nel registro: se il movimento va " +
+  'registrato, registralo a mano.'
 
 /**
  * Un FIR si ricopia nel registro una sola volta per tipo di movimento: un secondo
