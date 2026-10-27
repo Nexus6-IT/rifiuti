@@ -725,7 +725,9 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
     versioneAttesa: number,
     audit: AuditModificaBozza
   ): Promise<void> {
-    const tenantId = fir.tenantId || fir.produttoreId
+    // Senza tenant non si puo' bloccare ne' scrivere nulla: niente ripiego sul produttore.
+    const tenantId = fir.tenantId
+    if (!tenantId) throw new FirNonTrovatoError()
     const nuovaVersione = await this.prisma.$transaction(
       async tx => {
         const righe = await tx.$queryRaw<
@@ -765,7 +767,7 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
 
         if (fir.tratteModificate) {
           // La chiave esterna composta (fir_id, tenant_id) esige il tenant su ogni riga.
-          await tx.fIRTransporter.deleteMany({ where: { firId: fir.id } })
+          await tx.fIRTransporter.deleteMany({ where: { firId: fir.id, tenantId } })
           const tratte = this.transportersToCreate(fir).map(t => ({
             ...t,
             firId: fir.id,
@@ -804,7 +806,7 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
    * campi che il DTO di modifica descrive: `wasteDescription`, `wasteCategory` e
    * `wasteOperationType` (scritti dal proprietario) non compaiono, ne' stato, numero o RENTRI.
    */
-  private contenutoBozzaToPersistence(fir: FIR): Record<string, unknown> {
+  private contenutoBozzaToPersistence(fir: FIR): Prisma.FIRUncheckedUpdateInput {
     const produttore = fir.produttore
     const trasportatore = fir.trasportatore
     const destinatario = fir.destinatario

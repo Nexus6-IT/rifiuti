@@ -22,6 +22,7 @@ import {
   MetodoLocaleNonConsentitoSuFirLegatoError,
 } from '../../../core/domain/errors'
 import { ModificaFIRCommand } from '../commands/modifica-fir.command'
+import { LoggerService } from '../../../core/logger/logger.service'
 import { verificaCerPerFormulario } from '../verifica-cer-formulario'
 import {
   snapshotProduttore,
@@ -36,7 +37,8 @@ export class ModificaFIRUseCase {
     private readonly cerRepository: ICERRepository,
     private readonly produttoreRepository: ProduttoreRepository,
     private readonly trasportatoreRepository: TrasportatoreRepository,
-    private readonly destinatarioRepository: DestinatarioRepository
+    private readonly destinatarioRepository: DestinatarioRepository,
+    private readonly logger: LoggerService
   ) {}
 
   async execute(command: ModificaFIRCommand): Promise<Result<FIR>> {
@@ -127,7 +129,19 @@ export class ModificaFIRUseCase {
       })
     } catch (error) {
       // Il guard RENTRI dell'aggregate diventa lo stesso 409 del repository (D10).
+      // Errori D10 gia' tipizzati: devono arrivare al filtro (409), non diventare un 400.
+      if (
+        error instanceof FirNonModificabileError ||
+        error instanceof FirModificatoNelFrattempoError
+      ) {
+        throw error
+      }
       if (error instanceof MetodoLocaleNonConsentitoSuFirLegatoError) {
+        // Il testo originale resta nel log; al client va il messaggio del motivo.
+        this.logger.warn('Modifica locale rifiutata su FIR legato a RENTRI', {
+          firId: fir.id,
+          causa: error.message,
+        })
         throw new FirNonModificabileError('LEGATO_RENTRI')
       }
       if (error instanceof DomainError) {

@@ -139,14 +139,16 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
         cerRepo: CERPrismaRepository,
         produttoreRepo: ProduttorePrismaRepository,
         trasportatoreRepo: TrasportatorePrismaRepository,
-        destinatarioRepo: DestinatarioPrismaRepository
+        destinatarioRepo: DestinatarioPrismaRepository,
+        logger: LoggerService
       ) => {
         return new ModificaFIRUseCase(
           firRepo,
           cerRepo,
           produttoreRepo,
           trasportatoreRepo,
-          destinatarioRepo
+          destinatarioRepo,
+          logger
         )
       },
       inject: [
@@ -155,6 +157,7 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
         ProduttorePrismaRepository,
         TrasportatorePrismaRepository,
         DestinatarioPrismaRepository,
+        LoggerService,
       ],
     },
 

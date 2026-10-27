@@ -101,8 +101,10 @@ describe('ModificaFIRUseCase', () => {
   let trasportatori: { findById: jest.Mock }
   let destinatari: { findById: jest.Mock }
   let useCase: ModificaFIRUseCase
+  let logger: { warn: jest.Mock; info: jest.Mock; error: jest.Mock; debug: jest.Mock }
 
   beforeEach(() => {
+    logger = { warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() }
     repo = { findById: jest.fn(), salvaModificaBozza: jest.fn().mockResolvedValue(undefined) }
     cer = {
       exists: jest.fn().mockResolvedValue(true),
@@ -152,8 +154,42 @@ describe('ModificaFIRUseCase', () => {
       cer as never,
       produttori as never,
       trasportatori as never,
-      destinatari as never
+      destinatari as never,
+      logger as never
     )
+  })
+
+  it('il guard RENTRI dell aggregate diventa FIR_NON_MODIFICABILE LEGATO_RENTRI e il testo originale va nel log', async () => {
+    const fir = bozza()
+    // Il motivo e' nullo (lo stato e' stato letto prima del legame) ma l'aggregate ha il legame:
+    // la modifica arriva davvero al guard dentro modificaBozza.
+    Object.assign(fir, { _rentriNumeroFir: 'N-1' })
+    jest.spyOn(fir, 'motivoNonModificabile').mockReturnValue(null)
+    repo.findById.mockResolvedValue(fir)
+
+    const errore = await useCase.execute(comando(fir, { annotazioni: 'x' })).catch(e => e)
+
+    expect(errore).toBeInstanceOf(FirNonModificabileError)
+    expect(errore.motivo).toBe('LEGATO_RENTRI')
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ causa: expect.stringContaining('modificaBozza') })
+    )
+    expect(repo.salvaModificaBozza).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['FirNonModificabileError', () => new FirNonModificabileError('FIRMATO')],
+    ['FirModificatoNelFrattempoError', () => new FirModificatoNelFrattempoError('x')],
+  ])('un %s lanciato dall aggregate si rilancia, non diventa Result.fail', async (_n, crea) => {
+    const fir = bozza()
+    const errore = crea()
+    jest.spyOn(fir, 'modificaBozza').mockImplementation(() => {
+      throw errore
+    })
+    repo.findById.mockResolvedValue(fir)
+
+    await expect(useCase.execute(comando(fir, { annotazioni: 'x' }))).rejects.toBe(errore)
   })
 
   it('FIR assente: FirNonTrovatoError, nessuna scrittura', async () => {

@@ -699,7 +699,9 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
 
       await repo.salvaModificaBozza(fir, 3, audit)
 
-      expect(prisma.fIRTransporter.deleteMany).toHaveBeenCalledWith({ where: { firId: 'fir-1' } })
+      expect(prisma.fIRTransporter.deleteMany).toHaveBeenCalledWith({
+        where: { firId: 'fir-1', tenantId: 'tenant-1' },
+      })
       const dati = prisma.fIRTransporter.createMany.mock.calls[0][0].data
       expect(dati).toHaveLength(1)
       expect(dati[0]).toMatchObject({
@@ -708,6 +710,19 @@ describe('FIRPrismaRepository — persistenza firme lifecycle (fir_signatures)',
         ordine: 1,
         denominazione: 'Nave SRL',
       })
+    })
+
+    it('FIR senza tenant: FirNonTrovatoError, nessun ripiego sul produttore e nessuna transazione', async () => {
+      const fir = await bozzaLetta()
+      preparaMock({})
+      fir.modificaBozza(contenuto(fir, { annotazioni: '' }))
+      Object.assign(fir, { _tenantId: undefined })
+      expect(fir.tenantId).toBeFalsy()
+
+      await expect(repo.salvaModificaBozza(fir, 3, audit)).rejects.toBeInstanceOf(
+        FirNonTrovatoError
+      )
+      expect(prisma.fIR.update).not.toHaveBeenCalled()
     })
 
     it('riga assente: FirNonTrovatoError, nessuna scrittura', async () => {
