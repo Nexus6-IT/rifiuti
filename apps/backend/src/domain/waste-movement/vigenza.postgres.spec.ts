@@ -235,13 +235,12 @@ describe('Vigenza e vincoli delle correzioni — Postgres reale, ruolo wasteflow
       await expect(
         inserisci(az, { tipo: 'RETTIFICA', rettificato: o.id, originale: o.id, motivo: null })
       ).rejects.toThrow(/waste_movements_annotazione_coerente|check constraint/i)
-      // ordinaria con un riferimento (SQL diretto: il helper azzera i riferimenti delle ordinarie)
-      await expect(
-        owner.$executeRaw`UPDATE waste_movements SET movimento_rettificato_id = ${o.id}::uuid WHERE id = ${o.id}::uuid`
-      ).rejects.toThrow(
-        /waste_movements_annotazione_coerente|waste_movements_non_corregge_se_stessa|check constraint/i
-      )
+      // ordinaria con un riferimento ad ALTRA riga (SQL diretto: il helper azzera i riferimenti
+      // delle ordinarie); l'auto-riferimento ha il suo caso a parte e il suo constraint
       const altra = await inserisci(az)
+      await expect(
+        owner.$executeRaw`UPDATE waste_movements SET movimento_rettificato_id = ${altra.id}::uuid WHERE id = ${o.id}::uuid`
+      ).rejects.toThrow(/waste_movements_annotazione_coerente/i)
       await expect(
         owner.$executeRaw`UPDATE waste_movements SET movimento_originale_id = ${o.id}::uuid WHERE id = ${altra.id}::uuid`
       ).rejects.toThrow(/waste_movements_annotazione_coerente|check constraint/i)
@@ -253,6 +252,14 @@ describe('Vigenza e vincoli delle correzioni — Postgres reale, ruolo wasteflow
       await expect(
         owner.$executeRaw`UPDATE waste_movements SET tipo_annotazione = 'RETTIFICA', movimento_rettificato_id = id, movimento_originale_id = id, motivo_annotazione = 'x' WHERE id = ${o.id}::uuid`
       ).rejects.toThrow(/waste_movements_non_corregge_se_stessa|check constraint/i)
+    })
+
+    it('cancellando solo il tenant la cascata rimuove anche le catene (ragione del NO ACTION)', async () => {
+      const { az } = await costruisciCatene()
+      expect(await owner.wasteMovement.count({ where: { tenantId: az.tenantId } })).toBe(9)
+      // Nessuna cancellazione preventiva di registri o movimenti: solo il tenant.
+      await owner.tenant.delete({ where: { id: az.tenantId } })
+      expect(await owner.wasteMovement.count({ where: { tenantId: az.tenantId } })).toBe(0)
     })
 
     it('la cancellazione in blocco di una catena in un solo statement riesce', async () => {

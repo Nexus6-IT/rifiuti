@@ -10,11 +10,15 @@ import { Prisma } from '@prisma/client'
  * un ANNULLAMENTO.
  */
 
-/** Filtro Prisma per `findMany`/`count`/`aggregate` e anche per `groupBy`. */
-export const WHERE_VIGENTE = {
-  tipoAnnotazione: { not: 'ANNULLAMENTO' },
-  correzioni: { none: {} },
-} satisfies Prisma.WasteMovementWhereInput
+/**
+ * Filtro Prisma per `findMany`/`count`/`aggregate` e anche per `groupBy`.
+ * Congelato (anche negli oggetti annidati): e' condiviso da tutti i lettori e un chiamante che
+ * lo mutasse cambierebbe la vigenza per tutti.
+ */
+export const WHERE_VIGENTE = Object.freeze({
+  tipoAnnotazione: Object.freeze({ not: 'ANNULLAMENTO' }),
+  correzioni: Object.freeze({ none: Object.freeze({}) }),
+} as const) satisfies Prisma.WasteMovementWhereInput
 
 /** Alias di tabella ammessi nello SQL grezzo: costanti nel codice, mai input utente. */
 const ALIAS_AMMESSO = /^[a-z_][a-z0-9_]*$/

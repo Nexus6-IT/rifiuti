@@ -21,4 +21,11 @@ describe('vigenza', () => {
       expect(() => sqlVigente(alias)).toThrow('Alias SQL non valido')
     }
   )
+
+  it('WHERE_VIGENTE e congelato, anche negli oggetti annidati', () => {
+    expect(Object.isFrozen(WHERE_VIGENTE)).toBe(true)
+    expect(Object.isFrozen(WHERE_VIGENTE.tipoAnnotazione)).toBe(true)
+    expect(Object.isFrozen(WHERE_VIGENTE.correzioni)).toBe(true)
+    expect(Object.isFrozen(WHERE_VIGENTE.correzioni.none)).toBe(true)
+  })
 })
