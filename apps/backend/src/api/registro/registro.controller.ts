@@ -287,15 +287,19 @@ export class RegistroController {
   /**
    * Giacenze iniziali (aperture) del registro (Fase 2 pezzo 2): lettura per chiunque legga il
    * registro; `puoImpostare` dice, col ruolo effettivo, se mostrare crea/modifica/elimina.
-   * Un `registroId` esplicito inesistente e' un 404; senza, vale il registro predefinito.
+   * Un `registroId` esplicito inesistente è un 404; senza, vale il registro predefinito.
    */
   @Get('giacenze-iniziali')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Giacenze iniziali del registro' })
   @ApiResponse({
     status: 200,
-    description: '{ registroId, puoImpostare, voci[] } (data come AAAA-MM-GG)',
+    description:
+      '{ registroId, puoImpostare, voci[] } (data come AAAA-MM-GG). `registroId` può essere ' +
+      'null, con voci vuote, quando il registro non si determina (più registri senza sede ' +
+      'principale, o nessun registro).',
   })
+  @ApiResponse({ status: 400, description: 'registroId non è un UUID' })
   @ApiResponse({ status: 404, description: 'registroId indicato inesistente' })
   async elencaGiacenzeIniziali(
     @Req() req: any,
@@ -313,14 +317,14 @@ export class RegistroController {
     summary: 'Crea una giacenza iniziale',
     description:
       'Una sola apertura per registro, CER (con o senza asterisco), stato fisico e famiglia di ' +
-      'unita (kg e t sono la stessa). Non e un movimento: nessun progressivo. Gli eventuali ' +
+      'unità (kg e t sono la stessa). Non è un movimento: nessun progressivo. Gli eventuali ' +
       'avvisi (carichi «Altro carico» dello stesso CER) non bloccano.',
   })
   @ApiResponse({ status: 201, description: '{ giacenza, avvisi[] }' })
   @ApiResponse({ status: 400, description: 'Dati non validi (CER, quantita, data, origini...)' })
   @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
   @ApiResponse({ status: 404, description: 'registroId indicato inesistente' })
-  @ApiResponse({ status: 409, description: 'Esiste gia una giacenza iniziale equivalente' })
+  @ApiResponse({ status: 409, description: 'Esiste già una giacenza iniziale equivalente' })
   async creaGiacenzaIniziale(
     @Body() dto: CreaGiacenzaInizialeDto,
     @Req() req: any,
@@ -336,15 +340,15 @@ export class RegistroController {
   @ApiOperation({
     summary: 'Modifica una giacenza iniziale (sostituzione completa)',
     description:
-      'Sostituisce tutti i campi tranne CER e registro. quantita, unita e dataRiferimento sono ' +
+      'Sostituisce tutti i campi tranne CER e registro. quantita, unità e dataRiferimento sono ' +
       'obbligatori; statoFisico, origini e note sono facoltativi ma se omessi vengono SVUOTATI. ' +
-      'Non modificabile se esiste uno scarico dello stesso CER registrato dopo l apertura.',
+      "Non modificabile se esiste uno scarico dello stesso CER registrato dopo l'apertura.",
   })
   @ApiResponse({ status: 200, description: '{ giacenza }' })
   @ApiResponse({ status: 400, description: 'Dati non validi' })
   @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
   @ApiResponse({ status: 404, description: 'Giacenza iniziale non trovata' })
-  @ApiResponse({ status: 409, description: 'Gia usata da uno scarico, o duplicata' })
+  @ApiResponse({ status: 409, description: 'Già usata da uno scarico, o duplicata' })
   async modificaGiacenzaIniziale(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ModificaGiacenzaInizialeDto,
@@ -361,7 +365,7 @@ export class RegistroController {
   @ApiResponse({ status: 204, description: 'Eliminata' })
   @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
   @ApiResponse({ status: 404, description: 'Giacenza iniziale non trovata' })
-  @ApiResponse({ status: 409, description: 'Gia usata da uno scarico' })
+  @ApiResponse({ status: 409, description: 'Già usata da uno scarico' })
   async eliminaGiacenzaIniziale(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: any

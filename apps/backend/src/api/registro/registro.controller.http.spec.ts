@@ -284,7 +284,8 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
         expect(giacenze.crea).not.toHaveBeenCalled()
         expect(giacenze.modifica).not.toHaveBeenCalled()
         expect(giacenze.elimina).not.toHaveBeenCalled()
-        await app.close()
+        // un'app per ruolo: si chiude quella usata qui, l'ultima la chiude afterEach
+        if (ruolo !== 'CONSULTANT') await app.close()
       }
     })
 
