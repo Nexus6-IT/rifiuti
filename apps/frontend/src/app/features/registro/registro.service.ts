@@ -113,6 +113,47 @@ export interface RegistraMovimentoRequest {
   notes?: string
 }
 
+/** Corpo della rettifica: dati completi nuovi; tipo, registro, FIR e data di registrazione non si inviano. */
+export interface RettificaMovimentoRequest {
+  movementDate: string
+  causale: CausaleMovimento
+  cerCode: string
+  wasteDescription?: string
+  quantity: number
+  unit?: string
+  wastePhysicalState?: string
+  wasteHazardClasses?: string
+  operationCode?: string
+  counterpartName?: string
+  counterpartAddress?: string
+  notes?: string
+  motivo: string
+  /** Solo dopo la conferma esplicita di chi sa che il MUD di un anno toccato è già presentato. */
+  confermaAnnoPresentato?: boolean
+}
+
+export interface AnnullamentoMovimentoRequest {
+  motivo: string
+  confermaAnnoPresentato?: boolean
+}
+
+/** Risposta di rettifica e annullamento: l'annotazione nuova e gli avvisi non bloccanti. */
+export interface EsitoCorrezioneMovimento {
+  movimento: Movimento
+  avvisi: string[]
+}
+
+export interface EsitoVerificaCatena {
+  registroId: string
+  anno: number
+  verificate: number
+  nonVerificabili: { numero: number; motivo: 'HASH_ASSENTE' }[]
+  primoErrore: {
+    numero: number
+    motivo: 'HASH_DIVERSO' | 'VERSIONE_SCONOSCIUTA' | 'BUCO'
+  } | null
+}
+
 export interface ListMovimentiParams {
   type?: TipoMovimento
   cerCode?: string
@@ -153,6 +194,29 @@ export class RegistroService {
   /** Registra un nuovo movimento di carico o scarico. */
   registra(dto: RegistraMovimentoRequest): Observable<Movimento> {
     return this.http.post<Movimento>(this.API_URL, dto)
+  }
+
+  /** Rettifica un movimento vigente: scrive un'annotazione nuova, mai un UPDATE. */
+  rettifica(id: string, dto: RettificaMovimentoRequest): Observable<EsitoCorrezioneMovimento> {
+    return this.http.post<EsitoCorrezioneMovimento>(
+      `${this.API_URL}/movimenti/${encodeURIComponent(id)}/rettifica`,
+      dto
+    )
+  }
+
+  /** Annulla un movimento vigente con un'annotazione di annullamento. */
+  annulla(id: string, dto: AnnullamentoMovimentoRequest): Observable<EsitoCorrezioneMovimento> {
+    return this.http.post<EsitoCorrezioneMovimento>(
+      `${this.API_URL}/movimenti/${encodeURIComponent(id)}/annullamento`,
+      dto
+    )
+  }
+
+  /** Verifica l'integrità del registro di un anno (solo amministratori). */
+  verificaCatena(anno: number, registroId?: string): Observable<EsitoVerificaCatena> {
+    return this.http.get<EsitoVerificaCatena>(`${this.API_URL}/verifica-catena`, {
+      params: this.paramsRegistro(registroId).set('anno', String(anno)),
+    })
   }
 
   /** Elenco dei registri dell'azienda (sola lettura). */

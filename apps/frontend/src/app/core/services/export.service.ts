@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { format } from 'date-fns'
+import { annotazioneExport, statoExport } from '../../features/registro/registro-correzioni'
 import { conColonnaSede, filtriRegistroExport, sedeDelMovimento } from './registro-export-sede'
 import {
   Movimento,
@@ -285,43 +286,17 @@ export class ExportService {
     )
 
     const conSede = conColonnaSede(meta)
-    const tableData = movimenti.map(m => [
-      `${m.progressiveYear}/${m.progressiveNumber}`,
-      ...(conSede ? [sedeDelMovimento(meta, m) || '—'] : []),
-      this.formatDate(m.registrationDate),
-      this.formatDate(m.movementDate),
-      m.type,
-      this.causaleLabel(m.causale),
-      m.cerCode,
-      `${this.formatQuantita(m.quantity)} ${m.unit}`,
-      m.wastePhysicalState || '—',
-      m.counterpartName || '—',
-      m.firId ? 'Sì' : '—',
-    ])
+    const { head, body } = this.tabellaRegistroPdf(movimenti, meta)
 
     autoTable(doc, {
-      head: [
-        [
-          'Progr.',
-          ...(conSede ? ['Sede'] : []),
-          'Data reg.',
-          'Data op.',
-          'Tipo',
-          'Causale',
-          'CER',
-          'Quantità',
-          'Stato fisico',
-          'Controparte',
-          'FIR',
-        ],
-      ],
-      body: tableData,
+      head: [head],
+      body,
       startY: y + 15,
       styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
       headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [240, 253, 250] },
       columnStyles: {
-        [conSede ? 7 : 6]: { halign: 'right' },
+        [conSede ? 9 : 8]: { halign: 'right' },
       },
     })
 
@@ -337,27 +312,7 @@ export class ExportService {
     filename = `registro-cs-${format(new Date(), 'yyyyMMdd')}.xlsx`
   ): void {
     const conSede = conColonnaSede(meta)
-    const excelData = movimenti.map(m => ({
-      Progressivo: `${m.progressiveYear}/${m.progressiveNumber}`,
-      ...(conSede ? { Sede: sedeDelMovimento(meta, m) } : {}),
-      Anno: m.progressiveYear,
-      Numero: m.progressiveNumber,
-      'Data registrazione': this.formatDate(m.registrationDate),
-      'Data operazione': this.formatDate(m.movementDate),
-      Tipo: m.type,
-      Causale: this.causaleLabel(m.causale),
-      CER: m.cerCode,
-      'Descrizione rifiuto': m.wasteDescription || '',
-      Quantità: m.quantity,
-      Unità: m.unit,
-      'Stato fisico': m.wastePhysicalState || '',
-      'Classi HP': m.wasteHazardClasses || '',
-      'Operazione R/D': m.operationCode || '',
-      Controparte: m.counterpartName || '',
-      'Indirizzo controparte': m.counterpartAddress || '',
-      'Rif. FIR': m.firId || '',
-      Note: m.notes || '',
-    }))
+    const excelData = this.righeRegistroExcel(movimenti, meta)
 
     // Con la sede filtrata la si scrive sopra la tabella (riga 1), che parte dalla riga 3.
     const ws = meta.sede
@@ -372,6 +327,8 @@ export class ExportService {
       { wch: 18 }, // Data registrazione
       { wch: 16 }, // Data operazione
       { wch: 10 }, // Tipo
+      { wch: 26 }, // Annotazione
+      { wch: 12 }, // Stato
       { wch: 26 }, // Causale
       { wch: 12 }, // CER
       { wch: 28 }, // Descrizione rifiuto
@@ -389,6 +346,76 @@ export class ExportService {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Registro C-S')
     XLSX.writeFile(wb, filename)
+  }
+
+  /** Intestazione e righe della tabella PDF del registro (comprese Annotazione e Stato). */
+  tabellaRegistroPdf(
+    movimenti: Movimento[],
+    meta: RegistroExportMeta = {}
+  ): { head: string[]; body: string[][] } {
+    const conSede = conColonnaSede(meta)
+    const head = [
+      'Progr.',
+      ...(conSede ? ['Sede'] : []),
+      'Data reg.',
+      'Data op.',
+      'Tipo',
+      'Annotazione',
+      'Stato',
+      'Causale',
+      'CER',
+      'Quantità',
+      'Stato fisico',
+      'Controparte',
+      'FIR',
+    ]
+    const body = movimenti.map(m => [
+      `${m.progressiveYear}/${m.progressiveNumber}`,
+      ...(conSede ? [sedeDelMovimento(meta, m) || '—'] : []),
+      this.formatDate(m.registrationDate),
+      this.formatDate(m.movementDate),
+      m.type,
+      annotazioneExport(m),
+      statoExport(m),
+      this.causaleLabel(m.causale),
+      m.cerCode,
+      `${this.formatQuantita(m.quantity)} ${m.unit}`,
+      m.wastePhysicalState || '—',
+      m.counterpartName || '—',
+      m.firId ? 'Sì' : '—',
+    ])
+    return { head, body }
+  }
+
+  /** Righe del foglio Excel del registro (comprese Annotazione e Stato). */
+  righeRegistroExcel(
+    movimenti: Movimento[],
+    meta: RegistroExportMeta = {}
+  ): Record<string, string | number>[] {
+    const conSede = conColonnaSede(meta)
+    return movimenti.map(m => ({
+      Progressivo: `${m.progressiveYear}/${m.progressiveNumber}`,
+      ...(conSede ? { Sede: sedeDelMovimento(meta, m) } : {}),
+      Anno: m.progressiveYear,
+      Numero: m.progressiveNumber,
+      'Data registrazione': this.formatDate(m.registrationDate),
+      'Data operazione': this.formatDate(m.movementDate),
+      Tipo: m.type,
+      Annotazione: annotazioneExport(m),
+      Stato: statoExport(m),
+      Causale: this.causaleLabel(m.causale),
+      CER: m.cerCode,
+      'Descrizione rifiuto': m.wasteDescription || '',
+      Quantità: m.quantity,
+      Unità: m.unit,
+      'Stato fisico': m.wastePhysicalState || '',
+      'Classi HP': m.wasteHazardClasses || '',
+      'Operazione R/D': m.operationCode || '',
+      Controparte: m.counterpartName || '',
+      'Indirizzo controparte': m.counterpartAddress || '',
+      'Rif. FIR': m.firId || '',
+      Note: m.notes || '',
+    }))
   }
 
   /** Formatta una data ISO (YYYY-MM-DD o ISO datetime) in dd/MM/yyyy. */

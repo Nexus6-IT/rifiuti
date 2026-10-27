@@ -50,11 +50,10 @@ import {
   Movimento,
   PaginatedMovimenti,
   TipoMovimento,
-  CAUSALI_CARICO,
-  CAUSALI_SCARICO,
   CAUSALE_LABELS,
   STATI_FISICI,
   CausaleMovimento,
+  EsitoVerificaCatena,
   StatoProgressivoIniziale,
   RegistroVista,
   offrireProgressivoIniziale,
@@ -73,6 +72,17 @@ import {
 } from './registro-fir'
 import { CerSelectComponent } from '../cer/cer-select.component'
 import { GiacenzeInizialiDialogComponent } from './giacenze-iniziali-dialog.component'
+import {
+  CorreggiMovimentoDialogComponent,
+  ModoCorrezione,
+} from './correggi-movimento-dialog.component'
+import { opzioniCausali, giornoLocale } from './registro-opzioni'
+import {
+  eVigente,
+  testoAnnotazione,
+  testoCorrezione,
+  testoEsitoVerifica,
+} from './registro-correzioni'
 
 interface DropdownOption<T> {
   label: string
@@ -108,6 +118,7 @@ interface FirOption {
     PaginatorModule,
     CerSelectComponent,
     GiacenzeInizialiDialogComponent,
+    CorreggiMovimentoDialogComponent,
   ],
   providers: [DatePipe],
   template: `
@@ -147,6 +158,16 @@ interface FirOption {
             data-testid="registro-giacenze-iniziali"
             (onClick)="apriGiacenzeIniziali()"
             ariaLabel="Apri le giacenze iniziali del registro"
+          ></p-button>
+          <p-button
+            *ngIf="offriVerificaCatena()"
+            label="Verifica catena"
+            icon="pi pi-shield"
+            [outlined]="true"
+            [loading]="verificando()"
+            data-testid="registro-verifica-catena"
+            (onClick)="verificaCatena()"
+            ariaLabel="Verifica l'integrità del registro dell'anno corrente"
           ></p-button>
           <p-button
             *ngIf="offriRegistrazione()"
@@ -231,6 +252,21 @@ interface FirOption {
         </div>
       </section>
 
+      <!-- Esito della verifica della catena ----------------------------------->
+      <section
+        *ngIf="esitoVerifica() as e"
+        class="esito-verifica"
+        [class.esito-verifica--errore]="!!e.primoErrore"
+        role="status"
+        data-testid="registro-esito-verifica"
+      >
+        <i
+          [class]="e.primoErrore ? 'pi pi-times-circle' : 'pi pi-check-circle'"
+          aria-hidden="true"
+        ></i>
+        <span>{{ testoEsito(e) }}</span>
+      </section>
+
       <!-- Errore ---------------------------------------------------------------->
       <section *ngIf="error()" class="surface-card" role="alert">
         <div class="empty-state">
@@ -288,11 +324,17 @@ interface FirOption {
                 <th scope="col">Controparte</th>
                 <th scope="col" style="width: 72px">FIR</th>
                 <th scope="col" style="width: 132px">Stato</th>
+                <th *ngIf="offriCorrezioni()" scope="col" style="width: 168px">
+                  <span class="sr-only">Correzioni</span>
+                </th>
               </tr>
             </ng-template>
 
             <ng-template pTemplate="body" let-m>
-              <tr>
+              <tr
+                [class.riga-non-vigente]="!vigente(m)"
+                [attr.data-testid]="'registro-riga-' + m.id"
+              >
                 <td>
                   <span class="prog-badge">{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span>
                 </td>
@@ -338,6 +380,24 @@ interface FirOption {
                     pTooltip="Registrato entro il termine di legge"
                   ></p-tag>
                   <p-tag
+                    *ngIf="correzione(m) as c"
+                    [value]="c"
+                    severity="secondary"
+                    icon="pi pi-history"
+                    styleClass="stato-tag stato-tag--correzione"
+                    [pTooltip]="tooltipCorrezione(m)"
+                    [attr.data-testid]="'registro-correzione-' + m.id"
+                  ></p-tag>
+                  <p-tag
+                    *ngIf="annotazione(m) as a"
+                    [value]="a"
+                    severity="info"
+                    icon="pi pi-pencil"
+                    styleClass="stato-tag stato-tag--correzione"
+                    [pTooltip]="m.motivoAnnotazione ? 'Motivo: ' + m.motivoAnnotazione : a"
+                    [attr.data-testid]="'registro-annotazione-' + m.id"
+                  ></p-tag>
+                  <p-tag
                     *ngIf="m.fuoriTermine"
                     [value]="'Fuori termine' + (m.ritardoGg ? ' · +' + m.ritardoGg + ' gg' : '')"
                     severity="warning"
@@ -348,12 +408,35 @@ interface FirOption {
                     "
                   ></p-tag>
                 </td>
+                <td *ngIf="offriCorrezioni()" class="azioni-col">
+                  <ng-container *ngIf="vigente(m)">
+                    <p-button
+                      label="Rettifica"
+                      icon="pi pi-pencil"
+                      [text]="true"
+                      size="small"
+                      [attr.data-testid]="'registro-rettifica-' + m.id"
+                      (onClick)="apriCorrezione(m, 'rettifica')"
+                      [ariaLabel]="'Rettifica il movimento ' + numeroMovimento(m)"
+                    ></p-button>
+                    <p-button
+                      label="Annulla"
+                      icon="pi pi-ban"
+                      [text]="true"
+                      severity="danger"
+                      size="small"
+                      [attr.data-testid]="'registro-annulla-' + m.id"
+                      (onClick)="apriCorrezione(m, 'annullamento')"
+                      [ariaLabel]="'Annulla il movimento ' + numeroMovimento(m)"
+                    ></p-button>
+                  </ng-container>
+                </td>
               </tr>
             </ng-template>
 
             <ng-template pTemplate="emptymessage">
               <tr>
-                <td [attr.colspan]="piuRegistri() ? 10 : 9">
+                <td [attr.colspan]="colonne()">
                   <div class="empty-state">
                     <i class="pi pi-book empty-state__icon" aria-hidden="true"></i>
                     <p class="empty-state__title">Nessun movimento registrato</p>
@@ -878,6 +961,15 @@ interface FirOption {
         </ng-template>
       </p-dialog>
 
+      <!-- Dialog rettifica / annullamento ------------------------------------->
+      <app-correggi-movimento-dialog
+        *ngIf="correzioneVisibile"
+        [(visible)]="correzioneVisibile"
+        [modo]="correzioneModo"
+        [movimento]="correzioneMovimento"
+        (corretto)="onCorretto()"
+      ></app-correggi-movimento-dialog>
+
       <!-- Dialog giacenze iniziali -------------------------------------------->
       <app-giacenze-iniziali-dialog
         *ngIf="giacenzeInizialiVisible"
@@ -997,6 +1089,34 @@ interface FirOption {
       }
       :host ::ng-deep .stato-tag {
         white-space: nowrap;
+      }
+      :host ::ng-deep .stato-tag--correzione {
+        margin-top: 4px;
+      }
+      /* Annotazioni non più vigenti: restano leggibili ma attenuate. */
+      .riga-non-vigente > td {
+        opacity: 0.6;
+      }
+      .azioni-col {
+        white-space: nowrap;
+        text-align: right;
+      }
+      .esito-verifica {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-base);
+        margin-bottom: var(--spacing-base);
+        border: 1px solid var(--brand-primary-100);
+        background: var(--brand-primary-50);
+        color: var(--brand-primary-dark);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-sm);
+      }
+      .esito-verifica--errore {
+        border-color: var(--color-danger);
+        background: var(--color-danger-bg, #fef2f2);
+        color: var(--color-danger);
       }
       .text-muted {
         color: var(--text-tertiary);
@@ -1267,9 +1387,7 @@ export class RegistroComponent implements OnInit {
   readonly tipoCorrente = signal<TipoMovimento>('CARICO')
 
   readonly causaliOptions = computed<DropdownOption<CausaleMovimento>[]>(() => {
-    const tipo = this.tipoCorrente()
-    const causali = tipo === 'CARICO' ? CAUSALI_CARICO : CAUSALI_SCARICO
-    return causali.map(c => ({ label: CAUSALE_LABELS[c], value: c }))
+    return opzioniCausali(this.tipoCorrente())
   })
 
   readonly statiFisiciOptions = STATI_FISICI.map(s => ({ label: s, value: s }))
@@ -1517,9 +1635,7 @@ export class RegistroComponent implements OnInit {
 
   /** Giorno di calendario locale ('AAAA-MM-GG'), come lo invia `toIsoDate` al backend. */
   private giornoLocale(d: Date): string {
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    const dd = String(d.getDate()).padStart(2, '0')
-    return `${d.getFullYear()}-${mm}-${dd}`
+    return giornoLocale(d)
   }
 
   /** D10: un FIR si ricopia solo nel registro della sede principale; senza principale la scelta resta libera. */
@@ -1648,12 +1764,7 @@ export class RegistroComponent implements OnInit {
 
     // Usa i componenti locali della data per evitare lo shift UTC negativo
     // (es. GMT+2: scegliendo il 29 giugno, toISOString() restituirebbe il 28).
-    const toIsoDate = (d: Date) => {
-      const yyyy = d.getFullYear()
-      const mm = String(d.getMonth() + 1).padStart(2, '0')
-      const dd = String(d.getDate()).padStart(2, '0')
-      return `${yyyy}-${mm}-${dd}`
-    }
+    const toIsoDate = giornoLocale
 
     this.registroService
       .registra({
@@ -1691,6 +1802,91 @@ export class RegistroComponent implements OnInit {
           this.toast.error(msg)
         },
       })
+  }
+
+  // ─── Rettifica, annullamento, verifica della catena (Fase 2 pezzo 3) ───────
+
+  correzioneVisibile = false
+  correzioneModo: ModoCorrezione = 'rettifica'
+  correzioneMovimento: Movimento | null = null
+
+  readonly esitoVerifica = signal<EsitoVerificaCatena | null>(null)
+  readonly verificando = signal(false)
+
+  vigente(m: Movimento): boolean {
+    return eVigente(m)
+  }
+  correzione(m: Movimento): string | null {
+    return testoCorrezione(m)
+  }
+  annotazione(m: Movimento): string | null {
+    return testoAnnotazione(m)
+  }
+  testoEsito(e: EsitoVerificaCatena): string {
+    return testoEsitoVerifica(e)
+  }
+  numeroMovimento(m: Movimento): string {
+    return `${m.progressiveNumber}/${m.progressiveYear}`
+  }
+  tooltipCorrezione(m: Movimento): string {
+    return m.stato === 'ANNULLATO'
+      ? 'Annullato: la registrazione non conta più nei calcoli'
+      : 'Sostituito da una rettifica: non conta più nei calcoli'
+  }
+
+  /** Come "Registra movimento": il backend è l'arbitro, qui si nasconde solo la sola consultazione. */
+  readonly offriCorrezioni = computed(() => offrireRegistrazione(this.statoProgressivo()))
+
+  /** Colonne della tabella (serve al colspan del messaggio di elenco vuoto). */
+  readonly colonne = computed(
+    () => 9 + (this.piuRegistri() ? 1 : 0) + (this.offriCorrezioni() ? 1 : 0)
+  )
+
+  /** Registro da verificare: quello dello stato del progressivo, altrimenti sede filtrata o predefinita. */
+  private registroVerifica(): string | undefined {
+    return (
+      this.statoProgressivo()?.registroId ??
+      this.filtroRegistro ??
+      registroPredefinito(this.registri()) ??
+      undefined
+    )
+  }
+
+  /** Solo chi amministra l'azienda (lo dice il backend, non il token) e con un registro determinato. */
+  readonly offriVerificaCatena = computed(
+    () =>
+      this.statoProgressivo()?.puoImpostare === true &&
+      (!this.piuRegistri() || !!this.registroVerifica())
+  )
+
+  apriCorrezione(m: Movimento, modo: ModoCorrezione): void {
+    this.correzioneMovimento = m
+    this.correzioneModo = modo
+    this.correzioneVisibile = true
+  }
+
+  /** Dopo una correzione riuscita: elenco e stato del progressivo si rileggono. */
+  onCorretto(): void {
+    this.esitoVerifica.set(null)
+    this.ricarica(this.paginazione().page)
+    this.caricaProgressivo()
+  }
+
+  verificaCatena(): void {
+    this.verificando.set(true)
+    this.registroService.verificaCatena(this.annoCorrente, this.registroVerifica()).subscribe({
+      next: esito => {
+        this.verificando.set(false)
+        this.esitoVerifica.set(esito)
+      },
+      error: err => {
+        this.verificando.set(false)
+        this.esitoVerifica.set(null)
+        this.toast.error(
+          err?.error?.message ?? err?.message ?? "Verifica dell'integrità del registro non riuscita"
+        )
+      },
+    })
   }
 
   // ─── Progressivo iniziale (C-W-02) ─────────────────────────────────────────
