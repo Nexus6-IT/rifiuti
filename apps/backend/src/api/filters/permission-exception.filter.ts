@@ -34,7 +34,7 @@ export class PermissionExceptionFilter implements ExceptionFilter {
       const errorDetails = exceptionResponse as any
 
       this.logger.warn(
-        `Permission denied: user=${request.user?.userId}, ` +
+        `Permission denied: user=${request.user?.id}, ` +
           `permission=${errorDetails.requiredPermission}, ` +
           `currentRole=${errorDetails.currentRole}, ` +
           `path=${request.url}`
@@ -61,7 +61,7 @@ export class PermissionExceptionFilter implements ExceptionFilter {
       })
     } else {
       // Generic forbidden error
-      this.logger.warn(`Generic forbidden error: user=${request.user?.userId}, path=${request.url}`)
+      this.logger.warn(`Generic forbidden error: user=${request.user?.id}, path=${request.url}`)
 
       const message =
         typeof exceptionResponse === 'string'

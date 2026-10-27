@@ -117,7 +117,7 @@ export class StructuredLoggerService implements LoggerService {
       path: req.path,
       statusCode: res.statusCode,
       duration: `${duration}ms`,
-      userId: req.user?.userId || 'anonymous',
+      userId: req.user?.id || 'anonymous',
       tenantId: req.user?.tenantId || 'none',
       ip: req.ip,
       userAgent: req.get('user-agent'),
