@@ -16,6 +16,7 @@ import {
   EventEmitter,
   Input,
   OnChanges,
+  OnDestroy,
   Output,
   SimpleChanges,
   inject,
@@ -30,6 +31,7 @@ import {
   ValidatorFn,
   Validators,
 } from '@angular/forms'
+import { Subscription } from 'rxjs'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
@@ -47,6 +49,7 @@ import {
   OrigineGiacenzaIniziale,
   RegistroService,
   STATI_FISICI,
+  annoItaliano,
 } from './registro.service'
 
 const formatoGiornoRoma = new Intl.DateTimeFormat('en-CA', {
@@ -61,8 +64,55 @@ export function oggiItaliano(istante: Date = new Date()): string {
   return formatoGiornoRoma.format(istante)
 }
 
-/** Unità proposte; il backend accetta anche altre (litri, m³, ...) e ne tiene i saldi a parte. */
-export const UNITA_GIACENZA = ['KG', 'T', 'LITRI', 'MC'] as const
+/**
+ * Unità ammesse: le stesse dei FIR (kg, t, m³). Il backend normalizza solo mettendo in
+ * maiuscolo, quindi un'unità diversa (es. MC invece di M3) formerebbe una famiglia a parte
+ * e non compenserebbe i movimenti.
+ */
+export const UNITA_GIACENZA: { label: string; value: string }[] = [
+  { label: 'kg', value: 'KG' },
+  { label: 't', value: 'T' },
+  { label: 'm³', value: 'M3' },
+]
+
+/** Etichetta leggibile dell'unità; un valore fuori elenco (dato storico) resta com'è. */
+export function etichettaUnita(unita: string): string {
+  return UNITA_GIACENZA.find(u => u.value === unita.toUpperCase())?.label ?? unita
+}
+
+/** Etichetta dello stato fisico (il backend lo salva in maiuscolo); fuori elenco resta com'è. */
+export function etichettaStatoFisico(stato: string | null): string {
+  if (!stato) return '—'
+  return STATI_FISICI.find(x => x.toUpperCase() === stato.toUpperCase()) ?? stato
+}
+
+const QUANTITA_MASSIMA = 99_999_999.99
+export const ORIGINI_MASSIME = 200
+
+const centesimi = (n: number): number => Math.round(n * 100)
+
+/** Come il backend: coppie (anno, protocollo) distinte e, se tutte con quantità, somma <= giacenza. */
+const origineCoerente = (): ValidatorFn => group => {
+  const righe = ((group.get('origini') as FormArray | null)?.value ?? []) as {
+    anno: number | null
+    protocollo: number | null
+    quantita: number | null
+  }[]
+  const errori: Record<string, boolean> = {}
+  const viste = new Set<string>()
+  for (const r of righe) {
+    if (r.anno == null || r.protocollo == null) continue
+    const k = `${r.anno}/${r.protocollo}`
+    if (viste.has(k)) errori['origineDuplicata'] = true
+    viste.add(k)
+  }
+  const quantita = group.get('quantita')?.value as number | null
+  if (righe.length > 0 && quantita != null && righe.every(r => r.quantita != null)) {
+    const somma = righe.reduce((t, r) => t + centesimi(Number(r.quantita)), 0)
+    if (somma > centesimi(Number(quantita))) errori['origineSommaOltre'] = true
+  }
+  return Object.keys(errori).length ? errori : null
+}
 
 const MSG_ERRORE_GENERICO = 'Operazione sulle giacenze iniziali non riuscita'
 
@@ -131,8 +181,9 @@ const dataNonFutura = (): ValidatorFn => control => {
         role="status"
         data-testid="gi-registro-da-indicare"
       >
-        L'azienda ha più registri e nessuno è predefinito: scegli la sede nel filtro del registro e
-        riapri questa finestra.
+        Nessun registro determinato: se l'azienda ha più registri e nessuno è predefinito, scegli la
+        sede nel filtro del registro e riapri questa finestra; se non ha ancora un registro, crealo
+        prima registrando un movimento.
       </p>
 
       <ng-container *ngIf="elenco() as el">
@@ -153,8 +204,10 @@ const dataNonFutura = (): ValidatorFn => control => {
                 <td>
                   <strong>{{ v.cerCode }}</strong>
                 </td>
-                <td>{{ v.statoFisico || '—' }}</td>
-                <td class="text-right">{{ v.quantita | number: '1.0-2' }} {{ v.unita }}</td>
+                <td>{{ etichettaStatoFisico(v.statoFisico) }}</td>
+                <td class="text-right">
+                  {{ v.quantita | number: '1.0-2' }} {{ etichettaUnita(v.unita) }}
+                </td>
                 <td>{{ dataItaliana(v.dataRiferimento) }}</td>
                 <td class="text-right">{{ v.origini.length }}</td>
                 <td>
@@ -176,7 +229,7 @@ const dataNonFutura = (): ValidatorFn => control => {
                           severity="danger"
                           [text]="true"
                           size="small"
-                          (onClick)="daEliminare.set(v.id)"
+                          (onClick)="chiediEliminazione(v.id)"
                           [attr.data-testid]="'gi-elimina-' + v.id"
                           [ariaLabel]="'Elimina la giacenza iniziale del CER ' + v.cerCode"
                         ></p-button>
@@ -258,11 +311,12 @@ const dataNonFutura = (): ValidatorFn => control => {
                     placeholder="Cerca per codice o descrizione…"
                     [required]="true"
                     [invalid]="errore('cerCode')"
+                    [ariaDescribedBy]="errore('cerCode') ? 'gi-cer-err' : null"
                   />
                   <small *ngIf="inModifica()" class="field-hint" data-testid="gi-cer-bloccato"
                     >Il CER non si modifica: cancella la giacenza e creane un'altra.</small
                   >
-                  <small *ngIf="errore('cerCode')" class="field-error" role="alert"
+                  <small *ngIf="errore('cerCode')" id="gi-cer-err" class="field-error" role="alert"
                     >Il codice CER è obbligatorio.</small
                   >
                 </div>
@@ -296,8 +350,14 @@ const dataNonFutura = (): ValidatorFn => control => {
                     [max]="99999999.99"
                     ariaRequired="true"
                     [styleClass]="errore('quantita') ? 'w-full p-invalid' : 'w-full'"
+                    [attr.aria-invalid]="errore('quantita') ? true : null"
+                    [attr.aria-describedby]="errore('quantita') ? 'gi-quantita-err' : null"
                   ></p-inputNumber>
-                  <small *ngIf="errore('quantita')" class="field-error" role="alert"
+                  <small
+                    *ngIf="errore('quantita')"
+                    id="gi-quantita-err"
+                    class="field-error"
+                    role="alert"
                     >Indica una quantità maggiore di zero (al più 2 decimali).</small
                   >
                 </div>
@@ -351,10 +411,10 @@ const dataNonFutura = (): ValidatorFn => control => {
                         formControlName="anno"
                         [useGrouping]="false"
                         [min]="1990"
-                        [max]="9999"
+                        [max]="annoCorrente"
                         placeholder="Anno"
                         [inputId]="'gi-o-anno-' + i"
-                        [attr.aria-label]="'Anno del carico ' + (i + 1)"
+                        [ariaLabel]="'Anno del carico ' + (i + 1)"
                       ></p-inputNumber>
                       <p-inputNumber
                         formControlName="protocollo"
@@ -362,7 +422,7 @@ const dataNonFutura = (): ValidatorFn => control => {
                         [min]="1"
                         placeholder="Protocollo"
                         [inputId]="'gi-o-prot-' + i"
-                        [attr.aria-label]="'Protocollo del carico ' + (i + 1)"
+                        [ariaLabel]="'Protocollo del carico ' + (i + 1)"
                       ></p-inputNumber>
                       <p-inputNumber
                         formControlName="quantita"
@@ -371,9 +431,10 @@ const dataNonFutura = (): ValidatorFn => control => {
                         [minFractionDigits]="0"
                         [maxFractionDigits]="2"
                         [min]="0.01"
+                        [max]="quantitaMassima"
                         placeholder="Quantità"
                         [inputId]="'gi-o-qta-' + i"
-                        [attr.aria-label]="'Quantità del carico ' + (i + 1)"
+                        [ariaLabel]="'Quantità del carico ' + (i + 1)"
                       ></p-inputNumber>
                       <p-button
                         icon="pi pi-times"
@@ -385,13 +446,28 @@ const dataNonFutura = (): ValidatorFn => control => {
                     </div>
                   </div>
                   <small *ngIf="origini.invalid && origini.touched" class="field-error" role="alert"
-                    >Per ogni carico indica anno e protocollo.</small
+                    >Per ogni carico indica anno (da 1990 a quest'anno) e protocollo.</small
+                  >
+                  <small
+                    *ngIf="form.hasError('origineDuplicata') && (origini.dirty || form.touched)"
+                    class="field-error"
+                    role="alert"
+                    data-testid="gi-origine-duplicata"
+                    >Ogni coppia anno/protocollo può comparire una volta sola.</small
+                  >
+                  <small
+                    *ngIf="form.hasError('origineSommaOltre') && (origini.dirty || form.touched)"
+                    class="field-error"
+                    role="alert"
+                    data-testid="gi-origine-somma"
+                    >La somma delle quantità dei carichi supera la giacenza.</small
                   >
                   <p-button
                     label="Aggiungi carico d'origine"
                     icon="pi pi-plus"
                     [text]="true"
                     size="small"
+                    [disabled]="origini.length >= maxOrigini"
                     (onClick)="aggiungiOrigine()"
                     data-testid="gi-aggiungi-origine"
                     ariaLabel="Aggiungi un carico d'origine"
@@ -524,7 +600,7 @@ const dataNonFutura = (): ValidatorFn => control => {
     `,
   ],
 })
-export class GiacenzeInizialiDialogComponent implements OnChanges {
+export class GiacenzeInizialiDialogComponent implements OnChanges, OnDestroy {
   private readonly fb = inject(FormBuilder)
   private readonly registroService = inject(RegistroService)
   private readonly toast = inject(ToastService)
@@ -547,6 +623,11 @@ export class GiacenzeInizialiDialogComponent implements OnChanges {
   readonly daEliminare = signal<string | null>(null)
 
   readonly oggi = oggiItaliano()
+  readonly annoCorrente = annoItaliano(new Date())
+  readonly quantitaMassima = QUANTITA_MASSIMA
+  readonly maxOrigini = ORIGINI_MASSIME
+  readonly etichettaUnita = etichettaUnita
+  readonly etichettaStatoFisico = etichettaStatoFisico
   readonly dataItaliana = dataItaliana
 
   readonly form: FormGroup = this.creaForm()
@@ -573,10 +654,12 @@ export class GiacenzeInizialiDialogComponent implements OnChanges {
   }
 
   unitaOptions(): { label: string; value: string }[] {
-    const lista: string[] = [...UNITA_GIACENZA]
+    const lista = [...UNITA_GIACENZA]
     const corrente = this.form.get('unita')?.value as string | null
-    if (corrente && !lista.includes(corrente)) lista.push(corrente)
-    return lista.map(u => ({ label: u, value: u }))
+    if (corrente && !lista.some(u => u.value === corrente)) {
+      lista.push({ label: corrente, value: corrente })
+    }
+    return lista
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -588,20 +671,30 @@ export class GiacenzeInizialiDialogComponent implements OnChanges {
     }
   }
 
+  /** Lettura in corso: una nuova la sostituisce, così una risposta vecchia non vince. */
+  private lettura?: Subscription
+
+  ngOnDestroy(): void {
+    this.lettura?.unsubscribe()
+  }
+
   carica(): void {
+    this.lettura?.unsubscribe()
     this.caricamento.set(true)
     this.erroreCaricamento.set(null)
-    this.registroService.getGiacenzeIniziali(this.registroId ?? undefined).subscribe({
-      next: el => {
-        this.elenco.set(el)
-        this.caricamento.set(false)
-      },
-      error: err => {
-        this.elenco.set(null)
-        this.caricamento.set(false)
-        this.erroreCaricamento.set(messaggioErroreGiacenza(err))
-      },
-    })
+    this.lettura = this.registroService
+      .getGiacenzeIniziali(this.registroId ?? undefined)
+      .subscribe({
+        next: el => {
+          this.elenco.set(el)
+          this.caricamento.set(false)
+        },
+        error: err => {
+          this.elenco.set(null)
+          this.caricamento.set(false)
+          this.erroreCaricamento.set(messaggioErroreGiacenza(err))
+        },
+      })
   }
 
   errore(nome: string): boolean {
@@ -610,13 +703,28 @@ export class GiacenzeInizialiDialogComponent implements OnChanges {
   }
 
   aggiungiOrigine(o?: OrigineGiacenzaIniziale): void {
+    if (this.origini.length >= ORIGINI_MASSIME) return
     this.origini.push(
       this.fb.group({
-        anno: [o?.anno ?? null, [Validators.required, Validators.min(1990), Validators.max(9999)]],
+        anno: [
+          o?.anno ?? null,
+          [Validators.required, Validators.min(1990), Validators.max(this.annoCorrente)],
+        ],
         protocollo: [o?.protocollo ?? null, [Validators.required, Validators.min(1)]],
-        quantita: [o?.quantita ?? null, [Validators.min(0.01)]],
+        quantita: [o?.quantita ?? null, [Validators.min(0.01), Validators.max(QUANTITA_MASSIMA)]],
       })
     )
+  }
+
+  /** Chiede conferma e porta il focus sul "Sì" (da tastiera il pulsante apparirebbe senza focus). */
+  chiediEliminazione(id: string): void {
+    this.daEliminare.set(id)
+    setTimeout(() => {
+      const si = document.querySelector<HTMLElement>(
+        `[data-testid="gi-elimina-conferma-${id}"] button`
+      )
+      si?.focus()
+    })
   }
 
   rimuoviOrigine(i: number): void {
@@ -737,14 +845,20 @@ export class GiacenzeInizialiDialogComponent implements OnChanges {
   }
 
   private creaForm(): FormGroup {
-    return this.fb.group({
-      cerCode: ['', [Validators.required, Validators.maxLength(20)]],
-      statoFisico: [null as string | null],
-      quantita: [null as number | null, [Validators.required, Validators.min(0.01)]],
-      unita: ['KG', Validators.required],
-      dataRiferimento: [null as string | null, [Validators.required, dataNonFutura()]],
-      origini: this.fb.array([]),
-      note: ['', Validators.maxLength(500)],
-    })
+    return this.fb.group(
+      {
+        cerCode: ['', [Validators.required, Validators.maxLength(20)]],
+        statoFisico: [null as string | null],
+        quantita: [
+          null as number | null,
+          [Validators.required, Validators.min(0.01), Validators.max(QUANTITA_MASSIMA)],
+        ],
+        unita: ['KG', Validators.required],
+        dataRiferimento: [null as string | null, [Validators.required, dataNonFutura()]],
+        origini: this.fb.array([]),
+        note: ['', Validators.maxLength(500)],
+      },
+      { validators: [origineCoerente()] }
+    )
   }
 }
