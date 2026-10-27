@@ -281,7 +281,7 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
     expect((await elenca(altra)).total).toBe(0)
   })
 
-  it('causale propria in due versioni: ogni riga ha la descrizione della sua versione, anche retrodatata; sconosciuta = codice', async () => {
+  it('causale propria in due versioni: il versioneId vince sulla data (anche fuori dall intervallo); di sistema = catalogo', async () => {
     const az = await azienda()
     const versione = async (
       dal: string,
@@ -307,7 +307,7 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
     }
     const v1 = await versione('2026-01-01', '2026-06-30', 'Reso (vecchio)', null)
     const v2 = await versione('2026-07-01', null, 'Reso cliente', 'RE')
-    const daVersione = (id: string, causale: string, data: string) =>
+    const daVersione = (id: string | null, causale: string, data: string) =>
       owner.wasteMovement.create({
         data: {
           tenantId: az.tenantId,
@@ -329,6 +329,9 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
     const a = await daVersione(v1, 'AZ_RESO', '2026-03-01T10:00:00Z')
     const b = await daVersione(v2, 'AZ_RESO', '2026-08-01T10:00:00Z')
     const c = await inserisci(az, { data: '2026-09-01T10:00:00Z' })
+    // Il versioneId vince sulla data (v1 e chiusa al 30/06); senza versioneId vale la data: nel database un AZ_ senza versione e vietato dal CHECK
+    // waste_movements_causale_azienda_coerente, quel ramo e coperto solo dal test unitario.
+    const d = await daVersione(v1, 'AZ_RESO', '2026-08-01T10:00:00Z')
     const lette = perNumero((await elenca(az)).items)
     expect(lette[a.progressiveNumber]).toMatchObject({
       causaleDescrizione: 'Reso (vecchio)',
@@ -337,6 +340,10 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
     expect(lette[b.progressiveNumber]).toMatchObject({
       causaleDescrizione: 'Reso cliente',
       causaleCodiceRentri: 'RE',
+    })
+    expect(lette[d.progressiveNumber]).toMatchObject({
+      causaleDescrizione: 'Reso (vecchio)',
+      causaleCodiceRentri: null,
     })
     expect(lette[c.progressiveNumber]).toMatchObject({
       causaleDescrizione: 'Produzione interna',

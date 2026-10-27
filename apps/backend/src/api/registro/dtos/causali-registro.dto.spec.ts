@@ -153,6 +153,13 @@ describe('NuovaVersioneCausaleDto, ChiudiCausaleDto, ListaCausaliQueryDto', () =
     expect(await messaggi(NuovaVersioneCausaleDto, { validaDal: '2026-11-01' })).toMatch(/ruoloMud/)
   })
 
+  it.each(['descrizione', 'ordine'])('nuova versione: null su %s e un 400', async campo => {
+    const base = { validaDal: '2026-11-01', ruoloMud: 'ESCLUSO' }
+    expect(await messaggi(NuovaVersioneCausaleDto, { ...base, [campo]: null })).toMatch(
+      new RegExp(campo)
+    )
+  })
+
   it('chiusura: data reale', async () => {
     await expect(passa(ChiudiCausaleDto, { validaAl: '2024-02-29' })).resolves.toBeDefined()
     expect(await messaggi(ChiudiCausaleDto, { validaAl: '2026-02-29' })).toMatch(/validaAl/)

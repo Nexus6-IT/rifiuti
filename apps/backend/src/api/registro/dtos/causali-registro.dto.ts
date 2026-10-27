@@ -180,14 +180,14 @@ export class NuovaVersioneCausaleDto {
   operazione?: string
 
   @ApiPropertyOptional({ minLength: 1, maxLength: 200 })
-  @IsOptional()
+  @ValidateIf(o => o.descrizione !== undefined)
   @Transform(tagliaSpazi)
   @IsString()
   @Length(1, 200)
   descrizione?: string
 
   @ApiPropertyOptional({ minimum: 0, maximum: 9999 })
-  @IsOptional()
+  @ValidateIf(o => o.ordine !== undefined)
   @IsInt()
   @Min(0)
   @Max(9999)

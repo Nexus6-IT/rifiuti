@@ -150,11 +150,13 @@ export class ListMovimentiHandler {
 
     // Il catalogo si legge UNA volta per pagina; ogni riga lo interroga con la sua versione e il
     // giorno italiano dell'operazione.
-    const catalogo = await caricaCatalogoCausali(this.prisma, query.tenantId)
+    // Pagina vuota: niente da descrivere, il catalogo non si legge.
+    const catalogo =
+      records.length > 0 ? await caricaCatalogoCausali(this.prisma, query.tenantId) : null
 
     const items: MovimentoListItem[] = records.map(r => {
       const verso = r.type === 'CARICO' ? 'CARICO' : 'SCARICO'
-      const definizione = catalogo.comportamento(
+      const definizione = catalogo?.comportamento(
         verso,
         r.causale,
         giornoItaliano(r.movementDate),

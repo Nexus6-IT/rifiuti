@@ -109,7 +109,7 @@ describe('ListMovimentiHandler', () => {
       })
     })
 
-    it('due movimenti della stessa causale propria in versioni diverse: ciascuno la sua descrizione', async () => {
+    it('versioni diverse della stessa causale propria: il versioneId vince sulla data, senza versioneId vale la data', async () => {
       prisma.causaleRegistroAzienda.findMany.mockResolvedValue([
         versione('v1', '2026-01-01', '2026-06-30', 'Reso (vecchio)', null),
         versione('v2', '2026-07-01', null, 'Reso cliente', 'RE'),
@@ -128,11 +128,17 @@ describe('ListMovimentiHandler', () => {
         causaleAziendaId: 'v2',
         movementDate: new Date('2026-08-01T10:00:00Z'),
       }
-      prisma.wasteMovement.findMany.mockResolvedValue([nuovo, vecchio])
+      // Il versioneId vince sulla data: v1 e chiusa al 30/06 ma il movimento e di agosto.
+      const retrodatato = { ...vecchio, id: 'c', movementDate: new Date('2026-08-01T10:00:00Z') }
+      // Senza versioneId si risolve per data: dentro v2.
+      const perData = { ...nuovo, id: 'd', causaleAziendaId: null }
+      prisma.wasteMovement.findMany.mockResolvedValue([nuovo, vecchio, retrodatato, perData])
       const { value } = await lista()
       expect(value.items.map(i => [i.causaleDescrizione, i.causaleCodiceRentri])).toEqual([
         ['Reso cliente', 'RE'],
         ['Reso (vecchio)', null],
+        ['Reso (vecchio)', null],
+        ['Reso cliente', 'RE'],
       ])
     })
 
