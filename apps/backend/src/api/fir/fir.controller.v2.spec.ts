@@ -102,7 +102,7 @@ describe('FIRControllerV2 — azienda selezionata e ruolo effettivo', () => {
 
     expect(errore).toBeInstanceOf(ForbiddenException)
     expect(errore.getResponse()).toEqual({
-      message: "Solo un amministratore o un operatore dell'azienda può creare FIR.",
+      message: "Solo un amministratore o un operatore dell'azienda può creare o modificare FIR.",
       error: 'FIR_RISERVATO_OPERATORI',
     })
     expect(crea.execute).not.toHaveBeenCalled()

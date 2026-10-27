@@ -56,6 +56,10 @@ import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.s
  */
 const RUOLI_CREAZIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
 
+/** Messaggio del 403 per creazione e modifica: stessa regola di ruolo, stesso testo. */
+const MESSAGGIO_RUOLO_NON_AMMESSO =
+  "Solo un amministratore o un operatore dell'azienda può creare o modificare FIR."
+
 // La firma (produttore/trasportatore/destinatario) NON è più fornita dal
 // client (Task 4, pipeline P3): il frontend non costruisce firme, chiede al
 // backend di firmare e riceve l'esito. Emetti/PresaInCarico non richiedono
@@ -122,7 +126,7 @@ export class FIRControllerV2 {
     const tenantId = requireRequestTenantId(req)
     if (!RUOLI_CREAZIONE.includes(await this.membership.ruoloEffettivo(user, tenantId))) {
       throw new ForbiddenException({
-        message: "Solo un amministratore o un operatore dell'azienda può creare FIR.",
+        message: MESSAGGIO_RUOLO_NON_AMMESSO,
         error: 'FIR_RISERVATO_OPERATORI',
       })
     }
@@ -182,7 +186,7 @@ export class FIRControllerV2 {
     const tenantId = requireRequestTenantId(req)
     if (!RUOLI_CREAZIONE.includes(await this.membership.ruoloEffettivo(user, tenantId))) {
       throw new ForbiddenException({
-        message: "Solo un amministratore o un operatore dell'azienda può creare FIR.",
+        message: MESSAGGIO_RUOLO_NON_AMMESSO,
         error: 'FIR_RISERVATO_OPERATORI',
       })
     }

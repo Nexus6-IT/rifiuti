@@ -6,7 +6,12 @@
  */
 
 import { Test } from '@nestjs/testing'
-import { ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common'
+import {
+  ExecutionContext,
+  ForbiddenException,
+  INestApplication,
+  ValidationPipe,
+} from '@nestjs/common'
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core'
 import request from 'supertest'
 import { FIRControllerV2 } from './fir.controller.v2'
@@ -239,11 +244,19 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
 
     it('azienda sospesa → il caso d uso non parte', async () => {
       await avvia()
-      enforcement.assertNotSuspended.mockRejectedValue(new Error('sospesa'))
+      // L'eccezione vera di SubscriptionEnforcementService per un'azienda sospesa.
+      enforcement.assertNotSuspended.mockRejectedValue(
+        new ForbiddenException(
+          "L'account è sospeso (pagamento non ricevuto o non autorizzato). " +
+            'Contatta il supporto o accedi alla pagina Abbonamento per ripristinare il servizio.'
+        )
+      )
 
       const risposta = await put(corpoValido)
 
-      expect(risposta.status).toBeGreaterThanOrEqual(400)
+      expect(risposta.status).toBe(403)
+      expect(risposta.body.error).toBe('Forbidden')
+      expect(risposta.body.message).toContain("L'account è sospeso")
       expect(modifica.execute).not.toHaveBeenCalled()
     })
   })
