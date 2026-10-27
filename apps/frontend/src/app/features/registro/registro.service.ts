@@ -39,6 +39,12 @@ export interface RegistroVista {
   principale: boolean
 }
 
+export interface RiferimentoAnnotazione {
+  progressiveNumber: number
+  progressiveYear: number
+  tipoAnnotazione: 'ORDINARIA' | 'RETTIFICA' | 'ANNULLAMENTO'
+}
+
 export interface Movimento {
   id: string
   registroId?: string
@@ -63,6 +69,15 @@ export interface Movimento {
   entryHash: string
   notes?: string
   createdAt: string
+  /** Solo nell'elenco (Fase 2 pezzo 3): rettifica e annullamento sono annotazioni collegate. */
+  tipoAnnotazione?: 'ORDINARIA' | 'RETTIFICA' | 'ANNULLAMENTO'
+  motivoAnnotazione?: string
+  /** Annotazione che questa corregge (numero e anno del registro). */
+  rettificaDi?: RiferimentoAnnotazione
+  /** Annotazione che corregge questa. */
+  correttoDa?: RiferimentoAnnotazione
+  /** VIGENTE conta nei calcoli; RETTIFICATO e ANNULLATO no. */
+  stato?: 'VIGENTE' | 'RETTIFICATO' | 'ANNULLATO'
   fuoriTermine?: boolean
   ritardoGg?: number
   /** Solo nella risposta di `registra`: il FIR era già ricopiato, nessun nuovo movimento. */

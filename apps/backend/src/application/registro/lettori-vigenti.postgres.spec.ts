@@ -4,6 +4,7 @@
  * con insert diretti del proprietario (`wasteflow`): il caso d'uso di correzione arriva piu'
  * avanti. Modello: `registro-per-sede.postgres.spec.ts`.
  */
+import { randomUUID } from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 
@@ -24,7 +25,7 @@ import {
 import { FIRPrismaRepository } from '../../infrastructure/persistence/fir-prisma.repository'
 import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { FirGiaRegistratoError } from '../../core/domain/errors'
-import { giacenzaDisponibileAl } from './giacenza-disponibile'
+import { giacenzaDisponibileAl, saldiRegistroCer } from './giacenza-disponibile'
 import { GiacenzeService } from '../giacenze/giacenze.service'
 import { AnomalyDetectionService } from '../anomaly/anomaly-detection.service'
 import { MudAggregazioneService } from '../mud/aggregazione/mud-aggregazione.service'
@@ -221,6 +222,121 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
       expect((await disp(az)).unitaNonDiMassaCaricate).toEqual(['LITRI'])
       await annulla(az, l, l)
       expect((await disp(az)).unitaNonDiMassaCaricate).toEqual([])
+    })
+  })
+
+  describe('saldiRegistroCer (controllo di giacenza delle correzioni, R6)', () => {
+    const saldi = (az: Az, cerCode = CER) =>
+      nelTenant(az.tenantId, () =>
+        app.$transaction(tx =>
+          saldiRegistroCer(tx, { tenantId: az.tenantId, registroId: az.registroId, cerCode })
+        )
+      )
+    const apertura = (az: Az, quantita: number, unita = 'KG', data = '2026-02-01') =>
+      owner.giacenzaIniziale.create({
+        data: {
+          tenantId: az.tenantId,
+          registroId: az.registroId,
+          cerCode: CER,
+          quantita,
+          unita,
+          dataRiferimento: new Date(`${data}T00:00:00Z`),
+          impostatoDa: randomUUID(),
+        },
+      })
+
+    it('senza movimenti: zero, zero, nessuna unita', async () => {
+      const az = await azienda()
+      expect(await saldi(az)).toEqual({
+        saldoComplessivoKg: 0,
+        saldoMinimoGiornalieroKg: 0,
+        unitaNonDiMassaCaricate: [],
+      })
+    })
+
+    it('conta le sole vigenti piu le aperture: rettifica al posto dell originale, scarico', async () => {
+      const az = await azienda()
+      await apertura(az, 200)
+      const c = await inserisci(az, { quantita: 100, data: '2026-03-01T10:00:00Z' })
+      await rettifica(az, c, c, 40)
+      await inserisci(az, { type: 'SCARICO', quantita: 50, data: '2026-03-05T10:00:00Z' })
+      // 200 (apertura) + 40 (rettifica, non i 100 originali) - 50
+      expect(await saldi(az)).toMatchObject({
+        saldoComplessivoKg: 190,
+        saldoMinimoGiornalieroKg: 190,
+      })
+    })
+
+    it('una catena annullata e esclusa, anche con piu anelli', async () => {
+      const az = await azienda()
+      await apertura(az, 20)
+      const c = await inserisci(az, { quantita: 100, data: '2026-03-01T10:00:00Z' })
+      const r1 = await rettifica(az, c, c, 70)
+      await annulla(az, r1, c)
+      expect(await saldi(az)).toMatchObject({
+        saldoComplessivoKg: 20,
+        saldoMinimoGiornalieroKg: 20,
+      })
+    })
+
+    it('storico negativo: complessivo e minimo giornaliero restano distinti', async () => {
+      const az = await azienda()
+      await inserisci(az, { type: 'SCARICO', quantita: 30, data: '2026-03-01T10:00:00Z' })
+      await inserisci(az, { quantita: 10, data: '2026-03-02T10:00:00Z' })
+      expect(await saldi(az)).toMatchObject({
+        saldoComplessivoKg: -20,
+        saldoMinimoGiornalieroKg: -30,
+      })
+    })
+
+    it('spostare un carico dopo lo scarico abbassa il minimo ma non il complessivo', async () => {
+      const az = await azienda()
+      const c = await inserisci(az, { quantita: 100, data: '2026-03-01T10:00:00Z' })
+      await inserisci(az, { type: 'SCARICO', quantita: 60, data: '2026-03-05T10:00:00Z' })
+      const prima = await saldi(az)
+      const base = await owner.wasteMovement.findUniqueOrThrow({ where: { id: c.id } })
+      await inserisci(az, {
+        tipo: 'RETTIFICA',
+        rettificato: c.id,
+        originale: c.id,
+        type: 'CARICO',
+        causale: base.causale,
+        quantita: 100,
+        data: '2026-03-10T10:00:00Z',
+      })
+      const dopo = await saldi(az)
+      expect(prima).toMatchObject({ saldoComplessivoKg: 40, saldoMinimoGiornalieroKg: 40 })
+      expect(dopo).toMatchObject({ saldoComplessivoKg: 40, saldoMinimoGiornalieroKg: -60 })
+    })
+
+    it('le unita non di massa: vigenti e aperture, non le annullate', async () => {
+      const az = await azienda()
+      const l = await inserisci(az, { quantita: 5, unit: 'LITRI' })
+      await apertura(az, 3, 'MC')
+      expect((await saldi(az)).unitaNonDiMassaCaricate).toEqual(['LITRI', 'MC'])
+      await annulla(az, l, l)
+      expect((await saldi(az)).unitaNonDiMassaCaricate).toEqual(['MC'])
+    })
+
+    it('stessi numeri di giacenzaDisponibileAl sullo stesso registro', async () => {
+      const az = await azienda()
+      await apertura(az, 15, 'T')
+      const c = await inserisci(az, { quantita: 100, data: '2026-03-01T10:00:00Z' })
+      await rettifica(az, c, c, 80)
+      await inserisci(az, { type: 'SCARICO', quantita: 500, data: '2026-03-05T10:00:00Z' })
+      const s = await saldi(az)
+      const g = await disp(az)
+      expect(s.saldoComplessivoKg).toBe(g.saldoComplessivoKg)
+      expect(s.unitaNonDiMassaCaricate).toEqual(g.unitaNonDiMassaCaricate)
+    })
+
+    it('un altro registro o un altro CER non entrano nei saldi', async () => {
+      const az = await azienda()
+      await inserisci(az, { quantita: 100 })
+      const altroCer = await saldi(az, '99 99 05')
+      expect(altroCer.saldoComplessivoKg).toBe(0)
+      const altra = await azienda()
+      expect((await saldi(altra)).saldoComplessivoKg).toBe(0)
     })
   })
 
