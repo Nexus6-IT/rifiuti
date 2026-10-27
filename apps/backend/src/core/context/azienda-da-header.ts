@@ -11,7 +11,8 @@ import { isUUID } from 'class-validator'
  *
  * Restituisce l'UUID dell'header solo se: l'header è presente (array → primo valore, trim),
  * è un UUID valido, l'utente non è SUPER_ADMIN (il middleware onora già l'header) ed è
- * diverso da `user.tenantId`. Altrimenti `null`: nessun cambiamento rispetto al token.
+ * diverso da `user.tenantId` (confronto senza distinzione di maiuscole). Il valore restituito
+ * e' in minuscolo. Altrimenti `null`: nessun cambiamento rispetto al token.
  */
 export function aziendaCandidataDaHeader(req: {
   headers?: Record<string, string | string[] | undefined>
@@ -22,8 +23,8 @@ export function aziendaCandidataDaHeader(req: {
 
   const raw = req.headers?.['x-tenant-id']
   const valore = Array.isArray(raw) ? raw[0] : raw
-  const candidata = typeof valore === 'string' ? valore.trim() : ''
+  const candidata = typeof valore === 'string' ? valore.trim().toLowerCase() : ''
   if (candidata.length === 0 || !isUUID(candidata, 'all')) return null
-  if (candidata === utente.tenantId) return null
+  if (candidata === utente.tenantId?.toLowerCase()) return null
   return candidata
 }

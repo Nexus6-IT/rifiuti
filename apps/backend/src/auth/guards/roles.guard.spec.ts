@@ -14,8 +14,10 @@ describe('RolesGuard', () => {
   let guard: RolesGuard
   let reflector: jest.Mocked<Reflector>
   let ruoloEffettivo: { accesso: jest.Mock }
+  let conRuoloDelToken: boolean
 
   beforeEach(() => {
+    conRuoloDelToken = false
     reflector = {
       getAllAndOverride: jest.fn(),
     } as any
@@ -29,7 +31,8 @@ describe('RolesGuard', () => {
     userRole: string | null,
     headerTenant?: string | string[]
   ): ExecutionContext => {
-    reflector.getAllAndOverride.mockReturnValue(requiredRoles)
+    reflector.getAllAndOverride.mockImplementation(((chiave: string) =>
+      chiave === 'ruoloDelToken' ? conRuoloDelToken : requiredRoles) as any)
 
     const mockHandler = jest.fn()
     const mockClass = jest.fn()
@@ -118,6 +121,34 @@ describe('RolesGuard', () => {
       await guard.canActivate(context)
 
       expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('@RuoloDelToken', () => {
+    it('VIEWER di casa, ADMIN presso il cliente: @Roles(ADMIN) negato dal token, accesso mai chiamato', async () => {
+      conRuoloDelToken = true
+      ruoloEffettivo.accesso.mockResolvedValue('ADMIN')
+      const context = createMockExecutionContext(['ADMIN'], 'VIEWER', CLIENTE)
+
+      expect(await guard.canActivate(context)).toBe(false)
+      expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+
+    it('ADMIN di casa, VIEWER presso il cliente: concesso dal token, accesso mai chiamato', async () => {
+      conRuoloDelToken = true
+      ruoloEffettivo.accesso.mockResolvedValue('VIEWER')
+      const context = createMockExecutionContext(['ADMIN'], 'ADMIN', CLIENTE)
+
+      expect(await guard.canActivate(context)).toBe(true)
+      expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+
+    it("senza il decoratore: decide il ruolo nell'azienda selezionata", async () => {
+      ruoloEffettivo.accesso.mockResolvedValue('ADMIN')
+      const context = createMockExecutionContext(['ADMIN'], 'VIEWER', CLIENTE)
+
+      expect(await guard.canActivate(context)).toBe(true)
+      expect(ruoloEffettivo.accesso).toHaveBeenCalledTimes(1)
     })
   })
 

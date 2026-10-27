@@ -19,6 +19,14 @@ describe('aziendaCandidataDaHeader', () => {
     expect(aziendaCandidataDaHeader(richiesta(`  ${CLIENTE} `))).toBe(CLIENTE)
   })
 
+  it('UUID maiuscolo → restituito in minuscolo', () => {
+    expect(aziendaCandidataDaHeader(richiesta(CLIENTE.toUpperCase()))).toBe(CLIENTE)
+  })
+
+  it('UUID maiuscolo della propria azienda → null', () => {
+    expect(aziendaCandidataDaHeader(richiesta(CASA.toUpperCase()))).toBeNull()
+  })
+
   it('header assente → null', () => {
     expect(aziendaCandidataDaHeader(richiesta(undefined))).toBeNull()
   })

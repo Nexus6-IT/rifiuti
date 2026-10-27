@@ -10,6 +10,7 @@ import {
 import { Reflector } from '@nestjs/core'
 import { TenantContext } from '../../core/context/tenant-context'
 import { AZIENDA_PIATTAFORMA_ID } from '../../core/context/azienda-piattaforma'
+import { RUOLO_DEL_TOKEN } from '../../core/decorators/ruolo-del-token.decorator'
 import { aziendaCandidataDaHeader } from '../../core/context/azienda-da-header'
 import { VERIFICA_AZIENDA_NON_DISPONIBILE } from '../../core/context/azienda-selezionata-errori'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
@@ -120,16 +121,28 @@ export class PermissionGuard implements CanActivate {
     let aziendaAudit: string = isSuperAdmin ? (aziendaScelta ?? AZIENDA_PIATTAFORMA_ID) : tenantId
     let aziendaConsulente: string | null = null
     let ruoloAssociazioneId: string | null = null
-    const candidata = aziendaCandidataDaHeader(request)
+    // Rotte dell'account di casa (`@RuoloDelToken`): si decide sui permessi del token.
+    const sulToken = this.reflector.getAllAndOverride<boolean>(RUOLO_DEL_TOKEN, [
+      context.getHandler(),
+      context.getClass(),
+    ])
+    const candidata = sulToken ? null : aziendaCandidataDaHeader(request)
+    // Ruolo effettivo nell'azienda su cui si decide (per il corpo del 403).
+    let ruoloEffettivo: string = user.role || 'unknown'
     if (candidata) {
       let accesso
       try {
         accesso = await this.ruoloEffettivo.accessoConOrigine(user, candidata)
-      } catch {
+      } catch (error) {
+        // Il dettaglio resta nel log, mai nel corpo della risposta.
+        this.logger.warn(
+          `Verifica azienda non riuscita per user ${userId}: ${(error as Error)?.message}`
+        )
         throw new ServiceUnavailableException({ ...VERIFICA_AZIENDA_NON_DISPONIBILE })
       }
       if (accesso) {
         aziendaAudit = candidata
+        ruoloEffettivo = accesso.ruolo
         if (accesso.roleId) {
           aziendaConsulente = candidata
           ruoloAssociazioneId = accesso.roleId
@@ -141,12 +154,13 @@ export class PermissionGuard implements CanActivate {
       // Step 1: Check cache for user permissions.
       // Chiave `(azienda, utente)`. I permessi di casa stanno sotto `(casa, utente)`. Quelli
       // dell'associazione del consulente presso il cliente stanno in uno spazio PROPRIO,
-      // `(cliente, "assoc:<utente>")`: la voce `(cliente, utente)` e' scritta da
+      // `(cliente, "assoc:<ruolo>:<utente>")`: la voce `(cliente, utente)` e' scritta da
       // `GetUserPermissionsQueryHandler` (assegnazioni dirette nel cliente, TTL 300s) e ha un
-      // altro significato; riusarla farebbe negare o concedere per errore. Il prefisso per
+      // altro significato; riusarla farebbe negare o concedere per errore. Il ruolo dell'associazione
+      // e' nella chiave, cosi' uno scambio di ruolo sull'associazione vale subito. Il prefisso per
       // azienda resta quello di `invalidateTenant(cliente)`, che quindi colpisce anche questa.
       const aziendaCache = aziendaConsulente ?? tenantId
-      const utenteCache = aziendaConsulente ? `assoc:${userId}` : userId
+      const utenteCache = aziendaConsulente ? `assoc:${ruoloAssociazioneId}:${userId}` : userId
       let userPermissions = await this.permissionCache.getPermissions(aziendaCache, utenteCache)
 
       // Step 2: On cache miss, load the user's effective permissions from the
@@ -293,7 +307,7 @@ export class PermissionGuard implements CanActivate {
         throw new ForbiddenException({
           message: 'Insufficient permissions',
           requiredPermission,
-          currentRole: user.role || 'unknown',
+          currentRole: ruoloEffettivo,
           contactAdmin: 'Contact your administrator to request access',
         })
       }

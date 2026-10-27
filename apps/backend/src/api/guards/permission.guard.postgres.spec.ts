@@ -148,7 +148,9 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
     }
     const cache = cacheProva
     guard = new PermissionGuard(
-      { getAllAndOverride: () => richiesto } as never,
+      {
+        getAllAndOverride: (chiave: string) => (chiave === 'ruoloDelToken' ? false : richiesto),
+      } as never,
       {
         getPermissions: async (t: string, u: string) => cache.get(`${t}:${u}`) ?? null,
         setPermissions: async (t: string, u: string, p: string[]) => void cache.set(`${t}:${u}`, p),

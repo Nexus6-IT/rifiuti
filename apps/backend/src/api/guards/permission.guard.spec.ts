@@ -34,6 +34,13 @@ describe('PermissionGuard', () => {
   const TENANT_ID = 'tenant-1'
   const USER_ID = 'user-1'
 
+  // `@RuoloDelToken` presente o no sulla rotta (il Reflector e' un mock: una chiave per volta).
+  let conRuoloDelToken = false
+  const impostaPermesso = (permesso: string | undefined) => {
+    reflector.getAllAndOverride.mockImplementation(((chiave: string) =>
+      chiave === 'ruoloDelToken' ? conRuoloDelToken : permesso) as any)
+  }
+
   const buildContext = (overrides: Partial<any> = {}): ExecutionContext => {
     const request = {
       // `request.user` è popolato da JwtStrategy con la proprietà `id` (vedi
@@ -57,6 +64,7 @@ describe('PermissionGuard', () => {
   }
 
   beforeEach(() => {
+    conRuoloDelToken = false
     reflector = {
       getAllAndOverride: jest.fn(),
     } as unknown as jest.Mocked<Reflector>
@@ -108,13 +116,13 @@ describe('PermissionGuard', () => {
   })
 
   it('allows access when no @RequirePermission decorator is present', async () => {
-    reflector.getAllAndOverride.mockReturnValue(undefined as any)
+    impostaPermesso(undefined)
 
     await expect(guard.canActivate(buildContext())).resolves.toBe(true)
   })
 
   it('throws ForbiddenException when no authenticated user is present', async () => {
-    reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+    impostaPermesso('fir:read:facility')
 
     await expect(guard.canActivate(buildContext({ user: undefined }))).rejects.toBeInstanceOf(
       ForbiddenException
@@ -122,7 +130,7 @@ describe('PermissionGuard', () => {
   })
 
   it('grants access on cache HIT when permission is present', async () => {
-    reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+    impostaPermesso('fir:read:facility')
     permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
     await expect(guard.canActivate(buildContext())).resolves.toBe(true)
@@ -134,7 +142,7 @@ describe('PermissionGuard', () => {
     const lascia = async () => await new Promise(r => setImmediate(r))
 
     it('permission.guard: super admin senza azienda accodato nell azienda piattaforma', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
       const ctx = buildContext({ user: { id: USER_ID, tenantId: '', role: 'SUPER_ADMIN' } })
@@ -146,7 +154,7 @@ describe('PermissionGuard', () => {
     })
 
     it('permission.guard: utente normale senza azienda non accodato', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
       const ctx = buildContext({ user: { id: USER_ID, tenantId: '', role: 'ADMIN' } })
@@ -159,7 +167,7 @@ describe('PermissionGuard', () => {
     const AZIENDA_B = '33333333-3333-4333-8333-333333333333'
 
     it('super admin con X-Tenant-ID: audit nell azienda scelta, permessi letti nel contesto di casa', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       permissionCache.getPermissions.mockResolvedValue(null)
       let contestoLettura: string | null = null
       userRoleRepository.findActiveByUserId.mockImplementation(async () => {
@@ -183,7 +191,7 @@ describe('PermissionGuard', () => {
     })
 
     it('super admin senza X-Tenant-ID (con azienda di casa nel token): audit nella piattaforma', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
       const ctx = buildContext({ user: { id: USER_ID, tenantId: TENANT_ID, role: 'SUPER_ADMIN' } })
@@ -194,7 +202,7 @@ describe('PermissionGuard', () => {
     })
 
     it('utente normale: l header X-Tenant-ID e ignorato, audit nell azienda del token', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
       const ctx = buildContext({ headers: { 'x-tenant-id': AZIENDA_B } })
@@ -205,7 +213,7 @@ describe('PermissionGuard', () => {
     })
 
     it('l audit porta codice fiscale e sessione dell utente', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
       const ctx = buildContext({
@@ -226,7 +234,7 @@ describe('PermissionGuard', () => {
     })
 
     it('con un tenantId valorizzato l evento si accoda', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
       await expect(guard.canActivate(buildContext())).resolves.toBe(true)
@@ -238,7 +246,7 @@ describe('PermissionGuard', () => {
 
   describe('cache MISS -> DB fallback (P0 bug #1)', () => {
     it('loads permissions from DB and AUTHORIZES a legitimate user when cache is empty', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       // Cache empty
       permissionCache.getPermissions.mockResolvedValue(null)
 
@@ -273,7 +281,7 @@ describe('PermissionGuard', () => {
     })
 
     it('denies access on cache miss when the DB grants no matching permission', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:delete:all' as any)
+      impostaPermesso('fir:delete:all')
       permissionCache.getPermissions.mockResolvedValue(null)
 
       const userRole = UserRole.create({
@@ -295,7 +303,7 @@ describe('PermissionGuard', () => {
 
   describe('ABAC must not trust the request body (P0 bug #2)', () => {
     it('does not pass spoofed body attributes into the ABAC evaluation context', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
       // Active ABAC policy so the evaluator gets invoked
@@ -365,7 +373,7 @@ describe('PermissionGuard', () => {
       })
 
     it('consulente con permessi ampi a casa: il ruolo dell associazione privo del permesso nega', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      impostaPermesso('fir:write:all')
       cacheInMemoria()
       permessiDiCasa('fir:write:all')
       ruoloEffettivo.accessoConOrigine.mockResolvedValue({
@@ -382,7 +390,7 @@ describe('PermissionGuard', () => {
     })
 
     it('associazione con un ruolo che ha il permesso: concesso, voce di cache del cliente con TTL breve, audit nel cliente', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      impostaPermesso('fir:write:all')
       cacheInMemoria()
       ruoloEffettivo.accessoConOrigine.mockResolvedValue({
         ruolo: 'ADMIN',
@@ -395,15 +403,67 @@ describe('PermissionGuard', () => {
 
       expect(permissionCache.setPermissions).toHaveBeenCalledWith(
         CLIENTE,
-        `assoc:${USER_ID}`,
+        `assoc:${RUOLO_ASSOCIAZIONE}:${USER_ID}`,
         ['fir:write:all'],
         60
       )
       expect(auditQueue.add.mock.calls[0][1].data.tenantId).toBe(CLIENTE)
     })
 
+    it("associazione con ruolo scambiato: la voce di cache e' un'altra, vale subito", async () => {
+      impostaPermesso('fir:write:all')
+      const voci = cacheInMemoria()
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({ ruolo: 'ADMIN', roleId: 'ruolo-a' })
+      ruoloEffettivo.permessiDelRuolo.mockResolvedValue(['fir:write:all'])
+      await expect(guard.canActivate(ctxCliente())).resolves.toBe(true)
+
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({ ruolo: 'VIEWER', roleId: 'ruolo-b' })
+      ruoloEffettivo.permessiDelRuolo.mockResolvedValue(['fir:read:all'])
+      await expect(guard.canActivate(ctxCliente())).rejects.toBeInstanceOf(ForbiddenException)
+
+      expect([...voci.keys()]).toEqual(
+        expect.arrayContaining([
+          `${CLIENTE}:assoc:ruolo-a:${USER_ID}`,
+          `${CLIENTE}:assoc:ruolo-b:${USER_ID}`,
+        ])
+      )
+    })
+
+    it("403: currentRole e' il ruolo effettivo nell'azienda selezionata, non quello del token", async () => {
+      impostaPermesso('fir:write:all')
+      cacheInMemoria()
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({
+        ruolo: 'VIEWER',
+        roleId: RUOLO_ASSOCIAZIONE,
+      })
+      ruoloEffettivo.permessiDelRuolo.mockResolvedValue(['fir:read:all'])
+
+      const errore = await guard.canActivate(ctxCliente()).then(
+        () => null,
+        (e: unknown) => e
+      )
+
+      expect((errore as ForbiddenException).getResponse()).toMatchObject({ currentRole: 'VIEWER' })
+    })
+
+    it('@RuoloDelToken: decidono i permessi del token, accessoConOrigine mai chiamato', async () => {
+      conRuoloDelToken = true
+      impostaPermesso('fir:write:all')
+      cacheInMemoria()
+      permessiDiCasa('fir:write:all')
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({
+        ruolo: 'VIEWER',
+        roleId: RUOLO_ASSOCIAZIONE,
+      })
+
+      await expect(guard.canActivate(ctxCliente())).resolves.toBe(true)
+
+      expect(ruoloEffettivo.accessoConOrigine).not.toHaveBeenCalled()
+      expect(ruoloEffettivo.permessiDelRuolo).not.toHaveBeenCalled()
+    })
+
     it('due richieste dello stesso utente, casa e cliente, non si contaminano attraverso la cache', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      impostaPermesso('fir:write:all')
       cacheInMemoria()
       permessiDiCasa('fir:write:all')
       ruoloEffettivo.accessoConOrigine.mockResolvedValue({
@@ -420,7 +480,7 @@ describe('PermissionGuard', () => {
     })
 
     it('il contrario: voce del cliente permissiva, casa che nega, nessun riuso', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      impostaPermesso('fir:write:all')
       cacheInMemoria()
       permessiDiCasa('fir:read:all')
       ruoloEffettivo.accessoConOrigine.mockResolvedValue({
@@ -435,7 +495,7 @@ describe('PermissionGuard', () => {
     })
 
     it('utente di gruppo sulla figlia: permessi di casa, voce di cache di casa, audit nella figlia', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      impostaPermesso('fir:write:all')
       cacheInMemoria()
       permessiDiCasa('fir:write:all')
       ruoloEffettivo.accessoConOrigine.mockResolvedValue({ ruolo: 'ADMIN', roleId: null })
@@ -451,7 +511,7 @@ describe('PermissionGuard', () => {
     })
 
     it('nessun legame con l azienda: si decide come col token (permessi di casa, audit di casa)', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      impostaPermesso('fir:write:all')
       cacheInMemoria()
       permessiDiCasa('fir:write:all')
       ruoloEffettivo.accessoConOrigine.mockResolvedValue(null)
@@ -464,7 +524,7 @@ describe('PermissionGuard', () => {
     })
 
     it('voce (cliente, utente) scritta da un altro componente: il guard usa i permessi dell associazione', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      impostaPermesso('fir:write:all')
       const voci = cacheInMemoria()
       // GetUserPermissionsQueryHandler scrive le assegnazioni dirette nel cliente (qui: vuote,
       // poi ampie) sotto la chiave (cliente, utente).
@@ -485,7 +545,7 @@ describe('PermissionGuard', () => {
     })
 
     it('lettura dei permessi del ruolo non riuscita: 503 VERIFICA_AZIENDA_NON_DISPONIBILE, non 403', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      impostaPermesso('fir:write:all')
       cacheInMemoria()
       ruoloEffettivo.accessoConOrigine.mockResolvedValue({
         ruolo: 'ADMIN',
@@ -502,7 +562,7 @@ describe('PermissionGuard', () => {
     })
 
     it('verifica non possibile (database): 503 VERIFICA_AZIENDA_NON_DISPONIBILE, mai 500 ne via libera', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      impostaPermesso('fir:write:all')
       permissionCache.getPermissions.mockResolvedValue(['fir:write:all'])
       ruoloEffettivo.accessoConOrigine.mockRejectedValue(
         new Error('connessione a postgres://u:segreto@db rifiutata')
@@ -517,7 +577,7 @@ describe('PermissionGuard', () => {
     })
 
     it('header uguale all azienda di casa o assente: nessuna verifica, comportamento di sempre', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
       await guard.canActivate(ctxCliente(null))
@@ -533,7 +593,7 @@ describe('PermissionGuard', () => {
     })
 
     it('SUPER_ADMIN con X-Tenant-ID: invariato, nessuna risoluzione per associazione', async () => {
-      reflector.getAllAndOverride.mockReturnValue('fir:read:facility' as any)
+      impostaPermesso('fir:read:facility')
       permissionCache.getPermissions.mockResolvedValue(['fir:read:facility'])
 
       const ctx = buildContext({
