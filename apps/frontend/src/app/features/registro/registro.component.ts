@@ -11,7 +11,15 @@
 import { Component, DestroyRef, OnInit, inject, signal, computed } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { EMPTY, Subject, Subscription, combineLatest, merge } from 'rxjs'
-import { catchError, distinctUntilChanged, filter, map, startWith, switchMap } from 'rxjs/operators'
+import {
+  auditTime,
+  catchError,
+  distinctUntilChanged,
+  filter,
+  map,
+  startWith,
+  switchMap,
+} from 'rxjs/operators'
 import { CommonModule, DatePipe } from '@angular/common'
 import {
   FormBuilder,
@@ -1508,6 +1516,8 @@ export class RegistroComponent implements OnInit {
       tipo.valueChanges.pipe(startWith(tipo.value as TipoMovimento)),
       data.valueChanges.pipe(startWith(data.value as Date | null)),
     ]).pipe(
+      // tipo e data cambiano in sequenza (anche con un reset): una sola richiesta
+      auditTime(0),
       map(([t, d]) =>
         d instanceof Date && !isNaN(d.getTime())
           ? { tipo: t as TipoMovimento, giorno: giornoLocale(d) }
@@ -1559,6 +1569,11 @@ export class RegistroComponent implements OnInit {
       causale: null,
       unit: 'KG',
     })
+    // la chiave dopo il reset puo' essere uguale all'ultima vista (distinctUntilChanged) e il
+    // catalogo e' stato invalidato: la rilettura va chiesta esplicitamente
+    this.ricaricaOpzioni.next({ tipo: 'CARICO', giorno: giornoLocale(new Date()) })
+    this.sottoscrizioneProposta?.unsubscribe()
+    this.sottoscrizioneProposta = null
     this.sedeBloccataDaFir.set(false)
     this.form.get('registroId')?.enable({ emitEvent: false })
     this.applicaRegistroAlForm(true)
@@ -1755,33 +1770,36 @@ export class RegistroComponent implements OnInit {
     const giorno = giornoLocale(data)
     const ctrl = this.form.get('causale')
     const valorePrima = (ctrl?.value ?? null) as string | null
-    this.sottoscrizioneProposta = this.causali.opzioni(tipo, giorno).subscribe({
-      next: righe => {
-        const corrente = this.form.get('movementDate')?.value as Date | null
-        const ancoraQuesto =
-          this.form.get('type')?.value === tipo &&
-          corrente instanceof Date &&
-          giornoLocale(corrente) === giorno
-        if (!ancoraQuesto) return
-        if (!causaleSelezionabile(righe, codice)) {
-          this.ruoloHint.update(h =>
-            [
-              h,
-              'La causale prevista per questo FIR non è disponibile alla data indicata: scegli la causale.',
-            ]
-              .filter(Boolean)
-              .join(' ')
-          )
-          return
-        }
-        // se nel frattempo l'utente ha scelto un'altra causale, la sua scelta vince
-        const attuale = (ctrl?.value ?? null) as string | null
-        if (attuale === null || attuale === valorePrima) ctrl?.setValue(codice)
-      },
-      error: () => {
-        // il messaggio di errore lo mostra già il caricamento delle opzioni del form
-      },
-    })
+    this.sottoscrizioneProposta = this.causali
+      .opzioni(tipo, giorno)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: righe => {
+          const corrente = this.form.get('movementDate')?.value as Date | null
+          const ancoraQuesto =
+            this.form.get('type')?.value === tipo &&
+            corrente instanceof Date &&
+            giornoLocale(corrente) === giorno
+          if (!ancoraQuesto) return
+          if (!causaleSelezionabile(righe, codice)) {
+            this.ruoloHint.update(h =>
+              [
+                h,
+                'La causale prevista per questo FIR non è disponibile alla data indicata: scegli la causale.',
+              ]
+                .filter(Boolean)
+                .join(' ')
+            )
+            return
+          }
+          // se nel frattempo l'utente ha scelto un'altra causale, la sua scelta vince
+          const attuale = (ctrl?.value ?? null) as string | null
+          if (attuale === null || attuale === valorePrima) ctrl?.setValue(codice)
+        },
+        error: () => {
+          // il messaggio di errore lo mostra già il caricamento delle opzioni del form
+        },
+      })
   }
 
   /** Giorno di calendario locale ('AAAA-MM-GG'), come lo invia `toIsoDate` al backend. */

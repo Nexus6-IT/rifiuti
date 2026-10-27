@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing'
+import { TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { DatePipe } from '@angular/common'
 import { HttpErrorResponse } from '@angular/common/http'
 import { signal } from '@angular/core'
@@ -33,6 +33,9 @@ function riga(codice: string, descrizione = codice): OpzioneCausaleApi {
  * e la causale proposta dal FIR si applica solo dopo che sono arrivate.
  */
 describe('RegistroComponent — causali dall’API', () => {
+  /** Le richieste di opzioni partono dopo `auditTime(0)`: ogni test gira in fakeAsync con `tick()`. */
+  const itFa = (nome: string, corpo: () => void) => it(nome, fakeAsync(corpo))
+
   let servizio: jasmine.SpyObj<RegistroService>
   let toast: jasmine.SpyObj<ToastService>
   /** Una risposta controllabile per ogni coppia tipo|giorno (come la cache del servizio vero). */
@@ -81,6 +84,7 @@ describe('RegistroComponent — causali dall’API', () => {
     }).overrideComponent(RegistroComponent, { set: { template: '', imports: [] } })
     const c = TestBed.createComponent(RegistroComponent).componentInstance
     c.initForm()
+    tick()
     return c
   }
 
@@ -96,59 +100,73 @@ describe('RegistroComponent — causali dall’API', () => {
     }
   })
 
-  it('carica le opzioni del tipo e della data del form, e non mostra quelle di un altro tipo', () => {
-    const c = crea()
-    expect(chiamate()).toEqual([`CARICO|${oggi()}`])
-    expect(c.causaliOptions()).toEqual([])
+  itFa(
+    'carica le opzioni del tipo e della data del form, e non mostra quelle di un altro tipo',
+    () => {
+      const c = crea()
+      expect(chiamate()).toEqual([`CARICO|${oggi()}`])
+      expect(c.causaliOptions()).toEqual([])
 
-    risposta('CARICO', oggi()).next([riga('PRODUZIONE_INTERNA', 'Produzione interna')])
-    expect(c.causaliOptions()).toEqual([
-      { label: 'Produzione interna', value: 'PRODUZIONE_INTERNA' },
-    ])
+      risposta('CARICO', oggi()).next([riga('PRODUZIONE_INTERNA', 'Produzione interna')])
+      expect(c.causaliOptions()).toEqual([
+        { label: 'Produzione interna', value: 'PRODUZIONE_INTERNA' },
+      ])
 
-    c.setTipo('SCARICO')
-    expect(chiamate()).toEqual([`CARICO|${oggi()}`, `SCARICO|${oggi()}`])
-    // finché non arrivano le opzioni dello scarico non restano quelle del carico
-    expect(c.causaliOptions()).toEqual([])
-    risposta('SCARICO', oggi()).next([riga('CESSIONE', 'Cessione a terzi')])
-    expect(c.causaliOptions().map(o => o.value)).toEqual(['CESSIONE'])
-  })
+      c.setTipo('SCARICO')
 
-  it('ricarica le opzioni al cambio di giorno, non a ogni modifica della stessa data', () => {
+      tick()
+      expect(chiamate()).toEqual([`CARICO|${oggi()}`, `SCARICO|${oggi()}`])
+      // finché non arrivano le opzioni dello scarico non restano quelle del carico
+      expect(c.causaliOptions()).toEqual([])
+      risposta('SCARICO', oggi()).next([riga('CESSIONE', 'Cessione a terzi')])
+      expect(c.causaliOptions().map(o => o.value)).toEqual(['CESSIONE'])
+    }
+  )
+
+  itFa('ricarica le opzioni al cambio di giorno, non a ogni modifica della stessa data', () => {
     const c = crea()
     const data = c.form.get('movementDate')!
     data.setValue(new Date(2026, 9, 20, 9, 30))
+    tick()
     data.setValue(new Date(2026, 9, 20, 18, 0)) // stesso giorno: nessuna richiesta
     data.setValue(null) // campo svuotato a metà digitazione: nessuna richiesta
     data.setValue(new Date(2026, 9, 21))
+    tick()
     expect(chiamate()).toEqual([`CARICO|${oggi()}`, 'CARICO|2026-10-20', 'CARICO|2026-10-21'])
   })
 
-  it('un cambio di data che rende non valida la causale scelta la azzera con un messaggio', () => {
-    const c = crea()
-    risposta('CARICO', oggi()).next([riga('PRODUZIONE_INTERNA'), riga('AZ_RESO')])
-    c.form.get('causale')!.setValue('AZ_RESO')
-    expect(c.messaggioCausale()).toBeNull()
+  itFa(
+    'un cambio di data che rende non valida la causale scelta la azzera con un messaggio',
+    () => {
+      const c = crea()
+      risposta('CARICO', oggi()).next([riga('PRODUZIONE_INTERNA'), riga('AZ_RESO')])
+      c.form.get('causale')!.setValue('AZ_RESO')
+      expect(c.messaggioCausale()).toBeNull()
 
-    c.form.get('movementDate')!.setValue(new Date(2026, 0, 5))
-    risposta('CARICO', '2026-01-05').next([riga('PRODUZIONE_INTERNA')])
+      c.form.get('movementDate')!.setValue(new Date(2026, 0, 5))
 
-    expect(c.form.get('causale')!.value).toBeNull()
-    expect(c.messaggioCausale()).toContain('non è disponibile alla data indicata')
+      tick()
+      risposta('CARICO', '2026-01-05').next([riga('PRODUZIONE_INTERNA')])
 
-    // una causale ancora valida alla nuova data resta e il messaggio sparisce
-    c.form.get('causale')!.setValue('PRODUZIONE_INTERNA')
-    c.form.get('movementDate')!.setValue(new Date(2026, 0, 6))
-    risposta('CARICO', '2026-01-06').next([riga('PRODUZIONE_INTERNA')])
-    expect(c.form.get('causale')!.value).toBe('PRODUZIONE_INTERNA')
-    expect(c.messaggioCausale()).toBeNull()
-  })
+      expect(c.form.get('causale')!.value).toBeNull()
+      expect(c.messaggioCausale()).toContain('non è disponibile alla data indicata')
 
-  it('il cambio di tipo azzera la causale senza il messaggio della data', () => {
+      // una causale ancora valida alla nuova data resta e il messaggio sparisce
+      c.form.get('causale')!.setValue('PRODUZIONE_INTERNA')
+      c.form.get('movementDate')!.setValue(new Date(2026, 0, 6))
+      tick()
+      risposta('CARICO', '2026-01-06').next([riga('PRODUZIONE_INTERNA')])
+      expect(c.form.get('causale')!.value).toBe('PRODUZIONE_INTERNA')
+      expect(c.messaggioCausale()).toBeNull()
+    }
+  )
+
+  itFa('il cambio di tipo azzera la causale senza il messaggio della data', () => {
     const c = crea()
     risposta('CARICO', oggi()).next([riga('PRODUZIONE_INTERNA')])
     c.form.get('causale')!.setValue('PRODUZIONE_INTERNA')
     c.setTipo('SCARICO')
+    tick()
     risposta('SCARICO', oggi()).next([riga('CESSIONE')])
     expect(c.form.get('causale')!.value).toBeNull()
     expect(c.messaggioCausale()).toBeNull()
@@ -158,23 +176,31 @@ describe('RegistroComponent — causali dall’API', () => {
     const seleziona = (c: RegistroComponent) =>
       c.onFirSelect({ value: { fir, label: 'FIR-2026-1' } } as never)
 
-    it('con la risposta delle opzioni ritardata non imposta nulla prima, e poi la applica', () => {
-      const c = crea('02222222222') // destinatario: CARICO, data di arrivo del FIR
-      seleziona(c)
+    itFa(
+      'con la risposta delle opzioni ritardata non imposta nulla prima, e poi la applica',
+      () => {
+        const c = crea('02222222222') // destinatario: CARICO, data di arrivo del FIR
+        seleziona(c)
+        tick()
 
-      expect(c.form.get('type')!.value).toBe('CARICO')
-      expect(giornoLocale(c.form.get('movementDate')!.value)).toBe('2026-09-15')
-      // opzioni ancora in viaggio: nessuna causale impostata
-      expect(c.form.get('causale')!.value).toBeNull()
+        expect(c.form.get('type')!.value).toBe('CARICO')
+        expect(giornoLocale(c.form.get('movementDate')!.value)).toBe('2026-09-15')
+        // opzioni ancora in viaggio: nessuna causale impostata
+        expect(c.form.get('causale')!.value).toBeNull()
 
-      risposta('CARICO', '2026-09-15').next([riga('INGRESSO_ESTERNO'), riga('PRODUZIONE_INTERNA')])
+        risposta('CARICO', '2026-09-15').next([
+          riga('INGRESSO_ESTERNO'),
+          riga('PRODUZIONE_INTERNA'),
+        ])
 
-      expect(c.form.get('causale')!.value).toBe('INGRESSO_ESTERNO')
-    })
+        expect(c.form.get('causale')!.value).toBe('INGRESSO_ESTERNO')
+      }
+    )
 
-    it('lo scarico del produttore usa il tipo e il giorno del FIR', () => {
+    itFa('lo scarico del produttore usa il tipo e il giorno del FIR', () => {
       const c = crea('01111111111')
       seleziona(c)
+      tick()
       expect(c.form.get('causale')!.value).toBeNull()
 
       risposta('SCARICO', '2026-09-10').next([riga('CONFERIMENTO_TRASPORTATORE')])
@@ -183,18 +209,23 @@ describe('RegistroComponent — causali dall’API', () => {
       expect(c.form.get('causale')!.value).toBe('CONFERIMENTO_TRASPORTATORE')
     })
 
-    it('con la causale proposta disattivata (assente dalle opzioni) non c’è nessuna proposta', () => {
+    itFa(
+      'con la causale proposta disattivata (assente dalle opzioni) non c’è nessuna proposta',
+      () => {
+        const c = crea('02222222222')
+        seleziona(c)
+        tick()
+        risposta('CARICO', '2026-09-15').next([riga('PRODUZIONE_INTERNA')])
+
+        expect(c.form.get('causale')!.value).toBeNull()
+        expect(c.ruoloHint()).toContain('scegli la causale')
+      }
+    )
+
+    itFa('se nel frattempo l’utente sceglie un’altra causale, la sua scelta vince', () => {
       const c = crea('02222222222')
       seleziona(c)
-      risposta('CARICO', '2026-09-15').next([riga('PRODUZIONE_INTERNA')])
-
-      expect(c.form.get('causale')!.value).toBeNull()
-      expect(c.ruoloHint()).toContain('scegli la causale')
-    })
-
-    it('se nel frattempo l’utente sceglie un’altra causale, la sua scelta vince', () => {
-      const c = crea('02222222222')
-      seleziona(c)
+      tick()
       c.form.get('causale')!.setValue('PRODUZIONE_INTERNA')
 
       risposta('CARICO', '2026-09-15').next([riga('INGRESSO_ESTERNO'), riga('PRODUZIONE_INTERNA')])
@@ -202,16 +233,17 @@ describe('RegistroComponent — causali dall’API', () => {
       expect(c.form.get('causale')!.value).toBe('PRODUZIONE_INTERNA')
     })
 
-    it('con il ruolo non riconosciuto non propone nessuna causale', () => {
+    itFa('con il ruolo non riconosciuto non propone nessuna causale', () => {
       const c = crea('99999999999')
       seleziona(c)
+      tick()
       risposta('CARICO', oggi()).next([riga('INGRESSO_ESTERNO')])
       expect(c.form.get('causale')!.value).toBeNull()
     })
   })
 
   describe('registrazione con 409 CAUSALE_MODIFICATA', () => {
-    it('mostra il messaggio del backend, invalida la cache e ricarica le opzioni', () => {
+    itFa('mostra il messaggio del backend, invalida la cache e ricarica le opzioni', () => {
       const c = crea()
       risposta('CARICO', oggi()).next([riga('AZ_RESO')])
       c.form.patchValue({
@@ -220,6 +252,7 @@ describe('RegistroComponent — causali dall’API', () => {
         quantity: 10,
         movementDate: new Date(2026, 9, 20),
       })
+      tick()
       risposta('CARICO', '2026-10-20').next([riga('AZ_RESO')])
       causali.opzioni.calls.reset()
       servizio.registra.and.returnValue(
@@ -248,4 +281,49 @@ describe('RegistroComponent — causali dall’API', () => {
       expect(c.form.get('causale')!.value).toBeNull()
     })
   })
+})
+
+describe('RegistroComponent — riapertura del form dopo una modifica del catalogo', () => {
+  it('invalida la cache e rilegge le opzioni anche se tipo e giorno sono gli stessi', fakeAsync(() => {
+    const causali = {
+      opzioni: jasmine.createSpy('opzioni').and.callFake(() => of([])),
+      invalida: jasmine.createSpy('invalida'),
+    }
+    TestBed.configureTestingModule({
+      imports: [RegistroComponent],
+      providers: [
+        DatePipe,
+        {
+          provide: RegistroService,
+          useValue: jasmine.createSpyObj('RegistroService', ['registra']),
+        },
+        { provide: CausaliRegistroService, useValue: causali },
+        { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['error']) },
+        { provide: ExportService, useValue: {} },
+        { provide: AuthService, useValue: { currentUser: () => null } },
+        { provide: AdminTenantContextService, useValue: { selectedTenantName: () => 'Azienda' } },
+        {
+          provide: CompanyService,
+          useValue: {
+            loadActiveCompany: () => of(null),
+            activeCompany: signal({ partitaIva: '1', ragioneSociale: 'A' }),
+          },
+        },
+        { provide: FirService, useValue: { getFIRList: () => of({ items: [] }) } },
+        { provide: RegistryService, useValue: { getProduttori: () => of({ items: [] }) } },
+      ],
+    }).overrideComponent(RegistroComponent, { set: { template: '', imports: [] } })
+    const c = TestBed.createComponent(RegistroComponent).componentInstance
+    c.initForm()
+    tick()
+    c.apriForm()
+    tick()
+    expect(causali.opzioni.calls.count()).toBe(2)
+    // il catalogo cambia (un ADMIN modifica le causali) e il form si riapre nello stesso giorno
+    c.apriForm()
+    tick()
+    expect(causali.invalida).toHaveBeenCalledTimes(2)
+    expect(causali.opzioni.calls.count()).toBe(3)
+    expect(causali.opzioni.calls.mostRecent().args[0]).toBe('CARICO')
+  }))
 })
