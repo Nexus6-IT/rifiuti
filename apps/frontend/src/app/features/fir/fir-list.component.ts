@@ -16,7 +16,7 @@ import { SplitButtonModule } from 'primeng/splitbutton'
 import { CardModule } from 'primeng/card'
 import { MenuItem } from 'primeng/api'
 import { TooltipModule } from 'primeng/tooltip'
-import { FirService, CreateFIRDto, TipoTratta } from './fir.service'
+import { FirService, CreateFIRDto, ModificaFIRDto, TipoTratta } from './fir.service'
 import { InputTextareaModule } from 'primeng/inputtextarea'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { ExportService } from '../../core/services/export.service'
@@ -29,7 +29,9 @@ import {
   AnagraficaSavedEvent,
 } from '../registry/anagrafica-form-dialog.component'
 import { CerSelectComponent } from '../cer/cer-select.component'
-import { puoCreareFir } from './fir-permissions'
+import { puoCreareFir, puoModificareFir } from './fir-permissions'
+import { formDaFir, testoMotivoNonModificabile } from './fir-form'
+import { ActivatedRoute, Router } from '@angular/router'
 import { calcolaScostamentoPeso, testoAvvisoScostamento } from './scostamento-peso'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
 import { RENTRISyncService } from './services/rentri-sync.service'
@@ -174,6 +176,9 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                   <p-tag
                     [value]="getStatoLabel(fir.stato)"
                     [severity]="getStatoSeverity(fir.stato)"
+                    [pTooltip]="motivoNonModificabileRiga(fir)"
+                    tooltipPosition="top"
+                    [attr.data-testid]="'fir-stato-' + fir.id"
                   />
                 </td>
                 <td>
@@ -199,6 +204,16 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                       size="small"
                       (onClick)="emettiFIR(fir)"
                       [attr.aria-label]="'Emetti FIR ' + (fir.numeroProgressivo || fir.id)"
+                    />
+                    <p-button
+                      *ngIf="puoModificaRiga(fir)"
+                      label="Modifica"
+                      icon="pi pi-pencil"
+                      size="small"
+                      [outlined]="true"
+                      (onClick)="apriModifica(fir)"
+                      [attr.data-testid]="'fir-modifica-' + fir.id"
+                      [attr.aria-label]="'Modifica FIR ' + (fir.numeroProgressivo || fir.id)"
                     />
                     <p-button
                       *ngIf="fir.stato === 'EMESSO'"
@@ -304,8 +319,10 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
         [style]="{ width: '48rem', maxHeight: '90vh' }"
         [breakpoints]="{ '960px': '90vw', '640px': '100vw' }"
         [contentStyle]="{ overflow: 'auto' }"
-        header="Nuovo FIR"
-        closeAriaLabel="Chiudi la finestra Nuovo FIR"
+        [header]="firInModifica ? 'Modifica bozza FIR' : 'Nuovo FIR'"
+        [closeAriaLabel]="
+          firInModifica ? 'Chiudi la finestra Modifica bozza FIR' : 'Chiudi la finestra Nuovo FIR'
+        "
       >
         <div class="fir-form p-fluid">
           <!-- L'avviso "emissione non possibile" (GET /rentri/emissione-possibile) è
@@ -844,9 +861,10 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
               (onClick)="displayCreateDialog = false"
             />
             <p-button
-              label="Crea FIR"
+              [label]="firInModifica ? 'Salva modifiche' : 'Crea FIR'"
               icon="pi pi-check"
-              (onClick)="createFIR()"
+              data-testid="fir-dialog-salva"
+              (onClick)="salvaFIR()"
               [loading]="saving"
             />
           </div>
@@ -1328,6 +1346,9 @@ export class FirListComponent implements OnInit {
     { label: 'D15 — Deposito in attesa di D1–D14', value: 'D15' },
   ]
 
+  /** Se valorizzato il dialog modifica una bozza esistente (con la versione letta) invece di crearne una. */
+  firInModifica: { id: string; versione: number } | null = null
+
   newFIR: CreateFIRDto = {
     produttoreId: '',
     trasportatoreId: '',
@@ -1357,6 +1378,7 @@ export class FirListComponent implements OnInit {
   unitaMisuraOptions = [
     { label: 'kg', value: 'kg' },
     { label: 't', value: 't' },
+    { label: 'litri', value: 'litri' },
     { label: 'm³', value: 'm3' },
   ]
 
@@ -1365,6 +1387,8 @@ export class FirListComponent implements OnInit {
 
   private readonly rentriSyncService = inject(RENTRISyncService)
   private readonly authService = inject(AuthService)
+  private readonly router = inject(Router)
+  private readonly route = inject(ActivatedRoute)
 
   /**
    * Il VIEWER ha sola lettura: il backend rifiuta la creazione con un 403
@@ -1373,6 +1397,8 @@ export class FirListComponent implements OnInit {
    * `fir-permissions.ts`, allineata a quell'elenco.
    */
   readonly puoCreareFir = computed(() => puoCreareFir(this.authService.currentUser()?.role))
+
+  readonly puoModificareFir = computed(() => puoModificareFir(this.authService.currentUser()?.role))
 
   constructor(
     private firService: FirService,
@@ -1386,6 +1412,8 @@ export class FirListComponent implements OnInit {
     this.initializeExportMenu()
     this.loadAnagrafiche()
     this.loadFIRList({ first: 0, rows: this.pageSize })
+    const idModifica = this.route.snapshot.queryParamMap.get('modifica')
+    if (idModifica) this.apriModificaDaId(idModifica)
   }
 
   /**
@@ -1570,6 +1598,7 @@ export class FirListComponent implements OnInit {
   }
 
   showCreateDialog(): void {
+    this.firInModifica = null
     this.newFIR = {
       produttoreId: '',
       trasportatoreId: '',
@@ -1652,6 +1681,176 @@ export class FirListComponent implements OnInit {
     } else if (m.includes('destinatario')) {
       this.firErrors = { ...this.firErrors, destinatarioId: message }
     }
+  }
+
+  /** Il pulsante «Modifica» compare solo su una bozza modificabile e solo per i ruoli che possono farlo. */
+  puoModificaRiga(fir: FIR): boolean {
+    return fir.stato === FIRStato.BOZZA && !!fir.modificabile && this.puoModificareFir()
+  }
+
+  /** Tooltip del badge di stato: perché la bozza non si può modificare (null se non serve). */
+  motivoNonModificabileRiga(fir: FIR): string | undefined {
+    if (fir.stato !== FIRStato.BOZZA || fir.modificabile !== false) return undefined
+    return testoMotivoNonModificabile(fir.motivoNonModificabile) || undefined
+  }
+
+  /** Apre il dialog in modalità modifica, precompilato campo per campo dal FIR. */
+  showEditDialog(fir: FIR): void {
+    this.newFIR = formDaFir(fir)
+    this.trasportatoriAggiuntivi = (this.newFIR.trasportatoriAggiuntivi ?? []).map(t => ({
+      trasportatoreId: t.trasportatoreId,
+      tipoTratta: t.tipoTratta,
+    }))
+    this.showTrasportatoriAggiuntivi = this.trasportatoriAggiuntivi.length > 0
+    this.firInModifica = { id: fir.id, versione: fir.versione ?? 1 }
+    this.firErrors = {}
+    this.displayCreateDialog = true
+  }
+
+  /** Dalla riga della lista: rilegge il FIR (versione e dati correnti) e apre la modifica. */
+  apriModifica(fir: FIR): void {
+    this.apriModificaDaId(fir.id)
+  }
+
+  /** Legge il FIR dal backend (non dalla pagina corrente) e apre la modifica se è ancora modificabile. */
+  private apriModificaDaId(id: string): void {
+    this.firService.getFIRById(id).subscribe({
+      next: fir => {
+        this.togliParametroModifica()
+        if (!this.puoModificareFir()) {
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Modifica non consentita',
+            detail: 'Il tuo ruolo non può modificare i FIR.',
+          })
+        } else if (fir.stato !== FIRStato.BOZZA || fir.modificabile === false) {
+          this.messageService.add({
+            severity: 'warn',
+            summary: 'Bozza non modificabile',
+            detail:
+              testoMotivoNonModificabile(fir.motivoNonModificabile) ||
+              'Questo FIR non si può più modificare.',
+          })
+        } else {
+          this.showEditDialog(fir)
+        }
+      },
+      error: err => {
+        this.togliParametroModifica()
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, 'Errore nella lettura del FIR'),
+        })
+      },
+    })
+  }
+
+  /** Toglie il parametro "modifica" dall'URL, così un ricaricamento della pagina non riapre il dialog. */
+  private togliParametroModifica(): void {
+    if (!this.route.snapshot.queryParamMap.has('modifica')) return
+    void this.router.navigate([], {
+      queryParams: { modifica: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    })
+  }
+
+  /** Salvataggio del dialog: creazione o modifica, a seconda di come è stato aperto. */
+  salvaFIR(): void {
+    if (this.firInModifica) this.modificaFIR()
+    else this.createFIR()
+  }
+
+  private modificaFIR(): void {
+    const target = this.firInModifica
+    if (!target) return
+    if (!this.validateFir()) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Campi obbligatori',
+        detail: 'Controlla i campi evidenziati e riprova.',
+      })
+      return
+    }
+    const aggiuntivi = this.trasportatoriAggiuntivi
+      .filter(t => !!t.trasportatoreId)
+      .map((t, i) => ({
+        trasportatoreId: t.trasportatoreId as string,
+        tipoTratta: t.tipoTratta,
+        ordine: i + 1,
+      }))
+    const dto: ModificaFIRDto = {
+      ...this.newFIR,
+      rifiuto: { ...this.newFIR.rifiuto },
+      versione: target.versione,
+    }
+    if (aggiuntivi.length > 0) dto.trasportatoriAggiuntivi = aggiuntivi
+    else delete dto.trasportatoriAggiuntivi
+
+    this.saving = true
+    this.firService.modificaFIR(target.id, dto).subscribe({
+      next: () => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Successo',
+          detail: 'Bozza FIR modificata con successo',
+        })
+        this.displayCreateDialog = false
+        this.firInModifica = null
+        this.saving = false
+        this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
+      },
+      error: err => {
+        this.saving = false
+        this.gestisciErroreModifica(err, target.id)
+      },
+    })
+  }
+
+  private gestisciErroreModifica(err: unknown, id: string): void {
+    const http = err as { status?: number; error?: { error?: string } }
+    const codice = http?.error?.error
+    if (http?.status === 409 && codice === 'FIR_MODIFICATO_NEL_FRATTEMPO') {
+      const detail = this.extractError(err, 'Il FIR è stato modificato da un altro utente.')
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Bozza modificata nel frattempo',
+        detail: detail + ' I dati sono stati ricaricati: ripeti la modifica.',
+      })
+      this.firService.getFIRById(id).subscribe({
+        next: fir => {
+          if (fir.stato === FIRStato.BOZZA && fir.modificabile !== false) {
+            this.showEditDialog(fir)
+          } else {
+            this.chiudiModificaConErrore(
+              testoMotivoNonModificabile(fir.motivoNonModificabile) ||
+                'Questo FIR non si può più modificare.'
+            )
+          }
+        },
+        error: e =>
+          this.chiudiModificaConErrore(this.extractError(e, 'Errore nella lettura del FIR')),
+      })
+      return
+    }
+    if (
+      (http?.status === 409 && codice === 'FIR_NON_MODIFICABILE') ||
+      (http?.status === 404 && codice === 'FIR_NON_TROVATO')
+    ) {
+      this.chiudiModificaConErrore(this.extractError(err, 'Il FIR non si può più modificare.'))
+      return
+    }
+    const detail = this.extractError(err, 'Errore nella modifica del FIR')
+    this.mapFirBackendError(detail)
+    this.messageService.add({ severity: 'error', summary: 'Errore', detail })
+  }
+
+  private chiudiModificaConErrore(detail: string): void {
+    this.messageService.add({ severity: 'error', summary: 'Errore', detail })
+    this.displayCreateDialog = false
+    this.firInModifica = null
+    this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
   }
 
   createFIR(): void {
@@ -1922,6 +2121,7 @@ export class FirListComponent implements OnInit {
 
   /** Nessuna azione di ciclo vita né RENTRI applicabile: la riga mostra solo il trattino. */
   isRigaSenzaAzioni(fir: FIR): boolean {
+    if (this.puoModificaRiga(fir)) return false
     const haAzioneCiclo =
       fir.stato === FIRStato.BOZZA ||
       fir.stato === FIRStato.EMESSO ||

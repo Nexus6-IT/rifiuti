@@ -42,8 +42,35 @@ export interface ParteFIR {
   contatto?: string
 }
 
+/** Perché una bozza non è modificabile (ordine unico dei motivi: backend, `MotivoNonModificabile`). */
+export type MotivoNonModificabile =
+  | 'LEGATO_RENTRI'
+  | 'NON_BOZZA'
+  | 'FIRMATO'
+  | 'IN_ATTESA_FIRMA_PRODUTTORE'
+
+/** Tratta aggiuntiva (trasporto intermodale) come restituita dal backend. */
+export interface TrasportatoreAggiuntivoFIR {
+  /** Assente se il trasportatore non è nel registro: la tratta non si può precompilare. */
+  trasportatoreId?: string
+  tipoTratta: 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA'
+  ordine: number
+}
+
 export interface FIR {
   id: string
+  /** Versione per il controllo ottimistico: va rinviata tale e quale nella modifica. */
+  versione?: number
+  /** Se true la bozza si può modificare ora (`motivoNonModificabile` è null). */
+  modificabile?: boolean
+  /** Perché il FIR non è modificabile; null se lo è. */
+  motivoNonModificabile?: MotivoNonModificabile | null
+  /** Provenienza del rifiuto (Campo 1 FIR). */
+  provenienza?: 'URBANO' | 'SPECIALE' | null
+  /** Modalità di trasporto della tratta principale. */
+  tipoTrattaPrincipale?: 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA' | null
+  /** Trasportatori aggiuntivi (tratte intermodali), ordinati per `ordine`. */
+  trasportatoriAggiuntivi?: TrasportatoreAggiuntivoFIR[]
   numeroProgressivo?: string | null
   /** Anno di riferimento (campo client; non restituito dalla risposta backend). */
   anno: number

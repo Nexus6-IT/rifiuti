@@ -41,6 +41,16 @@ export interface CreateFIRDto {
   annotazioni?: string
 }
 
+/**
+ * Corpo di `PUT /fir/:id`: tutti i campi della creazione più la `versione` letta
+ * (controllo ottimistico). Qui `rifiuto.unitaMisura` è obbligatoria: il backend non
+ * applica il predefinito della creazione, per non cambiare l'unità senza che l'utente lo sappia.
+ */
+export interface ModificaFIRDto extends Omit<CreateFIRDto, 'rifiuto'> {
+  rifiuto: CreateFIRDto['rifiuto'] & { unitaMisura: string }
+  versione: number
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -74,6 +84,14 @@ export class FirService {
    */
   createFIR(dto: CreateFIRDto): Observable<FIR> {
     return this.http.post<FIR>(this.API_URL, dto)
+  }
+
+  /**
+   * Modifica una bozza (PUT). 409 `FIR_MODIFICATO_NEL_FRATTEMPO` se la versione è superata,
+   * 409 `FIR_NON_MODIFICABILE` se nel frattempo non è più una bozza modificabile.
+   */
+  modificaFIR(id: string, dto: ModificaFIRDto): Observable<FIR> {
+    return this.http.put<FIR>(`${this.API_URL}/${id}`, dto)
   }
 
   /**

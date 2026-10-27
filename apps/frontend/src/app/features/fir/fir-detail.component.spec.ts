@@ -5,7 +5,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 // di poter verificare alcunche'. `Noop` e non `BrowserAnimations` perche' in un
 // test non serve animare — serve solo che l'animazione non sia un errore.
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
-import { ActivatedRoute, convertToParamMap } from '@angular/router'
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router'
 import { of, throwError } from 'rxjs'
 import { FirDetailComponent } from './fir-detail.component'
 import { FirService } from './fir.service'
@@ -1475,6 +1475,67 @@ describe('FirDetailComponent', () => {
         el.querySelector('[data-testid="fir-detail-quantita-verificata"]')?.textContent?.trim()
       ).toBe('—')
       expect(el.querySelector('[data-testid="fir-detail-scostamento"]')).toBeNull()
+    })
+  })
+
+  describe('Modifica della bozza', () => {
+    const bozza = (extra: Partial<FIR> = {}): FIR => ({
+      ...baseFIR,
+      stato: FIRStato.BOZZA,
+      numeroProgressivo: null,
+      versione: 2,
+      modificabile: true,
+      motivoNonModificabile: null,
+      ...extra,
+    })
+
+    it('mostra «Modifica» su una bozza modificabile e naviga alla lista col parametro', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(bozza()))
+      const router = TestBed.inject(Router)
+      const navigate = spyOn(router, 'navigate').and.resolveTo(true)
+      fixture.detectChanges()
+
+      const bottone = (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="fir-detail-modifica"] button'
+      ) as HTMLButtonElement
+      expect(bottone).toBeTruthy()
+      bottone.click()
+
+      expect(navigate).toHaveBeenCalledWith(['/fir'], { queryParams: { modifica: 'fir-1' } })
+    })
+
+    it('senza il pulsante per un VIEWER', () => {
+      setup({ role: 'VIEWER' })
+      firService.getFIRById.and.returnValue(of(bozza()))
+      fixture.detectChanges()
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('[data-testid="fir-detail-modifica"]')
+      ).toBeNull()
+    })
+
+    it('senza il pulsante ma col motivo leggibile se la bozza non è modificabile', () => {
+      setup()
+      firService.getFIRById.and.returnValue(
+        of(bozza({ modificabile: false, motivoNonModificabile: 'FIRMATO' }))
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-modifica"]')).toBeNull()
+      expect(
+        el.querySelector('[data-testid="fir-detail-motivo-non-modificabile"]')?.textContent
+      ).toContain('porta già una firma')
+    })
+
+    it('haAzioni è vera per la sola modifica (FIR non BOZZA ma modificabile non esiste: si verifica puoModificare)', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(bozza()))
+      fixture.detectChanges()
+      expect(component.puoModificare(bozza())).toBeTrue()
+      expect(component.haAzioni(bozza())).toBeTrue()
+      expect(component.puoModificare(bozza({ modificabile: false }))).toBeFalse()
+      expect(component.puoModificare({ ...baseFIR, modificabile: true })).toBeFalse()
     })
   })
 })

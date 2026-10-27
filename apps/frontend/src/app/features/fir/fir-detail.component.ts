@@ -15,6 +15,8 @@ import { InputTextareaModule } from 'primeng/inputtextarea'
 import { InputNumberModule } from 'primeng/inputnumber'
 import { ConfirmationService, MessageService } from 'primeng/api'
 import { FirService } from './fir.service'
+import { puoModificareFir } from './fir-permissions'
+import { testoMotivoNonModificabile } from './fir-form'
 import { FIR, FIRStato, ScostamentoPeso } from '../../shared/models/fir.model'
 import {
   formattaNumero,
@@ -164,6 +166,11 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
               <span data-testid="fir-detail-stato">
                 <p-tag [value]="getStatoLabel(f.stato)" [severity]="getStatoSeverity(f.stato)" />
               </span>
+              @if (motivoNonModificabile(f); as motivo) {
+                <small class="detail-hint" data-testid="fir-detail-motivo-non-modificabile">{{
+                  motivo
+                }}</small>
+              }
             </div>
             <div class="detail-field">
               <span class="detail-label">Data creazione</span>
@@ -342,6 +349,16 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
           <section class="surface-card detail-section" aria-label="Azioni disponibili">
             <h2 class="section-title">Azioni disponibili</h2>
             <div class="row-actions" data-testid="fir-detail-actions">
+              @if (puoModificare(f)) {
+                <p-button
+                  label="Modifica"
+                  icon="pi pi-pencil"
+                  [outlined]="true"
+                  (onClick)="modifica(f)"
+                  data-testid="fir-detail-modifica"
+                  [attr.aria-label]="'Modifica FIR ' + (f.numeroProgressivo || f.id)"
+                />
+              }
               @if (f.stato === 'BOZZA') {
                 <p-button
                   label="Emetti"
@@ -769,6 +786,12 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
         font-size: var(--font-size-base);
       }
 
+      .detail-hint {
+        display: block;
+        margin-top: 0.25rem;
+        color: var(--text-secondary);
+      }
+
       .detail-scostamento--oltre {
         color: var(--color-warning);
         font-weight: var(--font-weight-medium);
@@ -1133,8 +1156,29 @@ export class FirDetailComponent implements OnInit {
       : `scostamento ${base}`
   }
 
+  /** «Modifica» solo su una bozza modificabile e per i ruoli che possono modificare. */
+  puoModificare(fir: FIR): boolean {
+    return (
+      fir.stato === FIRStato.BOZZA &&
+      !!fir.modificabile &&
+      puoModificareFir(this.authService.currentUser()?.role)
+    )
+  }
+
+  /** Perché una bozza non è modificabile (vuoto se lo è o se non è una bozza). */
+  motivoNonModificabile(fir: FIR): string {
+    if (fir.stato !== FIRStato.BOZZA || fir.modificabile !== false) return ''
+    return testoMotivoNonModificabile(fir.motivoNonModificabile)
+  }
+
+  /** Apre la modifica nella lista (il dialog di «Nuovo FIR» è riusato). */
+  modifica(fir: FIR): void {
+    void this.router.navigate(['/fir'], { queryParams: { modifica: fir.id } })
+  }
+
   haAzioni(fir: FIR): boolean {
     return (
+      this.puoModificare(fir) ||
       fir.stato === FIRStato.BOZZA ||
       fir.stato === FIRStato.EMESSO ||
       this.canTrasmettereRentri(fir) ||
