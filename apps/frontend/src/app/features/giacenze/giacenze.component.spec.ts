@@ -11,6 +11,7 @@ function giacenza(overrides: Partial<Giacenza> = {}): Giacenza {
     caricoKg: 0,
     scaricoKg: 0,
     giacenzaKg: 0,
+    inizialeKg: 0,
     oldestCaricoDate: null,
     altreUnita: [],
     scarichiSuFirAnnullati: [],
@@ -43,10 +44,32 @@ describe('GiacenzeComponent', () => {
   it('mostra le giacenze in unità diverse dal kg accanto alla riga del CER', () => {
     setup([
       giacenza({
-        altreUnita: [{ unita: 'LITRI', carico: 30, scarico: 0, giacenza: 30 }],
+        altreUnita: [{ unita: 'LITRI', carico: 30, scarico: 0, giacenza: 30, iniziale: 0 }],
       }),
     ])
     expect(fixture.nativeElement.textContent).toContain('30 LITRI')
+  })
+
+  it('mostra "di cui iniziale" solo quando la giacenza iniziale è maggiore di zero', () => {
+    setup([
+      giacenza({ cerCode: '17 04 05', caricoKg: 750, giacenzaKg: 750, inizialeKg: 750 }),
+      giacenza({ cerCode: '20 01 01', caricoKg: 10, giacenzaKg: 10, inizialeKg: 0 }),
+    ])
+    const note = fixture.nativeElement.querySelectorAll('[data-testid="giacenza-iniziale-kg"]')
+    expect(note.length).toBe(1)
+    expect(note[0].textContent).toContain('di cui iniziale 750')
+  })
+
+  it('mostra la parte iniziale anche per le unità diverse dal kg', () => {
+    setup([
+      giacenza({
+        altreUnita: [{ unita: 'LITRI', carico: 80, scarico: 0, giacenza: 80, iniziale: 50 }],
+      }),
+    ])
+    const nota = fixture.nativeElement.querySelector(
+      '[data-testid="giacenza-iniziale-altra-unita"]'
+    )
+    expect(nota?.textContent).toContain('di cui iniziale 50')
   })
 
   it('avvisa degli scarichi su FIR annullati', () => {
@@ -65,7 +88,7 @@ describe('GiacenzeComponent', () => {
   it('scrive le quantità aggiunte in formato italiano', () => {
     setup([
       giacenza({
-        altreUnita: [{ unita: 'LITRI', carico: 1234.5, scarico: 0, giacenza: 1234.5 }],
+        altreUnita: [{ unita: 'LITRI', carico: 1234.5, scarico: 0, giacenza: 1234.5, iniziale: 0 }],
         scarichiSuFirAnnullati: [
           { numero: '2026/9', quantita: 12500, unita: 'KG', fir: 'FIR-2026-000003' },
         ],

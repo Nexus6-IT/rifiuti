@@ -9,6 +9,8 @@ export interface Giacenza {
   caricoKg: number
   scaricoKg: number
   giacenzaKg: number
+  /** Di cui giacenza iniziale (apertura del registro), già compresa in caricoKg. */
+  inizialeKg: number
   oldestCaricoDate: string | null
   /** Giacenze in unità diverse dai kg (litri, m³, ...): non si sommano ai kg. */
   altreUnita: GiacenzaAltraUnita[]
@@ -21,6 +23,8 @@ export interface GiacenzaAltraUnita {
   carico: number
   scarico: number
   giacenza: number
+  /** Di cui giacenza iniziale (apertura del registro), già compresa in carico. */
+  iniziale: number
 }
 
 export interface ScaricoSuFirAnnullato {

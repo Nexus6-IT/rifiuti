@@ -157,12 +157,24 @@ import {
                       ></p-tag>
                     </div>
                   </td>
-                  <td class="text-right">{{ g.caricoKg | number: '1.0-2' }}</td>
+                  <td class="text-right">
+                    {{ g.caricoKg | number: '1.0-2' }}
+                    <div
+                      *ngIf="g.inizialeKg > 0"
+                      class="giacenze-altra-unita"
+                      data-testid="giacenza-iniziale-kg"
+                    >
+                      di cui iniziale {{ g.inizialeKg | number: '1.0-2' }}
+                    </div>
+                  </td>
                   <td class="text-right">{{ g.scaricoKg | number: '1.0-2' }}</td>
                   <td class="text-right">
                     <strong>{{ g.giacenzaKg | number: '1.0-2' }}</strong>
                     <div *ngFor="let a of g.altreUnita" class="giacenze-altra-unita">
                       {{ formattaQuantita(a.giacenza) }} {{ a.unita }}
+                      <span *ngIf="a.iniziale > 0" data-testid="giacenza-iniziale-altra-unita"
+                        >(di cui iniziale {{ formattaQuantita(a.iniziale) }})</span
+                      >
                     </div>
                   </td>
                   <td>
