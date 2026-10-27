@@ -9,6 +9,7 @@ import { ListMovimentiHandler } from '../../application/registro/queries/list-mo
 import { ProgressivoInizialeService } from '../../application/registro/progressivo-iniziale.service'
 import { GiacenzeInizialiService } from '../../application/registro/giacenze-iniziali.service'
 import { RegistriService } from '../../application/registro/registri.service'
+import { VerificaCatenaRegistroService } from '../../application/registro/verifica-catena-registro.service'
 
 /**
  * RegistroModule — registro cronologico di carico/scarico rifiuti.
@@ -31,6 +32,7 @@ import { RegistriService } from '../../application/registro/registri.service'
     ProgressivoInizialeService,
     GiacenzeInizialiService,
     RegistriService,
+    VerificaCatenaRegistroService,
   ],
   exports: [RegistraMovimentoUseCase, ListMovimentiHandler, RegistriService],
 })

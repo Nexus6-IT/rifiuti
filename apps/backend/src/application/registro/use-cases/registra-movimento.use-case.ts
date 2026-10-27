@@ -15,6 +15,7 @@ import {
   CAUSALI_SCARICO,
   CausaleMovimento,
   TERMINE_REGISTRAZIONE_PRODUTTORE_GG,
+  HASH_VERSIONE_CORRENTE,
 } from '../../../domain/waste-movement/waste-movement.entity'
 import {
   annoSolareItaliano,
@@ -261,11 +262,15 @@ export class RegistraMovimentoUseCase {
             ? await this.verificaGiacenza(tx, command, cerCode, registroMovimento.id)
             : []
 
-        const [row] = await tx.$queryRaw<Array<{ max_num: number | null }>>`
-          SELECT MAX(progressive_number) AS max_num
+        // Ultima annotazione del registro/anno (progressivo piu' alto) col suo hash, lette insieme
+        // sotto il lock del progressivo: l'hash v2 si concatena a quello (R8).
+        const [ultima] = await tx.$queryRaw<Array<{ max_num: number; entry_hash: string }>>`
+          SELECT progressive_number AS max_num, entry_hash
           FROM waste_movements
           WHERE registro_id = ${registroMovimento.id}::uuid
             AND progressive_year = ${anno}
+          ORDER BY progressive_number DESC
+          LIMIT 1
         `
         // Progressivo iniziale (C-W-02): chi arriva da un altro programma a metà anno
         // prosegue la numerazione già trasmessa. Letto sotto lo stesso lock con cui
@@ -274,7 +279,10 @@ export class RegistraMovimentoUseCase {
           where: { registroId_anno: { registroId: registroMovimento.id, anno } },
           select: { primoProgressivo: true },
         })
-        const nextProgressivo = Math.max((row.max_num ?? 0) + 1, iniziale?.primoProgressivo ?? 1)
+        const nextProgressivo = Math.max(
+          (ultima?.max_num ?? 0) + 1,
+          iniziale?.primoProgressivo ?? 1
+        )
 
         // 3. Costruzione entità di dominio (con validazioni)
         const entity = WasteMovement.create({
@@ -298,6 +306,7 @@ export class RegistraMovimentoUseCase {
           firId: command.firId,
           recordedByUserId: command.userId,
           notes: command.notes,
+          hashPrecedente: ultima?.entry_hash ?? '',
         })
 
         const ritardoGg = entity.ritardoRegistrazioneGg
@@ -329,6 +338,7 @@ export class RegistraMovimentoUseCase {
             ricopiaChiave: RICOPIA_ORDINARIA,
             recordedByUserId: entity.recordedByUserId,
             entryHash: entity.entryHash,
+            hashVersione: HASH_VERSIONE_CORRENTE,
             notes: entity.notes,
           },
         })

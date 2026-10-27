@@ -1,4 +1,7 @@
+import { createHash } from 'crypto'
+import { Prisma } from '@prisma/client'
 import {
+  hashAnnotazioneV2,
   WasteMovement,
   CAUSALI_CARICO,
   CAUSALI_SCARICO,
@@ -127,6 +130,63 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     const m1 = WasteMovement.create(buildProps({ type: 'CARICO', causale: 'PRODUZIONE_INTERNA' }))
     const m2 = WasteMovement.create(buildProps({ type: 'SCARICO', causale: 'AVVIO_RECUPERO' }))
     expect(m1.entryHash).not.toBe(m2.entryHash)
+  })
+
+  // ─── Hash v2 concatenato (R8) ────────────────────────────────────────────────
+
+  describe('hash v2', () => {
+    const dati = {
+      hashPrecedente: '',
+      registroId: REGISTRO,
+      anno: 2026,
+      numero: 1,
+      tipoAnnotazione: 'ORDINARIA',
+      type: 'CARICO',
+      cerCode: '20 03 01',
+      quantita: 100,
+      unit: 'KG',
+      movementDate: TODAY,
+      causale: 'PRODUZIONE_INTERNA',
+    }
+
+    it('segue la formula del piano, con quantita a due decimali e data ISO', () => {
+      const atteso = createHash('sha256')
+        .update(
+          `v2||${REGISTRO}|2026|1|ORDINARIA||CARICO|20 03 01|100.00|KG|2026-06-29T10:00:00.000Z|PRODUZIONE_INTERNA`
+        )
+        .digest('hex')
+      expect(hashAnnotazioneV2(dati)).toBe(atteso)
+    })
+
+    it('accetta number, stringa e Decimal con lo stesso risultato', () => {
+      const h = hashAnnotazioneV2({ ...dati, quantita: 12.5 })
+      expect(hashAnnotazioneV2({ ...dati, quantita: '12.50' })).toBe(h)
+      expect(hashAnnotazioneV2({ ...dati, quantita: new Prisma.Decimal('12.5') })).toBe(h)
+    })
+
+    it('cambia con registro, hash precedente, numero, tipo annotazione e riferimento', () => {
+      const base = hashAnnotazioneV2(dati)
+      const varianti = [
+        { registroId: 'altro' },
+        { hashPrecedente: 'abc' },
+        { numero: 2 },
+        { tipoAnnotazione: 'RETTIFICA' },
+        { movimentoRettificatoId: 'xyz' },
+      ]
+      const hash = varianti.map(v => hashAnnotazioneV2({ ...dati, ...v }))
+      expect(hash).not.toContain(base)
+      expect(new Set(hash).size).toBe(varianti.length)
+    })
+
+    it('la registrazione con hashPrecedente salva la v2, senza resta la v1', () => {
+      const v2 = WasteMovement.create(buildProps({ hashPrecedente: 'prec' }))
+      expect(v2.entryHash).toBe(
+        hashAnnotazioneV2({ ...dati, hashPrecedente: 'prec', quantita: 100 })
+      )
+      const v1 = WasteMovement.create(buildProps())
+      expect(v1.entryHash).toBe(WasteMovement.computeHash(buildProps()))
+      expect(v1.entryHash).not.toBe(v2.entryHash)
+    })
   })
 
   // ─── Ritardo registrazione ───────────────────────────────────────────────────
