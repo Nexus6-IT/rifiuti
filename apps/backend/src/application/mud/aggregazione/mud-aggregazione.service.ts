@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { WHERE_VIGENTE } from '../../../domain/waste-movement/vigenza'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
@@ -191,7 +192,7 @@ export class MudAggregazioneService {
 
     // Il servizio usa il client Prisma senza estensione RLS: ogni query porta il tenantId.
     const movimenti: Movimento[] = await this.prisma.wasteMovement.findMany({
-      where: { tenantId, movementDate: { gte: inizio, lt: fine } },
+      where: { tenantId, movementDate: { gte: inizio, lt: fine }, ...WHERE_VIGENTE },
       select: SELECT_MOVIMENTO,
       orderBy: [{ movementDate: 'asc' }, { progressiveNumber: 'asc' }],
     })
@@ -202,7 +203,12 @@ export class MudAggregazioneService {
     const precedenti: Movimento[] =
       firIds.length > 0
         ? await this.prisma.wasteMovement.findMany({
-            where: { tenantId, firId: { in: firIds }, movementDate: { lt: inizio } },
+            where: {
+              tenantId,
+              firId: { in: firIds },
+              movementDate: { lt: inizio },
+              ...WHERE_VIGENTE,
+            },
             select: SELECT_MOVIMENTO,
             // più anni: a parità di data e numero decide l'anno del progressivo
             orderBy: [
@@ -252,7 +258,7 @@ export class MudAggregazioneService {
     const scarichiDeiFirAnno: Array<{ firId: string | null }> =
       idsFirAnno.length > 0
         ? await this.prisma.wasteMovement.findMany({
-            where: { tenantId, type: 'SCARICO', firId: { in: idsFirAnno } },
+            where: { tenantId, type: 'SCARICO', firId: { in: idsFirAnno }, ...WHERE_VIGENTE },
             select: { firId: true },
           })
         : []
@@ -604,7 +610,7 @@ export class MudAggregazioneService {
   ): Promise<Array<{ cerCode6: string; kg: number }>> {
     const gruppi = await this.prisma.wasteMovement.groupBy({
       by: ['cerCode', 'type', 'unit'],
-      where: { tenantId, movementDate: { lt: fine } },
+      where: { tenantId, movementDate: { lt: fine }, ...WHERE_VIGENTE },
       _sum: { quantity: true },
     })
     // chiave = cifre del CER; l'asterisco dei pericolosi vince su qualunque formato del gruppo

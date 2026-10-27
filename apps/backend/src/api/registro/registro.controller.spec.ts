@@ -39,6 +39,8 @@ describe('RegistroController.registra — data di registrazione', () => {
       {} as any,
       ruoli('OPERATOR'),
       {} as any,
+      {} as any,
+      {} as any,
       {} as any
     )
   })
@@ -111,6 +113,8 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       {} as any,
       membership,
       {} as any,
+      {} as any,
+      {} as any,
       {} as any
     )
 
@@ -128,6 +132,8 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       {} as any,
       ruoli('VIEWER'),
       {} as any,
+      {} as any,
+      {} as any,
       {} as any
     )
 
@@ -142,6 +148,8 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       lista as any,
       {} as any,
       ruoli('VIEWER'),
+      {} as any,
+      {} as any,
       {} as any,
       {} as any
     )
@@ -163,6 +171,8 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       {} as any,
       ruoli('OPERATOR'),
       {} as any,
+      {} as any,
+      {} as any,
       {} as any
     )
 
@@ -178,6 +188,8 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       lista as any,
       {} as any,
       ruoli('SUPER_ADMIN'),
+      {} as any,
+      {} as any,
       {} as any,
       {} as any
     )
@@ -202,7 +214,16 @@ describe('RegistroController — progressivo iniziale', () => {
     user: { id: 'user-1', tenantId: 'tenant-token', role },
   })
   const crea = (ruoloEffettivo: string, membership = ruoli(ruoloEffettivo)) =>
-    new RegistroController({} as any, {} as any, servizio as any, membership, {} as any, {} as any)
+    new RegistroController(
+      {} as any,
+      {} as any,
+      servizio as any,
+      membership,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    )
 
   beforeEach(() => {
     servizio = {
@@ -340,6 +361,8 @@ describe('RegistroController — registri (Fase 2 pezzo 1)', () => {
       progressivo as any,
       ruoli(ruolo),
       registri as any,
+      {} as any,
+      {} as any,
       {} as any
     )
 
@@ -454,7 +477,16 @@ describe('RegistroController — giacenze iniziali (Fase 2 pezzo 2)', () => {
     elimina: jest.Mock
   }
   const crea = (ruoloEffettivo: string, membership = ruoli(ruoloEffettivo)) =>
-    new RegistroController({} as any, {} as any, {} as any, membership, {} as any, servizio as any)
+    new RegistroController(
+      {} as any,
+      {} as any,
+      {} as any,
+      membership,
+      {} as any,
+      servizio as any,
+      {} as any,
+      {} as any
+    )
 
   beforeEach(() => {
     servizio = {
@@ -566,5 +598,128 @@ describe('RegistroController — giacenze iniziali (Fase 2 pezzo 2)', () => {
     await expect(
       c.elencaGiacenzeIniziali(richiesta(), { registroId: 'r-x' })
     ).rejects.toBeInstanceOf(NotFoundException)
+  })
+})
+
+describe('RegistroController — correzioni e verifica catena (Fase 2 pezzo 3)', () => {
+  const richiesta = { tenantId: 'azienda-1', user: { id: 'user-1', tenantId: 'tenant-token' } }
+  let correggi: { rettifica: jest.Mock; annulla: jest.Mock }
+  let verifica: { verifica: jest.Mock }
+  let registri: { risolviInLettura: jest.Mock }
+
+  const crea = (ruolo: string) =>
+    new RegistroController(
+      {} as any,
+      {} as any,
+      {} as any,
+      ruoli(ruolo),
+      registri as any,
+      {} as any,
+      correggi as any,
+      verifica as any
+    )
+
+  beforeEach(() => {
+    correggi = {
+      rettifica: jest.fn().mockResolvedValue({ movimento: {}, avvisi: [] }),
+      annulla: jest.fn().mockResolvedValue({ movimento: {}, avvisi: [] }),
+    }
+    verifica = {
+      verifica: jest
+        .fn()
+        .mockResolvedValue({ verificate: 0, nonVerificabili: [], primoErrore: null }),
+    }
+    registri = { risolviInLettura: jest.fn().mockResolvedValue({ id: 'reg-1' }) }
+  })
+
+  const dto = {
+    movementDate: '2026-03-11',
+    causale: 'PRODUZIONE_INTERNA',
+    cerCode: '20 03 01',
+    quantity: 5,
+    motivo: 'm',
+    confermaAnnoPresentato: false,
+  }
+
+  it('rettifica: unità di default KG, data come Date, motivo e conferma fuori dai dati', async () => {
+    await crea('OPERATOR').rettifica('mov-1', dto as any, richiesta)
+    expect(correggi.rettifica).toHaveBeenCalledWith({
+      tenantId: 'azienda-1',
+      userId: 'user-1',
+      movimentoId: 'mov-1',
+      motivo: 'm',
+      confermaAnnoPresentato: false,
+      dati: {
+        movementDate: new Date('2026-03-11'),
+        causale: 'PRODUZIONE_INTERNA',
+        cerCode: '20 03 01',
+        quantity: 5,
+        unit: 'KG',
+      },
+    })
+  })
+
+  it('rettifica: un unit esplicito è mantenuto', async () => {
+    await crea('ADMIN').rettifica('mov-1', { ...dto, unit: 'T' } as any, richiesta)
+    expect(correggi.rettifica.mock.calls[0][0].dati.unit).toBe('T')
+  })
+
+  it('VIEWER e CONSULTANT: 403 prima del caso d uso, su rettifica e annullamento', async () => {
+    for (const ruolo of ['VIEWER', 'CONSULTANT']) {
+      const c = crea(ruolo)
+      await expect(c.rettifica('m', dto as any, richiesta)).rejects.toBeInstanceOf(
+        ForbiddenException
+      )
+      await expect(c.annulla('m', { motivo: 'x' } as any, richiesta)).rejects.toBeInstanceOf(
+        ForbiddenException
+      )
+    }
+    expect(correggi.rettifica).not.toHaveBeenCalled()
+    expect(correggi.annulla).not.toHaveBeenCalled()
+  })
+
+  it('senza azienda determinabile le correzioni rifiutano con 403', async () => {
+    const senza = { user: { id: 'u', role: 'ADMIN' } }
+    await expect(crea('ADMIN').annulla('m', { motivo: 'x' } as any, senza)).rejects.toBeInstanceOf(
+      ForbiddenException
+    )
+    expect(correggi.annulla).not.toHaveBeenCalled()
+  })
+
+  it('le eccezioni del caso d uso passano invariate', async () => {
+    const errore = new ConflictException({ error: 'REGISTRO_ANNO_MUD_PRESENTATO', message: 'x' })
+    correggi.annulla.mockRejectedValue(errore)
+    await expect(crea('ADMIN').annulla('m', { motivo: 'x' } as any, richiesta)).rejects.toBe(errore)
+  })
+
+  it('verifica-catena: solo SUPER_ADMIN e ADMIN', async () => {
+    for (const ruolo of ['SUPER_ADMIN', 'ADMIN']) {
+      await expect(
+        crea(ruolo).verificaCatenaRegistro({ anno: 2026 } as any, richiesta)
+      ).resolves.toMatchObject({ registroId: 'reg-1', anno: 2026, verificate: 0 })
+    }
+    for (const ruolo of ['OPERATOR', 'VIEWER', 'CONSULTANT']) {
+      await expect(
+        crea(ruolo).verificaCatenaRegistro({ anno: 2026 } as any, richiesta)
+      ).rejects.toBeInstanceOf(ForbiddenException)
+    }
+    expect(verifica.verifica).toHaveBeenCalledTimes(2)
+  })
+
+  it('verifica-catena: errori di dominio del registro, 404 solo se il registroId era esplicito', async () => {
+    const { RegistroNonTrovatoError } = jest.requireActual(
+      '../../application/registro/registri.service'
+    )
+    registri.risolviInLettura.mockRejectedValue(new RegistroNonTrovatoError())
+    await expect(
+      crea('ADMIN').verificaCatenaRegistro({ anno: 2026, registroId: 'r' } as any, richiesta)
+    ).rejects.toBeInstanceOf(NotFoundException)
+    await expect(
+      crea('ADMIN').verificaCatenaRegistro({ anno: 2026 } as any, richiesta)
+    ).rejects.toBeInstanceOf(BadRequestException)
+    registri.risolviInLettura.mockRejectedValue(new Error('guasto'))
+    await expect(
+      crea('ADMIN').verificaCatenaRegistro({ anno: 2026 } as any, richiesta)
+    ).rejects.toThrow('guasto')
   })
 })

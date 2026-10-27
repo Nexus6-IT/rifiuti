@@ -8,7 +8,9 @@ import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/r
 import { ListMovimentiHandler } from '../../application/registro/queries/list-movimenti.handler'
 import { ProgressivoInizialeService } from '../../application/registro/progressivo-iniziale.service'
 import { GiacenzeInizialiService } from '../../application/registro/giacenze-iniziali.service'
+import { CorreggiMovimentoUseCase } from '../../application/registro/use-cases/correggi-movimento.use-case'
 import { RegistriService } from '../../application/registro/registri.service'
+import { VerificaCatenaRegistroService } from '../../application/registro/verifica-catena-registro.service'
 
 /**
  * RegistroModule — registro cronologico di carico/scarico rifiuti.
@@ -21,17 +23,27 @@ import { RegistriService } from '../../application/registro/registri.service'
  *   POST /api/v1/registro/registri/assicura — crea i registri mancanti (ruoli di scrittura)
  *   GET  /api/v1/registro/progressivo-iniziale/:anno — progressivo iniziale dell'anno
  *   PUT  /api/v1/registro/progressivo-iniziale/:anno — lo imposta (una volta sola)
+ *   POST /api/v1/registro/movimenti/:id/rettifica — rettifica con una nuova annotazione
+ *   POST /api/v1/registro/movimenti/:id/annullamento — annulla con una nuova annotazione
+ *   GET  /api/v1/registro/verifica-catena — integrita del registro di un anno (amministratori)
  */
 @Module({
   imports: [PrismaModule, LoggerModule, AuthModule, RuoloEffettivoModule],
   controllers: [RegistroController],
   providers: [
     RegistraMovimentoUseCase,
+    CorreggiMovimentoUseCase,
     ListMovimentiHandler,
     ProgressivoInizialeService,
     GiacenzeInizialiService,
     RegistriService,
+    VerificaCatenaRegistroService,
   ],
-  exports: [RegistraMovimentoUseCase, ListMovimentiHandler, RegistriService],
+  exports: [
+    RegistraMovimentoUseCase,
+    CorreggiMovimentoUseCase,
+    ListMovimentiHandler,
+    RegistriService,
+  ],
 })
 export class RegistroModule {}

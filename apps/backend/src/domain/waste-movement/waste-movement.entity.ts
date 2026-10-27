@@ -1,4 +1,5 @@
 import { createHash } from 'crypto'
+import { Prisma } from '@prisma/client'
 import { giornoItaliano } from '../../core/time/anno-italiano'
 
 /**
@@ -55,6 +56,9 @@ function giorniItalianiFra(da: Date, a: Date): number {
   return (giornoUtc(a) - giornoUtc(da)) / 86_400_000
 }
 
+/** Tipo di annotazione del registro (come l'enum Prisma `TipoAnnotazioneMovimento`). */
+export type TipoAnnotazione = 'ORDINARIA' | 'RETTIFICA' | 'ANNULLAMENTO'
+
 export interface WasteMovementProps {
   id?: string
   tenantId: string
@@ -78,7 +82,61 @@ export interface WasteMovementProps {
   firId?: string
   recordedByUserId?: string
   entryHash: string
+  /**
+   * Hash dell'annotazione precedente dello stesso registro e anno ('' se e' la prima).
+   * Obbligatorio in `WasteMovement.create` (hash v2 concatenato, R8); opzionale qui perche' le
+   * entita' ricostituite dal database non lo usano.
+   */
+  hashPrecedente?: string
   notes?: string
+  /** Tipo di annotazione per l'hash v2 (default ORDINARIA); le correzioni passano il proprio. */
+  tipoAnnotazione?: TipoAnnotazione
+  /** Predecessore corretto (solo correzioni): entra nell'hash v2. */
+  movimentoRettificatoId?: string
+}
+
+/** Versione dell'hash salvata sulle nuove registrazioni (colonna hash_versione). */
+export const HASH_VERSIONE_CORRENTE = 2
+
+/** Campi che entrano nell'hash v2 di un'annotazione (R8). */
+export interface DatiHashAnnotazioneV2 {
+  hashPrecedente: string
+  registroId: string
+  anno: number
+  numero: number
+  tipoAnnotazione: string
+  movimentoRettificatoId?: string | null
+  type: string
+  cerCode: string
+  quantita: number | string | Prisma.Decimal
+  unit: string
+  movementDate: Date
+  causale: string
+}
+
+/**
+ * Hash v2 concatenato di un'annotazione (R8): include l'hash dell'annotazione precedente,
+ * il registro, il tipo di annotazione e il riferimento alla riga corretta. La quantita' e'
+ * normalizzata a due decimali (la colonna e' Decimal(10,2)) cosi' il ricalcolo dopo la
+ * rilettura dal database coincide; la data e' l'ISO (millisecondi compresi).
+ */
+export function hashAnnotazioneV2(d: DatiHashAnnotazioneV2): string {
+  const payload = [
+    'v2',
+    d.hashPrecedente,
+    d.registroId,
+    d.anno,
+    d.numero,
+    d.tipoAnnotazione,
+    d.movimentoRettificatoId ?? '',
+    d.type,
+    d.cerCode,
+    new Prisma.Decimal(d.quantita).toFixed(2),
+    d.unit,
+    d.movementDate.toISOString(),
+    d.causale,
+  ].join('|')
+  return createHash('sha256').update(payload).digest('hex')
 }
 
 /**
@@ -95,7 +153,9 @@ export interface WasteMovementProps {
 export class WasteMovement {
   private constructor(private readonly props: WasteMovementProps) {}
 
-  static create(props: Omit<WasteMovementProps, 'entryHash'>): WasteMovement {
+  static create(
+    props: Omit<WasteMovementProps, 'entryHash' | 'hashPrecedente'> & { hashPrecedente: string }
+  ): WasteMovement {
     // Validazioni di dominio
     if (props.quantity <= 0) {
       throw new Error('La quantità deve essere maggiore di zero')
@@ -132,7 +192,22 @@ export class WasteMovement {
       }
     }
 
-    const entryHash = WasteMovement.computeHash(props)
+    // Ogni nuova registrazione e' v2 (HASH_VERSIONE_CORRENTE, che la persistenza salva): la v1
+    // resta solo in `computeHash`, per verificare le righe storiche.
+    const entryHash = hashAnnotazioneV2({
+      hashPrecedente: props.hashPrecedente,
+      registroId: props.registroId,
+      anno: props.progressiveYear,
+      numero: props.progressiveNumber,
+      tipoAnnotazione: props.tipoAnnotazione ?? 'ORDINARIA',
+      movimentoRettificatoId: props.movimentoRettificatoId,
+      type: props.type,
+      cerCode: props.cerCode,
+      quantita: props.quantity,
+      unit: props.unit,
+      movementDate: props.movementDate,
+      causale: props.causale,
+    })
 
     return new WasteMovement({ ...props, registrationDate: regDate, entryHash })
   }

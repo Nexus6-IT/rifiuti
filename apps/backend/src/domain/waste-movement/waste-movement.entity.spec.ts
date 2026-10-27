@@ -1,4 +1,7 @@
+import { createHash } from 'crypto'
+import { Prisma } from '@prisma/client'
 import {
+  hashAnnotazioneV2,
   WasteMovement,
   CAUSALI_CARICO,
   CAUSALI_SCARICO,
@@ -23,6 +26,7 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
       cerCode: '20 03 01',
       quantity: 100,
       unit: 'KG',
+      hashPrecedente: '',
       ...overrides,
     }
   }
@@ -129,6 +133,66 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     expect(m1.entryHash).not.toBe(m2.entryHash)
   })
 
+  // ─── Hash v2 concatenato (R8) ────────────────────────────────────────────────
+
+  describe('hash v2', () => {
+    const dati = {
+      hashPrecedente: '',
+      registroId: REGISTRO,
+      anno: 2026,
+      numero: 1,
+      tipoAnnotazione: 'ORDINARIA',
+      type: 'CARICO',
+      cerCode: '20 03 01',
+      quantita: 100,
+      unit: 'KG',
+      movementDate: TODAY,
+      causale: 'PRODUZIONE_INTERNA',
+    }
+
+    it('segue la formula del piano, con quantita a due decimali e data ISO', () => {
+      const atteso = createHash('sha256')
+        .update(
+          `v2||${REGISTRO}|2026|1|ORDINARIA||CARICO|20 03 01|100.00|KG|2026-06-29T10:00:00.000Z|PRODUZIONE_INTERNA`
+        )
+        .digest('hex')
+      expect(hashAnnotazioneV2(dati)).toBe(atteso)
+    })
+
+    it('accetta number, stringa e Decimal con lo stesso risultato', () => {
+      const h = hashAnnotazioneV2({ ...dati, quantita: 12.5 })
+      expect(hashAnnotazioneV2({ ...dati, quantita: '12.50' })).toBe(h)
+      expect(hashAnnotazioneV2({ ...dati, quantita: new Prisma.Decimal('12.5') })).toBe(h)
+    })
+
+    it('cambia con registro, hash precedente, numero, tipo annotazione e riferimento', () => {
+      const base = hashAnnotazioneV2(dati)
+      const varianti = [
+        { registroId: 'altro' },
+        { hashPrecedente: 'abc' },
+        { numero: 2 },
+        { tipoAnnotazione: 'RETTIFICA' },
+        { movimentoRettificatoId: 'xyz' },
+      ]
+      const hash = varianti.map(v => hashAnnotazioneV2({ ...dati, ...v }))
+      expect(hash).not.toContain(base)
+      expect(new Set(hash).size).toBe(varianti.length)
+    })
+
+    it('la registrazione calcola sempre la v2 concatenata; la v1 resta solo in computeHash', () => {
+      const v2 = WasteMovement.create(buildProps({ hashPrecedente: 'prec' }))
+      expect(v2.entryHash).toBe(
+        hashAnnotazioneV2({ ...dati, hashPrecedente: 'prec', quantita: 100 })
+      )
+      const primo = WasteMovement.create(buildProps())
+      expect(primo.entryHash).toBe(
+        hashAnnotazioneV2({ ...dati, hashPrecedente: '', quantita: 100 })
+      )
+      expect(primo.entryHash).not.toBe(WasteMovement.computeHash(buildProps()))
+      expect(primo.entryHash).not.toBe(v2.entryHash)
+    })
+  })
+
   // ─── Ritardo registrazione ───────────────────────────────────────────────────
 
   it('ritardoRegistrazioneGg = 0 quando registrato nei termini', () => {
@@ -188,5 +252,46 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     })
     expect(m.quantity).toBe(0)
     expect(m.progressiveNumber).toBe(99)
+  })
+
+  describe('hash di una correzione', () => {
+    const props = {
+      tenantId: 't',
+      registroId: 'r',
+      progressiveNumber: 3,
+      progressiveYear: 2026,
+      type: 'CARICO' as const,
+      movementDate: new Date('2026-03-01T00:00:00Z'),
+      registrationDate: new Date('2026-03-02T00:00:00Z'),
+      causale: 'PRODUZIONE_INTERNA' as const,
+      cerCode: '20 03 01',
+      quantity: 10,
+      unit: 'KG',
+      hashPrecedente: 'prec',
+    }
+    it('con tipo e predecessore l hash coincide con hashAnnotazioneV2 e differisce dall ordinaria', () => {
+      const corr = WasteMovement.create({
+        ...props,
+        tipoAnnotazione: 'RETTIFICA',
+        movimentoRettificatoId: 'x',
+      })
+      expect(corr.entryHash).toBe(
+        hashAnnotazioneV2({
+          hashPrecedente: 'prec',
+          registroId: 'r',
+          anno: 2026,
+          numero: 3,
+          tipoAnnotazione: 'RETTIFICA',
+          movimentoRettificatoId: 'x',
+          type: 'CARICO',
+          cerCode: '20 03 01',
+          quantita: 10,
+          unit: 'KG',
+          movementDate: props.movementDate,
+          causale: 'PRODUZIONE_INTERNA',
+        })
+      )
+      expect(corr.entryHash).not.toBe(WasteMovement.create(props).entryHash)
+    })
   })
 })

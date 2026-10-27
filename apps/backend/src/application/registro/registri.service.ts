@@ -268,6 +268,26 @@ export class RegistriService {
   }
 
   /**
+   * `risolvi` per una lettura fuori da una transazione (es. la verifica della catena), nel
+   * contesto del tenant. Nessuna scrittura, nessun lock. Con un `registroId` esplicito accetta
+   * anche un registro DISATTIVATO dell'azienda (la verifica d'integrita' riguarda lo storico);
+   * di un'altra azienda e' RegistroNonTrovatoError. Senza, vale la risoluzione di `risolvi`.
+   */
+  async risolviInLettura(tenantId: string, registroId?: string): Promise<RegistroVista> {
+    return this.nelContesto(tenantId, () =>
+      this.prisma.$transaction(async tx => {
+        if (!registroId) return this.risolvi(tx, tenantId)
+        const r = await tx.registroRifiuti.findFirst({
+          where: { id: registroId, tenantId },
+          include: INCLUDE_SEDE,
+        })
+        if (!r) throw new RegistroNonTrovatoError()
+        return comeVista(r)
+      })
+    )
+  }
+
+  /**
    * D10 (solo FIR emessi dall'azienda). Movimento con `firId`: il registro della sede principale;
    * `registroId` diverso → errore. Senza principale e con più registri accetta il `registroId` indicato.
    */

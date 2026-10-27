@@ -39,6 +39,12 @@ export interface RegistroVista {
   principale: boolean
 }
 
+export interface RiferimentoAnnotazione {
+  progressiveNumber: number
+  progressiveYear: number
+  tipoAnnotazione: 'ORDINARIA' | 'RETTIFICA' | 'ANNULLAMENTO'
+}
+
 export interface Movimento {
   id: string
   registroId?: string
@@ -63,6 +69,15 @@ export interface Movimento {
   entryHash: string
   notes?: string
   createdAt: string
+  /** Solo nell'elenco (Fase 2 pezzo 3): rettifica e annullamento sono annotazioni collegate. */
+  tipoAnnotazione?: 'ORDINARIA' | 'RETTIFICA' | 'ANNULLAMENTO'
+  motivoAnnotazione?: string
+  /** Annotazione che questa corregge (numero e anno del registro). */
+  rettificaDi?: RiferimentoAnnotazione
+  /** Annotazione che corregge questa. */
+  correttoDa?: RiferimentoAnnotazione
+  /** VIGENTE conta nei calcoli; RETTIFICATO e ANNULLATO no. */
+  stato?: 'VIGENTE' | 'RETTIFICATO' | 'ANNULLATO'
   fuoriTermine?: boolean
   ritardoGg?: number
   /** Solo nella risposta di `registra`: il FIR era già ricopiato, nessun nuovo movimento. */
@@ -96,6 +111,47 @@ export interface RegistraMovimentoRequest {
   counterpartAddress?: string
   firId?: string
   notes?: string
+}
+
+/** Corpo della rettifica: dati completi nuovi; tipo, registro, FIR e data di registrazione non si inviano. */
+export interface RettificaMovimentoRequest {
+  movementDate: string
+  causale: CausaleMovimento
+  cerCode: string
+  wasteDescription?: string
+  quantity: number
+  unit?: string
+  wastePhysicalState?: string
+  wasteHazardClasses?: string
+  operationCode?: string
+  counterpartName?: string
+  counterpartAddress?: string
+  notes?: string
+  motivo: string
+  /** Solo dopo la conferma esplicita di chi sa che il MUD di un anno toccato è già presentato. */
+  confermaAnnoPresentato?: boolean
+}
+
+export interface AnnullamentoMovimentoRequest {
+  motivo: string
+  confermaAnnoPresentato?: boolean
+}
+
+/** Risposta di rettifica e annullamento: l'annotazione nuova e gli avvisi non bloccanti. */
+export interface EsitoCorrezioneMovimento {
+  movimento: Movimento
+  avvisi: string[]
+}
+
+export interface EsitoVerificaCatena {
+  registroId: string
+  anno: number
+  verificate: number
+  nonVerificabili: { numero: number; motivo: 'HASH_ASSENTE' }[]
+  primoErrore: {
+    numero: number
+    motivo: 'HASH_DIVERSO' | 'VERSIONE_SCONOSCIUTA' | 'BUCO'
+  } | null
 }
 
 export interface ListMovimentiParams {
@@ -138,6 +194,29 @@ export class RegistroService {
   /** Registra un nuovo movimento di carico o scarico. */
   registra(dto: RegistraMovimentoRequest): Observable<Movimento> {
     return this.http.post<Movimento>(this.API_URL, dto)
+  }
+
+  /** Rettifica un movimento vigente: scrive un'annotazione nuova, mai un UPDATE. */
+  rettifica(id: string, dto: RettificaMovimentoRequest): Observable<EsitoCorrezioneMovimento> {
+    return this.http.post<EsitoCorrezioneMovimento>(
+      `${this.API_URL}/movimenti/${encodeURIComponent(id)}/rettifica`,
+      dto
+    )
+  }
+
+  /** Annulla un movimento vigente con un'annotazione di annullamento. */
+  annulla(id: string, dto: AnnullamentoMovimentoRequest): Observable<EsitoCorrezioneMovimento> {
+    return this.http.post<EsitoCorrezioneMovimento>(
+      `${this.API_URL}/movimenti/${encodeURIComponent(id)}/annullamento`,
+      dto
+    )
+  }
+
+  /** Verifica l'integrità del registro di un anno (solo amministratori). */
+  verificaCatena(anno: number, registroId?: string): Observable<EsitoVerificaCatena> {
+    return this.http.get<EsitoVerificaCatena>(`${this.API_URL}/verifica-catena`, {
+      params: this.paramsRegistro(registroId).set('anno', String(anno)),
+    })
   }
 
   /** Elenco dei registri dell'azienda (sola lettura). */

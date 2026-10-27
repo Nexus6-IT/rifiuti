@@ -8,6 +8,7 @@ import { annoSolareItaliano } from '../../../core/time/anno-italiano'
 import { Prisma } from '@prisma/client'
 import { FirGiaRegistratoError } from '../../../core/domain/errors'
 import { RegistriService, RegistroNonCoerenteConFirError } from '../registri.service'
+import { hashAnnotazioneV2 } from '../../../domain/waste-movement/waste-movement.entity'
 
 const REGISTRO = 'registro-uuid-001'
 const registroVista = {
@@ -172,6 +173,7 @@ describe('RegistraMovimentoUseCase', () => {
       wasteMovement: {
         create: jest.fn().mockResolvedValue(record),
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     }
     prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => fn(tx))
@@ -402,6 +404,42 @@ describe('RegistraMovimentoUseCase', () => {
     await useCase.execute(cmd)
 
     expect(capturedData.entryHash).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('salva l hash v2 concatenato all hash dell ultima annotazione e hash_versione 2', async () => {
+    let capturedData: any
+    prisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        $queryRaw: jest.fn().mockResolvedValue([{ max_num: 7, entry_hash: 'hash-della-settima' }]),
+        registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
+        wasteMovement: {
+          create: jest.fn().mockImplementation(async (args: any) => {
+            capturedData = args.data
+            return { ...args.data, id: 'id-004', createdAt: TODAY, updatedAt: TODAY }
+          }),
+        },
+      }
+      return fn(tx)
+    })
+    await useCase.execute(buildCommand())
+    expect(capturedData.progressiveNumber).toBe(8)
+    expect(capturedData.hashVersione).toBe(2)
+    expect(capturedData.entryHash).toBe(
+      hashAnnotazioneV2({
+        hashPrecedente: 'hash-della-settima',
+        registroId: capturedData.registroId,
+        anno: capturedData.progressiveYear,
+        numero: 8,
+        tipoAnnotazione: 'ORDINARIA',
+        type: capturedData.type,
+        cerCode: capturedData.cerCode,
+        quantita: capturedData.quantity,
+        unit: capturedData.unit,
+        movementDate: capturedData.movementDate,
+        causale: capturedData.causale,
+      })
+    )
   })
 
   // ─── Giacenza (dentro la transaction, sotto lock) ───────────────────────────
@@ -995,6 +1033,10 @@ describe('RegistraMovimentoUseCase', () => {
     ])
     const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001', quantity: 90 }))
     expect(r.error).toBe(new FirGiaRegistratoError(7, 2026).message)
+    // solo le registrazioni ordinarie contano come ricopia: le correzioni copiano firId
+    expect((tx.wasteMovement.findMany.mock.calls[0][0] as any).where).toMatchObject({
+      tipoAnnotazione: 'ORDINARIA',
+    })
     expect(tx.wasteMovement.create).not.toHaveBeenCalled()
   })
 
@@ -1111,7 +1153,8 @@ describe('RegistraMovimentoUseCase', () => {
     )
     const findFirst = jest
       .spyOn(prisma.wasteMovement, 'findFirst')
-      .mockResolvedValue({ progressiveNumber: 9, progressiveYear: 2026 })
+      .mockResolvedValueOnce({ id: 'orig', progressiveNumber: 9, progressiveYear: 2026 })
+      .mockResolvedValueOnce(null)
     const r = await useCase.execute(scaricoCmd({ firId: 'fir-id-001' }))
     expect(r.error).toBe(new FirGiaRegistratoError(9, 2026).message)
     expect((findFirst.mock.calls[0][0] as any).where).toMatchObject({
@@ -1119,6 +1162,7 @@ describe('RegistraMovimentoUseCase', () => {
       firIdRicopia: 'fir-id-001',
       type: 'SCARICO',
       ricopiaChiave: '',
+      tipoAnnotazione: 'ORDINARIA',
     })
   })
 
@@ -1133,7 +1177,13 @@ describe('RegistraMovimentoUseCase', () => {
     )
     jest
       .spyOn(prisma.wasteMovement, 'findFirst')
-      .mockResolvedValue({ progressiveNumber: 9, progressiveYear: 2026, registroId: 'reg-b' })
+      .mockResolvedValueOnce({
+        id: 'orig',
+        progressiveNumber: 9,
+        progressiveYear: 2026,
+        registroId: 'reg-b',
+      })
+      .mockResolvedValueOnce(null)
     prisma.registroRifiuti = {
       findMany: jest.fn().mockResolvedValue([
         { id: 'reg-a', descrizione: 'Registro A', unitaLocale: null },

@@ -19,6 +19,7 @@ import {
   HttpStatus,
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
@@ -31,7 +32,24 @@ import { RegistraMovimentoDto, ListMovimentiDto } from './dtos/registra-moviment
 import { ImpostaProgressivoInizialeDto } from './dtos/progressivo-iniziale.dto'
 import { CreaGiacenzaInizialeDto, ModificaGiacenzaInizialeDto } from './dtos/giacenza-iniziale.dto'
 import { RegistroIdQueryDto } from './dtos/registro-id-query.dto'
-import { RegistriService, RegistroVista } from '../../application/registro/registri.service'
+import {
+  AnnullaMovimentoDto,
+  RettificaMovimentoDto,
+  VerificaCatenaQueryDto,
+} from './dtos/correggi-movimento.dto'
+import {
+  CorreggiMovimentoUseCase,
+  EsitoCorrezione,
+} from '../../application/registro/use-cases/correggi-movimento.use-case'
+import {
+  EsitoVerificaCatena,
+  VerificaCatenaRegistroService,
+} from '../../application/registro/verifica-catena-registro.service'
+import {
+  RegistriService,
+  RegistroNonTrovatoError,
+  RegistroVista,
+} from '../../application/registro/registri.service'
 import { DomainError } from '../../core/domain/errors'
 import {
   ProgressivoInizialeService,
@@ -44,6 +62,7 @@ import {
   ElencoGiacenzeIniziali,
 } from '../../application/registro/giacenze-iniziali.service'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { annoSolareItaliano } from '../../core/time/anno-italiano'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 
 /**
@@ -65,7 +84,9 @@ export class RegistroController {
     private readonly progressivoIniziale: ProgressivoInizialeService,
     private readonly membership: RuoloEffettivoService,
     private readonly registri: RegistriService,
-    private readonly giacenzeIniziali: GiacenzeInizialiService
+    private readonly giacenzeIniziali: GiacenzeInizialiService,
+    private readonly correggiMovimento: CorreggiMovimentoUseCase,
+    private readonly verificaCatena: VerificaCatenaRegistroService
   ) {}
 
   /**
@@ -157,7 +178,13 @@ export class RegistroController {
       'Registro cronologico paginato con filtri per tipo, CER, causale, periodo e FIR. ' +
       'Ordinato per data operazione decrescente.',
   })
-  @ApiResponse({ status: 200, description: 'Lista movimenti paginata' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Lista movimenti paginata. Ogni riga porta anche tipoAnnotazione (ORDINARIA, RETTIFICA, ANNULLAMENTO), ' +
+      'motivoAnnotazione, rettificaDi e correttoDa ({ progressiveNumber, progressiveYear, tipoAnnotazione } ' +
+      'se esistono) e stato (VIGENTE, RETTIFICATO, ANNULLATO).',
+  })
   async lista(@Query() dto: ListMovimentiDto, @Req() req: any) {
     // Aperta a ogni ruolo con accesso all'azienda selezionata (l'accesso lo verifica il
     // TenantSwitchInterceptor); si legge il registro dell'azienda selezionata.
@@ -182,6 +209,140 @@ export class RegistroController {
     }
 
     return result.value
+  }
+
+  /**
+   * Rettifica un'annotazione: ne scrive una NUOVA (mai un UPDATE) con i dati completi nuovi,
+   * collegata alla corretta. Si rettifica solo la testa vigente della catena. Tipo, registro, FIR
+   * e data di registrazione non si inviano: restano quelli dell'annotazione corretta.
+   */
+  @Post('movimenti/:id/rettifica')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Rettifica un movimento del registro con una nuova annotazione',
+    description:
+      'Sostituzione completa dei dati: il corpo porta tutti i campi di una registrazione tranne ' +
+      'type, registroId, firId e registrationDate. Il movimento corretto resta nel registro, ' +
+      'segnato come rettificato. Se la correzione tocca anni con MUD già presentato serve ' +
+      'confermaAnnoPresentato=true.',
+  })
+  @ApiResponse({ status: 201, description: '{ movimento, avvisi[] }' })
+  @ApiResponse({ status: 400, description: 'Dati non validi o motivo non valido' })
+  @ApiResponse({
+    status: 403,
+    description: "Ruolo di sola consultazione nell'azienda selezionata",
+  })
+  @ApiResponse({ status: 404, description: 'Movimento non trovato' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Movimento già corretto (non è la testa vigente), giacenza che diventerebbe negativa, oppure MUD già presentato ' +
+      '(error=REGISTRO_ANNO_MUD_PRESENTATO) senza conferma',
+  })
+  async rettifica(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RettificaMovimentoDto,
+    @Req() req: any
+  ): Promise<EsitoCorrezione> {
+    const tenantId = requireRequestTenantId(req)
+    await this.richiediRuoloRegistrazione(req, tenantId)
+    const { motivo, confermaAnnoPresentato, movementDate, unit, ...resto } = dto
+    return this.correggiMovimento.rettifica({
+      tenantId,
+      userId: req.user.id,
+      movimentoId: id,
+      motivo,
+      confermaAnnoPresentato,
+      dati: { ...resto, movementDate: new Date(movementDate), unit: unit ?? 'KG' },
+    })
+  }
+
+  /** Annulla un'annotazione con una nuova annotazione di ANNULLAMENTO (copia dei dati, mai DELETE). */
+  @Post('movimenti/:id/annullamento')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Annulla un movimento del registro con una nuova annotazione',
+    description:
+      "Scrive un'annotazione di ANNULLAMENTO che copia i dati dell'originale e ne toglie gli " +
+      'effetti sulla giacenza. Il movimento resta nel registro, segnato come annullato.',
+  })
+  @ApiResponse({ status: 201, description: '{ movimento, avvisi[] }' })
+  @ApiResponse({
+    status: 400,
+    description: 'Motivo non valido',
+  })
+  @ApiResponse({
+    status: 403,
+    description: "Ruolo di sola consultazione nell'azienda selezionata",
+  })
+  @ApiResponse({ status: 404, description: 'Movimento non trovato' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Movimento già corretto, giacenza che diventerebbe negativa, oppure MUD già presentato (error=REGISTRO_ANNO_MUD_PRESENTATO) senza conferma',
+  })
+  async annulla(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AnnullaMovimentoDto,
+    @Req() req: any
+  ): Promise<EsitoCorrezione> {
+    const tenantId = requireRequestTenantId(req)
+    await this.richiediRuoloRegistrazione(req, tenantId)
+    return this.correggiMovimento.annulla({
+      tenantId,
+      userId: req.user.id,
+      movimentoId: id,
+      motivo: dto.motivo,
+      confermaAnnoPresentato: dto.confermaAnnoPresentato,
+    })
+  }
+
+  /**
+   * Verifica dell'integrità del registro di un anno (hash e numerazione). Riservata a chi
+   * amministra l'azienda, come il progressivo iniziale. Sola lettura.
+   */
+  @Get('verifica-catena')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Verifica l'integrità del registro di un anno",
+    description:
+      'Ricalcola gli hash delle annotazioni e controlla che non manchino numeri. Si ferma al ' +
+      'primo problema (primoErrore); le righe senza hash (storico) sono elencate a parte.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '{ registroId, anno, verificate, nonVerificabili[], primoErrore }',
+  })
+  @ApiResponse({ status: 400, description: 'Anno non valido o registro da indicare' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  @ApiResponse({ status: 404, description: 'registroId indicato inesistente' })
+  async verificaCatenaRegistro(
+    @Query() query: VerificaCatenaQueryDto,
+    @Req() req: any
+  ): Promise<EsitoVerificaCatena & { registroId: string; anno: number }> {
+    const tenantId = requireRequestTenantId(req)
+    if (!(await this.haRuolo(req, tenantId, RUOLI_PROGRESSIVO_INIZIALE))) {
+      throw new ForbiddenException({
+        message: "Solo un amministratore dell'azienda può verificare l'integrità del registro.",
+        error: 'REGISTRO_VERIFICA_RISERVATA_AMMINISTRATORI',
+      })
+    }
+    const annoMassimo = annoSolareItaliano(new Date()) + 1
+    if (query.anno > annoMassimo) {
+      throw new BadRequestException(`L'anno non può essere successivo al ${annoMassimo}.`)
+    }
+    let registro: RegistroVista
+    try {
+      registro = await this.registri.risolviInLettura(tenantId, query.registroId)
+    } catch (err) {
+      if (err instanceof RegistroNonTrovatoError && query.registroId) {
+        throw new NotFoundException(err.message)
+      }
+      if (err instanceof DomainError) throw new BadRequestException(err.message)
+      throw err
+    }
+    const esito = await this.verificaCatena.verifica(tenantId, registro.id, query.anno)
+    return { registroId: registro.id, anno: query.anno, ...esito }
   }
 
   /**
@@ -373,6 +534,15 @@ export class RegistroController {
     const tenantId = requireRequestTenantId(req)
     await this.richiediAmministratoreGiacenze(req, tenantId)
     await this.giacenzeIniziali.elimina(tenantId, req.user.id, id)
+  }
+
+  /** R11: rettifica e annullamento spettano ai ruoli effettivi che possono registrare. */
+  private async richiediRuoloRegistrazione(req: any, tenantId: string): Promise<void> {
+    if (await this.haRuolo(req, tenantId, RUOLI_REGISTRAZIONE)) return
+    throw new ForbiddenException({
+      message: "Solo un amministratore o un operatore dell'azienda può correggere il registro.",
+      error: 'REGISTRO_RISERVATO_OPERATORI',
+    })
   }
 
   /** G9: la scrittura delle giacenze iniziali spetta all'amministratore EFFETTIVO dell'azienda selezionata. */

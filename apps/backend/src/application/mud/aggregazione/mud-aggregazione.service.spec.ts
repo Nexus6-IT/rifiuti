@@ -1,4 +1,5 @@
 import { MudAggregazioneService } from './mud-aggregazione.service'
+import { WHERE_VIGENTE } from '../../../domain/waste-movement/vigenza'
 import { hashAggregato, limitiAnnoMud } from './mud-regole'
 import { controlliMud, haBloccanti, type MudEsitoControllo } from './mud-controlli'
 
@@ -125,6 +126,7 @@ describe('MudAggregazioneService', () => {
             gte: new Date('2024-12-31T23:00:00.000Z'),
             lt: new Date('2025-12-31T23:00:00.000Z'),
           },
+          ...WHERE_VIGENTE,
         },
       })
     )
@@ -1225,7 +1227,7 @@ describe('MudAggregazioneService', () => {
     const r = await service.aggrega('t1', 2025)
 
     expect(prisma.wasteMovement.findMany).toHaveBeenCalledWith({
-      where: { tenantId: 't1', type: 'SCARICO', firId: { in: ['f1', 'f2'] } },
+      where: { tenantId: 't1', type: 'SCARICO', firId: { in: ['f1', 'f2'] }, ...WHERE_VIGENTE },
       select: { firId: true },
     })
     expect(r.controlli).toContainEqual(
@@ -1785,6 +1787,7 @@ describe('MudAggregazioneService', () => {
         tenantId: 't1',
         firId: { in: ['f1', 'f2'] },
         movementDate: { lt: new Date('2025-12-31T23:00:00.000Z') },
+        ...WHERE_VIGENTE,
       },
       select: chiamate[0].select,
       // stessa data e stesso numero in anni diversi: senza l'anno l'"originale" citato

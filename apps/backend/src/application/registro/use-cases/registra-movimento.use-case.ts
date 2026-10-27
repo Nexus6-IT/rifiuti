@@ -7,12 +7,11 @@ import {
   DomainError,
   FirGiaRegistratoError,
   FirGiaRegistratoInAltroRegistroError,
+  INDICAZIONE_FIR_ANNULLATO,
 } from '../../../core/domain/errors'
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import {
   WasteMovement,
-  CAUSALI_CARICO,
-  CAUSALI_SCARICO,
   CausaleMovimento,
   TERMINE_REGISTRAZIONE_PRODUTTORE_GG,
 } from '../../../domain/waste-movement/waste-movement.entity'
@@ -28,7 +27,12 @@ import {
   simboloUnita,
 } from '../../../domain/waste-movement/unita-misura-registro'
 import { giacenzaDisponibileAl } from '../giacenza-disponibile'
-import { cerCodeExists, normalizzaCerCode } from '../cer-catalogo'
+import { validaDatiMovimento } from '../valida-dati-movimento'
+import {
+  bloccaProgressivo,
+  inserisciAnnotazione,
+  numeraAnnotazione,
+} from '../numerazione-annotazione'
 import { chiaveLockGiacenza } from '../chiave-lock-giacenza'
 import { stessiDatiRicopia } from '../ricopia-fir'
 import { RegistriService, RegistroVista } from '../registri.service'
@@ -84,6 +88,39 @@ export interface MovimentoRegistrato {
   giaRegistrato: boolean
 }
 
+/** Vista di un'annotazione salvata (condivisa con le correzioni). */
+export function movimentoDaRecord(
+  record: WasteMovementRecord,
+  ritardoGg: number
+): Omit<MovimentoRegistrato, 'avvisi' | 'giaRegistrato'> {
+  return {
+    id: record.id,
+    tenantId: record.tenantId,
+    registroId: record.registroId,
+    progressiveNumber: record.progressiveNumber,
+    progressiveYear: record.progressiveYear,
+    type: record.type,
+    movementDate: record.movementDate,
+    registrationDate: record.registrationDate,
+    causale: record.causale,
+    cerCode: record.cerCode,
+    wasteDescription: record.wasteDescription ?? undefined,
+    quantity: Number(record.quantity),
+    unit: record.unit,
+    wastePhysicalState: record.wastePhysicalState ?? undefined,
+    wasteHazardClasses: record.wasteHazardClasses ?? undefined,
+    operationCode: record.operationCode ?? undefined,
+    counterpartName: record.counterpartName ?? undefined,
+    counterpartAddress: record.counterpartAddress ?? undefined,
+    firId: record.firId ?? undefined,
+    recordedByUserId: record.recordedByUserId ?? undefined,
+    entryHash: record.entryHash,
+    notes: record.notes ?? undefined,
+    fuoriTermine: ritardoGg > 0,
+    ritardoGg,
+  }
+}
+
 /**
  * Use case per la registrazione di un movimento nel registro cronologico
  * di carico/scarico. Art. 190 D.Lgs 152/2006, DM 59/2023.
@@ -113,48 +150,11 @@ export class RegistraMovimentoUseCase {
   }
 
   async execute(command: RegistraMovimentoCommand): Promise<Result<MovimentoRegistrato>> {
-    // 0. Validazione causale anticipata (prima di qualunque operazione DB)
-    if (command.type === 'CARICO') {
-      if (!CAUSALI_CARICO.includes(command.causale as (typeof CAUSALI_CARICO)[number])) {
-        return Result.fail(
-          `Causale non valida per CARICO: ${command.causale}. Valori: ${CAUSALI_CARICO.join(', ')}`
-        )
-      }
-    } else {
-      if (!CAUSALI_SCARICO.includes(command.causale as (typeof CAUSALI_SCARICO)[number])) {
-        return Result.fail(
-          `Causale non valida per SCARICO: ${command.causale}. Valori: ${CAUSALI_SCARICO.join(', ')}`
-        )
-      }
-    }
-
-    // 0b. Validazione codice CER contro il catalogo ufficiale.
-    // Normalizza al formato canonico "NN NN NN" (con "*" per i pericolosi) e
-    // verifica che esista in catalogo: un CER inesistente non è registrabile.
-    const cerCode = normalizzaCerCode(command.cerCode)
-    const cerEsiste = await cerCodeExists(this.prisma, cerCode)
-    if (!cerEsiste) {
-      return Result.fail(`Codice CER non valido: ${command.cerCode}`)
-    }
-
-    // 0c. Le date di operazione/registrazione non possono essere nel futuro.
-    // Il confronto è fra giorni del calendario italiano: il frontend manda date senza ora
-    // (AAAA-MM-GG), che il backend legge come mezzanotte UTC, cioè l'01:00 o le 02:00
-    // italiane. Confrontando gli istanti, la data di oggi fra le 00:00 e quell'ora
-    // risulterebbe nel futuro.
-    const oggi = giornoItaliano(new Date())
-    if (giornoItaliano(command.movementDate) > oggi) {
-      return Result.fail(
-        `La data dell'operazione non può essere nel futuro: ` +
-          `${formattaDataItaliana(command.movementDate)}`
-      )
-    }
-    if (giornoItaliano(command.registrationDate) > oggi) {
-      return Result.fail(
-        `La data di registrazione non può essere nel futuro: ` +
-          `${formattaDataItaliana(command.registrationDate)}`
-      )
-    }
+    // 0. Causale coerente col tipo, CER normalizzato e a catalogo, date non future
+    // (validazioni condivise con la rettifica).
+    const validazione = await validaDatiMovimento(this.prisma, command)
+    if (validazione.errore !== undefined) return Result.fail(validazione.errore)
+    const cerCode = validazione.cerCode
 
     // 0d. Se è indicato un FIR collegato, deve esistere e appartenere al tenant.
     // Evita movimenti con FK penzolante verso un formulario inesistente.
@@ -238,7 +238,7 @@ export class RegistraMovimentoUseCase {
             // Ritardo dalle date del movimento esistente, non da quelle del retry.
             return {
               ...this.movimentoDaRecord(esistente, this.ritardoGg(esistente)),
-              avvisi: [],
+              avvisi: await this.avvisiDopoRicopia(tx, command.tenantId, esistente.id),
               giaRegistrato: true,
             }
           }
@@ -246,12 +246,9 @@ export class RegistraMovimentoUseCase {
         }
         const registroMovimento = registro as RegistroVista
 
-        // Advisory lock per-registro/anno: serializza le numerazioni dello stesso
-        // registro in transazioni concorrenti senza usare FOR UPDATE su aggregati
-        // (PostgreSQL 0A000: "FOR UPDATE is not allowed with aggregate functions").
-        // pg_advisory_xact_lock è rilasciato automaticamente al commit/rollback.
-        const lockKey = `${registroMovimento.id}-${anno}`
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+        // Lock per-registro/anno: serializza le numerazioni dello stesso registro in transazioni
+        // concorrenti (vedi bloccaProgressivo).
+        await bloccaProgressivo(tx, registroMovimento.id, anno)
 
         // Controllo di giacenza per SCARICO, sotto il lock della giacenza del CER e
         // dentro la transaction: due scarichi concorrenti (anche di anni diversi, quindi
@@ -261,20 +258,12 @@ export class RegistraMovimentoUseCase {
             ? await this.verificaGiacenza(tx, command, cerCode, registroMovimento.id)
             : []
 
-        const [row] = await tx.$queryRaw<Array<{ max_num: number | null }>>`
-          SELECT MAX(progressive_number) AS max_num
-          FROM waste_movements
-          WHERE registro_id = ${registroMovimento.id}::uuid
-            AND progressive_year = ${anno}
-        `
-        // Progressivo iniziale (C-W-02): chi arriva da un altro programma a metà anno
-        // prosegue la numerazione già trasmessa. Letto sotto lo stesso lock con cui
-        // ProgressivoInizialeService lo imposta, quindi non c'è corsa fra i due.
-        const iniziale = await tx.registroProgressivoIniziale.findUnique({
-          where: { registroId_anno: { registroId: registroMovimento.id, anno } },
-          select: { primoProgressivo: true },
-        })
-        const nextProgressivo = Math.max((row.max_num ?? 0) + 1, iniziale?.primoProgressivo ?? 1)
+        // Progressivo e hash dell'annotazione precedente, letti sotto il lock del progressivo.
+        const { progressivo: nextProgressivo, hashPrecedente } = await numeraAnnotazione(
+          tx,
+          registroMovimento.id,
+          anno
+        )
 
         // 3. Costruzione entità di dominio (con validazioni)
         const entity = WasteMovement.create({
@@ -298,39 +287,38 @@ export class RegistraMovimentoUseCase {
           firId: command.firId,
           recordedByUserId: command.userId,
           notes: command.notes,
+          hashPrecedente,
         })
 
         const ritardoGg = entity.ritardoRegistrazioneGg
 
         // 4. Persistenza
-        const record = await tx.wasteMovement.create({
-          data: {
-            tenantId: entity.tenantId,
-            registroId: entity.registroId,
-            progressiveNumber: entity.progressiveNumber,
-            progressiveYear: entity.progressiveYear,
-            type: entity.type,
-            movementDate: entity.movementDate,
-            registrationDate: entity.registrationDate,
-            causale: entity.causale,
-            cerCode: entity.cerCode,
-            wasteDescription: entity.wasteDescription,
-            quantity: entity.quantity,
-            unit: entity.unit,
-            wastePhysicalState: entity.wastePhysicalState,
-            wasteHazardClasses: entity.wasteHazardClasses,
-            operationCode: entity.operationCode,
-            counterpartName: entity.counterpartName,
-            counterpartAddress: entity.counterpartAddress,
-            firId: entity.firId,
-            // Solo i movimenti registrati da qui in poi: lo storico resta NULL, e
-            // l'indice unico (tenant, fir_id_ricopia, type, ricopia_chiave) ignora i NULL.
-            firIdRicopia: command.firId,
-            ricopiaChiave: RICOPIA_ORDINARIA,
-            recordedByUserId: entity.recordedByUserId,
-            entryHash: entity.entryHash,
-            notes: entity.notes,
-          },
+        const record = await inserisciAnnotazione(tx, {
+          tenantId: entity.tenantId,
+          registroId: entity.registroId,
+          progressiveNumber: entity.progressiveNumber,
+          progressiveYear: entity.progressiveYear,
+          type: entity.type,
+          movementDate: entity.movementDate,
+          registrationDate: entity.registrationDate,
+          causale: entity.causale,
+          cerCode: entity.cerCode,
+          wasteDescription: entity.wasteDescription,
+          quantity: entity.quantity,
+          unit: entity.unit,
+          wastePhysicalState: entity.wastePhysicalState,
+          wasteHazardClasses: entity.wasteHazardClasses,
+          operationCode: entity.operationCode,
+          counterpartName: entity.counterpartName,
+          counterpartAddress: entity.counterpartAddress,
+          firId: entity.firId,
+          // Solo i movimenti registrati da qui in poi: lo storico resta NULL, e
+          // l'indice unico (tenant, fir_id_ricopia, type, ricopia_chiave) ignora i NULL.
+          firIdRicopia: command.firId,
+          ricopiaChiave: RICOPIA_ORDINARIA,
+          recordedByUserId: entity.recordedByUserId,
+          entryHash: entity.entryHash,
+          notes: entity.notes,
         })
 
         return { ...this.movimentoDaRecord(record, ritardoGg), avvisi, giaRegistrato: false }
@@ -387,7 +375,13 @@ export class RegistraMovimentoUseCase {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveFir}))`
 
     const ricopie = await tx.wasteMovement.findMany({
-      where: { tenantId, firId, type, ricopiaChiave: RICOPIA_ORDINARIA },
+      where: {
+        tenantId,
+        firId,
+        type,
+        ricopiaChiave: RICOPIA_ORDINARIA,
+        tipoAnnotazione: 'ORDINARIA',
+      },
       orderBy: { createdAt: 'asc' },
     })
     if (ricopie.length === 0) return null
@@ -399,7 +393,8 @@ export class RegistraMovimentoUseCase {
       throw new FirGiaRegistratoInAltroRegistroError(
         altroRegistro.progressiveNumber,
         altroRegistro.progressiveYear,
-        await this.denominazioneSeVariRegistri(tx, tenantId, altroRegistro.registroId)
+        await this.denominazioneSeVariRegistri(tx, tenantId, altroRegistro.registroId),
+        await this.statoDopoRicopia(tx, tenantId, altroRegistro.id)
       )
     }
 
@@ -415,10 +410,50 @@ export class RegistraMovimentoUseCase {
       throw new FirGiaRegistratoError(
         ricopie[0].progressiveNumber,
         ricopie[0].progressiveYear,
-        await this.denominazioneSeVariRegistri(tx, tenantId, ricopie[0].registroId)
+        await this.denominazioneSeVariRegistri(tx, tenantId, ricopie[0].registroId),
+        await this.statoDopoRicopia(tx, tenantId, ricopie[0].id)
       )
     }
     return stessa
+  }
+
+  /**
+   * Avviso per il retry identico di una ricopia la cui catena non e' piu' vigente: il movimento
+   * restituito come "gia registrato" non e' quello che conta (rettificato: si indica quale; annullato:
+   * il FIR non si ricopia piu).
+   */
+  private async avvisiDopoRicopia(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    id: string
+  ): Promise<string[]> {
+    const testa = await tx.wasteMovement.findFirst({
+      where: { tenantId, movimentoOriginaleId: id, correzioni: { none: {} } },
+      select: { tipoAnnotazione: true, progressiveNumber: true, progressiveYear: true },
+    })
+    if (!testa) return []
+    if (testa.tipoAnnotazione === 'ANNULLAMENTO') return [INDICAZIONE_FIR_ANNULLATO]
+    return [
+      `Questo movimento è stato poi rettificato con n. ${testa.progressiveNumber}/${testa.progressiveYear}: ` +
+        'i dati vigenti sono quelli della rettifica.',
+    ]
+  }
+
+  /**
+   * Se la ricopia ordinaria `id` non e' piu' vigente, come e' finita: la testa della sua catena
+   * dice se e' stata rettificata o annullata. Undefined se e' ancora vigente.
+   */
+  private async statoDopoRicopia(
+    tx: Prisma.TransactionClient | PrismaService,
+    tenantId: string,
+    id: string
+  ): Promise<'rettificato' | 'annullato' | undefined> {
+    const testa = await tx.wasteMovement.findFirst({
+      where: { tenantId, movimentoOriginaleId: id, correzioni: { none: {} } },
+      select: { tipoAnnotazione: true },
+    })
+    if (!testa) return undefined
+    return testa.tipoAnnotazione === 'ANNULLAMENTO' ? 'annullato' : 'rettificato'
   }
 
   /** Denominazione del registro, solo se l'azienda ne ha più di uno (altrimenti sarebbe rumore). */
@@ -453,8 +488,14 @@ export class RegistraMovimentoUseCase {
     ) {
       return null
     }
-    let esistente: { progressiveNumber: number; progressiveYear: number; registroId: string } | null
+    let esistente: {
+      id: string
+      progressiveNumber: number
+      progressiveYear: number
+      registroId: string
+    } | null
     let denominazione: string | undefined
+    let poi: 'rettificato' | 'annullato' | undefined
     try {
       esistente = await this.prisma.wasteMovement.findFirst({
         where: {
@@ -462,8 +503,9 @@ export class RegistraMovimentoUseCase {
           firIdRicopia: command.firId,
           type: command.type,
           ricopiaChiave: RICOPIA_ORDINARIA,
+          tipoAnnotazione: 'ORDINARIA',
         },
-        select: { progressiveNumber: true, progressiveYear: true, registroId: true },
+        select: { id: true, progressiveNumber: true, progressiveYear: true, registroId: true },
       })
       if (esistente) {
         denominazione = await this.denominazioneSeVariRegistri(
@@ -471,6 +513,7 @@ export class RegistraMovimentoUseCase {
           command.tenantId,
           esistente.registroId
         )
+        poi = await this.statoDopoRicopia(this.prisma, command.tenantId, esistente.id)
       }
     } catch (lettura) {
       // Siamo già nella gestione di un errore: chi chiama risponde col messaggio generico.
@@ -481,7 +524,8 @@ export class RegistraMovimentoUseCase {
     return new FirGiaRegistratoError(
       esistente.progressiveNumber,
       esistente.progressiveYear,
-      denominazione
+      denominazione,
+      poi
     ).message
   }
 
@@ -499,32 +543,7 @@ export class RegistraMovimentoUseCase {
     record: WasteMovementRecord,
     ritardoGg: number
   ): Omit<MovimentoRegistrato, 'avvisi' | 'giaRegistrato'> {
-    return {
-      id: record.id,
-      tenantId: record.tenantId,
-      registroId: record.registroId,
-      progressiveNumber: record.progressiveNumber,
-      progressiveYear: record.progressiveYear,
-      type: record.type,
-      movementDate: record.movementDate,
-      registrationDate: record.registrationDate,
-      causale: record.causale,
-      cerCode: record.cerCode,
-      wasteDescription: record.wasteDescription ?? undefined,
-      quantity: Number(record.quantity),
-      unit: record.unit,
-      wastePhysicalState: record.wastePhysicalState ?? undefined,
-      wasteHazardClasses: record.wasteHazardClasses ?? undefined,
-      operationCode: record.operationCode ?? undefined,
-      counterpartName: record.counterpartName ?? undefined,
-      counterpartAddress: record.counterpartAddress ?? undefined,
-      firId: record.firId ?? undefined,
-      recordedByUserId: record.recordedByUserId ?? undefined,
-      entryHash: record.entryHash,
-      notes: record.notes ?? undefined,
-      fuoriTermine: ritardoGg > 0,
-      ritardoGg,
-    }
+    return movimentoDaRecord(record, ritardoGg)
   }
 
   /**
