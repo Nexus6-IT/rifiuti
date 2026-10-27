@@ -7,6 +7,7 @@ import { RegistroController } from './registro.controller'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { ListMovimentiHandler } from '../../application/registro/queries/list-movimenti.handler'
 import { ProgressivoInizialeService } from '../../application/registro/progressivo-iniziale.service'
+import { GiacenzeInizialiService } from '../../application/registro/giacenze-iniziali.service'
 import { RegistriService } from '../../application/registro/registri.service'
 
 /**
@@ -28,6 +29,7 @@ import { RegistriService } from '../../application/registro/registri.service'
     RegistraMovimentoUseCase,
     ListMovimentiHandler,
     ProgressivoInizialeService,
+    GiacenzeInizialiService,
     RegistriService,
   ],
   exports: [RegistraMovimentoUseCase, ListMovimentiHandler, RegistriService],

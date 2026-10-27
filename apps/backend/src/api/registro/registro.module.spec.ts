@@ -5,6 +5,7 @@ import { RegistroController } from './registro.controller'
 import { RegistriService } from '../../application/registro/registri.service'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { ProgressivoInizialeService } from '../../application/registro/progressivo-iniziale.service'
+import { GiacenzeInizialiService } from '../../application/registro/giacenze-iniziali.service'
 
 describe('RegistroModule (DI wiring)', () => {
   it('risolve controller, use case e servizi dei registri con la DI di Nest', async () => {
@@ -16,6 +17,7 @@ describe('RegistroModule (DI wiring)', () => {
     expect(moduleRef.get(RegistriService)).toBeDefined()
     expect(moduleRef.get(RegistraMovimentoUseCase)).toBeDefined()
     expect(moduleRef.get(ProgressivoInizialeService)).toBeDefined()
+    expect(moduleRef.get(GiacenzeInizialiService)).toBeDefined()
 
     await moduleRef.close()
   })
