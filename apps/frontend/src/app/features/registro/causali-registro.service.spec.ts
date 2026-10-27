@@ -95,4 +95,32 @@ describe('CausaliRegistroService', () => {
     http.expectOne(r => r.url === url).flush({ tipo: 'CARICO', data: '', causali: [riga('A')] })
     expect(ricevute?.length).toBe(1)
   })
+
+  describe('gestione (ADMIN)', () => {
+    it('ogni scrittura usa verbo e URL giusti e invalida la cache delle opzioni', () => {
+      servizio.opzioni('CARICO', '2026-10-20').subscribe()
+      http.expectOne(r => r.url === url).flush({ tipo: 'CARICO', data: '', causali: [] })
+
+      servizio.disattivaSistema('CARICO', 'X').subscribe()
+      const put = http.expectOne(url + '/sistema/CARICO/X/disattivazione')
+      expect(put.request.method).toBe('PUT')
+      put.flush(null)
+      // cache invalidata: nuova richiesta
+      servizio.opzioni('CARICO', '2026-10-20').subscribe()
+      http.expectOne(r => r.url === url).flush({ tipo: 'CARICO', data: '', causali: [] })
+
+      servizio.riattivaSistema('SCARICO', 'Y').subscribe()
+      expect(http.expectOne(url + '/sistema/SCARICO/Y/disattivazione').request.method).toBe(
+        'DELETE'
+      )
+      servizio.modifica('id1', { codiceRentri: null }).subscribe()
+      const patch = http.expectOne(url + '/aziendali/id1')
+      expect(patch.request.method).toBe('PATCH')
+      expect(patch.request.body).toEqual({ codiceRentri: null })
+      servizio.chiudi('id1', '2026-12-31').subscribe()
+      const chiusura = http.expectOne(url + '/aziendali/id1/chiusura')
+      expect(chiusura.request.method).toBe('PUT')
+      expect(chiusura.request.body).toEqual({ validaAl: '2026-12-31' })
+    })
+  })
 })

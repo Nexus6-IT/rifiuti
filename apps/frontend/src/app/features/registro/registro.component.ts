@@ -73,6 +73,7 @@ import {
 } from './registro-fir'
 import { CerSelectComponent } from '../cer/cer-select.component'
 import { GiacenzeInizialiDialogComponent } from './giacenze-iniziali-dialog.component'
+import { CausaliRegistroDialogComponent } from './causali-registro-dialog.component'
 import {
   CorreggiMovimentoDialogComponent,
   ModoCorrezione,
@@ -126,6 +127,7 @@ interface FirOption {
     PaginatorModule,
     CerSelectComponent,
     GiacenzeInizialiDialogComponent,
+    CausaliRegistroDialogComponent,
     CorreggiMovimentoDialogComponent,
   ],
   providers: [DatePipe],
@@ -166,6 +168,15 @@ interface FirOption {
             data-testid="registro-giacenze-iniziali"
             (onClick)="apriGiacenzeIniziali()"
             ariaLabel="Apri le giacenze iniziali del registro"
+          ></p-button>
+          <p-button
+            *ngIf="offriGestioneCausali()"
+            label="Causali"
+            icon="pi pi-tags"
+            [outlined]="true"
+            data-testid="registro-causali"
+            (onClick)="apriGestioneCausali()"
+            ariaLabel="Gestisci le causali del registro"
           ></p-button>
           <p-button
             *ngIf="offriVerificaCatena()"
@@ -984,6 +995,12 @@ interface FirOption {
         [movimento]="correzioneMovimento"
         (corretto)="onCorretto()"
       ></app-correggi-movimento-dialog>
+
+      <!-- Dialog gestione causali (solo ADMIN) -------------------------------->
+      <app-causali-registro-dialog
+        *ngIf="causaliVisible"
+        [(visible)]="causaliVisible"
+      ></app-causali-registro-dialog>
 
       <!-- Dialog giacenze iniziali -------------------------------------------->
       <app-giacenze-iniziali-dialog
@@ -2051,6 +2068,14 @@ export class RegistroComponent implements OnInit {
     return !this.piuRegistri() || !!this.registroGiacenzeIniziali()
   }
   giacenzeInizialiVisible = false
+
+  /** La gestione delle causali e' per l'amministratore effettivo (lo dice il backend); il 403 si mostra. */
+  readonly offriGestioneCausali = computed(() => this.statoProgressivo()?.puoImpostare === true)
+  causaliVisible = false
+
+  apriGestioneCausali(): void {
+    this.causaliVisible = true
+  }
 
   apriGiacenzeIniziali(): void {
     this.giacenzeInizialiVisible = true
