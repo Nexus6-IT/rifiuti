@@ -395,7 +395,7 @@ describe('PermissionGuard', () => {
 
       expect(permissionCache.setPermissions).toHaveBeenCalledWith(
         CLIENTE,
-        USER_ID,
+        `assoc:${USER_ID}`,
         ['fir:write:all'],
         60
       )
@@ -461,6 +461,44 @@ describe('PermissionGuard', () => {
 
       expect(ruoloEffettivo.permessiDelRuolo).not.toHaveBeenCalled()
       expect(auditQueue.add.mock.calls[0][1].data.tenantId).toBe(TENANT_ID)
+    })
+
+    it('voce (cliente, utente) scritta da un altro componente: il guard usa i permessi dell associazione', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      const voci = cacheInMemoria()
+      // GetUserPermissionsQueryHandler scrive le assegnazioni dirette nel cliente (qui: vuote,
+      // poi ampie) sotto la chiave (cliente, utente).
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({
+        ruolo: 'ADMIN',
+        roleId: RUOLO_ASSOCIAZIONE,
+      })
+      ruoloEffettivo.permessiDelRuolo.mockResolvedValue(['fir:write:all'])
+      voci.set(`${CLIENTE}:${USER_ID}`, [])
+      await expect(guard.canActivate(ctxCliente())).resolves.toBe(true)
+
+      voci.clear()
+      voci.set(`${CLIENTE}:${USER_ID}`, ['fir:write:all'])
+      ruoloEffettivo.permessiDelRuolo.mockResolvedValue(['fir:read:all'])
+      await expect(guard.canActivate(ctxCliente())).rejects.toBeInstanceOf(ForbiddenException)
+      // La voce dell'altro componente non e' stata toccata.
+      expect(voci.get(`${CLIENTE}:${USER_ID}`)).toEqual(['fir:write:all'])
+    })
+
+    it('lettura dei permessi del ruolo non riuscita: 503 VERIFICA_AZIENDA_NON_DISPONIBILE, non 403', async () => {
+      reflector.getAllAndOverride.mockReturnValue('fir:write:all' as any)
+      cacheInMemoria()
+      ruoloEffettivo.accessoConOrigine.mockResolvedValue({
+        ruolo: 'ADMIN',
+        roleId: RUOLO_ASSOCIAZIONE,
+      })
+      ruoloEffettivo.permessiDelRuolo.mockRejectedValue(new Error('connessione persa: segreto'))
+
+      const errore = await guard.canActivate(ctxCliente()).catch(e => e)
+
+      expect(errore).toBeInstanceOf(ServiceUnavailableException)
+      expect(errore.getResponse()).toMatchObject({ error: 'VERIFICA_AZIENDA_NON_DISPONIBILE' })
+      expect(JSON.stringify(errore.getResponse())).not.toContain('segreto')
+      expect(permissionCache.setPermissions).not.toHaveBeenCalled()
     })
 
     it('verifica non possibile (database): 503 VERIFICA_AZIENDA_NON_DISPONIBILE, mai 500 ne via libera', async () => {

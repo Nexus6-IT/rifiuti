@@ -139,11 +139,15 @@ export class PermissionGuard implements CanActivate {
 
     try {
       // Step 1: Check cache for user permissions.
-      // Chiave `(azienda, utente)`: i permessi del consulente presso il cliente stanno sotto
-      // `(cliente, utente)`, quelli di casa sotto `(casa, utente)`; le due voci non si
-      // incrociano mai (l'azienda candidata e' sempre diversa da quella di casa).
+      // Chiave `(azienda, utente)`. I permessi di casa stanno sotto `(casa, utente)`. Quelli
+      // dell'associazione del consulente presso il cliente stanno in uno spazio PROPRIO,
+      // `(cliente, "assoc:<utente>")`: la voce `(cliente, utente)` e' scritta da
+      // `GetUserPermissionsQueryHandler` (assegnazioni dirette nel cliente, TTL 300s) e ha un
+      // altro significato; riusarla farebbe negare o concedere per errore. Il prefisso per
+      // azienda resta quello di `invalidateTenant(cliente)`, che quindi colpisce anche questa.
       const aziendaCache = aziendaConsulente ?? tenantId
-      let userPermissions = await this.permissionCache.getPermissions(aziendaCache, userId)
+      const utenteCache = aziendaConsulente ? `assoc:${userId}` : userId
+      let userPermissions = await this.permissionCache.getPermissions(aziendaCache, utenteCache)
 
       // Step 2: On cache miss, load the user's effective permissions from the
       // database (RBAC source of truth), then populate the cache. A cache miss
@@ -153,7 +157,16 @@ export class PermissionGuard implements CanActivate {
         // Il super admin con header ha nel contesto l'azienda scelta: le sue assegnazioni di ruolo
         // (azienda di casa) con la RLS attiva non si vedrebbero. Si leggono nel contesto di casa.
         if (ruoloAssociazioneId) {
-          userPermissions = await this.ruoloEffettivo.permessiDelRuolo(ruoloAssociazioneId)
+          try {
+            userPermissions = await this.ruoloEffettivo.permessiDelRuolo(ruoloAssociazioneId)
+          } catch (error) {
+            // Stesso esito dell'errore su `accessoConOrigine`: 503, mai 403 generico ne' via
+            // libera. Il dettaglio resta nel log, non nel corpo della risposta.
+            this.logger.error(
+              `Lettura permessi del ruolo di associazione non riuscita per user ${userId}: ${(error as Error)?.message}`
+            )
+            throw new ServiceUnavailableException({ ...VERIFICA_AZIENDA_NON_DISPONIBILE })
+          }
         } else {
           userPermissions =
             aziendaScelta && tenantId
@@ -169,7 +182,7 @@ export class PermissionGuard implements CanActivate {
         await this.permissionCache
           .setPermissions(
             aziendaCache,
-            userId,
+            utenteCache,
             userPermissions,
             ...(aziendaConsulente ? [TTL_PERMESSI_CONSULENTE_SECONDI] : [])
           )
@@ -287,7 +300,7 @@ export class PermissionGuard implements CanActivate {
 
       return true
     } catch (error) {
-      if (error instanceof ForbiddenException) {
+      if (error instanceof ForbiddenException || error instanceof ServiceUnavailableException) {
         throw error
       }
 

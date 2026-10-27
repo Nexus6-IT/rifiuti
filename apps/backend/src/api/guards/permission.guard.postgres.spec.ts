@@ -74,6 +74,10 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
     // Prisma legge DATABASE_URL al connect: si verifica DAVVERO il ruolo, non lo si presume.
     const [{ u }] = await app.$queryRaw<{ u: string }[]>`SELECT current_user::text AS u`
     expect(u).toBe('wasteflow_app')
+    // Il guard legge il ruolo dell'associazione col client di sistema: se DATABASE_URL_SISTEMA
+    // mancasse ripiegherebbe sul ruolo applicativo e il test fallirebbe per il motivo sbagliato.
+    const [{ us }] = await sistema.$queryRaw<{ us: string }[]>`SELECT current_user::text AS us`
+    expect(us).toBe('wasteflow_sistema')
 
     const azienda = async (tag: string) => {
       const t = await owner.tenant.create({
@@ -268,7 +272,7 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
     }
   })
 
-  it('consulente presso un cliente: valgono i permessi del ruolo dell associazione, letti con la RLS attiva', async () => {
+  it('consulente presso un cliente: valgono i permessi del ruolo dell associazione, letti senza passare dal contesto RLS di casa', async () => {
     const cliente = (
       await owner.tenant.create({
         data: { partitaIva: `GC${sfx}`.slice(0, 11), ragioneSociale: `Guard cliente ${run}` },
@@ -293,8 +297,9 @@ describe('PermissionGuard: azienda effettiva (Postgres reale, ruolo app)', () =>
     const soloLettura = await ruoloCliente('cliente-lettura', await permesso('fir', 'read', 'all'))
     const conAudit = await ruoloCliente('cliente-audit', await permesso('audit', 'read', 'all'))
 
-    // Con la RLS accesa il ruolo del cliente NON si vede dal contesto di casa: se il guard lo
-    // leggesse li' troverebbe zero permessi (e i test passerebbero per il motivo sbagliato).
+    // Con la RLS accesa il ruolo del cliente NON si vede dal contesto di casa: il guard lo legge
+    // col client di sistema (BYPASSRLS), non da li'. Se lo leggesse dal contesto di casa troverebbe
+    // zero permessi; questa asserzione prova che il test distingue i due percorsi.
     const daCasa = await TenantContext.run({ tenantId: casa, userId: consulente }, async () =>
       app.role.findUnique({ where: { id: conAudit } })
     )
