@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { RentriDiagnosticaController } from './rentri-diagnostica.controller'
 import {
   GetRentriDiagnosticaUseCase,
@@ -151,6 +152,7 @@ describe('RentriDiagnosticaController', () => {
           controllers: [RentriDiagnosticaController],
           providers: [
             GetRentriDiagnosticaUseCase,
+            { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
             { provide: PrismaService, useValue: prisma },
             { provide: RentriCredentialService, useValue: credentialService },
             { provide: RentriRateLimiterService, useValue: rateLimiter },

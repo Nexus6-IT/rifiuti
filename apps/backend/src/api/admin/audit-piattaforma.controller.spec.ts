@@ -4,6 +4,7 @@ import request from 'supertest'
 import { AuditPiattaformaController } from './audit-piattaforma.controller'
 import { AuditPiattaformaService } from '../../application/admin/audit-piattaforma.service'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 
 describe('GET /admin/audit/piattaforma (HTTP, RolesGuard reale)', () => {
@@ -13,7 +14,11 @@ describe('GET /admin/audit/piattaforma (HTTP, RolesGuard reale)', () => {
   beforeAll(async () => {
     const modulo = await Test.createTestingModule({
       controllers: [AuditPiattaformaController],
-      providers: [{ provide: AuditPiattaformaService, useValue: { leggi } }, RolesGuard],
+      providers: [
+        { provide: AuditPiattaformaService, useValue: { leggi } },
+        { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
+        RolesGuard,
+      ],
     })
       // L'autenticazione e' finta (il ruolo arriva da un header di prova); i ruoli sono quelli veri.
       .overrideGuard(JwtAuthGuard)

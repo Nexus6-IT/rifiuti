@@ -1,29 +1,38 @@
 /**
- * Roles Guard - TDD Tests
- * Guard for checking user roles against required roles
+ * Roles Guard - Tests
+ * Ruolo del token e, con un'azienda selezionata diversa da quella di casa, ruolo EFFETTIVO.
  */
 
 import { RolesGuard } from './roles.guard'
-import { ExecutionContext } from '@nestjs/common'
+import { ExecutionContext, ServiceUnavailableException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
+
+const CASA = '5a5a5a5a-0000-4000-8000-000000000001'
+const CLIENTE = 'c1c1c1c1-0000-4000-8000-000000000002'
 
 describe('RolesGuard', () => {
   let guard: RolesGuard
   let reflector: jest.Mocked<Reflector>
+  let ruoloEffettivo: { accesso: jest.Mock }
+  let conRuoloDelToken: boolean
 
   beforeEach(() => {
+    conRuoloDelToken = false
     reflector = {
       getAllAndOverride: jest.fn(),
     } as any
+    ruoloEffettivo = { accesso: jest.fn() }
 
-    guard = new RolesGuard(reflector)
+    guard = new RolesGuard(reflector, ruoloEffettivo as any)
   })
 
   const createMockExecutionContext = (
     requiredRoles: string[] | null,
-    userRole: string | null
+    userRole: string | null,
+    headerTenant?: string | string[]
   ): ExecutionContext => {
-    reflector.getAllAndOverride.mockReturnValue(requiredRoles)
+    reflector.getAllAndOverride.mockImplementation(((chiave: string) =>
+      chiave === 'ruoloDelToken' ? conRuoloDelToken : requiredRoles) as any)
 
     const mockHandler = jest.fn()
     const mockClass = jest.fn()
@@ -31,7 +40,8 @@ describe('RolesGuard', () => {
     return {
       switchToHttp: () => ({
         getRequest: () => ({
-          user: userRole ? { id: 'user-123', role: userRole } : null,
+          headers: headerTenant === undefined ? {} : { 'x-tenant-id': headerTenant },
+          user: userRole ? { id: 'user-123', role: userRole, tenantId: CASA } : null,
         }),
       }),
       getHandler: () => mockHandler,
@@ -40,66 +50,52 @@ describe('RolesGuard', () => {
   }
 
   describe('canActivate', () => {
-    it('should allow access if no roles are required', () => {
+    it('should allow access if no roles are required', async () => {
       const context = createMockExecutionContext(null, 'VIEWER')
 
-      const result = guard.canActivate(context)
-
-      expect(result).toBe(true)
+      expect(await guard.canActivate(context)).toBe(true)
     })
 
-    it('should allow access if route has empty roles array', () => {
+    it('should allow access if route has empty roles array', async () => {
       const context = createMockExecutionContext([], 'VIEWER')
 
-      const result = guard.canActivate(context)
-
-      expect(result).toBe(true)
+      expect(await guard.canActivate(context)).toBe(true)
     })
 
-    it('should deny access if user is not authenticated', () => {
+    it('should deny access if user is not authenticated', async () => {
       const context = createMockExecutionContext(['ADMIN'], null)
 
-      const result = guard.canActivate(context)
-
-      expect(result).toBe(false)
+      expect(await guard.canActivate(context)).toBe(false)
     })
 
-    it('should allow access if user has required role', () => {
+    it('should allow access if user has required role', async () => {
       const context = createMockExecutionContext(['ADMIN'], 'ADMIN')
 
-      const result = guard.canActivate(context)
-
-      expect(result).toBe(true)
+      expect(await guard.canActivate(context)).toBe(true)
     })
 
-    it('should deny access if user does not have required role', () => {
+    it('should deny access if user does not have required role', async () => {
       const context = createMockExecutionContext(['ADMIN'], 'VIEWER')
 
-      const result = guard.canActivate(context)
-
-      expect(result).toBe(false)
+      expect(await guard.canActivate(context)).toBe(false)
     })
 
-    it('should allow access if user has one of multiple required roles', () => {
+    it('should allow access if user has one of multiple required roles', async () => {
       const context = createMockExecutionContext(['ADMIN', 'OPERATOR'], 'OPERATOR')
 
-      const result = guard.canActivate(context)
-
-      expect(result).toBe(true)
+      expect(await guard.canActivate(context)).toBe(true)
     })
 
-    it('should deny access if user has none of the required roles', () => {
+    it('should deny access if user has none of the required roles', async () => {
       const context = createMockExecutionContext(['ADMIN', 'OPERATOR'], 'VIEWER')
 
-      const result = guard.canActivate(context)
-
-      expect(result).toBe(false)
+      expect(await guard.canActivate(context)).toBe(false)
     })
 
-    it('should check ROLES_KEY metadata', () => {
+    it('should check ROLES_KEY metadata', async () => {
       const context = createMockExecutionContext(['ADMIN'], 'ADMIN')
 
-      guard.canActivate(context)
+      await guard.canActivate(context)
 
       expect(reflector.getAllAndOverride).toHaveBeenCalledWith('roles', [
         expect.anything(),
@@ -107,20 +103,120 @@ describe('RolesGuard', () => {
       ])
     })
 
-    it('should handle case-sensitive role comparison', () => {
+    it('should handle case-sensitive role comparison', async () => {
       const context = createMockExecutionContext(['ADMIN'], 'admin')
 
-      const result = guard.canActivate(context)
-
-      expect(result).toBe(false)
+      expect(await guard.canActivate(context)).toBe(false)
     })
 
-    it('should work with single role requirement', () => {
+    it('should work with single role requirement', async () => {
       const context = createMockExecutionContext(['VIEWER'], 'VIEWER')
 
-      const result = guard.canActivate(context)
+      expect(await guard.canActivate(context)).toBe(true)
+    })
 
-      expect(result).toBe(true)
+    it('nessun header: il ruolo effettivo non viene mai consultato', async () => {
+      const context = createMockExecutionContext(['ADMIN'], 'ADMIN')
+
+      await guard.canActivate(context)
+
+      expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('@RuoloDelToken', () => {
+    it('VIEWER di casa, ADMIN presso il cliente: @Roles(ADMIN) negato dal token, accesso mai chiamato', async () => {
+      conRuoloDelToken = true
+      ruoloEffettivo.accesso.mockResolvedValue('ADMIN')
+      const context = createMockExecutionContext(['ADMIN'], 'VIEWER', CLIENTE)
+
+      expect(await guard.canActivate(context)).toBe(false)
+      expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+
+    it('ADMIN di casa, VIEWER presso il cliente: concesso dal token, accesso mai chiamato', async () => {
+      conRuoloDelToken = true
+      ruoloEffettivo.accesso.mockResolvedValue('VIEWER')
+      const context = createMockExecutionContext(['ADMIN'], 'ADMIN', CLIENTE)
+
+      expect(await guard.canActivate(context)).toBe(true)
+      expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+
+    it("senza il decoratore: decide il ruolo nell'azienda selezionata", async () => {
+      ruoloEffettivo.accesso.mockResolvedValue('ADMIN')
+      const context = createMockExecutionContext(['ADMIN'], 'VIEWER', CLIENTE)
+
+      expect(await guard.canActivate(context)).toBe(true)
+      expect(ruoloEffettivo.accesso).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('azienda selezionata diversa da quella di casa', () => {
+    it('consulente ADMIN di casa ma VIEWER presso il cliente: @Roles(ADMIN) negato', async () => {
+      ruoloEffettivo.accesso.mockResolvedValue('VIEWER')
+      const context = createMockExecutionContext(['ADMIN'], 'ADMIN', CLIENTE)
+
+      expect(await guard.canActivate(context)).toBe(false)
+      expect(ruoloEffettivo.accesso).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'user-123', role: 'ADMIN' }),
+        CLIENTE
+      )
+    })
+
+    it('consulente associato come ADMIN: @Roles(ADMIN) concesso', async () => {
+      ruoloEffettivo.accesso.mockResolvedValue('ADMIN')
+      const context = createMockExecutionContext(['ADMIN'], 'VIEWER', CLIENTE)
+
+      expect(await guard.canActivate(context)).toBe(true)
+    })
+
+    it('azienda senza accesso (null): decide il ruolo del token', async () => {
+      ruoloEffettivo.accesso.mockResolvedValue(null)
+
+      expect(await guard.canActivate(createMockExecutionContext(['ADMIN'], 'ADMIN', CLIENTE))).toBe(
+        true
+      )
+      expect(
+        await guard.canActivate(createMockExecutionContext(['ADMIN'], 'VIEWER', CLIENTE))
+      ).toBe(false)
+    })
+
+    it('header non UUID: ruolo del token, accesso mai chiamato', async () => {
+      const context = createMockExecutionContext(['ADMIN'], 'ADMIN', 'non-un-uuid')
+
+      expect(await guard.canActivate(context)).toBe(true)
+      expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+
+    it("header uguale all'azienda di casa: accesso mai chiamato", async () => {
+      const context = createMockExecutionContext(['ADMIN'], 'ADMIN', CASA)
+
+      expect(await guard.canActivate(context)).toBe(true)
+      expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+
+    it('SUPER_ADMIN: invariato, accesso mai chiamato', async () => {
+      const context = createMockExecutionContext(['SUPER_ADMIN'], 'SUPER_ADMIN', CLIENTE)
+
+      expect(await guard.canActivate(context)).toBe(true)
+      expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+
+    it('accesso che lancia: 503 VERIFICA_AZIENDA_NON_DISPONIBILE (fail-closed)', async () => {
+      ruoloEffettivo.accesso.mockRejectedValue(new Error('db giu: password=segreta'))
+      const context = createMockExecutionContext(['ADMIN'], 'ADMIN', CLIENTE)
+
+      const errore = await guard.canActivate(context).then(
+        () => null,
+        (e: unknown) => e
+      )
+
+      expect(errore).toBeInstanceOf(ServiceUnavailableException)
+      const corpo = (errore as ServiceUnavailableException).getResponse()
+      expect(corpo).toMatchObject({ error: 'VERIFICA_AZIENDA_NON_DISPONIBILE' })
+      expect(JSON.stringify(corpo)).not.toContain('segreta')
+      expect(JSON.stringify(corpo)).not.toContain(CLIENTE)
     })
   })
 })

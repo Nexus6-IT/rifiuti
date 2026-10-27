@@ -14,6 +14,7 @@ import { ServiceUnavailableException } from '@nestjs/common'
 import { HealthCheckController } from './health-check.controller'
 import { PrismaService } from '../database/prisma.service'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RuoloEffettivoService } from '../../api/me/ruolo-effettivo.service'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
 
@@ -28,7 +29,10 @@ describe('HealthCheckController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthCheckController],
-      providers: [{ provide: PrismaService, useValue: prisma }],
+      providers: [
+        { provide: PrismaService, useValue: prisma },
+        { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
+      ],
     }).compile()
 
     controller = module.get<HealthCheckController>(HealthCheckController)

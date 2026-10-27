@@ -37,8 +37,8 @@ import { IntegrazioniMudDto } from './dtos/integrazioni-mud.dto'
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono segnare l'azienda come non
- * tenuta al MUD (A-W-10). Non si usa `@Roles`: `RolesGuard` vede solo il ruolo del token e
- * gira prima del `TenantSwitchInterceptor`, che seleziona l'azienda.
+ * tenuta al MUD (A-W-10). La decisione e' presa nel controller sul ruolo
+ * effettivo, non con `@Roles`.
  */
 const RUOLI_OBBLIGO_MUD: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
 
@@ -300,8 +300,8 @@ export class MudController {
   }
 
   /**
-   * Azienda selezionata, se l'utente vi è amministratore; altrimenti 403. Niente `@Roles`:
-   * `RolesGuard` gira prima del `TenantSwitchInterceptor` e vede solo il ruolo del token.
+   * Azienda selezionata, se l'utente vi è amministratore; altrimenti 403. Decisione
+   * presa qui sul ruolo effettivo, non con `@Roles`.
    */
   private async richiediAmministratorePresentazione(req: any): Promise<string> {
     const tenantId = requireRequestTenantId(req)

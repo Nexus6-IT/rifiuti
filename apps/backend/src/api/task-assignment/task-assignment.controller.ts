@@ -16,7 +16,7 @@ import { TenantIsolationGuard } from '../guards/tenant-isolation.guard'
 import { PermissionGuard } from '../guards/permission.guard'
 import { RequirePermission } from '../decorators/require-permission.decorator'
 import { CurrentTenant } from '../decorators/current-tenant.decorator'
-import { CurrentUser } from '../../auth/decorators/current-user.decorator'
+import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { AssignTaskCommand } from '../../application/commands/assign-task.command'
 import { ReassignTaskCommand } from '../../application/commands/reassign-task.command'
 import { TaskAssignmentService } from '../../application/services/task-assignment.service'
@@ -55,7 +55,7 @@ export class TaskAssignmentController {
   async assignTask(
     @Param('firId') firId: string,
     @CurrentTenant() tenantId: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserPayload,
     @Body()
     body: {
       driverId?: string // If provided, manual assignment; otherwise automatic
@@ -66,7 +66,7 @@ export class TaskAssignmentController {
       `Assigning task FIR ${firId}${body.driverId ? ` to driver ${body.driverId}` : ' (automatic)'}`
     )
 
-    const command = new AssignTaskCommand(firId, tenantId, user.userId, body.driverId, body.reason)
+    const command = new AssignTaskCommand(firId, tenantId, user.id, body.driverId, body.reason)
 
     const result = await this.commandBus.execute(command)
 
@@ -94,7 +94,7 @@ export class TaskAssignmentController {
   async reassignTask(
     @Param('firId') firId: string,
     @CurrentTenant() tenantId: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserPayload,
     @Body()
     body: {
       newDriverId: string
@@ -103,13 +103,7 @@ export class TaskAssignmentController {
   ) {
     this.logger.log(`Reassigning task FIR ${firId} to driver ${body.newDriverId}`)
 
-    const command = new ReassignTaskCommand(
-      firId,
-      body.newDriverId,
-      tenantId,
-      user.userId,
-      body.reason
-    )
+    const command = new ReassignTaskCommand(firId, body.newDriverId, tenantId, user.id, body.reason)
 
     const result = await this.commandBus.execute(command)
 
@@ -168,17 +162,20 @@ export class TaskAssignmentController {
    */
   @Get('my-assignments')
   @RequirePermission('fir:read:own')
-  async getMyAssignments(@CurrentTenant() tenantId: string, @CurrentUser() user: any) {
-    this.logger.log(`Getting assignments for driver ${user.userId}`)
+  async getMyAssignments(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: CurrentUserPayload
+  ) {
+    this.logger.log(`Getting assignments for driver ${user.id}`)
 
     // Get driver's assigned FIRs
-    // Note: This is a placeholder. In production, you'd query FIRs where carrierUserId = user.userId
+    // Note: This is a placeholder. In production, you'd query FIRs where carrierUserId = user.id
     // and status = AWAITING_CARRIER, sorted by transportDate
 
     return {
       success: true,
       data: {
-        driverId: user.userId,
+        driverId: user.id,
         assignments: [
           // Placeholder - should query from FIR repository
           // {

@@ -48,7 +48,6 @@ type EsitoVerifica = 'ACCESSIBILE' | 'NON_ACCESSIBILE' | 'ERRORE'
  *          Prima la richiesta proseguiva in silenzio sul tenant primario del JWT: con una
  *          selezione scaduta (associazione consulente terminata) le scritture finivano
  *          nell'azienda sbagliata, per esempio un movimento nel registro dello studio.
- *          Il frontend, su questo codice, cancella la selezione e ricarica.
  *        - Eccezione: le rotte di recupero marcate `@ConsentiSelezioneNonValida()` (elenco e
  *          switch delle aziende, login/refresh/logout) proseguono col tenant primario, così
  *          una selezione non valida non chiude l'utente fuori dal selettore.

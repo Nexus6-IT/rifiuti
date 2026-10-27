@@ -41,6 +41,7 @@ import { AdminUserModule } from './application/admin/admin-user.module'
 import { AdminSystemHealthModule } from './application/admin/admin-system-health.module'
 // Endpoint "self" utente autenticato (feature abilitate dal piano)
 import { MeModule } from './api/me/me.module'
+import { RuoloEffettivoModule } from './api/me/ruolo-effettivo.module'
 // Firma digitale FIR "pronta-ma-non-collegata" (WS-E)
 // Default: sandbox ECDSA effimera. ATTIVARE: SIGNATURE_PROVIDER=qes + TSA_PROVIDER=rfc3161
 import { SignaturesModule } from './application/signatures/signatures.module'
@@ -98,6 +99,8 @@ import { AccessRequestModule } from './application/access-request/access-request
 
     // Authentication & Authorization
     AuthModule,
+    // Globale: RolesGuard lo risolve in ogni modulo (ruolo nell'azienda selezionata)
+    RuoloEffettivoModule,
 
     // Domain modules
     RegistryModule,

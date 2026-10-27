@@ -17,6 +17,7 @@ import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita
 import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
 import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
 import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica.controller'
+import { RuoloEffettivoModule } from '../../api/me/ruolo-effettivo.module'
 import { GetRentriDiagnosticaUseCase } from '../../application/rentri/get-rentri-diagnostica.use-case'
 
 /**
@@ -29,7 +30,12 @@ import { GetRentriDiagnosticaUseCase } from '../../application/rentri/get-rentri
 describe('RentriModule (DI wiring)', () => {
   it('risolve client, auth, firma, credential service/resolver, modalità legame e controller', async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), RentriModule],
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
+        // Globale in AppModule: serve a RolesGuard dei controller del modulo
+        RuoloEffettivoModule,
+        RentriModule,
+      ],
     }).compile()
 
     expect(moduleRef.get(RENTRIApiClient)).toBeDefined()

@@ -9,6 +9,7 @@ import { ForbiddenException } from '@nestjs/common'
  * `DeadlineCheckerService`, Task 1): niente seconda formula.
  */
 import { Test, TestingModule } from '@nestjs/testing'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { RegistryController } from './registry.controller'
 import { CreateProduttoreUseCase } from '../../application/registry/use-cases/create-produttore.use-case'
 import { CreateTrasportatoreUseCase } from '../../application/registry/use-cases/create-trasportatore.use-case'
@@ -75,6 +76,7 @@ describe('RegistryController — stato di scadenza nell’elenco (Task 4 scadenz
     const module: TestingModule = await Test.createTestingModule({
       controllers: [RegistryController],
       providers: [
+        { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
         { provide: CreateProduttoreUseCase, useValue: noop },
         { provide: CreateTrasportatoreUseCase, useValue: noop },
         { provide: CreateDestinatarioUseCase, useValue: noop },

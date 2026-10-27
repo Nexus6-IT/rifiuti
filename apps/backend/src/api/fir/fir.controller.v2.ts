@@ -48,8 +48,7 @@ import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.s
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono creare un FIR. Come nel
- * registro non si usa `@Roles`: `RolesGuard` vede solo il ruolo del token e gira prima del
- * `TenantSwitchInterceptor`, che seleziona l'azienda.
+ * registro la decisione e' presa nel controller sul ruolo effettivo, non con `@Roles`.
  */
 const RUOLI_CREAZIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
 

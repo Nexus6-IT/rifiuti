@@ -35,6 +35,13 @@ export function associazioneConsulenteValida(consultantUserId: string, tenantId?
 type UtenteRuolo = { id: string; role: string; tenantId?: string | null }
 
 /**
+ * Accesso a un'azienda con la sua origine: `roleId` e' il ruolo (`roles.id`) dell'associazione
+ * consulente da cui deriva l'accesso, `null` se l'accesso viene da altro (azienda primaria,
+ * di proprieta', SUPER_ADMIN): li' valgono i permessi del ruolo globale dell'utente.
+ */
+export type AccessoAzienda = { ruolo: RuoloApplicativo; roleId: string | null }
+
+/**
  * Ruolo dell'utente nell'azienda SELEZIONATA (A-C-06).
  *
  * Il ruolo del token (`User.role`) è il ruolo nell'azienda primaria dell'utente: un
@@ -42,8 +49,9 @@ type UtenteRuolo = { id: string; role: string; tenantId?: string | null }
  * del cliente non è un amministratore. Le decisioni riservate (conferma degli avvisi del
  * MUD, registrazione dei movimenti, progressivo iniziale) si prendono su questo ruolo.
  *
- * Si usa nei controller, non in un guard: `RolesGuard` gira prima del
- * `TenantSwitchInterceptor` globale e non vede l'azienda selezionata.
+ * Lo usano anche `RolesGuard` e `PermissionGuard`, che girano prima del
+ * `TenantSwitchInterceptor` globale e ricavano da soli l'azienda selezionata
+ * (`aziendaCandidataDaHeader`); nei controller serve per le decisioni riservate dentro la rotta.
  *
  * Solo letture vincolate all'id dell'utente autenticato (o agli id che ne derivano); mai dati di
  * dominio: un metodo nuovo qui eredita BYPASSRLS (client di sistema).
@@ -80,17 +88,43 @@ export class RuoloEffettivoService {
    * "accesso in sola consultazione", per esempio al refresh di un token emesso dallo switch.
    */
   async accesso(utente: UtenteRuolo, tenantId: string): Promise<RuoloApplicativo | null> {
-    if (utente.role === 'SUPER_ADMIN') return 'SUPER_ADMIN'
+    return (await this.accessoConOrigine(utente, tenantId))?.ruolo ?? null
+  }
+
+  /**
+   * Come `accesso`, ma dice anche da quale associazione consulente deriva l'accesso
+   * (`roleId`): serve a chi deve valutare i PERMESSI dell'utente nell'azienda selezionata
+   * (`PermissionGuard`), che stanno nel ruolo dell'associazione e non nel ruolo globale.
+   * Stessa risoluzione, stesso ordine di `accesso`: le due non possono divergere.
+   */
+  async accessoConOrigine(utente: UtenteRuolo, tenantId: string): Promise<AccessoAzienda | null> {
+    if (utente.role === 'SUPER_ADMIN') return { ruolo: 'SUPER_ADMIN', roleId: null }
     return this.risolvi(utente, tenantId, true)
+  }
+
+  /**
+   * Permessi (`resource:action:scope`) di un ruolo, letti col client di sistema.
+   *
+   * Serve a `PermissionGuard` per il ruolo di un'associazione consulente: quel ruolo puo'
+   * appartenere al cliente o allo studio, e con la RLS accesa dal contesto di una sola delle
+   * due aziende l'altro non si vede. Il `roleId` arriva sempre da `accessoConOrigine`, cioe'
+   * da un'associazione valida dell'utente autenticato: non e' mai un id scelto dal chiamante.
+   */
+  async permessiDelRuolo(roleId: string): Promise<string[]> {
+    const righe = await this.sistema.rolePermission.findMany({
+      where: { roleId },
+      select: { permission: { select: { resource: true, action: true, scope: true } } },
+    })
+    return righe.map(r => `${r.permission.resource}:${r.permission.action}:${r.permission.scope}`)
   }
 
   private async risolvi(
     utente: UtenteRuolo,
     tenantId: string,
     risaliAllaMadre: boolean
-  ): Promise<RuoloApplicativo | null> {
+  ): Promise<AccessoAzienda | null> {
     if (utente.tenantId && utente.tenantId === tenantId) {
-      return comeRuoloApplicativo(utente.role)
+      return { ruolo: comeRuoloApplicativo(utente.role), roleId: null }
     }
 
     // Client di sistema: azienda di destinazione, senza contesto al refresh.
@@ -98,16 +132,19 @@ export class RuoloEffettivoService {
       where: { id: tenantId, ownerUserId: utente.id },
       select: { id: true },
     })
-    if (posseduto) return comeRuoloApplicativo(utente.role)
+    if (posseduto) return { ruolo: comeRuoloApplicativo(utente.role), roleId: null }
 
     // Client di sistema: associazione verso un'azienda che non è quella del contesto.
     const associazione = await this.sistema.consultantTenantAssociation.findFirst({
       where: associazioneConsulenteValida(utente.id, tenantId),
-      select: { role: { select: { name: true } } },
+      select: { roleId: true, role: { select: { name: true } } },
     })
     if (associazione) {
       const nome = associazione.role?.name
-      return nome === 'ADMIN' || nome === 'OPERATOR' ? nome : 'VIEWER'
+      return {
+        ruolo: nome === 'ADMIN' || nome === 'OPERATOR' ? nome : 'VIEWER',
+        roleId: associazione.roleId ?? null,
+      }
     }
 
     if (!risaliAllaMadre) return null
