@@ -69,6 +69,17 @@ export class ExportService {
     doc.save(filename)
   }
 
+  /** Righe "Dati Rifiuto" del PDF di dettaglio: il peso a destino è nell'unità del FIR. */
+  righeRifiutoPdf(fir: FIR): string[][] {
+    const unita = fir.rifiuto.unitaMisura
+    return [
+      ['Codice CER', fir.rifiuto.cerCode],
+      ['Quantità Dichiarata', `${fir.rifiuto.quantita} ${unita}`],
+      ['Stato Fisico', fir.rifiuto.statoFisico || 'N/D'],
+      ['Peso Effettivo', fir.pesoEffettivo != null ? `${fir.pesoEffettivo} ${unita}` : 'N/D'],
+    ]
+  }
+
   /**
    * Esporta singolo FIR in PDF con dettagli completi
    */
@@ -96,12 +107,7 @@ export class ExportService {
     doc.text('Dati Rifiuto', 14, 60)
     doc.setFontSize(11)
 
-    const rifiutoData = [
-      ['Codice CER', fir.rifiuto.cerCode],
-      ['Quantità Dichiarata', `${fir.rifiuto.quantita} ${fir.rifiuto.unitaMisura}`],
-      ['Stato Fisico', fir.rifiuto.statoFisico || 'N/D'],
-      ['Peso Effettivo', fir.pesoEffettivo ? `${fir.pesoEffettivo} kg` : 'N/D'],
-    ]
+    const rifiutoData = this.righeRifiutoPdf(fir)
 
     autoTable(doc, {
       body: rifiutoData,
@@ -182,7 +188,7 @@ export class ExportService {
       'Quantità Dichiarata': fir.rifiuto.quantita,
       'Unità di Misura': fir.rifiuto.unitaMisura,
       'Stato Fisico': fir.rifiuto.statoFisico || 'N/D',
-      'Peso Effettivo': fir.pesoEffettivo || 'N/D',
+      'Peso Effettivo': fir.pesoEffettivo ?? 'N/D',
       'Produttore ID': fir.produttoreId,
       'Trasportatore ID': fir.trasportatoreId,
       'Destinatario ID': fir.destinatarioId,

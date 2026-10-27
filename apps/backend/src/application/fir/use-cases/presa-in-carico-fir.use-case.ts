@@ -48,7 +48,8 @@ export class PresaInCaricoFIRUseCase {
     }
 
     // 4. Persist changes
-    await this.firRepository.save(fir)
+    // Scrittura condizionata alla versione letta: un'altra operazione concorrente => 409.
+    await this.firRepository.save(fir, { verificaVersione: true })
 
     // 5. Publish domain events (TODO: event bus integration)
     // await this.eventBus.publishAll(fir.domainEvents)

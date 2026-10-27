@@ -277,6 +277,9 @@ model FIR {
 
   status             FIRStatus @default(DRAFT)
   workflowVersion    Int       @default(1) @map("workflow_version")
+  // Lock ottimistico (piano D4-D5): il repository la incrementa a ogni scrittura e rifiuta il
+  // salvataggio di chi ha letto una versione diversa.
+  versione           Int       @default(1) @map("versione")
   submittedAt        DateTime? @map("submitted_at")
   completedAt        DateTime? @map("completed_at")
   cancelledAt        DateTime? @map("cancelled_at")

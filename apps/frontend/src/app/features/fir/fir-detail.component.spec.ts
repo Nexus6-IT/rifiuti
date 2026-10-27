@@ -5,7 +5,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 // di poter verificare alcunche'. `Noop` e non `BrowserAnimations` perche' in un
 // test non serve animare — serve solo che l'animazione non sia un errore.
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
-import { ActivatedRoute, convertToParamMap } from '@angular/router'
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router'
 import { of, throwError } from 'rxjs'
 import { FirDetailComponent } from './fir-detail.component'
 import { FirService } from './fir.service'
@@ -1423,6 +1423,119 @@ describe('FirDetailComponent', () => {
       component.aggiornaStatoRentri(firLegatoRentri)
 
       expect(component['aggiornamentoStatoInCorso']()).toBe(false)
+    })
+  })
+
+  describe('Quantità verificata a destino (F2-7)', () => {
+    const consegnato = (verificata: number, oltre: boolean, perc: number): FIR => ({
+      ...baseFIR,
+      stato: FIRStato.CONSEGNATO,
+      dataConsegna: '2026-07-02T10:00:00.000Z',
+      pesoEffettivo: verificata,
+      scostamentoPeso: {
+        differenza: verificata - 10,
+        percentuale: perc,
+        unita: 'kg',
+        oltreSoglia: oltre,
+      },
+    })
+
+    it('mostra valore, unità e scostamento accanto alla data di consegna', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(consegnato(10.5, false, 5)))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      const riga = el.querySelector('[data-testid="fir-detail-quantita-verificata"]')
+      expect(riga?.textContent).toContain('10,5 kg')
+      const scost = el.querySelector('[data-testid="fir-detail-scostamento"]')
+      expect(scost?.textContent).toContain('+5%')
+      expect(scost?.classList.contains('detail-scostamento--oltre')).toBeFalse()
+    })
+
+    it('evidenzia lo scostamento oltre soglia', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(consegnato(15, true, 50)))
+      fixture.detectChanges()
+
+      const scost = (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="fir-detail-scostamento"]'
+      )
+      expect(scost?.classList.contains('detail-scostamento--oltre')).toBeTrue()
+      expect(scost?.textContent).toContain('oltre la soglia')
+    })
+
+    it('senza quantità verificata mostra un trattino e nessuno scostamento', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(baseFIR))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(
+        el.querySelector('[data-testid="fir-detail-quantita-verificata"]')?.textContent?.trim()
+      ).toBe('—')
+      expect(el.querySelector('[data-testid="fir-detail-scostamento"]')).toBeNull()
+    })
+  })
+
+  describe('Modifica della bozza', () => {
+    const bozza = (extra: Partial<FIR> = {}): FIR => ({
+      ...baseFIR,
+      stato: FIRStato.BOZZA,
+      numeroProgressivo: null,
+      versione: 2,
+      modificabile: true,
+      motivoNonModificabile: null,
+      ...extra,
+    })
+
+    it('mostra «Modifica» su una bozza modificabile e naviga alla lista col parametro', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(bozza()))
+      const router = TestBed.inject(Router)
+      const navigate = spyOn(router, 'navigate').and.resolveTo(true)
+      fixture.detectChanges()
+
+      const bottone = (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="fir-detail-modifica"] button'
+      ) as HTMLButtonElement
+      expect(bottone).toBeTruthy()
+      bottone.click()
+
+      expect(navigate).toHaveBeenCalledWith(['/fir'], { queryParams: { modifica: 'fir-1' } })
+    })
+
+    it('senza il pulsante per un VIEWER', () => {
+      setup({ role: 'VIEWER' })
+      firService.getFIRById.and.returnValue(of(bozza()))
+      fixture.detectChanges()
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('[data-testid="fir-detail-modifica"]')
+      ).toBeNull()
+    })
+
+    it('senza il pulsante ma col motivo leggibile se la bozza non è modificabile', () => {
+      setup()
+      firService.getFIRById.and.returnValue(
+        of(bozza({ modificabile: false, motivoNonModificabile: 'FIRMATO' }))
+      )
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      expect(el.querySelector('[data-testid="fir-detail-modifica"]')).toBeNull()
+      expect(
+        el.querySelector('[data-testid="fir-detail-motivo-non-modificabile"]')?.textContent
+      ).toContain('porta già una firma')
+    })
+
+    it('haAzioni è vera per la sola modifica (FIR non BOZZA ma modificabile non esiste: si verifica puoModificare)', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(bozza()))
+      fixture.detectChanges()
+      expect(component.puoModificare(bozza())).toBeTrue()
+      expect(component.haAzioni(bozza())).toBeTrue()
+      expect(component.puoModificare(bozza({ modificabile: false }))).toBeFalse()
+      expect(component.puoModificare({ ...baseFIR, modificabile: true })).toBeFalse()
     })
   })
 })

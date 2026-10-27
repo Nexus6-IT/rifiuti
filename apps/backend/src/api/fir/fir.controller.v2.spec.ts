@@ -1,8 +1,9 @@
-import { ForbiddenException } from '@nestjs/common'
-import { FIRControllerV2 } from './fir.controller.v2'
+import { BadRequestException, ForbiddenException, ValidationPipe } from '@nestjs/common'
+import { ConfermaConsegnaFIRDto, FIRControllerV2 } from './fir.controller.v2'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
 import { Result } from '../../core/application/result'
 import { FIRResponseDto } from './dtos/fir-response.dto'
+import { FirNonModificabileError } from '../../core/domain/errors'
 
 /** Risoluzione del ruolo effettivo finta: restituisce sempre il ruolo indicato. */
 const ruoli = (ruolo: string) => ({ ruoloEffettivo: jest.fn().mockResolvedValue(ruolo) }) as any
@@ -33,6 +34,7 @@ describe('FIRControllerV2 — azienda selezionata e ruolo effettivo', () => {
   let crea: { execute: jest.Mock }
   let lista: { execute: jest.Mock }
   let dettaglio: { execute: jest.Mock }
+  let modifica: { execute: jest.Mock }
   let enforcement: { assertNotSuspended: jest.Mock; assertFirLimitNotReached: jest.Mock }
 
   const controller = (membership = ruoli('OPERATOR')) =>
@@ -45,7 +47,8 @@ describe('FIRControllerV2 — azienda selezionata e ruolo effettivo', () => {
       dettaglio as any,
       lista as any,
       enforcement as any,
-      membership
+      membership,
+      modifica as any
     )
 
   beforeEach(() => {
@@ -56,6 +59,7 @@ describe('FIRControllerV2 — azienda selezionata e ruolo effettivo', () => {
         .fn()
         .mockResolvedValue(Result.ok({ items: [], total: 0, page: 1, limit: 10, totalPages: 0 })),
     }
+    modifica = { execute: jest.fn().mockResolvedValue(Result.ok({ id: 'f1' })) }
     dettaglio = { execute: jest.fn().mockResolvedValue(Result.ok({ id: 'f1' })) }
     enforcement = {
       assertNotSuspended: jest.fn().mockResolvedValue(undefined),
@@ -98,7 +102,7 @@ describe('FIRControllerV2 — azienda selezionata e ruolo effettivo', () => {
 
     expect(errore).toBeInstanceOf(ForbiddenException)
     expect(errore.getResponse()).toEqual({
-      message: "Solo un amministratore o un operatore dell'azienda può creare FIR.",
+      message: "Solo un amministratore o un operatore dell'azienda può creare o modificare FIR.",
       error: 'FIR_RISERVATO_OPERATORI',
     })
     expect(crea.execute).not.toHaveBeenCalled()
@@ -112,6 +116,52 @@ describe('FIRControllerV2 — azienda selezionata e ruolo effettivo', () => {
 
   it('la creazione non dipende più da @Roles, che vede solo il ruolo del token', () => {
     expect(Reflect.getMetadata(ROLES_KEY, FIRControllerV2.prototype.create)).toBeUndefined()
+  })
+
+  const dtoModifica = { ...dtoCrea, versione: 3 }
+
+  it("la modifica opera nell'azienda selezionata con l'utente del token e controlla la sospensione", async () => {
+    const membership = ruoli('OPERATOR')
+
+    await controller(membership).modifica('f1', dtoModifica as any, richiesta('ADMIN') as any)
+
+    const comando = modifica.execute.mock.calls[0][0]
+    expect(comando).toMatchObject({ firId: 'f1', tenantId: 'B', userId: 'user-1', versione: 3 })
+    expect(enforcement.assertNotSuspended).toHaveBeenCalledWith('B')
+    expect(enforcement.assertFirLimitNotReached).not.toHaveBeenCalled()
+    expect(membership.ruoloEffettivo).toHaveBeenCalledWith(richiesta('ADMIN').user, 'B')
+  })
+
+  it("la modifica con ruolo VIEWER nell'azienda selezionata e' 403 anche se il token dice ADMIN", async () => {
+    const errore = await controller(ruoli('VIEWER'))
+      .modifica('f1', dtoModifica as any, richiesta('ADMIN') as any)
+      .catch(e => e)
+
+    expect(errore).toBeInstanceOf(ForbiddenException)
+    expect(errore.getResponse().error).toBe('FIR_RISERVATO_OPERATORI')
+    expect(modifica.execute).not.toHaveBeenCalled()
+  })
+
+  it('la modifica con azienda sospesa non arriva al caso d uso', async () => {
+    enforcement.assertNotSuspended.mockRejectedValue(new Error('sospesa'))
+
+    await expect(
+      controller().modifica('f1', dtoModifica as any, richiesta('ADMIN') as any)
+    ).rejects.toThrow('sospesa')
+    expect(modifica.execute).not.toHaveBeenCalled()
+  })
+
+  it('Result.fail della modifica diventa 400; gli errori di dominio passano invariati', async () => {
+    modifica.execute.mockResolvedValueOnce(Result.fail('CER non valido'))
+    await expect(
+      controller().modifica('f1', dtoModifica as any, richiesta('ADMIN') as any)
+    ).rejects.toBeInstanceOf(BadRequestException)
+
+    const dominio = new FirNonModificabileError('FIRMATO')
+    modifica.execute.mockRejectedValueOnce(dominio)
+    await expect(
+      controller().modifica('f1', dtoModifica as any, richiesta('ADMIN') as any)
+    ).rejects.toBe(dominio)
   })
 
   it("un utente sulla propria azienda primaria resta com'era", async () => {
@@ -134,5 +184,31 @@ describe('FIRControllerV2 — azienda selezionata e ruolo effettivo', () => {
     expect(lista.execute).not.toHaveBeenCalled()
     expect(dettaglio.execute).not.toHaveBeenCalled()
     expect(crea.execute).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * F2-7: il peso verificato a destino non ha più tolleranza, ma il DTO deve rispettare la colonna
+ * `effective_weight Decimal(10,2)`. Test con la pipe vera, come in main.ts.
+ */
+describe('ConfermaConsegnaFIRDto — validazione con la pipe vera', () => {
+  const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
+  const valida = (body: unknown) =>
+    pipe.transform(body, { type: 'body', metatype: ConfermaConsegnaFIRDto })
+
+  it.each([0.01, 1, 150.5, 99999999.99])('accetta %s', async pesoEffettivo => {
+    await expect(valida({ pesoEffettivo })).resolves.toMatchObject({ pesoEffettivo })
+  })
+
+  it('rifiuta 3 decimali', async () => {
+    await expect(valida({ pesoEffettivo: 10.123 })).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('rifiuta un valore oltre il massimo della colonna', async () => {
+    await expect(valida({ pesoEffettivo: 100000000 })).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it.each([0, -1, '12', null])('rifiuta %p', async pesoEffettivo => {
+    await expect(valida({ pesoEffettivo })).rejects.toBeInstanceOf(BadRequestException)
   })
 })

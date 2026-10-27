@@ -26,7 +26,8 @@ export class AnnullaFIRUseCase {
     }
 
     // 3. Persist changes
-    await this.firRepository.save(fir)
+    // Scrittura condizionata alla versione letta: un'altra operazione concorrente => 409.
+    await this.firRepository.save(fir, { verificaVersione: true })
 
     return Result.ok<FIR>(fir)
   }

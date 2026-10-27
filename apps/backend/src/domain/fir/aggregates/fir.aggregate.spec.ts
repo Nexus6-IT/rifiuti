@@ -16,6 +16,8 @@ import {
   RentriStatoRiconciliato,
   ProvenienzaRifiuto,
   TipoTratta,
+  ParteFIR,
+  ContenutoBozzaFIR,
 } from './fir.aggregate'
 import { UnitaMisura } from '../value-objects/quantita'
 import {
@@ -24,6 +26,7 @@ import {
   InvalidQuantityError,
   FIRNonLegatoRentriError,
   MetodoLocaleNonConsentitoSuFirLegatoError,
+  FirNonModificabileError,
 } from '../../../core/domain/errors'
 
 // Test Fixtures
@@ -47,6 +50,18 @@ const createMockFirma = (firmatario: string): FirmaDigitale => ({
 })
 
 describe('FIR Aggregate', () => {
+  describe('versione', () => {
+    it('un FIR appena creato non è mai stato salvato: versione 0', () => {
+      expect(FIR.create(createValidFIRProps()).versione).toBe(0)
+    })
+
+    it('registraVersioneSalvata allinea la versione', () => {
+      const fir = FIR.create(createValidFIRProps())
+      fir.registraVersioneSalvata(3)
+      expect(fir.versione).toBe(3)
+    })
+  })
+
   describe('create', () => {
     it('should create FIR in BOZZA state', () => {
       const fir = FIR.create(createValidFIRProps())
@@ -219,47 +234,55 @@ describe('FIR Aggregate', () => {
       expect((events[0] as FIRConsegnatoEvent).pesoEffettivo).toBe(120)
     })
 
-    it('should accept peso at +10% tolerance boundary', () => {
+    const firInTransito = (): FIR => {
       const fir = FIR.create(createValidFIRProps()) // 120 kg
       fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
       fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
+      return fir
+    }
 
-      fir.confermaConsegna(132, createMockFirma('Destinatario')) // Exactly +10%
+    it.each([
+      [150, 30, 25, true], // +25%
+      [60, -60, -50, true], // -50%
+      [1200, 1080, 900, true], // peso 10 volte la dichiarata
+      [132, 12, 10, false], // +10% esatto: nessun avviso
+      [108, -12, -10, false], // -10% esatto: nessun avviso
+    ])('accetta il peso %s e calcola lo scostamento', (peso, differenza, percentuale, oltre) => {
+      const fir = firInTransito()
+
+      fir.confermaConsegna(peso, createMockFirma('Destinatario'))
 
       expect(fir.stato).toBe(FIRStato.CONSEGNATO)
+      expect(fir.pesoEffettivo).toBe(peso)
+      expect(fir.scostamentoPeso).toEqual({
+        differenza,
+        percentuale,
+        unita: UnitaMisura.KG,
+        oltreSoglia: oltre,
+      })
     })
 
-    it('should accept peso at -10% tolerance boundary', () => {
-      const fir = FIR.create(createValidFIRProps()) // 120 kg
-      fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
-      fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
+    it("scostamentoPeso è null finché non c'è il peso a destino", () => {
+      expect(firInTransito().scostamentoPeso).toBeNull()
+    })
 
-      fir.confermaConsegna(108, createMockFirma('Destinatario')) // Exactly -10%
+    it.each([0, -5, Number.NaN, Number.POSITIVE_INFINITY, 100000000])(
+      'rifiuta il peso non valido %s e lascia il FIR IN_TRANSITO',
+      peso => {
+        const fir = firInTransito()
 
+        expect(() => fir.confermaConsegna(peso, createMockFirma('Destinatario'))).toThrow(
+          DomainError
+        )
+        expect(fir.stato).toBe(FIRStato.IN_TRANSITO)
+        expect(fir.pesoEffettivo).toBeNull()
+      }
+    )
+
+    it('accetta il peso massimo della colonna (99.999.999,99)', () => {
+      const fir = firInTransito()
+      fir.confermaConsegna(99999999.99, createMockFirma('Destinatario'))
       expect(fir.stato).toBe(FIRStato.CONSEGNATO)
-    })
-
-    it('should throw error if peso exceeds +10% tolerance', () => {
-      const fir = FIR.create(createValidFIRProps()) // 120 kg
-      fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
-      fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
-
-      expect(
-        () => fir.confermaConsegna(135, createMockFirma('Destinatario')) // +12.5%
-      ).toThrow(DomainError)
-      expect(() => fir.confermaConsegna(135, createMockFirma('Destinatario'))).toThrow(
-        /eccede tolleranza/
-      )
-    })
-
-    it('should throw error if peso exceeds -10% tolerance', () => {
-      const fir = FIR.create(createValidFIRProps()) // 120 kg
-      fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
-      fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
-
-      expect(
-        () => fir.confermaConsegna(105, createMockFirma('Destinatario')) // -12.5%
-      ).toThrow(DomainError)
     })
 
     it('should throw error if not in IN_TRANSITO state', () => {
@@ -1085,6 +1108,332 @@ describe('FIR Aggregate', () => {
 
         expect(() => fir.registraNoteAnnullamentoRentri('   ')).toThrow(/non può essere vuota/)
         expect(fir.motivoAnnullamento).toBeNull()
+      })
+    })
+  })
+  describe('modifica della bozza', () => {
+    const parte = (id: string, nome = `Parte ${id}`): ParteFIR => ({
+      registroId: id,
+      ragioneSociale: nome,
+      partitaIva: '12345678901',
+      indirizzo: 'Via Roma 1',
+      contatto: `${id}@pec.it`,
+    })
+    const firBozza = (
+      extra: Partial<CreateFIRProps> = {},
+      rifiutoExtra: Partial<CreateFIRProps['rifiuto']> = {}
+    ): FIR =>
+      FIR.create({
+        ...createValidFIRProps(),
+        produttoreId: 'p-1',
+        trasportatoreId: 't-1',
+        destinatarioId: 'd-1',
+        tenantId: 'tenant-1',
+        creatoDaUserId: 'user-1',
+        produttore: parte('p-1'),
+        trasportatore: parte('t-1'),
+        destinatario: parte('d-1'),
+        annotazioni: 'note',
+        provenienza: ProvenienzaRifiuto.SPECIALE,
+        tipoTrattaPrincipale: TipoTratta.TERRESTRE,
+        ...extra,
+        rifiuto: {
+          ...createValidFIRProps().rifiuto,
+          numeroColli: 3,
+          codiceOperazione: 'R1',
+          descrizione: 'Oli esausti',
+          categoria: 'SPECIALE',
+          tipoOperazione: 'RECOVERY',
+          ...rifiutoExtra,
+        },
+      })
+    const contenutoDi = (fir: FIR, mod: Partial<ContenutoBozzaFIR> = {}): ContenutoBozzaFIR => ({
+      produttoreId: fir.produttoreId,
+      trasportatoreId: fir.trasportatoreId,
+      destinatarioId: fir.destinatarioId,
+      produttore: fir.produttore as ParteFIR,
+      trasportatore: fir.trasportatore as ParteFIR,
+      destinatario: fir.destinatario as ParteFIR,
+      rifiuto: {
+        cerCode: fir.rifiuto.cerCode,
+        quantita: fir.rifiuto.quantita.valore,
+        unitaMisura: fir.rifiuto.quantita.unitaMisura,
+        statoFisico: fir.rifiuto.statoFisico,
+        caratteristichePericolo: fir.rifiuto.caratteristichePericolo,
+        numeroColli: fir.rifiuto.numeroColli,
+        codiceOperazione: fir.rifiuto.codiceOperazione,
+      },
+      trasportatoriAggiuntivi: fir.trasportatoriAggiuntivi,
+      annotazioni: fir.annotazioni,
+      provenienza: fir.provenienza as ProvenienzaRifiuto,
+      tipoTrattaPrincipale: fir.tipoTrattaPrincipale as TipoTratta,
+      ...mod,
+    })
+    const imposta = (fir: FIR, campi: Record<string, unknown>): FIR =>
+      Object.assign(fir, campi) as FIR
+
+    describe('motivoNonModificabile', () => {
+      it('bozza libera: null', () => {
+        expect(firBozza().motivoNonModificabile()).toBeNull()
+      })
+      it('legata a RENTRI, anche se firmata e non in bozza: LEGATO_RENTRI', () => {
+        const fir = imposta(firBozza(), {
+          _rentriNumeroFir: 'N-1',
+          _firmePresenti: true,
+          _stato: FIRStato.EMESSO,
+          _inAttesaFirmaProduttore: true,
+        })
+        expect(fir.motivoNonModificabile()).toBe('LEGATO_RENTRI')
+      })
+      it('emessa e firmata: NON_BOZZA', () => {
+        const fir = imposta(firBozza(), { _stato: FIRStato.EMESSO, _firmePresenti: true })
+        expect(fir.motivoNonModificabile()).toBe('NON_BOZZA')
+      })
+      it.each([FIRStato.IN_TRANSITO, FIRStato.CONSEGNATO, FIRStato.ANNULLATO])(
+        'stato %s: NON_BOZZA',
+        stato => {
+          expect(imposta(firBozza(), { _stato: stato }).motivoNonModificabile()).toBe('NON_BOZZA')
+        }
+      )
+      it('in attesa del produttore e con firma: FIRMATO (viene prima)', () => {
+        const fir = imposta(firBozza(), { _firmePresenti: true, _inAttesaFirmaProduttore: true })
+        expect(fir.motivoNonModificabile()).toBe('FIRMATO')
+      })
+      it('solo in attesa del produttore: IN_ATTESA_FIRMA_PRODUTTORE', () => {
+        const fir = imposta(firBozza(), { _inAttesaFirmaProduttore: true })
+        expect(fir.motivoNonModificabile()).toBe('IN_ATTESA_FIRMA_PRODUTTORE')
+      })
+    })
+
+    describe('modificaBozza', () => {
+      it('FIR legato: errore del guard RENTRI, prima di ogni altro motivo', () => {
+        const fir = imposta(firBozza(), { _rentriNumeroFir: 'N-1', _firmePresenti: true })
+        expect(() => fir.modificaBozza(contenutoDi(fir))).toThrow(
+          MetodoLocaleNonConsentitoSuFirLegatoError
+        )
+      })
+      it.each([
+        ['NON_BOZZA', { _stato: FIRStato.EMESSO, _firmePresenti: true }],
+        ['FIRMATO', { _firmePresenti: true, _inAttesaFirmaProduttore: true }],
+        ['IN_ATTESA_FIRMA_PRODUTTORE', { _inAttesaFirmaProduttore: true }],
+      ])('motivo %s: FirNonModificabileError', (motivo, campi) => {
+        const fir = imposta(firBozza(), campi)
+        let errore: unknown
+        try {
+          fir.modificaBozza(contenutoDi(fir))
+        } catch (e) {
+          errore = e
+        }
+        expect(errore).toBeInstanceOf(FirNonModificabileError)
+        expect((errore as FirNonModificabileError).motivo).toBe(motivo)
+      })
+
+      it('contenuto identico: [] e nessuna scrittura', () => {
+        const fir = firBozza()
+        expect(fir.modificaBozza(contenutoDi(fir))).toEqual([])
+        expect(fir.tratteModificate).toBe(false)
+      })
+
+      it('restituisce i nomi dei campi cambiati e li scrive', () => {
+        const fir = firBozza()
+        const base = contenutoDi(fir)
+        const campi = fir.modificaBozza({
+          ...base,
+          rifiuto: {
+            ...base.rifiuto,
+            cerCode: '20 01 21*',
+            quantita: 200,
+            unitaMisura: UnitaMisura.TONNELLATE,
+            statoFisico: 'Solido',
+            caratteristichePericolo: 'HP3',
+            numeroColli: 5,
+            codiceOperazione: 'R3',
+          },
+          annotazioni: 'altre note',
+          provenienza: ProvenienzaRifiuto.URBANO,
+          tipoTrattaPrincipale: TipoTratta.FERROVIARIA,
+        })
+        expect(campi).toEqual([
+          'cerCode',
+          'quantita',
+          'unitaMisura',
+          'statoFisico',
+          'caratteristichePericolo',
+          'numeroColli',
+          'codiceOperazione',
+          'annotazioni',
+          'provenienza',
+          'tipoTrattaPrincipale',
+        ])
+        expect(fir.rifiuto.cerCode).toBe('20 01 21*')
+        expect(fir.rifiuto.quantita.valore).toBe(200)
+        expect(fir.rifiuto.quantita.unitaMisura).toBe(UnitaMisura.TONNELLATE)
+        expect(fir.annotazioni).toBe('altre note')
+        expect(fir.provenienza).toBe(ProvenienzaRifiuto.URBANO)
+        expect(fir.tipoTrattaPrincipale).toBe(TipoTratta.FERROVIARIA)
+      })
+
+      it('stringa vuota, null e undefined dei facoltativi sono equivalenti: nessun cambiamento', () => {
+        const fir = firBozza(
+          { annotazioni: undefined },
+          {
+            statoFisico: undefined,
+            caratteristichePericolo: undefined,
+            numeroColli: undefined,
+            codiceOperazione: undefined,
+          }
+        )
+        const base = contenutoDi(fir)
+        expect(
+          fir.modificaBozza({
+            ...base,
+            annotazioni: '',
+            rifiuto: {
+              ...base.rifiuto,
+              statoFisico: '',
+              caratteristichePericolo: null,
+              numeroColli: null,
+              codiceOperazione: '',
+            },
+          })
+        ).toEqual([])
+      })
+
+      it('svuotare annotazioni, HP e colli è un cambiamento e riporta i campi a vuoto', () => {
+        const fir = firBozza({}, { caratteristichePericolo: 'HP14' })
+        const base = contenutoDi(fir)
+        const campi = fir.modificaBozza({
+          ...base,
+          annotazioni: '',
+          rifiuto: { ...base.rifiuto, caratteristichePericolo: '', numeroColli: undefined },
+        })
+        expect(campi).toEqual(['caratteristichePericolo', 'numeroColli', 'annotazioni'])
+        expect(fir.annotazioni).toBeNull()
+        expect(fir.rifiuto.caratteristichePericolo).toBeUndefined()
+        expect(fir.rifiuto.numeroColli).toBeUndefined()
+      })
+
+      it('quantità <= 0: errore di dominio e nessun campo cambiato', () => {
+        const fir = firBozza()
+        const base = contenutoDi(fir)
+        expect(() =>
+          fir.modificaBozza({
+            ...base,
+            annotazioni: 'x',
+            rifiuto: { ...base.rifiuto, quantita: 0 },
+          })
+        ).toThrow(InvalidQuantityError)
+        expect(fir.annotazioni).toBe('note')
+        expect(fir.rifiuto.quantita.valore).toBe(120)
+      })
+
+      it('quantità non numerica: errore di dominio', () => {
+        const fir = firBozza()
+        const base = contenutoDi(fir)
+        expect(() =>
+          fir.modificaBozza({ ...base, rifiuto: { ...base.rifiuto, quantita: NaN } })
+        ).toThrow(DomainError)
+      })
+
+      it('cambio di parte: id e snapshot sostituiti, solo quella parte segnalata', () => {
+        const fir = firBozza()
+        const campi = fir.modificaBozza(
+          contenutoDi(fir, { destinatarioId: 'd-2', destinatario: parte('d-2') })
+        )
+        expect(campi).toEqual(['destinatario'])
+        expect(fir.destinatarioId).toBe('d-2')
+        expect(fir.destinatario?.registroId).toBe('d-2')
+        expect(fir.produttore?.registroId).toBe('p-1')
+      })
+
+      it('stesso id ma snapshot diverso è un cambiamento della parte', () => {
+        const fir = firBozza()
+        expect(
+          fir.modificaBozza(contenutoDi(fir, { produttore: parte('p-1', 'Nuovo nome') }))
+        ).toEqual(['produttore'])
+      })
+
+      it('tratte: elenco identico lascia le righe esistenti, elenco diverso le sostituisce', () => {
+        const tratta = {
+          ordine: 1,
+          tipoTratta: TipoTratta.TERRESTRE,
+          trasportatoreId: 'ta-1',
+          denominazione: 'A',
+          mezzo: 'AB123CD',
+        }
+        const fir = firBozza({ trasportatoriAggiuntivi: [tratta] })
+        // stessa chiave (trasportatoreId, tipo, ordine) ma denominazione diversa: invariato
+        expect(
+          fir.modificaBozza(
+            contenutoDi(fir, {
+              trasportatoriAggiuntivi: [{ ...tratta, denominazione: 'B', mezzo: undefined }],
+            })
+          )
+        ).toEqual([])
+        expect(fir.tratteModificate).toBe(false)
+        expect(fir.trasportatoriAggiuntivi[0].mezzo).toBe('AB123CD')
+
+        const nuove = [{ ...tratta, trasportatoreId: 'ta-2', denominazione: 'C', mezzo: undefined }]
+        expect(fir.modificaBozza(contenutoDi(fir, { trasportatoriAggiuntivi: nuove }))).toEqual([
+          'trasportatoriAggiuntivi',
+        ])
+        expect(fir.tratteModificate).toBe(true)
+        expect(fir.trasportatoriAggiuntivi).toEqual(nuove)
+        // la chiamata seguente senza cambiamenti azzera il segnale
+        fir.modificaBozza(contenutoDi(fir))
+        expect(fir.tratteModificate).toBe(false)
+      })
+
+      it('copia l elenco delle tratte: modificare l array passato dopo non cambia il FIR', () => {
+        const fir = firBozza()
+        const nuove = [
+          {
+            ordine: 1,
+            tipoTratta: TipoTratta.MARITTIMA,
+            trasportatoreId: 'ta-9',
+            denominazione: 'Nave',
+          },
+        ]
+        fir.modificaBozza(contenutoDi(fir, { trasportatoriAggiuntivi: nuove }))
+        nuove.push({ ...nuove[0], ordine: 2, trasportatoreId: 'ta-10' })
+        expect(fir.trasportatoriAggiuntivi).toHaveLength(1)
+        expect(fir.trasportatoriAggiuntivi).not.toBe(nuove)
+      })
+
+      it('conserva descrizione, categoria e tipoOperazione del rifiuto', () => {
+        const fir = firBozza()
+        const base = contenutoDi(fir)
+        fir.modificaBozza({
+          ...base,
+          rifiuto: { ...base.rifiuto, cerCode: '20 01 21*', quantita: 5 },
+        })
+        expect(fir.rifiuto.descrizione).toBe('Oli esausti')
+        expect(fir.rifiuto.categoria).toBe('SPECIALE')
+        expect(fir.rifiuto.tipoOperazione).toBe('RECOVERY')
+      })
+
+      it('non tocca stato, numero, firme, campi RENTRI, tenant, creatore, id, data di creazione', () => {
+        const fir = firBozza()
+        const foto = (): object => ({
+          id: fir.id,
+          stato: fir.stato,
+          numero: fir.numeroProgressivo,
+          firme: fir.firme,
+          rentri: fir.rentriNumeroFir,
+          sync: fir.rentriSyncStatus,
+          tenant: fir.tenantId,
+          creatore: fir.creatoDaUserId,
+          creato: fir.createdAt,
+          versione: fir.versione,
+        })
+        const prima = foto()
+        const base = contenutoDi(fir)
+        fir.modificaBozza({
+          ...base,
+          rifiuto: { ...base.rifiuto, quantita: 999 },
+          annotazioni: 'z',
+        })
+        expect(foto()).toEqual(prima)
       })
     })
   })

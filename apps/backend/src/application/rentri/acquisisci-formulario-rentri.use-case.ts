@@ -174,7 +174,8 @@ export class AcquisisciFormularioRENTRIUseCase {
         origine = RentriOrigineLegame.ACQUISITO_DA_TERZI
       } else {
         firTarget!.agganciaManualmente(input.numeroFir, input.correlationId)
-        await this.firRepository.save(firTarget!)
+        // Aggancio manuale: scrittura condizionata alla versione letta (piano D5).
+        await this.firRepository.save(firTarget!, { verificaVersione: true })
         firId = firTarget!.id
         origine = RentriOrigineLegame.AGGANCIO_MANUALE
       }

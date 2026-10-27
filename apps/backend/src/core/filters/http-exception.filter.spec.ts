@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common'
 import * as Sentry from '@sentry/node'
 import { HttpExceptionFilter } from './http-exception.filter'
-import { FirAnnullatoNelFrattempoError } from '../domain/errors'
+import {
+  FirAnnullatoNelFrattempoError,
+  FirModificatoNelFrattempoError,
+  FirNonModificabileError,
+  FirNonTrovatoError,
+} from '../domain/errors'
 import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
 
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
@@ -96,6 +101,48 @@ describe('HttpExceptionFilter - segnalazione a Bugsink', () => {
         error: 'FIR_ANNULLATO_NEL_FRATTEMPO',
         message:
           "Il FIR è stato annullato nel frattempo da un'altra operazione: ricarica la pagina per vedere lo stato aggiornato.",
+      })
+    )
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('un FIR modificato nel frattempo è un conflitto (409), senza segnalazione', () => {
+    filter.catch(new FirModificatoNelFrattempoError('fir-1'), host)
+
+    expect(response.status).toHaveBeenCalledWith(409)
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 409,
+        error: 'FIR_MODIFICATO_NEL_FRATTEMPO',
+        message: FirModificatoNelFrattempoError.MESSAGGIO_UTENTE,
+      })
+    )
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('una bozza non modificabile è un conflitto (409) col messaggio del motivo, senza id', () => {
+    filter.catch(new FirNonModificabileError('FIRMATO'), host)
+
+    expect(response.status).toHaveBeenCalledWith(409)
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 409,
+        error: 'FIR_NON_MODIFICABILE',
+        message: FirNonModificabileError.MESSAGGI.FIRMATO,
+      })
+    )
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('un FIR non trovato è un 404 senza id, senza segnalazione', () => {
+    filter.catch(new FirNonTrovatoError(), host)
+
+    expect(response.status).toHaveBeenCalledWith(404)
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 404,
+        error: 'FIR_NON_TROVATO',
+        message: 'FIR non trovato',
       })
     )
     expect(Sentry.captureException).not.toHaveBeenCalled()

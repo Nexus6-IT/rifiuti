@@ -7,7 +7,12 @@ import {
 } from '@prisma/client/runtime/library'
 import { LoggerService } from '../logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
-import { FirAnnullatoNelFrattempoError } from '../domain/errors'
+import {
+  FirAnnullatoNelFrattempoError,
+  FirModificatoNelFrattempoError,
+  FirNonModificabileError,
+  FirNonTrovatoError,
+} from '../domain/errors'
 import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
 import { CODICE_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-certificato.costanti'
 
@@ -99,6 +104,24 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode = HttpStatus.CONFLICT
       errorCode = FirAnnullatoNelFrattempoError.CODICE
       message = FirAnnullatoNelFrattempoError.MESSAGGIO_UTENTE
+    }
+    // Lock ottimistico sul FIR (versione diversa da quella letta): 409, nessuna segnalazione.
+    else if (exception instanceof FirModificatoNelFrattempoError) {
+      statusCode = HttpStatus.CONFLICT
+      errorCode = FirModificatoNelFrattempoError.CODICE
+      message = FirModificatoNelFrattempoError.MESSAGGIO_UTENTE
+    }
+    // Bozza non modificabile: 409 col messaggio del motivo (senza id).
+    else if (exception instanceof FirNonModificabileError) {
+      statusCode = HttpStatus.CONFLICT
+      errorCode = FirNonModificabileError.CODICE
+      message = exception.message
+    }
+    // FIR assente o di un'altra azienda: 404 senza id.
+    else if (exception instanceof FirNonTrovatoError) {
+      statusCode = HttpStatus.NOT_FOUND
+      errorCode = FirNonTrovatoError.CODICE
+      message = FirNonTrovatoError.MESSAGGIO_UTENTE
     }
     // Azienda senza certificato RENTRI: non e' un guasto del server ma serve un'azione
     // dell'utente (caricare il certificato). 422 col messaggio gia' pensato per l'utente

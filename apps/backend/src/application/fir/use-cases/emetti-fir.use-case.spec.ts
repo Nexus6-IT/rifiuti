@@ -22,7 +22,12 @@ import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.re
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { annoSolareItaliano } from '../../../core/time/anno-italiano'
-import { FirNonPiuInBozzaError } from '../../../core/domain/errors'
+import {
+  FirAnnullatoNelFrattempoError,
+  FirModificatoNelFrattempoError,
+  FirNonModificabileError,
+  FirNonPiuInBozzaError,
+} from '../../../core/domain/errors'
 
 // Mock Repository (ciclo di vita)
 class MockFIRRepository implements IFIRRepository {
@@ -514,6 +519,30 @@ describe('EmettiFIRUseCase', () => {
         expect(r.error).toContain('non è più in bozza')
         expect(r.error).toContain('Failed to emit FIR:')
         expect(saveSpy).not.toHaveBeenCalled()
+        expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
+      })
+
+      it('una corsa persa (versione o annullamento) si rilancia: 409 dal filtro, non Result.fail', async () => {
+        const fir = createBozzaFIR()
+        repository.addFIR(fir)
+        const spy = jest.spyOn(repository, 'emettiConNumerazione')
+
+        const modificato = new FirModificatoNelFrattempoError(fir.id)
+        spy.mockRejectedValueOnce(modificato)
+        await expect(
+          useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        ).rejects.toBe(modificato)
+
+        const annullato = new FirAnnullatoNelFrattempoError(fir.id)
+        spy.mockRejectedValueOnce(annullato)
+        await expect(
+          useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        ).rejects.toBe(annullato)
+        const nonModificabile = new FirNonModificabileError('NON_BOZZA')
+        spy.mockRejectedValueOnce(nonModificabile)
+        await expect(
+          useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        ).rejects.toBe(nonModificabile)
         expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
       })
 

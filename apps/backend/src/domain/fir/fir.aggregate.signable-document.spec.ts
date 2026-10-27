@@ -201,3 +201,36 @@ describe('FIR Aggregate - toSignableDocument()', () => {
     })
   })
 })
+
+describe('FIR Aggregate - versione (lock ottimistico) e documento firmato', () => {
+  const props = (versione?: number) => ({
+    id: 'fir-123',
+    firNumber: '',
+    tenantId: 'tenant-123',
+    producerPartitaIva: '12345678901',
+    cerCode: '150101',
+    quantity: 100,
+    unit: 'KG',
+    ...(versione === undefined ? {} : { versione }),
+  })
+
+  it('senza versione nei params vale 1; con versione la riporta', () => {
+    expect(FIR.create(props()).getVersione()).toBe(1)
+    expect(FIR.reconstitute(props(7)).getVersione()).toBe(7)
+  })
+
+  it('il documento canonico non cambia al variare della versione (altrimenti ogni firma romperebbe le precedenti)', () => {
+    const v1 = FIR.reconstitute(props(1)).toSignableDocument()
+    const v9 = FIR.reconstitute(props(9)).toSignableDocument()
+    expect(v9).toBe(v1)
+    expect(v1).not.toContain('versione')
+  })
+
+  it('registraVersioneSalvata aggiorna la versione senza toccare il documento', () => {
+    const fir = FIR.reconstitute(props(1))
+    const prima = fir.toSignableDocument()
+    fir.registraVersioneSalvata(2)
+    expect(fir.getVersione()).toBe(2)
+    expect(fir.toSignableDocument()).toBe(prima)
+  })
+})

@@ -16,6 +16,19 @@ export interface FirmaApplicativa {
 }
 
 /**
+ * Scostamento fra quantità dichiarata e verificata a destino (F2-7), nell'unità del FIR.
+ * Calcolato dal backend; `oltreSoglia` è l'avviso (soglia 10%), mai un blocco.
+ */
+export interface ScostamentoPeso {
+  differenza: number
+  /** Percentuale a 1 decimale; null con quantità dichiarata <= 0. */
+  percentuale: number | null
+  unita: string
+  /** null con quantità dichiarata <= 0. */
+  oltreSoglia: boolean | null
+}
+
+/**
  * Snapshot anagrafico immutabile di una parte del FIR (produttore, trasportatore
  * o destinatario), "congelato" alla creazione a partire dai registri. NON è un
  * riferimento vivo: conserva i dati così com'erano (documento legale).
@@ -29,8 +42,35 @@ export interface ParteFIR {
   contatto?: string
 }
 
+/** Perché una bozza non è modificabile (ordine unico dei motivi: backend, `MotivoNonModificabile`). */
+export type MotivoNonModificabile =
+  | 'LEGATO_RENTRI'
+  | 'NON_BOZZA'
+  | 'FIRMATO'
+  | 'IN_ATTESA_FIRMA_PRODUTTORE'
+
+/** Tratta aggiuntiva (trasporto intermodale) come restituita dal backend. */
+export interface TrasportatoreAggiuntivoFIR {
+  /** Assente se il trasportatore non è nel registro: la tratta non si può precompilare. */
+  trasportatoreId?: string
+  tipoTratta: 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA'
+  ordine: number
+}
+
 export interface FIR {
   id: string
+  /** Versione per il controllo ottimistico: va rinviata tale e quale nella modifica. */
+  versione?: number
+  /** Se true la bozza si può modificare ora (`motivoNonModificabile` è null). */
+  modificabile?: boolean
+  /** Perché il FIR non è modificabile; null se lo è. */
+  motivoNonModificabile?: MotivoNonModificabile | null
+  /** Provenienza del rifiuto (Campo 1 FIR). */
+  provenienza?: 'URBANO' | 'SPECIALE' | null
+  /** Modalità di trasporto della tratta principale. */
+  tipoTrattaPrincipale?: 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA' | null
+  /** Trasportatori aggiuntivi (tratte intermodali), ordinati per `ordine`. */
+  trasportatoriAggiuntivi?: TrasportatoreAggiuntivoFIR[]
   numeroProgressivo?: string | null
   /** Anno di riferimento (campo client; non restituito dalla risposta backend). */
   anno: number
@@ -71,8 +111,10 @@ export interface FIR {
   /** Data della presa in carico solo se registrata in WasteFlow (firma del trasportatore). */
   dataPresaCaricoEffettiva?: string | null
   dataConsegna?: string | null
-  /** Peso effettivo rilevato alla destinazione (4ª copia). */
+  /** Quantità verificata a destinazione (4ª copia), nell'unità del FIR. */
   pesoEffettivo?: number | null
+  /** Scostamento dalla quantità dichiarata (F2-7): solo un avviso, non blocca la consegna. */
+  scostamentoPeso?: ScostamentoPeso | null
   /** 4ª copia: data restituzione dal destinatario al produttore. */
   fourthCopyReturnedAt?: string | null
   /** 4ª copia: note/esito del destinatario. */

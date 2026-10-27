@@ -224,4 +224,27 @@ describe('FirService', () => {
       req.flush(annullatoFIR)
     })
   })
+
+  describe('modificaFIR', () => {
+    it('invia un PUT su /fir/:id con tutti i campi e la versione letta', () => {
+      const dto = {
+        produttoreId: 'p1',
+        trasportatoreId: 't1',
+        destinatarioId: 'd1',
+        provenienza: 'SPECIALE' as const,
+        tipoTrattaPrincipale: 'TERRESTRE' as const,
+        rifiuto: { cerCode: '150101', quantita: 12, unitaMisura: 't' },
+        versione: 3,
+      }
+      let risposta: FIR | undefined
+      service.modificaFIR('fir-1', dto).subscribe(r => (risposta = r))
+
+      const req = httpMock.expectOne(`${FIR_API_URL}/fir-1`)
+      expect(req.request.method).toBe('PUT')
+      expect(req.request.body).toEqual(dto)
+      expect(req.request.body.versione).toBe(3)
+      req.flush({ ...mockFIR, versione: 4 })
+      expect(risposta?.versione).toBe(4)
+    })
+  })
 })
