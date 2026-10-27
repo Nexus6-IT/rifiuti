@@ -1379,7 +1379,6 @@ export class FirListComponent implements OnInit {
     { label: 'kg', value: 'kg' },
     { label: 't', value: 't' },
     { label: 'litri', value: 'litri' },
-    { label: 'm³', value: 'm3' },
   ]
 
   exportMenuItems: MenuItem[] = []
@@ -1695,16 +1694,35 @@ export class FirListComponent implements OnInit {
   }
 
   /** Apre il dialog in modalità modifica, precompilato campo per campo dal FIR. */
-  showEditDialog(fir: FIR): void {
+  showEditDialog(fir: FIR): boolean {
+    const tratte = fir.trasportatoriAggiuntivi ?? []
+    if (tratte.some(t => !t.trasportatoreId)) {
+      this.rifiutaApertura(
+        'Il FIR ha tratte intermodali con trasportatori non presenti nel registro: non sono modificabili dall'interfaccia.'
+      )
+      return false
+    }
+    if (typeof fir.versione !== 'number' || !Number.isInteger(fir.versione)) {
+      this.rifiutaApertura('Versione del FIR non disponibile: ricarica la pagina e riprova.')
+      return false
+    }
     this.newFIR = formDaFir(fir)
     this.trasportatoriAggiuntivi = (this.newFIR.trasportatoriAggiuntivi ?? []).map(t => ({
       trasportatoreId: t.trasportatoreId,
       tipoTratta: t.tipoTratta,
     }))
     this.showTrasportatoriAggiuntivi = this.trasportatoriAggiuntivi.length > 0
-    this.firInModifica = { id: fir.id, versione: fir.versione ?? 1 }
+    this.firInModifica = { id: fir.id, versione: fir.versione }
     this.firErrors = {}
     this.displayCreateDialog = true
+    return true
+  }
+
+  /** La modifica non si può aprire: messaggio e dialog chiuso (anche se era già aperto, dopo una rilettura). */
+  private rifiutaApertura(detail: string): void {
+    this.messageService.add({ severity: 'error', summary: 'Modifica non possibile', detail })
+    this.displayCreateDialog = false
+    this.firInModifica = null
   }
 
   /** Dalla riga della lista: rilegge il FIR (versione e dati correnti) e apre la modifica. */

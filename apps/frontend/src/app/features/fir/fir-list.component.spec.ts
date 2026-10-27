@@ -760,6 +760,32 @@ describe('FirListComponent — modifica delle bozze', () => {
     expect(component.displayCreateDialog).toBeFalse()
   })
 
+  it('non apre la modifica se il FIR ha tratte senza trasportatore mappabile', () => {
+    setup()
+    const add = spyOn(messageService, 'add')
+    const aperto = component.showEditDialog(
+      bozza({ trasportatoriAggiuntivi: [{ tipoTratta: 'MARITTIMA', ordine: 1 }] })
+    )
+    expect(aperto).toBeFalse()
+    expect(component.displayCreateDialog).toBeFalse()
+    expect(component.firInModifica).toBeNull()
+    expect(add).toHaveBeenCalledWith(
+      jasmine.objectContaining({ severity: 'error', detail: jasmine.stringContaining('tratte') })
+    )
+  })
+
+  it('non apre la modifica se la versione non è un numero', () => {
+    setup()
+    const add = spyOn(messageService, 'add')
+    const aperto = component.showEditDialog(bozza({ versione: undefined }))
+    expect(aperto).toBeFalse()
+    expect(component.displayCreateDialog).toBeFalse()
+    expect(component.firInModifica).toBeNull()
+    expect(add).toHaveBeenCalledWith(
+      jasmine.objectContaining({ severity: 'error', detail: jasmine.stringContaining('Versione') })
+    )
+  })
+
   it('la creazione resta com’era: Nuovo FIR chiama createFIR', () => {
     setup()
     component.showCreateDialog()
