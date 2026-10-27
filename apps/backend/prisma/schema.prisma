@@ -120,6 +120,7 @@ model Tenant {
   rentriNumeriVidimati   RentriNumeroVidimato[]
   registroProgressiviIniziali RegistroProgressivoIniziale[]
   registriRifiuti       RegistroRifiuti[]
+  giacenzeIniziali      GiacenzaIniziale[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
 
@@ -819,6 +820,51 @@ model RegistroProgressivoIniziale {
 
   @@unique([registroId, anno])
   @@map("registro_progressivi_iniziali")
+}
+
+/// Origine di una giacenza di apertura del registro.
+enum GiacenzaInizialeProvenienza {
+  /// Inserita da un amministratore dall'applicazione (le API scrivono sempre questo valore).
+  MANUALE
+  /// Riservato all'importazione da altro programma (Fase 3).
+  IMPORTAZIONE
+
+  @@map("giacenza_iniziale_provenienza")
+}
+
+/// Giacenza di apertura del registro (Fase 2 pezzo 2): quantita' gia' in deposito per registro, CER,
+/// stato fisico e unita' da una certa data. Entra nei saldi come un carico del giorno
+/// `dataRiferimento`, ma NON e' un movimento: non consuma progressivi e non e' "prodotta" ne'
+/// "ricevuta" nel MUD. `cerCode` e' nella forma del catalogo (con "*" se il catalogo lo ha).
+/// `origini` e' un array di { anno, protocollo, quantita? } (relazioni iniziali RENTRI, F2-9).
+/// La migration aggiunge CHECK (quantita > 0) e, sull'indice unico, NULLS NOT DISTINCT (due
+/// aperture con lo stesso stato fisico NULL sono un duplicato): Prisma non la confronta, quindi
+/// `migrate diff` resta pulito. Il controllo "una sola apertura per famiglia di unita'" (kg e t
+/// sono la stessa famiglia) e' nel servizio, sotto lo stesso advisory lock dello scarico.
+model GiacenzaIniziale {
+  id              String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String                      @map("tenant_id") @db.Uuid
+  registroId      String                      @map("registro_id") @db.Uuid
+  cerCode         String                      @map("cer_code") @db.VarChar(10)
+  statoFisico     String?                     @map("stato_fisico") @db.VarChar(50)
+  quantita        Decimal                     @db.Decimal(10, 2)
+  unita           String                      @db.VarChar(10)
+  dataRiferimento DateTime                    @map("data_riferimento") @db.Date
+  origini         Json                        @default("[]")
+  provenienza     GiacenzaInizialeProvenienza @default(MANUALE)
+  note            String?                     @db.VarChar(500)
+  impostatoDa     String                      @map("impostato_da") @db.Uuid
+  createdAt       DateTime                    @default(now()) @map("created_at")
+  updatedAt       DateTime                    @updatedAt @map("updated_at")
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registro RegistroRifiuti @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@unique([registroId, cerCode, statoFisico, unita], map: "giacenze_iniziali_registro_cer_stato_unita_key")
+  @@index([tenantId])
+  @@index([registroId])
+  @@map("giacenze_iniziali")
 }
 
 model ActivityLog {
@@ -1989,6 +2035,7 @@ model RegistroRifiuti {
   unitaLocale         RentriUnitaLocale?            @relation(fields: [unitaLocaleId], references: [id], onDelete: Restrict)
   movimenti           WasteMovement[]
   progressiviIniziali RegistroProgressivoIniziale[]
+  giacenzeIniziali    GiacenzaIniziale[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, unitaLocaleId, codice])
