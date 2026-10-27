@@ -18,7 +18,17 @@ const SRC = join(__dirname, '..', '..', '..')
  *
  * Limite noto: `senzaCommenti` non gestisce gli apici dentro una regex literal.
  */
-const NOMI_RIMOSSI = ['RUOLO_CARICO', 'RUOLO_SCARICO', 'operazioneDaCausale']
+const NOMI_RIMOSSI = [
+  'RUOLO_CARICO',
+  'RUOLO_SCARICO',
+  'operazioneDaCausale',
+  'CAUSALI_CARICO',
+  'CAUSALI_SCARICO',
+  'ALL_CAUSALI',
+  'CausaleCarico',
+  'CausaleScarico',
+  'CausaleMovimento',
+]
 
 function sorgenti(dir: string): string[] {
   return readdirSync(dir).flatMap(nome => {
@@ -77,6 +87,15 @@ describe('costanti delle causali: guardia statica', () => {
     ])
     expect(dichiarati('export function operazioneDaCausale(c: string) {}', NOMI_RIMOSSI)).toEqual([
       'operazioneDaCausale',
+    ])
+  })
+
+  it('fallisce su un sorgente finto con i nomi del registro', () => {
+    expect(dichiarati('export const CAUSALI_CARICO = [\x27X\x27] as const', NOMI_RIMOSSI)).toEqual([
+      'CAUSALI_CARICO',
+    ])
+    expect(dichiarati('export type CausaleMovimento = string', NOMI_RIMOSSI)).toEqual([
+      'CausaleMovimento',
     ])
   })
 

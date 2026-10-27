@@ -12,7 +12,6 @@ import {
 import { RegistraMovimentoCommand } from '../commands/registra-movimento.command'
 import {
   WasteMovement,
-  CausaleMovimento,
   TERMINE_REGISTRAZIONE_PRODUTTORE_GG,
 } from '../../../domain/waste-movement/waste-movement.entity'
 import {
@@ -28,6 +27,7 @@ import {
 } from '../../../domain/waste-movement/unita-misura-registro'
 import { giacenzaDisponibileAl } from '../giacenza-disponibile'
 import { validaDatiMovimento } from '../valida-dati-movimento'
+import { confermaVersioneAzienda } from '../causali/catalogo-causali.repository'
 import {
   bloccaProgressivo,
   inserisciAnnotazione,
@@ -63,6 +63,8 @@ export interface MovimentoRegistrato {
   movementDate: Date
   registrationDate: Date
   causale: string
+  /** Descrizione della causale nel catalogo dell'azienda (il codice se non e' piu' in catalogo). */
+  causaleDescrizione: string
   cerCode: string
   wasteDescription?: string
   quantity: number
@@ -91,7 +93,8 @@ export interface MovimentoRegistrato {
 /** Vista di un'annotazione salvata (condivisa con le correzioni). */
 export function movimentoDaRecord(
   record: WasteMovementRecord,
-  ritardoGg: number
+  ritardoGg: number,
+  causaleDescrizione: string = record.causale
 ): Omit<MovimentoRegistrato, 'avvisi' | 'giaRegistrato'> {
   return {
     id: record.id,
@@ -103,6 +106,7 @@ export function movimentoDaRecord(
     movementDate: record.movementDate,
     registrationDate: record.registrationDate,
     causale: record.causale,
+    causaleDescrizione,
     cerCode: record.cerCode,
     wasteDescription: record.wasteDescription ?? undefined,
     quantity: Number(record.quantity),
@@ -237,7 +241,13 @@ export class RegistraMovimentoUseCase {
           if (esistente) {
             // Ritardo dalle date del movimento esistente, non da quelle del retry.
             return {
-              ...this.movimentoDaRecord(esistente, this.ritardoGg(esistente)),
+              ...this.movimentoDaRecord(
+                esistente,
+                this.ritardoGg(esistente),
+                esistente.causale === command.causale
+                  ? validazione.causaleDescrizione
+                  : esistente.causale
+              ),
               avvisi: await this.avvisiDopoRicopia(tx, command.tenantId, esistente.id),
               giaRegistrato: true,
             }
@@ -257,6 +267,18 @@ export class RegistraMovimentoUseCase {
           command.type === 'SCARICO'
             ? await this.verificaGiacenza(tx, command, cerCode, registroMovimento.id)
             : []
+
+        // Causale propria dell'azienda: la versione scelta deve essere ancora valida alla data
+        // dell'operazione, riletta con FOR KEY SHARE (dopo i lock del progressivo e della giacenza,
+        // prima dell'insert): una modifica concorrente della causale attende o fa fallire con 409.
+        if (validazione.causaleAziendaId !== null) {
+          await confermaVersioneAzienda(
+            tx,
+            command.tenantId,
+            validazione.causaleAziendaId,
+            giornoItaliano(command.movementDate)
+          )
+        }
 
         // Progressivo e hash dell'annotazione precedente, letti sotto il lock del progressivo.
         const { progressivo: nextProgressivo, hashPrecedente } = await numeraAnnotazione(
@@ -302,6 +324,7 @@ export class RegistraMovimentoUseCase {
           movementDate: entity.movementDate,
           registrationDate: entity.registrationDate,
           causale: entity.causale,
+          causaleAziendaId: validazione.causaleAziendaId,
           cerCode: entity.cerCode,
           wasteDescription: entity.wasteDescription,
           quantity: entity.quantity,
@@ -321,7 +344,11 @@ export class RegistraMovimentoUseCase {
           notes: entity.notes,
         })
 
-        return { ...this.movimentoDaRecord(record, ritardoGg), avvisi, giaRegistrato: false }
+        return {
+          ...this.movimentoDaRecord(record, ritardoGg, validazione.causaleDescrizione),
+          avvisi,
+          giaRegistrato: false,
+        }
       })
     } catch (err) {
       if (err instanceof GiacenzaInsufficienteError || err instanceof DomainError) {
@@ -535,15 +562,15 @@ export class RegistraMovimentoUseCase {
     return WasteMovement.reconstitute({
       ...m,
       type: record.type,
-      causale: m.causale as CausaleMovimento,
     }).ritardoRegistrazioneGg
   }
 
   private movimentoDaRecord(
     record: WasteMovementRecord,
-    ritardoGg: number
+    ritardoGg: number,
+    causaleDescrizione?: string
   ): Omit<MovimentoRegistrato, 'avvisi' | 'giaRegistrato'> {
-    return movimentoDaRecord(record, ritardoGg)
+    return movimentoDaRecord(record, ritardoGg, causaleDescrizione)
   }
 
   /**

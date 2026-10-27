@@ -13,7 +13,6 @@ import { formattaQuantita } from '../../../core/format/formatta-quantita'
 import { cerSoloCifre } from '../../../domain/waste-movement/cer-registro'
 import { etichettaFir } from '../../../domain/fir/stati-fir'
 import {
-  CausaleMovimento,
   WasteMovement,
   WasteMovementType,
   hashAnnotazioneV2,
@@ -33,7 +32,7 @@ type TipoCorrezione = 'RETTIFICA' | 'ANNULLAMENTO'
 /** Dati completi nuovi di una rettifica (R4): tipo e registro restano quelli dell'originale. */
 export interface DatiRettifica {
   movementDate: Date
-  causale: CausaleMovimento | string
+  causale: string
   cerCode: string
   wasteDescription?: string
   quantity: number
@@ -78,6 +77,10 @@ export interface EsitoCorrezione {
 interface DatiAnnotazione {
   type: WasteMovementType
   causale: string
+  /** Versione della causale aziendale (null per le causali di sistema). */
+  causaleAziendaId: string | null
+  /** Descrizione per la risposta (assente: vale il codice). */
+  causaleDescrizione?: string
   cerCode: string
   wasteDescription: string | null
   quantity: Prisma.Decimal | number
@@ -218,6 +221,7 @@ export class CorreggiMovimentoUseCase {
           movementDate: dati.movementDate,
           registrationDate: adesso,
           causale: dati.causale,
+          causaleAziendaId: dati.causaleAziendaId,
           cerCode: dati.cerCode,
           wasteDescription: dati.wasteDescription,
           quantity: dati.quantity,
@@ -274,7 +278,7 @@ export class CorreggiMovimentoUseCase {
           },
         })
 
-        return { movimento: vistaCorrezione(record), avvisi }
+        return { movimento: vistaCorrezione(record, dati.causaleDescrizione), avvisi }
       })
     } catch (err) {
       throw await this.traduciErrore(err, tenantId, movimentoId)
@@ -298,6 +302,7 @@ export class CorreggiMovimentoUseCase {
       return {
         type: originale.type,
         causale: originale.causale,
+        causaleAziendaId: originale.causaleAziendaId,
         cerCode: originale.cerCode,
         wasteDescription: originale.wasteDescription,
         quantity: originale.quantity,
@@ -312,6 +317,7 @@ export class CorreggiMovimentoUseCase {
       }
     }
     const validazione = await validaDatiMovimento(tx, {
+      tenantId: originale.tenantId,
       type: originale.type,
       causale: r.causale,
       cerCode: r.cerCode,
@@ -331,7 +337,7 @@ export class CorreggiMovimentoUseCase {
         type: originale.type,
         movementDate: r.movementDate,
         registrationDate: new Date(),
-        causale: r.causale as CausaleMovimento,
+        causale: r.causale,
         cerCode: validazione.cerCode,
         quantity: Number(r.quantity),
         unit: r.unit,
@@ -343,6 +349,8 @@ export class CorreggiMovimentoUseCase {
     return {
       type: originale.type,
       causale: r.causale,
+      causaleAziendaId: validazione.causaleAziendaId,
+      causaleDescrizione: validazione.causaleDescrizione,
       cerCode: validazione.cerCode,
       wasteDescription: r.wasteDescription ?? null,
       quantity: r.quantity,
@@ -477,7 +485,7 @@ export class CorreggiMovimentoUseCase {
         type: p.dati.type,
         movementDate: p.dati.movementDate,
         registrationDate: p.adesso,
-        causale: p.dati.causale as CausaleMovimento,
+        causale: p.dati.causale,
         cerCode: p.dati.cerCode,
         quantity: Number(p.dati.quantity),
         unit: p.dati.unit,
@@ -610,9 +618,12 @@ function valutaSaldi(
   return avvisi
 }
 
-function vistaCorrezione(record: WasteMovementRecord): MovimentoCorretto {
+function vistaCorrezione(
+  record: WasteMovementRecord,
+  causaleDescrizione?: string
+): MovimentoCorretto {
   return {
-    ...movimentoDaRecord(record, 0),
+    ...movimentoDaRecord(record, 0, causaleDescrizione),
     tipoAnnotazione: record.tipoAnnotazione,
     movimentoRettificatoId: record.movimentoRettificatoId ?? undefined,
     movimentoOriginaleId: record.movimentoOriginaleId ?? undefined,

@@ -9,36 +9,6 @@ import { giornoItaliano } from '../../core/time/anno-italiano'
 export type WasteMovementType = 'CARICO' | 'SCARICO'
 
 /**
- * Causali di carico (produttori/detentori).
- * Basate sul modello di registro DM 59/2023 Allegato I.
- */
-export const CAUSALI_CARICO = [
-  'PRODUZIONE_INTERNA', // Produzione interna del rifiuto
-  'INGRESSO_ESTERNO', // Ricezione da altro soggetto (acquisto/ingresso)
-  'RICLASSIFICAZIONE', // Riclassificazione del codice CER
-  'RECUPERO_PARZIALE', // Residuo da operazione di recupero parziale
-  'ALTRO_CARICO', // Altro carico non classificato
-] as const
-
-export type CausaleCarico = (typeof CAUSALI_CARICO)[number]
-
-/**
- * Causali di scarico (conferimento/avvio a trattamento).
- */
-export const CAUSALI_SCARICO = [
-  'CONFERIMENTO_TRASPORTATORE', // Conferimento a trasportatore autorizzato (con FIR)
-  'AVVIO_RECUPERO', // Avvio diretto a operazione di recupero (R)
-  'AVVIO_SMALTIMENTO', // Avvio a operazione di smaltimento (D)
-  'CESSIONE', // Cessione a terzi
-  'RICLASSIFICAZIONE', // Riclassificazione (riduzione su CER corrente)
-  'ALTRO_SCARICO', // Altro scarico non classificato
-] as const
-
-export type CausaleScarico = (typeof CAUSALI_SCARICO)[number]
-
-export type CausaleMovimento = CausaleCarico | CausaleScarico
-
-/**
  * Termini massimi di registrazione in giorni di calendario (conservativi).
  * Art. 190 c. 1: 10 gg lavorativi per produttori ≈ 14 gg calendario.
  * Per gestori impianti: 2 gg lavorativi ≈ 3 gg calendario.
@@ -69,7 +39,10 @@ export interface WasteMovementProps {
   type: WasteMovementType
   movementDate: Date
   registrationDate: Date
-  causale: CausaleMovimento
+  /** Codice della causale: di sistema o `AZ_...` dell'azienda; l'elenco valido sta nel catalogo. */
+  causale: string
+  /** Versione della causale aziendale (null per quelle di sistema); non entra nell'hash. */
+  causaleAziendaId?: string | null
   cerCode: string
   wasteDescription?: string
   quantity: number
@@ -178,18 +151,10 @@ export class WasteMovement {
       // Lasciamo passare e tracciamo nella property per il controller.
     }
 
-    if (props.type === 'CARICO') {
-      if (!CAUSALI_CARICO.includes(props.causale as CausaleCarico)) {
-        throw new Error(
-          `Causale non valida per CARICO: ${props.causale}. Valori: ${CAUSALI_CARICO.join(', ')}`
-        )
-      }
-    } else {
-      if (!CAUSALI_SCARICO.includes(props.causale as CausaleScarico)) {
-        throw new Error(
-          `Causale non valida per SCARICO: ${props.causale}. Valori: ${CAUSALI_SCARICO.join(', ')}`
-        )
-      }
+    // L'elenco delle causali valide dipende dal catalogo dell'azienda: lo controlla il caso d'uso.
+    // Il dominio verifica solo la forma.
+    if (!props.causale || props.causale.length > 100 || !/^[A-Z][A-Z0-9_]*$/.test(props.causale)) {
+      throw new Error(`Causale non valida: ${props.causale}`)
     }
 
     // Ogni nuova registrazione e' v2 (HASH_VERSIONE_CORRENTE, che la persistenza salva): la v1
@@ -283,8 +248,11 @@ export class WasteMovement {
   get registrationDate(): Date {
     return this.props.registrationDate
   }
-  get causale(): CausaleMovimento {
+  get causale(): string {
     return this.props.causale
+  }
+  get causaleAziendaId(): string | null {
+    return this.props.causaleAziendaId ?? null
   }
   get cerCode(): string {
     return this.props.cerCode

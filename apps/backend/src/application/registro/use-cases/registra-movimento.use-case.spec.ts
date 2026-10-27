@@ -8,6 +8,7 @@ import { annoSolareItaliano } from '../../../core/time/anno-italiano'
 import { Prisma } from '@prisma/client'
 import { FirGiaRegistratoError } from '../../../core/domain/errors'
 import { RegistriService, RegistroNonCoerenteConFirError } from '../registri.service'
+import { righeCausaliSistema } from '../causali/catalogo-causali.fixture'
 import { hashAnnotazioneV2 } from '../../../domain/waste-movement/waste-movement.entity'
 
 const REGISTRO = 'registro-uuid-001'
@@ -61,6 +62,9 @@ describe('RegistraMovimentoUseCase', () => {
       cERCode: {
         count: jest.fn().mockResolvedValue(1),
       },
+      // Catalogo delle causali: le 11 di sistema, nessuna personalizzazione dell'azienda.
+      causaleRegistro: { findMany: jest.fn().mockResolvedValue(righeCausaliSistema()) },
+      causaleRegistroAzienda: { findMany: jest.fn().mockResolvedValue([]) },
       // FIR collegato: per default esiste e appartiene al tenant.
       fIR: {
         findFirst: jest.fn().mockResolvedValue({
@@ -1240,6 +1244,9 @@ describe('RegistraMovimentoUseCase: tempo italiano', () => {
     lockArgs = []
     const prisma: any = {
       wasteMovement: { groupBy: jest.fn().mockResolvedValue([]), create: jest.fn() },
+      // Catalogo delle causali: le 11 di sistema, nessuna personalizzazione dell'azienda.
+      causaleRegistro: { findMany: jest.fn().mockResolvedValue(righeCausaliSistema()) },
+      causaleRegistroAzienda: { findMany: jest.fn().mockResolvedValue([]) },
       cERCode: { count: jest.fn().mockResolvedValue(1) },
       fIR: {
         findFirst: jest.fn().mockResolvedValue({

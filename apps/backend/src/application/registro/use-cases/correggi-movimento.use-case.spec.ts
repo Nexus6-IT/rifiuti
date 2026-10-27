@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client'
 import { CorreggiMovimentoUseCase } from './correggi-movimento.use-case'
 import * as giacenzaModulo from '../giacenza-disponibile'
+import { righeCausaliSistema } from '../causali/catalogo-causali.fixture'
 import { INDICAZIONE_FIR_ANNULLATO } from '../../../core/domain/errors'
 
 const logger = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
@@ -76,6 +77,9 @@ function creaTx(opts: {
         .fn()
         .mockImplementation(async ({ data }: any) => ({ ...creato, ...data, id: 'n-1' })),
     },
+    // Catalogo delle causali: le 11 di sistema, nessuna personalizzazione dell'azienda.
+    causaleRegistro: { findMany: jest.fn().mockResolvedValue(righeCausaliSistema()) },
+    causaleRegistroAzienda: { findMany: jest.fn().mockResolvedValue([]) },
     cERCode: { count: jest.fn().mockResolvedValue(1) },
     mUDReport: {
       findMany: jest.fn().mockResolvedValue((opts.mud ?? []).map(year => ({ year }))),

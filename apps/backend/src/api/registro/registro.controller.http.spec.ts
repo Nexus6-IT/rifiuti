@@ -205,6 +205,35 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
     expect(registra.execute).not.toHaveBeenCalled()
   })
 
+  it('causale di forma non valida (pippo): 400 dal DTO, senza arrivare al caso d\x27uso', async () => {
+    await avvia({ tenantId: CLIENTE, isActive: true, expiresAt: null, role: { name: 'OPERATOR' } })
+
+    const risposta = await request(app.getHttpServer())
+      .post('/registro')
+      .set('X-Tenant-ID', CLIENTE)
+      .send({ ...movimento, causale: 'pippo' })
+
+    expect(risposta.status).toBe(400)
+    expect(registra.execute).not.toHaveBeenCalled()
+  })
+
+  it('causale ben formata ma fuori catalogo (NON_ESISTE): passa il DTO e il 400 lo dà il caso d\x27uso', async () => {
+    await avvia({ tenantId: CLIENTE, isActive: true, expiresAt: null, role: { name: 'OPERATOR' } })
+    registra.execute.mockResolvedValue(
+      Result.fail('Causale non valida per CARICO: NON_ESISTE. Valori: PRODUZIONE_INTERNA')
+    )
+
+    const risposta = await request(app.getHttpServer())
+      .post('/registro')
+      .set('X-Tenant-ID', CLIENTE)
+      .send({ ...movimento, causale: 'NON_ESISTE' })
+
+    expect(registra.execute).toHaveBeenCalledTimes(1)
+    expect(registra.execute.mock.calls[0][0].causale).toBe('NON_ESISTE')
+    expect(risposta.status).toBe(400)
+    expect(JSON.stringify(risposta.body)).toContain('Causale non valida per CARICO')
+  })
+
   it("associazione OPERATOR: 201 e il movimento va nell'azienda selezionata", async () => {
     await avvia({ tenantId: CLIENTE, isActive: true, expiresAt: null, role: { name: 'OPERATOR' } })
 
