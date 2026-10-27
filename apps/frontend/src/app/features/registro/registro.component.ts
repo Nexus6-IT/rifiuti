@@ -75,6 +75,7 @@ import { GiacenzeInizialiDialogComponent } from './giacenze-iniziali-dialog.comp
 import {
   CorreggiMovimentoDialogComponent,
   ModoCorrezione,
+  messaggioErroreCorrezione,
 } from './correggi-movimento-dialog.component'
 import { opzioniCausali, giornoLocale } from './registro-opzioni'
 import {
@@ -1823,7 +1824,8 @@ export class RegistroComponent implements OnInit {
     return testoAnnotazione(m)
   }
   testoEsito(e: EsitoVerificaCatena): string {
-    return testoEsitoVerifica(e)
+    const sede = this.piuRegistri() ? `${this.etichettaSede(e.registroId)}: ` : ''
+    return sede + testoEsitoVerifica(e)
   }
   numeroMovimento(m: Movimento): string {
     return `${m.progressiveNumber}/${m.progressiveYear}`
@@ -1842,14 +1844,9 @@ export class RegistroComponent implements OnInit {
     () => 9 + (this.piuRegistri() ? 1 : 0) + (this.offriCorrezioni() ? 1 : 0)
   )
 
-  /** Registro da verificare: quello dello stato del progressivo, altrimenti sede filtrata o predefinita. */
+  /** Registro da verificare: lo stesso delle giacenze iniziali (filtro, predefinito, stato). */
   private registroVerifica(): string | undefined {
-    return (
-      this.statoProgressivo()?.registroId ??
-      this.filtroRegistro ??
-      registroPredefinito(this.registri()) ??
-      undefined
-    )
+    return this.registroGiacenzeIniziali()
   }
 
   /** Solo chi amministra l'azienda (lo dice il backend, non il token) e con un registro determinato. */
@@ -1882,9 +1879,7 @@ export class RegistroComponent implements OnInit {
       error: err => {
         this.verificando.set(false)
         this.esitoVerifica.set(null)
-        this.toast.error(
-          err?.error?.message ?? err?.message ?? "Verifica dell'integrità del registro non riuscita"
-        )
+        this.toast.error(messaggioErroreCorrezione(err))
       },
     })
   }
@@ -2011,6 +2006,7 @@ export class RegistroComponent implements OnInit {
   }
 
   onFiltroRegistroChange(): void {
+    this.esitoVerifica.set(null)
     this.ricarica(1)
     this.caricaProgressivo()
   }
@@ -2133,6 +2129,7 @@ export class RegistroComponent implements OnInit {
     this.filtroCer = ''
     const cambiaSede = this.filtroRegistro !== null
     this.filtroRegistro = null
+    if (cambiaSede) this.esitoVerifica.set(null)
     this.ricarica(1)
     if (cambiaSede) this.caricaProgressivo()
   }

@@ -52,8 +52,10 @@ export function normalizzaStatoFisico(stato?: string | null): string | null {
 /** Unità selezionabili: un'unità storica fuori elenco (es. LITRI) resta selezionabile. */
 export function opzioniUnita(corrente?: string | null): OpzioneRegistro[] {
   const lista = [...UNITA_GIACENZA]
-  const c = corrente?.toUpperCase()
-  if (c && !lista.some(u => u.value === c)) lista.push({ label: corrente!, value: c })
+  // Il confronto ignora le maiuscole solo per decidere se aggiungere la voce: il valore resta quello originale.
+  if (corrente && !lista.some(u => u.value === corrente.toUpperCase())) {
+    lista.push({ label: corrente, value: corrente })
+  }
   return lista
 }
 

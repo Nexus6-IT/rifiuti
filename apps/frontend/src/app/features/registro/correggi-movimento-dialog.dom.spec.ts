@@ -281,7 +281,7 @@ describe('Registro - rettifica e annullamento (template reale, click veri)', () 
     fixture.detectChanges()
 
     expect(servizio.annulla).toHaveBeenCalledOnceWith('m1', { motivo: 'Registrato per errore' })
-    expect(toast.success).toHaveBeenCalledWith('Annullamento registrata: annotazione 13/2026')
+    expect(toast.success).toHaveBeenCalledWith('Annullamento registrato: annotazione 13/2026')
   })
 
   it('annullamento di una registrazione con FIR chiede prima una conferma esplicita', () => {
@@ -394,6 +394,45 @@ describe('Registro - rettifica e annullamento (template reale, click veri)', () 
     )
   })
 
+  it('verifica catena con più sedi: l’esito indica la sede e sparisce al cambio di sede', () => {
+    const r2: RegistroVista = {
+      ...registro,
+      id: 'r2',
+      denominazione: 'Deposito',
+      principale: false,
+    }
+    servizio.assicuraRegistri.and.returnValue(of([registro, r2]))
+    servizio.verificaCatena.and.returnValue(
+      of({ registroId: 'r2', anno: 2026, verificate: 3, nonVerificabili: [], primoErrore: null })
+    )
+    apri([mov()], stato({ puoImpostare: true, registroId: null }))
+    const c = fixture.componentInstance
+    c.filtroRegistro = 'r2'
+    c.onFiltroRegistroChange()
+    fixture.detectChanges()
+
+    clic('registro-verifica-catena')
+    fixture.detectChanges()
+    expect(servizio.verificaCatena).toHaveBeenCalledOnceWith(c.annoCorrente, 'r2')
+    expect(testo('registro-esito-verifica')).toBe(
+      'Deposito: 3 annotazioni verificate, nessuna alterazione'
+    )
+
+    c.filtroRegistro = 'r1'
+    c.onFiltroRegistroChange()
+    fixture.detectChanges()
+    expect(q('registro-esito-verifica')).toBeNull()
+  })
+
+  it('errore della verifica: usa il messaggio del backend anche se è un elenco', () => {
+    servizio.verificaCatena.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 400, error: { message: ['a', 'b'] } }))
+    )
+    apri([mov()], stato({ puoImpostare: true }))
+    clic('registro-verifica-catena')
+    expect(toast.error).toHaveBeenCalledWith('a · b')
+  })
+
   it('verifica catena con anomalia: numero, anno e motivo leggibile', () => {
     servizio.verificaCatena.and.returnValue(
       of({
@@ -446,13 +485,13 @@ describe('CorreggiMovimentoDialogComponent - unità e stato fisico storici', () 
   it('un’unità fuori elenco resta selezionabile e viene reinviata com’è', () => {
     servizio.rettifica.and.returnValue(of(esito()))
     const c = apri(mov({ unit: 'litri', wastePhysicalState: 'PASTOSO' }))
-    expect(c.unitaOptions().map(o => o.value)).toEqual(['KG', 'T', 'M3', 'LITRI'])
-    expect(c.form.get('unit')?.value).toBe('LITRI')
+    expect(c.unitaOptions().map(o => o.value)).toEqual(['KG', 'T', 'M3', 'litri'])
+    expect(c.form.get('unit')?.value).toBe('litri')
     expect(c.statiFisiciOptions().map(o => o.value)).toContain('PASTOSO')
 
     scrivi('#corr-motivo', 'Unità da verificare')
     clic('correzione-invia')
-    expect(servizio.rettifica.calls.mostRecent().args[1].unit).toBe('LITRI')
+    expect(servizio.rettifica.calls.mostRecent().args[1].unit).toBe('litri')
   })
 
   it('uno stato fisico in maiuscolo si riconduce alla voce dell’elenco', () => {

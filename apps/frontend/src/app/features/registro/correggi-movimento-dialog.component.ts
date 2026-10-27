@@ -35,7 +35,7 @@ import {
   RegistroService,
   TipoMovimento,
 } from './registro.service'
-import { etichettaUnita } from './giacenze-iniziali-dialog.component'
+import { UNITA_GIACENZA, etichettaUnita } from './giacenze-iniziali-dialog.component'
 import {
   dataDaGiorno,
   giornoLocale,
@@ -90,7 +90,7 @@ export function messaggioErroreCorrezione(err: any): string {
     <p-dialog
       [visible]="visible"
       (visibleChange)="visibleChange.emit($event)"
-      [header]="titolo()"
+      [header]="titolo"
       [modal]="true"
       [closable]="!invio()"
       [closeOnEscape]="!invio()"
@@ -102,7 +102,7 @@ export function messaggioErroreCorrezione(err: any): string {
         <div
           *ngIf="conferma() as c"
           class="conferma"
-          role="alertdialog"
+          role="alert"
           [attr.data-testid]="'correzione-conferma-' + c.tipo.toLowerCase()"
         >
           <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
@@ -479,9 +479,9 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
 
   form: FormGroup = this.creaForm()
 
-  readonly titolo = computed(() =>
-    this.modo === 'rettifica' ? 'Rettifica movimento' : 'Annulla movimento'
-  )
+  get titolo(): string {
+    return this.modo === 'rettifica' ? 'Rettifica movimento' : 'Annulla movimento'
+  }
   readonly causaliOptions = computed(() => opzioniCausali(this.tipo()))
   readonly unitaOptions = computed(() => opzioniUnita(this.unitaCorrente()))
   readonly statiFisiciOptions = computed(() => opzioniStatoFisico(this.statoCorrente()))
@@ -537,7 +537,9 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
     if (!m) return
     // La rettifica non cambia il tipo: le causali sono quelle del tipo dell'annotazione.
     this.tipo.set(m.type)
-    const unita = (m.unit || 'KG').toUpperCase()
+    // Un'unità della lista si riconduce al suo valore (kg -> KG); una storica resta com'è.
+    const grezza = m.unit || 'KG'
+    const unita = UNITA_GIACENZA.find(u => u.value === grezza.toUpperCase())?.value ?? grezza
     const stato = normalizzaStatoFisico(m.wastePhysicalState)
     this.unitaCorrente.set(unita)
     this.statoCorrente.set(stato)
@@ -627,8 +629,8 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
       next: esito => {
         this.invio.set(false)
         this.conferma.set(null)
-        const nome = this.modo === 'rettifica' ? 'Rettifica' : 'Annullamento'
-        this.toast.success(`${nome} registrata: annotazione ${numeroAnnotazione(esito.movimento)}`)
+        const nome = this.modo === 'rettifica' ? 'Rettifica registrata' : 'Annullamento registrato'
+        this.toast.success(`${nome}: annotazione ${numeroAnnotazione(esito.movimento)}`)
         for (const avviso of esito.avvisi ?? []) this.toast.warn(avviso)
         this.corretto.emit(esito)
         this.visibleChange.emit(false)

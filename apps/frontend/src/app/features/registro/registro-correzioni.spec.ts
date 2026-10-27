@@ -60,9 +60,7 @@ describe('registro-correzioni', () => {
       nonVerificabili: [],
       primoErrore: null,
     }
-    expect(testoEsitoVerifica(base)).toBe(
-      '12 annotazioni verificate, nessuna alterazione (0 storiche non verificabili)'
-    )
+    expect(testoEsitoVerifica(base)).toBe('12 annotazioni verificate, nessuna alterazione')
     expect(testoEsitoVerifica({ ...base, primoErrore: { numero: 4, motivo: 'BUCO' } })).toBe(
       "Anomalia all'annotazione 4/2026: manca un numero nella sequenza del registro"
     )
@@ -81,7 +79,7 @@ describe('registro-opzioni', () => {
 
   it('unità e causali', () => {
     expect(opzioniUnita('kg').map(o => o.value)).toEqual(['KG', 'T', 'M3'])
-    expect(opzioniUnita('MC').map(o => o.value)).toEqual(['KG', 'T', 'M3', 'MC'])
+    expect(opzioniUnita('mc').map(o => o.value)).toEqual(['KG', 'T', 'M3', 'mc'])
     expect(opzioniCausali('CARICO').map(o => o.value)).toContain('PRODUZIONE_INTERNA')
     expect(opzioniCausali('SCARICO').map(o => o.value)).not.toContain('PRODUZIONE_INTERNA')
   })

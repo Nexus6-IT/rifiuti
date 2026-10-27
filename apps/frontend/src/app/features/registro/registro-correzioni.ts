@@ -63,5 +63,7 @@ export function testoEsitoVerifica(e: EsitoVerificaCatena): string {
       motivoErroreLeggibile(e.primoErrore.motivo)
     )
   }
-  return `${e.verificate} annotazioni verificate, nessuna alterazione (${e.nonVerificabili.length} storiche non verificabili)`
+  const base = `${e.verificate} annotazioni verificate, nessuna alterazione`
+  const storiche = e.nonVerificabili.length
+  return storiche > 0 ? `${base} (${storiche} storiche non verificabili)` : base
 }
