@@ -3,6 +3,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 import {
   RegistroService,
   StatoProgressivoIniziale,
+  DatiGiacenzaIniziale,
   annoItaliano,
   offrireProgressivoIniziale,
   offrireRegistrazione,
@@ -172,5 +173,69 @@ describe('RegistroService — registri per sede', () => {
     )
     expect(put.request.method).toBe('PUT')
     put.flush({})
+  })
+})
+
+describe('RegistroService — giacenze iniziali', () => {
+  let service: RegistroService
+  let httpMock: HttpTestingController
+  const url = `${environment.apiUrl}/registro/giacenze-iniziali`
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [RegistroService],
+    })
+    service = TestBed.inject(RegistroService)
+    httpMock = TestBed.inject(HttpTestingController)
+  })
+
+  afterEach(() => httpMock.verify())
+
+  it("getGiacenzeIniziali legge l'elenco con registroId in query", () => {
+    service.getGiacenzeIniziali('r-1').subscribe()
+    const req = httpMock.expectOne(r => r.url === url)
+    expect(req.request.method).toBe('GET')
+    expect(req.request.params.get('registroId')).toBe('r-1')
+    req.flush({ registroId: 'r-1', puoImpostare: true, voci: [] })
+  })
+
+  it('senza registro non manda registroId', () => {
+    service.getGiacenzeIniziali().subscribe()
+    const req = httpMock.expectOne(r => r.url === url)
+    expect(req.request.params.has('registroId')).toBeFalse()
+    req.flush({ registroId: null, puoImpostare: false, voci: [] })
+  })
+
+  it('creaGiacenzaIniziale fa una POST col corpo e registroId in query', () => {
+    const dati: DatiGiacenzaIniziale = {
+      cerCode: '17 04 05',
+      quantita: 120,
+      unita: 'KG',
+      dataRiferimento: '2026-01-01',
+    }
+    service.creaGiacenzaIniziale(dati, 'r-1').subscribe()
+    const req = httpMock.expectOne(r => r.url === url)
+    expect(req.request.method).toBe('POST')
+    expect(req.request.params.get('registroId')).toBe('r-1')
+    expect(req.request.body).toEqual(dati)
+    req.flush({ giacenza: {}, avvisi: [] })
+  })
+
+  it("modificaGiacenzaIniziale fa una PUT sull'id senza query", () => {
+    service
+      .modificaGiacenzaIniziale('abc', { quantita: 5, unita: 'T', dataRiferimento: '2026-02-01' })
+      .subscribe()
+    const req = httpMock.expectOne(`${url}/abc`)
+    expect(req.request.method).toBe('PUT')
+    expect(req.request.body).toEqual({ quantita: 5, unita: 'T', dataRiferimento: '2026-02-01' })
+    req.flush({ giacenza: {} })
+  })
+
+  it("eliminaGiacenzaIniziale fa una DELETE sull'id", () => {
+    service.eliminaGiacenzaIniziale('abc').subscribe()
+    const req = httpMock.expectOne(`${url}/abc`)
+    expect(req.request.method).toBe('DELETE')
+    req.flush(null)
   })
 })

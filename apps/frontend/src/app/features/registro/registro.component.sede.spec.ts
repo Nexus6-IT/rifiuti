@@ -275,6 +275,22 @@ describe('RegistroComponent — sede del registro', () => {
     expect(libera.sedeBloccataDaFir()).toBeFalse()
   })
 
+  it('il pulsante Giacenze iniziali si offre solo se il registro è determinato', () => {
+    const senza = conDueRegistri(DUE(), { registroId: null })
+    expect(senza.offriGiacenzeIniziali()).toBeFalse()
+    expect(senza.registroGiacenzeIniziali()).toBeUndefined()
+
+    TestBed.resetTestingModule()
+    const conSede = conDueRegistri(DUE(), { registroId: null })
+    conSede.filtroRegistro = 'b'
+    expect(conSede.offriGiacenzeIniziali()).toBeTrue()
+    expect(conSede.registroGiacenzeIniziali()).toBe('b')
+
+    TestBed.resetTestingModule()
+    const dalBackend = conDueRegistri(DUE(), { registroId: 'a', puoImpostare: false })
+    expect(dalBackend.offriGiacenzeIniziali()).toBeTrue() // visibile anche a chi non scrive
+  })
+
   it('errore nel ricaricare il progressivo: "Registra movimento" non cambia e non si offre l’impostazione', () => {
     const c = conDueRegistri(DUE(), { registroId: 'a', puoRegistrare: false, puoImpostare: true })
     servizio.getProgressivoIniziale.and.returnValue(throwError(() => new Error('rete')))
