@@ -8,7 +8,7 @@ import {
 import { Prisma, WasteMovement as WasteMovementRecord } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
-import { annoSolareItaliano } from '../../../core/time/anno-italiano'
+import { annoSolareItaliano, giornoItaliano } from '../../../core/time/anno-italiano'
 import { formattaQuantita } from '../../../core/format/formatta-quantita'
 import { cerSoloCifre } from '../../../domain/waste-movement/cer-registro'
 import { etichettaFir } from '../../../domain/fir/stati-fir'
@@ -25,6 +25,10 @@ import {
   numeraAnnotazione,
 } from '../numerazione-annotazione'
 import { validaDatiMovimento } from '../valida-dati-movimento'
+import {
+  caricaCatalogoCausali,
+  confermaVersioneAzienda,
+} from '../causali/catalogo-causali.repository'
 import { MovimentoRegistrato, movimentoDaRecord } from './registra-movimento.use-case'
 
 type TipoCorrezione = 'RETTIFICA' | 'ANNULLAMENTO'
@@ -143,6 +147,7 @@ export class CorreggiMovimentoUseCase {
     const { tenantId, movimentoId } = input
 
     let esito: EsitoCorrezione
+    let versioneCausale: string | null = null
     try {
       esito = await this.prisma.$transaction(async tx => {
         // 1. Lettura per id + azienda: un id di un'altra azienda e' un 404 (mai un 403).
@@ -194,6 +199,18 @@ export class CorreggiMovimentoUseCase {
 
         // 6. Saldi PRIMA (R6), per ogni CER toccato.
         const prima = await this.saldi(tx, tenantId, originale.registroId, cerToccati)
+
+        // 6b. Rettifica con causale propria dell'azienda: la versione risolta alla nuova data deve
+        // essere ancora valida (riletta con FOR KEY SHARE dopo i lock, prima dell'insert; C8).
+        // L'annullamento copia la coppia (causale, versione) della testa e non la conferma (C9).
+        if (tipo === 'RETTIFICA' && dati.causaleAziendaId !== null) {
+          await confermaVersioneAzienda(
+            tx,
+            tenantId,
+            dati.causaleAziendaId,
+            giornoItaliano(dati.movementDate)
+          )
+        }
 
         // 7. Numerazione e hash v2 concatenato.
         const { progressivo, hashPrecedente } = await numeraAnnotazione(
@@ -278,10 +295,19 @@ export class CorreggiMovimentoUseCase {
           },
         })
 
+        versioneCausale = record.causaleAziendaId
         return { movimento: vistaCorrezione(record, dati.causaleDescrizione), avvisi }
       })
     } catch (err) {
       throw await this.traduciErrore(err, tenantId, movimentoId)
+    }
+
+    if (tipo === 'ANNULLAMENTO') {
+      esito.movimento.causaleDescrizione = await this.descrizioneCausale(
+        tenantId,
+        esito.movimento,
+        versioneCausale
+      )
     }
 
     this.logger.info(
@@ -289,6 +315,25 @@ export class CorreggiMovimentoUseCase {
         `#${esito.movimento.progressiveYear}/${esito.movimento.progressiveNumber}`
     )
     return esito
+  }
+
+  /**
+   * Descrizione della causale per la risposta dell'annullamento (C9, M8): il catalogo si legge dopo
+   * il commit, perche' il risultato dell'annullamento non ne dipende. Fuori catalogo, o se la
+   * lettura fallisce, vale il codice.
+   */
+  private async descrizioneCausale(
+    tenantId: string,
+    m: Pick<MovimentoCorretto, 'type' | 'causale' | 'movementDate'>,
+    versioneId: string | null
+  ): Promise<string> {
+    try {
+      const catalogo = await caricaCatalogoCausali(this.prisma, tenantId)
+      const verso = m.type === 'CARICO' ? 'CARICO' : 'SCARICO'
+      return catalogo.descrizione(verso, m.causale, giornoItaliano(m.movementDate), versioneId)
+    } catch {
+      return m.causale
+    }
   }
 
   /** Dati della nuova annotazione, e per la rettifica le validazioni della registrazione ordinaria. */
@@ -324,6 +369,9 @@ export class CorreggiMovimentoUseCase {
       movementDate: r.movementDate,
       // La rettifica e' annotata ora: la sua data di registrazione e' l'istante corrente.
       registrationDate: new Date(),
+      // La causale della testa: se non cambia si risolve per data, anche se nel frattempo e' stata
+      // disattivata (la correzione della sola quantita' deve riuscire).
+      causaleAttuale: { codice: originale.causale, versioneId: originale.causaleAziendaId },
     })
     if (validazione.errore !== undefined) throw new BadRequestException(validazione.errore)
     // Validazioni dell'entita' (quantita > 0, registrazione non prima dell'operazione): prima dei lock

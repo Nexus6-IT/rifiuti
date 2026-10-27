@@ -316,6 +316,106 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
     expect(tx.cERCode.count).not.toHaveBeenCalled()
   })
 
+  describe('causali aziendali (F2-5 task 4b)', () => {
+    const VERSIONE = '00000000-0000-4000-8000-0000000000b1'
+    const propria = (over: Record<string, unknown> = {}) => ({
+      id: VERSIONE,
+      natura: 'PROPRIA',
+      codice: 'AZ_PROVA',
+      verso: 'CARICO',
+      descrizione: 'Prova aziendale',
+      ruoloMud: 'ESCLUSO',
+      codiceRentri: null,
+      operazione: null,
+      ordine: 0,
+      validaDal: new Date('2026-01-01T00:00:00Z'),
+      validaAl: null,
+      ...over,
+    })
+    const conPropria = (tx: ReturnType<typeof creaTx>, over: Record<string, unknown> = {}) => {
+      tx.causaleRegistroAzienda.findMany.mockResolvedValue([propria(over)])
+      return tx
+    }
+
+    it('rettifica con causale propria: conferma la versione riletta, la salva e la mette nella risposta', async () => {
+      const testa = riga({ causale: 'AZ_PROVA', causaleAziendaId: VERSIONE })
+      const tx = conPropria(creaTx({ letti: [testa, testa] }))
+      tx.$queryRaw.mockImplementation(async (...args: unknown[]) => {
+        const testo = (args[0] as TemplateStringsArray).join('?')
+        return testo.includes('FOR KEY SHARE')
+          ? [{ valida_dal: new Date('2026-01-01T00:00:00Z'), valida_al: null }]
+          : [{ max_num: 5, entry_hash: 'hprec' }]
+      })
+      const r = await creaUseCase(tx).rettifica({
+        ...base,
+        dati: { ...dati, causale: 'AZ_PROVA' },
+      })
+      expect(r.movimento.causaleDescrizione).toBe('Prova aziendale')
+      expect(tx.wasteMovement.create.mock.calls[0][0].data.causaleAziendaId).toBe(VERSIONE)
+      expect(
+        tx.$queryRaw.mock.calls.filter(c =>
+          (c[0] as TemplateStringsArray).join('?').includes('FOR KEY SHARE')
+        )
+      ).toHaveLength(1)
+    })
+
+    it('rettifica: versione chiusa nel frattempo -> 409 CAUSALE_MODIFICATA senza insert', async () => {
+      const testa = riga({ causale: 'AZ_PROVA', causaleAziendaId: VERSIONE })
+      const tx = conPropria(creaTx({ letti: [testa, testa] }))
+      tx.$queryRaw.mockImplementation(async (...args: unknown[]) =>
+        (args[0] as TemplateStringsArray).join('?').includes('FOR KEY SHARE')
+          ? []
+          : [{ max_num: 5, entry_hash: 'hprec' }]
+      )
+      const e = await creaUseCase(tx)
+        .rettifica({ ...base, dati: { ...dati, causale: 'AZ_PROVA' } })
+        .catch(x => x)
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse()).toMatchObject({ error: 'CAUSALE_MODIFICATA' })
+      expect(tx.wasteMovement.create).not.toHaveBeenCalled()
+    })
+
+    it('rettifica con causale di sistema: nessuna conferma di versione e causaleAziendaId null', async () => {
+      const tx = creaTx({})
+      await creaUseCase(tx).rettifica({ ...base, dati })
+      expect(tx.wasteMovement.create.mock.calls[0][0].data.causaleAziendaId).toBeNull()
+      expect(
+        tx.$queryRaw.mock.calls.filter(c =>
+          (c[0] as TemplateStringsArray).join('?').includes('FOR KEY SHARE')
+        )
+      ).toHaveLength(0)
+    })
+
+    it('annullamento: copia causale e versione della testa e non legge il catalogo nella transazione', async () => {
+      const testa = riga({ causale: 'AZ_PROVA', causaleAziendaId: VERSIONE })
+      const tx = creaTx({ letti: [testa, testa] })
+      const r = await creaUseCase(tx).annulla(base)
+      const data = tx.wasteMovement.create.mock.calls[0][0].data
+      expect(data.causale).toBe('AZ_PROVA')
+      expect(data.causaleAziendaId).toBe(VERSIONE)
+      expect(tx.causaleRegistro.findMany).not.toHaveBeenCalled()
+      // Catalogo non disponibile fuori transazione (mock senza lettore): vale il codice.
+      expect(r.movimento.causaleDescrizione).toBe('AZ_PROVA')
+    })
+
+    it('annullamento: la descrizione viene dal catalogo letto dopo il commit', async () => {
+      const testa = riga({ causale: 'AZ_PROVA', causaleAziendaId: VERSIONE })
+      const tx = creaTx({ letti: [testa, testa] })
+      const prisma = {
+        $transaction: jest.fn(async (fn: any) => fn(tx)),
+        causaleRegistro: { findMany: jest.fn().mockResolvedValue(righeCausaliSistema()) },
+        causaleRegistroAzienda: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([propria({ validaAl: new Date('2026-02-28T00:00:00Z') })]),
+        },
+      }
+      const uc = new CorreggiMovimentoUseCase(prisma as never, logger as never)
+      const r = await uc.annulla(base)
+      expect(r.movimento.causaleDescrizione).toBe('Prova aziendale')
+    })
+  })
+
   it('quantita non positiva: 400 prima dei lock e del controllo MUD', async () => {
     const tx = creaTx({ mud: [2026] })
     await expect(
