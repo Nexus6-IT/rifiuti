@@ -24,6 +24,8 @@ import { ListMovimentiHandler } from '../../application/registro/queries/list-mo
 import { ProgressivoInizialeService } from '../../application/registro/progressivo-iniziale.service'
 import { RegistriService } from '../../application/registro/registri.service'
 import { GiacenzeInizialiService } from '../../application/registro/giacenze-iniziali.service'
+import { CorreggiMovimentoUseCase } from '../../application/registro/use-cases/correggi-movimento.use-case'
+import { VerificaCatenaRegistroService } from '../../application/registro/verifica-catena-registro.service'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { MembershipService } from '../me/membership.service'
 import { TenantSwitchInterceptor } from '../../core/interceptors/tenant-switch.interceptor'
@@ -36,6 +38,7 @@ const CLIENTE = 'c1c1c1c1-0000-4000-8000-000000000002'
 const CONSULENTE = 'e1e1e1e1-0000-4000-8000-000000000003'
 const REGISTRO = '7e7e7e7e-0000-4000-8000-000000000004'
 const GIACENZA = '9a9a9a9a-0000-4000-8000-000000000005'
+const MOVIMENTO = '3b3b3b3b-0000-4000-8000-000000000006'
 const IERI = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
 interface Associazione {
@@ -86,6 +89,9 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
   let app: INestApplication
   let registra: { execute: jest.Mock }
   let giacenze: { elenca: jest.Mock; crea: jest.Mock; modifica: jest.Mock; elimina: jest.Mock }
+  let correggi: { rettifica: jest.Mock; annulla: jest.Mock }
+  let verifica: { verifica: jest.Mock }
+  let registri: { risolviInLettura: jest.Mock }
 
   // ADMIN del proprio studio (ruolo del token), che lavora nell'azienda del cliente.
   const utente = { id: CONSULENTE, email: 'c@studio.it', tenantId: STUDIO, role: 'ADMIN' }
@@ -99,6 +105,16 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
       modifica: jest.fn().mockResolvedValue({ giacenza: { id: GIACENZA } }),
       elimina: jest.fn().mockResolvedValue(undefined),
     }
+    correggi = {
+      rettifica: jest.fn().mockResolvedValue({ movimento: { id: 'nuova' }, avvisi: [] }),
+      annulla: jest.fn().mockResolvedValue({ movimento: { id: 'annullo' }, avvisi: ['a'] }),
+    }
+    verifica = {
+      verifica: jest
+        .fn()
+        .mockResolvedValue({ verificate: 3, nonVerificabili: [], primoErrore: null }),
+    }
+    registri = { risolviInLettura: jest.fn().mockResolvedValue({ id: REGISTRO }) }
     const logger: any = {
       setContext: jest.fn(),
       info: jest.fn(),
@@ -112,7 +128,9 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
         { provide: RegistraMovimentoUseCase, useValue: registra },
         { provide: ListMovimentiHandler, useValue: { execute: jest.fn() } },
         { provide: ProgressivoInizialeService, useValue: {} },
-        { provide: RegistriService, useValue: {} },
+        { provide: RegistriService, useValue: registri },
+        { provide: CorreggiMovimentoUseCase, useValue: correggi },
+        { provide: VerificaCatenaRegistroService, useValue: verifica },
         { provide: GiacenzeInizialiService, useValue: giacenze },
         { provide: RuoloEffettivoService, useValue: new RuoloEffettivoService(prisma) },
         {
@@ -372,6 +390,219 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
         stati.push(r.status)
       }
       expect(stati).toEqual([404, 409])
+    })
+  })
+
+  describe('correzioni e verifica catena', () => {
+    const aperto = (ruolo: string) =>
+      avvia({ tenantId: CLIENTE, isActive: true, expiresAt: null, role: { name: ruolo } })
+    const http = () => request(app.getHttpServer())
+    const rettificaCorpo = {
+      movementDate: '2026-03-11',
+      causale: 'PRODUZIONE_INTERNA',
+      cerCode: '20 03 01',
+      quantity: 90,
+      motivo: '  Quantità errata ',
+    }
+
+    it("rettifica da OPERATOR effettivo: 201 { movimento, avvisi }, tenant e utente dell'azienda selezionata", async () => {
+      await aperto('OPERATOR')
+      const risposta = await http()
+        .post(`/registro/movimenti/${MOVIMENTO}/rettifica`)
+        .set('X-Tenant-ID', CLIENTE)
+        .send({ ...rettificaCorpo, confermaAnnoPresentato: true })
+      expect(risposta.status).toBe(201)
+      expect(risposta.body).toEqual({ movimento: { id: 'nuova' }, avvisi: [] })
+      const input = correggi.rettifica.mock.calls[0][0]
+      expect(input).toMatchObject({
+        tenantId: CLIENTE,
+        userId: CONSULENTE,
+        movimentoId: MOVIMENTO,
+        motivo: 'Quantità errata',
+        confermaAnnoPresentato: true,
+      })
+      expect(input.dati).toMatchObject({ causale: 'PRODUZIONE_INTERNA', quantity: 90, unit: 'KG' })
+      expect(input.dati.movementDate).toEqual(new Date('2026-03-11'))
+      expect(input.dati).not.toHaveProperty('motivo')
+      expect(input.dati).not.toHaveProperty('confermaAnnoPresentato')
+    })
+
+    it('annullamento da ADMIN: 201 con gli avvisi del caso d uso', async () => {
+      await aperto('ADMIN')
+      const risposta = await http()
+        .post(`/registro/movimenti/${MOVIMENTO}/annullamento`)
+        .set('X-Tenant-ID', CLIENTE)
+        .send({ motivo: 'Errore di registrazione' })
+      expect(risposta.status).toBe(201)
+      expect(risposta.body).toEqual({ movimento: { id: 'annullo' }, avvisi: ['a'] })
+      expect(correggi.annulla).toHaveBeenCalledWith({
+        tenantId: CLIENTE,
+        userId: CONSULENTE,
+        movimentoId: MOVIMENTO,
+        motivo: 'Errore di registrazione',
+        confermaAnnoPresentato: undefined,
+      })
+    })
+
+    it('ruolo effettivo di sola consultazione: 403 su rettifica e annullamento, il caso d uso non parte', async () => {
+      await aperto('CONSULTANT')
+      for (const [rotta, corpo] of [
+        ['rettifica', rettificaCorpo],
+        ['annullamento', { motivo: 'x' }],
+      ] as const) {
+        const risposta = await http()
+          .post(`/registro/movimenti/${MOVIMENTO}/${rotta}`)
+          .set('X-Tenant-ID', CLIENTE)
+          .send(corpo)
+        expect({ rotta, stato: risposta.status, errore: risposta.body.error }).toEqual({
+          rotta,
+          stato: 403,
+          errore: 'REGISTRO_RISERVATO_OPERATORI',
+        })
+      }
+      expect(correggi.rettifica).not.toHaveBeenCalled()
+      expect(correggi.annulla).not.toHaveBeenCalled()
+    })
+
+    it.each(['type', 'registroId', 'firId', 'registrationDate'])(
+      'rettifica con %s nel corpo: 400 e nessuna chiamata',
+      async campo => {
+        await aperto('ADMIN')
+        const valore =
+          campo === 'type' ? 'CARICO' : campo === 'registrationDate' ? '2026-03-11' : REGISTRO
+        const risposta = await http()
+          .post(`/registro/movimenti/${MOVIMENTO}/rettifica`)
+          .set('X-Tenant-ID', CLIENTE)
+          .send({ ...rettificaCorpo, [campo]: valore })
+        expect(risposta.status).toBe(400)
+        expect(correggi.rettifica).not.toHaveBeenCalled()
+      }
+    )
+
+    it('id non uuid, motivo mancante o vuoto: 400 e nessuna chiamata', async () => {
+      await aperto('ADMIN')
+      // lazy: una richiesta supertest apre il server alla creazione, non la si prepara in anticipo
+      const prove = [
+        () => http().post('/registro/movimenti/1/annullamento').send({ motivo: 'x' }),
+        () => http().post('/registro/movimenti/1/rettifica').send(rettificaCorpo),
+        () => http().post(`/registro/movimenti/${MOVIMENTO}/annullamento`).send({}),
+        () => http().post(`/registro/movimenti/${MOVIMENTO}/annullamento`).send({ motivo: '   ' }),
+        () =>
+          http()
+            .post(`/registro/movimenti/${MOVIMENTO}/rettifica`)
+            .send({ ...rettificaCorpo, motivo: undefined }),
+      ]
+      for (const p of prove) expect((await p().set('X-Tenant-ID', CLIENTE)).status).toBe(400)
+      expect(correggi.rettifica).not.toHaveBeenCalled()
+      expect(correggi.annulla).not.toHaveBeenCalled()
+    })
+
+    it('404 e 409 del caso d uso arrivano invariati; il 409 MUD porta error REGISTRO_ANNO_MUD_PRESENTATO', async () => {
+      await aperto('ADMIN')
+      correggi.rettifica.mockRejectedValueOnce(new NotFoundException('Movimento non trovato'))
+      correggi.annulla.mockRejectedValueOnce(
+        new ConflictException({
+          message: 'Il MUD 2026 risulta già presentato',
+          error: 'REGISTRO_ANNO_MUD_PRESENTATO',
+        })
+      )
+      correggi.annulla.mockRejectedValueOnce(new ConflictException('Movimento già corretto'))
+      const nonTrovato = await http()
+        .post(`/registro/movimenti/${MOVIMENTO}/rettifica`)
+        .set('X-Tenant-ID', CLIENTE)
+        .send(rettificaCorpo)
+      const mud = await http()
+        .post(`/registro/movimenti/${MOVIMENTO}/annullamento`)
+        .set('X-Tenant-ID', CLIENTE)
+        .send({ motivo: 'x' })
+      const giaCorretto = await http()
+        .post(`/registro/movimenti/${MOVIMENTO}/annullamento`)
+        .set('X-Tenant-ID', CLIENTE)
+        .send({ motivo: 'x' })
+      expect(nonTrovato.status).toBe(404)
+      expect(mud.status).toBe(409)
+      expect(mud.body.error).toBe('REGISTRO_ANNO_MUD_PRESENTATO')
+      expect(mud.body.message).toBe('Il MUD 2026 risulta già presentato')
+      expect(giaCorretto.status).toBe(409)
+      expect(giaCorretto.body.error).not.toBe('REGISTRO_ANNO_MUD_PRESENTATO')
+    })
+
+    it("verifica-catena da ADMIN: 200 con registroId, anno ed esito; registro risolto nell'azienda selezionata", async () => {
+      await aperto('ADMIN')
+      const risposta = await http()
+        .get(`/registro/verifica-catena?anno=2026&registroId=${REGISTRO}`)
+        .set('X-Tenant-ID', CLIENTE)
+      expect(risposta.status).toBe(200)
+      expect(risposta.body).toEqual({
+        registroId: REGISTRO,
+        anno: 2026,
+        verificate: 3,
+        nonVerificabili: [],
+        primoErrore: null,
+      })
+      expect(registri.risolviInLettura).toHaveBeenCalledWith(CLIENTE, REGISTRO)
+      expect(verifica.verifica).toHaveBeenCalledWith(CLIENTE, REGISTRO, 2026)
+    })
+
+    it('verifica-catena senza registroId usa il registro predefinito', async () => {
+      await aperto('ADMIN')
+      const risposta = await http()
+        .get('/registro/verifica-catena?anno=2026')
+        .set('X-Tenant-ID', CLIENTE)
+      expect(risposta.status).toBe(200)
+      expect(registri.risolviInLettura).toHaveBeenCalledWith(CLIENTE, undefined)
+    })
+
+    it('verifica-catena: OPERATOR e CONSULTANT ricevono 403 e nessuna lettura', async () => {
+      for (const ruolo of ['OPERATOR', 'CONSULTANT']) {
+        await aperto(ruolo)
+        const risposta = await http()
+          .get('/registro/verifica-catena?anno=2026')
+          .set('X-Tenant-ID', CLIENTE)
+        expect({ ruolo, stato: risposta.status }).toEqual({ ruolo, stato: 403 })
+        expect(registri.risolviInLettura).not.toHaveBeenCalled()
+        expect(verifica.verifica).not.toHaveBeenCalled()
+        if (ruolo !== 'CONSULTANT') await app.close()
+      }
+    })
+
+    it('verifica-catena: anno mancante, non intero, < 2000 o oltre anno corrente + 1: 400; registroId non uuid: 400', async () => {
+      await aperto('ADMIN')
+      const oltre = new Date().getFullYear() + 2
+      const cattive = ['', '?anno=x', '?anno=1999', '?anno=2026.5', `?anno=${oltre}`]
+      cattive.push('?anno=2026&registroId=x')
+      for (const q of cattive) {
+        const risposta = await http()
+          .get(`/registro/verifica-catena${q}`)
+          .set('X-Tenant-ID', CLIENTE)
+        expect({ q, stato: risposta.status }).toEqual({ q, stato: 400 })
+      }
+      expect(verifica.verifica).not.toHaveBeenCalled()
+      const limite = new Date().getFullYear() + 1
+      const ok = await http()
+        .get(`/registro/verifica-catena?anno=${limite}`)
+        .set('X-Tenant-ID', CLIENTE)
+      expect(ok.status).toBe(200)
+    })
+
+    it('verifica-catena: registroId di un altra azienda e 404; registro da indicare e 400 col messaggio del dominio', async () => {
+      await aperto('ADMIN')
+      const { RegistroNonTrovatoError, RegistroDaIndicareError } = jest.requireActual(
+        '../../application/registro/registri.service'
+      )
+      registri.risolviInLettura.mockRejectedValueOnce(new RegistroNonTrovatoError())
+      const altro = await http()
+        .get(`/registro/verifica-catena?anno=2026&registroId=${REGISTRO}`)
+        .set('X-Tenant-ID', CLIENTE)
+      expect(altro.status).toBe(404)
+
+      registri.risolviInLettura.mockRejectedValueOnce(new RegistroDaIndicareError())
+      const daIndicare = await http()
+        .get('/registro/verifica-catena?anno=2026')
+        .set('X-Tenant-ID', CLIENTE)
+      expect(daIndicare.status).toBe(400)
+      expect(daIndicare.body.message).toBe(new RegistroDaIndicareError().message)
+      expect(verifica.verifica).not.toHaveBeenCalled()
     })
   })
 })

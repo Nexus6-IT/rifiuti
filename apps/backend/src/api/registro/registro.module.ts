@@ -23,6 +23,9 @@ import { VerificaCatenaRegistroService } from '../../application/registro/verifi
  *   POST /api/v1/registro/registri/assicura — crea i registri mancanti (ruoli di scrittura)
  *   GET  /api/v1/registro/progressivo-iniziale/:anno — progressivo iniziale dell'anno
  *   PUT  /api/v1/registro/progressivo-iniziale/:anno — lo imposta (una volta sola)
+ *   POST /api/v1/registro/movimenti/:id/rettifica — rettifica con una nuova annotazione
+ *   POST /api/v1/registro/movimenti/:id/annullamento — annulla con una nuova annotazione
+ *   GET  /api/v1/registro/verifica-catena — integrita del registro di un anno (amministratori)
  */
 @Module({
   imports: [PrismaModule, LoggerModule, AuthModule, RuoloEffettivoModule],

@@ -268,6 +268,16 @@ export class RegistriService {
   }
 
   /**
+   * `risolvi` per una lettura fuori da una transazione (es. la verifica della catena): apre una
+   * transazione di sola lettura nel contesto del tenant. Nessuna scrittura, nessun lock.
+   */
+  async risolviInLettura(tenantId: string, registroId?: string): Promise<RegistroVista> {
+    return this.nelContesto(tenantId, () =>
+      this.prisma.$transaction(tx => this.risolvi(tx, tenantId, registroId))
+    )
+  }
+
+  /**
    * D10 (solo FIR emessi dall'azienda). Movimento con `firId`: il registro della sede principale;
    * `registroId` diverso → errore. Senza principale e con più registri accetta il `registroId` indicato.
    */
