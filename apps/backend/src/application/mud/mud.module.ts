@@ -37,6 +37,7 @@ import { MudIntegrazioniService } from './mud-integrazioni.service'
     MudAggregazioneService,
     MudObbligoService,
     MudPresentazioneService,
+    MudIntegrazioniService,
   ],
 })
 export class MUDModule {}
