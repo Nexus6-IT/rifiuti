@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { ReferenceDataService, normalizeAteco } from '../../reference-data/reference-data.service'
+import { giornoItaliano } from '../../../core/time/anno-italiano'
 import { cerCanonico, chiaveConfrontoCer } from '../../../domain/waste-movement/cer-registro'
 import {
   convertiInKg,
@@ -314,6 +315,17 @@ export class MudAggregazioneService {
     }
 
     const controlli: MudEsitoControllo[] = []
+    // Descrizione della causale (D13): solo se il catalogo ne ha una diversa dal codice.
+    const descrizioneCausale = (m: Movimento): string | undefined => {
+      if (m.type !== 'CARICO' && m.type !== 'SCARICO') return undefined
+      const d = catalogo.descrizione(
+        m.type,
+        m.causale,
+        giornoItaliano(m.movementDate),
+        m.causaleAziendaId
+      )
+      return d !== m.causale ? d : undefined
+    }
     const rif = (m: Movimento): RifMovimento => ({
       registroId: m.registroId,
       registro: registri.get(m.registroId),
@@ -321,6 +333,7 @@ export class MudAggregazioneService {
       progressiveYear: m.progressiveYear,
       cerCode: cerCanonico(m.cerCode),
       causale: m.causale,
+      causaleDescrizione: descrizioneCausale(m),
       quantity: Number(m.quantity),
       unit: m.unit ?? '',
       movementDate: m.movementDate,

@@ -372,6 +372,8 @@ describe('MudAggregazioneService', () => {
       expect.objectContaining({
         codice: 'CAUSALE_ESCLUSA',
         gravita: 'AVVISO',
+        messaggio:
+          'Movimento n. 3/2025 (CER 17 04 05, causale "Riclassificazione CER", 40 KG): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.',
         movimenti: [expect.objectContaining({ numero: 3, quantita: 40, incluso: false })],
       })
     )
@@ -1915,6 +1917,15 @@ describe('MudAggregazioneService', () => {
       const r = await service.aggrega('t1', 2025)
       expect(r.righe).toEqual([])
       expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')).toHaveLength(1)
+    })
+
+    it('una causale aziendale esclusa mostra la propria descrizione', async () => {
+      conVersioni(versione({ ruoloMud: 'ESCLUSO', descrizione: 'Altro carico' }))
+      impostaDati({ movimenti: [mov({ causale: 'AZ_TEST', causaleAziendaId: 'ver-1' })] })
+      const r = await service.aggrega('t1', 2025)
+      expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')[0].messaggio).toBe(
+        'Movimento n. 1/2025 (CER 17 04 05, causale "Altro carico", 100 KG): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.'
+      )
     })
 
     it('una causale aziendale RICEVUTO_DA_TERZI finisce fra i ricevuti', async () => {

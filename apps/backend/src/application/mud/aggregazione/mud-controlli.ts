@@ -98,6 +98,8 @@ export interface RifMovimento {
   progressiveYear: number
   cerCode: string
   causale: string
+  /** Descrizione della causale del catalogo, solo se diversa dal codice (D13) */
+  causaleDescrizione?: string
   quantity: number
   unit: string
   movementDate?: Date
@@ -279,7 +281,7 @@ export const controlliMud = {
   causaleEsclusa: (m: RifMovimento): MudEsitoControllo => ({
     codice: 'CAUSALE_ESCLUSA',
     gravita: AVVISO,
-    messaggio: `Movimento n. ${rif(m)} (CER ${m.cerCode}, causale ${m.causale}, ${q(m.quantity)} ${unitaDi(m)}): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.`,
+    messaggio: `Movimento n. ${rif(m)} (CER ${m.cerCode}, causale ${m.causaleDescrizione ? `"${m.causaleDescrizione}"` : m.causale}, ${q(m.quantity)} ${unitaDi(m)}): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.`,
     movimenti: [segnala(m, false)],
   }),
 

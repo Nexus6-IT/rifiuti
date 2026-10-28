@@ -1,0 +1,412 @@
+import { MudAggregazioneService } from './mud-aggregazione.service'
+import { MudAggregazioneOracoloA2bf11e } from './mud-aggregazione-a2bf11e.oracolo-spec'
+import {
+  creaPrismaFinto,
+  type DatiPrismaFinto,
+  type FirFinto,
+  type MovimentoFinto,
+} from './mud-prisma-finto.fixture-spec'
+
+/**
+ * Equivalenza unitaria (F2-8, D11): per ogni scenario il servizio e l'oracolo (copia di a2bf11e,
+ * con le sole anagrafiche delegate al servizio) lavorano sullo STESSO prisma finto e devono dare
+ * lo stesso risultato. Unica differenza ammessa: il messaggio di CAUSALE_ESCLUSA (D13).
+ * Ogni scenario dichiara anche a mano un fatto che deve accadere, cosi l'uguaglianza non e
+ * vuota (due risultati vuoti sarebbero uguali).
+ */
+describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
+  const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  const referenceData: any = { findComuneByName: jest.fn().mockResolvedValue({ code: '015146' }) }
+
+  const mov = (p: Partial<MovimentoFinto>): MovimentoFinto => ({
+    registroId: 'reg-A',
+    progressiveNumber: 1,
+    progressiveYear: 2025,
+    type: 'CARICO',
+    causale: 'PRODUZIONE_INTERNA',
+    causaleAziendaId: null,
+    cerCode: '17 04 05',
+    quantity: 100,
+    unit: 'KG',
+    operationCode: null,
+    firId: null,
+    firIdRicopia: null,
+    ricopiaChiave: '',
+    counterpartName: null,
+    wastePhysicalState: null,
+    movementDate: new Date('2025-06-10T08:00:00Z'),
+    ...p,
+  })
+  const scarico = (p: Partial<MovimentoFinto>) =>
+    mov({ type: 'SCARICO', causale: 'CONFERIMENTO_TRASPORTATORE', ...p })
+  const fir = (p: Partial<FirFinto>): FirFinto => ({
+    id: 'f1',
+    firNumber: 'FIR-2025-000123',
+    rentriNumeroFir: null,
+    status: 'COMPLETED',
+    rentriStatoFormulario: null,
+    wasteOperationType: 'DISPOSAL',
+    wasteOperationCode: null,
+    receiverId: 'dest-1',
+    receiverName: 'Recupero Metalli Srl',
+    receiverPartitaIva: '33333333333',
+    carrierId: 'car-1',
+    carrierName: 'Trasporti Srl',
+    carrierPartitaIva: '22222222222',
+    ...p,
+  })
+  const dest1 = {
+    id: 'dest-1',
+    partitaIVA: '33333333333',
+    ragioneSociale: 'Recupero Metalli Srl',
+    comune: 'Milano',
+    provincia: 'MI',
+    via: 'Via Roma',
+    civico: '1',
+    cap: '20100',
+  }
+  const dataGiorno = (g: string) => new Date(`${g}T08:00:00Z`)
+  const versioneAzienda = (p: Record<string, unknown>) => ({
+    id: 'ver-1',
+    natura: 'PROPRIA',
+    codice: 'AZ_TEST',
+    verso: 'CARICO',
+    descrizione: 'Test',
+    ruoloMud: 'PRODOTTO',
+    codiceRentri: null,
+    operazione: null,
+    ordine: 100,
+    validaDal: new Date('2025-01-01T00:00:00Z'),
+    validaAl: null,
+    ...p,
+  })
+  const firAnno1 = [{ id: 'f1', firNumber: 'FIR-2025-000123', rentriNumeroFir: null }]
+  const firSenzaAnagrafica = fir({
+    id: 'f1',
+    receiverId: null,
+    receiverPartitaIva: null,
+    receiverName: 'Ecologia Srl',
+  })
+
+  /** Chiave canonica per confrontare i controlli come multiinsieme. */
+  const chiave = (c: any): string =>
+    JSON.stringify([
+      c.codice,
+      // D13: l'unica differenza ammessa
+      c.codice === 'CAUSALE_ESCLUSA' ? '' : c.messaggio,
+      c.gravita,
+      c.movimenti ?? null,
+      c.fir ?? null,
+      c.integrazione ?? null,
+      c.kgNonDichiarati ?? null,
+    ])
+  const normalizza = (a: any) => ({
+    righe: a.righe,
+    movimentiPerCer: a.movimentiPerCer,
+    pericolosiPerCer: a.pericolosiPerCer,
+    dichiarante: a.dichiarante,
+    mudNonDovuto: a.mudNonDovuto,
+    integrazioni: a.integrazioni,
+    controlli: a.controlli.map(chiave).sort(),
+  })
+
+  interface Scenario {
+    nome: string
+    dati: DatiPrismaFinto
+    /** codici di controllo che devono comparire (scritti a mano) */
+    attesi: string[]
+    righe?: number
+  }
+
+  const scenari: Scenario[] = [
+    {
+      nome: 'produzione e avvio a recupero e smaltimento con FIR collegabile',
+      dati: {
+        movimenti: [
+          mov({ progressiveNumber: 1, quantity: 500 }),
+          scarico({
+            progressiveNumber: 2,
+            quantity: 200,
+            firId: 'f1',
+            operationCode: 'R13',
+            movementDate: dataGiorno('2025-07-01'),
+          }),
+          scarico({
+            progressiveNumber: 3,
+            quantity: 100,
+            firId: 'f2',
+            operationCode: 'D15',
+            movementDate: dataGiorno('2025-07-02'),
+          }),
+        ],
+        fir: [fir({ id: 'f1' }), fir({ id: 'f2', firNumber: 'FIR-2025-000124' })],
+        firAnno: [
+          { id: 'f1', firNumber: 'FIR-2025-000123', rentriNumeroFir: null },
+          { id: 'f2', firNumber: 'FIR-2025-000124', rentriNumeroFir: null },
+        ],
+        destinatari: [dest1],
+      },
+      attesi: [],
+      righe: 1,
+    },
+    {
+      nome: 'FIR annullato',
+      dati: {
+        movimenti: [scarico({ firId: 'f1', operationCode: 'R13' })],
+        fir: [fir({ id: 'f1', status: 'CANCELLED' })],
+        destinatari: [dest1],
+      },
+      attesi: ['FIR_ANNULLATO'],
+    },
+    {
+      nome: 'FIR in bozza',
+      dati: {
+        movimenti: [scarico({ firId: 'f1', operationCode: 'R13' })],
+        fir: [fir({ id: 'f1', status: 'DRAFT' })],
+        destinatari: [dest1],
+      },
+      attesi: ['FIR_IN_BOZZA'],
+    },
+    {
+      nome: 'FIR non trovato',
+      dati: { movimenti: [scarico({ firId: 'f-che-non-esiste', operationCode: 'R13' })] },
+      attesi: ['FIR_NON_TROVATO'],
+    },
+    {
+      nome: 'doppio registrato a cavallo d anno',
+      dati: {
+        movimenti: [
+          scarico({ progressiveNumber: 1, firId: 'f1', operationCode: 'R13', quantity: 50 }),
+          scarico({ progressiveNumber: 2, firId: 'f1', operationCode: 'R13', quantity: 50 }),
+          scarico({
+            progressiveNumber: 9,
+            progressiveYear: 2024,
+            firId: 'f1',
+            operationCode: 'R13',
+            quantity: 50,
+            movementDate: dataGiorno('2024-12-20'),
+          }),
+        ],
+        fir: [fir({ id: 'f1' })],
+        firAnno: firAnno1,
+        destinatari: [dest1],
+      },
+      attesi: ['FIR_DOPPIO_ANNO_PRECEDENTE'],
+    },
+    {
+      nome: 'doppio identico nello stesso anno',
+      dati: {
+        movimenti: [
+          scarico({ progressiveNumber: 1, firId: 'f1', operationCode: 'R13', quantity: 50 }),
+          scarico({ progressiveNumber: 2, firId: 'f1', operationCode: 'R13', quantity: 50 }),
+        ],
+        fir: [fir({ id: 'f1' })],
+        firAnno: firAnno1,
+        destinatari: [dest1],
+      },
+      attesi: ['FIR_DOPPIO_IDENTICO'],
+    },
+    {
+      nome: 'FIR scaricato piu volte con quantita diverse',
+      dati: {
+        movimenti: [
+          scarico({ progressiveNumber: 1, firId: 'f1', operationCode: 'R13', quantity: 50 }),
+          scarico({
+            progressiveNumber: 2,
+            firId: 'f1',
+            operationCode: 'R13',
+            quantity: 70,
+            movementDate: dataGiorno('2025-06-20'),
+          }),
+        ],
+        fir: [fir({ id: 'f1' })],
+        firAnno: firAnno1,
+        destinatari: [dest1],
+      },
+      attesi: ['FIR_SCARICATO_PIU_VOLTE'],
+    },
+    {
+      nome: 'unita non di massa senza peso specifico',
+      dati: { movimenti: [mov({ quantity: 30, unit: 'LITRI' })] },
+      attesi: ['UNITA_NON_DI_MASSA'],
+    },
+    {
+      nome: 'unita non di massa con peso specifico',
+      dati: {
+        movimenti: [mov({ quantity: 30, unit: 'LITRI' })],
+        reportData: {
+          integrazioni: {
+            destinatari: {},
+            pesiSpecifici: {
+              '170405|LITRI': { cerCode: '170405', unita: 'LITRI', kgPerUnita: 1.2 },
+            },
+          },
+        },
+      },
+      attesi: ['CONVERTITO_CON_PESO_SPECIFICO'],
+      righe: 1,
+    },
+    {
+      nome: 'unita vuota (vale kg)',
+      dati: { movimenti: [mov({ quantity: 80, unit: null })] },
+      attesi: [],
+      righe: 1,
+    },
+    {
+      nome: 'causale di sistema esclusa',
+      dati: {
+        movimenti: [
+          mov({ progressiveNumber: 1 }),
+          mov({ progressiveNumber: 2, quantity: 40, causale: 'ALTRO_CARICO' }),
+        ],
+      },
+      attesi: ['CAUSALE_ESCLUSA'],
+      righe: 1,
+    },
+    {
+      nome: 'causale aziendale esclusa con descrizione',
+      dati: {
+        movimenti: [mov({ causale: 'AZ_TEST', causaleAziendaId: 'ver-1' })],
+        causaliAzienda: [versioneAzienda({ ruoloMud: 'ESCLUSO', descrizione: 'Altro carico' })],
+      },
+      attesi: ['CAUSALE_ESCLUSA'],
+    },
+    {
+      nome: 'carico ricevuto da terzi',
+      dati: {
+        movimenti: [
+          mov({ progressiveNumber: 1 }),
+          mov({ progressiveNumber: 2, quantity: 50, causale: 'INGRESSO_ESTERNO' }),
+        ],
+      },
+      attesi: ['PROFILO_NON_SUPPORTATO'],
+    },
+    {
+      nome: 'destinatario senza anagrafica risolto dalle integrazioni',
+      dati: {
+        movimenti: [scarico({ firId: 'f1', operationCode: 'R13' })],
+        fir: [firSenzaAnagrafica],
+        firAnno: firAnno1,
+        reportData: {
+          integrazioni: {
+            destinatari: {
+              'ECOLOGIA SRL': { ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' },
+            },
+            pesiSpecifici: {},
+          },
+        },
+      },
+      attesi: [],
+      righe: 1,
+    },
+    {
+      nome: 'destinatario estero',
+      dati: {
+        movimenti: [scarico({ firId: 'f1', operationCode: 'R13' })],
+        fir: [firSenzaAnagrafica],
+        firAnno: firAnno1,
+        reportData: {
+          integrazioni: {
+            destinatari: {
+              'ECOLOGIA SRL': {
+                ragioneSociale: 'Ecologia Srl',
+                codiceFiscale: '',
+                nazione: 'Germania',
+              },
+            },
+            pesiSpecifici: {},
+          },
+        },
+      },
+      attesi: ['DESTINATARIO_ESTERO'],
+    },
+    {
+      nome: 'stato fisico misto sullo stesso CER',
+      dati: {
+        movimenti: [
+          mov({ progressiveNumber: 1, wastePhysicalState: 'LIQUIDO' }),
+          mov({ progressiveNumber: 2, wastePhysicalState: 'SOLIDO_NON_POLVERULENTO' }),
+        ],
+      },
+      attesi: ['STATO_FISICO_NON_UNIVOCO'],
+      righe: 1,
+    },
+    {
+      nome: 'aperture e saldi positivi a fine anno',
+      dati: {
+        movimenti: [
+          mov({ progressiveNumber: 1, quantity: 300 }),
+          scarico({ progressiveNumber: 2, quantity: 100, firId: 'f1', operationCode: 'R13' }),
+          mov({ progressiveNumber: 3, cerCode: '20 03 04', quantity: 40 }),
+        ],
+        fir: [fir({ id: 'f1' })],
+        firAnno: firAnno1,
+        destinatari: [dest1],
+        giacenzeIniziali: [
+          {
+            registroId: 'reg-A',
+            cerCode: '17 04 05',
+            quantita: 1,
+            unita: 'T',
+            dataRiferimento: new Date('2025-01-01T00:00:00Z'),
+          },
+        ],
+      },
+      attesi: [],
+      righe: 2,
+    },
+    {
+      nome: 'movimento non vigente',
+      dati: {
+        movimenti: [
+          mov({ progressiveNumber: 1, quantity: 100 }),
+          mov({ progressiveNumber: 2, quantity: 999, vigente: false }),
+        ],
+      },
+      attesi: [],
+      righe: 1,
+    },
+    {
+      nome: 'due registri con la stessa numerazione',
+      dati: {
+        movimenti: [
+          mov({ registroId: 'reg-A', progressiveNumber: 1, unit: 'LITRI' }),
+          mov({ registroId: 'reg-B', progressiveNumber: 1, unit: 'LITRI' }),
+        ],
+        registri: [
+          { id: 'reg-A', descrizione: 'Registro A', unitaLocale: { denominazione: 'Sede Nord' } },
+          { id: 'reg-B', descrizione: 'Registro B', unitaLocale: null },
+        ],
+      },
+      attesi: ['UNITA_NON_DI_MASSA'],
+    },
+    {
+      nome: 'azienda senza ATECO',
+      dati: {
+        tenant: { city: 'Roma', province: 'RM', atecoCode: null },
+        movimenti: [mov({})],
+      },
+      attesi: [],
+      righe: 1,
+    },
+  ]
+
+  it('ha almeno 12 scenari', () => {
+    expect(scenari.length).toBeGreaterThanOrEqual(12)
+  })
+
+  it.each(scenari.map(s => [s.nome, s] as const))('%s', async (_nome, s) => {
+    const prisma = creaPrismaFinto(s.dati)
+    const servizio = new MudAggregazioneService(prisma, referenceData, logger)
+    const oracolo = new MudAggregazioneOracoloA2bf11e(prisma, referenceData, logger, servizio)
+
+    const attuale = await servizio.aggrega('t1', 2025)
+    const storico = await oracolo.aggrega('t1', 2025)
+
+    expect(normalizza(attuale)).toEqual(normalizza(storico))
+    // non vuoto: i fatti scritti a mano
+    const codici = attuale.controlli.map(c => c.codice)
+    for (const atteso of s.attesi) expect(codici).toContain(atteso)
+    if (s.righe !== undefined) expect(attuale.righe).toHaveLength(s.righe)
+  })
+})

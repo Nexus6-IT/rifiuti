@@ -36,6 +36,9 @@ module.exports = {
   collectCoverageFrom: [
     '**/*.(t|j)s',
     '!**/*.spec.ts',
+    '!**/*.oracolo-spec.ts',
+    '!**/*.fixture-spec.ts',
+    '!**/*.postgres-spec.ts',
     '!**/*.module.ts',
     '!**/main.ts',
     '!**/*.interface.ts',

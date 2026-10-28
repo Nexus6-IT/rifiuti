@@ -19,6 +19,25 @@ const m: RifMovimento = {
 }
 
 describe('controlliMud', () => {
+  it('CAUSALE_ESCLUSA mostra la descrizione della causale', () => {
+    const c = controlliMud.causaleEsclusa({
+      ...m,
+      causale: 'AZ_ALTRO',
+      causaleDescrizione: 'Altro carico',
+      unit: 'KG',
+    })
+    expect(c.messaggio).toBe(
+      'Movimento n. 4/2025 (CER 17 04 05, causale "Altro carico", 30 KG): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.'
+    )
+  })
+
+  it('CAUSALE_ESCLUSA senza descrizione mostra il codice', () => {
+    const c = controlliMud.causaleEsclusa({ ...m, causale: 'AZ_ALTRO', unit: 'KG' })
+    expect(c.messaggio).toBe(
+      'Movimento n. 4/2025 (CER 17 04 05, causale AZ_ALTRO, 30 KG): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.'
+    )
+  })
+
   it('unitaNonDiMassa è un bloccante per CER e unità, che dice dove inserire il peso specifico', () => {
     expect(controlliMud.unitaNonDiMassa(2025, '170405', 'LITRI', [m])).toEqual({
       codice: 'UNITA_NON_DI_MASSA',
