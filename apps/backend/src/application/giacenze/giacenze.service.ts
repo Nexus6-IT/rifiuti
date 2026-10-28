@@ -6,6 +6,8 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { DepositoTemporaneoConfig, DEFAULT_DEPOSITO_TEMPORANEO } from './deposito-temporaneo.config'
 import { normalizzaUnitaRegistro } from '../../domain/waste-movement/unita-misura-registro'
 import { cerCanonico, chiaveConfrontoCer } from '../../domain/waste-movement/cer-registro'
+import { calcolaFifo } from '../../domain/waste-movement/fifo-deposito'
+import { leggiEventiDeposito } from './eventi-deposito'
 import {
   firAnnullato,
   etichettaFir,
@@ -42,8 +44,9 @@ export interface GiacenzaCer {
   /** Giacenza attuale in deposito = carico - scarico (>= 0). */
   giacenzaKg: number
   /**
-   * Data del carico più vecchio ancora "in giacenza" (per il criterio temporale): la più vecchia
-   * fra i carichi e le date di riferimento delle aperture (il calcolo esatto del deposito è F2-6).
+   * Giorno (a mezzanotte UTC) del lotto residuo più vecchio, cioè del carico o dell'apertura
+   * non ancora coperto dagli scarichi secondo il FIFO del registro (F2-6, D9); `null` se non
+   * c'è residuo. Senza `registroId` è il minimo fra i registri, ciascuno calcolato a sé.
    */
   oldestCaricoDate: Date | null
   altreUnita: GiacenzaAltraUnita[]
@@ -90,18 +93,21 @@ export class GiacenzeService {
       _sum: { quantity: true },
     })
 
-    // Data del carico più vecchio per CER (criterio temporale del deposito).
-    const oldestCarico = await this.prisma.wasteMovement.groupBy({
-      by: ['cerCode'],
-      where: { tenantId, type: 'CARICO', ...perRegistro, ...WHERE_VIGENTE },
-      _min: { movementDate: true },
+    // Giorno del lotto residuo più vecchio per CER: FIFO per registro e per famiglia di unità,
+    // poi il minimo fra registri e famiglie (le somme restano quelle del groupBy).
+    const eventi = await leggiEventiDeposito(this.prisma, tenantId, {
+      registroId,
+      logger: this.logger,
     })
-    const oldestByCer = new Map<string, Date | null>()
-    for (const row of oldestCarico) {
-      const chiave = chiaveConfrontoCer(row.cerCode)
-      const data = row._min.movementDate ?? null
-      const attuale = oldestByCer.get(chiave) ?? null
-      oldestByCer.set(chiave, attuale && (!data || attuale < data) ? attuale : data)
+    const oldestByCer = new Map<string, string>()
+    for (const perCerRegistro of eventi.values()) {
+      for (const [chiave, gruppo] of perCerRegistro) {
+        for (const lista of gruppo.famiglie.values()) {
+          const giorno = calcolaFifo(lista).giornoPiuVecchio
+          const attuale = oldestByCer.get(chiave)
+          if (giorno && (!attuale || giorno < attuale)) oldestByCer.set(chiave, giorno)
+        }
+      }
     }
 
     interface Parziale {
@@ -155,9 +161,6 @@ export class GiacenzeService {
     const aperture = await leggiApertureRegistro(this.prisma, tenantId, { registroId })
     for (const ap of aperture) {
       const { chiave, entry } = voceDi(ap.cerCode)
-      const data = new Date(`${ap.dataRiferimento}T00:00:00Z`)
-      const attuale = oldestByCer.get(chiave) ?? null
-      if (!attuale || data < attuale) oldestByCer.set(chiave, data)
       const u = normalizzaUnitaRegistro(ap.unita)
       if (u.massa) {
         const kg = ap.quantita * (u.fattoreKg as number)
@@ -193,7 +196,9 @@ export class GiacenzeService {
         // Non negativa: scarichi > carichi indicano dati incoerenti (gestiti
         // a parte dall'anomaly detection), qui clampiamo a 0.
         giacenzaKg: Math.max(0, arrotonda3(caricoKg - scaricoKg)),
-        oldestCaricoDate: oldestByCer.get(chiave) ?? null,
+        oldestCaricoDate: oldestByCer.has(chiave)
+          ? new Date(`${oldestByCer.get(chiave)}T00:00:00Z`)
+          : null,
         altreUnita: [...entry.altre.values()],
         scarichiSuFirAnnullati: suFirAnnullati.get(chiave) ?? [],
       })

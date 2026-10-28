@@ -6,6 +6,10 @@ import { LoggerService } from '../../core/logger/logger.service'
 describe('GiacenzeService', () => {
   let service: GiacenzeService
   let prisma: any
+  /** Movimenti vigenti restituiti alla lettura degli eventi del FIFO. */
+  let eventi: any[]
+  /** Scarichi su FIR annullati restituiti alla lettura dedicata. */
+  let scarichiFir: any[]
 
   beforeEach(async () => {
     const mockLogger = {
@@ -15,10 +19,22 @@ describe('GiacenzeService', () => {
       error: jest.fn(),
       debug: jest.fn(),
     } as any
+    eventi = []
+    scarichiFir = []
     prisma = {
-      wasteMovement: { groupBy: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      wasteMovement: {
+        groupBy: jest.fn(),
+        // due letture: gli scarichi dei FIR annullati (filtro su firId) e gli eventi del FIFO
+        findMany: jest.fn((args: any) =>
+          Promise.resolve(args?.where?.firId ? scarichiFir : eventi)
+        ),
+      },
       fIR: { findMany: jest.fn().mockResolvedValue([]) },
-      giacenzaIniziale: { findMany: jest.fn().mockResolvedValue([]) },
+      giacenzaIniziale: {
+        findMany: jest.fn().mockResolvedValue([]),
+        groupBy: jest.fn().mockResolvedValue([]),
+      },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     }
 
     const module: TestingModule = await Test.createTestingModule({
@@ -31,13 +47,42 @@ describe('GiacenzeService', () => {
     service = module.get(GiacenzeService)
   })
 
-  /** Instrada le due groupBy: per [cerCode,type] e per [cerCode] (min data carico). */
-  function mockGroupBy(byType: any[], oldest: any[]) {
+  let progressivo = 0
+  /** Movimento vigente come lo legge il lettore degli eventi. */
+  function mov(
+    cerCode: string,
+    type: 'CARICO' | 'SCARICO',
+    quantity: number,
+    giorno: string,
+    extra: Record<string, unknown> = {}
+  ) {
+    progressivo += 1
+    return {
+      id: `m${progressivo}`,
+      registroId: 'reg-A',
+      cerCode,
+      type,
+      unit: 'KG',
+      quantity,
+      movementDate: new Date(`${giorno}T10:00:00Z`),
+      progressiveYear: 2026,
+      progressiveNumber: progressivo,
+      ...extra,
+    }
+  }
+
+  /** Instrada il groupBy delle somme (per tipo); `eventiMovimenti` alimenta il FIFO. */
+  function mockGroupBy(byType: any[], eventiMovimenti: any[] = []) {
+    eventi = eventiMovimenti
     prisma.wasteMovement.groupBy.mockImplementation((args: any) => {
       if (args.by.includes('type')) return Promise.resolve(byType)
-      return Promise.resolve(oldest)
+      return Promise.resolve([]) // groupBy dell'asterisco
     })
   }
+
+  /** Le chiamate al groupBy delle somme (quelle dell'asterisco non hanno il filtro di registro). */
+  const chiamateSomme = () =>
+    prisma.wasteMovement.groupBy.mock.calls.filter((c: any[]) => c[0].by.includes('type'))
 
   it('calcola la giacenza per CER (carico - scarico, clamp a 0)', async () => {
     mockGroupBy(
@@ -48,8 +93,10 @@ describe('GiacenzeService', () => {
         { cerCode: '170504', type: 'SCARICO', unit: 'KG', _sum: { quantity: 25 } }, // scarico > carico
       ],
       [
-        { cerCode: '150101', _min: { movementDate: new Date('2026-01-01') } },
-        { cerCode: '170504', _min: { movementDate: new Date('2026-05-01') } },
+        mov('150101', 'CARICO', 100, '2026-01-01'),
+        mov('150101', 'SCARICO', 30, '2026-01-10'),
+        mov('170504', 'CARICO', 10, '2026-05-01'),
+        mov('170504', 'SCARICO', 25, '2026-05-02'),
       ]
     )
 
@@ -57,24 +104,79 @@ describe('GiacenzeService', () => {
 
     const cer15 = giacenze.find(g => g.cerCode === '15 01 01')!
     expect(cer15.giacenzaKg).toBe(70)
-    expect(cer15.oldestCaricoDate).toEqual(new Date('2026-01-01'))
+    expect(cer15.oldestCaricoDate).toEqual(new Date('2026-01-01T00:00:00Z'))
     const cer17 = giacenze.find(g => g.cerCode === '17 05 04')!
     expect(cer17.giacenzaKg).toBe(0) // clamp: 10-25 → 0
+    expect(cer17.oldestCaricoDate).toBeNull() // nessun lotto residuo
+  })
+
+  it('G6: il carico vecchio interamente scaricato non fa invecchiare il deposito', async () => {
+    mockGroupBy(
+      [
+        { cerCode: '150101', type: 'CARICO', unit: 'KG', _sum: { quantity: 150 } },
+        { cerCode: '150101', type: 'SCARICO', unit: 'KG', _sum: { quantity: 100 } },
+      ],
+      [
+        mov('150101', 'CARICO', 100, '2025-01-01'),
+        mov('150101', 'SCARICO', 100, '2025-02-01'),
+        mov('150101', 'CARICO', 50, '2026-04-01'),
+      ]
+    )
+    const [g] = await service.getGiacenze('tenant-1')
+    expect(g.giacenzaKg).toBe(50)
+    expect(g.oldestCaricoDate).toEqual(new Date('2026-04-01T00:00:00Z'))
+  })
+
+  it('un CER interamente scaricato ha oldestCaricoDate null', async () => {
+    mockGroupBy(
+      [
+        { cerCode: '150101', type: 'CARICO', unit: 'KG', _sum: { quantity: 100 } },
+        { cerCode: '150101', type: 'SCARICO', unit: 'KG', _sum: { quantity: 100 } },
+      ],
+      [mov('150101', 'CARICO', 100, '2026-01-01'), mov('150101', 'SCARICO', 100, '2026-02-01')]
+    )
+    const [g] = await service.getGiacenze('tenant-1')
+    expect(g.giacenzaKg).toBe(0)
+    expect(g.oldestCaricoDate).toBeNull()
+  })
+
+  it('senza registroId: minimo dei lotti più vecchi dei registri, FIFO sempre per registro', async () => {
+    mockGroupBy(
+      [
+        { cerCode: '150101', type: 'CARICO', unit: 'KG', _sum: { quantity: 200 } },
+        { cerCode: '150101', type: 'SCARICO', unit: 'KG', _sum: { quantity: 100 } },
+      ],
+      [
+        // reg-A: carico del 1/1 mai scaricato nel suo registro
+        mov('150101', 'CARICO', 100, '2026-01-01', { registroId: 'reg-A' }),
+        // reg-B: scarico del 1/2 e carico del 1/3; lo scarico NON consuma il lotto di reg-A
+        mov('150101', 'SCARICO', 100, '2026-02-01', { registroId: 'reg-B' }),
+        mov('150101', 'CARICO', 100, '2026-03-01', { registroId: 'reg-B' }),
+      ]
+    )
+    const [g] = await service.getGiacenze('tenant-1')
+    expect(g.oldestCaricoDate).toEqual(new Date('2026-01-01T00:00:00Z'))
   })
 
   it('giacenze: con registroId conta solo quel registro; senza, tutti', async () => {
     mockGroupBy([], [])
 
     await service.getGiacenze('tenant-1', 'reg-A')
-    for (const chiamata of prisma.wasteMovement.groupBy.mock.calls) {
+    expect(chiamateSomme()).toHaveLength(1)
+    for (const chiamata of chiamateSomme()) {
       expect(chiamata[0].where).toMatchObject({ tenantId: 'tenant-1', registroId: 'reg-A' })
     }
+    expect(prisma.wasteMovement.findMany.mock.calls[0][0].where).toMatchObject({
+      registroId: 'reg-A',
+    })
 
     prisma.wasteMovement.groupBy.mockClear()
+    prisma.wasteMovement.findMany.mockClear()
     await service.getGiacenze('tenant-1')
     for (const chiamata of prisma.wasteMovement.groupBy.mock.calls) {
       expect(chiamata[0].where).not.toHaveProperty('registroId')
     }
+    expect(prisma.wasteMovement.findMany.mock.calls[0][0].where).not.toHaveProperty('registroId')
   })
 
   it('giacenze: gli alert di deposito rispettano il filtro registroId', async () => {
@@ -82,7 +184,8 @@ describe('GiacenzeService', () => {
 
     await service.getDepositoTemporaneoAlerts('tenant-1', undefined, undefined, 'reg-A')
 
-    for (const chiamata of prisma.wasteMovement.groupBy.mock.calls) {
+    expect(chiamateSomme()).toHaveLength(1)
+    for (const chiamata of chiamateSomme()) {
       expect(chiamata[0].where).toMatchObject({ registroId: 'reg-A' })
     }
   })
@@ -101,15 +204,14 @@ describe('GiacenzeService', () => {
 
     await service.getGiacenze('tenant-1', 'reg-A')
 
-    expect(prisma.wasteMovement.findMany.mock.calls[0][0].where).toMatchObject({
-      registroId: 'reg-A',
-    })
+    const perFir = prisma.wasteMovement.findMany.mock.calls.find((c: any[]) => c[0].where.firId)
+    expect(perFir[0].where).toMatchObject({ registroId: 'reg-A' })
   })
 
   it('alza alert DURATION quando il carico più vecchio supera i giorni massimi', async () => {
     mockGroupBy(
       [{ cerCode: '150101', type: 'CARICO', unit: 'KG', _sum: { quantity: 100 } }],
-      [{ cerCode: '150101', _min: { movementDate: new Date('2026-01-01') } }]
+      [mov('150101', 'CARICO', 100, '2026-01-01')]
     )
 
     const alerts = await service.getDepositoTemporaneoAlerts(
@@ -126,7 +228,7 @@ describe('GiacenzeService', () => {
   it('alza alert QUANTITY quando la giacenza supera la soglia in kg', async () => {
     mockGroupBy(
       [{ cerCode: '150101', type: 'CARICO', unit: 'KG', _sum: { quantity: 50000 } }],
-      [{ cerCode: '150101', _min: { movementDate: new Date('2026-05-30') } }]
+      [mov('150101', 'CARICO', 50000, '2026-05-30')]
     )
 
     const alerts = await service.getDepositoTemporaneoAlerts(
@@ -146,7 +248,7 @@ describe('GiacenzeService', () => {
         { cerCode: '150101', type: 'CARICO', unit: 'KG', _sum: { quantity: 100 } },
         { cerCode: '150101', type: 'SCARICO', unit: 'KG', _sum: { quantity: 100 } }, // giacenza 0
       ],
-      [{ cerCode: '150101', _min: { movementDate: new Date('2020-01-01') } }]
+      [mov('150101', 'CARICO', 100, '2020-01-01'), mov('150101', 'SCARICO', 100, '2020-01-02')]
     )
 
     const alerts = await service.getDepositoTemporaneoAlerts('tenant-1')
@@ -154,15 +256,12 @@ describe('GiacenzeService', () => {
   })
 
   it('converte le tonnellate in kg e tiene i litri fuori dai kg', async () => {
-    mockGroupBy(
-      [
-        { cerCode: '170405', type: 'CARICO', unit: 'T', _sum: { quantity: 1 } },
-        { cerCode: '170405', type: 'CARICO', unit: 'KG', _sum: { quantity: 500 } },
-        { cerCode: '170405', type: 'SCARICO', unit: 'kg', _sum: { quantity: 200 } },
-        { cerCode: '170405', type: 'CARICO', unit: 'LITRI', _sum: { quantity: 30 } },
-      ],
-      []
-    )
+    mockGroupBy([
+      { cerCode: '170405', type: 'CARICO', unit: 'T', _sum: { quantity: 1 } },
+      { cerCode: '170405', type: 'CARICO', unit: 'KG', _sum: { quantity: 500 } },
+      { cerCode: '170405', type: 'SCARICO', unit: 'kg', _sum: { quantity: 200 } },
+      { cerCode: '170405', type: 'CARICO', unit: 'LITRI', _sum: { quantity: 30 } },
+    ])
     const [g] = await service.getGiacenze('t1')
     expect(g).toMatchObject({ caricoKg: 1500, scaricoKg: 200, giacenzaKg: 1300 })
     expect(g.altreUnita).toEqual([
@@ -171,13 +270,10 @@ describe('GiacenzeService', () => {
   })
 
   it('elenca gli scarichi collegati a FIR annullati, senza toglierli dalla giacenza', async () => {
-    mockGroupBy(
-      [
-        { cerCode: '170405', type: 'CARICO', unit: 'KG', _sum: { quantity: 500 } },
-        { cerCode: '170405', type: 'SCARICO', unit: 'KG', _sum: { quantity: 200 } },
-      ],
-      []
-    )
+    mockGroupBy([
+      { cerCode: '170405', type: 'CARICO', unit: 'KG', _sum: { quantity: 500 } },
+      { cerCode: '170405', type: 'SCARICO', unit: 'KG', _sum: { quantity: 200 } },
+    ])
     prisma.fIR.findMany.mockResolvedValue([
       {
         id: 'f1',
@@ -187,7 +283,7 @@ describe('GiacenzeService', () => {
         rentriStatoFormulario: 'Annullato',
       },
     ])
-    prisma.wasteMovement.findMany.mockResolvedValue([
+    scarichiFir = [
       {
         cerCode: '170405',
         progressiveNumber: 9,
@@ -196,7 +292,7 @@ describe('GiacenzeService', () => {
         unit: 'KG',
         firId: 'f1',
       },
-    ])
+    ]
     const [g] = await service.getGiacenze('t1')
     expect(g.giacenzaKg).toBe(300)
     expect(g.scarichiSuFirAnnullati).toEqual([
@@ -215,8 +311,9 @@ describe('GiacenzeService', () => {
         { cerCode: '20 03 01', type: 'SCARICO', unit: 'KG', _sum: { quantity: 30 } },
       ],
       [
-        { cerCode: '200301', _min: { movementDate: new Date('2026-03-01') } },
-        { cerCode: '20 03 01', _min: { movementDate: new Date('2026-02-01') } },
+        mov('200301', 'CARICO', 100, '2026-03-01'),
+        mov('20 03 01', 'CARICO', 50, '2026-02-01'),
+        mov('20 03 01', 'SCARICO', 30, '2026-02-10'),
       ]
     )
     const giacenze = await service.getGiacenze('t1')
@@ -226,18 +323,20 @@ describe('GiacenzeService', () => {
       caricoKg: 150,
       scaricoKg: 30,
       giacenzaKg: 120,
-      oldestCaricoDate: new Date('2026-02-01'),
+      oldestCaricoDate: new Date('2026-02-01T00:00:00Z'),
     })
   })
 
-  it('non interroga i movimenti se nessun FIR è annullato', async () => {
-    mockGroupBy([{ cerCode: '170405', type: 'CARICO', unit: 'KG', _sum: { quantity: 5 } }], [])
+  it('non interroga gli scarichi dei FIR se nessun FIR è annullato', async () => {
+    mockGroupBy([{ cerCode: '170405', type: 'CARICO', unit: 'KG', _sum: { quantity: 5 } }])
     await service.getGiacenze('t1')
-    expect(prisma.wasteMovement.findMany).not.toHaveBeenCalled()
+    const perFir = prisma.wasteMovement.findMany.mock.calls.filter((c: any[]) => c[0].where.firId)
+    expect(perFir).toHaveLength(0)
   })
 
   describe('giacenze iniziali (aperture del registro)', () => {
     const apertura = (cerCode: string, quantita: number, unita: string, data: string) => ({
+      id: `ap-${cerCode}-${unita}`,
       registroId: 'reg-A',
       cerCode,
       quantita,
@@ -267,27 +366,31 @@ describe('GiacenzeService', () => {
           { cerCode: '150106', type: 'CARICO', unit: 'KG', _sum: { quantity: 100 } },
           { cerCode: '150106', type: 'SCARICO', unit: 'KG', _sum: { quantity: 30 } },
         ],
-        [{ cerCode: '150106', _min: { movementDate: new Date('2026-03-01') } }]
+        [mov('150106', 'CARICO', 100, '2026-03-01'), mov('150106', 'SCARICO', 30, '2026-03-02')]
       )
       prisma.giacenzaIniziale.findMany.mockResolvedValue([
         apertura('15 01 06', 2, 'T', '2026-01-15'),
       ])
       const [g] = await service.getGiacenze('tenant-1')
       expect(g).toMatchObject({ caricoKg: 2100, inizialeKg: 2000, giacenzaKg: 2070 })
-      // la più vecchia fra carichi e data di riferimento
+      // lo scarico consuma l'apertura (più vecchia) ma ne resta: il lotto più vecchio è ancora lei
       expect(g.oldestCaricoDate).toEqual(new Date('2026-01-15T00:00:00Z'))
     })
 
-    it("se il carico è più vecchio dell'apertura resta la data del carico", async () => {
+    it("D9: il carico vecchio interamente scaricato non conta, conta l'apertura", async () => {
       mockGroupBy(
-        [{ cerCode: '150106', type: 'CARICO', unit: 'KG', _sum: { quantity: 10 } }],
-        [{ cerCode: '150106', _min: { movementDate: new Date('2026-01-01') } }]
+        [
+          { cerCode: '150106', type: 'CARICO', unit: 'KG', _sum: { quantity: 10 } },
+          { cerCode: '150106', type: 'SCARICO', unit: 'KG', _sum: { quantity: 10 } },
+        ],
+        [mov('150106', 'CARICO', 10, '2026-01-01'), mov('150106', 'SCARICO', 10, '2026-01-10')]
       )
       prisma.giacenzaIniziale.findMany.mockResolvedValue([
         apertura('15 01 06', 5, 'KG', '2026-02-01'),
       ])
       const [g] = await service.getGiacenze('tenant-1')
-      expect(g.oldestCaricoDate).toEqual(new Date('2026-01-01'))
+      expect(g.giacenzaKg).toBe(5)
+      expect(g.oldestCaricoDate).toEqual(new Date('2026-02-01T00:00:00Z'))
     })
 
     it("l'asterisco vince fra apertura e movimenti", async () => {
@@ -301,13 +404,10 @@ describe('GiacenzeService', () => {
     })
 
     it('le unità non di massa hanno il loro iniziale e non si mescolano ai kg', async () => {
-      mockGroupBy(
-        [
-          { cerCode: '150106', type: 'CARICO', unit: 'LITRI', _sum: { quantity: 30 } },
-          { cerCode: '150106', type: 'SCARICO', unit: 'LITRI', _sum: { quantity: 10 } },
-        ],
-        []
-      )
+      mockGroupBy([
+        { cerCode: '150106', type: 'CARICO', unit: 'LITRI', _sum: { quantity: 30 } },
+        { cerCode: '150106', type: 'SCARICO', unit: 'LITRI', _sum: { quantity: 10 } },
+      ])
       prisma.giacenzaIniziale.findMany.mockResolvedValue([
         apertura('15 01 06', 50, 'LITRI', '2026-02-01'),
       ])
@@ -322,14 +422,20 @@ describe('GiacenzeService', () => {
     it('le aperture si leggono per tenant e, se indicato, per registro', async () => {
       mockGroupBy([], [])
       await service.getGiacenze('tenant-1', 'reg-A')
-      expect(prisma.giacenzaIniziale.findMany.mock.calls[0][0].where).toEqual({
-        tenantId: 'tenant-1',
-        registroId: 'reg-A',
-      })
+      // la prima lettura è quella del FIFO, la seconda quella delle somme: stesso filtro
+      for (const i of [0, 1]) {
+        expect(prisma.giacenzaIniziale.findMany.mock.calls[i][0].where).toEqual({
+          tenantId: 'tenant-1',
+          registroId: 'reg-A',
+        })
+      }
+      prisma.giacenzaIniziale.findMany.mockClear()
       await service.getGiacenze('tenant-1')
-      expect(prisma.giacenzaIniziale.findMany.mock.calls[1][0].where).toEqual({
-        tenantId: 'tenant-1',
-      })
+      for (const i of [0, 1]) {
+        expect(prisma.giacenzaIniziale.findMany.mock.calls[i][0].where).toEqual({
+          tenantId: 'tenant-1',
+        })
+      }
     })
   })
 })

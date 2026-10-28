@@ -27,6 +27,7 @@ import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { FirGiaRegistratoError } from '../../core/domain/errors'
 import { giacenzaDisponibileAl, saldiRegistroCer } from './giacenza-disponibile'
 import { GiacenzeService } from '../giacenze/giacenze.service'
+import { leggiEventiDeposito } from '../giacenze/eventi-deposito'
 import { AnomalyDetectionService } from '../anomaly/anomaly-detection.service'
 import { MudAggregazioneService } from '../mud/aggregazione/mud-aggregazione.service'
 import { GiacenzeInizialiService } from './giacenze-iniziali.service'
@@ -115,7 +116,13 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
     })
   }
 
-  async function rettifica(az: Az, da: { id: string }, radice: { id: string }, quantita: number) {
+  async function rettifica(
+    az: Az,
+    da: { id: string },
+    radice: { id: string },
+    quantita: number,
+    data?: string
+  ) {
     const base = await owner.wasteMovement.findUniqueOrThrow({ where: { id: da.id } })
     return inserisci(az, {
       tipo: 'RETTIFICA',
@@ -124,6 +131,7 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
       type: base.type as 'CARICO' | 'SCARICO',
       causale: base.causale,
       quantita,
+      data,
       firId: base.firId ?? undefined,
     })
   }
@@ -353,7 +361,77 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
       )
       expect(righe).toHaveLength(1)
       expect(righe[0]).toMatchObject({ caricoKg: 80, scaricoKg: 0, giacenzaKg: 80 })
-      expect(righe[0].oldestCaricoDate?.toISOString()).toBe('2026-03-01T10:00:00.000Z')
+      expect(righe[0].oldestCaricoDate?.toISOString()).toBe('2026-03-01T00:00:00.000Z')
+    })
+
+    it('uno scarico annullato non consuma il lotto', async () => {
+      const az = await azienda()
+      await inserisci(az, { quantita: 100, data: '2026-02-01T10:00:00Z' })
+      await inserisci(az, { quantita: 50, data: '2026-04-01T10:00:00Z' })
+      const s = await inserisci(az, {
+        type: 'SCARICO',
+        quantita: 100,
+        data: '2026-04-10T10:00:00Z',
+      })
+      // lo scarico copre tutto il lotto di febbraio: il piu vecchio residuo e' aprile
+      let righe = await nelTenant(az.tenantId, () =>
+        giacenze.getGiacenze(az.tenantId, az.registroId)
+      )
+      expect(righe[0].oldestCaricoDate?.toISOString()).toBe('2026-04-01T00:00:00.000Z')
+      await annulla(az, s, s)
+      righe = await nelTenant(az.tenantId, () => giacenze.getGiacenze(az.tenantId, az.registroId))
+      expect(righe[0].oldestCaricoDate?.toISOString()).toBe('2026-02-01T00:00:00.000Z')
+    })
+
+    it('un carico rettificato porta la data della rettifica', async () => {
+      const az = await azienda()
+      const c = await inserisci(az, { quantita: 100, data: '2026-02-01T10:00:00Z' })
+      await rettifica(az, c, c, 80, '2026-05-15T10:00:00Z')
+      const righe = await nelTenant(az.tenantId, () =>
+        giacenze.getGiacenze(az.tenantId, az.registroId)
+      )
+      expect(righe[0]).toMatchObject({ caricoKg: 80, giacenzaKg: 80 })
+      expect(righe[0].oldestCaricoDate?.toISOString()).toBe('2026-05-15T00:00:00.000Z')
+    })
+
+    it('una catena annullata non conta: nessun lotto, nessuna data', async () => {
+      const az = await azienda()
+      const c = await inserisci(az, { quantita: 100, data: '2026-02-01T10:00:00Z' })
+      await annulla(az, c, c)
+      const righe = await nelTenant(az.tenantId, () =>
+        giacenze.getGiacenze(az.tenantId, az.registroId)
+      )
+      expect(righe).toHaveLength(0)
+    })
+
+    it('la pericolosita viene dal catalogo se nessuna riga ha l asterisco', async () => {
+      const az = await azienda()
+      const pericoloso = await owner.cERCode.findFirst({ where: { isPericoloso: true } })
+      if (!pericoloso) throw new Error('catalogo senza codici pericolosi: seed mancante')
+      const cifre = pericoloso.code.replace(/[^0-9]/g, '')
+      const senzaAsterisco = `${cifre.slice(0, 2)} ${cifre.slice(2, 4)} ${cifre.slice(4)}`
+      await owner.wasteMovement.create({
+        data: {
+          tenantId: az.tenantId,
+          registroId: az.registroId,
+          progressiveYear: 2026,
+          progressiveNumber: ++progressivo,
+          type: 'CARICO',
+          movementDate: new Date('2026-03-01T10:00:00Z'),
+          registrationDate: new Date('2026-03-01T10:00:00Z'),
+          causale: 'PRODUZIONE_INTERNA',
+          cerCode: senzaAsterisco,
+          quantity: 10,
+          unit: 'KG',
+          tipoAnnotazione: 'ORDINARIA',
+        },
+      })
+      const eventi = await nelTenant(az.tenantId, () =>
+        leggiEventiDeposito(app, az.tenantId, { registroId: az.registroId })
+      )
+      const gruppo = eventi.get(az.registroId)!.get(cifre)!
+      expect(gruppo.pericoloso).toBe(true)
+      expect(gruppo.cerCode.endsWith('*')).toBe(true)
     })
   })
 
