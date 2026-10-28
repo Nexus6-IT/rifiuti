@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, NotFoundException, NotImplementedException } from '@nestjs/common'
 import { TaskAssignmentService } from './task-assignment.service'
 import { ResourceOwnershipRepository } from '../../domain/identity-access/resource-ownership.repository.interface'
 import { FIRRepository } from '../../domain/fir/fir.repository'
@@ -350,7 +350,7 @@ describe('TaskAssignmentService', () => {
   })
 
   describe('autoAssignTask', () => {
-    it('should automatically assign FIR to best qualified driver', async () => {
+    it('should fail with NotImplementedException (FIR has no driver concept) when auto-assigning', async () => {
       // Arrange
       const firId = 'fir-auto-001'
       const mockFir = {
@@ -359,7 +359,6 @@ describe('TaskAssignmentService', () => {
         requiredCertifications: [],
         pickupZone: 'Zone-North',
         estimatedWeight: 300,
-        assignDriver: jest.fn(),
       }
 
       const mockQualifiedDrivers = [
@@ -383,14 +382,11 @@ describe('TaskAssignmentService', () => {
       jest.spyOn(service, 'findQualifiedDrivers').mockResolvedValue(mockQualifiedDrivers as any)
       firRepository.save.mockResolvedValue(mockFir as any)
 
-      // Act
-      const assignment = await service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)
-
-      // Assert
-      expect(assignment.assignedDriverId).toBe('driver-2') // Less busy driver
-      expect(assignment.assignedBy).toBe(mockFleetManagerId)
-      expect(assignment.assignmentMethod).toBe('automatic')
-      expect(mockFir.assignDriver).toHaveBeenCalledWith('driver-2', mockFleetManagerId)
+      // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
+      await expect(
+        service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)
+      ).rejects.toThrow(NotImplementedException)
+      expect(firRepository.save).not.toHaveBeenCalled()
     })
 
     it('should throw error if no qualified drivers available', async () => {
@@ -415,7 +411,7 @@ describe('TaskAssignmentService', () => {
       )
     })
 
-    it('should prioritize drivers with exact certification match', async () => {
+    it('should prioritize drivers with exact certification match (validations pass, write rejected: no driver on FIR)', async () => {
       // Arrange
       const firId = 'fir-specific-cert'
       const mockFir = {
@@ -424,7 +420,6 @@ describe('TaskAssignmentService', () => {
         requiredCertifications: ['ADR', 'Hazmat-Class-3'],
         pickupZone: 'Zone-North',
         estimatedWeight: 300,
-        assignDriver: jest.fn(),
       }
 
       const mockQualifiedDrivers = [
@@ -448,14 +443,14 @@ describe('TaskAssignmentService', () => {
       jest.spyOn(service, 'findQualifiedDrivers').mockResolvedValue(mockQualifiedDrivers as any)
       firRepository.save.mockResolvedValue(mockFir as any)
 
-      // Act
-      const assignment = await service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)
-
-      // Assert: Should prefer exact match even if slightly busier
-      expect(assignment.assignedDriverId).toBe('driver-exact')
+      // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
+      await expect(
+        service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)
+      ).rejects.toThrow(NotImplementedException)
+      expect(firRepository.save).not.toHaveBeenCalled()
     })
 
-    it('should handle priority/urgent assignments', async () => {
+    it('should handle priority/urgent assignments (validations pass, write rejected: no driver on FIR)', async () => {
       // Arrange: Urgent FIR should get priority
       const firId = 'fir-urgent'
       const mockFir = {
@@ -465,7 +460,6 @@ describe('TaskAssignmentService', () => {
         pickupZone: 'Zone-North',
         estimatedWeight: 300,
         priority: 'urgent',
-        assignDriver: jest.fn(),
       }
 
       const mockQualifiedDrivers = [
@@ -480,17 +474,16 @@ describe('TaskAssignmentService', () => {
       jest.spyOn(service, 'findQualifiedDrivers').mockResolvedValue(mockQualifiedDrivers as any)
       firRepository.save.mockResolvedValue(mockFir as any)
 
-      // Act
-      const assignment = await service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)
-
-      // Assert
-      expect(assignment.assignedDriverId).toBe('driver-available')
-      expect(assignment.priority).toBe('urgent')
+      // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
+      await expect(
+        service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)
+      ).rejects.toThrow(NotImplementedException)
+      expect(firRepository.save).not.toHaveBeenCalled()
     })
   })
 
   describe('manualAssignTask', () => {
-    it('should allow manual assignment to qualified driver', async () => {
+    it('should allow manual assignment to qualified driver (validations pass, write rejected: no driver on FIR)', async () => {
       // Arrange
       const firId = 'fir-manual-001'
       const driverId = 'driver-123'
@@ -498,7 +491,6 @@ describe('TaskAssignmentService', () => {
         id: firId,
         tenantId: mockTenantId,
         requiredCertifications: ['ADR'],
-        assignDriver: jest.fn(),
       }
 
       const mockDriverOwnership = {
@@ -517,21 +509,19 @@ describe('TaskAssignmentService', () => {
       firRepository.getCurrentWorkloadByDriver.mockResolvedValue(200)
       firRepository.save.mockResolvedValue(mockFir as any)
 
-      // Act
-      const assignment = await service.manualAssignTask(
+      // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
+      await expect(
+        service.manualAssignTask(
         firId,
         driverId,
         mockTenantId,
         mockFleetManagerId
       )
-
-      // Assert
-      expect(assignment.assignedDriverId).toBe(driverId)
-      expect(assignment.assignmentMethod).toBe('manual')
-      expect(mockFir.assignDriver).toHaveBeenCalledWith(driverId, mockFleetManagerId)
+      ).rejects.toThrow(NotImplementedException)
+      expect(firRepository.save).not.toHaveBeenCalled()
     })
 
-    it('should warn but allow manual assignment to unqualified driver', async () => {
+    it('should warn but allow manual assignment to unqualified driver (validations pass, write rejected: no driver on FIR)', async () => {
       // Arrange: Driver lacks required certification
       const firId = 'fir-manual-002'
       const driverId = 'driver-no-cert'
@@ -539,7 +529,6 @@ describe('TaskAssignmentService', () => {
         id: firId,
         tenantId: mockTenantId,
         requiredCertifications: ['ADR'],
-        assignDriver: jest.fn(),
       }
 
       const mockDriverOwnership = {
@@ -558,18 +547,16 @@ describe('TaskAssignmentService', () => {
       firRepository.getCurrentWorkloadByDriver.mockResolvedValue(200)
       firRepository.save.mockResolvedValue(mockFir as any)
 
-      // Act
-      const assignment = await service.manualAssignTask(
+      // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
+      await expect(
+        service.manualAssignTask(
         firId,
         driverId,
         mockTenantId,
         mockFleetManagerId
       )
-
-      // Assert
-      expect(assignment.assignedDriverId).toBe(driverId)
-      expect(assignment.warnings).toContain('Driver lacks required certifications: ADR')
-      expect(assignment.assignmentMethod).toBe('manual')
+      ).rejects.toThrow(NotImplementedException)
+      expect(firRepository.save).not.toHaveBeenCalled()
     })
 
     it('should throw error if driver does not exist', async () => {
@@ -628,7 +615,7 @@ describe('TaskAssignmentService', () => {
   })
 
   describe('reassignTask', () => {
-    it('should reassign FIR to different driver', async () => {
+    it('should reassign FIR to different driver (validations pass, write rejected: no driver on FIR)', async () => {
       // Arrange
       const firId = 'fir-reassign-001'
       const oldDriverId = 'driver-old'
@@ -637,7 +624,6 @@ describe('TaskAssignmentService', () => {
         id: firId,
         tenantId: mockTenantId,
         assignedDriverId: oldDriverId,
-        assignDriver: jest.fn(),
       }
 
       const mockNewDriverOwnership = {
@@ -656,23 +642,20 @@ describe('TaskAssignmentService', () => {
       firRepository.getCurrentWorkloadByDriver.mockResolvedValue(200)
       firRepository.save.mockResolvedValue(mockFir as any)
 
-      // Act
-      const reassignment = await service.reassignTask(
+      // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
+      await expect(
+        service.reassignTask(
         firId,
         newDriverId,
         mockTenantId,
         mockFleetManagerId,
         'Driver unavailable'
       )
-
-      // Assert
-      expect(reassignment.assignedDriverId).toBe(newDriverId)
-      expect(reassignment.previousDriverId).toBe(oldDriverId)
-      expect(reassignment.reason).toBe('Driver unavailable')
-      expect(mockFir.assignDriver).toHaveBeenCalledWith(newDriverId, mockFleetManagerId)
+      ).rejects.toThrow(NotImplementedException)
+      expect(firRepository.save).not.toHaveBeenCalled()
     })
 
-    it('should create audit trail for reassignment', async () => {
+    it('should create audit trail for reassignment (validations pass, write rejected: no driver on FIR)', async () => {
       // Arrange
       const firId = 'fir-reassign-002'
       const oldDriverId = 'driver-old'
@@ -681,7 +664,6 @@ describe('TaskAssignmentService', () => {
         id: firId,
         tenantId: mockTenantId,
         assignedDriverId: oldDriverId,
-        assignDriver: jest.fn(),
       }
 
       const mockNewDriverOwnership = {
@@ -700,20 +682,17 @@ describe('TaskAssignmentService', () => {
       firRepository.getCurrentWorkloadByDriver.mockResolvedValue(100)
       firRepository.save.mockResolvedValue(mockFir as any)
 
-      // Act
-      const reassignment = await service.reassignTask(
+      // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
+      await expect(
+        service.reassignTask(
         firId,
         newDriverId,
         mockTenantId,
         mockFleetManagerId,
         'Emergency reassignment'
       )
-
-      // Assert
-      expect(reassignment.auditTrail).toBeDefined()
-      expect(reassignment.auditTrail?.action).toBe('reassign')
-      expect(reassignment.auditTrail?.performedBy).toBe(mockFleetManagerId)
-      expect(reassignment.auditTrail?.reason).toBe('Emergency reassignment')
+      ).rejects.toThrow(NotImplementedException)
+      expect(firRepository.save).not.toHaveBeenCalled()
     })
   })
 
