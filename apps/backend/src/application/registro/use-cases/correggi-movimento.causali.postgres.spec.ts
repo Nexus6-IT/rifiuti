@@ -6,6 +6,7 @@
 import { randomUUID } from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
+import { eDatabaseDiTestLocale } from '../../../test-support/database-di-test'
 
 const urlProprietario =
   process.env.DATABASE_URL ??
@@ -176,7 +177,7 @@ describe('Correzioni con le causali - Postgres reale, ruolo wasteflow_app', () =
   }
 
   beforeAll(async () => {
-    expect(process.env.DATABASE_URL ?? '').toContain(':55432/')
+    expect(eDatabaseDiTestLocale(process.env.DATABASE_URL)).toBe(true)
     app = creaPrismaServiceApplicativo()
     await app.onModuleInit()
     const [r] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`
