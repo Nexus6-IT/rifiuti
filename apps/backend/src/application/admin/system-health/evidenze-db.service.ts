@@ -5,6 +5,7 @@ import { ChiaveEvidenza, LettoreEvidenze } from './probes/job-schedulati.probe'
 import { MisuraFreschezza } from './probes/freschezza.probe'
 import { StatoCredenziale } from './probes/credenziali.probe'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../../infrastructure/rentri/rentri-certificato-scadenza.util'
+import { MESSAGGIO_CATALOGO_CAUSALI_VUOTO } from '../../registro/causali/catalogo-causali-avvio.service'
 import { escludiPiattaforma } from '../../../core/context/azienda-piattaforma'
 
 /**
@@ -131,6 +132,15 @@ export class EvidenzeDbService implements LettoreEvidenze {
   async verificaConnessione(): Promise<string> {
     await this.sistema.$queryRaw`SELECT 1`
     return 'query SELECT 1 eseguita'
+  }
+
+  /** Il catalogo di sistema delle causali deve avere righe: vuoto = MUD che esclude tutto. */
+  async verificaCatalogoCausali(): Promise<string> {
+    const righe = await this.sistema.causaleRegistro.count()
+    if (righe === 0) {
+      throw new Error(MESSAGGIO_CATALOGO_CAUSALI_VUOTO)
+    }
+    return `${righe} causali di sistema presenti`
   }
 
   private async misuraBackup(): Promise<MisuraFreschezza> {
