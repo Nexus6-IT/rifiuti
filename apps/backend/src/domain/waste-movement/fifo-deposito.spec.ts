@@ -2,6 +2,7 @@ import {
   calcolaFifo,
   confrontaEventiFifo,
   famigliaFifo,
+  millesimiFifo,
   quantitaFifo,
   type EventoFifo,
 } from './fifo-deposito'
@@ -185,7 +186,13 @@ describe('calcolaFifo: casi a mano', () => {
     expect(() => calcolaFifo([carico('c', '2026-01-01', 0)])).toThrow()
     expect(() => calcolaFifo([carico('c', '2026-01-01', -1)])).toThrow()
     expect(() => calcolaFifo([carico('c', '2026-01-01', Number.NaN)])).toThrow()
+    expect(() => calcolaFifo([carico('c', '2026-01-01', 0.0004)])).toThrow()
+    expect(() => calcolaFifo([carico('c', '2026-01-01', 1, Number.NaN)])).toThrow()
+    expect(() => calcolaFifo([carico('c', '2026-13-01', 1)])).toThrow()
+    expect(() => calcolaFifo([carico('c', '2026-01-32', 1)])).toThrow()
     expect(() => calcolaFifo([carico('c', '2026-3-1', 1)])).toThrow()
+    expect(millesimiFifo(0.0004)).toBe(0)
+    expect(millesimiFifo(0.1)).toBe(100)
     expect(() => calcolaFifo([carico('', '2026-01-01', 1)])).toThrow()
     expect(() =>
       calcolaFifo([{ ...scarico('s', '2026-01-01', 1), origine: 'APERTURA' as const }])

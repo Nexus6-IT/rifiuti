@@ -43,10 +43,12 @@
  * scarico-carico dell'import dai gestori riusa questa funzione come proposta; per questo
  * gli `abbinamenti` sono calcolati qui anche se l'API di F2-6 non li espone.
  */
-import { normalizzaUnitaRegistro } from './unita-misura-registro'
+import { convertiInKg, normalizzaUnitaRegistro } from './unita-misura-registro'
 
 export type OrigineEventoFifo = 'APERTURA' | 'MOVIMENTO'
 
+// I `riferimento` negli esiti (lotti e abbinamenti) sono gli STESSI oggetti passati in
+// ingresso, non copie: il chiamante non deve mutarli.
 export interface RiferimentoFifo {
   /** id del movimento o della giacenza iniziale: ultimo criterio di spareggio */
   id: string
@@ -94,7 +96,12 @@ export interface EsitoFifo {
   abbinamenti: AbbinamentoFifo[]
 }
 
-const GIORNO_ISO = /^\d{4}-\d{2}-\d{2}$/
+const GIORNO_ISO = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
+
+/** Quantita in millesimi; <= 0 significa che calcolaFifo rifiuterebbe l'evento (es. 0,0004). */
+export function millesimiFifo(q: number): number {
+  return Math.round(q * 1000)
+}
 
 function rangoTipo(e: EventoFifo): number {
   return e.tipo === 'CARICO' ? 0 : 1
@@ -121,7 +128,8 @@ function convalida(e: EventoFifo): number {
   if (e.tipo === 'SCARICO' && e.origine === 'APERTURA') {
     throw new Error('FIFO: uno SCARICO non puo avere origine APERTURA')
   }
-  const mill = Math.round(e.quantita * 1000)
+  if (!Number.isFinite(e.ordine)) throw new Error(`FIFO: ordine non valido (${String(e.ordine)})`)
+  const mill = millesimiFifo(e.quantita)
   if (!Number.isFinite(e.quantita) || !Number.isFinite(mill) || mill <= 0) {
     throw new Error(`FIFO: quantita non valida (${String(e.quantita)}), deve essere > 0`)
   }
@@ -207,6 +215,5 @@ export function famigliaFifo(unit: string | null | undefined): string {
 
 /** Quantita nella scala della famiglia: le tonnellate diventano kg, il resto resta. */
 export function quantitaFifo(q: number, unit: string | null | undefined): number {
-  const { fattoreKg } = normalizzaUnitaRegistro(unit)
-  return fattoreKg === null ? q : Math.round(q * fattoreKg * 1000) / 1000
+  return convertiInKg(q, unit) ?? q
 }
