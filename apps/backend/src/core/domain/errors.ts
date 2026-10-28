@@ -37,9 +37,10 @@ export class InvalidStateTransitionError extends DomainError {
   }
 }
 
+/** Messaggio senza il valore ricevuto: una partita IVA non entra mai in un errore (D12). */
 export class InvalidPartitaIVAError extends DomainError {
-  constructor(partitaIVA: string) {
-    super(`Invalid Partita IVA format: ${partitaIVA}`)
+  constructor() {
+    super('Partita IVA non valida: servono 11 cifre.')
     this.name = 'InvalidPartitaIVAError'
   }
 }
@@ -256,5 +257,76 @@ export class FirNonTrovatoError extends DomainError {
   constructor() {
     super(FirNonTrovatoError.MESSAGGIO_UTENTE)
     this.name = 'FirNonTrovatoError'
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Ditte e sedi delle controparti (F2-10). Nessun messaggio riporta partite IVA, codici fiscali o
+// id: sono dati personali (il CF di un privato) o riferimenti che non servono a chi legge.
+// ---------------------------------------------------------------------------------------------
+
+/** Dati di una controparte non validi (identificativo fiscale, privato non produttore, nome). */
+export class DatiControparteNonValidiError extends DomainError {
+  static readonly CODICE = 'DATI_CONTROPARTE_NON_VALIDI'
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'DatiControparteNonValidiError'
+  }
+}
+
+/** Partita IVA e codice fiscale indicati appartengono a due ditte diverse (o esiste gia'). */
+export class DittaIdentificativiInConflittoError extends DomainError {
+  static readonly CODICE = 'DITTA_IDENTIFICATIVI_IN_CONFLITTO'
+  static readonly MESSAGGIO_DUE_DITTE =
+    'Partita IVA e codice fiscale appartengono a due anagrafiche diverse'
+  static readonly MESSAGGIO_GIA_ESISTENTE =
+    "Esiste già un'anagrafica con questo identificativo fiscale"
+
+  constructor(message: string = DittaIdentificativiInConflittoError.MESSAGGIO_DUE_DITTE) {
+    super(message)
+    this.name = 'DittaIdentificativiInConflittoError'
+  }
+}
+
+/** L'identificativo indicato contraddice quello gia' registrato per la ditta. */
+export class IdentificativoNonCorrispondenteError extends DomainError {
+  static readonly CODICE = 'IDENTIFICATIVO_NON_CORRISPONDENTE'
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'IdentificativoNonCorrispondenteError'
+  }
+}
+
+/** Sede che non si puo' disattivare o modificare (principale, predefinita di un ruolo, duplicata). */
+export class SedeNonModificabileError extends DomainError {
+  static readonly CODICE = 'SEDE_NON_MODIFICABILE'
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'SedeNonModificabileError'
+  }
+}
+
+/** Ditta assente o di un'altra azienda. Risposta 404, messaggio senza id. */
+export class DittaNonTrovataError extends DomainError {
+  static readonly CODICE = 'DITTA_NON_TROVATA'
+  static readonly MESSAGGIO_UTENTE = 'Ditta non trovata'
+
+  constructor() {
+    super(DittaNonTrovataError.MESSAGGIO_UTENTE)
+    this.name = 'DittaNonTrovataError'
+  }
+}
+
+/** Sede assente, di un'altra ditta o di un'altra azienda. Risposta 404, messaggio senza id. */
+export class SedeNonTrovataError extends DomainError {
+  static readonly CODICE = 'SEDE_NON_TROVATA'
+  static readonly MESSAGGIO_UTENTE = 'Sede non trovata'
+
+  constructor() {
+    super(SedeNonTrovataError.MESSAGGIO_UTENTE)
+    this.name = 'SedeNonTrovataError'
   }
 }
