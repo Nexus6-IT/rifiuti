@@ -217,6 +217,17 @@ describe('HttpExceptionFilter - segnalazione a Bugsink', () => {
     )
   })
 
+  it('la query string non finisce ne nella risposta ne nel log ne in Bugsink (host con CF in query)', () => {
+    filter.catch(new Error('boom'), host) // host: /api/v1/fir?search=<CF>
+    const risposta = JSON.stringify(response.json.mock.calls[0][0])
+    expect(risposta).not.toContain('RSSMRA80A01H501U')
+    expect(response.json.mock.calls[0][0].path).toBe('/api/v1/fir')
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('RSSMRA80A01H501U')
+    expect(JSON.stringify((Sentry.captureException as jest.Mock).mock.calls)).not.toContain(
+      'RSSMRA80A01H501U'
+    )
+  })
+
   describe('violazioni di vincoli Postgres: nessun dato della riga (M5)', () => {
     const CF = 'RSSMRA80A01H501U'
     const messaggioPg =

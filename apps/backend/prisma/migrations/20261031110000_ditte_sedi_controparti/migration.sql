@@ -230,7 +230,7 @@ BEGIN
              lower(regexp_replace(btrim(sd.civico), '\s+', ' ', 'g')) || '|' ||
              lower(regexp_replace(btrim(sd.comune), '\s+', ' ', 'g')) || '|' ||
              btrim(sd.cap) || '|' || upper(btrim(sd.provincia)) = a.chiave
-       ORDER BY sd.attiva DESC, sd.principale DESC, sd.created_at, sd.id LIMIT 1
+       ORDER BY sd.principale DESC, sd.created_at, sd.id LIMIT 1
     ) s
    WHERE a.ruolo = 'P' AND r.id = a.id;
   UPDATE destinatari r SET ditta_id = a.ditta_id, sede_id = s.id
@@ -242,7 +242,7 @@ BEGIN
              lower(regexp_replace(btrim(sd.civico), '\s+', ' ', 'g')) || '|' ||
              lower(regexp_replace(btrim(sd.comune), '\s+', ' ', 'g')) || '|' ||
              btrim(sd.cap) || '|' || upper(btrim(sd.provincia)) = a.chiave
-       ORDER BY sd.attiva DESC, sd.principale DESC, sd.created_at, sd.id LIMIT 1
+       ORDER BY sd.principale DESC, sd.created_at, sd.id LIMIT 1
     ) s
    WHERE a.ruolo = 'D' AND r.id = a.id;
   UPDATE trasportatori r SET ditta_id = a.ditta_id, sede_id = s.id
@@ -254,7 +254,7 @@ BEGIN
              lower(regexp_replace(btrim(sd.civico), '\s+', ' ', 'g')) || '|' ||
              lower(regexp_replace(btrim(sd.comune), '\s+', ' ', 'g')) || '|' ||
              btrim(sd.cap) || '|' || upper(btrim(sd.provincia)) = a.chiave
-       ORDER BY sd.attiva DESC, sd.principale DESC, sd.created_at, sd.id LIMIT 1
+       ORDER BY sd.principale DESC, sd.created_at, sd.id LIMIT 1
     ) s
    WHERE a.ruolo = 'T' AND r.id = a.id;
 

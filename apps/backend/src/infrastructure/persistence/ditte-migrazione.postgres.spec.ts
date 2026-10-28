@@ -588,6 +588,16 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
     })
   })
 
+  it('wasteflow_app non puo eseguire f210_collega_anagrafiche()', async () => {
+    await expect(app.$queryRawUnsafe('SELECT f210_collega_anagrafiche()')).rejects.toThrow(
+      /permission denied/i
+    )
+    const [r] = await sel<{ ok: boolean }>(
+      "SELECT has_function_privilege('wasteflow_app', 'f210_collega_anagrafiche()', 'EXECUTE') AS ok"
+    )
+    expect(r.ok).toBe(false)
+  })
+
   describe('RLS (ruolo wasteflow_app)', () => {
     beforeAll(async () => {
       // Il ruolo esiste a livello di cluster (ops/db-ruoli.sh); nel database temporaneo gli si

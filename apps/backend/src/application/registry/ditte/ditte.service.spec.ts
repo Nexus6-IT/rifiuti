@@ -323,6 +323,39 @@ describe('DitteService', () => {
       expect(s.principale).toBe(false)
     })
 
+    it('aggiornaSede: cambio d indirizzo uguale a quello di un altra sede attiva: 409', async () => {
+      const a = sedeEsistente(true)
+      const b = sedeEsistente(false, { civico: '2' })
+      repo.trovaSede.mockResolvedValue(b)
+      repo.sedi.mockResolvedValue([a, b])
+      await expect(
+        nelTenant(() => service.aggiornaSede('d1', b.id, { indirizzo: INDIRIZZO }))
+      ).rejects.toBeInstanceOf(SedeNonModificabileError)
+      expect(repo.aggiornaSede).not.toHaveBeenCalled()
+    })
+
+    it('aggiornaSede: riattivare una sede con l indirizzo di una attiva: 409', async () => {
+      const a = sedeEsistente(true)
+      const spenta = sedeEsistente(false)
+      spenta.disattiva([])
+      repo.trovaSede.mockResolvedValue(spenta)
+      repo.sedi.mockResolvedValue([a, spenta])
+      await expect(
+        nelTenant(() => service.aggiornaSede('d1', spenta.id, { attiva: true }))
+      ).rejects.toBeInstanceOf(SedeNonModificabileError)
+      expect(repo.aggiornaSede).not.toHaveBeenCalled()
+    })
+
+    it('aggiornaSede: una sede che resta disattivata non e controllata', async () => {
+      const a = sedeEsistente(true)
+      const spenta = sedeEsistente(false)
+      spenta.disattiva([])
+      repo.trovaSede.mockResolvedValue(spenta)
+      repo.sedi.mockResolvedValue([a, spenta])
+      await nelTenant(() => service.aggiornaSede('d1', spenta.id, { referente: 'Mario' }))
+      expect(repo.aggiornaSede).toHaveBeenCalledTimes(1)
+    })
+
     it('aggiornaSede non disattiva la principale', async () => {
       const principale = sedeEsistente(true)
       repo.trovaSede.mockResolvedValue(principale)

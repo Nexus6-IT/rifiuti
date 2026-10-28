@@ -172,9 +172,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = 'Si è verificato un errore imprevisto. Riprova più tardi.'
     }
 
+    // Percorso senza query string e senza dati personali: una query puo' contenere un CF.
+    // Limite noto: il mascheramento non copre nome e cognome dei privati, che compaiono negli
+    // argomenti stampati da PrismaClientValidationError (D12).
+    const percorsoSenzaQuery = mascheraDatiPersonali(request.url.split('?')[0])
+
     // Log the error
     this.logger.error(
-      `HTTP ${request.method} ${request.url} - ${statusCode} ${errorCode}`,
+      `HTTP ${request.method} ${percorsoSenzaQuery} - ${statusCode} ${errorCode}`,
       exception instanceof Error ? this.erroreSenzaDatiPersonali(exception) : undefined,
       {
         correlationId,
@@ -182,7 +187,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         userId,
         statusCode,
         errorCode,
-        path: request.url,
+        path: percorsoSenzaQuery,
         method: request.method,
       }
     )
@@ -190,7 +195,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // Segnalazione a Bugsink dei soli 5xx. Senza SENTRY_DSN l'SDK non è inizializzato e la
     // chiamata non fa nulla. I 503 delle rotte di health restano fuori (Decisione 4): sono
     // il segnale normale di un controllo che fallisce, non un errore imprevisto.
-    const percorsoSenzaQuery = request.url.split('?')[0]
     if (statusCode >= 500 && !/\/health(\/|$)/.test(percorsoSenzaQuery)) {
       try {
         Sentry.captureException(exception, {
@@ -211,7 +215,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       ...(details && { details }),
       correlationId,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: percorsoSenzaQuery,
     }
 
     response.status(statusCode).json(errorResponse)

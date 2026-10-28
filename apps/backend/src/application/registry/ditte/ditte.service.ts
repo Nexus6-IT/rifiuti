@@ -326,6 +326,14 @@ export class DitteService {
         sede.riattiva()
       }
       sede.aggiorna({ ...dati, indirizzo })
+      if (sede.attiva) {
+        // due sedi attive con lo stesso indirizzo renderebbero casuale la scelta di risolviPerRuolo
+        const chiave = sede.chiaveIndirizzo()
+        const altre = await this.ditte.sedi(tx, dittaId)
+        if (altre.some(s => s.id !== sede.id && s.attiva && s.chiaveIndirizzo() === chiave)) {
+          throw new SedeNonModificabileError('Esiste già una sede con questo indirizzo.')
+        }
+      }
       await this.ditte.aggiornaSede(tx, sede)
       return this.sedeDto(sede)
     })
