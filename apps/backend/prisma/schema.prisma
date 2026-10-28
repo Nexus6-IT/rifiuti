@@ -124,6 +124,9 @@ model Tenant {
   causaliRegistroAzienda CausaleRegistroAzienda[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
+  // Fase 2 pezzo 10
+  ditte                  Ditta[]
+  sediDitte              SedeDitta[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -1233,8 +1236,16 @@ model Produttore {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne sopra diventano copia congelata)
+  dittaId String? @map("ditta_id") @db.Uuid
+  sedeId  String? @map("sede_id") @db.Uuid
+  ditta   Ditta?     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_ditta_fkey")
+  sede    SedeDitta? @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_sede_fkey")
+
   @@unique([tenantId, partitaIVA])
+  @@unique([tenantId, dittaId], map: "produttori_tenant_id_ditta_id_key")
   @@index([tenantId])
+  @@index([sedeId], map: "produttori_sede_id_idx")
   @@map("produttori")
 }
 
@@ -1268,8 +1279,16 @@ model Trasportatore {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne sopra diventano copia congelata)
+  dittaId String? @map("ditta_id") @db.Uuid
+  sedeId  String? @map("sede_id") @db.Uuid
+  ditta   Ditta?     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_ditta_fkey")
+  sede    SedeDitta? @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_sede_fkey")
+
   @@unique([tenantId, partitaIVA])
+  @@unique([tenantId, dittaId], map: "trasportatori_tenant_id_ditta_id_key")
   @@index([tenantId])
+  @@index([sedeId], map: "trasportatori_sede_id_idx")
   @@map("trasportatori")
 }
 
@@ -1303,8 +1322,16 @@ model Destinatario {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne sopra diventano copia congelata)
+  dittaId String? @map("ditta_id") @db.Uuid
+  sedeId  String? @map("sede_id") @db.Uuid
+  ditta   Ditta?     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_ditta_fkey")
+  sede    SedeDitta? @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_sede_fkey")
+
   @@unique([tenantId, partitaIVA])
+  @@unique([tenantId, dittaId], map: "destinatari_tenant_id_ditta_id_key")
   @@index([tenantId])
+  @@index([sedeId], map: "destinatari_sede_id_idx")
   @@map("destinatari")
 }
 
@@ -2335,4 +2362,66 @@ model CausaleRegistroAzienda {
   @@unique([tenantId, causaleSistemaCodice, verso], map: "causali_registro_azienda_disattivazione_key")
   @@index([tenantId], map: "causali_registro_azienda_tenant_id_idx")
   @@map("causali_registro_azienda")
+}
+
+/// Controparte dell'azienda (Fase 2 pezzo 10): identita' fiscale e ragione sociale. Una ditta puo'
+/// essere produttore, trasportatore e destinatario (una riga di ruolo ciascuno, stessi id di
+/// sempre). Identificata da partita IVA o codice fiscale (un privato ha il solo codice fiscale).
+/// Il checksum non sta nel database (le P.IVA migrate non sono mai state controllate): lo applica
+/// l'applicazione quando un identificativo viene impostato. RLS per tenant.
+model Ditta {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  ragioneSociale String   @map("ragione_sociale") @db.VarChar(255)
+  partitaIva     String?  @map("partita_iva") @db.VarChar(11)
+  codiceFiscale  String?  @map("codice_fiscale") @db.VarChar(16)
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sedi          SedeDitta[]
+  produttori    Produttore[]
+  trasportatori Trasportatore[]
+  destinatari   Destinatario[]
+
+  @@unique([id, tenantId], map: "ditte_id_tenant_id_key")
+  @@unique([tenantId, partitaIva], map: "ditte_tenant_id_partita_iva_key")
+  @@unique([tenantId, codiceFiscale], map: "ditte_tenant_id_codice_fiscale_key")
+  @@index([tenantId], map: "ditte_tenant_id_idx")
+  @@map("ditte")
+}
+
+/// Sede di una ditta (Fase 2 pezzo 10): indirizzo e contatti. Esattamente una principale per
+/// ditta ("al piu' una" nel database con l'indice parziale `sedi_ditte_una_principale`, solo SQL).
+/// Le sedi non si cancellano: si disattivano. RLS per tenant.
+model SedeDitta {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  dittaId       String   @map("ditta_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  denominazione String?  @db.VarChar(255)
+  via           String   @db.VarChar(255)
+  civico        String   @db.VarChar(20)
+  cap           String   @db.VarChar(5)
+  comune        String   @db.VarChar(100)
+  provincia     String   @db.VarChar(2)
+  referente     String?  @db.VarChar(255)
+  email         String?  @db.VarChar(255)
+  telefono      String?  @db.VarChar(20)
+  pec           String?  @db.VarChar(255)
+  principale    Boolean  @default(false)
+  attiva        Boolean  @default(true)
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ditta         Ditta           @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "sedi_ditte_ditta_fkey")
+  produttori    Produttore[]
+  trasportatori Trasportatore[]
+  destinatari   Destinatario[]
+
+  @@unique([id, tenantId], map: "sedi_ditte_id_tenant_id_key")
+  @@unique([id, dittaId, tenantId], map: "sedi_ditte_id_ditta_id_tenant_id_key")
+  @@index([tenantId], map: "sedi_ditte_tenant_id_idx")
+  @@index([dittaId], map: "sedi_ditte_ditta_id_idx")
+  @@map("sedi_ditte")
 }

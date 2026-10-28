@@ -222,6 +222,65 @@ temporaneo; resta utile provare `restore.sh` su un ambiente di staging.
 
 ---
 
+## F2-10 controparti (ditte e sedi)
+
+Migration `20261031110000_ditte_sedi_controparti` (Fase 2 pezzo 10): ogni anagrafica di ruolo
+(produttori, trasportatori, destinatari) viene collegata a una **ditta** per (azienda, partita IVA)
+e a una **sede**; la stessa P.IVA in più ruoli della stessa azienda diventa UNA ditta. Gli id delle
+righe di ruolo non cambiano, FIR e contratti non vengono toccati. La migration è transazionale e si
+**ferma** (senza modificare nulla) se una P.IVA non è di 11 cifre.
+
+### Censimento PRIMA del merge (lo lancia l'orchestratore sul VPS)
+
+Sola lettura, soli conteggi:
+
+```bash
+docker exec -i <container postgres> psql -U <utente> -d <db>
+```
+
+```sql
+WITH a AS (
+  SELECT 'P' r, tenant_id, btrim(partita_iva) p, lower(btrim(ragione_sociale)) n FROM produttori
+  UNION ALL SELECT 'T', tenant_id, btrim(partita_iva), lower(btrim(ragione_sociale)) FROM trasportatori
+  UNION ALL SELECT 'D', tenant_id, btrim(partita_iva), lower(btrim(ragione_sociale)) FROM destinatari)
+SELECT
+  (SELECT count(*) FROM a) AS anagrafiche,
+  (SELECT count(*) FROM a WHERE p !~ '^[0-9]{11}$') AS piva_non_conformi,
+  (SELECT count(*) FROM (SELECT 1 FROM a GROUP BY tenant_id, p HAVING count(DISTINCT r) > 1) x) AS ditte_fuse,
+  (SELECT count(*) FROM (SELECT 1 FROM a GROUP BY tenant_id, p
+     HAVING count(DISTINCT r) > 1 AND count(DISTINCT n) > 1) x) AS ditte_fuse_nome_divergente;
+```
+
+- `piva_non_conformi > 0` **blocca il merge**: le righe vanno corrette a mano prima.
+- `ditte_fuse_nome_divergente` va nel rapporto finale (la ditta prende la ragione sociale della riga
+  aggiornata più di recente; le righe di ruolo conservano la propria).
+
+### Ripristino da migration fallita (P3009)
+
+La migration è transazionale (DDL e DML in un solo script: un `RAISE EXCEPTION` annulla tutto).
+Se il deploy si ferma con P3009:
+
+1. controllare che la migration non abbia lasciato nulla: `SELECT to_regclass('public.ditte');` deve
+   dare NULL (altrimenti non è stata annullata: fermarsi e chiedere);
+2. correggere il dato indicato dal messaggio (i soli conteggi per tabella; i valori si cercano con il
+   censimento, restringendo la `WHERE` a `p !~ '^[0-9]{11}$'`);
+3. `npx prisma migrate resolve --rolled-back 20261031110000_ditte_sedi_controparti` (o il nome della
+   migration fallita), poi rilanciare il deploy.
+
+### Rollback
+
+Le migration sono additive fino al Task 3b-2 (`20261031110100_anagrafiche_su_ditte`): il codice
+precedente continua a funzionare perché le colonne vecchie delle righe di ruolo non cambiano. Dopo
+3b-2 il codice vecchio non legge le anagrafiche create dopo il deploy (colonne vecchie NULL):
+il rollback del codice richiede il **ripristino del backup notturno** oppure uno script inverso che
+ricostruisce le colonne vecchie dalla ditta e dalla sede predefinita
+(`UPDATE produttori r SET partita_iva = d.partita_iva, ragione_sociale = d.ragione_sociale, via = s.via, ...
+FROM ditte d, sedi_ditte s WHERE d.id = r.ditta_id AND s.id = r.sede_id`, per ciascuna tabella di
+ruolo, poi rimettere i NOT NULL e gli indici unici `*_tenant_id_partita_iva_key`), da scrivere e
+provare nel Task 3b-2.
+
+---
+
 ## Rollback
 
 Se lo smoke test fallisce dopo `migrate` e `up -d`, i container nuovi restano
