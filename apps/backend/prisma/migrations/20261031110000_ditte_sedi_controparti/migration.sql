@@ -210,7 +210,7 @@ BEGIN
         FROM _f210_anagrafiche a
        WHERE NOT EXISTS (
          SELECT 1 FROM sedi_ditte s
-          WHERE s.tenant_id = a.tenant_id AND s.ditta_id = a.ditta_id
+          WHERE s.tenant_id = a.tenant_id AND s.ditta_id = a.ditta_id AND s.attiva
             AND lower(regexp_replace(btrim(s.via), '\s+', ' ', 'g')) || '|' ||
                 lower(regexp_replace(btrim(s.civico), '\s+', ' ', 'g')) || '|' ||
                 lower(regexp_replace(btrim(s.comune), '\s+', ' ', 'g')) || '|' ||
@@ -225,7 +225,7 @@ BEGIN
     FROM _f210_anagrafiche a
     CROSS JOIN LATERAL (
       SELECT sd.id FROM sedi_ditte sd
-       WHERE sd.tenant_id = a.tenant_id AND sd.ditta_id = a.ditta_id
+       WHERE sd.tenant_id = a.tenant_id AND sd.ditta_id = a.ditta_id AND sd.attiva
          AND lower(regexp_replace(btrim(sd.via), '\s+', ' ', 'g')) || '|' ||
              lower(regexp_replace(btrim(sd.civico), '\s+', ' ', 'g')) || '|' ||
              lower(regexp_replace(btrim(sd.comune), '\s+', ' ', 'g')) || '|' ||
@@ -237,7 +237,7 @@ BEGIN
     FROM _f210_anagrafiche a
     CROSS JOIN LATERAL (
       SELECT sd.id FROM sedi_ditte sd
-       WHERE sd.tenant_id = a.tenant_id AND sd.ditta_id = a.ditta_id
+       WHERE sd.tenant_id = a.tenant_id AND sd.ditta_id = a.ditta_id AND sd.attiva
          AND lower(regexp_replace(btrim(sd.via), '\s+', ' ', 'g')) || '|' ||
              lower(regexp_replace(btrim(sd.civico), '\s+', ' ', 'g')) || '|' ||
              lower(regexp_replace(btrim(sd.comune), '\s+', ' ', 'g')) || '|' ||
@@ -249,7 +249,7 @@ BEGIN
     FROM _f210_anagrafiche a
     CROSS JOIN LATERAL (
       SELECT sd.id FROM sedi_ditte sd
-       WHERE sd.tenant_id = a.tenant_id AND sd.ditta_id = a.ditta_id
+       WHERE sd.tenant_id = a.tenant_id AND sd.ditta_id = a.ditta_id AND sd.attiva
          AND lower(regexp_replace(btrim(sd.via), '\s+', ' ', 'g')) || '|' ||
              lower(regexp_replace(btrim(sd.civico), '\s+', ' ', 'g')) || '|' ||
              lower(regexp_replace(btrim(sd.comune), '\s+', ' ', 'g')) || '|' ||
@@ -290,6 +290,10 @@ BEGIN
   DROP TABLE _f210_anagrafiche;
 END;
 $f210$;
+
+-- La funzione gira con i privilegi di chi la chiama e tocca tutte le aziende: nessuno, a parte il
+-- proprietario, deve poterla eseguire (EXECUTE e' concesso a PUBLIC di default).
+REVOKE EXECUTE ON FUNCTION f210_collega_anagrafiche() FROM PUBLIC;
 
 SELECT f210_collega_anagrafiche();
 

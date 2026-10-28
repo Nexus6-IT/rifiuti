@@ -264,8 +264,15 @@ Se il deploy si ferma con P3009:
    dare NULL (altrimenti non è stata annullata: fermarsi e chiedere);
 2. correggere il dato indicato dal messaggio (i soli conteggi per tabella; i valori si cercano con il
    censimento, restringendo la `WHERE` a `p !~ '^[0-9]{11}$'`);
-3. `npx prisma migrate resolve --rolled-back 20261031110000_ditte_sedi_controparti` (o il nome della
-   migration fallita), poi rilanciare il deploy.
+3. sul VPS, in `/opt/rifiuti/site`, dentro il container backend e COME OWNER (lo stesso modo in cui il
+   job di deploy esegue `migrate deploy`, `.gitea/workflows/deploy.yml`):
+   ```bash
+   cd /opt/rifiuti/site
+   COMPOSE="docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml"
+   $COMPOSE run --rm backend sh -c 'DATABASE_URL="$DATABASE_URL_MIGRAZIONI" npx prisma migrate resolve --rolled-back 20261031110000_ditte_sedi_controparti'
+   ```
+   (o il nome della migration fallita; le virgolette singole fanno espandere `DATABASE_URL_MIGRAZIONI`
+   dentro il container, non sulla shell del VPS), poi rilanciare il deploy.
 
 ### Rollback
 

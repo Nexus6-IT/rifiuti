@@ -6,7 +6,7 @@ describe('eDatabaseDiTestLocale', () => {
     'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55434/wasteflow_ci?schema=public',
     'postgresql://wasteflow_app:wasteflow_app_dev@localhost:5433/wasteflow_ci',
     'postgres://wasteflow:x@127.0.0.1:55434/wasteflow_ci?schema=public&connection_limit=5',
-  ])('accetta il database di test locale %s', (url) => {
+  ])('accetta il database di test locale %s', url => {
     expect(eDatabaseDiTestLocale(url)).toBe(true)
   })
 
@@ -18,7 +18,7 @@ describe('eDatabaseDiTestLocale', () => {
     'postgresql://127.0.0.1.evil.com:5432/wasteflow_ci@altrove:5432/x',
     '',
     'non un url',
-  ])('rifiuta %s', (url) => {
+  ])('rifiuta %s', url => {
     expect(eDatabaseDiTestLocale(url)).toBe(false)
   })
 

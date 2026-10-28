@@ -156,6 +156,10 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
   let contrattoPrima: string
 
   beforeAll(async () => {
+    // Prima di creare qualunque database: mai su un database che non sia quello di test locale.
+    if (!eDatabaseDiTestLocale(URL_PROPRIETARIO)) {
+      throw new Error('DATABASE_URL non punta a un database di test locale: fermo')
+    }
     admin = new PrismaClient({ datasources: { db: { url: `${BASE_URL}/postgres` } } })
     await admin.$executeRawUnsafe(`CREATE DATABASE ${nomeDb}`)
 
@@ -192,14 +196,57 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
 
     // A: stessa P.IVA X come produttore (via Roma 1) e destinatario (via dell'Industria 5,
     // aggiornato dopo) con ragioni sociali scritte diversamente.
-    await produttore(id.prodX, A, 'Rossi S.r.l.', X, 'Via Roma', '1', '2026-01-01 10:00:00', 'prod@rossi.it')
-    await destinatario(id.destX, A, 'ROSSI SRL', X, "Via dell'Industria", '5', '2026-03-01 10:00:00')
+    await produttore(
+      id.prodX,
+      A,
+      'Rossi S.r.l.',
+      X,
+      'Via Roma',
+      '1',
+      '2026-01-01 10:00:00',
+      'prod@rossi.it'
+    )
+    await destinatario(
+      id.destX,
+      A,
+      'ROSSI SRL',
+      X,
+      "Via dell'Industria",
+      '5',
+      '2026-03-01 10:00:00'
+    )
     // A: produttore e trasportatore con P.IVA Y e lo stesso indirizzo scritto diversamente;
     // il trasportatore e' piu' recente e ha un'altra email.
-    await produttore(id.prodY, A, 'Verdi Srl', Y, 'Via Garibaldi', '3', '2026-01-01 10:00:00', 'vecchia@verdi.it')
-    await trasportatore(id.trasY, A, 'VERDI S.R.L.', Y, '  VIA   GARIBALDI ', '3', '2026-02-01 10:00:00', 'nuova@verdi.it')
+    await produttore(
+      id.prodY,
+      A,
+      'Verdi Srl',
+      Y,
+      'Via Garibaldi',
+      '3',
+      '2026-01-01 10:00:00',
+      'vecchia@verdi.it'
+    )
+    await trasportatore(
+      id.trasY,
+      A,
+      'VERDI S.R.L.',
+      Y,
+      '  VIA   GARIBALDI ',
+      '3',
+      '2026-02-01 10:00:00',
+      'nuova@verdi.it'
+    )
     // A: P.IVA di 11 cifre con checksum sbagliato: migrata cosi' com'e'.
-    await destinatario(id.destInvalida, A, 'Bianchi', INVALIDA_CHECKSUM, 'Via Po', '7', '2026-01-05 10:00:00')
+    await destinatario(
+      id.destInvalida,
+      A,
+      'Bianchi',
+      INVALIDA_CHECKSUM,
+      'Via Po',
+      '7',
+      '2026-01-05 10:00:00'
+    )
     // B: stessa P.IVA X, azienda diversa.
     await produttore(id.prodB, B, 'Rossi di B', X, 'Via Dante', '2', '2026-01-02 10:00:00')
 
@@ -222,8 +269,14 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
       `INSERT INTO contracts (id, tenant_id, updated_at, contract_number, producer_id, counterparty_id, counterparty_type, contract_type, pricing_model, start_date)
        VALUES ('${id.contratto}', '${A}', now(), 'CT-1', '${id.prodX}', '${id.destX}', 'DISPOSER', 'WASTE_DISPOSAL', 'FLAT_RATE', now())`
     )
-    firPrima = (await sel<{ r: string }>(`SELECT to_jsonb(f)::text AS r FROM firs f WHERE id = '${id.fir}'`))[0].r
-    contrattoPrima = (await sel<{ r: string }>(`SELECT to_jsonb(c)::text AS r FROM contracts c WHERE id = '${id.contratto}'`))[0].r
+    firPrima = (
+      await sel<{ r: string }>(`SELECT to_jsonb(f)::text AS r FROM firs f WHERE id = '${id.fir}'`)
+    )[0].r
+    contrattoPrima = (
+      await sel<{ r: string }>(
+        `SELECT to_jsonb(c)::text AS r FROM contracts c WHERE id = '${id.contratto}'`
+      )
+    )[0].r
 
     // Database "fallito": una P.IVA di 11 caratteri ma non di cifre.
     await dbFallita.$executeRawUnsafe(
@@ -235,7 +288,14 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
     )
 
     prismaCli(
-      ['db', 'execute', '--file', path.join(MIGRAZIONI, MIGRATION, 'migration.sql'), '--schema', schemaTmp],
+      [
+        'db',
+        'execute',
+        '--file',
+        path.join(MIGRAZIONI, MIGRATION, 'migration.sql'),
+        '--schema',
+        schemaTmp,
+      ],
       urlDb
     )
   }, 300_000)
@@ -250,10 +310,6 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
       await admin.$disconnect()
     }
     fs.rmSync(cartellaTmp, { recursive: true, force: true })
-  })
-
-  it('guard: il database di prova e il database di test locale', () => {
-    expect(eDatabaseDiTestLocale(URL_PROPRIETARIO)).toBe(true)
   })
 
   it('stessa P.IVA in due ruoli: UNA ditta, due sedi, principale = quella della riga piu recente', async () => {
@@ -314,7 +370,9 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
 
   it('un azienda senza anagrafiche non ottiene nessuna ditta', async () => {
     expect(await ditteDi(C)).toHaveLength(0)
-    const [n] = await sel<{ n: number }>(`SELECT count(*)::int AS n FROM sedi_ditte WHERE tenant_id = '${C}'`)
+    const [n] = await sel<{ n: number }>(
+      `SELECT count(*)::int AS n FROM sedi_ditte WHERE tenant_id = '${C}'`
+    )
     expect(n.n).toBe(0)
   })
 
@@ -329,8 +387,12 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
   })
 
   it('FIR e contratto inseriti prima: tutte le colonne identiche dopo la migration', async () => {
-    const [f] = await sel<{ r: string }>(`SELECT to_jsonb(f)::text AS r FROM firs f WHERE id = '${id.fir}'`)
-    const [c] = await sel<{ r: string }>(`SELECT to_jsonb(c)::text AS r FROM contracts c WHERE id = '${id.contratto}'`)
+    const [f] = await sel<{ r: string }>(
+      `SELECT to_jsonb(f)::text AS r FROM firs f WHERE id = '${id.fir}'`
+    )
+    const [c] = await sel<{ r: string }>(
+      `SELECT to_jsonb(c)::text AS r FROM contracts c WHERE id = '${id.contratto}'`
+    )
     expect(f.r).toBe(firPrima)
     expect(c.r).toBe(contrattoPrima)
   })
@@ -360,7 +422,9 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
     expect(dZ).toHaveLength(1)
     expect(dZ[0].ragione_sociale).toBe('Neri Spa')
     expect((await sediDi(dZ[0].id))[0].principale).toBe(true)
-    const [p] = await sel<{ ditta_id: string }>(`SELECT ditta_id FROM produttori WHERE id = '${idZ}'`)
+    const [p] = await sel<{ ditta_id: string }>(
+      `SELECT ditta_id FROM produttori WHERE id = '${idZ}'`
+    )
     expect(p.ditta_id).toBe(dZ[0].id)
 
     const prima = await istantanea()
@@ -368,11 +432,67 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
     expect(await istantanea()).toEqual(prima)
   })
 
+  it('ragione sociale vuota in una riga di ruolo: la ditta si chiama "Ditta senza ragione sociale"', async () => {
+    const D = randomUUID()
+    const idRiga = randomUUID()
+    const W = '44444444444'
+    await azienda(D, 4)
+    await produttore(idRiga, D, '   ', W, 'Via Vuota', '1', '2026-06-01 10:00:00')
+
+    await q('SELECT f210_collega_anagrafiche()')
+
+    const ditte = await ditteDi(D)
+    expect(ditte).toHaveLength(1)
+    expect(ditte[0].ragione_sociale).toBe('Ditta senza ragione sociale')
+    const [riga] = await sel<{ ditta_id: string }>(
+      `SELECT ditta_id FROM produttori WHERE id = '${idRiga}'`
+    )
+    expect(riga.ditta_id).toBe(ditte[0].id)
+  })
+
+  it('una sede disattivata non viene ricollegata: la nuova riga ottiene una sede nuova e attiva (D4)', async () => {
+    const D = randomUUID()
+    const idProd = randomUUID()
+    const idTras = randomUUID()
+    const V = '55555555555'
+    await azienda(D, 5)
+    // la principale e' la sede del produttore (riga piu' recente), la secondaria quella del destinatario
+    await produttore(idProd, D, 'Gialli Srl', V, 'Via Principale', '1', '2026-06-02 10:00:00')
+    await destinatario(randomUUID(), D, 'Gialli Srl', V, 'Via Vecchia', '1', '2026-06-01 10:00:00')
+    await q('SELECT f210_collega_anagrafiche()')
+    const [ditta] = await ditteDi(D)
+    const vecchia = (await sediDi(ditta.id)).find(x => x.via === 'Via Vecchia')!
+    expect(vecchia.principale).toBe(false)
+    // la sede secondaria viene disattivata
+    await q(`UPDATE sedi_ditte SET attiva = false WHERE id = '${vecchia.id}'`)
+    // il backend vecchio crea un trasportatore con lo STESSO indirizzo e la stessa P.IVA
+    await trasportatore(idTras, D, 'Gialli Trasporti', V, 'Via Vecchia', '1', '2026-06-02 10:00:00')
+
+    await q('SELECT f210_collega_anagrafiche()')
+
+    const [tras] = await sel<{ ditta_id: string; sede_id: string }>(
+      `SELECT ditta_id, sede_id FROM trasportatori WHERE id = '${idTras}'`
+    )
+    expect(tras.ditta_id).toBe(ditta.id)
+    expect(tras.sede_id).not.toBe(vecchia.id)
+    const sedi = await sediDi(ditta.id)
+    expect(sedi).toHaveLength(3)
+    expect(sedi.find(x => x.id === vecchia.id)?.attiva).toBe(false)
+    expect(sedi.find(x => x.id === tras.sede_id)?.attiva).toBe(true)
+  })
+
   it('precondizione: una P.IVA non di 11 cifre ferma la migration con i soli conteggi e annulla tutto', async () => {
     let stderr = ''
     try {
       prismaCli(
-        ['db', 'execute', '--file', path.join(MIGRAZIONI, MIGRATION, 'migration.sql'), '--schema', schemaTmp],
+        [
+          'db',
+          'execute',
+          '--file',
+          path.join(MIGRAZIONI, MIGRATION, 'migration.sql'),
+          '--schema',
+          schemaTmp,
+        ],
         urlDbFallita
       )
       throw new Error('la migration doveva fallire')
@@ -473,7 +593,9 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
       // Il ruolo esiste a livello di cluster (ops/db-ruoli.sh); nel database temporaneo gli si
       // danno i privilegi che gli darebbero i default privileges.
       await q(`GRANT USAGE ON SCHEMA public TO wasteflow_app`)
-      await q(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO wasteflow_app`)
+      await q(
+        `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO wasteflow_app`
+      )
     })
 
     it('nel contesto di A si vedono solo ditte e sedi di A', async () => {
@@ -481,7 +603,9 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
         await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', '${A}', true)`)
         return [
           await tx.$queryRawUnsafe<Array<{ tenant_id: string }>>(`SELECT tenant_id FROM ditte`),
-          await tx.$queryRawUnsafe<Array<{ tenant_id: string }>>(`SELECT tenant_id FROM sedi_ditte`),
+          await tx.$queryRawUnsafe<Array<{ tenant_id: string }>>(
+            `SELECT tenant_id FROM sedi_ditte`
+          ),
         ]
       })
       expect(ditte.length).toBeGreaterThan(0)
